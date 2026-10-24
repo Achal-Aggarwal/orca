@@ -5,6 +5,7 @@ import type {
   BridgeInitRoute
 } from './bridge-envelope'
 import { ZERO_SAFE_AREA_INSETS, type BridgeSafeAreaInsets } from './bridge-safe-area-insets'
+import { EMPTY_PAGE_GEOMETRY, type BridgePageGeometry } from './bridge-page-geometry'
 import type { BridgeFoldDivision } from './bridge-fold-division'
 import type { BridgeTerminalKeyRail } from './bridge-terminal-key'
 
@@ -33,8 +34,10 @@ export type BridgeShellSession = {
   keyboardInset: number
   /** The fold splitting the page on a partially folded device; null when none does, which is
    *  every device that does not fold and every shell before the field. */
+  pageGeometry: BridgePageGeometry
   foldDivision: BridgeFoldDivision | null
   /** The keys the shell's rail shows beside this page; empty for every shell before the field. */
+  terminalKeyInputOwners: boolean
   terminalKeyRail: BridgeTerminalKeyRail
   /** Null for a shell too old to name it; the page's own `loadHosts()` then answers with nothing. */
   host: BridgeInitHost | null
@@ -65,7 +68,9 @@ export function readShellSession(
     pageRouteGrants: message.pageRouteGrants ?? null,
     safeAreaInsets: message.safeAreaInsets ?? ZERO_SAFE_AREA_INSETS,
     keyboardInset: message.keyboardInset ?? 0,
+    pageGeometry: message.pageGeometry ?? EMPTY_PAGE_GEOMETRY,
     foldDivision: message.foldDivision ?? null,
+    terminalKeyInputOwners: message.terminalKeyInputOwners === true,
     terminalKeyRail: message.terminalKeyRail ?? [],
     host: message.host ?? null,
     storage: message.storage ?? {},

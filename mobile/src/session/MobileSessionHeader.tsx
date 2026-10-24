@@ -8,6 +8,8 @@ import { styles } from './mobile-session-styles'
 import { useHostSidebarReveal } from '../layout/host-sidebar-reveal'
 import { useResponsiveLayout } from '../layout/responsive-layout'
 import type { MobileSessionController } from './use-mobile-session-controller'
+import { useTopChromeSpace } from '../layout/use-top-chrome-space'
+import { useShellSideRail } from '../layout/use-shell-side-rail'
 
 export function MobileSessionHeader({ controller }: { controller: MobileSessionController }) {
   const {
@@ -27,79 +29,95 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
     showHeaderMoreButton
   } = controller
   const revealSidebar = useHostSidebarReveal()
+  const topChrome = useTopChromeSpace()
+  const sideRail = useShellSideRail()
   // Why: a sideways phone is ~390pt tall, so the tabs share the top bar instead of taking a second row.
   const hasTabs = visibleTabs.length > 0
-  const tabsInTopBar = useResponsiveLayout().isLandscapePhone && hasTabs
+  const tabsInTopBar = (useResponsiveLayout().isLandscapePhone || sideRail) && hasTabs
   const tabStrip = hasTabs ? (
     <MobileSessionTabStrip controller={controller} inTopBar={tabsInTopBar} />
   ) : null
   return (
-    <SafeAreaView style={styles.sessionChrome} edges={['top']}>
-      <View style={styles.sessionTopBar}>
-        {revealSidebar ? (
+    <View ref={topChrome.ref} onLayout={topChrome.onLayout}>
+      <SafeAreaView
+        style={[
+          styles.sessionChrome,
+          topChrome.space && {
+            paddingLeft: topChrome.space.left,
+            paddingRight: topChrome.space.right,
+            minHeight: topChrome.space.minHeight
+          }
+        ]}
+        edges={topChrome.space ? [] : ['top']}
+      >
+        <View style={styles.sessionTopBar}>
+          {revealSidebar ? (
+            <MobileSessionHeaderIconButton
+              accessibilityLabel="Show sidebar"
+              icon={PanelLeftOpen}
+              onPress={revealSidebar}
+            />
+          ) : null}
           <MobileSessionHeaderIconButton
-            accessibilityLabel="Show sidebar"
-            icon={PanelLeftOpen}
-            onPress={revealSidebar}
+            accessibilityLabel="Back to worktrees"
+            icon={ChevronLeft}
+            onPress={requestLeaveSession}
           />
-        ) : null}
-        <MobileSessionHeaderIconButton
-          accessibilityLabel="Back to worktrees"
-          icon={ChevronLeft}
-          onPress={requestLeaveSession}
-        />
 
-        <View
-          style={[styles.sessionTitleBlock, tabsInTopBar && styles.sessionTitleBlockBesideTabs]}
-        >
-          <Text style={styles.sessionTitle} numberOfLines={1}>
-            {worktreeName || 'Terminal'}
-          </Text>
-          <Pressable
-            style={styles.sessionMetaRow}
-            disabled={!showConnectionRetry}
-            onPress={() => {
-              if (hostId && forceReconnectHost) {
-                void forceReconnectHost(hostId)
-              }
-            }}
-            accessibilityRole={showConnectionRetry ? 'button' : undefined}
-            accessibilityLabel={showConnectionRetry ? 'Reconnect to desktop' : undefined}
-          >
-            <StatusDot state={presentedConnState} />
-            <Text style={styles.sessionMetaText} numberOfLines={1}>
-              {terminalSummary}
-            </Text>
-          </Pressable>
+          {!sideRail || !hasTabs ? (
+            <View
+              style={[styles.sessionTitleBlock, tabsInTopBar && styles.sessionTitleBlockBesideTabs]}
+            >
+              <Text style={styles.sessionTitle} numberOfLines={1}>
+                {worktreeName || 'Terminal'}
+              </Text>
+              <Pressable
+                style={styles.sessionMetaRow}
+                disabled={!showConnectionRetry}
+                onPress={() => {
+                  if (hostId && forceReconnectHost) {
+                    void forceReconnectHost(hostId)
+                  }
+                }}
+                accessibilityRole={showConnectionRetry ? 'button' : undefined}
+                accessibilityLabel={showConnectionRetry ? 'Reconnect to desktop' : undefined}
+              >
+                <StatusDot state={presentedConnState} />
+                <Text style={styles.sessionMetaText} numberOfLines={1}>
+                  {terminalSummary}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {tabsInTopBar ? tabStrip : null}
+          {!isFloatingWorkspaceRoute && (
+            <MobileSessionHeaderIconButton
+              active={activePanel === 'files'}
+              accessibilityLabel="Open file explorer"
+              icon={Folder}
+              onPress={() => handlePanelTap('files')}
+            />
+          )}
+          {!isFolderWorkspaceRoute && !isFloatingWorkspaceRoute && (
+            <MobileSessionHeaderIconButton
+              active={activePanel === 'sourceControl'}
+              accessibilityLabel="Open source control"
+              icon={GitBranch}
+              onPress={() => handlePanelTap('sourceControl')}
+            />
+          )}
+          {showHeaderMoreButton ? (
+            <MobileSessionHeaderIconButton
+              active={activePanel === 'pr'}
+              accessibilityLabel="More session actions"
+              icon={MoreHorizontal}
+              onPress={() => setShowHeaderMoreActions(true)}
+            />
+          ) : null}
         </View>
-        {tabsInTopBar ? tabStrip : null}
-        {!isFloatingWorkspaceRoute && (
-          <MobileSessionHeaderIconButton
-            active={activePanel === 'files'}
-            accessibilityLabel="Open file explorer"
-            icon={Folder}
-            onPress={() => handlePanelTap('files')}
-          />
-        )}
-        {!isFolderWorkspaceRoute && !isFloatingWorkspaceRoute && (
-          <MobileSessionHeaderIconButton
-            active={activePanel === 'sourceControl'}
-            accessibilityLabel="Open source control"
-            icon={GitBranch}
-            onPress={() => handlePanelTap('sourceControl')}
-          />
-        )}
-        {showHeaderMoreButton ? (
-          <MobileSessionHeaderIconButton
-            active={activePanel === 'pr'}
-            accessibilityLabel="More session actions"
-            icon={MoreHorizontal}
-            onPress={() => setShowHeaderMoreActions(true)}
-          />
-        ) : null}
-      </View>
 
-      {tabsInTopBar ? null : tabStrip}
-    </SafeAreaView>
+        {tabsInTopBar ? null : tabStrip}
+      </SafeAreaView>
+    </View>
   )
 }

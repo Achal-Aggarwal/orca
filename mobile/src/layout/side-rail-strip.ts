@@ -9,6 +9,10 @@ export type SideRailStrip = {
   height: number
 }
 
+export function hasTerminalDirectionPadSpace(strip: SideRailStrip | null): strip is SideRailStrip {
+  return strip !== null && strip.height >= 224 && strip.width >= 60
+}
+
 /** Narrower than a key; the iPhone Duo's status column is 84. */
 const MIN_STRIP_WIDTH = 60
 /** Room for at least a few keys below the occluded part. */

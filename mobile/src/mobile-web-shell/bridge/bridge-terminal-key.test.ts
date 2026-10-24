@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { TERMINAL_ACCESSORY_KEY_DEFINITIONS } from '../../terminal/terminal-key-definitions'
 import { MOBILE_WEB_SHELL_GRANTS } from '../page-route-policy'
 import { createFakeBridgePortPair } from './bridge-port-pair-test-harness'
 import { BRIDGE_PROTOCOL_VERSION } from './bridge-envelope'
 import {
+  BridgeTerminalToolbarSchema,
+  BRIDGE_TERMINAL_KEY_IDS,
   BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY,
   BRIDGE_TERMINAL_KEY_RAIL_GRANT,
   type BridgeTerminalKeyId,
@@ -10,6 +13,25 @@ import {
 } from './bridge-terminal-key'
 
 describe('the iPhone Duo key rail over the bridge', () => {
+  it('publishes and delivers every built-in shortcut and paste through both bridge ends', async () => {
+    expect([...BRIDGE_TERMINAL_KEY_IDS].sort()).toEqual(
+      [...TERMINAL_ACCESSORY_KEY_DEFINITIONS.map((key) => key.id), 'paste'].sort()
+    )
+    const pair = createFakeBridgePortPair({ terminalKeyRail: BRIDGE_TERMINAL_KEY_IDS })
+    await pair.flush()
+    expect(pair.client.getShellSession()?.terminalKeyRail).toEqual(BRIDGE_TERMINAL_KEY_IDS)
+    const pressed: BridgeTerminalKeyId[] = []
+    const release = pair.client.claimTerminalKeyRail((key) => pressed.push(key), 'all-keys')
+    await pair.flush()
+    for (const key of BRIDGE_TERMINAL_KEY_IDS) {
+      expect(pair.host.sendTerminalKey(key, 'all-keys')).toBe(true)
+    }
+    await pair.flush()
+    expect(pressed).toEqual(BRIDGE_TERMINAL_KEY_IDS)
+    release()
+    await pair.flush()
+    expect(pair.host.sendTerminalKey('ctrlU', 'all-keys')).toBe(false)
+  })
   it('tells the page which keys the rail holds, and moves that live as the window turns', async () => {
     const pair = createFakeBridgePortPair({ terminalKeyRail: ['escape', 'tab', 'enter'] })
     await pair.flush()
@@ -70,4 +92,92 @@ describe('the iPhone Duo key rail over the bridge', () => {
     await pair.flush()
     expect(pair.readToPage()).toHaveLength(before)
   })
+  it('drops queued old-owner presses and rejects held repeats after focus moves', async () => {
+    const pair = createFakeBridgePortPair()
+    await pair.flush()
+    const oldKeys: BridgeTerminalKeyId[] = []
+    const newKeys: BridgeTerminalKeyId[] = []
+    const release = pair.client.claimTerminalKeyRail((key) => oldKeys.push(key), 'pane-a-1')
+    await pair.flush()
+    expect(pair.host.sendTerminalKey('arrowUp', 'pane-a-1')).toBe(true)
+    release()
+    pair.client.claimTerminalKeyRail((key) => newKeys.push(key), 'pane-b-2')
+    await pair.flush()
+    expect(oldKeys).toEqual([])
+    expect(newKeys).toEqual([])
+    expect(pair.host.sendTerminalKey('arrowUp', 'pane-a-1')).toBe(false)
+    expect(pair.host.sendTerminalKey('arrowUp', 'pane-b-2')).toBe(true)
+    await pair.flush()
+    expect(newKeys).toEqual(['arrowUp'])
+  })
+})
+
+it('carries toolbar state across both bridge ends and delivers toolbar actions only to the current owner', async () => {
+  const pair = createFakeBridgePortPair()
+  await pair.flush()
+  const pressed: string[] = []
+  const toolbar = {
+    canSend: true,
+    canCompose: true,
+    canPaste: true,
+    keyboardVisible: false,
+    liveInputEnabled: true,
+    phoneDisplayMode: false,
+    customKeys: [{ id: 'saved-1', label: 'Build' }]
+  }
+  const release = pair.client.claimTerminalKeyRail(
+    (key) => pressed.push(key),
+    'toolbar-owner',
+    toolbar
+  )
+  await pair.flush()
+  expect(
+    pair.toShell
+      .map((json) => JSON.parse(json))
+      .findLast((frame) => frame.name === BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY)?.toolbar
+  ).toEqual(toolbar)
+  expect(pair.host.sendTerminalKey('toggleKeyboard', 'toolbar-owner')).toBe(true)
+  expect(pair.host.sendTerminalKey('custom:saved-1', 'toolbar-owner')).toBe(true)
+  await pair.flush()
+  expect(pressed).toEqual(['toggleKeyboard', 'custom:saved-1'])
+  const updateStart = pair.toShell.length
+  release.updateToolbar({ ...toolbar, keyboardVisible: true })
+  await pair.flush()
+  expect(
+    pair.toShell
+      .slice(updateStart)
+      .map((json) => JSON.parse(json))
+      .filter((frame) => frame.name === BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY)
+  ).toEqual([
+    expect.objectContaining({
+      claimed: true,
+      inputOwner: 'toolbar-owner',
+      toolbar: { ...toolbar, keyboardVisible: true }
+    })
+  ])
+  release()
+  await pair.flush()
+  expect(pair.host.sendTerminalKey('toggleKeyboard', 'toolbar-owner')).toBe(false)
+  const releaseEnd = pair.toShell.length
+  release.updateToolbar(toolbar)
+  await pair.flush()
+  expect(pair.toShell).toHaveLength(releaseEnd)
+})
+
+it('parses optional layout metadata without requiring it from older pages', () => {
+  const legacy = {
+    canSend: true,
+    canCompose: true,
+    canPaste: false,
+    keyboardVisible: false,
+    liveInputEnabled: true,
+    phoneDisplayMode: false,
+    customKeys: []
+  }
+  expect(BridgeTerminalToolbarSchema.parse(legacy)).toEqual(legacy)
+  const layout = { ...legacy, visibleBuiltInIds: ['ctrlU', 'tab'], directionPadEnabled: false }
+  expect(BridgeTerminalToolbarSchema.parse(layout)).toEqual(layout)
+  expect(
+    BridgeTerminalToolbarSchema.safeParse({ ...layout, directionPadEnabled: 'false' }).success
+  ).toBe(false)
 })

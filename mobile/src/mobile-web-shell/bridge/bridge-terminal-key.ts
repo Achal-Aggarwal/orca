@@ -18,8 +18,8 @@ export const BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY = 'terminal-key-rail-claim'
 /** Shell to page, a frame: one press of a key on the rail. */
 export const BRIDGE_TERMINAL_KEY_FRAME = 'terminalKey'
 
-/** The rail's keys, in the order it lists them; ids of the page's terminal accessory keys and paste. */
-export const BRIDGE_TERMINAL_KEY_IDS = [
+/** Older pages reject the entire init frame for any rail key outside this vocabulary. */
+export const BRIDGE_LEGACY_TERMINAL_KEY_IDS = [
   'escape',
   'tab',
   'shiftTab',
@@ -32,16 +32,79 @@ export const BRIDGE_TERMINAL_KEY_IDS = [
   'paste'
 ] as const
 
-export type BridgeTerminalKeyId = (typeof BRIDGE_TERMINAL_KEY_IDS)[number]
+export const BRIDGE_TERMINAL_KEY_IDS = [
+  ...BRIDGE_LEGACY_TERMINAL_KEY_IDS,
+  'space',
+  'backspace',
+  'delete',
+  'ctrlD',
+  'ctrlL',
+  'ctrlZ',
+  'ctrlR',
+  'ctrlA',
+  'ctrlE',
+  'ctrlW',
+  'ctrlU'
+] as const
+
+export const BRIDGE_TERMINAL_TOOLBAR_KEY_IDS = [
+  'toggleKeyboard',
+  'toggleDisplayMode',
+  'toggleInputMode',
+  'addCustomKey'
+] as const
+
+export const BridgeTerminalToolbarSchema = z.object({
+  canSend: z.boolean(),
+  canCompose: z.boolean(),
+  canPaste: z.boolean(),
+  keyboardVisible: z.boolean(),
+  liveInputEnabled: z.boolean(),
+  phoneDisplayMode: z.boolean(),
+  visibleBuiltInIds: z.array(z.string()).optional(),
+  directionPadEnabled: z.boolean().optional(),
+  customKeys: z.array(z.object({ id: z.string().min(1), label: z.string() }))
+})
+export type BridgeTerminalToolbar = z.infer<typeof BridgeTerminalToolbarSchema>
+
+export function sameTerminalKeyRailToolbar(
+  a?: BridgeTerminalToolbar,
+  b?: BridgeTerminalToolbar
+): boolean {
+  if (!a || !b) {
+    return a === b
+  }
+  return (
+    a.canSend === b.canSend &&
+    a.canCompose === b.canCompose &&
+    a.canPaste === b.canPaste &&
+    a.keyboardVisible === b.keyboardVisible &&
+    a.liveInputEnabled === b.liveInputEnabled &&
+    a.phoneDisplayMode === b.phoneDisplayMode &&
+    a.directionPadEnabled === b.directionPadEnabled &&
+    a.visibleBuiltInIds?.length === b.visibleBuiltInIds?.length &&
+    (a.visibleBuiltInIds?.every((id, index) => id === b.visibleBuiltInIds?.[index]) ?? true) &&
+    a.customKeys.length === b.customKeys.length &&
+    a.customKeys.every(
+      (key, index) => key.id === b.customKeys[index]?.id && key.label === b.customKeys[index]?.label
+    )
+  )
+}
+
+export const BridgeTerminalKeyIdSchema = z.union([
+  z.enum(BRIDGE_TERMINAL_KEY_IDS),
+  z.enum(BRIDGE_TERMINAL_TOOLBAR_KEY_IDS),
+  z.custom<`custom:${string}` | `deleteCustom:${string}`>(
+    (value) => typeof value === 'string' && /^(custom|deleteCustom):.+$/.test(value)
+  )
+])
+export type BridgeTerminalKeyId = z.infer<typeof BridgeTerminalKeyIdSchema>
 
 /**
- * The keys the rail shows beside the page, in its order; a short strip holds the first few, and the
- * page keeps the rest in its own row. Empty, or absent on the wire, while no rail shows, which
- * includes every moment the page holds no claim.
+ * The keys the scrollable rail shows beside the page, in its order. Empty or absent while
+ * no rail shows, including every moment the page holds no claim.
  */
-export const BridgeTerminalKeyRailSchema = z
-  .array(z.enum(BRIDGE_TERMINAL_KEY_IDS))
-  .max(BRIDGE_TERMINAL_KEY_IDS.length)
+export const BridgeTerminalKeyRailSchema = z.array(BridgeTerminalKeyIdSchema)
 
 export type BridgeTerminalKeyRail = readonly BridgeTerminalKeyId[]
 

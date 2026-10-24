@@ -3,7 +3,10 @@ import { BridgeErrorCaptureSchema } from './bridge-error-capture'
 import { BRIDGE_HAPTICS_NOTIFY_FIELDS } from './bridge-haptics-notify'
 import { BRIDGE_BACK_CLAIM_NOTIFY } from './bridge-page-back'
 import { BRIDGE_PAGE_PAINTED } from './bridge-page-painted'
-import { BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY } from './bridge-terminal-key'
+import {
+  BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY,
+  BridgeTerminalToolbarSchema
+} from './bridge-terminal-key'
 import { BRIDGE_CLEARABLE_ROUTE_PARAMS, BRIDGE_ROUTE_PARAM_CLEAR } from './bridge-route-update'
 import {
   isPageStorageKey,
@@ -128,7 +131,9 @@ export const BridgeNotifySchema = z.discriminatedUnion('name', [
     v: versionSchema,
     type: z.literal('notify'),
     name: z.literal(BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY),
-    claimed: z.boolean()
+    claimed: z.boolean(),
+    inputOwner: z.string().min(1).max(128).optional(),
+    toolbar: BridgeTerminalToolbarSchema.optional()
   })
 ])
 

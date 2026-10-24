@@ -200,6 +200,10 @@
     {
       "file": "src/session/shell-terminal-key-rail.web.ts",
       "reason": "The iPhone Duo key rail is drawn by the shell in a side inset strip the page cannot reach. The native file has no shell around it and answers no rail; this one reads whether the shell shows one from `init` and takes its presses from the bridge."
+    },
+    {
+      "file": "src/platform/shell-storage.web.ts",
+      "reason": "Native settings screens can cover a still-mounted page. Observe same-session storage snapshots so preference readers refresh on return without remounting the terminal."
     }
   ]
 }

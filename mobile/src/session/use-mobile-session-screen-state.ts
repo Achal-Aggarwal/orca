@@ -101,6 +101,7 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
   const [leaveDrafts, setLeaveDrafts] = useState<DirtyMarkdownDraft[] | null>(null)
   const [renameTarget, setRenameTarget] = useState<Terminal | null>(null)
   const [customKeys, setCustomKeys] = useState<CustomKey[]>([])
+  const [directionPadEnabled, setDirectionPadEnabled] = useState(true)
   const [visibleBuiltInIds, setVisibleBuiltInIds] = useState<string[]>(
     getDefaultTerminalAccessoryBuiltInIds
   )
@@ -215,6 +216,8 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     setRenameTarget,
     customKeys,
     setCustomKeys,
+    directionPadEnabled,
+    setDirectionPadEnabled,
     visibleBuiltInIds,
     setVisibleBuiltInIds,
     showCustomKeyModal,

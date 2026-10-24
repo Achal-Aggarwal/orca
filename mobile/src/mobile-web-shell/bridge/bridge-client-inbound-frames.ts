@@ -20,7 +20,7 @@ export type BridgeInboundFramePort = {
   acceptState: (connection: BridgeConnectionSnapshot) => void
   /** One Back press from the shell, for whoever in this document claimed the key. */
   acceptBack: () => void
-  acceptTerminalKey: (key: BridgeTerminalKeyId) => void
+  acceptTerminalKey: (key: BridgeTerminalKeyId, inputOwner?: string) => void
 }
 
 /** The shell's own words where it had any, the way the native client passes an RPC error message
@@ -81,7 +81,7 @@ export function createBridgeInboundFrameReader(
         port.acceptBack()
         return
       case 'terminalKey':
-        port.acceptTerminalKey(message.key)
+        port.acceptTerminalKey(message.key, message.inputOwner)
         return
       case 'reply':
         if (!requests.has(message.id)) {

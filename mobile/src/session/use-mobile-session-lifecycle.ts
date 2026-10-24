@@ -1,3 +1,5 @@
+import { useShellStorage } from '../platform/shell-storage'
+import { useDirectionPadAvailable } from '../layout/use-shell-side-rail'
 import { settleSessionPreferenceRead } from './session-preference-read'
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { AppState, type AppStateStatus, Platform } from 'react-native'
@@ -12,6 +14,8 @@ import { loadCustomKeys } from '../terminal/terminal-custom-keys'
 import type { MobileSessionTabReconciliationModel } from './use-mobile-session-tab-reconciliation'
 
 export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationModel) {
+  const shellStorage = useShellStorage()
+  const padAvailable = useDirectionPadAvailable()
   const [customKeysLoaded, setCustomKeysLoaded] = useState(false)
   const [accessoryLayoutLoaded, setAccessoryLayoutLoaded] = useState(false)
   const {
@@ -19,11 +23,13 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     connState,
     setCustomKeys,
     setVisibleBuiltInIds,
+    setDirectionPadEnabled,
     setHostEndpoint,
     connStateRef,
     terminalRefs,
     initializedHandlesRef,
     activeHandleRef,
+    visibleTerminalHandlesRef,
     scheduleDelayedAction,
     unsubscribeTerminal,
     subscribeToTerminal
@@ -48,10 +54,11 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     }
   }, [hostId])
 
-  useEffect(() => {
-    let active = true
+  const customReadRevisionRef = useRef(0)
+  const refreshCustomKeys = useCallback(() => {
+    const revision = ++customReadRevisionRef.current
     void settleSessionPreferenceRead(loadCustomKeys()).then((keys) => {
-      if (active) {
+      if (customReadRevisionRef.current === revision) {
         if (keys) {
           setCustomKeys(keys)
         }
@@ -59,17 +66,27 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
       }
     })
     return () => {
-      active = false
+      if (customReadRevisionRef.current === revision) {
+        customReadRevisionRef.current += 1
+      }
     }
-  }, [])
+  }, [shellStorage])
+  useFocusEffect(refreshCustomKeys)
+  useEffect(
+    () => () => {
+      customReadRevisionRef.current += 1
+    },
+    []
+  )
 
   const layoutReadRevisionRef = useRef(0)
   const refreshAccessoryLayout = useCallback(() => {
     const revision = ++layoutReadRevisionRef.current
-    void settleSessionPreferenceRead(loadTerminalAccessoryLayout()).then((layout) => {
+    void settleSessionPreferenceRead(loadTerminalAccessoryLayout(padAvailable)).then((layout) => {
       if (layoutReadRevisionRef.current === revision) {
         if (layout) {
           setVisibleBuiltInIds(layout.visibleBuiltInIds)
+          setDirectionPadEnabled(layout.directionPadEnabled !== false)
         }
         setAccessoryLayoutLoaded(true)
       }
@@ -79,7 +96,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
         layoutReadRevisionRef.current += 1
       }
     }
-  }, [])
+  }, [padAvailable, shellStorage])
 
   useFocusEffect(refreshAccessoryLayout)
 
@@ -87,13 +104,14 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
       if (s === 'active') {
         refreshAccessoryLayout()
+        refreshCustomKeys()
       }
     })
     return () => {
       layoutReadRevisionRef.current += 1
       sub.remove()
     }
-  }, [refreshAccessoryLayout])
+  }, [refreshAccessoryLayout, refreshCustomKeys])
 
   const pendingForegroundRecoveryRef = useRef(false)
   useEffect(() => {
@@ -114,6 +132,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
       // Why: iOS can resume a WKWebView with a blank xterm store and no web-ready; invalidate the latch so init waits for the pong.
       const outcome = recoverActiveTerminalAfterForeground({
         activeHandleRef,
+        visibleTerminalHandlesRef,
         terminalRefs,
         initializedHandlesRef,
         connStateRef,
@@ -139,6 +158,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     }
     recoverActiveTerminalAfterForeground({
       activeHandleRef,
+      visibleTerminalHandlesRef,
       terminalRefs,
       initializedHandlesRef,
       connStateRef,

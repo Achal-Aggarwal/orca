@@ -1,3 +1,4 @@
+import type { BridgePageGeometry } from './bridge-page-geometry'
 import { BRIDGE_MAX_PENDING_REQUESTS, BRIDGE_MAX_SUBSCRIPTIONS } from './bridge-caps'
 import { MOBILE_WEB_SHELL_GRANTS } from '../page-route-policy'
 import {
@@ -48,6 +49,7 @@ export function createBridgeInitFrame(args: {
   /** The keyboard height native screens read on the shell's OS. */
   keyboardInset?: number
   /** The fold splitting the page, in its px; null or absent when none does. */
+  pageGeometry?: BridgePageGeometry
   foldDivision?: BridgeFoldDivision | null
   /** The keys the shell's rail shows beside the page; omitted while none does. */
   terminalKeyRail?: BridgeTerminalKeyRail
@@ -60,6 +62,7 @@ export function createBridgeInitFrame(args: {
   host: BridgeInitHost
   /** The allowlisted keys as the app holds them right now. */
   storage: Readonly<Record<string, string>>
+  refreshTerminalShortcuts?: boolean
   /** The allowlisted keys whose app-side value is over the page's cap, so `storage` has none
    *  (ruling 33.6). The page refuses its own writes to these rather than replacing the device's.
    *  Absent and empty are the same answer: nothing of the app's was left out. */
@@ -91,9 +94,12 @@ export function createBridgeInitFrame(args: {
     ...(args.keyboardInset === undefined || args.keyboardInset === 0
       ? {}
       : { keyboardInset: args.keyboardInset }),
+    ...(args.pageGeometry === undefined ? {} : { pageGeometry: args.pageGeometry }),
     ...(args.foldDivision === undefined || args.foldDivision === null
       ? {}
       : { foldDivision: { ...args.foldDivision } }),
+    ...(args.refreshTerminalShortcuts ? { refreshTerminalShortcuts: true } : {}),
+    terminalKeyInputOwners: true,
     ...(args.terminalKeyRail === undefined || args.terminalKeyRail.length === 0
       ? {}
       : { terminalKeyRail: [...args.terminalKeyRail] }),

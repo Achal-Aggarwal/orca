@@ -62,7 +62,8 @@ export async function readMirroredKeyOrStore(key: string): Promise<string | null
   return held === undefined ? AsyncStorage.getItem(key) : held
 }
 
-type MirroredKeyListener = (value: string | null) => void
+type MirroredWriteSource = 'persisted' | 'page'
+type MirroredKeyListener = (value: string | null, source: MirroredWriteSource) => void
 const keyListeners = new Map<string, Set<MirroredKeyListener>>()
 
 /** Each noted write of `key`, including a page's write the app takes on its behalf. */
@@ -75,11 +76,11 @@ export function subscribeMirroredKey(key: string, listener: MirroredKeyListener)
   }
 }
 
-function note(key: string, value: string | null): void {
+function note(key: string, value: string | null, source: MirroredWriteSource): void {
   writeCount += 1
   mirror.set(key, value)
   for (const listener of keyListeners.get(key) ?? []) {
-    listener(value)
+    listener(value, source)
   }
 }
 
@@ -104,7 +105,7 @@ export function persistMirrored(key: string, value: string | null): Promise<void
   return write
     .then(() => AsyncStorage.getItem(key))
     .then((stored) => {
-      note(key, stored)
+      note(key, stored, 'persisted')
     })
 }
 
@@ -122,7 +123,7 @@ export function persistMirrored(key: string, value: string | null): Promise<void
  * module is what holds that to one caller.
  */
 export function writeMirroredStorage(key: string, value: string | null): void {
-  note(key, value)
+  note(key, value, 'page')
   void (value === null ? AsyncStorage.removeItem(key) : AsyncStorage.setItem(key, value)).catch(
     () => {
       // Nothing is owed to the page for a notify, and a pin that failed to persist is not a reason

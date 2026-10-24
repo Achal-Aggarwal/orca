@@ -1,3 +1,4 @@
+import { TERMINAL_SHORTCUT_STORAGE_KEYS } from '../page-storage-keys'
 import { readShellSession, type BridgeShellSession } from './bridge-client-session'
 import { bridgeRouteMoved } from './bridge-route-update'
 import {
@@ -5,6 +6,11 @@ import {
   ZERO_SAFE_AREA_INSETS,
   type BridgeSafeAreaInsets
 } from './bridge-safe-area-insets'
+import {
+  EMPTY_PAGE_GEOMETRY,
+  samePageGeometry,
+  type BridgePageGeometry
+} from './bridge-page-geometry'
 import { sameFoldDivision, type BridgeFoldDivision } from './bridge-fold-division'
 import { sameTerminalKeyRail, type BridgeTerminalKeyRail } from './bridge-terminal-key'
 import type {
@@ -39,12 +45,14 @@ export type BridgeClientShellSession = {
    * delivery, so a notification tap for the pane already showing arrives as a real move and a
    * listener that deduplicated by value would lose exactly that one.
    */
+  onStorageUpdate: (listener: () => void) => () => void
   onRouteUpdate: (listener: (route: BridgeInitRoute | null) => void) => () => void
   /** Fires when an `init` moved the safe-area insets the page holds, including a replacement's. */
   onSafeAreaInsetsUpdate: (listener: (insets: BridgeSafeAreaInsets) => void) => () => void
   /** Fires when an `init` moved the keyboard height the page holds, including a replacement's. */
   onKeyboardInsetUpdate: (listener: (height: number) => void) => () => void
   /** Fires when an `init` moved the fold the page holds, including a replacement's. */
+  onPageGeometryUpdate: (listener: (geometry: BridgePageGeometry) => void) => () => void
   onFoldDivisionUpdate: (listener: (division: BridgeFoldDivision | null) => void) => () => void
   /** Fires when an `init` moved the keys the shell's rail shows, including a replacement's. */
   onTerminalKeyRailUpdate: (listener: (keys: BridgeTerminalKeyRail) => void) => () => void
@@ -57,8 +65,10 @@ export type BridgeShellSessionListeners = Pick<
   BridgeClientShellSession,
   | 'onReady'
   | 'onRouteUpdate'
+  | 'onStorageUpdate'
   | 'onSafeAreaInsetsUpdate'
   | 'onKeyboardInsetUpdate'
+  | 'onPageGeometryUpdate'
   | 'onFoldDivisionUpdate'
   | 'onTerminalKeyRailUpdate'
 >
@@ -70,8 +80,10 @@ export function shellSessionListeners(
   return {
     onReady: session.onReady,
     onRouteUpdate: session.onRouteUpdate,
+    onStorageUpdate: session.onStorageUpdate,
     onSafeAreaInsetsUpdate: session.onSafeAreaInsetsUpdate,
     onKeyboardInsetUpdate: session.onKeyboardInsetUpdate,
+    onPageGeometryUpdate: session.onPageGeometryUpdate,
     onFoldDivisionUpdate: session.onFoldDivisionUpdate,
     onTerminalKeyRailUpdate: session.onTerminalKeyRailUpdate
   }
@@ -84,10 +96,12 @@ export function createBridgeClientShellSession(args: {
   prime: (connection: BridgeConnectionSnapshot) => void
 }): BridgeClientShellSession {
   let session: BridgeShellSession | null = null
+  const storageListeners = new Set<() => void>()
   const readyListeners = new Set<() => void>()
   const routeUpdateListeners = new Set<(route: BridgeInitRoute | null) => void>()
   const insetsListeners = new Set<(insets: BridgeSafeAreaInsets) => void>()
   const keyboardListeners = new Set<(height: number) => void>()
+  const geometryListeners = new Set<(geometry: BridgePageGeometry) => void>()
   const foldListeners = new Set<(division: BridgeFoldDivision | null) => void>()
   const railListeners = new Set<(keys: BridgeTerminalKeyRail) => void>()
 
@@ -99,9 +113,27 @@ export function createBridgeClientShellSession(args: {
       if (held !== null && update === null) {
         args.onReplaced()
       }
-      // Updated in place for the session the page already holds, rebuilt for a different one. The
-      // identity of what survives is the assertion: same object, so the storage snapshot the page
-      // booted from is the one it keeps.
+      const refreshShortcuts = update !== null && message.refreshTerminalShortcuts === true
+      const sentStorage = message.storage ?? {}
+      const sentOversize = message.storageOversize ?? []
+      const storage = refreshShortcuts ? { ...update.storage } : undefined
+      const storageOversize = refreshShortcuts
+        ? [
+            ...update.storageOversize.filter(
+              (key) => !TERMINAL_SHORTCUT_STORAGE_KEYS.some((item) => item === key)
+            ),
+            ...TERMINAL_SHORTCUT_STORAGE_KEYS.filter((key) => sentOversize.includes(key))
+          ]
+        : update?.storageOversize
+      if (refreshShortcuts && storage) {
+        for (const key of TERMINAL_SHORTCUT_STORAGE_KEYS) {
+          if (sentStorage[key] === undefined) {
+            delete storage[key]
+          } else {
+            storage[key] = sentStorage[key]
+          }
+        }
+      }
       const sent = message.safeAreaInsets ?? ZERO_SAFE_AREA_INSETS
       const movedInsets = held !== null && !sameSafeAreaInsets(held.safeAreaInsets, sent)
       // The held object when the values match, so a reader keyed on identity does not re-render
@@ -109,6 +141,9 @@ export function createBridgeClientShellSession(args: {
       const safeAreaInsets = held === null || movedInsets ? sent : held.safeAreaInsets
       const keyboardInset = message.keyboardInset ?? 0
       const movedKeyboard = held !== null && held.keyboardInset !== keyboardInset
+      const sentGeometry = message.pageGeometry ?? EMPTY_PAGE_GEOMETRY
+      const movedGeometry = held !== null && !samePageGeometry(held.pageGeometry, sentGeometry)
+      const pageGeometry = held === null || movedGeometry ? sentGeometry : held.pageGeometry
       const sentFold = message.foldDivision ?? null
       const movedFold = held !== null && !sameFoldDivision(held.foldDivision, sentFold)
       const foldDivision = held === null || movedFold ? sentFold : held.foldDivision
@@ -117,13 +152,23 @@ export function createBridgeClientShellSession(args: {
       const terminalKeyRail = held === null || movedRail ? sentRail : held.terminalKeyRail
       session =
         update === null
-          ? { ...readShellSession(message), safeAreaInsets, foldDivision, terminalKeyRail }
+          ? {
+              ...readShellSession(message),
+              safeAreaInsets,
+              pageGeometry,
+              foldDivision,
+              terminalKeyRail
+            }
           : {
               ...update,
+              storage: storage ?? update.storage,
+              storageOversize: storageOversize ?? update.storageOversize,
               route: message.route ?? null,
               safeAreaInsets,
               keyboardInset,
+              pageGeometry,
               foldDivision,
+              terminalKeyInputOwners: message.terminalKeyInputOwners === true,
               terminalKeyRail
             }
       // Re-primed either way, because a second `init` is also how the page recovers a cache it has
@@ -135,6 +180,11 @@ export function createBridgeClientShellSession(args: {
         listener()
       }
       readyListeners.clear()
+      if (refreshShortcuts) {
+        for (const listener of storageListeners) {
+          listener()
+        }
+      }
       if (movedInsets) {
         for (const listener of insetsListeners) {
           listener(safeAreaInsets)
@@ -143,6 +193,11 @@ export function createBridgeClientShellSession(args: {
       if (movedKeyboard) {
         for (const listener of keyboardListeners) {
           listener(keyboardInset)
+        }
+      }
+      if (movedGeometry) {
+        for (const listener of geometryListeners) {
+          listener(pageGeometry)
         }
       }
       if (movedFold) {
@@ -177,6 +232,12 @@ export function createBridgeClientShellSession(args: {
     },
     // Not fired on subscribe, and no replay: a listener that arrives late reads the route it wants
     // off `current`, and what this publishes is the fact that one moved.
+    onStorageUpdate: (listener) => {
+      storageListeners.add(listener)
+      return () => {
+        storageListeners.delete(listener)
+      }
+    },
     onRouteUpdate: (listener) => {
       routeUpdateListeners.add(listener)
       return () => {
@@ -193,6 +254,12 @@ export function createBridgeClientShellSession(args: {
       keyboardListeners.add(listener)
       return () => {
         keyboardListeners.delete(listener)
+      }
+    },
+    onPageGeometryUpdate: (listener) => {
+      geometryListeners.add(listener)
+      return () => {
+        geometryListeners.delete(listener)
       }
     },
     onFoldDivisionUpdate: (listener) => {

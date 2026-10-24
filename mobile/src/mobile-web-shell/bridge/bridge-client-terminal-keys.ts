@@ -1,35 +1,50 @@
-import type { BridgeTerminalKeyId } from './bridge-terminal-key'
+import type { BridgeTerminalKeyId, BridgeTerminalToolbar } from './bridge-terminal-key'
 
-/**
- * Who in this document holds the shell's key rail, and hears its presses: the session screen's
- * command dock, while it shows a terminal. The shell is told on each edge and again on each `init`,
- * because it forgets the claim whenever a document starts.
- */
-export function createBridgeClientTerminalKeys(publishClaim: (claimed: boolean) => void) {
-  const listeners = new Set<(key: BridgeTerminalKeyId) => void>()
+export function createBridgeClientTerminalKeys(
+  publishClaim: (claimed: boolean, inputOwner?: string, toolbar?: BridgeTerminalToolbar) => void
+) {
+  const listeners = new Map<
+    (key: BridgeTerminalKeyId) => void,
+    { inputOwner?: string; toolbar?: BridgeTerminalToolbar }
+  >()
+  const publish = () => {
+    const owner = [...listeners.values()].at(-1)
+    publishClaim(listeners.size > 0, owner?.inputOwner, owner?.toolbar)
+  }
   return {
-    accept: (key: BridgeTerminalKeyId) => {
-      for (const listener of listeners) {
-        listener(key)
-      }
-    },
-    /** Claims the rail until the dispose is called; `listener` takes each press meanwhile. */
-    claim: (listener: (key: BridgeTerminalKeyId) => void) => {
-      // A fresh wrapper, so the same function claiming twice holds two claims.
-      const entry = (key: BridgeTerminalKeyId) => listener(key)
-      listeners.add(entry)
-      if (listeners.size === 1) {
-        publishClaim(true)
-      }
-      return () => {
-        if (listeners.delete(entry) && listeners.size === 0) {
-          publishClaim(false)
+    accept: (key: BridgeTerminalKeyId, inputOwner?: string) => {
+      for (const [listener, owner] of listeners) {
+        if (owner.inputOwner === inputOwner) {
+          listener(key)
         }
       }
     },
+    claim: (
+      listener: (key: BridgeTerminalKeyId) => void,
+      inputOwner?: string,
+      toolbar?: BridgeTerminalToolbar
+    ) => {
+      const entry = (key: BridgeTerminalKeyId) => listener(key)
+      listeners.set(entry, { inputOwner, toolbar })
+      publish()
+      const release = () => {
+        if (listeners.delete(entry)) {
+          publish()
+        }
+      }
+      return Object.assign(release, {
+        updateToolbar: (nextToolbar?: BridgeTerminalToolbar) => {
+          const owner = listeners.get(entry)
+          if (owner && owner.toolbar !== nextToolbar) {
+            owner.toolbar = nextToolbar
+            publish()
+          }
+        }
+      })
+    },
     reassert: () => {
       if (listeners.size > 0) {
-        publishClaim(true)
+        publish()
       }
     }
   }

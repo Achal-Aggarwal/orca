@@ -1,3 +1,4 @@
+import type { BridgeTerminalToolbar } from './bridge-terminal-key'
 import type { ForegroundNudgeReason } from '../../transport/types'
 import {
   BRIDGE_EXTERNAL_LINK_GRANT,
@@ -63,7 +64,11 @@ export type BridgeClientNotifications = {
   notifyPageFault: (error: unknown) => boolean
   notifyPagePainted: () => void
   notifyBackClaim: (claimed: boolean) => void
-  notifyTerminalKeyRailClaim: (claimed: boolean) => void
+  notifyTerminalKeyRailClaim: (
+    claimed: boolean,
+    inputOwner?: string,
+    toolbar?: BridgeTerminalToolbar
+  ) => void
 }
 
 export function createBridgeClientNotifications(
@@ -151,12 +156,14 @@ export function createBridgeClientNotifications(
       post({ v: BRIDGE_PROTOCOL_VERSION, type: 'notify', name: BRIDGE_BACK_CLAIM_NOTIFY, claimed })
     },
     // Only to a shell that granted the rail: any other refuses the name, and has no rail to draw.
-    notifyTerminalKeyRailClaim: (claimed) => {
+    notifyTerminalKeyRailClaim: (claimed, inputOwner, toolbar) => {
       if (deps.hasGrant(BRIDGE_TERMINAL_KEY_RAIL_GRANT)) {
         post({
           v: BRIDGE_PROTOCOL_VERSION,
           type: 'notify',
           name: BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY,
+          ...(inputOwner === undefined ? {} : { inputOwner }),
+          ...(toolbar === undefined ? {} : { toolbar }),
           claimed
         })
       }

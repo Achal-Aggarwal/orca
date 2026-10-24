@@ -299,7 +299,7 @@ export function createBridgeRpcClient(options: BridgeRpcClientOptions): BridgeRp
     },
     acceptState,
     acceptBack: back.press,
-    acceptTerminalKey: (key) => terminalKeys.accept(key)
+    acceptTerminalKey: (key, inputOwner) => terminalKeys.accept(key, inputOwner)
   })
 
   /** After `close` the page is not the document the shell is answering any more. */

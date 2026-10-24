@@ -66,12 +66,18 @@ public class OrcaReservedRegionsModule: Module {
   private final class ReservedRegionsProbe: UIView {
     var onChange: (([String: Any]) -> Void)?
     private var reported: ReservedRegionsSnapshot?
+    private weak var keyboardView: UIView?
+    private let keyboardFollower = KeyboardGeometryFollower()
+    private var keyboardConstraints: [NSLayoutConstraint] = []
 
     override init(frame: CGRect) {
       super.init(frame: frame)
       autoresizingMask = [.flexibleWidth, .flexibleHeight]
       isUserInteractionEnabled = false
       isAccessibilityElement = false
+      keyboardFollower.translatesAutoresizingMaskIntoConstraints = false
+      keyboardFollower.onLayout = { [weak self] in self?.setNeedsLayout() }
+      addSubview(keyboardFollower)
       addInteraction(
         UIHingeInteraction { [weak self] _, _ in
           self?.setNeedsLayout()
@@ -82,6 +88,27 @@ public class OrcaReservedRegionsModule: Module {
       fatalError("init(coder:) is not supported")
     }
 
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      NSLayoutConstraint.deactivate(keyboardConstraints)
+      keyboardConstraints = []
+      keyboardView = nil
+      guard let window, let root = window.rootViewController?.view, root.window === window else {
+        return
+      }
+      keyboardView = root
+      let guide = root.keyboardLayoutGuide
+      guide.usesBottomSafeArea = false
+      keyboardConstraints = [
+        keyboardFollower.topAnchor.constraint(equalTo: guide.topAnchor),
+        keyboardFollower.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+        keyboardFollower.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+        keyboardFollower.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+      ]
+      NSLayoutConstraint.activate(keyboardConstraints)
+      setNeedsLayout()
+    }
+
     override func safeAreaInsetsDidChange() {
       super.safeAreaInsetsDidChange()
       setNeedsLayout()
@@ -90,9 +117,21 @@ public class OrcaReservedRegionsModule: Module {
     override func layoutSubviews() {
       super.layoutSubviews()
       guard let window else { return }
+      let keyboardInset: CGFloat?
+      if let keyboardView, keyboardView.window === window {
+        let frame = keyboardView.convert(keyboardView.keyboardLayoutGuide.layoutFrame, to: window)
+        let overlap = frame.intersection(window.bounds)
+        keyboardInset = overlap.isNull ? 0 : overlap.height
+      } else {
+        keyboardInset = nil
+      }
       let snapshot = ReservedRegionsSnapshot(
         divisions: window.reservedRegions(kind: .division).map(\.frame),
-        occlusions: window.reservedRegions(kind: .occlusion).map(\.frame)
+        hasFoldDivision: !window.reservedRegions(kind: .division, options: .includeInactive).isEmpty,
+        occlusions: window.reservedRegions(kind: .occlusion).map(\.frame),
+        windowBounds: window.bounds,
+        windowSafeAreaInsets: window.safeAreaInsets,
+        keyboardInset: keyboardInset
       )
       // The first layout always reports, so a listener starts from the real state.
       guard snapshot != reported else { return }
@@ -101,12 +140,46 @@ public class OrcaReservedRegionsModule: Module {
     }
   }
 
+  @available(iOS 27.1, *)
+  private final class KeyboardGeometryFollower: UIView {
+    var onLayout: (() -> Void)?
+    private var reportedFrame: CGRect?
+
+    override func layoutSubviews() {
+      super.layoutSubviews()
+      guard frame != reportedFrame else { return }
+      reportedFrame = frame
+      onLayout?()
+    }
+  }
+
   private struct ReservedRegionsSnapshot: Equatable {
     let divisions: [CGRect]
+    let hasFoldDivision: Bool
     let occlusions: [CGRect]
+    let windowBounds: CGRect
+    let windowSafeAreaInsets: UIEdgeInsets
+    let keyboardInset: CGFloat?
 
     var payload: [String: Any] {
-      ["divisions": divisions.map(Self.rectPayload), "occlusions": occlusions.map(Self.rectPayload)]
+      var result: [String: Any] = [
+        "divisions": divisions.map(Self.rectPayload),
+        "hasFoldDivision": hasFoldDivision,
+        "occlusions": occlusions.map(Self.rectPayload),
+        "windowSafeArea": [
+          "bounds": Self.rectPayload(windowBounds),
+          "insets": [
+            "top": Double(windowSafeAreaInsets.top),
+            "right": Double(windowSafeAreaInsets.right),
+            "bottom": Double(windowSafeAreaInsets.bottom),
+            "left": Double(windowSafeAreaInsets.left),
+          ],
+        ],
+      ]
+      if let keyboardInset {
+        result["keyboardInset"] = Double(keyboardInset)
+      }
+      return result
     }
 
     private static func rectPayload(_ rect: CGRect) -> [String: Double] {

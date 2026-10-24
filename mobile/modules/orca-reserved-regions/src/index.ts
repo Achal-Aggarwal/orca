@@ -3,8 +3,19 @@ import { NativeModule, requireOptionalNativeModule } from 'expo-modules-core'
 /** A rect in window points, the root view's coordinates. */
 export type ReservedRect = { x: number; y: number; width: number; height: number }
 
+export type WindowSafeArea = {
+  bounds: ReservedRect
+  insets: { top: number; right: number; bottom: number; left: number }
+}
+
 /** The window's active reserved regions: a partially folded iPhone Duo's fold, and its camera. */
-export type ReservedRegions = { divisions: ReservedRect[]; occlusions: ReservedRect[] }
+export type ReservedRegions = {
+  divisions: ReservedRect[]
+  hasFoldDivision?: boolean
+  occlusions: ReservedRect[]
+  keyboardInset?: number
+  windowSafeArea?: WindowSafeArea
+}
 
 type ReservedRegionsEvents = {
   /** Sent once the module starts observing, then whenever the active regions change. */

@@ -24,7 +24,6 @@ import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
 import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
 import {
   BRIDGE_TERMINAL_KEY_FRAME,
-  BRIDGE_TERMINAL_KEY_RAIL_GRANT,
   type BridgeTerminalKeyId,
   type BridgeTerminalKeyRail
 } from './bridge/bridge-terminal-key'
@@ -34,6 +33,7 @@ import type { BridgeHostOptions } from './bridge-host-contract'
 export type { BridgeHostDiagnostic, BridgeHostOptions } from './bridge-host-contract'
 
 export type BridgeHost = {
+  publishStorage: () => void
   receive: (json: string) => void
   /**
    * Hands this session a rewritten route: same screen, different params (ruling 33.1).
@@ -52,6 +52,7 @@ export type BridgeHost = {
   /** Hands this session a moved keyboard height over the same re-sent `init`. */
   publishKeyboardInset: (next: number) => void
   /** Hands this session a moved fold over the same re-sent `init`. */
+  publishPageGeometry: (next: import('./bridge/bridge-page-geometry').BridgePageGeometry) => void
   publishFoldDivision: (next: BridgeFoldDivision | null) => void
   /** Tells this session the shell's key rail shows or hides, over the same re-sent `init`. */
   publishTerminalKeyRail: (next: BridgeTerminalKeyRail) => void
@@ -59,7 +60,7 @@ export type BridgeHost = {
    * Hands the page one press on the key rail. False when this session was not granted the rail,
    * which is every page older than it, or when no document holds the view.
    */
-  sendTerminalKey: (key: BridgeTerminalKeyId) => boolean
+  sendTerminalKey: (key: BridgeTerminalKeyId, inputOwner?: string) => boolean
   /**
    * Hands the page one Back press. False when this document never said it takes one, which is
    * every page older than the frame; the caller then leaves the key to the navigator.
@@ -111,6 +112,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     onRefused: (issue) => options.onDiagnostic?.({ kind: 'route-update-refused', issue }),
     ...(options.safeAreaInsets === undefined ? {} : { safeAreaInsets: options.safeAreaInsets }),
     ...(options.keyboardInset === undefined ? {} : { keyboardInset: options.keyboardInset }),
+    ...(options.pageGeometry === undefined ? {} : { pageGeometry: options.pageGeometry }),
     ...(options.foldDivision === undefined ? {} : { foldDivision: options.foldDivision }),
     ...(options.terminalKeyRail === undefined ? {} : { terminalKeyRail: options.terminalKeyRail })
   })
@@ -174,9 +176,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
    * A refused route sends nothing at all, and a post the view would not take is one diagnostic and
    * no further attempt: nothing here holds a frame, and nothing retries one.
    */
-  function sendInit(): void {
+  function sendInit(refreshTerminalShortcuts = false): void {
     const route = routes.current()
-    if (route === null) {
+    if (route === null || (refreshTerminalShortcuts && !deliverable())) {
       return
     }
     initSent = true
@@ -189,6 +191,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
           route,
           safeAreaInsets: routes.safeAreaInsets(),
           keyboardInset: routes.keyboardInset(),
+          pageGeometry: routes.pageGeometry(),
           foldDivision: routes.foldDivision(),
           terminalKeyRail: routes.terminalKeyRail(),
           pageRoutes,
@@ -198,7 +201,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
           granted,
           host,
           ownsHostArea: options.ownsHostArea === true,
-          ...options.readStorage()
+          ...options.readStorage(),
+          refreshTerminalShortcuts
         })
       )
     )
@@ -248,13 +252,21 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     ...(options.sessionBack === undefined ? {} : { established: options.sessionBack })
   })
 
+  let railOwner: string | undefined
+  let railClaimed = false
+  type RailClaim = NonNullable<BridgeHostOptions['onTerminalKeyRailClaim']>
+  const reportRailClaim: RailClaim = (claimed, inputOwner, toolbar) => {
+    railClaimed = claimed
+    railOwner = claimed ? inputOwner : undefined
+    options.onTerminalKeyRailClaim?.(claimed, inputOwner, toolbar)
+  }
   const forwardNotify = createBridgeNotifyForwarder({
     options,
     granted,
     initSent: () => initSent,
     route: () => routes.current(),
     onBackClaim: back.readClaim,
-    onTerminalKeyRailClaim: (claimed) => options.onTerminalKeyRailClaim?.(claimed)
+    onTerminalKeyRailClaim: reportRailClaim
   })
 
   /** Cancels everything the page had open. `notify` is false for the page's own `close`, which has
@@ -280,7 +292,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       serving = true
       back.readReady()
       // Dropped like the Back claim: a page still showing a terminal claims again on this `init`.
-      options.onTerminalKeyRailClaim?.(false)
+      reportRailClaim(false)
       // Every time it is asked, not once: the page re-asks on a backoff, and each ask is answered
       // with the route the shell holds now. That is the whole repair path for a frame that never
       // arrived (ruling 34) — nothing here waits on one, and nothing retries one.
@@ -328,7 +340,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         settleAll(false)
         serving = false
         back.drop()
-        options.onTerminalKeyRailClaim?.(false)
+        reportRailClaim(false)
         return
     }
   }
@@ -368,17 +380,22 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     publishKeyboardInset: (next) => {
       routes.publishKeyboardInset(next, deliverable())
     },
+    publishStorage: () => sendInit(true),
+    publishPageGeometry: (next) => routes.publishPageGeometry(next, deliverable()),
     publishFoldDivision: (next) => {
       routes.publishFoldDivision(next, deliverable())
     },
-    publishTerminalKeyRail: (next) => {
-      routes.publishTerminalKeyRail(next, deliverable())
-    },
-    sendTerminalKey: (key) => {
-      if (!granted.includes(BRIDGE_TERMINAL_KEY_RAIL_GRANT) || !deliverable()) {
+    publishTerminalKeyRail: (next) => routes.publishTerminalKeyRail(next, deliverable()),
+    sendTerminalKey: (key, inputOwner) => {
+      if (!railClaimed || inputOwner !== railOwner || !deliverable()) {
         return false
       }
-      send({ v: BRIDGE_PROTOCOL_VERSION, type: BRIDGE_TERMINAL_KEY_FRAME, key })
+      send({
+        v: BRIDGE_PROTOCOL_VERSION,
+        type: BRIDGE_TERMINAL_KEY_FRAME,
+        key,
+        inputOwner
+      })
       return true
     },
     sendBack: back.send,

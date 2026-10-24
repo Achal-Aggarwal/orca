@@ -35,7 +35,11 @@ export function createTerminalAccessoryRepeatController<TInput>() {
 
   const cancel = stop
 
-  const start = (input: TInput, send: TerminalAccessoryRepeatSender<TInput>) => {
+  const start = (
+    input: TInput,
+    send: TerminalAccessoryRepeatSender<TInput>,
+    initialDelayMs = TERMINAL_ACCESSORY_REPEAT_DELAY_MS
+  ) => {
     stop()
     const activeGeneration = generation
     const pressedAt = Date.now()
@@ -60,12 +64,7 @@ export function createTerminalAccessoryRepeatController<TInput>() {
     void send(input).then(
       (sent) => {
         if (sent && generation === activeGeneration) {
-          schedule(
-            Math.min(
-              TERMINAL_ACCESSORY_REPEAT_DELAY_MS,
-              Math.max(0, TERMINAL_ACCESSORY_REPEAT_DELAY_MS - (Date.now() - pressedAt))
-            )
-          )
+          schedule(Math.min(initialDelayMs, Math.max(0, initialDelayMs - (Date.now() - pressedAt))))
         }
       },
       () => undefined

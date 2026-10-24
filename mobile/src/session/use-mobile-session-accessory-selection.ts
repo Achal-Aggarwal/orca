@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useLayoutEffect } from 'react'
 import { Keyboard, Platform, type View } from 'react-native'
 import { useClipboardReader, useClipboardWriter } from '../platform/clipboard'
 import { newTabRepoListRead, type MobileRuntimeRepoSummary } from './mobile-session-read-operations'
@@ -36,6 +36,7 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
     liveInputFocusTimerRef,
     sessionTabActionSheetRequestSeqRef,
     activeHandleRef,
+    activeHandle,
     clearPendingLiveInputCommit,
     clearDelayedActionTimers,
     clearToastHideTimer,
@@ -50,7 +51,7 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
   // Why: hold-to-repeat matches iOS cadence (400ms then 45ms); non-repeatable keys fire once (holding is destructive).
   const repeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const repeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Why: ref keeps repeat firing the current callback; else a mid-hold tab switch/reconnect routes bytes to a stale terminal.
+  // Refresh callbacks within one input owner; focus changes cancel the hold.
   const handleAccessoryKeyRef = useRef(handleAccessoryKey)
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   handleAccessoryKeyRef.current = handleAccessoryKey
@@ -64,11 +65,17 @@ export function useMobileSessionAccessorySelection(scope: MobileSessionTerminalI
       repeatIntervalRef.current = null
     }
   }, [])
+  useLayoutEffect(() => stopAccessoryRepeat, [activeHandle, client, connState, stopAccessoryRepeat])
   const startAccessoryRepeat = useCallback(
     (input: ReturnType<typeof createTerminalLiveAccessoryInput>) => {
       stopAccessoryRepeat()
+      const handle = activeHandleRef.current
       repeatTimeoutRef.current = setTimeout(() => {
         repeatIntervalRef.current = setInterval(() => {
+          if (activeHandleRef.current !== handle) {
+            stopAccessoryRepeat()
+            return
+          }
           void handleAccessoryKeyRef.current(input)
         }, 45)
       }, 400)

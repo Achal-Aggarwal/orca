@@ -9,12 +9,13 @@ import { BridgeInitRouteSchema, type BridgeInitRoute } from './bridge-init-route
 import { BridgePageRouteGrantsSchema } from './bridge-page-route-grants'
 import { BridgeSafeAreaInsetsSchema } from './bridge-safe-area-insets'
 import { BridgeKeyboardInsetSchema } from './bridge-keyboard-inset'
+import { BridgePageGeometrySchema } from './bridge-page-geometry'
 import { BridgeFoldDivisionSchema } from './bridge-fold-division'
 import { BridgeNotifySchema } from './bridge-notify-envelope'
 import { BRIDGE_BACK_FRAME } from './bridge-page-back'
 import {
   BRIDGE_TERMINAL_KEY_FRAME,
-  BRIDGE_TERMINAL_KEY_IDS,
+  BridgeTerminalKeyIdSchema,
   BridgeTerminalKeyRailSchema
 } from './bridge-terminal-key'
 import { BRIDGE_ID_PATTERN, idSchema, methodSchema, versionSchema } from './bridge-frame-fields'
@@ -268,7 +269,8 @@ const BridgeHostMessageSchema = z.union([
   z.object({
     v: versionSchema,
     type: z.literal(BRIDGE_TERMINAL_KEY_FRAME),
-    key: z.enum(BRIDGE_TERMINAL_KEY_IDS)
+    key: BridgeTerminalKeyIdSchema,
+    inputOwner: z.string().min(1).max(128).optional()
   }),
   z.object({
     v: versionSchema,
@@ -296,12 +298,15 @@ const BridgeHostMessageSchema = z.union([
     keyboardInset: BridgeKeyboardInsetSchema.optional(),
     /** The fold splitting the page on a partially folded device; absent reads as none. Salvaged so a
      *  value this page cannot read drops the field, not `init`. */
+    pageGeometry: salvagedOptional('pageGeometry', BridgePageGeometrySchema).optional(),
     foldDivision: salvagedOptional('foldDivision', BridgeFoldDivisionSchema).optional(),
     /** The keys the shell's rail shows beside this page, which then drops them from its own row.
      *  Absent reads as no rail. */
+    terminalKeyInputOwners: salvagedOptional('terminalKeyInputOwners', z.boolean()).optional(),
     terminalKeyRail: salvagedOptional('terminalKeyRail', BridgeTerminalKeyRailSchema).optional(),
     host: BridgeInitHostSchema.optional(),
     storage: BridgeInitStorageSchema.optional(),
+    refreshTerminalShortcuts: salvagedOptional('refreshTerminalShortcuts', z.boolean()).optional(),
     /**
      * The allowlisted keys the shell holds a value for that `storage` could not carry, because the
      * app's value is over the page's own cap (ruling 33.6).

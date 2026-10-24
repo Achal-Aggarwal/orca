@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
-import { useNavigation, useNavigationContainerRef, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useNavigation, useNavigationContainerRef, useRouter } from 'expo-router'
 import {
   OrcaMobileWebShellView,
   parseMobileWebShellLoadState
@@ -27,6 +27,7 @@ import { useNativeDeviceVerbs } from '../platform/use-native-device-verbs'
 import { useShellPageBack } from './use-shell-page-back'
 import { useShellStackPop } from './use-shell-stack-pop'
 import { useMobileWebShellSession } from './use-mobile-web-shell-session'
+import { useShellPageStorageRefresh } from './use-shell-page-storage-refresh'
 import { usePageHostSnapshot } from './use-page-host-snapshot'
 import { useReportedHostAreaServing } from './host-area-serving'
 import { isHostRouteOf } from './page-route-policy'
@@ -185,8 +186,11 @@ export function MobileWebShellScreen({
   // IME insets are zeroed, so `visualViewport` never shrinks. The keyboard covers the view like a
   // native screen, and the page lifts by the height native screens read.
   const keyboardInset = Math.max(0, useKeyboardOcclusion())
-  const pageInsets = pageSafeAreaInsets({ insets, topCovered: noticeShown })
   const pageFold = usePageFoldDivision()
+  const pageInsets = pageSafeAreaInsets({
+    insets: pageFold.safeAreaInsets,
+    topCovered: noticeShown
+  })
   const readySessionId = state.kind === 'ready' ? state.sessionId : null
   const keyRail = useShellKeyRail({ sessionId: readySessionId, overlay, routeGrants })
   const { snapshot, unreadable, readStorage, refreshStorage, writeStorage, readWorkspaceKey } =
@@ -215,6 +219,7 @@ export function MobileWebShellScreen({
     route,
     safeAreaInsets: pageInsets,
     keyboardInset,
+    pageGeometry: pageFold.geometry,
     foldDivision: pageFold.division,
     terminalKeyRail: keyRail.keys,
     pageRoutes,
@@ -285,10 +290,8 @@ export function MobileWebShellScreen({
         })
         return
       }
-      // Wide, this host's route is the area-owning session even when it is not on the stack as
-      // asked: `dismissTo` pops to it by name with the href's params, or replaces this one after a
-      // cold deep link, so it is never a second on top.
-      if (isWideLayout && isHostRouteOf(href, hostId)) {
+      // Host exits preserve notice params and replace cold deep links at either width.
+      if (isHostRouteOf(href, hostId)) {
         router.dismissTo(href)
         return
       }
@@ -323,10 +326,8 @@ export function MobileWebShellScreen({
   // and which one is still owed it, belong to the host, which outlives any one run of this effect.
   // All this says is what the screen is on now: a route that did not move is dropped there, and a
   // frame in flight when this re-runs is not disturbed by it.
-  const publishRoute = bridge.publishRoute
-  useEffect(() => {
-    publishRoute(route)
-  }, [publishRoute, route])
+  useShellPageStorageRefresh(refreshStorage, bridge.publishStorage)
+  useEffect(() => bridge.publishRoute(route), [bridge.publishRoute, route])
 
   usePublishedSafeAreaInsets(bridge.publishSafeAreaInsets, pageInsets)
   // Every keyboard event, a height change while open included, so the page never holds a stale one.
@@ -335,7 +336,7 @@ export function MobileWebShellScreen({
     publishKeyboardInset(keyboardInset)
   }, [publishKeyboardInset, keyboardInset])
   usePublishedFoldDivision(bridge.publishFoldDivision, pageFold.division)
-  usePublishedShellKeyRail(keyRail.keys, bridge)
+  usePublishedShellKeyRail(keyRail.keys, bridge, keyRail.inputOwner, keyRail.toolbar)
 
   // The navigation object rather than the router: what this takes away is this screen's own place
   // on the stack, which is a screen option, and the router has no member that says it.
@@ -475,12 +476,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgBase
   },
-  shellView: {
-    flex: 1
-  },
-  unpaintedOverlay: {
-    opacity: 0
-  },
+  shellView: { flex: 1 },
+  unpaintedOverlay: { opacity: 0 },
   centered: {
     flex: 1,
     alignItems: 'center',

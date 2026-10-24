@@ -11,7 +11,12 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useReservedRegions } from './reserved-regions'
 import { useKeyboardOcclusion } from '../platform/keyboard-occlusion'
-import { getSideRailStrip, sideRailStripAboveKeyboard, type SideRailStrip } from './side-rail-strip'
+import {
+  getSideRailStrip,
+  hasTerminalDirectionPadSpace,
+  sideRailStripAboveKeyboard,
+  type SideRailStrip
+} from './side-rail-strip'
 
 /** One screen's claim on the strip; each screen holds its own. */
 type SideRailOwner = symbol
@@ -50,9 +55,11 @@ function createRailStore() {
 
 type RailStore = ReturnType<typeof createRailStore>
 
-const SideRailContext = createContext<{ strip: SideRailStrip | null; store: RailStore } | null>(
-  null
-)
+const SideRailContext = createContext<{
+  strip: SideRailStrip | null
+  directionPadAvailable: boolean
+  store: RailStore
+} | null>(null)
 
 /**
  * Lets one screen draw controls in a side inset strip the screens are laid out clear of, such as
@@ -62,18 +69,24 @@ export function SideRailProvider({ children }: { children: ReactNode }) {
   const [store] = useState(createRailStore)
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
-  const { occlusions } = useReservedRegions()
+  const { occlusions, hasFoldDivision } = useReservedRegions()
   // Landscape, the keyboard covers the strip's bottom; the rail then holds fewer keys, not hidden ones.
   const keyboard = Math.max(0, useKeyboardOcclusion())
-  const strip = useMemo(
-    () =>
-      sideRailStripAboveKeyboard(
-        getSideRailStrip({ windowWidth: width, windowHeight: height, insets, occlusions }),
-        keyboard
-      ),
-    [width, height, insets, occlusions, keyboard]
+  const unoccludedStrip = useMemo(
+    () => getSideRailStrip({ windowWidth: width, windowHeight: height, insets, occlusions }),
+    [width, height, insets, occlusions]
   )
-  const value = useMemo(() => ({ strip, store }), [strip, store])
+  const strip = useMemo(
+    () => sideRailStripAboveKeyboard(unoccludedStrip, keyboard),
+    [unoccludedStrip, keyboard]
+  )
+  // Keyboard clipping changes what fits now, not this device's shortcut defaults.
+  const directionPadAvailable =
+    hasFoldDivision === true || hasTerminalDirectionPadSpace(unoccludedStrip)
+  const value = useMemo(
+    () => ({ strip, directionPadAvailable, store }),
+    [strip, directionPadAvailable, store]
+  )
   return (
     <SideRailContext.Provider value={value}>
       {children}
@@ -108,6 +121,10 @@ function SideRailOutlet() {
 /** The side strip this window has to draw in; null for a window without one. */
 export function useSideRailStrip(): SideRailStrip | null {
   return useContext(SideRailContext)?.strip ?? null
+}
+
+export function useSideRailDirectionPadAvailable(): boolean {
+  return useContext(SideRailContext)?.directionPadAvailable ?? false
 }
 
 /** Draws `node` in the side strip while this screen is mounted; null draws nothing. */

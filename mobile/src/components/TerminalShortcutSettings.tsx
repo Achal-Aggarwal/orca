@@ -12,6 +12,7 @@ import { useFocusEffect } from 'expo-router'
 import { ChevronRight, X } from 'lucide-react-native'
 import type Animated from 'react-native-reanimated'
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated'
+import { useDirectionPadAvailable } from '../layout/use-shell-side-rail'
 import { CustomKeyModal } from './CustomKeyModal'
 import { loadCustomKeys, saveCustomKeys, type CustomKey } from '../terminal/terminal-custom-keys'
 import { DragReorderList } from './DragReorderList'
@@ -26,8 +27,7 @@ import {
   loadTerminalAccessoryLayout,
   reorderTerminalAccessoryBuiltInIds,
   saveTerminalAccessoryLayout,
-  setTerminalAccessoryBuiltInVisible,
-  type TerminalAccessoryLayout
+  setTerminalAccessoryBuiltInVisible
 } from '../terminal/terminal-accessory-layout'
 
 // Why: DragReorderList absolutely positions rows, so every row in a
@@ -52,6 +52,7 @@ function ShortcutBarRow({
         <Text style={styles.rowLabel}>{shortcutKey.accessibilityLabel ?? shortcutKey.label}</Text>
       </View>
       <Switch
+        accessibilityLabel={`Show ${shortcutKey.accessibilityLabel ?? shortcutKey.label} shortcut`}
         value={visible}
         onValueChange={onToggle}
         trackColor={{ false: colors.borderSubtle, true: colors.textSecondary }}
@@ -59,11 +60,6 @@ function ShortcutBarRow({
       />
     </View>
   )
-}
-
-async function loadShortcutLayout(): Promise<TerminalAccessoryLayout> {
-  const { orderedBuiltInIds, visibleBuiltInIds } = await loadTerminalAccessoryLayout()
-  return { orderedBuiltInIds, visibleBuiltInIds }
 }
 
 type Props = {
@@ -79,6 +75,9 @@ export function TerminalShortcutSettings({
   scrollContentHeight,
   onDragActiveChange
 }: Props): React.JSX.Element {
+  const hasPad = useDirectionPadAvailable()
+  const defaultLayout = useCallback(() => getDefaultTerminalAccessoryLayout(hasPad), [hasPad])
+  const loadShortcutLayout = useCallback(() => loadTerminalAccessoryLayout(hasPad), [hasPad])
   const {
     value: customKeys,
     setValue: setCustomKeys,
@@ -92,11 +91,7 @@ export function TerminalShortcutSettings({
     setValue: setShortcutLayout,
     persist: persistLayout,
     refresh: refreshShortcutLayout
-  } = useSerializedStoredState(
-    getDefaultTerminalAccessoryLayout,
-    loadShortcutLayout,
-    saveTerminalAccessoryLayout
-  )
+  } = useSerializedStoredState(defaultLayout, loadShortcutLayout, saveTerminalAccessoryLayout)
 
   const handleDeleteCustomKey = useCallback(
     (key: CustomKey) => {
@@ -149,10 +144,10 @@ export function TerminalShortcutSettings({
   )
 
   const resetBuiltInKeys = useCallback(() => {
-    const next = getDefaultTerminalAccessoryLayout()
+    const next = defaultLayout()
     setShortcutLayout(next)
     persistLayout(next)
-  }, [persistLayout])
+  }, [defaultLayout, persistLayout])
 
   const reorderCustomKeys = useCallback(
     (orderedKeys: string[]) => {
@@ -172,10 +167,6 @@ export function TerminalShortcutSettings({
     [persistCustomKeys]
   )
 
-  const visibleBuiltInSet = useMemo(
-    () => new Set(shortcutLayout.visibleBuiltInIds),
-    [shortcutLayout.visibleBuiltInIds]
-  )
   const orderedAccessoryKeys = useMemo(() => {
     const byId = new Map(TERMINAL_ACCESSORY_KEYS.map((key) => [key.id, key]))
     return shortcutLayout.orderedBuiltInIds.flatMap((id) => {
@@ -186,6 +177,30 @@ export function TerminalShortcutSettings({
 
   return (
     <>
+      <Text style={[styles.groupHeading, styles.groupTopGap]}>DIRECTION PAD</Text>
+      <View style={[styles.section, styles.sectionTopGap]}>
+        <View style={styles.row}>
+          <View style={styles.rowContent}>
+            <Text style={styles.rowLabel}>Show D-pad</Text>
+            <Text style={styles.rowSublabel}>
+              Pin the direction pad in the right rail. Arrow shortcuts below are independent.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Show D-pad"
+            value={shortcutLayout.directionPadEnabled !== false}
+            onValueChange={(enabled) =>
+              setShortcutLayout((current) => {
+                const next = { ...current, directionPadEnabled: enabled }
+                persistLayout(next)
+                return next
+              })
+            }
+            trackColor={{ false: colors.borderSubtle, true: colors.textSecondary }}
+            thumbColor={colors.textPrimary}
+          />
+        </View>
+      </View>
       <Text style={[styles.groupHeading, styles.groupTopGap]}>SHORTCUT BAR</Text>
       <Text style={styles.groupDescription}>
         Toggle keys to show or hide them, and hold the grip to drag a key into the order you want on
@@ -204,7 +219,7 @@ export function TerminalShortcutSettings({
           renderRow={(shortcutKey) => (
             <ShortcutBarRow
               shortcutKey={shortcutKey}
-              visible={visibleBuiltInSet.has(shortcutKey.id)}
+              visible={shortcutLayout.visibleBuiltInIds.includes(shortcutKey.id)}
               onToggle={(visible) => toggleBuiltInKey(shortcutKey.id, visible)}
             />
           )}
@@ -216,7 +231,7 @@ export function TerminalShortcutSettings({
           <View style={styles.rowContent}>
             <Text style={styles.rowLabel}>Reset Defaults</Text>
             <Text style={styles.rowSublabel}>
-              Show every built-in shortcut key in the original order
+              Restore the default shortcut order, visibility and D-pad
             </Text>
           </View>
         </Pressable>
@@ -252,6 +267,21 @@ export function TerminalShortcutSettings({
                     {key.bytes.replace(/\r/g, ' ↵')}
                   </Text>
                 </View>
+                <Switch
+                  accessibilityLabel={`Show ${key.label} shortcut`}
+                  value={key.visible !== false}
+                  onValueChange={(visible) =>
+                    setCustomKeys((current) => {
+                      const next = current.map((item) =>
+                        item.id === key.id ? { ...item, visible } : item
+                      )
+                      persistCustomKeys(next)
+                      return next
+                    })
+                  }
+                  trackColor={{ false: colors.borderSubtle, true: colors.textSecondary }}
+                  thumbColor={colors.textPrimary}
+                />
                 <Pressable
                   style={({ pressed }) => [
                     styles.deleteButton,

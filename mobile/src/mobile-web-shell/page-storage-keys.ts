@@ -16,6 +16,11 @@
  * inside the page and keeps working outside it, which is the failure the grant exists to end
  * (rulings-ota-c7.md ruling 7).
  */
+export const TERMINAL_SHORTCUT_STORAGE_KEYS = [
+  'orca:terminal-accessory-layout',
+  'orca:custom-accessory-keys'
+] as const
+
 export const PAGE_STORAGE_EXACT_KEYS = [
   /** The repo the New Workspace drawer opens on. */
   'orca:last-visited-worktree',

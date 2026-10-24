@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react'
 import { useFocusEffect } from 'expo-router'
 import type {
+  BridgeTerminalToolbar,
   BridgeTerminalKeyId,
   BridgeTerminalKeyRail
 } from '../mobile-web-shell/bridge/bridge-terminal-key'
 import { usePageBridgeClient } from '../transport/client-context.web'
+
+let nextInputOwner = 0
 
 const NO_RAIL_KEYS: BridgeTerminalKeyRail = []
 
@@ -15,7 +25,9 @@ const NO_RAIL_KEYS: BridgeTerminalKeyRail = []
  */
 export function useShellTerminalKeyRail(
   shown: boolean,
-  onKey: (key: BridgeTerminalKeyId) => void
+  onKey: (key: BridgeTerminalKeyId) => void,
+  focusedTerminal?: string | null,
+  toolbar?: BridgeTerminalToolbar
 ): BridgeTerminalKeyRail {
   const client = usePageBridgeClient()
   const keys = useSyncExternalStore(
@@ -31,11 +43,35 @@ export function useShellTerminalKeyRail(
     }, [])
   )
   const claiming = shown && focused
+  const inputOwner = useMemo(() => `rail-${++nextInputOwner}`, [focusedTerminal, claiming])
+  const ownerRef = useRef(inputOwner)
+  ownerRef.current = inputOwner
   const onKeyRef = useRef(onKey)
   onKeyRef.current = onKey
-  useEffect(
-    () => (claiming ? client.claimTerminalKeyRail((key) => onKeyRef.current(key)) : undefined),
-    [client, claiming]
-  )
+  const toolbarRef = useRef(toolbar)
+  toolbarRef.current = toolbar
+  const claimRef = useRef<ReturnType<typeof client.claimTerminalKeyRail> | null>(null)
+  useLayoutEffect(() => {
+    if (!claiming) {
+      return
+    }
+    const claim = client.claimTerminalKeyRail(
+      (key) => {
+        if (ownerRef.current === inputOwner) {
+          onKeyRef.current(key)
+        }
+      },
+      client.getShellSession()?.terminalKeyInputOwners ? inputOwner : undefined,
+      toolbarRef.current
+    )
+    claimRef.current = claim
+    return () => {
+      claimRef.current = null
+      claim()
+    }
+  }, [client, claiming, inputOwner])
+  useLayoutEffect(() => {
+    claimRef.current?.updateToolbar(toolbar)
+  }, [toolbar])
   return claiming ? keys : NO_RAIL_KEYS
 }

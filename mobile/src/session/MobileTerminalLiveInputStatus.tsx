@@ -11,12 +11,14 @@ type MobileTerminalLiveInputStatusProps = {
   readonly dictation: DictationStatus
   readonly isAttaching: boolean
   readonly liveInputText: string
+  readonly keyboardVisible?: boolean
 }
 
 export function MobileTerminalLiveInputStatus({
   dictation,
   isAttaching,
-  liveInputText
+  liveInputText,
+  keyboardVisible = false
 }: MobileTerminalLiveInputStatusProps) {
   const title = dictation.isRecording
     ? 'Listening'
@@ -33,7 +35,7 @@ export function MobileTerminalLiveInputStatus({
         ? 'Preparing microphone'
         : isAttaching
           ? 'Uploading image to host'
-          : liveInputText || 'Tap to show keyboard'
+          : liveInputText || (keyboardVisible ? 'Tap to hide keyboard' : 'Tap to show keyboard')
 
   return (
     <View style={styles.status}>

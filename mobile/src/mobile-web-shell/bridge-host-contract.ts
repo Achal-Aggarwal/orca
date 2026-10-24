@@ -1,3 +1,5 @@
+import type { BridgeTerminalToolbar } from './bridge/bridge-terminal-key'
+import type { BridgePageGeometry } from './bridge/bridge-page-geometry'
 import type { TerminalBacklogEnd, TerminalBacklogTimers } from './bridge-terminal-output-backlog'
 import type { RpcClient } from '../transport/rpc-client'
 import type { BridgeSessionBack } from './bridge-host-back'
@@ -141,6 +143,7 @@ export type BridgeHostOptions = {
   keyboardInset?: number
   /** The fold splitting the page on a partially folded device. None when absent; moved later with
    *  `publishFoldDivision`. */
+  pageGeometry?: BridgePageGeometry
   foldDivision?: BridgeFoldDivision | null
   /** The keys the shell's rail shows beside the page. None when absent; moved later with
    *  `publishTerminalKeyRail`. */
@@ -228,7 +231,11 @@ export type BridgeHostOptions = {
   onPageBackClaim: (claimed: boolean) => void
   /** The page shows a terminal with its key row, or stopped; false also arrives each time a
    *  document starts or ends, and the page claims again on the `init` that follows. */
-  onTerminalKeyRailClaim?: (claimed: boolean) => void
+  onTerminalKeyRailClaim?: (
+    claimed: boolean,
+    inputOwner?: string,
+    toolbar?: BridgeTerminalToolbar
+  ) => void
   /**
    * The page applied a one-shot route param and is asking for it to be erased (ruling 34), naming
    * the value it applied. The holder of that param compares before it clears: a tap that has moved

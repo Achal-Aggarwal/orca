@@ -1,4 +1,6 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import type { BridgeTerminalToolbar } from './bridge/bridge-terminal-key'
+import type { BridgePageGeometry } from './bridge/bridge-page-geometry'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type {
   MobileWebShellBridgeMessagePayload,
   OrcaMobileWebShellViewHandle
@@ -60,6 +62,7 @@ export type MobileWebShellBridgeView = {
    * Hands the mounted host a rewritten route for the screen it is already serving. Dropped when
    * there is no host yet; the route the host is built from carries it instead.
    */
+  readonly publishStorage: () => void
   readonly publishRoute: (route: BridgeInitRoute) => void
   /** Hands the mounted host moved safe-area insets; dropped with no host, as a route is. */
   readonly publishSafeAreaInsets: (insets: BridgeSafeAreaInsets) => void
@@ -70,7 +73,7 @@ export type MobileWebShellBridgeView = {
   /** Tells the mounted host the key rail shows or hides; dropped with no host. */
   readonly publishTerminalKeyRail: (keys: BridgeTerminalKeyRail) => void
   /** Hands the page one rail press. False with no host, or a page not granted the rail. */
-  readonly sendTerminalKey: (key: BridgeTerminalKeyId) => boolean
+  readonly sendTerminalKey: (key: BridgeTerminalKeyId, inputOwner?: string) => boolean
   /**
    * Hands the mounted host one Back press. False when there is no host, or when the document it
    * serves never said it takes one — the caller then leaves the key to the navigator.
@@ -98,6 +101,7 @@ export type MobileWebShellBridgeArgs = {
   /** What the first `init` of a new host carries; later moves go through `publishKeyboardInset`. */
   keyboardInset: number
   /** What the first `init` of a new host carries; later moves go through `publishFoldDivision`. */
+  pageGeometry?: BridgePageGeometry
   foldDivision: BridgeFoldDivision | null
   /** What the first `init` of a new host carries; later moves go through `publishTerminalKeyRail`. */
   terminalKeyRail: BridgeTerminalKeyRail
@@ -138,7 +142,11 @@ export type MobileWebShellBridgeArgs = {
    *  every way a document ends, so no claim outlives the page that made it. */
   onPageBackClaim: (claimed: boolean) => void
   /** The page shows a terminal with its key row, or stopped; false again on each new document. */
-  onTerminalKeyRailClaim: (claimed: boolean) => void
+  onTerminalKeyRailClaim: (
+    claimed: boolean,
+    inputOwner?: string,
+    toolbar?: BridgeTerminalToolbar
+  ) => void
   /** The page applied a one-shot route param and asks for it to be erased (ruling 34). */
   onRouteParamClear: (param: BridgeClearableRouteParam, value: string) => void
   /** This shell named a screen the protocol does not allow, so no session is served. */
@@ -219,6 +227,7 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       route: latest.route,
       safeAreaInsets: latest.safeAreaInsets,
       keyboardInset: latest.keyboardInset,
+      pageGeometry: latest.pageGeometry,
       foldDivision: latest.foldDivision,
       terminalKeyRail: latest.terminalKeyRail,
       pageRoutes: latest.pageRoutes,
@@ -257,7 +266,8 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       onPageReady: () => argsRef.current.onPageReady(),
       onPagePainted: () => argsRef.current.onPagePainted(),
       onPageBackClaim: (claimed) => argsRef.current.onPageBackClaim(claimed),
-      onTerminalKeyRailClaim: (claimed) => argsRef.current.onTerminalKeyRailClaim(claimed)
+      onTerminalKeyRailClaim: (claimed, inputOwner, toolbar) =>
+        argsRef.current.onTerminalKeyRailClaim(claimed, inputOwner, toolbar)
     })
     hostRef.current = { sessionId, host }
     // The count belongs to this host, so a rebuild starts it over. Without this the screen keeps
@@ -272,6 +282,13 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       host.dispose()
     }
   }, [buildId, client, sessionId, snapshot])
+
+  useEffect(() => {
+    const mounted = hostRef.current
+    if (mounted !== null && mounted.sessionId === sessionId && args.pageGeometry !== undefined) {
+      mounted.host.publishPageGeometry(args.pageGeometry)
+    }
+  }, [buildId, client, sessionId, snapshot, args.pageGeometry])
 
   return {
     bridgeEnabled: ready !== null,
@@ -312,6 +329,12 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
     // route the host was not there to take retries when this identity changes, and the host's own
     // effect is a layout effect, so by the time a passive effect sees the new identity the host
     // behind it exists.
+    publishStorage: useCallback(() => {
+      const mounted = hostRef.current
+      if (mounted !== null && mounted.sessionId === sessionId) {
+        mounted.host.publishStorage()
+      }
+    }, [buildId, client, sessionId, snapshot]),
     publishRoute: useCallback(
       (route: BridgeInitRoute) => {
         const mounted = hostRef.current
@@ -358,10 +381,12 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       [buildId, client, sessionId, snapshot]
     ),
     sendTerminalKey: useCallback(
-      (key: BridgeTerminalKeyId) => {
+      (key: BridgeTerminalKeyId, inputOwner?: string) => {
         const mounted = hostRef.current
         return (
-          mounted !== null && mounted.sessionId === sessionId && mounted.host.sendTerminalKey(key)
+          mounted !== null &&
+          mounted.sessionId === sessionId &&
+          mounted.host.sendTerminalKey(key, inputOwner)
         )
       },
       [buildId, client, sessionId, snapshot]

@@ -1,3 +1,8 @@
+import {
+  EMPTY_PAGE_GEOMETRY,
+  samePageGeometry,
+  type BridgePageGeometry
+} from './bridge/bridge-page-geometry'
 import { BridgeInitRouteSchema, type BridgeInitRoute } from './bridge/bridge-envelope'
 import { readBridgeRouteUpdate } from './bridge/bridge-route-update'
 import {
@@ -39,6 +44,8 @@ export type BridgeHostRoute = {
   /** Moves the held keyboard height on the same lane as the insets. */
   readonly publishKeyboardInset: (next: number, deliverable: boolean) => void
   /** The fold the next `init` carries; null when none splits the page. */
+  readonly pageGeometry: () => BridgePageGeometry
+  readonly publishPageGeometry: (next: BridgePageGeometry, deliverable: boolean) => void
   readonly foldDivision: () => BridgeFoldDivision | null
   /** Moves the held fold on the same lane as the insets. */
   readonly publishFoldDivision: (next: BridgeFoldDivision | null, deliverable: boolean) => void
@@ -72,6 +79,7 @@ export function createBridgeHostRoute(args: {
   onRefused: (issue: string) => void
   safeAreaInsets?: BridgeSafeAreaInsets
   keyboardInset?: number
+  pageGeometry?: BridgePageGeometry
   foldDivision?: BridgeFoldDivision | null
   terminalKeyRail?: BridgeTerminalKeyRail
 }): BridgeHostRoute {
@@ -79,6 +87,7 @@ export function createBridgeHostRoute(args: {
   let route = parsed.success && !args.refused ? parsed.data : null
   let insets = args.safeAreaInsets ?? ZERO_SAFE_AREA_INSETS
   let keyboard = args.keyboardInset ?? 0
+  let geometry = args.pageGeometry ?? EMPTY_PAGE_GEOMETRY
   let fold = args.foldDivision ?? null
   let rail = args.terminalKeyRail ?? []
   return {
@@ -111,6 +120,16 @@ export function createBridgeHostRoute(args: {
         return
       }
       keyboard = next
+      if (deliverable) {
+        args.sendInit()
+      }
+    },
+    pageGeometry: () => geometry,
+    publishPageGeometry: (next, deliverable) => {
+      if (samePageGeometry(geometry, next)) {
+        return
+      }
+      geometry = next
       if (deliverable) {
         args.sendInit()
       }

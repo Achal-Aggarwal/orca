@@ -33,3 +33,10 @@ export function useReservedRegions(): ReservedRegions {
     () => NO_REGIONS
   )
 }
+
+/** Future native geometry only; cached frames must not overwrite a newer keyboard event. */
+export function subscribeReservedRegionChanges(
+  listener: (regions: ReservedRegions) => void
+): () => void {
+  return subscribe(() => listener(current))
+}

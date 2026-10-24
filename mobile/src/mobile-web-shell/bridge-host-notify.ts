@@ -1,3 +1,4 @@
+import type { BridgeTerminalToolbar } from './bridge/bridge-terminal-key'
 import { readBridgeExternalLinkUrl } from './bridge/bridge-caps'
 import {
   BRIDGE_EXTERNAL_LINK_GRANT,
@@ -36,7 +37,11 @@ export function createBridgeNotifyForwarder(args: {
   /** The screen this host is serving, which decides which storage keys the page may write. */
   route: () => BridgeInitRoute | null
   onBackClaim: (claimed: boolean) => void
-  onTerminalKeyRailClaim: (claimed: boolean) => void
+  onTerminalKeyRailClaim: (
+    claimed: boolean,
+    inputOwner?: string,
+    toolbar?: BridgeTerminalToolbar
+  ) => void
 }): (message: NotifyMessage) => void {
   const { options, granted } = args
   const { client, host } = options
@@ -61,7 +66,7 @@ export function createBridgeNotifyForwarder(args: {
       return
     }
     if (message.name === BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY) {
-      args.onTerminalKeyRailClaim(message.claimed)
+      args.onTerminalKeyRailClaim(message.claimed, message.inputOwner, message.toolbar)
       return
     }
     if (message.name === 'foreground') {
