@@ -87,6 +87,7 @@ it('keeps an escalated page connection visible without offering a native retry',
     terminalSummary: "Can't reach desktop"
   })
   expect(tree!.root.findAllByProps({ accessibilityLabel: 'Reconnect to desktop' })).toHaveLength(0)
+  expect(tree!.root.find((node) => String(node.type) === 'Pressable').props.disabled).toBe(true)
   expect(tree!.root.find((node) => String(node.type) === 'StatusDot').props.state).toBe(
     'disconnected'
   )

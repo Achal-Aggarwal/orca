@@ -562,7 +562,7 @@ it('cancels held input when only the owner changes and keys stay identical', asy
   await act(async () => {
     await vi.advanceTimersByTimeAsync(90)
   })
-  expect(send).toHaveBeenCalled()
+  expect(send).toHaveBeenCalledTimes(3)
   const sent = send.mock.calls.length
   render('pane-b')
   await act(async () => {
