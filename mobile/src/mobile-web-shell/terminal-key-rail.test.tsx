@@ -527,3 +527,50 @@ it.each(['owner', 'toolbar', 'keys', 'release', 'overlay', 'layout'])(
     expect(h.bridge.sendTerminalKey).toHaveBeenCalledExactlyOnceWith('arrowUp', 'pane-a')
   }
 )
+
+it('cancels held input when only the owner changes and keys stay identical', async () => {
+  vi.useFakeTimers()
+  railState.strip = { side: 'right', width: 84, height: 500, top: 0, bottom: 0 }
+  const toolbar: BridgeTerminalToolbar = {
+    canSend: true,
+    canCompose: true,
+    canPaste: true,
+    keyboardVisible: false,
+    liveInputEnabled: true,
+    phoneDisplayMode: false,
+    directionPadEnabled: false,
+    visibleBuiltInIds: ['arrowUp'],
+    customKeys: []
+  }
+  const keys = terminalKeyRailKeys(500, toolbar)
+  const send = vi.fn(() => true)
+  const render = (inputOwner: string) =>
+    act(() => {
+      const node = createElement(TerminalKeyRail, { keys, toolbar, onKey: send, inputOwner })
+      if (renderer) {
+        renderer.update(node)
+      } else {
+        renderer = create(node)
+      }
+    })
+  render('pane-a')
+  const arrow = renderer!.root.findByProps({ accessibilityLabel: 'Arrow Up' })
+  act(() => {
+    arrow.props.onPressIn(touch(20))
+    arrow.props.onLongPress()
+  })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(90)
+  })
+  expect(send).toHaveBeenCalled()
+  const sent = send.mock.calls.length
+  render('pane-b')
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(180)
+  })
+  act(() => {
+    arrow.props.onPressOut()
+    arrow.props.onPress()
+  })
+  expect(send).toHaveBeenCalledTimes(sent)
+})

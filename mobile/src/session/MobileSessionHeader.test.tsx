@@ -37,7 +37,10 @@ afterEach(() => {
   layout.sideRail = true
 })
 
-function renderHeader(showConnectionRetry: boolean) {
+function renderHeader(
+  showConnectionRetry: boolean,
+  overrides: Partial<MobileSessionController> = {}
+) {
   const forceReconnectHost = vi.fn(async (_hostId: string) => {})
   const controller = mountFixture<MobileSessionController>({
     hostId: 'host-1',
@@ -46,7 +49,9 @@ function renderHeader(showConnectionRetry: boolean) {
     worktreeName: 'Workspace',
     visibleTabs: [{ id: 'tab-a', type: 'terminal', terminal: 'a' }],
     showConnectionRetry,
-    terminalSummary: showConnectionRetry ? 'Connection lost — tap to retry' : '1 tab'
+    connectionEscalated: showConnectionRetry,
+    terminalSummary: showConnectionRetry ? 'Connection lost — tap to retry' : '1 tab',
+    ...overrides
   })
   act(() => {
     tree = create(createElement(MobileSessionHeader, { controller }))
@@ -72,4 +77,20 @@ it('keeps a connected Duo header compact while its tabs stay in the top bar', ()
   expect(tree!.root.findAll((node) => String(node.type) === 'StatusDot')).toHaveLength(0)
   expect(tree!.root.findAll((node) => String(node.type) === 'Text')).toHaveLength(0)
   expect(tree!.root.find((node) => String(node.type) === 'TabStrip').props.inTopBar).toBe(true)
+})
+
+it('keeps an escalated page connection visible without offering a native retry', () => {
+  renderHeader(false, {
+    connectionEscalated: true,
+    presentedConnState: 'disconnected',
+    forceReconnectHost: null,
+    terminalSummary: "Can't reach desktop"
+  })
+  expect(tree!.root.findAllByProps({ accessibilityLabel: 'Reconnect to desktop' })).toHaveLength(0)
+  expect(tree!.root.find((node) => String(node.type) === 'StatusDot').props.state).toBe(
+    'disconnected'
+  )
+  expect(tree!.root.findAll((node) => node.props.children === "Can't reach desktop")).toHaveLength(
+    1
+  )
 })

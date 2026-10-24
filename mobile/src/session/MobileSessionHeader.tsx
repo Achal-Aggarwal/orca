@@ -24,6 +24,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
     requestLeaveSession,
     visibleTabs,
     showConnectionRetry,
+    connectionEscalated,
     terminalSummary,
     handlePanelTap,
     showHeaderMoreButton
@@ -64,7 +65,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
             onPress={requestLeaveSession}
           />
 
-          {!sideRail || !hasTabs || showConnectionRetry ? (
+          {!sideRail || !hasTabs || showConnectionRetry || connectionEscalated ? (
             <View
               style={[styles.sessionTitleBlock, tabsInTopBar && styles.sessionTitleBlockBesideTabs]}
             >

@@ -105,6 +105,7 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
     showEmptyState,
     connectionVerdict,
     showConnectionRetry,
+    connectionEscalated,
     terminalSummary,
     keyboardLift,
     activeTerminalKeyboardLift,
