@@ -37,7 +37,9 @@ export const TerminalDirectionPad = forwardRef<
 >(function TerminalDirectionPad({ enabled, width, onKey, onInteractionStart }, ref) {
   const [repeat] = useState(() => createTerminalAccessoryRepeatController<DirectionKey>())
   const delivery = useRef({ enabled, onKey })
-  delivery.current = { enabled, onKey }
+  useLayoutEffect(() => {
+    delivery.current = { enabled, onKey }
+  }, [enabled, onKey])
   const gesture = useRef({ x: 0, y: 0, cancelled: true, repeated: false })
   const cancel = useCallback(() => {
     gesture.current.cancelled = true

@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from 'react'
+import { createElement, startTransition, Suspense, type ReactNode } from 'react'
 import { ScrollView } from 'react-native'
 import { act, create, type ReactTestInstance } from 'react-test-renderer'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -573,4 +573,64 @@ it('cancels held input when only the owner changes and keys stay identical', asy
     arrow.props.onPress()
   })
   expect(send).toHaveBeenCalledTimes(sent)
+})
+
+it('keeps the committed shell sender while a bridge transition is suspended', () => {
+  railState.strip = { side: 'right', width: 84, height: 500, top: 0, bottom: 0 }
+  const committed = vi.fn((_key: string, _owner?: string) => true)
+  const next = vi.fn((_key: string, _owner?: string) => false)
+  const publish = vi.fn()
+  const keys = terminalKeyRailKeys(500)
+  const pending = new Promise<void>(() => {})
+  function Host({ send, suspend = false }: { send: typeof committed; suspend?: boolean }) {
+    usePublishedShellKeyRail(
+      keys,
+      { publishTerminalKeyRail: publish, sendTerminalKey: send },
+      'pane-a'
+    )
+    if (suspend) {
+      throw pending
+    }
+    return outlet.node
+  }
+  act(() => {
+    renderer = create(
+      <Suspense fallback={null}>
+        <Host send={committed} />
+      </Suspense>
+    )
+  })
+  const arrow = renderer!.root.findByProps({ accessibilityLabel: 'Arrow Up' })
+  act(() => {
+    startTransition(() =>
+      renderer!.update(
+        <Suspense fallback={null}>
+          <Host send={next} suspend />
+        </Suspense>
+      )
+    )
+  })
+  act(() => {
+    arrow.props.onPressIn(touch(20))
+    arrow.props.onPressOut()
+    arrow.props.onPress()
+  })
+  expect({ committed: committed.mock.calls, uncommitted: next.mock.calls }).toEqual({
+    committed: [['arrowUp', 'pane-a']],
+    uncommitted: []
+  })
+  act(() =>
+    renderer!.update(
+      <Suspense fallback={null}>
+        <Host send={next} />
+      </Suspense>
+    )
+  )
+  act(() => {
+    arrow.props.onPressIn(touch(20))
+    arrow.props.onPressOut()
+    arrow.props.onPress()
+  })
+  expect(committed).toHaveBeenCalledTimes(1)
+  expect(next).toHaveBeenCalledExactlyOnceWith('arrowUp', 'pane-a')
 })

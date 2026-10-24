@@ -367,7 +367,9 @@ export function usePublishedShellKeyRail(
   }, [publishTerminalKeyRail, keys])
   // Held, so a new bridge identity does not rebuild the node, which would show the rail again.
   const sendRef = useRef(bridge.sendTerminalKey)
-  sendRef.current = bridge.sendTerminalKey
+  useLayoutEffect(() => {
+    sendRef.current = bridge.sendTerminalKey
+  }, [bridge.sendTerminalKey])
   const node = useMemo(
     () =>
       keys.length > 0 ? (

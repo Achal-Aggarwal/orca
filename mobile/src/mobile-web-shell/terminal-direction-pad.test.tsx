@@ -1,4 +1,4 @@
-import { createElement, createRef } from 'react'
+import { createElement, createRef, startTransition, Suspense } from 'react'
 import { act, create } from 'react-test-renderer'
 import { afterEach, expect, it, vi } from 'vitest'
 import { TerminalDirectionPad, type TerminalDirectionPadHandle } from './terminal-direction-pad'
@@ -145,3 +145,53 @@ it('provides four explicit accessible directions and sends their actions once', 
   act(() => button('up').props.onAccessibilityTap())
   expect(send).toHaveBeenCalledTimes(4)
 })
+
+it.each([true, false])(
+  'keeps committed D-pad delivery while a transition to enabled=%s is suspended',
+  (nextEnabled) => {
+    const committed = vi.fn((_key: string) => true)
+    const next = vi.fn((_key: string) => true)
+    const pending = new Promise<void>(() => {})
+    function Pause({ suspend }: { suspend: boolean }) {
+      if (suspend) {
+        throw pending
+      }
+      return null
+    }
+    const frame = (onKey: typeof committed, enabled: boolean, suspend: boolean) => (
+      <Suspense fallback={null}>
+        <TerminalDirectionPad
+          enabled={enabled}
+          width={68}
+          onKey={onKey}
+          onInteractionStart={() => {}}
+        />
+        <Pause suspend={suspend} />
+      </Suspense>
+    )
+    act(() => {
+      renderer = create(frame(committed, true, false))
+    })
+    const up = renderer!.root.findByProps({ accessibilityLabel: 'D-pad up' })
+    act(() => {
+      startTransition(() => renderer!.update(frame(next, nextEnabled, true)))
+    })
+    act(() => {
+      up.props.onPressIn(touch())
+      up.props.onPressOut()
+      up.props.onPress()
+    })
+    expect({ committed: committed.mock.calls, uncommitted: next.mock.calls }).toEqual({
+      committed: [['arrowUp']],
+      uncommitted: []
+    })
+    act(() => renderer!.update(frame(next, nextEnabled, false)))
+    act(() => up.props.onAccessibilityTap())
+    expect(committed).toHaveBeenCalledTimes(1)
+    if (nextEnabled) {
+      expect(next).toHaveBeenCalledExactlyOnceWith('arrowUp')
+    } else {
+      expect(next).not.toHaveBeenCalled()
+    }
+  }
+)
