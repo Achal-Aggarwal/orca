@@ -151,7 +151,9 @@ export const MobileWebBundleRouteSchema = z
       .max(MOBILE_WEB_BUNDLE_MAX_ROUTE_GRANTS)
       .optional(),
     /** The page can draw the wide host area, sidebar included, when `init` says it owns it. */
-    canOwnHostArea: z.literal(true).optional()
+    canOwnHostArea: z.literal(true).optional(),
+    /** This page also renders the narrow host area; legacy ownership remains wide-only. */
+    canOwnHostAreaAcrossLayouts: z.literal(true).optional()
   })
   .strict()
   // The ceiling is over the union, because the union is what a session's granted list is built

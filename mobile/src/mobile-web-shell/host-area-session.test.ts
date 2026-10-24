@@ -102,6 +102,21 @@ describe('the page declaring it can own the host area', () => {
     const unserved = [{ ...desktopRoutes(true)[0]!, grants: ['native.teleport.start'] }]
     expect(routeViewOf(unserved, HOST_ROUTE, true).ownsHostArea).toBe(false)
   })
+
+  it('keeps the area at either width only for a page that declares it across layouts', () => {
+    const [host, ...rest] = desktopRoutes(true)
+    const routes = [{ ...host!, canOwnHostAreaAcrossLayouts: true }, ...rest]
+    expect(routeViewOf(routes, HOST_ROUTE, true).ownsHostArea).toBe(true)
+    expect(routeViewOf(routes, HOST_ROUTE, false).ownsHostArea).toBe(true)
+    // A narrow detail session hands a hop to the host route back to the shell, like a wide one.
+    expect(
+      routeViewOf(routes, '/h/host-1/session/wt-1', false).pageRouteGrants.map((p) => p.pathname)
+    ).not.toContain('/h/[hostId]')
+    // Without `canOwnHostArea` the across-layouts flag claims nothing.
+    const flagOnly = [{ ...desktopRoutes(false)[0]!, canOwnHostAreaAcrossLayouts: true }]
+    expect(routeViewOf(flagOnly, HOST_ROUTE, false).ownsHostArea).toBe(false)
+    expect(routeViewOf(flagOnly, HOST_ROUTE, true).ownsHostArea).toBe(false)
+  })
 })
 
 describe('the wide host-area session', () => {

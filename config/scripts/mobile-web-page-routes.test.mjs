@@ -71,6 +71,38 @@ describe('the page routes the manifest declares', () => {
     ])
   })
 
+  it('serializes cross-layout ownership only for opted-in routes and declares it only on the host root', () => {
+    const routes = resolveMobileWebPageRoutes(
+      ['./h/[hostId]/index.tsx', './h/[hostId]/tasks.tsx'],
+      [
+        {
+          pathname: '/h/[hostId]',
+          grants: ['navigate'],
+          canOwnHostArea: true,
+          canOwnHostAreaAcrossLayouts: true
+        },
+        { pathname: '/h/[hostId]/tasks', grants: ['navigate'], canOwnHostArea: true }
+      ]
+    )
+    expect(JSON.parse(JSON.stringify(routes))).toEqual([
+      {
+        pathname: '/h/[hostId]',
+        grants: ['navigate'],
+        canOwnHostArea: true,
+        canOwnHostAreaAcrossLayouts: true
+      },
+      { pathname: '/h/[hostId]/tasks', grants: ['navigate'], canOwnHostArea: true }
+    ])
+    expect(
+      MOBILE_WEB_PAGE_ROUTES.filter((route) => route.canOwnHostAreaAcrossLayouts).map(
+        (route) => route.pathname
+      )
+    ).toEqual(['/h/[hostId]'])
+    for (const route of routes) {
+      expect(MobileWebBundleRouteSchema.safeParse(route).success).toBe(true)
+    }
+  })
+
   /**
    * The wide iPad's host-area session is granted every served route's list, so its in-page hops
    * stay in the page. Bounded by the per-route ceiling too, so that grant never outgrows one route's.

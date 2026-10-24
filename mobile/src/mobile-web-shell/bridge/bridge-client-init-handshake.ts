@@ -1,4 +1,5 @@
 import { BRIDGE_PROTOCOL_VERSION, type BridgeClientMessage } from './bridge-envelope'
+import { NEGOTIATED_PAGE_STORAGE_KEYS } from '../page-storage-keys'
 
 /** The page asks again until the shell answers; a session has no other way to start. */
 export const BRIDGE_READY_RETRY_MIN_MS = 50
@@ -49,8 +50,12 @@ export function createBridgeInitHandshake(ask: () => void): BridgeInitHandshake 
   }
 }
 
-/** What the page says on every ask. It declares nothing: the shell serves no page older than its
- *  floor, so every page it talks to takes everything the shell sends. */
+/** What the page says on every ask. Pages and shells update independently, so it names the
+ *  negotiated storage keys its `init` reader accepts; an older shell ignores the member. */
 export function createPageReadyFrame(): Extract<BridgeClientMessage, { type: 'ready' }> {
-  return { v: BRIDGE_PROTOCOL_VERSION, type: 'ready' }
+  return {
+    v: BRIDGE_PROTOCOL_VERSION,
+    type: 'ready',
+    storageKeys: [...NEGOTIATED_PAGE_STORAGE_KEYS]
+  }
 }

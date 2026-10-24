@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo } from 'react'
+import { useTerminalSplitLayout } from './use-terminal-split-layout'
 import { Animated, type ScrollView } from 'react-native'
 import type { MobileTerminalLinkOpenMode } from '../storage/preferences'
 import type { TerminalKeyboardAvoidanceMetrics } from '../terminal/terminal-webview-contract'
@@ -28,6 +29,7 @@ import type { MobileSessionFoundationModel } from './use-mobile-session-foundati
 
 export function useMobileSessionScreenState(scope: MobileSessionFoundationModel) {
   const { worktreeId, hostId, initialCreateWarning } = scope
+  const terminalSplitLayout = useTerminalSplitLayout()
   const [terminals, setTerminals] = useState<Terminal[]>([])
   const terminalsRef = useRef<Terminal[]>([])
   const [sessionTabs, setSessionTabs] = useState<MobileSessionTab[]>([])
@@ -130,6 +132,7 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
   const toastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toastSeqRef = useRef(0)
   return {
+    ...terminalSplitLayout,
     terminals,
     setTerminals,
     terminalsRef,

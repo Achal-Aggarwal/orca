@@ -24,6 +24,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     terminalRefs,
     initializedHandlesRef,
     activeHandleRef,
+    visibleTerminalHandlesRef,
     scheduleDelayedAction,
     unsubscribeTerminal,
     subscribeToTerminal
@@ -114,6 +115,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
       // Why: iOS can resume a WKWebView with a blank xterm store and no web-ready; invalidate the latch so init waits for the pong.
       const outcome = recoverActiveTerminalAfterForeground({
         activeHandleRef,
+        visibleTerminalHandlesRef,
         terminalRefs,
         initializedHandlesRef,
         connStateRef,
@@ -139,6 +141,7 @@ export function useMobileSessionLifecycle(scope: MobileSessionTabReconciliationM
     }
     recoverActiveTerminalAfterForeground({
       activeHandleRef,
+      visibleTerminalHandlesRef,
       terminalRefs,
       initializedHandlesRef,
       connStateRef,

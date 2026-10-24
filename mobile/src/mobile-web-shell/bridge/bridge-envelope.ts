@@ -171,7 +171,14 @@ const replyPartSchema = z.object({
 const BridgeClientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     v: versionSchema,
-    type: z.literal('ready')
+    type: z.literal('ready'),
+    // Negotiated keys this page's `init` reader accepts. A malformed list reads as none, so the
+    // page gets the legacy keys rather than no session.
+    storageKeys: z
+      .array(z.string().min(1).max(PAGE_STORAGE_MAX_KEY_CHARS))
+      .max(PAGE_STORAGE_MAX_ENTRIES)
+      .optional()
+      .catch(undefined)
   }),
   z.object({
     v: versionSchema,

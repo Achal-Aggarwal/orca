@@ -277,10 +277,10 @@ export function MobileWebShellScreen({
         })
         return
       }
-      // Wide, this host's route is the area-owning session even when it is not on the stack as
-      // asked: `dismissTo` pops to it by name with the href's params, or replaces this one after a
-      // cold deep link, so it is never a second on top.
-      if (isWideLayout && isHostRouteOf(href, hostId)) {
+      // This host's route is the area-owning session at either width, even when it is not on the
+      // stack as asked: `dismissTo` pops to it by name with the href's params, or replaces this one
+      // after a cold deep link, so it is never a second on top.
+      if (isHostRouteOf(href, hostId)) {
         router.dismissTo(href)
         return
       }

@@ -80,6 +80,7 @@ export type TerminalSelectionEvents = {
   // Only a tap's click passes `input`; wheel and drag reports keep the bytes-only call.
   onTerminalInput?: (bytes: string, input?: TerminalPointerInput) => void
   onTerminalQueryReply?: (bytes: string) => void
+  onTerminalInteraction?: () => void
   onTerminalTap?: () => void
   // Tap landed on a detected file path; RN resolves + opens it.
   onFileTap?: (pathText: string, line: number | null, column: number | null) => void

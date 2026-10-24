@@ -1,4 +1,5 @@
 import { getCellHeight, getTotalScale } from './cell-metrics'
+import { notify } from './host-notify'
 import { routeScrollLines, shouldRouteScrollToTerminalInput } from './mouse-input-encoding'
 import { dispatcherShouldBlockSurface } from './tap-dispatch'
 import {
@@ -6,6 +7,8 @@ import {
   resetSmoothScrollOffset
 } from './normal-buffer-smooth-scroll'
 import type { TerminalDocumentScope } from './document-scope'
+
+const WHEEL_SEQUENCE_IDLE_MS = 150
 
 export function wheelEventPixelDeltaY(scope: TerminalDocumentScope, e: WheelEvent) {
   const delta = e.deltaY
@@ -27,6 +30,7 @@ export function attachSurfaceWheelHandler(
   scope: TerminalDocumentScope,
   targetSurface: HTMLElement
 ) {
+  let lastWheelAt: number | null = null
   targetSurface.addEventListener(
     'wheel',
     function (e) {
@@ -53,6 +57,12 @@ export function attachSurfaceWheelHandler(
         return
       }
 
+      const now = performance.now()
+      if (lastWheelAt === null || now - lastWheelAt > WHEEL_SEQUENCE_IDLE_MS) {
+        scope.wheelAccumDeltaY = 0
+        notify(scope, { type: 'terminal-interaction' })
+      }
+      lastWheelAt = now
       if (shouldRouteScrollToTerminalInput(scope)) {
         resetSmoothScrollOffset(scope)
         const effectiveCellH = getCellHeight(scope) * getTotalScale(scope)

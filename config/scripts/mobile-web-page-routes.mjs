@@ -31,10 +31,12 @@ export const MOBILE_WEB_PAGE_ROUTES = [
   // every `/h` route in `HostProtocolGate`, so without the grant the wall's Update Orca tap posts a
   // notify the shell refuses, with nothing on screen to say why.
   // `canOwnHostArea`: on wide layouts it draws the sidebar itself, given `ownsHostArea` in `init`.
+  // `canOwnHostAreaAcrossLayouts`: it also renders the narrow host area, so ownership survives rotation.
   {
     pathname: '/h/[hostId]',
     grants: ['navigate', 'storage', 'externalLink', 'haptics'],
-    canOwnHostArea: true
+    canOwnHostArea: true,
+    canOwnHostAreaAcrossLayouts: true
   },
   // Agent session history. `navigate` because a resumed session opens the session screen, which is
   // native, and because the list above now reaches this one without leaving the page. `storage`
