@@ -9,6 +9,17 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
   return {
     'react-native': () => ({
       ActivityIndicator: 'ActivityIndicator',
+      AppState: {
+        currentState: 'active',
+        addEventListener: (_name: string, listener: (state: string) => void) => {
+          dependencies.appStateListeners.add(listener)
+          return {
+            remove: () => {
+              dependencies.appStateListeners.delete(listener)
+            }
+          }
+        }
+      },
       AccessibilityInfo: {
         isReduceMotionEnabled: () => Promise.resolve(false),
         addEventListener: () => ({ remove: () => {} })
@@ -169,20 +180,23 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
     }),
     // Reaching the real one imports the host store and expo-secure-store, whose module touches an Expo
     // global this test does not have. What it answers is the screen's input, not its behaviour.
-    './use-page-host-snapshot': () => ({
-      usePageHostSnapshot: () => ({
-        // One object for the life of the file, as the real hook's `useState` gives. A fresh literal per
-        // render changes the identity the host effect is keyed on, so the bridge host was being torn
-        // down and rebuilt on every render of this screen — and every pending request settled with it.
-        snapshot: SCREEN_SNAPSHOT,
-        unreadable: dependencies.snapshotUnreadable,
-        readStorage: () => ({ storage: {}, storageOversize: [] }),
-        refreshStorage: () => {
-          dependencies.storageRefreshes += 1
-        },
-        writeStorage: () => {}
-      })
-    }),
+    './use-page-host-snapshot': () => {
+      const readStorage = () => ({ storage: {}, storageOversize: [] })
+      const refreshStorage = async () => {
+        dependencies.storageRefreshes += 1
+      }
+      const writeStorage = () => {}
+      return {
+        usePageHostSnapshot: () => ({
+          // Stable values match the real hook's state and callbacks across screen renders.
+          snapshot: SCREEN_SNAPSHOT,
+          unreadable: dependencies.snapshotUnreadable,
+          readStorage,
+          refreshStorage,
+          writeStorage
+        })
+      }
+    },
     './use-mobile-web-shell-session': () => ({
       useMobileWebShellSession: () => ({
         state: dependencies.state,

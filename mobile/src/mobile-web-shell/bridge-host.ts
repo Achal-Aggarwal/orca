@@ -376,20 +376,14 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       }
       dispatch(read.message)
     },
-    publishRoute: (next) => {
-      routes.publish(next, serving && initSent)
-    },
+    publishRoute: (next) => routes.publish(next, serving && initSent),
     publishSafeAreaInsets: (next) => {
       routes.publishSafeAreaInsets(next, deliverable())
     },
-    publishKeyboardInset: (next) => {
-      routes.publishKeyboardInset(next, deliverable())
-    },
+    publishKeyboardInset: (next) => routes.publishKeyboardInset(next, deliverable()),
     publishStorage: () => sendInit(true),
     publishPageGeometry: (next) => routes.publishPageGeometry(next, deliverable()),
-    publishFoldDivision: (next) => {
-      routes.publishFoldDivision(next, deliverable())
-    },
+    publishFoldDivision: (next) => routes.publishFoldDivision(next, deliverable()),
     publishTerminalKeyRail: (next) => routes.publishTerminalKeyRail(next, deliverable()),
     sendTerminalKey: (key, inputOwner) => {
       if (!railClaimed || inputOwner !== railOwner || !deliverable()) {
