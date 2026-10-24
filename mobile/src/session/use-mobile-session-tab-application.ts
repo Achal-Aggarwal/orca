@@ -1,3 +1,4 @@
+import { keepsTerminalPaneVisible } from './mobile-terminal-pane-layout'
 import {
   pendingSelectionHandle,
   pendingSelectionTabId,
@@ -46,6 +47,7 @@ export function useMobileSessionTabApplication(scope: MobileSessionTerminalListM
     markdownDocsRef,
     terminalDiagnosticsRef,
     activeHandleRef,
+    visibleTerminalHandlesRef,
     activeSessionTabTypeRef,
     pendingSelectionRef,
     pendingBrowserFocusPageIdRef,
@@ -217,7 +219,9 @@ export function useMobileSessionTabApplication(scope: MobileSessionTerminalListM
         if (typeof active.terminal !== 'string') {
           const previous = activeHandleRef.current
           if (previous) {
-            unsubscribeTerminal(previous)
+            if (!keepsTerminalPaneVisible(previous, visibleTerminalHandlesRef?.current)) {
+              unsubscribeTerminal(previous)
+            }
           }
           activeHandleRef.current = null
           setActiveHandle(null)
@@ -225,7 +229,9 @@ export function useMobileSessionTabApplication(scope: MobileSessionTerminalListM
         }
         const previous = activeHandleRef.current
         if (previous && previous !== active.terminal) {
-          unsubscribeTerminal(previous)
+          if (!keepsTerminalPaneVisible(previous, visibleTerminalHandlesRef?.current)) {
+            unsubscribeTerminal(previous)
+          }
         }
         activeHandleRef.current = active.terminal
         setActiveHandle(active.terminal)
@@ -234,7 +240,9 @@ export function useMobileSessionTabApplication(scope: MobileSessionTerminalListM
         // Why: an empty snapshot can transiently omit a live terminal; explicit close clears it on RPC success.
         const previous = activeHandleRef.current
         if (previous) {
-          unsubscribeTerminal(previous)
+          if (!keepsTerminalPaneVisible(previous, visibleTerminalHandlesRef?.current)) {
+            unsubscribeTerminal(previous)
+          }
         }
         activeHandleRef.current = null
         setActiveHandle(null)

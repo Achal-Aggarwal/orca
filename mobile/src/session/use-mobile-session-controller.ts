@@ -45,6 +45,13 @@ export function useMobileSessionController() {
     feedbackCapabilities,
     useMobileSessionNativeChatDictation(feedbackCapabilities, sendLiveTerminalInput)
   )
+  if (nativeChatDictation.showNativeChat) {
+    nativeChatDictation.visibleTerminalHandles = nativeChatDictation.activeHandle
+      ? [nativeChatDictation.activeHandle]
+      : []
+    nativeChatDictation.visibleTerminalHandlesRef.current =
+      nativeChatDictation.visibleTerminalHandles
+  }
   const subscriptionFoundation = Object.assign(
     nativeChatDictation,
     useMobileSessionTerminalSubscriptionFoundation(nativeChatDictation)

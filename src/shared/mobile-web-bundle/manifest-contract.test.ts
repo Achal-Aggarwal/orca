@@ -179,6 +179,15 @@ describe('the page routes a manifest declares', () => {
     expect(withRoutes([{ pathname: '/h', grants: ['browser.screencast'] }])).toBe(false)
   })
 
+  it('accepts explicit cross-layout host ownership without changing legacy route declarations', () => {
+    const legacy = { pathname: '/h/[hostId]', grants: ['navigate'], canOwnHostArea: true }
+    expect(withRoutes([legacy])).toBe(true)
+    expect(withRoutes([{ ...legacy, canOwnHostAreaAcrossLayouts: true }])).toBe(true)
+    for (const invalid of [false, 'true', 1, null]) {
+      expect(withRoutes([{ ...legacy, canOwnHostAreaAcrossLayouts: invalid }])).toBe(false)
+    }
+  })
+
   it('refuses a route carrying a field the contract does not declare', () => {
     expect(withRoutes([{ pathname: '/h', grants: [], screen: 'x' }])).toBe(false)
   })

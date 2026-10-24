@@ -20,6 +20,7 @@ import { createBridgeHostFrames } from './bridge-host-frames'
 import { createBridgeHostBack, type BridgeSessionBack } from './bridge-host-back'
 import { createBridgeNotifyForwarder } from './bridge-host-notify'
 import { createBridgeHostRoute } from './bridge-host-route'
+import { pageStorageForReader } from './page-storage-keys'
 import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
 import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
 import {
@@ -128,6 +129,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   // Seeded from the session rather than started false: this host may be a rebuild taking over a
   // session that handshook with the one before it.
   let initSent = options.sessionEstablished
+  // What the page's init reader accepts, carried across a rebuild because the page does not
+  // re-handshake. Null is a page older than `storageKeys`, which gets the legacy keys only.
+  let pageStorageKeys: readonly string[] | null = options.sessionBack?.storageKeys ?? null
 
   const frames = createBridgeHostFrames({
     post: options.post,
@@ -201,7 +205,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
           granted,
           host,
           ownsHostArea: options.ownsHostArea === true,
-          ...options.readStorage(),
+          ...pageStorageForReader(options.readStorage(), pageStorageKeys),
           refreshTerminalShortcuts
         })
       )
@@ -290,6 +294,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     // re-asked `ready` from the document already being served is answered the same way.
     if (message.type === 'ready') {
       serving = true
+      pageStorageKeys = message.storageKeys ?? null
       back.readReady()
       // Dropped like the Back claim: a page still showing a terminal claims again on this `init`.
       reportRailClaim(false)
@@ -399,7 +404,10 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       return true
     },
     sendBack: back.send,
-    readSessionBack: back.read,
+    readSessionBack: () => ({
+      ...back.read(),
+      ...(pageStorageKeys === null ? {} : { storageKeys: pageStorageKeys })
+    }),
     dispose
   }
 }

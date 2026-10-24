@@ -13,6 +13,7 @@ export function useMobileSessionTerminalStreamDisplay(
     terminalModes,
     deviceTokenRef,
     viewportRef,
+    getTerminalPaneViewport,
     terminalUnsubsRef,
     subscribingHandlesRef,
     leaseOnlyHandlesRef,
@@ -51,6 +52,7 @@ export function useMobileSessionTerminalStreamDisplay(
       // Why: 'phone' is an observed state, not a setting; the toggle only requests 'auto' or 'desktop'.
       const next: 'auto' | 'desktop' =
         current === 'auto' || current === 'phone' ? 'desktop' : 'auto'
+      const viewport = getTerminalPaneViewport?.(handle).viewportRef.current ?? viewportRef.current
       toggleInFlightRef.current.add(handle)
       try {
         // The reply is unread: the server resizes and reports it on the existing subscription.
@@ -62,7 +64,7 @@ export function useMobileSessionTerminalStreamDisplay(
             ? { client: { id: deviceTokenRef.current, type: 'mobile' as const } }
             : {}),
           // Why: late-bind viewport for terminals subscribed before measurement, or auto toggles no-op on a null stored viewport.
-          ...(viewportRef.current && next === 'auto' ? { viewport: viewportRef.current } : {})
+          ...(viewport && next === 'auto' ? { viewport } : {})
         })
       } catch {
         // Mode change failed — server state unchanged, UI stays in sync.

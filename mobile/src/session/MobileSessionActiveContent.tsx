@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { computeActiveTerminalKeyboardLift } from '../terminal/terminal-keyboard-avoidance-lift'
+import { terminalPaneDirection, terminalPaneKeyboardLayout } from './mobile-terminal-pane-layout'
 import { Animated, View, Text, Pressable, ActivityIndicator } from 'react-native'
 import { saveTerminalTextScale } from '../storage/preferences'
 import { MobileBrowserPane } from '../browser/MobileBrowserPane'
@@ -17,6 +20,8 @@ export function MobileSessionActiveContent({
   controller: MobileSessionController
 }) {
   const executionHost = useWorkspaceExecutionHost()
+  const [paneFrame, setPaneFrame] = useState({ width: 0, height: 0 })
+  const paneDirection = terminalPaneDirection(paneFrame, controller.terminalSplitLayout)
   const {
     hostId,
     worktreeId,
@@ -28,6 +33,9 @@ export function MobileSessionActiveContent({
     setTerminalTextScale,
     terminalTextScaleRevisionRef,
     activeHandle,
+    terminalSplitActive,
+    visibleTerminalHandles,
+    notifyTerminalPaneFrame,
     markdownDocs,
     fileDocs,
     diffComments,
@@ -38,6 +46,7 @@ export function MobileSessionActiveContent({
     dictationMode,
     dictationEnabled,
     toastMessage,
+    handleTerminalInteraction,
     handleTerminalTap,
     browserScreencastSupported,
     showToast,
@@ -211,7 +220,37 @@ export function MobileSessionActiveContent({
           key={terminal.handle}
           handle={terminal.handle}
           active={terminal.handle === activeHandle}
-          keyboardLift={terminal.handle === activeHandle ? activeTerminalKeyboardLift : 0}
+          visible={
+            visibleTerminalHandles?.includes(terminal.handle) ?? terminal.handle === activeHandle
+          }
+          splitIndex={
+            terminalSplitActive && visibleTerminalHandles.includes(terminal.handle)
+              ? visibleTerminalHandles.indexOf(terminal.handle)
+              : undefined
+          }
+          splitDirection={paneDirection}
+          splitFrame={paneFrame}
+          keyboardInset={keyboardLift}
+          title={terminal.title}
+          onFrame={notifyTerminalPaneFrame}
+          keyboardLift={
+            terminal.handle !== activeHandle
+              ? 0
+              : terminalSplitActive
+                ? computeActiveTerminalKeyboardLift({
+                    keyboardLift: terminalPaneKeyboardLayout(
+                      paneFrame,
+                      paneDirection,
+                      visibleTerminalHandles.indexOf(terminal.handle),
+                      keyboardLift
+                    ).occlusion,
+                    metrics: controller.terminalKeyboardMetrics.get(terminal.handle),
+                    terminalFrameHeight:
+                      controller.getTerminalPaneViewport(terminal.handle).terminalFrameRef.current
+                        ?.height ?? 0
+                  })
+                : activeTerminalKeyboardLift
+          }
           terminalTheme={terminal.terminalTheme}
           textScale={terminalTextScale}
           onTextScaleChange={(scale) => {
@@ -232,6 +271,7 @@ export function MobileSessionActiveContent({
           onHaptic={handleHaptic}
           onTerminalInput={handleTerminalInput}
           onTerminalQueryReply={handleTerminalQueryReply}
+          onTerminalInteraction={handleTerminalInteraction}
           onTerminalTap={handleTerminalTap}
           onFileTap={handleFileTap}
           onOpenUrl={handleTerminalOpenUrl}
@@ -270,6 +310,9 @@ export function MobileSessionActiveContent({
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout
         notifyTerminalFrame({ width, height })
+        setPaneFrame((previous) =>
+          previous.width === width && previous.height === height ? previous : { width, height }
+        )
       }}
     >
       {content}

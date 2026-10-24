@@ -41,6 +41,8 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     clearDelayedActionTimers,
     showToast,
     clearTerminalCache,
+    setSplitTerminalHandles,
+    terminalPaneViewportsRef,
     fetchTerminals,
     ensureSessionTabs
   } = scope
@@ -50,6 +52,8 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     sessionTabActionSheetKeyboardHideSubRef.current?.remove()
     sessionTabActionSheetKeyboardHideSubRef.current = null
     clearTerminalCache()
+    setSplitTerminalHandles(null)
+    terminalPaneViewportsRef.current.clear()
     activeHandleRef.current = null
     activeSessionTabTypeRef.current = null
     pendingSelectionRef.current = null
@@ -89,6 +93,8 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     clearPendingLiveInputCommit,
     bufferedTerminalDraftState.clearPendingRestorations,
     clearTerminalCache,
+    setSplitTerminalHandles,
+    terminalPaneViewportsRef,
     hostId,
     bufferedTerminalDraftState.resetDrafts,
     worktreeId

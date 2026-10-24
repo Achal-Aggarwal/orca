@@ -41,8 +41,38 @@ export const PAGE_STORAGE_EXACT_KEYS = [
   /** Whether the terminal's command inputs offer autocorrect. */
   'orca:terminalAutocompleteEnabled',
   /** Whether a terminal link opens in Orca's browser or the phone's. */
-  'orca:terminalLinkOpenMode'
+  'orca:terminalLinkOpenMode',
+  /** The split terminal's chosen direction. */
+  'orca:terminalSplitLayout'
 ] as const
+
+/**
+ * Keys added after pages stopped sharing one allowlist with every host. An older page's `init`
+ * reader refines each key against its own list and refuses the whole frame on one it lacks, so
+ * the host sends these only to a page whose `ready` named them in `storageKeys`.
+ */
+export const NEGOTIATED_PAGE_STORAGE_KEYS = ['orca:terminalSplitLayout'] as const
+
+/** Whether a page that declared `storageKeys` (null: declared nothing) reads this key in `init`. */
+export function pageReadsStorageKey(key: string, declared: readonly string[] | null): boolean {
+  return (
+    !NEGOTIATED_PAGE_STORAGE_KEYS.some((negotiated) => negotiated === key) ||
+    (declared?.includes(key) ?? false)
+  )
+}
+
+/** The part of `init` storage the page on the other side can read. */
+export function pageStorageForReader(
+  held: PageStorageForInit,
+  declared: readonly string[] | null
+): PageStorageForInit {
+  return {
+    storage: Object.fromEntries(
+      Object.entries(held.storage).filter(([key]) => pageReadsStorageKey(key, declared))
+    ),
+    storageOversize: held.storageOversize.filter((key) => pageReadsStorageKey(key, declared))
+  }
+}
 
 export const PAGE_STORAGE_KEY_PREFIXES = [
   /** `orca:pins:<hostId>`: the pinned worktrees of the host whose list the page is showing. */

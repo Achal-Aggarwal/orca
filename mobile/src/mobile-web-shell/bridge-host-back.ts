@@ -11,6 +11,8 @@ import { BRIDGE_BACK_FRAME } from './bridge/bridge-page-back'
  */
 export type BridgeSessionBack = {
   readonly claimed: boolean
+  /** The negotiated storage keys the page's `ready` named; absent for a page that named none. */
+  readonly storageKeys?: readonly string[]
 }
 
 /**

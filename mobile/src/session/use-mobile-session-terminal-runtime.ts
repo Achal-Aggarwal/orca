@@ -1,3 +1,8 @@
+import {
+  terminalPaneViewport,
+  resolveTerminalPaneHandles,
+  type TerminalPaneViewport
+} from './mobile-terminal-pane-layout'
 import type { PendingSessionSelection } from './pending-session-selection'
 import { useState, useRef, useCallback } from 'react'
 import type { TerminalFrame } from '../terminal/terminal-webview-messages'
@@ -33,6 +38,7 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     client,
     clientId,
     sessionTabs,
+    terminals,
     setLiveInputCapture,
     liveInputTerminalHandles,
     liveInputTerminalHandlesRef,
@@ -57,6 +63,19 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
   // Why: measured once on mount, then passed with every subscribe so the server can auto-fit the PTY to phone dims.
   const viewportRef = useRef<{ cols: number; rows: number } | null>(null)
   const viewportMeasuredRef = useRef(false)
+  const terminalPaneViewportsRef = useRef(new Map<string, TerminalPaneViewport>())
+  const getTerminalPaneViewport = useCallback(
+    (handle: string) => terminalPaneViewport(terminalPaneViewportsRef.current, handle),
+    []
+  )
+  const [splitTerminalHandles, setSplitTerminalHandles] = useState<readonly string[] | null>(null)
+  const visibleTerminalHandles = resolveTerminalPaneHandles(
+    activeHandle,
+    splitTerminalHandles,
+    terminals.map((terminal) => terminal.handle)
+  )
+  const visibleTerminalHandlesRef = useRef<readonly string[]>([])
+  visibleTerminalHandlesRef.current = visibleTerminalHandles
   const terminalRefs = useRef<Map<string, TerminalWebViewHandle>>(new Map())
   const liveInputRef = useRef<TextInput>(null)
   const commandInputRef = useRef<TextInput>(null)
@@ -182,6 +201,12 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     connStateRef,
     viewportRef,
     viewportMeasuredRef,
+    terminalPaneViewportsRef,
+    getTerminalPaneViewport,
+    splitTerminalHandles,
+    setSplitTerminalHandles,
+    visibleTerminalHandles,
+    visibleTerminalHandlesRef,
     terminalRefs,
     liveInputRef,
     commandInputRef,

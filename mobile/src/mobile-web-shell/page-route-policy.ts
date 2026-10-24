@@ -207,11 +207,20 @@ export function routeViewOf(
   if (!servesWideLayout(entries, pathname, wide)) {
     return { pageRoutes: [], pageRouteGrants: [], routeGrants: [], ownsHostArea: false }
   }
-  const ownsHostArea = wide && pathname === root
-  // No pair for the host route in a wide detail session, so a hop there goes to the shell, which
+  const canOwnHostArea =
+    root !== null &&
+    pageCanOwnHostArea(entries, root) &&
+    (wide ||
+      entries.some(
+        (route) =>
+          route.canOwnHostAreaAcrossLayouts === true && matchesRoutePattern(root, route.pathname)
+      ))
+  // New pages keep ownership across rotation; legacy pages require the wide-only contract.
+  const ownsHostArea = canOwnHostArea && pathname === root
+  // No pair for the host route in an owned detail session, so a hop there goes to the shell, which
   // opens it owning the area rather than as a second host list in this pane.
   const paired =
-    wide && !ownsHostArea && root !== null
+    canOwnHostArea && !ownsHostArea && root !== null
       ? entries.filter((route) => !matchesRoutePattern(root, route.pathname))
       : entries
   return {
