@@ -5757,8 +5757,7 @@
                 "62e71f2d5d": "Crear espacio de trabajo para {{value0}}"
               }
             }
-          },
-          "project": {}
+          }
         },
         "sleep": {
           "worktree": {
