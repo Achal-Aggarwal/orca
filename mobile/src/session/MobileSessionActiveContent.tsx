@@ -234,7 +234,8 @@ export function MobileSessionActiveContent({
           title={terminal.title}
           onFrame={notifyTerminalPaneFrame}
           keyboardLift={
-            terminal.handle !== activeHandle
+            terminal.handle !== activeHandle &&
+            !(terminalSplitActive && visibleTerminalHandles.includes(terminal.handle))
               ? 0
               : terminalSplitActive
                 ? computeActiveTerminalKeyboardLift({

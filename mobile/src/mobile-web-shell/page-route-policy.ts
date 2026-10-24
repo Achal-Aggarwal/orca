@@ -209,12 +209,12 @@ export function routeViewOf(
   }
   const canOwnHostArea =
     root !== null &&
-    pageCanOwnHostArea(entries, root) &&
-    (wide ||
-      entries.some(
-        (route) =>
-          route.canOwnHostAreaAcrossLayouts === true && matchesRoutePattern(root, route.pathname)
-      ))
+    entries.some(
+      (route) =>
+        route.canOwnHostArea === true &&
+        matchesRoutePattern(root, route.pathname) &&
+        (wide || route.canOwnHostAreaAcrossLayouts === true)
+    )
   // New pages keep ownership across rotation; legacy pages require the wide-only contract.
   const ownsHostArea = canOwnHostArea && pathname === root
   // No pair for the host route in an owned detail session, so a hop there goes to the shell, which
