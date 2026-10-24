@@ -4,7 +4,7 @@ export function createBridgeClientTerminalKeys(
   publishClaim: (claimed: boolean, inputOwner?: string, toolbar?: BridgeTerminalToolbar) => void
 ) {
   const listeners = new Map<
-    (key: BridgeTerminalKeyId) => void,
+    (key: BridgeTerminalKeyId, inputOwner?: string) => void,
     { inputOwner?: string; toolbar?: BridgeTerminalToolbar }
   >()
   const publish = () => {
@@ -15,16 +15,16 @@ export function createBridgeClientTerminalKeys(
     accept: (key: BridgeTerminalKeyId, inputOwner?: string) => {
       for (const [listener, owner] of listeners) {
         if (owner.inputOwner === inputOwner) {
-          listener(key)
+          listener(key, inputOwner)
         }
       }
     },
     claim: (
-      listener: (key: BridgeTerminalKeyId) => void,
+      listener: (key: BridgeTerminalKeyId, inputOwner?: string) => void,
       inputOwner?: string,
       toolbar?: BridgeTerminalToolbar
     ) => {
-      const entry = (key: BridgeTerminalKeyId) => listener(key)
+      const entry = (key: BridgeTerminalKeyId, owner?: string) => listener(key, owner)
       listeners.set(entry, { inputOwner, toolbar })
       publish()
       const release = () => {
@@ -33,9 +33,10 @@ export function createBridgeClientTerminalKeys(
         }
       }
       return Object.assign(release, {
-        updateToolbar: (nextToolbar?: BridgeTerminalToolbar) => {
+        update: (nextInputOwner?: string, nextToolbar?: BridgeTerminalToolbar) => {
           const owner = listeners.get(entry)
-          if (owner && owner.toolbar !== nextToolbar) {
+          if (owner && (owner.inputOwner !== nextInputOwner || owner.toolbar !== nextToolbar)) {
+            owner.inputOwner = nextInputOwner
             owner.toolbar = nextToolbar
             publish()
           }

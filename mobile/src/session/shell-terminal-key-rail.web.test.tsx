@@ -60,7 +60,7 @@ function mount() {
   const keys: string[] = []
   bridge.client.mockReturnValue({
     onTerminalKeyRailUpdate: () => () => {},
-    getShellSession: () => ({ terminalKeyRail: keys, terminalKeyInputOwners: true }),
+    getShellSession: () => ({ terminalKeyRail: keys }),
     claimTerminalKeyRail: terminal.claim
   })
   function Native() {
@@ -72,7 +72,7 @@ function mount() {
     reportClaim = rail.reportClaim
     return rail.keys.length
       ? createElement(TerminalKeyRail, {
-          key: rail.inputOwner,
+          inputOwner: rail.inputOwner,
           keys: rail.keys,
           toolbar: rail.toolbar,
           onKey: () => true
@@ -124,10 +124,10 @@ it('keeps the native scroll view mounted across toolbar-only updates without rel
   }
 })
 
-it('still releases for a covered terminal and replaces ownership when the focused terminal changes', () => {
+it('updates pane ownership without releasing the rail and still releases when covered', () => {
   const { Page, frames, deliver, owner, terminal, onKey } = mount()
   act(() => page!.update(createElement(Page, { toolbar: initialToolbar, focusedTerminal: 'two' })))
-  expect(frames.map(([claimed]) => claimed)).toEqual([false, true])
+  expect(frames.map(([claimed]) => claimed)).toEqual([true])
   const nextOwner = frames.at(-1)?.[1]
   expect(nextOwner).not.toBe(owner)
   terminal.accept('enter', owner)

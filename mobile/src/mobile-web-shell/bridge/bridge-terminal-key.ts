@@ -18,8 +18,8 @@ export const BRIDGE_TERMINAL_KEY_RAIL_CLAIM_NOTIFY = 'terminal-key-rail-claim'
 /** Shell to page, a frame: one press of a key on the rail. */
 export const BRIDGE_TERMINAL_KEY_FRAME = 'terminalKey'
 
-/** Older pages reject the entire init frame for any rail key outside this vocabulary. */
-export const BRIDGE_LEGACY_TERMINAL_KEY_IDS = [
+/** The rail vocabulary declared by the optional terminalKeyRail grant. */
+export const BRIDGE_TERMINAL_KEY_IDS = [
   'escape',
   'tab',
   'shiftTab',
@@ -29,11 +29,7 @@ export const BRIDGE_LEGACY_TERMINAL_KEY_IDS = [
   'arrowRight',
   'enter',
   'ctrlC',
-  'paste'
-] as const
-
-export const BRIDGE_TERMINAL_KEY_IDS = [
-  ...BRIDGE_LEGACY_TERMINAL_KEY_IDS,
+  'paste',
   'space',
   'backspace',
   'delete',

@@ -309,7 +309,6 @@ const BridgeHostMessageSchema = z.union([
     foldDivision: salvagedOptional('foldDivision', BridgeFoldDivisionSchema).optional(),
     /** The keys the shell's rail shows beside this page, which then drops them from its own row.
      *  Absent reads as no rail. */
-    terminalKeyInputOwners: salvagedOptional('terminalKeyInputOwners', z.boolean()).optional(),
     terminalKeyRail: salvagedOptional('terminalKeyRail', BridgeTerminalKeyRailSchema).optional(),
     host: BridgeInitHostSchema.optional(),
     storage: BridgeInitStorageSchema.optional(),

@@ -168,7 +168,6 @@ export function createBridgeClientShellSession(args: {
               keyboardInset,
               pageGeometry,
               foldDivision,
-              terminalKeyInputOwners: message.terminalKeyInputOwners === true,
               terminalKeyRail
             }
       // Re-primed either way, because a second `init` is also how the page recovers a cache it has

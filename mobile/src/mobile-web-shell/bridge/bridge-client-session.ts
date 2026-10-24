@@ -37,7 +37,6 @@ export type BridgeShellSession = {
   pageGeometry: BridgePageGeometry
   foldDivision: BridgeFoldDivision | null
   /** The keys the shell's rail shows beside this page; empty for every shell before the field. */
-  terminalKeyInputOwners: boolean
   terminalKeyRail: BridgeTerminalKeyRail
   /** Null for a shell too old to name it; the page's own `loadHosts()` then answers with nothing. */
   host: BridgeInitHost | null
@@ -70,7 +69,6 @@ export function readShellSession(
     keyboardInset: message.keyboardInset ?? 0,
     pageGeometry: message.pageGeometry ?? EMPTY_PAGE_GEOMETRY,
     foldDivision: message.foldDivision ?? null,
-    terminalKeyInputOwners: message.terminalKeyInputOwners === true,
     terminalKeyRail: message.terminalKeyRail ?? [],
     host: message.host ?? null,
     storage: message.storage ?? {},

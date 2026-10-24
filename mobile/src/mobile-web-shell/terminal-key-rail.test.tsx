@@ -2,6 +2,7 @@ import { createElement, type ReactNode } from 'react'
 import { ScrollView } from 'react-native'
 import { act, create, type ReactTestInstance } from 'react-test-renderer'
 import { afterEach, expect, it, vi } from 'vitest'
+import { TERMINAL_ACCESSORY_KEY_DEFINITIONS } from '../terminal/terminal-key-definitions'
 import type { SideRailStrip } from '../layout/side-rail-strip'
 
 const outlet = vi.hoisted((): { node: ReactNode } => ({ node: null }))
@@ -147,19 +148,10 @@ function mount() {
   return { send, root, key }
 }
 const touch = (pageY: number) => ({ nativeEvent: { pageX: 20, pageY } })
-it('keeps init readable by pages that claim the rail without toolbar metadata', () => {
-  expect(terminalKeyRailKeys(100)).toEqual([
-    'escape',
-    'tab',
-    'shiftTab',
-    'arrowUp',
-    'arrowDown',
-    'arrowLeft',
-    'arrowRight',
-    'enter',
-    'ctrlC',
-    'paste'
-  ])
+it('publishes the complete key vocabulary even when only two buttons fit', () => {
+  expect([...terminalKeyRailKeys(100)].sort()).toEqual(
+    [...TERMINAL_ACCESSORY_KEY_DEFINITIONS.map((key) => key.id), 'paste'].sort()
+  )
   expect(terminalKeyRailKeys(0)).toEqual([])
 })
 
@@ -451,6 +443,20 @@ function mountRailHost() {
     cover: () => act(() => renderer!.update(createElement(TerminalKeyRailHost, { overlay: true })))
   }
 }
+
+it('keeps the scroll view mounted when the focused pane changes', () => {
+  const h = mountRailHost()
+  const scroll = renderer!.root.findByType(ScrollView)
+  h.claim('pane-b')
+  expect(renderer!.root.findByType(ScrollView)).toBe(scroll)
+  const arrow = h.arrow()
+  act(() => {
+    arrow.props.onPressIn(touch(20))
+    arrow.props.onPressOut()
+    arrow.props.onPress()
+  })
+  expect(h.bridge.sendTerminalKey).toHaveBeenCalledExactlyOnceWith('arrowUp', 'pane-b')
+})
 
 it('delivers a release tap across an equivalent serialized rail claim', () => {
   const h = mountRailHost()

@@ -141,7 +141,7 @@ it('carries toolbar state across both bridge ends and delivers toolbar actions o
   await pair.flush()
   expect(pressed).toEqual(['toggleKeyboard', 'custom:saved-1'])
   const updateStart = pair.toShell.length
-  release.updateToolbar({ ...toolbar, keyboardVisible: true })
+  release.update('toolbar-owner', { ...toolbar, keyboardVisible: true })
   await pair.flush()
   expect(
     pair.toShell
@@ -159,7 +159,7 @@ it('carries toolbar state across both bridge ends and delivers toolbar actions o
   await pair.flush()
   expect(pair.host.sendTerminalKey('toggleKeyboard', 'toolbar-owner')).toBe(false)
   const releaseEnd = pair.toShell.length
-  release.updateToolbar(toolbar)
+  release.update('toolbar-owner', toolbar)
   await pair.flush()
   expect(pair.toShell).toHaveLength(releaseEnd)
 })

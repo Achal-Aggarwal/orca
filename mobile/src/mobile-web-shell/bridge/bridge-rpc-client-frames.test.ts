@@ -132,7 +132,6 @@ describe('bridge client handshake', () => {
       keyboardInset: 0,
       foldDivision: null,
       pageGeometry: { occlusions: [], sideRail: false },
-      terminalKeyInputOwners: false,
       terminalKeyRail: [],
       // And no host and no stored keys, which is what `host-store.web.ts` then answers with.
       host: null,

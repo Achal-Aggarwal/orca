@@ -230,15 +230,42 @@ it('keeps attachment entry points and upload status, and switches to buffered in
   expect(h.button('Send command')).toBeDefined()
 })
 
-it('preserves the OS inset without adding input-row bottom padding or altering keyboard translation', () => {
+it.each([true, false])(
+  'preserves original non-Duo spacing and touch targets with live input %s',
+  (liveInputEnabled) => {
+    const h = harness()
+    h.render({ liveInputEnabled })
+    const dock = () => renderer!.root.findAll((node) => String(node.type) === 'View')[0]
+    const row = () => (liveInputEnabled ? h.focusRow() : h.button('Send command').parent!)
+    expect(style(dock()).paddingBottom).toBe(34)
+    expect(style(row())).toMatchObject({ minHeight: 46, paddingVertical: 6 })
+    expect(style(row()).paddingBottom).toBeUndefined()
+    for (const label of ['Attach a photo', 'Start voice dictation']) {
+      expect(style(h.button(label))).toMatchObject({ width: 34, height: 34 })
+    }
+    h.render({ liveInputEnabled, keyboardHeight: 334, keyboardLift: 300 })
+    expect(style(dock())).toMatchObject({ paddingBottom: 34, transform: [{ translateY: -300 }] })
+    h.render({ liveInputEnabled, insets: { ...h.base.insets, bottom: 0 } })
+    expect(style(dock()).paddingBottom).toBe(0)
+  }
+)
+
+it.each([
+  { sideRail: true, padAvailable: false, liveInputEnabled: true },
+  { sideRail: true, padAvailable: false, liveInputEnabled: false },
+  { sideRail: false, padAvailable: true, liveInputEnabled: true },
+  { sideRail: false, padAvailable: true, liveInputEnabled: false }
+])('keeps only Duo inputs compact in posture %j', (posture) => {
+  Object.assign(shellLayout, posture)
   const h = harness()
-  const dock = () => renderer!.root.findAll((node) => String(node.type) === 'View')[0]
-  expect(style(dock()).paddingBottom).toBe(34)
-  h.render({ keyboardHeight: 334, keyboardLift: 300 })
-  expect(style(dock())).toMatchObject({ paddingBottom: 34, transform: [{ translateY: -300 }] })
-  expect(style(h.focusRow()).paddingBottom).toBe(0)
-  h.render({ insets: { ...h.base.insets, bottom: 0 } })
-  expect(style(dock()).paddingBottom).toBe(6)
+  h.render({ liveInputEnabled: posture.liveInputEnabled, insets: { ...h.base.insets, bottom: 0 } })
+  const row = posture.liveInputEnabled ? h.focusRow() : h.button('Send command').parent!
+  expect(style(row)).toMatchObject({ minHeight: 40, paddingTop: 6, paddingBottom: 0 })
+  const dock = renderer!.root.findAll((node) => String(node.type) === 'View')[0]
+  expect(style(dock).paddingBottom).toBe(6)
+  for (const label of ['Attach a photo', 'Start voice dictation']) {
+    expect(style(h.button(label))).toMatchObject({ width: 34, height: 34 })
+  }
 })
 
 it.each([

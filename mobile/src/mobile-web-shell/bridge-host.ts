@@ -256,8 +256,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     ...(options.sessionBack === undefined ? {} : { established: options.sessionBack })
   })
 
-  let railOwner: string | undefined
-  let railClaimed = false
+  let railOwner = options.sessionBack?.terminalKeyRailClaim?.inputOwner
+  let railClaimed = options.sessionBack?.terminalKeyRailClaim !== undefined
   type RailClaim = NonNullable<BridgeHostOptions['onTerminalKeyRailClaim']>
   const reportRailClaim: RailClaim = (claimed, inputOwner, toolbar) => {
     railClaimed = claimed
@@ -400,7 +400,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     sendBack: back.send,
     readSessionBack: () => ({
       ...back.read(),
-      ...(pageStorageKeys === null ? {} : { storageKeys: pageStorageKeys })
+      ...(pageStorageKeys === null ? {} : { storageKeys: pageStorageKeys }),
+      ...(railClaimed ? { terminalKeyRailClaim: { inputOwner: railOwner } } : {})
     }),
     dispose
   }

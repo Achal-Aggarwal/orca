@@ -106,12 +106,12 @@ export function normalizeTerminalAccessoryLayoutPreference(
     return fallback
   }
 
-  const candidate = value as {
-    version?: unknown
-    orderedBuiltInIds?: unknown
-    visibleBuiltInIds?: unknown
-    knownBuiltInIds?: unknown
-    directionPadEnabled?: unknown
+  const candidate = {
+    version: 'version' in value ? value.version : undefined,
+    orderedBuiltInIds: 'orderedBuiltInIds' in value ? value.orderedBuiltInIds : undefined,
+    visibleBuiltInIds: 'visibleBuiltInIds' in value ? value.visibleBuiltInIds : undefined,
+    knownBuiltInIds: 'knownBuiltInIds' in value ? value.knownBuiltInIds : undefined,
+    directionPadEnabled: 'directionPadEnabled' in value ? value.directionPadEnabled : undefined
   }
   const builtInSet = new Set(currentBuiltInIds)
 

@@ -64,7 +64,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
             onPress={requestLeaveSession}
           />
 
-          {!sideRail || !hasTabs ? (
+          {!sideRail || !hasTabs || showConnectionRetry ? (
             <View
               style={[styles.sessionTitleBlock, tabsInTopBar && styles.sessionTitleBlockBesideTabs]}
             >

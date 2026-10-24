@@ -156,12 +156,13 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
             paddingBottom:
               sideRail && keyboardHeight === 0 && keyboardLift === 0
                 ? spacing.xs + 2
-                : Math.max(insets.bottom, spacing.xs + 2),
+                : sideRail || padAvailable
+                  ? Math.max(insets.bottom, spacing.xs + 2)
+                  : insets.bottom,
             transform: [{ translateY: -keyboardLift }]
           }
         ]}
       >
-        {/* Accessory keys */}
         {!railKeys.includes('toggleKeyboard') && (
           <View ref={accessoryBarKeepsKeyboard} style={styles.accessoryBar}>
             {/* Why: fixed keyboard escape hatch; outside ScrollView + shortcut path so it can't scroll away or be hidden (#5106). */}
@@ -342,11 +343,10 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
           </View>
         )}
 
-        {/* Input bar */}
         {liveInputEnabled ? (
-          <MobileTerminalLiveInputRow controller={controller} />
+          <MobileTerminalLiveInputRow controller={controller} compact={sideRail || padAvailable} />
         ) : (
-          <View style={styles.inputBar}>
+          <View style={[styles.inputBar, (sideRail || padAvailable) && styles.compactInputBar]}>
             <TextInput
               ref={bindCommandField}
               // Why: Android caches IME inputType at mount, so toggling autocomplete must remount there; iOS updates in place.

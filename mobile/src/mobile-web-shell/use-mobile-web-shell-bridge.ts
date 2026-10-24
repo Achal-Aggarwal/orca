@@ -1,4 +1,8 @@
-import type { BridgeTerminalToolbar } from './bridge/bridge-terminal-key'
+import type {
+  BridgeTerminalToolbar,
+  BridgeTerminalKeyId,
+  BridgeTerminalKeyRail
+} from './bridge/bridge-terminal-key'
 import type { BridgePageGeometry } from './bridge/bridge-page-geometry'
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type {
@@ -13,7 +17,6 @@ import type { BridgeInitRoute } from './bridge/bridge-envelope'
 import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
 import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
 import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
-import type { BridgeTerminalKeyId, BridgeTerminalKeyRail } from './bridge/bridge-terminal-key'
 import type { BridgeHapticsKind } from './bridge/bridge-haptics-notify'
 import { createBridgeHost, type BridgeHost } from './bridge-host'
 import type { BridgeSessionBack } from './bridge-host-back'

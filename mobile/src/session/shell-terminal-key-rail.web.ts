@@ -56,12 +56,12 @@ export function useShellTerminalKeyRail(
       return
     }
     const claim = client.claimTerminalKeyRail(
-      (key) => {
-        if (ownerRef.current === inputOwner) {
+      (key, receivedOwner) => {
+        if (ownerRef.current === receivedOwner) {
           onKeyRef.current(key)
         }
       },
-      client.getShellSession()?.terminalKeyInputOwners ? inputOwner : undefined,
+      ownerRef.current,
       toolbarRef.current
     )
     claimRef.current = claim
@@ -69,9 +69,9 @@ export function useShellTerminalKeyRail(
       claimRef.current = null
       claim()
     }
-  }, [client, claiming, inputOwner])
+  }, [client, claiming])
   useLayoutEffect(() => {
-    claimRef.current?.updateToolbar(toolbar)
-  }, [toolbar])
+    claimRef.current?.update(inputOwner, toolbar)
+  }, [inputOwner, toolbar])
   return claiming ? keys : NO_RAIL_KEYS
 }

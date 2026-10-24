@@ -144,13 +144,17 @@ export const mobileSessionCommandInputStyles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 40,
-    paddingTop: spacing.xs + 2,
-    paddingBottom: 0,
+    minHeight: 46,
+    paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.borderSubtle,
     backgroundColor: colors.bgPanel
+  },
+  compactInputBar: {
+    minHeight: 40,
+    paddingTop: spacing.xs + 2,
+    paddingBottom: 0
   },
   textInput: {
     flex: 1,

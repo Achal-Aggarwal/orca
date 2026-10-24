@@ -36,7 +36,7 @@ export function useShellTerminalKeyRail(
   useSideRailContent(
     keys.length
       ? createElement(TerminalKeyRail, {
-          key: focusedTerminal,
+          inputOwner: focusedTerminal,
           keys,
           toolbar,
           onKey: (key) => {

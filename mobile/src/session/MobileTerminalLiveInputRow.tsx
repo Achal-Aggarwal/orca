@@ -10,9 +10,11 @@ import { styles } from './mobile-session-styles'
 import type { MobileSessionController } from './use-mobile-session-controller'
 
 export function MobileTerminalLiveInputRow({
-  controller
+  controller,
+  compact = false
 }: {
   controller: MobileSessionController
+  compact?: boolean
 }) {
   const {
     canSend,
@@ -38,7 +40,10 @@ export function MobileTerminalLiveInputRow({
   const rowKeepsKeyboard = useKeyboardPersistingTaps('always')
   const keyboardVisible = keyboardHeight > 0 || keyboardLift > 0
   return (
-    <View ref={rowKeepsKeyboard} style={[styles.inputBar, styles.liveInputBar]}>
+    <View
+      ref={rowKeepsKeyboard}
+      style={[styles.inputBar, compact && styles.compactInputBar, styles.liveInputBar]}
+    >
       <Pressable
         style={({ pressed }) => [
           styles.liveInputFocusTarget,

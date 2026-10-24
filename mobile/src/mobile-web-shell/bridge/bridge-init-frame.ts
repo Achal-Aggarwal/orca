@@ -99,7 +99,6 @@ export function createBridgeInitFrame(args: {
       ? {}
       : { foldDivision: { ...args.foldDivision } }),
     ...(args.refreshTerminalShortcuts ? { refreshTerminalShortcuts: true } : {}),
-    terminalKeyInputOwners: true,
     ...(args.terminalKeyRail === undefined || args.terminalKeyRail.length === 0
       ? {}
       : { terminalKeyRail: [...args.terminalKeyRail] }),

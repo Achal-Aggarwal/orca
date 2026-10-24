@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
@@ -25,7 +25,6 @@ import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { TerminalDirectionPad, type TerminalDirectionPadHandle } from './terminal-direction-pad'
 import {
   sameTerminalKeyRailToolbar,
-  BRIDGE_LEGACY_TERMINAL_KEY_IDS,
   BRIDGE_TERMINAL_KEY_IDS,
   BRIDGE_TERMINAL_TOOLBAR_KEY_IDS,
   type BridgeTerminalToolbar,
@@ -51,10 +50,7 @@ const RAIL_KEYS = BRIDGE_TERMINAL_KEY_IDS.flatMap((id) => {
 })
 
 function selectedRailKeys(toolbar?: BridgeTerminalToolbar) {
-  if (!toolbar) {
-    return RAIL_KEYS.filter((key) => BRIDGE_LEGACY_TERMINAL_KEY_IDS.some((id) => id === key.id))
-  }
-  if (!toolbar.visibleBuiltInIds) {
+  if (!toolbar?.visibleBuiltInIds) {
     return RAIL_KEYS
   }
   const selected = new Set(toolbar.visibleBuiltInIds)
@@ -95,11 +91,13 @@ export function terminalKeyRailKeys(
 export function TerminalKeyRail({
   keys,
   onKey,
-  toolbar
+  toolbar,
+  inputOwner
 }: {
   keys: BridgeTerminalKeyRail
   onKey: (key: BridgeTerminalKeyId) => boolean
   toolbar?: BridgeTerminalToolbar
+  inputOwner?: string | null
 }) {
   const [repeat] = useState(() => createTerminalAccessoryRepeatController<BridgeTerminalKeyId>())
   const padRef = useRef<TerminalDirectionPadHandle | null>(null)
@@ -114,6 +112,7 @@ export function TerminalKeyRail({
     repeat.cancel()
     padRef.current?.cancel()
   }, [repeat])
+  useLayoutEffect(cancelGesture, [cancelGesture, inputOwner])
   useEffect(() => cancelGesture, [cancelGesture, keys, showPad, pinPad])
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -373,7 +372,7 @@ export function usePublishedShellKeyRail(
     () =>
       keys.length > 0 ? (
         <TerminalKeyRail
-          key={inputOwner}
+          inputOwner={inputOwner}
           keys={keys}
           toolbar={toolbar}
           onKey={(key) => sendRef.current(key, inputOwner)}
