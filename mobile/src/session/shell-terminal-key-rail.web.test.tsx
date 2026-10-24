@@ -1,9 +1,12 @@
-import { createElement } from 'react'
+import { createElement, startTransition, Suspense } from 'react'
 import { ScrollView } from 'react-native'
 import { act, create } from 'react-test-renderer'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createBridgeClientTerminalKeys } from '../mobile-web-shell/bridge/bridge-client-terminal-keys'
-import type { BridgeTerminalToolbar } from '../mobile-web-shell/bridge/bridge-terminal-key'
+import type {
+  BridgeTerminalKeyId,
+  BridgeTerminalToolbar
+} from '../mobile-web-shell/bridge/bridge-terminal-key'
 
 const bridge = vi.hoisted(() => ({ client: vi.fn() }))
 vi.mock('../transport/client-context.web', () => ({ usePageBridgeClient: bridge.client }))
@@ -146,3 +149,70 @@ it('updates pane ownership without releasing the rail and still releases when co
   deliver()
   expect(native!.root.findAllByType(ScrollView)).toHaveLength(0)
 })
+
+it.each(['one', 'two'])(
+  'keeps committed bridge input while a transition to pane %s is suspended',
+  (nextTerminal) => {
+    let owner: string | undefined
+    const terminal = createBridgeClientTerminalKeys((_claimed, inputOwner) => {
+      owner = inputOwner
+    })
+    const session = { terminalKeyRail: [], terminalKeyInputOwners: true }
+    bridge.client.mockReturnValue({
+      onTerminalKeyRailUpdate: () => () => {},
+      getShellSession: () => session,
+      claimTerminalKeyRail: terminal.claim
+    })
+    const committed = vi.fn()
+    const next = vi.fn()
+    const pending = new Promise<void>(() => {})
+    function Dock({
+      callback,
+      focusedTerminal = 'one',
+      suspend = false
+    }: {
+      callback: (key: BridgeTerminalKeyId) => void
+      focusedTerminal?: string
+      suspend?: boolean
+    }) {
+      useShellTerminalKeyRail(true, callback, focusedTerminal, initialToolbar)
+      if (suspend) {
+        throw pending
+      }
+      return null
+    }
+    act(() => {
+      page = create(
+        <Suspense fallback={null}>
+          <Dock callback={committed} />
+        </Suspense>
+      )
+    })
+    const committedOwner = owner
+    act(() => {
+      startTransition(() =>
+        page!.update(
+          <Suspense fallback={null}>
+            <Dock callback={next} focusedTerminal={nextTerminal} suspend />
+          </Suspense>
+        )
+      )
+    })
+    expect(owner).toBe(committedOwner)
+    act(() => terminal.accept('enter', committedOwner))
+    expect({ committed: committed.mock.calls, uncommitted: next.mock.calls }).toEqual({
+      committed: [['enter']],
+      uncommitted: []
+    })
+    act(() => {
+      page!.update(
+        <Suspense fallback={null}>
+          <Dock callback={next} focusedTerminal={nextTerminal} />
+        </Suspense>
+      )
+    })
+    act(() => terminal.accept('tab', owner))
+    expect(committed).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledExactlyOnceWith('tab')
+  }
+)

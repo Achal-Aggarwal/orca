@@ -45,12 +45,14 @@ export function useShellTerminalKeyRail(
   const claiming = shown && focused
   const inputOwner = useMemo(() => `rail-${++nextInputOwner}`, [focusedTerminal, claiming])
   const ownerRef = useRef(inputOwner)
-  ownerRef.current = inputOwner
   const onKeyRef = useRef(onKey)
-  onKeyRef.current = onKey
   const toolbarRef = useRef(toolbar)
-  toolbarRef.current = toolbar
   const claimRef = useRef<ReturnType<typeof client.claimTerminalKeyRail> | null>(null)
+  useLayoutEffect(() => {
+    ownerRef.current = inputOwner
+    onKeyRef.current = onKey
+    toolbarRef.current = toolbar
+  }, [inputOwner, onKey, toolbar])
   useLayoutEffect(() => {
     if (!claiming) {
       return
