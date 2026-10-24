@@ -117,6 +117,34 @@ describe('the page declaring it can own the host area', () => {
     expect(routeViewOf(flagOnly, HOST_ROUTE, false).ownsHostArea).toBe(false)
     expect(routeViewOf(flagOnly, HOST_ROUTE, true).ownsHostArea).toBe(false)
   })
+
+  it.each(['/h/[hostId]', '/h/[...page]'])(
+    'does not combine ownership declarations from a separate matching %s route',
+    (acrossLayoutsPattern) => {
+      const [host, ...details] = desktopRoutes(true)
+      const routes = [
+        host!,
+        {
+          pathname: acrossLayoutsPattern,
+          grants: ['navigate'],
+          canOwnHostAreaAcrossLayouts: true
+        },
+        ...details
+      ]
+      const parsed = MobileWebBundleManifestReadSchema.parse({
+        ...MANIFEST_WIRE,
+        buildId: computeMobileWebBundleId(MANIFEST_WIRE.assets),
+        routes
+      })
+      expect(routeViewOf(parsed.routes, HOST_ROUTE, false).ownsHostArea).toBe(false)
+      expect(routeViewOf(parsed.routes, HOST_ROUTE, true).ownsHostArea).toBe(true)
+      expect(
+        routeViewOf(parsed.routes, '/h/host-1/session/wt-1', false).pageRouteGrants.map(
+          (pair) => pair.pathname
+        )
+      ).toContain('/h/[hostId]')
+    }
+  )
 })
 
 describe('the wide host-area session', () => {

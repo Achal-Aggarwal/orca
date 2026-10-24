@@ -20,13 +20,23 @@ vi.mock('react-native', () => ({
   View: hosts.View,
   Text: hosts.Text,
   Pressable: hosts.Pressable,
+  ActivityIndicator: hosts.View,
+  Animated: { View: hosts.View },
   StyleSheet: {
     create: <T,>(value: T) => value,
     absoluteFillObject: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }
   }
 }))
 vi.mock('../terminal/TerminalWebView', () => ({ TerminalWebView: hosts.TerminalWebView }))
+vi.mock('../storage/preferences', () => ({ saveTerminalTextScale: () => Promise.resolve() }))
+vi.mock('../browser/MobileBrowserPane', () => ({ MobileBrowserPane: () => null }))
+vi.mock('./MobileNativeChatOverlay', () => ({ MobileNativeChatOverlay: () => null }))
+vi.mock('./MobileSessionFileReader', () => ({ FileReader: () => null }))
+vi.mock('./MobileSessionMarkdownReader', () => ({ MarkdownReader: () => null }))
+vi.mock('./mobile-session-styles', () => ({ styles: {} }))
 import { TerminalPaneView } from './TerminalPaneView'
+import { MobileSessionActiveContent } from './MobileSessionActiveContent'
+import { terminalPaneViewport } from './mobile-terminal-pane-layout'
 
 type Props = Parameters<typeof TerminalPaneView>[0]
 
@@ -76,6 +86,99 @@ it.each([0, 1])(
       expect(bottom).toBe(index * 100 + 100)
       expect(bottom).toBeGreaterThan(outerStyle.top + 28)
       expect(bottom).toBeLessThanOrEqual(200)
+    } finally {
+      act(() => renderer?.unmount())
+    }
+  }
+)
+
+it.each(['stacked', 'side-by-side'] as const)(
+  'keeps visible %s terminal content above the keyboard independently of input focus',
+  (layout) => {
+    const frame = { width: 900, height: 500 }
+    const terminalHeight = layout === 'stacked' ? 222 : 472
+    const visibleHeight = layout === 'stacked' ? 72 : 172
+    const expectedLift = layout === 'stacked' ? 150 : 300
+    const geometry = new Map()
+    for (const handle of ['a', 'b', 'c']) {
+      terminalPaneViewport(geometry, handle).terminalFrameRef.current = {
+        width: layout === 'stacked' ? 900 : 450,
+        height: terminalHeight
+      }
+    }
+    const controller = mountFixture<Parameters<typeof MobileSessionActiveContent>[0]['controller']>(
+      {
+        terminals: ['a', 'b', 'c'].map((handle) => ({ handle, title: handle })),
+        activeHandle: 'a',
+        terminalSplitActive: true,
+        terminalSplitLayout: layout,
+        visibleTerminalHandles: ['a', 'b'],
+        terminalKeyboardMetrics: new Map([
+          ['a', { rows: 10, rowPitch: 5, cursorY: 2, contentBottomRow: 2, altScreen: false }],
+          [
+            'b',
+            {
+              rows: 40,
+              rowPitch: terminalHeight / 40,
+              cursorY: 39,
+              contentBottomRow: 39,
+              altScreen: true
+            }
+          ]
+        ]),
+        getTerminalPaneViewport: (handle) => terminalPaneViewport(geometry, handle),
+        keyboardLift: 0,
+        activeTerminalKeyboardLift: 0,
+        notifyTerminalFrame: vi.fn(),
+        dictation: { isRecording: false },
+        nativeChatSendError: { message: null, clear: vi.fn() }
+      }
+    )
+    let renderer!: ReturnType<typeof create>
+    const render = (activeHandle: string, keyboardLift: number) => {
+      const element = createElement(MobileSessionActiveContent, {
+        controller: { ...controller, activeHandle, keyboardLift }
+      })
+      act(() => {
+        if (renderer) {
+          renderer.update(element)
+        } else {
+          renderer = create(element)
+        }
+      })
+    }
+    const terminalStyle = (handle: string) => {
+      const pane = renderer.root
+        .findAllByType(TerminalPaneView)
+        .find((item) => item.props.handle === handle)!
+      const terminal = pane.findByType(hosts.TerminalWebView)
+      return Object.assign({}, ...terminal.props.style.filter(Boolean))
+    }
+    try {
+      render('a', 0)
+      act(() => {
+        renderer.root
+          .findAllByType(hosts.View)[0]
+          .props.onLayout({ nativeEvent: { layout: frame } })
+      })
+      for (const focused of ['a', 'b', 'a']) {
+        render(focused, 300)
+        expect(terminalStyle('a').transform).toBeUndefined()
+        expect(terminalStyle('b').transform).toEqual([{ translateY: -expectedLift }])
+        expect(terminalStyle('c').transform).toBeUndefined()
+        for (const pane of renderer.root.findAllByType(TerminalPaneView).slice(0, 2)) {
+          const [outer, clip, measured] = pane.findAllByType(hosts.View)
+          const outerStyle = Object.assign({}, ...outer.props.style.filter(Boolean))
+          expect(outerStyle.height - 28).toBe(visibleHeight)
+          expect(clip.props.style.overflow).toBe('hidden')
+          expect(measured.props.style.height).toBe(terminalHeight)
+        }
+        expect(terminalHeight + terminalStyle('b').transform[0].translateY).toBe(visibleHeight)
+      }
+      render('a', 0)
+      expect(terminalStyle('a').transform).toBeUndefined()
+      expect(terminalStyle('b').transform).toBeUndefined()
+      expect(terminalStyle('c').transform).toBeUndefined()
     } finally {
       act(() => renderer?.unmount())
     }
