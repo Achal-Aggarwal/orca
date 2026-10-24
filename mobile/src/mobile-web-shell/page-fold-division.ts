@@ -85,7 +85,10 @@ export function usePageFoldDivision(): {
     }),
     [frame, occlusions, sideRail, directionPadAvailable]
   )
-  const safeAreaInsets = measuredPageSafeAreaInsets(windowSafeArea, frame, insets)
+  const safeAreaInsets = useMemo(
+    () => measuredPageSafeAreaInsets(windowSafeArea, frame, insets),
+    [windowSafeArea, frame, insets]
+  )
   return { division, geometry, safeAreaInsets, rootRef, onShellLayout }
 }
 

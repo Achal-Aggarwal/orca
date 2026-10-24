@@ -183,7 +183,7 @@ export function TerminalShortcutSettings({
           <View style={styles.rowContent}>
             <Text style={styles.rowLabel}>Show D-pad</Text>
             <Text style={styles.rowSublabel}>
-              Pin the direction pad in the right rail. Arrow shortcuts below are independent.
+              Pin the direction pad in the side rail. Arrow shortcuts below are independent.
             </Text>
           </View>
           <Switch

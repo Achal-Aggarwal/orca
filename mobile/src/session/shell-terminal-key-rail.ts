@@ -3,7 +3,7 @@ import type {
   BridgeTerminalKeyId,
   BridgeTerminalKeyRail
 } from '../mobile-web-shell/bridge/bridge-terminal-key'
-import { createElement, useCallback, useMemo, useState } from 'react'
+import { createElement, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
 import { useSideRailContent, useSideRailStrip } from '../layout/side-rail'
 import { TerminalKeyRail, terminalKeyRailKeys } from '../mobile-web-shell/terminal-key-rail'
@@ -33,18 +33,28 @@ export function useShellTerminalKeyRail(
     () => (shown && focused && height > 0 ? terminalKeyRailKeys(height, toolbar) : NO_RAIL_KEYS),
     [shown, focused, height, toolbar]
   )
-  useSideRailContent(
-    keys.length
-      ? createElement(TerminalKeyRail, {
-          inputOwner: focusedTerminal,
-          keys,
-          toolbar,
-          onKey: (key) => {
-            onKey(key)
-            return true
-          }
-        })
-      : null
+  const inputRef = useRef({ onKey, focusedTerminal })
+  useLayoutEffect(() => {
+    inputRef.current = { onKey, focusedTerminal }
+  }, [onKey, focusedTerminal])
+  const node = useMemo(
+    () =>
+      keys.length
+        ? createElement(TerminalKeyRail, {
+            inputOwner: focusedTerminal,
+            keys,
+            toolbar,
+            onKey: (key) => {
+              if (inputRef.current.focusedTerminal !== focusedTerminal) {
+                return false
+              }
+              inputRef.current.onKey(key)
+              return true
+            }
+          })
+        : null,
+    [keys, focusedTerminal, toolbar]
   )
+  useSideRailContent(node)
   return keys
 }
