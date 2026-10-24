@@ -17,6 +17,7 @@ import {
 } from './runtime-file-routing'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 import { chatScratchFileAddress } from './runtime-chat-scratch-file-address'
+import { mediaFileMimeType } from '../../../shared/media-file-extensions'
 import { isAgentSessionAttachmentStorePath } from '../../../shared/agent-session-attachments'
 import type { LocalFileAccess } from '../../../shared/local-file-access'
 import {
@@ -86,6 +87,18 @@ export async function readRuntimeFileContent({
     worktree: scratch?.worktreeSelector ?? toRuntimeWorktreeSelector(worktreeId),
     relativePath: readPath
   })
+  if (mediaFileMimeType(readPath)) {
+    // Main streams the file by range; null means this client has no media bridge.
+    const media = await window.api.fs.readRuntimeMediaPreview({
+      environmentId: remote.target.environmentId,
+      worktree: remote.worktree,
+      relativePath: readPath,
+      expectedEnvironmentPairingRevision: remote.expectedEnvironmentPairingRevision
+    })
+    if (media) {
+      return media
+    }
+  }
   let result: RuntimeFileReadResult
   try {
     result = await callRuntimeRpc<RuntimeFileReadResult>(
