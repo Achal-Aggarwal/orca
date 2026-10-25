@@ -1,7 +1,18 @@
+import { useState } from 'react'
 import { View, Text, Pressable } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, Folder, GitBranch, MoreHorizontal, PanelLeftOpen } from 'lucide-react-native'
+import {
+  ChevronLeft,
+  Folder,
+  GitBranch,
+  MoreHorizontal,
+  PanelLeftOpen,
+  Columns2,
+  Plus,
+  SquareChevronRight
+} from 'lucide-react-native'
 import { MobileSessionHeaderIconButton } from './MobileSessionHeaderIconButton'
+import { MobileSessionHeaderMoreActionsSheet } from './MobileSessionHeaderMoreActionsSheet'
 import { MobileSessionTabStrip } from './MobileSessionTabStrip'
 import { StatusDot } from '../components/StatusDot'
 import { styles } from './mobile-session-styles'
@@ -27,16 +38,35 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
     connectionEscalated,
     terminalSummary,
     handlePanelTap,
-    showHeaderMoreButton
+    showHeaderMoreButton,
+    showHeaderMoreActions,
+    showAgentSessionHistoryAction,
+    showChecksAction,
+    openAgentSessionHistory,
+    canSplitTerminals,
+    terminalSplitActive,
+    setShowTerminalLayout,
+    connState,
+    createTabBusy,
+    handleOpenNewTab,
+    handleOpenQuickCommands
   } = controller
+  const layout = useResponsiveLayout()
+  const [headerWidth, setHeaderWidth] = useState<number | null>(null)
   const revealSidebar = useHostSidebarReveal()
   const topChrome = useTopChromeSpace()
   const sideRail = useShellSideRail()
   // Why: a sideways phone is ~390pt tall, so the tabs share the top bar instead of taking a second row.
   const hasTabs = visibleTabs.length > 0
-  const tabsInTopBar = (useResponsiveLayout().isLandscapePhone || sideRail) && hasTabs
+  const tabsInTopBar = (layout.isLandscapePhone || sideRail) && hasTabs
+  // Six 44pt controls otherwise leave less than two readable tabs on a narrow header.
+  const actionsCollapsed = tabsInTopBar && (headerWidth ?? layout.width) < 600
   const tabStrip = hasTabs ? (
-    <MobileSessionTabStrip controller={controller} inTopBar={tabsInTopBar} />
+    <MobileSessionTabStrip
+      controller={controller}
+      inTopBar={tabsInTopBar}
+      actionsCollapsed={actionsCollapsed}
+    />
   ) : null
   return (
     <View ref={topChrome.ref} onLayout={topChrome.onLayout}>
@@ -51,7 +81,13 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
         ]}
         edges={topChrome.space ? [] : ['top']}
       >
-        <View style={styles.sessionTopBar}>
+        <View
+          style={styles.sessionTopBar}
+          onLayout={(event) => {
+            const width = event.nativeEvent.layout.width
+            setHeaderWidth((previous) => (previous === width ? previous : width))
+          }}
+        >
           {revealSidebar ? (
             <MobileSessionHeaderIconButton
               accessibilityLabel="Show sidebar"
@@ -91,7 +127,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
             </View>
           ) : null}
           {tabsInTopBar ? tabStrip : null}
-          {!isFloatingWorkspaceRoute && (
+          {!actionsCollapsed && !isFloatingWorkspaceRoute && (
             <MobileSessionHeaderIconButton
               active={activePanel === 'files'}
               accessibilityLabel="Open file explorer"
@@ -99,7 +135,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
               onPress={() => handlePanelTap('files')}
             />
           )}
-          {!isFolderWorkspaceRoute && !isFloatingWorkspaceRoute && (
+          {!isFolderWorkspaceRoute && !actionsCollapsed && !isFloatingWorkspaceRoute && (
             <MobileSessionHeaderIconButton
               active={activePanel === 'sourceControl'}
               accessibilityLabel="Open source control"
@@ -107,9 +143,9 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
               onPress={() => handlePanelTap('sourceControl')}
             />
           )}
-          {showHeaderMoreButton ? (
+          {actionsCollapsed || showHeaderMoreButton ? (
             <MobileSessionHeaderIconButton
-              active={activePanel === 'pr'}
+              active={activePanel === 'pr' || (actionsCollapsed && activePanel !== null)}
               accessibilityLabel="More session actions"
               icon={MoreHorizontal}
               onPress={() => setShowHeaderMoreActions(true)}
@@ -119,6 +155,64 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
 
         {tabsInTopBar ? null : tabStrip}
       </SafeAreaView>
+      <MobileSessionHeaderMoreActionsSheet
+        visible={showHeaderMoreActions}
+        showAgentSessionHistory={showAgentSessionHistoryAction}
+        showChecks={showChecksAction}
+        onOpenAgentSessionHistory={openAgentSessionHistory}
+        onOpenChecks={() => handlePanelTap('pr')}
+        onClose={() => setShowHeaderMoreActions(false)}
+        additionalActions={
+          actionsCollapsed
+            ? [
+                ...(canSplitTerminals || terminalSplitActive
+                  ? [
+                      {
+                        label: 'Terminal layout',
+                        icon: Columns2,
+                        closeBeforePress: true,
+                        onPress: () => setShowTerminalLayout(true)
+                      }
+                    ]
+                  : []),
+                {
+                  label: 'New tab',
+                  icon: Plus,
+                  disabled: createTabBusy || connState !== 'connected',
+                  closeBeforePress: true,
+                  onPress: handleOpenNewTab
+                },
+                {
+                  label: 'Quick commands',
+                  icon: SquareChevronRight,
+                  disabled: createTabBusy || connState !== 'connected',
+                  closeBeforePress: true,
+                  onPress: handleOpenQuickCommands
+                },
+                ...(!isFloatingWorkspaceRoute
+                  ? [
+                      {
+                        label: 'File explorer',
+                        icon: Folder,
+                        closeBeforePress: true,
+                        onPress: () => handlePanelTap('files')
+                      }
+                    ]
+                  : []),
+                ...(!isFolderWorkspaceRoute && !isFloatingWorkspaceRoute
+                  ? [
+                      {
+                        label: 'Source control',
+                        icon: GitBranch,
+                        closeBeforePress: true,
+                        onPress: () => handlePanelTap('sourceControl')
+                      }
+                    ]
+                  : [])
+              ]
+            : []
+        }
+      />
     </View>
   )
 }

@@ -41,7 +41,11 @@ export function useMobileSessionPanelRouteActions(scope: MobileSessionPresentati
     agentSessionHistorySupported,
     clearDeliveredDiffComments,
     sendDiffNotesToNewAgent,
-    handleCreateTerminal
+    handleCreateTerminal,
+    setCreateError,
+    setShowQuickCommands,
+    quickCommandsSupported,
+    showToast
   } = scope
   const otherRuntimeAgentRow = {
     label: 'Agents on Another Server',
@@ -193,6 +197,22 @@ export function useMobileSessionPanelRouteActions(scope: MobileSessionPresentati
   })
   const showHeaderMoreButton = showAgentSessionHistoryAction || showChecksAction
   const createTabBusy = creating || creatingBrowser || creatingMarkdown
+  const handleOpenNewTab = () => {
+    setCreateError('')
+    setShowCreateTabDrawer(true)
+  }
+  const handleOpenQuickCommands = () => {
+    if (quickCommandsSupported === true) {
+      setShowQuickCommands(true)
+      return
+    }
+    showToast(
+      quickCommandsSupported === false
+        ? 'Desktop update required for quick commands'
+        : 'Checking desktop capabilities — try again in a moment',
+      1600
+    )
+  }
   return {
     createTabAgentActions,
     sendDiffNotesAgentActions,
@@ -202,7 +222,9 @@ export function useMobileSessionPanelRouteActions(scope: MobileSessionPresentati
     showAgentSessionHistoryAction,
     showChecksAction,
     showHeaderMoreButton,
-    createTabBusy
+    createTabBusy,
+    handleOpenNewTab,
+    handleOpenQuickCommands
   }
 }
 

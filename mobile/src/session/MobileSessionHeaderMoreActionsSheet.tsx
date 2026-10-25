@@ -1,10 +1,11 @@
 import { ListChecks } from 'lucide-react-native'
 import { MobileAgentSessionHistoryIcon } from '../agent-history/MobileAgentSessionHistoryIcon'
-import { ActionSheetModal } from '../components/ActionSheetModal'
+import { ActionSheetModal, type ActionSheetAction } from '../components/ActionSheetModal'
 import { colors } from '../theme/mobile-theme'
 
 type Props = {
   visible: boolean
+  additionalActions?: ActionSheetAction[]
   showAgentSessionHistory: boolean
   showChecks: boolean
   onOpenAgentSessionHistory: () => void
@@ -14,6 +15,7 @@ type Props = {
 
 export function MobileSessionHeaderMoreActionsSheet({
   visible,
+  additionalActions,
   showAgentSessionHistory,
   showChecks,
   onOpenAgentSessionHistory,
@@ -24,6 +26,7 @@ export function MobileSessionHeaderMoreActionsSheet({
     <ActionSheetModal
       visible={visible}
       actions={[
+        ...(additionalActions ?? []),
         ...(showAgentSessionHistory
           ? [
               {

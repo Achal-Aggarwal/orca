@@ -57,6 +57,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }))
 import { useTerminalSplitLayout } from './use-terminal-split-layout'
 import { MobileSessionTabStrip } from './MobileSessionTabStrip'
+import { MobileSessionTerminalLayoutSheet } from './MobileSessionTerminalLayoutSheet'
 import { MobileSessionActiveContent } from './MobileSessionActiveContent'
 import { TerminalPaneView } from './TerminalPaneView'
 import { useMobileSessionTabSwitching } from './use-mobile-session-tab-switching'
@@ -71,12 +72,14 @@ it('lets the split menu override sidebar width and rotation without remounting p
   function Harness() {
     const preference = useTerminalSplitLayout()
     const [split, setSplit] = useState(true)
+    const [showTerminalLayout, setShowTerminalLayout] = useState(false)
     const [active, setActive] = useState('b')
     const [keyboard, setKeyboardState] = useState(0)
     setKeyboard = setKeyboardState
     const controller = mountFixture<Controller>({
       ...preference,
       terminalSplitActive: split,
+      setShowTerminalLayout,
       toggleTerminalSplit: () => setSplit(!split),
       canSplitTerminals: true,
       terminals: [
@@ -112,6 +115,11 @@ it('lets the split menu override sidebar width and rotation without remounting p
       'Screen',
       null,
       createElement(MobileSessionTabStrip, { controller, inTopBar: false }),
+      createElement(MobileSessionTerminalLayoutSheet, {
+        controller,
+        visible: showTerminalLayout,
+        onClose: () => setShowTerminalLayout(false)
+      }),
       createElement(MobileSessionActiveContent, { controller })
     )
   }

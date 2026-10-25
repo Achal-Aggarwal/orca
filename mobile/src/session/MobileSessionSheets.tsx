@@ -1,7 +1,7 @@
 import { Platform } from 'react-native'
 import { useClipboardWriter } from '../platform/clipboard'
 import { Copy, FileText, Globe, RefreshCw, SquareTerminal } from 'lucide-react-native'
-import { MobileSessionHeaderMoreActionsSheet } from './MobileSessionHeaderMoreActionsSheet'
+import { MobileSessionTerminalLayoutSheet } from './MobileSessionTerminalLayoutSheet'
 import { QuickCommandsSheet } from './QuickCommandsSheet'
 import { triggerSuccess, triggerError } from '../platform/haptics'
 import { ActionSheetModal } from '../components/ActionSheetModal'
@@ -35,8 +35,8 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     setShowQuickCommands,
     setShowCreateBrowserModal,
     showCreateBrowserModal,
-    showHeaderMoreActions,
-    setShowHeaderMoreActions,
+    showTerminalLayout,
+    setShowTerminalLayout,
     actionTarget,
     setActionTarget,
     markdownActionTarget,
@@ -88,23 +88,16 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     bulkCloseActions,
     closeWithBulkActions,
     createTabAgentActions,
-    sendDiffNotesAgentActions,
-    handlePanelTap,
-    openAgentSessionHistory,
-    showAgentSessionHistoryAction,
-    showChecksAction
+    sendDiffNotesAgentActions
   } = controller
   const clipboard = useClipboardWriter()
   const onPairedHost = useWorkspaceOnPairedHost()
   return (
     <>
-      <MobileSessionHeaderMoreActionsSheet
-        visible={showHeaderMoreActions}
-        showAgentSessionHistory={showAgentSessionHistoryAction}
-        showChecks={showChecksAction}
-        onOpenAgentSessionHistory={openAgentSessionHistory}
-        onOpenChecks={() => handlePanelTap('pr')}
-        onClose={() => setShowHeaderMoreActions(false)}
+      <MobileSessionTerminalLayoutSheet
+        controller={controller}
+        visible={showTerminalLayout}
+        onClose={() => setShowTerminalLayout(false)}
       />
       <QuickCommandsSheet
         visible={showQuickCommands && quickCommandsSupported === true}

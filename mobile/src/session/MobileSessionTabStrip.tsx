@@ -1,18 +1,6 @@
-import { ActionSheetModal } from '../components/ActionSheetModal'
-import type { TerminalSplitLayout } from '../storage/preferences'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { View, Text, ScrollView, Pressable } from 'react-native'
-import {
-  File,
-  FileText,
-  Globe,
-  Plus,
-  SquareTerminal,
-  Columns2,
-  Rows2,
-  Check,
-  LayoutGrid
-} from 'lucide-react-native'
+import { File, FileText, Globe, Plus, SquareTerminal, Columns2 } from 'lucide-react-native'
 import { triggerMediumImpact } from '../platform/haptics'
 import { MobileAgentIcon } from '../components/MobileAgentIcon'
 import { AgentStateDot } from '../components/AgentStateDot'
@@ -40,13 +28,14 @@ const DOUBLE_TAP_RENAME_MS = 300
 
 export function MobileSessionTabStrip({
   controller,
-  inTopBar
+  inTopBar,
+  actionsCollapsed = false
 }: {
   controller: MobileSessionController
   inTopBar: boolean
+  actionsCollapsed?: boolean
 }) {
   const {
-    connState,
     activeSessionTabId,
     activeSessionTabIdRef,
     tabStripRef,
@@ -54,14 +43,10 @@ export function MobileSessionTabStrip({
     tabStripViewportWidthRef,
     tabStripContentWidthRef,
     tabLayoutsRef,
-    creating,
-    creatingBrowser,
-    creatingMarkdown,
-    setCreateError,
-    setShowCreateTabDrawer,
-    setShowQuickCommands,
-    quickCommandsSupported,
-    showToast,
+    connState,
+    createTabBusy,
+    handleOpenNewTab,
+    handleOpenQuickCommands,
     scrollActiveTabIntoView,
     holdTabStripReveal,
     cancelHeldTabStripReveal,
@@ -72,18 +57,9 @@ export function MobileSessionTabStrip({
     visibleTabs,
     canSplitTerminals,
     terminalSplitActive,
-    toggleTerminalSplit,
-    terminalSplitLayout,
-    setTerminalSplitLayout,
+    setShowTerminalLayout,
     terminals
   } = controller
-  const [showTerminalLayout, setShowTerminalLayout] = useState(false)
-  const chooseSplitLayout = (layout: TerminalSplitLayout) => {
-    setTerminalSplitLayout(layout)
-    if (!terminalSplitActive) {
-      toggleTerminalSplit()
-    }
-  }
   const tabBarKeepsKeyboard = useKeyboardPersistingTaps('handled')
   const lastTabTapRef = useRef<{ id: string; at: number } | null>(null)
   const now = useNow(60_000)
@@ -292,7 +268,7 @@ export function MobileSessionTabStrip({
           </View>
         ) : null}
       </View>
-      {(canSplitTerminals || terminalSplitActive) && (
+      {!actionsCollapsed && (canSplitTerminals || terminalSplitActive) && (
         <MobileSessionHeaderIconButton
           active={terminalSplitActive}
           accessibilityLabel="Terminal layout"
@@ -300,78 +276,20 @@ export function MobileSessionTabStrip({
           onPress={() => setShowTerminalLayout(true)}
         />
       )}
-      <ActionSheetModal
-        visible={showTerminalLayout}
-        title="Terminal layout"
-        onClose={() => setShowTerminalLayout(false)}
-        actions={[
-          {
-            label: 'One terminal',
-            icon: terminalSplitActive ? SquareTerminal : Check,
-            hint: !terminalSplitActive ? 'Selected' : undefined,
-            onPress: () => {
-              if (terminalSplitActive) {
-                toggleTerminalSplit()
-              }
-            }
-          },
-          ...(
-            [
-              {
-                layout: 'auto',
-                label: 'Auto',
-                icon: LayoutGrid,
-                hint: 'Split to fit the available space'
-              },
-              {
-                layout: 'side-by-side',
-                label: 'Side by side',
-                icon: Columns2,
-                hint: 'Two columns, even with the sidebar open'
-              },
-              {
-                layout: 'stacked',
-                label: 'Stacked',
-                icon: Rows2,
-                hint: 'Two rows in any orientation'
-              }
-            ] as const
-          ).map(({ layout, label, icon, hint }) => ({
-            label,
-            icon: terminalSplitActive && terminalSplitLayout === layout ? Check : icon,
-            hint:
-              terminalSplitActive && terminalSplitLayout === layout ? `Selected · ${hint}` : hint,
-            disabled: !canSplitTerminals && !terminalSplitActive,
-            onPress: () => chooseSplitLayout(layout)
-          }))
-        ]}
-      />
-      {/* Why: pinned outside the scroll strip so the new-agent button stays reachable however far the tabs scroll. */}
-      <MobileSessionHeaderIconButton
-        disabled={creating || creatingBrowser || creatingMarkdown || connState !== 'connected'}
-        onPress={() => {
-          setCreateError('')
-          setShowCreateTabDrawer(true)
-        }}
-        accessibilityLabel="New tab"
-        icon={Plus}
-      />
-      {/* Why: stable placement matters, while old hosts must stay gated because they strip agentPrompt. */}
-      <QuickCommandsTabButton
-        disabled={creating || creatingBrowser || creatingMarkdown || connState !== 'connected'}
-        onPress={() => {
-          if (quickCommandsSupported === true) {
-            setShowQuickCommands(true)
-            return
-          }
-          showToast(
-            quickCommandsSupported === false
-              ? 'Desktop update required for quick commands'
-              : 'Checking desktop capabilities — try again in a moment',
-            1600
-          )
-        }}
-      />
+      {!actionsCollapsed ? (
+        <>
+          <MobileSessionHeaderIconButton
+            disabled={createTabBusy || connState !== 'connected'}
+            onPress={handleOpenNewTab}
+            accessibilityLabel="New tab"
+            icon={Plus}
+          />
+          <QuickCommandsTabButton
+            disabled={createTabBusy || connState !== 'connected'}
+            onPress={handleOpenQuickCommands}
+          />
+        </>
+      ) : null}
     </View>
   )
 }
