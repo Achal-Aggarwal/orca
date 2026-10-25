@@ -30,7 +30,12 @@ export function writeAcpSessionOption(
     write.method === 'config'
       ? connection
           .setConfigOption(write.configId, write.value)
-          .then((result) => adopt(() => options.adoptConfigOptions(result.configOptions)))
+          .then((result) => adopt(() =>
+              options.adoptConfigOptions(
+                result.configOptions,
+                bound.key === 'model' ? bound.value : undefined
+              )
+            ))
       : connection
           .setModel(write.modelId)
           .then(() => adopt(() => options.adoptModel(write.modelId)))
