@@ -122,19 +122,19 @@ function topPadding(tree: ReactTestRenderer) {
     .map((node) => Object.assign({}, ...[node.props.style].flat()).paddingTop ?? 0)
 }
 
-it('keeps all Duo screen content below the observed 20pt dead edge, once across nested areas', () => {
+it('keeps the full Duo height without adding a top band across nested areas', () => {
   duoGeometry()
   const { tree, read } = renderInLandscape(DUO_INSETS, DUO_FRAME, true)
-  expect(topPadding(tree)).toEqual([20, 0])
-  expect(read.frame).toEqual({ x: 0, y: 20, width: 867, height: 649 })
+  expect(topPadding(tree)).toEqual([0, 0])
+  expect(read.frame).toEqual({ x: 0, y: 0, width: 867, height: 669 })
   expect(read.screen).toEqual({ top: 0, right: 0, bottom: 34, left: 0 })
 })
 
-it('does not move the Duo header when the keyboard changes or reserve space twice below a banner', () => {
+it('adds no Duo edge spacing when the keyboard changes or a banner offsets the frame', () => {
   duoGeometry()
   geometry.regions.keyboardInset = 600
-  expect(topPadding(renderInLandscape(DUO_INSETS, DUO_FRAME).tree)).toEqual([20])
-  expect(topPadding(renderInLandscape(DUO_INSETS, { ...DUO_FRAME, y: 12 }).tree)).toEqual([8])
+  expect(topPadding(renderInLandscape(DUO_INSETS, DUO_FRAME).tree)).toEqual([0])
+  expect(topPadding(renderInLandscape(DUO_INSETS, { ...DUO_FRAME, y: 12 }).tree)).toEqual([0])
   expect(topPadding(renderInLandscape(DUO_INSETS, { ...DUO_FRAME, y: 30 }).tree)).toEqual([0])
 })
 
@@ -168,28 +168,28 @@ it('leaves portrait top-safe-area donation and ordinary iPad/phone geometry unch
 it.each([
   {
     division: { x: 0, y: 320, width: 951, height: 20 },
-    expected: { axis: 'horizontal', start: 300, end: 320, size: 649 }
+    expected: { axis: 'horizontal', start: 320, end: 340, size: 669 }
   },
   {
     division: { x: 430, y: 0, width: 10, height: 669 },
     expected: { axis: 'vertical', start: 430, end: 440, size: 867 }
   }
 ])(
-  'keeps the window hinge aligned after consuming the top edge once: $expected.axis',
+  'keeps the window hinge aligned without a synthetic top offset: $expected.axis',
   ({ division, expected }) => {
     duoGeometry()
     geometry.regions.divisions = [division]
     const { read, tree } = renderInLandscape(DUO_INSETS, DUO_FRAME, true)
-    expect(topPadding(tree)).toEqual([20, 0])
-    expect(read.frame).toEqual({ x: 0, y: 20, width: 867, height: 649 })
+    expect(topPadding(tree)).toEqual([0, 0])
+    expect(read.frame).toEqual({ x: 0, y: 0, width: 867, height: 669 })
     expect(read.fold).toEqual(expected)
   }
 )
 
-it('consumes existing top inset rather than adding the workaround to it', () => {
+it('preserves genuine top insets for the screen and modal without a synthetic guard', () => {
   duoGeometry()
   const { tree, read } = renderInLandscape({ ...DUO_INSETS, top: 18 }, DUO_FRAME)
-  expect(topPadding(tree)).toEqual([20])
-  expect(read.screen?.top).toBe(0)
+  expect(topPadding(tree)).toEqual([0])
+  expect(read.screen?.top).toBe(18)
   expect(read.modal?.top).toBe(18)
 })

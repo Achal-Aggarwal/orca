@@ -21,7 +21,7 @@ import { MobileTerminalLiveInputRow } from './MobileTerminalLiveInputRow'
 import { MobileTerminalInputActions } from './MobileTerminalInputActions'
 import { keepHeldPressThroughLongPress } from './held-press-long-press'
 import { isTerminalPhoneDisplayMode } from './mobile-session-route-helpers'
-import { colors, spacing } from '../theme/mobile-theme'
+import { colors } from '../theme/mobile-theme'
 import { styles } from './mobile-session-styles'
 import { useKeyboardPersistingTaps } from '../platform/keyboard-persisting-taps'
 import type { MobileSessionController } from './use-mobile-session-controller'
@@ -153,12 +153,7 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
         style={[
           styles.commandDock,
           {
-            paddingBottom:
-              sideRail && keyboardHeight === 0 && keyboardLift === 0
-                ? spacing.xs + 2
-                : sideRail || padAvailable
-                  ? Math.max(insets.bottom, spacing.xs + 2)
-                  : insets.bottom,
+            paddingBottom: sideRail || padAvailable ? 0 : insets.bottom,
             transform: [{ translateY: -keyboardLift }]
           }
         ]}

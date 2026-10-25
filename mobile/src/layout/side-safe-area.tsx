@@ -9,9 +9,6 @@ import {
   type EdgeInsets
 } from 'react-native-safe-area-context'
 
-import { useReservedRegions } from './reserved-regions'
-import { getSideRailStrip } from './side-rail-strip'
-
 const WindowSafeAreaInsetsContext = createContext<EdgeInsets | null>(null)
 
 /**
@@ -22,30 +19,14 @@ const WindowSafeAreaInsetsContext = createContext<EdgeInsets | null>(null)
 export function SideSafeArea({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets()
   const frame = useSafeAreaFrame()
-  const { windowSafeArea, occlusions } = useReservedRegions()
-  const duoStrip =
-    windowSafeArea &&
-    getSideRailStrip({
-      windowWidth: windowSafeArea.bounds.width,
-      windowHeight: windowSafeArea.bounds.height,
-      insets: windowSafeArea.insets,
-      occlusions
-    })
-  // Empirical iOS 27.1 Duo workaround: its top 20pt reject touches despite zero top safe inset.
-  const topPadding = Platform.OS === 'ios' && duoStrip ? Math.max(0, 20 - Math.max(0, frame.y)) : 0
-  const areaInsets = useMemo(
-    () => ({ ...insets, top: Math.max(0, insets.top - topPadding), left: 0, right: 0 }),
-    [insets, topPadding]
-  )
+  const areaInsets = useMemo(() => ({ ...insets, left: 0, right: 0 }), [insets])
   const areaFrame = useMemo(
     () => ({
       ...frame,
       x: frame.x + insets.left,
-      y: frame.y + topPadding,
-      height: Math.max(0, frame.height - topPadding),
       width: Math.max(0, frame.width - insets.left - insets.right)
     }),
-    [frame, insets.left, insets.right, topPadding]
+    [frame, insets.left, insets.right]
   )
   const area = (
     <WindowSafeAreaInsetsContext.Provider value={insets}>
@@ -59,12 +40,7 @@ export function SideSafeArea({ children }: { children: ReactNode }) {
   // A native SafeAreaView measures against the nearest native provider rather than the context, so
   // one goes inside the padding; on the web it reads the context.
   return (
-    <View
-      style={[
-        styles.area,
-        { paddingLeft: insets.left, paddingRight: insets.right, paddingTop: topPadding }
-      ]}
-    >
+    <View style={[styles.area, { paddingLeft: insets.left, paddingRight: insets.right }]}>
       {Platform.OS === 'web' ? area : <SafeAreaProvider>{area}</SafeAreaProvider>}
     </View>
   )

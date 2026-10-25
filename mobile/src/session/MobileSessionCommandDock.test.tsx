@@ -262,7 +262,7 @@ it.each([
   const row = posture.liveInputEnabled ? h.focusRow() : h.button('Send command').parent!
   expect(style(row)).toMatchObject({ minHeight: 40, paddingTop: 6, paddingBottom: 0 })
   const dock = renderer!.root.findAll((node) => String(node.type) === 'View')[0]
-  expect(style(dock).paddingBottom).toBe(6)
+  expect(style(dock).paddingBottom).toBe(0)
   for (const label of ['Attach a photo', 'Start voice dictation']) {
     expect(style(h.button(label))).toMatchObject({ width: 34, height: 34 })
   }
@@ -339,13 +339,13 @@ it.each([
   }
 })
 
-it('reclaims idle side-rail padding for the original live and buffered rows without changing keyboard geometry', () => {
+it('removes Duo bottom reservations for live and buffered input through keyboard transitions', () => {
   const h = harness()
   const dock = () => renderer!.root.findAll((node) => String(node.type) === 'View')[0]
   expect(style(dock()).paddingBottom).toBe(34)
   shellLayout.sideRail = true
   h.render()
-  expect(style(dock()).paddingBottom).toBe(6)
+  expect(style(dock()).paddingBottom).toBe(0)
   for (const keyboard of [
     { keyboardHeight: 334, keyboardLift: 300 },
     { keyboardHeight: 334, keyboardLift: 0 },
@@ -353,7 +353,7 @@ it('reclaims idle side-rail padding for the original live and buffered rows with
   ]) {
     h.render(keyboard)
     expect(style(dock())).toMatchObject({
-      paddingBottom: 34,
+      paddingBottom: 0,
       transform: [{ translateY: -keyboard.keyboardLift }]
     })
   }
@@ -364,10 +364,10 @@ it('reclaims idle side-rail padding for the original live and buffered rows with
     { liveInputEnabled: false }
   ]) {
     h.render(expanded)
-    expect(style(dock()).paddingBottom).toBe(6)
+    expect(style(dock()).paddingBottom).toBe(0)
   }
   h.render()
-  expect(style(dock()).paddingBottom).toBe(6)
+  expect(style(dock()).paddingBottom).toBe(0)
   shellLayout.padAvailable = false
   shellLayout.sideRail = false
   shellLayout.keys = []
