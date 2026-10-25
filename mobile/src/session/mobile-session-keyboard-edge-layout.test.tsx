@@ -34,16 +34,22 @@ it.each(['ios', 'android'])(
       terminalFrameRef: { current: null },
       toastOpacityRef: { current: {} }
     })
-    function Screen({ keyboardHeight }: { keyboardHeight: number }) {
-      const value = useMobileSessionPresentation({ ...scope, keyboardHeight })
+    function Screen({ keyboardHeight, view }: { keyboardHeight: number; view: string }) {
+      const scene = mountFixture<Scope>({
+        showNativeChat: view === 'chat',
+        activeMarkdownTab: view === 'markdown' ? {} : null,
+        activeFileTab: view === 'file' ? {} : null,
+        activeBrowserTab: view === 'browser' ? {} : null
+      })
+      const value = useMobileSessionPresentation({ ...scope, ...scene, keyboardHeight })
       return createElement('KeyboardBoundary', value)
     }
-    const render = (keyboardHeight = 334) =>
+    const render = (keyboardHeight = 334, view = 'terminal') =>
       act(() => {
         if (tree) {
-          tree.update(createElement(Screen, { keyboardHeight }))
+          tree.update(createElement(Screen, { keyboardHeight, view }))
         } else {
-          tree = create(createElement(Screen, { keyboardHeight }))
+          tree = create(createElement(Screen, { keyboardHeight, view }))
         }
       })
     const lift = () =>
@@ -57,6 +63,12 @@ it.each(['ios', 'android'])(
     layout.padAvailable = true
     render()
     expect(lift()).toBe(334)
+    for (const view of ['chat', 'browser', 'markdown', 'file']) {
+      render(334, view)
+      expect(lift()).toBe(os === 'ios' ? 300 : 334)
+      render()
+      expect(lift()).toBe(334)
+    }
     render(0)
     expect(lift()).toBe(0)
     layout.padAvailable = false

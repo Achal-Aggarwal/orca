@@ -80,7 +80,12 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
           : MOBILE_SESSION_STATUS_LABELS[presentedConnState]
 
   const [sideRail, padAvailable] = [useShellSideRail(), useDirectionPadAvailable()]
-  const dockBottomInset = sideRail || padAvailable ? 0 : insets.bottom
+  const dockShown =
+    !scope.showNativeChat &&
+    !scope.activeMarkdownTab &&
+    !scope.activeFileTab &&
+    !scope.activeBrowserTab
+  const dockBottomInset = dockShown && (sideRail || padAvailable) ? 0 : insets.bottom
   // Subtract only the space actually reserved below the input dock.
   const keyboardLift =
     keyboardHeight > 0
