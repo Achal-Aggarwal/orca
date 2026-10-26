@@ -56,7 +56,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
   reorderCapable?: boolean
   agentName?: string
   journalItems?: readonly AgentJournalRenderItem[]
-  queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined
+  queuedMessages: readonly AgentSessionQueuedMessage[] | null
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   agentWorking?: boolean
