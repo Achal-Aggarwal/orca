@@ -229,14 +229,9 @@ export function registerPtyConnectionCommandFinishedCleanupTests(): void {
       )
       transportFactoryQueue.push(transport)
       const paneKey = makePaneKey('tab-1', LEAF_1)
+      const deps = createDeps({ isVisibleRef: { current: false } })
 
-      connectPanePty(
-        ...mockPanePtyArgs(
-          createPane(1),
-          createManager(1),
-          createDeps({ isVisibleRef: { current: false } })
-        )
-      )
+      connectPanePty(...mockPanePtyArgs(createPane(1), createManager(1), deps))
       await vi.advanceTimersByTimeAsync(20)
       await flushAsyncTicks()
       mockStoreState.agentLaunchConfigByPaneKey[paneKey] = {
@@ -256,6 +251,7 @@ export function registerPtyConnectionCommandFinishedCleanupTests(): void {
       // process-confirmed agent exit must go through the reconcile route instead — otherwise a
       // surviving Claude latch resolves the pane's next event straight back to 'working' (STA-4612).
       expect(window.api.agentStatus.reconcileEndedProcess).not.toHaveBeenCalled()
+      expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
     })
 
     it.each([
@@ -278,14 +274,9 @@ export function registerPtyConnectionCommandFinishedCleanupTests(): void {
       )
       transportFactoryQueue.push(transport)
       const paneKey = makePaneKey('tab-1', LEAF_1)
+      const deps = createDeps({ isVisibleRef: { current: false } })
 
-      connectPanePty(
-        ...mockPanePtyArgs(
-          createPane(1),
-          createManager(1),
-          createDeps({ isVisibleRef: { current: false } })
-        )
-      )
+      connectPanePty(...mockPanePtyArgs(createPane(1), createManager(1), deps))
       await vi.advanceTimersByTimeAsync(20)
       await flushAsyncTicks()
       mockStoreState.agentLaunchConfigByPaneKey[paneKey] = {
@@ -321,10 +312,10 @@ export function registerPtyConnectionCommandFinishedCleanupTests(): void {
         agent: 'codex'
       })
       if (stoppingOnPurpose) {
-        expect(onAgentExited).not.toHaveBeenCalled()
+        expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
         expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]?.shellForeground).not.toBe(true)
       } else {
-        expect(onAgentExited).toHaveBeenCalledWith(LEAF_1)
+        expect(deps.onAgentExitedRef.current).toHaveBeenCalledWith(LEAF_1)
         expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]?.shellForeground).toBe(true)
       }
     })
