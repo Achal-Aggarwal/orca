@@ -151,7 +151,6 @@ export function useMobileNativeChatDrafts(args: {
         draftEditGeneration: readMobileNativeChatDraftEditGeneration(draftKey),
         pendingKey,
         normalizedText: normalizeReconcileText(text),
-        baselineTailMessageId: tail?.id ?? null,
         boundary: {
           afterMessageId: tail?.id ?? null,
           afterMessageTimestamp: tail?.timestamp ?? null,
@@ -222,7 +221,11 @@ export function useMobileNativeChatDrafts(args: {
     : NO_PENDING_MESSAGES
   const pending = combineMobileNativeChatPending(sessionPending, waitingForSession)
   // Desktop matches echoes against image-normalized rows; a photo's source row folds into its caption.
-  const echoRows = useMemo(() => normalizeImageTranscriptMessages(messages), [messages])
+  const hasPending = pending.length > 0
+  const echoRows = useMemo(
+    () => (hasPending ? normalizeImageTranscriptMessages(messages) : messages),
+    [hasPending, messages]
+  )
   useEffect(() => {
     if (!pendingKey) {
       return
