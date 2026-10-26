@@ -1,7 +1,4 @@
-import {
-  QueuedMessageImageCount,
-  queuedMessageImageCount
-} from './NativeChatQueuedMessageImageCount'
+import { QueuedMessageImageCount } from './NativeChatQueuedMessageImageCount'
 import type { QueuedMessageDragPresentation } from './NativeChatQueuedMessageRows'
 import { useId, useState } from 'react'
 import {
@@ -32,9 +29,10 @@ import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import {
+  queuedMessageCardLine,
   queuedMessageCardSteers,
   type QueuedMessageCard
-} from './structured-agent-session-queued-cards'
+} from '../../../../shared/structured-agent-session-queued-cards'
 import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
 import { NativeChatPendingIcon } from './NativeChatPendingIcon'
 import type { QueuedMessagesPendingAction } from './use-structured-agent-session-queued-messages'
@@ -45,7 +43,7 @@ import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-
 import { NativeChatQueuedMessageEditor } from './NativeChatQueuedMessageEditor'
 import type { QueuedEditAttachTarget } from './use-native-chat-queued-edit-image-intake'
 import type { QueuedMessageInlineEditor } from './use-structured-agent-session-queued-edit'
-import { nativeChatImageLabel } from './native-chat-image-label'
+import { nativeChatImageLabel, nativeChatImageLabelCopy } from './native-chat-image-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(
@@ -106,17 +104,6 @@ export function queuedMessageCardCaption(
       // Plainly queued; a paused queue's header row carries the why.
       return null
   }
-}
-
-/** The card's line: its text, or for a card of images alone, the image's name or their count. */
-function queuedMessageCardLine(card: QueuedMessageCard): string {
-  const images = card.images ?? []
-  if (card.text.trim() || images.length === 0) {
-    return card.text
-  }
-  return images.length === 1
-    ? nativeChatImageLabel(images[0])
-    : queuedMessageImageCount(images.length)
 }
 
 /** Steer's or Send's label and tooltip (`queuedMessageCardSteers`). */
@@ -186,7 +173,7 @@ export function NativeChatQueuedMessageCard({
   onTurnOffQueueing?: () => void
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card, agentName, statedFailures)
-  const line = queuedMessageCardLine(card)
+  const line = queuedMessageCardLine(card, nativeChatImageLabelCopy())
   const returned = card.state === 'returned'
   const attention = returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
   const sendNow = queuedMessageCardSendNow(card)
