@@ -27,6 +27,7 @@ import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-sess
 import { isMacPlatform } from './native-chat-shortcut'
 import {
   queuedMessageCardLine,
+  queuedMessageCardNeedsAttention,
   queuedMessageCardSteers,
   queuedMessageReturnedNotice,
   type QueuedMessageCard
@@ -155,7 +156,7 @@ export function NativeChatQueuedMessageCard({
   const caption = queuedMessageCardCaption(card, agentName, statedFailures)
   const line = queuedMessageCardLine(card, nativeChatImageLabelCopy())
   const returned = card.state === 'returned'
-  const attention = returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
+  const attention = queuedMessageCardNeedsAttention(card)
   const sendNow = queuedMessageCardSendNow(card)
   const busy = pending !== null
   const isMac = isMacPlatform()
