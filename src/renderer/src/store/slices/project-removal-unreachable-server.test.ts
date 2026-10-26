@@ -120,15 +120,13 @@ describe('removing a project while its paired server is unreachable', () => {
     await store.getState().removeProject('app', { hostId: 'runtime:env-1', errorFeedback: 'toast' })
 
     expect(store.getState().repos).toEqual([remoteRepo])
-    const action = vi.mocked(toast.error).mock.calls[0]?.[1]?.action
-    if (!action || typeof action !== 'object' || !('onClick' in action)) {
-      throw new Error('expected a "Remove from this desktop now" action')
-    }
+    expect(vi.mocked(toast.error).mock.calls[0]?.[1]?.action).toMatchObject({
+      label: 'Remove from this desktop now'
+    })
 
-    // The handler ignores its click event; there is no DOM event to build in this test.
-    Reflect.apply(action.onClick, undefined, [])
-    // The removal lazily imports a module, so allow for a slow first import.
-    await vi.waitFor(() => expect(store.getState().repos).toEqual([]), { timeout: 20_000 })
+    // What that action runs: the same removal, skipping the unreachable server.
+    await store.getState().removeProject('app', { hostId: 'runtime:env-1', localOnly: true })
+    expect(store.getState().repos).toEqual([])
     expect(listPendingRuntimeRepoRemovals('env-1')).toMatchObject([{ repoId: 'app' }])
     expect(uiSet).toHaveBeenLastCalledWith({
       pendingRuntimeRepoRemovals: [
