@@ -13,14 +13,15 @@ type WindowFrame = { x: number; y: number; width: number; height: number }
 
 /**
  * The fold splitting the page's WebView, in the page's px. The regions come in window points, so
- * the view is measured in the window: `rootRef` goes on the view the WebView is laid out in and
- * `onShellLayout` on the WebView itself.
+ * the view is measured in the window: `rootRef` and `onRootLayout` go on its container,
+ * and `onShellLayout` on the WebView itself.
  */
 export function usePageFoldDivision(): {
   division: BridgeFoldDivision | null
   geometry: BridgePageGeometry
   safeAreaInsets: BridgeSafeAreaInsets
   rootRef: RefObject<View | null>
+  onRootLayout: () => void
   onShellLayout: (event: LayoutChangeEvent) => void
 } {
   const { divisions, occlusions, windowSafeArea } = useReservedRegions()
@@ -89,7 +90,7 @@ export function usePageFoldDivision(): {
     () => measuredPageSafeAreaInsets(windowSafeArea, frame, insets),
     [windowSafeArea, frame, insets]
   )
-  return { division, geometry, safeAreaInsets, rootRef, onShellLayout }
+  return { division, geometry, safeAreaInsets, rootRef, onRootLayout: measure, onShellLayout }
 }
 
 /** Hands a moved fold to the page over the re-sent `init`, as the insets are. */

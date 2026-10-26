@@ -404,6 +404,7 @@ export function MobileWebShellScreen({
   return (
     <View
       ref={pageFold.rootRef}
+      onLayout={pageFold.onRootLayout}
       style={[
         styles.shellRoot,
         // Edge-to-edge like a native screen: the page pads for the bars itself from the insets
