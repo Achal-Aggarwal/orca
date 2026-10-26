@@ -230,7 +230,6 @@ function Harness({
     nativeChatSession: { messages, status: 'ready' },
     nativeChatAgent: 'claude',
     nativeChatStructured: true,
-    nativeChatAgentWorking: true,
     nativeChatTurnActive: true,
     nativeChatItemSource: source,
     nativeChatVisualSource: source,
