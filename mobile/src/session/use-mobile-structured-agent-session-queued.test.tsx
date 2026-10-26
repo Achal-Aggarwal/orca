@@ -175,7 +175,7 @@ describe('mobile structured queued messages', () => {
       moving = hook!.queued.move!({ movedId: 'mail', afterId: 'b' })
     })
     expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['b', 'mail'])
-    expect(hook!.queued.cards[1]?.automatic).toBe(true)
+    expect(hook!.queued.cards[1]?.from).toBeDefined()
     expect(requestOf('agentSession.queuedMessageMove').params).toMatchObject({
       messageId: 'mail',
       afterMessageId: 'b'
@@ -334,9 +334,11 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.cards).toEqual([
         {
           messageId: 'draft-1',
+          position: 1,
           text: 'text of draft-1',
+          line: 'text of draft-1',
           state: 'waiting',
-          paused: false,
+          hold: 'turn',
           needsAttention: false,
           caption: null,
           attribution: null
@@ -622,7 +624,7 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
       expect(hook!.queued.cards[0]).toMatchObject({
         messageId: 'draft-1',
-        paused: false,
+        hold: 'queue-paused',
         caption: null
       })
       act(() => listener?.(batchEvent()))

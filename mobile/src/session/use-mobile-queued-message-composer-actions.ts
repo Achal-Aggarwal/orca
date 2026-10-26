@@ -1,13 +1,17 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import type { AgentSessionQueuedMessageMoveResult } from '../../../src/shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuedMessageMoveResult
+} from '../../../src/shared/agent-session-wire'
 import type { DragReorderMove } from '../components/drag-reorder-positions'
-import type { MobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
 import type { MobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
+
+type QueuedMessages = readonly AgentSessionQueuedMessage[] | null | undefined
 
 export function useMobileQueuedMessageComposerActions(args: {
   sessionKey: string
   sessionId: string | null
-  messages: MobileQueuedMessageFeed
+  messages: QueuedMessages
   reorderCapable: boolean
   enabled: boolean
   mutate: MobileStructuredAgentMutate
@@ -23,8 +27,8 @@ export function useMobileQueuedMessageComposerActions(args: {
   }, [sessionKey])
   const [preview, setPreview] = useState<{
     scope: string
-    source: MobileQueuedMessageFeed
-    messages: MobileQueuedMessageFeed
+    source: QueuedMessages
+    messages: QueuedMessages
   } | null>(null)
   const move = useCallback(
     async (move: DragReorderMove): Promise<boolean> => {
