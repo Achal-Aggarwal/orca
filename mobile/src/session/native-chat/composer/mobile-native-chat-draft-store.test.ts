@@ -6,7 +6,9 @@ import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 import {
   readMobileNativeChatPickedSkills,
   editMobileNativeChatDraft,
+  readMobileNativeChatSkillOrigin,
   recordMobileNativeChatPickedSkills,
+  recordMobileNativeChatSkillPick,
   resetMobileNativeChatDraftStoreForTests,
   setMobileNativeChatDraftText,
   useMobileNativeChatDraft
@@ -158,5 +160,14 @@ describe('picked skills', () => {
     editMobileNativeChatDraft('draft', 'fix it then ')
     editMobileNativeChatDraft('draft', 'fix it then $review')
     expect(readMobileNativeChatPickedSkills('draft')).toEqual([])
+  })
+
+  it('keeps a picked skill as the send origin only while it leads the draft', () => {
+    editMobileNativeChatDraft('draft', '/triage ')
+    recordMobileNativeChatSkillPick('draft', { token: '/triage' })
+    editMobileNativeChatDraft('draft', '/triage the flaky test')
+    expect(readMobileNativeChatSkillOrigin('draft')).toBe('/triage')
+    editMobileNativeChatDraft('draft', 'the flaky test')
+    expect(readMobileNativeChatSkillOrigin('draft')).toBeNull()
   })
 })
