@@ -21,19 +21,10 @@ import type {
 
 type InitMessage = Extract<BridgeHostMessage, { type: 'init' }>
 
-/**
- * The session the page holds, and who it tells when `init` changes it.
- *
- * Its own module because it is the one piece of the client with a lifecycle rather than a value:
- * a second `init` for the same session updates it in place, a different one replaces it and takes
- * the requests and streams of the session before it, and each case has its own listeners to fire
- * in its own order. The client keeps the frames and the ports; this keeps what they are for.
- */
+// Same-session init preserves exchanges; replacement drops prior work before publishing the new session to listeners.
 export type BridgeClientShellSession = {
   current: () => BridgeShellSession | null
-  /** Reads one `init`: updates or replaces the session, then fires what that change is owed. */
   accept: (message: InitMessage) => void
-  /** Fires once `init` has landed, immediately if it already has. Mount no screen before it. */
   onReady: (listener: () => void) => () => void
   /**
    * Fires each time the shell rewrites a param of the screen this page is already on, which is a
@@ -47,9 +38,7 @@ export type BridgeClientShellSession = {
    */
   onStorageUpdate: (listener: () => void) => () => void
   onRouteUpdate: (listener: (route: BridgeInitRoute | null) => void) => () => void
-  /** Fires when an `init` moved the safe-area insets the page holds, including a replacement's. */
   onSafeAreaInsetsUpdate: (listener: (insets: BridgeSafeAreaInsets) => void) => () => void
-  /** Fires when an `init` moved the keyboard height the page holds, including a replacement's. */
   onKeyboardInsetUpdate: (listener: (height: number) => void) => () => void
   /** Fires when an `init` moved the fold the page holds, including a replacement's. */
   onPageGeometryUpdate: (listener: (geometry: BridgePageGeometry) => void) => () => void
@@ -90,9 +79,7 @@ export function shellSessionListeners(
 }
 
 export function createBridgeClientShellSession(args: {
-  /** The shell was rebuilt: everything the old session had in flight belongs to nobody now. */
   onReplaced: () => void
-  /** Seats the connection cache from the frame, between the session moving and the listeners. */
   prime: (connection: BridgeConnectionSnapshot) => void
 }): BridgeClientShellSession {
   let session: BridgeShellSession | null = null
@@ -136,8 +123,7 @@ export function createBridgeClientShellSession(args: {
       }
       const sent = message.safeAreaInsets ?? ZERO_SAFE_AREA_INSETS
       const movedInsets = held !== null && !sameSafeAreaInsets(held.safeAreaInsets, sent)
-      // The held object when the values match, so a reader keyed on identity does not re-render
-      // for a re-asked `ready`.
+      // Reuse equal values’ identity so repeated ready cannot rerender keyed readers.
       const safeAreaInsets = held === null || movedInsets ? sent : held.safeAreaInsets
       const keyboardInset = message.keyboardInset ?? 0
       const movedKeyboard = held !== null && held.keyboardInset !== keyboardInset

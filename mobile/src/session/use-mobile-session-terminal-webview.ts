@@ -39,7 +39,7 @@ export function useMobileSessionTerminalWebview(scope: MobileSessionTabSwitching
     notifyTerminalFrameHeight,
     notifyTerminalFrameWidth
   } = scope
-  // Why: only store the ref; subscribe on web-ready to avoid the blank-terminal race (init queued before xterm.js loaded).
+  // Store the ref but subscribe only after web-ready so init cannot precede xterm loading.
   const setTerminalWebViewRef = useCallback((handle: string, ref: TerminalWebViewHandle | null) => {
     terminalDiagnosticsRef.current.webViewRef(handle, ref != null)
     if (ref) {
@@ -77,18 +77,17 @@ export function useMobileSessionTerminalWebview(scope: MobileSessionTabSwitching
         handle === activeHandleRef.current
       )
       if (wasAlreadyReady && initializedHandlesRef.current.has(handle)) {
-        // Why: WebView reloaded (hot reload / Android churn); old xterm buffer is gone, so resubscribe for a fresh scrollback.
+        // Reload loses the xterm buffer; request fresh scrollback.
         unsubscribeTerminal(handle)
         if (visibleTerminalHandlesRef.current.includes(handle)) {
           subscribeToTerminal(handle)
         }
         return
       }
-      // Why: a just-created tab can lose activeHandleRef to a lagging snapshot; honor the pending marker so its web-ready subscribe still fires.
+      // Lagging snapshots can clear a new tab’s active handle; its pending marker still authorizes ready subscribe.
       const isIntendedActive =
         visibleTerminalHandlesRef.current.includes(handle) ||
         pendingSelectionWantsHandle(pendingSelectionRef.current, handle)
-      // Why: web-ready carried the cell box xterm laid out, so subscribeToTerminal sizes this subscribe.
       if (isIntendedActive && !terminalUnsubsRef.current.has(handle)) {
         subscribeToTerminal(handle)
       }

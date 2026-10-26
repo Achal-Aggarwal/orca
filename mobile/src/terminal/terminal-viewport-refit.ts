@@ -51,7 +51,6 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     keyboardVisible: false,
     pending: false
   })
-  // Why: marks the armed timer as a height refit so its callback re-checks the keyboard; other refits always run unguarded.
   const heightOriginatedRefitRef = useRef(false)
   const scheduleViewportRefit = useCallback(
     (trigger?: { heightOriginated?: boolean }) => {
@@ -61,7 +60,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
       heightOriginatedRefitRef.current = trigger?.heightOriginated ?? false
       refitTimerRef.current = setTimeout(() => {
         refitTimerRef.current = null
-        // Why: a height refit can fire after the keyboard reopened within the debounce; re-check so we never reflow the PTY mid-keystroke.
+        // Height debounce can outlive keyboard reopening; recheck before reflowing the PTY.
         if (heightOriginatedRefitRef.current) {
           heightOriginatedRefitRef.current = false
           const decision = reduceTerminalFrameHeightRefit(frameHeightRefitStateRef.current, {
@@ -177,7 +176,6 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     scheduleViewportRefit()
   }, [scheduleViewportRefit])
 
-  // Why: the tab strip toggles at the 1↔2 terminal boundary (~40px area change), so the cached viewport goes stale.
   const prevTabStripVisibleRef = useRef(tabStripVisible)
   useEffect(() => {
     if (prevTabStripVisibleRef.current === tabStripVisible) {
@@ -188,7 +186,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     scheduleViewportRefit()
   }, [tabStripVisible, viewportMeasuredRef, scheduleViewportRefit])
 
-  // Why: fold/unfold and rotation change window dims with no subscribe/tab change; refit or the grid stays stale (fit capped at 1).
+  // Fold/rotation changes can occur without tab or subscription changes; refit the stale grid.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const prevWindowDimsRef = useRef({ width: windowWidth, height: windowHeight })
   useEffect(() => {
@@ -197,7 +195,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
       return
     }
     prevWindowDimsRef.current = { width: windowWidth, height: windowHeight }
-    // Why: adjustResize can change only window height while the IME is open; the frame-height notifier corrects once it closes.
+    // IME adjustResize may change height alone; correct via frame notification after close.
     if (prev.width === windowWidth && frameHeightRefitStateRef.current.keyboardVisible) {
       return
     }
@@ -205,7 +203,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     scheduleViewportRefit()
   }, [windowWidth, windowHeight, viewportMeasuredRef, scheduleViewportRefit])
 
-  // Why: on text-size change the refit's 150ms debounce lets the WebView apply the new fontSize before we re-measure cell metrics.
+  // Debounce font changes so the WebView applies fontSize before native measures new cells.
   const prevTextScaleRef = useRef(textScale)
   useEffect(() => {
     if (prevTextScaleRef.current === textScale) {
@@ -216,8 +214,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     scheduleViewportRefit()
   }, [textScale, viewportMeasuredRef, scheduleViewportRefit])
 
-  // Why: panel dock/undock or a sidebar resize changes the width with no window or tab change; a
-  // width that still fits the PTY's grid (sub-pixel layout jitter) needs no refit.
+  // Dock/sidebar changes alter width without window changes; ignore subpixel jitter if the current grid still fits.
   const notifyTerminalFrameWidth = useCallback(() => {
     invalidateViewports()
     scheduleViewportRefit()
@@ -242,7 +239,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     },
     [viewportMeasuredRef, scheduleViewportRefit]
   )
-  // Why: notify imperatively so layout churn doesn't rerender the full session.
+  // Notify imperatively so layout churn cannot rerender the whole session.
   const notifyTerminalFrameHeight = useCallback(
     (height: number) => notifyFrameHeightRefitEvent({ type: 'frame-height', height }),
     [notifyFrameHeightRefitEvent]
@@ -252,7 +249,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     [notifyFrameHeightRefitEvent]
   )
 
-  // Why: a renderer swap or pixel-ratio change gives the same grid a different cell box.
+  // Renderer/DPR swaps can change cell metrics without changing the grid.
   const notifyTerminalCellBoxChange = useCallback(
     (handle: string) => {
       if (
@@ -297,7 +294,7 @@ export function useTerminalViewportRefit(options: TerminalViewportRefitOptions) 
     if (previous === 'connected' || connState !== 'connected') {
       return
     }
-    // Why: an in-place desktop upgrade may add updateViewport; reconnect is where the cached method_not_found goes stale.
+    // Reconnect can reach an upgraded host; clear cached method-not-found capability.
     updateViewportCapabilityRef.current = 'unknown'
     // Why: reconnect can restore a PTY resized while the socket was down, so equal cached dims still need reassertion.
     invalidateViewports()

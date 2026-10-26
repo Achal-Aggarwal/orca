@@ -30,27 +30,14 @@ import {
 } from './bridge/bridge-terminal-key'
 import type { BridgeHostOptions } from './bridge-host-contract'
 
-// Re-exported so a caller reaches the host and what it reports through one module.
 export type { BridgeHostDiagnostic, BridgeHostOptions } from './bridge-host-contract'
 
 export type BridgeHost = {
   publishStorage: () => void
   receive: (json: string) => void
-  /**
-   * Hands this session a rewritten route: same screen, different params (ruling 33.1).
-   *
-   * The held route moves either way, so a page that reloads inside this mount is told the newest
-   * one. A different pathname is a different screen and is refused here — that is a remount,
-   * which is what the shell already does.
-   *
-   * Answers nothing, and nothing is tracked (ruling 34): a frame the view refused is repaired by
-   * the next `init`, and the request it carried is spent by the page, which erases the param it
-   * applied.
-   */
+  // Hold same-screen param updates even when posting fails; repair from the next ready without delivery tracking. Different pathnames require remount; the page clears consumed params (rulings 33.1/34).
   publishRoute: (next: BridgeInitRoute) => void
-  /** Hands this session moved safe-area insets over the same re-sent `init` a route update takes. */
   publishSafeAreaInsets: (next: BridgeSafeAreaInsets) => void
-  /** Hands this session a moved keyboard height over the same re-sent `init`. */
   publishKeyboardInset: (next: number) => void
   /** Hands this session a moved fold over the same re-sent `init`. */
   publishPageGeometry: (next: import('./bridge/bridge-page-geometry').BridgePageGeometry) => void
@@ -67,35 +54,20 @@ export type BridgeHost = {
    * every page older than the frame; the caller then leaves the key to the navigator.
    */
   sendBack: () => boolean
-  /**
-   * What this session has established about the Back key, for the host that takes over.
-   *
-   * A host is rebuilt when the client under it changes and the page document does not move, so
-   * what the page declared and what it is holding outlive this object. Read at teardown and handed
-   * to the replacement; a caller that is ending the session simply drops it.
-   */
+  // Transfer the session’s Back state on client-driven host rebuild; the mounted page never reclaims it. Ending sessions simply discard it.
   readSessionBack: () => BridgeSessionBack
   dispose: () => void
 }
 
-/**
- * One page document's end of the bridge: page frames in, host frames out, one RPC client behind it.
- *
- * The fence is structural rather than checked. The protocol names no host, so a page cannot ask for
- * one: the client is whichever this host was built with, and a page that outlives its session has
- * its frames refused at the native origin check before this module ever sees them. The caps the
- * page is told about in `init` are enforced here and not trusted from there.
- */
+// Bind the host structurally to one RPC client; the protocol lets pages name no other host. Native origin checks reject expired sessions, and init caps are enforced here.
 export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   const { client, buildId, sessionId, pageRoutes, host } = options
-  // The protocol's own grants ride with every session; the rest is what this route asked for.
   const granted: readonly string[] = [
     BRIDGE_FAULT_GRANT,
     BRIDGE_RPC_ENVELOPE_GRANT,
     ...options.routeGrants
   ]
-  // Checked here for the reason the route is: a pair the page's reader would refuse takes the whole
-  // `init` with it, and a session that never gets one is worse than one that never starts.
+  // Validate manifest pairs like the route: a pair refused by the page would invalidate the entire init.
   const parsedRouteGrants =
     options.pageRouteGrants === undefined
       ? null
@@ -118,16 +90,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     ...(options.terminalKeyRail === undefined ? {} : { terminalKeyRail: options.terminalKeyRail })
   })
   let closed = false
-  // One document's turn at the bridge. `close` ends it and the next `ready` begins the next one;
-  // between the two the view belongs to no document, so nothing is served and nothing is posted.
-  // No epoch rides along: one native listener delivers page frames in order, so a straggler from
-  // the closed document is always behind it and ahead of the next document's `ready`.
+  // Close ends document service until the next ready. Native delivery preserves frame order, so stragglers remain between those markers without an epoch.
   let serving = true
-  // Whether this host has ever answered a `ready`. Not the same as `serving`, which starts true so
-  // the first document's frames are not refused for arriving in the same batch as its `ready`: this
-  // one starts false, because a page that has been told no grants holds none.
-  // Seeded from the session rather than started false: this host may be a rebuild taking over a
-  // session that handshook with the one before it.
+  // serving initially admits the first ready batch, but only an established session holds grants. Inherit establishment when rebuilding beneath a live page.
   let initSent = options.sessionEstablished
   // What the page's init reader accepts, carried across a rebuild because the page does not
   // re-handshake. Null is a page older than `storageKeys`, which gets the legacy keys only.
@@ -153,7 +118,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     terminalTimers: options.terminalTimers
   })
 
-  /** `state` is the event's own value: a listener can run before the getter it mirrors is updated. */
+  // Use the event’s state; listeners can run before the mirrored getter updates.
   function snapshot(state?: ConnectionState): BridgeConnectionSnapshot {
     return {
       state: state ?? client.getState(),
@@ -245,8 +210,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     report: (diagnostic) => options.onDiagnostic?.(diagnostic)
   })
 
-  // The same three the outbound frames are gated on, read here as well: the Back caller spends the
-  // answer on a hardware key, and a `true` for a frame that never left is a dead press.
+  // Check the outbound gates before consuming native Back; returning true for an unsent frame would swallow the key.
   const deliverable = (): boolean => !closed && serving && initSent
 
   const back = createBridgeHostBack({
@@ -273,8 +237,6 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     onTerminalKeyRailClaim: reportRailClaim
   })
 
-  /** Cancels everything the page had open. `notify` is false for the page's own `close`, which has
-   *  already settled what it owned. */
   function settleAll(notify: boolean): void {
     requests.closeAll(notify)
     subscriptions.closeAll(notify ? 'closed' : null)
@@ -290,8 +252,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   }
 
   function dispatch(message: BridgeClientMessage): void {
-    // `ready` is what claims the view, whether it is the first document's or a replacement's; a
-    // re-asked `ready` from the document already being served is answered the same way.
+    // Every ready claims the view, whether a new document or a repeated ask.
     if (message.type === 'ready') {
       serving = true
       pageStorageKeys = message.storageKeys ?? null
@@ -309,10 +270,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       options.onDiagnostic?.({ kind: 'frame-after-close' })
       return
     }
-    // A page whose session has never handshook has been told no caps, no grants and no route, so
-    // anything it opens is a frame from a document nothing has answered. The notify path has
-    // refused that since C0 under the same name; requests and streams did not. Keyed on the
-    // session, so a host rebuilt under a live page serves it rather than refusing until reload.
+    // A session with no handshake has no grants/caps; refuse requests and streams too. Inherited handshake state keeps client-rebuilt hosts serving live pages.
     if (!initSent && (message.type === 'request' || message.type === 'subscribe')) {
       options.onDiagnostic?.({ kind: 'notify-refused', name: message.method, why: 'before-ready' })
       sendError(message.id, new BridgeCapExceededError('before-ready'))
@@ -340,8 +298,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         forwardNotify(message)
         return
       case 'close':
-        // Not a latch. The document that loads next into this same view says `ready` over this same
-        // host, and a host that had shut itself would leave that `ready` retrying forever.
+        // Close is not host disposal; the next document sends ready over this same view.
         settleAll(false)
         serving = false
         back.drop()
@@ -355,8 +312,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   })
 
   if (routes.current() === null) {
-    // At construction rather than on the first `ready`: the verdict does not depend on the page
-    // behaving, and a shell that waited for a frame would hold a blank view until one arrived.
+    // Report invalid routes at construction so recovery does not depend on a blank page producing a frame.
     const issue = routeGrantsIssue ? `pageRouteGrants: ${routeGrantsIssue}` : routes.openIssue()
     options.onDiagnostic?.({ kind: 'route-refused', issue })
     options.onRouteRefused(issue)
@@ -365,7 +321,6 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   return {
     receive(json: string): void {
       if (closed) {
-        // Only a disposed host reaches this, and it can neither answer the frame nor refuse it.
         options.onDiagnostic?.({ kind: 'frame-after-dispose' })
         return
       }

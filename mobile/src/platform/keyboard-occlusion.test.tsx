@@ -11,10 +11,8 @@ type KeyboardHarness = {
   listeners: Map<string, Listener>
   removed: string[]
   platform: 'ios' | 'android'
-  /** Every call, not the surviving subscriptions: a hook that subscribes and unsubscribes still
-   *  costs a phone a render per keyboard event, which `listeners.size` alone would not show. */
+  // Count all subscriptions, not just surviving listeners, to detect transient duplicate keyboard work.
   addListenerCalls: number
-  /** What `Keyboard.metrics()` answers. */
   metrics: { height: number } | undefined
 }
 
@@ -114,7 +112,7 @@ describe('the keyboard the phone reports', () => {
     keyboardState = { height: 0, visible: false }
   })
 
-  it('animates with the keyboard on iOS and after it on Android', async () => {
+  it('subscribes to will events on iOS and did events on Android', async () => {
     await mount()
     expect([...keyboard.listeners.keys()].sort()).toEqual([
       'keyboardWillChangeFrame',
@@ -164,8 +162,6 @@ describe('the keyboard the phone reports', () => {
   })
 
   it('answers both facts from one subscription, so a screen wanting each pays for one', async () => {
-    // The session screen reads the height to lift its dock and the flag to hold off the terminal
-    // refit. Two hooks would duplicate the listeners and renders per keyboard event.
     await mountComponent(StateHarness)
     expect(keyboard.addListenerCalls).toBe(3)
     await act(async () => {
@@ -323,7 +319,7 @@ describe('the keyboard the phone reports', () => {
   })
 
   it('never seeds the hook from metrics(), so a stale iOS reading cannot open it', async () => {
-    // RN clears metrics() on didHide, after the willHide this hook closes on.
+    // RN clears metrics on didHide, after the willHide used here.
     keyboard.metrics = { height: 291 }
     await mountComponent(StateHarness)
     expect(keyboardState).toEqual({ height: 0, visible: false })

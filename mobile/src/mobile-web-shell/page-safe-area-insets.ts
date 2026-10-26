@@ -50,12 +50,7 @@ export function measuredPageSafeAreaInsets(
   }
 }
 
-/**
- * The part of an edge-to-edge WebView that sits under a system bar, which is what the page pads for.
- *
- * The window's insets, as a native screen reads them with the keyboard covering it, except where
- * the shell's banner stands above the view and takes the status bar strip itself.
- */
+// Give pages window insets like native screens, except status-bar space already consumed by the shell banner.
 export function pageSafeAreaInsets(input: {
   insets: BridgeSafeAreaInsets
   topCovered: boolean
@@ -69,8 +64,7 @@ export function pageSafeAreaInsets(input: {
   }
 }
 
-/** Hands moved insets to the page over the re-sent `init` a pane move takes: a rotation or the
- *  shell's banner. Keyed on the four numbers, so a render moves nothing. */
+// Resend init when inset values change, not on every render, to handle rotation/banner changes.
 export function usePublishedSafeAreaInsets(
   publish: (insets: BridgeSafeAreaInsets) => void,
   insets: BridgeSafeAreaInsets

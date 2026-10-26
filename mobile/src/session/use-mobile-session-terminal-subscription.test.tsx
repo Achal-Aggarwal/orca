@@ -27,7 +27,6 @@ const PHONE = { cols: 55, rows: 44 }
 
 type StreamHandler = (result: unknown) => void
 
-/** The route's subscribe, driven end to end against a recording client and terminal. */
 function subscriptionHarness(opts: {
   fit: typeof PHONE | null
   webReady: boolean
@@ -45,7 +44,6 @@ function subscriptionHarness(opts: {
     write: vi.fn(),
     init: vi.fn(({ cols, rows }: { cols: number; rows: number }) => {
       order.push(`init ${cols}x${rows}`)
-      // An init's document reports its laid-out box before its ready.
       fit = fit ?? PHONE
     }),
     resize: vi.fn(),
@@ -216,7 +214,6 @@ function subscriptionHarness(opts: {
     },
     fields,
     terminalFrameRef,
-    // The frame's onLayout.
     layOutFrame: (width: number, height = 751) => act(() => notifyFrame!({ width, height }))
   }
 }
@@ -272,7 +269,6 @@ describe('a terminal first subscribe', () => {
     const harness = subscriptionHarness({ fit: null, webReady: true, frameWidth: 0 })
     harness.subscribe()
     expect(harness.order).toEqual([])
-    // The frame's first layout subscribes the document held back for it.
     harness.layOutFrame(427)
     expect(harness.order).toEqual(['subscribe null'])
   })
@@ -286,7 +282,6 @@ describe('a terminal first subscribe', () => {
     harness.layOutFrame(427, 700)
     expect(harness.order).toEqual(['subscribe null'])
     expect(notifyTerminalFrameWidth).not.toHaveBeenCalled()
-    // A hidden 0x0 layout keeps the box it was laid out at.
     harness.layOutFrame(0, 0)
     expect(harness.terminalFrameRef.current).toEqual({ width: 427, height: 700 })
     harness.layOutFrame(360.5, 700)
@@ -322,7 +317,6 @@ describe('settled terminal fits belong to their stream and document', () => {
       .map(([callback]) => callback)
   }
   function clearStreamCache(harness: ReturnType<typeof subscriptionHarness>) {
-    // The production clear path retires streams, then clears their numeric sequences.
     harness.fields.terminalUnsubsRef.current.forEach((unsub) => unsub())
     harness.fields.terminalUnsubsRef.current.clear()
     harness.fields.subscribeSeqRef.current.clear()

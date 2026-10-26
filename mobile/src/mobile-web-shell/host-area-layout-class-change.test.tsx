@@ -1,10 +1,4 @@
-/**
- * A layout-class change (rotation, Split View, a foldable opening) re-decides a mounted session.
- *
- * Off a wide layout a detail route is served as before; on one it is served only by a page that
- * declares `canOwnHostArea`, because an older page would draw its own sidebar beside the native
- * one, so an older one is walled. A declaring page keeps its session and in-page stack across the change.
- */
+// Rebuild on layout-class changes: wide sessions require canOwnHostArea to avoid duplicate sidebars; an older page must be walled.
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 import { MOBILE_WEB_BUNDLE_CAPABILITY } from '../../../src/shared/mobile-web-bundle/mobile-web-bundle-capability'
@@ -73,7 +67,6 @@ vi.mock('../transport/mobile-web-bundle-fetch', () => ({
 import { useMobileWebShellSession } from './use-mobile-web-shell-session'
 
 const store: GenerationStore = {
-  // The same build on disk, so a session opens it and reaches `ready` without a download.
   readActiveGeneration: async () => ({
     buildId: 'b'.repeat(64),
     directory: 'file:///cache/gen',
@@ -180,7 +173,6 @@ describe('a detail session across a layout-class change', () => {
 })
 
 describe('a phone mount', () => {
-  // The layout effect fires once on mount; on a phone it must be a no-op, not a restart.
   it.each([
     [true, '/h/host-1'],
     [true, '/h/host-1/session/wt-1'],
