@@ -5,7 +5,8 @@ import type { NativeChatMessage } from '../../../../../src/shared/native-chat-ty
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 import {
   readMobileNativeChatPickedSkills,
-  recordMobileNativeChatPickedSkill,
+  editMobileNativeChatDraft,
+  recordMobileNativeChatPickedSkills,
   resetMobileNativeChatDraftStoreForTests,
   setMobileNativeChatDraftText,
   useMobileNativeChatDraft
@@ -150,15 +151,12 @@ describe('mobile native-chat draft store', () => {
 describe('picked skills', () => {
   afterEach(() => resetMobileNativeChatDraftStoreForTests())
 
-  it('forgets a pick whose token was deleted, and every pick once the draft empties', () => {
-    const first = { name: 'review', path: '/a/review/SKILL.md' }
-    const second = { name: 'review', path: '/b/review/SKILL.md' }
+  it('forgets a pick once an edit deletes its token, even if the name is typed again', () => {
+    const review = { name: 'review', path: '/a/review/SKILL.md' }
     setMobileNativeChatDraftText('draft', 'fix $review then ')
-    recordMobileNativeChatPickedSkill('draft', 'fix $rev', first)
-    recordMobileNativeChatPickedSkill('draft', 'fix it then $rev', second)
-    expect(readMobileNativeChatPickedSkills('draft')).toEqual([second])
-
-    setMobileNativeChatDraftText('draft', '')
+    recordMobileNativeChatPickedSkills('draft', [review])
+    editMobileNativeChatDraft('draft', 'fix it then ')
+    editMobileNativeChatDraft('draft', 'fix it then $review')
     expect(readMobileNativeChatPickedSkills('draft')).toEqual([])
   })
 })
