@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { NativeChatMessage } from '../../../../../src/shared/native-chat-types'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 import {
+  readMobileNativeChatPickedSkills,
+  recordMobileNativeChatPickedSkill,
   resetMobileNativeChatDraftStoreForTests,
+  setMobileNativeChatDraftText,
   useMobileNativeChatDraft
 } from './mobile-native-chat-draft-store'
 
@@ -141,5 +144,21 @@ describe('mobile native-chat draft store', () => {
 
     expect(shown).toBe('typed')
     expect(screenRenders).toBe(rendersBeforeTyping)
+  })
+})
+
+describe('picked skills', () => {
+  afterEach(() => resetMobileNativeChatDraftStoreForTests())
+
+  it('forgets a pick whose token was deleted, and every pick once the draft empties', () => {
+    const first = { name: 'review', path: '/a/review/SKILL.md' }
+    const second = { name: 'review', path: '/b/review/SKILL.md' }
+    setMobileNativeChatDraftText('draft', 'fix $review then ')
+    recordMobileNativeChatPickedSkill('draft', 'fix $rev', first)
+    recordMobileNativeChatPickedSkill('draft', 'fix it then $rev', second)
+    expect(readMobileNativeChatPickedSkills('draft')).toEqual([second])
+
+    setMobileNativeChatDraftText('draft', '')
+    expect(readMobileNativeChatPickedSkills('draft')).toEqual([])
   })
 })
