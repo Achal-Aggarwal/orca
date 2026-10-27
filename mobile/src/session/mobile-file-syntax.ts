@@ -49,7 +49,9 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   shellscript: 'bash',
   zsh: 'bash',
   fish: 'bash',
-  yml: 'yaml'
+  yml: 'yaml',
+  // lowlight has no dotenv grammar; ini covers KEY=value and # comments.
+  dotenv: 'ini'
 }
 
 export function resolveMobileSyntaxLanguage(filePath: string, preferredLanguage?: string): string {
