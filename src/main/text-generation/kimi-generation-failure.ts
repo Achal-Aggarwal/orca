@@ -23,6 +23,26 @@ export function formatKimiGenerationFailure(
 function stderrDiagnosis(stderr: string): string | null {
   // Only the CLI's terminal error lines select copy; hook narration is not a diagnosis.
   for (const line of stderr.split(/\r?\n/)) {
+    if (
+      line === "error: option '--agent <name>' cannot be used with option '--agent-file <path>'" ||
+      /^error: option '--agent <name>' argument '.+' is invalid\. --agent may only be specified once\.$/.test(
+        line
+      ) ||
+      /^error: option '--agent-file <path>' argument '.+' is invalid\. --agent-file may only be specified once\.$/.test(
+        line
+      )
+    ) {
+      return 'Kimi received conflicting or repeated agent options. Keep a single --agent or --agent-file option in the generation recipe or CLI arguments, then retry.'
+    }
+    if (
+      /^error: option '.+' (?:argument missing|argument '.+' is invalid\. .+|cannot be used with option '.+')$/.test(
+        line
+      ) ||
+      /^error: unknown option '.+'$/.test(line) ||
+      /^unknown command '.+'\. See 'kimi --help'\.$/.test(line)
+    ) {
+      return 'Kimi rejected an option or argument. Correct the generation recipe or CLI arguments, then retry.'
+    }
     const terminal = /^error: (?:failed to run prompt: )?(.+)$/.exec(line)?.[1]
     if (!terminal) {
       continue
@@ -78,14 +98,11 @@ function stderrDiagnosis(stderr: string): string | null {
     ) {
       return 'Kimi output format requires prompt mode and a supported text or stream-json value. Correct the generation recipe or CLI arguments before retrying.'
     }
-    if (terminal === '--agent-file may only be specified once.') {
-      return 'Kimi received multiple agent files. Keep one agent file in the generation recipe or CLI arguments, then retry.'
-    }
     if (terminal === 'Cannot use --session without an id in prompt mode.') {
       return 'Kimi needs a session id to resume in prompt mode. Correct the generation recipe or CLI arguments, then retry.'
     }
     const conflict =
-      /^Cannot combine (--prompt with --(?:yolo|auto|plan)|--agent with --agent-file|--continue, --session|--yolo with --auto)\.$/.exec(
+      /^Cannot combine (--prompt with --(?:yolo|auto|plan)|--continue, --session|--yolo with --auto)\.$/.exec(
         terminal
       )?.[1]
     if (conflict) {

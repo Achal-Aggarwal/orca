@@ -23,95 +23,112 @@ const invalid = /Kimi returned output Orca couldn't read\. Try again\./
 const occupied = /Kimi.*active in another client.*Stop.*exit.*try again/
 const unknown = /^Kimi couldn't finish.*execution host.*check.*retrying/
 const earlier = sourceShapedKimiOutput('Earlier answer')
-const network = 'provider.connection_error: getaddrinfo ENOTFOUND private-host'
+const run = (message: string) => `error: failed to run prompt: ${message}\nSee log: private-path`
+const network = run('provider.connection_error: getaddrinfo ENOTFOUND private-host')
+const agentOptions =
+  /^Kimi received conflicting or repeated agent options\. Keep a single --agent or --agent-file option in the generation recipe or CLI arguments, then retry\.$/
+const credentials = /credentials.*execution host.*configure.*sign in/
+const parser =
+  /^Kimi rejected an option or argument\. Correct the generation recipe or CLI arguments, then retry\.$/
 
 // Source-shaped stderr forms come from the official 2.3.1 terminal error routes.
 it.each([
-  ['occupied', occupied, realKimiOccupiedOutput, 4],
-  ['unrelated private-prose', occupied, `${earlier}\n${realKimiOccupiedOutput}`, 4],
-  ['Session "private-session" not found.', /find.*session.*existing session.*new one/],
+  ['', occupied, realKimiOccupiedOutput, 4],
+  [run('unrelated private-prose'), occupied, `${earlier}\n${realKimiOccupiedOutput}`, 4],
+  [run('Session "private-session" not found.'), /find.*session.*existing session.*new one/],
   [
-    'Session "private-session" was created under a different directory.',
+    run('Session "private-session" was created under a different directory.'),
     /another directory.*Resume it there.*workspace/
   ],
   [
-    'no provider configured; complete onboarding via /login or the providers endpoint',
-    /credentials.*execution host.*configure.*sign in/
+    run('no provider configured; complete onboarding via /login or the providers endpoint'),
+    credentials
   ],
   [
-    'Provider "private-provider" declares api_key_env = "PRIVATE_ENV" in config.toml, but the environment variable is not set or is empty.',
+    run(
+      'Provider "private-provider" declares api_key_env = "PRIVATE_ENV" in config.toml, but the environment variable is not set or is empty.'
+    ),
     /credential environment variable.*Set it.*execution host/
   ],
   [
-    'model private-model does not resolve to a configured provider',
+    run('model private-model does not resolve to a configured provider'),
     /usable model.*configure or select/
   ],
-  ['Prompt hook blocked the request.', /hook blocked.*Review.*hooks.*retry/],
-  ['Prompt turn ended with reason: cancelled', /cancelled.*Try again/],
+  [run('Prompt hook blocked the request.'), /hook blocked.*Review.*hooks.*retry/],
+  [run('Prompt turn ended with reason: cancelled'), /cancelled.*Try again/],
   [
-    'provider.auth_error: private-provider prose',
+    run('provider.auth_error: private-provider prose'),
     /authenticate.*Sign in.*credentials.*retry/,
     '{broken'
   ],
-  [network, /connect.*network.*retry(?!.*MagicDNS)/],
+  [run('provider.rate_limit: private-provider prose'), /limit.*Wait.*reduce/],
+  [run('Provider safety policy blocked the response.'), /blocked.*Revise.*prompt.*configuration/],
+  [run('context.overflow: private-provider prose'), /context.*Shorten.*new session/],
+  [run('config.invalid: private-provider prose'), /invalid configuration.*Check.*model.*provider/],
+  [network, /connect.*network.*retry/],
   [network, /connect.*network.*MagicDNS/, '', 1, true],
-  ['provider.rate_limit: private-provider prose', /limit.*Wait.*reduce/],
-  ['Provider safety policy blocked the response.', /blocked.*Revise.*prompt.*configuration/],
-  ['context.overflow: private-provider prose', /context.*Shorten.*new session/],
-  ['config.invalid: private-provider prose', /invalid configuration.*Check.*model.*provider/],
-  ['Prompt cannot be empty.', /empty prompt.*recipe.*CLI arguments/],
-  ['Cannot combine --prompt with --auto.', /conflicting.*--prompt.*--auto.*recipe.*arguments/],
+  ...[
+    "error: option '--agent <name>' cannot be used with option '--agent-file <path>'",
+    "error: option '--agent-file <path>' argument 'private-b.md' is invalid. --agent-file may only be specified once.",
+    "error: option '--agent <name>' argument 'private-'other' is invalid. --agent may only be specified once."
+  ].map((stderr) => [stderr, agentOptions] as const),
+  ...[
+    "error: option '--agent <name>' argument missing",
+    "error: unknown option '--private-flag'\n(Did you mean --plan?)",
+    "unknown command 'private-word'. See 'kimi --help'.",
+    "error: option '--agent-file <path>' argument 'private-value' is invalid. --agent may only be specified once.",
+    "error: option '--agent <name>' argument 'private-value' is invalid. provider.auth_error: private-prose",
+    "error: option '--private-flag' cannot be used with option '--private-other'"
+  ].map((stderr) => [stderr, parser] as const),
+  [run("unknown option '--private-flag'"), unknown, '{"type":"error","code":"unknown.code"}'],
+  ['error: Login required\n\nmessage:\nprivate-prose\nSee log: private-path', credentials],
+  ['error: Prompt cannot be empty.', /empty prompt.*recipe.*CLI arguments/],
   [
-    'Cannot combine --agent/--agent-file with --session/--continue: the agent is bound at session creation and the bound agent is restored automatically on resume.',
+    'error: Cannot combine --prompt with --auto.',
+    /conflicting.*--prompt.*--auto.*recipe.*arguments/
+  ],
+  [
+    'error: Cannot combine --agent/--agent-file with --session/--continue: the agent is bound at session creation and the bound agent is restored automatically on resume.',
     /cannot change the agent.*Remove.*override.*new session/
   ],
-  ['Cannot use --session without an id in prompt mode.', /session id.*recipe.*arguments/],
-  ['Output format is only supported in prompt mode.', /format.*prompt mode.*supported.*recipe/],
-  ['unrecognized private-prose CODE_SECRET', unknown, '{broken'],
-  ['hook narration provider.auth_error: private-prose', unknown],
+  ['error: Cannot use --session without an id in prompt mode.', /session id.*recipe.*arguments/],
+  ["hook narration error: unknown option '--private-flag'", unknown],
   ['', /Kimi.*interrupted.*Try again/, '', null],
   ['', invalid, realKimiOccupiedOutput, 0],
   [
-    'provider.auth_error: private-prose',
+    run('provider.auth_error: private-prose'),
     /Kimi returned an empty message\.$/,
     sourceShapedKimiOutput(),
     0
   ],
-  ['captured success', /"title":"Decode Kimi generation output.*\\n\\n/, realKimiPrOutput, 0],
+  ['', /"title":"Decode Kimi generation output.*\\n\\n/, realKimiPrOutput, 0],
   ...[
     '{"role":',
     'NOTICE wrapper log',
     '{"role":"assistant","content":42}',
     '{"role":"assistant","tool_calls":"bad"}',
     '{"role":"tool","content":"missing id"}'
-  ].map((bad) => ['damaged success', invalid, `${earlier}\n${bad}`, 0] as const)
-] as const)(
-  '%s outcome',
-  (source, meaning, stdout = '{"type":"error","code":"unknown.code"}', code = 1, local = false) => {
-    const stderr =
-      source === 'occupied' || !source
-        ? ''
-        : `error: failed to run prompt: ${source}\nSee log: private-path`
-    const result = finalizeFromAgentOutput({
-      stdout,
-      stderr,
-      code,
-      includeLocalMacDnsHint: local,
-      label: 'Kimi',
-      emptyResultName: 'message',
-      outputFormat: 'kimi-stream-json'
-    })
-    expect(result.success).toBe(source === 'captured success')
-    const text = result.success ? result.rawOutput : result.error
-    expect(text).toMatch(meaning)
-    expect(text).not.toMatch(
-      /private-|PRIVATE_ENV|CODE_SECRET|provider\.[a-z_]+|session\.occupied|unknown\.code|code [014]/
-    )
-    if (!local) {
-      expect(text).not.toContain('MagicDNS')
-    }
-    if (!result.success && (stdout || stderr)) {
-      expect(result.failureOutput).toEqual({ label: 'Kimi', exitCode: code, stdout, stderr })
-    }
+  ].map((bad) => ['', invalid, `${earlier}\n${bad}`, 0] as const)
+] as const)('%s outcome', (stderr, meaning, stdout = '', code = 1, local = false) => {
+  const result = finalizeFromAgentOutput({
+    stdout,
+    stderr,
+    code,
+    includeLocalMacDnsHint: local,
+    label: 'Kimi',
+    emptyResultName: 'message',
+    outputFormat: 'kimi-stream-json'
+  })
+  expect(result.success).toBe(stdout === realKimiPrOutput)
+  const text = result.success ? result.rawOutput : result.error
+  expect(text).toMatch(meaning)
+  expect(text).not.toMatch(
+    /private-|PRIVATE_ENV|CODE_SECRET|provider\.[a-z_]+|session\.occupied|unknown\.code|code [014]/
+  )
+  if (!local) {
+    expect(text).not.toContain('MagicDNS')
   }
-)
+  if (!result.success && (stdout || stderr)) {
+    expect(result.failureOutput).toEqual({ label: 'Kimi', exitCode: code, stdout, stderr })
+  }
+})
