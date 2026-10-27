@@ -1,5 +1,6 @@
 import '../rpc/unused-default-rpc-methods.test-fixture'
-import type { OrcaRuntimeService } from '../orca-runtime'
+import { vi } from 'vitest'
+import { OrcaRuntimeService } from '../orca-runtime'
 import { RpcDispatcher } from '../rpc/dispatcher'
 import { BROWSER_PROFILE_METHODS } from '../rpc/methods/browser-profile-rpc-methods'
 import { RuntimeBrowserProfiles } from './browser-profiles'
@@ -18,12 +19,14 @@ export function browserProfileRpcFixture(executorRuntimeId: string, outerRuntime
     { requireAgentBrowserBridge: unavailable, resolveBrowserCommandTarget: async () => ({}) },
     { describeBrowserTab: unavailable, resolveClientHostedBrowserPage: async () => undefined }
   )
-  const runtime = {
-    getRuntimeId: () => outerRuntimeId,
-    browserProfileList: () => profiles.browserProfileList(),
-    browserProfileImportFromBrowser: profiles.browserProfileImportFromBrowser.bind(profiles),
-    browserProfileClearGoogleCookies: profiles.browserProfileClearGoogleCookies.bind(profiles)
-    // SAFETY: this explicit registry invokes only these three runtime methods; page/orchestration methods are excluded.
-  } as OrcaRuntimeService
+  const runtime = new OrcaRuntimeService(null)
+  vi.spyOn(runtime, 'getRuntimeId').mockReturnValue(outerRuntimeId)
+  vi.spyOn(runtime, 'browserProfileList').mockImplementation(() => profiles.browserProfileList())
+  vi.spyOn(runtime, 'browserProfileImportFromBrowser').mockImplementation(
+    profiles.browserProfileImportFromBrowser.bind(profiles)
+  )
+  vi.spyOn(runtime, 'browserProfileClearGoogleCookies').mockImplementation(
+    profiles.browserProfileClearGoogleCookies.bind(profiles)
+  )
   return { profiles, dispatcher: new RpcDispatcher({ runtime, methods: BROWSER_PROFILE_METHODS }) }
 }
