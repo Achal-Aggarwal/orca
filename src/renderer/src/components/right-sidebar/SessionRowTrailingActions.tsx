@@ -1,5 +1,6 @@
 import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import { useAiVaultInPlaceAgent, useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
+import { useEffect, useState } from 'react'
 import type React from 'react'
 import {
   ChevronDown,
@@ -17,6 +18,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/lib/close-all-context-menus'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { agentLabel } from './ai-vault-session-filters'
 import { translate } from '@/i18n/i18n'
@@ -98,6 +100,24 @@ export function SessionRowTrailingActions({
   const switchLoading =
     useInPlaceSwitchCapability(session.executionHostId, session.agent) === undefined
   const jumpToWorktreeTooltip = aiVaultWorktreeJumpTooltip(worktreeInfo)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // Why: the wrapper's pointerdown stopPropagation hides this click from other menus' outside-dismiss.
+  useEffect(() => {
+    if (!menuOpen) {
+      return
+    }
+    const closeMenu = (): void => setMenuOpen(false)
+    window.addEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
+    return () => window.removeEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
+  }, [menuOpen])
+
+  const handleMenuOpenChange = (open: boolean): void => {
+    if (open) {
+      window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+    }
+    setMenuOpen(open)
+  }
 
   return (
     <div
@@ -238,7 +258,7 @@ export function SessionRowTrailingActions({
         </TooltipContent>
       </Tooltip>
       {actionsHidden ? null : (
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>

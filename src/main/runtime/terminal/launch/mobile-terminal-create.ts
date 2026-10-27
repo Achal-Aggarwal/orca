@@ -20,6 +20,13 @@ import { MOBILE_TERMINAL_CREATE_RESULT_TTL_MS } from '../../orca-runtime-core'
 import { seedResumeLaunchIdentity } from '../../../ipc/pty/pane/resume-launch-identity'
 import type { AgentSessionSwitchAuthority } from '../../../../shared/agent-session-switch-execution'
 
+export type OwnedMobileTerminalDispatchRecipe = {
+  launchConfig?: SleepingAgentLaunchConfig
+  launchAgent?: TuiAgent
+  connectionId: string | null
+  recordedAt: number
+}
+
 export type OwnedMobileTerminalCreateOptions = {
   command?: string
   shellOverride?: string

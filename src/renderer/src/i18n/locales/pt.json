@@ -7727,6 +7727,10 @@
           "heartbeatDescription": "Os workers atribuídos dão sinal a cada poucos minutos para que o coordenador distinga um agente trabalhando de um travado. Desativar reduz as mensagens para o coordenador, mas ele perde esse sinal de acompanhamento. Vale para workers atribuídos após a mudança.",
           "heartbeatKeywordHeartbeat": "sinal de vida",
           "heartbeatKeywordStalled": "travado",
+          "heartbeatKeywordInterval": "intervalo",
+          "heartbeatIntervalTitle": "Intervalo dos sinais de vida",
+          "heartbeatIntervalDescription": "Intervalos menores dão ao coordenador sinais mais frequentes, mas enviam mais mensagens. Intervalos maiores enviam menos mensagens, mas deixam mais tempo entre os sinais. Vale para workers atribuídos após a mudança.",
+          "heartbeatIntervalSuffix": "minutos",
           "7bc082f4de": "Copiar comando de instalação"
         },
         "RuntimeAccessGrantList": {
@@ -20676,6 +20680,12 @@
       "findInFolder": "Buscar em {{path}}",
       "folderLoadError": "Não foi possível carregar esta pasta:",
       "emptyFolder": "Nenhum arquivo nesta pasta"
+    },
+    "trashFailed": {
+      "titleRecycleBin": "Não foi possível mover '{{name}}' para a Lixeira. Excluir permanentemente?",
+      "titleTrash": "Não foi possível mover '{{name}}' para a Lixeira. Excluir permanentemente?",
+      "description": "Isso não pode ser desfeito.",
+      "confirm": "Excluir permanentemente"
     }
   },
   "sparsePreset": {

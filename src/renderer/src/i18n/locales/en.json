@@ -7154,10 +7154,12 @@
           "turnedOff": "WSL hosts are turned off in Settings → Experimental",
           "turnedOffShort": "Turned off in Settings → Experimental",
           "serverFilesMissing": "This build of Orca can’t run WSL hosts (server files missing).",
-          "serverFilesMissingShort": "This build can’t run WSL hosts"
+          "serverFilesMissingShort": "This build can’t run WSL hosts",
+          "removalPending": "Removal didn’t finish"
         },
         "wslHostRemoval": {
-          "partial": "The host was removed, but something in the distro is still running: {{value0}}"
+          "partial": "The host was removed, but something in the distro is still running: {{value0}}",
+          "pending": "Orca didn’t remove the host yet: {{value0}} Remove it again to retry, or connect it to keep it."
         },
         "addRepoWslHostFolderPicker": {
           "otherDistro": "That folder is in {{value0}}, not {{value1}}.",
@@ -8547,6 +8549,10 @@
           "heartbeatDescription": "Dispatched workers check in every few minutes so the coordinator can tell a working agent from a hung one. Turning this off means fewer messages to the coordinator, but it loses that check-in signal. Applies to workers dispatched after the change.",
           "heartbeatKeywordHeartbeat": "heartbeat",
           "heartbeatKeywordStalled": "stalled",
+          "heartbeatKeywordInterval": "interval",
+          "heartbeatIntervalTitle": "Heartbeat interval",
+          "heartbeatIntervalDescription": "Shorter intervals give the coordinator more frequent check-ins but send it more messages. Longer intervals send fewer messages but leave longer gaps between check-ins. Applies to workers dispatched after the change.",
+          "heartbeatIntervalSuffix": "minutes",
           "7bc082f4de": "Copy install command"
         },
         "OrchestrationSetupCard": {
@@ -20917,6 +20923,12 @@
       "findInFolder": "Find in {{path}}",
       "folderLoadError": "Could not load this folder:",
       "emptyFolder": "No files in this folder"
+    },
+    "trashFailed": {
+      "titleRecycleBin": "Couldn't move '{{name}}' to the Recycle Bin. Delete it permanently?",
+      "titleTrash": "Couldn't move '{{name}}' to the Trash. Delete it permanently?",
+      "description": "This cannot be undone.",
+      "confirm": "Delete Permanently"
     }
   },
   "sparsePreset": {

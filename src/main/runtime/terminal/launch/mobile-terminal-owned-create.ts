@@ -1,12 +1,13 @@
 import { OrcaRuntimeWithResolveMobileSessionTerminalCommand } from './mobile-terminal-startup'
-import type { TuiAgent } from '../../../../shared/tui-agent'
-import type { SleepingAgentLaunchConfig } from '../../../../shared/agent-session-resume'
 import type {
   RuntimeMobileSessionCreateTerminalResult,
   RuntimeMobileSessionTabsSnapshot,
   RuntimeMobileSessionTerminalTab
 } from '../../../../shared/runtime-types'
-import type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
+import type {
+  OwnedMobileTerminalCreateOptions,
+  OwnedMobileTerminalDispatchRecipe
+} from './mobile-terminal-create'
 import { randomUUID } from 'node:crypto'
 import { copySleepingAgentLaunchConfig } from '../../runtime-agent-launch-resolution'
 import { deriveRemoteRuntimeTerminalCreateHandle } from '../../remote-runtime-terminal-create-identity'
@@ -15,6 +16,7 @@ import {
   placeCreatedSessionTab,
   captureSessionTabPlacement
 } from '../../../../shared/session-tab-placement'
+import type { OrcaRuntimeWithBuildPtyTerminalSummary as PtyTerminalSummaryMethods } from '../query/pty-terminal-summary'
 import {
   buildHeadlessMobileSessionTabGroups,
   placeHeadlessSessionTabAtCapture,
@@ -27,15 +29,11 @@ export type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
 const OWNED_MOBILE_DISPATCH_RECIPE_TTL_MS = 15 * 60_000
 
 export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends OrcaRuntimeWithResolveMobileSessionTerminalCommand {
-  private readonly ownedMobileDispatchRecipes = new Map<
-    string,
-    {
-      launchConfig?: SleepingAgentLaunchConfig
-      launchAgent?: TuiAgent
-      connectionId: string | null
-      recordedAt: number
-    }
-  >()
+  protected abstract getPtyManualTitle(
+    ...args: Parameters<PtyTerminalSummaryMethods['getPtyManualTitle']>
+  ): ReturnType<PtyTerminalSummaryMethods['getPtyManualTitle']>
+
+  private readonly ownedMobileDispatchRecipes = new Map<string, OwnedMobileTerminalDispatchRecipe>()
 
   private pruneOwnedMobileDispatchRecipes(): void {
     const now = Date.now()
@@ -222,6 +220,11 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
       livePty.pty.ptyId,
       existingSurface?.parentLayout
     )
+    // A terminal restarted for a saved tab keeps the tab's saved name; a row's null stays cleared.
+    const customTitle =
+      existingSurface?.customTitle !== undefined
+        ? existingSurface.customTitle
+        : this.getPtyManualTitle(livePty.pty, false) || undefined
     const tab: RuntimeMobileSessionTerminalTab = {
       type: 'terminal',
       id: `${parentTabId}::${leafId}`,
@@ -230,6 +233,7 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
       ptyId: livePty.pty.ptyId,
       incarnationId: livePty.pty.incarnationId,
       title: terminal.title ?? livePty.pty.title ?? 'Terminal',
+      ...(customTitle !== undefined ? { customTitle } : {}),
       // Omit only a proven root correction; an unverifiable fallback keeps its saved request.
       ...((terminal.savedStartupCwd ?? cwd) && (terminal.savedStartupCwd ?? cwd) !== workspace.path
         ? { startupCwd: terminal.savedStartupCwd ?? cwd }
