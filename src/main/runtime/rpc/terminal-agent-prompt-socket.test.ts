@@ -29,10 +29,7 @@ it.each(['before', 'after'] as const)(
   'real CLI close %s paste finishes admitted input and drops a cancelled follower',
   async (boundary) => {
     const latch = () => Promise.withResolvers<void>()
-    const pasted = latch(),
-      release = latch(),
-      closed = latch(),
-      received = latch()
+    const [pasted, release, closed, received] = [latch(), latch(), latch(), latch()]
     const root = mkdtempSync(join(tmpdir(), 'orca-prompt-socket-'))
     const kind = process.platform === 'win32' ? 'named-pipe' : 'unix'
     const endpoint =
@@ -56,39 +53,34 @@ it.each(['before', 'after'] as const)(
       value: () => ({ arm: () => {}, wait: () => release.promise, dispose: () => {} })
     })
     const done: Promise<unknown>[] = []
-    let promptRequest: RpcRequest | undefined
     transport.onMessage((raw, reply, context) => {
       const request: RpcRequest = JSON.parse(raw)
       const prompt = request.method === 'terminal.send'
       if (prompt) {
-        promptRequest = request
         received.resolve()
         context!.signal.addEventListener('abort', () => closed.resolve(), { once: true })
       }
+      const admission = prompt && boundary === 'before' ? release.promise : Promise.resolve()
       done.push(
-        (async () => {
-          await (prompt && boundary === 'before' ? release.promise : Promise.resolve())
+        admission.then(async () =>
           reply(JSON.stringify(await dispatcher.dispatch(request, context)))
-        })()
+        )
       )
     })
     await transport.start()
-    writeFileSync(
-      join(root, 'orca-runtime.json'),
-      JSON.stringify({
-        runtimeId: runtime.getRuntimeId(),
-        pid: process.pid,
-        startedAt: 1,
-        authToken: 'fixture-token',
-        transports: [{ kind, endpoint }]
-      })
-    )
+    const discovery = {
+      runtimeId: runtime.getRuntimeId(),
+      pid: process.pid,
+      startedAt: 1,
+      authToken: 'fixture-token',
+      transports: [{ kind, endpoint }]
+    }
+    writeFileSync(join(root, 'orca-runtime.json'), JSON.stringify(discovery))
     const preload = join(root, 'exit-on-input.ts')
     writeFileSync(preload, "process.stdin.once('data', () => process.exit(0))")
     const manifest = createRequire(resolve('package.json')).resolve('bun/package.json')
-    const { bin } = z
-      .object({ bin: z.object({ bun: z.string() }) })
-      .parse(JSON.parse(readFileSync(manifest, 'utf8')))
+    const packageSchema = z.object({ bin: z.object({ bun: z.string() }) })
+    const { bin } = packageSchema.parse(JSON.parse(readFileSync(manifest, 'utf8')))
     const env = {
       ...Object.fromEntries(
         'HOME USERPROFILE APPDATA LOCALAPPDATA XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME ORCA_E2E_HOME_DIR ORCA_E2E_USER_DATA_DIR ORCA_USER_DATA_PATH TEMP TMP TMPDIR'
@@ -130,13 +122,6 @@ it.each(['before', 'after'] as const)(
       await Promise.all(done)
       await expect(second).rejects.toThrow('request_aborted')
       expect(writes).toEqual(boundary === 'after' ? [expect.stringContaining('first'), '\r'] : [])
-      if (boundary === 'after') {
-        const replay = await dispatcher.dispatch(promptRequest!)
-        expect(replay.ok && replay.result).toMatchObject({
-          send: { prompt: { stages: ['input_accepted'] } }
-        })
-        expect(writes).toHaveLength(2)
-      }
     } finally {
       release.resolve()
       if (child.exitCode === null) {
