@@ -3,7 +3,8 @@ import { getWorkspaceStatus } from '../../../shared/workspace-statuses'
 import { makeWorktree } from './slices/worktrees-slice-test-fixtures'
 import {
   isWorkspaceStatusAllowedOnHost,
-  selectWorkspaceBoardStatuses
+  selectWorkspaceBoardStatuses,
+  selectWorkspaceStatusesForHost
 } from './host-workspace-status-columns'
 
 const local = [{ id: 'todo', label: 'Todo' }]
@@ -26,7 +27,8 @@ describe('selectWorkspaceBoardStatuses', () => {
       hostWorkspaceStatuses,
       worktreesByRepo: {
         repo: [card('host', 'status-6', 'runtime:env-1'), card('local', 'status-7')]
-      }
+      },
+      folderWorkspaces: []
     })
 
     expect(lanes.map((status) => status.id)).toEqual(['todo', 'status-6'])
@@ -37,7 +39,8 @@ describe('selectWorkspaceBoardStatuses', () => {
     const lanes = selectWorkspaceBoardStatuses({
       workspaceStatuses: local,
       hostWorkspaceStatuses,
-      worktreesByRepo: { repo: [card('host', 'in-progress', 'runtime:env-1'), unassigned] }
+      worktreesByRepo: { repo: [card('host', 'in-progress', 'runtime:env-1'), unassigned] },
+      folderWorkspaces: []
     })
 
     expect(getWorkspaceStatus(unassigned, lanes)).toBe('todo')
@@ -53,5 +56,16 @@ describe('isWorkspaceStatusAllowedOnHost', () => {
     expect(isWorkspaceStatusAllowedOnHost(state, 'runtime:env-2', 'status-6')).toBe(false)
     expect(isWorkspaceStatusAllowedOnHost(state, 'local', 'todo')).toBe(true)
     expect(isWorkspaceStatusAllowedOnHost(state, 'local', 'legacy-id')).toBe(true)
+  })
+})
+
+describe('selectWorkspaceStatusesForHost', () => {
+  it("offers a host card its host's columns but not the host's copy of the default, matching the board", () => {
+    const state = { workspaceStatuses: local, hostWorkspaceStatuses }
+
+    expect(
+      selectWorkspaceStatusesForHost(state, 'runtime:env-1').map((status) => status.id)
+    ).toEqual(['todo', 'status-6', 'status-7'])
+    expect(selectWorkspaceStatusesForHost(state, 'local')).toBe(local)
   })
 })

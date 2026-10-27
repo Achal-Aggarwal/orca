@@ -16,6 +16,7 @@ import type {
 } from '../../../../shared/worktree/types'
 import type { WorktreeMetaBatchUpdate } from '../../store/slices/worktree-helpers'
 import type { WorktreeManualOrderCatalog } from './worktree-manual-order-catalog'
+import { isWorkspaceStatusAllowedOnHost } from '@/store/host-workspace-status-columns'
 
 type LaneView = { items: readonly Worktree[] }
 
@@ -94,12 +95,25 @@ export function useWorkspaceKanbanWorktreeActions(args: {
     [args]
   )
   const dropWorktreesInStatus = useCallback(
-    (drop: {
+    (requestedDrop: {
       worktreeIds: readonly string[]
       status: WorkspaceStatus
       dropIndex: number
       writeManualOrder?: boolean
     }) => {
+      // Cards that can't take this status (another paired host's column) aren't re-ranked either.
+      const state = useAppStore.getState()
+      const worktreeIds = requestedDrop.worktreeIds.filter((worktreeId) => {
+        const current = args.worktreeById.get(worktreeId)
+        return (
+          current &&
+          isWorkspaceStatusAllowedOnHost(state, current.hostId ?? 'local', requestedDrop.status)
+        )
+      })
+      if (worktreeIds.length === 0) {
+        return
+      }
+      const drop = { ...requestedDrop, worktreeIds }
       const updates: WorktreeMetaBatchUpdate[] = []
       const writeManualOrder =
         drop.writeManualOrder ?? shouldWriteDropManualOrder(drop.worktreeIds, drop.status)
