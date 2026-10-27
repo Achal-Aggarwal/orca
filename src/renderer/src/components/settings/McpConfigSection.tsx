@@ -96,10 +96,7 @@ export function McpConfigSection({ repo }: McpConfigSectionProps): React.JSX.Ele
     return (
       worktreesForRepo.find((worktree) => worktree.isMainWorktree) ??
       worktreesForRepo.find((worktree) => worktree.path === repo.path) ??
-      worktreesForRepo[0] ?? {
-        id: composeWorktreeId(repo.id, repo.path),
-        path: repo.path
-      }
+      worktreesForRepo[0] ?? { id: composeWorktreeId(repo.id, repo.path), path: repo.path }
     )
   }, [activeWorktreeId, allWorktreesForRepo, repo.id, repo.path, worktreesForRepo])
   const targetWorktreeId = targetWorktree.id
@@ -226,10 +223,7 @@ export function McpConfigSection({ repo }: McpConfigSectionProps): React.JSX.Ele
         runtimeEnvironmentId,
         mode: 'edit'
       },
-      {
-        targetGroupId,
-        suppressActiveRuntimeFallback: runtimeEnvironmentId === null
-      }
+      { targetGroupId, suppressActiveRuntimeFallback: runtimeEnvironmentId === null }
     )
     setActiveView('terminal')
   }
@@ -282,10 +276,7 @@ export function McpConfigSection({ repo }: McpConfigSectionProps): React.JSX.Ele
           runtimeEnvironmentId,
           mode: 'edit'
         },
-        {
-          targetGroupId,
-          suppressActiveRuntimeFallback: runtimeEnvironmentId === null
-        }
+        { targetGroupId, suppressActiveRuntimeFallback: runtimeEnvironmentId === null }
       )
       setActiveView('terminal')
       toast.success(
