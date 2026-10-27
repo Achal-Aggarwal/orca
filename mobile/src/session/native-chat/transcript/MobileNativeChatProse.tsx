@@ -31,7 +31,7 @@ import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 export function Prose({
   block,
   text,
-  invert,
+  userMessage,
   fontScale,
   onOpenFile,
   onLongPress,
@@ -41,7 +41,7 @@ export function Prose({
 }: {
   block: NativeChatBlock
   text: string
-  invert?: boolean
+  userMessage?: boolean
   fontScale: number
   /** Assistant prose of a structured chat only. */
   renderVisual?: MobileNativeChatVisualRender
@@ -64,11 +64,11 @@ export function Prose({
         </Text>
       )
     }
-    if (invert) {
+    if (userMessage) {
       return (
         <MobileMarkdown
           content={text}
-          tone="onBright"
+          tone="userMessage"
           rangeSelectable
           textScale={CHAT_PROSE_SCALE * fontScale}
           onOpenFile={onOpenFile}
