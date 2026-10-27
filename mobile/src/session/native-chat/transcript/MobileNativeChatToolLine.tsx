@@ -14,12 +14,14 @@ import {
 } from '../../../../../src/shared/native-chat/tools/native-chat-tool-identity'
 import { NATIVE_CHAT_TOOL_ACTIVITY_COPY } from '../../../../../src/shared/native-chat/tools/native-chat-tool-activity'
 import { nativeChatToolIconName } from '../../../../../src/shared/native-chat/tools/native-chat-tool-icon'
+import { nativeChatFullCommand } from '../../../../../src/shared/native-chat/tools/native-chat-tool-input-text'
 import { NATIVE_CHAT_TOOL_ROW_VERB_COPY } from '../../../../../src/shared/native-chat/tools/native-chat-tool-line-label'
 import { nativeChatToolLineView } from '../../../../../src/shared/native-chat/tools/native-chat-tool-line-view'
 import type {
   NativeChatToolCallBlock,
   NativeChatToolResultBlock
 } from '../../../../../src/shared/native-chat-types'
+import { MobileSourceCopyButton } from '../../../components/MobileSourceCopyButton'
 import { MobileSyntaxSegments } from '../../../components/MobileSyntaxSegments'
 import { INLINE_TEXT_SELECTION } from '../../../components/inline-text-selection'
 import { openExternalLink } from '../../../platform/external-link'
@@ -164,6 +166,7 @@ export function MobileNativeChatToolLine({
     [block, result]
   )
   const fullCommand = label?.commandDetail ?? null
+  const copyCommand = call && label?.command ? nativeChatFullCommand(call.input) : null
   const verb = label?.verb ? NATIVE_CHAT_TOOL_ROW_VERB_COPY[label.verb] : null
   const commandAlone = label?.command === true && verb !== null && label.target.length > 0
   const mcp = call ? mcpToolIdentity(call.name, call.mcpIdentity) : null
@@ -181,53 +184,58 @@ export function MobileNativeChatToolLine({
 
   return (
     <View testID={memberId}>
-      <Pressable
-        style={styles.line}
-        onPress={() => hasDetail && setExpanded(!expanded)}
-        disabled={!hasDetail}
-        accessibilityRole="button"
-        accessibilityState={hasDetail ? { expanded } : undefined}
-      >
-        <View style={[styles.iconSlot, { width: iconSize }]}>
-          {call ? (
-            <MobileNativeChatToolGlyph
-              name={nativeChatToolIconName(call.name, call.mcpIdentity, call.input)}
-              size={iconSize}
-              color={failed ? colors.statusRed : colors.textMuted}
-            />
-          ) : null}
-        </View>
-        {commandAlone ? null : (
-          <Text style={[styles.lineWord, type.row, !verb && styles.lineName]} numberOfLines={1}>
-            {verb ?? name}
-          </Text>
-        )}
-        {target ? (
-          <Text
-            style={[styles.lineTarget, type.row, filePath && onOpenFile && styles.lineLink]}
-            numberOfLines={1}
-            onPress={filePath && onOpenFile ? () => onOpenFile(filePath) : undefined}
-            suppressHighlighting={!(filePath && onOpenFile)}
-            accessibilityRole={filePath && onOpenFile ? 'link' : undefined}
-          >
-            {target}
-          </Text>
-        ) : null}
-        {/* Held at the row's right edge, so the carets of a run line up in one column. */}
-        <View style={styles.lineTrailing}>
-          {exitCode !== undefined ? (
-            <Text style={[styles.lineMeta, type.meta, exitCode !== 0 && styles.errorText]}>
-              {`exit ${exitCode}`}
+      <View style={copyCommand ? styles.cardHeader : undefined}>
+        <Pressable
+          style={[styles.line, copyCommand && styles.cardToggle]}
+          onPress={() => hasDetail && setExpanded(!expanded)}
+          disabled={!hasDetail}
+          accessibilityRole="button"
+          accessibilityState={hasDetail ? { expanded } : undefined}
+        >
+          <View style={[styles.iconSlot, { width: iconSize }]}>
+            {call ? (
+              <MobileNativeChatToolGlyph
+                name={nativeChatToolIconName(call.name, call.mcpIdentity, call.input)}
+                size={iconSize}
+                color={failed ? colors.statusRed : colors.textMuted}
+              />
+            ) : null}
+          </View>
+          {commandAlone ? null : (
+            <Text style={[styles.lineWord, type.row, !verb && styles.lineName]} numberOfLines={1}>
+              {verb ?? name}
+            </Text>
+          )}
+          {target ? (
+            <Text
+              style={[styles.lineTarget, type.row, filePath && onOpenFile && styles.lineLink]}
+              numberOfLines={1}
+              onPress={filePath && onOpenFile ? () => onOpenFile(filePath) : undefined}
+              suppressHighlighting={!(filePath && onOpenFile)}
+              accessibilityRole={filePath && onOpenFile ? 'link' : undefined}
+            >
+              {target}
             </Text>
           ) : null}
-          {duration ? <Text style={[styles.lineMeta, type.meta]}>{duration}</Text> : null}
-          {hasDetail ? (
-            <View style={expanded ? styles.caretOpen : undefined}>
-              <ChevronRight size={14 * fontScale} color={colors.textMuted} strokeWidth={2} />
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
+          {/* Held at the row's right edge, so the carets of a run line up in one column. */}
+          <View style={styles.lineTrailing}>
+            {exitCode !== undefined ? (
+              <Text style={[styles.lineMeta, type.meta, exitCode !== 0 && styles.errorText]}>
+                {`exit ${exitCode}`}
+              </Text>
+            ) : null}
+            {duration ? <Text style={[styles.lineMeta, type.meta]}>{duration}</Text> : null}
+            {hasDetail ? (
+              <View style={expanded ? styles.caretOpen : undefined}>
+                <ChevronRight size={14 * fontScale} color={colors.textMuted} strokeWidth={2} />
+              </View>
+            ) : null}
+          </View>
+        </Pressable>
+        {copyCommand ? (
+          <MobileSourceCopyButton text={copyCommand} accessibilityLabel="Copy command" />
+        ) : null}
+      </View>
       {hasDetail && expanded ? (
         <ToolLineDetail
           memberId={memberId}
