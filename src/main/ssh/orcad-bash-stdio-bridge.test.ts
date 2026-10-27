@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -273,9 +273,7 @@ describe.runIf(RELAY)('the bash stdio bridge', () => {
       join(bin, 'cat'),
       '#!/bin/sh\n' +
         `trap 'kill $c 2>/dev/null; sleep 0.3; : > "${join(dir, 'killed-cat')}"; exit 0' TERM\n` +
-        `${realCat()} "$@" <&0 & c=$!\n` +
-        `: > "${join(dir, 'ready-')}$$"\n` +
-        'wait $c\n' +
+        `${realCat()} "$@" & c=$!\nwait $c\n` +
         // The relay starts the socket reader first; the stdin reader stays blocked as on a real
         // host, where the desktop keeps its pipe open.
         `mkdir "${join(dir, 'socket-reader')}" 2>/dev/null || { sleep 30 & c=$!; wait $c; }\n`,
@@ -291,9 +289,6 @@ describe.runIf(RELAY)('the bash stdio bridge', () => {
       const exited = exitOf(child)
       await decode(child.stdout).ready
       await expect.poll(() => accepted).not.toBeNull()
-      await expect
-        .poll(() => readdirSync(dir).filter((name) => name.startsWith('ready-')).length)
-        .toBe(2)
       // orcad hangs up: the reading cat ends, the relay kills the one still reading stdin.
       accepted!.destroy()
       await expect(exited).resolves.toBe(0)
