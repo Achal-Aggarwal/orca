@@ -8,20 +8,31 @@ import { sourceShapedKimiOutput } from '../../shared/__fixtures__/kimi-generatio
 
 describe('generateConversationName', () => {
   it('decodes Kimi before title sanitization without decoding the answer again', async () => {
-    for (const answer of ['Title: "Fix login flow"\nExtra line', '{"role":"tool","content":"example"}']) {
+    for (const answer of [
+      'Title: "Fix login flow"\nExtra line',
+      '{"role":"tool","content":"example"}'
+    ]) {
       const result = await generateConversationNameFromContext(
         { firstPrompt: 'Fix login' },
         { agentId: 'kimi', model: 'default' },
         {
-          kind: 'remote', cwd: '/repo', missingBinaryLocation: 'remote PATH',
+          kind: 'remote',
+          cwd: '/repo',
+          missingBinaryLocation: 'remote PATH',
           execute: async (plan) => {
             expect(plan.outputFormat).toBe('kimi-stream-json')
-            return { stdout: sourceShapedKimiOutput(answer), stderr: '', exitCode: 0, timedOut: false }
+            return {
+              stdout: sourceShapedKimiOutput(answer),
+              stderr: '',
+              exitCode: 0,
+              timedOut: false
+            }
           }
         }
       )
       expect(result).toMatchObject({
-        success: true, name: answer.startsWith('Title:') ? 'Fix login flow' : answer
+        success: true,
+        name: answer.startsWith('Title:') ? 'Fix login flow' : answer
       })
     }
   })

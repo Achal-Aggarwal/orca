@@ -37,7 +37,11 @@ describe('generateJiraIssueSummaryFromContext', () => {
         return sourceShapedKimiOutput('"Fix offline login retry crash"\nExtra commentary')
       })
     )
-    expect(result).toEqual({ success: true, summary: 'Fix offline login retry crash', agentLabel: 'Kimi' })
+    expect(result).toEqual({
+      success: true,
+      summary: 'Fix offline login retry crash',
+      agentLabel: 'Kimi'
+    })
   })
 
   it('sanitizes agent output into a single-line summary', async () => {

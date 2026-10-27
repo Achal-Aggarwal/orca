@@ -7,7 +7,13 @@ import {
   getCommitMessageModel,
   isCustomAgentId
 } from './commit-message-agent-spec'
-import { planCustomCommand, tokenizeCustomCommandTemplate } from './commit-message-prompt'
+import { planCustomCommand } from './commit-message-prompt'
+import {
+  KIMI_VALUE_OPTIONS,
+  findRecipeOption,
+  planAdditionalAgentArgs,
+  removeAllOptionOccurrences
+} from './commit-message-generation-options'
 import type { TuiAgent } from './tui-agent'
 import { mergeOpenCodeGenerationArgs } from './opencode-generation-command'
 import { buildAntigravityGenerationInput } from './antigravity-generation-stream'
@@ -41,56 +47,13 @@ export type CommitMessagePlanResult =
   | { ok: true; plan: CommitMessagePlan }
   | { ok: false; error: string }
 
-function planAdditionalAgentArgs(
-  agentArgs: string | null | undefined,
-  backslash: CommandTemplateBackslash = 'escape'
-): { ok: true; args: string[] } | { ok: false; error: string } {
-  const trimmed = agentArgs?.trim()
-  if (!trimmed) {
-    return { ok: true, args: [] }
-  }
-  const tokenized = tokenizeCustomCommandTemplate(trimmed, backslash)
-  if (!tokenized.ok) {
-    return { ok: false, error: `CLI arguments are invalid: ${tokenized.error}` }
-  }
-  return { ok: true, args: tokenized.tokens }
-}
-
 const DEFAULT_SINGLETON_OPTIONS: readonly (readonly string[])[] = [['--model']]
-const KIMI_VALUE_OPTIONS = [
-  '--prompt',
-  '-p',
-  '--model',
-  '-m',
-  '--output-format',
-  '--skills-dir',
-  '--agent',
-  '--agent-file',
-  '--add-dir'
-]
 const ANTIGRAVITY_FORMAT_OPTIONS = [
   '--input-format',
   '-input-format',
   '--output-format',
   '-output-format'
 ]
-
-function findRecipeOption(
-  tokens: readonly string[],
-  aliases: readonly string[],
-  valueOptions: readonly string[],
-  startIndex = 0,
-  stopAtTerminator = true
-) {
-  return findOptionOccurrence(
-    tokens,
-    aliases,
-    stopAtTerminator,
-    valueOptions,
-    startIndex,
-    valueOptions.length ? 'required' : true
-  )
-}
 
 function applyRecipeOptionOverride(args: {
   generatedArgs: string[]
@@ -100,7 +63,11 @@ function applyRecipeOptionOverride(args: {
 }): { generatedArgs: string[]; recipeArgs: string[] } {
   const recipeOption = findRecipeOption(args.recipeArgs, args.aliases, args.valueOptions)
   const generatedOption = findRecipeOption(
-    args.generatedArgs, args.aliases, args.valueOptions, 0, false
+    args.generatedArgs,
+    args.aliases,
+    args.valueOptions,
+    0,
+    false
   )
   if (!recipeOption || !generatedOption) {
     return { generatedArgs: args.generatedArgs, recipeArgs: args.recipeArgs }
@@ -120,21 +87,6 @@ function applyRecipeOptionOverride(args: {
       ...args.recipeArgs.slice(0, recipeOption.index),
       ...args.recipeArgs.slice(recipeOption.index + recipeOption.consumed)
     ]
-  }
-}
-
-function removeAllOptionOccurrences(
-  tokens: string[],
-  aliases: readonly string[],
-  valueOptions: readonly string[] = []
-): string[] {
-  let result = tokens
-  while (true) {
-    const found = findRecipeOption(result, aliases, valueOptions)
-    if (!found) {
-      return result
-    }
-    result = [...result.slice(0, found.index), ...result.slice(found.index + found.consumed)]
   }
 }
 
@@ -193,7 +145,10 @@ function applySingletonOptionOverrides(args: {
       continue
     }
     const withRecipe = applyRecipeOptionOverride({
-      generatedArgs, recipeArgs, aliases, valueOptions: args.valueOptions
+      generatedArgs,
+      recipeArgs,
+      aliases,
+      valueOptions: args.valueOptions
     })
     generatedArgs = withRecipe.generatedArgs
     recipeArgs = withRecipe.recipeArgs
