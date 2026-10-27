@@ -15,7 +15,8 @@ export function getMobileWorkspaceLineageGroupKey(worktree: WorktreeLineageIdent
 
 /** Children keyed by parent row identity, over valid edges between visible stores. */
 export function getMobileWorkspaceLineageChildren(
-  worktrees: readonly Worktree[]
+  worktrees: readonly Worktree[],
+  filterRepoIds?: readonly string[]
 ): Map<string, Worktree[]> {
   const rows = worktrees.map((row) => ({
     ...row,
@@ -33,14 +34,29 @@ export function getMobileWorkspaceLineageChildren(
           }
         : null
   )
-  const children = new Map<string, Worktree[]>()
+  const childrenByParentIdentity = new Map<string, Worktree[]>()
   for (const [child, parent] of parents) {
     const key = getWorktreeRowIdentity(parent)
-    const siblings = children.get(key) ?? []
+    const siblings = childrenByParentIdentity.get(key) ?? []
     siblings.push(child)
-    children.set(key, siblings)
+    childrenByParentIdentity.set(key, siblings)
   }
-  return children
+  if (filterRepoIds && filterRepoIds.length > 0) {
+    const projectRows = new Set(
+      worktrees.filter((row) => filterRepoIds.includes(row.repoId)).map(getWorktreeRowIdentity)
+    )
+    for (const [parent, children] of childrenByParentIdentity) {
+      if (!projectRows.has(parent)) {
+        childrenByParentIdentity.delete(parent)
+      } else {
+        childrenByParentIdentity.set(
+          parent,
+          children.filter((child) => projectRows.has(getWorktreeRowIdentity(child)))
+        )
+      }
+    }
+  }
+  return childrenByParentIdentity
 }
 
 export function getMobileOccurrenceRows(
