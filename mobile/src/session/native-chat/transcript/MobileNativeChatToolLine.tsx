@@ -164,8 +164,8 @@ export function MobileNativeChatToolLine({
     () => nativeChatToolLineView(block, result),
     [block, result]
   )
-  const fullCommand = label?.commandDetail ?? null
-  const copyCommand = label?.fullCommand ?? null
+  const commandDetail = label?.commandDetail ?? null
+  const fullCommand = label?.fullCommand ?? null
   const verb = label?.verb ? NATIVE_CHAT_TOOL_ROW_VERB_COPY[label.verb] : null
   const commandAlone = label?.command === true && verb !== null && label.target.length > 0
   const mcp = call ? mcpToolIdentity(call.name, call.mcpIdentity) : null
@@ -183,9 +183,9 @@ export function MobileNativeChatToolLine({
 
   return (
     <View testID={memberId}>
-      <View style={copyCommand ? styles.line : undefined}>
+      <View style={styles.line}>
         <Pressable
-          style={[styles.line, copyCommand && styles.cardToggle]}
+          style={[styles.line, styles.cardToggle]}
           onPress={() => hasDetail && setExpanded(!expanded)}
           disabled={!hasDetail}
           accessibilityRole="button"
@@ -231,8 +231,8 @@ export function MobileNativeChatToolLine({
             ) : null}
           </View>
         </Pressable>
-        {copyCommand ? (
-          <MobileSourceCopyButton text={copyCommand} accessibilityLabel="Copy command" />
+        {fullCommand ? (
+          <MobileSourceCopyButton text={fullCommand} accessibilityLabel="Copy command" />
         ) : null}
       </View>
       {hasDetail && expanded ? (
@@ -241,7 +241,7 @@ export function MobileNativeChatToolLine({
           disclosureKey={disclosureKey}
           call={call}
           body={body}
-          fullCommand={fullCommand}
+          fullCommand={commandDetail}
           commandLanguage={label?.commandLanguage ?? null}
           results={results}
           fontScale={fontScale}

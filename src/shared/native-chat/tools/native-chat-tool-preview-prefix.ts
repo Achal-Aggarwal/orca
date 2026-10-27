@@ -32,6 +32,7 @@ export function collapsedToolInputPrefix(input: string): string {
  * Run before clipping: the closing quote proves the wrapper and would be lost from a bounded prefix. */
 const LOGIN_SHELL_PREFIX =
   /^\s*(?:[^'"]*[\\/])?(?:ba|z|k|da|fi)?sh(?:\.exe)?\s+-[a-zA-Z]*c\s+(?=['"])/
+const DOUBLE_QUOTED_RUN = /[^"\\]+/y
 const DOUBLE_QUOTE_ESCAPABLE = '$`"\\\n'
 const PLAIN_WORD_CHAR = /[\w@%+=:,./-]/
 
@@ -57,21 +58,29 @@ function decodeQuotedShellWord(word: string): string | null {
       index = end + 1
     } else if (char === '"') {
       index += 1
-      while (word[index] !== '"') {
+      for (;;) {
+        DOUBLE_QUOTED_RUN.lastIndex = index
+        if (DOUBLE_QUOTED_RUN.test(word)) {
+          decoded += word.slice(index, DOUBLE_QUOTED_RUN.lastIndex)
+          index = DOUBLE_QUOTED_RUN.lastIndex
+        }
         if (index >= word.length) {
           return null
         }
+        if (word[index] === '"') {
+          index += 1
+          break
+        }
         const next = word[index + 1]
-        if (word[index] === '\\' && next !== undefined && DOUBLE_QUOTE_ESCAPABLE.includes(next)) {
+        if (next !== undefined && DOUBLE_QUOTE_ESCAPABLE.includes(next)) {
           // A backslash-newline inside double quotes is a line continuation.
           decoded += next === '\n' ? '' : next
           index += 2
         } else {
-          decoded += word[index]
+          decoded += '\\'
           index += 1
         }
       }
-      index += 1
     } else if (char === '\\' && index + 1 < word.length) {
       decoded += word[index + 1] === '\n' ? '' : word[index + 1]
       index += 2
