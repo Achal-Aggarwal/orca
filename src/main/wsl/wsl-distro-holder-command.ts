@@ -31,6 +31,8 @@ export function buildWslDistroHolderScript(
     'n= s= pp= u=',
     'while read -r k v r; do case $k in Name:) n=$v ;; State:) s=$v ;; PPid:) pp=$v ;; Uid:) u=$v ;; esac',
     'done 2>/dev/null < "$d/status" || continue',
+    // A running container is work whoever owns it (docker's shims run as root).
+    'case $n in containerd-shim*) return 0 ;; esac',
     '[ "$u" = "$me" ] && [ "${d##*/}" != "$$" ] && [ "$pp" != "$$" ] || continue',
     'case $s in Z*) continue ;; esac',
     `case $n in ${ignored}) continue ;; esac`,

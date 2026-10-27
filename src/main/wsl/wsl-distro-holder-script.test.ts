@@ -142,6 +142,16 @@ describe.skipIf(process.platform === 'win32')('WSL distro holder script', () => 
     expect(await within(3_000, exited)).toBe(0)
   })
 
+  it('keeps the distro while a container runs, though its shim belongs to root', async () => {
+    const shim = fakeProcess(4343, { name: 'containerd-shim-runc-v2', uid: 0 })
+    // dockerd itself, idle and root-owned, is a system service, not work.
+    fakeProcess(4344, { name: 'dockerd', uid: 0 })
+    const { exited } = await holderWithRequest()
+    expect(await within(2_500, exited)).toBe('running')
+    rmSync(shim, { recursive: true })
+    expect(await within(3_000, exited)).toBe(0)
+  })
+
   it('does not count session plumbing, zombies, other users or its own children', async () => {
     let pid = 5000
     for (const name of WSL_DISTRO_HOLDER_IGNORED_PROCESS_NAMES) {
