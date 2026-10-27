@@ -61,10 +61,10 @@ describe('isWslDistroRunning', () => {
 
 describe('the stop settle window', () => {
   it('starts no running read inside the window, even when a timer fires early', async () => {
-    // Node truncates timer delays to whole ms on a ms clock, so a wake can land ~2ms short.
+    // Node timers can wake ~2ms short; firing far earlier makes a single sleep fail every time.
     const realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, ms, ...args) =>
-      realSetTimeout(handler, Math.max(0, (ms ?? 0) - 2), ...args)
+      realSetTimeout(handler, Math.max(0, (ms ?? 0) - 100), ...args)
     )
     const probeStarts: number[] = []
     wslMocks.listRunningWslDistrosAsync.mockImplementation((options) =>
