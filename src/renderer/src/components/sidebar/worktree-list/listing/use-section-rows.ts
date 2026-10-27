@@ -37,7 +37,10 @@ import {
   orderHostSectionOptions
 } from '../../../../../../shared/sidebar-list/host-section-order'
 import type { ExecutionHostRegistryEntry } from '../../../../../../shared/execution-host-registry'
-import { buildSidebarHostOptions } from '../../sidebar-host-options'
+import {
+  createSidebarHostOptionsSelector,
+  createSidebarHostLabelsSelector
+} from '../../sidebar-host-options'
 import { selectPendingWorktreeCreationKeys } from './pending-worktree-creation-keys'
 import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
@@ -70,12 +73,6 @@ type SectionRowsArgs = {
 export function useSidebarSectionRows(args: SectionRowsArgs) {
   const { repos, worktrees, repoMap, defaultHostId } = args
   const worktreesByRepo = useAppStore((s) => selectWorktreesByRepo(s))
-  const sshTargetLabels = useAppStore((s) => s.sshTargetLabels)
-  const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
-  const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
-  const runtimeStatusByEnvironmentId = useAppStore((s) => s.runtimeStatusByEnvironmentId)
-  const wslHostStatuses = useAppStore((s) => s.wslHostStatuses)
-  const wslHostServerFilesMissing = useAppStore((s) => s.wslHostServerFiles === 'missing')
   const workspaceHostOrder = useAppStore((s) => s.workspaceHostOrder)
   const setWorkspaceHostOrder = useAppStore((s) => s.setWorkspaceHostOrder)
 
@@ -116,35 +113,25 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
     () => getHostDisplayLabelOverrides(args.settings),
     [args.settings]
   )
-  const hostOptions = useMemo(
-    () =>
-      buildSidebarHostOptions({
-        repos,
-        sshTargetLabels,
-        sshConnectionStates,
-        settings: args.settings,
-        runtimeEnvironments,
-        runtimeStatusByEnvironmentId,
-        hostLabelOverrides,
-        wslHostStatuses,
-        wslHostsEnabled: args.settings?.experimentalWslHosts === true,
-        wslHostServerFilesMissing
-      }),
-    [
+  const selectHostOptions = useMemo(createSidebarHostOptionsSelector, [])
+  const selectHostLabels = useMemo(createSidebarHostLabelsSelector, [])
+  const hostOptions = useAppStore((state) =>
+    selectHostOptions({
       repos,
-      sshTargetLabels,
-      sshConnectionStates,
-      args.settings,
-      runtimeEnvironments,
-      runtimeStatusByEnvironmentId,
+      sshTargetLabels: state.sshTargetLabels,
+      sshConnectionStates: state.sshConnectionStates,
+      settings: args.settings,
+      runtimeEnvironments: state.runtimeEnvironments,
+      runtimeStatusByEnvironmentId: state.runtimeStatusByEnvironmentId,
       hostLabelOverrides,
-      wslHostStatuses,
-      wslHostServerFilesMissing
-    ]
+      wslHostStatuses: state.wslHostStatuses,
+      wslHostsEnabled: args.settings?.experimentalWslHosts === true,
+      wslHostServerFilesMissing: state.wslHostServerFiles === 'missing'
+    })
   )
   const hostLabelById = useMemo(
-    () => new Map(hostOptions.map((host) => [host.id, host.label])),
-    [hostOptions]
+    () => selectHostLabels(hostOptions),
+    [hostOptions, selectHostLabels]
   )
 
   const hostScopedGroups =
