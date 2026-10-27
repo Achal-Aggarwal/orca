@@ -1,15 +1,11 @@
 import { win32 } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getWslHomeMock, getWslHomeAsyncMock, parseWslPathMock, blockedWslDistroMock } = vi.hoisted(
-  () => ({
-    getWslHomeMock: vi.fn(),
-    getWslHomeAsyncMock: vi.fn(),
-    parseWslPathMock: vi.fn(),
-    blockedWslDistroMock: vi.fn(async (): Promise<{ distro: string; state: string } | null> => null)
-  })
-)
-vi.mock('../wsl/wsl-unc-access-gate', () => ({ blockedWslDistroForPath: blockedWslDistroMock }))
+const { getWslHomeMock, getWslHomeAsyncMock, parseWslPathMock } = vi.hoisted(() => ({
+  getWslHomeMock: vi.fn(),
+  getWslHomeAsyncMock: vi.fn(),
+  parseWslPathMock: vi.fn()
+}))
 
 vi.mock('../wsl', () => ({
   getWslHome: getWslHomeMock,
@@ -80,16 +76,17 @@ describe('computeWorktreePath WSL layout', () => {
     }
   })
 
-  it('does not probe the home of a stopped distro for authorization (E9)', async () => {
+  it('reads the home through the lookup its main-side caller injects', async () => {
     parseWslPathMock.mockReturnValue({ distro: 'Ubuntu', linuxPath: '/home/jin/repo' })
-    blockedWslDistroMock.mockResolvedValueOnce({ distro: 'Ubuntu', state: 'stopped' })
-    const repoPath = String.raw`\\wsl.localhost\Ubuntu\home\jin\repo`
+    const readHome = vi.fn(async () => null)
     const root = await computeWorkspaceRootWithin(
-      repoPath,
+      String.raw`\\wsl.localhost\Ubuntu\home\jin\repo`,
       { workspaceDir: 'C:\\workspaces' },
-      5_000
+      5_000,
+      readHome
     )
     expect(root).not.toContain('orca')
+    expect(readHome).toHaveBeenCalledExactlyOnceWith('Ubuntu')
     expect(getWslHomeAsyncMock).not.toHaveBeenCalled()
   })
 

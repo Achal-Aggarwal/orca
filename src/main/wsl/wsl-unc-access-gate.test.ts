@@ -27,7 +27,6 @@ import { EXIT_SETTLE_MS } from './wsl-orcad-liveness-evidence'
 import { isWslUserActFor } from './wsl-user-act-scope'
 import {
   _resetRunningWslDistroCacheForTests,
-  onConfirmedRunningWslDistros,
   resolveRunningWslDistros
 } from '../wsl-running-distro-cache'
 
@@ -255,13 +254,13 @@ describe('user-act scope does not leak', () => {
     expect(inherited).toEqual([false])
   })
 
-  it('running-list listeners of a probe started inside a user act run outside it', async () => {
+  it('work a probe started inside a user act releases runs outside it', async () => {
+    running = ['Ubuntu']
     const inherited: boolean[] = []
-    const unsubscribe = onConfirmedRunningWslDistros(() => {
+    deferUntilWslDistroRunning('Ubuntu', 'leak', () => {
       inherited.push(isWslUserActFor('Ubuntu'))
     })
     await runAsWslUserAct('Ubuntu', () => resolveRunningWslDistros(probe))
-    unsubscribe()
     expect(inherited).toEqual([false])
   })
 })

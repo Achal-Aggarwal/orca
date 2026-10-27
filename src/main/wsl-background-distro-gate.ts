@@ -138,7 +138,10 @@ export function deferUntilWslDistroRunning(
   if (!keyForDistro) {
     return () => {}
   }
-  unsubscribeObservations ??= onConfirmedRunningWslDistros(noteWslDistrosRunning)
+  // A probe started inside a user act must not hand its boot allowance to the drain it causes.
+  unsubscribeObservations ??= onConfirmedRunningWslDistros((distros) =>
+    outsideWslUserAct(() => noteWslDistrosRunning(distros))
+  )
   let tasks = deferredTasksByDistro.get(keyForDistro)
   if (!tasks) {
     tasks = new Map()

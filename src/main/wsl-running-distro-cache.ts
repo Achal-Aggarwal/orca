@@ -1,5 +1,4 @@
 import { wslDistroListRetryDelayMs } from './wsl-distro-retry'
-import { outsideWslUserAct } from './wsl/wsl-user-act-scope'
 
 // Preserve last-known-good state and back off failed discovery so sessions survive a persistent wsl.exe outage.
 let cache: string[] | null = null
@@ -34,7 +33,7 @@ function notifyStopped(previous: string[] | null, running: string[]): void {
   }
   for (const listener of stopListeners) {
     try {
-      outsideWslUserAct(() => listener(stopped, running))
+      listener(stopped, running)
     } catch (error) {
       console.warn('[wsl] running-distro stop listener failed', error)
     }
@@ -56,8 +55,7 @@ export function onConfirmedRunningWslDistros(
 function notifyConfirmedObservation(distros: readonly string[]): void {
   for (const listener of confirmedObservationListeners) {
     try {
-      // A probe started inside a user act must not hand its boot allowance to listeners.
-      outsideWslUserAct(() => listener(distros))
+      listener(distros)
     } catch (error) {
       console.warn('[wsl] running-distro listener failed', error)
     }
