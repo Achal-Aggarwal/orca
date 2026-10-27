@@ -137,6 +137,10 @@ async function cold(context = args()) {
 it.each(['legacy', 'v1', 'v2'] as const)(
   '%s empty metadata is present; deletion suppresses both callers without clearing saved data',
   async (kind) => {
+    if (kind === 'v2' && source.launchConfig) {
+      source.agent = 'opencode2'
+      source.launchConfig.agentCommand = 'opencode2 --standalone'
+    }
     const path = join(root, kind === 'v2' ? 'opencode-next.db' : 'opencode.db')
     const legacy = join(root, 'storage', 'session', 'project', 'ses_kept.json')
     if (kind === 'legacy') {
