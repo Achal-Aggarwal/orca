@@ -1,6 +1,6 @@
 import { inspectDesktopShownTerminal } from '@/runtime/runtime-terminal-inspection'
 import { getCachedUnifiedTerminalTabForWorktree } from '../terminal-unified-tab-lookup'
-import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
+import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { captureNotificationTransportOwner } from '@/attention/notification-subject-owner'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'

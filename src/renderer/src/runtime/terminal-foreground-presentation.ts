@@ -12,7 +12,7 @@ import { readLocalRuntimeCapabilitiesOrUnknown } from './local-runtime-capabilit
 import { readCachedRuntimeEnvironmentCapability } from './runtime-rpc-client'
 import { TERMINAL_FOREGROUND_PRESENTATION_CAPABILITY } from '../../../shared/terminal-runtime-capabilities'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from './local-structured-session-owner'
-import { toRemoteRuntimePtyId } from '../../../shared/remote-runtime-pty-id'
+import { toRemoteRuntimePtyId } from '../../../shared/remote-runtime/remote-runtime-pty-id'
 
 type Entry = {
   incarnationId?: string
