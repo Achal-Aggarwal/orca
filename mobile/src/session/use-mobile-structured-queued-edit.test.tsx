@@ -95,13 +95,11 @@ describe('mobile in-place queued Edit', () => {
     hook = useMobileNativeChatSessionLane({
       client: transport,
       structured: true,
-      sessionId,
-      resolvedAgent: 'codex',
-      transcriptPath: null,
+      hostId: 'host-a',
+      resolution: { agent: 'codex', sessionId, transcriptPath: null, agentConfirmed: true },
       sourceIdentity: 'host-a',
       enabled,
       connState: connected ? 'connected' : 'disconnected',
-      agent: 'codex',
       hostSupport:
         editSupport === null
           ? null

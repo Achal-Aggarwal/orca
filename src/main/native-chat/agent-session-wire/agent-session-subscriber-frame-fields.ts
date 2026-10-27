@@ -1,3 +1,4 @@
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentSessionPublishedWork } from './agent-session-published-work'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { Subscriber } from './structured-agent-session-subscribers'
@@ -18,6 +19,7 @@ export type SubscriberFieldState = {
   boundedFrames: boolean
   projectQueuePublication?: (publication: QueuePublication) => QueuePublication
   projectJournalEvent?: (
+    journal: AgentSessionJournal,
     event: AgentSessionSubscribeEvent,
     previous: QueuePublication | undefined,
     current: QueuePublication | undefined,
@@ -56,7 +58,8 @@ export function buildSubscriberFrame(
   subscriber: SubscriberFieldState,
   event: AgentSessionSubscribeEvent,
   withholdQueued: boolean,
-  work?: AgentSessionPublishedWork
+  work?: AgentSessionPublishedWork,
+  journal?: AgentSessionJournal
 ): SubscriberFrame {
   const commands = subscriber.boundedFrames
     ? undefined
@@ -65,13 +68,23 @@ export function buildSubscriberFrame(
     hooks.readCommands !== undefined &&
     event.type !== 'end' &&
     (event.type !== 'batch' || commands !== subscriber.commands)
-  const queued = withholdQueued ? undefined : hooks.readQueuePublication?.(subscriber.sessionId)
+  const queued =
+    withholdQueued || (subscriber.projectJournalEvent && !journal)
+      ? undefined
+      : hooks.readQueuePublication?.(subscriber.sessionId)
   const attachedQueued =
     queued !== undefined &&
     event.type !== 'end' &&
     (event.type !== 'batch' || queued !== subscriber.queuePublication)
-  event =
-    subscriber.projectJournalEvent?.(event, subscriber.queuePublication, queued, work) ?? event
+  event = journal
+    ? (subscriber.projectJournalEvent?.(
+        journal,
+        event,
+        subscriber.queuePublication,
+        queued,
+        work
+      ) ?? event)
+    : event
   const backgroundTasks = subscriberBackgroundTasks(hooks, subscriber, event)
   const sideQueued = attachedQueued
     ? (subscriber.projectQueuePublication?.(queued) ?? queued)
@@ -146,7 +159,11 @@ export function emitSubscriberFrame(
   hooks: SubscriberFieldHooks,
   subscriber: Subscriber,
   event: AgentSessionSubscribeEvent,
-  options?: { withholdQueued?: boolean; currentWork?: AgentSessionPublishedWork }
+  options?: {
+    withholdQueued?: boolean
+    currentWork?: AgentSessionPublishedWork
+    journal?: AgentSessionJournal
+  }
 ): void {
   const marker =
     event.type !== 'end' && subscriber.readsCurrentRequests
@@ -159,7 +176,8 @@ export function emitSubscriberFrame(
     subscriber,
     includeMarker && event.type !== 'end' ? { ...event, currentRequests: marker } : event,
     options?.withholdQueued === true,
-    options?.currentWork
+    options?.currentWork,
+    options?.journal
   )
   for (const outgoing of built.frames) {
     subscriber.emit(outgoing)

@@ -134,24 +134,17 @@ describe("Stop's event", () => {
     await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
   })
 
-  it('a card queued after the Stop waits behind the cards it holds, then all send in order', async () => {
+  it('a fresh send after Stop is admitted immediately and lifts the older pause on acceptance', async () => {
     const working = await rig.workingSend()
     const held = await queuedDraft('queued before the stop')
     await rig.stop()
-    const later = await queuedDraft('typed while the stopped turn winds down')
+    const later = rig.send('typed after the stopped turn ended', 'queue-if-active')
+    expect(await later.result).toMatchObject({ ok: true })
+    expect(await rig.drafts()).toContainEqual({ messageId: held, state: 'waiting' })
+    expect(await rig.submission(later.id)).toBeDefined()
     await rig.settleAccepted(working, 'stopped')
-    // The queue never reorders: the newer card waits behind the held one, with no caption of its own.
-    await expectHeld('stopped', held, later)
-    expect(await rig.drafts()).toEqual([
-      { messageId: held, state: 'waiting' },
-      { messageId: later, state: 'waiting' }
-    ])
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await rig.settleAccepted(later.id, 'later')
     await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
-    expect(await rig.handoff(later)).toBeUndefined()
-    await eventually(async () => expect((await rig.handoff(held))?.handedOverAt).toBeDefined())
-    await rig.settleAccepted(await rig.handoffId(held), 'held')
-    await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
   })
 
   it("any accepted turn sent after it lifts it, Orca's own mail included; a later Stop supersedes", async () => {
@@ -243,7 +236,8 @@ describe("Stop's event", () => {
     await rig.sendNow(sentId)
     await eventually(async () => expect((await rig.handoff(sentId))?.handedOverAt).toBeDefined())
     await rig.stop()
-    // The process dies with no close; a new host opens the same state directory.
+    // Drain this process's in-flight writes before replacing its in-process fixture owner.
+    await rig.host.flushAllStreamedEvents()
     rig.crashRestartHostProcess()
     expect((await rig.handoff(sentId))?.dispatchState).toBe('unknown')
     // The returned copy holds the queue; it never resends automatically.
@@ -282,17 +276,18 @@ describe("a restart's hold over a card queued after a Stop", () => {
     await expectHeld(null, typed)
   })
 
-  it("a card queued during the queue's own send after a Stop, before a restart, waits unshown", async () => {
+  it('a send admitted after Stop holds a subsequent queue card across restart', async () => {
     const working = await rig.workingSend()
     await rig.stop()
-    const correction = await queuedDraft('typed while the interrupt lands')
+    const correction = rig.send('typed after the interrupt', 'queue-if-active')
+    expect(await correction.result).toMatchObject({ ok: true })
     await rig.settleAccepted(working, 'stopped')
     await eventually(async () =>
-      expect((await rig.handoff(correction))?.handedOverAt).toBeDefined()
+      expect((await rig.submission(correction.id))?.handedOverAt).toBeDefined()
     )
     const typed = await queuedDraft('typed during that send')
     rig.crashRestartHostProcess()
-    await rig.settleAccepted(await rig.handoffId(correction), 'correction')
+    await rig.settleAccepted(correction.id, 'correction')
     await rig.queuePause()
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual(['restarted'])
     await expectHeld(null, typed)

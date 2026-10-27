@@ -1,3 +1,4 @@
+import { agentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,10 +7,7 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import {
-  agentSessionLeaseFixture,
-  agentSessionRecordFixture
-} from '../../../shared/agent-session-record.test-fixture'
+import * as records from '../../../shared/agent-session-record.test-fixture'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { nextSendableQueuedCard } from './queued-message-pause'
@@ -40,11 +38,12 @@ const body = (text: string): AgentJournalMessageItem => ({
 let root: string
 let journal: AgentSessionJournal
 let held: Set<string>
-let lease: ReturnType<typeof agentSessionLeaseFixture>
+let lease: ReturnType<typeof records.agentSessionLeaseFixture>
 let clock = 1000
+const conversation = () => agentSessionConversationView(records.agentSessionRecordFixture(lease))
 const work = () =>
   structuredAgentSessionCurrentWork(journal, {
-    record: agentSessionRecordFixture(lease),
+    record: conversation(),
     child: { fence: 7, heldSends: () => held }
   })
 const open = async () => {
@@ -54,7 +53,7 @@ const open = async () => {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'b1-recovery-'))
   held = new Set()
-  lease = agentSessionLeaseFixture({ sessionId: identity.sessionId })
+  lease = records.agentSessionLeaseFixture({ sessionId: identity.sessionId })
   await open()
 })
 afterEach(async () => {
@@ -237,7 +236,7 @@ it('re-derives after restart, waits for owner reconciliation, and retires an unc
   lease.unreconciled = true
   journal.queuedMessages.recoveryWork = () =>
     structuredAgentSessionCurrentWork(journal, {
-      record: agentSessionRecordFixture(lease),
+      record: conversation(),
       child: null
     })
   expect(journal.queuedMessages.get(cardId('restart'))).toBeNull()
@@ -297,7 +296,7 @@ it('shows the stopped queue again when a post-Stop direct send is no longer held
   held.add('post-stop')
   const publish = () =>
     readQueuePublication(journal, () => ({
-      record: agentSessionRecordFixture(lease),
+      record: records.agentSessionRecordFixture(lease),
       work: work()
     }))
   expect(publish().queuePause).toBeNull()
@@ -319,7 +318,8 @@ it('keeps an image as a returned card on both failed-start routes in the rejecti
   await send('queued-start', false, image)
   await recordStructuredAgentSessionStartFailure(
     { journal, fence: 7 },
-    { ...failure, startKey: 'start' }
+    { ...failure, startKey: 'start' },
+    'queued-start'
   )
   expect(journal.queuedMessages.get('queued-start')).toMatchObject({
     state: 'returned',
@@ -358,7 +358,7 @@ it('confirms id-less live receipts and releases unopened error/interrupt holds w
   })
   journal.queuedMessages.recoveryWork = () =>
     structuredAgentSessionCurrentWork(journal, {
-      record: agentSessionRecordFixture(lease),
+      record: conversation(),
       child: { fence: 7, heldSends: echoes.heldSends }
     })
   const identity = { provider: 'codex' as const, threadId: 'thread', turnId: 'opened', ordinal: 1 }
@@ -542,12 +542,12 @@ it('keeps U actions and barrier through later V and a starting child; only first
   await ended('U-end')
   const child = { phase: 'starting' as const, fence: 7, generation: 'later', heldSends: () => held }
   const store = {
-    getRecord: () => agentSessionRecordFixture(lease),
+    getConversation: () => conversation(),
     replacedRuntime: () => undefined
   }
   const session = { journal, child }
   bindStructuredAgentSessionRecoveryWork(store, identity.sessionId, session)
-  const gate = () => ({ work: work(), record: agentSessionRecordFixture(lease) })
+  const gate = () => ({ work: work(), record: records.agentSessionRecordFixture(lease) })
   deferFirstRecoveryPresentation(journal, child)
   expect(readQueuePublication(journal, gate).queuedMessages).toEqual([])
   expect(journal.queuedMessages.get(cardId('U'))?.state).toBe('returned')
@@ -613,7 +613,7 @@ it.each([100, 1000])(
         ...base()
       })
     }
-    const gate = () => ({ work: work(), record: agentSessionRecordFixture(lease) })
+    const gate = () => ({ work: work(), record: records.agentSessionRecordFixture(lease) })
     readQueuePublication(journal, gate)
     let visits = 0
     const sends = state.submissions.values.bind(state.submissions)

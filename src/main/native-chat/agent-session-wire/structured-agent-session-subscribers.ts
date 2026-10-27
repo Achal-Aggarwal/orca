@@ -85,7 +85,6 @@ export class AgentSessionSubscribers {
       ...fields,
       cursor: input.cursor ?? { epoch: liveCursor.epoch, sequence: 0 },
       boundedFrames: input.boundedFrames === true,
-      projectJournalEvent: input.projectJournalEvent?.bind(undefined, journal),
       readsCurrentRequests: input.readsCurrentRequests === true,
       snapshotCatchUp: input.snapshotCatchUp !== false
     }
@@ -125,7 +124,7 @@ export class AgentSessionSubscribers {
           hostNow,
           ...this.activityField(input.sessionId)
         },
-        { currentWork: work, historyView: view.normalizationKey }
+        { currentWork: work, historyView: view.normalizationKey, journal }
       )
       subscriber.cursor = page.liveCursor ?? page.window.nextCursor
       refreshPublishedWork(this.deliveryPort(), subscriber, input.journal, work, { hostNow })
@@ -216,7 +215,7 @@ export class AgentSessionSubscribers {
           hostNow,
           ...this.activityField(sessionId)
         },
-        { currentWork: work, historyView: view.normalizationKey }
+        { currentWork: work, historyView: view.normalizationKey, journal }
       )
       subscriber.cursor = page.liveCursor ?? page.window.nextCursor
       subscriber.fence = fence

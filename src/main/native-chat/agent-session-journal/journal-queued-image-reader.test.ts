@@ -1,3 +1,4 @@
+import { agentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,12 +105,14 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     })
   }
   const idleWork = structuredAgentSessionCurrentWork(journal, {
-    record: agentSessionRecordFixture(
-      agentSessionLeaseFixture({
-        sessionId: identity.sessionId,
-        runtimeFence: 7,
-        claimStatus: 'released'
-      })
+    record: agentSessionConversationView(
+      agentSessionRecordFixture(
+        agentSessionLeaseFixture({
+          sessionId: identity.sessionId,
+          runtimeFence: 7,
+          claimStatus: 'released'
+        })
+      )
     )
   })
   journal.queuedMessages.recoveryWork = () => idleWork
@@ -153,7 +156,7 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     boundedFrames: true,
     queuePublication: deferredPublication,
     projectQueuePublication: projected.projectQueuePublication,
-    projectJournalEvent: (...args) => queuedImageReaderEvent(journal, ...args),
+    projectJournalEvent: queuedImageReaderEvent,
     emit: (event) => {
       if (++calls === 2) {
         throw new Error('transport lost after first fragment')
@@ -170,14 +173,21 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     batch: emptyAgentSessionBatch(baseline)
   }
   const hooks = { readQueuePublication: () => subscribers.readQueuePublication(identity.sessionId) }
-  expect(() => emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork })).toThrow(
-    'transport lost'
+  emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork })
+  expect(target.queuePublication).toBe(deferredPublication)
+  expect(retryFrames.flatMap((event) => (event.type === 'batch' ? event.batch.items : []))).toEqual(
+    []
   )
+  calls = 0
+  retryFrames.length = 0
+  expect(() =>
+    emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork, journal })
+  ).toThrow('transport lost')
   expect(target.queuePublication).toBe(deferredPublication)
   expect(target.cursor).toEqual(baseline)
   retryFrames.length = 0
   target.emit = (event) => retryFrames.push(event)
-  emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork })
+  emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork, journal })
   expect(target.queuePublication).toBe(subscribers.readQueuePublication(identity.sessionId))
   expect(
     new Set(
@@ -262,12 +272,14 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
   await journals.closeAll()
   journal = await journals.open({ identity, stateDirectory: root, now: () => ++clock })
   const reopenedWork = structuredAgentSessionCurrentWork(journal, {
-    record: agentSessionRecordFixture(
-      agentSessionLeaseFixture({
-        sessionId: identity.sessionId,
-        runtimeFence: 7,
-        claimStatus: 'released'
-      })
+    record: agentSessionConversationView(
+      agentSessionRecordFixture(
+        agentSessionLeaseFixture({
+          sessionId: identity.sessionId,
+          runtimeFence: 7,
+          claimStatus: 'released'
+        })
+      )
     )
   })
   journal.queuedMessages.recoveryWork = () => reopenedWork
@@ -288,12 +300,14 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
     const { queuedImageReaderSnapshot, queuedImageReaderEvent, queuedImageSourceIds } =
       await import('../agent-session-wire/agent-session-queued-image-reader')
     const idleWork = structuredAgentSessionCurrentWork(journal, {
-      record: agentSessionRecordFixture(
-        agentSessionLeaseFixture({
-          sessionId: identity.sessionId,
-          runtimeFence: 7,
-          claimStatus: 'released'
-        })
+      record: agentSessionConversationView(
+        agentSessionRecordFixture(
+          agentSessionLeaseFixture({
+            sessionId: identity.sessionId,
+            runtimeFence: 7,
+            claimStatus: 'released'
+          })
+        )
       )
     })
     journal.queuedMessages.recoveryWork = () => idleWork
@@ -427,12 +441,14 @@ it('projects a still-active cut source before stateless and middle-page catch-up
   const { AgentSessionSubscribers } =
     await import('../agent-session-wire/structured-agent-session-subscribers')
   const idleWork = structuredAgentSessionCurrentWork(journal, {
-    record: agentSessionRecordFixture(
-      agentSessionLeaseFixture({
-        sessionId: identity.sessionId,
-        runtimeFence: 7,
-        claimStatus: 'released'
-      })
+    record: agentSessionConversationView(
+      agentSessionRecordFixture(
+        agentSessionLeaseFixture({
+          sessionId: identity.sessionId,
+          runtimeFence: 7,
+          claimStatus: 'released'
+        })
+      )
     )
   })
   journal.queuedMessages.recoveryWork = () => idleWork
@@ -537,7 +553,9 @@ it('keeps proven unwritten input waiting after both old-process hold writes fail
   const open = async () => {
     journal = await journals.open({ identity, stateDirectory: root, now: () => ++clock })
     journal.queuedMessages.recoveryWork = () =>
-      structuredAgentSessionCurrentWork(journal, { record: agentSessionRecordFixture(lease) })
+      structuredAgentSessionCurrentWork(journal, {
+        record: agentSessionConversationView(agentSessionRecordFixture(lease))
+      })
   }
   const full: AgentJournalMessageItem = {
     ...body('never handed'),
@@ -560,7 +578,7 @@ it('keeps proven unwritten input waiting after both old-process hold writes fail
   await open()
   lease = { ...lease, claimStatus: 'released' }
   const store = {
-    getRecord: () => agentSessionRecordFixture(lease),
+    getConversation: () => agentSessionConversationView(agentSessionRecordFixture(lease)),
     replacedRuntime: () => undefined
   }
   const session = { journal }

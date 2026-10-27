@@ -1,5 +1,4 @@
 import type { HistoryReader } from './agent-session-history-page-bounds'
-import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import type { SubscriberFieldState } from './agent-session-subscriber-frame-fields'
@@ -14,10 +13,7 @@ export type AgentSessionSubscribeInput = {
   projectQueuePublication?: SubscriberFieldState['projectQueuePublication']
   readHistorySnapshot?: HistoryReader['snapshot']
   readQueueSourceIds?: HistoryReader['queueSourceIds']
-  projectJournalEvent?: (
-    journal: AgentSessionJournal,
-    ...args: Parameters<NonNullable<SubscriberFieldState['projectJournalEvent']>>
-  ) => AgentSessionSubscribeEvent
+  projectJournalEvent?: SubscriberFieldState['projectJournalEvent']
   readsCurrentRequests?: boolean
   /** False for desktops that need exact replay to keep send echoes and current requests. */
   snapshotCatchUp?: boolean

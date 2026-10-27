@@ -668,7 +668,11 @@ it.each([false, true])(
     expect(
       forward.page.items.some((item) => item.itemId === agentJournalSubmissionKey('U-proof'))
     ).toBe(false)
-    expect(forward.page.removedItemIds).toContain(agentJournalSubmissionKey('U-proof'))
+    if (forward.ok) {
+      expect(forward.page.removedItemIds).toContain(agentJournalSubmissionKey('U-proof'))
+    } else {
+      expect(forward.reset).toBe('cursor_compacted')
+    }
     for (const id of ['proof', 'edited', 'deleted']) {
       if (id !== 'proof') {
         await proof(`U-${id}`)

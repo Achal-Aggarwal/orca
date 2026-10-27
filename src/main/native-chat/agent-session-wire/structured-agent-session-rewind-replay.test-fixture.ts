@@ -156,7 +156,7 @@ export async function expectGoalRowRewindRecovery({
   params,
   attachAndStart
 }: Pick<RewindReplayFixture, 'host' | 'store' | 'rewind' | 'params'> & {
-  sink: StructuredAgentSessionEventSink
+  sink: () => StructuredAgentSessionEventSink
   attachAndStart: (fence: number) => Promise<unknown>
 }) {
   expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
@@ -179,14 +179,14 @@ export async function expectGoalRowRewindRecovery({
       payload: { head: '{}', byteLength: 2, digest: '4'.repeat(64), truncated: false }
     }
   }
-  sink.appendItem(message('kept'), hostTestMessage('kept'), {
+  sink().appendItem(message('kept'), hostTestMessage('kept'), {
     turnScope: AGENT_JOURNAL_THREAD_SCOPE
   })
-  sink.appendItem(goalRow, goalBody, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
-  sink.appendItem(message('drop'), hostTestMessage('drop'), {
+  sink().appendItem(goalRow, goalBody, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+  sink().appendItem(message('drop'), hostTestMessage('drop'), {
     turnScope: AGENT_JOURNAL_THREAD_SCOPE
   })
-  sink.appendItem(
+  sink().appendItem(
     message('tip'),
     { ...hostTestMessage('tip'), role: 'assistant' },
     { turnScope: AGENT_JOURNAL_THREAD_SCOPE }

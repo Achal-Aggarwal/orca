@@ -781,7 +781,7 @@ describe('host rewind', () => {
   })
 
   it('keeps a host goal row when interrupted Codex rewind recovery rebuilds provider history', () =>
-    expectGoalRowRewindRecovery({ host, store, rewind, sink, params, attachAndStart }))
+    expectGoalRowRewindRecovery({ host, store, rewind, sink: () => sink, params, attachAndStart }))
 
   it('commits context and completion atomically before a post-commit crash', async () => {
     await expectAtomicRewindCompletion({ host, store, seed, params, attachAndStart })
