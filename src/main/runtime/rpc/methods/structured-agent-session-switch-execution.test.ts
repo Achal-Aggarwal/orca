@@ -1,8 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as cliTranscript from '../../../ai-vault/structured-chat-cli-fork'
-import { structuredAgentRuntimeRegistration } from '../../structured-agent-runtime-registrations'
+import { structuredAgentRuntimeMetadata } from '../../structured-agent-runtime-metadata'
 import { agentSessionProviderHandleChainHead } from '../../../../shared/agent-session-provider-handle'
+import { captureTerminalSurfaceIdentity } from '../../../../shared/terminal-tab-close'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   createRestTestRig,
@@ -14,7 +15,12 @@ import {
 } from '../../../native-chat/agent-session-wire/structured-agent-session-create-test-fixture'
 import { HOST_TEST_SESSION as id } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
-import { setupMainOwnedWorkspace, WORKTREE_ID } from '../../main-owned-workspace-runtime-fixture'
+import {
+  setupMainOwnedWorkspace,
+  WORKTREE_ID,
+  TAB_ID,
+  LEAF_A
+} from '../../main-owned-workspace-runtime-fixture'
 import { executeStructuredSessionSwitch } from './structured-agent-session-switch-execution'
 import { SwitchToChatParams, SwitchToTerminalParams } from './structured-agent-session-schemas'
 import { STRUCTURED_AGENT_SESSION_SWITCH_TO_CHAT_METHODS } from './structured-agent-session-switch-to-chat'
@@ -182,7 +188,11 @@ it('keeps opened chat visible and returns the exact committed selected start fai
 it.each(['children', 'unknown'] as const)(
   'retains the source with a factual typed refusal when inspection reports %s',
   async (evidence) => {
-    const { runtime } = setupMainOwnedWorkspace()
+    const { runtime, session } = setupMainOwnedWorkspace()
+    const identity = captureTerminalSurfaceIdentity(session(), WORKTREE_ID, TAB_ID, LEAF_A)
+    if (!identity) {
+      throw new Error('Expected the workspace fixture terminal surface')
+    }
     vi.spyOn(runtime, 'inspectTerminalProcess').mockResolvedValue(
       evidence === 'children'
         ? { foregroundProcess: 'codex', hasChildProcesses: true, childProcessEvidence: 'children' }
@@ -199,7 +209,11 @@ it.each(['children', 'unknown'] as const)(
         sessionId: id,
         execution: {
           invocationId: 'inspection',
-          source: { terminal: 'source', expectedIncarnationId: 'source-incarnation' }
+          source: {
+            terminal: 'source',
+            expectedIncarnationId: 'source-incarnation',
+            originalPresentation: { identity, holders: [{ hostId: 'local', identity }] }
+          }
         }
       },
       { runtime },
@@ -331,7 +345,7 @@ it('keeps an opened readable chat successful when conditional source-shell clean
     cwd: rig.root,
     providerSessionId: nativeId,
     requireCurrent: vi.fn(),
-    registration: structuredAgentRuntimeRegistration('codex')!
+    metadata: structuredAgentRuntimeMetadata('codex')!
   })
   vi.spyOn(cliTranscript, 'prepareStructuredChatCliTranscript').mockResolvedValue({
     useRealCodexHome: false,

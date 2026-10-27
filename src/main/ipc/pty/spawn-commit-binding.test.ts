@@ -64,9 +64,9 @@ it('reconciles a dispatched child through real topology creation after a queued 
   const recovered = result.switchRecoveredSurface!
   expect(recovered.tabId).not.toBe(tabId)
   const session = store.getWorkspaceSession()
-  expect(session.terminalLayoutsByTabId?.[tabId]?.ptyIdsByLeafId[leafId]).toBe('B')
-  expect(session.terminalLayoutsByTabId?.[recovered.tabId]?.ptyIdsByLeafId[recovered.leafId]).toBe(
-    'A'
-  )
+  expect(session.terminalLayoutsByTabId?.[tabId]?.ptyIdsByLeafId?.[leafId]).toBe('B')
+  expect(
+    session.terminalLayoutsByTabId?.[recovered.tabId]?.ptyIdsByLeafId?.[recovered.leafId]
+  ).toBe('A')
   expect(session.tabsByWorktree[worktreeId].some((row) => row.id === recovered.tabId)).toBe(true)
 })

@@ -31,8 +31,17 @@ const options = () => ({
   }
 })
 const threadId = '019aef12-1234-7000-8000-123456789abc'
+type CodexTranscriptFixturePayload =
+  | { id: string }
+  | { type: 'task_started' | 'task_complete'; turn_id: string }
+  | {
+      type: 'message'
+      role: 'user' | 'assistant'
+      content: { type: 'input_text' | 'output_text'; text: string }[]
+    }
+
 function transcript(complete: boolean) {
-  const row = (type: string, payload: object) =>
+  const row = (type: string, payload: CodexTranscriptFixturePayload) =>
     JSON.stringify({
       timestamp: '2026-10-26T12:00:00Z',
       type,
