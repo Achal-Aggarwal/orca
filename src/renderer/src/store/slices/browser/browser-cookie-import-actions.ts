@@ -1,3 +1,4 @@
+import { captureRuntimeEnvironmentRequestRevision } from '@/runtime/runtime-environment-revision'
 import type { BrowserSlice, BrowserSliceGet, BrowserSliceSet } from './browser-slice-contract'
 import type { BrowserCookieImportResult } from '../../../../../shared/browser-workspace-types'
 import type {
@@ -43,14 +44,40 @@ export function createBrowserCookieImportActions(
             browserProfile
           })
           ranOnClient = clientHostResult != null
-          const result =
+          const pairingRevision = captureRuntimeEnvironmentRequestRevision(runtimeEnvironmentId)
+          const result: BrowserProfileImportFromBrowserResult =
             clientHostResult ??
             (await callRuntimeRpc<BrowserProfileImportFromBrowserResult>(
               { kind: 'environment', environmentId: runtimeEnvironmentId },
               'browser.profileImportFromBrowser',
               { profileId, browserFamily, browserProfile, supportsPartitionSkippedCookies: true },
-              { timeoutMs: 30_000 }
+              { timeoutMs: 30_000, expectedEnvironmentPairingRevision: pairingRevision }
             ))
+          const retained = retainCookieImportExecutionHost(
+            ranOnClient || !result.ok
+              ? result
+              : {
+                  ok: true,
+                  profileId: result.profileId,
+                  summary: result.summary
+                },
+            hostId,
+            executionHostLabel,
+            ranOnClient ? 'client' : 'remote'
+          )
+          if (
+            !ranOnClient &&
+            result.ok &&
+            result.executorRuntimeId &&
+            typeof pairingRevision === 'number'
+          ) {
+            retained.googleCookieClearRemoteTarget = {
+              environmentId: runtimeEnvironmentId,
+              pairingRevision,
+              executorRuntimeId: result.executorRuntimeId,
+              profileId: result.profileId
+            }
+          }
           if (result.ok) {
             set((state) =>
               browserImportStateForHostUpdate(state, hostId, {
@@ -75,12 +102,7 @@ export function createBrowserCookieImportActions(
               })
             )
           }
-          return retainCookieImportExecutionHost(
-            result,
-            hostId,
-            executionHostLabel,
-            ranOnClient ? 'client' : 'remote'
-          )
+          return retained
         } catch (err) {
           const reason = String((err as Error)?.message ?? err)
           set((state) =>

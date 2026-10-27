@@ -1,3 +1,5 @@
+import { BrowserError } from '../browser-error'
+import { browserSessionRegistry } from '../browser-session-registry'
 import { session, type Cookies } from 'electron'
 import type { GoogleCookieClearResult } from '../../../shared/browser-google-cookie-clear'
 import { withCookieMutationLock } from './browser-cookie-import-clear'
@@ -49,4 +51,22 @@ export function clearGoogleCookiesFromPartition(
   validate?: () => void
 ): Promise<GoogleCookieClearResult> {
   return clearGoogleCookies(session.fromPartition(partition), validate)
+}
+
+export function clearGoogleCookiesForRuntimeProfile(
+  params: { profileId: string; executorRuntimeId: string },
+  actualExecutorRuntimeId: string
+): Promise<GoogleCookieClearResult> {
+  if (params.executorRuntimeId !== actualExecutorRuntimeId) {
+    throw new BrowserError('invalid_argument', 'The browser profile connection changed. Try again.')
+  }
+  const profile = browserSessionRegistry.getProfile(params.profileId)
+  if (!profile) {
+    throw new BrowserError('invalid_argument', 'Browser profile not found')
+  }
+  return clearGoogleCookiesFromPartition(profile.partition, () => {
+    if (browserSessionRegistry.getProfile(params.profileId)?.partition !== profile.partition) {
+      throw new BrowserError('invalid_argument', 'Browser profile not found')
+    }
+  })
 }

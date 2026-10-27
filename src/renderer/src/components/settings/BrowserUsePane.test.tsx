@@ -3,13 +3,10 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { BROWSER_USE_ENABLED_STORAGE_KEY } from '@/lib/browser-use-setup-state'
-import { ConfirmationDialogContext } from '@/components/confirmation-dialog-context'
 import { BrowserUseSetup } from './BrowserUsePane'
 
 const state = vi.hoisted(
   (): {
-    browserSessionHostIdOverride: 'local'
-    runtimeStatusByEnvironmentId: Map<string, never>
     settingsSearchQuery: string
     browserSessionProfiles: []
     fetchBrowserSessionProfiles: () => void
@@ -17,8 +14,6 @@ const state = vi.hoisted(
     detectedBrowsers: []
     fetchDetectedBrowsers: () => void
   } => ({
-    browserSessionHostIdOverride: 'local',
-    runtimeStatusByEnvironmentId: new Map(),
     settingsSearchQuery: '',
     browserSessionProfiles: [],
     fetchBrowserSessionProfiles: vi.fn(),
@@ -43,6 +38,15 @@ vi.mock('@/hooks/useInstalledAgentSkills', () => ({
     refresh: vi.fn()
   })
 }))
+vi.mock('../use-google-cookie-clear', () => ({
+  useGoogleCookieClear: () => ({
+    busy: false,
+    pending: false,
+    menuAction: undefined,
+    setOpen: vi.fn(),
+    fromImport: vi.fn()
+  })
+}))
 vi.mock('./BrowserUseSkillStep', () => ({ BrowserUseSkillStep: () => null }))
 vi.mock('./BrowserUseExamples', () => ({ BrowserUseExamples: () => null }))
 
@@ -54,23 +58,13 @@ afterEach(() => {
 
 it('shows cookie import as available before skill setup and disables it during import', () => {
   localStorage.setItem(BROWSER_USE_ENABLED_STORAGE_KEY, '1')
-  const { rerender } = render(
-    <ConfirmationDialogContext.Provider value={cancelConfirmation}>
-      <BrowserUseSetup />
-    </ConfirmationDialogContext.Provider>
-  )
+  const { rerender } = render(<BrowserUseSetup />)
   const importButton = screen.getByRole('button', { name: 'Import' })
 
   expect(importButton.hasAttribute('disabled')).toBe(false)
   expect(importButton.closest('.opacity-60')).toBeNull()
 
   state.browserSessionImportState = { profileId: 'default', status: 'importing' }
-  rerender(
-    <ConfirmationDialogContext.Provider value={cancelConfirmation}>
-      <BrowserUseSetup />
-    </ConfirmationDialogContext.Provider>
-  )
+  rerender(<BrowserUseSetup />)
   expect(screen.getByRole('button', { name: 'Import' }).hasAttribute('disabled')).toBe(true)
 })
-
-const cancelConfirmation = async () => false

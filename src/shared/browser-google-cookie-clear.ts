@@ -6,3 +6,13 @@ export type GoogleCookieClearLocalTarget = {
   partition: string
   routeIdentity: string | null
 }
+
+export type GoogleCookieClearLocalReceipt = { local: GoogleCookieClearLocalTarget; label: string }
+export type GoogleCookieClearRemoteReceipt = {
+  environmentId: string
+  pairingRevision: number
+  executorRuntimeId: string
+  profileId: string
+  label?: string
+}
+export type GoogleCookieClearTarget = GoogleCookieClearLocalReceipt | GoogleCookieClearRemoteReceipt

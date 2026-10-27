@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
-import { getBrowserSettingsHostId } from '@/store/slices/browser/browser-host-state'
+import {
+  getBrowserSettingsHostId,
+  getBrowserSettingsRuntimeEnvironmentId
+} from '@/store/slices/browser/browser-host-state'
+import type { BrowserCookieImportExecutionResult } from '@/store/slices/browser/browser-slice-contract'
+import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../../shared/browser-runtime-capabilities'
 import { useConfirmationDialog } from './confirmation-dialog-context'
 import {
+  captureGoogleCookieClearTarget,
+  googleCookieClearImportTarget,
   offerGoogleCookieClear,
   type GoogleCookieClearOffer
 } from '@/lib/browser-google-cookie-clear'
 
-export function useGoogleCookieClear(profileId: string, label?: string) {
+export function useGoogleCookieClearRunner() {
   const confirm = useConfirmationDialog()
-  const hostId = useAppStore(getBrowserSettingsHostId)
-  const statuses = useAppStore((s) => s.runtimeStatusByEnvironmentId)
   const running = useRef(false)
-  const generation = useRef(0)
-  const [pending, setPending] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [menuOffer, setMenuOffer] = useState<GoogleCookieClearOffer>()
   const offer = useCallback(
-    () =>
-      offerGoogleCookieClear(profileId, label, confirm, (action) => {
+    (target: Parameters<typeof offerGoogleCookieClear>[0]) =>
+      offerGoogleCookieClear(target, confirm, (action) => {
         if (running.current) {
           return
         }
@@ -29,30 +31,59 @@ export function useGoogleCookieClear(profileId: string, label?: string) {
           setBusy(false)
         })
       }),
-    [profileId, label, confirm]
+    [confirm]
   )
-  const refresh = useCallback(() => {
-    const current = ++generation.current
-    void offer().then((next) => {
-      if (generation.current === current) {
-        setMenuOffer(next)
-        setPending(false)
-      }
-    })
-  }, [offer])
-  useEffect(() => {
-    setPending(true)
-    setMenuOffer(undefined)
-    refresh()
-    return () => {
-      generation.current++
-    }
-  }, [refresh, hostId, statuses])
   return {
     busy,
-    menuAction: menuOffer?.onClick,
     offer,
-    refresh,
-    pending
+    fromImport: (result: BrowserCookieImportExecutionResult) =>
+      offer(googleCookieClearImportTarget(result))
+  }
+}
+
+export function useGoogleCookieClear(profileId: string, label?: string) {
+  const runner = useGoogleCookieClearRunner()
+  const { offer } = runner
+  const hostId = useAppStore(getBrowserSettingsHostId)
+  const environmentId = useAppStore(getBrowserSettingsRuntimeEnvironmentId)
+  const revision = useAppStore((s) => {
+    const environment = s.runtimeEnvironments.find((entry) => entry.id === environmentId)
+    return environment?.pairingRevision ?? environment?.createdAt
+  })
+  const supported = useAppStore((s) =>
+    environmentId
+      ? s.runtimeStatusByEnvironmentId
+          .get(environmentId)
+          ?.status?.capabilities?.includes(BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY) === true
+      : false
+  )
+  const generation = useRef(0)
+  const [open, setOpen] = useState(false)
+  const [available, setAvailable] = useState<boolean>()
+  const [checking, setChecking] = useState(true)
+  const [menuOffer, setMenuOffer] = useState<GoogleCookieClearOffer>()
+  useEffect(() => {
+    const capturedGeneration = generation
+    const current = ++capturedGeneration.current
+    setChecking(true)
+    void captureGoogleCookieClearTarget(profileId, label, open)
+      .catch(() => ({ available: false }))
+      .then((next) => {
+        if (generation.current !== current) {
+          return
+        }
+        setAvailable(next.available)
+        setMenuOffer(offer('target' in next ? next.target : undefined))
+        setChecking(false)
+      })
+    return () => {
+      capturedGeneration.current++
+    }
+  }, [profileId, label, hostId, revision, supported, open, offer])
+  return {
+    ...runner,
+    setOpen,
+    pending: available !== false && (checking || !menuOffer),
+    menuAction: checking ? undefined : menuOffer?.onClick
   }
 }

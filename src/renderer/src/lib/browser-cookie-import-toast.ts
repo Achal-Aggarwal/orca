@@ -181,13 +181,12 @@ function emitGoogleCookieImportWarning(
         )
   toast.warning(message, {
     duration: 12000,
-    action:
-      clearGoogleCookies?.executionMachine === execution.executionMachine
-        ? {
-            label: translate('browser.googleCookieClear.action', 'Clear Google cookies…'),
-            onClick: clearGoogleCookies.onClick
-          }
-        : undefined
+    action: clearGoogleCookies
+      ? {
+          label: translate('browser.googleCookieClear.action', 'Clear Google cookies…'),
+          onClick: clearGoogleCookies.onClick
+        }
+      : undefined
   })
 }
 

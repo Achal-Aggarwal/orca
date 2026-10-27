@@ -162,6 +162,7 @@ export abstract class OrcaRuntimeWithTerminalDrivers extends OrcaRuntimeWithFitO
       getAgentEnvironment: () => this.accounts.getCommitMessageAgentEnvironment()
     },
     browserHost: {
+      getRuntimeId: () => this.getRuntimeId(),
       getAgentBrowserBridge: () => this.agentBrowserBridge,
       resolveWorktreeSelector: (selector) =>
         resolveRemoteCliBrowserScopeSelector(selector) ?? this.resolveWorktreeSelector(selector),

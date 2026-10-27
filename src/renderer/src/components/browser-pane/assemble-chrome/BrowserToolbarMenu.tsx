@@ -1,4 +1,4 @@
-import { useGoogleCookieClear } from '@/components/use-google-cookie-clear'
+import { useGoogleCookieClearRunner } from '@/components/use-google-cookie-clear'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { emitBrowserCookieImportToast } from '@/lib/browser-cookie-import-toast'
@@ -133,7 +133,7 @@ export function BrowserToolbarMenu({
   }
 
   const effectiveProfileId = currentProfileId ?? 'default'
-  const googleCookieClear = useGoogleCookieClear(effectiveProfileId, undefined)
+  const googleCookieClear = useGoogleCookieClearRunner()
 
   const defaultProfile = browserSessionProfiles.find((p) => p.id === 'default')
   const allProfiles = defaultProfile
@@ -216,7 +216,6 @@ export function BrowserToolbarMenu({
     browserFamily: string,
     browserProfile?: string
   ): Promise<void> => {
-    const clearOffer = googleCookieClear.offer()
     const result = await importCookiesFromBrowser(effectiveProfileId, browserFamily, browserProfile)
     if (result.ok) {
       const browser = detectedBrowsers.find((b) => b.family === browserFamily)
@@ -241,7 +240,7 @@ export function BrowserToolbarMenu({
               }
             ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else {
       toast.error(result.reason)
@@ -249,7 +248,6 @@ export function BrowserToolbarMenu({
   }
 
   const handleImportFromFile = async (): Promise<void> => {
-    const clearOffer = googleCookieClear.offer()
     const result = await importCookiesToProfile(effectiveProfileId)
     if (result.ok) {
       emitBrowserCookieImportToast(
@@ -260,7 +258,7 @@ export function BrowserToolbarMenu({
           { value0: result.summary.importedCookies }
         ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else if (result.reason !== 'canceled') {
       toast.error(result.reason)

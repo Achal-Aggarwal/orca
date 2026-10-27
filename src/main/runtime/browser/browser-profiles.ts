@@ -1,4 +1,4 @@
-import { clearGoogleCookiesFromPartition } from '../../browser/cookies/browser-google-cookie-clear'
+import { clearGoogleCookiesForRuntimeProfile } from '../../browser/cookies/browser-google-cookie-clear'
 import { createBrowserTabInRenderer } from './browser-tab-renderer-create'
 import type {
   BrowserDetectProfilesResult,
@@ -34,6 +34,7 @@ export class RuntimeBrowserProfiles {
   constructor(
     private readonly host: Pick<
       RuntimeBrowserCommandHost,
+      | 'getRuntimeId'
       | 'getAuthoritativeWindow'
       | 'getRuntimeBrowserPageRegistry'
       | 'getBrowserHostLeaseRegistry'
@@ -219,7 +220,10 @@ export class RuntimeBrowserProfiles {
   }
 
   async browserProfileList(): Promise<BrowserProfileListResult> {
-    return { profiles: browserSessionRegistry.listProfiles() }
+    return {
+      profiles: browserSessionRegistry.listProfiles(),
+      executorRuntimeId: this.host.getRuntimeId()
+    }
   }
 
   async browserProfileCreate(params: {
@@ -299,15 +303,11 @@ export class RuntimeBrowserProfiles {
       profileName,
       importedAt: Date.now()
     })
-    return { ...result, profileId: params.profileId }
+    return { ...result, profileId: params.profileId, executorRuntimeId: this.host.getRuntimeId() }
   }
 
-  async browserProfileClearGoogleCookies(params: { profileId: string }) {
-    const profile = browserSessionRegistry.getProfile(params.profileId)
-    if (!profile) {
-      throw new BrowserError('invalid_argument', 'Browser profile not found')
-    }
-    return clearGoogleCookiesFromPartition(profile.partition)
+  async browserProfileClearGoogleCookies(params: { profileId: string; executorRuntimeId: string }) {
+    return clearGoogleCookiesForRuntimeProfile(params, this.host.getRuntimeId())
   }
 
   async browserProfileClearDefaultCookies(): Promise<BrowserProfileClearDefaultCookiesResult> {

@@ -61,7 +61,6 @@ export function BrowserProfileRow({
     browserFamily: string,
     browserProfile?: string
   ): Promise<void> => {
-    const clearOffer = googleCookieClear.offer()
     const result = await useAppStore
       .getState()
       .importCookiesFromBrowser(profile.id, browserFamily, browserProfile)
@@ -90,7 +89,7 @@ export function BrowserProfileRow({
               }
             ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else {
       toast.error(result.reason)
@@ -98,7 +97,6 @@ export function BrowserProfileRow({
   }
 
   const handleImportFromFile = async (): Promise<void> => {
-    const clearOffer = googleCookieClear.offer()
     const result = await useAppStore.getState().importCookiesToProfile(profile.id)
     if (result.ok) {
       emitBrowserCookieImportToast(
@@ -109,7 +107,7 @@ export function BrowserProfileRow({
           { value0: result.summary.importedCookies, value1: profile.label }
         ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else if (result.reason !== 'canceled') {
       toast.error(result.reason)
@@ -152,10 +150,10 @@ export function BrowserProfileRow({
       <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu
           onOpenChange={(open) => {
+            googleCookieClear.setOpen(open)
             if (open) {
               // Probe profile folders only when import opens; macOS treats them as protected app data.
               void fetchDetectedBrowsers()
-              googleCookieClear.refresh()
             }
           }}
         >

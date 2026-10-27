@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 import type {
-  GoogleCookieClearLocalTarget,
+  GoogleCookieClearTarget,
   GoogleCookieClearResult
 } from '../../../shared/browser-google-cookie-clear'
 import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../../shared/browser-runtime-capabilities'
@@ -8,72 +8,107 @@ import type { ConfirmationDialogContextValue } from '@/components/confirmation-d
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
 import {
-  getBrowserProfilesForHost,
   getBrowserSettingsHostId,
   getBrowserSettingsRuntimeEnvironmentId
 } from '@/store/slices/browser/browser-host-state'
 import { translate } from '@/i18n/i18n'
+import type { BrowserCookieImportExecutionResult } from '@/store/slices/browser/browser-slice-contract'
 
 export type GoogleCookieClearOffer = {
   executionMachine: 'client' | 'remote'
   onClick: () => void
 }
 
-type ClearTarget = {
-  profileId: string
-  label: string
-} & (
-  | { local: GoogleCookieClearLocalTarget }
-  | {
-      environmentId: string
-      pairingRevision: number
-      runtimeId: string
-    }
-)
+export function remoteGoogleCookieClearAvailable(
+  environmentId: string,
+  pairingRevision?: number
+): boolean {
+  const state = useAppStore.getState()
+  const environment = state.runtimeEnvironments.find((entry) => entry.id === environmentId)
+  return (
+    !!environment &&
+    (pairingRevision === undefined ||
+      (environment.pairingRevision ?? environment.createdAt) === pairingRevision) &&
+    state.runtimeStatusByEnvironmentId
+      .get(environmentId)
+      ?.status?.capabilities?.includes(BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY) === true
+  )
+}
 
-async function captureTarget(profileId: string, label?: string): Promise<ClearTarget | null> {
+export async function captureGoogleCookieClearTarget(
+  profileId: string,
+  label: string | undefined,
+  remote: boolean
+) {
   const state = useAppStore.getState()
   const hostId = getBrowserSettingsHostId(state)
   const environmentId = getBrowserSettingsRuntimeEnvironmentId(state)
-  const environment = state.runtimeEnvironments.find((entry) => entry.id === environmentId)
-  const status = environmentId
-    ? state.runtimeStatusByEnvironmentId.get(environmentId)?.status
-    : null
-  const profileLabel =
-    label ?? getBrowserProfilesForHost(state, hostId).find((entry) => entry.id === profileId)?.label
-  if (!profileLabel) {
-    return null
-  }
   const local = await window.api.browser.sessionGoogleCookieClearTarget({
     profileId,
     environmentId
   })
   if (local) {
-    return { profileId, label: profileLabel, local }
+    return {
+      available: true,
+      target: { local, label: label || (profileId === 'default' ? 'Default' : profileId) }
+    }
   }
-  if (!environment || !status?.capabilities?.includes(BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY)) {
-    return null
+  if (!environmentId || !remoteGoogleCookieClearAvailable(environmentId)) {
+    return { available: false }
+  }
+  if (!remote) {
+    return { available: true }
+  }
+  const observation = await state.fetchBrowserSessionProfiles(hostId)
+  const profile = observation?.profiles.find((entry) => entry.id === profileId)
+  if (
+    !observation ||
+    !profile ||
+    !observation.executorRuntimeId ||
+    typeof observation.pairingRevision !== 'number' ||
+    !remoteGoogleCookieClearAvailable(environmentId, observation.pairingRevision)
+  ) {
+    return { available: false }
   }
   return {
-    profileId,
-    label: profileLabel,
-    environmentId: environment.id,
-    pairingRevision: environment.pairingRevision ?? environment.createdAt,
-    runtimeId: status.runtimeId
+    available: true,
+    target: {
+      environmentId,
+      profileId,
+      label: profile.label,
+      pairingRevision: observation.pairingRevision,
+      executorRuntimeId: observation.executorRuntimeId
+    }
   }
 }
 
-export async function offerGoogleCookieClear(
-  profileId: string,
-  label: string | undefined,
+export function googleCookieClearImportTarget(
+  result: BrowserCookieImportExecutionResult
+): GoogleCookieClearTarget | undefined {
+  if (!result.ok) {
+    return undefined
+  }
+  if (result.executionMachine === 'client') {
+    return result.googleCookieClearTarget
+  }
+  const target = result.googleCookieClearRemoteTarget
+  return target && remoteGoogleCookieClearAvailable(target.environmentId, target.pairingRevision)
+    ? target
+    : undefined
+}
+
+export function offerGoogleCookieClear(
+  target: GoogleCookieClearTarget | undefined,
   confirm: ConfirmationDialogContextValue,
   run: (target: () => Promise<void>) => void
-): Promise<GoogleCookieClearOffer | undefined> {
-  const target = await captureTarget(profileId, label).catch(() => null)
+): GoogleCookieClearOffer | undefined {
   if (!target) {
     return undefined
   }
-  const values = { profile: target.label }
+  const profileId = 'local' in target ? target.local.profileId : target.profileId
+  const values = {
+    profile: target.label || (profileId === 'default' ? 'Default' : 'Browser profile')
+  }
   return {
     executionMachine: 'local' in target ? 'client' : 'remote',
     onClick: () =>
@@ -104,10 +139,9 @@ export async function offerGoogleCookieClear(
               : await callRuntimeRpc<GoogleCookieClearResult>(
                   { kind: 'environment', environmentId: target.environmentId },
                   'browser.profileClearGoogleCookies',
-                  { profileId: target.profileId },
+                  { profileId: target.profileId, executorRuntimeId: target.executorRuntimeId },
                   {
-                    expectedEnvironmentPairingRevision: target.pairingRevision,
-                    expectedEnvironmentRuntimeId: target.runtimeId
+                    expectedEnvironmentPairingRevision: target.pairingRevision
                   }
                 )
         } catch {

@@ -1,3 +1,7 @@
+import type {
+  BrowserCookieImportResult,
+  BrowserSessionProfile
+} from '../../shared/browser-workspace-types'
 import type { GoogleCookieClearLocalTarget } from '../../shared/browser-google-cookie-clear'
 import { bindRoutePartition } from './browser-client-route-cookie-import'
 import { browserSessionRegistry } from './browser-session-registry'
@@ -8,13 +12,13 @@ export function googleCookieClearLocalTarget(
   profileId: string,
   environmentId: string | null
 ): GoogleCookieClearLocalTarget | null {
-  const profile = browserSessionRegistry.getProfile(profileId)
-  if (!profile) {
-    return null
-  }
   const identity = environmentId ? getPairedRuntimeBrowserClientRouteIdentity(environmentId) : null
   if (environmentId && !identity) {
     return null
+  }
+  const profile = browserSessionRegistry.getProfile(profileId)
+  if (!profile) {
+    throw new Error('Browser profile not found')
   }
   return {
     profileId,
@@ -25,16 +29,45 @@ export function googleCookieClearLocalTarget(
 }
 
 export function clearGoogleCookiesForLocalTarget(target: GoogleCookieClearLocalTarget) {
-  const validate = () => {
-    const current = googleCookieClearLocalTarget(target.profileId, target.environmentId)
+  const current = googleCookieClearLocalTarget(target.profileId, target.environmentId)
+  if (
+    !current ||
+    current.partition !== target.partition ||
+    current.routeIdentity !== target.routeIdentity
+  ) {
+    throw new Error('The browser profile connection changed. Try again.')
+  }
+  const route = target.environmentId
+    ? getPairedRuntimeBrowserClientRouteIdentity(target.environmentId)
+    : null
+  const partition = browserSessionRegistry.getProfile(target.profileId)?.partition
+  return clearGoogleCookiesFromPartition(target.partition, () => {
     if (
-      !current ||
-      current.partition !== target.partition ||
-      current.routeIdentity !== target.routeIdentity
+      browserSessionRegistry.getProfile(target.profileId)?.partition !== partition ||
+      (target.environmentId &&
+        getPairedRuntimeBrowserClientRouteIdentity(target.environmentId) !== route)
     ) {
       throw new Error('The browser profile connection changed. Try again.')
     }
+  })
+}
+
+export function retainLocalGoogleCookieClearTarget(
+  result: Extract<BrowserCookieImportResult, { ok: true }>,
+  profile: BrowserSessionProfile,
+  profileId: string
+): BrowserCookieImportResult {
+  return {
+    ...result,
+    profileId,
+    googleCookieClearTarget: {
+      label: profile.label,
+      local: {
+        profileId: profile.id,
+        environmentId: null,
+        partition: profile.partition,
+        routeIdentity: null
+      }
+    }
   }
-  validate()
-  return clearGoogleCookiesFromPartition(target.partition, validate)
 }

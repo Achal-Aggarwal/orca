@@ -66,7 +66,19 @@ export async function importCookiesIntoClientRoutePartition(
       importedAt: Date.now()
     }
   })
-  return { ...result, profileId: request.browserProfileId }
+  return {
+    ...result,
+    profileId: request.browserProfileId,
+    googleCookieClearTarget: {
+      label: profile.label,
+      local: {
+        profileId: profile.id,
+        environmentId: request.environmentId,
+        partition,
+        routeIdentity: JSON.stringify(routeIdentity)
+      }
+    }
+  }
 }
 
 function settledRoutePartition(request: ClientRouteCookieImportRequest): string | null {

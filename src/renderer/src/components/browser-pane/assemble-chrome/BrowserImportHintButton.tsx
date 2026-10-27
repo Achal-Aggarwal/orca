@@ -1,4 +1,4 @@
-import { useGoogleCookieClear } from '@/components/use-google-cookie-clear'
+import { useGoogleCookieClearRunner } from '@/components/use-google-cookie-clear'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Import } from 'lucide-react'
 import { toast } from 'sonner'
@@ -49,7 +49,7 @@ export function BrowserImportHintButton({
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
 
   const effectiveProfileId = profileId ?? 'default'
-  const googleCookieClear = useGoogleCookieClear(effectiveProfileId, undefined)
+  const googleCookieClear = useGoogleCookieClearRunner()
   const shouldShow = shouldShowBrowserImportHint({
     persistedUIReady,
     browserImportHintHidden
@@ -88,7 +88,6 @@ export function BrowserImportHintButton({
     async (browserFamily: string, browserProfile?: string): Promise<void> => {
       setOpen(false)
       setImportMenuOpen(false)
-      const clearOffer = googleCookieClear.offer()
       const result = await importCookiesFromBrowser(
         effectiveProfileId,
         browserFamily,
@@ -108,7 +107,7 @@ export function BrowserImportHintButton({
             }
           ),
           result,
-          await clearOffer
+          googleCookieClear.fromImport(result)
         )
         return
       }
@@ -120,7 +119,6 @@ export function BrowserImportHintButton({
   const handleImportFromFile = useCallback(async (): Promise<void> => {
     setOpen(false)
     setImportMenuOpen(false)
-    const clearOffer = googleCookieClear.offer()
     const result = await importCookiesToProfile(effectiveProfileId)
     if (result.ok) {
       emitBrowserCookieImportToast(
@@ -131,7 +129,7 @@ export function BrowserImportHintButton({
           { value0: result.summary.importedCookies }
         ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
       return
     }

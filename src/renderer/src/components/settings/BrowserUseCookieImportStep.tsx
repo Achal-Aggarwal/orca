@@ -44,7 +44,6 @@ export function BrowserUseCookieImportStep({
     browserProfile?: string
   ): Promise<void> => {
     const profileId = 'default'
-    const clearOffer = googleCookieClear.offer()
     const result = await useAppStore
       .getState()
       .importCookiesFromBrowser(profileId, browserFamily, browserProfile)
@@ -62,7 +61,7 @@ export function BrowserUseCookieImportStep({
           }
         ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else {
       toast.error(result.reason)
@@ -70,7 +69,6 @@ export function BrowserUseCookieImportStep({
   }
 
   const handleImportFromFile = async (): Promise<void> => {
-    const clearOffer = googleCookieClear.offer()
     const result = await useAppStore.getState().importCookiesToProfile('default')
     if (result.ok) {
       emitBrowserCookieImportToast(
@@ -81,7 +79,7 @@ export function BrowserUseCookieImportStep({
           { value0: result.summary.importedCookies }
         ),
         result,
-        await clearOffer
+        googleCookieClear.fromImport(result)
       )
     } else if (result.reason !== 'canceled') {
       toast.error(result.reason)
@@ -143,9 +141,9 @@ export function BrowserUseCookieImportStep({
         </div>
         <DropdownMenu
           onOpenChange={(open) => {
+            googleCookieClear.setOpen(open)
             if (open) {
               void fetchDetectedBrowsers()
-              googleCookieClear.refresh()
             }
           }}
         >
