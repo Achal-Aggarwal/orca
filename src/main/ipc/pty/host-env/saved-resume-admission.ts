@@ -1,3 +1,5 @@
+export { savedResumeResult } from './saved-resume-result'
+import { savedOpenCodeSessionPresence } from './saved-opencode-session-presence'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   normalizeAgentProviderSession,
@@ -26,12 +28,14 @@ import {
 export type ResumeSpawnArgs = {
   connectionId?: string | null
   command?: string
+  cwd?: string
   launchAgent?: TuiAgent
   launchConfig?: SleepingAgentLaunchConfig
   launchToken?: unknown
   resumeProviderSession?: AgentProviderSessionMetadata
   /** `saved`: the resume was built from a pane's saved facts, not asked for by the user. */
   resumeOrigin?: unknown
+  envToDelete?: readonly string[]
   env?: Record<string, string>
 }
 
@@ -45,7 +49,7 @@ type AdmissionRuntime = {
 }
 
 /** `chat-home`: an automatic restore of a conversation an open chat continues; `chat-writing`:
- *  any start of one a chat may be writing; `unverifiable`: an automatic restore with no records. */
+ *  any start of one a chat may be writing; `unverifiable`: a resume suppressed without discarding its saved recipe. */
 export type ResumeSpawnRefusal = {
   sourceRecord?: SleepingAgentSessionRecord
   verdict: 'chat-home' | 'chat-writing' | 'unverifiable'
@@ -60,7 +64,8 @@ export type ResumeSpawnAdmission =
 export async function admitResumeSpawn(
   runtime: AdmissionRuntime | undefined,
   args: ResumeSpawnArgs,
-  wslDistro: string | null
+  wslDistro: string | null,
+  source?: SleepingAgentSessionRecord
 ): Promise<ResumeSpawnAdmission | null> {
   const providerSession = normalizeAgentProviderSession(args.resumeProviderSession)
   const agent = args.launchAgent
@@ -77,7 +82,7 @@ export async function admitResumeSpawn(
   if (!runtime) {
     return { verdict: 'unverifiable', refused: { agent, providerSession } }
   }
-  return judgeResumes(runtime, [{ agent, providerSession }])
+  return judgeResumes(runtime, [{ agent, providerSession }], args, source)
 }
 
 /** A reattach that found its session gone returns a fresh shell its window then resumes from the
@@ -88,7 +93,8 @@ export async function admitColdRestoreReattach(
     | undefined,
   result: { coldRestore?: unknown; isReattach?: boolean },
   pane: { paneKey: string | null; saved: SleepingAgentSessionRecord | undefined },
-  wslDistro: string | null
+  wslDistro: string | null,
+  args: ResumeSpawnArgs = {}
 ): Promise<ResumeSpawnAdmission | null> {
   const { paneKey, saved } = pane
   if (!runtime || !result.coldRestore || result.isReattach || !paneKey || wslDistro !== null) {
@@ -112,21 +118,19 @@ export async function admitColdRestoreReattach(
       : [])
   ]
   const [first] = resumes
-  return first ? judgeResumes(runtime, [first]) : null
+  return first ? judgeResumes(runtime, [first], args, saved) : null
 }
 
 async function judgeResumes(
   runtime: AdmissionRuntime,
-  resumes: readonly [RefusedPaneResume, ...RefusedPaneResume[]]
+  resumes: readonly [RefusedPaneResume, ...RefusedPaneResume[]],
+  args: ResumeSpawnArgs,
+  source?: SleepingAgentSessionRecord
 ): Promise<ResumeSpawnAdmission> {
   const keysOf = ({ agent, providerSession }: RefusedPaneResume) =>
     [providerSession.id, providerSession.transcriptPath].flatMap((id) =>
       id?.trim() ? [terminalConversationKey(agent, id)] : []
     )
-  const admitted = (): ResumeSpawnAdmission => ({
-    verdict: 'admitted',
-    refused: resumes[0]
-  })
   let store: AgentSessionRecordStore
   try {
     store = await runtime.openAgentSessionRecordStore()
@@ -155,7 +159,13 @@ async function judgeResumes(
       return { verdict: 'chat-home', refused }
     }
   }
-  return admitted()
+  const target = resumes[0]
+  return args.resumeOrigin === 'saved' &&
+    args.launchAgent === target.agent &&
+    agentProviderSessionsEqual(target.agent, args.resumeProviderSession, target.providerSession) &&
+    (await savedOpenCodeSessionPresence(args, source)) === 'absent'
+    ? { verdict: 'unverifiable', refused: target }
+    : { verdict: 'admitted', refused: target }
 }
 
 /** A refused resume becomes the pane's plain shell: nothing of the agent launch is left to run,
@@ -180,9 +190,7 @@ export function dropAgentLaunch(args: ResumeSpawnArgs): void {
   delete args.resumeProviderSession
 }
 
-export function resumeSpawnRefusal(
-  admission: ResumeSpawnAdmission | null
-): ResumeSpawnRefusal | null {
+export function resumeSpawnRefusal(admission: ResumeSpawnAdmission | null) {
   return admission && admission.verdict !== 'admitted' ? admission : null
 }
 
@@ -228,9 +236,15 @@ export async function chooseSavedResumeFreshLaunch(
   runtime: AdmissionRuntime | undefined,
   args: ResumeSpawnArgs,
   wslDistro: string | null,
-  options: ResumeSpawnArgs & { startupCommandDelivery?: unknown; startupIngress?: unknown }
+  options: ResumeSpawnArgs & { startupCommandDelivery?: unknown; startupIngress?: unknown },
+  source?: SleepingAgentSessionRecord
 ): Promise<ResumeSpawnAdmission | null> {
-  const admission = await admitResumeSpawn(runtime, args, wslDistro)
+  const admission = await admitResumeSpawn(
+    runtime,
+    { ...args, env: options.env, envToDelete: options.envToDelete },
+    wslDistro,
+    source
+  )
   if (resumeSpawnRefusal(admission)) {
     suppressSavedResumeLaunch(args, options)
   }
@@ -247,23 +261,6 @@ export function suppressSavedResumeLaunch(
   delete options.startupCommandDelivery
   delete options.startupIngress
   dropAgentLaunch(args)
-}
-
-export function savedResumeResult(admission: ResumeSpawnAdmission | null) {
-  if (!admission) {
-    return {}
-  }
-  const { agent, providerSession } = admission.refused
-  return {
-    savedResumeDecision: { agent, providerSession, verdict: admission.verdict },
-    ...(admission.verdict !== 'admitted'
-      ? {
-          agentResumeRefused: admission.verdict,
-          agentResumeUnavailable: true as const,
-          refusedResume: admission.refused
-        }
-      : {})
-  }
 }
 
 /** Capture before spawn; later same-conversation status and saved versions belong to later work. */

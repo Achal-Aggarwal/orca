@@ -1,3 +1,4 @@
+import { readOpenCodeSessionPresence } from '../opencode/opencode-session-presence'
 import {
   readOpenCodeTranscriptPage,
   readOpenCodeTranscriptSignal
@@ -22,6 +23,10 @@ export async function handleOpenCodeSqliteRequest(
   request: OpenCodeSqliteWorkerRequest
 ): Promise<OpenCodeSqliteWorkerResponse> {
   try {
+    if (request.kind === 'session-presence') {
+      const value = await readOpenCodeSessionPresence(request.root, request.sessionId)
+      return { id: request.id, ok: true, value }
+    }
     if (request.kind === 'native-page' || request.kind === 'native-signal') {
       const value =
         request.kind === 'native-signal'

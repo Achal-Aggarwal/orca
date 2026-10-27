@@ -124,7 +124,8 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
           paneKey: facts.savedResumePaneKey ?? null,
           saved: savedResumeRecord(ctx.deps.store, facts.savedResumePaneKey ?? null)
         },
-        ctx.expectedWslDistro
+        ctx.expectedWslDistro,
+        { ...args, env: ctx.spawnOptions.env, envToDelete: ctx.spawnOptions.envToDelete }
       )
       await captureSavedResumeCleanup(
         runtime,

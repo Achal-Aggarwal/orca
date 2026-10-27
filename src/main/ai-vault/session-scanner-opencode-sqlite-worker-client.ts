@@ -192,6 +192,16 @@ export class OpenCodeSqliteWorkerClient {
     return value as OpenCodeNativeChatReadValue
   }
 
+  async readSessionPresence(args: { root: string; sessionId: string }, signal?: AbortSignal) {
+    const value = await this.dispatch(
+      (id) => ({ ...args, id, kind: 'session-presence' }),
+      1000,
+      signal,
+      'native-chat'
+    )
+    return value === 'present' || value === 'absent' ? value : 'unavailable'
+  }
+
   dispose(): void {
     this.requests.dispose()
   }

@@ -50,6 +50,7 @@ export type OpenCodeNativeChatReadRequest = {
 export type OpenCodeNativeChatReadValue = OpenCodeTranscriptPage | OpenCodeTranscriptSignal | null
 
 export type OpenCodeSqliteWorkerRequest = (
+  | { id: number; kind: 'session-presence'; root: string; sessionId: string }
   | OpenCodeSqliteListRequest
   | OpenCodeSqliteParseRequest
   | OpenCodeSqliteCaptureRequest

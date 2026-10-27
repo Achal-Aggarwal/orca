@@ -18,6 +18,7 @@ type ReaderRequest = OpenCodeSqliteWorkerRequest | ForeignSqliteReaderRequest
 
 function isOpenCodeRequest(request: ReaderRequest): request is OpenCodeSqliteWorkerRequest {
   return (
+    request.kind === 'session-presence' ||
     request.kind === 'list' ||
     request.kind === 'parse' ||
     request.kind === 'capture' ||

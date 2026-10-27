@@ -13,11 +13,14 @@ export function openCodeBusyTimeoutMs(dbPath: string): number {
   return isWslUncPath(dbPath) ? 0 : OPENCODE_SQLITE_BUSY_TIMEOUT_MS
 }
 
-export function openOpenCodeDatabaseReadonly(dbPath: string): SyncDatabase {
+export function openOpenCodeDatabaseReadonly(
+  dbPath: string,
+  timeout = openCodeBusyTimeoutMs(dbPath)
+): SyncDatabase {
   const db = new SyncDatabase(dbPath, {
     readonly: true,
     fileMustExist: true,
-    timeout: openCodeBusyTimeoutMs(dbPath)
+    timeout
   })
   try {
     db.pragma('query_only = ON')

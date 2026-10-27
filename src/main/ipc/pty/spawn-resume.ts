@@ -36,7 +36,8 @@ export async function prepareSavedPtyResume(
         ctx.deps.runtime,
         args,
         ctx.expectedWslDistro,
-        ctx.spawnOptions
+        ctx.spawnOptions,
+        captured?.sourceRecord
       ))
     if (captured && ctx.resumeAdmission) {
       ctx.resumeAdmission = {
