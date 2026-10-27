@@ -188,21 +188,50 @@ async function checkWindowsFolderPicker(
   // E8: a drive folder, picked directly, through the distro's /mnt, or typed, is refused inline in
   // the dialog (toasts above a modal take no clicks), with a switch to this computer.
   const dialog = page.getByRole('dialog', { name: /Add a project|Open host project/i })
+  // The Windows path is not a folder on this CI host, so hold the local add at its first step (the
+  // nested scan) and record where it went, instead of letting it fail into another modal.
+  const localAdds: { path: string; runtimeEnvironmentId: string | null }[] = []
+  await page.exposeFunction('e2eRecordDriveRefusalScan', (path: string, envId: string | null) =>
+    localAdds.push({ path, runtimeEnvironmentId: envId })
+  )
   const expectDriveRefusal = async (windowsPath: string, screenshot: string): Promise<void> => {
     const notice = dialog
       .getByRole('alert')
       .filter({ hasText: 'Add Windows drive folders on this computer' })
       .filter({ hasText: windowsPath })
     await expect(notice).toBeVisible({ timeout: 30_000 })
+    // Refused before any scan: nothing has been added yet, on either host.
+    expect(localAdds).toEqual([])
     await settleAnimations(page)
     await page.screenshot({ path: testInfo.outputPath(screenshot) })
+    await page.evaluate(() => {
+      const store = window.__store
+      if (!store) {
+        return
+      }
+      Reflect.set(window, 'e2eOriginalScanNestedRepos', store.getState().scanNestedRepos)
+      store.setState({
+        scanNestedRepos: (path, _connectionId, controls) => {
+          Reflect.get(window, 'e2eRecordDriveRefusalScan')(path, controls.runtimeEnvironmentId)
+          return new Promise(() => {})
+        }
+      })
+    })
     await notice.getByRole('button', { name: 'Add on this computer' }).click()
-    // The open dialog switches its own host (the renderer is told it runs on Windows here).
-    await expect(dialog).toBeVisible()
+    // The open dialog switches its own host (the renderer is told it runs on Windows here) and
+    // adds the folder there.
     await expect(dialog.getByRole('combobox')).toContainText('Local Windows', { timeout: 30_000 })
+    await expect
+      .poll(() => localAdds, { timeout: 30_000 })
+      .toEqual([{ path: windowsPath, runtimeEnvironmentId: null }])
     await expect(notice).toBeHidden()
-    // The Windows path does not exist on this CI host, so the local add may hand off to another modal.
-    await page.evaluate(() => window.__store?.getState().closeModal())
+    localAdds.length = 0
+    await page.evaluate(() => {
+      window.__store?.setState({
+        scanNestedRepos: Reflect.get(window, 'e2eOriginalScanNestedRepos')
+      })
+      window.__store?.getState().closeModal()
+    })
     await expect(dialog).toBeHidden()
   }
   await pickFolder('C:\\Users\\me\\src')
