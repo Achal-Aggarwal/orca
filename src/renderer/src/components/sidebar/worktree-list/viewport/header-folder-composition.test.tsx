@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import React from 'react'
 import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'

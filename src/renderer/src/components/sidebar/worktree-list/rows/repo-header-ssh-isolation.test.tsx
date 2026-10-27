@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import React, { Profiler } from 'react'
+import { Profiler } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
