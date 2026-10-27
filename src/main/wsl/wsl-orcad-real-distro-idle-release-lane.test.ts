@@ -228,6 +228,17 @@ async function idleReleasePhase(): Promise<void> {
   expect(connection.pid, 'the same orcad served the reconnect').not.toBeNull()
   await rpc(connection, 'terminal.close', { terminal: created.terminal.handle })
   await manager.dispose()
+
+  // No terminal left, but a detached job the user started (like tmux or nohup) still runs:
+  // orcad idle-exits, yet the holder must keep the distro and its request unclaimed.
+  await guest('setsid -f sleep 600 </dev/null >/dev/null 2>&1')
+  // ast-grep-ignore: test-no-real-time-wait -- proves the hold across the whole real idle window
+  await new Promise((resolve) => setTimeout(resolve, HELD_WITH_TERMINAL_MS))
+  expect(await holder.holderState(PLAIN), 'a detached user job keeps the holder').toBe('live')
+  expect(
+    (await guest('[ -f "$HOME/.orca/wsl-holder-release" ] && echo yes || echo no')).trim()
+  ).toBe('yes')
+  await guest("pkill -f 'sleep 600' || true")
   const closedAt = performance.now()
 
   await waitFor(
@@ -276,6 +287,6 @@ describe.runIf(RUN && process.platform === 'win32')('WSL distro idle release', (
   it(
     'keeps a distro with a live terminal, then lets it stop once orcad idle-exits',
     idleReleasePhase,
-    RELEASE_BUDGET_MS + HELD_WITH_TERMINAL_MS + 6 * 60_000
+    RELEASE_BUDGET_MS + 2 * HELD_WITH_TERMINAL_MS + 6 * 60_000
   )
 })

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -128,4 +128,19 @@ it('withdraws an earlier request when a new orcad starts', () => {
   beginOrcadIdleExit(root)
 
   expect(existsSync(orcadWslHolderReleasePath(root))).toBe(false)
+})
+
+it('never touches the request path for an orcad no WSL host launched', () => {
+  vi.stubEnv(ORCAD_WSL_HOST_ENV, '')
+  writeFileSync(orcadWslHolderReleasePath(root), '123\n')
+  beginOrcadIdleExit(root)
+
+  expect(existsSync(orcadWslHolderReleasePath(root))).toBe(true)
+})
+
+it('never throws at start when the request cannot be removed', () => {
+  // A directory in its place fails the removal like a locked or unwritable file would.
+  mkdirSync(join(orcadWslHolderReleasePath(root), 'stuck'), { recursive: true })
+
+  expect(() => beginOrcadIdleExit(root)).not.toThrow()
 })

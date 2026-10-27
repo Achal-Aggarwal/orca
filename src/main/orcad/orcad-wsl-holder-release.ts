@@ -28,7 +28,20 @@ export function requestOrcadWslHolderRelease(userDataPath: string, pid = process
   writeSecureFile(orcadWslHolderReleasePath(userDataPath), `${pid}\n`)
 }
 
-/** A starting orcad may be given work, so any earlier request no longer stands. */
-export function withdrawOrcadWslHolderRelease(userDataPath: string): void {
-  rmSync(orcadWslHolderReleasePath(userDataPath), { force: true })
+/**
+ * A starting orcad may be given work, so any earlier request no longer stands. WSL-host launches
+ * only; never throws, so a locked or unwritable data root cannot fail a start or a stop.
+ */
+export function withdrawOrcadWslHolderRelease(
+  userDataPath: string,
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  if (env[ORCAD_WSL_HOST_ENV] !== '1') {
+    return
+  }
+  try {
+    rmSync(orcadWslHolderReleasePath(userDataPath), { force: true })
+  } catch (error) {
+    console.error('[orcad] could not withdraw the WSL holder release request:', error)
+  }
 }
