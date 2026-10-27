@@ -92,7 +92,6 @@ export function MobileSourceControlPanel({
     onOpenedFileDiff,
     onOpenHistory: openHistoryTab
   })
-  const actionSheetActions = useMobileSourceControlActionSheet(state)
   const {
     client,
     connState,
@@ -151,6 +150,7 @@ export function MobileSourceControlPanel({
     [prSidebarState]
   )
   const primaryActionArgs = state.primaryActionArgs
+  const actionSheetActions = useMobileSourceControlActionSheet(state, review)
   const primaryAction = useMemo(
     () => buildMobileSourceControlPrimaryAction({ ...primaryActionArgs, review }),
     [primaryActionArgs, review]
@@ -206,7 +206,7 @@ export function MobileSourceControlPanel({
   }, [isHostedRepo, prBranch, prController.prSidebarState])
 
   const onRefresh = useCallback(() => {
-    void loadStatus({ preserveReadyOnFailure: true })
+    void loadStatus({ preserveReadyOnFailure: true, rereadSettings: true })
     if (activeTab === 'history') {
       setHistoryRefreshNonce((n) => n + 1)
       return

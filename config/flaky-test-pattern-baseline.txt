@@ -761,10 +761,9 @@
 1 test-no-wall-clock:mobile/src/components/MobileHostCard-truthful-status.test.tsx
 1 test-no-wall-clock:mobile/src/components/MobileHostCard.test.ts
 1 test-no-wall-clock:mobile/src/components/pr-sidebar/pr-comment-card-web-avatar.test.tsx
-1 test-no-wall-clock:mobile/src/session/native-chat/mobile-native-chat-pending-echo.test.ts
 1 test-no-wall-clock:mobile/src/session/mobile-structured-send-new-action.test.ts
 2 test-no-wall-clock:mobile/src/session/native-chat/composer/use-mobile-native-chat-message-send-draft-lifetime.test.ts
-1 test-no-wall-clock:mobile/src/session/use-mobile-native-chat-message-send.test.ts
+1 test-no-wall-clock:mobile/src/session/native-chat/transcript/use-mobile-native-chat-message-send.test.ts
 1 test-no-wall-clock:mobile/src/source-control/MobileGitHistoryList.test.tsx
 1 test-no-wall-clock:mobile/src/tasks/worktree-create-launch-operation.test.ts
 1 test-no-wall-clock:mobile/src/transport/host-store.test.ts
@@ -1119,7 +1118,6 @@
 1 test-no-wall-clock:src/renderer/src/components/sidebar/SidebarToolbar.test.tsx
 5 test-no-wall-clock:src/renderer/src/components/sidebar/use-workspace-reference-details.test.tsx
 3 test-no-wall-clock:src/renderer/src/components/sidebar/worktree-agent-rows-subscriptions.bench.test.tsx
-1 test-no-wall-clock:src/renderer/src/components/sidebar/worktree-card-agent-summary.test.ts
 4 test-no-wall-clock:src/renderer/src/components/sidebar/WorktreeCard.compact-hover.test.tsx
 13 test-no-wall-clock:src/renderer/src/components/sidebar/WorktreeCard.pr-display.test.tsx
 2 test-no-wall-clock:src/renderer/src/components/sidebar/WorktreeCard.single-reference-details.test.tsx
@@ -1268,7 +1266,6 @@
 1 test-timeout-needs-reason:src/main/browser/cookies/browser-cookie-import-partition-rollback.electron.test.ts
 1 test-timeout-needs-reason:src/main/browser/cookies/browser-cookie-import-partition-success.electron.test.ts
 1 test-timeout-needs-reason:src/main/browser/cookies/browser-cookie-import-partition.electron.test.ts
-2 test-timeout-needs-reason:src/main/browser/cookies/browser-cookie-import-replace-partition-rollback.electron.test.ts
 1 test-timeout-needs-reason:src/main/browser/cookies/browser-cookie-import-validated-partition.electron.test.ts
 5 test-timeout-needs-reason:src/main/claude-usage/scanner-incremental-reader.test.ts
 4 test-timeout-needs-reason:src/main/claude/claude-agent-sdk-exit-proof.test.ts
@@ -1404,7 +1401,6 @@
 1 test-timeout-needs-reason:src/renderer/src/components/terminal-pane/issue-4631-terminal-hover-link-provider.repro.test.ts
 1 test-timeout-needs-reason:src/renderer/src/hooks/agent-hook-completion-notifications.test.ts
 1 test-timeout-needs-reason:src/renderer/src/lib/check-run-details-log-normalization-performance.test.ts
-1 test-timeout-needs-reason:src/renderer/src/lib/terminal-links.test.ts
 1 test-timeout-needs-reason:src/renderer/src/web/web-preload-api-keybindings.test.ts
 2 test-timeout-needs-reason:src/renderer/src/web/web-preload-api-settings.test.ts
 1 test-timeout-needs-reason:src/shared/__tests__/process-host/windows-tree-kill-late-taskkill.win32.test.ts
@@ -1412,6 +1408,7 @@
 1 test-timeout-needs-reason:src/shared/check-job-log-text-performance.test.ts
 1 test-timeout-needs-reason:src/shared/dsh-real-cli.test.ts
 1 test-timeout-needs-reason:src/shared/setup-agent-sequencing.windows.test.ts
+1 test-timeout-needs-reason:src/shared/terminal-links.test.ts
 2 test-timeout-needs-reason:src/shared/workspace-space-entry-traversal.test.ts
 2 test-timeout-needs-reason:src/shared/wsl-login-shell-command.test.ts
 1 test-timeout-needs-reason:src/wsl-guest/agent-hook-server.test.ts

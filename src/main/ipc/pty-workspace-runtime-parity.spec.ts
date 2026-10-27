@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { setupPtyIpcSuite } from './pty-ipc-test-harness'
-import { statSyncMock } from './pty-ipc-mock-registry'
+import { setupPtyIpcSuite } from './pty/pty-ipc-test-harness'
+import { statSyncMock } from './pty/pty-ipc-mock-registry'
 import {
   providerFacts,
   restoreMainPlatform,
   setMainPlatform,
   startParityLanes,
   spawnBoth
-} from './pty-launch-parity.test-fixture'
+} from './pty/pty-launch-parity.test-fixture'
 import {
   POSIX_PATH,
   WIN_PATH,
@@ -17,7 +17,7 @@ import {
   launchWorkspaceId,
   type LaunchWorkspace
 } from '../../shared/launch-parity-window-request.test-fixture'
-import { HOST_TAB_ID } from './pty-launch-parity-host.test-cases'
+import { HOST_TAB_ID } from './pty/pty-launch-parity-host.test-cases'
 import { readOpenSshDefaultShell } from '../../shared/openssh-default-shell'
 import { resolveLocalTerminalRuntime } from '../local-project-runtime-resolution'
 import { assertMobileTerminalShellSupported } from '../runtime/terminal/launch/mobile-terminal-shell-refusal'

@@ -1,3 +1,4 @@
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable, type TextInput, View } from 'react-native'
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react-native'
@@ -21,6 +22,10 @@ import { keepHeldPressThroughLongPress } from '../../held-press-long-press'
 import { mobileNativeChatComposerShowsStop } from './mobile-native-chat-composer-layout'
 import { MobileNativeChatStopButton } from '../input/MobileNativeChatStopButton'
 import { mobileNativeChatComposerStyles as styles } from './mobile-native-chat-composer-styles'
+import {
+  recordMobileNativeChatSkillPick,
+  useMobileNativeChatDraft
+} from './mobile-native-chat-draft-store'
 
 const NO_FILE_PATHS: string[] = []
 const NO_ATTACHMENTS: PendingNativeChatImage[] = []
@@ -64,6 +69,9 @@ type Props = {
   placeholder?: string
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
+  /** The host's disk-scanned skills, loaded once a skill trigger opens. */
+  skillDiscovery?: NativeChatSkillDiscoverySnapshot
+  onNeedSkills?: () => void
   /** Set while the agent can be stopped; Stop takes Send's slot when Send can't deliver. */
   stop?: { onStop?: () => void; held: boolean } | null
 }
@@ -93,6 +101,8 @@ export function MobileNativeChatComposer({
   placeholder = NATIVE_CHAT_COMPOSER_PLACEHOLDER,
   filePaths = NO_FILE_PATHS,
   onNeedFiles,
+  skillDiscovery,
+  onNeedSkills,
   stop = null
 }: Props): React.JSX.Element {
   const fallbackInputRef = useRef<TextInput>(null)
@@ -114,7 +124,11 @@ export function MobileNativeChatComposer({
     structuredCatalog: structured?.catalog,
     filePaths,
     onNeedFiles,
+    skillDiscovery,
+    onNeedSkills,
     onSlashMenuOpen: structured?.onSlashMenuOpen,
+    // The surface id is the draft key both send paths read picks back from.
+    onPickSkill: (skill) => recordMobileNativeChatSkillPick(sendSurfaceId, skill),
     focusField: () => fieldRef.current?.focus()
   })
   const sendingRef = useRef(false)
@@ -326,4 +340,11 @@ export function MobileNativeChatComposer({
       ) : null}
     </View>
   )
+}
+
+export function MobileNativeChatDraftComposer({
+  draftKey,
+  ...props
+}: Omit<Props, 'value'> & { draftKey: string | null }): React.JSX.Element {
+  return <MobileNativeChatComposer {...props} value={useMobileNativeChatDraft(draftKey)} />
 }

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '../../src/shared/project-types'
-import { setupPtyIpcSuite } from '../../src/main/ipc/pty-ipc-test-harness'
+import { setupPtyIpcSuite } from '../../src/main/ipc/pty/pty-ipc-test-harness'
 import {
   startParityLanes,
   setMainPlatform,
   restoreMainPlatform
-} from '../../src/main/ipc/pty-launch-parity.test-fixture'
+} from '../../src/main/ipc/pty/pty-launch-parity.test-fixture'
 import { WIN_PATH } from '../../src/shared/launch-parity-window-cases.test-fixture'
 import { launchWorkspaceId } from '../../src/shared/launch-parity-window-request.test-fixture'
 
@@ -23,61 +23,67 @@ vi.mock('@/store', async () => {
 })
 
 vi.mock('electron', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.electronModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.electronModuleMock())
 )
 vi.mock('fs', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.fsModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.fsModuleMock())
 )
 vi.mock('node-pty', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.nodePtyModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.nodePtyModuleMock())
 )
 vi.mock('node:child_process', async (importOriginal) =>
-  (await import('../../src/main/ipc/pty-ipc-mock-registry')).childProcessModuleMock(
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).childProcessModuleMock(
     await importOriginal()
   )
 )
 vi.mock('../../src/main/opencode/hook-service', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.openCodeHookServiceModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.openCodeHookServiceModuleMock()
+  )
 )
 vi.mock('../../src/main/mimo/hook-service', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.mimoHookServiceModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.mimoHookServiceModuleMock())
 )
 vi.mock('../../src/main/agent-hooks/server', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.agentHookServerModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.agentHookServerModuleMock())
 )
 vi.mock('../../src/main/pi/titlebar-extension-service', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.piTitlebarExtensionModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.piTitlebarExtensionModuleMock()
+  )
 )
 vi.mock('../../src/main/pwsh', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.pwshModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.pwshModuleMock())
 )
 vi.mock('../../src/main/wsl', async (importOriginal) =>
-  (await import('../../src/main/ipc/pty-ipc-mock-registry')).wslModuleMock(await importOriginal())
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).wslModuleMock(
+    await importOriginal()
+  )
 )
 vi.mock('node:fs/promises', async (importOriginal) =>
-  (await import('../../src/main/ipc/pty-ipc-mock-registry')).fsPromisesModuleMock(
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).fsPromisesModuleMock(
     await importOriginal()
   )
 )
 vi.mock('../../src/main/telemetry/client', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.telemetryClientModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.telemetryClientModuleMock())
 )
 vi.mock('../../src/main/telemetry/classify-error', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.classifyErrorModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.classifyErrorModuleMock())
 )
 vi.mock('../../src/main/cli/linux-terminal-orca-cli-shim', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.linuxCliShimModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.linuxCliShimModuleMock())
 )
 vi.mock('../../src/main/memory/pty-registry', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) => m.ptyRegistryModuleMock())
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.ptyRegistryModuleMock())
 )
 vi.mock('../../src/main/agent-hooks/migration-unsupported-pty-state', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
     m.migrationUnsupportedPtyModuleMock()
   )
 )
 vi.mock('../../src/main/codex/codex-pane-account-registry', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
     m.codexPaneAccountRegistryModuleMock()
   )
 )
@@ -105,7 +111,7 @@ vi.mock('../../src/main/antigravity/native-account-launch', () => ({
   prepareAntigravityAccountForLaunch: vi.fn(async () => {})
 }))
 vi.mock('../../src/main/codex/codex-state-db-backfill-recovery', () =>
-  import('../../src/main/ipc/pty-ipc-mock-registry').then((m) =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
     m.codexBackfillRecoveryModuleMock()
   )
 )
