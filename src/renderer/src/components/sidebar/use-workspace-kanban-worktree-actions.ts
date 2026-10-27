@@ -105,10 +105,7 @@ export function useWorkspaceKanbanWorktreeActions(args: {
       const state = useAppStore.getState()
       const worktreeIds = requestedDrop.worktreeIds.filter((worktreeId) => {
         const current = args.worktreeById.get(worktreeId)
-        return (
-          current &&
-          isWorkspaceStatusAllowedOnHost(state, current.hostId ?? 'local', requestedDrop.status)
-        )
+        return current && isWorkspaceStatusAllowedOnHost(state, current, requestedDrop.status)
       })
       if (worktreeIds.length === 0) {
         return

@@ -6,7 +6,7 @@ import {
   getCyclicProjectedWorktreeLineageIds,
   getLineageRenderInfo
 } from '../../../../shared/sidebar-list/worktree-lineage-projection'
-import { useWorkspaceStatusesForHost } from './use-workspace-board-statuses'
+import { useContextWorkspaceStatuses } from './use-workspace-board-statuses'
 import { getEligibleWorktreeParents } from './worktree-parent-candidates'
 import {
   hasSleepableWorkspaceActivity,
@@ -131,11 +131,8 @@ export function useWorktreeContextMenuModel({
   const scopeRef = useRef<HTMLDivElement>(null)
   const contextMenuOpenedAtRef = useRef<number | null>(null)
   const activeContextWorktrees = menuOpen ? contextWorktrees : effectiveSelectedWorktrees
-  const contextHostIds = new Set(activeContextWorktrees.map((item) => item.hostId ?? 'local'))
-  // A paired host's own columns are offered only when every card is on that host.
-  const workspaceStatuses = useWorkspaceStatusesForHost(
-    contextHostIds.size === 1 ? [...contextHostIds][0] : null
-  )
+  const { workspaceStatuses, statusesForWorktree } =
+    useContextWorkspaceStatuses(activeContextWorktrees)
   const isMultiContext = activeContextWorktrees.length > 1
   const workspaceScope = parseWorkspaceKey(worktree.id)
   const folderWorkspaceId =
@@ -186,8 +183,8 @@ export function useWorktreeContextMenuModel({
   )
   const contextDeletePending = isMultiContext ? deletingContext : deletingSubtree
   const contextWorkspaceStatus = useMemo(
-    () => getSharedWorkspaceStatus(activeContextWorktrees, workspaceStatuses),
-    [activeContextWorktrees, workspaceStatuses]
+    () => getSharedWorkspaceStatus(activeContextWorktrees, statusesForWorktree),
+    [activeContextWorktrees, statusesForWorktree]
   )
   const batchDeleteWorktrees = useMemo(
     () =>
@@ -318,10 +315,10 @@ export function useWorktreeContextMenuModel({
     setWorktreesPinnedAndReveal,
     sleepableWorktrees,
     subtreeSleepableWorktrees,
+    statusesForWorktree,
     updateWorktreeMeta,
     validParentWorktreeId,
-    worktree,
-    workspaceStatuses
+    worktree
   })
   const { handleOpenParentPicker, handleParentPickerOpenChange, openPendingParentPicker } =
     useWorktreeParentPickerTransition({

@@ -30,9 +30,7 @@ function idsAcceptingStatus(
 ): readonly string[] {
   const state = useAppStore.getState()
   return worktreeIds.filter((worktreeId) =>
-    rowsFor
-      .status(worktreeId)
-      .some((row) => isWorkspaceStatusAllowedOnHost(state, row.hostId ?? 'local', status))
+    rowsFor.status(worktreeId).some((row) => isWorkspaceStatusAllowedOnHost(state, row, status))
   )
 }
 

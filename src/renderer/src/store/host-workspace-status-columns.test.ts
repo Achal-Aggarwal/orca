@@ -34,6 +34,24 @@ describe('selectWorkspaceBoardStatuses', () => {
     expect(lanes.map((status) => status.id)).toEqual(['todo', 'status-6'])
   })
 
+  it("adds a host's column for its SSH workspace, which the host's runtime owns", () => {
+    const sshCard = makeWorktree({
+      id: 'ssh',
+      repoId: 'repo',
+      hostId: 'ssh:builder',
+      runtimeOwnerEnvironmentId: 'env-1',
+      workspaceStatus: 'status-6'
+    })
+    const lanes = selectWorkspaceBoardStatuses({
+      workspaceStatuses: local,
+      hostWorkspaceStatuses,
+      worktreesByRepo: { repo: [sshCard] },
+      folderWorkspaces: []
+    })
+
+    expect(lanes.map((status) => status.id)).toEqual(['todo', 'status-6'])
+  })
+
   it("keeps a local card's fallback on the local list when a host card is in the host's default column", () => {
     const unassigned = makeWorktree({ id: 'local', repoId: 'repo' })
     const lanes = selectWorkspaceBoardStatuses({
@@ -51,11 +69,23 @@ describe('isWorkspaceStatusAllowedOnHost', () => {
   const state = { workspaceStatuses: local, hostWorkspaceStatuses }
 
   it("lets a card take local columns and its own host's columns only", () => {
-    expect(isWorkspaceStatusAllowedOnHost(state, 'runtime:env-1', 'status-6')).toBe(true)
-    expect(isWorkspaceStatusAllowedOnHost(state, 'local', 'status-6')).toBe(false)
-    expect(isWorkspaceStatusAllowedOnHost(state, 'runtime:env-2', 'status-6')).toBe(false)
-    expect(isWorkspaceStatusAllowedOnHost(state, 'local', 'todo')).toBe(true)
-    expect(isWorkspaceStatusAllowedOnHost(state, 'local', 'legacy-id')).toBe(true)
+    expect(isWorkspaceStatusAllowedOnHost(state, { hostId: 'runtime:env-1' }, 'status-6')).toBe(
+      true
+    )
+    expect(isWorkspaceStatusAllowedOnHost(state, { hostId: 'local' }, 'status-6')).toBe(false)
+    expect(isWorkspaceStatusAllowedOnHost(state, { hostId: 'runtime:env-2' }, 'status-6')).toBe(
+      false
+    )
+    expect(isWorkspaceStatusAllowedOnHost(state, { hostId: 'local' }, 'todo')).toBe(true)
+    expect(isWorkspaceStatusAllowedOnHost(state, { hostId: 'local' }, 'legacy-id')).toBe(true)
+    // A paired host's SSH workspace keeps its owning runtime's columns.
+    expect(
+      isWorkspaceStatusAllowedOnHost(
+        state,
+        { hostId: 'ssh:builder', runtimeOwnerEnvironmentId: 'env-1' },
+        'status-6'
+      )
+    ).toBe(true)
   })
 })
 
@@ -64,8 +94,8 @@ describe('selectWorkspaceStatusesForHost', () => {
     const state = { workspaceStatuses: local, hostWorkspaceStatuses }
 
     expect(
-      selectWorkspaceStatusesForHost(state, 'runtime:env-1').map((status) => status.id)
+      selectWorkspaceStatusesForHost(state, { hostId: 'runtime:env-1' }).map((status) => status.id)
     ).toEqual(['todo', 'status-6', 'status-7'])
-    expect(selectWorkspaceStatusesForHost(state, 'local')).toBe(local)
+    expect(selectWorkspaceStatusesForHost(state, { hostId: 'local' })).toBe(local)
   })
 })

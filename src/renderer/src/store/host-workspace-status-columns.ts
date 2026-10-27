@@ -3,7 +3,7 @@ import {
   DEFAULT_WORKSPACE_STATUS_ID,
   mergeHostWorkspaceStatuses
 } from '../../../shared/workspace-statuses'
-import { parseExecutionHostId, toRuntimeExecutionHostId } from '../../../shared/execution-host'
+import { parseExecutionHostId } from '../../../shared/execution-host'
 import type { WorkspaceStatus, WorkspaceStatusDefinition } from '../../../shared/worktree/types'
 import { getIndexedAllWorktrees } from './worktree-repo-index'
 import { selectFolderWorkspaces, selectWorktreesByRepo } from './workspace-record-selectors'
@@ -14,15 +14,30 @@ export type HostStatusColumnInputs = Pick<AppState, 'workspaceStatuses'> &
 type BoardCardInputs = HostStatusColumnInputs &
   Pick<AppState, 'worktreesByRepo' | 'folderWorkspaces'>
 
+/** A card or creation target: its execution host, plus the paired runtime that owns it when that host is SSH. */
+export type StatusColumnOwner = {
+  hostId?: string | null
+  runtimeOwnerEnvironmentId?: string | null
+}
+
+function ownerEnvironmentId(owner: StatusColumnOwner | null | undefined): string | null {
+  const explicit = owner?.runtimeOwnerEnvironmentId?.trim()
+  if (explicit) {
+    return explicit
+  }
+  const host = parseExecutionHostId(owner?.hostId)
+  return host?.kind === 'runtime' ? host.environmentId : null
+}
+
 function liveHostStatuses(
   state: HostStatusColumnInputs,
-  hostId: string | null | undefined
+  owner: StatusColumnOwner | null | undefined
 ): readonly WorkspaceStatusDefinition[] | undefined {
-  const host = parseExecutionHostId(hostId)
-  if (host?.kind !== 'runtime' || state.removedRuntimeEnvironmentIds?.has(host.environmentId)) {
+  const environmentId = ownerEnvironmentId(owner)
+  if (!environmentId || state.removedRuntimeEnvironmentIds?.has(environmentId)) {
     return undefined
   }
-  return state.hostWorkspaceStatuses?.[host.environmentId]
+  return state.hostWorkspaceStatuses?.[environmentId]
 }
 
 /**
@@ -40,12 +55,12 @@ function hostOnlyColumns(
   )
 }
 
-/** The columns offered for a card on this host: the local ones plus, for a paired runtime host, its own. */
+/** The columns offered for a card on this host: the local ones plus, for a paired runtime's card, its own. */
 export function selectWorkspaceStatusesForHost(
   state: HostStatusColumnInputs,
-  hostId: string | null | undefined
+  owner: StatusColumnOwner | null | undefined
 ): readonly WorkspaceStatusDefinition[] {
-  const hostStatuses = liveHostStatuses(state, hostId)
+  const hostStatuses = liveHostStatuses(state, owner)
   const extra = hostStatuses ? hostOnlyColumns(state, hostStatuses) : []
   return extra.length > 0 ? [...state.workspaceStatuses, ...extra] : state.workspaceStatuses
 }
@@ -58,7 +73,7 @@ export function selectAllOfferedWorkspaceStatuses(
   return mergeHostWorkspaceStatuses(
     state.workspaceStatuses,
     environmentIds.map((environmentId) => {
-      const hostStatuses = liveHostStatuses(state, toRuntimeExecutionHostId(environmentId))
+      const hostStatuses = liveHostStatuses(state, { runtimeOwnerEnvironmentId: environmentId })
       return hostStatuses ? hostOnlyColumns(state, hostStatuses) : []
     })
   )
@@ -81,7 +96,7 @@ export function selectWorkspaceBoardStatuses(
   const local = state.workspaceStatuses
   const candidates = new Map<string, readonly WorkspaceStatusDefinition[]>()
   for (const environmentId of Object.keys(state.hostWorkspaceStatuses ?? {}).sort()) {
-    const hostStatuses = liveHostStatuses(state, toRuntimeExecutionHostId(environmentId))
+    const hostStatuses = liveHostStatuses(state, { runtimeOwnerEnvironmentId: environmentId })
     const extra = hostStatuses ? hostOnlyColumns(state, hostStatuses) : []
     if (extra.length > 0) {
       candidates.set(environmentId, extra)
@@ -92,18 +107,18 @@ export function selectWorkspaceBoardStatuses(
     return local
   }
   const usedByEnvironment = new Map<string, Set<string>>()
-  const noteCard = (hostId: string | null | undefined, status: WorkspaceStatus | undefined) => {
-    const host = parseExecutionHostId(hostId)
-    if (status && host?.kind === 'runtime' && candidates.has(host.environmentId)) {
-      const used = usedByEnvironment.get(host.environmentId) ?? new Set<string>()
-      usedByEnvironment.set(host.environmentId, used.add(status))
+  const noteCard = (owner: StatusColumnOwner, status: WorkspaceStatus | undefined) => {
+    const environmentId = ownerEnvironmentId(owner)
+    if (status && environmentId && candidates.has(environmentId)) {
+      const used = usedByEnvironment.get(environmentId) ?? new Set<string>()
+      usedByEnvironment.set(environmentId, used.add(status))
     }
   }
   for (const worktree of getIndexedAllWorktrees(selectWorktreesByRepo(state))) {
-    noteCard(worktree.hostId, worktree.workspaceStatus)
+    noteCard(worktree, worktree.workspaceStatus)
   }
   for (const folder of selectFolderWorkspaces(state)) {
-    noteCard(folder.executionHostId, folder.workspaceStatus)
+    noteCard({ hostId: folder.executionHostId }, folder.workspaceStatus)
   }
   const extra: WorkspaceStatusDefinition[] = []
   const seen = new Set<string>()
@@ -123,7 +138,7 @@ export function selectWorkspaceBoardStatuses(
 /** False for another paired host's column: a card may only take its own host's columns or local ones. */
 export function isWorkspaceStatusAllowedOnHost(
   state: HostStatusColumnInputs,
-  hostId: string | null | undefined,
+  owner: StatusColumnOwner | null | undefined,
   status: WorkspaceStatus
 ): boolean {
   const pairedColumns = Object.values(state.hostWorkspaceStatuses ?? {})
@@ -133,7 +148,7 @@ export function isWorkspaceStatusAllowedOnHost(
   ) {
     return true
   }
-  if (liveHostStatuses(state, hostId)?.some((column) => column.id === status)) {
+  if (liveHostStatuses(state, owner)?.some((column) => column.id === status)) {
     return true
   }
   // Why: ids no paired host defines keep their old behavior.
@@ -143,15 +158,24 @@ export function isWorkspaceStatusAllowedOnHost(
 /** Drops a status write that would put a card in another paired host's column; other fields still apply. */
 export function withoutForeignHostStatus<T extends { workspaceStatus?: WorkspaceStatus }>(
   state: HostStatusColumnInputs,
-  hostId: string | null | undefined,
+  owner: StatusColumnOwner | null | undefined,
   updates: T
 ): Omit<T, 'workspaceStatus'> & Pick<Partial<T>, 'workspaceStatus'> {
   if (
     !updates.workspaceStatus ||
-    isWorkspaceStatusAllowedOnHost(state, hostId, updates.workspaceStatus)
+    isWorkspaceStatusAllowedOnHost(state, owner, updates.workspaceStatus)
   ) {
     return updates
   }
   const { workspaceStatus: _dropped, ...rest } = updates
   return rest
+}
+
+/** Whether the card's own paired runtime defines this column id. */
+export function ownerHostDefinesStatus(
+  state: HostStatusColumnInputs,
+  owner: StatusColumnOwner | null | undefined,
+  status: WorkspaceStatus
+): boolean {
+  return liveHostStatuses(state, owner)?.some((column) => column.id === status) ?? false
 }

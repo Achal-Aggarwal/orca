@@ -230,7 +230,11 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
           resolvedInitialWorkspaceStatus &&
           isWorkspaceStatusAllowedOnHost(
             useAppStore.getState(),
-            workspaceRunContext?.hostId ?? selectedRepoExecutionHostId,
+            {
+              hostId: workspaceRunContext?.hostId ?? selectedRepoExecutionHostId,
+              runtimeOwnerEnvironmentId:
+                selectedRepoTarget?.kind === 'environment' ? selectedRepoTarget.environmentId : null
+            },
             resolvedInitialWorkspaceStatus
           )
             ? resolvedInitialWorkspaceStatus
