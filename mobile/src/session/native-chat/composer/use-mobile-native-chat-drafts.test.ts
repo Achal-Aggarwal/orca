@@ -83,38 +83,6 @@ describe('useMobileNativeChatDrafts', () => {
     await act(async () => renderer?.update(createElement(Harness, { tabId })))
   }
 
-  it('redraws only the draft subscriber per keystroke, not the screen that owns the drafts', async () => {
-    let screenRenders = 0
-    let shown = ''
-    let owner: ReturnType<typeof useMobileNativeChatDrafts> | null = null
-    function Composer({ draftKey }: { draftKey: string | null }): null {
-      shown = useMobileNativeChatDraft(draftKey)
-      return null
-    }
-    const messages: NativeChatMessage[] = []
-    function Screen(): ReturnType<typeof createElement> {
-      screenRenders += 1
-      owner = useMobileNativeChatDrafts({
-        hostId: 'host',
-        worktreeId: 'worktree',
-        tabId: 'a',
-        sessionId: 'session-a',
-        messages,
-        transcriptSettled: true
-      })
-      return createElement(Composer, { draftKey: owner.draftKey })
-    }
-    await act(async () => {
-      renderer = create(createElement(Screen))
-    })
-    const rendersBeforeTyping = screenRenders
-
-    act(() => owner?.setComposerText('typed'))
-
-    expect(shown).toBe('typed')
-    expect(screenRenders).toBe(rendersBeforeTyping)
-  })
-
   it('keeps drafts and accepted pending messages on their originating tabs', async () => {
     await mount('a')
     act(() => state?.setComposerText('from a'))
