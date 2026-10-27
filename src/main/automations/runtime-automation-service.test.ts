@@ -1,3 +1,4 @@
+import { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as AgentLauncher from './headless-automation-agent-launch'
 import type { HeadlessAutomationDispatcher } from './headless-dispatch'
@@ -39,7 +40,7 @@ import { createRuntimeAutomationService } from './runtime-automation-service'
 const state = buildProfileStateCutoverFixture('/fixture')
 const run = {
   ...state.automationRuns[0],
-  createdAt: Date.now(),
+  createdAt: 1_700_000_000_000,
   status: 'dispatching' as const,
   chatSessionId: null
 }
@@ -72,7 +73,9 @@ function fixture(headless: boolean) {
     } as unknown as Store,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launching and chat observation are mocked; the runtime implements the recovery boundaries.
     runtime: runtime as unknown as OrcaRuntimeService,
-    headless
+    ...(headless
+      ? { headless: true as const }
+      : { headless: false as const, createDesktopLifecycle: createDesktopRunTerminalLifecycle })
   })
   return { runtime, rows }
 }

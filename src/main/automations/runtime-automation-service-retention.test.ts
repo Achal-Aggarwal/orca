@@ -1,3 +1,4 @@
+import { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AutomationRun } from '../../shared/automations-types'
 import { RUN_TERMINAL_GRACE_MS } from './headless-run-terminal-retention'
@@ -71,7 +72,9 @@ function build(headless: boolean) {
     store: store as never,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: retention reads only the members faked above.
     runtime: runtime as never,
-    headless
+    ...(headless
+      ? { headless: true as const }
+      : { headless: false as const, createDesktopLifecycle: createDesktopRunTerminalLifecycle })
   })
   return { runtime, service, store }
 }

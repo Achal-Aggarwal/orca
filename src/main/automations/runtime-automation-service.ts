@@ -1,4 +1,4 @@
-import { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
+import type { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
 import { automationRunOperationId } from './automation-run-operation'
 import { observeAutomationChatRun } from './runtime-chat-run-observer'
 import { readAutomationRunReceipt } from './automation-run-receipt'
@@ -28,14 +28,19 @@ import { closeEarlierHookReviewRunTerminals } from './hook-review-blocked-run-te
 
 const MAX_REMEMBERED_LAUNCHES = 256
 
-export function createRuntimeAutomationService(input: {
+type RuntimeAutomationServiceInput = {
   store: Store
   runtime: OrcaRuntimeService
   claudeUsage?: ClaudeUsageStore
   codexUsage?: CodexUsageStore
-  /** Execute remote_host_service schedules through the headless dispatcher. */
-  headless: boolean
-}): AutomationService {
+} & (
+  | { headless: true }
+  | { headless: false; createDesktopLifecycle: typeof createDesktopRunTerminalLifecycle }
+)
+
+export function createRuntimeAutomationService(
+  input: RuntimeAutomationServiceInput
+): AutomationService {
   const { store, runtime, claudeUsage, codexUsage } = input
   // Launch handles remain usable before pane-key lookup resolves.
   const launchedHandles = new Map<string, string>()
@@ -200,7 +205,7 @@ export function createRuntimeAutomationService(input: {
   if (input.headless) {
     bindHeadlessRunTerminalRetention(service, store, runtime)
   } else {
-    desktop = createDesktopRunTerminalLifecycle(runtime, store, (id, operation) =>
+    desktop = input.createDesktopLifecycle(runtime, store, (id, operation) =>
       service.runInAutomationLane(id, operation)
     )
     const stop = service.stop.bind(service)

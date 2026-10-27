@@ -600,7 +600,8 @@ it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', asy
     service = createRuntimeAutomationService({
       store: disk,
       runtime: runtime as unknown as OrcaRuntimeService,
-      headless: false
+      headless: false,
+      createDesktopLifecycle: desktopLifecycle.createDesktopRunTerminalLifecycle
     })
     service.setWebContents(f.web)
     service.setRendererReady()
@@ -736,7 +737,8 @@ it.each([
   const service = createRuntimeAutomationService({
     store: disk,
     runtime: runtime as unknown as OrcaRuntimeService,
-    headless: false
+    headless: false,
+    createDesktopLifecycle: desktopLifecycle.createDesktopRunTerminalLifecycle
   })
   const lifecycle = create.mock.results[0].value!
   try {
