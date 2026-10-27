@@ -17,7 +17,11 @@ import { claudeSessionIdForOrcaSession } from '../claude/structured/claude-struc
 import { packagedClaudeChatScenario } from '../orcad/orcad-structured-chat-scenario'
 import { quotePosixShell } from '../../shared/shell-argument-quoting'
 import { wslClaudeChatScenario } from './wsl-orcad-chat-scenario'
-import { expectWindowsDecoyUnrun, probeWindowsDecoy } from './wsl-orcad-chat-windows-decoy'
+import {
+  expectWindowsDecoyReachable,
+  expectWindowsDecoyUnrun,
+  probeWindowsDecoy
+} from './wsl-orcad-chat-windows-decoy'
 import {
   installWslChatFixture,
   WslChatProviderReport,
@@ -295,8 +299,9 @@ export async function proveWslStructuredChat(lane: ChatLane) {
   const gitWorktree = `path:${home}/wsl-orcad-lane-repo`
   const git = await exerciseChat(lane, install, gitWorktree, `${home}/wsl-orcad-lane-repo`)
   const folder = await exerciseChat(lane, install, folderWorktree, folderPath)
+  const decoy = await expectWindowsDecoyReachable(lane)
   await expectWindowsDecoyUnrun(lane, home)
   // Recorded, not asserted: whether a Windows-only install is picked up is the open question.
   const windowsOnly = await probeWindowsDecoy(lane, install, gitWorktree)
-  return { git, folder, windowsOnly }
+  return { git, folder, decoy, windowsOnly }
 }
