@@ -4,8 +4,6 @@
 
 import { redactString } from '../../shared/secret-redaction'
 
-export { redactString }
-
 // Case-insensitive because HTTP header casing varies.
 const CLIENT_ATTR_BLOCKLIST = new Set([
   'env',

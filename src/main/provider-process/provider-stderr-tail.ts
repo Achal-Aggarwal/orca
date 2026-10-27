@@ -1,5 +1,7 @@
 import { createOutputSink } from '@orca/process-host/bounded-output-sink'
+import { redactString } from '../../shared/secret-redaction'
 
+/** A byte-bounded stderr tail whose text is redacted for display. */
 export function createProviderStderrTail(maxBytes: number) {
   const output = createOutputSink(maxBytes, 'tail')
   return {
@@ -7,11 +9,11 @@ export function createProviderStderrTail(maxBytes: number) {
     text: (): string => {
       const text = output.text()
       if (!output.truncated()) {
-        return text
+        return redactString(text)
       }
       // A truncated line may have lost the label needed to redact a secret.
       const newline = text.indexOf('\n')
-      return newline === -1 ? '' : text.slice(newline + 1)
+      return newline === -1 ? '' : redactString(text.slice(newline + 1))
     }
   }
 }

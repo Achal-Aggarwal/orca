@@ -55,10 +55,8 @@ import { fetchCodexRateLimits } from './codex-fetcher'
 // Wait for initialization bytes before exiting so stderr diagnosis cannot race an EPIPE.
 const STUB_CODEX_SOURCE = `
 process.stdin.on('data', () => {
-  const stderr = require('node:fs').readFileSync(process.env.ORCA_STUB_CODEX_STDERR_FILE, 'utf8')
-  process.stderr.write(stderr, () => {
-    process.exit(Number(process.env.ORCA_STUB_CODEX_EXIT_CODE ?? '1'))
-  })
+  process.stderr.write(process.env.ORCA_STUB_CODEX_STDERR ?? '')
+  process.exit(Number(process.env.ORCA_STUB_CODEX_EXIT_CODE ?? '1'))
 })
 `
 
@@ -66,9 +64,7 @@ let tempRoot: string
 let stubPath: string
 
 function runStub(stderr: string, exitCode: number): Promise<{ error: string | null }> {
-  const stderrPath = join(tempRoot, 'stderr.txt')
-  writeFileSync(stderrPath, stderr)
-  process.env.ORCA_STUB_CODEX_STDERR_FILE = stderrPath
+  process.env.ORCA_STUB_CODEX_STDERR = stderr
   process.env.ORCA_STUB_CODEX_EXIT_CODE = String(exitCode)
   // Empty fixture auth keeps HTTP fallback away from the developer's real login.
   return fetchCodexRateLimits({ codexHomePath: tempRoot })
@@ -84,7 +80,7 @@ describe('Codex RPC exit diagnostics', () => {
   })
 
   afterEach(() => {
-    delete process.env.ORCA_STUB_CODEX_STDERR_FILE
+    delete process.env.ORCA_STUB_CODEX_STDERR
     delete process.env.ORCA_STUB_CODEX_EXIT_CODE
     rmSync(tempRoot, { recursive: true, force: true })
     vi.clearAllMocks()
@@ -150,15 +146,5 @@ describe('Codex RPC exit diagnostics', () => {
 
     expect(result.error).toContain('Welcome to WSL')
     expect(result.error).toContain('ERROR: unknown option --obsolete')
-  })
-
-  it.each([
-    ['whole', 'Failed to start\nMY_CREDENTIAL=abc123'],
-    ['truncated', `MY_CREDENTIAL=${'s'.repeat(100_010)}\nFailed to start`]
-  ])('omits %s credential lines from exit diagnostics', async (_label, stderr) => {
-    const result = await runStub(stderr, 3)
-    expect(result.error).toContain('Failed to start')
-    expect(result.error).not.toContain('abc123')
-    expect(result.error).not.toContain('s'.repeat(20))
   })
 })

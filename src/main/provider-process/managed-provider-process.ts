@@ -65,7 +65,7 @@ export type ManagedProviderProcess = {
   readonly exitPromise: Promise<void>
   /** Direct or supervisor-reported ENOENT for the provider executable. */
   readonly executableMissing: boolean
-  /** Up to 8 KiB of stderr, omitting the first line if its prefix was truncated. */
+  /** Up to 8 KiB of redacted stderr, omitting a first line whose prefix was truncated. */
   stderrTail(): string
   onExit(listener: (exit: ProviderProcessExit) => void): void
   terminateTree(): Promise<ProviderProcessTeardownVerdict>
