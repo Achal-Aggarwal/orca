@@ -51,7 +51,7 @@ export function SmartWorkspaceAdvancedFields({ composer, selectedRepoIsGit }: Pr
         <View style={styles.field}>
           <View style={styles.reuseRow}>
             <Text style={styles.reuseLabel} numberOfLines={1}>
-              Reuse branch “{composer.reuseEligibleBranch}”
+              Check out this branch
             </Text>
             <Switch
               value={composer.reuseSelectedBranch}
