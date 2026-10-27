@@ -237,10 +237,8 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
       throw new Error('Terminal host changed. Refresh the setting and try again.')
     }
     try {
-      const status = await this.client.request<TerminalLimitStatus>(
-        update ? 'setTerminalLimit' : 'terminalLimitStatus',
-        update
-      )
+      const type = update ? 'setTerminalLimit' : 'terminalLimitStatus'
+      const status = await this.client.request<TerminalLimitStatus>(type, update)
       if (
         !identity ||
         this.getDaemonIdentity()?.launchNonce !== identity.launchNonce ||

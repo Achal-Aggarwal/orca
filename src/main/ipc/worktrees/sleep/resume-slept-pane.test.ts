@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
+import { ipcRenderer } from 'electron'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
 
 const { handlers } = vi.hoisted(() => ({
@@ -37,12 +38,12 @@ it('validates the bundled bridge argument before the runtime receives any trigge
     {},
     { automatic: true, targetsHost: true, targetGroupId: 'g' }
   ]) {
-    await expect(
-      Reflect.apply(worktreesApi.resumeSleptPane, null, [pane, invalid])
-    ).rejects.toThrow('invalid_automatic')
+    await expect(ipcRenderer.invoke('worktrees:resumeSleptPane', pane, invalid)).rejects.toThrow(
+      'invalid_automatic'
+    )
   }
   await expect(
-    Reflect.apply(worktreesApi.resumeSleptPane, null, [{ tabId: 'tab' }, true])
+    ipcRenderer.invoke('worktrees:resumeSleptPane', { tabId: 'tab' }, true)
   ).rejects.toThrow('invalid_pane')
   expect(resumeSleptPane).not.toHaveBeenCalled()
 })
