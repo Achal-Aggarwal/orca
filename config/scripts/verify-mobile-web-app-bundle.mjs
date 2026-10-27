@@ -60,25 +60,25 @@ export function mobileWebAppBundleBudgetBytes(manifest) {
 
 // Measure sorted route prefixes with routes.slice(0,n): distinct importer sets determine chunks, not route count.
 // Re-measure table when routes change; it is envelope’s only input, and pins must fail rather than permit arbitrary ceiling bumps.
-// Measured tree 1e5d28e516da49d13650ca05dd84edbd05a0a14c on admitted Windows high, LF checkout, esbuild 0.28.2.
+// Measured tree 731d5633c10776e471bef3b0abbee99c2389e011 on admitted Windows high, LF checkout, esbuild 0.28.2.
 export const MOBILE_WEB_APP_BUNDLE_SCRIPT_SWEEP = [
   ['./_layout.tsx', 3],
-  ['./h/[hostId]/[...page].tsx', 6],
-  ['./h/[hostId]/accounts.tsx', 10],
-  ['./h/[hostId]/agent-history/[worktreeId].tsx', 15],
-  ['./h/[hostId]/automations.tsx', 21],
-  ['./h/[hostId]/edit.tsx', 26],
-  ['./h/[hostId]/files/[worktreeId].tsx', 31],
-  ['./h/[hostId]/files/preview/[worktreeId].tsx', 39],
-  ['./h/[hostId]/history/[worktreeId].tsx', 42],
-  ['./h/[hostId]/index.tsx', 50],
-  ['./h/[hostId]/new-workspace.tsx', 60],
-  ['./h/[hostId]/pr/[worktreeId].tsx', 61],
-  ['./h/[hostId]/review/[worktreeId].tsx', 75],
-  ['./h/[hostId]/session/[worktreeId].tsx', 88],
-  ['./h/[hostId]/source-control/[worktreeId].tsx', 95],
-  ['./h/[hostId]/tasks.tsx', 107],
-  ['./h/_layout.tsx', 111]
+  ['./h/[hostId]/[...page].tsx', 7],
+  ['./h/[hostId]/accounts.tsx', 11],
+  ['./h/[hostId]/agent-history/[worktreeId].tsx', 16],
+  ['./h/[hostId]/automations.tsx', 22],
+  ['./h/[hostId]/edit.tsx', 27],
+  ['./h/[hostId]/files/[worktreeId].tsx', 32],
+  ['./h/[hostId]/files/preview/[worktreeId].tsx', 40],
+  ['./h/[hostId]/history/[worktreeId].tsx', 43],
+  ['./h/[hostId]/index.tsx', 51],
+  ['./h/[hostId]/new-workspace.tsx', 61],
+  ['./h/[hostId]/pr/[worktreeId].tsx', 62],
+  ['./h/[hostId]/review/[worktreeId].tsx', 76],
+  ['./h/[hostId]/session/[worktreeId].tsx', 89],
+  ['./h/[hostId]/source-control/[worktreeId].tsx', 97],
+  ['./h/[hostId]/tasks.tsx', 109],
+  ['./h/_layout.tsx', 113]
 ]
 
 const sweptScripts = MOBILE_WEB_APP_BUNDLE_SCRIPT_SWEEP.map(([, scripts]) => scripts)

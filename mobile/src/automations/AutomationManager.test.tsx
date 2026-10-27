@@ -185,7 +185,11 @@ describe('mobile automation navigation and setup', () => {
     targets.setups.push(other)
     targets.workspaces.push({ ...targets.workspaces[0]!, worktreeId: 'workspace-2' })
     inventory.targets.mockResolvedValue(targets)
-    const current = { ...savedAutomation(), agentId: 'claude' as const, reuseSession: false }
+    const current = Object.assign(savedAutomation(), {
+      agentId: 'claude' as const,
+      reuseSession: false,
+      extraAgentArgs: ''
+    })
     const save = vi.fn()
     const port = automationClient(() => ({}))
     await act(async () => {
@@ -241,6 +245,7 @@ describe('mobile automation navigation and setup', () => {
     expect(draft).toMatchObject({
       agentId: 'codex',
       reuseSession: true,
+      extraAgentArgs: '',
       workspaceId: 'workspace-1',
       targetEdited: true,
       rrule: current.rrule,

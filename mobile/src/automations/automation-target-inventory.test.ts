@@ -88,7 +88,7 @@ describe('selected automation discovery and explicit refresh', () => {
         throw new Error(method)
       })
       await expect(loadAutomationAgents(port.client, setup)).rejects.toThrow()
-      expect(port.send).toHaveBeenCalledWith('settings.getAgentLaunch', undefined)
+      expect(port.send).toHaveBeenCalledWith('settings.getAgentLaunch')
       expect(port.send.mock.calls.some(([method]) => method === 'settings.get')).toBe(false)
     }
   )
