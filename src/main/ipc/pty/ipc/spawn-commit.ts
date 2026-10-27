@@ -96,7 +96,9 @@ function ipcSpawnResponse(ctx: PtyIpcSpawnState) {
   const startupCwdFallback = startupCwdFallbackOutcome(ctx.startupCwdFallback, ctx.result)
   return {
     ...provenSpawnResponse(providerResult, ctx.provedSnapshotSeq),
-    ...(!ctx.result.isReattach && !resumeSpawnRefusal(ctx.resumeAdmission)
+    ...(!ctx.result.isReattach &&
+    (!resumeSpawnRefusal(ctx.resumeAdmission) ||
+      resumeSpawnRefusal(ctx.resumeAdmission)?.freshLaunch)
       ? {
           launchAgent: args.launchAgent,
           launchToken: typeof args.launchToken === 'string' ? args.launchToken : undefined,

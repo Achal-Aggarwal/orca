@@ -22,10 +22,8 @@ import {
   agentSessionLeaseFixture,
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
-import {
-  chooseSavedResumeFreshLaunch,
-  savedResumeResult
-} from '../../ipc/pty/host-env/saved-resume-admission'
+import { savedResumeResult } from '../../ipc/pty/host-env/saved-resume-admission'
+import { chooseSavedResumeFreshLaunch } from '../../ipc/pty/host-env/saved-resume-fresh-launch'
 
 const PANE_KEY = `host-tab:${HEADLESS_LEAF_ID}`
 const SESSION = { key: 'session_id', id: 'provider-session-1' } as const

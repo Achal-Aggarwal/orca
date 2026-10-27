@@ -1,3 +1,4 @@
+import { SavedResumeFreshRefusal } from './host-env/saved-resume-fresh-launch'
 import type { PtySpawnResult } from '../../providers/pty-provider-contract'
 import { ptyIncarnationById } from './provider/ownership-state'
 import { ensureWslHookRelayForReattach } from '../../agent-hooks/wsl-hook-relay-reattach'
@@ -17,8 +18,8 @@ import { isRegisteredAgentSessionOwnerLive } from './provider/liveness'
 import type { AgentSessionClaimedSpawnResult } from '../../../shared/agent-session-host-authority'
 import {
   resumeSpawnRefusal,
-  SavedResumeFreshRefusal,
-  suppressSavedResumeLaunch,
+  applySavedResumeLaunch,
+  savedResumeResult,
   type ResumeSpawnRefusal
 } from './host-env/saved-resume-admission'
 import { failPtySpawnExecute } from './spawn-execute-failure'
@@ -154,16 +155,33 @@ export async function executePtySpawn(
         if (!(error instanceof SavedResumeFreshRefusal)) {
           throw error
         }
-        // The claim has unwound; the refused shell must never become its agent owner.
-        await chooseFresh(error.admission)
-        suppressSavedResumeLaunch(args, ctx.spawnOptions)
-        facts.suppressRefusedLaunch?.()
-        delete args.agentSessionEnsure
-        delete ctx.spawnOptions.agentSessionEnsure
-        validateDispatch()
-        providerResult = await ctx.provider.spawn(ctx.spawnOptions)
-        facts.reportPtySpawnCommitted?.()
-        ctx.stablePaneOwner = null
+        if (error.admission.freshLaunch && awaitingAnotherStart) {
+          providerResult = { ...(await error.recovered), isReattach: true }
+        } else {
+          // Release the old locator before launching a fresh agent; joiners share this physical result.
+          try {
+            await chooseFresh(error.admission)
+            applySavedResumeLaunch(error.admission, args, ctx.spawnOptions)
+            facts.suppressRefusedLaunch?.()
+            delete args.agentSessionEnsure
+            delete ctx.spawnOptions.agentSessionEnsure
+            validateDispatch()
+            providerResult = await ctx.provider.spawn(ctx.spawnOptions)
+            assertSpawnReplyWasLive(providerResult)
+            facts.reportPtySpawnCommitted?.()
+            ctx.stablePaneOwner = null
+            error.resolve({
+              ...providerResult,
+              ...savedResumeResult(ctx.resumeAdmission),
+              launchAgent: args.launchAgent,
+              launchConfig: args.launchConfig,
+              launchToken: typeof args.launchToken === 'string' ? args.launchToken : undefined
+            })
+          } catch (failure) {
+            error.reject(failure)
+            throw failure
+          }
+        }
       }
       awaitingAnotherStart = false
       if (providerResult) {

@@ -72,20 +72,7 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
     tab: RuntimeMobileSessionTerminalTab
   ): Promise<PaneResumeStartup | Record<string, never> | undefined> {
     const stored = this.getPaneSleepingAgentRecord(worktreeId, tab)
-    const record = stored
-      ? this.isPaneOwnedResumeRecord(stored)
-        ? stored
-        : null
-      : // Resume the hook store's conversation, never replay the pane's original launch.
-        hookRowPaneResumeRecord({
-          rows:
-            this.getAgentProviderSessionRowsForPaneFn?.(makePaneKey(tab.parentTabId, tab.leafId)) ??
-            [],
-          worktreeId,
-          tab: this.getWorkspaceSessionForWorktree(worktreeId)?.tabsByWorktree?.[worktreeId]?.find(
-            (candidate) => candidate.id === tab.parentTabId
-          )
-        })
+    const record = this.paneResumeRecord(worktreeId, tab)
     if (!record) {
       return undefined
     }
@@ -138,6 +125,40 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
       return null
     }
     return resume
+  }
+
+  private paneResumeRecord(worktreeId: string, tab: { parentTabId: string; leafId: string }) {
+    const stored = this.findPaneSleepingAgentRecord(worktreeId, tab)?.record
+    return stored
+      ? this.isPaneOwnedResumeRecord(stored)
+        ? stored
+        : null
+      : // Resume the hook store's conversation, never replay the pane's original launch.
+        hookRowPaneResumeRecord({
+          rows:
+            this.getAgentProviderSessionRowsForPaneFn?.(makePaneKey(tab.parentTabId, tab.leafId)) ??
+            [],
+          worktreeId,
+          tab: this.getWorkspaceSessionForWorktree(worktreeId)?.tabsByWorktree?.[worktreeId]?.find(
+            (candidate) => candidate.id === tab.parentTabId
+          )
+        })
+  }
+
+  /** Resolve the owner's cold launch before its first shell, without acquiring or spending a record. */
+  async resolveColdPaneResumeStartup(worktreeId: string, tabId: string, leafId: string) {
+    const tab = this.getWorkspaceSessionForWorktree(worktreeId)?.tabsByWorktree?.[worktreeId]?.find(
+      (candidate) => candidate.id === tabId
+    )
+    if (!tab) {
+      return null
+    }
+    const record = this.paneResumeRecord(worktreeId, { parentTabId: tabId, leafId })
+    if (!record) {
+      return null
+    }
+    const workspace = await this.resolveTerminalWorkspaceLaunchScope(`id:${worktreeId}`)
+    return this.resolveMobileSessionResumeCommand(workspace, record)
   }
 
   protected claimSleepRecord(
@@ -210,7 +231,10 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
     return this.findPaneSleepingAgentRecord(worktreeId, tab)?.record ?? null
   }
 
-  private findPaneSleepingAgentRecord(worktreeId: string, tab: RuntimeMobileSessionTerminalTab) {
+  private findPaneSleepingAgentRecord(
+    worktreeId: string,
+    tab: { parentTabId: string; leafId: string }
+  ) {
     return findPaneSleepingRecord(this.getWorkspaceSessionForWorktree(worktreeId), worktreeId, tab)
   }
 }

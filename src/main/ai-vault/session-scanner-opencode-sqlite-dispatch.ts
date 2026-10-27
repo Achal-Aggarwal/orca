@@ -24,7 +24,7 @@ export async function handleOpenCodeSqliteRequest(
 ): Promise<OpenCodeSqliteWorkerResponse> {
   try {
     if (request.kind === 'session-presence') {
-      const value = await readOpenCodeSessionPresence(request.root, request.sessionId)
+      const value = await readOpenCodeSessionPresence(request.source, request.sessionId)
       return { id: request.id, ok: true, value }
     }
     if (request.kind === 'native-page' || request.kind === 'native-signal') {

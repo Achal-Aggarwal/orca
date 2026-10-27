@@ -1,3 +1,4 @@
+import type { OpenCodeSessionSource } from '../opencode/opencode-session-presence'
 import type {
   OpenCodeTranscriptPage,
   OpenCodeTranscriptSignal
@@ -50,7 +51,7 @@ export type OpenCodeNativeChatReadRequest = {
 export type OpenCodeNativeChatReadValue = OpenCodeTranscriptPage | OpenCodeTranscriptSignal | null
 
 export type OpenCodeSqliteWorkerRequest = (
-  | { id: number; kind: 'session-presence'; root: string; sessionId: string }
+  | { id: number; kind: 'session-presence'; source: OpenCodeSessionSource; sessionId: string }
   | OpenCodeSqliteListRequest
   | OpenCodeSqliteParseRequest
   | OpenCodeSqliteCaptureRequest

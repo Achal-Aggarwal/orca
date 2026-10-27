@@ -1,10 +1,14 @@
+import type { TerminalLaunchResult } from '../../../../shared/agent-session-resume'
 import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
 
 export type SessionRestoredBannerPane = Pick<ManagedPane, 'id' | 'container'>
 
 /** `resume-unavailable`: the pane asked to resume a provider session Orca could not
  *  verify, so it launched a fresh one — silence would read as a successful restore. */
-export type SessionRestoredBannerReason = 'restored' | 'resume-unavailable'
+export type SessionRestoredBannerReason =
+  | 'restored'
+  | 'resume-unavailable'
+  | 'opencode-missing-fresh'
 
 export type SessionRestoredBannerPaneReasons = ReadonlyMap<number, SessionRestoredBannerReason>
 
@@ -112,4 +116,15 @@ export function syncSessionRestoredBannerTitleSpace(args: {
     }
   }
   return needsFit
+}
+
+export function resumeUnavailableBannerReason(
+  result?: TerminalLaunchResult
+): SessionRestoredBannerReason {
+  return result?.agentResumeRefused === 'unverifiable' &&
+    (result.launchAgent === 'opencode' || result.launchAgent === 'opencode2') &&
+    result.refusedResume?.agent === result.launchAgent &&
+    !result.resumeProviderSession
+    ? 'opencode-missing-fresh'
+    : 'resume-unavailable'
 }

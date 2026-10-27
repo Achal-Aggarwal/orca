@@ -8,6 +8,8 @@ import type { ReattachPayloadSession } from './reattach-payload-session'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { PtyPaneStartup } from '../pty-connection-types'
 
+import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
+
 type SavedStartup = ColdRestoreAgentResumeStartup | PtyPaneStartup
 
 export function captureTerminalLaunchContext(
@@ -89,7 +91,7 @@ export function applyTerminalLaunchResult(
     console.warn('Terminal launch result bookkeeping failed', error)
   }
   if (rejected && !superseded) {
-    session.showSessionRestoredBanner('resume-unavailable')
+    session.showSessionRestoredBanner(resumeUnavailableBannerReason(result))
   }
   return rejected
 }

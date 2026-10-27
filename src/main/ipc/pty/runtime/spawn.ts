@@ -29,7 +29,7 @@ export async function spawnPtyFromRuntimeController(
       savedResumePaneKey: ctx.spawnIdentityPaneKey,
       launchConfig: ctx.args.launchConfig,
       suppressRefusedLaunch: () => {
-        ctx.launchCommand = undefined
+        ctx.launchCommand = ctx.spawnOptions.command
         ctx.env = ctx.spawnOptions.env
       },
       paneKey: ctx.spawnIdentityPaneKey,

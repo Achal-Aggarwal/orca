@@ -1,3 +1,4 @@
+import type { OpenCodeSessionSource } from '../opencode/opencode-session-presence'
 import type { WorkerThreadFactory } from '../lazy-worker-thread-host'
 import { WorkerThreadRequestQueue } from '../worker-thread-request-queue'
 import type { AiVaultScanIssue, AiVaultSession } from '../../shared/ai-vault-types'
@@ -192,7 +193,10 @@ export class OpenCodeSqliteWorkerClient {
     return value as OpenCodeNativeChatReadValue
   }
 
-  async readSessionPresence(args: { root: string; sessionId: string }, signal?: AbortSignal) {
+  async readSessionPresence(
+    args: { source: OpenCodeSessionSource; sessionId: string },
+    signal?: AbortSignal
+  ) {
     const value = await this.dispatch(
       (id) => ({ ...args, id, kind: 'session-presence' }),
       1000,

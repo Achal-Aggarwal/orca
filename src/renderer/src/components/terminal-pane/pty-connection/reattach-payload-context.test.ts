@@ -145,6 +145,8 @@ it.each(['missing', 'different', 'admitted'] as const)(
       const session = createSession({
         // Main can hand a twin's start back to this renderer-owned launch path.
         mainPaneStartHandedBack: true,
+        transport: { getPtyId: () => 'pty-1', disconnect: vi.fn() },
+        startFreshColdRestoreAgentResume: vi.fn(),
         buildColdRestoreAgentResumeStartup: () => startup,
         applyColdRestoreAgentResumeStartup: apply,
         cancelSavedResumeStartup: cancel,
@@ -170,8 +172,14 @@ it.each(['missing', 'different', 'admitted'] as const)(
             })
       }
       await createReattachPayloadHandlers(session, context).applyReattachPayload()
-      expect(apply).toHaveBeenCalledWith(kind === 'admitted' ? startup : null)
-      expect(schedule).toHaveBeenCalledTimes(kind === 'admitted' ? 1 : 0)
+      expect(apply).not.toHaveBeenCalled()
+      expect(schedule).not.toHaveBeenCalled()
+      if (kind === 'admitted') {
+        expect(session.transport.disconnect).not.toHaveBeenCalled()
+        context.resumeAfterReplay?.()
+        expect(session.pendingReplacedPtyId).toBe('pty-1')
+        expect(session.startFreshColdRestoreAgentResume).toHaveBeenCalledWith(startup)
+      }
       expect(cancel).toHaveBeenCalledTimes(kind === 'admitted' ? 0 : 1)
     } finally {
       await restoreTerminalTestGlobals()

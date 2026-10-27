@@ -60,9 +60,9 @@ export async function runPtyIpcSpawn(deps: PtySpawnIpcDeps, request: PtySpawnIpc
       savedResumePaneKey: ctx.stablePaneKey,
       launchConfig: ctx.effectiveLaunchConfig,
       suppressRefusedLaunch: () => {
-        ctx.launchCommand = undefined
+        ctx.launchCommand = ctx.spawnOptions.command
         ctx.env = ctx.baseEnv = ctx.spawnEnv = ctx.spawnOptions.env
-        ctx.effectiveLaunchConfig = undefined
+        ctx.effectiveLaunchConfig = ctx.args.launchConfig
       },
       paneKey: ctx.reservationPaneKey,
       preAllocatedHandle: ctx.preAllocatedHandle,

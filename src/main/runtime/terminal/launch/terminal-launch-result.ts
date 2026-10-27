@@ -19,7 +19,7 @@ export function resolveTerminalLaunchResult(
     stablePaneAdopted ||
     result.isReattach === true ||
     result.agentSessionEnsure?.disposition === 'adopted'
-  const refused = Boolean(result.agentResumeRefused)
+  const refused = Boolean(result.agentResumeRefused && !result.launchAgent)
   const owner = result.stablePaneOwner
   const surface =
     result.agentSessionEnsure?.owner.surface ??

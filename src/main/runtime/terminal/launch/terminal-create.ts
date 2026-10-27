@@ -246,7 +246,7 @@ export abstract class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTermi
           recordTerminalLaunchMetadata(pty, result, launch)
           if (!launch.adoptedStablePane) {
             pty.launchCommandAgent = result.agentResumeRefused
-              ? null
+              ? (result.launchAgent ?? null)
               : resolveLaunchCommandPaneAgent(launchOpts.command)
             this.rememberSavedTerminalLaunchResult(result.id, result)
           }

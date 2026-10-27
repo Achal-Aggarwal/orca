@@ -2,6 +2,7 @@ import {
   applyTerminalLaunchResult,
   captureTerminalLaunchContext
 } from './terminal-launch-result-policy'
+import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
 import { waitForTerminalReplayWritesParsed } from '../replay-guard'
 import {
   POST_REPLAY_MODE_RESET,
@@ -32,6 +33,7 @@ export function createReattachPayloadHandlers(
   fitAfterReattachRestore: () => Promise<void>
 } {
   const applyReattachPayload = async (): Promise<void> => {
+    const inputAt = session.lastTerminalInputAt
     if (!ctx.isCurrentReattachPayload()) {
       return
     }
@@ -271,17 +273,34 @@ export function createReattachPayloadHandlers(
           preparedStartup = null
         }
       }
-      const didPrepareResume =
+      const lateStartup = preparedStartup && !ctx.coldRestoreStartup ? preparedStartup : null
+      const didPrepareResume = Boolean(
+        preparedStartup &&
+        !lateStartup &&
         ctx.connectResult.isReattach !== true &&
         session.applyColdRestoreAgentResumeStartup(preparedStartup)
+      )
       if (resumeUnavailable) {
-        // Dropped resume argv starts a new session; the restored banner must not claim the old session returned.
-        session.showSessionRestoredBanner('resume-unavailable')
+        session.showSessionRestoredBanner(resumeUnavailableBannerReason(ctx.connectResult))
       } else if (didPrepareResume && preparedStartup?.hasSleepingRecord) {
         session.showSessionRestoredBanner()
       }
       if (didPrepareResume) {
         session.clearSleepingRecordAfterColdRestoreSpawn(preparedStartup)
+      }
+      if (lateStartup && !session.runtimeEnvironmentId) {
+        ctx.resumeAfterReplay = () => {
+          if (
+            !ctx.isCurrentReattachPayload() ||
+            session.transport.getPtyId() !== ctx.ptyId ||
+            session.lastTerminalInputAt !== inputAt
+          ) {
+            return
+          }
+          session.pendingReplacedPtyId = ctx.ptyId
+          session.transport.disconnect()
+          void session.startFreshColdRestoreAgentResume(lateStartup)
+        }
       }
       // Why: cold-restore spawned a fresh shell; reset mode bytes a crashed TUI (e.g. Claude's \e[?1004h) left in scrollback that no live TUI now consumes.
       session.writeInputModeGround(POST_REPLAY_MODE_RESET)
@@ -289,9 +308,6 @@ export function createReattachPayloadHandlers(
       // Why: a taller destination fit must not pull recovered rows back into the fresh shell's viewport after source-grid replay.
       session.writeFreshShellViewportBlanking(Math.max(destinationRows, session.pane.terminal.rows))
       ackPaintedColdRestore(session, ctx.ptyId)
-      if (didPrepareResume && !ctx.coldRestoreStartup) {
-        session.schedulePendingStartupCommandDelivery()
-      }
     }
     if (ctx.shouldApplyStructuralPayload) {
       await waitForTerminalReplayWritesParsed(session.pane.terminal)

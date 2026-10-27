@@ -212,6 +212,28 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     ctx.paneSpawnOperation = operation
     ctx.args.paneSpawnOperation = operation
     prepared = true
+    if (
+      args.sessionId &&
+      !args.command &&
+      !args.launchAgent &&
+      !args.connectionId &&
+      !attachOnlyViewOf(args) &&
+      args.worktreeId &&
+      args.tabId &&
+      args.leafId
+    ) {
+      const startup = await ctx.deps.runtime?.resolveColdPaneResumeStartup?.(
+        args.worktreeId,
+        args.tabId,
+        args.leafId
+      )
+      if (startup) {
+        Object.assign(args, startup, {
+          resumeOrigin: 'saved',
+          env: { ...args.env, ...startup.env }
+        })
+      }
+    }
     await adapter.prepare()
     const latePane =
       !resolveEarlyPaneKey(args) && !operation.acquisition ? adapter.facts().paneKey : null

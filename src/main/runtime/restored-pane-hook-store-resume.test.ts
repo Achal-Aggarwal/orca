@@ -199,3 +199,17 @@ describe('restoring a pane its host recorded an agent in', () => {
     expect(spawn.mock.calls[0]![0].command).toMatch(RESUMES)
   })
 })
+
+it('selects a cold native owner recipe without spawning or recreating closed tabs', async () => {
+  const { runtime, spawn } = makeRuntime([codexRow()])
+  const startup = await runtime.resolveColdPaneResumeStartup(
+    TEST_WORKTREE_ID,
+    'host-tab',
+    HEADLESS_LEAF_ID
+  )
+  expect(startup?.command).toMatch(RESUMES)
+  expect(
+    await runtime.resolveColdPaneResumeStartup(TEST_WORKTREE_ID, 'closed-tab', HEADLESS_LEAF_ID)
+  ).toBeNull()
+  expect(spawn).not.toHaveBeenCalled()
+})

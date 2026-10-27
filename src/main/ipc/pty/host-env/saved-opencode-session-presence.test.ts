@@ -1,258 +1,145 @@
-import { buildAgentResumeStartupPlan } from '../../../../shared/tui-agent-resume-startup'
-import { prepareSavedPtyResume } from '../spawn-resume'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { chooseSavedResumeFreshLaunch } from './saved-resume-fresh-launch'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import Database from '../../../sqlite/sync-database'
-import { writeOpenCodeSqliteDatabase } from '../../../ai-vault/session-scanner-opencode-sqlite-fixture'
-import { handleOpenCodeSqliteRequest } from '../../../ai-vault/session-scanner-opencode-sqlite-dispatch'
-import type { AgentSessionRecordStore } from '../../../runtime/agent-session-record-store'
-import type { SleepingAgentSessionRecord } from '../../../../shared/agent-session-resume'
+import { buildAgentResumeStartupPlan } from '../../../../shared/tui-agent-resume-startup'
+import { createSequencedSetupAgentCommands } from '../../../../shared/setup-agent-sequencing'
 import {
-  admitColdRestoreReattach,
-  chooseSavedResumeFreshLaunch,
   forgetRefusedResume,
-  resumeSpawnRefusal
+  savedResumeResult,
+  type ResumeSpawnArgs
 } from './saved-resume-admission'
 
-const account = vi.hoisted(() => ({ dataHome: '', removed: false }))
+const presence = vi.hoisted(() => vi.fn())
+const capture = vi.hoisted(() => vi.fn())
+const project = vi.hoisted(() => vi.fn())
 const forget = vi.hoisted(() => vi.fn())
-const readPresence = vi.hoisted(() => vi.fn())
 vi.mock('../../../agent-hooks/server', () => ({
   agentHookServer: { forgetRefusedPaneResume: forget }
 }))
-vi.mock('../../../managed-data-accounts/service', () => ({
-  getManagedDataAccountService: () => ({
-    environmentForAccount: (_provider: string, id: string) => {
-      if (account.removed || id !== 'original-account') {
-        throw new Error('Removed')
-      }
-      return {
-        XDG_DATA_HOME: account.dataHome,
-        XDG_STATE_HOME: join(account.dataHome, 'state'),
-        OPENCODE_DB: 'opencode.db',
-        OPENCODE_AUTH_CONTENT: ''
-      }
-    }
-  })
-}))
 vi.mock('../../../ai-vault/session-scanner-opencode-sqlite-worker-spawn', () => ({
-  getSharedClient: () => ({ readSessionPresence: readPresence })
+  getSharedClient: () => ({ readSessionPresence: presence })
 }))
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: admission reads only these two store methods.
-const records = {
-  listConversations: () => [],
-  getVisibleSessionTabIndex: () => ({ present: true, sessionIds: [] })
-} as unknown as AgentSessionRecordStore
+vi.mock('../../../startup/login-shell-environment', () => ({
+  captureLoginShellEnvironment: capture
+}))
+vi.mock('../../../managed-data-accounts/launch-environment', () => ({
+  projectManagedDataAccountEnvironment: project
+}))
+vi.mock('../../../opencode/opencode-launch-capabilities', () => ({
+  probeOpenCodeLaunchCapabilities: async () => ({ version: '1.17.0', pluginApi: 'v1' })
+}))
+vi.mock('../../../opencode/opencode-session-source', () => ({
+  resolveOpenCodeSessionSource: async () => ({
+    root: '/owner/opencode',
+    dbPath: '/owner/opencode/custom.db',
+    api: 'v1'
+  })
+}))
 const runtime = {
-  openAgentSessionRecordStore: async () => records,
-  getAgentProviderSessionRows: () => []
+  openAgentSessionRecordStore: async () => ({
+    listConversations: () => [],
+    getVisibleSessionTabIndex: () => ({ present: true, sessionIds: [] })
+  })
 }
-let root: string
-let temp: string
-let source: SleepingAgentSessionRecord
-beforeEach(() => {
-  temp = realpathSync(mkdtempSync(join(tmpdir(), 'sta-11913-')))
-  account.dataHome = join(temp, 'owning-host-account')
-  root = join(account.dataHome, 'opencode')
-  mkdirSync(root, { recursive: true })
-  account.removed = false
-  source = {
-    paneKey: 'pane',
-    worktreeId: 'wt',
+function args(): ResumeSpawnArgs {
+  const session = { key: 'session_id' as const, id: 'ses_saved' }
+  const startup = buildAgentResumeStartupPlan({
     agent: 'opencode',
-    providerSession: { key: 'session_id', id: 'ses_kept' },
-    prompt: '',
-    state: 'working',
-    capturedAt: 1,
-    updatedAt: 1,
-    launchConfig: {
-      agentCommand: 'opencode',
-      agentArgs: '',
-      agentEnv: { ORCA_DATA_ACCOUNT_ID: 'original-account' }
-    }
-  }
-  readPresence.mockImplementation(async (args) => {
-    const reply = await handleOpenCodeSqliteRequest({ ...args, id: 1, kind: 'session-presence' })
-    if (!reply.ok) {
-      throw new Error(reply.error)
-    }
-    if (reply.value === 'present' || reply.value === 'absent' || reply.value === 'unavailable') {
-      return reply.value
-    }
-    throw new Error('Invalid reply')
-  })
-})
-afterEach(() => {
-  rmSync(temp, { recursive: true, force: true })
-  vi.clearAllMocks()
-})
-function args() {
+    providerSession: session,
+    cmdOverrides: {},
+    platform: process.platform
+  })!
   return {
-    worktreeId: 'wt',
+    command: startup.launchCommand,
+    launchConfig: startup.launchConfig,
+    resumeProviderSession: session,
     resumeOrigin: 'saved',
-    launchAgent: source.agent,
-    resumeProviderSession: source.providerSession,
-    launchConfig: source.launchConfig,
-    command: buildAgentResumeStartupPlan({
-      agent: source.agent,
-      providerSession: source.providerSession,
-      cmdOverrides: {},
-      platform: process.platform
-    })?.launchCommand,
-    env: { ...source.launchConfig?.agentEnv },
-    startupIngress: 'saved',
-    startupCommandDelivery: 'shell-ready'
+    launchAgent: 'opencode',
+    launchToken: 'this-pane',
+    env: { WORKSPACE: 'keep' }
   }
 }
-async function fresh() {
-  const request = args()
-  const options = args()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: prepareSavedPtyResume consumes only this captured-source and fresh-selection context.
-  const ctx = {
-    args: request,
-    spawnOptions: options,
-    expectedWslDistro: null,
-    deps: { runtime: { ...runtime, readSavedResumeSource: async () => source }, store: undefined }
-  } as unknown as Parameters<typeof prepareSavedPtyResume>[0]
-  const choose = await prepareSavedPtyResume(ctx, {
-    sessionId: undefined,
-    paneKey: 'pane',
-    savedResumePaneKey: 'pane',
-    launchConfig: source.launchConfig
-  })
-  await choose()
-  return { decision: ctx.resumeAdmission, request, options }
-}
-async function cold(context = args()) {
-  return admitColdRestoreReattach(
-    runtime,
-    { coldRestore: {} },
-    { paneKey: 'pane', saved: source },
-    null,
-    context
-  )
-}
-it.each(['legacy', 'v1', 'v2'] as const)(
-  '%s empty metadata is present; deletion suppresses both callers without clearing saved data',
-  async (kind) => {
-    if (kind === 'v2' && source.launchConfig) {
-      source.agent = 'opencode2'
-      source.launchConfig.agentCommand = 'opencode2 --standalone'
+beforeEach(() => {
+  presence.mockResolvedValue('absent')
+  project.mockImplementation((env) => env)
+  capture.mockImplementation(async ({ env }) => ({ status: 'captured', env }))
+})
+afterEach(() => vi.clearAllMocks())
+it.each(['present', 'absent', 'unavailable'])(
+  '%s changes only a confirmed-missing automatic launch',
+  async (value) => {
+    presence.mockResolvedValue(value)
+    const request = args(),
+      options = { ...request }
+    const result = await chooseSavedResumeFreshLaunch(runtime, request, null, options)
+    expect(options.command).toBe(value === 'absent' ? 'opencode' : args().command)
+    expect(request.resumeProviderSession?.id).toBe(value === 'absent' ? undefined : 'ses_saved')
+    expect(request.launchAgent).toBe('opencode')
+    expect(request.launchToken).toBe('this-pane')
+    expect(request.launchConfig).toEqual(args().launchConfig)
+    if (result?.verdict === 'unverifiable') {
+      forgetRefusedResume('tab:leaf', result)
+      expect(savedResumeResult(result)).toMatchObject({
+        agentResumeUnavailable: true,
+        agentResumeRefused: 'unverifiable',
+        refusedResume: { providerSession: { id: 'ses_saved' } }
+      })
     }
-    const path = join(root, kind === 'v2' ? 'opencode-next.db' : 'opencode.db')
-    const legacy = join(root, 'storage', 'session', 'project', 'ses_kept.json')
-    if (kind === 'legacy') {
-      mkdirSync(join(root, 'storage', 'session', 'project'), { recursive: true })
-      writeFileSync(
-        legacy,
-        JSON.stringify({
-          id: 'ses_kept',
-          projectID: 'project',
-          directory: '/repo',
-          title: 'Empty',
-          version: '1.1.1',
-          time: { created: 1740000000000, updated: 1740000000000 }
-        })
-      )
-    } else if (kind === 'v1') {
-      writeOpenCodeSqliteDatabase(path, [{ id: 'ses_kept', turns: [] }])
-    } else {
-      const db = new Database(path)
-      db.exec(`CREATE TABLE session_v2 (
-      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, workspace_id TEXT, parent_id TEXT,
-      fork_session_id TEXT, fork_boundary TEXT, slug TEXT NOT NULL, directory TEXT NOT NULL,
-      path TEXT, title TEXT, version TEXT NOT NULL, share_url TEXT,
-      cost REAL DEFAULT 0 NOT NULL, tokens_input INTEGER DEFAULT 0 NOT NULL,
-      tokens_output INTEGER DEFAULT 0 NOT NULL, tokens_reasoning INTEGER DEFAULT 0 NOT NULL,
-      tokens_cache_read INTEGER DEFAULT 0 NOT NULL, tokens_cache_write INTEGER DEFAULT 0 NOT NULL,
-      agent TEXT, model TEXT, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL,
-      time_compacting INTEGER, time_archived INTEGER);
-      INSERT INTO session_v2 (id, project_id, slug, directory, version, time_created, time_updated)
-      VALUES ('ses_kept', 'project', 'empty', '/repo', '2.0.21', 1740000000000, 1740000000000);`)
-      db.close()
-    }
-    expect((await fresh()).decision?.verdict).toBe('admitted')
-    expect(await readPresence.mock.results.at(-1)?.value).toBe('present')
-    if (kind === 'legacy') {
-      rmSync(legacy)
-    } else {
-      const db = new Database(path)
-      db.exec(`DELETE FROM ${kind === 'v1' ? 'session' : 'session_v2'}`)
-      db.close()
-    }
-    const before = structuredClone(source)
-    const result = await fresh()
-    expect(result.decision?.verdict).toBe('unverifiable')
-    expect([
-      result.request.command,
-      result.options.command,
-      result.options.startupIngress,
-      result.options.startupCommandDelivery
-    ]).toEqual([undefined, undefined, undefined, undefined])
-    expect((await cold())?.verdict).toBe('unverifiable')
-    expect((await cold({ ...args(), env: {} }))?.verdict).toBe('admitted')
-    forgetRefusedResume('pane', resumeSpawnRefusal(result.decision))
     expect(forget).not.toHaveBeenCalled()
-    expect(source).toEqual(before)
-    expect(readPresence).toHaveBeenCalledWith(
-      { root, sessionId: 'ses_kept' },
-      expect.any(AbortSignal)
-    )
   }
 )
-it('unknown, unreadable, malformed and contended sources never prove deletion; coexisting presence wins', async () => {
-  expect((await fresh()).decision?.verdict).toBe('admitted')
-  writeOpenCodeSqliteDatabase(join(root, 'opencode.db'), [])
-  writeFileSync(join(root, 'opencode-next.db'), 'unreadable SQLite')
-  expect((await fresh()).decision?.verdict).toBe('admitted')
-  writeOpenCodeSqliteDatabase(join(root, 'opencode.db'), [{ id: 'ses_kept', turns: [] }])
-  expect((await fresh()).decision?.verdict).toBe('admitted')
-  rmSync(join(root, 'opencode-next.db'))
-  const db = new Database(join(root, 'opencode.db'))
-  try {
-    db.exec('DELETE FROM session; CREATE TABLE session_v2 (id TEXT);')
-    expect((await fresh()).decision?.verdict).toBe('admitted')
-    db.exec('DROP TABLE session_v2; BEGIN EXCLUSIVE;')
-    expect((await fresh()).decision?.verdict).toBe('admitted')
-  } finally {
-    db.close()
-  }
-  mkdirSync(join(root, 'storage', 'session', 'project'), { recursive: true })
-  writeFileSync(join(root, 'storage', 'session', 'project', 'ses_kept.json'), '{bad')
-  expect((await fresh()).decision?.verdict).toBe('admitted')
+it('keeps the setup gate and removes the selector from both sequence payload and fallback', async () => {
+  const request = args()
+  const sequence = createSequencedSetupAgentCommands({
+    runnerScriptPath: '/tmp/sta-11913-setup.sh',
+    startupCommand: request.command!,
+    platform: 'darwin',
+    nonce: 'test'
+  })
+  request.env = { ...request.env, ...sequence.startupEnv }
+  request.command = sequence.startupCommand
+  const options = { ...request }
+  await chooseSavedResumeFreshLaunch(runtime, request, null, options)
+  expect(options.command).toBe(sequence.startupCommand)
+  expect(options.env?.ORCA_SEQUENCED_STARTUP_COMMAND).toBe('opencode')
+  expect(options.env?.ORCA_SEQUENCED_STARTUP_SCRIPT).toContain('Waiting for setup')
+  expect(options.env?.ORCA_SEQUENCED_STARTUP_SCRIPT).not.toContain('ses_saved')
 })
-it('unknown provenance, a removed owner, conflicting env, explicit and WSL starts retain current behavior', async () => {
-  writeOpenCodeSqliteDatabase(join(root, 'opencode.db'), [])
-  for (const request of [
-    { ...args(), envToDelete: ['OPENCODE_DB'] },
-    { ...args(), env: { ORCA_DATA_ACCOUNT_ID: 'other-account' } },
-    { ...args(), launchConfig: undefined }
-  ]) {
-    expect(
-      (await chooseSavedResumeFreshLaunch(runtime, request, null, request, source))?.verdict
-    ).toBe('admitted')
+it.each(['explicit', 'ssh-client', 'wsl', 'typed'] as const)(
+  'leaves %s outside automatic inspection',
+  async (kind) => {
+    const request = args()
+    if (kind === 'explicit') {
+      delete request.resumeOrigin
+    }
+    if (kind === 'ssh-client') {
+      request.connectionId = 'remote'
+    }
+    if (kind === 'typed') {
+      request.command = 'opencode --session typed'
+    }
+    const options = { ...request }
+    await chooseSavedResumeFreshLaunch(runtime, request, kind === 'wsl' ? 'Ubuntu' : null, options)
+    expect(options.command).toBe(request.command)
+    expect(presence).not.toHaveBeenCalled()
   }
-  account.removed = true
-  expect((await fresh()).decision?.verdict).toBe('admitted')
-  account.removed = false
-  expect(
-    await chooseSavedResumeFreshLaunch(
-      runtime,
-      { ...args(), resumeOrigin: undefined },
-      null,
-      args(),
-      source
-    )
-  ).toBeNull()
-  expect(await chooseSavedResumeFreshLaunch(runtime, args(), 'Ubuntu', args(), source)).toBeNull()
-  source.providerSession = { key: 'session_id', id: '../unsafe' }
-  expect((await fresh()).decision?.verdict).toBe('admitted')
+)
+it('uses the assembled native-owner environment without selecting an account again', async () => {
+  const request = args()
+  request.env = { ...request.env, HOME: '/owner', XDG_DATA_HOME: '/owner/data' }
+  const options = { ...request }
+  await chooseSavedResumeFreshLaunch(runtime, request, null, options, true)
+  expect(project).not.toHaveBeenCalled()
+  expect(capture).toHaveBeenCalledWith(
+    expect.objectContaining({
+      env: expect.objectContaining({ HOME: '/owner', XDG_DATA_HOME: '/owner/data' })
+    })
+  )
 })
-it('the whole-decision deadline includes a stalled worker request', async () => {
-  readPresence.mockImplementationOnce(() => new Promise(() => {}))
-  const start = Date.now()
-  expect((await fresh()).decision?.verdict).toBe('admitted')
-  expect(Date.now() - start).toBeLessThan(2000)
+it('keeps today’s attempt when shell capture or worker fails', async () => {
+  capture.mockResolvedValue({ status: 'fallback', env: {} })
+  const request = args(),
+    options = { ...request }
+  await chooseSavedResumeFreshLaunch(runtime, request, null, options)
+  expect(options.command).toBe(request.command)
+  expect(presence).not.toHaveBeenCalled()
 })

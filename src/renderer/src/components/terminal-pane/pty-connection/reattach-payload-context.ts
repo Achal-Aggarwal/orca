@@ -11,6 +11,7 @@ export type ReattachPayloadContext = {
   revealFollowsTerminalPark: boolean
   shouldApplyStructuralPayload: boolean
   coldRestoreStartup: ColdRestoreAgentResumeStartup | null | undefined
+  resumeAfterReplay?: () => void
   reattachPayloadApplied: boolean
   /** Capture width of an alt frame the replay omitted as too wide; null when the frame painted. */
   skippedAltFrameCaptureCols: number | null

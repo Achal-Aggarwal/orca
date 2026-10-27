@@ -256,7 +256,7 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
         }
       )
       // A running resumed agent's record must not remain asleep.
-      if (created.tab.ptyId && resumedRecord) {
+      if (created.tab.ptyId && resumedRecord && !created.agentResumeRefused) {
         const hostId = this.getWorkspaceSessionHostIdForWorktree(worktreeId)
         void markResumedRecordLive(
           (edit) => this.commitWorkspaceSessionEdit(hostId, edit),

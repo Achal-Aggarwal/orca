@@ -9,6 +9,26 @@ export function applyManagedDataAccountEnvironment(
   environment: Record<string, string>,
   options: { launchAgent?: TuiAgent; launchCommand?: string; isWsl?: boolean }
 ): void {
+  selectManagedDataAccountEnvironment(environment, options, (selected) =>
+    getManagedDataAccountService().captureOriginalEnvironment(environment, selected)
+  )
+}
+
+/** Same account selection without allocating launch/auth bookkeeping. */
+export function projectManagedDataAccountEnvironment(
+  environment: Record<string, string>,
+  options: { launchAgent?: TuiAgent; launchCommand?: string; isWsl?: boolean }
+): Record<string, string> {
+  const projected = { ...environment }
+  selectManagedDataAccountEnvironment(projected, options)
+  return projected
+}
+
+function selectManagedDataAccountEnvironment(
+  environment: Record<string, string>,
+  options: { launchAgent?: TuiAgent; launchCommand?: string; isWsl?: boolean },
+  capture?: (selected: Record<string, string>) => void
+): void {
   const requestedAccountId = environment[MANAGED_DATA_ACCOUNT_RESUME_ENV]
   delete environment[MANAGED_DATA_ACCOUNT_RESUME_ENV]
   const service = getManagedDataAccountService()
@@ -34,7 +54,7 @@ export function applyManagedDataAccountEnvironment(
   if (!selected.XDG_DATA_HOME) {
     return
   }
-  service.captureOriginalEnvironment(environment, selected)
+  capture?.(selected)
   Object.assign(environment, selected)
   environment.ORCA_DATA_ACCOUNT_DATA_HOME = selected.XDG_DATA_HOME
   environment.ORCA_DATA_ACCOUNT_STATE_HOME = selected.XDG_STATE_HOME

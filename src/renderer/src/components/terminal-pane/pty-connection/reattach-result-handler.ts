@@ -321,7 +321,8 @@ export function bindHandleReattachResult(sessionBag: ConnectPanePtySession): voi
       session.warnParkRevealNoHostImage(ptyId, noHostImageReason)
     }
     session.scheduleReattachIdleAgentCursorReset()
-    showMainPaneResumeOutcome(sessionBag, ptyId)
+    showMainPaneResumeOutcome(sessionBag, ptyId, connectResult)
+    reattachPayload.resumeAfterReplay?.()
 
     scheduleRuntimeGraphSync()
     return true

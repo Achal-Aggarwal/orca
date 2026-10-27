@@ -19,9 +19,11 @@ export function SessionRestoredBanner({
 
   return (
     <div className="session-restored-banner">
-      {reason === 'resume-unavailable'
-        ? SESSION_RESUME_UNAVAILABLE_BANNER_TEXT
-        : SESSION_RESTORED_BANNER_TEXT}
+      {reason === 'opencode-missing-fresh'
+        ? 'The earlier OpenCode conversation no longer exists. OpenCode was launched fresh.'
+        : reason === 'resume-unavailable'
+          ? SESSION_RESUME_UNAVAILABLE_BANNER_TEXT
+          : SESSION_RESTORED_BANNER_TEXT}
     </div>
   )
 }

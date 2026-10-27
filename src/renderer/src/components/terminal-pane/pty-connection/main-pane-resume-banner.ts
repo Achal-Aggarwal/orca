@@ -7,6 +7,8 @@ import type { ConnectPanePtySession } from './connect-pane-pty-session'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { PtyConnectResult } from '../pty-transport-types'
 
+import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
+
 type Outcomes = Record<string, TerminalPaneResumeOutcome>
 
 // Why session storage: a reload reattaches the same start, which showed its banner already.
@@ -70,13 +72,21 @@ export function attachResumeCheck(
 }
 
 /** Show main’s start outcome once after attach; its binding frame precedes the reply on ordered IPC and applies before the reply settles. */
-export function showMainPaneResumeOutcome(session: ConnectPanePtySession, ptyId: string): void {
+export function showMainPaneResumeOutcome(
+  session: ConnectPanePtySession,
+  ptyId: string,
+  result?: PtyConnectResult | null
+): void {
   if (!mainStartsPane(session)) {
     return
   }
   const outcomes = useAppStore.getState().terminalPaneResumeOutcomesByPaneKey
   const found = outcomes[session.cacheKey]
   if (found?.ptyId === ptyId && noteShown(startOf(found), outcomes)) {
-    session.showSessionRestoredBanner(found.outcome)
+    session.showSessionRestoredBanner(
+      found.outcome === 'resume-unavailable'
+        ? resumeUnavailableBannerReason(result ?? undefined)
+        : found.outcome
+    )
   }
 }

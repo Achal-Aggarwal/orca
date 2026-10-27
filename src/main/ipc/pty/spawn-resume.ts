@@ -1,7 +1,7 @@
+import { chooseSavedResumeFreshLaunch } from './host-env/saved-resume-fresh-launch'
 import type { PtySpawnOperationState, PtySpawnExecutionFacts } from './spawn-operation-state'
 import {
   captureSavedResumeCleanup,
-  chooseSavedResumeFreshLaunch,
   resumeSpawnRefusal,
   type ResumeSpawnAdmission,
   type ResumeSpawnRefusal
@@ -37,7 +37,7 @@ export async function prepareSavedPtyResume(
         args,
         ctx.expectedWslDistro,
         ctx.spawnOptions,
-        captured?.sourceRecord
+        ctx.isDaemonHostSpawn
       ))
     if (captured && ctx.resumeAdmission) {
       ctx.resumeAdmission = {

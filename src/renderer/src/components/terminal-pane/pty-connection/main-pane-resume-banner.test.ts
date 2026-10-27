@@ -1,3 +1,4 @@
+import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalPaneResumeOutcome } from '@/store/terminals/terminal-state'
 import type { TerminalLayoutSnapshot } from '../../../../../shared/terminal-tab-types'
@@ -186,4 +187,25 @@ describe("a held pane's reopen count from main's outcome", () => {
     publish('pty-1', 2)
     expect(resumed('pty-1')).toBe(true)
   })
+})
+
+it('names OpenCode only for the committed fresh result retaining the rejected locator', () => {
+  const result = {
+    launchAgent: 'opencode' as const,
+    agentResumeRefused: 'unverifiable' as const,
+    refusedResume: {
+      agent: 'opencode' as const,
+      providerSession: { key: 'session_id' as const, id: 'deleted' }
+    }
+  }
+  expect(resumeUnavailableBannerReason(result)).toBe('opencode-missing-fresh')
+  expect(resumeUnavailableBannerReason({ ...result, launchAgent: undefined })).toBe(
+    'resume-unavailable'
+  )
+  expect(
+    resumeUnavailableBannerReason({
+      ...result,
+      resumeProviderSession: result.refusedResume.providerSession
+    })
+  ).toBe('resume-unavailable')
 })
