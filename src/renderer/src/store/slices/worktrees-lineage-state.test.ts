@@ -530,6 +530,8 @@ describe('worktree lineage state', () => {
     expect(store.getState().worktreesByRepo[child.repoId]).toEqual(
       [child, parent].map((row) => ({
         ...row,
+        projectId: 'repo:repo-remote',
+        projectHostSetupId: 'repo-remote',
         hostId: 'runtime:env-1',
         runtimeOwnerEnvironmentId: 'env-1'
       }))
