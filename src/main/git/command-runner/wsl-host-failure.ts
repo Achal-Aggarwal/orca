@@ -1,4 +1,4 @@
-import { readWslHostDiagnostic, WSL_HOST_FAILURE_EXIT_CODE } from '../../wsl/wsl-process-failure'
+import { isWslHostFailureExitCode, readWslHostDiagnostic } from '../../wsl/wsl-process-failure'
 import type { ResolvedCommand } from './wsl-command-resolution'
 
 function outputText(value: unknown): string {
@@ -24,7 +24,7 @@ export function readWslHostFailureDiagnostic(
   }
   const exitCode = typeof code === 'number' ? code : typeof status === 'number' ? status : null
   // Recognize the host launch-failure shape without reclassifying guest stderr.
-  if (exitCode !== WSL_HOST_FAILURE_EXIT_CODE || outputText(stderr).trim().length > 0) {
+  if (!isWslHostFailureExitCode(exitCode) || outputText(stderr).trim().length > 0) {
     return null
   }
   const diagnostic = readWslHostDiagnostic(outputText(stdout))

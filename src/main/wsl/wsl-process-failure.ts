@@ -1,5 +1,10 @@
 /** wsl.exe's own launch-failure exit, distinct from any status the guest process can return. */
-export const WSL_HOST_FAILURE_EXIT_CODE = 0xffffffff
+const WSL_HOST_FAILURE_EXIT_CODE = 0xffffffff
+
+/** Node reports the unsigned DWORD; >>> 0 also folds a signed -1. */
+export function isWslHostFailureExitCode(code: number | null | undefined): boolean {
+  return typeof code === 'number' && code >>> 0 === WSL_HOST_FAILURE_EXIT_CODE
+}
 
 /** wsl.exe writes its own errors to stdout; strip UTF-16LE NULs left when WSL_UTF8 was ignored. */
 export function readWslHostDiagnostic(stdout: string): string {
@@ -20,8 +25,7 @@ export function describeWslProcessFailure(result: {
   if (result.timedOut) {
     return 'timed out'
   }
-  // Node reports the unsigned DWORD; >>> 0 also folds a signed -1.
-  if (result.code !== null && result.code >>> 0 === WSL_HOST_FAILURE_EXIT_CODE) {
+  if (isWslHostFailureExitCode(result.code)) {
     const diagnostic = readWslHostDiagnostic(result.stdout)
     return diagnostic ? `wsl.exe: ${diagnostic}` : 'wsl.exe could not start the command.'
   }
