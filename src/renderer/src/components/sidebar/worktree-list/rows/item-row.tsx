@@ -191,6 +191,7 @@ export function renderWorktreeItemRow(
         flushSurface
         activationRowKey={itemRow.rowKey}
         onImmediateActivate={ctx.onImmediateActivate}
+        activateOnPress
         onSelectionGesture={ctx.onSelectionGesture}
         onWorktreeCardClick={ctx.onWorktreeCardClick}
         onContextMenuSelect={ctx.onContextMenuSelect}

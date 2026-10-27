@@ -125,6 +125,7 @@ export function renderFolderWorkspaceVirtualRow(args: {
           flushSurface
           nativeDragEnabled={false}
           onImmediateActivate={activationDisabled ? undefined : ctx.onImmediateActivate}
+          activateOnPress={!activationDisabled}
           activationRowKey={folderWorktreeIdentity}
           onSelectionGesture={(event) => ctx.onSelectionGesture(event, folderWorktree)}
           onContextMenuSelect={ctx.onContextMenuSelect}

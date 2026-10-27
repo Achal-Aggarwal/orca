@@ -3,7 +3,11 @@ import React, { useCallback, useLayoutEffect, useRef } from 'react'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-diagnostics'
 import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
-import { isEventTargetInsideCurrentTarget } from './worktree-card-dom-events'
+import {
+  isEventTargetInsideCurrentTarget,
+  isPlainPrimaryMousePress
+} from './worktree-card-dom-events'
+import { isSidebarPointerDragBlocked } from './worktree-sidebar-pointer-drag-dom'
 import type { WorktreeCardProps } from './worktree-card-model'
 import type { useWorktreeCardFoundation } from './use-worktree-card-foundation'
 import type { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details'
@@ -19,6 +23,7 @@ export function useWorktreeCardActivationActions({
   isActive,
   activationRowKey,
   onActivate,
+  activateOnPress,
   onWorktreeCardClick,
   onImmediateActivate,
   isDeleting,
@@ -35,6 +40,7 @@ export function useWorktreeCardActivationActions({
   | 'isActive'
   | 'activationRowKey'
   | 'onActivate'
+  | 'activateOnPress'
   | 'onWorktreeCardClick'
   | 'onImmediateActivate'
 > &
@@ -47,9 +53,44 @@ export function useWorktreeCardActivationActions({
   useLayoutEffect(() => {
     worktreeRef.current = worktree
   }, [worktree])
+  const pressActivatedRef = useRef(false)
+  const activate = useCallback(() => {
+    onWorktreeCardClick?.()
+    // Use shared activation so sidebar navigation participates in back/forward history.
+    recordRendererCrashBreadcrumb('sidebar_worktree_activate', {
+      worktreeId: worktree.id,
+      repoId: worktree.repoId,
+      wasActive: isActive,
+      sshDisconnected: isSshDisconnected
+    })
+    onImmediateActivate?.(worktree.id, activationRowKey)
+    void activateWorktreeFromSidebar(
+      worktree.id,
+      worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined)
+    )
+    onActivate?.()
+  }, [
+    worktree.id,
+    worktree.repoId,
+    worktree.hostId,
+    repo,
+    isActive,
+    activationRowKey,
+    isSshDisconnected,
+    onActivate,
+    onWorktreeCardClick,
+    onImmediateActivate
+  ])
+
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!isEventTargetInsideCurrentTarget(event.currentTarget, event.target)) {
+        return
+      }
+      const pressActivated = pressActivatedRef.current
+      pressActivatedRef.current = false
+      // Synthetic option-forwarded clicks report detail 0 and must still activate.
+      if (pressActivated && event.detail > 0) {
         return
       }
       const selection = window.getSelection()
@@ -78,36 +119,31 @@ export function useWorktreeCardActivationActions({
         event.stopPropagation()
         return
       }
-      onWorktreeCardClick?.()
-      // Use shared activation so sidebar navigation participates in back/forward history.
-      recordRendererCrashBreadcrumb('sidebar_worktree_activate', {
-        worktreeId: worktree.id,
-        repoId: worktree.repoId,
-        wasActive: isActive,
-        sshDisconnected: isSshDisconnected
-      })
-      onImmediateActivate?.(worktree.id, activationRowKey)
-      void activateWorktreeFromSidebar(
-        worktree.id,
-        worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined)
-      )
-      onActivate?.()
+      activate()
     },
-    [
-      affiliateListMode,
-      worktree.id,
-      worktree.repoId,
-      worktree.hostId,
-      repo,
-      isActive,
-      isDeleting,
-      activationRowKey,
-      isSshDisconnected,
-      onActivate,
-      onWorktreeCardClick,
-      onImmediateActivate,
-      onSelectionGesture
-    ]
+    [affiliateListMode, isDeleting, onSelectionGesture, activate]
+  )
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      pressActivatedRef.current = false
+      if (
+        !activateOnPress ||
+        isDeleting ||
+        !isPlainPrimaryMousePress(event) ||
+        !isEventTargetInsideCurrentTarget(event.currentTarget, event.target) ||
+        isSidebarPointerDragBlocked(event.target, event.currentTarget)
+      ) {
+        return
+      }
+      // A plain press replaces the selection exactly as the click would before navigating.
+      if (onSelectionGesture?.(event, worktreeRef.current)) {
+        return
+      }
+      pressActivatedRef.current = true
+      activate()
+    },
+    [activateOnPress, isDeleting, onSelectionGesture, activate]
   )
 
   const handleRenameTitle = useCallback(
@@ -162,5 +198,11 @@ export function useWorktreeCardActivationActions({
     [worktree.hostId, worktree.id, worktree.isUnread, setWorkspaceUnreadByUser]
   )
 
-  return { handleClick, handleRenameTitle, handleDoubleClick, handleToggleUnreadQuick }
+  return {
+    handleClick,
+    handlePointerDown,
+    handleRenameTitle,
+    handleDoubleClick,
+    handleToggleUnreadQuick
+  }
 }
