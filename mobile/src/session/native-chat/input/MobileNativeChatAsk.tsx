@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { Check } from 'lucide-react-native'
-import type { AskAnswerSelection, AskPrompt } from '../../../../../src/shared/native-chat-ask'
+import type { AskAnswerSelection } from '../../../../../src/shared/native-chat-ask-answer'
+import type { AskPrompt } from '../../../../../src/shared/native-chat/input/native-chat-ask-types'
 import type { AgentJournalFreeTextInput } from '../../../../../src/shared/agent-session-journal-types'
 import {
   askAcceptsEmptyAnswer,
@@ -11,6 +12,8 @@ import {
   toggleAskOption
 } from '../../../../../src/shared/native-chat-ask-card-rules'
 import { colors, radii, spacing, typography } from '../../../theme/mobile-theme'
+import { themedStyleSheet } from '../../../theme/themed-styles'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 import { TEXT_INPUT_FONT_SIZE } from '../../../platform/text-input-font-size'
 import { MobileNativeChatCardHeaderAction } from '../../MobileNativeChatCardHeaderAction'
 import { useMobileNativeChatAskAutoAdvance } from './use-mobile-native-chat-ask-auto-advance'
@@ -41,6 +44,7 @@ export function MobileNativeChatAsk({
   allowOther,
   freeTextInputs
 }: Props): React.JSX.Element {
+  useMobileColorScheme()
   const [index, setIndex] = useState(0)
   const [selections, setSelections] = useState<number[][]>(() => prompt.questions.map(() => []))
   const [otherText, setOtherText] = useState<string[]>(() =>
@@ -258,7 +262,7 @@ export function MobileNativeChatAsk({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   card: {
     maxHeight: 380,
     backgroundColor: colors.bgPanel,
@@ -358,4 +362,4 @@ const styles = StyleSheet.create({
   nextSkipText: {
     color: colors.textMuted
   }
-})
+}))
