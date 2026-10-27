@@ -238,7 +238,8 @@ async function idleReleasePhase(): Promise<void> {
   expect(
     (await guest('[ -f "$HOME/.orca/wsl-holder-release" ] && echo yes || echo no')).trim()
   ).toBe('yes')
-  await guest("pkill -f 'sleep 600' || true")
+  // The bracket keeps pkill from matching the shell that runs it.
+  await guest("pkill -f 'slee[p] 600' || true")
   const closedAt = performance.now()
 
   await waitFor(

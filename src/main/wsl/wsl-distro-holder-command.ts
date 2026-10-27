@@ -9,7 +9,8 @@ export const WSL_DISTRO_HOLDER_POLL_SECONDS = 15
 
 /**
  * The user's own processes that never make a distro "in use": session plumbing a login starts.
- * Kept tight on purpose; anything else the user runs (tmux, nohup jobs, servers) keeps the hold.
+ * Kept tight on purpose; anything else the user runs (tmux, nohup jobs, servers) keeps the hold,
+ * and so do long-lived per-user agents (gpg-agent, keyboxd, ssh-agent, an editor's server).
  */
 export const WSL_DISTRO_HOLDER_IGNORED_PROCESS_NAMES = ['systemd', '(sd-pam)', 'dbus-daemon']
 
@@ -25,11 +26,13 @@ export function buildWslDistroHolderScript(
     `f="$HOME/.orca/${ORCAD_WSL_HOLDER_RELEASE_FILENAME}"; me=$(id -u)`,
     // A new holder means a client wants the distro: an older orcad's request no longer stands.
     'rm -f "$f"',
-    // Fails toward holding: any live process of this user outside the holder itself counts.
+    // Fails toward holding: any live process of this user outside the holder itself counts, so a
+    // distro whose default user is root never releases. One exception: with /proc mounted
+    // hidepid, another user's container shim is invisible and does not hold.
     'user_busy() {',
     `for d in ${procRoot}/[0-9]*; do`,
     'n= s= pp= u=',
-    'while read -r k v r; do case $k in Name:) n=$v ;; State:) s=$v ;; PPid:) pp=$v ;; Uid:) u=$v ;; esac',
+    'while read -r k v r; do case $k in Name:) n=$v ;; State:) s=$v ;; PPid:) pp=$v ;; Uid:) u=$v; break ;; esac',
     'done 2>/dev/null < "$d/status" || continue',
     // A running container is work whoever owns it (docker's shims run as root).
     'case $n in containerd-shim*) return 0 ;; esac',

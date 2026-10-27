@@ -161,6 +161,7 @@ describe.skipIf(process.platform === 'win32')('WSL distro holder script', () => 
     fakeProcess(pid++, { uid: me + 1 })
     const holder = startHolder()
     fakeProcess(pid++, { name: 'sleep', ppid: holder.child.pid })
+    fakeProcess(holder.child.pid ?? pid++, { name: 'sh' })
     expect(await within(300, holder.exited)).toBe('running')
     const orcad = track(spawn('/bin/sh', ['-c', 'exit 0'], { stdio: 'ignore' }))
     await new Promise((resolve) => orcad.once('exit', resolve))
