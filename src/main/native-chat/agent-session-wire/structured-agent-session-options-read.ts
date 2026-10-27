@@ -16,10 +16,7 @@ import {
   structuredAgentSessionCapabilityView,
   type StructuredAgentSessionRestingOptions as RestingOptions
 } from './structured-agent-session-option-models'
-import {
-  structuredAgentSessionDisplayPermission,
-  structuredAgentSessionLaunchPermission
-} from './structured-agent-session-launch-permission'
+import { structuredAgentSessionImmediatePermission } from './structured-agent-session-launch-permission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { structuredAgentSessionNeverSent } from './structured-agent-session-never-sent'
 
@@ -85,11 +82,8 @@ export async function readStructuredAgentSessionOptions(
   const capabilities = agents.capabilities(agent)
   const floor = session.journal.context.floor()
   const contextFloor = floor ? { contextFloor: floor } : {}
-  // Modern display uses held evidence; old readers keep their bounded launch-mode answer.
   const permissionMode = record
-    ? reader.readsWithoutModel
-      ? structuredAgentSessionDisplayPermission(context.deps, record, (await atRest()).inventory)
-      : await structuredAgentSessionLaunchPermission(context.deps, record, reader.deadline)
+    ? structuredAgentSessionImmediatePermission(context.deps, record)
     : null
   const resting = live ? await atRest() : null
   const selected = resting ?? options

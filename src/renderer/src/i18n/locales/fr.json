@@ -143,7 +143,8 @@
       "streamedDetail": "La page s'exécute sur l'hôte distant et est diffusée sur cet appareil."
     },
     "remote": {
-      "findUnavailable": "Rechercher dans la page n'est pas disponible pendant la diffusion de cette page à partir de l'hôte distant."
+      "findUnavailable": "Rechercher dans la page n'est pas disponible pendant la diffusion de cette page à partir de l'hôte distant.",
+      "selectionTooLargeToCopy": "La sélection est trop volumineuse pour être copiée depuis une page diffusée par l’hôte distant."
     },
     "userAgentMigration": {
       "degradedDescription": "Un ancien choix d'identité de navigateur n'a pas pu être inspecté. Choisissez Nettoyé ou Natif dans les paramètres du navigateur ; les modifications prennent effet après un redémarrage.",
@@ -20555,6 +20556,12 @@
       "findInFolder": "Rechercher dans {{path}}",
       "folderLoadError": "Impossible de charger ce dossier :",
       "emptyFolder": "Aucun fichier dans ce dossier"
+    },
+    "trashFailed": {
+      "titleRecycleBin": "Impossible de déplacer « {{name}} » vers la Corbeille. Le supprimer définitivement ?",
+      "titleTrash": "Impossible de déplacer « {{name}} » vers la Corbeille. Le supprimer définitivement ?",
+      "description": "Cette action est irréversible.",
+      "confirm": "Supprimer définitivement"
     }
   },
   "sparsePreset": {
