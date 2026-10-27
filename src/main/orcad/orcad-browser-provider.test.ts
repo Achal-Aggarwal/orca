@@ -31,7 +31,11 @@ let root: string
 let screenshotPath: string
 let browserState: BrowserState
 
-function commandFromArgs(args: readonly string[]): string[] {
+function commandFromArgs(args: readonly string[], input?: string): string[] {
+  if (input !== undefined) {
+    const [command]: string[][] = JSON.parse(input)
+    return command
+  }
   let index = 0
   while (['--session', '--profile', '--args'].includes(args[index] ?? '')) {
     index += 2
@@ -51,7 +55,7 @@ function success(data: unknown) {
 
 function installAgentBrowserMock(): void {
   runProcessMock.mockImplementation(async (spec) => {
-    const command = commandFromArgs(spec.args ?? [])
+    const command = commandFromArgs(spec.args ?? [], spec.input)
     if (command[0] === 'open') {
       const active = browserState.tabs.find((tab) => tab.tabId === browserState.activeTabId)!
       active.url = command[1]

@@ -1,11 +1,12 @@
 import { classifyErrorCode } from './agent-browser-bridge-process'
+import { parseAgentBrowserJsonOutput } from './agent-browser-batch-command'
 
 export function translateResult(
   stdout: string
 ): { ok: true; result: unknown } | { ok: false; error: { code: string; message: string } } {
   let parsed: { success?: boolean; data?: unknown; error?: string }
   try {
-    parsed = JSON.parse(stdout)
+    parsed = parseAgentBrowserJsonOutput(stdout)
   } catch {
     return {
       ok: false,

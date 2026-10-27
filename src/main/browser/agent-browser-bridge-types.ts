@@ -53,6 +53,8 @@ export type AgentBrowserExecOptions = {
   timeoutMs?: number
   timeoutError?: BrowserError
   stdinText?: string
+  /** Send tokens as argv so global options apply; only for Orca-authored or raw CLI tokens. */
+  cliArgv?: boolean
 }
 
 export type EnqueueTargetedCommandOptions = {
