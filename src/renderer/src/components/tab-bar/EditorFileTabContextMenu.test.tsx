@@ -50,6 +50,9 @@ vi.mock('lucide-react', () => ({
   ArrowUp: function ArrowUp(props: Record<string, unknown>) {
     return { type: 'ArrowUp', props }
   },
+  RefreshCw: function RefreshCw(props: Record<string, unknown>) {
+    return { type: 'RefreshCw', props }
+  },
   Copy: function Copy(props: Record<string, unknown>) {
     return { type: 'Copy', props }
   },
@@ -439,10 +442,10 @@ describe('EditorFileTabContextMenu reveal in file manager', () => {
       expect(
         labels.filter((label) => /Copy Path|Copy Relative Path|Reveal in/.test(label))
       ).toEqual([])
-      // The two separators that framed the path group go with it.
+      // The two separators that framed the path group go with it, as does Reload from Disk's.
       const fileTree = expandNode(await renderMenu())
       expect(findElementsByType(tree, 'DropdownMenuSeparator')).toHaveLength(
-        findElementsByType(fileTree, 'DropdownMenuSeparator').length - 2
+        findElementsByType(fileTree, 'DropdownMenuSeparator').length - 3
       )
     }
   )

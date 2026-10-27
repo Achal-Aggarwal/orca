@@ -75,6 +75,9 @@ vi.mock('lucide-react', () => ({
   ArrowUp: function ArrowUp(props: Record<string, unknown>) {
     return { type: 'ArrowUp', props }
   },
+  RefreshCw: function RefreshCw(props: Record<string, unknown>) {
+    return { type: 'RefreshCw', props }
+  },
   Columns2: function Columns2(props: Record<string, unknown>) {
     return { type: 'Columns2', props }
   },
