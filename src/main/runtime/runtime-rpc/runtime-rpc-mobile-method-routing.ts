@@ -140,7 +140,6 @@ export const EXECUTION_HOST_METHODS = [
   'host.wsl.listDistros',
   'preflight.check',
   'preflight.detectAgents',
-  'preflight.refreshAgents',
   'preflight.detectRemoteAgents',
   'preflight.refreshAgents',
   'hostedReview.create',
@@ -167,6 +166,8 @@ export const EXECUTION_HOST_METHODS = [
   'repo.sparsePresets',
   'repo.update',
   'settings.getAgentLaunch',
+  // The host that owns the workspace scans its skills.
+  'skills.discover',
   // SSH targets belong to the host that holds them; untargeted calls stay the Mac's own, as on the desktop.
   'ssh.connect',
   'ssh.getState',

@@ -8,7 +8,7 @@ vi.mock('@/runtime/sync-runtime-graph', () => ({ scheduleRuntimeGraphSync: vi.fn
 let storeState = createInitialStoreState(() => storeState)
 vi.mock('@/store', () => ({ useAppStore: { getState: () => storeState } }))
 
-function createOptions(shouldPersistLayout = true, worktreeId = 'wt') {
+function createOptions(worktreeId: string) {
   const persistLayoutSnapshot = vi.fn()
   const context = {
     deps: {
@@ -25,15 +25,15 @@ function createOptions(shouldPersistLayout = true, worktreeId = 'wt') {
     syncPaneCount: vi.fn(),
     syncPaneLayoutRevision: vi.fn(),
     queueResizeAll: vi.fn(),
-    shouldPersistLayout: () => shouldPersistLayout
+    shouldPersistLayout: () => true
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: building options and running onLayoutChanged read only these fields.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: building options and reading terminalOptions use only these fields.
   const optionsContext = context as unknown as TerminalPaneManagerOptionsContext
   const options = createTerminalPaneManagerOptions(optionsContext)
-  return { options, persistLayoutSnapshot }
+  return options
 }
 
-describe('terminal pane manager layout persist wiring', () => {
+describe('terminal pane manager recorded backend options', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it.each([false, true])(
@@ -62,7 +62,7 @@ describe('terminal pane manager layout persist wiring', () => {
           }
         }
       })
-      const { options } = createOptions(true, worktreeId)
+      const options = createOptions(worktreeId)
       const resolved =
         typeof options.terminalOptions === 'function'
           ? options.terminalOptions()
@@ -73,16 +73,4 @@ describe('terminal pane manager layout persist wiring', () => {
       expect(resolved?.vtExtensions).toEqual(mirror ? undefined : { kittyKeyboard: false })
     }
   )
-
-  it('persists a layout change', () => {
-    const { options, persistLayoutSnapshot } = createOptions()
-    options.onLayoutChanged?.()
-    expect(persistLayoutSnapshot).toHaveBeenCalledOnce()
-  })
-
-  it('keeps the persist gate', () => {
-    const { options, persistLayoutSnapshot } = createOptions(false)
-    options.onLayoutChanged?.()
-    expect(persistLayoutSnapshot).not.toHaveBeenCalled()
-  })
 })

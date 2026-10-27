@@ -422,8 +422,7 @@ describe('the Phase C budget', () => {
         key
       ).toBeGreaterThanOrEqual(measured)
     }
-    // 1 to 14 per route, which is why four per route was a bound rather than a fit and why the
-    // envelope cannot be a line through the measurement either.
+    // Observed 1–14 scripts/route rules out a four-per-route bound or linear fit.
     expect(Math.min(...MOBILE_WEB_APP_BUNDLE_ROUTE_SCRIPT_SPREAD)).toBe(1)
     expect(Math.max(...MOBILE_WEB_APP_BUNDLE_ROUTE_SCRIPT_SPREAD)).toBe(14)
   })
@@ -448,8 +447,7 @@ describe('the Phase C budget', () => {
     const CHUNKED_ALONG_THE_ENGINE = 172
     expect(WITH_ONE_ARTIFACT).toBeLessThanOrEqual(mobileWebAppBundleMaxChunks(ROUTES))
     expect(CHUNKED_ALONG_THE_ENGINE).toBeGreaterThan(mobileWebAppBundleMaxChunks(ROUTES))
-    // And the assets that came with it: 215 against the 158 this tree's envelope allows, of the
-    // 256 the shell will load.
+    // Chunked engine also emitted 215 total assets, exceeding that head’s 158-asset envelope.
     expect(mobileWebAppBundleMaxAssets(ROUTES, 42)).toBeLessThan(CHUNKED_ALONG_THE_ENGINE + 42 + 1)
   })
 
@@ -478,11 +476,7 @@ describe('the Phase C budget', () => {
   )
 
   it('fails the build when the derived ceiling passes what the phone will accept', async () => {
-    // The shell hands back null for a manifest over its own ceiling, so a derived ceiling above
-    // that ships a green build no device can open. With the historical 42-image fixture, the envelope
-    // plus 42 plus the document crosses 256 at 25 routes, which Phase C reaches. The crossing came
-    // in from 50 with the envelope: it grants the worst swept route to each one past the sweep,
-    // where `4r + 16` granted four, so re-measuring a tree whose routes share more moves it out.
+    // Fail build before derived assets exceed phone’s 256 limit: retained sweep crosses at 25 routes/42 images or 24/50.
     expect(await readMobileWebBundleMaxAssets()).toBe(MOBILE_WEB_BUNDLE_MAX_ASSETS)
     expect(assertAssetCeilingFitsShell(24, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toBe(256)
     expect(() => assertAssetCeilingFitsShell(25, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toThrow(

@@ -1,10 +1,12 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import type { AccountsSnapshot } from '../components/AccountUsage'
 import { MobileHomeQuickActions } from '../components/MobileHomeQuickActions'
 import { PickerModal } from '../components/PickerModal'
 import { useConnectedHostPicker } from '../components/use-connected-host-picker'
 import type { TaskProvider } from '../../../src/shared/task-providers'
 import { colors, spacing } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import type { HostProfile } from '../transport/types'
 import type { HomeResumeCard } from '../worktree/home-resume-card'
 import { MobileHomeAccountUsageCards } from './MobileHomeAccountUsageCards'
@@ -26,6 +28,7 @@ export function MobileHomeListFooter(props: {
   onOpenAutomations: (hostId: string) => void
   onPairDesktop: () => void
 }) {
+  useMobileColorScheme()
   const tasksHostPicker = useConnectedHostPicker(props.connectedHosts)
   const automationsHostPicker = useConnectedHostPicker(props.connectedHosts)
   const hostProviders = props.connectedHosts.map((host) => ({
@@ -75,7 +78,7 @@ export function MobileHomeListFooter(props: {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   sectionHeading: {
     fontSize: 11,
     fontWeight: '600',
@@ -86,4 +89,4 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs
   }
-})
+}))

@@ -80,15 +80,15 @@ export function useMobileSourceControlState(params: MobileSourceControlStatePara
     recordCommitFailure(null)
   }, [recordCommitFailure])
 
-  const { screenState, branchCompareState, mountedRef, setRootRef, loadStatus } =
-    useMobileSourceControlLoaders({
-      client,
-      connState,
-      statusIdentityKey,
-      worktreeId,
-      setActionError,
-      onStatusLoadSuccess: clearCommitFailureRecovery
-    })
+  const loaders = useMobileSourceControlLoaders({
+    client,
+    connState,
+    statusIdentityKey,
+    worktreeId,
+    setActionError,
+    onStatusLoadSuccess: clearCommitFailureRecovery
+  })
+  const { screenState, branchCompareState, mountedRef, setRootRef, loadStatus, settings } = loaders
 
   const {
     router,
@@ -101,6 +101,7 @@ export function useMobileSourceControlState(params: MobileSourceControlStatePara
   } = useMobileSourceControlOpeners({
     client,
     connState,
+    diffShowWhitespace: settings.diffShowWhitespace,
     hostId,
     worktreeId,
     name,
@@ -118,7 +119,7 @@ export function useMobileSourceControlState(params: MobileSourceControlStatePara
   const status = screenState.kind === 'ready' ? screenState.status : null
   const entries = status?.entries ?? []
   const derivedEntries = useMemo(() => buildMobileGitStatusEntryViews(entries), [entries])
-  const sections = useMobileSourceControlSections(client, connState, derivedEntries)
+  const sections = useMobileSourceControlSections(derivedEntries, settings.groupOrder)
   const branchCompareResult = branchCompareState.kind === 'ready' ? branchCompareState.result : null
   const branchCompareSection = useMemo(
     () => buildMobileBranchCompareSection(branchCompareResult?.entries ?? []),
@@ -293,12 +294,12 @@ export function useMobileSourceControlState(params: MobileSourceControlStatePara
     stagedCount,
     unstagedCount,
     branchLabel,
-    upstream,
     upstreamKnown,
     syncLabel,
     primaryActionArgs,
     createPrAction,
     loadStatus,
+    rebaseBaseRef: loaders.rebaseBaseRef,
     openFile,
     openBranchDiff,
     ...runners
