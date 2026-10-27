@@ -6,7 +6,7 @@
  */
 // Minimum launch copied from wsl-host-fake-transport.spec.ts; move to a shared helper once one is on main.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -85,6 +85,18 @@ function createGitProject(): string {
   return dir
 }
 
+/** The fake re-reads this file on every check, so it must never see a half-written one. */
+function writeDistros(distrosFile: string, distros: readonly object[]): void {
+  const tmp = `${distrosFile}.tmp`
+  writeFileSync(tmp, JSON.stringify(distros))
+  renameSync(tmp, distrosFile)
+}
+
+function readDistroState(distrosFile: string): string | undefined {
+  const distros: { state?: string }[] = JSON.parse(readFileSync(distrosFile, 'utf8'))
+  return distros[0]?.state
+}
+
 function fakeWslConnects(connectLogFile: string): string[] {
   return existsSync(connectLogFile)
     ? readFileSync(connectLogFile, 'utf8').split('\n').filter(Boolean)
@@ -131,7 +143,7 @@ test.describe('native chat on a WSL host', () => {
     const fakeDir = mkdtempSync(path.join(os.tmpdir(), 'orca-e2e-wsl-chat-fake-'))
     const distrosFile = path.join(fakeDir, 'distros.json')
     const connectLogFile = path.join(fakeDir, 'connects.log')
-    writeFileSync(distrosFile, JSON.stringify(RUNNING))
+    writeDistros(distrosFile, RUNNING)
     const desktop = await launchDesktopWithFakeWsl(
       { distros: RUNNING, distrosFile, connectLogFile, pairingCode: offer.pairingUrl },
       testInfo
@@ -166,23 +178,38 @@ test.describe('native chat on a WSL host', () => {
       expect(await askSupport()).toMatchObject({ supported: true })
 
       await page.getByRole('button', { name: 'New tab', exact: true }).first().click()
-      await page.getByText('Claude', { exact: true }).first().click({ timeout: 60_000 })
+      await page
+        .getByRole('menu')
+        .getByText('Claude', { exact: true })
+        .first()
+        .click({ timeout: 60_000 })
       const chat = page.locator('[data-native-chat-root="true"]')
       await expect(chat).toBeVisible({ timeout: 60_000 })
+      const composer = chat.getByRole('textbox')
       const send = async (text: string): Promise<void> => {
-        await chat.getByRole('textbox').click()
+        // Typing before the composer is editable loses keys, notably right after a reconnect.
+        await expect(composer).toBeEditable({ timeout: 60_000 })
+        await composer.click()
         await page.keyboard.type(text)
+        await expect(composer).toContainText(text)
         await chat.getByRole('button', { name: 'Send', exact: true }).click()
       }
-      const replies = chat.getByText('Stub reply.')
+      /** The prompt's message, followed later in the transcript by a stub reply. */
+      const expectReplyAfter = async (text: string): Promise<void> => {
+        await expect(
+          chat
+            .getByText(text, { exact: true })
+            .locator('xpath=following::*[text()="Stub reply."]')
+            .first()
+        ).toBeVisible({ timeout: 120_000 })
+      }
       await send('hello from the desktop')
-      await expect(replies.first()).toBeVisible({ timeout: 120_000 })
-      const repliesBeforeStop = await replies.count()
+      await expectReplyAfter('hello from the desktop')
       await page.screenshot({ path: testInfo.outputPath('wsl-host-chat-streamed.png') })
 
       // The distro stops: a chat call is a runtime call, so it refuses rather than boot it.
-      writeFileSync(distrosFile, JSON.stringify(STOPPED))
       const connectsBeforeStop = fakeWslConnects(connectLogFile).length
+      writeDistros(distrosFile, STOPPED)
       await expect
         .poll(
           () =>
@@ -195,6 +222,7 @@ test.describe('native chat on a WSL host', () => {
         .toContain('Ubuntu was stopped')
       await page.screenshot({ path: testInfo.outputPath('wsl-host-chat-stopped.png') })
       expect(fakeWslConnects(connectLogFile)).toHaveLength(connectsBeforeStop)
+      expect(readDistroState(distrosFile)).toBe('stopped')
 
       // Switching away and back is the user acting on the host: that boots it and the chat goes on.
       await page.evaluate(() => window.__store?.getState().setActiveWorktree(null))
@@ -204,9 +232,7 @@ test.describe('native chat on a WSL host', () => {
         .toBeGreaterThan(connectsBeforeStop)
       await expect(chat).toBeVisible({ timeout: 60_000 })
       await send('after the distro restarted')
-      await expect
-        .poll(() => replies.count(), { timeout: 120_000 })
-        .toBeGreaterThan(repliesBeforeStop)
+      await expectReplyAfter('after the distro restarted')
       await page.screenshot({ path: testInfo.outputPath('wsl-host-chat-after-boot.png') })
     } finally {
       await desktop.dispose()

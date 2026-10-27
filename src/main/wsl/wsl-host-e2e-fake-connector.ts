@@ -1,5 +1,5 @@
 /** ORCA_E2E_FAKE_WSL_HOSTS maps fake distros directly to a headless server pairing so any CI OS can test WSL host UI without wsl.exe. */
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { z } from 'zod'
 import { parsePairingCode } from '../../shared/pairing'
 import type { WslHostConnector } from './wsl-host-service'
@@ -75,15 +75,17 @@ export function createFakeWslHostConnector(
       if (intent?.noBoot || !config.distrosFile) {
         throw new Error(`${distro} is not running.`)
       }
-      // A booting connect starts the distro, as wsl.exe would.
+      // A booting connect starts the distro, as wsl.exe would; atomic so no read sees half a file.
+      const tmp = `${config.distrosFile}.tmp`
       writeFileSync(
-        config.distrosFile,
+        tmp,
         JSON.stringify(
           readDistros().map((entry) =>
             key(entry.name) === key(distro) ? { ...entry, state: 'running' } : entry
           )
         )
       )
+      renameSync(tmp, config.distrosFile)
     }
     if (config.connectLogFile) {
       appendFileSync(config.connectLogFile, `${distro}\n`)
