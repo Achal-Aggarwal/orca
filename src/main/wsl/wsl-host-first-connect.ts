@@ -4,7 +4,7 @@ import type { WslHostAddResult } from '../../shared/wsl-host-types'
 import { OrcadHostUnsupportedError } from '../orcad/orcad-host-unavailable'
 import type { WslHostConnector } from './wsl-host-service'
 import { WslOrcadLaunchDeferredError } from './wsl-orcad-connection-errors'
-import { WslDistroVersion1Error } from './wsl-distro-unsupported'
+import { WslDistroVersion1Error, wslUnsupportedDistroFixMessage } from './wsl-distro-unsupported'
 import { RemoteNodeRuntimeSelfTestError } from '../ssh/orcad-remote-node-runtime-report'
 import type { WslOrcadConnection } from './wsl-orcad-connection'
 
@@ -30,7 +30,11 @@ export async function connectForWslHostAdd(
     if (error instanceof WslOrcadLaunchDeferredError) {
       return { ok: false, kind: 'deferred', message: error.launch.reason }
     }
-    return { ok: false, kind: connectFailureKind(error), message: errorMessage(error) }
+    return {
+      ok: false,
+      kind: connectFailureKind(error),
+      message: wslUnsupportedDistroFixMessage(error) ?? errorMessage(error)
+    }
   }
   const refusal = lateRefusal()
   if (refusal) {
