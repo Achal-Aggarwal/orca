@@ -23,6 +23,7 @@ import {
   getWorktreeParentPickerLabel,
   hasWorktreeParentLink,
   isWorktreeParentPickerDisabled,
+  getSharedWorkspaceStatus,
   planWorkspaceStatusAssignment,
   selectMenuScopedMap,
   shouldRevealWorktreeDeveloperMenu
@@ -257,7 +258,7 @@ describe('parent picker context menu affordance', () => {
       validParentWorktreeId: selected.id,
       validParent: selected,
       worktree: makeWorktree({ id: 'repo1::child', repoId: 'repo1' }),
-      workspaceStatuses: []
+      statusesForWorktree: () => []
     }
     try {
       const commands = renderHook((props) => useWorktreeContextMenuCommands(props), {
@@ -378,7 +379,7 @@ describe('planWorkspaceStatusAssignment (context-menu "Move to Status" routing)'
       planWorkspaceStatusAssignment(
         [wt('a', 'todo'), wt('b', 'in-review')],
         'in-review',
-        statuses,
+        () => statuses,
         true
       )
     ).toEqual({ kind: 'board-sync', worktreeIds: ['a', 'b'] })
@@ -389,10 +390,26 @@ describe('planWorkspaceStatusAssignment (context-menu "Move to Status" routing)'
       planWorkspaceStatusAssignment(
         [wt('a', 'todo'), wt('b', 'in-review')],
         'in-review',
-        statuses,
+        () => statuses,
         false
       )
     ).toEqual({ kind: 'local-only', localWriteIds: ['a'] })
+  })
+
+  it("compares each card against its own host's columns in a mixed selection", () => {
+    const hostColumns: WorkspaceStatusDefinition[] = [
+      ...statuses,
+      { id: 'status-6', label: 'Today' }
+    ]
+    const local = wt('a', 'todo')
+    const hosted = { ...wt('b', 'status-6'), hostId: 'runtime:env-1' as const }
+    const statusesFor = (item: Worktree) => (item.hostId ? hostColumns : statuses)
+
+    expect(getSharedWorkspaceStatus([local, hosted], statusesFor)).toBe('')
+    expect(planWorkspaceStatusAssignment([local, hosted], 'todo', statusesFor, false)).toEqual({
+      kind: 'local-only',
+      localWriteIds: ['b']
+    })
   })
 
   it('writes nothing on the local-only path when every worktree already has the target status', () => {
@@ -400,7 +417,7 @@ describe('planWorkspaceStatusAssignment (context-menu "Move to Status" routing)'
       planWorkspaceStatusAssignment(
         [wt('a', 'in-review'), wt('b', 'in-review')],
         'in-review',
-        statuses,
+        () => statuses,
         false
       )
     ).toEqual({ kind: 'local-only', localWriteIds: [] })

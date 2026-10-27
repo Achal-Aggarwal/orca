@@ -65,7 +65,7 @@ export type ComposerTargetStoreModel = {
   newWorkspaceDraft: UISlice['newWorkspaceDraft']
   worktreesByRepo: Record<string, Worktree[]>
   sparsePresetsByRepo: Record<string, SparsePreset[]>
-  workspaceStatuses: WorkspaceStatusDefinition[]
+  workspaceStatuses: readonly WorkspaceStatusDefinition[]
   sshConnectionStates: Map<string, SshConnectionState>
   sshTargetLabels: Map<string, string>
   sshConnectedGeneration: number

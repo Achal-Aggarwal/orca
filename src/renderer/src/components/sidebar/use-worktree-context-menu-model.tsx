@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useAllWorktrees, useRepoById, useRepoMap } from '@/store/selectors'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { getWorkspaceStatus } from './workspace-status'
+import { useContextWorkspaceStatuses } from './use-workspace-board-statuses'
 import { getEligibleWorktreeParents } from './worktree-parent-candidates'
 import {
   hasSleepableWorkspaceActivity,
@@ -25,6 +25,7 @@ import {
   EMPTY_UNIFIED_TABS_BY_WORKTREE,
   EMPTY_WORKSPACE_LINEAGE_BY_CHILD_KEY,
   EMPTY_WORKTREE_LINEAGE_BY_ID,
+  getSharedWorkspaceStatus,
   hasWorktreeParentLink,
   isContextWorktreeDeletable,
   selectMenuScopedMap,
@@ -34,6 +35,7 @@ import { useWorktreeContextMenuCommands } from './use-worktree-context-menu-comm
 import { useWorktreeParentPickerTransition } from './use-worktree-parent-picker-transition'
 import { useWorktreeContextMenuSecondaryActions } from './use-worktree-context-menu-secondary-actions'
 import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/lib/close-all-context-menus'
+import { getWorktreeContextMenuBatchLabels } from './workspace-batch-action-labels'
 
 const EMPTY_LINEAGE_INPUTS = {
   worktreeMap: new Map<string, Worktree>(),
@@ -66,7 +68,6 @@ export function useWorktreeContextMenuModel({
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const setWorkspaceUnreadByUser = useAppStore((s) => s.setWorkspaceUnreadByUser)
   const setWorktreesPinnedAndReveal = useAppStore((s) => s.setWorktreesPinnedAndReveal)
-  const workspaceStatuses = useAppStore((s) => s.workspaceStatuses)
   const openModal = useAppStore((s) => s.openModal)
   const projectGroups = useAppStore((s) => s.projectGroups)
   const createProjectGroup = useAppStore((s) => s.createProjectGroup)
@@ -135,6 +136,8 @@ export function useWorktreeContextMenuModel({
   const scopeRef = useRef<HTMLDivElement>(null)
   const contextMenuOpenedAtRef = useRef<number | null>(null)
   const activeContextWorktrees = menuOpen ? contextWorktrees : effectiveSelectedWorktrees
+  const { workspaceStatuses, statusesForWorktree } =
+    useContextWorkspaceStatuses(activeContextWorktrees)
   const isMultiContext = activeContextWorktrees.length > 1
   const workspaceScope = parseWorkspaceKey(worktree.id)
   const folderWorkspaceId =
@@ -184,16 +187,10 @@ export function useWorktreeContextMenuModel({
     (item) => getDeleteStateForWorktreeHost(item, deleteStateByWorktreeId)?.isDeleting
   )
   const contextDeletePending = isMultiContext ? deletingContext : deletingSubtree
-  const contextWorkspaceStatus = useMemo(() => {
-    const [first, ...rest] = activeContextWorktrees
-    if (!first) {
-      return ''
-    }
-    const status = getWorkspaceStatus(first, workspaceStatuses)
-    return rest.every((item) => getWorkspaceStatus(item, workspaceStatuses) === status)
-      ? status
-      : ''
-  }, [activeContextWorktrees, workspaceStatuses])
+  const contextWorkspaceStatus = useMemo(
+    () => getSharedWorkspaceStatus(activeContextWorktrees, statusesForWorktree),
+    [activeContextWorktrees, statusesForWorktree]
+  )
   const batchDeleteWorktrees = useMemo(
     () =>
       activeContextWorktrees.filter((item) => {
@@ -203,14 +200,11 @@ export function useWorktreeContextMenuModel({
     [activeContextWorktrees, repoMap]
   )
   const removesProject = shouldRemoveProjectFromContextMenu(repo, worktree)
-  const sleepLabel =
-    isMultiContext && sleepableWorktrees.length > 0
-      ? `Sleep ${sleepableWorktrees.length} Workspace${sleepableWorktrees.length === 1 ? '' : 's'}`
-      : 'Sleep'
-  const deleteLabel =
-    isMultiContext && batchDeleteWorktrees.length > 0
-      ? `Delete ${batchDeleteWorktrees.length} Workspace${batchDeleteWorktrees.length === 1 ? '' : 's'}`
-      : 'Delete Selected'
+  const { sleepLabel, deleteLabel } = getWorktreeContextMenuBatchLabels({
+    isMultiContext,
+    sleepableCount: sleepableWorktrees.length,
+    deletableCount: batchDeleteWorktrees.length
+  })
   const hasParentLink = hasWorktreeParentLink(
     worktree,
     worktreeLineageById,
@@ -316,11 +310,11 @@ export function useWorktreeContextMenuModel({
     setWorktreesPinnedAndReveal,
     sleepableWorktrees,
     subtreeSleepableWorktrees,
+    statusesForWorktree,
     updateWorktreeMeta,
     validParentWorktreeId,
     validParent,
-    worktree,
-    workspaceStatuses
+    worktree
   })
   const { handleOpenParentPicker, handleParentPickerOpenChange, openPendingParentPicker } =
     useWorktreeParentPickerTransition({

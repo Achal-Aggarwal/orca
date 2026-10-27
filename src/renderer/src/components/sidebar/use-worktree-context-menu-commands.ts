@@ -44,7 +44,7 @@ export function useWorktreeContextMenuCommands(args: {
   validParentWorktreeId: string | null
   validParent: Worktree | null
   worktree: Worktree
-  workspaceStatuses: readonly WorkspaceStatusDefinition[]
+  statusesForWorktree: (worktree: Worktree) => readonly WorkspaceStatusDefinition[]
 }) {
   const handleCopyPath = useCallback(() => {
     window.api.ui.writeClipboardText(args.worktree.path)
@@ -108,7 +108,7 @@ export function useWorktreeContextMenuCommands(args: {
       const plan = planWorkspaceStatusAssignment(
         args.activeContextWorktrees,
         status,
-        args.workspaceStatuses,
+        args.statusesForWorktree,
         Boolean(args.onAssignWorkspaceStatus)
       )
       if (plan.kind === 'board-sync') {
