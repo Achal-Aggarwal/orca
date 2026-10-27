@@ -123,6 +123,8 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
 
   drainBackups(cancel = false): Promise<void> {
     if (cancel) {
+      // Only final and maintenance flushes cancel backups; their write must not wait out a backoff.
+      this.reopenPolicy.bypassBackoffOnce()
       this.backups.stop()
     }
     return this.backups.drain()
@@ -227,7 +229,8 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
     this.reopenPolicy.admit()
     const writer = new ProfileStateWriteWorkerClient(
       { ...this.initialization, revision: this.requireStoppedRevision() },
-      { ...this.options, reportInitializationFailure: true }
+      // A retriable failure is not "saving has stopped"; forgetFailedReopen reports only terminal ones.
+      { ...this.options, reportInitializationFailure: false }
     )
     this.writer = writer
     this.reopenPolicy.recordAttempt()
@@ -243,10 +246,16 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
 
   /** A spawn or open failure must not wedge saving: go back to stopped so a later command retries. */
   private forgetFailedReopen(writer: ProfileStateWriteWorkerClient, error: unknown): void {
-    if (this.writer === writer && this.reopenPolicy.recordFailure(error)) {
-      this.writer = null
-      void writer.abort().catch(() => {})
+    if (this.writer !== writer) {
+      return
     }
+    const retry = this.reopenPolicy.recordFailure(error)
+    if (!retry) {
+      this.options.onFailure?.(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    this.writer = null
+    void writer.abort().catch(() => {})
   }
 
   get writerIdleStopPending(): boolean {

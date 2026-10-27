@@ -6,6 +6,7 @@ export class ProfileStateWriterReopenPolicy {
   private reopens = 0
   private lastLogMs: number | undefined
   private failure: { error: unknown; failures: number; retryAtMs: number } | undefined
+  private bypassOnce = false
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -15,9 +16,18 @@ export class ProfileStateWriterReopenPolicy {
 
   /** Throws the last failure while its backoff lasts; nothing is spawned meanwhile. */
   admit(): void {
+    if (this.bypassOnce) {
+      this.bypassOnce = false
+      return
+    }
     if (this.failure && this.now() < this.failure.retryAtMs) {
       throw this.failure.error
     }
+  }
+
+  /** A final or maintenance flush gets one attempt even inside a backoff. */
+  bypassBackoffOnce(): void {
+    this.bypassOnce = this.failure !== undefined
   }
 
   /** Writes just over the idle window apart churn the thread; one line per window keeps that visible. */
@@ -35,17 +45,21 @@ export class ProfileStateWriterReopenPolicy {
     this.failure = undefined
   }
 
-  /** Whether the writer may go back to stopped for a retry; a revision conflict stays terminal. */
-  recordFailure(error: unknown): boolean {
+  /** Logs and returns the delay before a retry, or null when the failure is terminal (a revision conflict). */
+  recordFailure(error: unknown): { retryInMs: number } | null {
     if (isRevisionConflict(error)) {
-      return false
+      return null
     }
     const failures = (this.failure?.failures ?? 0) + 1
     // The first retry is immediate; repeated failures back off up to a minute.
-    const backoffMs =
+    const retryInMs =
       failures === 1 ? 0 : Math.min(1_000 * 2 ** (failures - 2), MAX_REOPEN_BACKOFF_MS)
-    this.failure = { error, failures, retryAtMs: this.now() + backoffMs }
-    return true
+    this.failure = { error, failures, retryAtMs: this.now() + retryInMs }
+    console.warn(
+      `[persistence] Could not reopen the idle profile writer; retrying in ${retryInMs} ms:`,
+      error
+    )
+    return { retryInMs }
   }
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileStateWriterReopenPolicy } from './profile-state-writer-reopen-policy'
 
 const spawnFailure = Object.assign(new Error('spawn failed'), {
@@ -6,12 +6,17 @@ const spawnFailure = Object.assign(new Error('spawn failed'), {
 })
 
 describe('ProfileStateWriterReopenPolicy', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => vi.restoreAllMocks())
+
   it('retries the first failure at once, then backs off up to a minute', () => {
     let now = 0
     const policy = new ProfileStateWriterReopenPolicy(() => now)
-    expect(policy.recordFailure(spawnFailure)).toBe(true)
+    expect(policy.recordFailure(spawnFailure)).toEqual({ retryInMs: 0 })
     expect(() => policy.admit()).not.toThrow()
-    expect(policy.recordFailure(spawnFailure)).toBe(true)
+    expect(policy.recordFailure(spawnFailure)).toEqual({ retryInMs: 1_000 })
     expect(() => policy.admit()).toThrow('spawn failed')
     now = 1_000
     expect(() => policy.admit()).not.toThrow()
@@ -31,13 +36,22 @@ describe('ProfileStateWriterReopenPolicy', () => {
     policy.recordFailure(spawnFailure)
     policy.recordSuccess()
     expect(() => policy.admit()).not.toThrow()
-    expect(policy.recordFailure(spawnFailure)).toBe(true)
+    expect(policy.recordFailure(spawnFailure)).toEqual({ retryInMs: 0 })
     expect(() => policy.admit()).not.toThrow()
+  })
+
+  it('lets one attempt through a backoff for a final flush', () => {
+    const policy = new ProfileStateWriterReopenPolicy(() => 0)
+    policy.recordFailure(spawnFailure)
+    policy.recordFailure(spawnFailure)
+    policy.bypassBackoffOnce()
+    expect(() => policy.admit()).not.toThrow()
+    expect(() => policy.admit()).toThrow('spawn failed')
   })
 
   it('keeps a revision conflict terminal', () => {
     const policy = new ProfileStateWriterReopenPolicy(() => 0)
-    expect(policy.recordFailure({ code: 'profile-state-revision-conflict' })).toBe(false)
+    expect(policy.recordFailure({ code: 'profile-state-revision-conflict' })).toBeNull()
     expect(() => policy.admit()).not.toThrow()
   })
 

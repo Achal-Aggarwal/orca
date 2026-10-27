@@ -53,6 +53,7 @@ describe('worker authority idle stop', () => {
   })
 
   it('retries a failed reopen on the next write instead of wedging saving', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { authority, close, readState } = await idleFixture()
     await idleStopped(close)
     threadFailures.remaining = 1
@@ -64,7 +65,39 @@ describe('worker authority idle stop', () => {
     expect(readState().ui).toEqual({ retried: true })
   })
 
+  it('never reports a recovered reopen blip as saving having stopped', async () => {
+    const notify = vi.fn()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { authority, close, readState } = await idleFixture(notify)
+    await idleStopped(close)
+    threadFailures.remaining = 1
+    await expect(
+      authority.writeSerializedDomains([{ domain: 'ui', payload: '{"blip":true}' }])
+    ).rejects.toMatchObject({ code: 'profile-state-writer-unavailable' })
+    await authority.writeSerializedDomains([{ domain: 'ui', payload: '{"recovered":true}' }])
+    expect(readState().ui).toEqual({ recovered: true })
+    expect(notify).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('retrying in 0 ms'),
+      expect.objectContaining({ code: 'profile-state-writer-unavailable' })
+    )
+  })
+
+  it('gives the final flush one reopen attempt inside a backoff, and it lands', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { authority, close, store, readState } = await idleFixture()
+    await idleStopped(close)
+    threadFailures.remaining = 2
+    const write = () => authority.writeSerializedDomains([{ domain: 'ui', payload: '{}' }])
+    await expect(write()).rejects.toMatchObject({ code: 'profile-state-writer-unavailable' })
+    await expect(write()).rejects.toMatchObject({ code: 'profile-state-writer-unavailable' })
+    store.updateSettings({ theme: 'dark' })
+    await store.flushFinalOrThrowAsync()
+    expect(readState().settings.theme).toBe('dark')
+  })
+
   it('backs off after repeated reopen failures without spawning again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { authority, close } = await idleFixture()
     await idleStopped(close)
     threadFailures.remaining = 2
