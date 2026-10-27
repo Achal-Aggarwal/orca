@@ -15,6 +15,7 @@ import { AgentJournalRenderItemSchema } from '../../shared/agent-session-journal
 import { projectStructuredItemToNativeChat } from '../../shared/structured-agent-session-projection'
 import { agentSessionSendBodyFingerprint } from '../../shared/structured-agent-session-send-mutation'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import { claudePromptUuidForSubmission } from './claude-structured-session-id'
 import { childExited, sessionFor, userMessage } from './claude-structured-dispatch-test-support'
 import {
   SESSION,
@@ -463,9 +464,9 @@ describe('Claude chat catch-up', () => {
     expect(c.warn).not.toHaveBeenCalled()
   })
 
-  // P known prompts and J reduced items grow independently; this ceiling retains the P×J cost.
+  // P saved aliases plus P unacknowledged queued prompts: P×J scope work and one J-item index.
   it.each([10, 100].flatMap((prompts) => [1_000, 10_000].map((items) => ({ prompts, items }))))(
-    'bounds retained-leaf work for $prompts known prompts and $items journal items',
+    'bounds retained-leaf work for $prompts aliases and local misses over $items journal items',
     async ({ prompts, items }) => {
       const c = await chat()
       await c.live()
@@ -501,11 +502,25 @@ describe('Claude chat catch-up', () => {
         fence: 1,
         mutations: Array.from({ length: items - c.journal.snapshot().items.length }, (_, n) => ({
           kind: 'item' as const,
-          identity: { provider: 'claude' as const, sessionId: SID, uuid: `padding${n}` },
-          body: { kind: 'message' as const, role: 'assistant' as const, blocks: [] },
+          identity: { provider: 'orca' as const, clientMessageId: `padding${n}` },
+          body: { kind: 'message' as const, role: 'user' as const, blocks: [] },
           turnScope: { kind: 'thread' as const }
         }))
       })
+      for (let n = 0; n < prompts; n++) {
+        const key = agentJournalItemKey({ provider: 'orca', clientMessageId: `padding${n}` })
+        await c.write([
+          {
+            ...attachment(`queued${n}`, n ? `queued${n - 1}` : `outside-a${prompts - 1}`),
+            attachment: {
+              type: 'queued_command',
+              source_uuid: claudePromptUuidForSubmission(SESSION, key),
+              commandMode: 'prompt',
+              prompt: 'local'
+            }
+          }
+        ])
+      }
       const before = c.journal.snapshot()
       const itemCount = before.items.length
       expect(itemCount).toBe(items)
@@ -541,7 +556,8 @@ describe('Claude chat catch-up', () => {
       expect(c.journal.canonicalItemId(alias)).toBe(canonical)
       expect(committed).not.toHaveBeenCalled()
       expect(c.warn).not.toHaveBeenCalled()
-      expect(associationVisits).toBeLessThanOrEqual(prompts * itemCount)
+      expect(associationVisits).toBeGreaterThan(prompts * itemCount)
+      expect(associationVisits).toBeLessThanOrEqual((prompts + 1) * itemCount)
       expect(viewVisits).toBeLessThanOrEqual(2 * itemCount)
       console.info('retained-leaf operation counts', {
         prompts,
