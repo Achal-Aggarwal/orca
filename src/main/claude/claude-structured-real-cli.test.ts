@@ -21,8 +21,11 @@ import {
   realClaudeLaunchHome
 } from './claude-real-cli-availability-test-support'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
-import type { ClaudeStructuredSessionEvent } from './structured/claude-structured-session-state'
-import type { ClaudeStructuredSessionAdapterDeps } from './structured/claude-structured-session-state'
+import type {
+  ClaudeStructuredSessionEvent,
+  ClaudeStructuredSessionAdapterDeps
+} from './structured/claude-structured-session-state'
+
 import {
   claudeOpened,
   claudeStartupSettled
