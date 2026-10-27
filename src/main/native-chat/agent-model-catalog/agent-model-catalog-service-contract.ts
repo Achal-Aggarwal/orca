@@ -9,20 +9,25 @@ import type {
   AgentModelCatalogProbe
 } from './agent-model-catalog-store'
 import type { AgentModelCatalogRunningAccountDeps } from './agent-model-catalog-running-account'
-import type { AgentModelCatalogWorkspaceDeps } from './agent-model-catalog-workspace'
-export type AgentModelCatalogServiceDeps = {
-  getRecord: (sessionId: string) => AgentSessionRecord | undefined
-  /** Unlaunchable records cannot authorize probing their account with a different host binary. */
-  drivesRecord: (record: AgentSessionRecord) => boolean
-  /** Share the launch resolver so recordless reads use the account a new chat would pin. */
-  resolveAccountHome: (agent: string) => Promise<AgentSessionAccountHome>
-  probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
-  listingNamesConfiguredModel?: ReadonlySet<string>
-  /** False means project configuration cannot override the account default. */
-  agentReadsProjectModelConfig?: (agent: string) => boolean
-  hasChatRecords?: (agent: string) => boolean
-} & AgentModelCatalogWorkspaceDeps &
-  AgentModelCatalogRunningAccountDeps
+import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
+import type {
+  AgentModelCatalogWorkspaceDeps,
+  AgentModelCatalogRecord
+} from './agent-model-catalog-workspace'
+export type AgentModelCatalogServiceDeps = AgentModelCatalogWorkspaceDeps &
+  AgentModelCatalogRunningAccountDeps & {
+    getConversation: (sessionId: string) => AgentSessionConversationView | undefined
+    getRecord: (sessionId: string) => AgentSessionRecord | undefined
+    /** Unlaunchable records cannot authorize probing their account with a different host binary. */
+    drivesRecord: (record: AgentModelCatalogRecord) => boolean
+    /** Share the launch resolver so recordless reads use the account a new chat would pin. */
+    resolveAccountHome: (agent: string) => Promise<AgentSessionAccountHome>
+    probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
+    listingNamesConfiguredModel?: ReadonlySet<string>
+    /** False means project configuration cannot override the account default. */
+    agentReadsProjectModelConfig?: (agent: string) => boolean
+    hasChatRecords?: (agent: string) => boolean
+  }
 
 export type AgentModelCatalogService = {
   peek: (sessionId: string, verifiedOnly?: boolean) => AgentModelCatalogEntry | null

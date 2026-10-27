@@ -5,20 +5,20 @@ import {
 } from './agent-model-catalog-lister'
 import { prewarmAgentModelCatalog, newChatCatalogKey } from './agent-model-catalog-prewarm'
 import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionAccountHome } from '../../../shared/agent-session-record'
 import { agentSessionAccountHomePath } from '../../../shared/agent-session-account-home'
 import { agentModelCatalogFingerprintForRecord } from './agent-model-catalog-fingerprint'
 import {
   agentModelCatalogResultFromEntry,
   retainedAgentModelCatalogModels,
-  type AgentModelCatalogEntry,
-  type AgentModelCatalogLiveListing
+  type AgentModelCatalogEntry
 } from './agent-model-catalog-entry'
 import { onLiveAccount, onRunningAccount } from './agent-model-catalog-running-account'
 import {
   catalogFolder,
-  recordConfiguredDefault,
+  createAgentModelCatalogLiveListingRecorder,
   sessionWorkspacePath,
+  type AgentModelCatalogRecord,
   workspaceKeepsListedDefault
 } from './agent-model-catalog-workspace'
 
@@ -44,36 +44,12 @@ export function createAgentModelCatalogService(
   const listWith = agentModelCatalogProbeLister(lifetime.signal)
   // Serialize folder-scoped writes across asynchronous folder lookups.
   const liveWrites = new Map<string, Promise<void>>()
-  const sessionCatalogKey = async (record: AgentSessionRecord): Promise<string> =>
+  const sessionCatalogKey = async (record: AgentModelCatalogRecord): Promise<string> =>
     agentModelCatalogFingerprintForRecord(
       record,
       await catalogFolder(deps, record.provider, undefined, record)
     )
-  const saveLiveListing = (
-    record: AgentSessionRecord,
-    listing: AgentModelCatalogLiveListing,
-    fingerprint: string
-  ): void => {
-    const { configuredDefault, ...listed } = listing
-    const saved = deps.store.recordSuccess(
-      fingerprint,
-      record.provider,
-      { ...listed, origin: 'live-session' },
-      'live'
-    )
-    if (saved && configuredDefault !== undefined) {
-      // Preserve report order when learning configured defaults.
-      const recording = (recordingDefaults.get(fingerprint) ?? Promise.resolve())
-        .then(() => recordConfiguredDefault(deps, record, fingerprint, configuredDefault))
-        .catch(() => {})
-        .then(() => {
-          if (recordingDefaults.get(fingerprint) === recording) {
-            recordingDefaults.delete(fingerprint)
-          }
-        })
-      recordingDefaults.set(fingerprint, recording)
-    }
-  }
+  const saveLiveListing = createAgentModelCatalogLiveListingRecorder(deps, recordingDefaults)
   return {
     peek(sessionId, verifiedOnly) {
       const key = sessionKeys.get(sessionId)
@@ -91,12 +67,17 @@ export function createAgentModelCatalogService(
         return
       }
       void sessionCatalogKey(record)
-        .then((fingerprint) => deps.store.expireFailure(fingerprint))
+        .then((fingerprint) => {
+          if (deps.getRecord(record.sessionId)?.lease.runtimeFence === record.lease.runtimeFence) {
+            deps.store.expireFailure(fingerprint)
+          }
+        })
         .catch(() => {})
     },
     async read(params) {
-      const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
-      let scoped: AgentSessionRecord | undefined
+      const record = params.sessionId ? deps.getConversation(params.sessionId) : undefined
+      const savedOnly = params.savedOnly || !!(record && !deps.getRecord(record.sessionId))
+      let scoped: typeof record
       if (record && record.provider === params.agent && deps.drivesRecord(record)) {
         try {
           scoped = await onRunningAccount(deps, record)
@@ -111,7 +92,7 @@ export function createAgentModelCatalogService(
         : params.workspacePath
       const folder = await catalogFolder(deps, params.agent, workspacePath, scoped)
       let fingerprint: string
-      let probeHome: AgentSessionRecord['accountHome'] | null
+      let probeHome: AgentSessionAccountHome | null
       if (scoped) {
         fingerprint = agentModelCatalogFingerprintForRecord(scoped, folder)
         // Native probes cannot list a WSL-pinned account.
@@ -126,7 +107,7 @@ export function createAgentModelCatalogService(
       }
       const scope = await resolveAgentModelCatalogScope(
         deps,
-        params,
+        { ...params, savedOnly },
         scoped,
         fingerprint,
         probeHome
@@ -152,6 +133,7 @@ export function createAgentModelCatalogService(
       const probe = deps.probes?.[params.agent]
       const list = scopedAgentModelCatalogLister({
         legacy: params.legacy,
+        canList: () => !record || !!deps.getRecord(record.sessionId),
         admission,
         signal: lifetime.signal,
         resolved,
@@ -221,8 +203,11 @@ export function createAgentModelCatalogService(
       }
       // Observed process exit suppresses background relaunch; explicit new chats may discover.
       if (
-        params.savedOnly ||
-        (!exact && scoped?.lease?.claimStatus === 'released' && scoped.lease.deathEvidence)
+        savedOnly ||
+        (scoped && !deps.getRecord(scoped.sessionId)) ||
+        (!exact &&
+          scoped?.ownerObservation.claimStatus === 'released' &&
+          scoped.ownerObservation.deathEvidence)
       ) {
         return answer(entry)
       }
@@ -268,7 +253,7 @@ export function createAgentModelCatalogService(
       return answer(entry)
     },
     async retainedLiveModelIds(sessionId, listing) {
-      const record = deps.getRecord(sessionId)
+      const record = deps.getConversation(sessionId)
       const entry =
         record && deps.drivesRecord(record)
           ? deps.store.get(await sessionCatalogKey(onLiveAccount(deps, record)))
@@ -287,7 +272,12 @@ export function createAgentModelCatalogService(
       }
       // Serialize reports so a slow folder lookup cannot overwrite a newer listing.
       const writing = (liveWrites.get(sessionId) ?? Promise.resolve())
-        .then(async () => saveLiveListing(record, listing, await sessionCatalogKey(record)))
+        .then(async () => {
+          const fingerprint = await sessionCatalogKey(record)
+          if (deps.getRecord(sessionId)?.lease.runtimeFence === record.lease.runtimeFence) {
+            saveLiveListing(record, listing, fingerprint)
+          }
+        })
         .catch((error: unknown) => {
           console.warn('[agent-model-catalog] could not save a chat model list:', error)
         })

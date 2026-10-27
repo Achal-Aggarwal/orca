@@ -2,6 +2,8 @@
 // start launches under, else the record's. A chat moves accounts when the selection changes.
 
 import type { AgentSessionAccountHome } from '../../../shared/agent-session-account-home'
+import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
+import type { AgentModelCatalogRecord } from './agent-model-catalog-workspace'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 
 export type AgentModelCatalogRunningAccountDeps = {
@@ -12,22 +14,25 @@ export type AgentModelCatalogRunningAccountDeps = {
 }
 
 /** The record as its running agent's account keys it; a listing the agent reports is that account's. */
-export function onLiveAccount(
+export function onLiveAccount<T extends AgentModelCatalogRecord>(
   deps: AgentModelCatalogRunningAccountDeps,
-  record: AgentSessionRecord
-): AgentSessionRecord {
+  record: T
+): T {
   const accountHome = deps.liveAccountHome?.(record.sessionId)
   return accountHome ? { ...record, accountHome } : record
 }
 
 /** For a read: a chat at rest reads the account its next start launches under. */
 export async function onRunningAccount(
-  deps: AgentModelCatalogRunningAccountDeps,
-  record: AgentSessionRecord
-): Promise<AgentSessionRecord> {
+  deps: AgentModelCatalogRunningAccountDeps & {
+    getRecord: (sessionId: string) => AgentSessionRecord | undefined
+  },
+  record: AgentSessionConversationView
+): Promise<AgentSessionConversationView> {
   if (deps.liveAccountHome?.(record.sessionId)) {
     return onLiveAccount(deps, record)
   }
-  const accountHome = await deps.launchAccountHome?.(record)
+  const writable = deps.getRecord(record.sessionId)
+  const accountHome = writable ? await deps.launchAccountHome?.(writable) : undefined
   return accountHome ? { ...record, accountHome } : record
 }

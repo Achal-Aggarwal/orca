@@ -165,10 +165,9 @@ export class StructuredAgentSessionHost {
   private now = (): number => this.deps.now?.() ?? Date.now()
 
   hasSession = (sessionId: string): boolean => this.sessions.has(sessionId)
-  loadedSessionIds = (): string[] =>
-    [...this.sessions].flatMap(([sessionId, { child }]) => (child ? [sessionId] : []))
+  loadedSessionIds = this.sessions.loadedSessionIds
   hasLoadedProviders = (): boolean => this.loadedSessionIds().length > 0
-  sessionAgent = (sessionId: string) => this.deps.store.getRecord(sessionId)?.provider ?? null
+  sessionAgent = (sessionId: string) => this.deps.store.getConversation(sessionId)?.provider ?? null
   /** The account the chat's running agent launched under, when its adapter reports one. */
   childAccountHome = (sessionId: string) => this.sessions.get(sessionId)?.child?.accountHome
 
@@ -291,6 +290,7 @@ export class StructuredAgentSessionHost {
 
   queuedMessageSend = this.queued.queuedMessageSend
   queuedMessageDelete = this.queued.queuedMessageDelete
+  queuedMessageMove = this.queued.queuedMessageMove
   queuedMessagesResume = this.queued.queuedMessagesResume
   queuedMessageUpdate = this.queued.queuedMessageUpdate
   queuedMessageEditHold = this.queued.queuedMessageEditHold

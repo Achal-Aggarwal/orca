@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks'
 import { afterEach, expect, it, vi } from 'vitest'
+import { agentSessionConversationView } from '../../../../shared/agent-session-conversation-view'
 import { agentSessionRecordFixture } from '../../../../shared/agent-session-record.test-fixture'
 import type { AgentSessionModelOption } from '../../../../shared/agent-session-wire'
 import { AGENT_SESSION_OPTIONAL_MODEL_CLIENT_CAPABILITY } from '../../../../shared/agent-session-optional-model-capability'
@@ -57,7 +58,7 @@ it.each([100, 1_000])(
       deps: {
         agents,
         adapter: {},
-        store: { getRecord: () => record },
+        store: { getConversation: () => agentSessionConversationView(record) },
         modelCatalog: { read: catalogRead }
       },
       serialize: (_session: string, task: () => Promise<unknown>) => task(),

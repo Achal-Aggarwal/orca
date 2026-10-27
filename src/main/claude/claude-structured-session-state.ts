@@ -182,8 +182,8 @@ export type ClaudeSession = {
   appliedInputOptions: Map<string, string>
   /** The model the child was launched with, as `--model`; null when it runs the CLI's own. */
   launchedModel: string | null
-  /** Construction intent and the first admitted root init belong to this process only. */
-  launchPermissionMode?: string
+  /** What Orca put on this process's command line, and the first root init's answer; this process only. */
+  launchIntent?: { permissionMode?: string; model?: string }
   firstRootInit?: { permissionMode: string | null }
   /** A launched model the CLI answered `model_not_found` for; reported until a new pick. */
   retiredModel?: string
