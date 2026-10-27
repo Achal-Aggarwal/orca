@@ -76,6 +76,7 @@ export function BrowserPane({
   const setBrowserSessionHostId = useAppStore((s) => s.setBrowserSessionHostId)
   const detectedBrowsers = useAppStore((s) => s.detectedBrowsers)
   const browserSessionImportState = useAppStore((s) => s.browserSessionImportState)
+  const defaultBrowserSessionProfileId = useAppStore((s) => s.defaultBrowserSessionProfileId)
   const setDefaultBrowserSessionProfileId = useAppStore((s) => s.setDefaultBrowserSessionProfileId)
   const defaultProfile = browserSessionProfiles.find((p) => p.id === 'default')
   const selectedProfileId = defaultBrowserSessionProfileId ?? 'default'

@@ -62,6 +62,8 @@ export function BrowserSessionCookiesSection({
         'Manage browser profiles and import cookies from Chrome, Edge, Comet, or other browsers.'
       )}
       keywords={[
+        'google',
+        'sign-in',
         'cookies',
         'session',
         'import',
@@ -160,7 +162,7 @@ export function BrowserSessionCookiesSection({
           <p className="text-xs text-muted-foreground">
             {translate(
               'browser.googleCookieClear.explanation',
-              'Google ties sign-in to the original browser, so Google cookies aren’t imported. Sign in to Google directly in Orca. If sign-in is stuck or using the wrong account, clear Google cookies for the active profile. This signs you out of Google only; other sites stay signed in.'
+              'Google ties sign-in to the original browser, so Google cookies aren’t imported—sign in directly in Orca. If sign-in is stuck or using the wrong account, clear the active profile’s Google cookies to sign out of Google only; other sites stay signed in.'
             )}
           </p>
         </div>
@@ -172,6 +174,14 @@ export function BrowserSessionCookiesSection({
         >
           {translate('browser.googleCookieClear.action', 'Clear Google cookies…')}
         </Button>
+        {googleCookieClear.available === false ? (
+          <p className="text-xs text-muted-foreground">
+            {translate(
+              'browser.googleCookieClear.unavailable',
+              'Unavailable for this profile on the selected host.'
+            )}
+          </p>
+        ) : null}
       </div>
     </SearchableSetting>
   )

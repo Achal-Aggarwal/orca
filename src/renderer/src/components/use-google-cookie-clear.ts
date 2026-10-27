@@ -6,14 +6,24 @@ import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../../shared/browser-
 import { useConfirmationDialog } from './confirmation-dialog-context'
 import {
   captureGoogleCookieClearTarget,
-  offerGoogleCookieClear
+  confirmAndClearGoogleCookies
 } from '@/lib/browser-google-cookie-clear'
 import { translate } from '@/i18n/i18n'
+import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-revision'
 
 export function useGoogleCookieClear(hostId: ExecutionHostId, profileId: string, label?: string) {
   const confirm = useConfirmationDialog()
   const running = useRef(false)
   const [busy, setBusy] = useState(false)
+  const lifetime = useRef({ alive: false })
+  const generation = useRef(0)
+  useEffect(() => {
+    const token = { alive: true }
+    lifetime.current = token
+    return () => {
+      token.alive = false
+    }
+  }, [])
   const parsedHost = parseExecutionHostId(hostId)
   const environmentId = parsedHost?.kind === 'runtime' ? parsedHost.environmentId : null
   const revision = useAppStore((s) => {
@@ -27,19 +37,25 @@ export function useGoogleCookieClear(hostId: ExecutionHostId, profileId: string,
           ?.status?.capabilities?.includes(BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY) === true
       : false
   )
-  const [available, setAvailable] = useState(false)
+  const [available, setAvailable] = useState<boolean | undefined>()
   useEffect(() => {
     let disposed = false
-    setAvailable(false)
-    void captureGoogleCookieClearTarget(hostId, profileId, label, false)
-      .catch(() => ({ available: false }))
-      .then((next) => {
-        if (!disposed) {
-          setAvailable(next.available)
-        }
-      })
+    const probe = () => {
+      const request = ++generation.current
+      setAvailable(undefined)
+      void captureGoogleCookieClearTarget(hostId, profileId, label, false)
+        .catch(() => ({ available: false }))
+        .then((next) => {
+          if (!disposed && generation.current === request) {
+            setAvailable(next.available)
+          }
+        })
+    }
+    const unsubscribe = window.api.browser.onSessionProfilesChanged(probe)
+    probe()
     return () => {
       disposed = true
+      unsubscribe()
     }
   }, [hostId, profileId, label, revision, supported])
 
@@ -47,24 +63,49 @@ export function useGoogleCookieClear(hostId: ExecutionHostId, profileId: string,
     if (running.current) {
       return
     }
+    const token = lifetime.current
+    const request = generation.current
+    const pairingRevision = environmentId ? getRuntimeEnvironmentRevision(environmentId) : undefined
+    let dialogOpened = false
     running.current = true
     setBusy(true)
     try {
-      const captured = await captureGoogleCookieClearTarget(hostId, profileId, label, true)
-      let execution: Promise<void> | undefined
-      const offer = offerGoogleCookieClear(
-        'target' in captured ? captured.target : undefined,
-        confirm,
-        (action) => {
-          execution = action()
-        }
+      const captured = await captureGoogleCookieClearTarget(
+        hostId,
+        profileId,
+        label,
+        true,
+        pairingRevision
       )
-      if (!offer) {
+      if (!token.alive) {
+        return
+      }
+      if (!captured.available) {
+        if (generation.current === request) {
+          generation.current++
+          setAvailable(false)
+        }
+        return
+      }
+      if (!captured.target) {
         throw new Error('Google cookie target unavailable')
       }
-      offer.onClick()
-      await execution
+      await confirmAndClearGoogleCookies(captured.target, async (options) => {
+        dialogOpened = true
+        const accepted = await confirm(options)
+        if (
+          accepted &&
+          environmentId &&
+          getRuntimeEnvironmentRevision(environmentId) !== pairingRevision
+        ) {
+          throw new Error('Google cookie destination changed')
+        }
+        return accepted
+      })
     } catch {
+      if (!token.alive && !dialogOpened) {
+        return
+      }
       toast.error(
         translate(
           'browser.googleCookieClear.unverified',
@@ -74,7 +115,9 @@ export function useGoogleCookieClear(hostId: ExecutionHostId, profileId: string,
       )
     } finally {
       running.current = false
-      setBusy(false)
+      if (token.alive) {
+        setBusy(false)
+      }
     }
   }
   return { available, busy, onClick }
