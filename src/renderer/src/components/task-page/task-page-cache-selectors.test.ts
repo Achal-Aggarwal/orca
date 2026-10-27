@@ -172,6 +172,46 @@ describe('task page cache selectors', () => {
     ])
   })
 
+  it('keeps an unknown twin retryable while omitting only its proven other-forge source', () => {
+    const unknown = { id: 'twin', path: '/same/path', displayName: 'unknown twin' }
+    const sources = { issues: null, prs: null, originCandidate: null, upstreamCandidate: null }
+    const unknownEntry = { data: [], fetchedAt: 1, sources }
+    const ineligibleEntry = {
+      data: [],
+      fetchedAt: 1,
+      sources: { ...sources, ineligible: true as const }
+    }
+    const pairedScopes = [
+      { repoFields: { executionHostId: 'runtime:paired' }, scope: 'runtime:paired' },
+      { repoFields: { connectionId: 'devbox' }, scope: 'ssh:devbox' },
+      {
+        repoFields: { sourceCacheScope: 'source:local:github:acme/widgets' },
+        scope: 'source:local:github:acme/widgets'
+      }
+    ]
+
+    for (const { repoFields, scope } of pairedScopes) {
+      const provenOther = { ...unknown, ...repoFields, displayName: 'proven other-forge twin' }
+      const cache = {
+        [workItemsCacheKey('twin', 20, '', 'local')]: unknownEntry,
+        [workItemsCacheKey('twin', 20, '', scope)]: ineligibleEntry
+      }
+      for (const repos of [
+        [unknown, provenOther],
+        [provenOther, unknown]
+      ]) {
+        const entries = selectTaskPageWorkItemsCacheEntries(cache, repos, 20, '')
+        const sourceState = buildTaskPageRepoSourceState(repos, entries)
+        const expected = [{ repoId: 'twin', sourceKey: 'twin::local', label: 'unknown twin' }]
+
+        expect(selectTaskPageUnresolvedSourceRepos(repos, sourceState)).toEqual(expected)
+        expect(selectTaskPageUnresolvedSourceRepos(repos, sourceState.toReversed())).toEqual(
+          expected
+        )
+      }
+    }
+  })
+
   it('does not flag an unresolved-source repo that already carries a per-repo error', () => {
     const repos = [{ id: 'errored', path: '/repos/errored', displayName: 'errored-repo' }]
     const erroredEntry = {
