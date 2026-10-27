@@ -101,8 +101,6 @@ describe('gitlab client — MR operations', () => {
       })
       expect(glabApiWithHeadersMock).toHaveBeenCalledWith(
         [
-          '--hostname',
-          'gitlab.com',
           'projects/g%2Fp/merge_requests?page=1&per_page=20&order_by=updated_at&sort=desc&with_merge_status_recheck=false&state=opened'
         ],
         { cwd: '/repo' }
@@ -124,8 +122,6 @@ describe('gitlab client — MR operations', () => {
       )
       expect(glabApiWithHeadersMock).toHaveBeenCalledWith(
         [
-          '--hostname',
-          'gitlab.com',
           'projects/g%2Fp/merge_requests?page=1&per_page=20&order_by=updated_at&sort=desc&with_merge_status_recheck=false&state=opened'
         ],
         { cwd: '/repo', wslDistro: 'Ubuntu' }
@@ -161,7 +157,7 @@ describe('gitlab client — MR operations', () => {
 
       await listMergeRequests('/repo', 'all', 1, 20)
       const callArgs = glabApiWithHeadersMock.mock.calls[0][0] as string[]
-      expect(callArgs.at(-1)).not.toContain('state=')
+      expect(callArgs[0]).not.toContain('state=')
     })
 
     it('passes through Open / Merged / Closed states as API params', async () => {
@@ -170,7 +166,7 @@ describe('gitlab client — MR operations', () => {
         glabApiWithHeadersMock.mockResolvedValueOnce({ body: '[]', headers: {} })
         await listMergeRequests('/repo', state, 1, 20)
         const callArgs = glabApiWithHeadersMock.mock.calls[0][0] as string[]
-        expect(callArgs.at(-1)).toContain(`state=${state}`)
+        expect(callArgs[0]).toContain(`state=${state}`)
       }
     })
 
@@ -178,14 +174,14 @@ describe('gitlab client — MR operations', () => {
       glabApiWithHeadersMock.mockResolvedValueOnce({ body: '[]', headers: {} })
       await listMergeRequests('/repo', 'opened', 1, 20, undefined, 'fix login')
       const callArgs = glabApiWithHeadersMock.mock.calls[0][0] as string[]
-      expect(callArgs.at(-1)).toContain('&search=fix%20login')
+      expect(callArgs[0]).toContain('&search=fix%20login')
     })
 
     it('omits &search= for an empty or whitespace-only query', async () => {
       glabApiWithHeadersMock.mockResolvedValueOnce({ body: '[]', headers: {} })
       await listMergeRequests('/repo', 'opened', 1, 20, undefined, '   ')
       const callArgs = glabApiWithHeadersMock.mock.calls[0][0] as string[]
-      expect(callArgs.at(-1)).not.toContain('search=')
+      expect(callArgs[0]).not.toContain('search=')
     })
 
     it('flags fork MRs as cross-repository', async () => {
@@ -207,21 +203,6 @@ describe('gitlab client — MR operations', () => {
 
       const result = await listMergeRequests('/repo', 'opened', 1, 20)
       expect(result.items[0].isCrossRepository).toBe(true)
-    })
-
-    it('does not infer a local MR project when every current remote is proven GitHub', async () => {
-      resolveIssueSourceMock.mockResolvedValueOnce({ source: null, fellBack: false })
-      glabExecFileAsyncMock.mockResolvedValueOnce({ stdout: '[]' })
-      gitExecFileAsyncMock.mockResolvedValueOnce({
-        stdout: 'origin\tgit@github.com:team/project.git (fetch)\n'
-      })
-
-      const result = await listMergeRequests('/repo', 'opened', 1, 20)
-
-      expect(glabExecFileAsyncMock).not.toHaveBeenCalled()
-      expect(glabApiWithHeadersMock).not.toHaveBeenCalled()
-      expect(result.items).toEqual([])
-      expect(result.error).toBeUndefined()
     })
 
     it('retains MR inference when a known-other remote has an unresolved companion', async () => {

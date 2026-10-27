@@ -90,8 +90,7 @@ export async function listIssues(
     const scopeParam = assignee === '@me' ? '&scope=assigned_to_me' : ''
     const { body, headers } = await glabApiWithHeaders(
       [
-        '--hostname',
-        projectRef.host,
+        ...glabHostnameArgs(projectRef, connectionId),
         `projects/${encodedProject(projectRef.path)}/issues?page=${currentPage}&per_page=${perPage}&order_by=updated_at&sort=desc${stateParam}${scopeParam}`
       ],
       glabRepoExecOptions(repoPath, connectionId, localGitOptions)

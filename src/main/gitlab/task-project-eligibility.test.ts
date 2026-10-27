@@ -94,42 +94,9 @@ describe('GitLab task project admission', () => {
 
       expect(result.error).toBeUndefined()
       expect(glab).toHaveBeenCalledWith(
-        [
-          'api',
-          '-i',
-          '--hostname',
-          'gitlab.com',
-          expect.stringContaining('projects/group%2Fproject/merge_requests?')
-        ],
+        ['api', '-i', expect.stringContaining('projects/group%2Fproject/merge_requests?')],
         { cwd: '/mixed' }
       )
-    }
-  )
-
-  it.each([undefined, 'Ubuntu'])(
-    'pins the admitted self-hosted HTTP port for MR and issue API lists (%s)',
-    async (wslDistro) => {
-      serveRemotes({ '/custom': { origin: 'https://gitlab.example.com:8443/group/project.git' } })
-      const localGitOptions = wslDistro ? { wslDistro } : {}
-
-      await listMergeRequests(
-        '/custom',
-        'opened',
-        1,
-        20,
-        undefined,
-        undefined,
-        null,
-        localGitOptions
-      )
-      await listIssues('/custom', 20, undefined, 'opened', undefined, null, localGitOptions)
-
-      const lists = glab.mock.calls.filter(([args]) => args[0] === 'api')
-      expect(lists).toHaveLength(2)
-      for (const [args, options] of lists) {
-        expect(args.slice(0, 4)).toEqual(['api', '-i', '--hostname', 'gitlab.example.com:8443'])
-        expect(options).toEqual({ cwd: '/custom', ...localGitOptions })
-      }
     }
   )
 

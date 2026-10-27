@@ -6,6 +6,7 @@ import {
   classifyListFetchError,
   getGlabKnownHosts,
   glabApiWithHeaders,
+  glabHostnameArgs,
   glabRepoExecOptions,
   glabExecFileAsync,
   parseGlabJsonList,
@@ -123,7 +124,7 @@ export async function listMergeRequests(
   await acquire()
   try {
     const { body, headers } = await glabApiWithHeaders(
-      ['--hostname', projectRef.host, path],
+      [...glabHostnameArgs(projectRef, connectionId), path],
       glabRepoExecOptions(repoPath, connectionId, localGitOptions)
     )
     const data = parseGlabJsonList<Parameters<typeof mapMRToWorkItem>[0]>(body)
