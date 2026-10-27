@@ -14,6 +14,7 @@ vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof fsPromises>()
   return { ...actual, writeFile: vi.fn(actual.writeFile) }
 })
+const actual = await vi.importActual<typeof fsPromises>('node:fs/promises')
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -49,7 +50,6 @@ it('materializes once per flush, freezes A before queued B, and returns the no-p
   expect(materializations).toBe(0)
   const held = Promise.withResolvers<void>()
   const entered = Promise.withResolvers<void>()
-  const actual = await vi.importActual<typeof fsPromises>('node:fs/promises')
   vi.mocked(fsPromises.writeFile).mockImplementationOnce(async (...args) => {
     entered.resolve()
     await held.promise
