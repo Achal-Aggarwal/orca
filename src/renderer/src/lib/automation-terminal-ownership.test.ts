@@ -1,3 +1,4 @@
+import { stopRevokers } from '../../../main/automations/desktop-run-terminal-stop'
 import type { PtyShutdownOptions } from '../../../main/providers/pty-provider-contract'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -118,6 +119,16 @@ afterEach(() => {
 
 function fixture() {
   const store = createTestStore()
+  let subscribers = 0
+  const subscribe = store.subscribe
+  vi.spyOn(store, 'subscribe').mockImplementation((listener) => {
+    const release = subscribe(listener)
+    subscribers++
+    return () => {
+      subscribers--
+      release()
+    }
+  })
   mocks.store = store
   const api = createStoreSessionMockApi()
   const listeners = new EventEmitter()
@@ -336,6 +347,7 @@ function fixture() {
   }
   return {
     store,
+    activeSubscribers: () => subscribers,
     session,
     runtime,
     lifecycle,
@@ -691,11 +703,16 @@ describe('desktop completion through local publication and process owner', () =>
     ).toBeNull()
   })
   it.each([5, 50])('bounds repeated cleanup resources at N=%i', async (count) => {
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    const cleared = vi.spyOn(globalThis, 'clearTimeout')
     const f = fixture()
     for (let n = 1; n <= count; n++) {
       const t = f.publish(n, n % 2 === 0, n % 3 === 0)
       expect(await f.lifecycle.finalize(t.run)).toMatchObject({ terminalPtyId: null })
       expect([...ptyProcesses.keys()]).toEqual(['setup'])
+      expect(ptyShutdownOperations.size).toBe(0)
+      expect(stopRevokers.size).toBe(0)
+      expect(f.activeSubscribers()).toBe(0)
       expect(f.web.eventNames()).toEqual([])
       expect(mocks.ipc!.eventNames()).toEqual([])
       expect(isPtyDataHandlerShutdownPending(t.run.terminalPtyId)).toBe(false)
@@ -706,13 +723,24 @@ describe('desktop completion through local publication and process owner', () =>
         (r) => r.origin === 'worktree-sleep'
       )
     ).toHaveLength(Math.floor(count / 2))
-    console.info(
-      JSON.stringify({
+    const protocolTimers = timers.mock.calls.flatMap((args, index) =>
+      args[1] === 20_000 ? [timers.mock.results[index].value] : []
+    )
+    expect(protocolTimers.length).toBeGreaterThan(0)
+    expect(protocolTimers.length).toBeLessThanOrEqual(5 * count)
+    for (const timer of protocolTimers) {
+      expect(cleared).toHaveBeenCalledWith(timer)
+    }
+    process.stdout.write(
+      `${JSON.stringify({
         desktopRuns: count,
         livePtys: ptyProcesses.size,
         shutdowns: ptyShutdownOperations.size,
-        relayListeners: mocks.ipc!.eventNames().length
-      })
+        registrations: stopRevokers.size,
+        subscribers: f.activeSubscribers(),
+        relayListeners: mocks.ipc!.eventNames().length,
+        protocolTimers: protocolTimers.length
+      })}\n`
     )
   })
 })
