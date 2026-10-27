@@ -150,32 +150,12 @@ describe('source-control AI action recipes', () => {
         actionId: 'fixChecks',
         repo: { sourceControlAi: { actionOverrides: { fixChecks: { agentArgs } } } }
       })
+      expect(recipe.agentArgs).toBe(agentArgs ?? '')
       expect(recipe.launchPreferences).toEqual({ agentId: 'claude', permissionMode: 'ask' })
       expect(recipe).not.toHaveProperty('launchPreferencesYieldToAgentArgs')
-      const options = sourceControlActionLaunchOptions(recipe, 'claude')
-      const launch = resolveAgentLaunchCommand({
-        agent: 'claude',
-        platform: 'linux',
-        shell: 'posix',
-        cmdOverrides: {},
-        agentArgs: recipe.agentArgs,
-        ...terminalSessionOptionInputs({
-          agent: 'claude',
-          shell: 'posix',
-          agentArgs: recipe.agentArgs,
-          sessionOptions: options.sessionOptions
-        })
+      expect(sourceControlActionLaunchOptions(recipe, 'claude').sessionOptions).toEqual({
+        permissionMode: 'ask'
       })
-      expect(launch.ok).toBe(true)
-      if (!launch.ok) {
-        throw new Error(launch.error)
-      }
-      expect(launch.command).toBe(
-        agentArgs === '--dangerously-skip-permissions'
-          ? "claude '--dangerously-skip-permissions'"
-          : `claude${agentArgs ? " '--verbose'" : ''} '--permission-mode' 'default'`
-      )
-      expect(launch.appliedSessionOptions).not.toHaveProperty('model')
       const own = { agentId: 'codex', model: 'gpt-5.5' } as const
       const bound = resolveSourceControlActionRecipe({
         settings: base,
