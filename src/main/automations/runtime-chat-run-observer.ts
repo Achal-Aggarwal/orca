@@ -152,7 +152,7 @@ export async function observeAutomationChatRun(
       abort()
       return
     }
-    release = host.observeJournalPublications(sessionId, {
+    release = host.observeConversationPublications(sessionId, {
       next: (hint) => {
         if (settled) {
           return

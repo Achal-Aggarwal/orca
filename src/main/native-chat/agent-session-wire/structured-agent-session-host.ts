@@ -228,8 +228,7 @@ export class StructuredAgentSessionHost {
 
   reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
 
-  restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
-    this.restore.restoreReadableSessions(sessionIds)
+  restoreReadableSessions = (ids?: readonly string[]) => this.restore.restoreReadableSessions(ids)
 
   revealSession = (sessionId: string): Promise<HostTypes.StructuredAgentSessionReveal> =>
     reveal.revealStructuredAgentSession(this.deps, sessionId, this.lifetime.conversation)
@@ -280,6 +279,7 @@ export class StructuredAgentSessionHost {
 
   queuedMessageSend = this.queued.queuedMessageSend
   queuedMessageDelete = this.queued.queuedMessageDelete
+  queuedMessageMove = this.queued.queuedMessageMove
   queuedMessagesResume = this.queued.queuedMessagesResume
   queuedMessageUpdate = this.queued.queuedMessageUpdate
   queuedMessageEditHold = this.queued.queuedMessageEditHold
@@ -308,8 +308,9 @@ export class StructuredAgentSessionHost {
   history: StructuredAgentSessionBackgroundTaskChannel['history'] = (...args) =>
     this.backgroundTasks.history(...args)
 
-  observeJournalPublications: typeof this.sessions.observeJournalPublications = (...args) =>
-    this.sessions.observeJournalPublications(...args)
+  observeConversationPublications: typeof this.sessions.observeConversationPublications = (
+    ...args
+  ) => this.sessions.observeConversationPublications(...args)
   journalSnapshot = (sessionId: string) => this.backgroundTasks.journalSnapshot(sessionId)
   queuedSendAnswer = (sessionId: string, messageId: string) =>
     this.backgroundTasks.queuedSendAnswer(sessionId, messageId)
@@ -317,6 +318,8 @@ export class StructuredAgentSessionHost {
   currentWork = this.clientDelivery.readCurrentWork
   readCurrentRequests: StructuredAgentSessionBackgroundTaskChannel['currentRequests'] = (...args) =>
     this.backgroundTasks.currentRequests(...args)
+
+  observeJournalPublications = this.clientDelivery.observeJournalPublications
 
   subscribe = (input: AgentSessionSubscribeInput) => this.backgroundTasks.subscribe(input)
 

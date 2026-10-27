@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
   actualHost: null as StructuredAgentSessionHost | null,
   host: {
     journalSnapshot: vi.fn(),
-    observeJournalPublications: vi.fn(),
+    observeConversationPublications: vi.fn(),
     queuedSendAnswer: vi.fn(async () => null)
   }
 }))
@@ -204,7 +204,7 @@ describe('restart observation and disposal', () => {
     const { run, runtime, view } = fixture()
     const release = vi.fn()
     const read = Promise.withResolvers<AgentJournalSnapshot>()
-    mocks.host.observeJournalPublications.mockImplementation((_id, observer) => {
+    mocks.host.observeConversationPublications.mockImplementation((_id, observer) => {
       expect(mocks.host.journalSnapshot).not.toHaveBeenCalled()
       observer.next({ kind: 'reset', source: {}, journal: null })
       return release
@@ -226,7 +226,7 @@ describe('restart observation and disposal', () => {
     const release = vi.fn()
     const source = {}
     let notify: (hint: JournalPublication) => void = () => {}
-    mocks.host.observeJournalPublications.mockImplementation((_id, observer) => {
+    mocks.host.observeConversationPublications.mockImplementation((_id, observer) => {
       notify = observer.next
       notify({ kind: 'reset', source, journal: null })
       return release
@@ -258,7 +258,7 @@ describe('restart observation and disposal', () => {
       let observer:
         | { next: (hint: JournalPublication) => void; error: (error: unknown) => void }
         | undefined
-      mocks.host.observeJournalPublications.mockImplementation((_id, next) => {
+      mocks.host.observeConversationPublications.mockImplementation((_id, next) => {
         observer = next
         next.next({ kind: 'reset', source: {}, journal: null })
         return release
@@ -307,7 +307,7 @@ describe('restart observation and disposal', () => {
     expect(
       await observeAutomationChatRun(runtime, run, new AbortController().signal)
     ).toMatchObject({ status: 'dispatch_failed', error: expect.stringContaining('confirm') })
-    expect(mocks.host.observeJournalPublications).not.toHaveBeenCalled()
+    expect(mocks.host.observeConversationPublications).not.toHaveBeenCalled()
   })
 })
 

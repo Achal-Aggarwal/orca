@@ -151,9 +151,9 @@ export function measureAutomationChatRun(
     vi.spyOn(journal, 'canonicalItemId')
   ]
   const observerReads = vi.spyOn(host, 'journalSnapshot')
-  const realObserve = host.observeJournalPublications.bind(host)
+  const realObserve = host.observeConversationPublications.bind(host)
   const registration = vi
-    .spyOn(host, 'observeJournalPublications')
+    .spyOn(host, 'observeConversationPublications')
     .mockImplementation((id, observer) => {
       const release = realObserve(id, {
         ...observer,

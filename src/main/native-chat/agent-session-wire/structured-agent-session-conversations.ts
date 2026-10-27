@@ -131,7 +131,7 @@ export class StructuredAgentSessionConversations extends Map<
     return adopted
   }
 
-  observeJournalPublications(sessionId: string, observer: PublicationObserver): () => void {
+  observeConversationPublications(sessionId: string, observer: PublicationObserver): () => void {
     if (this.ended) {
       this.deliverHint(observer, { kind: 'end', source: null, journal: null }, () => {})
       return () => {}

@@ -182,7 +182,7 @@ describe('internal publication lifetime, independently of presentation', () => {
     const next = vi.fn(),
       error = vi.fn(),
       bad = vi.fn()
-    const release = conversations.observeJournalPublications('session-1', { next, error })
+    const release = conversations.observeConversationPublications('session-1', { next, error })
     conversations.set('session-1', session(old))
     const oldSource = next.mock.lastCall![0].source
     conversations.set('session-1', session(old))
@@ -190,7 +190,7 @@ describe('internal publication lifetime, independently of presentation', () => {
     conversations.set('session-1', session(current))
     expect(next.mock.lastCall![0].source).not.toBe(oldSource)
     expect(current.cursor()).toEqual(old.cursor())
-    const fail = conversations.observeJournalPublications('session-1', {
+    const fail = conversations.observeConversationPublications('session-1', {
       next: (hint) => {
         if (hint.kind === 'commit') {
           throw new Error('consumer')
@@ -213,11 +213,11 @@ describe('internal publication lifetime, independently of presentation', () => {
     release()
     fail()
     const successor = { next: vi.fn(), error: vi.fn() }
-    const releaseB = conversations.observeJournalPublications('session-1', successor)
+    const releaseB = conversations.observeConversationPublications('session-1', successor)
     release()
     conversations.publish('session-1', 'operational')
     expect(successor.next.mock.lastCall![0].kind).toBe('operational')
-    const releaseC = conversations.observeJournalPublications('session-1', successor)
+    const releaseC = conversations.observeConversationPublications('session-1', successor)
     releaseB()
     releaseB()
     conversations.set('session-1', session(current))
@@ -225,12 +225,12 @@ describe('internal publication lifetime, independently of presentation', () => {
     expect(successor.next.mock.lastCall![0].kind).toBe('commit')
     let reentrantRelease = () => {}
     const reentrant = vi.fn()
-    const initialFailure = conversations.observeJournalPublications('session-1', {
+    const initialFailure = conversations.observeConversationPublications('session-1', {
       next: () => {
         throw new Error('initial reader')
       },
       error: () => {
-        reentrantRelease = conversations.observeJournalPublications('session-1', {
+        reentrantRelease = conversations.observeConversationPublications('session-1', {
           next: reentrant,
           error: vi.fn()
         })
@@ -272,7 +272,7 @@ describe('internal publication lifetime, independently of presentation', () => {
     const events: JournalPublication[] = []
     const started = rig.starts.mock.calls.length,
       dispatched = rig.dispatch.mock.calls.length
-    const release = rig.host.observeJournalPublications(id, {
+    const release = rig.host.observeConversationPublications(id, {
       next: (hint) => events.push(hint),
       error: (error) => {
         throw error
@@ -282,8 +282,10 @@ describe('internal publication lifetime, independently of presentation', () => {
       const { sessions } = rig.host.collaboratorsForTests()
       const first = sessions.get(id)!.journal
       await appendStatus(first, 'zero display readers')
-      expect(events.at(-1)).toMatchObject({
+      expect(events.findLast((event) => event.kind === 'commit')).toMatchObject({
         kind: 'commit',
+        journal: first,
+        cursor: first.cursor(),
         rows: [expect.objectContaining({ kind: 'item' })]
       })
       const cursor = first.cursor()
@@ -324,7 +326,10 @@ describe('internal publication lifetime, independently of presentation', () => {
       rig.host.stopDelivery()
       expect(events.at(-1)?.kind).toBe('end')
       const late = vi.fn()
-      const lateRelease = rig.host.observeJournalPublications(id, { next: late, error: vi.fn() })
+      const lateRelease = rig.host.observeConversationPublications(id, {
+        next: late,
+        error: vi.fn()
+      })
       expect(late).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: 'end' }))
       lateRelease()
       release()
