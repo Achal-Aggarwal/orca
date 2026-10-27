@@ -339,7 +339,7 @@ describe('a stray local copy beside a leftover in another ssh partition', () => 
   })
 })
 
-describe('an ssh partition left over from before the host had a managed server', () => {
+describe("an ssh partition left over from before the host's managed server", () => {
   const REPO_ID = 'repo-managed'
   const WORKTREE_ID = `${REPO_ID}::/remote/checkout`
   const RUNTIME_HOST_ID: ExecutionHostId = 'runtime:managed-env'
@@ -384,7 +384,8 @@ describe('an ssh partition left over from before the host had a managed server',
         })
       }),
       [{ id: REPO_ID, connectionId: TARGET_ID, executionHostId: null }],
-      [RUNTIME_HOST_ID]
+      [RUNTIME_HOST_ID],
+      new Map([[RUNTIME_HOST_ID, SSH_HOST_ID]])
     )
 
     expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual(['tab-host'])

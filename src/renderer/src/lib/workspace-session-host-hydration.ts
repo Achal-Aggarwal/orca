@@ -17,7 +17,10 @@ import {
   normalizeWorkspaceSessionKeyToWorktreeId
 } from './workspace-session-host-contention'
 import { nonLocalHostSessionEntries, type HostSessionSlices } from './workspace-session-host-split'
-import { sshPartitionCatalogAttribution } from './workspace-session-ssh-partition-attribution'
+import {
+  sshPartitionCatalogAttribution,
+  workspacesHeldByManagedServers
+} from './workspace-session-ssh-partition-attribution'
 
 type SessionReadApi = {
   get: (hostId?: ExecutionHostId) => Promise<WorkspaceSessionState>
@@ -146,7 +149,9 @@ export async function fetchWorkspaceSessionFromHosts(
 export async function fetchWorkspaceSessionWithRuntimeHostOwners(
   api: SessionReadApi,
   repos: readonly Pick<Repo, 'id' | 'connectionId' | 'executionHostId'>[],
-  additionalRuntimeHostIds: readonly ExecutionHostId[] = []
+  additionalRuntimeHostIds: readonly ExecutionHostId[] = [],
+  /** Managed or SSH-tunnelled servers mapped to the SSH host they run on. */
+  sshHostIdByRuntimeHostId: ReadonlyMap<ExecutionHostId, ExecutionHostId> = new Map()
 ): Promise<WorkspaceSessionHostRead> {
   const readPartition = async (hostId: ExecutionHostId): Promise<WorkspaceSessionState | null> => {
     try {
@@ -186,13 +191,11 @@ export async function fetchWorkspaceSessionWithRuntimeHostOwners(
   // Keep SSH out of rival contention splitting: local/ssh are often legacy halves of one workspace. Reunite afterwards, adopting empty session gaps instead of treating them as deletions (#12721).
   let session = merged.session
   // Widen contention evidence during SSH adoption, the only point those excluded partitions meet rival bare IDs.
-  // Derive owners from surviving merged rows, never parked raw rows, or startup creates runtime placeholders for local winners.
-  const runtimeHostIdByWorkspaceSessionKey = buildRuntimeHostIdByWorkspaceSessionKey(merged.slices)
   const attribution = sshPartitionCatalogAttribution(
     repos,
     sshPartitions,
     merged.contestedSessionKeys,
-    runtimeHostIdByWorkspaceSessionKey
+    workspacesHeldByManagedServers(slices, sshHostIdByRuntimeHostId)
   )
   const primaryHostBySessionKey = { ...merged.primaryHostBySessionKey }
   // Give excluded SSH partitions their own shadows so nonadopted rows survive the next write.
@@ -221,7 +224,8 @@ export async function fetchWorkspaceSessionWithRuntimeHostOwners(
   }
   return {
     session,
-    runtimeHostIdByWorkspaceSessionKey,
+    // Derive owners from surviving merged rows, never parked raw rows, or startup creates runtime placeholders for local winners.
+    runtimeHostIdByWorkspaceSessionKey: buildRuntimeHostIdByWorkspaceSessionKey(merged.slices),
     contestedHostWorkspaceSessions: shadow,
     contestedPrimaryHostBySessionKey: primaryHostBySessionKey,
     hydratedRuntimeSessionHostIds: [...runtimeHostIds].filter((hostId) => slices[hostId])

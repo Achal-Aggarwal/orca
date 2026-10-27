@@ -13,7 +13,7 @@ export function sshPartitionCatalogAttribution(
   repos: readonly Pick<Repo, 'id' | 'connectionId' | 'executionHostId'>[],
   sshPartitions: readonly (readonly [ExecutionHostId, WorkspaceSessionState | null])[],
   mergedContested: ReadonlySet<string>,
-  runtimeOwners: Readonly<Record<string, ExecutionHostId>>
+  managedServerWorkspaces: ReadonlyMap<ExecutionHostId, ReadonlySet<string>>
 ) {
   const contestedSessionKeys = new Set(mergedContested)
   const foreignSessionKeysByHostId = new Map<ExecutionHostId, Set<string>>()
@@ -35,9 +35,8 @@ export function sshPartitionCatalogAttribution(
             hostId: null
           })
         : null
-      // A runtime partition owns its workspace; SSH rows for it are residue from before the managed server (#34376, #34416).
       if (
-        runtimeOwners[workspaceId] ||
+        managedServerWorkspaces.get(hostId)?.has(workspaceId) ||
         (resolution?.kind === 'resolved' && resolution.hostId !== hostId)
       ) {
         foreign.add(workspaceId)
@@ -61,6 +60,25 @@ export function sshPartitionCatalogAttribution(
     contestedSessionKeys.add(workspaceId)
   }
   return { contestedSessionKeys, foreignSessionKeysByHostId, ownedSessionKeysByHostId }
+}
+
+/** Workspaces each SSH host's own server partition holds. That server succeeded the SSH host, so SSH rows for them are residue from before it, not a legacy local/SSH split (#34376, #34416). */
+export function workspacesHeldByManagedServers(
+  slices: Readonly<Partial<Record<ExecutionHostId, WorkspaceSessionState>>>,
+  sshHostIdByRuntimeHostId: ReadonlyMap<ExecutionHostId, ExecutionHostId>
+): Map<ExecutionHostId, Set<string>> {
+  const held = new Map<ExecutionHostId, Set<string>>()
+  for (const [runtimeHostId, sshHostId] of sshHostIdByRuntimeHostId) {
+    const slice = slices[runtimeHostId]
+    if (slice) {
+      const keys = held.get(sshHostId) ?? new Set<string>()
+      for (const workspaceId of workspaceIdsNamedByPartition(slice)) {
+        keys.add(workspaceId)
+      }
+      held.set(sshHostId, keys)
+    }
+  }
+  return held
 }
 
 function sessionKeysHeldByMultiplePartitionSets(sets: readonly ReadonlySet<string>[]): Set<string> {
