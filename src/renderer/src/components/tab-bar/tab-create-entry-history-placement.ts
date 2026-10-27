@@ -1,6 +1,7 @@
 // Place history with matching URL entries, otherwise below file matches and above creation/search fallbacks.
 
 import { dropUrlEntriesCoveredByHistoryRows } from './open-tab-entry-dedupe'
+import { normalizeBrowserHistoryUrl } from '../../../../shared/workspace-session-browser-history'
 import {
   isActiveEntryOption,
   type ActiveEntryOption,
@@ -49,10 +50,21 @@ export function placeHistoryRowsInEntryOptions(
   if (historyRows.length === 0) {
     return rows
   }
+  const urlClassification = options.find(isTypedUrlOption)?.classification
+  const typedUrlHistoryRow =
+    urlClassification?.kind === 'explicit-url' || urlClassification?.kind === 'host-url'
+      ? historyRows.find(
+          (row) => row.entry.normalizedUrl === normalizeBrowserHistoryUrl(urlClassification.url)
+        )
+      : undefined
+  // A replacement must keep the typed destination ahead of more frequently visited subpages.
+  const rankedHistoryRows = typedUrlHistoryRow
+    ? [typedUrlHistoryRow, ...historyRows.filter((row) => row !== typedUrlHistoryRow)]
+    : historyRows
   const insertAt = historyInsertIndex(options, keptOptions)
   return [
     ...rows.slice(0, insertAt),
-    ...historyRows.map((option) => ({ kind: 'history' as const, option })),
+    ...rankedHistoryRows.map((option) => ({ kind: 'history' as const, option })),
     ...rows.slice(insertAt)
   ]
 }
