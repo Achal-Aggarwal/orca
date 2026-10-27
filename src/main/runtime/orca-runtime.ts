@@ -1,9 +1,12 @@
-import { OrcaRuntimeWithTerminalInterfaces } from './orca-runtime-terminal-interfaces'
+import { conversationRecordReader } from './orchestration/structured-session-lineage'
 import type { RuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { installRuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { publishWorkspaceViewChanges } from './runtime-workspace-view-change-events'
-import { sidebarFactsRuntime } from './sidebar-inputs/orca-runtime-sidebar-temporal'
-import type { OrcaRuntimeWithAgentTransitions } from './orca-runtime-agent-transitions'
+import {
+  OrcaRuntimeWithSidebarTemporal,
+  sidebarFactsRuntime
+} from './sidebar-inputs/orca-runtime-sidebar-temporal'
+import { OrcaRuntimeWithAgentTransitions } from './orca-runtime-agent-transitions'
 import { ORCA_SIDEBAR_INPUTS_IS_MAIN } from '../../shared/sidebar-inputs-switch'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../shared/layout-owner-switch'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
@@ -51,9 +54,13 @@ import { requireSwitchedOn } from './sidebar-inputs/require-switched-on'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-session-contracts'
 import { getHostDisplayLabelOverrides } from '../../shared/host-setting-overrides'
 
+const OrcaRuntimeSidebarBase: typeof OrcaRuntimeWithAgentTransitions = ORCA_SIDEBAR_INPUTS_IS_MAIN
+  ? OrcaRuntimeWithSidebarTemporal
+  : OrcaRuntimeWithAgentTransitions
+
 // oxlint-disable-next-line typescript/no-unsafe-declaration-merging -- SAFETY: The existing Linear installer supplies the canonical prototype surface.
-class OrcaRuntimeService extends OrcaRuntimeWithTerminalInterfaces {
-  /** This runtime as its sidebar facts layer; null unless built with ORCA_SIDEBAR_INPUTS=main. */
+class OrcaRuntimeService extends OrcaRuntimeSidebarBase {
+  /** Sidebar facts are absent unless ORCA_SIDEBAR_INPUTS=main. */
   get sidebarFacts() {
     return sidebarFactsRuntime(this)
   }
@@ -147,7 +154,7 @@ class OrcaRuntimeService extends OrcaRuntimeWithTerminalInterfaces {
         createReferenceAgentIndex(
           this,
           this.getOrchestrationDbIfAvailable(),
-          await this.openAgentSessionRecordStore(),
+          conversationRecordReader(await this.openAgentSessionRecordStore()),
           workspaceKeys,
           referenceConnectionHosts(this.listRepos())
         )
@@ -160,7 +167,6 @@ class OrcaRuntimeService extends OrcaRuntimeWithTerminalInterfaces {
     registerDetectedWorktreeScanInvalidation()
     registerWorktreeChangeInvalidator((repoId) => this.invalidateWorktreeCatalog(repoId))
     publishWorkspaceViewChanges(this.store, (event) => this.emitClientEvent(event))
-    this.installTerminalInterfaceHost()
   }
 
   private structuredAgentAvailability?: ReturnType<typeof installStructuredAgentAvailability>
@@ -191,7 +197,6 @@ class OrcaRuntimeService extends OrcaRuntimeWithTerminalInterfaces {
     pane: AgentLaunchPaneAddress,
     verdict: AgentLaunchPaneVerdict
   ): void {
-    this.terminalInterfaces?.inventoryChanged()
     this.notifier?.agentLaunchPaneVerdict?.({ ...pane, verdict })
   }
 

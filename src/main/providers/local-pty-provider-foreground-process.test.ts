@@ -1,11 +1,22 @@
-import type * as ProcessTableSnapshotReader from '../../shared/process-table-snapshot-reader'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as foregroundInspection from './local-pty-foreground-inspection'
-import * as childInspection from '../daemon/pty-subprocess/spawn-file-child-processes'
+import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
+import type * as ForegroundProcess from './agent-foreground-process'
+import type { WindowsProcessRow } from '../windows/windows-process-table'
+import {
+  ptyLastRecognizedForeground,
+  ptyProcesses,
+  ptyIncarnations
+} from './local-pty-provider-state'
+import { inspectionShowsShellAlone } from '../runtime/run-terminal-shell-alone'
+import {
+  assertCliConversationWritersExited,
+  type CliWriterHost
+} from '../runtime/structured-agent-cli-writers'
 
 const {
-  interfaceSnapshotMock,
+  fullTable,
+  identityTable,
+  consoleMembers,
   existsSyncMock,
   statSyncMock,
   accessSyncMock,
@@ -20,7 +31,9 @@ const {
   wslUncDirectoryExistsAsyncMock,
   createShellPromptReadinessProbeMock
 } = vi.hoisted(() => ({
-  interfaceSnapshotMock: vi.fn(),
+  fullTable: vi.fn(),
+  identityTable: vi.fn(),
+  consoleMembers: vi.fn(),
   existsSyncMock: vi.fn(),
   statSyncMock: vi.fn(),
   accessSyncMock: vi.fn(),
@@ -34,11 +47,6 @@ const {
   isWslAvailableAsyncMock: vi.fn(),
   wslUncDirectoryExistsAsyncMock: vi.fn(),
   createShellPromptReadinessProbeMock: vi.fn()
-}))
-
-vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => ({
-  ...(await importOriginal<typeof ProcessTableSnapshotReader>()),
-  getStrictProcessTableSnapshotWithAge: interfaceSnapshotMock
 }))
 
 vi.mock('fs', () => ({
@@ -86,7 +94,8 @@ vi.mock('./windows-powershell-executable', () => ({
   getWindowsCmdPath: () => CMD_ABS
 }))
 
-vi.mock('./agent-foreground-process', () => ({
+vi.mock('./agent-foreground-process', async (importOriginal) => ({
+  ...(await importOriginal<typeof ForegroundProcess>()),
   resolveAgentForegroundProcessWithAvailability: (...args: unknown[]) =>
     resolveAgentForegroundProcessMock(...args)
 }))
@@ -94,6 +103,16 @@ vi.mock('./agent-foreground-process', () => ({
 vi.mock('./windows-pty-job-membership', () => ({
   readWindowsPtyJobProcessIds: (...args: unknown[]) => readWindowsPtyJobProcessIdsMock(...args),
   isWindowsPtyJobReadable: () => true
+}))
+
+vi.mock('../windows/windows-process-table', () => ({
+  readWindowsProcessTable: fullTable,
+  readWindowsProcessTableFresh: fullTable,
+  readWindowsProcessIdentityTable: identityTable,
+  readWindowsProcessIdentityTableFresh: identityTable
+}))
+vi.mock('./windows-console-attached-processes', () => ({
+  readWindowsConsoleAttachedProcessIds: consoleMembers
 }))
 
 vi.mock('../wsl', () => ({
@@ -121,7 +140,6 @@ vi.mock('../shell-prompt-readiness-probe', () => ({
 }))
 
 import { LocalPtyProvider } from './local-pty-provider'
-import { ptyLastRecognizedForeground } from './local-pty-provider-state'
 import {
   applyLocalPtyProviderMockDefaults,
   createLocalPtyMockProcess,
@@ -165,55 +183,6 @@ describe('LocalPtyProvider', () => {
   })
 
   describe('hasChildProcesses', () => {
-    it('returns unavailable with its stable name after failed admission, without another read', async () => {
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
-      const { id } = await provider.spawn({ cols: 80, rows: 24 })
-      ptyLastRecognizedForeground.set(id, { name: 'claude', pid: null, at: Date.now() })
-      interfaceSnapshotMock.mockReset().mockRejectedValueOnce(new Error('capture unavailable'))
-      resolveAgentForegroundProcessMock.mockClear()
-      const children = vi.spyOn(foregroundInspection, 'inspectLocalPtyChildProcesses')
-      try {
-        await expect(
-          provider.inspectProcess(id, { terminalInterface: true })
-        ).resolves.toMatchObject({
-          foregroundProcess: 'claude',
-          childProcessEvidence: 'unverifiable',
-          hasChildProcesses: true,
-          terminalInterface: { shellForeground: false, children: 'unverifiable' }
-        })
-        expect(interfaceSnapshotMock).toHaveBeenCalledOnce()
-        expect(resolveAgentForegroundProcessMock).not.toHaveBeenCalled()
-        expect(children).not.toHaveBeenCalled()
-      } finally {
-        children.mockRestore()
-      }
-    })
-    it('reuses only the current strict Windows full-job verdict for interface evidence', async () => {
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-      const inspect = vi
-        .spyOn(childInspection, 'inspectSpawnFileWindowsChildProcesses')
-        .mockResolvedValue('no-children')
-      try {
-        const { id } = await provider.spawn({ cols: 80, rows: 24 })
-        for (const policy of [{}, { steadyState: true }, { ignoreDetached: true }]) {
-          inspect.mockClear()
-          await expect(
-            provider.inspectProcess(id, { terminalInterface: true, ...policy })
-          ).resolves.toMatchObject({
-            terminalInterface: { shellForeground: true, children: 'no-children' }
-          })
-          expect(inspect).toHaveBeenCalledTimes(
-            'steadyState' in policy || 'ignoreDetached' in policy ? 2 : 1
-          )
-          expect(inspect.mock.calls[0]?.slice(2)).toEqual([
-            !('steadyState' in policy),
-            'ignoreDetached' in policy
-          ])
-        }
-      } finally {
-        inspect.mockRestore()
-      }
-    })
     it('fences full inspection with the original PTY incarnation across awaits', async () => {
       const { id, incarnationId } = await provider.spawn({ cols: 80, rows: 24 })
       await expect(
@@ -246,6 +215,193 @@ describe('LocalPtyProvider', () => {
       expect(await provider.hasChildProcesses('nonexistent')).toBe(false)
     })
   })
+
+  it.each([false, true])(
+    'reconciles real Windows decision evidence (static=%s)',
+    async (staticName) => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const actual = await vi.importActual<typeof ForegroundProcess>('./agent-foreground-process')
+      resolveAgentForegroundProcessMock.mockImplementation(
+        actual.resolveAgentForegroundProcessWithAvailability
+      )
+      mockProc.pid = 100
+      mockProc.process = 'powershell.exe'
+      Object.assign(mockProc, { processNameIsSpawnFile: staticName })
+      const { id, incarnationId } = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        shellOverride: 'powershell.exe'
+      })
+      assert(incarnationId, 'fixture incarnation missing')
+      const nativeRow = (
+        pid: number,
+        ppid: number,
+        name: string,
+        command = name
+      ): WindowsProcessRow => ({ pid, ppid, name, command, creationTimeMs: pid })
+      const shell = nativeRow(100, 1, 'powershell.exe')
+      const orphan = nativeRow(120, 999, 'claude.exe', 'claude.exe --resume conversation')
+      const daemon = nativeRow(130, 1, 'ssh-agent.exe', 'ssh-agent.exe -D')
+      type EvidenceOptions = {
+        age?: number
+        detailed?: WindowsProcessRow[]
+        identities?: WindowsProcessRow[]
+        scanFailed?: boolean
+        jobFailed?: boolean
+        consoleFailed?: boolean
+        childFailed?: boolean
+      }
+      const cases: [string, number | null, WindowsProcessRow[], boolean, EvidenceOptions?][] = [
+        ['C1', null, [shell, daemon], true],
+        ['live young anchor', 120, [shell, orphan], false],
+        ['live old anchor', 120, [shell, orphan], false, { age: 40_000 }],
+        ['anchor identity missing', 120, [shell, orphan], false, { detailed: [shell] }],
+        ['anchor query denied', 120, [shell, nativeRow(120, 999, 'unknown.exe', '')], false],
+        ['anchored scan failed', 120, [shell, orphan], false, { scanFailed: true }],
+        ['job unavailable', 120, [shell, orphan], false, { jobFailed: true }],
+        ['anchor absent', 120, [shell, daemon], true],
+        ['anchor just exited', 120, [shell], true],
+        [
+          'foreign anchor',
+          120,
+          [shell, nativeRow(120, 999, 'ssh-agent.exe', 'ssh-agent.exe -D')],
+          true
+        ],
+        ['attached agent', null, [shell, { ...orphan, ppid: 100 }], false],
+        ['ordinary background job', null, [shell, nativeRow(130, 100, 'sleep.exe')], false],
+        ['incomplete identity', null, [shell, daemon], false, { identities: [shell] }],
+        ['console unavailable', null, [shell, daemon], false, { consoleFailed: true }],
+        ['child read failed', null, [shell, daemon], false, { childFailed: true }],
+        ['unanchored degraded complete', null, [shell, daemon], true, { scanFailed: true }],
+        [
+          'unanchored degraded incomplete',
+          null,
+          [shell, daemon],
+          false,
+          { scanFailed: true, identities: [shell] }
+        ]
+      ]
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        const seed = (pid: number | null) =>
+          ptyLastRecognizedForeground.set(id, { name: 'claude', pid, at: 1000, steady: null })
+        for (const [name, anchor, rows, admits, input = {}] of cases) {
+          vi.setSystemTime(1000 + (input.age ?? 1000))
+          seed(anchor)
+          readWindowsPtyJobProcessIdsMock.mockReturnValue(
+            input.jobFailed ? null : new Set(rows.map((row) => row.pid))
+          )
+          fullTable.mockReset().mockResolvedValue(input.detailed ?? rows)
+          if (input.scanFailed) {
+            fullTable.mockRejectedValue(new Error('denied'))
+          }
+          identityTable.mockReset().mockResolvedValue(input.identities ?? rows)
+          if (input.childFailed) {
+            identityTable.mockRejectedValue(new Error('denied'))
+          }
+          consoleMembers.mockResolvedValue(input.consoleFailed ? null : new Set([100]))
+          let alone: boolean | undefined
+          const host: CliWriterHost = {
+            rows: () => [
+              {
+                paneKey: 'source',
+                connectionId: null,
+                worktreeId: 'workspace',
+                agentType: 'claude',
+                state: 'done',
+                prompt: '',
+                receivedAt: 1,
+                stateStartedAt: 1,
+                providerSession: { key: 'session_id', id: 'conversation' }
+              }
+            ],
+            saved: () => [],
+            links: () => [],
+            sleeping: () => false,
+            observation: () => ({
+              current: () => true,
+              topology: 'pane-owned',
+              presence: async () => null
+            }),
+            terminal: () => ({ pane: { ptyId: id, incarnationId, identity: id + incarnationId } }),
+            shellAlone: async () => {
+              const observed = await provider.inspectProcess(id, {
+                expectedIncarnationId: incarnationId,
+                scanChildProcesses: true,
+                ignoreDetached: true
+              })
+              alone = inspectionShowsShellAlone(observed)
+              return alone
+            }
+          }
+          const result = expect(assertCliConversationWritersExited(host, 'claude', 'conversation'))
+          await (admits
+            ? result.resolves.toBeUndefined()
+            : result.rejects.toMatchObject({ refusal: { code: 'agent_session_conflict' } }))
+          expect(alone, name).toBe(admits)
+          expect(fullTable, name).toHaveBeenCalledTimes(1)
+          expect(identityTable.mock.calls.length, name).toBe(
+            input.jobFailed || rows.length === 1 ? 0 : 1
+          )
+        }
+        fullTable.mockReset().mockResolvedValue([shell, daemon])
+        identityTable.mockReset().mockResolvedValue([shell, daemon])
+        consoleMembers.mockResolvedValue(new Set([100]))
+        readWindowsPtyJobProcessIdsMock.mockReturnValue(new Set([100, 130]))
+        for (const count of [2, 20]) {
+          fullTable.mockClear()
+          identityTable.mockClear()
+          for (let i = 0; i < count; i++) {
+            seed(null)
+            expect(
+              inspectionShowsShellAlone(await provider.inspectProcess(id, { ignoreDetached: true }))
+            ).toBe(true)
+          }
+          expect(fullTable).toHaveBeenCalledTimes(count)
+          expect(identityTable).toHaveBeenCalledTimes(count)
+        }
+        seed(null)
+        fullTable.mockClear()
+        expect(await provider.getForegroundProcess(id)).toBe('claude')
+        await expect(
+          provider.inspectProcess(id, { steadyState: true, ignoreDetached: true })
+        ).resolves.toMatchObject({ foregroundProcess: 'claude' })
+        expect(fullTable).not.toHaveBeenCalled()
+        expect(
+          inspectionShowsShellAlone(await provider.inspectProcess(id, { ignoreDetached: false }))
+        ).toBe(false)
+        seed(120)
+        fullTable.mockResolvedValue([shell, orphan])
+        identityTable.mockResolvedValue([shell, orphan])
+        readWindowsPtyJobProcessIdsMock.mockReturnValue(new Set([100, 120]))
+        expect(await provider.confirmForegroundProcess(id)).not.toBe('claude')
+        for (const replacement of ['object', 'incarnation']) {
+          const original = ptyProcesses.get(id)
+          if (!original) {
+            throw new Error('fixture PTY missing')
+          }
+          fullTable.mockImplementationOnce(async () => {
+            if (replacement === 'object') {
+              ptyProcesses.set(id, { ...original })
+            } else {
+              ptyIncarnations.set(id, 'replacement')
+            }
+            return [shell]
+          })
+          await expect(
+            provider.inspectProcess(id, {
+              expectedIncarnationId: incarnationId,
+              ignoreDetached: true
+            })
+          ).resolves.toMatchObject({ childProcessEvidence: 'unverifiable' })
+          ptyProcesses.set(id, original)
+          ptyIncarnations.set(id, incarnationId)
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 
   describe('getForegroundProcess', () => {
     it('returns the process name', async () => {
