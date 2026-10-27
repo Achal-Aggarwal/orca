@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native'
+import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 
 export const automationStyles = StyleSheet.create({
@@ -37,7 +38,7 @@ export const automationStyles = StyleSheet.create({
     borderRadius: radii.input,
     color: colors.textPrimary,
     padding: spacing.md,
-    fontSize: typography.bodySize,
+    fontSize: TEXT_INPUT_FONT_SIZE,
     minHeight: 44
   },
   multiline: { minHeight: 120, textAlignVertical: 'top' },

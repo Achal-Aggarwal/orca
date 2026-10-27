@@ -69,6 +69,7 @@ export function AutomationScheduleFields({
       {cadence === 'custom' ? (
         <AutomationField
           label="Cron or RRULE"
+          literal
           value={draft.rrule}
           onChange={(rrule) => change({ rrule })}
           disabled={disabled}
@@ -77,6 +78,7 @@ export function AutomationScheduleFields({
         <>
           <AutomationField
             label={cadence === 'hourly' ? 'Minute (from HH:MM)' : 'Time (HH:MM, 24 hour)'}
+            literal
             value={time}
             onChange={(next) => {
               setTime(next)
@@ -101,6 +103,7 @@ export function AutomationScheduleFields({
       )}
       <AutomationField
         label="Time zone"
+        literal
         value={draft.timezone}
         onChange={(timezone) => change({ timezone })}
         disabled={disabled}

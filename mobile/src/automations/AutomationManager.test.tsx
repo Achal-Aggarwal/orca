@@ -1,3 +1,4 @@
+import { registerAutomationPresentationTests } from './AutomationManager.presentation.spec'
 import { registerAutomationHostReselectionTests } from './AutomationManager.host-reselection.spec'
 import { registerAutomationRunHistoryTests } from './AutomationManager.run-history.spec'
 import { AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
@@ -9,6 +10,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AutomationManager } from './AutomationManager'
 import { AutomationButton, AutomationChoice, AutomationField } from './AutomationControls'
+import { AutomationRunDetails } from './AutomationRunDetails'
 import { AutomationRunList } from './AutomationRunList'
 import { automationSetupKey } from './automation-target-inventory'
 import type * as AutomationInventoryModule from './automation-target-inventory'
@@ -31,6 +33,10 @@ vi.mock('react-native', () => ({
   StyleSheet: { create: <T,>(styles: T) => styles },
   AppState: { currentState: 'active', addEventListener: () => ({ remove: () => {} }) }
 }))
+vi.mock(
+  '../platform/text-input-font-size',
+  async () => await import('../platform/text-input-font-size.web')
+)
 vi.mock('lucide-react-native', () => ({
   CalendarClock: 'CalendarClock',
   ChevronRight: 'ChevronRight'
@@ -57,6 +63,9 @@ afterEach(() => {
   act(() => tree?.unmount())
   tree = null
 })
+function setTree(value: ReactTestRenderer): void {
+  tree = value
+}
 function root() {
   if (!tree) {
     throw new Error('Not mounted')
@@ -161,13 +170,12 @@ async function mount(loseCreate: boolean | 'legacy' = false) {
 
 describe('mobile automation navigation and setup', () => {
   registerAutomationRunHistoryTests({ mount, root, press })
+  registerAutomationPresentationTests({ inventory, root, press, setTree })
   registerAutomationHostReselectionTests({
     inventory,
     root,
     press,
-    setTree: (value) => {
-      tree = value
-    }
+    setTree
   })
 
   it('preserves edited target values through same selections and away/back adoption', async () => {

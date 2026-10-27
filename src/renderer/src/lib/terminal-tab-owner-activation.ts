@@ -16,7 +16,7 @@ export function activateTerminalTabOnOwner(
   const state = useAppStore.getState()
   const environmentId =
     ownerEnvironmentId === undefined
-      ? runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(state, worktreeId)
+      ? runtimeEnvironmentIdOrLocalUnlessTwin(state, worktreeId)
       : ownerEnvironmentId
   if (!environmentId || !isWebRuntimeSessionActive(environmentId)) {
     return

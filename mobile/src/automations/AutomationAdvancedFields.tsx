@@ -20,6 +20,7 @@ export function AutomationAdvancedFields({
       {draft.workspaceMode === 'new_per_run' ? (
         <AutomationField
           label="Base branch (optional)"
+          literal
           value={draft.baseBranch}
           onChange={(baseBranch) => change({ baseBranch })}
           disabled={disabled}
@@ -49,6 +50,7 @@ export function AutomationAdvancedFields({
       ) : null}
       <AutomationField
         label="Extra agent arguments"
+        literal
         value={draft.extraAgentArgs}
         onChange={(extraAgentArgs) => change({ extraAgentArgs })}
         disabled={
@@ -57,6 +59,7 @@ export function AutomationAdvancedFields({
       />
       <AutomationField
         label="Precheck command (optional)"
+        literal
         value={draft.precheckCommand}
         onChange={(precheckCommand) => change({ precheckCommand })}
         disabled={disabled}

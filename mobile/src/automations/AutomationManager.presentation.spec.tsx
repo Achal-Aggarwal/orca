@@ -1,0 +1,379 @@
+import { createElement } from 'react'
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer'
+import { expect, it, type vi } from 'vitest'
+import { AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
+import type { MobileAutomation, MobileAutomationRow } from './automation-reply-schema'
+import type { AutomationTargets } from './automation-target-inventory'
+import { AutomationManager } from './AutomationManager'
+import { AutomationList } from './AutomationList'
+import { AutomationChoice, AutomationMetadata } from './AutomationControls'
+import { ConfirmModal } from '../components/ConfirmModal'
+import type { RpcClient } from '../transport/rpc-client'
+import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
+import {
+  automationClient,
+  automationTargets,
+  savedAutomation,
+  savedRun,
+  deferred
+} from './automation-test-fixtures'
+
+export function registerAutomationPresentationTests({
+  inventory,
+  root,
+  press,
+  setTree
+}: {
+  inventory: { targets: ReturnType<typeof vi.fn>; agents: ReturnType<typeof vi.fn> }
+  root: () => ReactTestInstance
+  press: (label: string) => Promise<void>
+  setTree: (tree: ReactTestRenderer) => void
+}): void {
+  const metadata = (label: string) =>
+    root()
+      .findAllByType(AutomationMetadata)
+      .find((node) => node.props.label === label)?.props.value
+  const input = (label: string) =>
+    root().findAll(
+      (node) => String(node.type) === 'TextInput' && node.props.accessibilityLabel === label
+    )[0]!
+  async function open() {
+    await act(async () => {
+      const list = root().findByType(AutomationList)
+      list.props.onOpen(list.props.rows[0])
+    })
+  }
+  function portFor(
+    initial = savedAutomation(),
+    selector: MobileAutomationRow['item']['selector'] = { kind: 'self' }
+  ) {
+    let current: MobileAutomation = initial
+    return automationClient((method, params) => {
+      if (method === 'status.get') {
+        return { capabilities: [AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY] }
+      }
+      if (method === 'automation.list') {
+        return { automations: [current], items: [{ automationId: current.id, selector }] }
+      }
+      if (method === 'automation.runs') {
+        return { runs: [savedRun()] }
+      }
+      if (method === 'automation.show') {
+        return { automation: current }
+      }
+      if (method === 'automation.update') {
+        if (
+          params &&
+          typeof params === 'object' &&
+          'updates' in params &&
+          params.updates &&
+          typeof params.updates === 'object'
+        ) {
+          current = { ...current, ...params.updates }
+        }
+        return { automation: current }
+      }
+      if (method === 'automation.runNow') {
+        return { run: savedRun('returned-manual') }
+      }
+      if (method === 'automation.delete') {
+        return { removed: true, id: current.id }
+      }
+      throw new Error(`Unexpected request: ${method}`)
+    })
+  }
+  async function mount(port: ReturnType<typeof automationClient>) {
+    let tree: ReactTestRenderer
+    await act(async () => {
+      tree = create(createElement(AutomationManager, { client: port.client, hostId: 'desktop' }))
+      setTree(tree)
+    })
+    await open()
+  }
+  function twins(reverse = false) {
+    const targets = automationTargets()
+    const local = { ...targets.setups[0]!, label: 'Review/desktop' }
+    const ssh = { ...local, hostId: 'ssh:builder' as const, label: 'Review/builder' }
+    targets.setups = reverse ? [ssh, local] : [local, ssh]
+    targets.workspaces = targets.setups.map((setup) => ({
+      worktreeId: 'repo-1::/repo',
+      repoId: setup.repoId,
+      hostId: setup.hostId,
+      path: '/repo',
+      displayName: `${setup.label} workspace`
+    }))
+    targets.coverage = {
+      ...targets.coverage,
+      totalCount: 2,
+      hostScope: { hostIds: ['local', 'ssh:builder'], omittedHostIds: [] }
+    }
+    targets.sshTargets = [{ id: 'builder', label: 'Builder', generation: 7 }]
+    return targets
+  }
+
+  it.each([
+    ['local', false],
+    ['local', true],
+    ['ssh:builder', false],
+    ['ssh:builder', true]
+  ] as const)(
+    'labels %s from canonical inventory with copied IDs and paths (reverse=%s)',
+    async (hostId, reverse) => {
+      const targets = twins(reverse)
+      inventory.targets.mockResolvedValue(targets)
+      const setup = targets.setups.find((entry) => entry.hostId === hostId)!
+      const selector =
+        hostId === 'local'
+          ? { kind: 'self' as const }
+          : { kind: 'ssh' as const, targetId: 'builder', targetGeneration: 7 }
+      await mount(
+        portFor(
+          {
+            ...savedAutomation(),
+            workspaceId: 'repo-1::/repo',
+            runContext:
+              hostId === 'local'
+                ? null
+                : {
+                    kind: 'workspace-run',
+                    projectId: setup.projectId,
+                    projectHostSetupId: setup.id,
+                    hostId,
+                    repoId: setup.repoId,
+                    path: setup.path
+                  }
+          },
+          selector
+        )
+      )
+      expect(inventory.targets).toHaveBeenCalledTimes(1)
+      expect(metadata('Project')).toBe(`${setup.label} · /repo`)
+      expect(metadata('Workspace')).toBe(`${setup.label} workspace`)
+      expect(metadata('Workspace')).not.toContain('::')
+    }
+  )
+
+  it.each(['duplicate', 'truncated', 'omitted', 'missing', 'replaced'] as const)(
+    'does not borrow a workspace label from %s inventory',
+    async (problem) => {
+      const targets = twins()
+      if (problem === 'duplicate') {
+        targets.workspaces.push({ ...targets.workspaces[1]! })
+      }
+      if (problem === 'truncated') {
+        targets.coverage.truncated = true
+      }
+      if (problem === 'omitted') {
+        targets.coverage.hostScope.omittedHostIds = ['ssh:builder']
+      }
+      if (problem === 'missing') {
+        targets.workspaces = [targets.workspaces[0]!]
+      }
+      if (problem === 'replaced') {
+        targets.sshTargets[0]!.generation = 8
+      }
+      inventory.targets.mockResolvedValue(targets)
+      await mount(
+        portFor(
+          { ...savedAutomation(), workspaceId: 'repo-1::/repo' },
+          { kind: 'ssh', targetId: 'builder', targetGeneration: 7 }
+        )
+      )
+      expect(metadata('Workspace')).toBe('Unavailable')
+      if (problem === 'replaced') {
+        expect(metadata('Project')).toBe('Unavailable')
+      }
+      expect(root().findAll((node) => String(node.type) === 'Switch')[0]!.props.disabled).toBe(
+        false
+      )
+    }
+  )
+
+  it('keeps captured-owner actions independent of delayed and failed label acquisition', async () => {
+    const pending = deferred<AutomationTargets>()
+    inventory.targets
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValue(new Error('inventory unavailable'))
+    const port = portFor(savedAutomation(), {
+      kind: 'ssh',
+      targetId: 'builder',
+      targetGeneration: 7
+    })
+    await mount(port)
+    expect(metadata('Workspace')).toBe('Unavailable')
+    await act(async () =>
+      root()
+        .findAll((node) => String(node.type) === 'Switch')[0]!
+        .props.onValueChange(true)
+    )
+    expect(inventory.targets).toHaveBeenCalledTimes(1)
+    expect(port.send).toHaveBeenCalledWith(
+      'automation.update',
+      {
+        id: 'automation-1',
+        updates: { enabled: true },
+        expectedOwner: { selector: { kind: 'ssh', targetId: 'builder', targetGeneration: 7 } }
+      },
+      { failWhenDisconnected: true }
+    )
+    await act(async () => pending.reject(new Error('late inventory failure')))
+    await press('Run now')
+    expect(port.send).toHaveBeenCalledWith(
+      'automation.runNow',
+      {
+        id: 'automation-1',
+        expectedOwner: { selector: { kind: 'ssh', targetId: 'builder', targetGeneration: 7 } }
+      },
+      { failWhenDisconnected: true }
+    )
+    await press('All runs')
+    // Return through the same list surface; inventory errors must not turn labels into action gates.
+    const segments = root().findAll(
+      (node) => typeof node.props.onSelect === 'function' && node.props.segments
+    )[0]!
+    await act(async () => segments.props.onSelect('automations'))
+    await open()
+    await press('Edit')
+    expect(port.send).toHaveBeenCalledWith(
+      'automation.show',
+      {
+        id: 'automation-1',
+        expectedOwner: { selector: { kind: 'ssh', targetId: 'builder', targetGeneration: 7 } }
+      },
+      { failWhenDisconnected: true }
+    )
+    await press('Cancel')
+    await press('Delete automation')
+    await act(async () => root().findByType(ConfirmModal).props.onConfirm())
+    expect(port.send).toHaveBeenCalledWith(
+      'automation.delete',
+      {
+        id: 'automation-1',
+        expectedOwner: { selector: { kind: 'ssh', targetId: 'builder', targetGeneration: 7 } }
+      },
+      { failWhenDisconnected: true }
+    )
+  })
+
+  it('refreshes labels on reconnect and rejects late acquisition from a prior generation', async () => {
+    const before = deferred<AutomationTargets>()
+    const after = deferred<AutomationTargets>()
+    inventory.targets.mockReturnValueOnce(before.promise).mockReturnValueOnce(after.promise)
+    const port = portFor()
+    await mount(port)
+    await act(async () => port.state('disconnected'))
+    await act(async () => port.state('connected'))
+    expect(inventory.targets).toHaveBeenCalledTimes(2)
+    const fresh = automationTargets()
+    fresh.workspaces[0]!.displayName = 'Current workspace'
+    await act(async () => after.resolve(fresh))
+    expect(metadata('Workspace')).toBe('Current workspace')
+    await act(async () => before.resolve(automationTargets()))
+    expect(metadata('Workspace')).toBe('Current workspace')
+    await act(async () => port.event({ type: 'automationsChanged' }))
+    expect(inventory.targets).toHaveBeenCalledTimes(2)
+  })
+
+  it('cannot publish labels acquired by a replaced client or an unmounted detail', async () => {
+    const oldRead = deferred<AutomationTargets>()
+    const currentRead = deferred<AutomationTargets>()
+    inventory.targets.mockReturnValueOnce(oldRead.promise).mockReturnValueOnce(currentRead.promise)
+    const oldPort = portFor()
+    const currentPort = portFor()
+    let update = (_client: RpcClient) => {}
+    let unmount = () => {}
+    await act(async () => {
+      const tree = create(
+        createElement(AutomationManager, { client: oldPort.client, hostId: 'desktop' })
+      )
+      setTree(tree)
+      update = (client) =>
+        tree.update(createElement(AutomationManager, { client, hostId: 'desktop' }))
+      unmount = () => tree.unmount()
+    })
+    await open()
+    await act(async () => update(currentPort.client))
+    expect(inventory.targets.mock.calls.map((call) => call[0])).toEqual([
+      oldPort.client,
+      currentPort.client
+    ])
+    await act(async () => oldRead.resolve(automationTargets()))
+    expect(metadata('Workspace')).toBe('Unavailable')
+    await act(async () => unmount())
+    await act(async () => currentRead.resolve(automationTargets()))
+    const fresh = automationTargets()
+    fresh.workspaces[0]!.displayName = 'Newly mounted workspace'
+    inventory.targets.mockResolvedValue(fresh)
+    await mount(portFor())
+    expect(metadata('Workspace')).toBe('Newly mounted workspace')
+  })
+
+  it('applies literal keyboard policy and the web font floor to actual editor inputs and saves their exact text', async () => {
+    const port = portFor({ ...savedAutomation(), reuseSession: false })
+    await mount(port)
+    await press('Edit')
+    const assertInput = (label: string, literal: boolean) => {
+      const field = input(label)
+      expect(field.props.autoCapitalize).toBe('none')
+      for (const prop of ['autoCorrect', 'spellCheck', 'smartInsertDelete']) {
+        expect(field.props[prop]).toBe(literal ? false : undefined)
+      }
+      expect(field.props.autoComplete).toBe(literal ? 'off' : undefined)
+      expect(TEXT_INPUT_FONT_SIZE).toBeGreaterThanOrEqual(16)
+      expect(field.props.style.flat()).toContainEqual(
+        expect.objectContaining({ fontSize: TEXT_INPUT_FONT_SIZE })
+      )
+      return field
+    }
+    assertInput('Name', false)
+    expect(assertInput('Instructions', false).props.multiline).toBe(true)
+    await press('Advanced options')
+    const extraAgentArgs = '--model "gpt-6.1-sol" -c model_reasoning_effort="high"'
+    const command = 'printf "%s" "résumé -- unchanged"'
+    assertInput('Extra agent arguments', true)
+    assertInput('Precheck command (optional)', true)
+    expect(assertInput('Precheck timeout (seconds)', true).props.keyboardType).toBe('numeric')
+    assertInput('Missed-run grace (minutes)', true)
+    await act(async () => {
+      input('Extra agent arguments').props.onChangeText(extraAgentArgs)
+      input('Precheck command (optional)').props.onChangeText(command)
+    })
+    await press('Continue')
+    assertInput('Cron or RRULE', true)
+    assertInput('Time zone', true)
+    await act(async () =>
+      root()
+        .findAllByType(AutomationChoice)
+        .find((node) => node.props.label === 'Cadence')!
+        .props.onSelect('daily')
+    )
+    assertInput('Time (HH:MM, 24 hour)', true)
+    await act(async () =>
+      root()
+        .findAllByType(AutomationChoice)
+        .find((node) => node.props.label === 'Cadence')!
+        .props.onSelect('custom')
+    )
+    await act(async () => input('Cron or RRULE').props.onChangeText(savedAutomation().rrule))
+    await press('Continue')
+    await press('Save changes')
+    expect(port.send).toHaveBeenCalledWith(
+      'automation.update',
+      {
+        id: 'automation-1',
+        expectedOwner: { selector: { kind: 'self' } },
+        updates: { extraAgentArgs, precheck: { command, timeoutSeconds: 120 } }
+      },
+      { failWhenDisconnected: true }
+    )
+    await press('Edit')
+    await act(async () =>
+      root()
+        .findAllByType(AutomationChoice)
+        .find((node) => node.props.label === 'Workspace')!
+        .props.onSelect('new_per_run')
+    )
+    await press('Advanced options')
+    assertInput('Base branch (optional)', true)
+  })
+}

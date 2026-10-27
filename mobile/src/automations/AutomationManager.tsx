@@ -282,6 +282,7 @@ export function AutomationManager(props: {
           <>
             <AutomationDetail
               row={row}
+              client={props.client}
               disabled={disabled}
               onBack={allAutomations}
               onToggle={(enabled) => toggle(row, enabled)}

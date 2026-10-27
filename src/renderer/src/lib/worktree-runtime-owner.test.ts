@@ -502,9 +502,7 @@ describe('runtime owner identity indexes', () => {
     expect(repoIdReads).toBe(200)
     expect(folderWorkspaceIdReads).toBe(warmedFolderReads)
     expect(projectGroupIdReads).toBe(warmedGroupReads)
-    expect(runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(indexedState, targetWorktreeId)).toBe(
-      'repo-owner'
-    )
+    expect(runtimeEnvironmentIdOrLocalUnlessTwin(indexedState, targetWorktreeId)).toBe('repo-owner')
     expect(getExecutionHostIdForWorktree(indexedState, `folder:${targetFolderWorkspaceId}`)).toBe(
       'runtime:folder-owner'
     )

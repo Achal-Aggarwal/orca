@@ -4,7 +4,7 @@ import {
 } from '@/runtime/runtime-client-target'
 import { resolveOwner } from './resolve-owner'
 import { getLocalProjectExecutionRuntimeContext } from './local-preflight-context'
-import { runtimeEnvironmentIdWithLegacyFallbackUnlessTwin } from '@/lib/worktree-runtime-owner'
+import { runtimeEnvironmentIdOrLocalUnlessTwin } from '@/lib/worktree-runtime-owner'
 import { isWslUncPath } from '../../../shared/wsl-paths'
 import type { useAppStore } from '@/store'
 import {
@@ -91,7 +91,9 @@ export function resolveAgentBackgroundLaunchHost(args: {
     return {
       connectionId: sshConnectionId,
       ...hostFact,
-      isRemote: args.resolvedTarget ? !hostFact.isLocalHost : repoIsRemote(repo) || isRemoteHost,
+      isRemote: args.resolvedTarget
+        ? !hostFact.isLocalHost
+        : sshConnectionId !== null || isRemoteHost,
       expectedConnectionId: sshConnectionId
     }
   }
@@ -140,8 +142,6 @@ export function resolveAgentBackgroundLaunchContext(
   const runtimeTarget =
     owner?.kind === 'resolved'
       ? hostRouteForAuthority(owner.owner).target
-      : runtimeTargetForOwnerEnvironment(
-          runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(store, worktreeId)
-        )
+      : runtimeTargetForOwnerEnvironment(runtimeEnvironmentIdOrLocalUnlessTwin(store, worktreeId))
   return { launchHost, runtimeTarget, executionFacts }
 }

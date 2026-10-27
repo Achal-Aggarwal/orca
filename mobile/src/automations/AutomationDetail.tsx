@@ -1,3 +1,11 @@
+import { useEffect, useState } from 'react'
+import type { RpcClient } from '../transport/rpc-client'
+import {
+  loadAutomationTargets,
+  automationSetupKey,
+  workspaceMatchesSetup,
+  type AutomationTargets
+} from './automation-target-inventory'
 import { Switch, Text, View } from 'react-native'
 import { formatAutomationSchedule } from '../../../src/shared/automation-schedules'
 import { MOBILE_TUI_AGENT_LABELS } from '../tasks/mobile-tui-agents'
@@ -8,6 +16,7 @@ import { automationStyles as styles } from './automation-styles'
 
 export function AutomationDetail(props: {
   row: MobileAutomationRow
+  client: RpcClient | null
   disabled: boolean
   onBack: () => void
   onToggle: (enabled: boolean) => void
@@ -18,6 +27,89 @@ export function AutomationDetail(props: {
 }) {
   const { automation, item } = props.row
   const orphan = item.selector.kind === 'orphan'
+  const client = props.client
+  const [inventory, setInventory] = useState<{
+    client: RpcClient
+    generation: number | undefined
+    targets: AutomationTargets
+  } | null>(null)
+  useEffect(() => {
+    if (!client) {
+      return
+    }
+    let active = true
+    let readId = 0
+    const refresh = () => {
+      const id = ++readId
+      setInventory(null)
+      if (client.getState() !== 'connected') {
+        return
+      }
+      const generation = client.getGeneration?.()
+      const current = () =>
+        active &&
+        id === readId &&
+        generation === client.getGeneration?.() &&
+        client.getState() === 'connected'
+      void loadAutomationTargets(client)
+        .then((targets) => {
+          if (current()) {
+            setInventory({ client, generation, targets })
+          }
+        })
+        .catch(() => {
+          if (current()) {
+            setInventory(null)
+          }
+        })
+    }
+    refresh()
+    const stop = client.onStateChange(refresh)
+    return () => {
+      active = false
+      stop()
+    }
+  }, [client])
+  const targets =
+    inventory?.client === client &&
+    inventory?.generation === client?.getGeneration?.() &&
+    client?.getState() === 'connected'
+      ? inventory?.targets
+      : undefined
+  const owner = item.selector
+  const hostId =
+    owner.kind === 'self' ? 'local' : owner.kind === 'ssh' ? `ssh:${owner.targetId}` : null
+  const registered =
+    owner.kind === 'self' ||
+    (owner.kind === 'ssh' &&
+      targets?.sshTargets.some(
+        (target) => target.id === owner.targetId && target.generation === owner.targetGeneration
+      ))
+  const context = automation.runContext
+  const setups = registered
+    ? (targets?.setups.filter(
+        (entry) =>
+          entry.hostId === hostId &&
+          (context
+            ? entry.projectId === context.projectId &&
+              automationSetupKey(entry) ===
+                automationSetupKey({ ...context, id: context.projectHostSetupId })
+            : entry.repoId === automation.projectId)
+      ) ?? [])
+    : []
+  const setup = setups.length === 1 ? setups[0] : undefined
+  const workspaces =
+    setup &&
+    targets &&
+    !targets.coverage.truncated &&
+    targets.coverage.hostScope.hostIds.includes(setup.hostId) &&
+    !targets.coverage.hostScope.omittedHostIds.includes(setup.hostId)
+      ? targets.workspaces.filter(
+          (entry) =>
+            entry.worktreeId === automation.workspaceId && workspaceMatchesSetup(entry, setup)
+        )
+      : []
+  const workspace = workspaces.length === 1 ? workspaces[0] : undefined
   return (
     <View style={styles.stack}>
       <AutomationButton label="All automations" onPress={props.onBack} />
@@ -49,13 +141,13 @@ export function AutomationDetail(props: {
         <AutomationMetadata label="Agent" value={MOBILE_TUI_AGENT_LABELS[automation.agentId]} />
         <AutomationMetadata
           label="Project"
-          value={automation.runContext?.path ?? automation.projectId}
+          value={setup ? `${setup.label} · ${setup.path}` : 'Unavailable'}
         />
         <AutomationMetadata
           label="Workspace"
           value={
             automation.workspaceMode === 'existing'
-              ? (automation.workspaceId ?? 'Unavailable')
+              ? workspace?.displayName || 'Unavailable'
               : 'New workspace per run'
           }
         />

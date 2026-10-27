@@ -41,8 +41,10 @@ export function AutomationField(props: {
   onChange: (value: string) => void
   multiline?: boolean
   numeric?: boolean
+  literal?: boolean
   disabled?: boolean
 }) {
+  const literal = props.literal || props.numeric
   return (
     <View style={styles.field}>
       <Text style={styles.meta}>{props.label}</Text>
@@ -56,6 +58,10 @@ export function AutomationField(props: {
         editable={!props.disabled}
         keyboardType={props.numeric ? 'numeric' : 'default'}
         autoCapitalize="none"
+        autoCorrect={literal ? false : undefined}
+        spellCheck={literal ? false : undefined}
+        smartInsertDelete={literal ? false : undefined}
+        autoComplete={literal ? 'off' : undefined}
       />
     </View>
   )
