@@ -244,7 +244,7 @@ function collectExcerptLines(text: string, max: number): string[] {
   const lines = text.split(/\r\n|\r|\n/)
   const collected: string[] = []
   for (let index = 0; index < lines.length && collected.length < max; index += 1) {
-    const line = stripAnsiIfPresent(lines[index]).trim()
+    const line = lines[index].trim()
     if (line.length > 0) {
       collected.push(line)
     }
@@ -256,7 +256,7 @@ function collectExcerptLinesFromEnd(text: string, max: number): string[] {
   const lines = text.split(/\r\n|\r|\n/)
   const collected: string[] = []
   for (let index = lines.length - 1; index >= 0 && collected.length < max; index -= 1) {
-    const line = stripAnsiIfPresent(lines[index]).trim()
+    const line = lines[index].trim()
     if (line.length > 0) {
       collected.push(line)
     }

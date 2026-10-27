@@ -243,10 +243,18 @@ describe('excerptAgentFailureOutput', () => {
     expect(excerptAgentFailureOutput('', 'one\ntwo\nthree\n')).toBe('one two three')
   })
 
-  it('redacts credential lines before joining them', () => {
-    expect(excerptAgentFailureOutput('', 'Failed to start\nMY_CREDENTIAL=abc123')).toBe(
-      'Failed to start MY_CREDENTIAL=[redacted:env-value]'
-    )
+  it.each([
+    [
+      `MY_CREDENTIAL=${'s'.repeat(9000)}\nFailed to start`,
+      'MY_CREDENTIAL=[redacted:env-value] Failed to start'
+    ],
+    [
+      `Failed to start\n-----BEGIN PRIVATE KEY-----\n${'key-material\n'.repeat(1000)}-----END PRIVATE KEY-----`,
+      'Failed to start [redacted:pem]'
+    ],
+    ['Failed to start\n-----BEGIN PRIVATE KEY-----\nkey-material', 'Failed to start [redacted:pem]']
+  ])('redacts intact credentials before joining or shortening output', (source, expected) => {
+    expect(excerptAgentFailureOutput('', source)).toBe(expected)
   })
 
   it('does not parse or unwrap JSON payloads', () => {

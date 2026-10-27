@@ -19,8 +19,8 @@ const PROVIDER_PATTERNS: { tag: string; re: RegExp }[] = [
   { tag: 'slack-token', re: /xox[baprsoe]-[A-Za-z0-9-]{10,}/g },
   {
     tag: 'pem',
-    // Lazy matching redacts adjacent PEM blocks independently.
-    re: /-----BEGIN [A-Z ]+-----[\s\S]+?-----END [A-Z ]+-----/g
+    // Lazy matching keeps adjacent blocks separate; interrupted logs may lack an END marker.
+    re: /-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g
   }
 ]
 
