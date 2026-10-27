@@ -22,7 +22,7 @@ export class StructuredAgentSessionConversations extends Map<
   string,
   StructuredAgentSessionHostSession
 > {
-  private readonly observers = new Map<string, Set<PublicationObserver>>()
+  private readonly observers = new Map<string, Set<{ observer: PublicationObserver }>>()
   private readonly attachments = new Map<
     string,
     { journal: AgentSessionJournal; release: () => void }
@@ -141,13 +141,9 @@ export class StructuredAgentSessionConversations extends Map<
       listeners = new Set()
       this.observers.set(sessionId, listeners)
     }
-    listeners.add(observer)
-    const release = () => {
-      listeners.delete(observer)
-      if (listeners.size === 0) {
-        this.observers.delete(sessionId)
-      }
-    }
+    const registration = { observer }
+    listeners.add(registration)
+    const release = () => this.removeObserver(sessionId, registration)
     this.deliverHint(observer, this.hint(sessionId, 'reset'), release)
     return release
   }
@@ -173,14 +169,18 @@ export class StructuredAgentSessionConversations extends Map<
       return
     }
     const hint = this.hint(sessionId, kind, rows)
-    for (const observer of observers) {
-      this.deliverHint(observer, hint, () => {
-        const listeners = this.observers.get(sessionId)
-        listeners?.delete(observer)
-        if (listeners?.size === 0) {
-          this.observers.delete(sessionId)
-        }
-      })
+    for (const registration of observers) {
+      this.deliverHint(registration.observer, hint, () =>
+        this.removeObserver(sessionId, registration)
+      )
+    }
+  }
+
+  private removeObserver(sessionId: string, registration: { observer: PublicationObserver }): void {
+    const listeners = this.observers.get(sessionId)
+    listeners?.delete(registration)
+    if (listeners?.size === 0) {
+      this.observers.delete(sessionId)
     }
   }
 

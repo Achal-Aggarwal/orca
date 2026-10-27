@@ -1,3 +1,8 @@
+import {
+  measureTerminalInventory,
+  assertTerminalInventorySelection
+} from './automation-terminal-inventory-test-harness'
+import * as desktopLifecycle from '../../../main/automations/desktop-run-terminal-lifecycle'
 import { randomUUID } from 'node:crypto'
 import { createRuntimeAutomationService } from '../../../main/automations/runtime-automation-service'
 import { runtimeStub } from '../../../main/runtime/rpc/methods/agent-launch.test-fixture'
@@ -18,7 +23,8 @@ import {
   createStore,
   closeTestStores,
   testState,
-  readPersistedStateJson
+  readPersistedStateJson,
+  writeDataFile
 } from '../../../main/persistence/persistence-test-harness'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -696,5 +702,92 @@ it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', asy
     await rig.dispose()
     await closeTestStores()
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it.each([
+  [5, 100],
+  [50, 1000]
+])('shares one current inventory for %i owners and %i retained rows', async (owners, history) => {
+  testState.dir = mkdtempSync(join(tmpdir(), 'orca-34332-inventory-'))
+  const seeded = buildProfileStateCutoverFixture('/fixture')
+  seeded.automations = Array.from({ length: history / 100 }, (_, i) => ({
+    ...seeded.automations[0],
+    id: `inventory-${i}`
+  }))
+  seeded.automationRuns = Array.from({ length: history }, (_, i) => ({
+    ...seeded.automationRuns[0],
+    id: `inventory-run-${i}`,
+    automationId: seeded.automations[Math.floor(i / 100)].id,
+    status: i < owners ? (['dispatching', 'dispatched', 'completed'] as const)[i % 3] : 'completed',
+    createdAt: i
+  }))
+  writeDataFile(seeded)
+  const disk = createStore(),
+    f = fixture()
+  const create = vi.spyOn(desktopLifecycle, 'createDesktopRunTerminalLifecycle')
+  const runtime = {
+    ...runtimeStub(),
+    ...f.runtime,
+    setAutomationService: vi.fn(),
+    notifyAutomationsChanged: vi.fn()
+  }
+  // SAFETY: only the OS/window transport is scripted; actual runtime/service/writer/persistence/lifecycle owners execute.
+  const service = createRuntimeAutomationService({
+    store: disk,
+    runtime: runtime as unknown as OrcaRuntimeService,
+    headless: false
+  })
+  const lifecycle = create.mock.results[0].value!
+  try {
+    const runs = disk.listAutomationRuns(),
+      registered = new Set(
+        runs.filter((r) => Number(r.id.split('-').at(-1)) < owners).map((r) => r.id)
+      )
+    await service.markDispatchResult({ runId: runs[0].id, status: 'completed' })
+    const inventory = measureTerminalInventory(disk, lifecycle, registered)
+    const { lists } = inventory
+    lifecycle.reconcile()
+    expect(lists).not.toHaveBeenCalled()
+    for (const run of runs.filter((r) => registered.has(r.id))) {
+      expect(
+        lifecycle.begin({ ...seeded.automations[0], reuseSession: false }, run, run.id)
+      ).not.toBeNull()
+    }
+    await service.markDispatchResult({
+      runId: runs[0].id,
+      status: 'completed'
+    })
+    expect(inventory.counts()).toEqual({
+      inventories: 1,
+      normalizations: history,
+      sorts: 1,
+      rows: history,
+      statusVisits: history,
+      linearFinds: 0,
+      selectedLookups: owners
+    })
+    expect(f.web.listenerCount('render-process-gone')).toBe(1)
+    process.stdout.write(`${JSON.stringify({ owners, history, ...inventory.counts() })}\n`)
+    lifecycle.begin(
+      { ...seeded.automations[0], reuseSession: false },
+      { ...runs[0], id: 'missing' },
+      'missing'
+    )
+    lifecycle.reconcile()
+    expect(stopRevokers.size).toBe(owners)
+    const failed = runs.find((run) => registered.has(run.id))!
+    await service.markDispatchResult({ runId: failed.id, status: 'dispatch_failed' })
+    expect(stopRevokers.size).toBe(owners - 1)
+    lifecycle.stop()
+    lists.mockClear()
+    lifecycle.reconcile()
+    expect(lists).not.toHaveBeenCalled()
+    assertTerminalInventorySelection(runs[0])
+    expect(f.web.eventNames()).toEqual([])
+  } finally {
+    service.stop()
+    await closeTestStores()
+    rmSync(testState.dir, { recursive: true, force: true })
   }
 })

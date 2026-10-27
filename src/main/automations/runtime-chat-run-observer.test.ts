@@ -1,10 +1,14 @@
+import { measureAutomationChatRun } from './automation-chat-run-measurement-test-harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalSnapshot,
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../shared/agent-session-journal-types'
-import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import {
+  agentJournalSubmissionKey,
+  agentJournalItemKey
+} from '../../shared/agent-session-journal-item-key'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cutover-fixture'
 import { chatAutomationRunObservation, observeAutomationChatRun } from './runtime-chat-run-observer'
@@ -97,21 +101,32 @@ describe('exact automation chat turn', () => {
         'Claude'
       )
     ).toBeNull()
-    expect(
-      chatAutomationRunObservation(snapshot([turn('human', 'other')]), 'prompt', 'Claude')
-    ).toBeNull()
+    const missingRoot = snapshot([turn('human', 'other')])
+    const roots = vi.spyOn(missingRoot.items, 'find')
+    expect(chatAutomationRunObservation(missingRoot, 'prompt', 'Claude')).toBeNull()
+    expect(roots).toHaveBeenCalledOnce()
+    missingRoot.submissions = []
+    roots.mockClear()
+    expect(chatAutomationRunObservation(missingRoot, 'prompt', 'Claude')).toBeNull()
+    expect(roots).not.toHaveBeenCalled()
   })
   it('matches the Orca opener alias and snapshots only the accepted root turn', () => {
-    const result = chatAutomationRunObservation(
-      snapshot([
-        turn('own', agentJournalSubmissionKey('prompt')),
-        answer('a', 'own', 'Automation output'),
-        answer('b', 'human', 'Private later output'),
-        { ...answer('c', 'own', 'Child output'), agentId: 'child' }
-      ]),
-      'prompt',
-      'Codex'
-    )
+    const view = snapshot([
+      turn('own', agentJournalSubmissionKey('prompt')),
+      answer('a', 'own', 'Automation output'),
+      answer('b', 'human', 'Private later output'),
+      { ...answer('c', 'own', 'Child output'), agentId: 'child' }
+    ])
+    let outputRows = 0
+    const items = view.items[Symbol.iterator].bind(view.items)
+    vi.spyOn(view.items, Symbol.iterator).mockImplementation(function* () {
+      for (const item of items()) {
+        outputRows++
+        yield item
+      }
+    })
+    const result = chatAutomationRunObservation(view, 'prompt', 'Codex')
+    expect(outputRows).toBe(4)
     expect(result).toMatchObject({
       status: 'completed',
       error: null,
@@ -352,53 +367,9 @@ describe('real host queue publication and operation bounds', () => {
               }
             )
           ).toMatchObject({ ok: true, value: { queued: { messageId: q, state: 'waiting' } } })
-          let projections = 0,
-            projectedRows = 0,
-            scannedRows = 0
-          const materialized = new WeakSet<object>()
-          const realPublicRead = journal.publicRead.bind(journal)
-          const publicReads = vi.spyOn(journal, 'publicRead').mockImplementation(() => {
-            const view = realPublicRead()
-            return {
-              get normalizationKey() {
-                return view.normalizationKey
-              },
-              get snapshot() {
-                const result = view.snapshot
-                if (!materialized.has(view)) {
-                  materialized.add(view)
-                  projections++
-                  projectedRows += result.items.length + result.submissions.length
-                }
-                return result
-              }
-            }
-          })
-          const visitItems = journal.visitItems.bind(journal)
-          const visits = vi.spyOn(journal, 'visitItems').mockImplementation((visit) =>
-            visitItems((...args) => {
-              scannedRows++
-              visit(...args)
-            })
-          )
-          let deltaRows = 0
-          const readSince = journal.readSince.bind(journal)
-          const deltas = vi.spyOn(journal, 'readSince').mockImplementation((...args) => {
-            const value = readSince(...args)
-            if (value.ok) {
-              deltaRows += value.rows.length
-            }
-            return value
-          })
-          const timers = vi.spyOn(globalThis, 'setTimeout'),
-            cleared = vi.spyOn(globalThis, 'clearTimeout')
-          let visited = 0
-          const realSnapshot = journal.snapshot.bind(journal)
-          const full = vi.spyOn(journal, 'snapshot').mockImplementation((...args) => {
-            const value = realSnapshot(...args)
-            visited += value.items.length + value.submissions.length
-            return value
-          })
+          const metrics = measureAutomationChatRun(journal, rig.host)
+          const { measure, full, observerReads, registration, releases, keys, timers, cleared } =
+            metrics
           const tokenBurst = async () => {
             for (let n = 0; n < 25; n++) {
               sink.appendItem(
@@ -415,73 +386,6 @@ describe('real host queue publication and operation bounds', () => {
               await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
             }
           }
-          const releases: ReturnType<typeof vi.fn>[] = []
-          let callbacks = 0,
-            committedRows = 0,
-            copied = 0,
-            iteratorYields = 0
-          const submissions = journal.submissions.bind(journal)
-          const submissionCopies = vi.spyOn(journal, 'submissions').mockImplementation(() => {
-            const rows = submissions()
-            copied += rows.length
-            return rows
-          })
-          // Count actual folded history iterators, without replacing their algorithms.
-          const folded: { items: Map<string, AgentJournalRenderItem> } = Reflect.get(
-            journal,
-            'state'
-          )
-          const values = folded.items.values.bind(folded.items)
-          vi.spyOn(folded.items, 'values').mockImplementation(function* () {
-            for (const item of values()) {
-              iteratorYields++
-              yield item
-            }
-          })
-          const fullApis = [
-            'pendingSubmissions',
-            'runningTurn',
-            'newestTurn',
-            'threadGoalSource',
-            'contextUsage',
-            'visitItemsWithLinkage'
-          ] as const
-          const calls = fullApis.map((name) => vi.spyOn(journal, name))
-          const keys = [
-            vi.spyOn(journal, 'item'),
-            vi.spyOn(journal, 'submission'),
-            vi.spyOn(journal.queuedMessages, 'get'),
-            vi.spyOn(journal, 'canonicalItemId')
-          ]
-          const observerReads = vi.spyOn(rig.host, 'journalSnapshot')
-          const realObserve = rig.host.observeJournalPublications.bind(rig.host)
-          const registration = vi
-            .spyOn(rig.host, 'observeJournalPublications')
-            .mockImplementation((id, observer) => {
-              const release = realObserve(id, {
-                ...observer,
-                next: (hint) => {
-                  callbacks++
-                  committedRows += hint.rows?.length ?? 0
-                  observer.next(hint)
-                }
-              })
-              const wrapped = vi.fn(release)
-              releases.push(wrapped)
-              return wrapped
-            })
-          const measure = () => [
-            copied,
-            iteratorYields,
-            projections,
-            projectedRows,
-            scannedRows,
-            full.mock.calls.length,
-            ...calls.map((spy) => spy.mock.calls.length),
-            publicReads.mock.calls.length,
-            submissionCopies.mock.calls.length,
-            visits.mock.calls.length
-          ]
           const difference = (before: number[]) =>
             measure().map((value, index) => value - before[index])
           const displayRelease =
@@ -595,6 +499,15 @@ describe('real host queue publication and operation bounds', () => {
             },
             { turnScope: AGENT_JOURNAL_THREAD_SCOPE, lifecycle: true }
           )
+          sink.appendItem(
+            { ...ownId, ordinal: 2 },
+            {
+              kind: 'message',
+              role: 'assistant',
+              blocks: [{ type: 'text', text: 'Exact automation output' }]
+            },
+            { turnScope: { kind: 'turn', turnItemId: agentJournalItemKey(ownId) } }
+          )
           sink.publish({ lifecycle: true })
           expect(await sink.written?.()).toEqual({ ok: true })
           await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
@@ -607,7 +520,10 @@ describe('real host queue publication and operation bounds', () => {
                   'Codex',
                   await rig.host.queuedSendAnswer(HOST_TEST_SESSION, q)
                 )
-          ).toMatchObject({ status: 'completed' })
+          ).toMatchObject({
+            status: 'completed',
+            outputSnapshot: { content: 'Exact automation output' }
+          })
           expect(rig.dispatch).toHaveBeenCalledTimes(2)
           expect(releases).toHaveLength(mode === 'internal' ? 2 : 0)
           for (const release of releases) {
@@ -621,6 +537,7 @@ describe('real host queue publication and operation bounds', () => {
           displayRelease()
           expect(registration).toHaveBeenCalledTimes(mode === 'internal' ? 2 : 0)
           expect(observerReads.mock.calls.length).toBeLessThanOrEqual(12)
+          const { copied, iteratorYields, projectedRows, scannedRows } = metrics.details()
           expect(copied + iteratorYields + projectedRows + scannedRows).toBeLessThan(
             (history + 30) * 4000
           )
@@ -629,7 +546,7 @@ describe('real host queue publication and operation bounds', () => {
           expect(Reflect.get(sessions, 'attachments').size).toBe(1)
           totals.push(measure())
           process.stdout.write(
-            `${JSON.stringify({ history, mode, sourceAttachments: Reflect.get(sessions, 'attachments').size, logicalObservers: Reflect.get(sessions, 'observers').size, baselineWork, observerWork, keyedAdded, totals: measure(), callbacks, committedRows, deltaReads: deltas.mock.calls.length, deltaRows, reconciliations: observerReads.mock.calls.length, registrations: registration.mock.calls.length, releases: releases.filter((r) => r.mock.calls.length === 1).length })}\n`
+            `${JSON.stringify({ history, mode, sourceAttachments: Reflect.get(sessions, 'attachments').size, logicalObservers: Reflect.get(sessions, 'observers').size, baselineWork, observerWork, keyedAdded, totals: measure(), ...metrics.details(), reconciliations: observerReads.mock.calls.length, registrations: registration.mock.calls.length, releases: releases.filter((r) => r.mock.calls.length === 1).length })}\n`
           )
         } finally {
           controller.abort()
@@ -639,11 +556,25 @@ describe('real host queue publication and operation bounds', () => {
         }
       }
       const added = totals[1].map((value, i) => value - totals[0][i])
-      expect(added.filter((_, i) => i !== 5 && i !== 12)).toEqual(
-        added.filter((_, i) => i !== 5 && i !== 12).map(() => 0)
+      expect(added.slice(0, 15).filter((_, i) => i !== 5 && i !== 12)).toEqual(
+        added
+          .slice(0, 15)
+          .filter((_, i) => i !== 5 && i !== 12)
+          .map(() => 0)
       )
       expect(added[5]).toBe(6)
       expect(added[12]).toBe(6)
+      expect(totals[0].slice(17, 21)).toEqual([1, 2 * history + 5, 0, 0])
+      expect(totals[1].slice(17, 21)).toEqual([5, 10 * history + 20, 2, 2 * history + 2])
+      expect(added.slice(15)).toEqual([
+        8 * history + 15,
+        2 * history + 2,
+        4,
+        8 * history + 15,
+        2,
+        2 * history + 2,
+        0
+      ])
       process.stdout.write(
         `${JSON.stringify({ history, fullWorkloadBaseline: totals[0], fullWorkloadInternal: totals[1], added, displayControl: totals[2] })}\n`
       )

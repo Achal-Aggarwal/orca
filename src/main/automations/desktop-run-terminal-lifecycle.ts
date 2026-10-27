@@ -1,3 +1,4 @@
+import { reconcileDesktopRunTerminals } from './desktop-run-terminal-reconciliation'
 import {
   stopDesktopRunTerminal,
   watchDesktopTerminalStop,
@@ -286,14 +287,7 @@ export function createDesktopRunTerminalLifecycle(
     },
     finalize: (run: AutomationRun) =>
       registrations.get(run.id)?.finalize(run) ?? Promise.resolve(null),
-    reconcile: () => {
-      for (const [id, owner] of registrations) {
-        const run = store.listAutomationRuns().find((entry) => entry.id === id)
-        if (!run || !['dispatching', 'dispatched', 'completed'].includes(run.status)) {
-          owner.release()
-        }
-      }
-    },
+    reconcile: () => reconcileDesktopRunTerminals(registrations, () => store.listAutomationRuns()),
     stop: () => {
       for (const owner of registrations.values()) {
         owner.release()

@@ -212,6 +212,39 @@ describe('internal publication lifetime, independently of presentation', () => {
     release()
     release()
     fail()
+    const successor = { next: vi.fn(), error: vi.fn() }
+    const releaseB = conversations.observeJournalPublications('session-1', successor)
+    release()
+    conversations.publish('session-1', 'operational')
+    expect(successor.next.mock.lastCall![0].kind).toBe('operational')
+    const releaseC = conversations.observeJournalPublications('session-1', successor)
+    releaseB()
+    releaseB()
+    conversations.set('session-1', session(current))
+    await appendStatus(current, 'independent acquisition survives')
+    expect(successor.next.mock.lastCall![0].kind).toBe('commit')
+    let reentrantRelease = () => {}
+    const reentrant = vi.fn()
+    const initialFailure = conversations.observeJournalPublications('session-1', {
+      next: () => {
+        throw new Error('initial reader')
+      },
+      error: () => {
+        reentrantRelease = conversations.observeJournalPublications('session-1', {
+          next: reentrant,
+          error: vi.fn()
+        })
+      }
+    })
+    initialFailure()
+    conversations.publish('session-1', 'operational')
+    expect(reentrant.mock.lastCall![0].kind).toBe('operational')
+    conversations.endPublications()
+    expect(successor.next.mock.lastCall![0].kind).toBe('end')
+    expect(reentrant.mock.lastCall![0].kind).toBe('end')
+    releaseC()
+    reentrantRelease()
+    expect(Reflect.get(conversations, 'observers').size).toBe(0)
     const listener = vi.fn()
     const before = old.observeCommits(listener)
     const after = old.observeCommits(listener)
