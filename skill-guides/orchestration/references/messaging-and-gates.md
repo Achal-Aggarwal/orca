@@ -41,9 +41,9 @@ ORCA orchestration send --to dispatch:<dispatch_id> --subject "Follow-up" --body
 ```
 
 Do not substitute a remote terminal handle. `ORCA status --json` shows your
-own Orca session ID as `caller.orcaSessionId` when you have one. Omit `--from` for ordinary
-coordinator calls; a dispatched worker instead copies the exact `--from` and
-other arguments in its preamble. `check` is the exception: it identifies
+own Orca session ID as `caller.orcaSessionId` when you have one. Omit `--from`
+for ordinary coordinator calls; a dispatched worker instead copies the exact
+`--from` and other arguments in its preamble. `check` is the exception: it identifies
 its caller with `--terminal`, never `--from`.
 
 Group addresses include `@all`, `@idle`, `@claude`, `@codex`, `@opencode`,
