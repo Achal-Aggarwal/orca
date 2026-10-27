@@ -460,3 +460,40 @@ it('preserves case-distinct conversation heads and saved homes across the shared
     ).resolves.toMatchObject({ verdict: index === 0 ? 'admitted' : 'chat-home' })
   }
 })
+
+it.each([undefined, 'automatic-restore'] as const)(
+  'resolves a status-only native launch before spawning only for a restore request (%s)',
+  async (spawnIntent) => {
+    const resolveColdPaneResumeStartup = vi.fn(async () => ({
+      command: 'opencode --session C',
+      launchAgent: 'opencode' as const,
+      resumeProviderSession: { key: 'session_id' as const, id: 'C' }
+    }))
+    const runtime = {
+      ...chatHost(),
+      resolveColdPaneResumeStartup,
+      registerPty: vi.fn(),
+      noteTerminalSpawnCommand: vi.fn(),
+      reflowHeadlessTerminalToPtyGrid: vi.fn()
+    }
+    const source = vi.spyOn(opencodePresence, 'missingOpenCodeFreshLaunch').mockResolvedValue(null)
+    const spawn = vi.spyOn(localProvider, 'spawn').mockResolvedValue({ id: 'native-cold' })
+    try {
+      await spawnPtyFromRuntimeController(deps(runtime), {
+        cols: 80,
+        rows: 24,
+        worktreeId: 'wt-1',
+        tabId: 'tab-1',
+        leafId: 'leaf',
+        spawnIntent
+      })
+      expect(resolveColdPaneResumeStartup).toHaveBeenCalledTimes(spawnIntent ? 1 : 0)
+      expect(spawn.mock.calls[0]?.[0].command).toBe(
+        spawnIntent ? 'opencode --session C' : undefined
+      )
+    } finally {
+      source.mockRestore()
+      spawn.mockRestore()
+    }
+  }
+)

@@ -213,7 +213,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     ctx.args.paneSpawnOperation = operation
     prepared = true
     if (
-      args.sessionId &&
+      (args.spawnIntent === 'automatic-restore' || args.spawnIntent === 'user-resume') &&
       !args.command &&
       !args.launchAgent &&
       !args.connectionId &&

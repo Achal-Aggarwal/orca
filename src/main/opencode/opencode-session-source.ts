@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, lstat, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { asRecord } from '../ai-vault/session-scanner-record-value'
 import type { OpenCodeSessionPresence, OpenCodeSessionSource } from './opencode-session-presence'
 
@@ -13,7 +13,24 @@ async function readJson(path: string) {
     return value
   } catch (error) {
     if (asRecord(error)?.code === 'ENOENT') {
-      return undefined
+      for (let probe = path; ; probe = dirname(probe)) {
+        try {
+          const entry = await lstat(probe)
+          if (entry.isSymbolicLink()) {
+            await stat(probe).catch(() => {
+              throw new Error('Unreachable source')
+            })
+          }
+          return undefined
+        } catch (missing) {
+          if (asRecord(missing)?.code !== 'ENOENT') {
+            throw missing
+          }
+          if (probe === dirname(probe)) {
+            return undefined
+          }
+        }
+      }
     }
     throw error
   }
@@ -35,6 +52,9 @@ function roots(env: NodeJS.ProcessEnv, cwd: string) {
 
 async function serviceConfig(path: string) {
   const config = await readJson(join(path, 'service.json'))
+  if (config?.disabled !== undefined && typeof config.disabled !== 'boolean') {
+    throw new Error('Unknown service configuration')
+  }
   const env = asRecord(config?.env)
   if (
     config?.env !== undefined &&

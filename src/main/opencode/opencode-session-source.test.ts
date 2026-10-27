@@ -99,3 +99,14 @@ it.each([':memory:', '', '   '])('never guesses disk authority for %j', async (s
     })
   ).toBe('unavailable')
 })
+
+it('leaves malformed source-affecting configuration unavailable', async () => {
+  file(join(root, 'config/opencode/service.json'), {
+    disabled: 'true',
+    env: { OPENCODE_DB: '/wrong' }
+  })
+  await expect(resolveOpenCodeSessionSource(args())).rejects.toThrow(
+    'Unknown service configuration'
+  )
+  expect(get).not.toHaveBeenCalled()
+})
