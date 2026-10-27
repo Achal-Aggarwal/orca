@@ -17,7 +17,7 @@ import {
   writeNativeChatSessionOptionCache
 } from './native-chat-session-option-cache'
 import { createSessionOptionAppliers } from './native-chat-session-option-apply'
-import { buildNativeChatSessionOptionSnapshot } from './native-chat-session-option-snapshot'
+import { buildNativeChatSessionOptionSnapshot } from './native-chat/input/native-chat-session-option-snapshot'
 import {
   resolveEffectiveNativeChatModelId,
   withTrackedNativeChatModel,

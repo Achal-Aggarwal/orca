@@ -3,7 +3,7 @@ import {
   type SessionOptionDescriptor,
   type SessionOptionDisabledReason,
   type SessionOptionSelectChoice
-} from './native-chat-session-options'
+} from './native-chat/input/native-chat-session-options'
 
 // English pieces for the session option pickers; desktop translates each one, mobile shows them as is.
 export const NATIVE_CHAT_SESSION_OPTION_COPY = {

@@ -8,7 +8,7 @@ import {
 } from './agent-session-option-catalog'
 import type { AgentType } from './agent-status-types'
 import type { CommitMessageModelCapability } from './commit-message-agent-spec'
-import type { NativeChatSessionOptionSettingsMutation } from './native-chat-session-options'
+import type { NativeChatSessionOptionSettingsMutation } from './native-chat/input/native-chat-session-options'
 
 export type NativeChatModelDiscoveryResult =
   | {

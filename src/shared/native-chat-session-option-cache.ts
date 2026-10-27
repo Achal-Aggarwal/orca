@@ -1,12 +1,12 @@
 import type { AgentType } from './agent-status-types'
-import type { SessionOptionValue } from './native-chat-session-options'
+import type { SessionOptionValue } from './native-chat/input/native-chat-session-options'
 import {
   cloneNativeChatSessionOptionRecord,
   createNativeChatSessionOptionRecord,
   type NativeChatSessionOptionRecord,
   type TrackedNativeChatSessionOption
-} from './native-chat-session-option-state'
-import { setBoundedScopeCacheEntry } from './native-chat-scope-cache'
+} from './native-chat/input/native-chat-session-option-state'
+import { setBoundedScopeCacheEntry } from './native-chat/native-chat-scope-cache'
 
 const sessionOptionCache = new Map<string, NativeChatSessionOptionRecord>()
 
