@@ -6,14 +6,16 @@ import type * as StatusFeedModule from '@/runtime/structured-agent-session-statu
 import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import { structuredAgentSessionAgentStatus } from '../../../../shared/structured-agent-session-agent-status'
+import { getDefaultSettings } from '../../../../shared/constants'
 import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import { makeTabGroup, makeUnifiedTab } from '../../store/slices/store-session-test-harness'
 import { createWorkspaceTabCloseCommands } from './workspace-tab-close-commands'
 
-const { retire, launchLifecycle, observation } = vi.hoisted(() => ({
+const { retire, launchLifecycle, observation, conversationName } = vi.hoisted(() => ({
   retire: vi.fn(),
   launchLifecycle: vi.fn<() => 'pending' | null>(),
-  observation: { live: true, starting: false }
+  observation: { live: true, starting: false },
+  conversationName: vi.fn<() => string | null>()
 }))
 
 vi.mock('@/runtime/structured-agent-session-tab-retirement', async (importOriginal) => ({
@@ -30,6 +32,7 @@ vi.mock(
 vi.mock('@/runtime/structured-agent-session-status-feed', async (original) => ({
   ...(await original<typeof StatusFeedModule>()),
   getStructuredAgentSessionStatusFeed: () => ({
+    getNamingSnapshot: () => new Map([['chat', { conversationName: conversationName() }]]),
     getSessionObservation: () => (observation.live ? 'live' : 'unverifiable'),
     getSnapshot: () =>
       new Map([['chat', { hostExecutionPhase: observation.starting ? 'starting' : 'idle' }]])
@@ -37,6 +40,7 @@ vi.mock('@/runtime/structured-agent-session-status-feed', async (original) => ({
 }))
 
 const initialState = useAppStore.getInitialState()
+const settings = getDefaultSettings('/tmp/pr-34236')
 const tab = makeUnifiedTab({
   id: 'chat-tab',
   entityId: 'chat',
@@ -54,7 +58,15 @@ const emptied = vi.fn()
 function status(state: AgentStatusState): void {
   useAppStore.setState({
     agentStatusByPaneKey: {
-      [paneKey]: { state, agentType: 'codex', prompt: '', updatedAt: 1, stateStartedAt: 1 }
+      [paneKey]: {
+        paneKey,
+        stateHistory: [],
+        state,
+        agentType: 'codex',
+        prompt: '',
+        updatedAt: 1,
+        stateStartedAt: 1
+      }
     }
   })
 }
@@ -74,6 +86,7 @@ describe('interactive native chat close admission', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     launchLifecycle.mockReturnValue(null)
+    conversationName.mockReturnValue(null)
     observation.live = true
     observation.starting = false
     useAppStore.setState(initialState, true)
@@ -92,7 +105,7 @@ describe('interactive native chat close admission', () => {
       },
       clearNativeChatLaunchDraft: clearDraft,
       recordFeatureInteraction: vi.fn(),
-      settings: { ...initialState.settings, skipCloseTerminalWithRunningProcessConfirm: false }
+      settings: { ...settings, skipCloseTerminalWithRunningProcessConfirm: false }
     })
   })
 
@@ -165,6 +178,22 @@ describe('interactive native chat close admission', () => {
     }
   )
 
+  it('uses the chat name displayed from the host naming feed', () => {
+    status('working')
+    conversationName.mockReturnValue('Investigate production regression')
+    close()
+    expect(pending()).toMatchObject({ tabLabel: 'Investigate production regression' })
+    expect(retire).not.toHaveBeenCalled()
+  })
+
+  it('keeps consent enabled before settings load', () => {
+    status('working')
+    useAppStore.setState({ settings: null })
+    close()
+    expect(pending()).not.toBeNull()
+    expect(retire).not.toHaveBeenCalled()
+  })
+
   it('closes a known live idle chat without asking', () => {
     status('done')
     close()
@@ -178,7 +207,7 @@ describe('interactive native chat close admission', () => {
     if (caseName === 'setting') {
       useAppStore.setState({
         settings: {
-          ...useAppStore.getState().settings,
+          ...settings,
           skipCloseTerminalWithRunningProcessConfirm: true
         }
       })

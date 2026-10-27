@@ -6,7 +6,8 @@ import { handleSwitchTabAcrossAllTypes } from '../hooks/ipc-tab-switch'
 import { switchFloatingWorkspaceTab } from '@/lib/floating-workspace-terminal-actions'
 import { dispatchWorkspaceTabCommand } from '@/lib/workspace-tab-commands'
 import type { Tab } from '../../../shared/tab-types'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import {
   ORCA_EDITOR_REQUEST_CMD_SAVE_EVENT,
   type EditorRequestCmdSaveDetail
@@ -27,8 +28,13 @@ const mocks = vi.hoisted(() => ({
   closeStructuredAgentSession: vi.fn(async () => 'closed'),
   callRuntimeRpc: vi.fn(async () => ({ ok: true })),
   cancelStructuredAgentLaunch: vi.fn(),
+  structuredSessionBusy: vi.fn<() => boolean>(),
   floatingFocused: false,
   targetInsideFloatingPanel: false
+}))
+
+vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
+  isStructuredAgentSessionBusy: mocks.structuredSessionBusy
 }))
 
 vi.mock('../store', () => ({ useAppStore: { getState: () => mocks.state } }))
@@ -144,6 +150,7 @@ describe('tab.close uses the unified active tab', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.structuredSessionBusy.mockReturnValue(false)
     mocks.floatingFocused = false
     mocks.targetInsideFloatingPanel = false
     tab = {
@@ -161,6 +168,7 @@ describe('tab.close uses the unified active tab', () => {
     mocks.state = {
       activeView: 'terminal',
       activeWorktreeId: worktreeId,
+      settings: getDefaultSettings('/tmp/pr-34236-keyboard'),
       // The old terminal mirror can lag behind focus in a split group.
       activeTabType: 'terminal',
       activeTabId: 'other-terminal',
@@ -179,6 +187,10 @@ describe('tab.close uses the unified active tab', () => {
       requestPinnedTabCloseConfirm: vi.fn(),
       setActiveWorktree: vi.fn()
     }
+  })
+
+  afterEach(() => {
+    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
   })
 
   function close(platform: NodeJS.Platform = 'darwin', terminalFocus = false): KeyboardEvent {
@@ -207,6 +219,26 @@ describe('tab.close uses the unified active tab', () => {
       expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
       expect(mocks.cancelStructuredAgentLaunch).not.toHaveBeenCalled()
       expect(mocks.closeTerminalTab).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'holds an active chat keyboard close for consent on %s',
+    (platform) => {
+      mocks.structuredSessionBusy.mockReturnValue(true)
+      expect(close(platform).defaultPrevented).toBe(true)
+      expect(closeUnifiedTab).not.toHaveBeenCalled()
+      expect(
+        useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+      ).toMatchObject({
+        terminalTabId: tab.id,
+        copyKind: 'chat-agent'
+      })
+      useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+      expect(closeUnifiedTab).not.toHaveBeenCalled()
+      close(platform)
+      useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
+      expect(closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(tab.id)
     }
   )
 
@@ -239,15 +271,24 @@ describe('tab.close uses the unified active tab', () => {
     })
   })
 
-  it('waits for pinned-tab confirmation before closing', async () => {
+  it('waits for pinned-tab then active-work confirmation before closing', () => {
     tab.isPinned = true
+    mocks.structuredSessionBusy.mockReturnValue(true)
     close()
     expect(mocks.closeStructuredAgentSession).not.toHaveBeenCalled()
     expect(closeUnifiedTab).not.toHaveBeenCalled()
     const request = vi.mocked(mocks.state.requestPinnedTabCloseConfirm as ReturnType<typeof vi.fn>)
       .mock.calls[0][0]
+    expect(useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm).toBeNull()
     request.onConfirm()
-    await vi.waitFor(() => expect(closeUnifiedTab).toHaveBeenCalledWith(tab.id))
+    expect(closeUnifiedTab).not.toHaveBeenCalled()
+    expect(
+      useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+    ).toMatchObject({
+      terminalTabId: tab.id
+    })
+    useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
+    expect(closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(tab.id)
   })
 
   it('leaves the chord to an agent terminal preview dialog over a workspace editor', () => {

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ReactModule from 'react'
+import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
 
 const mocks = vi.hoisted(() => ({
   callRuntimeRpc: vi.fn(),
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   closeStructuredAgentSession: vi.fn(),
   closeTerminalTab: vi.fn(),
   closeUnifiedTab: vi.fn(),
+  isBusy: vi.fn<() => boolean>(),
   clearNativeChatLaunchDraft: vi.fn(),
   setActiveWorktree: vi.fn(),
   toastError: vi.fn()
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 const store = vi.hoisted(() => ({
   activeWorktreeId: 'wt-1',
+  settings: { skipCloseTerminalWithRunningProcessConfirm: false },
   browserPagesByWorkspace: {},
   browserTabsByWorktree: {},
   closeBrowserTab: mocks.closeBrowserTab,
@@ -27,6 +30,10 @@ const store = vi.hoisted(() => ({
   setActiveWorktree: mocks.setActiveWorktree,
   tabsByWorktree: {},
   unifiedTabsByWorktree: {} as Record<string, unknown[]>
+}))
+
+vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
+  isStructuredAgentSessionBusy: mocks.isBusy
 }))
 
 vi.mock('react', async () => {
@@ -106,20 +113,45 @@ const AGENT_TAB = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.isBusy.mockReturnValue(false)
   store.unifiedTabsByWorktree = { 'wt-1': [AGENT_TAB] }
   mocks.closeStructuredAgentSession.mockResolvedValue('closed')
   mocks.callRuntimeRpc.mockResolvedValue({ ok: true })
 })
 
+afterEach(() => {
+  useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+})
+
 describe('structured agent-session close ordering', () => {
-  it('dispatches local structured-session tab removal synchronously', async () => {
+  it('defers active chat removal until confirmed and preserves the chat on Cancel', () => {
+    mocks.isBusy.mockReturnValue(true)
+    const { closeItem } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
+    closeItem(AGENT_TAB.id)
+    expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
+    expect(
+      useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+    ).toMatchObject({
+      terminalTabId: AGENT_TAB.id,
+      copyKind: 'chat-agent'
+    })
+    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+    expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
+
+    closeItem(AGENT_TAB.id)
+    useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
+    expect(mocks.closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(AGENT_TAB.id)
+  })
+
+  it('dispatches known idle chat removal synchronously', () => {
     const { closeItem } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
     closeItem(AGENT_TAB.id)
 
     expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(AGENT_TAB.id)
   })
 
-  it('dispatches local structured-session tab removal synchronously during bulk close', async () => {
+  it('dispatches active chat removal synchronously during confirmed bulk close', () => {
+    mocks.isBusy.mockReturnValue(true)
     const { closeMany } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
 
     closeMany([AGENT_TAB.id])
