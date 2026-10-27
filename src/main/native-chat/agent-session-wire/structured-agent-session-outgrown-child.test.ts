@@ -61,7 +61,7 @@ describe('a send after the account was switched', () => {
     selected = accountHome('/accounts/b')
     expect((await rig.host.send(CALLER, restTestSend('on b', fence()))).ok).toBe(true)
     await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledTimes(3))
-    expect(rig.adapter.closeSession).toHaveBeenCalledWith(SESSION)
+    expect(rig.adapter.closeSession).toHaveBeenCalledWith(SESSION, undefined)
     expect(rig.adapter.acquire).toHaveBeenCalledTimes(2)
 
     expect((await rig.host.send(CALLER, restTestSend('still b', fence()))).ok).toBe(true)

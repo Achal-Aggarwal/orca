@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { sendRemoteRuntimeRequest } from '../../../src/shared/remote-runtime-client'
+import { sendRemoteRuntimeRequest } from '../../../src/shared/remote-runtime/remote-runtime-client'
 import { parsePairingCode } from '../../../src/shared/pairing'
 import { pairedRuntimeConnectionFromOffer } from '../../../src/shared/paired-runtime-connection'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../../src/shared/electron-remote-runtime-client-capabilities'
