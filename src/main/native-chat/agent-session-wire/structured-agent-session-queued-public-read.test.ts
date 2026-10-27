@@ -29,18 +29,22 @@ async function handOff(
   as: 'providerRejected' | 'cancelled' | 'accepted',
   fence = 0,
   beforeAnswer?: () => Promise<void>,
-  answeredInTurn?: AgentJournalAnsweredTurnIdentity
+  answeredInTurn?: AgentJournalAnsweredTurnIdentity,
+  consume = false
 ): Promise<void> {
   const body = message(text)
   const payloadFingerprint = agentSessionSendBodyFingerprint(journal.queuedMessages.sessionId, body)
-  await journal.appendSubmission({
-    clientMessageId: attempt,
-    payloadFingerprint,
-    body,
-    fence,
-    handoverRecorded: true,
-    queuedMessageId: card
-  })
+  await journal.appendSubmission(
+    {
+      clientMessageId: attempt,
+      payloadFingerprint,
+      body,
+      fence,
+      handoverRecorded: true,
+      queuedMessageId: card
+    },
+    consume ? { messageId: card, expect: 'waiting' } : undefined
+  )
   await journal.resolveDispatch({
     clientMessageId: attempt,
     state: 'pending',
@@ -240,9 +244,11 @@ it.each([100, 1_000])('raw selection reuse: %i waiting cards', async (size) => {
     const turn = { provider: 'codex' as const, threadId: 'progress', turnId: 't', ordinal: 0 }
     await journal.appendItem(turn, message('progress'), threadWrite)
     feed.publish(SESSION, journal)
-    expect(visits).toBe(2 * size)
+    // Canonical history reads do not materialize legacy waiting cards.
+    expect(visits).toBe(0)
     expect(journal.publicRead().normalizationKey).toBe('')
     expect(journal.queuedMessages.list().filter((c) => c.state === 'waiting')).toHaveLength(size)
+    expect(visits).toBe(size)
     for (const events of received) {
       const items = events.flatMap((e) => (e.type === 'batch' ? e.batch.items : []))
       expect(items.map((i) => i.body)).toContainEqual(message('progress'))
@@ -254,7 +260,7 @@ it.each([100, 1_000])('raw selection reuse: %i waiting cards', async (size) => {
     }
     expect(visits).toBe(0)
     const answered = { turn: { ...turn, ordinal: -1 }, via: 'steer' as const }
-    await handOff(journal, 'u', 'waiting-0', 'words', 'cancelled', 0, undefined, answered)
+    await handOff(journal, 'u', 'waiting-0', 'words', 'cancelled', 0, undefined, answered, true)
     feed.publish(SESSION, journal)
     const view = journal.publicRead()
     expect(view.normalizationKey).not.toBe('')
@@ -265,8 +271,24 @@ it.each([100, 1_000])('raw selection reuse: %i waiting cards', async (size) => {
     const item = view.snapshot.items.find((i) => i.itemId === agentJournalSubmissionKey('u'))
     expect(item?.body).toEqual(message('words'))
     expect(item?.sequence).toBeLessThan(journal.cursor().sequence)
-    expect(journal.submission('u')?.dispatchState).toBe('rejected')
-    expect(visits).toBeGreaterThanOrEqual(2 * size)
+    expect(journal.submissionBody('u')).toEqual(message('words'))
+    expect(journal.submission('u')).toMatchObject({ dispatchState: 'unknown' })
+    expect(journal.submission('u')?.submittedSequence).toBeLessThan(journal.cursor().sequence)
+    expect(
+      db()
+        .prepare(`SELECT COUNT(*) AS count FROM journal_rows WHERE session_id = ?
+        AND json_extract(row_json, '$.kind') = 'dispatch'
+        AND json_extract(row_json, '$.clientMessageId') = 'u'
+        AND json_extract(row_json, '$.state') = 'rejected'`)
+        .get(SESSION)
+    ).toMatchObject({ count: 1 })
+    // Family eligibility and presentation do not rewrite the original durable observation.
+    expect(journal.receiptFor('u')).toBeNull()
+    expect(journal.queuedMessages.get('waiting-0')).toMatchObject({
+      state: 'dispatched',
+      consumedAs: 'u'
+    })
+    expect(visits).toBeLessThanOrEqual(2 * size)
     visits = 0
     for (let p = 0; p < 5; p++) {
       feed.publish(SESSION, journal)
