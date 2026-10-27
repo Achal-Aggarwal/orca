@@ -216,6 +216,10 @@ export async function verifyExitedPaneHistoryReturn(
     subagent: null
   }
   await vi.waitFor(() => expect(inPlaceSwitchSupportedNow('local', 'codex')).toBe(true))
+  mocks.source = resolveCliChatResumeSource(useAppStore.getState(), {
+    tab: { id: 'shell', worktreeId: 'wt-1' },
+    paneKey
+  })
   mocks.call.mockResolvedValueOnce({
     ok: false,
     refusal: {
@@ -225,8 +229,18 @@ export async function verifyExitedPaneHistoryReturn(
       createAttemptRefusedBeforeCommit: true
     }
   })
-  expect(switchAiVaultSessionToNativeChat(history)).toBe(true)
+  expect(
+    switchAiVaultSessionToNativeChat(history, 'wt-1', {
+      worktreeId: 'wt-1',
+      tabId: 'shell',
+      paneKey: pane.paneKey
+    })
+  ).toBe(true)
   await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledOnce())
+  expect(mocks.call.mock.calls.some(([, method]) => method === 'agentSession.create')).toBe(true)
+  expect(mocks.toast).toHaveBeenCalledWith(
+    "Codex couldn't open this conversation's history. Check that its saved conversation is available, then try again."
+  )
   expect(tabs().map((tab) => tab.id)).toContain('shell')
   expect(mocks.rpc.mock.calls.some(([, method]) => method === 'terminal.close')).toBe(false)
   expect(canPaneOfferResumeInNewChat(useAppStore.getState(), pane)).toBe(true)
@@ -240,7 +254,13 @@ export async function verifyExitedPaneHistoryReturn(
   )
   const { closed, siblingWatcher } = installExitedPaneRetirement(mocks)
   try {
-    expect(switchAiVaultSessionToNativeChat(history)).toBe(true)
+    expect(
+      switchAiVaultSessionToNativeChat(history, 'wt-1', {
+        worktreeId: 'wt-1',
+        tabId: 'shell',
+        paneKey: pane.paneKey
+      })
+    ).toBe(true)
     await vi.waitFor(() =>
       expect(
         mocks.call.mock.calls.some(([, method]) => method === 'agentSession.switchToChat')

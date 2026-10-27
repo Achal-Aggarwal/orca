@@ -170,7 +170,7 @@ type NoFacts = Record<never, never>
 
 export type AgentSessionConversationOwner = { sessionId: string; workspaceId: string }
 
-type ConversationOwnerFacts = { owner?: AgentSessionConversationOwner }
+type ConversationOwnerFacts = { owner?: AgentSessionConversationOwner; source?: true }
 
 /** The facts a code carries beside its reason. */
 type AgentSessionRefusalFactsByCode = {
@@ -324,6 +324,11 @@ export function readAgentSessionRefusalDetails<C extends AgentSessionWireRefusal
     ...(isAgentSessionRefusalReason(code, value.reason) ? { reason: value.reason } : {}),
     ...facts,
     ...(owner ? { owner } : {}),
+    ...((code === 'agent_session_conflict' || code === 'agent_session_ownership_unknown') &&
+    value.reason === 'conversationHeldElsewhere' &&
+    value.source === true
+      ? { source: true as const }
+      : {}),
     ...(code === 'agent_session_operation_invalid' &&
     value.reason === 'notSignedIn' &&
     (value.account === 'managed' || value.account === 'system')

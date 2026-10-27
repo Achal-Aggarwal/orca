@@ -1,16 +1,16 @@
 import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import { isAgentSessionCreateAdmissionRefusal } from '../../../shared/agent-session-definitive-refusal'
-import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import {
   refuse,
   type AgentSessionAttachResult,
   type AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
-import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { journalOpenRefusalError } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
+import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
+import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import { reserveRequestFor, type AgentSessionAttachParams } from './structured-agent-session-attach'
 import { openStructuredAgentSessionConversationJournal } from './structured-agent-session-conversation-open'
 import {
@@ -27,18 +27,12 @@ import {
 } from './structured-agent-session-provider-support'
 import { performSend } from './structured-agent-session-turns'
 import { observedReceipt } from './structured-agent-session-operation-settlement'
-import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
-import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
-
-export type StructuredAgentSessionCreateOptions = {
-  firstMessage?: { clientMessageId: string; body: AgentJournalMessageItem }
-  hostLaunchDirectory?: string
-  catalogModels?: Parameters<typeof reserveRequestFor>[0]['models']
-  /** Publish after durable creation, before agent delivery starts. */
-  publishTab?: () => Promise<void>
-}
+import {
+  type StructuredAgentSessionCreateOptions,
+  openingMessageOptions
+} from './structured-agent-session-create-options'
 
 export function createStructuredAgentSession(
   context: StructuredAgentSessionAttachContext,
@@ -70,6 +64,7 @@ async function foundConversation(
   const { deps } = context
   const { store } = deps
   const sessionId = params.envelope.sessionId
+  options.check?.()
   const prior = store.getRecord(sessionId)
   if (params.envelope.expectedRuntimeFence !== null || params.agent !== params.provider) {
     return {
@@ -224,11 +219,12 @@ async function foundConversation(
           return sent
         }
       } else {
-        await store.founding.commit(request)
+        await store.founding.commit(request, options.check)
       }
       committed = true
     }
     try {
+      options.check?.()
       await options.publishTab?.()
     } catch (error) {
       deps.logger.warn('publishing the tab of a created chat failed', {
@@ -296,10 +292,4 @@ export function structuredAgentSessionEntryDelegates(
   }
 }
 
-/** Opening messages retain creation-time model/effort choices like later sends. */
-function openingMessageOptions(options: Readonly<Record<string, string>> | undefined): {
-  options?: AgentSessionExecutionOptions
-} {
-  const { model, effort } = options ?? {}
-  return model ? { options: { model, ...(effort ? { effort } : {}) } } : {}
-}
+export type { StructuredAgentSessionCreateOptions } from './structured-agent-session-create-options'

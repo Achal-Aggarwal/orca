@@ -5,13 +5,12 @@ import { SessionProducerPause } from './session-producer-pause'
 import { SessionShellReadyBarrier } from './session-shell-ready-barrier'
 import type { TerminalShellRecoveryBarrier } from './terminal-shell-recovery-barrier'
 import { SessionTerminationController } from './session-termination-controller'
-import type { ChildProcessVerdictRead, SubprocessHandle } from './session-subprocess-handle'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import type { JobTerminationOutcome } from '../windows/windows-pty-job'
 import type { SessionOptions } from './session-options'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { randomUUID } from 'node:crypto'
 import { PtyStartupIngress } from '../../shared/pty-startup-ingress'
-
 import type {
   SessionState,
   ShellReadyState,
@@ -19,8 +18,9 @@ import type {
   TerminalSnapshot
 } from './types'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
+import { SessionProcessInspection } from './session-process-inspection'
 
-export class Session {
+export class Session extends SessionProcessInspection {
   readonly sessionId: string
   readonly incarnationId = randomUUID()
   readonly terminalHandle: string | null
@@ -31,16 +31,18 @@ export class Session {
   private _state: SessionState = 'running'
   private _exitCode: number | null = null
   private _disposed = false
-  private subprocess: SubprocessHandle
+
+  protected subprocess: SubprocessHandle
   private readonly onSessionExit?: (code: number) => void
-  private readonly output: SessionOutputPlane
+  protected readonly output: SessionOutputPlane
   private readonly producerPause: SessionProducerPause
-  private readonly shellReady: SessionShellReadyBarrier
+  protected readonly shellReady: SessionShellReadyBarrier
   private readonly termination: SessionTerminationController
   readonly startupIngress: PtyStartupIngress
-  private readonly recoveryBarrier: TerminalShellRecoveryBarrier
+  protected readonly recoveryBarrier: TerminalShellRecoveryBarrier
 
   constructor(opts: SessionOptions) {
+    super()
     this.sessionId = opts.sessionId
     this.terminalHandle = opts.terminalHandle ?? null
     this.launchAgent = opts.launchAgent ?? null
@@ -78,13 +80,26 @@ export class Session {
       shellReadyTimeoutMs: opts.shellReadyTimeoutMs,
       installDeviceAttributesFilter: () => this.output.installDeviceAttributesFilter(),
       releaseDeviceAttributesFilter: () => this.output.releaseDeviceAttributesFilter(),
+      beforeCommandWrite: () => {
+        if (this.switchClosing) {
+          return false
+        }
+        this.noteUse()
+        return true
+      },
       acceptStartupIngress: (data) => this.startupIngress.accept(data)
     })
 
     this.startupIngress = new PtyStartupIngress({
       ...(opts.startupIngress ? { intent: opts.startupIngress } : {}),
       ...(opts.ownerBackend ? { ownerBackend: opts.ownerBackend } : {}),
-      write: (data) => this.subprocess.write(data),
+      write: (data) => {
+        if (this.switchClosing) {
+          return
+        }
+        this.noteUse()
+        this.subprocess.write(data)
+      },
       onEmission: (emission) => this.recoveryBarrier.accept(emission)
     })
     this.shellReady.startPromptReadinessProbe()
@@ -139,9 +154,10 @@ export class Session {
   }
 
   write(data: string): void {
-    if (this._state === 'exited' || this._disposed) {
+    if (this._state === 'exited' || this._disposed || this.switchClosing) {
       return
     }
+    this.noteUse()
 
     // Contain cooked query echoes and preserve input order through the post-ready flush window.
     if (this.startupIngress.answerLiveQueryReply(data) || this.shellReady.tryEnqueue(data)) {
@@ -190,10 +206,15 @@ export class Session {
   }
 
   attachClient(client: Omit<AttachedClient, 'token'>): symbol {
+    if (this.switchClosing) {
+      throw new Error('Terminal is closing')
+    }
+    this.noteUse()
     return this.output.attachClient(client)
   }
 
   detachClient(token: symbol): void {
+    this.noteUse()
     this.output.detachClient(token)
     // With no viewer left to resume the producer, release its pause eagerly.
     if (!this.output.hasAttachedClients) {
@@ -202,6 +223,7 @@ export class Session {
   }
 
   detachAllClients(): void {
+    this.noteUse()
     this.output.clearClients()
     this.producerPause.release({ resume: true })
   }
@@ -209,14 +231,6 @@ export class Session {
   getSnapshot(opts: { scrollbackRows?: number } = {}): TerminalSnapshot | null {
     this.startupIngress.snapshotBarrier()
     return this.output.getSnapshot(opts)
-  }
-
-  getPartialEscapeTailAnsi(): string {
-    return this.output.getPartialEscapeTailAnsi()
-  }
-
-  getAppliedSize(): { cols: number; rows: number } | null {
-    return this.output.getAppliedSize()
   }
 
   takePendingOutput(
@@ -229,32 +243,6 @@ export class Session {
     const heldBytes =
       includeSnapshot && opts.teardownSnapshot === true ? this.prepareForFinalSnapshot() : ''
     return this.output.takePendingOutput(includeSnapshot, heldBytes, () => this.getSnapshot())
-  }
-
-  getCwd(): string | null {
-    return this.output.getCwd()
-  }
-
-  inspectChildProcesses(fresh?: boolean, ignoreDetached?: boolean): ChildProcessVerdictRead {
-    return this.subprocess.inspectChildProcesses?.(fresh, ignoreDetached) ?? 'unverifiable'
-  }
-
-  getForegroundProcess(options?: { rawFallback?: boolean; cachedOnly?: boolean }): string | null {
-    return this.subprocess.getForegroundProcess(options)
-  }
-
-  async confirmForegroundProcess(): Promise<string | null> {
-    return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
-  }
-
-  confirmShellForeground(): Promise<boolean> {
-    return this.recoveryBarrier.confirmOwnerSettled()
-  }
-
-  async settleShellOwnershipConfirmation(): Promise<void> {
-    await this.recoveryBarrier.awaitProofSettled()
-    // Snapshot only after the drained prompt is parsed into the model.
-    await this.output.flushParsedWrites()
   }
 
   clearScrollback(): void {

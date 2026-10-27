@@ -14,16 +14,17 @@ const SESSION_TAB_CLOSE_RESPONSE_GRACE_MS = 5_000
 export async function requestSessionTabCloseFromRenderer(
   mainWindow: BrowserWindow,
   tabId: string,
-  worktreeId: string
-): Promise<void> {
+  worktreeId: string,
+  switchProjection?: SessionTabCloseRequest['switchProjection']
+): Promise<void | boolean> {
   if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
     throw new Error('renderer_unavailable')
   }
   const webContents = mainWindow.webContents
   const requestId = randomUUID()
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<void | boolean>((resolve, reject) => {
     let settled = false
-    const finish = (error?: Error): void => {
+    const finish = (error?: Error, applied?: boolean): void => {
       if (settled) {
         return
       }
@@ -37,7 +38,7 @@ export async function requestSessionTabCloseFromRenderer(
       if (error) {
         reject(error)
       } else {
-        resolve()
+        resolve(applied)
       }
     }
     const onRendererUnavailable = (): void => finish(new Error('renderer_unavailable'))
@@ -45,7 +46,7 @@ export async function requestSessionTabCloseFromRenderer(
       if (event.sender !== webContents || response.requestId !== requestId) {
         return
       }
-      finish(response.error ? new Error(response.error) : undefined)
+      finish(response.error ? new Error(response.error) : undefined, response.switchApplied)
     }
     const expiresAt = Date.now() + SESSION_TAB_CLOSE_CONFIRMATION_MS
     const timeout = setTimeout(
@@ -58,7 +59,13 @@ export async function requestSessionTabCloseFromRenderer(
     webContents.once('destroyed', onRendererUnavailable)
     webContents.once('render-process-gone', onRendererUnavailable)
     webContents.once('did-start-loading', onRendererUnavailable)
-    const request: SessionTabCloseRequest = { requestId, tabId, worktreeId, expiresAt }
+    const request: SessionTabCloseRequest = {
+      requestId,
+      tabId,
+      worktreeId,
+      expiresAt,
+      ...(switchProjection ? { switchProjection } : {})
+    }
     try {
       webContents.send('ui:sessionTabCloseRequest', request)
     } catch {

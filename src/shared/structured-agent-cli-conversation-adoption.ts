@@ -50,8 +50,14 @@ export function inPlaceSwitchCapability(agent: string): string {
   return `agent-session.structured.switch.v1:${agent}`
 }
 
-export const IN_PLACE_SWITCH_RUNTIME_CAPABILITIES =
-  IN_PLACE_SWITCH_AGENTS.map(inPlaceSwitchCapability)
+export const IN_PLACE_SWITCH_RUNTIME_CAPABILITIES = IN_PLACE_SWITCH_AGENTS.flatMap((agent) => [
+  inPlaceSwitchCapability(agent),
+  inPlaceSwitchExecutionCapability(agent)
+])
+
+export function inPlaceSwitchExecutionCapability(agent: string): string {
+  return `agent-session.structured.switch-execution.v1:${agent}`
+}
 
 /** `saved`: built from a pane's saved facts; `switch`: the terminal half of a chat's switch. */
 export type TerminalResumeOrigin = 'saved' | 'switch'

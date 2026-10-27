@@ -1,3 +1,4 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import { isAntigravityReferenceSession } from '../../../../shared/antigravity-session-origin'
 import type { AiVaultSubagentResumeActions } from './AiVaultSessionSubagents'
 import type React from 'react'
@@ -30,6 +31,7 @@ import {
 export function SessionInlineDetails({
   id,
   session,
+  originalPaneTarget,
   worktreeInfo,
   vaultScope,
   resumeActions,
@@ -44,6 +46,7 @@ export function SessionInlineDetails({
 }: {
   id: string
   session: AiVaultSession
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
   worktreeInfo: AiVaultSessionWorktreeInfo | null
   vaultScope: AiVaultScope
   resumeActions: {
@@ -132,6 +135,7 @@ export function SessionInlineDetails({
             </Button>
           ) : null}
           <AiVaultSessionDetailsSwitchButtons
+            originalPaneTarget={originalPaneTarget}
             session={session}
             onResumeInNewChat={onResumeInNewChat}
             onResumeInNewCli={onResumeInNewCli}

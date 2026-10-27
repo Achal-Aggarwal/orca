@@ -119,6 +119,7 @@ export type ShellSpawnParams = {
   cwd: string
   env: Record<string, string>
   ptySpawn: typeof pty.spawn
+  assertCreateAllowed?: () => void
   getShellReadyConfig?: (
     shell: string
   ) => { args: string[] | null; env: Record<string, string> } | null
@@ -154,6 +155,7 @@ function spawnWindowsFallbackChain(
   // Skip the first entry: it is the primary that already failed above.
   for (const attempt of attempts.slice(1)) {
     try {
+      params.assertCreateAllowed?.()
       const proc = ptySpawn(attempt.shellPath, attempt.shellArgs, {
         name: termName,
         cols,
@@ -171,6 +173,7 @@ function spawnWindowsFallbackChain(
         startupCommandDeliveredInShellArgs: attempt.startupCommandDeliveredInShellArgs
       }
     } catch {
+      params.assertCreateAllowed?.()
       // This fallback shell also failed -- try the next link in the chain.
     }
   }
@@ -179,12 +182,13 @@ function spawnWindowsFallbackChain(
 
 export type PtyExecutableSpawnParams = Pick<
   ShellSpawnParams,
-  'termName' | 'cols' | 'rows' | 'cwd' | 'env' | 'ptySpawn'
+  'termName' | 'cols' | 'rows' | 'cwd' | 'env' | 'ptySpawn' | 'assertCreateAllowed'
 > & { file: string; args: string[] }
 
 /** One executable with an argv array, no shell and no fallback; throws when it can't start. */
 export function spawnPtyExecutable(params: PtyExecutableSpawnParams): pty.IPty {
   const { file, args, termName = 'xterm-256color', cols, rows, cwd, env, ptySpawn } = params
+  params.assertCreateAllowed?.()
   return ptySpawn(file, args, {
     name: termName,
     cols,
@@ -226,7 +230,8 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
           rows,
           cwd,
           env,
-          ptySpawn
+          ptySpawn,
+          assertCreateAllowed: params.assertCreateAllowed
         }),
         shellPath,
         reportsChildExitStatus: hostReportsChildExitStatus(wrapped.file)
@@ -270,6 +275,7 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
           fallbackReady?.args ?? ['-l'],
           env
         )
+        params.assertCreateAllowed?.()
         const proc = ptySpawn(wrapped.file, wrapped.args, {
           name: termName,
           cols,
@@ -286,6 +292,7 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
           reportsChildExitStatus: hostReportsChildExitStatus(wrapped.file)
         }
       } catch {
+        params.assertCreateAllowed?.()
         // Fallback also failed -- try next.
       }
     }

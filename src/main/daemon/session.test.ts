@@ -8,85 +8,13 @@ import {
   _resetPtyOwnerHostColorsForTest,
   setPtyOwnerHostColors
 } from '../../shared/pty-owner-color-query-colors'
+import { createMockSubprocess } from './session-subprocess.test-fixture'
+import type * as PtyDescendantTerminationModule from '../pty-descendant-termination'
 
 const killWithDescendantSweepMock = vi.hoisted(() => vi.fn())
 vi.mock('../pty-descendant-termination', () => ({
   killWithDescendantSweep: killWithDescendantSweepMock
 }))
-
-function createMockSubprocess() {
-  const written: string[] = []
-  const signals: string[] = []
-  let onData: ((data: string) => void) | null = null
-  let onExit: ((code: number) => void) | null = null
-  let killed = false
-  let clearCalls = 0
-  let pid = 12345
-  let pauseCalls = 0
-  let resumeCalls = 0
-
-  return {
-    written,
-    signals,
-    get killed() {
-      return killed
-    },
-    get pid() {
-      return pid
-    },
-    get pauseCalls() {
-      return pauseCalls
-    },
-    get resumeCalls() {
-      return resumeCalls
-    },
-    foregroundProcess: null as string | null,
-    getForegroundProcess(): string | null {
-      return this.foregroundProcess
-    },
-    confirmShellForeground: vi.fn(async () => true),
-    write(data: string) {
-      written.push(data)
-    },
-    resize(_cols: number, _rows: number) {},
-    pause() {
-      pauseCalls++
-    },
-    resume() {
-      resumeCalls++
-    },
-    get clearCalls() {
-      return clearCalls
-    },
-    clear() {
-      clearCalls++
-    },
-    kill() {
-      killed = true
-      setTimeout(() => onExit?.(0), 5)
-    },
-    terminateOwnedTree: () => 'terminated' as const,
-    forceKill() {
-      killed = true
-    },
-    signal(sig: string) {
-      signals.push(sig)
-    },
-    onData(cb: (data: string) => void) {
-      onData = cb
-    },
-    onExit(cb: (code: number) => void) {
-      onExit = cb
-    },
-    dispose() {},
-    simulateData(data: string) {
-      onData?.(data)
-    },
-    simulateExit(code: number) {
-      onExit?.(code)
-    }
-  }
-}
 
 type MockSubprocess = ReturnType<typeof createMockSubprocess>
 
@@ -634,6 +562,81 @@ describe('Session', () => {
 
       subprocess.simulateData('ell-ready\x07')
       expect(session.shellState).toBe('ready')
+    })
+  })
+
+  describe('switch-only conditional ordinary close', () => {
+    it.each(['input', 'attachment', 'suspended child', 'unknown'] as const)(
+      'refuses without a signal when %s arrives during the final idle probe',
+      async (change) => {
+        createSession()
+        const witness = session.captureSwitchWitness()
+        const check = session.switchCloseCondition({ token: witness, remainingMs: 10_000 })
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        subprocess.inspectChildProcesses.mockImplementation(async () => {
+          entered.resolve()
+          await release.promise
+          return change === 'suspended child'
+            ? 'children'
+            : change === 'unknown'
+              ? 'unverifiable'
+              : 'no-children'
+        })
+        const sweep = await vi.importActual<typeof PtyDescendantTerminationModule>(
+          '../pty-descendant-termination'
+        )
+        killWithDescendantSweepMock.mockImplementation((pid, killRoot, options) =>
+          sweep.killWithDescendantSweep(pid, killRoot, {
+            ...options,
+            platform: 'linux',
+            readTable: async () => ({ rows: [], capturedAtMs: Date.now() })
+          })
+        )
+        const teardown = new TerminalSessionTeardown(new Map([['test-session', session]]))
+        const closing = teardown.killSession('test-session', session, true, check)
+        await entered.promise
+        if (change === 'input') {
+          session.write('codex\r')
+        }
+        if (change === 'attachment') {
+          session.attachClient({ onData: () => {}, onExit: () => {} })
+        }
+        release.resolve()
+        await closing
+        expect(session.isTerminating).toBe(false)
+        expect(subprocess.killed).toBe(false)
+        expect(subprocess.signals).toEqual([])
+        session.write('echo still usable\r')
+        expect(subprocess.written).toContain('echo still usable\r')
+      }
+    )
+    it('seals accepted input only after its actual close is admitted', async () => {
+      createSession()
+      const witness = session.captureSwitchWitness()
+      const check = session.switchCloseCondition({ token: witness, remainingMs: 10_000 })
+      const sweep = await vi.importActual<typeof PtyDescendantTerminationModule>(
+        '../pty-descendant-termination'
+      )
+      killWithDescendantSweepMock.mockImplementation((pid, killRoot, options) =>
+        sweep.killWithDescendantSweep(pid, killRoot, {
+          ...options,
+          platform: 'linux',
+          readTable: async () => ({ rows: [], capturedAtMs: Date.now() })
+        })
+      )
+      vi.spyOn(subprocess, 'forceKill').mockImplementation(() => {
+        session.write('must not reach a closing shell\r')
+        subprocess.simulateExit(0)
+      })
+      await new TerminalSessionTeardown(new Map([['test-session', session]])).killSession(
+        'test-session',
+        session,
+        true,
+        check
+      )
+      expect(subprocess.written).not.toContain('must not reach a closing shell\r')
+      expect(session.isAlive).toBe(false)
     })
   })
 

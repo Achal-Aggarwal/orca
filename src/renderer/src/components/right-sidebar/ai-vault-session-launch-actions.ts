@@ -1,3 +1,4 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import {
   notifyAiVaultSessionPreparationFailure,
   resolveAiVaultSessionLaunchTargetOrNotify
@@ -196,8 +197,19 @@ export function useAiVaultSessionLaunchActions({
   )
 
   const handleResumeInNewChat = useCallback(
-    (session: AiVaultSession, targetWorktreeId?: string): void => {
-      if (!adoptsCliConversations(session.agent) || switchAiVaultSessionToNativeChat(session)) {
+    (
+      session: AiVaultSession,
+      targetWorktreeId?: string,
+      pane?: AiVaultOriginalPaneTarget | null
+    ): void => {
+      if (
+        !adoptsCliConversations(session.agent) ||
+        switchAiVaultSessionToNativeChat(
+          session,
+          targetWorktreeId ?? activeWorktreeId ?? activeWorktree?.id,
+          pane
+        )
+      ) {
         return
       }
       const worktreeId = targetWorktreeId ?? activeWorktreeId ?? activeWorktree?.id ?? null

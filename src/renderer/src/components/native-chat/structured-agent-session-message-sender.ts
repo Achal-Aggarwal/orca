@@ -1,3 +1,4 @@
+import { noteSwitchPresentationUse } from '@/lib/conversation-switch-projection'
 // Allow one unanswered send per chat in memory; host rows/cards own admitted messages. Never retry a send or retain it past its deadline.
 
 import type {
@@ -93,6 +94,7 @@ function dispatch(
 export function sendStructuredAgentSessionMessage(
   input: StructuredAgentSessionSendInput & { target: RuntimeClientTarget }
 ): StructuredAgentSessionSent | null {
+  noteSwitchPresentationUse(input.sessionId)
   const entry = takeStructuredAgentSessionSendSlot(input)
   return entry ? dispatch(entry, input.target) : null
 }
@@ -122,6 +124,7 @@ export type StructuredAgentSessionCreateSend = StructuredAgentSessionSent & {
 export function reserveStructuredAgentSessionSend(
   input: StructuredAgentSessionSendInput
 ): StructuredAgentSessionReservedSend | null {
+  noteSwitchPresentationUse(input.sessionId)
   const entry = takeStructuredAgentSessionSendSlot(input)
   if (!entry) {
     return null

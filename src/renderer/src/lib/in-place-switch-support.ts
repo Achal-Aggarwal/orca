@@ -16,6 +16,7 @@ import {
 } from '@/runtime/runtime-environment-revision'
 import {
   inPlaceSwitchCapability,
+  inPlaceSwitchExecutionCapability,
   inPlaceSwitchEnabled
 } from '../../../shared/structured-agent-cli-conversation-adoption'
 import type { AiVaultAgent } from '../../../shared/ai-vault-types'
@@ -66,7 +67,8 @@ export function useInPlaceSwitchRevision(): number {
 /** The addressed runtime owner's learned answer; reading never starts a probe. */
 export function inPlaceSwitchCapabilityNow(
   executionHostId: string | null | undefined,
-  agent: string
+  agent: string,
+  execution = false
 ): boolean | undefined {
   if (!inPlaceSwitchEnabled(agent)) {
     return false
@@ -76,7 +78,9 @@ export function inPlaceSwitchCapabilityNow(
     return undefined
   }
   if (target.kind === 'local') {
-    return readLocalRuntimeCapabilitiesOrUnknown()?.includes(inPlaceSwitchCapability(agent))
+    return readLocalRuntimeCapabilitiesOrUnknown()?.includes(
+      execution ? inPlaceSwitchExecutionCapability(agent) : inPlaceSwitchCapability(agent)
+    )
   }
   const state = useAppStore.getState()
   if (!state.runtimeEnvironments.some((environment) => environment.id === target.environmentId)) {
@@ -84,7 +88,11 @@ export function inPlaceSwitchCapabilityNow(
   }
   const entry = state.runtimeStatusByEnvironmentId.get(target.environmentId)
   const status = isRuntimeHostContactRevoked(entry) ? null : lastVerifiedRuntimeStatus(entry)
-  return status ? (status.capabilities ?? []).includes(inPlaceSwitchCapability(agent)) : undefined
+  return status
+    ? (status.capabilities ?? []).includes(
+        execution ? inPlaceSwitchExecutionCapability(agent) : inPlaceSwitchCapability(agent)
+      )
+    : undefined
 }
 
 export function inPlaceSwitchSupportedNow(host: string | null | undefined, agent: string): boolean {

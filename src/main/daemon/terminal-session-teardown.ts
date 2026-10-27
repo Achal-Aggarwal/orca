@@ -68,7 +68,45 @@ export class TerminalSessionTeardown {
     await Promise.all(this.requestImmediateAll())
   }
 
-  killSession(sessionId: string, session: Session, immediate: boolean): void | Promise<void> {
+  killSession(
+    sessionId: string,
+    session: Session,
+    immediate: boolean,
+    switchCheck?: () => boolean,
+    ownedSpawn?: true
+  ): void | Promise<void> {
+    if (switchCheck) {
+      return this.track(sessionId, session, true, async () => {
+        let committed = false
+        await killWithDescendantSweep(session.pid, () => {}, {
+          ownsRoot: () => this.sessions.get(sessionId) === session && session.isAlive && committed,
+          admitClose: async () => {
+            if (!switchCheck()) {
+              return false
+            }
+            const children = ownedSpawn
+              ? 'no-children'
+              : await session.inspectChildProcesses(true, false)
+            if (
+              children !== 'no-children' ||
+              !switchCheck() ||
+              this.sessions.get(sessionId) !== session
+            ) {
+              return false
+            }
+            committed = session.commitSwitchClose(switchCheck)
+            return committed
+          },
+          terminateOwnedTree: () => session.terminateOwnedTree(),
+          // No child is ever an automatic-cleanup target. Recheck occurs after this sweep's census.
+          ...(ownedSpawn ? {} : { terminateDescendants: () => {} }),
+          awaitEscalation: true
+        })
+        if (committed && this.sessions.get(sessionId) === session && session.isAlive) {
+          await session.forceKillAndWaitForExit()
+        }
+      })
+    }
     if (!session.launchAgent && !immediate && process.platform === 'win32') {
       // The PTY job would also end `start /b` and GUI children, which a graceful close leaves running.
       if (session.beginTermination()) {

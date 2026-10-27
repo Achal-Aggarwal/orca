@@ -18,6 +18,7 @@ import type {
 import type { CliStatusCaller } from './orchestration-caller-status'
 import type { RuntimeHostDescriptor } from './runtime-host-descriptor'
 import type { TuiAgent } from './tui-agent'
+import type { SessionSwitchProjection } from './agent-session-switch-execution'
 
 export type * from './runtime-mobile-session-tab-contracts'
 
@@ -165,6 +166,7 @@ export type RuntimeMountedLeaf = {
 }
 
 export type RuntimeSyncWindowGraph = {
+  conditionalSwitchProjection?: 1
   tabs: RuntimeSyncedTab[]
   leaves: RuntimeSyncedLeaf[]
   /** Layout-owner windows report main-owned panes here; tabs/leaves then cover other workspaces. Window-to-main only. */
@@ -251,6 +253,7 @@ export type RuntimeMobileSessionTabsSnapshot = {
   activeTabType: 'terminal' | 'markdown' | 'file' | 'browser' | 'agent-session' | null
   tabGroups?: RuntimeMobileSessionTabGroup[]
   tabGroupLayout?: TabGroupLayoutNode | null
+  switchProjections?: SessionSwitchProjection[]
   retiredTerminalSurfaces?: RuntimeMobileSessionRetiredTerminalSurface[]
   tabs: RuntimeMobileSessionSnapshotTab[]
 }
@@ -275,6 +278,7 @@ export type RuntimeMobileSessionTabsResult = {
   activeTabType: 'terminal' | 'markdown' | 'file' | 'browser' | 'agent-session' | null
   tabGroups?: RuntimeMobileSessionTabGroup[]
   tabGroupLayout?: TabGroupLayoutNode | null
+  switchProjections?: SessionSwitchProjection[]
   retiredTerminalSurfaces?: RuntimeMobileSessionRetiredTerminalSurface[]
   tabs: RuntimeMobileSessionClientTab[]
   /** After restart, client-hosted browser rows may be unknown while terminals are authoritative. Preserve absent
@@ -290,6 +294,9 @@ export type RuntimeMobileSessionCreateTerminalResult = {
   publicationEpoch: string
   snapshotVersion: number
   warning?: 'desktop-tab-not-shown'
+  agentResumeRefused?: true
+  agentResumeUnavailable?: true
+  switchOutcomeUnknown?: true
   /** The saved folder was gone, so the terminal started at the workspace root. */
   startupCwdFallback?: 'workspace-root'
 }

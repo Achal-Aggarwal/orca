@@ -1,5 +1,4 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-
 import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -296,7 +295,7 @@ describe('adopting a provider conversation on create', () => {
     expect(sessionAdapter.acquire).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['missing', 'oversized', 'empty', 'invalid', 'source-less'] as const)(
+  it.each(['missing', 'oversized', 'empty', 'metadata-only', 'invalid', 'source-less'] as const)(
     'refuses %s source before claiming a conversation',
     async (kind) => {
       root = await mkdtemp(join(tmpdir(), 'orca-adopt-preflight-'))
@@ -304,6 +303,11 @@ describe('adopting a provider conversation on create', () => {
       if (kind === 'oversized') {
         await writeCodexRollout(transcriptPath, 'original turn')
         await appendFile(transcriptPath, 'x'.repeat(16 * 1024 * 1024 + 1))
+      } else if (kind === 'metadata-only') {
+        await writeFile(
+          transcriptPath,
+          `${JSON.stringify({ type: 'session_meta', payload: { id: THREAD, cwd: '/workspace' } })}\n`
+        )
       } else if (kind === 'empty' || kind === 'invalid') {
         await writeFile(transcriptPath, kind === 'empty' ? '' : 'not json\n')
       }

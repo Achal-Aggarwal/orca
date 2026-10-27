@@ -1,3 +1,4 @@
+import { useSwitchPresentationRows } from '@/lib/conversation-switch-presentation'
 import {
   nativeChatTranscriptOuterClass,
   NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS
@@ -132,6 +133,7 @@ export function NativeChatMessageList({
     [journalItems]
   )
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  useSwitchPresentationRows(scrollRef)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<string>>(new Set())
   const disclosures = useNativeChatDisclosures()

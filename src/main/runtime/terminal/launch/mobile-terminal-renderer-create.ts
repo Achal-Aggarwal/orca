@@ -1,14 +1,4 @@
 import { applyRemoteViewerLaunchEnv } from '../../remote-viewer-launch-env'
-import type { MobileTerminalCommandOptions, MobileTerminalCommand } from './mobile-terminal-startup'
-import type { RuntimePtyWorktreeRecord } from '../../runtime-terminal-state-records'
-import type { TerminalWorkspaceLaunchScope } from '../../runtime-legacy-worker-terminal-recovery-types'
-import { OrcaRuntimeWithMobileChatForkCreate } from './mobile-terminal-chat-fork-create'
-import type { WorktreeStartupLaunch } from '../../../../shared/worktree/launch-types'
-import type { TuiAgent } from '../../../../shared/tui-agent'
-import type {
-  AgentProviderSessionMetadata,
-  SleepingAgentLaunchConfig
-} from '../../../../shared/agent-session-resume'
 import type { RuntimeMobileSessionCreateTerminalResult } from '../../../../shared/runtime-types'
 import { randomUUID } from 'node:crypto'
 import { getRuntimeDesktopSurface } from '../../runtime-desktop-surface'
@@ -22,72 +12,11 @@ import { rendererPublicationThrottle } from '../../../window/renderer-publicatio
 import { deterministicAgentSessionUuid } from '../../runtime-agent-launch-resolution'
 import { assertMobileTerminalShellSupported } from './mobile-terminal-shell-refusal'
 import { anchorTabOfCreate, mainPlacedAfter } from './mobile-terminal-create-anchor'
+import { createPublishedSwitchTerminal } from './mobile-terminal-switch-publication'
+import { OrcaRuntimeWithMobileTerminalCreateOwner } from './mobile-terminal-create-owner'
+import type { MobileTerminalCreateOptions } from './mobile-terminal-create-options'
 
-export type MobileTerminalCreateOptions = {
-  terminalImageViewerSupported?: boolean
-  afterTabId?: string
-  sourceChatFork?: { sessionId: string }
-  targetGroupId?: string
-  command?: string
-  shellOverride?: string
-  cwd?: string
-  env?: Record<string, string>
-  envToDelete?: string[]
-  startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
-  agent?: TuiAgent
-  agentPrompt?: string
-  launchConfig?: SleepingAgentLaunchConfig
-  launchAgent?: TuiAgent
-  /** A switch's start: its ordinary spawn admission checks the conversation. */
-  resumeProviderSession?: AgentProviderSessionMetadata
-  resumeOrigin?: 'switch'
-  viewMode?: 'terminal' | 'chat'
-  activate?: boolean
-  clientNavigationId?: string
-  clientMutationId?: string
-  supportsSplitGroupPlacement?: boolean
-  signal?: AbortSignal
-}
-
-export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWithMobileChatForkCreate {
-  protected abstract resolveMobileSessionTerminalCommand(
-    workspace: TerminalWorkspaceLaunchScope,
-    opts: MobileTerminalCommandOptions
-  ): Promise<MobileTerminalCommand>
-
-  protected abstract ensurePtyBackedMobileSurfaceForRendererTab(
-    worktreeId: string,
-    tabId: string
-  ): RuntimeMobileSessionCreateTerminalResult | null
-
-  protected abstract waitForMobileTerminalSurface(
-    worktreeId: string,
-    parentTabId: string,
-    options?: { timeoutMs?: number; requireReady?: boolean; signal?: AbortSignal }
-  ): Promise<RuntimeMobileSessionCreateTerminalResult>
-
-  protected abstract isReadyMobileTerminalSurface(
-    surface: RuntimeMobileSessionCreateTerminalResult | null
-  ): boolean
-
-  protected abstract deliverPendingStartupCommandToBareRendererPty(
-    worktreeId: string,
-    tabId: string
-  ): void
-
-  protected abstract findMobileTerminalSurface(
-    worktreeId: string,
-    parentTabId: string,
-    options?: { requireReady?: boolean }
-  ): RuntimeMobileSessionCreateTerminalResult | null
-
-  protected abstract findLiveRegisteredPtyForRendererTab(
-    worktreeId: string,
-    tabId: string
-  ): RuntimePtyWorktreeRecord | null
-
-  protected abstract hasLiveShellForRendererTab(worktreeId: string, tabId: string): boolean
-
+export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWithMobileTerminalCreateOwner {
   protected async runCreateMobileSessionTerminal(
     worktreeSelector: string,
     opts: MobileTerminalCreateOptions = {}
@@ -154,6 +83,9 @@ export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends Orca
       opts.resumeOrigin === 'switch'
         ? { resumeProviderSession: opts.resumeProviderSession, resumeOrigin: opts.resumeOrigin }
         : {}
+    let destinationCurrent = () => {}
+    let dispatched = false
+    let targetGroupId = opts.targetGroupId
     const createOwned = (identity?: { tabId: string; leafId: string }) =>
       this.createRuntimeOwnedMobileSessionTerminal(
         worktreeId,
@@ -169,7 +101,7 @@ export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends Orca
           ...(identity ? { identity } : {}),
           launchAgent: startupCommand.launchAgent,
           viewMode: opts.viewMode,
-          targetGroupId: opts.targetGroupId,
+          targetGroupId,
           ...mainPlacedAfter(
             () => this.mainLayoutTabOfRow(worktreeId, requestedAfterTabId),
             afterDesktopTabId
@@ -178,9 +110,52 @@ export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends Orca
           launchConfig: startupCommand.launchConfig,
           launchRuntime: startupCommand.launchRuntime,
           ...switchStart,
-          signal: opts.signal
+          ...(opts.switchExecution
+            ? {
+                createMutation: {
+                  clientIdentity: opts.clientNavigationId ?? 'local',
+                  id: opts.clientMutationId!
+                },
+                keepPaneOnStartFailure: true as const,
+                beforePtySpawn: () => {
+                  opts.switchExecution?.check()
+                  destinationCurrent()
+                },
+                onPtySpawnDispatched: () => {
+                  dispatched = true
+                }
+              }
+            : {}),
+          signal: opts.switchExecution?.signal ?? opts.signal,
+          switchExecution: opts.switchExecution
+            ? {
+                ...opts.switchExecution,
+                check: () => {
+                  opts.switchExecution?.check()
+                  destinationCurrent()
+                }
+              }
+            : undefined
         }
       )
+    if (opts.switchExecution) {
+      return createPublishedSwitchTerminal({
+        owner: this,
+        windowAvailable: () => Boolean(this.getAvailableAuthoritativeWindow()),
+        worktreeId,
+        opts,
+        startupCommand,
+        afterDesktopTabId,
+        createOwned,
+        setDestinationCurrent: (check) => {
+          destinationCurrent = check
+        },
+        setTargetGroup: (group) => {
+          targetGroupId = group
+        },
+        wasDispatched: () => dispatched
+      })
+    }
     const win = this.getAvailableAuthoritativeWindow()
     if (!win) {
       return await createOwned()
@@ -317,3 +292,5 @@ export abstract class OrcaRuntimeWithRunCreateMobileSessionTerminal extends Orca
     }
   }
 }
+
+export type { MobileTerminalCreateOptions } from './mobile-terminal-create-options'

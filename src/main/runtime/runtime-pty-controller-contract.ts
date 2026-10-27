@@ -12,7 +12,6 @@ import type {
 import type { AgentProviderSessionMetadata } from '../../shared/agent-session-resume'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
-import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 import type { PtyBindingSourceExpectation } from '../persistence'
 import type { TerminalPanePlacement } from '../../shared/terminal-pane-placement'
 import type { ExecutionHostId } from '../../shared/execution-host'
@@ -26,6 +25,12 @@ import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { StartupCwdFallback } from '../../shared/startup-cwd-fallback'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { PaneResumeOutcome } from '../../shared/workspace-layout/workspace-layout-published'
+import type {
+  PtyFencedTerminationRequest,
+  PtyFencedTerminationOutcome
+} from '../../shared/pty-fenced-termination'
+import type { AgentSessionSwitchAuthority } from '../../shared/agent-session-switch-execution'
+import type { PtyProcessInspectionOptions } from '../providers/pty-process-inspection'
 
 export type PtyInventoryRefreshOptions = {
   includeForegroundProcessEvidence?: boolean
@@ -41,6 +46,7 @@ export type RuntimePtyController = {
   }): () => void
   adoptStablePane?(opts: {
     signal?: AbortSignal
+    switchExecution?: AgentSessionSwitchAuthority
     spawnFresh?: (operation: PaneSpawnOperation) => Promise<PtySpawnResult>
     cols: number
     rows: number
@@ -101,6 +107,7 @@ export type RuntimePtyController = {
     agentSessionCreateOperationId?: string
     spawnIntent?: SpawnIntent
     signal?: AbortSignal
+    switchExecution?: AgentSessionSwitchAuthority
     refuseSleptWorktree?: boolean
     onPtySpawnCommitted?: () => void
     /** Layout-owner build: whether a fresh start resumed its agent, told before its bind is written. */
@@ -136,6 +143,7 @@ export type RuntimePtyController = {
   ): WriteSettlement | Promise<WriteSettlement>
   /** Attach existing local daemon output without creating, resizing or focusing; refuse uncertain, SSH-scoped or non-daemon sessions. */
   attach?(ptyId: string): Promise<boolean>
+  killFenced?: (request: PtyFencedTerminationRequest) => Promise<PtyFencedTerminationOutcome>
   kill(ptyId: string): boolean
   /** `incarnationId` is the rejected spawn's; a same-id respawn since then is left alone. */
   retireRejectedPty?(ptyId: string, stopConfirmed: boolean, incarnationId: string | undefined): void
@@ -147,7 +155,7 @@ export type RuntimePtyController = {
   getForegroundProcess(ptyId: string): Promise<string | null>
   inspectProcess?(
     ptyId: string,
-    options?: { expectedIncarnationId?: PtyIncarnationId; scanChildProcesses?: boolean }
+    options?: PtyProcessInspectionOptions
   ): Promise<PtyProcessInspection>
   confirmForegroundProcess?(ptyId: string): Promise<string | null>
   confirmShellForeground?(ptyId: string): Promise<boolean>

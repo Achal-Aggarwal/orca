@@ -54,10 +54,17 @@ export const spawnShellInputs = ({
 
 /** Abort disconnected callers, refuse sleeping workspaces, and pass fork intent for host validation. */
 export function callerSpawnScope(
-  opts: Pick<TerminalCreateOptions, 'signal' | 'refuseSleptWorktree' | 'spawnIntent'>
-): { signal?: AbortSignal; refuseSleptWorktree?: true; spawnIntent?: SpawnIntent } {
+  opts: Pick<
+    TerminalCreateOptions,
+    'signal' | 'refuseSleptWorktree' | 'spawnIntent' | 'switchExecution'
+  >
+): Pick<TerminalCreateOptions, 'signal' | 'switchExecution'> & {
+  refuseSleptWorktree?: true
+  spawnIntent?: SpawnIntent
+} {
   return {
     ...(opts.signal ? { signal: opts.signal } : {}),
+    ...(opts.switchExecution ? { switchExecution: opts.switchExecution } : {}),
     ...(opts.refuseSleptWorktree ? { refuseSleptWorktree: true } : {}),
     ...(opts.spawnIntent ? { spawnIntent: opts.spawnIntent } : {})
   }

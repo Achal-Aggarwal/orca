@@ -9,7 +9,7 @@ import {
   parseJsonObject,
   timestampMs
 } from '../ai-vault/session-scanner-values'
-import { claudeContentBlocks, toolResultOutput } from './transcript-record-blocks'
+import { toolResultOutput } from './transcript-record-blocks'
 import { CODEX_EVENT_TURN_ABORTED } from './transcript-turn-markers'
 
 export function decodeCodexTranscriptLine(
@@ -63,7 +63,7 @@ function codexResponseItem(
     if (!role) {
       return null
     }
-    const decodedBlocks = claudeContentBlocks(payload.content)
+    const decodedBlocks = codexTurnItemBlocks(payload.content)
     const blocks =
       role === 'user' ? decodedBlocks.filter((block) => !isSkillContext(block)) : decodedBlocks
     if (blocks.length === 0) {
@@ -174,11 +174,20 @@ function codexCompletedTurnItem(
 }
 
 function codexTurnItemBlocks(content: unknown): NativeChatBlock[] {
+  if (typeof content === 'string') {
+    return content.trim() ? [{ type: 'text', text: content }] : []
+  }
   if (!Array.isArray(content)) {
     return []
   }
   const blocks: NativeChatBlock[] = []
   for (const value of content) {
+    if (typeof value === 'string') {
+      if (value.trim()) {
+        blocks.push({ type: 'text', text: value })
+      }
+      continue
+    }
     const item = asRecord(value)
     if (!item) {
       continue

@@ -124,6 +124,9 @@ export class DaemonRequestRouter {
         }
       case 'inspectProcess': {
         const options = {
+          ...(request.payload.captureSwitchWitness
+            ? { captureSwitchWitness: request.payload.captureSwitchWitness }
+            : {}),
           ...(request.payload.expectedIncarnationId
             ? { expectedIncarnationId: request.payload.expectedIncarnationId }
             : {}),

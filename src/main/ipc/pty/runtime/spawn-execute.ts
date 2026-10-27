@@ -1,7 +1,6 @@
 import {
   suppressSavedResumeLaunch,
   captureSavedResumeCleanup,
-  chooseSavedResumeFreshLaunch,
   type ResumeSpawnAdmission,
   resumeSpawnRefusal,
   SavedResumeFreshRefusal
@@ -27,6 +26,7 @@ import { isRegisteredAgentSessionOwnerLive } from '../provider/liveness'
 import { failPtySpawnExecute } from '../spawn-execute-failure'
 import type { RuntimePtySpawnState } from './spawn-state'
 import { markRuntimeSpawnHiddenBeforeSpawn } from './spawn-hidden-delivery'
+import { chooseRuntimeSavedResumeFreshLaunch } from './spawn-saved-resume'
 
 export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise<void> {
   const args = ctx.args
@@ -47,21 +47,7 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
     )
   }
   const chooseFresh = async (): Promise<void> => {
-    ctx.spawnOptions.env = { ...ctx.spawnOptions.env }
-    ctx.resumeAdmission = await chooseSavedResumeFreshLaunch(
-      ctx.deps.runtime,
-      args,
-      ctx.expectedWslDistro,
-      ctx.spawnOptions
-    )
-    if (captured && ctx.resumeAdmission) {
-      ctx.resumeAdmission.refused = captured.refused
-      ctx.resumeAdmission.sourceRecord = captured.sourceRecord
-    }
-    if (resumeSpawnRefusal(ctx.resumeAdmission)) {
-      ctx.launchCommand = undefined
-      ctx.env = ctx.spawnOptions.env
-    }
+    await chooseRuntimeSavedResumeFreshLaunch(ctx, captured)
   }
   const runtime = ctx.deps.runtime
   const acquireWorktreeSpawn = runtime?.acquireWorktreeTerminalSpawn
@@ -129,6 +115,7 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
       ? (ctx.deps.runtime?.getPtyOutputSequence?.(expectedPtyId) ?? 0)
       : 0
     const assertClientStillConnected = (): void => {
+      args.switchExecution?.check()
       if (args.signal?.aborted) {
         throw new Error('client_disconnected')
       }
@@ -160,10 +147,12 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
           spawn: async () => {
             assertClientStillConnected()
             await chooseFresh()
+            assertClientStillConnected()
             const refusal = resumeSpawnRefusal(ctx.resumeAdmission)
             if (refusal) {
               throw new SavedResumeFreshRefusal(refusal)
             }
+            assertClientStillConnected()
             providerResult = await ctx.provider.spawn(ctx.spawnOptions)
             ctx.rejectedRegistrationCandidate = providerResult
             // Why: a successful lower-owner return proves physical work committed even if admission sees an early exit.
@@ -190,6 +179,14 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
             }
           },
           isLive: isRegisteredAgentSessionOwnerLive,
+          check: args.switchExecution?.check,
+          onDispatchedRevoked: args.switchExecution
+            ? () => {
+                if (providerResult) {
+                  providerResult.switchOutcomeUnknown = true
+                }
+              }
+            : undefined,
           onJoin: () => {
             awaitingAnotherStart = true
           }
@@ -209,6 +206,7 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
         ctx.env = ctx.spawnOptions.env
         delete args.agentSessionEnsure
         ctx.spawnOptions.agentSessionEnsure = undefined
+        assertClientStillConnected()
         providerResult = await ctx.provider.spawn(ctx.spawnOptions)
         ctx.reportPtySpawnCommitted()
         ctx.stablePaneOwner = null
@@ -232,6 +230,7 @@ export async function executeRuntimePtySpawn(ctx: RuntimePtySpawnState): Promise
     } else {
       assertClientStillConnected()
       await chooseFresh()
+      assertClientStillConnected()
       ctx.result = await ctx.provider.spawn(ctx.spawnOptions)
       ctx.reportPtySpawnCommitted()
       ctx.stablePaneOwner = null

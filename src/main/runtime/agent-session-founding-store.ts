@@ -13,9 +13,10 @@ export function createAgentSessionFoundingStore(
   return {
     prepare: (request: AgentSessionReserveRequest) =>
       commitAgentSessionFounding(draftAgentSessionStoreState(transactions.state), request),
-    commit: async (request: AgentSessionReserveRequest) => {
+    commit: async (request: AgentSessionReserveRequest, check?: () => void) => {
       let heldBefore = true
       const result = await transactions.transact((draft) => {
+        check?.()
         heldBefore = draft.records.size > 0 || draft.unreadableRecords.size > 0
         return commitAgentSessionFounding(draft, request)
       })

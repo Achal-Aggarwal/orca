@@ -43,3 +43,12 @@ export function protectedConversationPaneKeys(
   }
   return protectedKeys
 }
+
+const listeners = new Set<() => void>()
+export const conversationSwitchChanged = () => listeners.forEach((listener) => listener())
+export const subscribeConversationSwitch = (listener: () => void) => {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}

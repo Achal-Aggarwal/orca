@@ -44,11 +44,16 @@ export type ConptyStartupWatch = {
   verdict: Promise<ConptyStartupOutcome>
   /** Hands buffered output and exit to the caller and stops buffering. */
   claim(): ConptyStartupEvents
+  exited: Promise<void>
 }
 
 /** Buffers a fresh ConPTY's output until its owner claims it, so no startup byte is lost. */
 export function watchConptyStartup(proc: pty.IPty): ConptyStartupWatch {
   const events: ConptyStartupEvents = { data: [], exit: null }
+  let ended!: () => void
+  const exited = new Promise<void>((resolve) => {
+    ended = resolve
+  })
   let output = ''
   let settle: (outcome: ConptyStartupOutcome) => void = () => {}
   const verdict = new Promise<ConptyStartupOutcome>((resolve) => {
@@ -68,12 +73,14 @@ export function watchConptyStartup(proc: pty.IPty): ConptyStartupWatch {
     }
   })
   const exitSubscription = proc.onExit(({ exitCode, signal }) => {
+    ended()
     events.exit = { exitCode, ...(signal !== undefined ? { signal } : {}) }
     decided = true
     settle('exited')
   })
   return {
     verdict,
+    exited,
     claim: () => {
       dataSubscription.dispose()
       exitSubscription.dispose()
@@ -84,8 +91,13 @@ export function watchConptyStartup(proc: pty.IPty): ConptyStartupWatch {
 
 async function decideConptyStartup(
   proc: pty.IPty,
-  signal: AbortSignal | undefined
-): Promise<{ outcome: ConptyStartupOutcome; claim: () => ConptyStartupEvents }> {
+  signal: AbortSignal | undefined,
+  retainCanceledChild = false
+): Promise<{
+  outcome: ConptyStartupOutcome
+  claim: () => ConptyStartupEvents
+  exited: Promise<void>
+}> {
   const watch = watchConptyStartup(proc)
   let limit: ReturnType<typeof setTimeout> | undefined
   let onAbort = (): void => {}
@@ -98,8 +110,11 @@ async function decideConptyStartup(
       limit.unref?.()
       void watch.verdict.then(resolve)
     })
-    return { outcome, claim: watch.claim }
+    return { outcome, claim: watch.claim, exited: watch.exited }
   } catch (error) {
+    if (retainCanceledChild) {
+      return { outcome: 'undecided', claim: watch.claim, exited: watch.exited }
+    }
     // A canceled spawn must not leave the half-started shell running.
     discardConpty(proc, watch)
     throw error
@@ -145,6 +160,7 @@ export async function spawnConptyWithInputReader(
     label: string
     signal?: AbortSignal
     // Only Orca's default interactive argv is safe to respawn; custom argv may repeat a command.
+    retainCanceledChild?: boolean
     respawnSafe: boolean
   }
 ): Promise<{ proc: pty.IPty; claimStartupEvents: () => ConptyStartupEvents }> {
@@ -152,7 +168,7 @@ export async function spawnConptyWithInputReader(
   if (announcementUntrusted) {
     return { proc: first, claimStartupEvents: () => ({ data: [], exit: null }) }
   }
-  const firstStartup = await decideConptyStartup(first, opts.signal)
+  const firstStartup = await decideConptyStartup(first, opts.signal, opts.retainCanceledChild)
   if (firstStartup.outcome === 'input-reader') {
     announcementObserved = true
   }
@@ -168,9 +184,35 @@ export async function spawnConptyWithInputReader(
   console.warn(
     `[daemon/pty] ConPTY for "${opts.label}" started without an input reader; respawning (${respawnCount})`
   )
-  discardConpty(first, firstStartup)
+  if (opts.retainCanceledChild) {
+    // A retry cannot orphan its predecessor while native exit is still uncertain.
+    let limit: ReturnType<typeof setTimeout> | undefined
+    const stopped = firstStartup.exited.then(() => true)
+    try {
+      terminatePtyJob(first)
+      killConptyNow(first)
+      first.kill()
+      const exited = await Promise.race([
+        stopped,
+        new Promise<false>((resolve) => {
+          limit = setTimeout(() => resolve(false), CONPTY_STARTUP_DECISION_LIMIT_MS)
+          limit.unref?.()
+        })
+      ])
+      if (!exited) {
+        return { proc: first, claimStartupEvents: withNotice(firstStartup.claim) }
+      }
+      firstStartup.claim()
+    } catch {
+      return { proc: first, claimStartupEvents: withNotice(firstStartup.claim) }
+    } finally {
+      clearTimeout(limit)
+    }
+  } else {
+    discardConpty(first, firstStartup)
+  }
   const retry = await spawn()
-  const retryStartup = await decideConptyStartup(retry, opts.signal)
+  const retryStartup = await decideConptyStartup(retry, opts.signal, opts.retainCanceledChild)
   if (retryStartup.outcome === 'input-reader') {
     announcementObserved = true
   }

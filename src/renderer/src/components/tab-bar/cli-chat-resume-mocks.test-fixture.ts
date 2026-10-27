@@ -10,6 +10,7 @@ export type CliChatResumeTestMocks = {
   call: Mock
   toast: Mock
   success: Mock
+  info: Mock
   activate: Mock<() => Promise<boolean>>
   activateVerified: Mock<() => Promise<string>>
   switchCapability: Mock<() => Promise<boolean>>

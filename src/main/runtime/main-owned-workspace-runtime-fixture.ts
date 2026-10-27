@@ -1,4 +1,3 @@
-// Windowless main-owned layout fixture: apply in memory and notify writes so terminal listings refresh.
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { TerminalPaneLayoutNode } from '../../shared/terminal-tab-types'
@@ -8,6 +7,8 @@ import { applyCommandToSession } from '../persistence/terminal-topology/terminal
 import { resolveHostId } from '../persistence/loading-store/session-host-partitions'
 import { withDurableRuntimeStore, withRuntimePaneAdmission } from './runtime-durable-store-fixture'
 import { OrcaRuntimeService } from './orca-runtime'
+
+// Windowless main-owned layout fixture: apply in memory and notify writes so terminal listings refresh.
 
 export const REPO = {
   id: 'repo-1',
@@ -80,10 +81,20 @@ export function setupMainOwnedWorkspace(opts: { split?: boolean; pinned?: boolea
         return () => written.delete(listener)
       },
       setWorkspaceSession: (next: WorkspaceSessionState) => write(next),
-      applyLayoutCommand: async (command: LayoutCommand, hostIds: readonly string[] = []) => {
+      applyLayoutCommand: async (
+        command: LayoutCommand,
+        hostIds: readonly string[] = [],
+        run?: { admit?: () => boolean; onApplied?: () => void }
+      ) => {
+        if (run?.admit && !run.admit()) {
+          return { ok: false as const, code: 'tab_not_found' as const }
+        }
         const change = applyCommandToSession(resolveHostId(hostIds[0]), current, command)
         if (change.session) {
           write(change.session)
+        }
+        if (change.value.ok) {
+          run?.onApplied?.()
         }
         return change.value
       },

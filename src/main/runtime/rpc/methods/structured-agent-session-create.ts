@@ -1,6 +1,3 @@
-// Resolve the host launch identity, then commit an at-rest create or the compatible acquired path.
-
-import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../../shared/agent-chat-permission-mode'
 import { refuse, AgentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import type {
@@ -36,6 +33,12 @@ import { structuredAgentSessionClosedBeforeCreate } from './structured-agent-ses
 import { structuredLaunchSeedOnSavedListing } from '../../session-tabs/structured-launch-seed-listing'
 import type { ChatTabPlacement } from '../../agent-session/agent-session-tab-layout'
 import { seedOptionsAdmittedOnSavedListing } from '../../agent-session-record-options'
+import {
+  structuredAgentSessionCreateIntentFingerprint,
+  seededPermissionMode
+} from './structured-agent-session-create-options'
+
+// Resolve the host launch identity, then commit an at-rest create or the compatible acquired path.
 
 export type PreparedStructuredAgentSessionCreate = {
   host: StructuredAgentSessionHost
@@ -49,28 +52,6 @@ export type PreparedStructuredAgentSessionCreate = {
 }
 
 /** New creates keep the immutable client intent in the ledger; legacy creates keep attach identity. */
-export function structuredAgentSessionCreateIntentFingerprint(params: {
-  envelope: AgentSessionMutationEnvelope
-  worktree: string
-  agent: string
-  resumeFrom?: StructuredAgentSessionResumeSource
-  tabId?: string
-  firstMessage?: StructuredAgentSessionFirstMessage
-  options?: Readonly<Record<string, string>>
-}): string {
-  return computeAgentSessionPayloadFingerprint({
-    method: 'agentSession.create',
-    sessionId: params.envelope.sessionId,
-    fields: {
-      worktree: params.worktree,
-      agent: params.agent,
-      resumeFrom: params.resumeFrom,
-      tabId: params.tabId,
-      firstMessage: params.firstMessage,
-      options: params.options
-    }
-  })
-}
 
 /** Run throwing pre-commit work inside resolveUncommittedStructuredCreate so clients receive a no-effects refusal. */
 export async function prepareStructuredAgentSessionCreateForWorktree(args: {
@@ -202,6 +183,7 @@ export async function commitStructuredAgentSessionCreate(args: {
   caller: StructuredAgentSessionCaller
   prepared: PreparedStructuredAgentSessionCreate
   activate: boolean
+  check?: () => void
   /** This machine's window made the create and opens the chat's tab where it reserved it. */
   placedByWindow?: boolean
   /** Where the creating client opens the chat, in this host's ids. */
@@ -216,6 +198,7 @@ export async function commitStructuredAgentSessionCreate(args: {
   if (prepared.atRest) {
     return prepared.host.create(args.caller, prepared.attachParams, {
       ...prepared.atRest,
+      check: args.check,
       ...(prepared.catalogModels ? { catalogModels: prepared.catalogModels } : {}),
       ...(prepared.hostLaunchDirectory
         ? { hostLaunchDirectory: prepared.hostLaunchDirectory }
@@ -232,6 +215,7 @@ export async function commitStructuredAgentSessionCreate(args: {
                     sessionId: prepared.attachParams.envelope.sessionId,
                     agent: tab.agent,
                     activate: args.activate,
+                    ...(args.check ? { check: args.check } : {}),
                     ...tabPlace,
                     ...(prepared.attachParams.surfaceTabId
                       ? { tabId: prepared.attachParams.surfaceTabId }
@@ -320,9 +304,4 @@ export async function createStructuredAgentSessionForWorktree(args: {
   })
 }
 
-function seededPermissionMode(
-  options: Readonly<Record<string, string>> | undefined
-): Record<string, string> {
-  const mode = options?.[AGENT_CHAT_PERMISSION_MODE_OPTION_ID]
-  return mode ? { [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: mode } : {}
-}
+export { structuredAgentSessionCreateIntentFingerprint } from './structured-agent-session-create-options'

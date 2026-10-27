@@ -144,9 +144,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
         ? inspectRuntimeTerminalProcess(id, options)
         : window.api.pty.getForegroundProcess(id),
     confirmForegroundProcess: (id, options) =>
-      isRemoteExecutionHostPtyId(id)
-        ? inspectRuntimeTerminalProcess(id, options)
-        : window.api.pty.confirmForegroundProcess(id),
+      inspectRuntimeTerminalProcess(id, { ...options, scanChildProcesses: true }),
     isRemotePtyId: isRemoteExecutionHostPtyId,
     getExpectedIncarnationId: () => session.remotePtyIncarnationId ?? null,
     publish: (entry) => useAppStore.getState().setPaneForegroundAgent(session.cacheKey, entry),

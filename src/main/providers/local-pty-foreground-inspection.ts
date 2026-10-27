@@ -37,7 +37,8 @@ import { isWindowsPtyJobReadable, readWindowsPtyJobProcessIds } from './windows-
 export async function inspectLocalPtyChildProcesses(
   id: string,
   fresh = true,
-  ignoreDetached = false
+  ignoreDetached = false,
+  strict = false
 ): Promise<PtyChildProcessVerdict> {
   const proc = ptyProcesses.get(id)
   if (!proc) {
@@ -56,7 +57,7 @@ export async function inspectLocalPtyChildProcesses(
       )
       return ptyProcesses.get(id) === proc ? verdict : 'unverifiable'
     }
-    if (ptyProcessNameIsSpawnFile(proc)) {
+    if (strict || ptyProcessNameIsSpawnFile(proc)) {
       const snapshot = await getStrictProcessTableSnapshotWithAge()
       return ptyProcesses.get(id) === proc
         ? inspectSpawnFileChildProcessesFromRows(
@@ -241,7 +242,10 @@ async function readPosixSteadyState(
   }
 }
 
-export async function confirmLocalPtyForegroundProcess(id: string): Promise<string | null> {
+export async function confirmLocalPtyForegroundProcess(
+  id: string,
+  observeSuspended?: (name: string | undefined) => void
+): Promise<string | null> {
   const proc = ptyProcesses.get(id)
   if (!proc) {
     return null
@@ -268,6 +272,9 @@ export async function confirmLocalPtyForegroundProcess(id: string): Promise<stri
     // Why: a fresh scan can outlive this PTY id; never publish identity from an exited or same-id-reusing session.
     if (ptyProcesses.get(id) !== proc) {
       return null
+    }
+    if (resolution.available) {
+      observeSuspended?.(resolution.suspendedAgentProcess)
     }
     return resolution.available ? resolution.processName : null
   } catch {

@@ -27,6 +27,7 @@ export type StructuredAgentSessionAttachContext = {
   }
   tasks: StructuredAgentSessionTaskQueue
   reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+  waitSwitchPhysical?: (sessionId: string) => Promise<void>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   publishStatus: (sessionId: string) => void

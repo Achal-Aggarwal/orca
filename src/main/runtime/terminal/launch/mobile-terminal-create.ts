@@ -18,6 +18,7 @@ import type { AgentLaunchRuntime } from '../../../../shared/agent-launch-runtime
 import { navigationTargetsHost } from '../../../../shared/runtime-navigation'
 import { MOBILE_TERMINAL_CREATE_RESULT_TTL_MS } from '../../orca-runtime-core'
 import { seedResumeLaunchIdentity } from '../../../ipc/pty/pane/resume-launch-identity'
+import type { AgentSessionSwitchAuthority } from '../../../../shared/agent-session-switch-execution'
 
 export type OwnedMobileTerminalCreateOptions = {
   command?: string
@@ -39,10 +40,13 @@ export type OwnedMobileTerminalCreateOptions = {
   resumeOrigin?: 'saved' | 'switch'
   spawnIntent?: SpawnIntent
   launchRuntime?: AgentLaunchRuntime
+  switchExecution?: AgentSessionSwitchAuthority
   signal?: AbortSignal
   refuseSleptWorktree?: boolean
   resumesSleepingRecord?: true
   /** See TerminalCreateOptions; a create that throws before it proves nothing spawned. */
+  beforePtySpawn?: () => void
+  keepPaneOnStartFailure?: true
   onPtySpawnDispatched?: () => void
   /** The PTY this create produced, reported before publication can fail. */
   onPtyCreated?: (ptyId: string, result: RuntimeTerminalCreate) => void
@@ -72,6 +76,9 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
       sourceChatFork?: { sessionId: string }
       targetGroupId?: string
       command?: string
+      sessionOptions?: Record<string, string>
+      commandOverride?: string
+      launchRuntime?: AgentLaunchRuntime
       shellOverride?: string
       cwd?: string
       env?: Record<string, string>
@@ -93,6 +100,7 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
       // Older mobile clients optimistically append; preserve that placement until they advertise
       // split-group ordering support.
       supportsSplitGroupPlacement?: boolean
+      switchExecution?: MobileTerminalCreateOptions['switchExecution']
       signal?: AbortSignal
     } = {}
   ): Promise<RuntimeMobileSessionCreateTerminalResult> {
@@ -149,7 +157,12 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
     created: RuntimeMobileSessionCreateTerminalResult,
     opts: { resumeProviderSession?: AgentProviderSessionMetadata; launchAgent?: TuiAgent }
   ): void {
-    if (!opts.resumeProviderSession || !created.tab.terminal) {
+    if (
+      created.agentResumeRefused ||
+      created.agentResumeUnavailable ||
+      !opts.resumeProviderSession ||
+      !created.tab.terminal
+    ) {
       return
     }
     const pty = this.getLivePtyForHandle(created.tab.terminal)?.pty

@@ -1,3 +1,7 @@
+import type {
+  PtyFencedTerminationRequest,
+  PtyFencedTerminationOutcome
+} from '../../shared/pty-fenced-termination'
 import type * as pty from 'node-pty'
 import type {
   IPtyProvider,
@@ -25,6 +29,9 @@ import {
   setPtyOwnerHostColors
 } from '../../shared/pty-owner-color-query-colors'
 import {
+  ptyPhysicalExits,
+  ptyWslDistroById,
+  noteLocalPtyUse,
   advanceLoadGeneration,
   clearPtyState,
   pendingLocalPtySpawns,
@@ -79,7 +86,11 @@ export class LocalPtyProvider implements IPtyProvider {
   }
 
   // Local PTYs are always attached -- no-op. Remote providers use this to resubscribe.
-  async attach(_id: string): Promise<void> {}
+  async attach(id: string): Promise<void> {
+    if (!noteLocalPtyUse(id)) {
+      throw new Error('terminal_handle_stale')
+    }
+  }
   hasPty(id: string): boolean {
     return ptyProcesses.has(id)
   }
@@ -160,12 +171,26 @@ export class LocalPtyProvider implements IPtyProvider {
         childProcessEvidence: 'unverifiable'
       }
     }
-    const foregroundProcess = await getLocalPtyForegroundProcess(id)
+    const owner = ptyPhysicalExits.get(id)
+    if (options?.captureSwitchWitness && owner) {
+      owner.witness = {
+        token: options.captureSwitchWitness,
+        revision: owner.useRevision,
+        at: performance.now()
+      }
+    }
+    let suspendedAgentProcess: string | undefined
+    const foregroundProcess = await (options?.scanChildProcesses
+      ? confirmLocalPtyForegroundProcess(id, (name) => {
+          suspendedAgentProcess = name
+        })
+      : getLocalPtyForegroundProcess(id))
     // A steady-state poll never decides adoption or close, so it may read the cached process table.
     const childProcessEvidence = await inspectLocalPtyChildProcesses(
       id,
       options?.steadyState !== true,
-      options?.ignoreDetached === true
+      options?.ignoreDetached === true,
+      Boolean(options?.captureSwitchWitness)
     )
     // Neither asynchronous inspection may publish a replacement pane's identity.
     if (ptyProcesses.get(id) !== proc || ptyIncarnations.get(id) !== incarnation) {
@@ -177,9 +202,60 @@ export class LocalPtyProvider implements IPtyProvider {
     }
     return {
       foregroundProcess,
+      ...(suspendedAgentProcess ? { suspendedAgentProcess } : {}),
+      ...(options?.captureSwitchWitness && owner?.witness
+        ? { switchWitness: owner.witness.token }
+        : {}),
       hasChildProcesses: childProcessEvidence !== 'no-children',
       childProcessEvidence
     }
+  }
+
+  supportsFencedTermination(): boolean {
+    return true
+  }
+  async killFenced(request: PtyFencedTerminationRequest): Promise<PtyFencedTerminationOutcome> {
+    const proc = ptyProcesses.get(request.id)
+    if (!proc) {
+      return { outcome: 'already_exited' }
+    }
+    if (ptyIncarnations.get(request.id) !== request.expectedIncarnationId) {
+      return { outcome: 'refused', reason: 'replaced' }
+    }
+    const owner = ptyPhysicalExits.get(request.id)
+    const witness = owner?.witness
+    const condition = request.switchCondition
+    if (!condition || !witness || condition.token !== witness.token) {
+      return { outcome: 'refused', reason: 'unsupported' }
+    }
+    if (!condition.ownedSpawn && ptyWslDistroById.get(request.id)) {
+      return { outcome: 'refused', reason: 'unsupported' }
+    }
+    const deadline = witness.at + condition.remainingMs
+    const current = () =>
+      ptyProcesses.get(request.id) === proc &&
+      ptyPhysicalExits.get(request.id) === owner &&
+      owner?.useRevision === witness.revision &&
+      !owner?.closing &&
+      (condition.ownedSpawn || !owner?.pendingCommand) &&
+      !pendingLocalPtySpawns.has(request.id) &&
+      performance.now() < deadline
+    if (!current()) {
+      return { outcome: 'refused', reason: 'unverifiable' }
+    }
+    try {
+      await shutdownLocalPty(request.id, {
+        immediate: true,
+        expectedIncarnationId: request.expectedIncarnationId,
+        switchCheck: current,
+        switchOwnedSpawn: condition.ownedSpawn
+      })
+    } catch {
+      return { outcome: 'refused', reason: 'unverifiable' }
+    }
+    return ptyProcesses.get(request.id) === proc
+      ? { outcome: 'refused', reason: 'unverifiable' }
+      : { outcome: 'ended' }
   }
 
   getForegroundProcess(id: string): Promise<string | null> {

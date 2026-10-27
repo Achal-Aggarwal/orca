@@ -39,6 +39,15 @@ function wedgedDaemonError(requestError: Error, cancelError: unknown): Error | n
 export function requestDaemonRpc<T>(opts: DaemonRpcRequestOptions): Promise<T> {
   // A stalled event loop can deliver a daemon cancellation before its overdue timer runs.
   const { payload, type } = opts
+  const retainSwitchOutcome =
+    type === 'createOrAttach' &&
+    payload !== null &&
+    typeof payload === 'object' &&
+    'switchExecution' in payload &&
+    payload.switchExecution !== null &&
+    typeof payload.switchExecution === 'object' &&
+    'phase' in payload.switchExecution &&
+    payload.switchExecution.phase === 'commit'
   const createTimeoutError = (): DaemonRequestTimeoutError =>
     new DaemonRequestTimeoutError(`Request ${type} timed out after ${opts.timeoutMs}ms`)
   const createSessionId =
@@ -109,6 +118,10 @@ export function requestDaemonRpc<T>(opts: DaemonRpcRequestOptions): Promise<T> {
       void opts
         .settleCreateCancellation(createSessionId, opts.id)
         .then((result) => {
+          // The acknowledged revocation is not proof that a dispatched child exited.
+          if (retainSwitchOutcome) {
+            return
+          }
           if (result.canceled) {
             rejectAndDrop(error)
             return
@@ -122,6 +135,9 @@ export function requestDaemonRpc<T>(opts: DaemonRpcRequestOptions): Promise<T> {
           // Refused, timed-out or unknown cancel failures must leave sibling sessions on the connection intact.
           if (cancelError instanceof DaemonConnectionLostError) {
             opts.onCreateCancellationFailure()
+            return
+          }
+          if (retainSwitchOutcome) {
             return
           }
           awaitLateResponseThenReject(wedgedDaemonError(error, cancelError) ?? error)

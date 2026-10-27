@@ -88,7 +88,10 @@ export async function buildRuntimePtySpawnOptions(
     store: ctx.deps.store,
     claudeAuth: ctx.claudeAuth
   })
-  ctx.spawnOptions = launch.spawnOptions
+  ctx.spawnOptions = {
+    ...launch.spawnOptions,
+    ...(args.switchExecution ? { switchExecution: args.switchExecution } : {})
+  }
   ctx.env = launch.env
   ctx.launchCommand = launch.launchCommand
   const seeded = seedPtySpawnSize({

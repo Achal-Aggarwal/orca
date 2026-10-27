@@ -1,5 +1,5 @@
 import type * as pty from 'node-pty'
-import type { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
+import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import type { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 import { getSpawnedShellName, normalizeLocalCallerSessionId } from './local-pty-launch-helpers'
@@ -62,7 +62,23 @@ export const ptyDisposables = new Map<string, { dispose: () => void }[]>()
 export const ptyExitDisposables = new Map<string, { dispose: () => void }>()
 export const ptyCleanupCallbacks = new Map<string, () => void>()
 export const ptyTerminationMode = new Map<string, 'graceful' | 'force'>()
-export const ptyPhysicalExits = new Map<string, PhysicalExitTracker>()
+export class LocalPtyPhysicalExit extends PhysicalExitTracker {
+  useRevision = 0
+  closing = false
+  pendingCommand = false
+  witness?: { token: string; revision: number; at: number }
+}
+export const ptyPhysicalExits = new Map<string, LocalPtyPhysicalExit>()
+export function noteLocalPtyUse(id: string): boolean {
+  const owner = ptyPhysicalExits.get(id)
+  if (owner?.closing) {
+    return false
+  }
+  if (owner) {
+    owner.useRevision++
+  }
+  return true
+}
 // macOS TCC wrapper status is not the shell/agent exit status (STA-4536).
 export const ptyReportsChildExitStatus = new Map<string, boolean>()
 export const ptyForceKillTimers = new Map<string, ReturnType<typeof setTimeout>>()

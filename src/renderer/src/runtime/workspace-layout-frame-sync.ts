@@ -54,7 +54,7 @@ import {
 
 type FrameSyncStore = {
   getState: () => AppState
-  setState: (patch: Partial<AppState>) => void
+  setState: (patch: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void
   subscribe: (listener: (state: AppState) => void) => () => void
 }
 

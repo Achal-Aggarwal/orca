@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from 'react'
+import { toast } from 'sonner'
+import { conversationSwitchSourceKept } from '@/lib/conversation-switch-feedback'
+import { conversationSwitchChanged } from '@/lib/pending-conversation-surface-switches'
 import { useAppStore } from '@/store'
 import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
@@ -11,11 +13,7 @@ import { structuredAgentSessionTargetForHost } from '@/runtime/structured-agent-
 import { waitForPromiseWithSignal } from '../../../../shared/abort-signal-reason'
 import { CLI_CONVERSATION_ADOPTING_AGENTS } from '../../../../shared/structured-agent-cli-conversation-adoption'
 import { resolveCliChatResumeSource, type CliChatResumeSource } from './cli-chat-resume-source'
-import {
-  reportCliChatResumeFailure,
-  startCliChatReturn,
-  toastCliChatResumeFailure
-} from './cli-chat-resume-feedback'
+import { reportCliChatResumeFailure, startCliChatReturn } from './cli-chat-resume-feedback'
 import { adoptingAgentOnHost } from '../right-sidebar/ai-vault-session-resume-in-chat-launch'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { captureSourceTerminal } from './cli-chat-resume-terminal-capture'
@@ -39,30 +37,16 @@ async function retireSwitchedTerminalPane(
   })
 }
 
-const listeners = new Set<() => void>()
-const changed = () => listeners.forEach((listener) => listener())
+const changed = conversationSwitchChanged
 const keyFor = (source: CliChatResumeSource) =>
   [
     source.executionHostId,
     CLI_CONVERSATION_ADOPTING_AGENTS[source.agent],
     source.providerSessionId
   ].join('\0')
-const subscribe = (listener: () => void) => {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
-export function useCliChatResumePending(source: CliChatResumeSource | null): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => !!source && isCliChatResumePending(keyFor(source)),
-    () => false
-  )
-}
-
 /** Switches a terminal's conversation into a chat in the terminal's slot: a new chat, or the chat
  *  that already holds it, revealed. The terminal pane closes once the chat has it. */
-export async function runCliChatResume(source: CliChatResumeSource): Promise<void> {
+export async function runLegacyCliChatResume(source: CliChatResumeSource): Promise<void> {
   const key = keyFor(source)
   if (isCliChatResumePending(key)) {
     return
@@ -213,8 +197,8 @@ export async function runCliChatResume(source: CliChatResumeSource): Promise<voi
     if (retireSource) {
       try {
         await retireSwitchedTerminalPane(sourceIncarnation)
-      } catch (error) {
-        toastCliChatResumeFailure(source, error)
+      } catch {
+        toast.info(conversationSwitchSourceKept(source.agent))
       }
     }
   } finally {

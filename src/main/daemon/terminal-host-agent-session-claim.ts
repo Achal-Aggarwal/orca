@@ -7,6 +7,7 @@ export type InternalCreateOrAttachOptions = CreateOrAttachOptions & {
   agentSessionGeneration?: string
   /** Request identity for the fork gate; absent for in-process callers. */
   spawnAdmission?: { clientId: string; declaredIntent: SpawnIntent | null; deadlineAt: number }
+  retainCanceledChild?: boolean
   isCanceled?: () => boolean
   cancelSignal?: AbortSignal
 }
@@ -14,6 +15,7 @@ export type InternalCreateOrAttachOptions = CreateOrAttachOptions & {
 export async function createOrAttachClaimedAgentSession(args: {
   options: InternalCreateOrAttachOptions
   owners: ClaimedAgentPtyOwnerRegistry
+  check?: () => void
   isLive: (owner: AgentSessionOwnerBinding) => boolean
   createOrAttach: (options: InternalCreateOrAttachOptions) => Promise<CreateOrAttachResult>
 }): Promise<CreateOrAttachResult> {
@@ -32,7 +34,15 @@ export async function createOrAttachClaimedAgentSession(args: {
       })
       return { ptyId: args.options.sessionId }
     },
-    isLive: args.isLive
+    isLive: args.isLive,
+    check: args.check,
+    onDispatchedRevoked: args.options.retainCanceledChild
+      ? () => {
+          if (created) {
+            created.switchOutcomeUnknown = true
+          }
+        }
+      : undefined
   })
   if (ensured.disposition === 'created' && created) {
     return { ...(created as CreateOrAttachResult), agentSessionEnsure: ensured }

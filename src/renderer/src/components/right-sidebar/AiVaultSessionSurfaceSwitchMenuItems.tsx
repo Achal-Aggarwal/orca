@@ -1,3 +1,7 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import { historyConversationSwitch } from './ai-vault-session-in-place-switch'
+import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { MessagesSquare, SquareTerminal } from 'lucide-react'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { ContextMenuItem } from '@/components/ui/context-menu'
@@ -18,8 +22,14 @@ export function AiVaultSessionSurfaceSwitchMenuItems({
   onResumeInNewCli,
   cliPending = false,
   inPlaceAgent,
+  session,
+  originalPaneTarget,
+  switchExplanation,
   switchLoading = false
 }: {
+  session?: AiVaultSession
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
+  switchExplanation?: string
   action: 'resume' | 'switch'
   menuKind: 'dropdown' | 'context'
   tooltipSide: 'left' | 'right'
@@ -31,6 +41,14 @@ export function AiVaultSessionSurfaceSwitchMenuItems({
   switchLoading?: boolean
   inPlaceAgent?: AiVaultAgent
 }): React.JSX.Element {
+  const chat = useConversationSwitchReadiness(
+    session ? historyConversationSwitch(session, 'chat', undefined, originalPaneTarget) : null
+  )
+  const cli = useConversationSwitchReadiness(
+    session ? historyConversationSwitch(session, 'terminal', undefined, originalPaneTarget) : null
+  )
+  const heldChat = session && inPlaceAgent ? chat : null
+  const heldCli = session?.structuredSession && inPlaceAgent ? cli : null
   const inPlace = inPlaceAgent !== undefined
   const Item = menuKind === 'context' ? ContextMenuItem : DropdownMenuItem
   return (
@@ -38,7 +56,8 @@ export function AiVaultSessionSurfaceSwitchMenuItems({
       {onResumeInNewChat ? (
         <Item
           onSelect={onResumeInNewChat}
-          disabled={chatPending || switchLoading}
+          disabled={chatPending || switchLoading || Boolean(heldChat && !heldChat.ready)}
+          title={switchExplanation ?? heldChat?.explanation}
           aria-busy={chatPending || undefined}
         >
           <MessagesSquare className="size-3.5" />
@@ -55,7 +74,8 @@ export function AiVaultSessionSurfaceSwitchMenuItems({
           <TooltipTrigger asChild>
             <Item
               onSelect={onResumeInNewCli}
-              disabled={cliPending || switchLoading}
+              disabled={cliPending || switchLoading || Boolean(heldCli && !heldCli.ready)}
+              title={switchExplanation ?? heldCli?.explanation}
               aria-busy={cliPending}
             >
               {cliPending ? (

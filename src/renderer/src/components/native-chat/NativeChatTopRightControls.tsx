@@ -1,3 +1,4 @@
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { SquareTerminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -7,10 +8,7 @@ import { useAppStore } from '@/store'
 import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { SwitchToCliTooltipText } from '../right-sidebar/ai-vault-session-cli-fork-copy'
-import {
-  runNativeChatCliSwitch,
-  useNativeChatCliSwitchPending
-} from '../tab-bar/native-chat-cli-switch-run'
+import { runNativeChatCliSwitch } from '@/lib/conversation-surface-switch'
 import { resolveTabSessionHistorySubject } from '../tab-bar/tab-session-history-switch'
 import { NativeChatFindBar } from './NativeChatFindBar'
 import type { NativeChatFind } from './use-native-chat-find'
@@ -21,7 +19,6 @@ import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
 export function NativeChatTopRightControls({
   find,
   session,
-  working,
   inline = false
 }: {
   find: NativeChatFind
@@ -42,7 +39,18 @@ export function NativeChatTopRightControls({
   })
   const agent = AI_VAULT_AGENTS.find((candidate) => candidate === session.agent)
   const inPlace = useInPlaceSwitchCapability(hostId, agent)
-  const pending = useNativeChatCliSwitchPending(session.sessionId)
+  const readiness = useConversationSwitchReadiness(
+    worktreeId && hostId && agent
+      ? {
+          direction: 'terminal',
+          sessionId: session.sessionId,
+          workspaceId: worktreeId,
+          executionHostId: hostId,
+          agent,
+          chatTabId: session.tabId
+        }
+      : null
+  )
   const enabled = useAppStore((state) => isNativeChatEnabled(state.settings))
   if (find.isOpen) {
     return <NativeChatFindBar find={find} isVisible={session.isVisible} />
@@ -60,11 +68,10 @@ export function NativeChatTopRightControls({
             variant={inline ? 'pane-title' : 'ghost'}
             size="icon-xs"
             aria-label={label}
-            // Not `disabled` while a reply runs: the tooltip has to say why.
-            aria-disabled={working || undefined}
-            disabled={pending || inPlace !== true}
+            aria-disabled={!readiness.ready || undefined}
+            disabled={!readiness.ready || inPlace !== true}
             onClick={() => {
-              if (!working && inPlace === true) {
+              if (readiness.ready && inPlace === true) {
                 void runNativeChatCliSwitch({
                   sessionId: session.sessionId,
                   workspaceId: worktreeId,
@@ -85,11 +92,8 @@ export function NativeChatTopRightControls({
               'Switching {{agent}} is not available yet.',
               { agent: session.agent }
             )
-          ) : working ? (
-            translate(
-              'components.tab.bar.switch.waitForReply',
-              'Wait for the reply to finish or stop it, then switch.'
-            )
+          ) : readiness.explanation ? (
+            readiness.explanation
           ) : (
             <SwitchToCliTooltipText agent={agent} />
           )}

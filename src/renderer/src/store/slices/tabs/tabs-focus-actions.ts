@@ -1,3 +1,4 @@
+import { noteSwitchPresentationUse } from '@/lib/conversation-switch-projection'
 import type { TabsSlice, TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
 import {
   findTabAndWorktree,
@@ -103,6 +104,7 @@ export function createTabsFocusActions(
       ),
 
     activateTab: (tabId, opts) => {
+      noteSwitchPresentationUse(tabId)
       const promoted: Tab[] = []
       set((state) => {
         const scopedWorktreeId = opts?.worktreeId

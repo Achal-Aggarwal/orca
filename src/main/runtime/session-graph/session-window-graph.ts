@@ -7,8 +7,8 @@ import type {
 } from '../../../shared/runtime-session-contracts'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../../shared/runtime-types'
 import type { RuntimeLeafRecord } from '../runtime-terminal-state-records'
-
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
+import { runtimeGraphLeaf } from './session-window-graph-leaf'
 
 type Graph = RuntimeSyncWindowGraph
 
@@ -24,6 +24,16 @@ function assertUniqueRuntimeGraphTabIds(tabs: readonly RuntimeSyncedTab[]): void
 }
 
 export abstract class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow {
+  private switchProjectionViewer: { windowId: number; generation: string | undefined } | undefined
+
+  supportsConditionalSwitchProjection(): boolean {
+    return (
+      this.graphStatus === 'ready' &&
+      this.switchProjectionViewer?.windowId === this.authoritativeWindowId &&
+      this.switchProjectionViewer?.generation === this.rendererGeneration
+    )
+  }
+
   /** Layout-owner builds: main's panes in place of the window's (session-tabs-inventory.ts). */
   protected abstract withMainSurfaces(windowId: number, graph: Graph): Graph
   declare protected terminalGroupGridSizes?: RuntimeSyncWindowGraph['terminalGroupGridSizes']
@@ -86,6 +96,10 @@ export abstract class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAtta
       this.servesHeadlessGraph = true
       this.rendererGeneration = null
     }
+    this.switchProjectionViewer =
+      graph.conditionalSwitchProjection === 1
+        ? { windowId, generation: rendererGeneration ?? undefined }
+        : undefined
     graph = ORCA_LAYOUT_OWNER_IS_MAIN ? this.withMainSurfaces(windowId, graph) : graph
 
     if (graph.terminalGroupGridSizes) {
@@ -148,34 +162,19 @@ export abstract class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAtta
       const connected = this.graphLeafConnected(ptyId, leaf.worktreeId)
       const tailSource = existing?.ptyId === ptyId ? existing : existingPty
 
-      nextLeaves.set(leafKey, {
-        ...leaf,
-        ptyId,
-        ptyGeneration,
-        connected,
-        writable: this.graphStatus === 'ready' && connected,
-        lastOutputAt: tailSource?.lastOutputAt ?? null,
-        lastExitCode: tailSource?.lastExitCode ?? null,
-        lastExitCause: tailSource?.lastExitCause ?? null,
-        tailBuffer: tailSource?.tailBuffer ?? [],
-        tailTranscriptBuffer: tailSource?.tailTranscriptBuffer ?? [],
-        tailTranscriptChars: tailSource?.tailTranscriptChars ?? 0,
-        tailPartialLine: tailSource?.tailPartialLine ?? '',
-        tailPendingAnsi: tailSource?.tailPendingAnsi ?? '',
-        tailRedrawCursor: tailSource?.tailRedrawCursor ?? null,
-        tailTruncated: tailSource?.tailTruncated ?? false,
-        tailLinesTotal: tailSource?.tailLinesTotal ?? 0,
-        preview: tailSource?.preview ?? '',
-        waitBlockedAt: tailSource?.waitBlockedAt ?? null,
-        lastAgentStatus: tailSource?.lastAgentStatus ?? null,
-        lastAgentStatusObservedLive: tailSource?.lastAgentStatusObservedLive ?? false,
-        lastOscTitle: tailSource?.lastOscTitle ?? null,
-        lastOscTitleAt: tailSource?.lastOscTitleAt ?? null,
-        paneTitleUpdatedAt:
-          existing?.ptyId === ptyId && existing.paneTitle === leaf.paneTitle
-            ? existing.paneTitleUpdatedAt
-            : graphSyncedAt
-      })
+      nextLeaves.set(
+        leafKey,
+        runtimeGraphLeaf(
+          leaf,
+          existing,
+          ptyId,
+          ptyGeneration,
+          connected,
+          this.graphStatus,
+          tailSource,
+          graphSyncedAt
+        )
+      )
 
       // Main-owned pane presence does not prove its terminal is connected.
       if (leaf.ptyId && connected && !this.mainDecidesLiveness(leaf.worktreeId)) {

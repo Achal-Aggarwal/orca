@@ -23,6 +23,9 @@ type Spawn = NonNullable<RuntimePtyController['spawn']>
 type PaneStartStatusSink = Pick<PaneStartStatuses, 'set' | 'clear'>
 /** Main-owned/keepOnFailure panes retain failed start status. Each start clears prior resume outcome; only resumesSleepingRecord publishes a new one. */
 export type PaneStartArgs = {
+  beforeAdmission?: () => void
+  beforeSpawn?: () => void
+  keepOnFailure?: boolean
   startStatus?: {
     sink: PaneStartStatusSink
     keepOnFailure: boolean
@@ -118,9 +121,12 @@ export async function withdrawAdmittedPane(
 export async function admitRuntimePane(
   store: RuntimeStore | null | undefined,
   admission: TerminalPaneAdmission,
-  hostId: string | undefined
+  hostId: string | undefined,
+  check?: () => void
 ): Promise<TerminalPaneAdmissionOutcome | undefined> {
-  return store?.admitTerminalPane?.(admission, hostId)
+  return check
+    ? store?.admitTerminalPane?.(admission, hostId, check)
+    : store?.admitTerminalPane?.(admission, hostId)
 }
 
 /** Admit before starting (design 4.1); withdraw failed newly admitted panes unless keepOnFailure retains the error surface. */
@@ -129,9 +135,10 @@ export async function startInAdmittedPane<T>(
   admission: TerminalPaneAdmission,
   hostId: string | undefined,
   start: (outcome: TerminalPaneAdmissionOutcome | undefined) => Promise<T>,
-  keepOnFailure = false
+  keepOnFailure = false,
+  check?: () => void
 ): Promise<{ outcome: TerminalPaneAdmissionOutcome | undefined; result: T }> {
-  const outcome = await admitRuntimePane(store, admission, hostId)
+  const outcome = await admitRuntimePane(store, admission, hostId, check)
   try {
     return { outcome, result: await start(outcome) }
   } catch (error) {
@@ -147,7 +154,13 @@ export async function startInAdmittedPane<T>(
 export async function spawnInAdmittedPane(
   store: RuntimeStore | null | undefined,
   controller: Pick<RuntimePtyController, 'spawn'>,
-  { startStatus, ...args }: AdmittedSpawnArgs & PaneStartArgs
+  {
+    startStatus,
+    beforeAdmission,
+    beforeSpawn,
+    keepOnFailure,
+    ...args
+  }: AdmittedSpawnArgs & PaneStartArgs
 ): ReturnType<Spawn> {
   const { groupId: _groupId, afterTabId: _afterTabId, ...spawnArgs } = args
   const paneKey = `${args.tabId}:${args.leafId}`
@@ -182,6 +195,7 @@ export async function spawnInAdmittedPane(
         admitted === 'tab_closed' ? 'tab_not_found' : 'terminal_split_source_not_found'
       )
     }
+    beforeSpawn?.()
     admittedAs = admitted
     // SAFETY: Callers require spawn; a lost capability during admission keeps the original failure.
     return controller.spawn!(spawnArgs)
@@ -195,7 +209,8 @@ export async function spawnInAdmittedPane(
           admissionFor(args),
           hostIdOf(args),
           start,
-          startStatus?.keepOnFailure
+          keepOnFailure || startStatus?.keepOnFailure,
+          beforeAdmission
         )
   } catch (error) {
     // Retained panes show failure; user-closed panes stay gone and contended panes attach to the winner.
@@ -218,7 +233,10 @@ export async function spawnInAdmittedPane(
   }
   startStatus?.sink.clear(paneKey)
   const { outcome, result } = run
-  const started = result.agentSessionEnsure?.owner.surface ?? result.stablePaneOwner
+  const started =
+    result.switchRecoveredSurface ??
+    result.agentSessionEnsure?.owner.surface ??
+    result.stablePaneOwner
   const elsewhere = started && (started.tabId !== args.tabId || started.leafId !== args.leafId)
   if (outcome === 'admitted' && elsewhere) {
     await withdrawRuntimePane(store, args)

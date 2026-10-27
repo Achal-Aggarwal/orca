@@ -31,6 +31,7 @@ export type SessionShellReadyBarrierDeps = {
   installDeviceAttributesFilter(): void
   releaseDeviceAttributesFilter(): void
   acceptStartupIngress(data: string): void
+  beforeCommandWrite?(): boolean
   /** Use an injected file-log sink because detached daemon stdio is ignored. */
   reportReadinessEvent?(event: string, details: Record<string, unknown>): void
 }
@@ -75,6 +76,10 @@ export class SessionShellReadyBarrier {
   }
 
   /** Keep queuing through the post-marker flush window to preserve input order. */
+  get hasPendingWrites(): boolean {
+    return this.preReadyStdinQueue.length > 0
+  }
+
   get isGatingWrites(): boolean {
     return this._state === 'pending' || this.postReadyFlushGate.isPending
   }
@@ -227,7 +232,9 @@ export class SessionShellReadyBarrier {
     const queued = this.preReadyStdinQueue
     this.preReadyStdinQueue = []
     for (const data of queued) {
-      this.deps.subprocess.write(data)
+      if (this.deps.beforeCommandWrite?.() !== false) {
+        this.deps.subprocess.write(data)
+      }
     }
   }
 }

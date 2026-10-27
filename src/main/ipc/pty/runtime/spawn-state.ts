@@ -30,6 +30,7 @@ import type {
 import { localProvider } from '../provider/registry'
 import type { PaneResumeOutcome } from '../../../../shared/workspace-layout/workspace-layout-published'
 import type { StartupCwdFallback } from '../../../../shared/startup-cwd-fallback'
+import type { AgentSessionSwitchAuthority } from '../../../../shared/agent-session-switch-execution'
 
 export type RuntimePtySpawnState = {
   deps: PtyRuntimeControllerDeps
@@ -152,6 +153,7 @@ export type RuntimePtySpawnArgs = {
   agentSessionCreateOperationId?: string
   spawnIntent?: SpawnIntent
   signal?: AbortSignal
+  switchExecution?: AgentSessionSwitchAuthority
   refuseSleptWorktree?: boolean
   onPtySpawnCommitted?: () => void
   /** Publish fresh resume outcome before writing its pane binding. */

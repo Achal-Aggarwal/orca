@@ -1,6 +1,3 @@
-// Share mutation admission/planning/publication. Conversation writes need no child lease;
-// provider-only effects start their child before admission, sends start through delivery.
-
 import { latestNativeChatUsageLimitCut } from '../../../shared/native-chat/native-chat-usage-limit-cut'
 import { refuse } from '../../../shared/agent-session-wire'
 import { contextStructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
@@ -48,7 +45,6 @@ import {
   openWithReadyStructuredAgentSessionChild,
   runAfterRewindStart
 } from './structured-agent-session-ready-operation'
-export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
   readStructuredAgentSessionOptions,
@@ -57,6 +53,12 @@ import {
   type StructuredAgentSessionOptionsReader
 } from './structured-agent-session-options-read'
 import { settleStructuredAgentSessionLateDispatch } from './structured-agent-session-late-dispatch'
+import type { AgentSessionSwitchDeadline } from '../../../shared/agent-session-switch-execution'
+
+// Share mutation admission/planning/publication. Conversation writes need no child lease;
+// provider-only effects start their child before admission, sends start through delivery.
+
+export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 
 export function sendStructuredAgentSessionTurn(
   context: StructuredAgentSessionMutationContext,
@@ -296,6 +298,7 @@ export function structuredAgentSessionMutationDelegates(
     ) => readStructuredAgentSessionOptions(context(), sessionId, reader),
     settleLateDispatch: (input: Parameters<typeof settleStructuredAgentSessionLateDispatch>[1]) =>
       settleStructuredAgentSessionLateDispatch(context(), input),
-    switchToChat: (sessionId: string) => startStructuredAgentSessionForSwitch(context(), sessionId)
+    switchToChat: (sessionId: string, deadline?: AgentSessionSwitchDeadline) =>
+      startStructuredAgentSessionForSwitch(context(), sessionId, deadline)
   }
 }

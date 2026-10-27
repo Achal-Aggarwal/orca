@@ -36,6 +36,14 @@ export async function publishCommittedPtySpawn<Reply extends PtySpawnResult>(
 ): Promise<Reply> {
   const { state } = input
   const { deps, args, result } = state
+  let switchRevoked = result.switchOutcomeUnknown === true
+  try {
+    args.switchExecution?.check()
+  } catch {
+    switchRevoked = true
+  }
+  // A dispatched result still needs its ordinary binding and visible inventory.
+
   const runtime = deps.runtime
   runtime?.noteTerminalSpawnCommit?.(
     { ...result, spawnRequestedAt: state.spawnRequestedAt },
@@ -101,16 +109,18 @@ export async function publishCommittedPtySpawn<Reply extends PtySpawnResult>(
         : null
   })
   // Rejected spawns must not leave a published resume identity.
-  seedResumeLaunchIdentityFromSpawn({
-    paneKey: input.paneKey,
-    launchAgent: args.launchAgent,
-    resumeProviderSession: args.resumeProviderSession,
-    connectionId: args.connectionId,
-    worktreeId: args.worktreeId,
-    launchedAt: state.codexHomeLaunchStartedAt,
-    resumeArgvDropped: input.resumeArgvDropped,
-    result
-  })
+  if (!switchRevoked) {
+    seedResumeLaunchIdentityFromSpawn({
+      paneKey: input.paneKey,
+      launchAgent: args.launchAgent,
+      resumeProviderSession: args.resumeProviderSession,
+      connectionId: args.connectionId,
+      worktreeId: args.worktreeId,
+      launchedAt: state.codexHomeLaunchStartedAt,
+      resumeArgvDropped: input.resumeArgvDropped,
+      result
+    })
+  }
   // Inventory cannot infer background/reattached PTYs from mounted views.
   deps.sendPtySpawnedToRenderer(result.id)
   deps.options?.onCodexHomePtySpawned?.({
@@ -129,7 +139,9 @@ export async function publishCommittedPtySpawn<Reply extends PtySpawnResult>(
         ? { launchEnv: input.codexLaunchEnv }
         : {})
   })
-  await retireChatForAdmittedTerminalLaunch(runtime, args, input.joinPayload.reply)
+  if (!switchRevoked) {
+    await retireChatForAdmittedTerminalLaunch(runtime, args, input.joinPayload.reply)
+  }
   resolvePaneSpawnReservation(
     state.paneSpawnReservationKey,
     state.paneSpawnReservation,

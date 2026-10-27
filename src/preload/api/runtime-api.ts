@@ -1,3 +1,4 @@
+import type { RuntimeRpcDispatchObservation } from '../../shared/runtime-rpc-envelope'
 import type { ManagedOrcadPreloadApi } from './managed-orcad-api'
 import type { WslHostsPreloadApi } from './wsl-hosts-api'
 import type { RuntimeHostStatusSnapshot } from '../../shared/runtime-host-status'
@@ -136,6 +137,8 @@ export type RuntimeApi = {
       params?: unknown
       timeoutMs?: number
       expectedEnvironmentPairingRevision?: number
+      observeDispatch?: boolean
+      dispatchObservation?: RuntimeRpcDispatchObservation
       expectedEnvironmentRuntimeId?: string
     }) => Promise<RuntimeRpcResponse<unknown>>
     cancelSubscription: (args: { subscriptionId: string }) => Promise<void>
@@ -147,9 +150,12 @@ export type RuntimeApi = {
         params?: unknown
         timeoutMs?: number
         expectedEnvironmentPairingRevision?: number
+        observeDispatch?: boolean
+        dispatchObservation?: RuntimeRpcDispatchObservation
         expectedEnvironmentRuntimeId?: string
       },
       callbacks: {
+        onSent?: (sentAt?: number) => void
         onResponse: (response: RuntimeRpcResponse<unknown>) => void
         onBinary?: (bytes: Uint8Array<ArrayBufferLike>) => void
         onError?: (error: { code: string; message: string }) => void

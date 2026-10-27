@@ -5,7 +5,6 @@ import {
   type AttachCandidate,
   type BoundAttach
 } from './structured-agent-session-attach-publish'
-
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import { refuse } from '../../../shared/agent-session-wire-refusals'
 import { randomUUID } from 'node:crypto'
@@ -15,7 +14,7 @@ import type {
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import { performAttach, type AttachFlowInput } from './structured-agent-session-attach-flow'
+import { performAttach } from './structured-agent-session-attach-flow'
 import { endStructuredAgentSessionReleasedChild } from './structured-agent-session-attach-failure'
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
@@ -42,25 +41,8 @@ import {
   heldStructuredAgentSessionAttachLock,
   type StructuredAgentSessionAttachLock
 } from './structured-agent-session-attach-lock'
+import type { StructuredAgentSessionAttachOptions } from './structured-agent-session-attach-options'
 
-export type StructuredAgentSessionAttachOptions = {
-  hostLaunchDirectory?: string
-  catalogModels?: AttachFlowInput['models']
-  recordPhase?: AgentSessionCreatePhaseRecorder
-  onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
-  startedFor?: string
-  startupOptions?: Readonly<Record<string, string>>
-  /** Preserve cancellation reason when host Stop/close/quit aborts attach. */
-  onAborted?: () => void
-  /** Startup expiry is failure, not user cancellation. */
-  onStartupExpired?: () => void
-  /** Background starts wait outside serialization and commit under it. */
-  lock?: StructuredAgentSessionAttachLock
-  startupAttemptId?: string
-  onPublished?: () => void
-}
-
-/** Share attach steps; background starts use a lock, client attaches hold serialization throughout. */
 export function attachStructuredAgentSessionForStart(
   context: StructuredAgentSessionAttachContext,
   callerKey: string,
@@ -130,7 +112,6 @@ export function attachStructuredAgentSession(
     }
   })
 }
-
 async function runAttach(
   context: StructuredAgentSessionAttachContext,
   callerKey: string,
@@ -233,6 +214,7 @@ async function runAttachUnderAbort(
       now: () => context.now(),
       recordPhase,
       acquireSignal: lock.signal,
+      checkBeforeAcquire: options.checkBeforeAcquire,
       lock,
       ...(options.startupAttemptId ? { startupAttemptId: options.startupAttemptId } : {}),
       onStartupAttempt: (startup) => {
@@ -318,3 +300,5 @@ async function runAttachUnderAbort(
     }
   }
 }
+
+export type { StructuredAgentSessionAttachOptions } from './structured-agent-session-attach-options'

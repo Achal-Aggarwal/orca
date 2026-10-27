@@ -1,5 +1,6 @@
-/** Publish under host-reserved IDs before the agent exists so PTY routing names this pane and retries reuse its tab; the pane’s spawn waits in main and attaches to the host’s process. */
-
+import { applyAgentLaunchPaneVerdict } from './agent-launch-pane-verdict-application'
+import { launchTabWithdrawalIdentity } from '../../../shared/agent-launch-tab-publication'
+import { agentLaunchPaneAttemptCurrent } from './agent-launch-pane-start'
 import type { AgentLaunchPlacementReceipt } from '../../../shared/agent-launch-intent'
 import type {
   AgentLaunchTabPublished,
@@ -12,6 +13,8 @@ import { resolveUnifiedTabCreatePlacement } from '../store/slices/tabs/tabs-crea
 import { insertUnifiedTabAfterAnchor } from './unified-tab-anchor-insertion'
 import { rememberAgentLaunchPanePrompt } from './agent-launch-pane-prompt'
 import { selectFolderWorkspaces } from '@/store/workspace-record-selectors'
+
+/** Publish under host-reserved IDs before the agent exists so PTY routing names this pane and retries reuse its tab; the pane’s spawn waits in main and attaches to the host’s process. */
 
 function landedGroupId(worktreeId: string, tabId: string): string | undefined {
   return useAppStore
@@ -45,6 +48,24 @@ export function publishAgentLaunchTab(
   request: AgentLaunchTabPublishRequest
 ): AgentLaunchTabPublished {
   const { worktreeId, tabId, leafId } = request
+  if (request.withdraw) {
+    return {
+      tabId,
+      created: false,
+      placement: { groupId: '' },
+      withdrawn: applyAgentLaunchPaneVerdict({
+        worktreeId,
+        tabId,
+        leafId,
+        operationId: request.operationId,
+        verdict: { kind: 'withdrawn' },
+        withdrawalRoot: request.withdraw.root
+      })
+    }
+  }
+  if (!agentLaunchPaneAttemptCurrent(tabId, leafId, request.operationId)) {
+    throw new Error('agent_launch_superseded')
+  }
   const store = useAppStore.getState()
   const owner = Object.entries(store.tabsByWorktree).find(([, tabs]) =>
     tabs.some((tab) => tab.id === tabId)
@@ -110,6 +131,12 @@ export function publishAgentLaunchTab(
   return {
     tabId: tab.id,
     created: true,
+    withdrawalRoot: launchTabWithdrawalIdentity(
+      useAppStore.getState().terminalLayoutsByTabId[tab.id]?.root,
+      useAppStore.getState().unifiedTabsByWorktree[worktreeId] ?? [],
+      useAppStore.getState().groupsByWorktree[worktreeId] ?? [],
+      tab.id
+    ),
     placement: { groupId: landed, ...(fallback ? { fallback } : {}) }
   }
 }

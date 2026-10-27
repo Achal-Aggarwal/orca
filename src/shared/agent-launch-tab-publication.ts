@@ -21,6 +21,7 @@ export type AgentLaunchTabViewerRule =
 
 export type AgentLaunchTabPublishRequest = {
   requestId: string
+  withdraw?: { root: string }
   worktreeId: string
   tabId: string
   leafId: string
@@ -43,6 +44,8 @@ export type AgentLaunchTabPublishReply =
       /** True for a tab created by this launch (including just before request); false for retries finding it. */
       created: boolean
       placement: AgentLaunchPlacementReceipt
+      withdrawalRoot?: string
+      withdrawn?: boolean
     }
   | { requestId: string; error: string }
 
@@ -51,4 +54,18 @@ export type AgentLaunchTabPublished = {
   tabId: string
   created: boolean
   placement: AgentLaunchPlacementReceipt
+  /** Original provisional root, used only by the creating owner for conditional withdrawal. */
+  withdrawalRoot?: string
+  withdrawn?: boolean
+}
+
+export function launchTabWithdrawalIdentity(
+  root: unknown,
+  tabs: readonly { id: string; entityId?: string; groupId?: string }[],
+  groups: readonly { id: string; tabOrder: string[] }[],
+  tabId: string
+): string {
+  const tab = tabs.find((row) => row.entityId === tabId || row.id === tabId)
+  const group = groups.find((row) => row.id === tab?.groupId)
+  return JSON.stringify([root, tab?.groupId, group?.tabOrder.indexOf(tab?.id ?? '')])
 }

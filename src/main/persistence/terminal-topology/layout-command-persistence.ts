@@ -83,6 +83,7 @@ export class LayoutCommandPersistence {
     run: {
       originalPresentation?: TerminalSurfaceCloseCapture
       admit?: () => boolean
+      onApplied?: () => void
       live?: LayoutLiveContext
       stopBeforeWrite?: (ptyIds: readonly string[]) => boolean
       onEffects?: (effects: LayoutEffects) => void
@@ -151,7 +152,7 @@ export class LayoutCommandPersistence {
         })
     }
     let effects: LayoutEffects | undefined
-    const commit = raisingBindingGenerations(
+    const apply = raisingBindingGenerations(
       context.runtime,
       resolved,
       (hostId) => context.sessions.getWorkspaceSession(hostId),
@@ -161,6 +162,16 @@ export class LayoutCommandPersistence {
         noteEffects: (noted) => (effects = noted)
       })
     )
+    const commit = () => {
+      if (run.admit && !run.admit()) {
+        return { value: { ok: false as const, code: 'tab_not_found' as const }, persist: false }
+      }
+      const mutation = apply()
+      if (!(mutation.value instanceof Error) && mutation.value.ok) {
+        run.onApplied?.()
+      }
+      return mutation
+    }
     // Applied closes must stay closed even when persistence fails.
     const applied: Promise<LayoutApplyOutcome> =
       ORCA_LAYOUT_OWNER_IS_MAIN && context.writeLater && isTerminalClose(command)

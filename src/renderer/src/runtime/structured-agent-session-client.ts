@@ -1,3 +1,5 @@
+import type { RuntimeRpcDispatchObservation } from '../../../shared/runtime-rpc-envelope'
+import { AGENT_SESSION_SWITCH_CLIENT_MS } from '../../../shared/agent-session-switch-execution'
 import type {
   AgentJournalCursor,
   AgentJournalRenderItem
@@ -25,6 +27,7 @@ import {
 import { AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY } from '../../../shared/agent-session-create-capabilities'
 import {
   inPlaceSwitchCapability,
+  inPlaceSwitchExecutionCapability,
   inPlaceSwitchEnabled
 } from '../../../shared/structured-agent-cli-conversation-adoption'
 import { callRuntimeRpc, runtimeEnvironmentSupportsCapability } from './runtime-rpc-client'
@@ -77,10 +80,14 @@ export function supportsStructuredAgentSessionCliSource(
 /** Whether the destination host switches this agent's conversations in place; unknown is no. */
 export function supportsInPlaceSwitch(
   target: RuntimeClientTarget,
-  agent: string
+  agent: string,
+  execution = false
 ): Promise<boolean> {
   return inPlaceSwitchEnabled(agent)
-    ? structuredAgentSessionHostSupports(target, inPlaceSwitchCapability(agent))
+    ? structuredAgentSessionHostSupports(
+        target,
+        execution ? inPlaceSwitchExecutionCapability(agent) : inPlaceSwitchCapability(agent)
+      )
     : Promise.resolve(false)
 }
 
@@ -158,7 +165,12 @@ export async function callStructuredAgentSession<TResult>(
   method: string,
   params?: unknown,
   /** For a caller that checked the remote host's compatibility itself, just before. */
-  options: { skipCompatibilityCheck?: true; beforeSend?: () => void } = {}
+  options: {
+    skipCompatibilityCheck?: true
+    beforeSend?: (sentAt?: number) => void
+    dispatchObservation?: () => RuntimeRpcDispatchObservation
+    signal?: AbortSignal
+  } = {}
 ): Promise<TResult> {
   if (
     method === 'agentSession.rewind' &&
@@ -170,7 +182,15 @@ export async function callStructuredAgentSession<TResult>(
   ) {
     throw new Error('Rewinding requires a newer Orca server. Update the server and try again.')
   }
-  const timeoutMs = STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS.get(method)
+  const executionSwitch =
+    (method === 'agentSession.switchToChat' || method === 'agentSession.switchToTerminal') &&
+    params !== null &&
+    typeof params === 'object' &&
+    'execution' in params &&
+    Boolean(params.execution)
+  const timeoutMs = executionSwitch
+    ? AGENT_SESSION_SWITCH_CLIENT_MS
+    : STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS.get(method)
   return timeoutMs === undefined && !options.skipCompatibilityCheck && !options.beforeSend
     ? callRuntimeRpc<TResult>(target, method, params)
     : callRuntimeRpc<TResult>(target, method, params, {

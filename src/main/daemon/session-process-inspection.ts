@@ -1,0 +1,48 @@
+import type { SessionOutputPlane } from './session-output-plane'
+
+import type { TerminalShellRecoveryBarrier } from './terminal-shell-recovery-barrier'
+
+import type { SubprocessHandle } from './session-subprocess-handle'
+
+import type { ChildProcessVerdictRead } from './session-subprocess-handle'
+
+import { SessionSwitchUse } from './session-switch-use'
+
+export abstract class SessionProcessInspection extends SessionSwitchUse {
+  protected abstract subprocess: SubprocessHandle
+  protected abstract readonly output: SessionOutputPlane
+  protected abstract readonly recoveryBarrier: TerminalShellRecoveryBarrier
+  inspectChildProcesses(fresh?: boolean, ignoreDetached?: boolean): ChildProcessVerdictRead {
+    return this.subprocess.inspectChildProcesses?.(fresh, ignoreDetached) ?? 'unverifiable'
+  }
+
+  getForegroundProcess(options?: { rawFallback?: boolean; cachedOnly?: boolean }): string | null {
+    return this.subprocess.getForegroundProcess(options)
+  }
+
+  async confirmForegroundProcess(): Promise<string | null> {
+    return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
+  }
+
+  confirmShellForeground(): Promise<boolean> {
+    return this.recoveryBarrier.confirmOwnerSettled()
+  }
+
+  async settleShellOwnershipConfirmation(): Promise<void> {
+    await this.recoveryBarrier.awaitProofSettled()
+    // Snapshot only after the drained prompt is parsed into the model.
+    await this.output.flushParsedWrites()
+  }
+
+  getPartialEscapeTailAnsi(): string {
+    return this.output.getPartialEscapeTailAnsi()
+  }
+
+  getAppliedSize(): { cols: number; rows: number } | null {
+    return this.output.getAppliedSize()
+  }
+
+  getCwd(): string | null {
+    return this.output.getCwd()
+  }
+}

@@ -1,3 +1,4 @@
+import { isNativeConversationMessage } from '../../shared/agent-session-native-content'
 import { stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { getSystemCodexHomePath } from '../codex/codex-home-paths'
@@ -23,6 +24,33 @@ import {
   agentJournalSubmissionKey,
   parseAgentJournalItemKey
 } from '../../shared/agent-session-journal-item-key'
+
+export function nativeConversationContent(
+  snapshot: Pick<AgentJournalSnapshot, 'items' | 'submissions'>
+): 'saved' | 'empty' | 'uncertain' {
+  const submissions = new Map(
+    snapshot.submissions.map((submission) => [
+      agentJournalSubmissionKey(submission.clientMessageId),
+      submission
+    ])
+  )
+  const hasContent = snapshot.items.some(({ itemId, body }) => {
+    if (!isNativeConversationMessage(body)) {
+      return false
+    }
+    const identity = parseAgentJournalItemKey(itemId)
+    const submission = submissions.get(itemId)
+    if (submission?.dispatchState === 'accepted' || (identity && identity.provider !== 'orca')) {
+      return true
+    }
+    return false
+  })
+  return hasContent
+    ? 'saved'
+    : snapshot.items.length === 0 && snapshot.submissions.length === 0
+      ? 'empty'
+      : 'uncertain'
+}
 
 function assertNativeConversationContent(snapshot: AgentJournalSnapshot): void {
   const submissions = new Map(

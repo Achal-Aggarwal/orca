@@ -1,33 +1,21 @@
-import {
-  isAgentForegroundWrapperProcess,
-  recognizeAgentProcess,
-  type RecognizedAgentProcess
-} from '../../../../shared/agent-process-recognition'
-import { resolveCompatibleAgentTypeForOwner } from '../../../../shared/agent-title-owner'
+import { recognizeAgentProcess } from '../../../../shared/agent-process-recognition'
 import { isShellProcess } from '../../../../shared/shell-process-detection'
-import type { TerminalAgent } from '../../../../shared/terminal-agent'
 import { createPaneForegroundProcessReader } from './pane-foreground-process-reader'
 import { FOREGROUND_COMMAND_READS } from '../../../../shared/foreground-command-settle'
 import type {
   ForegroundReadReason,
   PaneForegroundAgentTrackerDeps
 } from './pane-foreground-agent-tracker-contract'
+import { confirmPaneForegroundProcessExit } from './pane-foreground-process-exit'
+import { shouldRetryForegroundAgentRead } from './pane-foreground-agent-retry'
+import type { PaneForegroundAgentTracker } from './pane-foreground-agent-tracker-contract'
 
 const VISIBLE_PTY_SETTLE_MS = 350
 
 /** Read foreground identity at command boundaries; confirm 133;D before clearing known agents because nested shells can leak that marker. */
-export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTrackerDeps): {
-  /** True while any read is scheduled or running, whatever its authority. */
-  hasReadInFlight: () => boolean
-  onVisiblePtyBound: (expectsAgent?: boolean) => boolean
-  onCommandStarted: (expectedAgent?: TerminalAgent | null) => void
-  onAgentStartupObserved: () => void
-  /** True when pane identity must remain visible until an async shell confirmation. */
-  onCommandFinished: () => boolean
-  /** The process monitor confirmed this agent exited (no agent, no children, settled). */
-  onProcessExitConfirmed: (process: RecognizedAgentProcess) => void
-  dispose: () => void
-} {
+export function createPaneForegroundAgentTracker(
+  deps: PaneForegroundAgentTrackerDeps
+): PaneForegroundAgentTracker {
   let disposed = false
   let readTimer: ReturnType<typeof setTimeout> | null = null
   let scheduledReadReason: ForegroundReadReason | null = null
@@ -115,10 +103,13 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       hasForegroundAgentEvidence ||
       hasKnownAgentEvidence ||
       hasAgentExpectation
-    const { processName, remoteEvidenceVerdict, expectedIncarnationId, remote } = await readProcess(
-      ptyId,
-      requiresRoutingConfirmation
-    )
+    const {
+      processName,
+      suspendedAgentProcess,
+      remoteEvidenceVerdict,
+      expectedIncarnationId,
+      remote
+    } = await readProcess(ptyId, requiresRoutingConfirmation)
     // Fence pending inspection so an old PTY cannot publish identity into its replacement.
     if (
       disposed ||
@@ -127,6 +118,23 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       (remote && deps.getExpectedIncarnationId?.() !== expectedIncarnationId)
     ) {
       settleAbortedRead(generation)
+      return
+    }
+    const suspended = recognizeAgentProcess(suspendedAgentProcess ?? null)
+    if (suspended) {
+      hasKnownAgentEvidence = true
+      hasAgentExpectation = false
+      deps.publish({
+        agent: null,
+        suspendedAgent: suspended.agent,
+        agentEvidence: 'process-read',
+        shellForeground: true,
+        routingTrusted: false,
+        routingRevoked: true
+      })
+      if (reason === 'visible-pty') {
+        deps.onVisibleForegroundSettled?.('agent')
+      }
       return
     }
     const recognized =
@@ -157,13 +165,12 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     const retryDelay = FOREGROUND_COMMAND_READS.retryDelaysMs[retryIndex]
     const hasConfirmationExpectation =
       hasForegroundAgentEvidence || hasKnownAgentEvidence || hasAgentExpectation
-    const shouldRetryExpectedIdentity =
-      hasConfirmationExpectation && (reason !== 'command-finished' || processName === null)
-    const shouldRetry =
-      retryDelay !== undefined &&
-      (shouldRetryExpectedIdentity ||
-        (processName !== null &&
-          (reason === 'command' || isAgentForegroundWrapperProcess(processName))))
+    const shouldRetry = shouldRetryForegroundAgentRead(
+      hasConfirmationExpectation,
+      reason,
+      processName,
+      retryDelay
+    )
     if (shouldRetry) {
       // Bound retries across PowerShell-to-WMIC enrichment, which may initially hide a live agent.
       scheduleRead(retryDelay, retryIndex + 1, reason)
@@ -220,9 +227,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
 
   return {
     // A higher-authority command read still promises confirmation when visibility schedules nothing.
-    hasReadInFlight(): boolean {
-      return hasPendingRead()
-    },
+    hasReadInFlight: hasPendingRead,
     onVisiblePtyBound(expectsAgent = false) {
       // Lower-authority visibility recovery must not cancel command-boundary reads that own the exit decision.
       if (hasCommandReadInFlight()) {
@@ -302,26 +307,18 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return true
     },
     onProcessExitConfirmed(process) {
-      // Why: an in-flight command read owns the pane's next identity, and only a live read is ours.
-      const published = deps.getPublishedEntry?.()
-      if (
-        disposed ||
-        hasCommandReadInFlight() ||
-        published?.agentEvidence !== 'process-read' ||
-        resolveCompatibleAgentTypeForOwner(process.agent, published.agent) !== published.agent
-      ) {
-        return
-      }
-      const hadVisibleRead = hasPendingRead()
-      cancelPendingRead()
-      clearAgentEvidence()
-      startupSampled = false
-      // Without command marks, shellForeground would never lift and would block Enter from identifying the next agent.
-      deps.publish({ agent: null, shellForeground: false })
-      if (hadVisibleRead) {
-        deps.onVisibleForegroundSettled?.('shell')
-      }
-      deps.onConfirmedShellForeground?.('process-exit')
+      confirmPaneForegroundProcessExit({
+        deps,
+        process,
+        disposed,
+        commandReadInFlight: hasCommandReadInFlight(),
+        pendingRead: hasPendingRead(),
+        cancelPendingRead,
+        clearAgentEvidence,
+        resetStartupSample: () => {
+          startupSampled = false
+        }
+      })
     },
     dispose() {
       const hadReadAtDispose = hasPendingRead()

@@ -35,6 +35,8 @@ export async function spawnNativeDaemonPty(args: {
   /** The primary shell's argv is Orca's interactive default, so a respawn cannot repeat a command. */
   primaryArgsRespawnSafe?: boolean
   signal?: AbortSignal
+  assertCreateAllowed?: () => void
+  retainCanceledChild?: boolean
   onMacosTccSpawnStrategy?: (strategy: 'wrapped' | 'direct') => void
 }): Promise<SpawnedDaemonPty> {
   let reportsChildExitStatus = true
@@ -51,6 +53,8 @@ export async function spawnNativeDaemonPty(args: {
     if (process.platform === 'win32') {
       assignHostProcessToKillOnCloseJob()
     }
+    args.signal?.throwIfAborted()
+    args.assertCreateAllowed?.()
     const proc = nodePty.spawn(wrapped.file, wrapped.args, {
       name: args.env.TERM ?? 'xterm-256color',
       cols: args.cols,
@@ -76,6 +80,7 @@ export async function spawnNativeDaemonPty(args: {
     return spawnConptyWithInputReader(() => spawnOnce(shellPath, shellArgs, cwd), {
       label: shellPath,
       respawnSafe,
+      retainCanceledChild: args.retainCanceledChild,
       ...(args.signal ? { signal: args.signal } : {})
     })
   }

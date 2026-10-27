@@ -1,6 +1,5 @@
 import type { OrcaRuntimeWithScheduleMobileSessionTabsChanged as ScheduleMobileSessionTabsChangedMethods } from './session-tabs-change-publication'
 import { defaultAgentChatLabel } from '../../../shared/agent-session/agent-session-chat-label'
-import { OrcaRuntimeWithGetStructuredAgentSessionCreateSupport } from './structured-session-create-support'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import { collectSavedStructuredAgentSessionIds } from '../saved-structured-agent-session-restoration'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
@@ -9,35 +8,17 @@ import { restoredChatTabChanges } from './restored-chat-tab-changes'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
 import type {
   RuntimeMobileSessionAgentTab,
-  RuntimeMobileSessionTabsSnapshot,
-  RuntimeRepoSearchRefs
+  RuntimeMobileSessionTabsSnapshot
 } from '../../../shared/runtime-types'
 import { getHeadlessMobileSessionGroupId } from '../mobile-session-layout-projection'
-import { DEFAULT_REPO_SEARCH_REFS_LIMIT } from '../orca-runtime-postlude'
-import type { Repo } from '../../../shared/repo-types'
-import type { GitAdmissionTier } from '../../git/command-runner/git-exec-options'
-import {
-  getLocalProjectGhExecOptions,
-  type LocalProjectGhExecOptions
-} from '../../project-runtime-git-options'
-import {
-  agentLaunchPlatformForScope,
-  newWorktreeLaunchScope,
-  resolveAgentLaunchRuntime,
-  resolveStartupAgentLaunchRuntime
-} from '../agent-launch-scope-runtime'
-import type { TuiAgent } from '../../../shared/tui-agent'
-import type { AgentLaunchRuntime } from '../../../shared/agent-launch-runtime'
-import type { TerminalWorkspaceLaunchScope } from '../runtime-legacy-worker-terminal-recovery-types'
-import { parseAppSshPtyId } from '../../../shared/ssh-pty-id'
-import type { PtyProcessInspection } from '../../providers/pty-process-inspection'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
+import { OrcaRuntimeWithStructuredSessionLaunchRuntime } from './structured-session-launch-runtime'
 
 export type AgentLaunchScope = Parameters<
   OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce['getAgentLaunchPlatformForWorkspace']
 >[0]
 
-export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithGetStructuredAgentSessionCreateSupport {
+export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithStructuredSessionLaunchRuntime {
   protected abstract notifyMobileSessionTabSnapshots(
     ...args: Parameters<ScheduleMobileSessionTabsChangedMethods['notifyMobileSessionTabSnapshots']>
   ): ReturnType<ScheduleMobileSessionTabsChangedMethods['notifyMobileSessionTabSnapshots']>
@@ -100,6 +81,7 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
     sessionId: string
     agent: StructuredAgentId
     activate: boolean
+    check?: () => void
     notify?: boolean
     /** The host tab id a create reserved; a session that already has a tab keeps its own. */
     tabId?: string
@@ -110,7 +92,10 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
     placement?: { groupId?: string; afterTabId?: string }
   }): Promise<void> {
     const host = getStructuredAgentSessionHost()
-    if (typeof host?.setSessionTabVisibility === 'function') {
+    input.check?.()
+    if (input.check && host) {
+      await host.deps.store.setSessionTabVisibility(input.sessionId, true, input.tabId, input.check)
+    } else if (typeof host?.setSessionTabVisibility === 'function') {
       // Restore-index failures (newer records/disk errors) are reported without preventing tab open.
       await host
         .setSessionTabVisibility(input.sessionId, true, ...(input.tabId ? [input.tabId] : []))
@@ -123,9 +108,28 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
         })
     }
     // Window creates retain the window's own placement decision.
-    if (!(ORCA_LAYOUT_OWNER_IS_MAIN && input.placedByWindow)) {
+    input.check?.()
+    if (input.check && (ORCA_LAYOUT_OWNER_IS_MAIN || !this.getAvailableAuthoritativeWindow())) {
+      const check = input.check
+      const applied = await this.queueChatTabChanges(
+        () => [
+          {
+            worktreeId: input.workspaceId,
+            change: { open: { ...input, tabId: input.tabId ?? `agent-session:${input.sessionId}` } }
+          }
+        ],
+        () => {
+          check()
+          return true
+        }
+      )
+      if (!applied) {
+        throw new Error('tab_not_found')
+      }
+    } else if (!(ORCA_LAYOUT_OWNER_IS_MAIN && input.placedByWindow)) {
       this.saveWindowlessAgentSessionTab(input.workspaceId, input)
     }
+    input.check?.()
     this.projectStructuredAgentSessionTab(input)
   }
 
@@ -220,112 +224,5 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
     }
   }
 
-  async inspectTerminalProcess(
-    terminalSelector: string,
-    options?: { expectedIncarnationId?: string; scanChildProcesses?: boolean }
-  ): Promise<PtyProcessInspection> {
-    const leaf = this.resolveLiveLeafForHandle(terminalSelector)
-    if (!leaf?.ptyId || !this.ptyController) {
-      throw new Error('terminal_gone')
-    }
-    if (this.ptyController.inspectProcess) {
-      // Preserve one-argument unfenced calls; providers may use arity to select legacy versus fenced inspection.
-      const inspection =
-        options === undefined
-          ? await this.ptyController.inspectProcess(leaf.ptyId)
-          : await this.ptyController.inspectProcess(leaf.ptyId, options)
-      const evidence = inspection.foregroundProcessEvidence
-      // The runtime handle is the request identity on this wire; keep the
-      // host-owned leaf PTY id out of the client-facing comparison.
-      const relayPtyId = parseAppSshPtyId(leaf.ptyId)?.relayPtyId
-      const evidenceBelongsToLeaf =
-        evidence !== undefined && (evidence.ptyId === leaf.ptyId || evidence.ptyId === relayPtyId)
-      return evidenceBelongsToLeaf
-        ? { ...inspection, foregroundProcessEvidence: { ...evidence, ptyId: terminalSelector } }
-        : inspection
-    }
-    const foregroundProcess = await this.ptyController.getForegroundProcess(leaf.ptyId)
-    const hasChildProcesses = (await this.ptyController.hasChildProcesses?.(leaf.ptyId)) ?? false
-    return { foregroundProcess, hasChildProcesses }
-  }
-
-  async searchRepoRefs(
-    repoSelector: string,
-    query: string,
-    limit = DEFAULT_REPO_SEARCH_REFS_LIMIT,
-    includeQualifiedRefs = true
-  ): Promise<RuntimeRepoSearchRefs> {
-    return this.repositoryRefQueries.search(repoSelector, query, limit, includeQualifiedRefs)
-  }
-
-  protected async resolveHostedReviewTarget(args: {
-    repoSelector: string
-    worktreeSelector?: string
-  }): Promise<{ repo: Repo; repoPath: string }> {
-    const repo = await this.resolveRepoSelector(args.repoSelector)
-    if (!args.worktreeSelector) {
-      return { repo, repoPath: repo.path }
-    }
-
-    const worktree = await this.resolveWorktreeSelector(args.worktreeSelector)
-    if (worktree.repoId !== repo.id) {
-      throw new Error('Access denied: worktree does not belong to repository')
-    }
-    return { repo, repoPath: worktree.path }
-  }
-
-  protected getHostedReviewExecutionOptions(
-    repo: Repo,
-    admissionTier?: GitAdmissionTier
-  ):
-    | { localGitExecOptions: LocalProjectGhExecOptions & { admissionTier?: GitAdmissionTier } }
-    | undefined {
-    const localGitOptions = {
-      ...this.getLocalGitExecutionOptionArgs(repo)[0],
-      ...(admissionTier && { admissionTier })
-    }
-    return Object.keys(localGitOptions).length > 0
-      ? { localGitExecOptions: localGitOptions }
-      : undefined
-  }
-
-  protected getLocalGitExecutionOptionArgs(repo: Repo): [] | [LocalProjectGhExecOptions] {
-    const localGitOptions = getLocalProjectGhExecOptions(this.requireStore(), repo)
-    return Object.keys(localGitOptions).length > 0 ? [localGitOptions] : []
-  }
-
-  protected getAgentLaunchPlatformForWorkspace(
-    scope: Pick<TerminalWorkspaceLaunchScope, 'repo' | 'path'> & {
-      connectionId?: string | null
-    }
-  ): NodeJS.Platform {
-    // Orchestration passes a repo-only scope; the platform never reads its id or folder.
-    return agentLaunchPlatformForScope(this.requireStore(), {
-      id: '',
-      folderWorkspace: null,
-      ...scope,
-      connectionId: scope.connectionId ?? null
-    })
-  }
-
-  protected resolveAgentLaunchRuntime(
-    scope: TerminalWorkspaceLaunchScope,
-    agent: TuiAgent | undefined
-  ): AgentLaunchRuntime {
-    return resolveAgentLaunchRuntime(this.requireStore(), scope, undefined, agent)
-  }
-
   /** A startup's fact: the workspace it starts in, else the new worktree a create is making. */
-  protected resolveStartupAgentLaunchRuntime(
-    repo: Repo,
-    agent: TuiAgent,
-    scope?: TerminalWorkspaceLaunchScope
-  ): ReturnType<typeof resolveStartupAgentLaunchRuntime> {
-    const store = this.requireStore()
-    return resolveStartupAgentLaunchRuntime(
-      store,
-      scope ?? newWorktreeLaunchScope(repo, store.getSettings()),
-      agent
-    )
-  }
 }

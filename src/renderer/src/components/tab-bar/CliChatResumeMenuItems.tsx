@@ -1,3 +1,4 @@
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
@@ -5,7 +6,7 @@ import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { AiVaultSessionSurfaceSwitchMenuItems } from '../right-sidebar/AiVaultSessionSurfaceSwitchMenuItems'
 import { resolveCliChatResumeSource, useCliChatResumeCapability } from './cli-chat-resume-source'
-import { runCliChatResume, useCliChatResumePending } from './cli-chat-resume-run'
+import { runCliChatResume } from '@/lib/conversation-surface-switch'
 
 export function CliChatResumeMenuItems({
   tab,
@@ -18,9 +19,11 @@ export function CliChatResumeMenuItems({
 }): React.JSX.Element | null {
   const source = useAppStore(useShallow((state) => resolveCliChatResumeSource(state, { tab })))
   const capability = useCliChatResumeCapability(tab.worktreeId, source?.agent)
-  const pending = useCliChatResumePending(source)
+  const readiness = useConversationSwitchReadiness(
+    source ? { direction: 'chat', ...source, source } : null
+  )
   const enabled = useAppStore((state) => isNativeChatEnabled(state.settings))
-  if (!source || (!enabled && capability !== false)) {
+  if (!source || !enabled) {
     return null
   }
   return (
@@ -28,10 +31,11 @@ export function CliChatResumeMenuItems({
       {leadingSeparator ? <DropdownMenuSeparator /> : null}
       <AiVaultSessionSurfaceSwitchMenuItems
         action={capability === false ? 'resume' : 'switch'}
-        switchLoading={capability === undefined}
+        switchLoading={!readiness.ready}
+        switchExplanation={readiness.explanation}
         menuKind="dropdown"
         tooltipSide="right"
-        chatPending={pending}
+        chatPending={readiness.pending}
         onResumeInNewChat={(event) => {
           event.preventDefault()
           void runCliChatResume(source).finally(() => onComplete?.())

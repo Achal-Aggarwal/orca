@@ -1,3 +1,4 @@
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { useShallow } from 'zustand/react/shallow'
 import { MessagesSquare } from 'lucide-react'
@@ -5,12 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
-import { agentLabel } from '../../../../shared/ai-vault-session-filters'
 import {
   resolveCliChatResumeSource,
   useCliChatResumeCapability
 } from '../tab-bar/cli-chat-resume-source'
-import { runCliChatResume, useCliChatResumePending } from '../tab-bar/cli-chat-resume-run'
+import { runCliChatResume } from '@/lib/conversation-surface-switch'
 
 export function TerminalPaneResumeInChatButton({
   tabId,
@@ -27,17 +27,11 @@ export function TerminalPaneResumeInChatButton({
     )
   )
   const capability = useCliChatResumeCapability(worktreeId, source?.agent)
-  // The host's writer check decides; this only explains the refusal before the click.
-  const running = useAppStore((state) => {
-    const foreground = state.paneForegroundAgentByPaneKey[paneKey]
-    return (
-      state.agentStatusByPaneKey[paneKey] !== undefined ||
-      (!!foreground?.agent && !foreground.shellForeground)
-    )
-  })
-  const pending = useCliChatResumePending(source)
+  const readiness = useConversationSwitchReadiness(
+    source ? { direction: 'chat', ...source, source } : null
+  )
   const enabled = useAppStore((state) => isNativeChatEnabled(state.settings))
-  if (!enabled && capability !== false) {
+  if (!enabled) {
     return null
   }
   const label =
@@ -52,20 +46,13 @@ export function TerminalPaneResumeInChatButton({
         'components.tab.bar.switch.noConversation',
         'No saved conversation is available in this terminal yet.'
       )
-    : capability === false
-      ? label
-      : running && source
-        ? translate(
-            'components.tab.bar.switch.exitAgentFirst',
-            'Exit {{agent}} in this terminal to switch.',
-            {
-              agent: agentLabel(source.agent)
-            }
-          )
+    : (readiness.explanation ??
+      (capability === false
+        ? label
         : translate(
             'components.tab.bar.switch.toNativeChatTooltip',
             'Switch to native chat: continues the same conversation in a chat, in this tab.'
-          )
+          )))
 
   return (
     <Tooltip>
@@ -75,13 +62,12 @@ export function TerminalPaneResumeInChatButton({
           variant="pane-title"
           size="icon-xs"
           aria-label={label}
-          disabled={!source || pending || capability === undefined}
-          // Not `disabled`: the tooltip has to say why.
-          aria-disabled={(capability === true && running) || undefined}
-          aria-busy={pending || undefined}
+          disabled={!readiness.ready}
+          aria-disabled={!readiness.ready || undefined}
+          aria-busy={readiness.pending || undefined}
           onClick={(event) => {
             event.stopPropagation()
-            if (source && capability !== undefined && (capability === false || !running)) {
+            if (source && readiness.ready) {
               void runCliChatResume(source)
             }
           }}

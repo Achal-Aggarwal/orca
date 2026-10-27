@@ -120,10 +120,11 @@ it.each([600, 6000])(
       })
     )
     const { registerAgentStatusIpcBridge } = await import('./ipc-events/agent-status-ipc-bridge')
-    const { runCliChatResume } = await import('../components/tab-bar/cli-chat-resume-run')
+    const { runLegacyCliChatResume: runCliChatResume } =
+      await import('../components/tab-bar/cli-chat-resume-run')
     const { resolveCliChatResumeSource } =
       await import('../components/tab-bar/cli-chat-resume-source')
-    const { runNativeChatCliSwitch } =
+    const { runLegacyNativeChatCliSwitch: runNativeChatCliSwitch } =
       await import('../components/tab-bar/native-chat-cli-switch-run')
     const unsubs: (() => void)[] = []
     const bridge = registerAgentStatusIpcBridge(unsubs)

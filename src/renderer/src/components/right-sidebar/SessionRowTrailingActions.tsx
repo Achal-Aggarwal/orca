@@ -1,3 +1,4 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import { useAiVaultInPlaceAgent, useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import type React from 'react'
 import {
@@ -38,6 +39,7 @@ const HOVER_ACTION_GROUP_CLASS = `${HOVER_ACTION_GROUP_BASE} ${HOVER_ACTION_GROU
 
 export function SessionRowTrailingActions({
   session,
+  originalPaneTarget,
   detailsExpanded,
   detailsId,
   detailsTooltip,
@@ -64,6 +66,7 @@ export function SessionRowTrailingActions({
   actionsHidden = false
 }: {
   session: AiVaultSession
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
   detailsExpanded: boolean
   detailsId: string
   detailsTooltip: string
@@ -264,6 +267,8 @@ export function SessionRowTrailingActions({
           </Tooltip>
           <DropdownMenuContent align="end">
             <SessionActionMenuItems
+              originalPaneTarget={originalPaneTarget}
+              session={session}
               resumeDisabled={resumeDisabled}
               resumeHidden={resumeHidden}
               resumeLabel={resumeLabel}

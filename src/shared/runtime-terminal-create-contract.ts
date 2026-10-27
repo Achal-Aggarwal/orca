@@ -3,6 +3,7 @@ import type { ExecutionHostId } from './execution-host'
 import type { StartupCwdFallback } from './startup-cwd-fallback'
 
 export type RuntimeTerminalCreate = TerminalLaunchResult & {
+  switchOutcomeUnknown?: true
   coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
   handle: string
   /** Host-owned PTY incarnation used to fence remote identity observations. */

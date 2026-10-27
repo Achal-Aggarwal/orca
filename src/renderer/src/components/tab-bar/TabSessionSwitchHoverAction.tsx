@@ -1,5 +1,5 @@
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
-import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { MessagesSquare, SquareTerminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,10 +8,10 @@ import { useAppStore } from '@/store'
 import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { resolveCliChatResumeSource, useCliChatResumeCapability } from './cli-chat-resume-source'
-import { runCliChatResume, useCliChatResumePending } from './cli-chat-resume-run'
-import { runNativeChatCliSwitch, useNativeChatCliSwitchPending } from './native-chat-cli-switch-run'
+import { runCliChatResume } from '@/lib/conversation-surface-switch'
+import { runNativeChatCliSwitch } from '@/lib/conversation-surface-switch'
 import {
-  resolveTabSessionHistorySubject,
+  resolveNativeChatCliForkIdentity,
   type NativeChatTabSession
 } from './tab-session-history-switch'
 
@@ -41,13 +41,23 @@ function ChatSwitchAction({
   tab: { id: string; worktreeId: string }
   nativeChat: NativeChatTabSession
 }): React.JSX.Element | null {
-  const [subject] = useState(() =>
-    resolveTabSessionHistorySubject(useAppStore.getState(), { tab, nativeChat })
+  const chat = useAppStore(
+    useShallow((state) => resolveNativeChatCliForkIdentity(state, { tab, nativeChat }))
   )
-  const chat = subject?.kind === 'chat' ? subject : null
   const agent = AI_VAULT_AGENTS.find((candidate) => candidate === nativeChat.agent)
-  const inPlace = useInPlaceSwitchCapability(chat?.request.executionHostScope, agent)
-  const pending = useNativeChatCliSwitchPending(chat?.sessionId)
+  const inPlace = useInPlaceSwitchCapability(chat?.executionHostScope, agent)
+  const readiness = useConversationSwitchReadiness(
+    chat && agent
+      ? {
+          direction: 'terminal',
+          sessionId: chat.sessionId,
+          agent,
+          workspaceId: chat.workspaceId,
+          executionHostId: chat.executionHostScope,
+          chatTabId: tab.id
+        }
+      : null
+  )
   if (!chat || !agent || inPlace === false) {
     return null
   }
@@ -55,12 +65,13 @@ function ChatSwitchAction({
     <Button
       variant="ghost"
       size="xs"
-      disabled={pending || inPlace === undefined}
+      disabled={!readiness.ready}
+      title={readiness.explanation}
       onClick={() =>
         void runNativeChatCliSwitch({
           sessionId: chat.sessionId,
           workspaceId: chat.workspaceId,
-          executionHostId: chat.request.executionHostScope,
+          executionHostId: chat.executionHostScope,
           agent,
           chatTabId: tab.id
         })
@@ -79,7 +90,9 @@ function TerminalSwitchAction({
 }): React.JSX.Element | null {
   const source = useAppStore(useShallow((state) => resolveCliChatResumeSource(state, { tab })))
   const capability = useCliChatResumeCapability(tab.worktreeId, source?.agent)
-  const pending = useCliChatResumePending(source)
+  const readiness = useConversationSwitchReadiness(
+    source ? { direction: 'chat', ...source, source } : null
+  )
   if (!source || capability === false) {
     return null
   }
@@ -87,7 +100,8 @@ function TerminalSwitchAction({
     <Button
       variant="ghost"
       size="xs"
-      disabled={pending || capability === undefined}
+      disabled={!readiness.ready}
+      title={readiness.explanation}
       onClick={() => void runCliChatResume(source)}
     >
       <MessagesSquare />

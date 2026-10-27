@@ -27,6 +27,9 @@ export type ClientOnlyUnverifiableInspection = {
 
 /** Compatibility-shaped host/local inspection returned by the inspect RPC. */
 export type HostProcessInspection = {
+  switchWitness?: string
+  suspendedAgentProcess?: string
+
   foregroundProcess: string | null
   hasChildProcesses: boolean
   /** Optional on old hosts; the renderer treats an omitted field as old-host unverifiable. */

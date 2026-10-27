@@ -8,6 +8,7 @@ import { isWslAvailableAsync } from '../wsl'
 import { resolveGitBashPath } from '../git-bash'
 import { resolveProcessCwd } from './process-cwd'
 import {
+  noteLocalPtyUse,
   dataListeners,
   exitListeners,
   ptyIncarnations,
@@ -28,6 +29,9 @@ export function writeLocalPty(id: string, data: string): boolean {
   // Hold private DSR/OSC replies through cooked-mode echo; CPR/DA cannot overtake held replies (#13137, #7329, #15559).
   if (startupIngressByPty.get(id)?.answerLiveQueryReply(data)) {
     return true
+  }
+  if (!noteLocalPtyUse(id)) {
+    return false
   }
   const proc = ptyProcesses.get(id)
   if (!proc) {

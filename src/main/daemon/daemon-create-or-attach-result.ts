@@ -4,6 +4,9 @@ import type { AgentSessionClaimedSpawnResult } from '../../shared/agent-session-
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 
 export type DaemonCreateOrAttachResult = {
+  /** A dispatched child remains owned after its initiating handoff lost authority. */
+  switchOutcomeUnknown?: true
+  switchCleanupWitness?: string
   isNew: boolean
   snapshot: TerminalSnapshot | null
   pid: number | null

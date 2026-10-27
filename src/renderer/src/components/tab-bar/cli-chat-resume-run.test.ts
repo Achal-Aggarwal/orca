@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliChatResumeSource } from './cli-chat-resume-source'
 import type * as ResumeSourceModule from './cli-chat-resume-source'
@@ -6,11 +5,62 @@ import type * as RuntimeRpcModule from '@/runtime/runtime-rpc-client'
 import type { AgentSessionWireRefusal } from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionCreateParams } from '../../../../shared/structured-agent-session-create'
 import type * as FrameDrawnChatTabPlacementModule from '@/lib/frame-drawn-chat-tab-placement'
-
 import {
   seedCliChatResumeRpc,
   type CliChatResumeTestMocks
 } from './cli-chat-resume-mocks.test-fixture'
+import {
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
+import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
+import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
+import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/agent-session/structured-agent-session-provisional-tab'
+import {
+  getStructuredAgentSessionLaunchLifecycle,
+  retryStructuredAgentSessionLaunch
+} from '@/lib/structured-agent-session-launch'
+import {
+  readStructuredAgentLaunchRecord,
+  writeStructuredAgentLaunchRecord,
+  resetStructuredAgentLaunchPersistenceForTests
+} from '@/lib/agent-session/launch/structured-agent-session-launch-persistence'
+import {
+  reserveStructuredLaunchSlot,
+  restoreStructuredLaunchSurfaces,
+  stopStructuredLaunchSlotTracking
+} from '@/lib/structured-agent-session-launch-surface'
+import { applyStructuredSessionTabSnapshots } from '@/runtime/local-structured-session-tabs-sync/snapshot-apply'
+import { resetLocalStructuredSessionVersionForTests } from '@/runtime/local-structured-session-tabs-sync/inventory-generation-fence'
+import { resetWebSessionTabsSnapshotFreshnessForTests } from '@/runtime/web-session-tabs-sync/tracking-lifecycle'
+import { buildWorkspaceSessionPayload } from '@/lib/workspace-session'
+import { buildHydratedTabState } from '@/store/slices/tabs-hydration'
+import { makeTerminalTab, makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
+import { useAppStore } from '@/store'
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
+import { layoutApplyTestTransport } from '@/runtime/layout-apply-test-transport.test-fixture'
+import { runLegacyCliChatResume as runCliChatResume } from './cli-chat-resume-run'
+import { verifyExitedPaneHistoryReturn } from './cli-chat-resume-exit-return.test-fixture'
+import { switchIntoOwnerLegacy as switchIntoOwner } from './cli-chat-resume-feedback'
+import {
+  resetStructuredAgentLaunchRegistryForTests,
+  structuredLaunchStates
+} from '@/lib/agent-session/launch/structured-agent-session-launch-registry'
+import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
+import {
+  clearWebSessionFocusIntent,
+  peekWebSessionFocusIntent,
+  resetWebSessionFocusIntentForTests
+} from '@/runtime/web-session-focus-intent'
+import { structuredAgentSessionFocusOwner } from '@/runtime/structured-agent-session-owner'
+import { registerSessionTabIpcBridge } from '@/hooks/ipc-events/session-tab-ipc-bridge'
+import {
+  drawTabsFromMain,
+  type TabsDrawnFromMain
+} from '@/store/slices/tabs-drawn-from-main.test-fixture'
+import { snapshot } from './cli-chat-resume-snapshot.test-fixture'
+
+// @vitest-environment happy-dom
 
 const mocks: CliChatResumeTestMocks = vi.hoisted(() => {
   const state: { source: CliChatResumeSource | null } = { source: null }
@@ -23,6 +73,7 @@ const mocks: CliChatResumeTestMocks = vi.hoisted(() => {
     toast: vi.fn(),
     frameDrawn: false,
     success: vi.fn(),
+    info: vi.fn(),
     activate: vi.fn(async () => true),
     activateVerified: vi.fn(async () => 'activated'),
     switchCapability: vi.fn(async () => false),
@@ -52,7 +103,8 @@ vi.mock('./cli-chat-resume-source', async (importOriginal) => {
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   supportsStructuredAgentSessionCliSource: mocks.sourceCapability,
   supportsStructuredAgentSessionCreateMessage: mocks.createCapability,
-  supportsInPlaceSwitch: mocks.switchCapability,
+  supportsInPlaceSwitch: (_target: unknown, _agent: string, execution = false) =>
+    execution ? Promise.resolve(false) : mocks.switchCapability(),
   callStructuredAgentSession: (...args: unknown[]) =>
     args[1] === 'agentSession.createSupport'
       ? Promise.resolve({ supported: true })
@@ -81,7 +133,9 @@ vi.mock('@/runtime/structured-session-tab-inventory', () => ({
 vi.mock('@/lib/structured-agent-session-create-hydration', () => ({
   publishStructuredAgentSessionCreateHydration: vi.fn()
 }))
-vi.mock('sonner', () => ({ toast: { error: mocks.toast, success: mocks.success } }))
+vi.mock('sonner', () => ({
+  toast: { error: mocks.toast, success: mocks.success, info: mocks.info }
+}))
 // A frame-drawn server workspace's create carries the tab's place, read as it is sent.
 vi.mock('@/lib/frame-drawn-chat-tab-placement', async (importOriginal) => {
   const actual = await importOriginal<typeof FrameDrawnChatTabPlacementModule>()
@@ -117,57 +171,6 @@ vi.mock('@/runtime/runtime-layout-client', async (importOriginal) =>
   ).runtimeLayoutClientWithTestFrames(await importOriginal())
 )
 
-import {
-  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
-} from '../../../../shared/protocol-version'
-import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
-import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
-import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/agent-session/structured-agent-session-provisional-tab'
-import {
-  getStructuredAgentSessionLaunchLifecycle,
-  retryStructuredAgentSessionLaunch
-} from '@/lib/structured-agent-session-launch'
-import {
-  readStructuredAgentLaunchRecord,
-  writeStructuredAgentLaunchRecord,
-  resetStructuredAgentLaunchPersistenceForTests
-} from '@/lib/agent-session/launch/structured-agent-session-launch-persistence'
-import {
-  reserveStructuredLaunchSlot,
-  restoreStructuredLaunchSurfaces,
-  stopStructuredLaunchSlotTracking
-} from '@/lib/structured-agent-session-launch-surface'
-import { applyStructuredSessionTabSnapshots } from '@/runtime/local-structured-session-tabs-sync/snapshot-apply'
-import { resetLocalStructuredSessionVersionForTests } from '@/runtime/local-structured-session-tabs-sync/inventory-generation-fence'
-import { resetWebSessionTabsSnapshotFreshnessForTests } from '@/runtime/web-session-tabs-sync/tracking-lifecycle'
-import { buildWorkspaceSessionPayload } from '@/lib/workspace-session'
-import { buildHydratedTabState } from '@/store/slices/tabs-hydration'
-import { makeTerminalTab, makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
-import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
-import { useAppStore } from '@/store'
-import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
-import { layoutApplyTestTransport } from '@/runtime/layout-apply-test-transport.test-fixture'
-import { runCliChatResume } from './cli-chat-resume-run'
-import { verifyExitedPaneHistoryReturn } from './cli-chat-resume-exit-return.test-fixture'
-import { switchIntoOwner } from './cli-chat-resume-feedback'
-import {
-  resetStructuredAgentLaunchRegistryForTests,
-  structuredLaunchStates
-} from '@/lib/agent-session/launch/structured-agent-session-launch-registry'
-import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
-import {
-  clearWebSessionFocusIntent,
-  peekWebSessionFocusIntent,
-  resetWebSessionFocusIntentForTests
-} from '@/runtime/web-session-focus-intent'
-import { structuredAgentSessionFocusOwner } from '@/runtime/structured-agent-session-owner'
-import { registerSessionTabIpcBridge } from '@/hooks/ipc-events/session-tab-ipc-bridge'
-import {
-  drawTabsFromMain,
-  type TabsDrawnFromMain
-} from '@/store/slices/tabs-drawn-from-main.test-fixture'
-
 const SOURCE: CliChatResumeSource = {
   tabId: 'tab-1',
   workspaceId: 'wt-1',
@@ -179,7 +182,13 @@ const SOURCE: CliChatResumeSource = {
 }
 const tabs = () => useAppStore.getState().unifiedTabsByWorktree['wt-1'] ?? []
 let main: TabsDrawnFromMain | undefined
-afterEach(() => {
+const deferredCleanups: (() => void)[] = []
+afterEach(async () => {
+  for (const finish of deferredCleanups.splice(0)) {
+    finish()
+  }
+  // Settle fixture-owned replies even when an assertion prevented its normal resolver.
+  await new Promise((resolve) => setTimeout(resolve, 0))
   vi.unstubAllGlobals()
   main?.close()
   main = undefined
@@ -189,6 +198,7 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => {
     resolve = done
   })
+  deferredCleanups.push(() => resolve(undefined!))
   return { promise, resolve }
 }
 function refuse(reason: 'transcriptNotFound' | 'transcriptUnreadable'): AgentSessionWireRefusal {
@@ -202,6 +212,10 @@ function refuse(reason: 'transcriptNotFound' | 'transcriptUnreadable'): AgentSes
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  mocks.call.mockReset()
+  mocks.rpc.mockReset()
+  mocks.createCapability.mockReset()
+  mocks.sourceCapability.mockReset()
   resetLocalStructuredSessionVersionForTests()
   resetWebSessionTabsSnapshotFreshnessForTests()
   stopStructuredLaunchSlotTracking()
@@ -239,29 +253,6 @@ beforeEach(async () => {
     }
   })
 })
-
-function snapshot(sessionId?: string): RuntimeMobileSessionTabsResult {
-  return {
-    worktree: 'wt-1',
-    publicationEpoch: 'publication-test',
-    snapshotVersion: Date.now(),
-    activeGroupId: null,
-    activeTabId: null,
-    activeTabType: null,
-    tabs: sessionId
-      ? [
-          {
-            type: 'agent-session',
-            id: `agent-session:${sessionId}`,
-            sessionId,
-            agent: 'claude',
-            title: 'Chat',
-            isActive: false
-          }
-        ]
-      : []
-  }
-}
 
 /** Main takes the store's current layout, as after a restart; seeding after it is invisible to main. */
 async function redrawFromMain(): Promise<void> {
@@ -472,20 +463,20 @@ describe('CLI identity resume through the existing launch owner', () => {
     }
   })
 
-  it('keeps the terminal and directs a refused terminal writer to Session History', async () => {
+  it('keeps the terminal and directs an addressed refused writer to quit here and retry', async () => {
     mocks.call.mockResolvedValue({
       ok: false,
       refusal: {
         code: 'agent_session_conflict',
         message: 'private host evidence',
-        details: { reason: 'conversationHeldElsewhere' },
+        details: { reason: 'conversationHeldElsewhere', source: true },
         createAttemptRefusedBeforeCommit: true
       }
     })
     await runCliChatResume(SOURCE)
     expect(mocks.toast).toHaveBeenCalledTimes(1)
     expect(mocks.toast.mock.calls[0]?.[0]).toBe(
-      'Claude is already running this conversation in another terminal. Quit Claude there or close that terminal, then open this conversation from Session History.'
+      'Orca could not confirm Claude stopped in this terminal. Quit Claude here, then try this action again.'
     )
     expect(mocks.activate).not.toHaveBeenCalled()
     expect(tabs()).toEqual([])
@@ -566,7 +557,8 @@ describe('CLI identity resume through the existing launch owner', () => {
       .mockRejectedValueOnce(new Error('required write failed'))
     await runCliChatResume(mocks.source)
     expect(mocks.rpc.mock.calls.filter(([, method]) => method === 'terminal.close')).toHaveLength(1)
-    expect(mocks.toast).toHaveBeenCalledTimes(2)
+    expect(mocks.toast).toHaveBeenCalledOnce()
+    expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('opened successfully'))
     expect(mocks.activateVerified).toHaveBeenCalledWith({ structuredSession: owner }, undefined, {
       kind: 'local'
     })

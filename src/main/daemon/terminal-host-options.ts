@@ -19,6 +19,8 @@ export type TerminalHostOptions = {
     terminalShellArgs?: string[]
     terminalWindowsWslDistro?: string | null
     terminalWindowsPowerShellImplementation?: 'auto' | 'powershell.exe' | 'pwsh.exe'
+    assertCreateAllowed?: () => void
+    retainCanceledChild?: boolean
     isCanceled?: () => boolean
     cancelSignal?: AbortSignal
   }) => SubprocessHandle | Promise<SubprocessHandle>

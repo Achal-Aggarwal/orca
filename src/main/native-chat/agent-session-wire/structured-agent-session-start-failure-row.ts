@@ -98,7 +98,7 @@ export async function recordStructuredAgentSessionStartFailure(
   session: Pick<StructuredAgentSessionHostSession, 'journal'> & { fence: number },
   failure: StructuredAgentSessionStartFailure,
   clientMessageId: string | null
-): Promise<void> {
+): Promise<string | undefined> {
   const selected = session.journal
     .submissions()
     .find(
@@ -128,6 +128,7 @@ export async function recordStructuredAgentSessionStartFailure(
         }
       : {})
   })
+  return agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity(startKey))
 }
 
 export function acceptedNoLaterThan(

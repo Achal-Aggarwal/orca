@@ -32,6 +32,9 @@ export async function retireChatForAdmittedTerminalLaunch(
     (holding) => holding.role === 'head' && keysMayMatch(holding.key, key)
   )
   for (const holding of holders) {
+    if (host.switchExecuting(holding.sessionId)) {
+      continue
+    }
     const record = host.deps.store.getRecord(holding.sessionId)
     if (
       record?.location.executionHostId !== LOCAL_EXECUTION_HOST_ID ||

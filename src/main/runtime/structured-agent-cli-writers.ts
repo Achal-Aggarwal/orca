@@ -5,7 +5,10 @@ import {
   chatAgentsShareConversations,
   CLI_CONVERSATION_ADOPTING_AGENTS
 } from '../../shared/structured-agent-cli-conversation-adoption'
-import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
+import {
+  agentSessionRefusalError,
+  isAgentSessionRefusalError
+} from '../../shared/agent-session-wire-refusals'
 import type { CliWriterObservation } from '../agent-hooks/server/cli-writer-observation'
 import { getFreshShellForegroundSnapshot } from '../../shared/process-table-snapshot-reader'
 import { collectDescendantsFromIndex, getProcessTableIndex } from '../../shared/process-table-index'
@@ -100,7 +103,14 @@ export async function assertCliConversationWritersExited(
   }
   try {
     if (source) {
-      await censusPane(() => host.terminal(source), source.worktreeId, true)
+      try {
+        await censusPane(() => host.terminal(source), source.worktreeId, true)
+      } catch {
+        throw agentSessionRefusalError('agent_session_conflict', {
+          reason: 'conversationHeldElsewhere',
+          source: true
+        })
+      }
     }
     const savedCandidates = () =>
       host
@@ -248,7 +258,10 @@ export async function assertCliConversationWritersExited(
     ) {
       throw refuse()
     }
-  } catch {
+  } catch (error) {
+    if (isAgentSessionRefusalError(error)) {
+      throw error
+    }
     throw refuse()
   }
 }

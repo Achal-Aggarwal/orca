@@ -1,3 +1,5 @@
+import type { RuntimeRpcDispatchObservation } from '../../../shared/runtime-rpc-envelope'
+import { acceptAgentLaunchPaneAttempt } from '@/lib/agent-launch-pane-start'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
@@ -9,31 +11,14 @@ import { callRuntimeEnvironmentWithRevision } from './runtime-rpc-environment-ca
 import { unwrapRuntimeRpcResult } from './runtime-rpc-result'
 import { captureRuntimeEnvironmentRequestRevision } from './runtime-environment-revision'
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
-
-const RUNTIME_COMPATIBILITY_CACHE_MAX = 32
-const RECENT_RUNTIME_COMPATIBILITY_FAILURE_TTL_MS = 60_000
-// Why: capability verdicts must eventually follow a saved environment's version changes.
-const RUNTIME_CAPABILITY_STATUS_TTL_MS = 60_000
-
-type RuntimeCompatibilityCacheEntry = {
-  check: Promise<void>
-  failedAt: number | null
-  // False while probing so recovery can drop a doomed pending compatibility check.
-  provenCompatible: boolean
-  status: RuntimeStatus | null
-  statusCheckedAt: number | null
-}
-
-const runtimeCompatibilityChecks = new Map<string, RuntimeCompatibilityCacheEntry>()
-
-/** A pending probe by default; an observed status is proof of itself. */
-function compatibilityEntry(
-  status: RuntimeStatus | null = null,
-  provenCompatible = status !== null
-): RuntimeCompatibilityCacheEntry {
-  const statusCheckedAt = status ? Date.now() : null
-  return { check: Promise.resolve(), failedAt: null, provenCompatible, status, statusCheckedAt }
-}
+import {
+  getCachedRuntimeCompatibilityCheck,
+  RUNTIME_COMPATIBILITY_CACHE_MAX,
+  RUNTIME_CAPABILITY_STATUS_TTL_MS,
+  type RuntimeCompatibilityCacheEntry,
+  runtimeCompatibilityChecks,
+  compatibilityEntry
+} from './runtime-environment-compatibility-cache'
 
 export async function callRuntimeRpc<TResult>(
   target: RuntimeClientTarget,
@@ -47,9 +32,24 @@ export async function callRuntimeRpc<TResult>(
     signal?: AbortSignal
     expectedEnvironmentPairingRevision?: number
     expectedEnvironmentRuntimeId?: string
-    beforeSend?: () => void
+    beforeSend?: (sentAt?: number) => void
+    dispatchObservation?: () => RuntimeRpcDispatchObservation
   } = {}
 ): Promise<TResult> {
+  if (
+    (method === 'agent.launch' || method === 'agent.launchReplay') &&
+    params &&
+    typeof params === 'object' &&
+    'paneKey' in params &&
+    typeof params.paneKey === 'string'
+  ) {
+    acceptAgentLaunchPaneAttempt(
+      params.paneKey,
+      'operationId' in params && typeof params.operationId === 'string'
+        ? params.operationId
+        : undefined
+    )
+  }
   if (options.signal?.aborted) {
     throw createRuntimeRpcAbortError()
   }
@@ -79,15 +79,19 @@ export async function callRuntimeRpc<TResult>(
   const nextParams = options.suppressFeatureInteraction
     ? withBrowserPaneUiRuntimeRpcSource(params)
     : params
-  options.beforeSend?.()
   const response =
     target.kind === 'local'
-      ? await window.api.runtime.call({ method, params: nextParams })
+      ? await (() => {
+          options.beforeSend?.()
+          return window.api.runtime.call({ method, params: nextParams })
+        })()
       : await callRuntimeEnvironmentWithRevision({
           environmentId: target.environmentId,
           method,
           params: nextParams,
           timeoutMs: options.timeoutMs,
+          beforeSend: options.beforeSend,
+          dispatchObservation: options.dispatchObservation,
           signal: options.signal,
           expectedEnvironmentPairingRevision,
           expectedEnvironmentRuntimeId: options.expectedEnvironmentRuntimeId
@@ -137,29 +141,6 @@ export async function ensureRuntimeEnvironmentCompatible(
     }
     throw error
   }
-}
-
-function getCachedRuntimeCompatibilityCheck(
-  environmentId: string,
-  options: { reuseRecentCompatibilityFailure?: boolean }
-): RuntimeCompatibilityCacheEntry | null {
-  const cached = runtimeCompatibilityChecks.get(environmentId)
-  if (!cached) {
-    return null
-  }
-  if (
-    cached.failedAt !== null &&
-    Date.now() - cached.failedAt >= RECENT_RUNTIME_COMPATIBILITY_FAILURE_TTL_MS
-  ) {
-    runtimeCompatibilityChecks.delete(environmentId)
-    return null
-  }
-  if (cached.failedAt !== null && options.reuseRecentCompatibilityFailure !== true) {
-    return null
-  }
-  runtimeCompatibilityChecks.delete(environmentId)
-  runtimeCompatibilityChecks.set(environmentId, cached)
-  return cached
 }
 
 function rememberRuntimeEnvironmentCompatibility(

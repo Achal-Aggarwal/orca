@@ -1,3 +1,5 @@
+import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
+import { useNativeChatClaudeSignIn } from './native-chat-claude-sign-in'
 import { nativeChatAntigravitySignInContent } from './native-chat-antigravity-settings'
 import { translate } from '@/i18n/i18n'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -119,4 +121,19 @@ export function structuredSessionNotices({
       : []),
     ...(composerError ? [{ key: 'composer-error', kind: 'error' as const, ...composerError }] : [])
   ]
+}
+
+export function useStructuredSessionNotices(args: {
+  availability: Parameters<typeof useNativeChatAvailabilityNotice>[0]
+  signIn: Parameters<typeof useNativeChatClaudeSignIn>[0]
+  notices: Omit<Parameters<typeof structuredSessionNotices>[0], 'availability' | 'claudeSignIn'>
+  hostNotice: NativeChatComposerNotice | null
+}) {
+  const availability = useNativeChatAvailabilityNotice(args.availability)
+  const claudeSignIn = useNativeChatClaudeSignIn(args.signIn)
+  const notices = structuredSessionNotices({ ...args.notices, claudeSignIn, availability })
+  if (args.hostNotice) {
+    notices.push(args.hostNotice)
+  }
+  return { claudeSignIn, notices }
 }

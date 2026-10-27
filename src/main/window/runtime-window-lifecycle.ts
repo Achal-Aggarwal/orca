@@ -179,8 +179,8 @@ export function registerRuntimeWindowLifecycle(
       send('ui:focusTerminal', { tabId, worktreeId, leafId }),
     revealTerminalPane: (target) => revealTerminalPaneInWindow(mainWindow, target),
     focusEditorTab: (tabId, worktreeId) => send('ui:focusEditorTab', { tabId, worktreeId }),
-    closeSessionTab: (tabId, worktreeId) =>
-      requestSessionTabCloseFromRenderer(mainWindow, tabId, worktreeId),
+    closeSessionTab: (tabId, worktreeId, switchProjection) =>
+      requestSessionTabCloseFromRenderer(mainWindow, tabId, worktreeId, switchProjection),
     moveSessionTab: (worktreeId: string, move: RuntimeMobileSessionTabMove) =>
       send('ui:moveSessionTab', { worktreeId, ...move }),
     openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId?, navigation?, position?) =>

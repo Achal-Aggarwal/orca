@@ -7,7 +7,6 @@ import type {
   RuntimeMobileSessionTerminalTab
 } from '../../../../shared/runtime-types'
 import type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
-export type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
 import { randomUUID } from 'node:crypto'
 import { copySleepingAgentLaunchConfig } from '../../runtime-agent-launch-resolution'
 import { deriveRemoteRuntimeTerminalCreateHandle } from '../../remote-runtime-terminal-create-identity'
@@ -22,6 +21,8 @@ import {
   buildMaterializedHeadlessParentLayout,
   getHeadlessMobileSessionGroupId
 } from '../../mobile-session-layout-projection'
+
+export type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
 
 const OWNED_MOBILE_DISPATCH_RECIPE_TTL_MS = 15 * 60_000
 
@@ -70,6 +71,9 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
         focus: false,
         ...(opts.presentation ? { presentation: opts.presentation } : {}),
         ...(opts.afterDesktopTabId ? { afterTabId: opts.afterDesktopTabId } : {}),
+        beforePtySpawn: opts.beforePtySpawn,
+        switchExecution: opts.switchExecution,
+        ...(opts.keepPaneOnStartFailure ? { keepPaneOnStartFailure: true as const } : {}),
         onPtySpawnDispatched: (launch) => {
           if (mutationHandle && launch) {
             if (
@@ -170,11 +174,17 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
         (!livePty.pty.launchAgent || livePty.pty.launchAgent === dispatchedRecipe.launchAgent)
           ? dispatchedRecipe
           : null
-      if (opts.launchConfig && !livePty.pty.launchConfig && !recipe?.launchConfig) {
+      if (
+        !terminal.agentResumeRefused &&
+        !terminal.agentResumeUnavailable &&
+        opts.launchConfig &&
+        !livePty.pty.launchConfig &&
+        !recipe?.launchConfig
+      ) {
         // Missing original dispatch evidence cannot authorize a retry's captured recipe.
         throw new Error('runtime_unavailable')
       }
-      if (recipe) {
+      if (recipe && !terminal.agentResumeRefused && !terminal.agentResumeUnavailable) {
         livePty.pty.launchAgent ??= recipe.launchAgent ?? null
         if (!livePty.pty.launchConfig && recipe.launchConfig) {
           livePty.pty.launchConfig = copySleepingAgentLaunchConfig(recipe.launchConfig)
@@ -185,10 +195,14 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
         this.ownedMobileDispatchRecipes.delete(mutationHandle)
       }
     }
-    if (opts.createMutation && opts.identity && terminal.ptyId) {
+    if (opts.createMutation && terminal.tabId && terminal.paneKey && terminal.ptyId) {
+      const actual = parsePaneKey(terminal.paneKey)
+      if (!actual || actual.tabId !== terminal.tabId) {
+        throw new Error('terminal_handle_stale')
+      }
       this.registerPty(terminal.ptyId, worktreeId, workspace.connectionId ?? null, {
-        tabId: opts.identity.tabId,
-        leafId: opts.identity.leafId,
+        tabId: terminal.tabId,
+        leafId: actual.leafId,
         terminalHandle: terminal.handle
       })
     }
@@ -221,7 +235,9 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
         ? { startupCwd: terminal.savedStartupCwd ?? cwd }
         : {}),
       ...(livePty.pty.launchAgent ? { launchAgent: livePty.pty.launchAgent } : {}),
-      ...(!terminal.agentResumeRefused && opts.viewMode ? { viewMode: opts.viewMode } : {}),
+      ...(!terminal.agentResumeRefused && !terminal.agentResumeUnavailable && opts.viewMode
+        ? { viewMode: opts.viewMode }
+        : {}),
       parentLayout,
       isActive: activate
     }
@@ -280,6 +296,9 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
     }
     return {
       tab: created,
+      ...(terminal.switchOutcomeUnknown ? { switchOutcomeUnknown: true as const } : {}),
+      ...(terminal.agentResumeUnavailable ? { agentResumeUnavailable: true as const } : {}),
+      ...(terminal.agentResumeRefused ? { agentResumeRefused: true as const } : {}),
       publicationEpoch: result.publicationEpoch,
       snapshotVersion: result.snapshotVersion,
       ...(terminal.startupCwdFallback ? { startupCwdFallback: 'workspace-root' as const } : {})

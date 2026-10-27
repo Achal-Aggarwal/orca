@@ -150,7 +150,7 @@ export function registerStructuredAgentSessionStart(
             if (session) {
               const record = context.deps.store.getRecord(sessionId)
               const failure = failedStart(record, settled)
-              await recordStructuredAgentSessionStartFailure(
+              const failureItemId = await recordStructuredAgentSessionStartFailure(
                 { journal: session.journal, fence: record?.lease.runtimeFence ?? 0 },
                 {
                   startKey:
@@ -162,6 +162,7 @@ export function registerStructuredAgentSessionStart(
                 },
                 startedFor ?? null
               )
+              return { ...settled, ...(failureItemId ? { failureItemId } : {}) }
             }
           }
           return settled

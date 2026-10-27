@@ -13,14 +13,6 @@ import type {
   GetForegroundProcessRequest,
   InspectProcessRequest
 } from './daemon-foreground-process-protocol'
-
-export type {
-  ConfirmForegroundProcessRequest,
-  ConfirmShellForegroundRequest,
-  GetForegroundProcessRequest,
-  InspectProcessRequest
-} from './daemon-foreground-process-protocol'
-
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { PtyStartupIngressIntent } from '../../shared/pty-startup-ingress'
@@ -30,8 +22,18 @@ import type {
 } from '../../shared/agent-session-host-authority'
 import type * as HistorySeedProtocol from './terminal-history-seed-transfer-protocol'
 import type * as PtyOwnerQueryProtocol from './daemon-pty-owner-query-protocol'
-export type { TerminalModes } from './terminal-modes'
 import type { TerminalSnapshot } from './terminal-snapshot'
+import type { PtyFencedTerminationRequest } from '../../shared/pty-fenced-termination'
+
+export type {
+  ConfirmForegroundProcessRequest,
+  ConfirmShellForegroundRequest,
+  GetForegroundProcessRequest,
+  InspectProcessRequest
+} from './daemon-foreground-process-protocol'
+
+export type { TerminalModes } from './terminal-modes'
+
 export type { TerminalSnapshot } from './terminal-snapshot'
 export {
   AGENT_SESSION_CLAIM_DAEMON_PROTOCOL_VERSION,
@@ -82,6 +84,12 @@ export type CreateOrAttachRequest = {
     shellReadySupported?: boolean
     shellReadyTimeoutMs?: number
     /** Server-side fence that prevents a client timeout from publishing an orphan PTY. */
+    switchExecution?: {
+      phase: 'prepare' | 'commit'
+      invocationId: string
+      anchor?: string
+      remainingMs?: number
+    }
     cancelAfterMs?: number
     startupIngress?: PtyStartupIngressIntent
     /** Optional; an old daemon ignores it and an old client omits it (legacy pacing). */
@@ -154,6 +162,7 @@ export type KillRequest = {
     expectedIncarnationId?: string
     requireNoAgentOwner?: boolean
     requireUnattached?: boolean
+    switchCondition?: PtyFencedTerminationRequest['switchCondition']
   }
 }
 

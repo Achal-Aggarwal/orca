@@ -31,6 +31,8 @@ export type PtySubprocessOptions = {
   terminalShellArgs?: string[]
   terminalWindowsWslDistro?: string | null
   terminalWindowsPowerShellImplementation?: 'auto' | 'powershell.exe' | 'pwsh.exe'
+  assertCreateAllowed?: () => void
+  retainCanceledChild?: boolean
   isCanceled?: () => boolean
   /** Aborts in-progress cwd validation; `isCanceled` is only polled between steps. */
   cancelSignal?: AbortSignal
@@ -78,6 +80,8 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
   let spawned: SpawnedDaemonPty
   try {
     spawned = await spawnNativeDaemonPty({
+      assertCreateAllowed: opts.assertCreateAllowed,
+      retainCanceledChild: opts.retainCanceledChild,
       shellPath: launch.shellPath,
       shellArgs: launch.shellArgs,
       spawnCwd: launch.spawnCwd,

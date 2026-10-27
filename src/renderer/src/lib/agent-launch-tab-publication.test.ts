@@ -1,3 +1,11 @@
+import type { AppState } from '@/store/types'
+import {
+  acceptAgentLaunchPaneAttempt,
+  awaitAgentLaunchPaneStart,
+  settleAgentLaunchPaneStart,
+  forgetAgentLaunchPaneAttempts
+} from './agent-launch-pane-start'
+import { applyAgentLaunchPaneVerdict } from './agent-launch-pane-verdict-application'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as AgentStatusModule from '@/lib/agent-status'
 import type { AgentLaunchTabPublishRequest } from '../../../shared/agent-launch-tab-publication'
@@ -16,6 +24,8 @@ const testStore = vi.hoisted(() => {
 })
 vi.mock('@/store', () => ({
   useAppStore: {
+    setState: (patch: Partial<AppState> | ((state: AppState) => Partial<AppState>)) =>
+      testStore.current!.setState(patch),
     getState: () => {
       if (!testStore.current) {
         throw new Error('no test store')
@@ -62,6 +72,7 @@ function launchTab() {
 }
 
 beforeEach(() => {
+  forgetAgentLaunchPaneAttempts(TAB_ID)
   store = createTestStore()
   testStore.current = store
   focusTerminalInitiatedTab.mockClear()
@@ -282,5 +293,50 @@ describe('whose view moves', () => {
     expect(store.getState().activeWorktreeId).toBe(WT)
     expect(store.getState().activeTabId).toBe(TAB_ID)
     expect(focusTerminalInitiatedTab).toHaveBeenCalledWith(TAB_ID, LEAF_ID, WT)
+  })
+})
+
+describe('the ordinary window actual verdict producer', () => {
+  it('takes back an exact unused failed tab without ordinary Close', () => {
+    const shown = publishAgentLaunchTab(request({ operationId: 'A' }))
+    expect(
+      publishAgentLaunchTab(
+        request({ operationId: 'A', withdraw: { root: shown.withdrawalRoot! } })
+      ).withdrawn
+    ).toBe(true)
+    expect(store.getState().tabsByWorktree[WT]?.some((row) => row.id === TAB_ID)).toBe(false)
+    expect(store.getState().terminalLayoutsByTabId[TAB_ID]).toBeUndefined()
+  })
+  it('does not clear a newer accepted/preparing launch prompt or waiter', async () => {
+    const shown = publishAgentLaunchTab(request({ operationId: 'A', prompt: 'original' }))
+    acceptAgentLaunchPaneAttempt(`${TAB_ID}:${LEAF_ID}`, 'B')
+    publishAgentLaunchTab(request({ operationId: 'B', prompt: 'new work' }))
+    const started = awaitAgentLaunchPaneStart(TAB_ID, LEAF_ID)
+    const answer = vi.fn()
+    void started.then(answer)
+    expect(
+      applyAgentLaunchPaneVerdict({
+        worktreeId: WT,
+        tabId: TAB_ID,
+        leafId: LEAF_ID,
+        operationId: 'A',
+        withdrawalRoot: shown.withdrawalRoot,
+        verdict: { kind: 'withdrawn' }
+      })
+    ).toBe(false)
+    expect(agentLaunchPanePrompt(TAB_ID)).toBe('new work')
+    await Promise.resolve()
+    expect(answer).not.toHaveBeenCalled()
+    settleAgentLaunchPaneStart(TAB_ID, LEAF_ID, 'pty-B')
+    expect(await started).toBe('pty-B')
+  })
+  it('retains a used destination even when the failed start was definitive', () => {
+    const shown = publishAgentLaunchTab(request({ operationId: 'A' }))
+    store.setState({ lastTerminalInputAtByPaneKey: { [`${TAB_ID}:${LEAF_ID}`]: 1 } })
+    const receipt = publishAgentLaunchTab(
+      request({ operationId: 'A', withdraw: { root: shown.withdrawalRoot! } })
+    )
+    expect(receipt.withdrawn).toBe(false)
+    expect(store.getState().tabsByWorktree[WT]?.some((row) => row.id === TAB_ID)).toBe(true)
   })
 })

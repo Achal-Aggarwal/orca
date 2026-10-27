@@ -92,7 +92,11 @@ export function AiVaultVirtualRow({
   onJumpToWorktree: (worktreeId: string) => void
   onResume: (session: AiVaultSession, worktreeId: string) => void
   onContinueInNewSession: (session: AiVaultSession, worktreeId: string) => void
-  onResumeInNewChat: (session: AiVaultSession, worktreeId: string) => void
+  onResumeInNewChat: (
+    session: AiVaultSession,
+    worktreeId: string,
+    pane?: AiVaultOriginalPaneTarget | null
+  ) => void
   onResumeInNewCli: (session: AiVaultSession, worktreeId: string) => void
   onCopyResume: (session: AiVaultSession, worktreeId?: string | null) => void
   onCopyId: (session: AiVaultSession) => void
@@ -204,6 +208,7 @@ export function AiVaultVirtualRow({
         />
       ) : (
         <VaultSessionRow
+          originalPaneTarget={originalPaneTarget}
           session={row.session}
           searchHit={searchHit}
           sourceHostLabel={searchHitHostLabels?.get(row.session.executionHostId)}
@@ -251,7 +256,7 @@ export function AiVaultVirtualRow({
           }
           onResumeInNewChat={
             resumeInNewChatWorkspaceId
-              ? () => onResumeInNewChat(row.session, resumeInNewChatWorkspaceId)
+              ? () => onResumeInNewChat(row.session, resumeInNewChatWorkspaceId, originalPaneTarget)
               : undefined
           }
           onResumeInNewCli={

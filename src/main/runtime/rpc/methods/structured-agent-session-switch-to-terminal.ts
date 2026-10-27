@@ -1,4 +1,5 @@
-// Prepare the ordinary same-id resume recipe before the ordered idle-only, proven-exit stop.
+import { executeStructuredSessionSwitch } from './structured-agent-session-switch-execution'
+import type { AgentSessionSwitchResult } from '../../../../shared/agent-session-switch-execution'
 import { inPlaceSwitchEnabled } from '../../../../shared/structured-agent-cli-conversation-adoption'
 import type { AiVaultChatForkSource } from '../../../../shared/ai-vault-resume-preparation'
 import {
@@ -11,15 +12,23 @@ import {
   requireStructuredCapability,
   requireStructuredSessionHost
 } from './structured-agent-session-gate'
-import { OptionsParams } from './structured-agent-session-schemas'
+import { SwitchToTerminalParams } from './structured-agent-session-schemas'
+
+// Prepare the ordinary same-id resume recipe before the ordered idle-only, proven-exit stop.
 
 export const STRUCTURED_AGENT_SESSION_SWITCH_TO_TERMINAL_METHODS = [
   defineMethod({
     name: 'agentSession.switchToTerminal',
     permission: 'workspace',
-    params: OptionsParams,
-    handler: async (params, ctx): Promise<{ source: AiVaultChatForkSource }> => {
+    params: SwitchToTerminalParams,
+    handler: async (
+      params,
+      ctx
+    ): Promise<{ source: AiVaultChatForkSource } | AgentSessionSwitchResult> => {
       requireStructuredCapability(ctx)
+      if (params.execution) {
+        return executeStructuredSessionSwitch(params, ctx, 'terminal')
+      }
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredSessionHost(ctx, params.sessionId)
       const record = host.deps.store.getRecord(params.sessionId)

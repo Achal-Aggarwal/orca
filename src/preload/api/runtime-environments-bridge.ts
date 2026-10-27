@@ -1,3 +1,4 @@
+import type { RuntimeRpcDispatchObservation } from '../../shared/runtime-rpc-envelope'
 import { ipcRenderer } from 'electron'
 import {
   RUNTIME_HOST_STATUS_CHANNEL,
@@ -109,6 +110,8 @@ export const runtimeEnvironmentsApi = {
     params?: unknown
     timeoutMs?: number
     expectedEnvironmentPairingRevision?: number
+    observeDispatch?: boolean
+    dispatchObservation?: RuntimeRpcDispatchObservation
     expectedEnvironmentRuntimeId?: string
   }): Promise<RuntimeRpcResponse<unknown>> => ipcRenderer.invoke('runtimeEnvironments:call', args),
   cancelSubscription: (args: { subscriptionId: string }): Promise<void> =>
@@ -121,9 +124,12 @@ export const runtimeEnvironmentsApi = {
       params?: unknown
       timeoutMs?: number
       expectedEnvironmentPairingRevision?: number
+      observeDispatch?: boolean
+      dispatchObservation?: RuntimeRpcDispatchObservation
       expectedEnvironmentRuntimeId?: string
     },
     callbacks: {
+      onSent?: (sentAt?: number) => void
       onResponse: (response: RuntimeRpcResponse<unknown>) => void
       onBinary?: (bytes: Uint8Array<ArrayBufferLike>) => void
       onError?: (error: { code: string; message: string }) => void

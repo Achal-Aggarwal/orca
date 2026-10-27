@@ -135,7 +135,7 @@ export async function applyWindowLayoutCommand(
   }
   const { workspace, tabId, leafId } = command
   // A launch still starting in the pane the user closed stops, and says so (as the legacy close).
-  if (!run?.originalPresentation) {
+  if (!run?.originalPresentation && !run?.admit) {
     markAgentLaunchesClosedByUser(workspace, { kind: 'pane', tabId, leafId })
   }
   const close: CommandOf<'closePane'> = {

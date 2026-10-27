@@ -1,8 +1,8 @@
-/** Use process-local launch state; after restart, ordinary pane attachment handles recovery. */
-
 import type { AgentLaunchPaneVerdict } from '../../shared/agent-launch-pane-verdict'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
+
+/** Use process-local launch state; after restart, ordinary pane attachment handles recovery. */
 
 const PROCEED: AgentLaunchPaneVerdict = { kind: 'proceed' }
 
@@ -14,12 +14,13 @@ type RunningLaunch = {
   settled: Promise<AgentLaunchPaneVerdict>
   finished: Promise<AgentLaunchPaneVerdict>
   closedByUser: boolean
+  superseded: boolean
 }
 
 const runningLaunchesByPane = new Map<string, RunningLaunch>()
 const failedLaunchesByPane = new Map<
   string,
-  { pane: AgentLaunchPane; verdict: AgentLaunchPaneVerdict }
+  { pane: AgentLaunchPane; verdict: AgentLaunchPaneVerdict; running?: RunningLaunch }
 >()
 
 function paneKeyOf(pane: AgentLaunchPane): string {
@@ -30,6 +31,7 @@ export type RunningAgentLaunchPane = {
   /** Attach as soon as the agent binds, without waiting for prompt delivery. */
   agentBound(): void
   finish(verdict: AgentLaunchPaneVerdict): void
+  current(): boolean
   closedByUser(): boolean
 }
 
@@ -46,8 +48,10 @@ export function trackRunningAgentLaunchPane(pane: AgentLaunchPane): RunningAgent
     finished: new Promise((done) => {
       resolve = done
     }),
+    superseded: false,
     closedByUser: false
   }
+  noteAgentLaunchPaneAccepted(pane.paneKey)
   runningLaunchesByPane.set(key, running)
   failedLaunchesByPane.delete(key)
   let finished = false
@@ -62,15 +66,35 @@ export function trackRunningAgentLaunchPane(pane: AgentLaunchPane): RunningAgent
         runningLaunchesByPane.delete(key)
         if (
           !running.closedByUser &&
-          (verdict.kind === 'not-started' || verdict.kind === 'unconfirmed')
+          (verdict.kind === 'not-started' ||
+            verdict.kind === 'unconfirmed' ||
+            verdict.kind === 'withdrawn')
         ) {
-          failedLaunchesByPane.set(key, { pane, verdict })
+          failedLaunchesByPane.set(key, { pane, verdict, running })
         }
       }
       settle(verdict)
       resolve(verdict)
     },
+    current: () =>
+      !running.superseded &&
+      !running.closedByUser &&
+      (runningLaunchesByPane.get(key) ?? failedLaunchesByPane.get(key)?.running) === running,
     closedByUser: () => running.closedByUser
+  }
+}
+
+/** Acceptance precedes option resolution, including callers that do not publish an early tab. */
+export function noteAgentLaunchPaneAccepted(paneKey: string): void {
+  for (const running of runningLaunchesByPane.values()) {
+    if (running.pane.paneKey === paneKey) {
+      running.superseded = true
+    }
+  }
+  for (const failed of failedLaunchesByPane.values()) {
+    if (failed.pane.paneKey === paneKey && failed.running) {
+      failed.running.superseded = true
+    }
   }
 }
 

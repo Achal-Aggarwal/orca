@@ -1,3 +1,4 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import { useAiVaultInPlaceAgent, useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { isAntigravityReferenceSession } from '../../../../shared/antigravity-session-origin'
 import type { AiVaultSubagentResumeActions } from './AiVaultSessionSubagents'
@@ -32,6 +33,7 @@ import { useAiVaultSessionDisplayTitle } from './use-ai-vault-session-display-ti
 
 export function VaultSessionRow({
   session,
+  originalPaneTarget,
   liveState,
   resumeStartup,
   realHomeResumeStartup,
@@ -65,6 +67,7 @@ export function VaultSessionRow({
   onPick
 }: {
   session: AiVaultSession
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
   liveState: AgentStatusState | null
   resumeStartup: AiVaultResumeStartup
   realHomeResumeStartup: AiVaultResumeStartup
@@ -194,6 +197,7 @@ export function VaultSessionRow({
           {title}
         </div>
         <SessionRowTrailingActions
+          originalPaneTarget={originalPaneTarget}
           session={session}
           detailsExpanded={detailsExpanded}
           detailsId={detailsId}
@@ -249,6 +253,7 @@ export function VaultSessionRow({
       />
       {detailsExpanded ? (
         <SessionInlineDetails
+          originalPaneTarget={originalPaneTarget}
           id={detailsId}
           session={session}
           worktreeInfo={worktreeInfo}
@@ -277,6 +282,8 @@ export function VaultSessionRow({
       </ContextMenuTrigger>
       <ContextMenuContent>
         <SessionActionMenuItems
+          originalPaneTarget={originalPaneTarget}
+          session={session}
           menuKind="context"
           resumeDisabled={resumeDisabled}
           resumeHidden={resumeHidden}

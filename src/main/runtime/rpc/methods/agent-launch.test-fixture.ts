@@ -1,3 +1,4 @@
+import { noteAgentLaunchPaneAccepted } from '../../../agent-launch/agent-launch-pane-attachment'
 /** Use one runtime stub for RPC and replay tests so they exercise the same host surface. */
 
 import { vi } from 'vitest'
@@ -165,6 +166,7 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
       (request: Omit<AgentLaunchTabPublishRequest, 'requestId'>) =>
         options.publishAgentLaunchTab?.(request) ?? null
     ),
+    noteAcceptedAgentLaunchPane: vi.fn((paneKey: string) => noteAgentLaunchPaneAccepted(paneKey)),
     reportAgentLaunchPaneVerdict: vi.fn(
       (_pane: { worktreeId: string; tabId: string; leafId: string }, _verdict: unknown) => {}
     ),

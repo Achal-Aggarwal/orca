@@ -62,8 +62,13 @@ export class ClaimedAgentPtyOwnerRegistry {
     isLive?: (owner: LiveAgentSessionOwner) => boolean | Promise<boolean>
     /** Called when this request waits on another request's start instead of starting its own. */
     onJoin?: () => void
+    /** Checked at mutation, including after asynchronous liveness proof. */
+    check?: () => void
+    /** Reconcile an already dispatched creator without granting new attach authority. */
+    onDispatchedRevoked?: () => void
   }): Promise<AgentSessionClaimedSpawnResult> {
     // Snapshot reused retry arguments before awaits so caller mutations cannot change registry keys.
+    args.check?.()
     const requestedClaim = cloneClaim(args.claim)
     const requestedSurface = cloneSurface(args.surface)
     const key = agentSessionClaimKey(requestedClaim)
@@ -79,12 +84,14 @@ export class ClaimedAgentPtyOwnerRegistry {
         throw new Error('agent_session_conflict')
       }
       if (!args.isLive || (await args.isLive(cloneOwner(live)))) {
+        args.check?.()
         const current = this.live.get(key)
         if (current?.ptyId === live.ptyId && current.generation === live.generation) {
           return { disposition: 'adopted', owner: cloneOwner(current) }
         }
         return await this.ensure(args)
       }
+      args.check?.()
       this.release(live.ptyId, live.generation)
     }
 
@@ -95,9 +102,11 @@ export class ClaimedAgentPtyOwnerRegistry {
       }
       args.onJoin?.()
       const result = await reserved.promise
+      args.check?.()
       return { disposition: 'adopted', owner: cloneOwner(result.owner as LiveOwner) }
     }
 
+    args.check?.()
     this.assertCapacityForNewOwner()
     const generation = randomUUID()
     let resolveReservation!: (result: AgentSessionClaimedSpawnResult) => void
@@ -116,7 +125,6 @@ export class ClaimedAgentPtyOwnerRegistry {
       promise
     })
 
-    let promotedOwner: LiveOwner | null = null
     try {
       const spawned = await args.spawn({ generation })
       const owner: LiveOwner = spawned.owner
@@ -151,15 +159,27 @@ export class ClaimedAgentPtyOwnerRegistry {
       if (reservation?.generation !== generation) {
         throw new Error('agent_session_ownership_unknown')
       }
+      const checkDispatched = () => {
+        try {
+          args.check?.()
+        } catch (error) {
+          if (!args.onDispatchedRevoked) {
+            throw error
+          }
+          args.onDispatchedRevoked()
+        }
+      }
+      checkDispatched()
       this.live.set(key, owner)
       const keys = this.keysByPtyId.get(owner.ptyId) ?? new Set<string>()
       keys.add(key)
       this.keysByPtyId.set(owner.ptyId, keys)
-      promotedOwner = owner
       // Index before awaited proof so an exit beating spawn completion can remove the matching generation.
       if (args.isLive && !(await args.isLive(cloneOwner(owner)))) {
+        this.release(owner.ptyId, owner.generation)
         throw new Error('agent_session_exited_during_start')
       }
+      checkDispatched()
       const current = this.live.get(key)
       if (current?.ptyId !== owner.ptyId || current.generation !== owner.generation) {
         throw new Error('agent_session_exited_during_start')
@@ -168,12 +188,10 @@ export class ClaimedAgentPtyOwnerRegistry {
         disposition: spawned.disposition ?? 'created',
         owner: cloneOwner(owner)
       }
+      // Dispatch already happened: reconcile its real owner even if this observer expired.
       resolveReservation(result)
       return result
     } catch (error) {
-      if (promotedOwner) {
-        this.release(promotedOwner.ptyId, promotedOwner.generation)
-      }
       rejectReservation(error)
       throw error
     } finally {

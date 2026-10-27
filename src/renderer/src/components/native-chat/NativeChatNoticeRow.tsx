@@ -1,3 +1,4 @@
+import { useSwitchFailureSuppressed } from '@/lib/conversation-switch-presentation'
 import { AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
@@ -67,11 +68,15 @@ export function NativeChatNoticeRow({
   agentName?: string
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  const switchSuppressed = useSwitchFailureSuppressed(messageId)
   useTranslation()
   const orcaStopView = useNativeChatOrcaStopView()
   const claudeSignIn = useNativeChatClaudeSignInView()
   const look = nativeChatNoticeLook(block)
+  if (switchSuppressed) {
+    return null
+  }
   if (look.kind === 'divider') {
     const label =
       look.label === 'contextCleared'

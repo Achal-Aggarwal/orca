@@ -194,3 +194,15 @@ export type TabsSlice = {
 type TabsStateCreator = StateCreator<AppState, [], [], TabsSlice>
 export type TabsSliceSet = Parameters<TabsStateCreator>[0]
 export type TabsSliceGet = Parameters<TabsStateCreator>[1]
+
+export type TabsLabelActions = Pick<
+  TabsSlice,
+  | 'reorderUnifiedTabs'
+  | 'setTabLabel'
+  | 'setTabViewMode'
+  | 'toggleTabViewMode'
+  | 'setTabCustomLabel'
+  | 'setUnifiedTabColor'
+  | 'pinTab'
+  | 'unpinTab'
+>

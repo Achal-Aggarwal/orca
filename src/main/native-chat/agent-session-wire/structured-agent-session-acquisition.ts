@@ -56,6 +56,11 @@ export async function acquireOwner(
     if (input.acquireSignal?.aborted) {
       throw new AgentSessionPreSpawnError(abortSignalReason(input.acquireSignal))
     }
+    try {
+      input.checkBeforeAcquire?.()
+    } catch (error) {
+      throw new AgentSessionPreSpawnError(error)
+    }
     const attempt = mintStructuredAgentSessionStartupAttempt({
       record,
       identity: journalIdentityFor(record, input.params),
@@ -70,6 +75,7 @@ export async function acquireOwner(
     const progress = input.onStartupAttempt?.(attempt)
     const acquired = await input.adapter.acquire({
       ...attempt,
+      checkBeforeSpawn: input.checkBeforeAcquire,
       ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
       onSpawned: async (process) => {
         progress?.spawned()

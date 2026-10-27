@@ -1,3 +1,4 @@
+import { noteSwitchPresentationUse } from '@/lib/conversation-switch-projection'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import type { TabGroup } from '../../../../../shared/tab-types'
 import type { TabsSlice, TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
@@ -24,6 +25,7 @@ export function createTabsDropActions(
 ): Pick<TabsSlice, 'dropUnifiedTab'> {
   return {
     dropUnifiedTab: (tabId, target) => {
+      noteSwitchPresentationUse(tabId)
       let moved = false
       set((state) => {
         const foundTab = findTabAndWorktree(state.unifiedTabsByWorktree, tabId)

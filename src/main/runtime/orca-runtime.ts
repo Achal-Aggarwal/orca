@@ -1,3 +1,5 @@
+import { parsePaneKey } from '../../shared/stable-pane-id'
+import { noteAgentLaunchPaneAccepted } from '../agent-launch/agent-launch-pane-attachment'
 import type { RuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { installRuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { publishWorkspaceViewChanges } from './runtime-workspace-view-change-events'
@@ -190,6 +192,21 @@ class OrcaRuntimeService extends OrcaRuntimeSidebarBase {
   }
 
   /** Retain final verdicts, clear settled ones, and remove withdrawn panes without removing split siblings. */
+  noteAcceptedAgentLaunchPane(paneKey: string, operationId?: string): void {
+    noteAgentLaunchPaneAccepted(paneKey)
+    const pane = parsePaneKey(paneKey)
+    if (!pane || !this.supportsConditionalSwitchProjection()) {
+      return
+    }
+    this.notifier?.agentLaunchPaneVerdict?.({
+      worktreeId: '',
+      ...pane,
+      operationId,
+      accepted: true,
+      verdict: { kind: 'proceed' }
+    })
+  }
+
   reportAgentLaunchPaneVerdict(
     pane: AgentLaunchPaneAddress,
     verdict: AgentLaunchPaneVerdict

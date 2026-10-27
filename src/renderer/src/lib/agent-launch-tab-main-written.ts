@@ -1,5 +1,5 @@
-/** Main owns tab creation/closure; attach this window’s session-only prompt, pane verdict and presentation state when its frame draws, retaining them for undrawn workspaces. */
-
+import { agentLaunchPaneAttemptCurrent } from './agent-launch-pane-start'
+import { afterLayoutFrame } from '@/runtime/layout-frame-position'
 import type { AgentLaunchPaneVerdictEvent } from '../../../shared/agent-launch-pane-verdict'
 import type {
   AgentLaunchTabPublished,
@@ -15,6 +15,8 @@ import {
 import { revealWorkspaceSurface } from './workspace-surface-reveal'
 import { layoutFramesFlowing } from '@/runtime/layout-frame-position'
 import { layoutFrameTerminalTab } from '@/runtime/layout-frame-terminal-panes'
+
+/** Main owns tab creation/closure; attach this window’s session-only prompt, pane verdict and presentation state when its frame draws, retaining them for undrawn workspaces. */
 
 type LaunchPane = NonNullable<TerminalTab['agentLaunchPane']>
 
@@ -76,27 +78,31 @@ function goneFromFrames(worktreeId: string, tabId: string): boolean {
 function keepWhenDrawn(request: AgentLaunchTabPublishRequest, present: () => void): boolean {
   const { worktreeId, tabId } = request
   undrawn.get(tabId)?.stop()
-  if (goneFromFrames(worktreeId, tabId)) {
-    dropUndrawn(tabId)
-    return false
-  }
+
   const stop = useAppStore.subscribe(() => {
     const tab = drawnTab(worktreeId, tabId)
     if (!tab) {
-      if (goneFromFrames(worktreeId, tabId)) {
-        dropUndrawn(tabId)
-      }
       return
     }
     const entry = undrawn.get(tabId)
     undrawn.delete(tabId)
     stop()
-    if (entry) {
+    if (entry && agentLaunchPaneAttemptCurrent(tabId, entry.pane.leafId, entry.pane.operationId)) {
       keepLaunchPane(tabId, tab, entry.pane)
       entry.present()
     }
   })
   undrawn.set(tabId, { pane: launchPaneOf(request), present, stop })
+  if (request.shownByMain) {
+    afterLayoutFrame(request.shownByMain.frameSeq, () => {
+      if (
+        undrawn.get(tabId)?.pane.operationId === request.operationId &&
+        goneFromFrames(worktreeId, tabId)
+      ) {
+        dropUndrawn(tabId)
+      }
+    })
+  }
   return true
 }
 
@@ -104,6 +110,9 @@ export function keepAgentLaunchTabMainWrote(
   request: AgentLaunchTabPublishRequest
 ): AgentLaunchTabPublished {
   const { worktreeId, tabId, leafId, viewer } = request
+  if (!agentLaunchPaneAttemptCurrent(tabId, leafId, request.operationId)) {
+    throw new Error('agent_launch_superseded')
+  }
   const created = request.shownByMain?.created === true
   noteMainWritten(tabId)
   if (request.prompt) {
@@ -137,8 +146,11 @@ export function keepAgentLaunchTabMainWrote(
 
 /** Retain verdicts for undrawn launch panes; return false when no such pane is pending. */
 export function applyVerdictToUndrawnLaunchTab(event: AgentLaunchPaneVerdictEvent): boolean {
+  if (!agentLaunchPaneAttemptCurrent(event.tabId, event.leafId, event.operationId)) {
+    return false
+  }
   const entry = undrawn.get(event.tabId)
-  if (entry?.pane.leafId !== event.leafId) {
+  if (entry?.pane.leafId !== event.leafId || entry.pane.operationId !== event.operationId) {
     return false
   }
   const { verdict } = event

@@ -20,6 +20,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   supportsInPlaceSwitch: async () => mocks.supported,
   callStructuredAgentSession: mocks.call
 }))
+vi.mock('@/lib/worktree-runtime-owner', () => ({ getExecutionHostIdForWorktree: () => 'local' }))
 vi.mock('@/lib/launch-ai-vault-session', () => ({ launchAiVaultSessionInNewTab: mocks.launch }))
 vi.mock('@/lib/ai-vault-resume-command', () => ({
   buildAiVaultResumeStartupForWorktree: () => ({
@@ -29,7 +30,7 @@ vi.mock('@/lib/ai-vault-resume-command', () => ({
   })
 }))
 
-import { runNativeChatCliSwitch } from './native-chat-cli-switch-run'
+import { runLegacyNativeChatCliSwitch as runNativeChatCliSwitch } from './native-chat-cli-switch-run'
 
 const SWITCH = {
   sessionId: 'chat-1',
@@ -92,5 +93,7 @@ it('keeps the chat when the host refuses a busy chat, and says why', async () =>
   await runNativeChatCliSwitch(SWITCH)
   expect(mocks.launch).not.toHaveBeenCalled()
   expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
-  expect(mocks.toast).toHaveBeenCalledWith('Wait for the reply to finish or stop it, then switch.')
+  expect(mocks.toast).toHaveBeenCalledWith(
+    'Codex is replying. Wait for the reply or stop it, then switch.'
+  )
 })

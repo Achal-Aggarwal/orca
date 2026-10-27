@@ -17,6 +17,7 @@ export type ConfirmShellForegroundRequest = Omit<GetForegroundProcessRequest, 't
 export type InspectProcessRequest = Omit<GetForegroundProcessRequest, 'type'> & {
   type: 'inspectProcess'
   payload: GetForegroundProcessRequest['payload'] & {
+    captureSwitchWitness?: string
     expectedIncarnationId?: string
     /** Older daemons ignore this and return a full capture. */
     steadyState?: boolean

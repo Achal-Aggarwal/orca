@@ -1,8 +1,5 @@
-// `agentSession.switchToChat` — a terminal's conversation moving into the chat that already holds
-// it. The host resolves the record and starts its agent through the ordinary operation start, so the
-// provider open imports the terminal's turns; success is that agent ready. A refusal leaves the
-// terminal to the client. Gated per agent by `agent-session.structured.switch.v1:<agent>`.
-
+import { executeStructuredSessionSwitch } from './structured-agent-session-switch-execution'
+import type { AgentSessionSwitchResult } from '../../../../shared/agent-session-switch-execution'
 import { inPlaceSwitchEnabled } from '../../../../shared/structured-agent-cli-conversation-adoption'
 import { refuse } from '../../../../shared/agent-session-wire-refusals'
 import type { AgentSessionWireRefusal } from '../../../../shared/agent-session-wire'
@@ -12,20 +9,30 @@ import {
   requireStructuredCapability,
   requireStructuredSessionHost
 } from './structured-agent-session-gate'
-import { OptionsParams } from './structured-agent-session-schemas'
+import { SwitchToChatParams } from './structured-agent-session-schemas'
+
+// `agentSession.switchToChat` — a terminal's conversation moving into the chat that already holds
+// it. The host resolves the record and starts its agent through the ordinary operation start, so the
+// provider open imports the terminal's turns; success is that agent ready. A refusal leaves the
+// terminal to the client. Gated per agent by `agent-session.structured.switch.v1:<agent>`.
 
 export const STRUCTURED_AGENT_SESSION_SWITCH_TO_CHAT_METHODS = [
   defineMethod({
     name: 'agentSession.switchToChat',
     permission: 'workspace',
-    params: OptionsParams,
+    params: SwitchToChatParams,
     handler: async (
       params,
       ctx
     ): Promise<
-      { ok: true; sessionId: string } | { ok: false; refusal: AgentSessionWireRefusal }
+      | { ok: true; sessionId: string }
+      | { ok: false; refusal: AgentSessionWireRefusal }
+      | AgentSessionSwitchResult
     > => {
       requireStructuredCapability(ctx)
+      if (params.execution) {
+        return executeStructuredSessionSwitch(params, ctx, 'chat')
+      }
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredSessionHost(ctx, params.sessionId)
       const record = host.deps.store.getRecord(params.sessionId)
@@ -40,7 +47,9 @@ export const STRUCTURED_AGENT_SESSION_SWITCH_TO_CHAT_METHODS = [
         }
       }
       const started = await host.switchToChat(params.sessionId)
-      return started.ok ? { ok: true, sessionId: params.sessionId } : started
+      return started.ok
+        ? { ok: true, sessionId: params.sessionId }
+        : { ok: false, refusal: started.refusal }
     }
   })
 ]

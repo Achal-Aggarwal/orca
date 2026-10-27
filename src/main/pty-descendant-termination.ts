@@ -6,6 +6,7 @@ import {
   type WindowsTreeKillTarget
 } from './windows-pty-root-identity'
 import { parseProcessTable, type ProcessTableRow } from './pty-process-table-parser'
+import { collectDescendantRows } from './pty-descendant-ancestry'
 
 export { parseProcessTable, type ProcessTableRow } from './pty-process-table-parser'
 
@@ -124,55 +125,7 @@ export function readProcessTableBeforeDeadline(
   })
 }
 
-export function collectDescendantRows(
-  rootPid: number,
-  table: ProcessTableRow[],
-  capturedAtMs = Date.now()
-): DescendantSnapshot {
-  const childrenByPpid = new Map<number, ProcessTableRow[]>()
-  let rootRow: ProcessTableRow | null = null
-  let duplicateRoot = false
-  for (const row of table) {
-    if (row.pid === rootPid) {
-      // Duplicate root rows from a non-atomic read leave its identity ambiguous.
-      duplicateRoot = rootRow !== null
-      rootRow ??= row
-      continue
-    }
-    const siblings = childrenByPpid.get(row.ppid)
-    if (siblings) {
-      siblings.push(row)
-    } else {
-      childrenByPpid.set(row.ppid, [row])
-    }
-  }
-  // After root exit, descendants reparent; remaining rows with its old PID as parent may reflect PID reuse.
-  if (!rootRow || duplicateRoot) {
-    return { rootPgid: null, descendants: [], capturedAtMs }
-  }
-  const descendants: ProcessTableRow[] = []
-  const queue = [rootPid]
-  const visited = new Set(queue)
-  for (let nextIndex = 0; nextIndex < queue.length; nextIndex += 1) {
-    const pid = queue[nextIndex]
-    for (const child of childrenByPpid.get(pid) ?? []) {
-      // Non-atomic ps output can contain duplicate or cyclic rows; never loop on them.
-      if (visited.has(child.pid)) {
-        continue
-      }
-      visited.add(child.pid)
-      descendants.push(child)
-      queue.push(child.pid)
-    }
-  }
-  return {
-    root: { pid: rootRow.pid, startedAt: rootRow.startedAt },
-    rootPgid: rootRow.pgid,
-    descendants,
-    capturedAtMs,
-    reDerivedPids: new Set(descendants.map((row) => row.pid))
-  }
-}
+export { collectDescendantRows } from './pty-descendant-ancestry'
 
 type SnapshotDeps = {
   readTable?: ProcessTableReader
@@ -202,6 +155,8 @@ export async function captureDescendantSnapshot(
 type KillSweepDeps = SnapshotDeps &
   TerminateDeps & {
     ownsRoot?: () => boolean
+    /** Conditional ordinary close admits only after the final census; refusal signals nothing. */
+    admitClose?: () => Promise<boolean>
     /** Shutdown can retain the owner until descendant escalation finishes. */
     terminateDescendants?: (snapshot: DescendantSnapshot) => void | Promise<unknown>
     awaitEscalation?: boolean | (() => boolean)
@@ -218,7 +173,14 @@ export async function killWithDescendantSweep(
   deps: KillSweepDeps = {}
 ): Promise<void> {
   const platform = deps.platform ?? process.platform
+  let admitted = !deps.admitClose
   if (platform === 'win32') {
+    if (deps.admitClose) {
+      admitted = await deps.admitClose()
+      if (!admitted) {
+        return
+      }
+    }
     try {
       if ((deps.ownsRoot?.() ?? true) && Number.isInteger(rootPid) && rootPid > 0) {
         // Owned jobs survive PID reuse and include descendants reparented away from the shell.
@@ -238,12 +200,20 @@ export async function killWithDescendantSweep(
         }
       }
     } finally {
-      killRoot()
+      if (!deps.admitClose || (admitted && (deps.ownsRoot?.() ?? true))) {
+        killRoot()
+      }
     }
     return
   }
 
   const snapshot = await captureDescendantSnapshot(rootPid, deps)
+  if (deps.admitClose) {
+    admitted = await deps.admitClose()
+    if (!admitted) {
+      return
+    }
+  }
   let descendants: void | Promise<unknown> = undefined
   const awaitEscalation =
     typeof deps.awaitEscalation === 'function' ? deps.awaitEscalation() : deps.awaitEscalation
@@ -256,7 +226,9 @@ export async function killWithDescendantSweep(
       }
       await descendants
     } finally {
-      killRoot()
+      if (!deps.admitClose || (admitted && (deps.ownsRoot?.() ?? true))) {
+        killRoot()
+      }
     }
     return
   }
@@ -268,7 +240,9 @@ export async function killWithDescendantSweep(
         : terminateDescendantSnapshot(snapshot, deps)
     }
   } finally {
-    killRoot()
+    if (!deps.admitClose || (admitted && (deps.ownsRoot?.() ?? true))) {
+      killRoot()
+    }
   }
 }
 

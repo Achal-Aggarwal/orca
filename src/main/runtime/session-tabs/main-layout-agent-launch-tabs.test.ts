@@ -1,9 +1,14 @@
-// Layout-owner build, no window: an agent launch's early tab in a workspace main owns is written by
-// main, a retry finds it, and a withdrawn launch pane is taken back by main.
+import { fixture as durableFixture } from '../../persistence/loading-store/profile-state-delayed-authority-fixture'
+import { OrcaRuntimeService } from '../orca-runtime'
+import { HEADLESS_RUNTIME_WINDOW_ID } from '../../../shared/runtime-session-contracts'
+import { trackRunningAgentLaunchPane } from '../../agent-launch/agent-launch-pane-attachment'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WORKTREE_ID, setupMainOwnedWorkspace } from '../main-owned-workspace-runtime-fixture'
 import { publishAgentLaunchTabEarly } from '../rpc/methods/agent-launch-tab-publication'
 import { resetAgentLaunchPanesForTests } from '../../agent-launch/agent-launch-pane-attachment'
+
+// Layout-owner build, no window: an agent launch's early tab in a workspace main owns is written by
+// main, a retry finds it, and a withdrawn launch pane is taken back by main.
 
 vi.mock('../../../shared/layout-owner-switch', () => ({ ORCA_LAYOUT_OWNER_IS_MAIN: true }))
 
@@ -104,5 +109,93 @@ describe("an agent launch's early tab in a workspace main owns, with a window at
         })
       )
     )
+  })
+})
+
+// These schedules go through Store -> LayoutCommandPersistence's actual durable queue.
+describe('conditional launch withdrawal at the durable writer', () => {
+  const worktreeId = 'repo-local::/fixture/local'
+  const pane = { worktreeId, tabId: NEW_TAB, leafId: NEW_LEAF, operationId: 'old-launch' }
+  async function opened() {
+    const state = await durableFixture()
+    const runtime = new OrcaRuntimeService(state.store)
+    runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
+    const running = trackRunningAgentLaunchPane({ worktreeId, paneKey: `${NEW_TAB}:${NEW_LEAF}` })
+    const shown = await runtime.publishAgentLaunchTabInMainLayout({
+      ...pane,
+      launchAgent: 'codex',
+      viewMode: 'terminal',
+      viewer: 'none'
+    })
+    if (!shown?.withdrawalRoot) {
+      throw new Error('actual create did not capture placement')
+    }
+    return { ...state, runtime, running, shown }
+  }
+  it('keeps a destination after a new launch is accepted before its options resolve', async () => {
+    const { store, authority, runtime, running, shown } = await opened()
+    const pause = authority.pause()
+    const preceding = store.runDurableMutation(() => ({ value: undefined }))
+    await pause.started.promise
+    const removing = runtime.withdrawAgentLaunchPaneInMainLayout(
+      pane,
+      running.current,
+      shown.withdrawalRoot
+    )
+    runtime.noteAcceptedAgentLaunchPane(`${NEW_TAB}:${NEW_LEAF}`, 'new-preparing-launch')
+    pause.finish.resolve()
+    await preceding
+    expect(await removing).toBe(false)
+    expect(store.getWorkspaceSession().terminalLayoutsByTabId[NEW_TAB]?.root).toMatchObject({
+      leafId: NEW_LEAF
+    })
+  })
+  it('rechecks acceptance after last_pane before its queued closeTabs', async () => {
+    const { store, runtime, running, shown } = await opened()
+    const apply = runtime.applyLayoutCommand.bind(runtime)
+    const spy = vi.spyOn(runtime, 'applyLayoutCommand').mockImplementation(async (...args) => {
+      const reply = await apply(...args)
+      if (!reply.ok && reply.code === 'last_pane') {
+        runtime.noteAcceptedAgentLaunchPane(`${NEW_TAB}:${NEW_LEAF}`, 'later-launch')
+      }
+      return reply
+    })
+    expect(
+      await runtime.withdrawAgentLaunchPaneInMainLayout(pane, running.current, shown.withdrawalRoot)
+    ).toBe(false)
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(
+      store.getWorkspaceSession().tabsByWorktree[worktreeId].some((row) => row.id === NEW_TAB)
+    ).toBe(true)
+  })
+  it('refuses a queued create after expiry at the actual layout apply', async () => {
+    const { store, authority } = await durableFixture()
+    const runtime = new OrcaRuntimeService(store)
+    runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
+    const pause = authority.pause()
+    const preceding = store.runDurableMutation(() => ({ value: undefined }))
+    await pause.started.promise
+    let expired = false
+    const creating = runtime.publishAgentLaunchTabInMainLayout(
+      {
+        ...pane,
+        launchAgent: 'codex',
+        viewMode: 'terminal',
+        viewer: 'none'
+      },
+      () => {
+        if (expired) {
+          throw new Error('expired')
+        }
+      }
+    )!
+    const refused = expect(creating).rejects.toThrow('expired')
+    expired = true
+    pause.finish.resolve()
+    await preceding
+    await refused
+    expect(
+      store.getWorkspaceSession().tabsByWorktree[worktreeId].some((row) => row.id === NEW_TAB)
+    ).toBe(false)
   })
 })

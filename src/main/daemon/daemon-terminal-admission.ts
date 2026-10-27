@@ -75,6 +75,16 @@ export class DaemonTerminalAdmission {
       this.options.requestEndpointRetirement()
       throw new Error(DAEMON_ENDPOINT_LOST_MESSAGE)
     }
+    if (payload.switchExecution?.phase === 'prepare') {
+      this.options.host.noteSpawnPreparation(payload.sessionId)
+      return this.options.preparations.prepareSwitch(
+        payload.sessionId,
+        clientId,
+        request.id,
+        payload.switchExecution.invocationId
+      )
+    }
+    this.options.host.noteSpawnPreparation(payload.sessionId)
     this.createOrAttachInFlight++
     let routedSessionId = payload.sessionId
     let result: CreateOrAttachResult
@@ -87,12 +97,19 @@ export class DaemonTerminalAdmission {
       ) {
         throw new Error('agent_session_identity_required')
       }
-      spawnPreparation = this.options.preparations.register(
-        payload.sessionId,
-        clientId,
-        request.id,
-        payload.cancelAfterMs
-      )
+      spawnPreparation = payload.switchExecution
+        ? this.options.preparations.commitSwitch(
+            payload.sessionId,
+            clientId,
+            request.id,
+            payload.switchExecution
+          )
+        : this.options.preparations.register(
+            payload.sessionId,
+            clientId,
+            request.id,
+            payload.cancelAfterMs
+          )
       if (!attachOnly) {
         await this.options.preparations.prepareUnlessCanceled(payload.sessionId, spawnPreparation)
       }
@@ -132,7 +149,9 @@ export class DaemonTerminalAdmission {
           declaredIntent: isSpawnIntent(payload.spawnIntent) ? payload.spawnIntent : null,
           deadlineAt: resolveSpawnAdmissionDeadline(payload.cancelAfterMs)
         },
-        isCanceled: () => spawnPreparation?.canceled === true,
+        retainCanceledChild: Boolean(payload.switchExecution),
+        isCanceled: () =>
+          spawnPreparation !== null && this.options.preparations.isCanceled(spawnPreparation),
         cancelSignal: spawnPreparation.controller.signal,
         onSessionResolved: (sessionId) => {
           routedSessionId = sessionId
@@ -156,7 +175,16 @@ export class DaemonTerminalAdmission {
       this.options.host.detach(routedSessionId, result.attachToken)
       throw new TerminalAttachCanceledError(routedSessionId)
     }
-    this.options.attachments.attach(routedSessionId, clientId, result.attachToken)
+    if (
+      payload.switchExecution &&
+      spawnPreparation &&
+      this.options.preparations.isCanceled(spawnPreparation)
+    ) {
+      result.switchOutcomeUnknown = true
+    }
+    if (!result.switchOutcomeUnknown) {
+      this.options.attachments.attach(routedSessionId, clientId, result.attachToken)
+    }
     this.options.streamDataBatcher.refreshSessionDroppability(routedSessionId)
     if (this.options.transientFactRelay.isBackgrounded(routedSessionId)) {
       this.options.streamDataBatcher.enqueueControlEvent(clientId, routedSessionId, {
@@ -172,6 +200,8 @@ export class DaemonTerminalAdmission {
     })
     return {
       isNew: result.isNew,
+      ...(result.switchCleanupWitness ? { switchCleanupWitness: result.switchCleanupWitness } : {}),
+      ...(result.switchOutcomeUnknown ? { switchOutcomeUnknown: true as const } : {}),
       snapshot: result.snapshot,
       pid: result.pid,
       shellState: result.shellState,

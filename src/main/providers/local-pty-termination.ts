@@ -1,5 +1,6 @@
+import { inspectLocalPtyChildProcesses } from './local-pty-foreground-inspection'
 import type * as pty from 'node-pty'
-import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
+import type { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import { killWithDescendantSweep } from '../pty-descendant-termination'
 import { terminateShutdownDescendants } from '../daemon/terminal-descendant-shutdown'
 import { forceKillPosixPtyProcessGroups } from '../pty/posix-pty-process-groups'
@@ -18,6 +19,7 @@ import {
   ptyTerminationMode,
   ptyLoadGeneration,
   runPtyCleanup,
+  LocalPtyPhysicalExit,
   type PtyShutdownOperation
 } from './local-pty-provider-state'
 import {
@@ -30,7 +32,7 @@ export const LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS = 5_000
 export const LOCAL_PTY_FORCE_KILL_RETRY_MS = 250
 
 export function createPtyPhysicalExit(id: string): void {
-  ptyPhysicalExits.set(id, new PhysicalExitTracker())
+  ptyPhysicalExits.set(id, new LocalPtyPhysicalExit())
 }
 
 function waitForPtyPhysicalExit(id: string, physicalExit?: PhysicalExitTracker): Promise<void> {
@@ -158,7 +160,9 @@ function requestTrackedPtyShutdown(id: string, proc: pty.IPty, immediate: boolea
 async function shutdownTrackedPty(
   id: string,
   proc: pty.IPty,
-  operation: PtyShutdownOperation
+  operation: PtyShutdownOperation,
+  switchCheck?: () => boolean,
+  switchOwnedSpawn = false
 ): Promise<void> {
   const physicalExit = ptyPhysicalExits.get(id)
   const signalRoot = (): void => {
@@ -175,27 +179,66 @@ async function shutdownTrackedPty(
     // Typed agents also detach tool process groups; immediate close must snapshot before root exit.
     await killWithDescendantSweep(proc.pid, signalRoot, {
       ownsRoot: () => ptyProcesses.get(id) === proc,
+      ...(switchCheck
+        ? {
+            admitClose: async () => {
+              if (!switchCheck()) {
+                return false
+              }
+              const evidence = switchOwnedSpawn
+                ? 'no-children'
+                : await inspectLocalPtyChildProcesses(id, true, false, true)
+              if (evidence !== 'no-children' || !switchCheck()) {
+                return false
+              }
+              const owner = ptyPhysicalExits.get(id)
+              if (!owner || ptyProcesses.get(id) !== proc) {
+                return false
+              }
+              owner.closing = true
+              return true
+            }
+          }
+        : {}),
       terminateOwnedTree: () => terminatePtyJob(proc),
-      terminateDescendants: terminateShutdownDescendants,
+      terminateDescendants:
+        switchCheck && !switchOwnedSpawn ? () => {} : terminateShutdownDescendants,
       // Group SIGKILL must wait out the SIGTERM grace so agents can run exit hooks (Claude SessionEnd).
       awaitEscalation: () => operation.immediate
     })
   } else {
     signalRoot()
   }
-  await waitForPtyPhysicalExit(id, physicalExit)
+  if (!switchCheck || operation.rootSignalled || ptyPhysicalExits.get(id)?.closing) {
+    await waitForPtyPhysicalExit(id, physicalExit)
+  }
 }
 
 export async function shutdownLocalPty(
   id: string,
-  opts: { immediate?: boolean; keepHistory?: boolean; expectedIncarnationId?: string }
+  opts: {
+    immediate?: boolean
+    keepHistory?: boolean
+    expectedIncarnationId?: string
+    switchCheck?: () => boolean
+    switchOwnedSpawn?: boolean
+  }
 ): Promise<void> {
   if (opts.expectedIncarnationId && ptyIncarnations.get(id) !== opts.expectedIncarnationId) {
     throw new Error('terminal_handle_stale')
   }
-  cancelPendingLocalPtySpawns(id)
+  if (opts.switchCheck) {
+    if (!opts.switchCheck()) {
+      return
+    }
+  } else {
+    cancelPendingLocalPtySpawns(id)
+  }
   const pending = ptyShutdownOperations.get(id)
   if (pending) {
+    if (opts.switchCheck) {
+      return
+    }
     if (opts.immediate === true) {
       pending.immediate = true
       if (pending.rootSignalled && ptyProcesses.get(id) === pending.proc) {
@@ -215,7 +258,7 @@ export async function shutdownLocalPty(
     rootSignalled: false,
     proc
   }
-  entry.promise = shutdownTrackedPty(id, proc, entry)
+  entry.promise = shutdownTrackedPty(id, proc, entry, opts.switchCheck, opts.switchOwnedSpawn)
   ptyShutdownOperations.set(id, entry)
   try {
     await entry.promise

@@ -1,3 +1,9 @@
+import type { AiVaultChatForkSource } from '../../../../shared/ai-vault-resume-preparation'
+import {
+  buildAiVaultLocalResumeStartup,
+  getAiVaultResumeCodexHome
+} from '../../../../shared/ai-vault-resume-startup'
+import type { MobileTerminalCreateOptions } from './mobile-terminal-renderer-create'
 import { OrcaRuntimeWithRunCreateMobileSessionTerminal } from './mobile-terminal-renderer-create'
 import type { TerminalWorkspaceLaunchScope } from '../../runtime-legacy-worker-terminal-recovery-types'
 import type { WorktreeStartupLaunch } from '../../../../shared/worktree/launch-types'
@@ -22,6 +28,9 @@ import {
 
 export type MobileTerminalCommandOptions = {
   command?: string
+  sessionOptions?: Record<string, string>
+  commandOverride?: string
+  launchRuntime?: AgentLaunchRuntime
   env?: Record<string, string>
   envToDelete?: string[]
   startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
@@ -61,6 +70,58 @@ function normalizeOriginConnectionId(connectionId: string | null | undefined): s
 }
 
 export abstract class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRuntimeWithRunCreateMobileSessionTerminal {
+  async createSessionSwitchTerminal(
+    workspaceId: string,
+    args: {
+      source?: AiVaultChatForkSource
+      options?: Record<string, string>
+      commandOverride?: string
+      invocationId: string
+      sessionId: string
+      afterTabId?: string
+      groupId?: string
+      execution: NonNullable<MobileTerminalCreateOptions['switchExecution']>
+    }
+  ) {
+    const workspace = await this.resolveTerminalWorkspaceLaunchScope(`id:${workspaceId}`)
+    args.execution.check()
+    const source = args.source
+    const runtime = this.resolveAgentLaunchRuntime(workspace, 'codex')
+    const startup = source
+      ? buildAiVaultLocalResumeStartup({
+          session: source,
+          settings: this.store?.getSettings(),
+          commandOverride: args.commandOverride,
+          host: {
+            platform: runtime.platform,
+            liveShell: agentLaunchQuotingShell(runtime),
+            codexHome: getAiVaultResumeCodexHome(source.codexHome, runtime.platform)
+          },
+          embedCwd: false
+        })
+      : undefined
+    args.execution.check()
+    return this.createMobileSessionTerminal(`id:${workspaceId}`, {
+      ...(startup
+        ? {
+            ...startup,
+            launchRuntime: runtime,
+            resumeProviderSession: startup.providerSession,
+            resumeOrigin: 'switch' as const,
+            launchAgent: 'codex' as const
+          }
+        : {
+            agent: 'codex' as const,
+            commandOverride: args.commandOverride,
+            sessionOptions: args.options
+          }),
+      afterTabId: args.afterTabId ? `agent-session:${args.sessionId}` : undefined,
+      targetGroupId: args.groupId,
+      clientMutationId: args.invocationId,
+      switchExecution: { ...args.execution, afterTabId: args.afterTabId }
+    })
+  }
+
   /** The `--resume` launch for a pane's recorded agent session, as the host window's cold restore builds it. */
   protected resolveMobileSessionResumeCommand(
     workspace: TerminalWorkspaceLaunchScope,
@@ -115,6 +176,7 @@ export abstract class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends
     if (opts.command || !opts.agent) {
       return {
         command: opts.command,
+        launchRuntime: opts.launchRuntime,
         env: opts.env,
         envToDelete: opts.envToDelete,
         launchConfig: opts.launchConfig,
@@ -133,7 +195,17 @@ export abstract class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends
     const startupPlan = buildAgentStartupPlan({
       ...resolveAgentStartupPlanInputs({
         agent: opts.agent,
-        settings,
+        sessionOptions: opts.sessionOptions,
+        settings:
+          opts.commandOverride === undefined
+            ? settings
+            : {
+                ...settings,
+                agentCmdOverrides: {
+                  ...settings.agentCmdOverrides,
+                  [opts.agent]: opts.commandOverride
+                }
+              },
         // Quote for the execution host, even when the mobile client runs another OS.
         platform: launchRuntime.platform,
         shell: agentLaunchQuotingShell(launchRuntime),

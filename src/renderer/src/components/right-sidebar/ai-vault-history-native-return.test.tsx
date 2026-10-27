@@ -52,8 +52,11 @@ vi.mock('@/lib/agent-session-launch-plan', async (original) => ({
 vi.mock('./ai-vault-session-resume-in-chat-launch', () => ({
   resumeAiVaultSessionInNewChat: mocks.newChat
 }))
-vi.mock('../tab-bar/cli-chat-resume-feedback', () => ({ switchIntoOwner: mocks.startOwner }))
-vi.mock('../tab-bar/cli-chat-resume-run', () => ({ runCliChatResume: mocks.run }))
+vi.mock('@/lib/conversation-surface-switch', () => ({
+  runConversationSwitch: mocks.startOwner,
+  runCliChatResume: mocks.run,
+  useConversationSwitchReadiness: () => ({ ready: true, pending: false })
+}))
 vi.mock('../tab-bar/cli-chat-resume-source', () => ({ resolveCliChatResumeSource: mocks.source }))
 vi.mock('@/lib/ai-vault-tab-title-requests', async (original) => ({
   ...(await original<object>()),
@@ -96,7 +99,13 @@ const row: AiVaultSession = {
   resumeCommand: '',
   subagent: null
 }
-function History({ session }: { session: AiVaultSession }) {
+function History({
+  session,
+  originalPaneTarget = null
+}: {
+  session: AiVaultSession
+  originalPaneTarget?: { worktreeId: string; tabId: string; paneKey: string } | null
+}) {
   const state = useAppStore.getState()
   const targetState = {
     ...state,
@@ -132,7 +141,7 @@ function History({ session }: { session: AiVaultSession }) {
         expandedSessionIds={new Set([session.id])}
         vaultScope="all"
         buildResumeStartup={actions.buildResumeStartup}
-        getOriginalPaneTarget={() => null}
+        getOriginalPaneTarget={() => originalPaneTarget}
         isStructuredSessionOpen={() => false}
         getSessionLiveState={() => null}
         getWorktreeInfo={resume.getSessionWorktreeInfo}
@@ -218,9 +227,12 @@ it.each(['local', 'runtime:paired'] as const)(
     expect(button.hasAttribute('disabled')).toBe(false)
     await userEvent.setup().click(button)
     expect(mocks.startOwner).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: 'workspace' }),
-      row.structuredSession,
-      host === 'local' ? { kind: 'local' } : { kind: 'environment', environmentId: 'paired' }
+      expect.objectContaining({
+        direction: 'chat',
+        sessionId: 'owner',
+        workspaceId: 'workspace',
+        executionHostId: host
+      })
     )
     await userEvent.setup().click(screen.getByTestId('ai-vault-session-more-actions'))
     await userEvent
@@ -265,14 +277,21 @@ it('routes a capable paired unowned row with a matching terminal through the sam
     }
   ])
   mocks.source.mockReturnValue(source)
-  render(<History session={session} />)
+  render(
+    <History
+      session={session}
+      originalPaneTarget={{ worktreeId: 'workspace', tabId: 'terminal', paneKey: 'terminal:leaf' }}
+    />
+  )
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'Switch to native chat' }).hasAttribute('disabled')
     ).toBe(false)
   )
   await userEvent.setup().click(screen.getByRole('button', { name: 'Switch to native chat' }))
-  expect(mocks.run).toHaveBeenCalledExactlyOnceWith(source)
+  expect(mocks.startOwner).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ direction: 'chat', source, history: session })
+  )
 })
 
 it.each([

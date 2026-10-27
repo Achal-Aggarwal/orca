@@ -1,3 +1,4 @@
+import type { RuntimeRpcDispatchObservation } from '../../../shared/runtime-rpc-envelope'
 import { callAbortableRuntimeEnvironment } from './abortable-runtime-environment-call'
 import { observePairingRefusal } from './runtime-environment-pairing-refresh'
 
@@ -12,6 +13,8 @@ async function callRuntimeEnvironmentOnce(args: {
   method: string
   params: unknown
   timeoutMs?: number
+  beforeSend?: (sentAt?: number) => void
+  dispatchObservation?: () => RuntimeRpcDispatchObservation
   signal?: AbortSignal
   expectedEnvironmentPairingRevision?: number
   expectedEnvironmentRuntimeId?: string
@@ -24,7 +27,9 @@ async function callRuntimeEnvironmentOnce(args: {
       args.timeoutMs,
       args.signal,
       args.expectedEnvironmentPairingRevision,
-      args.expectedEnvironmentRuntimeId
+      args.expectedEnvironmentRuntimeId,
+      args.beforeSend,
+      args.dispatchObservation?.()
     )
   }
   return window.api.runtimeEnvironments.call({

@@ -42,7 +42,7 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock('./cli-chat-resume-feedback', () => ({ switchIntoOwner: mocks.switchOwner }))
+vi.mock('@/lib/conversation-surface-switch', () => ({ runConversationSwitch: mocks.switchOwner }))
 
 // Staged host answers: its capabilities arrive over IPC at boot, and the platform from preload.
 vi.mock('@/runtime/local-runtime-capabilities', async (importOriginal) => ({
@@ -804,11 +804,13 @@ it.each(['local', 'runtime:paired-host'] as const)(
       switchAiVaultSessionToNativeChat(row({ agent: 'codex', executionHostId, structuredSession }))
     ).toBe(true)
     expect(mocks.switchOwner).toHaveBeenCalledWith(
-      { agent: 'codex', tabId: '', workspaceId: WORKTREE_ID },
-      structuredSession,
-      executionHostId === 'local'
-        ? { kind: 'local' }
-        : { kind: 'environment', environmentId: 'paired-host' }
+      expect.objectContaining({
+        agent: 'codex',
+        direction: 'chat',
+        workspaceId: WORKTREE_ID,
+        sessionId: structuredSession.sessionId,
+        executionHostId
+      })
     )
     mocks.inPlaceSwitch = false
   }

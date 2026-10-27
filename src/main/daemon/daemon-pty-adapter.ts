@@ -3,7 +3,10 @@ import {
   type PtyFencedTerminationRequest,
   type PtyFencedTerminationOutcome
 } from '../../shared/pty-fenced-termination'
-import { FENCED_TERMINATION_PROTOCOL_VERSION } from './daemon-protocol-version'
+import {
+  FENCED_TERMINATION_PROTOCOL_VERSION,
+  SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION
+} from './daemon-protocol-version'
 import { emitPtyListeners, createPtyExitPayload } from './daemon-pty-listener-emission'
 import { DaemonPtyDaemonRecovery } from './daemon-pty-daemon-recovery'
 import type { DaemonPtyAdapterOptions } from './daemon-pty-runtime-state'
@@ -35,7 +38,10 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
   }
 
   async killFenced(request: PtyFencedTerminationRequest): Promise<PtyFencedTerminationOutcome> {
-    if (!this.supportsFencedTermination(request.id)) {
+    if (
+      !this.supportsFencedTermination(request.id) ||
+      (request.switchCondition && this.protocolVersion < SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION)
+    ) {
       return { outcome: 'refused', reason: 'unsupported' }
     }
     // Capture the checked identity before waiting on connection or lifecycle locks.
@@ -49,7 +55,8 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
           immediate: true,
           expectedIncarnationId,
           requireNoAgentOwner,
-          requireUnattached
+          requireUnattached,
+          ...(request.switchCondition ? { switchCondition: request.switchCondition } : {})
         })
         if (!isPtyFencedTerminationOutcome(result)) {
           return { outcome: 'refused', reason: 'unverifiable' }

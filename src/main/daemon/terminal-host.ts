@@ -1,8 +1,12 @@
 import { beginTerminalHostFencedTermination } from './terminal-host-fenced-termination'
 import type { PtyFencedTerminationRequest } from '../../shared/pty-fenced-termination'
 import type { Session } from './session'
-import type { PtyProcessInspectionOptions } from '../providers/pty-process-inspection'
-import type { SessionInfo, TakePendingOutputResult, TerminalSnapshot } from './types'
+import {
+  SessionNotFoundError,
+  type SessionInfo,
+  type TakePendingOutputResult,
+  type TerminalSnapshot
+} from './types'
 import type { CreateOrAttachResult } from './terminal-host-create-contract'
 import type { TerminalHostOptions } from './terminal-host-options'
 import { disposeTerminalHostSessions } from './terminal-host-disposal'
@@ -13,7 +17,6 @@ import { ClaimedAgentPtyOwnerRegistry } from '../../shared/claimed-agent-pty-own
 import { createOrAttachClaimedAgentSession } from './terminal-host-agent-session-claim'
 import type { InternalCreateOrAttachOptions } from './terminal-host-agent-session-claim'
 import { TerminalHostAgentSessionGenerations } from './terminal-host-agent-session-generations'
-import { resolveTerminalHostSessionCwd } from './terminal-host-session-cwd'
 import { TerminalHostTombstones } from './terminal-host-tombstones'
 import {
   listLiveTerminalHostSessions,
@@ -24,17 +27,14 @@ import { TerminalAttachCanceledError } from './daemon-errors'
 import { waitForTerminalAttachOperation } from './terminal-attach-cancellation'
 import { randomUUID } from 'node:crypto'
 import { pruneRetiredPtyIncarnations } from '../../shared/retired-pty-incarnations'
-import { inspectTerminalHostSession } from './terminal-host-process-inspection'
-import type { TerminalHostProcessInspection } from './terminal-host-process-inspection'
 import {
-  confirmTerminalHostForegroundProcess,
-  confirmTerminalHostShellForeground,
   getSettledTerminalHostSnapshot,
   getTerminalHostAppliedSize,
   getTerminalHostPartialEscapeTail,
   getTerminalHostSnapshot,
   takeTerminalHostPendingOutput
 } from './terminal-host-session-inspection-operations'
+import { TerminalHostInspection } from './terminal-host-inspection'
 
 export type { CreateOrAttachOptions, CreateOrAttachResult } from './terminal-host-create-contract'
 
@@ -43,8 +43,8 @@ export type { TerminalHostOptions } from './terminal-host-options'
 const DEFAULT_MAX_TOMBSTONES = 1000
 const REMOTE_FOREGROUND_TOMBSTONE_RETENTION_MS = 2_000
 
-export class TerminalHost {
-  private sessions = new Map<string, Session>()
+export class TerminalHost extends TerminalHostInspection {
+  protected sessions = new Map<string, Session>()
   // Serializes creates for one id across async spawn validation.
   private pendingCreations = new Map<string, Promise<void>>()
   private sessionTeardown = new TerminalSessionTeardown(this.sessions)
@@ -57,19 +57,28 @@ export class TerminalHost {
   private disposePromise: Promise<void> | null = null
   private readonly agentSessionOwners = new ClaimedAgentPtyOwnerRegistry()
   private readonly agentSessionGenerations = new TerminalHostAgentSessionGenerations()
-  private readonly authorityGeneration = randomUUID()
-  private observationEpoch = 0
-  private readonly retiredIncarnations = new Map<
+  protected readonly authorityGeneration = randomUUID()
+  protected observationEpoch = 0
+  protected readonly retiredIncarnations = new Map<
     string,
     { incarnationId: string; code: number; expiresAt: number }
   >()
 
   constructor(opts: TerminalHostOptions) {
+    super()
     this.spawnOptions = opts
     this.onSessionReaped = opts.onSessionReaped
     this.reportReadinessEvent = opts.reportReadinessEvent
     this.onFinalCheckpoint = opts.onFinalCheckpoint
     this.killedTombstones = new TerminalHostTombstones(opts.maxTombstones ?? DEFAULT_MAX_TOMBSTONES)
+  }
+
+  noteSpawnPreparation(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (session?.isTerminating) {
+      throw new SessionNotFoundError(sessionId)
+    }
+    session?.noteUse()
   }
 
   async createOrAttach(opts: InternalCreateOrAttachOptions): Promise<CreateOrAttachResult> {
@@ -85,6 +94,7 @@ export class TerminalHost {
     }
     this.assertCreateOrAttachAllowed(opts)
 
+    this.sessions.get(opts.sessionId)?.noteUse()
     let settleCreation: () => void = () => {}
     this.pendingCreations.set(
       opts.sessionId,
@@ -96,6 +106,7 @@ export class TerminalHost {
       return await createOrAttachClaimedAgentSession({
         options: opts,
         owners: this.agentSessionOwners,
+        check: opts.retainCanceledChild ? () => this.assertCreateOrAttachAllowed(opts) : undefined,
         isLive: (owner) =>
           this.agentSessionGenerations.isCurrent(
             owner,
@@ -181,17 +192,35 @@ export class TerminalHost {
     this.sessions.get(sessionId)?.resumeProducer(source)
   }
 
-  kill(sessionId: string, opts: { immediate?: boolean } = {}): Promise<void> {
+  kill(
+    sessionId: string,
+    opts: { immediate?: boolean; switchCheck?: () => boolean; ownedSpawn?: true } = {}
+  ): Promise<void> {
     const pending = this.sessionTeardown.get(sessionId)
     if (pending) {
+      if (opts.switchCheck) {
+        return Promise.resolve()
+      }
       return Promise.resolve(
         opts.immediate ? this.sessionTeardown.requestImmediate(sessionId) : pending
       )
     }
     const session = getAliveTerminalHostSession(this.sessions, sessionId)
-    const killed = this.sessionTeardown.killSession(sessionId, session, opts.immediate === true)
-    this.killedTombstones.record(sessionId)
-    return Promise.resolve(killed)
+    const killed = this.sessionTeardown.killSession(
+      sessionId,
+      session,
+      opts.immediate === true,
+      opts.switchCheck,
+      opts.ownedSpawn
+    )
+    if (!opts.switchCheck) {
+      this.killedTombstones.record(sessionId)
+    }
+    return Promise.resolve(killed).then(() => {
+      if (opts.switchCheck && (!session.isAlive || session.isTerminating)) {
+        this.killedTombstones.record(sessionId)
+      }
+    })
   }
 
   beginFencedTermination(request: PtyFencedTerminationRequest) {
@@ -226,45 +255,6 @@ export class TerminalHost {
     for (const { sessionId, token } of attachments) {
       this.sessions.get(sessionId)?.detachClient(token)
     }
-  }
-
-  async getCwd(sessionId: string): Promise<string | null> {
-    return await resolveTerminalHostSessionCwd(
-      getAliveTerminalHostSession(this.sessions, sessionId)
-    )
-  }
-
-  // A vanished pane has no agent icon to display.
-  getForegroundProcess(sessionId: string): string | null {
-    const session = this.sessions.get(sessionId)
-    if (!session || !session.isAlive) {
-      return null
-    }
-    return session.getForegroundProcess()
-  }
-
-  inspectProcess(
-    sessionId: string,
-    options?: PtyProcessInspectionOptions
-  ): Promise<TerminalHostProcessInspection> {
-    return inspectTerminalHostSession(
-      this.sessions,
-      this.retiredIncarnations,
-      sessionId,
-      options,
-      this.authorityGeneration,
-      () => ++this.observationEpoch
-    )
-  }
-
-  async confirmForegroundProcess(sessionId: string): Promise<string | null> {
-    return confirmTerminalHostForegroundProcess(this.sessions.get(sessionId))
-  }
-
-  async confirmShellForeground(sessionId: string): Promise<boolean> {
-    return confirmTerminalHostShellForeground(this.sessions.get(sessionId), () =>
-      this.sessions.get(sessionId)
-    )
   }
 
   clearScrollback(sessionId: string): void {
@@ -304,7 +294,6 @@ export class TerminalHost {
   ): TakePendingOutputResult | null {
     return takeTerminalHostPendingOutput(this.sessions.get(sessionId), includeSnapshot, opts)
   }
-
   isKilled(sessionId: string): boolean {
     return this.killedTombstones.has(sessionId)
   }

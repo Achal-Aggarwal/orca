@@ -1,4 +1,11 @@
 import {
+  observeSwitchProjections,
+  protectSwitchProjections
+} from '@/lib/conversation-switch-projection'
+import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { structuredAgentSessionTargetForHost } from '@/runtime/structured-agent-session-owner'
+import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
+import {
   markStructuredAgentSessionLaunchesPublished,
   publishedStructuredSessions
 } from '@/lib/agent-session/launch/structured-agent-session-launch-publication'
@@ -53,7 +60,31 @@ export function applyWebSessionTabsStorePatch(
   const runStorePatch = (
     state: AppState
   ): WebSessionTabsSyncState | Partial<WebSessionTabsSyncState> => {
-    const patch = buildPatch(state)
+    for (const snapshot of agentStatusSnapshots
+      ? Array.isArray(agentStatusSnapshots)
+        ? agentStatusSnapshots
+        : [agentStatusSnapshots]
+      : []) {
+      observeSwitchProjections(state, snapshot, (proposal, converged) => {
+        const target = structuredAgentSessionTargetForHost(
+          getExecutionHostIdForWorktree(state, snapshot.worktree)
+        )
+        if (target) {
+          void callStructuredAgentSession(target, 'agentSession.switchToTerminal', {
+            sessionId: proposal.sessionId,
+            execution: {
+              invocationId: proposal.invocationId,
+              receipt: {
+                generation: proposal.generation,
+                shown: true,
+                ...(converged ? { converged: true } : { retained: true })
+              }
+            }
+          }).catch(() => {})
+        }
+      })
+    }
+    const patch = protectSwitchProjections(state, buildPatch(state))
     mirroredAgentStatusChanged = patch !== state && Object.hasOwn(patch, 'agentStatusByPaneKey')
     if (agentStatusSnapshots) {
       const nextAgentStatuses = patch.agentStatusByPaneKey ?? state.agentStatusByPaneKey

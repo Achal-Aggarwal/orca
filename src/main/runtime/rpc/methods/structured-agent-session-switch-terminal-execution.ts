@@ -1,0 +1,127 @@
+import type { AgentSessionRecord } from '../../../../shared/agent-session-record'
+import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
+import type { z } from 'zod'
+import type { RpcContext } from '../core'
+import { agentLaunchTabViewerRule } from './agent-launch-tab-publication'
+import { SwitchToTerminalParams } from './structured-agent-session-schemas'
+import type {
+  agentSessionSwitchDeadline,
+  AgentSessionSwitchResult
+} from '../../../../shared/agent-session-switch-execution'
+import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
+import {
+  nativeConversationContent,
+  prepareStructuredChatCliTranscript,
+  resolveStructuredChatCliSource
+} from '../../../ai-vault/structured-chat-cli-fork'
+
+export async function executeStructuredSessionTerminalSwitch(
+  params: z.infer<typeof SwitchToTerminalParams>,
+  record: AgentSessionRecord,
+  ctx: RpcContext,
+  host: StructuredAgentSessionHost,
+  sessionId: string,
+  deadline: ReturnType<typeof agentSessionSwitchDeadline>,
+  workCurrent: () => boolean,
+  execution: NonNullable<z.infer<typeof SwitchToTerminalParams>['execution']>
+): Promise<AgentSessionSwitchResult> {
+  const terminalExecution = SwitchToTerminalParams.parse(params).execution
+  const sourceTabId = terminalExecution?.sourceTabId
+  const retire = ctx.runtime.captureSessionSwitchRetirement(
+    record.location.workspaceId,
+    sessionId,
+    sourceTabId,
+    workCurrent,
+    () => host.retainSwitch(sessionId),
+    {
+      invocationId: execution.invocationId,
+      generation: host.switchGeneration(sessionId)!,
+      sessionId,
+      tabId: sourceTabId ?? `agent-session:${sessionId}`,
+      phase: 'prepare'
+    }
+  )
+  const snapshot = await host.journalSnapshot(sessionId)
+  deadline.check()
+  const content = nativeConversationContent(snapshot)
+  if (content === 'uncertain') {
+    throw agentSessionRefusalError('agent_session_operation_invalid', {
+      reason: 'messagesUnsettled'
+    })
+  }
+  const prepared =
+    content === 'saved'
+      ? await prepareStructuredChatCliTranscript(
+          await resolveStructuredChatCliSource(
+            { sessionId, workspaceId: record.location.workspaceId },
+            false
+          ),
+          (args) => ctx.runtime.prepareAiVaultSessionResume(args),
+          false
+        )
+      : undefined
+  deadline.check()
+  if (content === 'saved' && !prepared?.cliForkSource) {
+    throw agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'transcriptNotFound'
+    })
+  }
+  await host.switchToTerminal(sessionId, deadline)
+  deadline.check()
+  const terminal = await ctx.runtime.createSessionSwitchTerminal(record.location.workspaceId, {
+    invocationId: execution.invocationId,
+    sessionId,
+    source: prepared?.cliForkSource,
+    commandOverride: terminalExecution?.commandOverride,
+    options: record.options,
+    afterTabId: sourceTabId,
+    groupId: terminalExecution?.groupId,
+    execution: {
+      invocationId: execution.invocationId,
+      signal: deadline.signal,
+      trackPhysical: (work) => host.trackSwitchPhysical(sessionId, work),
+      remaining: deadline.remaining,
+      check: () => {
+        deadline.check()
+        if (!workCurrent()) {
+          throw agentSessionRefusalError('agent_session_operation_invalid', {
+            reason: 'messagesUnsettled'
+          })
+        }
+      },
+      viewer: agentLaunchTabViewerRule(ctx, 'focused'),
+      shown: (pane) =>
+        host.presentSwitch(sessionId, {
+          ...pane,
+          surface: 'terminal',
+          sessionId,
+          agent: 'codex'
+        })
+    }
+  })
+  if (terminal.agentResumeRefused || terminal.agentResumeUnavailable) {
+    return {
+      status: 'refused',
+      sessionId,
+      refusal: agentSessionRefusalError('agent_session_operation_unknown', {
+        reason: 'outcomeUnknown'
+      }).refusal
+    }
+  }
+  if (terminal.switchOutcomeUnknown) {
+    return {
+      status: 'uncertain',
+      sessionId,
+      refusal: agentSessionRefusalError('agent_session_operation_unknown', {
+        reason: 'outcomeUnknown'
+      }).refusal
+    }
+  }
+  const retired = await retire()
+  return {
+    status: 'completed',
+    sessionId,
+    terminal: terminal.tab.id,
+    sourceRetained: Boolean(sourceTabId && !retired)
+  }
+}

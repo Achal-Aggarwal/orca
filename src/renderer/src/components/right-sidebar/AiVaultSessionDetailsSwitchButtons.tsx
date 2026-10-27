@@ -1,3 +1,6 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
+import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import { historyConversationSwitch } from './ai-vault-session-in-place-switch'
 import { useAppStore } from '@/store'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { MessagesSquare, SquareTerminal } from 'lucide-react'
@@ -11,18 +14,26 @@ import { ResumeInNewCliTooltipText, SwitchToCliTooltipText } from './ai-vault-se
 /** The details bar's chat and CLI moves: in place where the row's host switches its agent. */
 export function AiVaultSessionDetailsSwitchButtons({
   session,
+  originalPaneTarget,
   onResumeInNewChat,
   onResumeInNewCli
 }: {
-  session: Pick<AiVaultSession, 'agent' | 'executionHostId'>
+  session: AiVaultSession
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
   onResumeInNewChat?: () => void
   onResumeInNewCli?: () => void
 }): React.JSX.Element | null {
   const inPlaceAgent = useAiVaultInPlaceAgent(session)
   const switchLoading =
     useInPlaceSwitchCapability(session.executionHostId, session.agent) === undefined
+  const chat = useConversationSwitchReadiness(
+    historyConversationSwitch(session, 'chat', undefined, originalPaneTarget)
+  )
+  const cli = useConversationSwitchReadiness(
+    historyConversationSwitch(session, 'terminal', undefined, originalPaneTarget)
+  )
   const enabled = useAppStore((state) => isNativeChatEnabled(state.settings))
-  if (!enabled && (inPlaceAgent !== undefined || switchLoading)) {
+  if (!enabled) {
     return null
   }
   return (
@@ -33,7 +44,8 @@ export function AiVaultSessionDetailsSwitchButtons({
           variant="secondary"
           size="xs"
           draggable={false}
-          disabled={switchLoading}
+          disabled={switchLoading || Boolean(inPlaceAgent && !chat.ready)}
+          title={chat.explanation}
           onClick={(event) => {
             event.stopPropagation()
             onResumeInNewChat()
@@ -57,7 +69,8 @@ export function AiVaultSessionDetailsSwitchButtons({
               variant="secondary"
               size="xs"
               draggable={false}
-              disabled={switchLoading}
+              disabled={switchLoading || Boolean(inPlaceAgent && !cli.ready)}
+              title={cli.explanation}
               onClick={(event) => {
                 event.stopPropagation()
                 onResumeInNewCli()

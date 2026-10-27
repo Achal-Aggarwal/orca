@@ -1,3 +1,4 @@
+import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import {
   Copy,
   FileJson,
@@ -17,6 +18,7 @@ import type { AiVaultAgent } from '../../../../shared/ai-vault-types'
 import { isAiVaultFolderWorkspaceId } from './ai-vault-session-worktree-affordances'
 import { useAppStore } from '@/store'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
+import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 
 export function SessionActionMenuItems({
   menuKind = 'dropdown',
@@ -40,9 +42,12 @@ export function SessionActionMenuItems({
   deleteBlockedReason,
   onDelete,
   inPlaceAgent,
-  switchLoading
+  switchLoading,
+  originalPaneTarget,
+  session
 }: {
   menuKind?: 'dropdown' | 'context'
+  originalPaneTarget?: AiVaultOriginalPaneTarget | null
   resumeDisabled: boolean
   resumeLabel: string
   resumeHidden?: boolean
@@ -65,6 +70,7 @@ export function SessionActionMenuItems({
   // Null when Delete is offered; otherwise the tooltip explaining why it isn't.
   deleteBlockedReason: string | null
   onDelete?: () => void
+  session?: AiVaultSession
   switchLoading?: boolean
   inPlaceAgent?: AiVaultAgent
 }) {
@@ -128,6 +134,8 @@ export function SessionActionMenuItems({
       ) : null}
       {showSurfaceActions ? (
         <AiVaultSessionSurfaceSwitchMenuItems
+          originalPaneTarget={originalPaneTarget}
+          session={session}
           action="resume"
           menuKind={menuKind}
           tooltipSide={menuKind === 'context' ? 'right' : 'left'}

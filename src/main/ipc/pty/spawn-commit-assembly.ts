@@ -1,3 +1,4 @@
+import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { isValidTerminalTabId } from '../../../shared/terminal-tab-id'
 import type { AgentSessionClaimedSpawnResult } from '../../../shared/agent-session-host-authority'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
@@ -11,11 +12,8 @@ import type { CodexPaneHomeRoute } from '../../codex/codex-pane-account-registry
 import type { CodexAccountSelectionTarget } from '../../codex-accounts/runtime-selection'
 import type { PtySpawnTiming } from './pty-spawn-timing'
 import type { CodexHomePtySpawnedLifecycleArgs } from './host-env/types'
-import {
-  codexReattachedHomeRouteField,
-  shouldSkipCodexHomeEnvForWindowsShell
-} from './host-env/codex-home'
-import { commitAttachedPtySize, type PtyGrid } from './delivery/attached-pty-size'
+import { shouldSkipCodexHomeEnvForWindowsShell } from './host-env/codex-home'
+import type { PtyGrid } from './delivery/attached-pty-size'
 import { seedTerminalRestoreRecordsFromSpawnResult } from './pane/agent-session-owners'
 import { admitProviderReattachLaunchIdentity } from './pane/launch-authority'
 import type { ReplacedPaneOwner } from './pane/replaced-pane-owner'
@@ -29,8 +27,13 @@ import type { StablePaneOwner } from './pane/stable-owner'
 import { seedHeadlessTerminalFromSpawnResult } from './pane/terminal-spawn-restore'
 import type { RuntimePtySpawnArgs } from './runtime/spawn-state'
 import { reportRuntimeResumeOutcome } from './runtime/spawn-commit-response'
-import { savePtySpawnPaneBinding, type PtySpawnPaneBinding } from './spawn-commit-binding'
+import {
+  closeUnusedSwitchSpawn,
+  savePtySpawnPaneBinding,
+  type PtySpawnPaneBinding
+} from './spawn-commit-binding'
 import { publishCommittedPtySpawn, type PtySpawnPaneKeyAliases } from './spawn-commit-publication'
+import { commitAdoptedAgentSession } from './spawn-commit-adopted-session'
 
 export type PtySpawnCommitState = {
   deps: {
@@ -52,6 +55,7 @@ export type PtySpawnCommitState = {
     | 'resumeProviderSession'
     | 'onResumeOutcome'
     | 'telemetry'
+    | 'switchExecution'
   > & { resumeOrigin?: unknown }
   result: PtySpawnResult
   provider: IPtyProvider
@@ -127,6 +131,23 @@ export async function commitPtySpawn<Reply extends PtySpawnResult>(
   const { result } = state
   const runtime = state.deps.runtime
   admitPtySpawnOwnership(runtime, result)
+  if (state.args.switchExecution) {
+    let revoked = result.switchOutcomeUnknown === true
+    try {
+      state.args.switchExecution.check()
+    } catch {
+      revoked = true
+    }
+    if (revoked) {
+      if (await closeUnusedSwitchSpawn(state.provider, result)) {
+        throw agentSessionRefusalError('agent_session_operation_expired', {
+          reason: 'operationExpired'
+        })
+      }
+      result.switchOutcomeUnknown = true
+      input.joinPayload.reply.switchOutcomeUnknown = true
+    }
+  }
   if (input.nativeWindowsConptySpawn) {
     markNativeWindowsConptyPty(result.id)
   }
@@ -149,6 +170,20 @@ export async function commitPtySpawn<Reply extends PtySpawnResult>(
   })
   if (input.paneBinding) {
     await savePtySpawnPaneBinding(state, input.paneBinding, state.args.connectionId)
+    if (result.switchOutcomeUnknown) {
+      input.joinPayload.reply.switchOutcomeUnknown = true
+    }
+    if (result.switchRecoveredSurface) {
+      const recovered = result.switchRecoveredSurface
+      state.args.tabId = recovered.tabId
+      state.metadataLeafId = recovered.leafId
+      input.paneKey = `${recovered.tabId}:${recovered.leafId}`
+      input.expectedSourceBinding = undefined
+      input.paneKeyAliases = undefined
+      input.joinPayload.reply.switchRecoveredSurface = recovered
+      input.joinPayload.reservation.switchRecoveredSurface = recovered
+      input.joinPayload.reservation.switchOutcomeUnknown = true
+    }
   }
   const { registration } = input
   if (registration.worktreeId) {
@@ -219,58 +254,4 @@ export async function commitPtySpawn<Reply extends PtySpawnResult>(
     state.pendingRegistrationPtyId = null
   }
   return publishCommittedPtySpawn(input)
-}
-
-function commitAdoptedAgentSession<Reply extends PtySpawnResult>(
-  input: PtySpawnCommitInput<Reply>,
-  adopted: AgentSessionClaimedSpawnResult,
-  providerReattachLaunchIdentity: ReturnType<typeof admitProviderReattachLaunchIdentity>
-): PtySpawnResult | Promise<never> {
-  const { state } = input
-  const { result } = state
-  const runtime = state.deps.runtime
-  // Adoption proves attach even without the reply flag; size commit and joiners must agree.
-  const adoptedResult = { ...result, isReattach: true }
-  const { surface } = adopted.owner
-  const rejectedRegistration = registerPersistedPtySpawn(
-    runtime,
-    input.registration.store,
-    state.pendingRegistrationClaim,
-    result.id,
-    surface.worktreeId,
-    null,
-    {
-      tabId: surface.tabId,
-      leafId: surface.leafId,
-      terminalHandle: surface.terminalHandle,
-      ...(result.incarnationId ? { incarnationId: result.incarnationId } : {}),
-      ...(providerReattachLaunchIdentity ? { providerReattachLaunchIdentity } : {})
-    }
-  )
-  if (rejectedRegistration) {
-    return rejectedRegistration
-  }
-  runtime?.noteTerminalSpawnCommit?.(result, input.expectedSourceBinding)
-  runtime?.registerPreAllocatedHandleForPty(result.id, surface.terminalHandle)
-  state.deps.options?.onCodexHomePtySpawned?.({
-    id: result.id,
-    codexHomePath: state.selectedCodexHomePath,
-    reattached: true,
-    startedAt: state.codexHomeLaunchStartedAt,
-    startedSequence: state.codexHomeLaunchStartedSequence,
-    ...codexReattachedHomeRouteField(state.reattachedCodexHomeRoutes, result.id, true),
-    ...(input.codexLaunchEnv ? { launchEnv: input.codexLaunchEnv } : {})
-  })
-  commitAttachedPtySize({
-    result: adoptedResult,
-    requested: { cols: state.args.cols, rows: state.args.rows },
-    cachedBeforeAttach: state.sessionSizeBeforeAttach,
-    reflowHeadlessTerminalToPtyGrid: runtime?.reflowHeadlessTerminalToPtyGrid?.bind(runtime)
-  })
-  resolvePaneSpawnReservation(
-    state.paneSpawnReservationKey,
-    state.paneSpawnReservation,
-    adoptedResult
-  )
-  return adoptedResult
 }

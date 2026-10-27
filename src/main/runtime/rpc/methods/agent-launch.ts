@@ -1,8 +1,3 @@
-/** Capability-gated surface routing; callers must inspect outcome.kind and receipt for fallback reasons.
- * Keep worktree.create's PTY/handle contract for older clients.
- * operationId adds durable at-most-once execution and recorded replay; unknown outcomes refuse, while stranded-surface recovery remains separate. */
-
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchIntent, AgentLaunchResult } from '../../../../shared/agent-launch-intent'
@@ -43,36 +38,17 @@ import {
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
 import { assertAgentLaunchTargetAuthorized } from './agent-launch-target-authorization'
-import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
   publishEarlyTab,
   withPlacement,
   type AgentLaunchView
 } from './agent-launch-tab-publication'
+import { supportsAgentLaunch, callerRendersLaunchedChat } from './agent-launch-caller-support'
 
-/** agent.launch.v2 declares support for both outcomes. CLI/runtime-socket and SSH bridges have no clientKind/capabilities; the desktop renderer is a runtime client and must advertise support. */
-export function supportsAgentLaunch(
-  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
-): boolean {
-  return (
-    context.clientKind === undefined ||
-    context.clientCapabilities?.includes(AGENT_LAUNCH_RUNTIME_CAPABILITY) === true
-  )
-}
-
-/** v2 covers Claude/Codex chats; other agents require the same explicit rendering capability used by tabs and restart offers, else use terminal. */
-function callerRendersLaunchedChat(
-  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
-  agent: string
-): boolean {
-  return (
-    context.clientKind === undefined ||
-    agent === 'claude' ||
-    agent === 'codex' ||
-    clientRendersStructuredAgent(context.clientCapabilities, agent)
-  )
-}
+/** Capability-gated surface routing; callers must inspect outcome.kind and receipt for fallback reasons.
+ * Keep worktree.create's PTY/handle contract for older clients.
+ * operationId adds durable at-most-once execution and recorded replay; unknown outcomes refuse, while stranded-surface recovery remains separate. */
 
 /** What a launch admitted under an operation id carries into its execution. */
 type ReplaySafeLaunch = {
@@ -257,6 +233,9 @@ function runReplaySafeAgentLaunch(
     return active.promise
   }
 
+  if (params.paneKey) {
+    context.runtime.noteAcceptedAgentLaunchPane(params.paneKey, params.operationId)
+  }
   let promise: Promise<AgentLaunchResult>
   promise = executeReplaySafeAgentLaunch(params, context, fingerprint).finally(() => {
     if (activeAgentLaunches.get(key)?.promise === promise) {
@@ -309,6 +288,9 @@ export const AGENT_LAUNCH_METHODS = [
       }
       assertAgentLaunchTargetAuthorized(params.target, context)
       if (!params.operationId) {
+        if (params.paneKey) {
+          context.runtime.noteAcceptedAgentLaunchPane(params.paneKey, params.operationId)
+        }
         return runLegacyAgentLaunch(params, context)
       }
       return runReplaySafeAgentLaunch(
@@ -329,3 +311,5 @@ export const AGENT_LAUNCH_METHODS = [
     }
   })
 ]
+
+export { supportsAgentLaunch } from './agent-launch-caller-support'

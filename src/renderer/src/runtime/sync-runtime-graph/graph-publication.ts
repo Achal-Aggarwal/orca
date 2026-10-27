@@ -80,6 +80,7 @@ export async function syncRuntimeGraph(): Promise<void> {
     tabs: [],
     leaves: [],
     rendererGeneration: mobilePublicationEpoch,
+    conditionalSwitchProjection: 1,
     mobileSessionTabs: publication.changed,
     unchangedMobileSessionWorktrees: publication.unchangedWorktrees,
     ...(gridSizes ? { terminalGroupGridSizes: gridSizes.groups } : {}),

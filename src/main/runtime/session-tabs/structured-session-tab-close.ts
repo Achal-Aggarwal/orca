@@ -1,6 +1,5 @@
 import type { OrcaRuntimeWithPruneMobileSessionTabGroupLayout as PruneMobileSessionTabGroupLayoutMethods } from '../session-lifecycle/projection/prune-mobile-session-tab-group-layout'
 import type { RuntimeHeadlessTabGroups as HeadlessTabGroupsMethods } from './headless-tab-group-moves'
-import { OrcaRuntimeWithCloseMobileSessionTab } from '../session-lifecycle/close/close-mobile-session-tab'
 import type {
   BrowserTabInfo,
   RuntimeMobileSessionAgentTab,
@@ -23,16 +22,14 @@ import {
   type ChatTabChange,
   type ChatTabPlacement
 } from '../agent-session/agent-session-tab-layout'
-import { createChatTabLayoutQueue } from '../agent-session-tab-layout-queue'
-import type { WindowLayoutCommand } from '../runtime-layout-apply'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
-import type { LayoutApplyReply } from '../../../shared/workspace-layout/workspace-layout-command-types'
 import { savedSessionId } from '../saved-structured-agent-session-restoration'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import { structuredSessionTabRetired } from '../structured-worker-custody'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
+import { OrcaRuntimeWithStructuredSessionSwitchProjection } from './structured-session-switch-projection'
 
-export abstract class OrcaRuntimeWithCloseStructuredAgentSessionTab extends OrcaRuntimeWithCloseMobileSessionTab {
+export abstract class OrcaRuntimeWithCloseStructuredAgentSessionTab extends OrcaRuntimeWithStructuredSessionSwitchProjection {
   protected abstract getListedBrowserTabsByPageId(worktreeId: string): Map<string, BrowserTabInfo>
   protected abstract getMobileTerminalLeafPtyIds(
     ...args: Parameters<PruneMobileSessionTabGroupLayoutMethods['getMobileTerminalLeafPtyIds']>
@@ -41,8 +38,6 @@ export abstract class OrcaRuntimeWithCloseStructuredAgentSessionTab extends Orca
   protected abstract getMobileTerminalPaneKey(
     ...args: Parameters<PruneMobileSessionTabGroupLayoutMethods['getMobileTerminalPaneKey']>
   ): ReturnType<PruneMobileSessionTabGroupLayoutMethods['getMobileTerminalPaneKey']>
-
-  abstract applyLayoutCommand(command: WindowLayoutCommand): Promise<LayoutApplyReply>
 
   protected abstract persistHeadlessTabGroups(
     ...args: Parameters<HeadlessTabGroupsMethods['persistHeadlessTabGroups']>
@@ -85,6 +80,13 @@ export abstract class OrcaRuntimeWithCloseStructuredAgentSessionTab extends Orca
     }
     return false
   }
+
+  abstract publishStructuredAgentSessionTab(input: {
+    workspaceId: string
+    sessionId: string
+    agent: StructuredAgentId
+    activate: boolean
+  }): Promise<void>
 
   // Refused echo closes need a newer snapshot so clients restore the still-live mirror they already pruned.
   protected republishMobileSessionTabsSnapshot(worktreeId: string): void {
@@ -320,10 +322,4 @@ export abstract class OrcaRuntimeWithCloseStructuredAgentSessionTab extends Orca
       this.setWorkspaceSessionForWorktree(worktreeId, next)
     }
   }
-
-  private readonly queueChatTabChanges = createChatTabLayoutQueue({
-    sessionOf: (worktreeId) => this.getWorkspaceSessionForWorktree(worktreeId),
-    hostIdOf: (worktreeId) => this.getWorkspaceSessionHostIdForWorktree(worktreeId),
-    apply: (command) => this.applyLayoutCommand(command)
-  })
 }

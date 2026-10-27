@@ -7,7 +7,6 @@ import {
 } from '../../shared/startup-command-staging'
 import { resolvePtyOwnerBackend } from '../../shared/pty-owner-backend'
 import { getDaemonSessionResultMetadata } from './daemon-create-or-attach-result'
-import { enumerateDirectoryOnce } from './directory-enumeration-probe'
 import { normalizePtySize } from './daemon-pty-size'
 import { Session } from './session'
 import { shellPathSupportsPtyStartupBarrier } from './shell-ready'
@@ -17,11 +16,9 @@ import type { TerminalHostOptions } from './terminal-host-options'
 import type { TerminalHostTombstones } from './terminal-host-tombstones'
 import type { TerminalSessionTeardown } from './terminal-session-teardown'
 import type { TerminalSpawnGate } from './terminal-spawn-gate'
-import type { LegacyRestoreDetails } from './legacy-restore-records'
 import { resolveDaemonSessionScrollbackRows } from './daemon-session-scrollback-window'
 import { TerminalAttachCanceledError } from './daemon-errors'
 import { waitForTerminalAttachOperation } from './terminal-attach-cancellation'
-import { sharedPromiseSettlementWaiters } from '../../shared/promise-settlement-waiters'
 import { SessionNotFoundError } from './types'
 import { resolveWslSessionContext } from './wsl-session-context'
 import { recordSessionSpawnPaneKey } from './terminal-host-session-listing'
@@ -30,8 +27,13 @@ import {
   isSessionInputClosed,
   trackSessionInput
 } from './session-input-path'
+import {
+  createSessionExitHandler,
+  describeAgentRestore,
+  isCwdReadableByThisProcess
+} from './terminal-host-session-process'
 
-type TerminalHostSessionCreateDependencies = {
+export type TerminalHostSessionCreateDependencies = {
   sessions: Map<string, Session>
   /** Re-checks the host's shutdown fence and this request's cancellation after any await. */
   assertCreateAllowed: () => void
@@ -74,6 +76,7 @@ export async function createOrAttachTerminalSession(
   // Attach synchronously: in-flight recovery resets arrive after the snapshot in stream order.
   // Checkpoint readers that require settled ownership use getSettledSnapshot.
   if (existing && existing.isAlive && !existing.isTerminating) {
+    deps.assertCreateAllowed()
     const snapshot = existing.getSnapshot()
     existing.detachAllClients()
     const token = existing.attachClient(opts.streamClient)
@@ -167,6 +170,8 @@ async function spawnAndPublishSession(
     terminalWindowsWslDistro: opts.terminalWindowsWslDistro,
     terminalWindowsPowerShellImplementation: opts.terminalWindowsPowerShellImplementation,
     isCanceled: opts.isCanceled,
+    assertCreateAllowed: deps.assertCreateAllowed,
+    retainCanceledChild: opts.retainCanceledChild,
     ...(opts.cancelSignal ? { cancelSignal: opts.cancelSignal } : {})
   })
 
@@ -208,19 +213,39 @@ async function spawnAndPublishSession(
 
   trackSessionInput(session, subprocess, deps.reportReadinessEvent)
 
-  if (opts.isCanceled?.()) {
+  let revoked = false
+  try {
+    deps.assertCreateAllowed()
+  } catch {
+    revoked = true
+  }
+  if (revoked) {
     // Retain cleanup ownership if the native child refuses to exit.
     deps.sessions.set(opts.sessionId, session)
     // Retain the live-cap charge until physical exit.
     onPublished(opts.sessionId, session.isAlive)
-    await session.forceKillAndDisposeSubprocess()
-    if (deps.sessions.get(opts.sessionId) === session) {
+    await session.forceKillAndWaitForExit().catch(() => {})
+    if (!session.isAlive && deps.sessions.get(opts.sessionId) === session) {
       session.dispose()
       deps.sessions.delete(opts.sessionId)
       deps.onDeadSessionRemoved(opts.sessionId)
       deps.spawnGate?.onSessionExit(opts.sessionId)
     }
-    throw new TerminalAttachCanceledError(opts.sessionId)
+    if (!session.isAlive) {
+      throw new TerminalAttachCanceledError(opts.sessionId)
+    }
+    deps.onSessionCreated(opts.sessionId, opts.agentSessionGeneration, true)
+    return {
+      isNew: true,
+      switchOutcomeUnknown: true,
+      switchCleanupWitness: session.captureSwitchWitness(),
+      snapshot: session.getSnapshot(),
+      pid: session.pid,
+      shellState: session.shellState,
+      incarnationId: session.incarnationId,
+      ...getDaemonSessionResultMetadata(session),
+      attachToken: Symbol('retained-switch-child')
+    }
   }
 
   deps.sessions.set(opts.sessionId, session)
@@ -271,6 +296,7 @@ async function spawnAndPublishSession(
 
   return {
     isNew: true,
+    ...(opts.retainCanceledChild ? { switchCleanupWitness: session.captureSwitchWitness() } : {}),
     snapshot: null,
     pid: subprocess.pid,
     shellState: session.shellState,
@@ -282,53 +308,6 @@ async function spawnAndPublishSession(
   }
 }
 
-function createSessionExitHandler(
-  onSessionExit: TerminalHostSessionCreateDependencies['onSessionExit'],
-  sessionId: string,
-  generation: string | undefined,
-  discardStagedCommand: () => void,
-  spawnGate: TerminalSpawnGate | undefined
-): () => void {
-  return () => {
-    discardStagedCommand()
-    spawnGate?.onSessionExit(sessionId)
-    onSessionExit(sessionId, generation)
-  }
-}
-
 /** Describe restore identity without including environment values that may contain credentials. */
-function describeAgentRestore(
-  opts: InternalCreateOrAttachOptions
-): LegacyRestoreDetails | undefined {
-  if (!opts.command || (!opts.launchAgent && !opts.agentSessionEnsure)) {
-    return undefined
-  }
-  return {
-    sessionId: opts.sessionId,
-    agent: opts.launchAgent ?? opts.agentSessionEnsure?.claim.agent ?? null,
-    cwd: opts.cwd ?? null,
-    worktreeId: opts.agentSessionEnsure?.surface.worktreeId ?? null,
-    command: opts.command,
-    identityDigest: opts.agentSessionEnsure?.claim.identityDigest ?? null
-  }
-}
 
 // TCC may reject directory enumeration despite successful access(); only explicit permission denial counts.
-async function isCwdReadableByThisProcess(
-  cwd: string,
-  opts: Pick<InternalCreateOrAttachOptions, 'sessionId' | 'cancelSignal'>
-): Promise<boolean | null> {
-  const outcome = await sharedPromiseSettlementWaiters(enumerateDirectoryOnce(cwd))
-    .wait({
-      timeoutMs: 1_000,
-      signal: opts.cancelSignal,
-      createAbortError: () => new TerminalAttachCanceledError(opts.sessionId)
-    })
-    .catch((error: unknown) => {
-      if (error instanceof TerminalAttachCanceledError) {
-        throw error
-      }
-      return null
-    })
-  return outcome === null ? null : outcome !== 'denied'
-}

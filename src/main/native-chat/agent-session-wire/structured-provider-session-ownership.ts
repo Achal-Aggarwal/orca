@@ -1,6 +1,7 @@
 import type { AgentSessionLease, AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
-import { agentSessionLeaseOwnerVerdict } from '../../../shared/agent-session-lease-adjudication'
+import { agentSessionLeasePossiblyWriting } from '../../../shared/agent-session-lease-adjudication'
+export { agentSessionLeasePossiblyWriting } from '../../../shared/agent-session-lease-adjudication'
 import { structuredAgentRuntimeMetadata } from '../../runtime/structured-agent-runtime-metadata'
 import { inPlaceSwitchEnabled } from '../../../shared/structured-agent-cli-conversation-adoption'
 import {
@@ -50,11 +51,6 @@ export function listStructuredProviderSessionOwnership(
         })
       : []
   })
-}
-
-/** Fail closed: only a lease released on proof its owner exited can't be writing. */
-export function agentSessionLeasePossiblyWriting(lease: AgentSessionLease): boolean {
-  return agentSessionLeaseOwnerVerdict(lease) !== 'exited'
 }
 
 /** Agents whose chats let a terminal resume the same conversation once the chat stopped writing. */

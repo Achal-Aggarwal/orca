@@ -122,6 +122,11 @@ export async function acquireCodexStructuredSession(input: {
           }
     acquisitions.assertCurrent(sessionId, attempt)
     account = launch.codexHome ? deps.resolveAccountKind?.(launch.codexHome) : undefined
+    try {
+      acquireInput.checkBeforeSpawn?.()
+    } catch (error) {
+      throw new AgentSessionPreSpawnError(error)
+    }
     const connection = await open(
       {
         command: launch.command,

@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { spawnNativeDaemonPty } from './native-pty-spawn'
+import {
+  _resetConptyStartupTrustForTest,
+  CONPTY_NO_INPUT_READER_NOTICE,
+  CONPTY_STARTUP_DECISION_LIMIT_MS
+} from './conpty-startup-input-reader'
 
 const nodePty = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock('node-pty', () => nodePty)
@@ -8,13 +14,6 @@ const ptyJob = vi.hoisted(() => ({
   killConptyNow: vi.fn()
 }))
 vi.mock('../../windows/windows-pty-job', () => ptyJob)
-
-import { spawnNativeDaemonPty } from './native-pty-spawn'
-import {
-  _resetConptyStartupTrustForTest,
-  CONPTY_NO_INPUT_READER_NOTICE,
-  CONPTY_STARTUP_DECISION_LIMIT_MS
-} from './conpty-startup-input-reader'
 
 const attempts = ['pwsh.exe', 'powershell.exe', 'cmd.exe'].map((shellPath) => ({
   shellPath,
@@ -84,6 +83,40 @@ describe('Windows shell fallback over node-pty ConPTY', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', platform)
     vi.restoreAllMocks()
+  })
+
+  it('checks operation authority after loading the native module, before physical spawn', async () => {
+    let allowed = true
+    const starting = spawnNativeDaemonPty({
+      ...args,
+      assertCreateAllowed: () => {
+        if (!allowed) {
+          throw new Error('expired')
+        }
+      }
+    })
+    allowed = false
+    await expect(starting).rejects.toThrow('expired')
+    expect(nodePty.spawn).not.toHaveBeenCalled()
+  })
+
+  it('does not dispatch a fallback shell after the operation loses authority', async () => {
+    let allowed = true
+    nodePty.spawn.mockImplementation(() => {
+      allowed = false
+      throw new Error('primary refused')
+    })
+    await expect(
+      spawnNativeDaemonPty({
+        ...args,
+        assertCreateAllowed: () => {
+          if (!allowed) {
+            throw new Error('expired')
+          }
+        }
+      })
+    ).rejects.toThrow('primary refused')
+    expect(nodePty.spawn).toHaveBeenCalledOnce()
   })
 
   it('walks both fallback shells when ConPTY rejects the primary ones', async () => {

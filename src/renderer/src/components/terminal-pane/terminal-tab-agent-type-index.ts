@@ -62,7 +62,10 @@ export function createTerminalTabAgentTypeSelector(
         }
       }
       for (const [paneKey, entry] of Object.entries(foreground)) {
-        if (!entry.agent || entry.shellForeground || entry.routingRevoked) {
+        const agent =
+          entry.suspendedAgent ??
+          (!entry.shellForeground && !entry.routingRevoked ? entry.agent : null)
+        if (!agent) {
           continue
         }
         const separator = paneKey.indexOf(':')
@@ -73,9 +76,9 @@ export function createTerminalTabAgentTypeSelector(
         const leafId = paneKey.slice(separator + 1)
         const byLeaf = nextByTabId.get(entryTabId)
         if (byLeaf) {
-          byLeaf[leafId] ??= entry.agent
+          byLeaf[leafId] ??= agent
         } else {
-          nextByTabId.set(entryTabId, { [leafId]: entry.agent })
+          nextByTabId.set(entryTabId, { [leafId]: agent })
         }
       }
 

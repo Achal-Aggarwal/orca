@@ -51,6 +51,7 @@ export type RemoteForegroundEvidence =
   | ({
       verdict: 'live'
       processName: string | null
+      suspendedAgentProcess?: string
       fence: PosixFence | WindowsFence
     } & HostObservation)
   | ({ verdict: 'unverifiable'; reason: string } & HostObservation)
@@ -142,6 +143,8 @@ export function isRemoteForegroundEvidence(value: unknown): value is RemoteForeg
   if (input.verdict === 'live') {
     return (
       (input.processName === null || typeof input.processName === 'string') &&
+      (input.suspendedAgentProcess === undefined ||
+        isNonEmptyString(input.suspendedAgentProcess)) &&
       (isPosixFence(input.fence) || isWindowsFence(input.fence))
     )
   }

@@ -19,9 +19,17 @@ export function resolveTerminalLaunchResult(
     stablePaneAdopted ||
     result.isReattach === true ||
     result.agentSessionEnsure?.disposition === 'adopted'
-  const refused = Boolean(result.agentResumeRefused)
+  const refused = Boolean(result.agentResumeRefused || result.agentResumeUnavailable)
   const owner = result.stablePaneOwner
   const surface =
+    (result.switchRecoveredSurface
+      ? {
+          ...result.switchRecoveredSurface,
+          terminalHandle:
+            result.agentSessionEnsure?.owner.surface.terminalHandle ??
+            result.stablePaneOwner?.handle
+        }
+      : undefined) ??
     result.agentSessionEnsure?.owner.surface ??
     (owner ? { terminalHandle: owner.handle, tabId: owner.tabId, leafId: owner.leafId } : undefined)
   return {

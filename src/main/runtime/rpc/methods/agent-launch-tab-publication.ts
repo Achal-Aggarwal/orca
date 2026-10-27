@@ -1,7 +1,3 @@
-/** Publish a stable-id tab before cold admission/spawn for replay-safe launches; its pane waits for the launch.
- * Best-effort only: unresolved workspace, chat default, absent layout owner or occupied pane falls back to publication at spawn.
- * After restart the pane behaves as an ordinary pane. */
-
 import { randomUUID } from 'node:crypto'
 import type {
   AgentLaunchPlacementReceipt,
@@ -28,6 +24,10 @@ import type { RpcContext } from '../core'
 import type { AgentLaunchParams } from '../../../../shared/rpc-contract/agent-launch-params'
 import { agentLaunchOperationCallerKey } from './agent-launch-replay'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
+
+/** Publish a stable-id tab before cold admission/spawn for replay-safe launches; its pane waits for the launch.
+ * Best-effort only: unresolved workspace, chat default, absent layout owner or occupied pane falls back to publication at spawn.
+ * After restart the pane behaves as an ordinary pane. */
 
 /** Paired launches move only the caller's view; both early publication and spawn must obey this. */
 export function agentLaunchMovesHostWindow(
@@ -192,13 +192,28 @@ export async function publishAgentLaunchTabEarly(
     publishing,
     finishRunning: (verdict) => running.finish(verdict),
     agentBound: () => running.agentBound(),
-    paneIsLive: () => runtime.hasLiveTerminalForPaneKey(paneKey),
+    paneIsLive: () => !running.current() || runtime.hasLiveTerminalForPaneKey(paneKey),
     closedByUser: () => running.closedByUser(),
-    report: (verdict) => {
-      const address = { worktreeId: workspace.id, tabId: pane.tabId, leafId: pane.leafId }
-      // Main withdraws panes it owns; the window still receives the verdict to release retained launch state.
-      if (ORCA_LAYOUT_OWNER_IS_MAIN && verdict.kind === 'withdrawn') {
-        runtime.withdrawAgentLaunchPaneInMainLayout(address)
+    report: async (verdict) => {
+      const address = {
+        worktreeId: workspace.id,
+        tabId: pane.tabId,
+        leafId: pane.leafId,
+        operationId: params.operationId
+      }
+      if (!running.current()) {
+        return
+      }
+      if (verdict.kind === 'withdrawn') {
+        const published = await publishing
+        const withdrawn = await runtime.withdrawAgentLaunchPaneInMainLayout(
+          address,
+          running.current,
+          published.withdrawalRoot
+        )
+        if (!withdrawn || !running.current()) {
+          return
+        }
       }
       runtime.reportAgentLaunchPaneVerdict(address, verdict)
     }
@@ -212,7 +227,7 @@ function trackEarlyAgentLaunchTab(args: {
   agentBound: () => void
   paneIsLive: () => boolean
   closedByUser: () => boolean
-  report: (verdict: AgentLaunchPaneVerdict) => void
+  report: (verdict: AgentLaunchPaneVerdict) => Promise<void>
 }): EarlyAgentLaunchTab {
   let reply: AgentLaunchTabPublished | null = null
   let publicationFailed = false
@@ -265,7 +280,7 @@ function trackEarlyAgentLaunchTab(args: {
                 ? { kind: 'unconfirmed' }
                 : { kind: 'not-started', code: failureCode }
         args.finishRunning(verdict)
-        args.report(verdict)
+        void args.report(verdict).catch(() => {})
       })
     },
     placement: () => reply?.placement

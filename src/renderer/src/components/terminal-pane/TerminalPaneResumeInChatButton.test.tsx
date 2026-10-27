@@ -32,9 +32,9 @@ vi.mock('../tab-bar/cli-chat-resume-source', () => ({
     return mocks.source
   }
 }))
-vi.mock('../tab-bar/cli-chat-resume-run', () => ({
+vi.mock('@/lib/conversation-surface-switch', () => ({
   runCliChatResume: mocks.run,
-  useCliChatResumePending: () => mocks.pending
+  useConversationSwitchReadiness: () => ({ ready: !mocks.pending, pending: mocks.pending })
 }))
 afterEach(cleanup)
 beforeEach(() => {

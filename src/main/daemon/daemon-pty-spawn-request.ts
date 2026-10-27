@@ -1,3 +1,4 @@
+import { SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION } from './daemon-protocol-version'
 import type { SpawnIntent } from '../../shared/host-spawn-admission'
 import type { ColdRestorePayload } from './cold-restore-payload-cache'
 import type { DaemonAuditObservation } from './daemon-audit-classifier'
@@ -106,7 +107,8 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
     context: DaemonPtySpawnContext,
     historySeedSegments: readonly string[] | null
   ): Promise<CreateOrAttachResult> {
-    const requestCreateOrAttach = (
+    let anchor: string | undefined
+    const requestCreateOrAttach = async (
       historySeed: string | undefined,
       historySeedTransferId: string | undefined
     ) => {
@@ -114,7 +116,36 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
       if (opts.signal?.aborted) {
         throw new Error('client_disconnected')
       }
+      opts.switchExecution?.check()
+      if (opts.switchExecution && this.protocolVersion < SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION) {
+        throw new Error('Session switch is unavailable for this terminal owner')
+      }
+      if (opts.switchExecution && !anchor) {
+        const prepared = await this.client.request<{ anchor: string }>(
+          'createOrAttach',
+          {
+            sessionId: context.sessionId,
+            cols: context.effectiveCols,
+            rows: context.effectiveRows,
+            switchExecution: { phase: 'prepare', invocationId: opts.switchExecution.invocationId }
+          },
+          Math.max(1, opts.switchExecution.remaining()),
+          opts.signal
+        )
+        opts.switchExecution.check()
+        anchor = prepared.anchor
+      }
       const payload = {
+        ...(opts.switchExecution
+          ? {
+              switchExecution: {
+                phase: 'commit' as const,
+                invocationId: opts.switchExecution.invocationId,
+                anchor,
+                remainingMs: opts.switchExecution.remaining()
+              }
+            }
+          : {}),
         sessionId: context.sessionId,
         cols: context.effectiveCols,
         rows: context.effectiveRows,
@@ -151,7 +182,7 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
         ? this.client.request<CreateOrAttachResult>(
             'createOrAttach',
             payload,
-            undefined,
+            opts.switchExecution ? Math.max(1, opts.switchExecution.remaining()) : undefined,
             opts.signal
           )
         : this.client.request<CreateOrAttachResult>('createOrAttach', payload)

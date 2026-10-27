@@ -1,5 +1,8 @@
 vi.mock('@/lib/in-place-switch-support', () => ({ useInPlaceSwitchCapability: () => false }))
 // @vitest-environment happy-dom
+import { useAppStore } from '@/store'
+import { makeRepo, makeWorktree } from '../worktree-jump-palette-test-fixtures'
+import { createGlobalSettingsFixture } from '../../../../shared/global-settings-test-fixture'
 import { useSyncExternalStore } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,14 +41,6 @@ vi.mock('./native-chat-cli-fork-run', () => ({
     )
 }))
 
-vi.mock('@/store', () => ({
-  useAppStore: Object.assign(
-    (selector: (state: Record<string, unknown>) => unknown) =>
-      selector({ settings: { experimentalNativeChat: true } }),
-    { getState: () => ({}) }
-  )
-}))
-
 vi.mock('./tab-session-history-switch', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   resolveTabSessionHistorySubject: () => mocks.subject
@@ -55,9 +50,9 @@ vi.mock('./cli-chat-resume-source', () => ({
   useCliChatResumeCapability: (_worktreeId: string, agent: string) => agent === 'codex',
   resolveCliChatResumeSource: () => mocks.cliSource
 }))
-vi.mock('./cli-chat-resume-run', () => ({
+vi.mock('@/lib/conversation-surface-switch', () => ({
   runCliChatResume: mocks.runCliChatResume,
-  useCliChatResumePending: () => false
+  useConversationSwitchReadiness: () => ({ ready: true, pending: false })
 }))
 
 const CHAT_SUBJECT = {
@@ -68,6 +63,12 @@ const CHAT_SUBJECT = {
 }
 
 beforeEach(() => {
+  useAppStore.setState(useAppStore.getInitialState(), true)
+  useAppStore.setState({
+    settings: createGlobalSettingsFixture({ experimentalNativeChat: true }),
+    repos: [makeRepo()],
+    worktreesByRepo: { 'repo-1': [makeWorktree('wt-1', 'Worktree', { path: '/repo/wt' })] }
+  })
   mocks.subject = null
   mocks.cliSource = null
   mocks.pending = false

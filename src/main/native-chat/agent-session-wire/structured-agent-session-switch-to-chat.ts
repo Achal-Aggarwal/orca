@@ -1,7 +1,3 @@
-// A terminal handing its conversation to the chat that already holds it: the chat's agent starts
-// through the one operation start (its provider open imports the terminal's turns), and only that
-// same child reaching ready is success. Its ended child's typed failure is the click's refusal.
-
 import {
   agentSessionRefusalFromReference,
   refuse,
@@ -15,7 +11,10 @@ import {
   operationDidNotRun,
   selectStructuredAgentSessionOperationChild
 } from './structured-agent-session-operation-child'
+import { structuredAgentSessionSwitchBlocked } from './structured-agent-session-switch-admission'
+import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sameProviderChild } from './structured-agent-session-provider-child'
+import { recordStructuredAgentSessionStartFailure } from './structured-agent-session-start-failure-row'
 import { structuredAgentSessionEndedChildFailure } from './structured-agent-session-ended-child-failure'
 import {
   type StructuredAgentSessionStartFailureCause,
@@ -25,22 +24,49 @@ import {
 } from './structured-agent-session-failure-text'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from './structured-agent-session-send-settlement'
+import type { AgentSessionSwitchDeadline } from '../../../shared/agent-session-switch-execution'
+
+// A terminal handing its conversation to the chat that already holds it: the chat's agent starts
+// through the one operation start (its provider open imports the terminal's turns), and only that
+// same child reaching ready is success. Its ended child's typed failure is the click's refusal.
 
 export type StructuredAgentSessionSwitchToChatOutcome =
   | { ok: true }
-  | { ok: false; refusal: AgentSessionWireRefusal }
+  | { ok: false; refusal: AgentSessionWireRefusal; failureItemId?: string }
 
 export async function startStructuredAgentSessionForSwitch(
   context: StructuredAgentSessionMutationContext,
-  sessionId: string
+  sessionId: string,
+  deadline?: AgentSessionSwitchDeadline
 ): Promise<StructuredAgentSessionSwitchToChatOutcome> {
   const selected = await context.serialize(sessionId, async () => {
+    deadline?.check()
     if (!(await context.openConversation(sessionId))) {
       return operationDidNotRun()
     }
+    deadline?.check()
+    if (deadline) {
+      const reason = structuredAgentSessionSwitchBlocked({
+        session: context.sessions.get(sessionId),
+        deps: context.deps,
+        sessionId,
+        delivering: context.deliveryOrder.hasActiveSend(sessionId),
+        background: context.childWorkOpen(sessionId),
+        ownCommand: true,
+        joinStart: true
+      })
+      if (reason) {
+        throw agentSessionRefusalError(
+          reason === 'previousExitUnverifiable'
+            ? 'agent_session_ownership_unknown'
+            : 'agent_session_operation_invalid',
+          { reason }
+        )
+      }
+    }
     const selection = selectStructuredAgentSessionOperationChild(context, sessionId)
     return selection.ok && !selection.child
-      ? { ...selection, start: context.claimAgent(sessionId) }
+      ? { ...selection, start: context.claimAgent(sessionId, deadline?.check) }
       : { ...selection, start: null }
   })
   if (!selected.ok) {
@@ -51,9 +77,13 @@ export async function startStructuredAgentSessionForSwitch(
     const started: StructuredAgentSessionResumeOutcome = await (selected.start?.outcome ??
       operationDidNotRun())
     if (!started.ok) {
-      return started.failure
+      const result = started.failure
         ? switchStartFailure(context, sessionId, { failure: started.failure })
-        : { ok: false, refusal: started.refusal }
+        : { ok: false as const, refusal: started.refusal }
+      return {
+        ...result,
+        ...(deadline && started.failureItemId ? { failureItemId: started.failureItemId } : {})
+      }
     }
     const selection = selectStructuredAgentSessionOperationChild(context, sessionId)
     if (!selection.ok || !selection.child) {
@@ -62,20 +92,24 @@ export async function startStructuredAgentSessionForSwitch(
     child = selection.child
     readiness = selection.readiness
   }
-  const outcome = (await readiness?.wait(STRUCTURED_AGENT_SESSION_START_WAIT_MS)) ?? 'ready'
+  const outcome =
+    (await readiness?.wait(
+      Math.min(STRUCTURED_AGENT_SESSION_START_WAIT_MS, deadline?.remaining() ?? Infinity)
+    )) ?? 'ready'
   const awaited = child
-  return context.serialize(sessionId, async () =>
-    switchStartVerdict(context, sessionId, awaited, outcome)
-  )
+  return context.serialize(sessionId, async () => {
+    return switchStartVerdict(context, sessionId, awaited, outcome, Boolean(deadline))
+  })
 }
 
 /** Under the queue: the awaited child itself is ready, or its own end says why it is not. */
-function switchStartVerdict(
+async function switchStartVerdict(
   context: StructuredAgentSessionMutationContext,
   sessionId: string,
   awaited: StructuredAgentSessionProviderChildIdentity,
-  outcome: 'ready' | 'ended' | 'timeout'
-): StructuredAgentSessionSwitchToChatOutcome {
+  outcome: 'ready' | 'ended' | 'timeout',
+  execution: boolean
+): Promise<StructuredAgentSessionSwitchToChatOutcome> {
   const session = context.sessions.get(sessionId)
   const child = session?.child
   if (outcome === 'ready' && child?.phase === 'ready' && !child.close) {
@@ -89,7 +123,27 @@ function switchStartVerdict(
   if (!failure) {
     return operationDidNotRun(outcome === 'timeout')
   }
-  return switchStartFailure(context, sessionId, failure)
+  const failureItemId =
+    execution && session
+      ? await recordStructuredAgentSessionStartFailure(
+          {
+            journal: session.journal,
+            fence: context.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? 0
+          },
+          {
+            startKey: awaited.generation,
+            ...structuredAgentSessionStartFailure(
+              failure,
+              structuredAgentSessionFailureWordsContext(context.deps.store.getRecord(sessionId))
+            )
+          },
+          null
+        )
+      : undefined
+  return {
+    ...switchStartFailure(context, sessionId, failure),
+    ...(failureItemId ? { failureItemId } : {})
+  }
 }
 
 function switchStartFailure(
