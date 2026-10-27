@@ -24,6 +24,7 @@ import { callEnvironment } from './helpers/paired-host-terminal'
 import { buildFakeAgentCommandOverride } from './helpers/fake-agent-command-override'
 import { SUPPORTED, test } from './helpers/structured-claude-stub'
 import { waitForSessionReady } from './helpers/store'
+import { toRuntimeExecutionHostId } from '../../src/shared/execution-host'
 import { WSL_HOSTS_INTERNAL_GATE_ENV } from '../../src/shared/wsl-host-internal-gate'
 
 const WSL_ENVIRONMENT_ID = 'wsl:ubuntu'
@@ -105,7 +106,7 @@ async function focusProject(page: Page, repoPath: string): Promise<string | null
       state.setActiveWorktree(worktree.id, hostId)
       return worktree.id
     },
-    { repoPath, hostId: `runtime:${encodeURIComponent(WSL_ENVIRONMENT_ID)}` }
+    { repoPath, hostId: toRuntimeExecutionHostId(WSL_ENVIRONMENT_ID) }
   )
 }
 
