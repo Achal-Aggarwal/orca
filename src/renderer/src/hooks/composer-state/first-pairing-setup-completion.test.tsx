@@ -24,7 +24,7 @@ it('selects the returned setup when its host appears only after the setup await'
   const projection = projectHostSetupProjectionFromRepos([local])
   useAppStore.setState({
     repos: [local],
-    projectHostSetups: [...projection.setups],
+    endpointProjectHostSetups: [...projection.setups],
     runtimeEnvironments: [],
     runtimeStatusByEnvironmentId: new Map(),
     settings: null,
@@ -80,7 +80,7 @@ it('selects the returned setup when its host appears only after the setup await'
   act(() =>
     useAppStore.setState({
       repos: [local, hosted],
-      projectHostSetups: [...live.setups],
+      endpointProjectHostSetups: [...live.setups],
       runtimeEnvironments: [
         {
           id: 'wsl:Ubuntu',
