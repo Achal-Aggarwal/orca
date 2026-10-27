@@ -185,12 +185,35 @@ async function checkWindowsFolderPicker(
   await page.keyboard.press('Escape')
   await expect(manual).toBeHidden()
 
-  // A drive folder is refused with copy that says it stays on this computer.
+  // E8: a drive folder, picked directly, through the distro's /mnt, or typed, is refused inline in
+  // the dialog (toasts above a modal take no clicks), with a switch to this computer.
+  const dialog = page.getByRole('dialog', { name: /Add a project|Open host project/i })
+  const expectDriveRefusal = async (windowsPath: string, screenshot: string): Promise<void> => {
+    const notice = dialog
+      .getByRole('alert')
+      .filter({ hasText: 'Add Windows drive folders on this computer' })
+      .filter({ hasText: windowsPath })
+    await expect(notice).toBeVisible({ timeout: 30_000 })
+    await settleAnimations(page)
+    await page.screenshot({ path: testInfo.outputPath(screenshot) })
+    await notice.getByRole('button', { name: 'Add on this computer' }).click()
+    // The open dialog switches its own host (the renderer is told it runs on Windows here).
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('combobox')).toContainText('Local Windows', { timeout: 30_000 })
+    await expect(notice).toBeHidden()
+    // The Windows path does not exist on this CI host, so the local add may hand off to another modal.
+    await page.evaluate(() => window.__store?.getState().closeModal())
+    await expect(dialog).toBeHidden()
+  }
   await pickFolder('C:\\Users\\me\\src')
-  await expect(page.getByText('Pick a folder inside Ubuntu.')).toBeVisible()
-  await settleAnimations(page)
-  await page.screenshot({ path: testInfo.outputPath('wsl-windows-folder-picker-drive.png') })
-  await page.keyboard.press('Escape')
+  await expectDriveRefusal('C:\\Users\\me\\src', 'wsl-windows-folder-picker-drive.png')
+  await pickFolder('\\\\wsl.localhost\\Ubuntu\\mnt\\c\\Users\\me\\work')
+  await expectDriveRefusal('C:\\Users\\me\\work', 'wsl-windows-folder-picker-drvfs.png')
+  await pickFolder(uncPick)
+  await expect(manual.locator('#server-project-path')).toHaveValue(projectPath, { timeout: 30_000 })
+  await manual.locator('#server-project-path').fill('/mnt/d/typed/app')
+  await manual.getByRole('button', { name: /Add Git Project/i }).click()
+  await expectDriveRefusal('D:\\typed\\app', 'wsl-typed-drvfs-path.png')
   await cdp.send('Emulation.setUserAgentOverride', { userAgent: '' })
   await cdp.detach()
 }

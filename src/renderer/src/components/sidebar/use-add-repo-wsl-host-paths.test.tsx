@@ -47,7 +47,8 @@ function setup(initial: { selectedHostId: ExecutionHostId | null; dropped?: stri
         droppedHostPath,
         selectedHostId,
         setServerPath,
-        setStep
+        setStep,
+        onWindowsDriveRefusal: vi.fn()
       }),
     { initialProps: { selectedHostId: initial.selectedHostId, isOpen: true } }
   )
