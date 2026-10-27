@@ -220,7 +220,8 @@ export function createGenerationStore(options: {
     const paired = await readPairedHostKeys()
     for (const host of await listHostDirectories()) {
       if (!paired.has(host.name)) {
-        await dropHostTree(host.name)
+        // One undeletable folder must not keep the rest.
+        await dropHostTree(host.name).catch(() => undefined)
       }
     }
   }

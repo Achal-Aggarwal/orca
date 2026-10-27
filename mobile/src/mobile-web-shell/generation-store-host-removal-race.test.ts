@@ -7,7 +7,10 @@ import {
 } from './generation-file-system-fake'
 
 const fake = vi.hoisted(
-  (): { fileSystem: FakeGenerationFileSystem | null; pairedHostIds: () => Promise<string[]> } => ({
+  (): {
+    fileSystem: FakeGenerationFileSystem | null
+    pairedHostIds: () => Promise<string[]>
+  } => ({
     fileSystem: null,
     pairedHostIds: async () => []
   })

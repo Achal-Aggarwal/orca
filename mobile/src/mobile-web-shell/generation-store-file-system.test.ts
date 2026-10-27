@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Model only the directory calls the store root and its migration make, over a set of existing paths.
-const disk = vi.hoisted(() => ({ directories: new Set<string>() }))
+const disk = vi.hoisted((): { directories: Set<string>; excludedFromBackup: string[] } => ({
+  directories: new Set(),
+  excludedFromBackup: []
+}))
+
+vi.mock('../../modules/orca-mobile-web-shell/src', () => ({
+  excludeFromBackup: async (path: string) => {
+    disk.excludedFromBackup.push(path)
+  }
+}))
 
 vi.mock('expo-file-system', () => {
   class Directory {
@@ -21,10 +30,15 @@ vi.mock('expo-file-system', () => {
     delete(): void {
       disk.directories.delete(this.uri)
     }
+    create(): void {
+      disk.directories.add(this.uri)
+    }
   }
   return {
     Directory,
-    File: class {},
+    File: class {
+      exists = false
+    },
     Paths: { cache: 'file:///app/cache', document: 'file:///app/files' }
   }
 })
@@ -40,10 +54,12 @@ const ROOT = 'file:///app/files/mobile-web'
 describe('the store root', () => {
   beforeEach(() => {
     disk.directories.clear()
+    disk.excludedFromBackup = []
   })
 
-  it('lives outside the cache directory the OS purges', () => {
-    expect(createExpoGenerationFileSystem().rootUri).toBe(ROOT)
+  it('keeps the store root out of device backups', () => {
+    createExpoGenerationFileSystem()
+    expect(disk.excludedFromBackup).toEqual(['/app/files/mobile-web'])
   })
 
   it('adopts the tree an earlier build kept in the cache directory', () => {
