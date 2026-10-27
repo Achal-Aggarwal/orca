@@ -4,8 +4,14 @@ Default to free GitHub-hosted standard runners: the repository is public and the
 Enterprise plan allows 500 concurrent jobs (50 macOS). Use Blacksmith only for:
 
 - PR critical-path jobs: unit test shards, preflight and typecheck, and `e2e.yml`.
-- Packaging and builds, including release and adhoc/dev-channel builds.
+- Adhoc builds (a developer is waiting) and release packaging, including
+  `release-mac-build.yml`.
 - Hardware-sensitive performance benchmarks.
+
+Everything else, including hourly and daily dev builds and node-server lanes, runs
+on hosted `ubuntu-*`, `macos-15` and `windows-2022` images. Do not use paid GitHub
+larger runners: they cost more than Blacksmith at every size and Enterprise
+included minutes do not cover them.
 
 On Blacksmith, small routing and reporting jobs use 2 vCPUs; most test jobs use
 4; compilation and shared JavaScript builds use 8. Mac checks use the 6-vCPU
