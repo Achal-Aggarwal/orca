@@ -65,7 +65,6 @@ it('clears Google paths/partitions and preserves other sites across a graceful E
         registry.updateProfileSource('default', { browserFamily: 'manual', importedAt: 1 })
         const unrelated = await registry.createProfile('isolated', 'Pending')
         if (!unrelated) throw new Error('fixture profile unavailable')
-        registry.setPendingCookieImport(unrelated.partition, ${JSON.stringify(join(root, 'pending.sqlite'))})
         const pending = meta().pendingCookieImports
         pending[unrelated.partition] = { format: 'future-fixture', path: ${JSON.stringify(join(root, 'pending.sqlite'))} }
         writeFileSync(${JSON.stringify(join(root, 'pending.sqlite'))}, '')
