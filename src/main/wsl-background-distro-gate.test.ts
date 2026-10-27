@@ -63,8 +63,9 @@ describe('the stop settle window', () => {
   it('starts no running read inside the window, even when a timer fires early', async () => {
     // Node truncates timer delays to whole ms on a ms clock, so a wake can land ~2ms short.
     const realSetTimeout = globalThis.setTimeout
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, ms?: number) =>
-      realSetTimeout(handler, Math.max(0, (ms ?? 0) - 2))) as typeof setTimeout)
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, ms, ...args) =>
+      realSetTimeout(handler, Math.max(0, (ms ?? 0) - 2), ...args)
+    )
     const probeStarts: number[] = []
     wslMocks.listRunningWslDistrosAsync.mockImplementation((options) =>
       resolveRunningWslDistros(async () => {
