@@ -40,7 +40,7 @@ import type { AgentSessionFailureFact } from '../../../../shared/agent-session-f
 import { NativeChatQueuedMessageEditor } from './NativeChatQueuedMessageEditor'
 import type { QueuedEditAttachTarget } from './use-native-chat-queued-edit-image-intake'
 import type { QueuedMessageInlineEditor } from './use-structured-agent-session-queued-edit'
-import { nativeChatImageLabel, nativeChatImageLabelCopy } from './native-chat-image-label'
+import { nativeChatImageLabelCopy } from './native-chat-image-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(
