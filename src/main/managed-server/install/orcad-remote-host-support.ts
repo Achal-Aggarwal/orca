@@ -56,9 +56,9 @@ export function posixProcessAliveShellFunction(
 export function posixProcessArgsShellFunction(): string {
   return (
     'orcad_args() { orcad_argv=$(ps -o args= -p "$1" 2>/dev/null) && [ -n "$orcad_argv" ] || ' +
-    'orcad_argv=$(tr "\\000" " " 2>/dev/null < "/proc/$1/cmdline") && [ -n "$orcad_argv" ] || ' +
+    '{ orcad_argv=$(tr "\\000" " " 2>/dev/null < "/proc/$1/cmdline") || return 1; ' +
     // Kernel threads and zombies have no argv; their stat line still names them.
-    'orcad_argv=$(cat "/proc/$1/stat" 2>/dev/null) || return 1; ' +
+    '[ -n "$orcad_argv" ] || orcad_argv=$(cat "/proc/$1/stat" 2>/dev/null) || return 1; }; ' +
     'printf "%s\\n" "$orcad_argv"; };'
   )
 }
