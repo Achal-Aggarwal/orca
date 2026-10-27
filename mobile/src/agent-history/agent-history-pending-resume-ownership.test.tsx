@@ -97,6 +97,31 @@ import { MobileAgentSessionHistoryPanel } from './MobileAgentSessionHistoryPanel
 import { useProvideSessionScreenHandlers } from '../session/session-screen-handlers'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+function ownedSession(): AiVaultSession {
+  return {
+    id: 'qoder:owned-session',
+    executionHostId: 'local',
+    agent: 'qoder',
+    sessionId: 'owned-session',
+    title: 'Owned session',
+    cwd: '/owned/workspace',
+    branch: null,
+    model: null,
+    filePath: '/owned/qoder-session.json',
+    codexHome: null,
+    createdAt: null,
+    updatedAt: null,
+    modifiedAt: '2026-10-04T00:00:00.000Z',
+    messageCount: 2,
+    totalTokens: 10,
+    previewMessages: [],
+    queuedMessageCount: 0,
+    subagentTranscriptCount: 0,
+    resumeCommand: '',
+    subagent: null
+  }
+}
 it.each([
   ['stable', 'metadata'],
   ['generation', 'metadata'],
@@ -126,28 +151,7 @@ it.each([
   state.completedBoundary = state.legacy || boundary === 'owned create accepted'
   state.generation = 1
   state.connection = 'connected'
-  state.session = {
-    id: 'qoder:owned-session',
-    executionHostId: 'local',
-    agent: 'qoder',
-    sessionId: 'owned-session',
-    title: 'Owned session',
-    cwd: '/owned/workspace',
-    branch: null,
-    model: null,
-    filePath: '/owned/qoder-session.json',
-    codexHome: null,
-    createdAt: null,
-    updatedAt: null,
-    modifiedAt: '2026-10-04T00:00:00.000Z',
-    messageCount: 2,
-    totalTokens: 10,
-    previewMessages: [],
-    queuedMessageCount: 0,
-    subagentTranscriptCount: 0,
-    resumeCommand: '',
-    subagent: null
-  }
+  state.session = ownedSession()
   if (boundary === 'preparation' || boundary === 'terminal creation') {
     state.session.agent = 'codex'
     state.session.codexHome = '/Users/ada/Library/Application Support/orca/codex-runtime-home/home'
@@ -365,28 +369,7 @@ it('resuming into the session it was opened from shows the resumed terminal ther
   state.legacy = false
   state.generation = 1
   state.connection = 'connected'
-  state.session = {
-    id: 'qoder:owned-session',
-    executionHostId: 'local',
-    agent: 'qoder',
-    sessionId: 'owned-session',
-    title: 'Owned session',
-    cwd: '/owned/workspace',
-    branch: null,
-    model: null,
-    filePath: '/owned/qoder-session.json',
-    codexHome: null,
-    createdAt: null,
-    updatedAt: null,
-    modifiedAt: '2026-10-04T00:00:00.000Z',
-    messageCount: 2,
-    totalTokens: 10,
-    previewMessages: [],
-    queuedMessageCount: 0,
-    subagentTranscriptCount: 0,
-    resumeCommand: '',
-    subagent: null
-  }
+  state.session = ownedSession()
   const replies: Record<string, unknown> = {
     'repo.list': { repos: [{ id: 'owned-repo', path: '/owned/workspace', connectionId: null }] },
     'folderWorkspace.list': { workspaces: [] },

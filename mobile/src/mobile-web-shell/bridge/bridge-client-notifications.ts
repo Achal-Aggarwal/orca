@@ -31,7 +31,7 @@ export type BridgeClientNotifications = {
     viewport: { cols: number; rows: number }
   ) => void
   notifyForeground: (reason?: ForegroundNudgeReason) => void
-  notifyNavigate: (href: string, options?: { replace?: boolean }) => boolean
+  notifyNavigate: (href: string, replace?: boolean) => boolean
   notifyNavigateBack: () => boolean
   notifyExternalLink: (url: string) => boolean
   notifyStorageWrite: (key: string, value: string | null) => boolean
@@ -69,14 +69,14 @@ export function createBridgeClientNotifications(
       })
     },
     // Check grants before reporting navigation accepted; the closed shell notify union would otherwise drop the frame.
-    notifyNavigate: (href, options) =>
+    notifyNavigate: (href, replace = false) =>
       deps.hasGrant('navigate') &&
       post({
         v: BRIDGE_PROTOCOL_VERSION,
         type: 'notify',
         name: 'navigate',
         href,
-        ...(options?.replace ? { replace: true } : {})
+        ...(replace ? { replace: true } : {})
       }),
     // navigate-back uses the navigate grant; a same-named grant is not a capability this protocol declares.
     notifyNavigateBack: () =>

@@ -21,10 +21,11 @@ export function useProvideSessionScreenHandlers(
   current: SessionScreenHandlers
 ): void {
   const executionHost = useWorkspaceExecutionHost()
+  const { onFileOpenStart, onOpenedFileDiff, onResumedTerminal } = current
   const latestRef = useRef(current)
   useEffect(() => {
-    latestRef.current = current
-  })
+    latestRef.current = { onFileOpenStart, onOpenedFileDiff, onResumedTerminal }
+  }, [onFileOpenStart, onOpenedFileDiff, onResumedTerminal])
   // Register once per mount so a lower session's new callbacks cannot jump it above the visible one.
   useEffect(() => {
     const key = sessionKey(hostId, executionHost, worktreeId)

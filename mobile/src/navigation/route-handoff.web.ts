@@ -113,7 +113,7 @@ export function useRouteHandoff(): RouteHandoff {
         report('malformed-href', target)
         return 'refused'
       }
-      if (!client.notifyNavigate(target, { replace })) {
+      if (!client.notifyNavigate(target, replace)) {
         report('shell-refused', target)
         return 'refused'
       }
