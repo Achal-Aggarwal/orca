@@ -469,7 +469,7 @@ it.each([false, true])(
       if (!frame.result) {
         return state
       }
-      // SAFETY: Only the installed agentSession.subscribe dispatcher writes these test frames.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only the installed agentSession.subscribe dispatcher writes these frames; this test feeds its serialized events to the real reducer.
       const event = frame.result as AgentSessionSubscribeEvent
       return reduceStructuredAgentSession(state, { type: 'event', event })
     }, EMPTY_STRUCTURED_AGENT_SESSION)

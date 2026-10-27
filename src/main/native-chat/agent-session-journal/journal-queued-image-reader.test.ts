@@ -390,7 +390,7 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
             operations[bucket]++
           }
           // Array methods use the proxy receiver, counting every numeric read, including map/slice/splice.
-          // SAFETY: The trap forwards properties of plain journal arrays, leaving methods unbound.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This Proxy forwards plain array properties unchanged; unbound methods retain the Proxy receiver for counting.
           return target[key as keyof typeof target]
         }
       })

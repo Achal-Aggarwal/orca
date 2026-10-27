@@ -4,11 +4,13 @@ import { useSyncExternalStore, useCallback, type SetStateAction } from 'react'
 import type { MobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 
 // Text and its edit revision outlive the screen, including callbacks from an older mount.
-type Draft = {
+type DraftAttachments = {
+  images: PendingNativeChatImage[]
+  files: readonly PendingNativeChatFile[]
+}
+type Draft = Partial<DraftAttachments> & {
   text: string
   editGeneration: number
-  images?: PendingNativeChatImage[]
-  files?: readonly PendingNativeChatFile[]
 }
 
 const drafts = new Map<string, Draft>()
@@ -87,24 +89,23 @@ export function resetMobileNativeChatDraftStoreForTests(): void {
 
 const noImages: PendingNativeChatImage[] = []
 const noFiles: readonly PendingNativeChatFile[] = []
+const emptyAttachments: DraftAttachments = { images: noImages, files: noFiles }
 let attachmentId = 0
 export function nextMobileDraftAttachmentId(prefix: string): string {
   return `${prefix}-${++attachmentId}`
 }
 
-export function useMobileDraftAttachments<K extends 'images' | 'files'>(
+export function useMobileDraftAttachments<K extends keyof DraftAttachments>(
   scope: string | null,
   kind: K
 ) {
-  const empty = kind === 'images' ? noImages : noFiles
-  const read = () => (scope ? drafts.get(scope)?.[kind] : undefined) ?? empty
-  // SAFETY: the selected key and fallback always have Draft[K]'s element type.
-  const value = useSyncExternalStore(subscribe, read, read) as NonNullable<Draft[K]>
+  const empty = emptyAttachments[kind]
+  const read = (): DraftAttachments[K] => (scope ? drafts.get(scope)?.[kind] : undefined) ?? empty
+  const value = useSyncExternalStore(subscribe, read, read)
   const update = useCallback(
-    (key: string, change: (current: NonNullable<Draft[K]>) => NonNullable<Draft[K]>) => {
+    (key: string, change: (current: DraftAttachments[K]) => DraftAttachments[K]) => {
       const current = drafts.get(key) ?? { text: '', editGeneration: 0 }
-      // SAFETY: the key selects the same attachment type for reading and writing.
-      const next = change((current[kind] ?? empty) as NonNullable<Draft[K]>)
+      const next = change(current[kind] ?? empty)
       drafts.set(key, { ...current, [kind]: next })
       for (const listener of listeners) {
         listener()
