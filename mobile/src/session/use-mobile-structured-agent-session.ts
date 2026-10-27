@@ -28,7 +28,7 @@ import type {
   MobileStructuredAgentSessionArgs,
   StructuredMobileSession
 } from './mobile-structured-agent-session-contract'
-import type { MobileNativeChatVisualSource } from './mobile-native-chat-visual-read'
+import type { MobileNativeChatVisualSource } from './native-chat/visual/mobile-native-chat-visual-read'
 import { useMobileStructuredAgentState } from './use-mobile-structured-agent-state'
 import { useMobileStructuredStopPress } from './use-mobile-structured-stop-press'
 import { useMobileStructuredSessionHostStopping } from './use-mobile-structured-session-host-stopping'
@@ -93,6 +93,7 @@ export function useMobileStructuredAgentSession(
     sessionId,
     enabled: enabled && connected && hostSupport?.statusFeed === true
   })
+  const turnId = runningStructuredAgentSessionTurnId(state)
   const options = useMobileStructuredAgentOptions({
     agent,
     client,
@@ -101,6 +102,7 @@ export function useMobileStructuredAgentSession(
     fence: state.fence,
     mutate,
     optionStamp,
+    turnId,
     hostSupport
   })
   const { conversationCommands, invokeStructuredOption, optionSnapshot, setStructuredOption } =
@@ -146,7 +148,6 @@ export function useMobileStructuredAgentSession(
       ),
     [transcriptItems, sends.optimistic, state.submissions]
   )
-  const turnId = runningStructuredAgentSessionTurnId(state)
   const turnTiming = useMobileStructuredAgentTurnTiming(
     { ...state, items: transcriptItems },
     turnId

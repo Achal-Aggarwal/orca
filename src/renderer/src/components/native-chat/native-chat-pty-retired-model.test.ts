@@ -15,7 +15,7 @@ import {
   createNativeChatPtySessionOptions,
   type CreateNativeChatPtySessionOptionsArgs,
   type NativeChatPtySessionOptionsSurface
-} from './native-chat-pty-session-options'
+} from '../../../../shared/native-chat-pty-session-options'
 
 const discoveredGrok5 = (): ReturnType<typeof mergeDiscoveredAuthoritativeModels> =>
   mergeDiscoveredAuthoritativeModels(GROK_SESSION_OPTION_CATALOG.models, [
@@ -35,6 +35,7 @@ function createGrokSurface(
     agent: 'grok',
     scopeKey: 'pty-1',
     mode: 'live',
+    modelLabel: 'Model',
     dispatchCommand: vi.fn(),
     persistSelection: ({ modelId, optionId, value, adoptModelAsLaunchDefault }) => {
       persisted = updateNativeChatSessionOptionDefaults({
