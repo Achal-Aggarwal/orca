@@ -120,7 +120,8 @@ describe('terminal path helpers', () => {
       '/Users/a/Notes - Draft/x.md',
       'C:\\Users\\Me\\Q&A Docs\\x.txt',
       '/tmp/Foo.bar Docs/report.md',
-      '/tmp/My File.123'
+      '/tmp/My File.123',
+      'docs/My Archive.7z'
     ])('offers spaced folder names with symbols: %s', (path) => {
       expect(pathTexts(`open ${path}, then continue`)).toContain(path)
     })

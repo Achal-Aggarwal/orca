@@ -12,10 +12,21 @@ export type TerminalWebViewNotificationHandlers = Omit<
   reportEngineError: (message: string, fatal: boolean) => void
 }
 
+/** Counts the page's taps and input, so a withheld tap replays only if nothing newer happened. */
+export type TerminalInteractionCount = { current: number }
+
 export function dispatchTerminalWebViewNotification(
   msg: Record<string, unknown>,
-  handlers: TerminalWebViewNotificationHandlers
+  handlers: TerminalWebViewNotificationHandlers,
+  interactions: TerminalInteractionCount
 ) {
+  if (
+    msg.type === 'terminal-input' ||
+    msg.type === 'terminal-tap' ||
+    msg.type === 'terminal-file-tap'
+  ) {
+    interactions.current += 1
+  }
   if (msg.type === 'log') {
     const tag = typeof msg.tag === 'string' ? msg.tag : '[fit]'
     console.log(tag, msg.payload)
@@ -65,7 +76,7 @@ export function dispatchTerminalWebViewNotification(
   } else if (msg.type === 'terminal-file-tap') {
     const candidates = parseFileTapCandidates(msg.candidates)
     if (candidates.length > 0) {
-      handlers.onFileTap?.(candidates, fileTapFallback(msg.fallback, handlers))
+      handlers.onFileTap?.(candidates, fileTapFallback(msg.fallback, handlers, interactions))
     }
   } else if (msg.type === 'open-url') {
     const url = typeof msg.url === 'string' ? msg.url : ''
@@ -92,7 +103,8 @@ export function dispatchTerminalWebViewNotification(
 // Replays the ordinary tap the page withheld while the host checked the readings.
 function fileTapFallback(
   value: unknown,
-  handlers: TerminalWebViewNotificationHandlers
+  handlers: TerminalWebViewNotificationHandlers,
+  interactions: TerminalInteractionCount
 ): (() => void) | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined
@@ -100,7 +112,11 @@ function fileTapFallback(
   const clickInput =
     'clickInput' in value && typeof value.clickInput === 'string' ? value.clickInput : ''
   const focus = 'focus' in value && value.focus === true
+  const interaction = interactions.current
   return () => {
+    if (interactions.current !== interaction) {
+      return
+    }
     if (clickInput.length > 0) {
       handlers.onTerminalInput?.(clickInput, { click: true })
     }
