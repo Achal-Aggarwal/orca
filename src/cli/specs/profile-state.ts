@@ -1,11 +1,12 @@
 import type { CommandSpec } from '../args'
+import { LOCAL_COMMAND_FLAGS } from '../args'
 
 export const PROFILE_STATE_COMMAND_SPECS: CommandSpec[] = [
   {
     path: ['profile', 'state', 'exports'],
     summary: 'List retained SQLite backups and JSON exports for profile-state recovery',
     usage: 'orca profile state exports [--profile-id <id>] [--json]',
-    allowedFlags: ['help', 'json', 'profile-id']
+    allowedFlags: [...LOCAL_COMMAND_FLAGS, 'profile-id']
   },
   {
     path: ['profile', 'state', 'rollback'],
@@ -15,8 +16,7 @@ export const PROFILE_STATE_COMMAND_SPECS: CommandSpec[] = [
     usage:
       'orca profile state rollback (--repair | --backup <id> | --revision <revision> | --current-json | --current-sqlite | --latest-json) [--profile-id <id>] [--json]',
     allowedFlags: [
-      'help',
-      'json',
+      ...LOCAL_COMMAND_FLAGS,
       'repair',
       'revision',
       'backup',
