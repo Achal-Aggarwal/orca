@@ -16,12 +16,11 @@ import {
 } from './mobile-web-shell-update-failure'
 import { updateFailureOutcomeOf } from './mobile-web-shell-update-failure-outcome'
 import {
-  awaitsGates,
   cachedGenerationWall,
   CHECKING,
-  gateKey,
   gateState,
   gateVerdict,
+  reduceGatesChanged,
   ROUTE_UNAVAILABLE
 } from './mobile-web-shell-gates'
 import { pageRouteRefusalVerdict, routeViewOf, sameRouteView } from './page-route-policy'
@@ -47,6 +46,7 @@ export function createMobileWebShellSession(
     state: CHECKING,
     retriedOnce: false,
     remountedOnce: false,
+    retryOnReconnect: false,
     pageReady: false,
     pagePainted: false,
     documentLoaded: false,
@@ -70,6 +70,7 @@ function startFlow(
   const base = {
     updateNotice: null,
     requestedBuildId: null,
+    retryOnReconnect: false,
     ...patch,
     gates,
     flow: session.flow + 1
@@ -78,7 +79,7 @@ function startFlow(
   if (gated !== null) {
     return step(session, { ...base, state: gated }, before)
   }
-  // Offline still sweeps/reads cache; onCacheRead skips only the host compatibility check.
+  // Offline still reads cache; onCacheRead skips only the host compatibility check.
   return step(session, { ...base, state: CHECKING }, [...before, { kind: 'open-cache' }])
 }
 
@@ -209,7 +210,9 @@ function decideDownloadFailed(
   const gates = session.gates
   if (cached === null || gates === null) {
     return step(session, {
-      state: { kind: 'failed', reason: 'download-failed', retriedOnce: session.retriedOnce }
+      state: { kind: 'failed', reason: 'download-failed', retriedOnce: session.retriedOnce },
+      // Only link loss: a host refusal would refuse the retry too.
+      retryOnReconnect: readFailureSide(cause.reason) === 'transport'
     })
   }
   // Read current gates because they can change while fetching without restarting the flow.
@@ -249,10 +252,7 @@ export function reduceMobileWebShellSession(
   }
   switch (event.type) {
     case 'gates-changed':
-      return awaitsGates(session.state) &&
-        (session.gates === null || gateKey(session.gates) !== gateKey(event.gates))
-        ? startFlow(session, event.gates)
-        : step(session, { gates: event.gates })
+      return reduceGatesChanged(session, event.gates, startFlow)
     case 'cache-read':
       return onCacheRead(session, event.generation)
     case 'manifest-read':

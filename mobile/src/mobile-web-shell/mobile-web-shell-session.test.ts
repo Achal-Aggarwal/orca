@@ -292,6 +292,32 @@ describe('a read the link cut short falls back to what is on disk', () => {
     expect(withoutRecord(step.effects)).toEqual([])
   })
 
+  it('downloads again without a tap once the lost link is back, and only then', () => {
+    const failed = run(afterCacheRead(null).session, { type: 'download-failed', cause: LINK_LOST })
+    const away = run(failed.session, {
+      type: 'gates-changed',
+      gates: gates({ reachability: 'connecting' })
+    })
+    expect(away.session.state).toEqual(failed.session.state)
+    expect(away.effects).toEqual([])
+
+    const back = run(away.session, { type: 'gates-changed', gates: gates() })
+    expect(back.session.state).toEqual({ kind: 'checking' })
+    expect(back.effects).toEqual([{ kind: 'open-cache' }])
+  })
+
+  it('waits for Try again after a host refusal, however the link comes and goes', () => {
+    const failed = run(afterCacheRead(null).session, {
+      type: 'download-failed',
+      cause: BUNDLE_REFUSED
+    })
+    const away = run(failed.session, {
+      type: 'gates-changed',
+      gates: gates({ reachability: 'connecting' })
+    })
+    expect(run(away.session, { type: 'gates-changed', gates: gates() }).effects).toEqual([])
+  })
+
   it('leaves no notice on it, because nothing says an update was there to fail', () => {
     // Link loss before manifest receipt cannot prove an update existed.
     const step = run(manifestInFlight().session, { type: 'download-failed', cause: LINK_LOST })

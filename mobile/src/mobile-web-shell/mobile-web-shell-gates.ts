@@ -5,8 +5,11 @@ import {
 import type {
   MobileWebShellBlockedVerdict,
   MobileWebShellGates,
-  MobileWebShellSessionState
+  MobileWebShellSession,
+  MobileWebShellSessionState,
+  MobileWebShellStep
 } from './mobile-web-shell-session-contract'
+import { step } from './mobile-web-shell-session-step'
 
 // Reuse state identities so equivalent transitions do not cause extra renders.
 export const CHECKING: MobileWebShellSessionState = { kind: 'checking' }
@@ -88,7 +91,19 @@ export function cachedGenerationWall(
   return blocked.kind === 'blocked' ? blocked : null
 }
 
-// Compare verdicts instead of rebuilt gate objects so unchanged reconnect/status events cannot resweep cache and flicker the spinner.
+// Compare verdicts instead of rebuilt gate objects so unchanged reconnect/status events cannot reread cache and flicker the spinner.
 export function gateKey(gates: MobileWebShellGates): string {
   return gateVerdict(gates).kind
+}
+
+// Restart only on a changed verdict so unchanged reconnect/status events cannot rerun the flow.
+export function reduceGatesChanged(
+  session: MobileWebShellSession,
+  gates: MobileWebShellGates,
+  restart: (session: MobileWebShellSession, gates: MobileWebShellGates) => MobileWebShellStep
+): MobileWebShellStep {
+  const changed = session.gates === null || gateKey(session.gates) !== gateKey(gates)
+  const waiting =
+    awaitsGates(session.state) || (session.retryOnReconnect && gateVerdict(gates).kind === 'open')
+  return changed && waiting ? restart(session, gates) : step(session, { gates })
 }
