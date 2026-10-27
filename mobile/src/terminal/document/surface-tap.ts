@@ -30,6 +30,7 @@ export function notifyTerminalSurfaceTap(
   }
   const cell = viewportToCell(scope, originX, originY)
   const term = scope.term
+  let candidates: ParsedFileLinkLocation[] = []
   if (cell && term) {
     // Desktop's link detectors take 1-based cells and rebuild rows that wrap.
     const position = { x: cell.col + 1, y: cell.row + 1 }
@@ -39,25 +40,30 @@ export function notifyTerminalSurfaceTap(
       notify(scope, { type: 'open-url', url })
       return
     }
-    const candidates = uniqueFileTapCandidates(
+    candidates = uniqueFileTapCandidates(
       findTerminalFileLinksAtBufferPosition(buffer, position, term.cols)
     )
-    if (candidates.length > 0) {
-      notify(scope, { type: 'terminal-file-tap', candidates })
-      return
-    }
   }
   const clickInput = buildMouseClickInput(scope, originX, originY)
+  // Touch still needs native focus after TUI clicks; unproven mouse encoding falls back to a plain tap.
+  const focus =
+    focusKeyboard ||
+    !isClickMouseTrackingMode(getMouseTrackingMode(scope)) ||
+    !scope.mouseEncodingKnown
+  if (candidates.length > 0) {
+    // Why: readings are guesses; the host replays this tap when none of them exists.
+    notify(scope, {
+      type: 'terminal-file-tap',
+      candidates,
+      fallback: { clickInput, focus }
+    })
+    return
+  }
   if (clickInput) {
     // Flush pending live text before a click can move the TUI cursor.
     notify(scope, { type: 'terminal-input', bytes: clickInput, click: true })
   }
-  // Touch still needs native focus after TUI clicks; unproven mouse encoding falls back to a plain tap.
-  if (
-    focusKeyboard ||
-    !isClickMouseTrackingMode(getMouseTrackingMode(scope)) ||
-    !scope.mouseEncodingKnown
-  ) {
+  if (focus) {
     notify(scope, { type: 'terminal-tap' })
   }
 }

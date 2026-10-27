@@ -14,7 +14,7 @@ import type { RpcOperationSender } from '../transport/rpc-operation-sender'
 import type { RpcResponse } from '../transport/types'
 
 // Hard-wrap guesses can number in the hundreds; stay far below the page bridge's 64 pending requests.
-const FILE_TAP_RESOLVE_CONCURRENCY = 8
+const FILE_TAP_RESOLVE_CONCURRENCY = 16
 
 export type FileTapSessionTab = {
   id: string
@@ -51,6 +51,8 @@ export type OpenMobileFileTapOptions<T extends FileTapSessionTab> = {
   scheduleDelayedAction: (callback: () => void, delayMs: number) => unknown
   // Optional feedback; callers without it retain silent best-effort misses.
   onOpenFailed?: () => void
+  // Why: readings are guesses, so a terminal tap on prose that names no file stays an ordinary tap.
+  onNoFile?: () => void
 }
 
 export function openMobileFileTap<T extends FileTapSessionTab>(
@@ -129,7 +131,11 @@ async function openMobileFileTapAsync<T extends FileTapSessionTab>(
     undefined
   )
   if (!found?.resolved) {
-    reportOpenFailure(options)
+    if (!options.onNoFile) {
+      reportOpenFailure(options)
+    } else if (shouldActivateOpenedMobileSessionTab(options.getActivationState(false))) {
+      options.onNoFile()
+    }
     return
   }
   const { target } = found

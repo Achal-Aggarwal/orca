@@ -277,7 +277,8 @@ describe('terminal WebView tap routing', () => {
 
     expect(posted.find((m) => m.type === 'terminal-file-tap')).toEqual({
       type: 'terminal-file-tap',
-      candidates: [{ pathText: '/tmp/result.json', line: 12, column: 3 }]
+      candidates: [{ pathText: '/tmp/result.json', line: 12, column: 3 }],
+      fallback: { clickInput: '', focus: true }
     })
   })
 

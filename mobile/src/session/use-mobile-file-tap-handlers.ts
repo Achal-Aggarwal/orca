@@ -28,7 +28,11 @@ type MobileFileTapHandlerOptions<T extends FileTapSessionTab> = {
 export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
   options: MobileFileTapHandlerOptions<T>
 ): {
-  handleFileTap: (handle: string, candidates: readonly ParsedFileLinkLocation[]) => void
+  handleFileTap: (
+    handle: string,
+    candidates: readonly ParsedFileLinkLocation[],
+    onNoFile?: () => void
+  ) => void
   handleNativeChatFileTap: (pathText: string) => void
 } {
   const {
@@ -92,7 +96,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
   ])
 
   const handleFileTap = useCallback(
-    (handle: string, candidates: readonly ParsedFileLinkLocation[]) => {
+    (handle: string, candidates: readonly ParsedFileLinkLocation[], onNoFile?: () => void) => {
       const current = optionsRef.current
       if (
         handle !== current.activeHandleRef.current ||
@@ -125,7 +129,8 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
           activeTabType: current.getActiveSessionTabType()
         }),
         switchSessionTab: current.switchSessionTab,
-        scheduleDelayedAction: current.scheduleDelayedAction
+        scheduleDelayedAction: current.scheduleDelayedAction,
+        onNoFile
       })
     },
     []

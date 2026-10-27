@@ -65,7 +65,7 @@ export function dispatchTerminalWebViewNotification(
   } else if (msg.type === 'terminal-file-tap') {
     const candidates = parseFileTapCandidates(msg.candidates)
     if (candidates.length > 0) {
-      handlers.onFileTap?.(candidates)
+      handlers.onFileTap?.(candidates, fileTapFallback(msg.fallback, handlers))
     }
   } else if (msg.type === 'open-url') {
     const url = typeof msg.url === 'string' ? msg.url : ''
@@ -86,6 +86,27 @@ export function dispatchTerminalWebViewNotification(
     }
   } else if (msg.type === 'mobile-clip-cancel-by-pinch') {
     console.warn('[mobile-clip] selection cancelled by pinch')
+  }
+}
+
+// Replays the ordinary tap the page withheld while the host checked the readings.
+function fileTapFallback(
+  value: unknown,
+  handlers: TerminalWebViewNotificationHandlers
+): (() => void) | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const clickInput =
+    'clickInput' in value && typeof value.clickInput === 'string' ? value.clickInput : ''
+  const focus = 'focus' in value && value.focus === true
+  return () => {
+    if (clickInput.length > 0) {
+      handlers.onTerminalInput?.(clickInput, { click: true })
+    }
+    if (focus) {
+      handlers.onTerminalTap?.()
+    }
   }
 }
 

@@ -28,7 +28,11 @@ type TerminalPaneViewProps = {
   onTerminalInput: (handle: string, bytes: string, input?: TerminalPointerInput) => void
   onTerminalQueryReply: (handle: string, bytes: string) => void
   onTerminalTap: (handle: string) => void
-  onFileTap: (handle: string, candidates: readonly ParsedFileLinkLocation[]) => void
+  onFileTap: (
+    handle: string,
+    candidates: readonly ParsedFileLinkLocation[],
+    onNoFile?: () => void
+  ) => void
   onOpenUrl: (handle: string, url: string) => void
   onTextScaleChange: (scale: number) => void
   onCellBoxChange: (handle: string) => void
@@ -92,7 +96,7 @@ export function TerminalPaneView({
         onTerminalInput={(bytes, input) => onTerminalInput(handle, bytes, input)}
         onTerminalQueryReply={(bytes) => onTerminalQueryReply(handle, bytes)}
         onTerminalTap={() => onTerminalTap(handle)}
-        onFileTap={(candidates) => onFileTap(handle, candidates)}
+        onFileTap={(candidates, onNoFile) => onFileTap(handle, candidates, onNoFile)}
         onOpenUrl={(url) => onOpenUrl(handle, url)}
         onTextScaleChange={onTextScaleChange}
         onCellBoxChange={() => onCellBoxChange(handle)}

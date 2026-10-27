@@ -79,7 +79,8 @@ export type TerminalSelectionEvents = {
   onTerminalQueryReply?: (bytes: string) => void
   onTerminalTap?: () => void
   // Every reading of the tapped text (hard wraps, overlapping detections); like desktop, the longest that exists opens.
-  onFileTap?: (candidates: readonly ParsedFileLinkLocation[]) => void
+  // `onNoFile` replays the ordinary tap when none exists.
+  onFileTap?: (candidates: readonly ParsedFileLinkLocation[], onNoFile?: () => void) => void
   onOpenUrl?: (url: string) => void
   // Persist snapped text-size presets so Settings and other panes follow terminal pinches.
   onTextScaleChange?: (scale: number) => void
