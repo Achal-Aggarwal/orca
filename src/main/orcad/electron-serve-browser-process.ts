@@ -152,10 +152,7 @@ export class ElectronServeBrowserProcess {
       // Startup checks membership before resolving commands dynamically.
       has: (_target, property) => typeof property === 'string' && property !== 'then',
       get: (_target, property) => {
-        if (property === 'then') {
-          return undefined
-        }
-        if (typeof property !== 'string') {
+        if (property === 'then' || typeof property !== 'string') {
           return undefined
         }
         return (...args: unknown[]) => this.invoke(host, property, args)
