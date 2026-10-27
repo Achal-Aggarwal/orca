@@ -10,7 +10,13 @@ export function observeStructuredAttentionWork(
   journal: AgentSessionJournal,
   store: AgentSessionRecordStore
 ) {
-  type SnapshotCost = { phase: string; items: number; submissions: number; work: number }
+  type SnapshotCost = {
+    phase: string
+    items: number
+    submissions: number
+    materialization: number
+    work: number
+  }
   const snapshots: SnapshotCost[] = []
   const provenance: {
     caller: string | null
@@ -40,11 +46,12 @@ export function observeStructuredAttentionWork(
       phase,
       items: result.items.length,
       submissions: result.submissions.length,
+      materialization: counts.callbacks + counts.copies + counts.mapValues,
       work: counts.callbacks + counts.copies + counts.mapValues
     }
     snapshots.push(cost)
     const countSearch = <T>(values: T[]) => {
-      const find = values.find.bind(values)
+      const find = Array.prototype.find.bind(values)
       vi.spyOn(values, 'find').mockImplementation((predicate, thisArg) =>
         find((value, index, array) => {
           cost.work += 1
@@ -98,11 +105,18 @@ export function observeStructuredAttentionWork(
   }
 }
 
-export function assertSnapshotCosts(costs: { items: number; submissions: number; work: number }[]) {
+export function assertSnapshotCosts(
+  costs: { items: number; submissions: number; materialization: number; work: number }[]
+) {
   expect(costs.length).toBeGreaterThan(0)
   for (const cost of costs) {
     const { items: i, submissions: s } = cost
-    expect(cost.work).toBeGreaterThan(i + s)
+    if (cost.materialization > 0) {
+      expect(cost.work).toBeGreaterThan(i + s)
+    } else {
+      expect(cost.work).toBeGreaterThan(0)
+      expect(cost.work).toBeLessThanOrEqual(i + s)
+    }
     expect(cost.work).toBeLessThanOrEqual(
       4 * (i + s) + 8 * (i * Math.ceil(Math.log2(i + 1)) + s * Math.ceil(Math.log2(s + 1)))
     )

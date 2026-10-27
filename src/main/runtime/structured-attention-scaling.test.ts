@@ -24,7 +24,8 @@ it.each([
     expect(flow.starts()).toBe(subscribers)
     const rootCosts = flow.snapshots.filter((cost) => cost.phase === 'new-root')
     expect(rootCosts).toHaveLength(1)
-    expect(rootCosts[0]).toMatchObject({ items: items + 1, submissions })
+    expect(rootCosts[0]).toMatchObject({ items: items + 1, submissions, materialization: 0 })
+    assertSnapshotCosts(flow.snapshots.filter((cost) => cost.materialization > 0))
     assertSnapshotCosts(rootCosts)
     flow.reset()
     const rootId = agentJournalItemKey({
@@ -72,7 +73,9 @@ it.each([
       candidates: 1,
       filters: 1
     })
-    assertSnapshotCosts(flow.snapshots.filter((cost) => cost.phase === 'provenance'))
+    const attributionCosts = flow.snapshots.filter((cost) => cost.phase === 'provenance')
+    expect(attributionCosts.every((cost) => cost.materialization === 0)).toBe(true)
+    assertSnapshotCosts(attributionCosts)
     console.info('host-history-scaling', {
       items,
       submissions,
