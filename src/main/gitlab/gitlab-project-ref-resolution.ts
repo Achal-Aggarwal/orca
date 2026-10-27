@@ -75,14 +75,28 @@ export async function getProjectRefForRemote(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<ProjectRef | null> {
+  return getProjectRefForRemoteWithSignature(
+    readLocalGitConfigSignature({ repoPath, connectionId, ...localGitOptions }),
+    repoPath,
+    remoteName,
+    knownHosts,
+    connectionId,
+    localGitOptions
+  )
+}
+
+export async function getProjectRefForRemoteWithSignature(
+  initialSignature: Promise<string | undefined>,
+  repoPath: string,
+  remoteName: string,
+  knownHosts: readonly string[] = DEFAULT_GITLAB_HOSTS,
+  connectionId?: string | null,
+  localGitOptions: LocalGitExecOptions = {}
+): Promise<ProjectRef | null> {
   // Authenticated host inventory participates in cache identity so new logins invalidate old misses.
   const runtimeKey = connectionId ?? `local:${localGitOptions.wslDistro ?? 'host'}`
   const cacheKey = `${runtimeKey}\0${repoPath}\0${remoteName}\0${knownHosts.join(',')}`
-  const configSignature = await readLocalGitConfigSignature({
-    repoPath,
-    connectionId,
-    ...localGitOptions
-  })
+  const configSignature = await initialSignature
   const cached = projectRefCache.get(cacheKey)
   if (cached) {
     if (
@@ -120,10 +134,9 @@ async function resolveProjectRefForRemote(
   configSignature: string | undefined
 ): Promise<ProjectRef | null> {
   // Abandoned probes may answer their callers but must not overwrite newer cached identity.
-  const publish = async (value: ProjectRef | null): Promise<void> => {
-    const after = await readLocalGitConfigSignature({ repoPath, connectionId, ...localGitOptions })
+  const publish = (value: ProjectRef | null): void => {
     if (ownsKey()) {
-      rememberProjectRefCacheEntry(cacheKey, value, after === configSignature ? after : undefined)
+      rememberProjectRefCacheEntry(cacheKey, value, configSignature)
     }
   }
   try {
@@ -141,7 +154,7 @@ async function resolveProjectRefForRemote(
     }
     const result = parseGitLabProjectRef(stdout, knownHosts)
     if (result) {
-      await publish(result)
+      publish(result)
       return result
     }
     const remoteCandidate = parseRemoteProjectRefCandidate(stdout)
@@ -155,7 +168,7 @@ async function resolveProjectRefForRemote(
       ))
     ) {
       rememberGlabKnownHost(remoteCandidate.host, connectionId, localGitOptions)
-      await publish(remoteCandidate)
+      publish(remoteCandidate)
       return remoteCandidate
     }
   } catch (error) {
@@ -164,7 +177,7 @@ async function resolveProjectRefForRemote(
       return null
     }
   }
-  await publish(null)
+  publish(null)
   return null
 }
 

@@ -138,27 +138,55 @@ describe('gitlab project ref resolution', () => {
     }
   )
 
-  it('does not sign a cached identity when config changes during the probe', async () => {
-    readLocalGitConfigSignatureMock.mockResolvedValueOnce('sig-1').mockResolvedValue('sig-2')
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'git@gitlab.com:team/project.git' })
-    await getProjectRefForRemote('/repo', 'origin')
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'git@github.com:team/project.git' })
+  it.each(['before capture', 'after capture', 'late publication'])(
+    'refreshes on the next independent signature after an edit (%s)',
+    async (ordering) => {
+      const captured = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<{ stdout: string }>()
+      const oldUrl = 'git@gitlab.com:team/old.git'
+      const newUrl = 'git@gitlab.com:team/current.git'
+      readLocalGitConfigSignatureMock.mockResolvedValue('sig-0')
+      gitExecFileAsyncMock
+        .mockImplementationOnce(() => {
+          captured.resolve()
+          return release.promise
+        })
+        .mockResolvedValue({ stdout: newUrl })
+      const old = getProjectRefForRemote('/repo', 'origin')
+      await captured.promise
+      readLocalGitConfigSignatureMock.mockResolvedValue('sig-1')
+      if (ordering === 'late publication') {
+        expect((await getProjectRefForRemote('/repo', 'origin'))?.path).toBe('team/current')
+      }
+      release.resolve({ stdout: ordering === 'before capture' ? newUrl : oldUrl })
+      expect((await old)?.path).toBe(ordering === 'before capture' ? 'team/current' : 'team/old')
+      expect((await getProjectRefForRemote('/repo', 'origin'))?.path).toBe('team/current')
+      const reads = gitExecFileAsyncMock.mock.calls.length
+      expect(reads).toBe(ordering === 'late publication' ? 3 : 2)
+      expect((await getProjectRefForRemote('/repo', 'origin'))?.path).toBe('team/current')
+      expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(reads)
+    }
+  )
 
-    await expect(getProjectRefForRemote('/repo', 'origin')).resolves.toBeNull()
-    expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('prefers upstream for issue project ref resolution', async () => {
+  it('returns upstream before a slow origin, retaining the late origin cache fill', async () => {
     mockGitRemoteCommands({
       origin: 'git@gitlab.com:fork/orca.git\n',
       upstream: 'git@gitlab.com:stablyai/orca.git\n'
     })
 
+    const origin = Promise.withResolvers<{ stdout: string }>()
+    const serve = gitExecFileAsyncMock.getMockImplementation()
+    gitExecFileAsyncMock.mockImplementation((args: string[]) =>
+      args[1] === 'get-url' && args[2] === 'origin' ? origin.promise : serve?.(args)
+    )
     await expect(getIssueProjectRef('/repo')).resolves.toEqual({
       host: 'gitlab.com',
       path: 'stablyai/orca'
     })
     expect(gitRemoteGetUrlCalls('upstream')).toHaveLength(1)
+    origin.resolve({ stdout: 'git@gitlab.com:fork/orca.git' })
+    expect((await getProjectRef('/repo'))?.path).toBe('fork/orca')
+    expect(gitRemoteGetUrlCalls('origin')).toHaveLength(1)
   })
 
   it('does not spawn git remote get-url upstream on an origin-only clone', async () => {
@@ -177,18 +205,25 @@ describe('gitlab project ref resolution', () => {
     expect(gitRemoteGetUrlCalls('origin')).toHaveLength(1)
   })
 
-  it('falls back to origin when upstream is present but non-GitLab', async () => {
+  it('falls back on an upstream timeout and retries upstream on the next attempt', async () => {
     mockGitRemoteCommands({
       origin: 'git@gitlab.com:fork/orca.git\n',
       upstream: 'git@example.com:stablyai/orca.git\n'
     })
 
+    const serve = gitExecFileAsyncMock.getMockImplementation()
+    gitExecFileAsyncMock.mockImplementation((args: string[]) =>
+      args[2] === 'upstream' ? Promise.reject(new Error('git timed out')) : serve?.(args)
+    )
     await expect(getIssueProjectRef('/repo')).resolves.toEqual({
       host: 'gitlab.com',
       path: 'fork/orca'
     })
     expect(gitRemoteGetUrlCalls('upstream')).toHaveLength(1)
     expect(gitRemoteGetUrlCalls('origin')).toHaveLength(1)
+    mockGitRemoteCommands({ upstream: 'git@gitlab.com:team/recovered.git' })
+    expect((await getIssueProjectRef('/repo'))?.path).toBe('team/recovered')
+    expect(gitRemoteGetUrlCalls('upstream')).toHaveLength(2)
   })
 
   it('finds the GitLab project on other remotes, preferring one named gitlab like glab', async () => {
