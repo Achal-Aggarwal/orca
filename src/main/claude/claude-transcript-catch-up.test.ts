@@ -13,6 +13,9 @@ import { projectJournalBatch } from '../native-chat/agent-session-wire/agent-ses
 import { replacePage, mergeItems } from '../../shared/structured-agent-session-history-state'
 import { AgentJournalRenderItemSchema } from '../../shared/agent-session-journal-schemas'
 import { projectStructuredItemToNativeChat } from '../../shared/structured-agent-session-projection'
+import { agentSessionSendBodyFingerprint } from '../../shared/structured-agent-session-send-mutation'
+import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import { childExited, sessionFor, userMessage } from './claude-structured-dispatch-test-support'
 import {
   SESSION,
   SID,
@@ -27,6 +30,83 @@ import {
 } from './claude-transcript-catch-up-test-support'
 
 describe('Claude chat catch-up', () => {
+  it.each([false, true])(
+    'recognizes an unacknowledged local prompt; equal external input: %s',
+    async (outside) => {
+      const c = await chat()
+      await c.live()
+      const body = userMessage([{ type: 'text', text: 'same prompt' }])
+      const clientMessageId = 'unacknowledged'
+      await c.journal.appendSubmission({
+        clientMessageId,
+        body,
+        fence: 1,
+        payloadFingerprint: agentSessionSendBodyFingerprint(SESSION, body)
+      })
+      const send = vi.fn().mockResolvedValue(undefined)
+      const session = sessionFor(send)
+      session.providerSessionId = SID
+      await dispatchClaudeTurn(session, { sessionId: SESSION, clientMessageId, body })
+      const uuid = String(send.mock.calls[0]![0].uuid)
+      childExited(session)
+      await c.journal.resolveDispatch({
+        clientMessageId,
+        fence: 1,
+        state: 'unknown',
+        reason: 'provider_closed_before_acknowledgement'
+      })
+      const before = c.journal.snapshot()
+      await c.journal.close()
+      const reopened = await c.replay()
+      c.deferred.bind({ journal: reopened, fence: 1, publish: () => {} })
+      const queued = {
+        ...attachment('queued', 'a1'),
+        attachment: {
+          type: 'queued_command',
+          source_uuid: uuid,
+          commandMode: 'prompt',
+          origin: { kind: 'human' },
+          humanTurn: true,
+          prompt: 'same prompt'
+        }
+      }
+      await c.write([
+        ...chatTurn,
+        outside ? queued : prompt(uuid, 'a1', 'same prompt', 3),
+        reply(
+          'recovered',
+          outside ? 'queued' : uuid,
+          'msg_recovered',
+          { type: 'text', text: 'reply' },
+          4
+        ),
+        ...(outside ? [prompt('external', 'recovered', 'same prompt', 5)] : [])
+      ])
+      expect(await c.open('a1')).toBe(true)
+      const after = reopened.snapshot()
+      expect(
+        after.items
+          .filter((item) => item.body.kind !== 'turn')
+          .map((item) => (item.body.kind === 'message' ? item.body.role : item.body.kind))
+      ).toEqual(['user', 'assistant', 'user', 'status', 'assistant', ...(outside ? ['user'] : [])])
+      expect(after.submissions).toEqual(before.submissions)
+      expect(reopened.receiptFor(clientMessageId)).toBeNull()
+      const key = agentJournalItemKey({ provider: 'claude', sessionId: SID, uuid })
+      expect(reopened.canonicalItemId(key)).toBe(key)
+      expect(
+        structuredRewindCut(reopened, {
+          itemId: agentJournalItemKey({ provider: 'orca', clientMessageId }),
+          provider: 'claude',
+          nativeId: SID
+        })
+      ).toBeNull()
+      expect(await c.open('a1')).toBe(true)
+      expect(reopened.snapshot()).toEqual(after)
+      expect((await c.replay()).snapshot()).toEqual(after)
+      expect(c.warn).not.toHaveBeenCalled()
+    }
+  )
+
   it.each(['a1', 'missing-parent'])(
     'keeps an unresolved queued prompt visible without inventing a turn after %s',
     async (parent) => {

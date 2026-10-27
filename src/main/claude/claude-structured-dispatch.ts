@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import { claudePromptUuidForSubmission } from './claude-structured-session-id'
 import { isAbortSignalReason } from '../../shared/abort-signal-reason'
 import {
   forgetRetiredWaiter,
@@ -113,6 +115,7 @@ function claudeWriteFailureRejection(error: unknown): AgentJournalDispatchReject
 export async function dispatchClaudeTurn(
   session: ClaudeSession,
   input: {
+    sessionId?: string
     clientMessageId?: string
     body: AgentJournalMessageItem
     requestedAt?: number
@@ -132,7 +135,14 @@ export async function dispatchClaudeTurn(
   }
   // Classify the mapped trailing prompt so command detection matches what Claude receives.
   const acceptsResult = claudeDispatchInvokesSlashCommand(content)
-  const sentUuid = input.sentUuid ?? randomUUID()
+  const sentUuid =
+    input.sentUuid ??
+    (input.sessionId && input.clientMessageId
+      ? claudePromptUuidForSubmission(
+          input.sessionId,
+          agentJournalSubmissionKey(input.clientMessageId)
+        )
+      : randomUUID())
   const arm = () => {
     ++session.dispatchSequence
     // Invalidate context reports requested before this send.
