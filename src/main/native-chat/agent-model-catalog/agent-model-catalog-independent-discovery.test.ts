@@ -207,7 +207,7 @@ describe('independent installed CLI discovery', () => {
   })
 })
 
-it('prepares hydrated Auto evidence without discovery and shares it with another equivalent chat', async () => {
+it('prepares hydrated catalog evidence independently of launch permission and shares it with an equivalent chat', async () => {
   const first = record('cold-a', 'opus')
   first.permissionMode = 'auto'
   const seed = new AgentModelCatalogStore()
@@ -263,11 +263,12 @@ it('prepares hydrated Auto evidence without discovery and shares it with another
   expect(await catalog.read(params)).toEqual({ origin: 'unknown' })
   expect(probe.resolve).not.toHaveBeenCalled()
   expect(
-    await structuredAgentSessionLaunchPermission(
-      { agents: claudeAndCodexDeclared(), modelCatalog: catalog },
-      first
-    )
+    await structuredAgentSessionLaunchPermission({ agents: claudeAndCodexDeclared() }, first)
   ).toBe('auto')
+  expect(probe.resolve).not.toHaveBeenCalled()
+  expect(await catalog.prepareSaved(params)).toMatchObject({
+    models: [{ id: 'opus', supportsAutoMode: true }]
+  })
   expect(probe.resolve).toHaveBeenCalledWith(
     HOME,
     '/project',
@@ -289,10 +290,7 @@ it('prepares hydrated Auto evidence without discovery and shares it with another
     models: [{ id: 'opus', supportsAutoMode: true }]
   })
   expect(
-    await structuredAgentSessionLaunchPermission(
-      { agents: claudeAndCodexDeclared(), modelCatalog: catalog },
-      first
-    )
+    await structuredAgentSessionLaunchPermission({ agents: claudeAndCodexDeclared() }, first)
   ).toBe('auto')
   expect(probe.resolve).toHaveBeenCalledTimes(resolutions)
   expect(probe).not.toHaveBeenCalled()
