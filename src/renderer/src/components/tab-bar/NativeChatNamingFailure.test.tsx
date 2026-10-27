@@ -10,6 +10,7 @@ import { useNativeChatNamingFailure } from './use-native-chat-naming-failure'
 
 const client = vi.hoisted(() => ({
   supported: false,
+  web: false,
   emit: (_event: AgentSessionStatusEvent) => {},
   regenerate: vi.fn<() => Promise<boolean>>()
 }))
@@ -19,6 +20,9 @@ const settings = vi.hoisted(() => ({
 }))
 vi.mock('@/store', () => ({
   useAppStore: { getState: () => settings }
+}))
+vi.mock('@/lib/web-client-location', () => ({
+  isWebClientLocation: () => client.web
 }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSessionStatus: async (_target: unknown, emit: typeof client.emit) => {
@@ -76,20 +80,30 @@ describe('chat tab naming failure', () => {
     vi.useRealTimers()
   })
 
-  it.each([true, false])(
-    'shows the error, with Regenerate name when the host has it: %s',
-    async (supported) => {
+  it.each([
+    { supported: true, web: false },
+    { supported: false, web: false },
+    { supported: true, web: true },
+    { supported: false, web: true }
+  ])(
+    'shows recovery actions for host regeneration support=$supported, web=$web',
+    async ({ supported, web }) => {
       client.supported = supported
+      client.web = web
       await hoverChatTab()
       expect(screen.getAllByText("Couldn't name this chat").length).toBeGreaterThan(0)
       expect(screen.getAllByRole('button', { name: 'view error' }).length).toBeGreaterThan(0)
-      fireEvent.click(screen.getAllByRole('button', { name: 'Settings' })[0])
-      expect(settings.openSettingsPage).toHaveBeenCalledOnce()
-      expect(settings.openSettingsTarget).toHaveBeenCalledExactlyOnceWith({
-        pane: 'chat',
-        repoId: null,
-        sectionId: 'chat-names'
-      })
+      const settingsButtons = screen.queryAllByRole('button', { name: 'Settings' })
+      expect(settingsButtons.length > 0).toBe(!web)
+      if (!web) {
+        fireEvent.click(settingsButtons[0])
+        expect(settings.openSettingsPage).toHaveBeenCalledOnce()
+        expect(settings.openSettingsTarget).toHaveBeenCalledExactlyOnceWith({
+          pane: 'chat',
+          repoId: null,
+          sectionId: 'chat-names'
+        })
+      }
       const regenerate = screen.queryAllByRole('button', { name: 'Regenerate name' })
       expect(regenerate.length > 0).toBe(supported)
       if (supported) {

@@ -1,6 +1,7 @@
 import { AlertCircle, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store'
+import { isWebClientLocation } from '@/lib/web-client-location'
 import { NameGenerationFailedDialog } from '../sidebar/AutoRenameFailedDialog'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatNamingFailureControls } from './use-native-chat-naming-failure'
@@ -50,19 +51,21 @@ export function NativeChatNamingErrorBlock({
             {regenerateLabel(naming)}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="chip"
-          onClick={() => {
-            const store = useAppStore.getState()
-            store.openSettingsPage()
-            store.openSettingsTarget({ pane: 'chat', repoId: null, sectionId: 'chat-names' })
-          }}
-        >
-          <Settings aria-hidden />
-          {translate('tabHoverCard.namingFailure.settings', 'Settings')}
-        </Button>
+        {isWebClientLocation() ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="chip"
+            onClick={() => {
+              const store = useAppStore.getState()
+              store.openSettingsPage()
+              store.openSettingsTarget({ pane: 'chat', repoId: null, sectionId: 'chat-names' })
+            }}
+          >
+            <Settings aria-hidden />
+            {translate('tabHoverCard.namingFailure.settings', 'Settings')}
+          </Button>
+        )}
       </div>
     </div>
   )
