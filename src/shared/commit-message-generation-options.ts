@@ -48,17 +48,28 @@ export function findRecipeOption(
   )
 }
 
-export function removeAllOptionOccurrences(
+export function compactRecipeOptions(
   tokens: string[],
   aliases: readonly string[],
-  valueOptions: readonly string[] = []
+  valueOptions: readonly string[] = [],
+  keepFirst = false
 ): string[] {
-  let result = tokens
-  while (true) {
-    const found = findRecipeOption(result, aliases, valueOptions)
-    if (!found) {
-      return result
+  const result: string[] = []
+  let cursor = 0
+  let kept = false
+  let found = findRecipeOption(tokens, aliases, valueOptions, cursor)
+  while (found) {
+    const end = found.index + found.consumed
+    const keepUntil = keepFirst && !kept ? end : found.index
+    for (; cursor < keepUntil; cursor++) {
+      result.push(tokens[cursor])
     }
-    result = [...result.slice(0, found.index), ...result.slice(found.index + found.consumed)]
+    cursor = end
+    kept = true
+    found = findRecipeOption(tokens, aliases, valueOptions, cursor)
   }
+  for (; cursor < tokens.length; cursor++) {
+    result.push(tokens[cursor])
+  }
+  return result
 }

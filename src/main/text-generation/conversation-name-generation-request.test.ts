@@ -1,42 +1,15 @@
+import {
+  sourceShapedKimiOutput,
+  realKimiOccupiedOutput
+} from '../../shared/__fixtures__/kimi-generation-source-shaped'
 import { describe, expect, it, vi } from 'vitest'
 import { createMockDiscoveryChild } from './commit-message-text-generation-test-harness'
 import { generateConversationNameFromContext } from './commit-message-text-generation'
 import { cancelLocalGeneration } from './source-control-generation-lanes'
 import { generateConversationName } from './conversation-name-generation-request'
 import type { SpawnedSourceControlAgentProcess } from './source-control-text-generation-types'
-import { sourceShapedKimiOutput } from '../../shared/__fixtures__/kimi-generation-source-shaped'
 
 describe('generateConversationName', () => {
-  it('decodes Kimi before title sanitization without decoding the answer again', async () => {
-    for (const answer of [
-      'Title: "Fix login flow"\nExtra line',
-      '{"role":"tool","content":"example"}'
-    ]) {
-      const result = await generateConversationNameFromContext(
-        { firstPrompt: 'Fix login' },
-        { agentId: 'kimi', model: 'default' },
-        {
-          kind: 'remote',
-          cwd: '/repo',
-          missingBinaryLocation: 'remote PATH',
-          execute: async (plan) => {
-            expect(plan.outputFormat).toBe('kimi-stream-json')
-            return {
-              stdout: sourceShapedKimiOutput(answer),
-              stderr: '',
-              exitCode: 0,
-              timedOut: false
-            }
-          }
-        }
-      )
-      expect(result).toMatchObject({
-        success: true,
-        name: answer.startsWith('Title:') ? 'Fix login flow' : answer
-      })
-    }
-  })
-
   it('uses the shared remote plan with bounded template variables and a sanitized name', async () => {
     let prompt = ''
     let operation = ''
@@ -93,7 +66,7 @@ describe('generateConversationName', () => {
     })
   })
 
-  it('runs in the local generation lane and accepts cancellation', async () => {
+  it.each(['cancel', 'occupied'])('handles a local %s outcome', async (outcome) => {
     const child = createMockDiscoveryChild()
     const spawnAgent = vi.fn(() => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The test child implements every process member the generation lane reads.
@@ -101,16 +74,28 @@ describe('generateConversationName', () => {
     })
     const pending = generateConversationName({
       context: { firstPrompt: 'Fix login' },
-      params: { agentId: 'custom', model: '', customAgentCommand: 'agent' },
+      params:
+        outcome === 'cancel'
+          ? { agentId: 'custom', model: '', customAgentCommand: 'agent' }
+          : { agentId: 'kimi', model: 'default' },
       target: { kind: 'local', cwd: '/repo' },
       spawnAgent
     })
     expect(spawnAgent).toHaveBeenCalledOnce()
+    if (outcome === 'occupied') {
+      child.stdout.emit('data', Buffer.from(realKimiOccupiedOutput))
+      child.emit('close', 4)
+      expect(await pending).toMatchObject({
+        success: false,
+        error: expect.stringMatching(/Kimi.*active.*Stop.*exit.*try again/)
+      })
+      return
+    }
     cancelLocalGeneration('conversation-name', '/repo')
     expect(await pending).toMatchObject({ success: false, canceled: true })
   })
 
-  it('returns a sanitized name from the local generation lane', async () => {
+  it.each(['custom', 'kimi'] as const)('%s local title', async (agentId) => {
     const child = createMockDiscoveryChild()
     const spawnAgent = vi.fn(() => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The test child implements every process member the generation lane reads.
@@ -118,12 +103,23 @@ describe('generateConversationName', () => {
     })
     const pending = generateConversationName({
       context: { firstPrompt: 'Fix login' },
-      params: { agentId: 'custom', model: '', customAgentCommand: 'agent' },
+      params: { agentId, model: agentId === 'kimi' ? 'default' : '', customAgentCommand: 'agent' },
       target: { kind: 'local', cwd: '/repo' },
       spawnAgent
     })
-    child.stdout.emit('data', Buffer.from('Title: "Fix login flow"\n'))
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        agentId === 'kimi'
+          ? sourceShapedKimiOutput('Title: "Fix login flow"')
+          : 'Title: "Fix login flow"\n'
+      )
+    )
     child.emit('close', 0)
-    expect(await pending).toEqual({ success: true, name: 'Fix login flow', agentLabel: 'agent' })
+    expect(await pending).toEqual({
+      success: true,
+      name: 'Fix login flow',
+      agentLabel: agentId === 'kimi' ? 'Kimi' : 'agent'
+    })
   })
 })

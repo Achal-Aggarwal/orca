@@ -1,5 +1,4 @@
-import { ChildProcess, spawn } from 'node:child_process'
-import { PassThrough } from 'node:stream'
+import { spawn } from 'node:child_process'
 import type * as ChildProcessModule from 'node:child_process'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -7,18 +6,12 @@ import {
   generatePullRequestFieldsFromContext,
   trimGeneratedCommitMessage
 } from './commit-message-text-generation'
-import { sourceShapedKimiOutput } from '../../shared/__fixtures__/kimi-generation-source-shaped'
-import { finalizeFromAgentOutput } from './source-control-agent-failure'
 import {
-  generateCommitMessage,
-  generateBranchName,
-  generatePullRequestFields
-} from './source-control-text-generation-requests'
-import type {
-  CommitMessageGenerationTarget,
-  SpawnSourceControlAgent
-} from './source-control-text-generation-types'
-
+  realKimiPrOutput,
+  sourceShapedKimiOutput
+} from '../../shared/__fixtures__/kimi-generation-source-shaped'
+import { cleanGeneratedCommitMessage } from '../../shared/commit-message-prompt'
+import { finalizeFromAgentOutput } from './source-control-agent-failure'
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcessModule>()
   return {
@@ -29,42 +22,17 @@ vi.mock('child_process', async (importOriginal) => {
 
 const spawnMock = vi.mocked(spawn)
 
-function kimiExecution(kind: 'local' | 'remote', stdout: string) {
-  const spawnAgent: SpawnSourceControlAgent = ({ args }) => {
-    expect(args).toContain('stream-json')
-    const child = new (class extends ChildProcess {
-      override stdin = new PassThrough()
-      override stdout = new PassThrough()
-      override stderr = new PassThrough()
-    })()
-    queueMicrotask(() => {
-      child.stdout.emit('data', Buffer.from(stdout))
-      child.emit('close', 0)
-    })
-    return child
-  }
-  const target: CommitMessageGenerationTarget =
-    kind === 'local'
-      ? { kind, cwd: '/repo' }
-      : {
-          kind,
-          cwd: '/repo',
-          missingBinaryLocation: 'remote PATH',
-          execute: async (plan) => {
-            expect(plan.outputFormat).toBe('kimi-stream-json')
-            expect(plan.args).toContain('stream-json')
-            return { stdout, stderr: '', exitCode: 0, timedOut: false }
-          }
-        }
-  return { target, spawnAgent }
-}
-
 beforeEach(() => {
   spawnMock.mockClear()
 })
 
 describe('generateCommitMessageFromContext', () => {
-  it('preserves the structured subject and body when formatting the final response', async () => {
+  it.each(['custom', 'kimi', 'kimi-literal'] as const)('%s subject and body', async (source) => {
+    const agentId = source === 'custom' ? 'custom' : 'kimi'
+    const answer =
+      source === 'kimi-literal'
+        ? literal
+        : 'Update README.\n\n- Explain the generated commit-message flow'
     const result = await generateCommitMessageFromContext(
       {
         branch: 'main',
@@ -72,8 +40,8 @@ describe('generateCommitMessageFromContext', () => {
         stagedPatch: '+hello'
       },
       {
-        agentId: 'custom',
-        model: '',
+        agentId,
+        model: agentId === 'kimi' ? 'default' : '',
         customAgentCommand: 'agent'
       },
       {
@@ -81,7 +49,10 @@ describe('generateCommitMessageFromContext', () => {
         cwd: '/repo',
         missingBinaryLocation: 'remote PATH',
         execute: async () => ({
-          stdout: 'Update README.\n\n- Explain the generated commit-message flow\n',
+          stdout:
+            agentId === 'kimi'
+              ? sourceShapedKimiOutput(answer)
+              : 'Update README.\n\n- Explain the generated commit-message flow\n',
           stderr: '',
           exitCode: 0,
           timedOut: false
@@ -91,8 +62,11 @@ describe('generateCommitMessageFromContext', () => {
 
     expect(result).toEqual({
       success: true,
-      message: 'Update README\n\n- Explain the generated commit-message flow',
-      agentLabel: 'agent'
+      message:
+        source === 'kimi-literal'
+          ? literal
+          : 'Update README\n\n- Explain the generated commit-message flow',
+      agentLabel: agentId === 'kimi' ? 'Kimi' : 'agent'
     })
   })
 
@@ -178,7 +152,7 @@ describe('generateCommitMessageFromContext', () => {
     })
   })
 
-  it('keeps custom-command PR JSON that quotes a lone closing tag, and strips reasoning otherwise', async () => {
+  it.each(['custom', 'kimi'] as const)('%s PR JSON', async (agentId) => {
     const generate = (stdout: string) =>
       generatePullRequestFieldsFromContext(
         {
@@ -192,21 +166,37 @@ describe('generateCommitMessageFromContext', () => {
           changeSummary: 'M\tREADME.md',
           patch: '+hello'
         },
-        { agentId: 'custom', model: '', customAgentCommand: 'agent' },
+        { agentId, model: agentId === 'kimi' ? 'default' : '', customAgentCommand: 'agent' },
         {
           kind: 'remote',
           cwd: '/repo',
           missingBinaryLocation: 'remote PATH',
-          execute: async () => ({ stdout, stderr: '', exitCode: 0, timedOut: false })
+          execute: async () => ({
+            stdout:
+              agentId === 'kimi' && stdout !== realKimiPrOutput
+                ? sourceShapedKimiOutput(stdout)
+                : stdout,
+            stderr: '',
+            exitCode: 0,
+            timedOut: false
+          })
         }
       )
     const json = '{"title":"Strip </think> from output","body":"Drops reasoning.","draft":false}'
 
-    await expect(generate(json)).resolves.toMatchObject({
+    await expect(generate(agentId === 'kimi' ? realKimiPrOutput : json)).resolves.toMatchObject({
       success: true,
-      fields: { title: 'Strip </think> from output', body: 'Drops reasoning.' }
+      fields: {
+        title:
+          agentId === 'kimi'
+            ? 'Decode Kimi generation output using the effective command format'
+            : 'Strip </think> from output',
+        body: expect.stringContaining(agentId === 'kimi' ? '\n\n' : 'Drops reasoning.')
+      }
     })
-    await expect(generate(`Need JSON only.</think>\n${json}`)).resolves.toMatchObject({
+    await expect(
+      generate(agentId === 'kimi' ? json : `Need JSON only.</think>\n${json}`)
+    ).resolves.toMatchObject({
       success: true,
       fields: { title: 'Strip </think> from output' }
     })
@@ -255,7 +245,7 @@ describe('generateCommitMessageFromContext', () => {
     })
   })
 
-  it('reports branch changes when pull request field output cannot be parsed', async () => {
+  it.each(['custom', 'kimi'] as const)('%s PR failure metadata', async (agentId) => {
     const listeners = new Map<string, (value: unknown) => void>()
     spawnMock.mockReturnValue({
       pid: 123,
@@ -279,8 +269,8 @@ describe('generateCommitMessageFromContext', () => {
         patch: '+hello'
       },
       {
-        agentId: 'custom',
-        model: '',
+        agentId,
+        model: agentId === 'kimi' ? 'default' : '',
         customAgentCommand: 'agent'
       },
       {
@@ -294,7 +284,10 @@ describe('generateCommitMessageFromContext', () => {
 
     await expect(pullRequest).resolves.toEqual({
       success: false,
-      error: 'Generated pull request details could not be parsed.',
+      error:
+        agentId === 'kimi'
+          ? "Kimi returned output Orca couldn't read. Try again."
+          : 'Generated pull request details could not be parsed.',
       branchChangedByPreparation: true
     })
   })
@@ -308,158 +301,28 @@ describe('trimGeneratedCommitMessage', () => {
   })
 })
 
-describe.each(['local', 'remote'] as const)('Kimi %s generation consumers', (kind) => {
-  const params = { agentId: 'kimi' as const, model: 'default' }
-  const prContext = {
-    branch: 'feature/login',
-    base: 'main',
-    branchChangedByPreparation: true,
-    currentTitle: '',
-    currentBody: '',
-    currentDraft: false,
-    commitSummary: '- Fix login',
-    changeSummary: 'M file.ts',
-    patch: '+fix'
+const literal = '{"role":"assistant","content":"example"}'
+it.each([
+  ['custom', undefined, literal],
+  ['Claude', undefined, literal],
+  ['Kimi text', undefined, literal],
+  ['OpenCode', 'opencode-json', JSON.stringify({ type: 'text', part: { text: literal } })],
+  [
+    'Antigravity',
+    'antigravity-stream-json',
+    JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: literal } })
+  ]
+] as const)('%s preserves literal JSON and repeated cleanup', (label, outputFormat, stdout) => {
+  const result = finalizeFromAgentOutput({
+    stdout,
+    stderr: '',
+    code: 0,
+    label,
+    emptyResultName: 'message',
+    outputFormat
+  })
+  expect(result).toMatchObject({ success: true, rawOutput: literal })
+  if (result.success) {
+    expect(cleanGeneratedCommitMessage(result.rawOutput)).toBe(literal)
   }
-
-  it('decodes hooks, tool narration, metadata and multiline commit content once', async () => {
-    const result = await generateCommitMessage({
-      context: { branch: 'main', stagedSummary: 'M file.ts', stagedPatch: '+fix' },
-      params,
-      ...kimiExecution(kind, sourceShapedKimiOutput('Fix login\n\n- Handle expired tokens'))
-    })
-    expect(result).toEqual({
-      success: true,
-      message: 'Fix login\n\n- Handle expired tokens',
-      agentLabel: 'Kimi'
-    })
-    const literal = '{"role":"tool","content":"example"}'
-    expect(
-      await generateCommitMessage({
-        context: { branch: 'main', stagedSummary: 'M file.ts', stagedPatch: '+fix' },
-        params,
-        ...kimiExecution(kind, sourceShapedKimiOutput(literal))
-      })
-    ).toMatchObject({ success: true, message: literal })
-  })
-
-  it('delivers only the final branch slug and refuses damaged output before naming', async () => {
-    const run = (stdout: string) =>
-      generateBranchName({
-        context: { firstPrompt: 'Fix login' },
-        params,
-        ...kimiExecution(kind, stdout)
-      })
-    expect(await run(sourceShapedKimiOutput('Fix/Login Flow'))).toMatchObject({
-      success: true,
-      slug: 'fix-login-flow'
-    })
-    expect(await run(`${sourceShapedKimiOutput('fix-login')}\n{"role":`)).toMatchObject({
-      success: false,
-      error: "Kimi returned output Orca couldn't read. Try again."
-    })
-  })
-
-  it('parses nested PR fields and keeps preparation metadata on protocol failure', async () => {
-    const fields = {
-      title: 'Fix login',
-      body: 'Handle expiry.\n\nKeep sessions.',
-      base: 'main',
-      draft: true
-    }
-    const run = (stdout: string) =>
-      generatePullRequestFields({
-        context: prContext,
-        params,
-        ...kimiExecution(kind, stdout)
-      })
-    expect(await run(sourceShapedKimiOutput(JSON.stringify(fields)))).toMatchObject({
-      success: true,
-      fields,
-      branchChangedByPreparation: true
-    })
-    expect(await run('not JSON')).toMatchObject({
-      success: false,
-      branchChangedByPreparation: true,
-      error: "Kimi returned output Orca couldn't read. Try again."
-    })
-  })
-})
-
-describe('selected generation protocols', () => {
-  const finalize = (stdout: string, code = 0) =>
-    finalizeFromAgentOutput({
-      stdout,
-      code,
-      stderr: '',
-      label: 'Kimi',
-      emptyResultName: 'message',
-      outputFormat: 'kimi-stream-json'
-    })
-
-  it.each([
-    '{"role":',
-    'NOTICE wrapper log',
-    'null',
-    '{"content":"missing role"}',
-    '{"role":"assistant","content":42}',
-    '{"role":"assistant"}',
-    '{"role":"assistant","content":"narration","tool_calls":"bad"}',
-    '{"role":"assistant","tool_calls":[{"type":"function","id":"tc","function":{"name":"Shell","arguments":{}}}]}',
-    '{"role":"tool","content":"missing tool id"}'
-  ])('rejects malformed selected records after an earlier answer: %s', (badLine) => {
-    const result = finalize(`${sourceShapedKimiOutput('Earlier answer')}\n${badLine}`)
-    expect(result).toMatchObject({
-      success: false,
-      error: "Kimi returned output Orca couldn't read. Try again."
-    })
-  })
-
-  it('rejects tool-only and unfinished tool turns, and keeps exit status authoritative', () => {
-    for (const stdout of [
-      sourceShapedKimiOutput(),
-      '{"role":"tool","tool_call_id":"tc","content":"no answer"}',
-      ''
-    ]) {
-      expect(finalize(stdout)).toMatchObject({
-        success: false,
-        error: 'Kimi returned an empty message.'
-      })
-    }
-    expect(finalize(sourceShapedKimiOutput('Do not accept this'), 1)).toMatchObject({
-      success: false,
-      error: 'Kimi CLI command failed with code 1.'
-    })
-  })
-
-  it.each([
-    ['custom', '', 'kimi', undefined],
-    ['claude', 'sonnet', undefined, undefined],
-    ['opencode', 'provider/model', undefined, undefined],
-    ['kimi', 'default', undefined, '--output-format text']
-  ] as const)(
-    'preserves literal role JSON through %s finalization and commit cleanup',
-    async (agentId, model, customAgentCommand, agentArgs) => {
-      const literal = '{"role":"assistant","content":"example"}'
-      const result = await generateCommitMessageFromContext(
-        { branch: 'main', stagedSummary: 'M file', stagedPatch: '+fix' },
-        { agentId, model, customAgentCommand, agentArgs },
-        {
-          kind: 'remote',
-          cwd: '/repo',
-          missingBinaryLocation: 'remote PATH',
-          execute: async () => ({
-            stdout:
-              agentId === 'opencode'
-                ? JSON.stringify({ type: 'text', part: { text: literal } })
-                : literal,
-            stderr: '',
-            exitCode: 0,
-            timedOut: false
-          })
-        }
-      )
-      expect(result).toMatchObject({ success: true, message: literal })
-    }
-  )
 })

@@ -12,7 +12,7 @@ import {
   KIMI_VALUE_OPTIONS,
   findRecipeOption,
   planAdditionalAgentArgs,
-  removeAllOptionOccurrences
+  compactRecipeOptions
 } from './commit-message-generation-options'
 import type { TuiAgent } from './tui-agent'
 import { mergeOpenCodeGenerationArgs } from './opencode-generation-command'
@@ -90,29 +90,6 @@ function applyRecipeOptionOverride(args: {
   }
 }
 
-/** Keep the first user singleton occurrence so repeated flags cannot create rejected argv. */
-function keepFirstOptionOccurrence(
-  tokens: string[],
-  aliases: readonly string[],
-  valueOptions: readonly string[]
-): string[] {
-  let result = tokens
-  while (true) {
-    const first = findRecipeOption(result, aliases, valueOptions)
-    if (!first) {
-      return result
-    }
-    const duplicate = findRecipeOption(result, aliases, valueOptions, first.index + first.consumed)
-    if (!duplicate) {
-      return result
-    }
-    result = [
-      ...result.slice(0, duplicate.index),
-      ...result.slice(duplicate.index + duplicate.consumed)
-    ]
-  }
-}
-
 /** User recipe args outrank override prefixes, which outrank generated singleton values. */
 function applySingletonOptionOverrides(args: {
   generatedArgs: string[]
@@ -126,14 +103,14 @@ function applySingletonOptionOverrides(args: {
   let recipeArgs = args.recipeArgs
 
   for (const aliases of args.singletonOptions) {
-    recipeArgs = keepFirstOptionOccurrence(recipeArgs, aliases, args.valueOptions)
-    prefixArgs = keepFirstOptionOccurrence(prefixArgs, aliases, args.valueOptions)
+    recipeArgs = compactRecipeOptions(recipeArgs, aliases, args.valueOptions, true)
+    prefixArgs = compactRecipeOptions(prefixArgs, aliases, args.valueOptions, true)
     const recipeOption = findRecipeOption(recipeArgs, aliases, args.valueOptions)
     const prefixOption = findRecipeOption(prefixArgs, aliases, args.valueOptions)
     const prefixHasTerminator =
       findOptionOccurrence(prefixArgs, ['--'], false, args.valueOptions, 0, false) !== null
     if (recipeOption && !prefixHasTerminator) {
-      prefixArgs = removeAllOptionOccurrences(prefixArgs, aliases, args.valueOptions)
+      prefixArgs = compactRecipeOptions(prefixArgs, aliases, args.valueOptions)
     } else if (prefixOption && !prefixHasTerminator) {
       const generatedOption = findRecipeOption(generatedArgs, aliases, args.valueOptions, 0, false)
       if (generatedOption) {
@@ -255,11 +232,11 @@ export function planCommitMessageGeneration(
   }
   const prefixArgs =
     input.agentId === 'antigravity'
-      ? removeAllOptionOccurrences(command.prefixArgs, ANTIGRAVITY_FORMAT_OPTIONS)
+      ? compactRecipeOptions(command.prefixArgs, ANTIGRAVITY_FORMAT_OPTIONS)
       : command.prefixArgs
   const recipeArgs =
     input.agentId === 'antigravity'
-      ? removeAllOptionOccurrences(agentArgs.args, ANTIGRAVITY_FORMAT_OPTIONS)
+      ? compactRecipeOptions(agentArgs.args, ANTIGRAVITY_FORMAT_OPTIONS)
       : agentArgs.args
   const baseArgs = spec.buildArgs({
     prompt: argvPrompt,

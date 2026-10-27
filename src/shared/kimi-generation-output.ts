@@ -46,3 +46,23 @@ export function parseKimiGenerationOutput(
   }
   return { ok: true, text: answer }
 }
+
+const failureSchema = z.object({ type: z.literal('error'), code: z.string() })
+
+export function findKimiGenerationFailure(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue
+    }
+    try {
+      const value: unknown = JSON.parse(line)
+      const failure = failureSchema.safeParse(value)
+      if (failure.success && failure.data.code === 'session.occupied') {
+        return "Kimi couldn't use this session because it is active in another client. Stop the session there or exit that client, then try again."
+      }
+    } catch {
+      // Failed stdout can contain partial records before the declared refusal.
+    }
+  }
+  return null
+}
