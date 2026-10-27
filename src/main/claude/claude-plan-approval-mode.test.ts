@@ -1,9 +1,13 @@
-import type { PermissionResult, Query } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  PermissionMode,
+  PermissionResult,
+  Query,
+  SDKMessage
+} from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { createClaudeControlSurface } from './claude-agent-sdk-control-requests'
 import { claudePlanApprovalMode, leaveClaudePlanModeOnApproval } from './claude-plan-approval-mode'
 import type { ClaudePendingPrompt } from './claude-prompt-registry'
-import type { ClaudeSession } from './structured/claude-structured-session-state'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 import {
   USER_MESSAGE,
@@ -12,23 +16,68 @@ import {
   fakeClaude
 } from './claude-structured-session-test-support'
 
-const PLAN_PROMPT = { subject: { kind: 'plan', text: '# Plan' } } as unknown as ClaudePendingPrompt
+const PLAN_PROMPT: Pick<ClaudePendingPrompt, 'subject'> = {
+  subject: { kind: 'plan', text: '# Plan' }
+}
 const ALLOW: PermissionResult = { behavior: 'allow', updatedInput: {}, toolUseID: 'tool-plan' }
+
+type PlanSession = Parameters<typeof leaveClaudePlanModeOnApproval>[0]
 
 function planSession(
   setPermissionMode: (mode: string) => Promise<void>,
-  overrides: Partial<ClaudeSession> = {}
-): ClaudeSession {
+  overrides: Partial<PlanSession> = {}
+): PlanSession {
   return {
     connection: { setPermissionMode },
     reportedOptions: { reportedPermissionMode: 'plan' },
     launchIntent: { permissionMode: 'acceptEdits' },
     ...overrides
-  } as unknown as ClaudeSession
+  }
+}
+
+function recordingQuery(setPermissionMode: Query['setPermissionMode']): Query {
+  function unusedControl(): never {
+    throw new Error('unexpected query control')
+  }
+  const messages = (async function* (): AsyncGenerator<SDKMessage, void> {
+    yield* []
+  })()
+  return Object.assign(messages, {
+    setPermissionMode,
+    interrupt: unusedControl,
+    setMcpPermissionModeOverride: unusedControl,
+    setModel: unusedControl,
+    setMaxThinkingTokens: unusedControl,
+    applyFlagSettings: unusedControl,
+    updateSettings: unusedControl,
+    initializationResult: unusedControl,
+    reinitialize: unusedControl,
+    supportedCommands: unusedControl,
+    supportedModels: unusedControl,
+    supportedAgents: unusedControl,
+    mcpServerStatus: unusedControl,
+    getContextUsage: unusedControl,
+    usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: unusedControl,
+    readFile: unusedControl,
+    reloadPlugins: unusedControl,
+    reloadSkills: unusedControl,
+    reloadOutputStyles: unusedControl,
+    accountInfo: unusedControl,
+    rewindFiles: unusedControl,
+    seedReadState: unusedControl,
+    reconnectMcpServer: unusedControl,
+    toggleMcpServer: unusedControl,
+    readMcpResource: unusedControl,
+    setMcpServers: unusedControl,
+    streamInput: unusedControl,
+    stopTask: unusedControl,
+    backgroundTasks: unusedControl,
+    close: unusedControl
+  })
 }
 
 describe('leaving Claude plan mode on an approved plan', () => {
-  it.each([
+  it.each<[Parameters<typeof claudePlanApprovalMode>[0], PermissionMode]>([
     [{ launchIntent: { permissionMode: 'acceptEdits' } }, 'acceptEdits'],
     [{ launchIntent: { permissionMode: 'bypassPermissions' } }, 'bypassPermissions'],
     [{ launchIntent: {}, firstRootInit: { permissionMode: 'auto' } }, 'auto'],
@@ -36,14 +85,14 @@ describe('leaving Claude plan mode on an approved plan', () => {
     [{ launchIntent: {}, firstRootInit: { permissionMode: 'plan' } }, 'default'],
     [{}, 'default']
   ])('returns to the chat’s own mode (%j)', (session, mode) => {
-    expect(claudePlanApprovalMode(session as Pick<ClaudeSession, 'launchIntent'>)).toBe(mode)
+    expect(claudePlanApprovalMode(session)).toBe(mode)
   })
 
   it('changes nothing for Keep planning, other approvals, or a chat already out of plan', () => {
     const setPermissionMode = vi.fn(async () => {})
     const deny: PermissionResult = { behavior: 'deny', message: 'keep planning', toolUseID: 't' }
     leaveClaudePlanModeOnApproval(planSession(setPermissionMode), PLAN_PROMPT, deny)
-    leaveClaudePlanModeOnApproval(planSession(setPermissionMode), {} as ClaudePendingPrompt, ALLOW)
+    leaveClaudePlanModeOnApproval(planSession(setPermissionMode), {}, ALLOW)
     leaveClaudePlanModeOnApproval(
       planSession(setPermissionMode, { reportedOptions: { reportedPermissionMode: 'ask' } }),
       PLAN_PROMPT,
@@ -71,11 +120,9 @@ describe('leaving Claude plan mode on an approved plan', () => {
 
   it('writes the mode request through the real control path before the allow answer', async () => {
     const order: string[] = []
-    const query = {
-      setPermissionMode: async (mode: string) => {
-        order.push(`set_permission_mode:${mode}`)
-      }
-    } as unknown as Query
+    const query = recordingQuery(async (mode) => {
+      order.push(`set_permission_mode:${mode}`)
+    })
     let settle = (_result: PermissionResult): void => {}
     // Stands in for the SDK writing the callback's control_response once it resolves.
     const callback = new Promise<PermissionResult>((resolve) => {
