@@ -53,7 +53,8 @@ export function createTokensProvider(
   grammar: Grammar,
   fallbackScopeName: string,
   mapTokenScopes?: (scopes: readonly string[]) => string,
-  onLineTokens?: (line: string, tokens: readonly IToken[]) => void
+  onLineTokens?: (line: string, tokens: readonly IToken[]) => void,
+  lineAttempts?: number
 ): TextMateTokensProvider {
   const plain = (state: TextMateTokenizerState): Monaco.languages.ILineTokens => ({
     endState: state,
@@ -73,7 +74,7 @@ export function createTokensProvider(
       const result = tokenizeLineWithinLimits(
         line,
         (text, timeLimitMs) => grammar.tokenizeLine(text, ruleStack, timeLimitMs),
-        warm ? undefined : COLD_GRAMMAR_LINE_ATTEMPTS
+        lineAttempts ?? (warm ? undefined : COLD_GRAMMAR_LINE_ATTEMPTS)
       )
       if (!result) {
         // Why: the line's end state is unknown, so continuing would color later lines from a guess.

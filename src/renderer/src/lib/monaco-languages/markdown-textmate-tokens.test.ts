@@ -51,7 +51,14 @@ describe('createMarkdownTokensProvider', () => {
 
     const fence = ['```ts', 'const x = 1', '```']
     tokenizeLines(provider, fence)
-    await vi.waitFor(() => expect(replacement).toBeDefined())
-    expect(tokenizeLines(replacement!, fence)[1]).toContain('md.storage.type.ts')
+    const refreshed = await vi.waitFor(() => {
+      if (!replacement) {
+        throw new Error('fence grammar has not loaded')
+      }
+      return replacement
+    })
+    expect(tokenizeLines(refreshed, ['```ts title="a.ts"', 'const x = 1', '```'])[1]).toContain(
+      'md.storage.type.ts'
+    )
   })
 })

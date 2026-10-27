@@ -2,6 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { ThemeRegistrationRaw } from 'shiki/core'
 import type { IToken } from 'shiki/textmate'
 import type { BundledLanguageInfo } from 'shiki/types'
+import { COLD_GRAMMAR_LINE_ATTEMPTS } from '../syntax-highlighting/textmate-core'
 import { createTokensProvider, loadEditorCore } from './textmate-token-provider'
 
 type MonacoModule = {
@@ -15,6 +16,8 @@ const MARKDOWN_SCOPE_NAME = 'text.html.markdown'
 const MARKDOWN_TOKEN_PREFIX = 'md.'
 // The grammar's catch-all fence rule; a specific fence rule takes over once its grammar loads.
 const UNKNOWN_FENCE_LANGUAGE_SCOPE = 'fenced_code.block.language'
+// The catch-all rule captures the whole info string, e.g. `ts title="a.ts"`.
+const FENCE_INFO_SEPARATOR = /[\s{,:?]/
 
 type ThemeRule = Monaco.editor.ITokenThemeRule
 
@@ -123,7 +126,7 @@ export async function createMarkdownTokensProvider(
   }
 
   function loadFenceLanguage(label: string): void {
-    const info = fenceLanguages.get(label.trim().toLowerCase())
+    const info = fenceLanguages.get(label.trim().split(FENCE_INFO_SEPARATOR)[0].toLowerCase())
     if (!info || requestedFenceLanguages.has(info.id)) {
       return
     }
@@ -154,7 +157,9 @@ export async function createMarkdownTokensProvider(
       editorCore.core.getLanguage(MARKDOWN_LANGUAGE_ID),
       MARKDOWN_SCOPE_NAME,
       mapScopes,
-      observeFenceLabels
+      observeFenceLabels,
+      // Why: each fence grammar compiles on its first block, long after the markdown root has warmed.
+      COLD_GRAMMAR_LINE_ATTEMPTS
     )
   }
 

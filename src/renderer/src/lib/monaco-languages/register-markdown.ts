@@ -39,17 +39,17 @@ export function registerMarkdownLanguage(monaco: MonacoModule): void {
   // Why: Monaco merges configurations per field, so this keeps the built-in markdown config and drops only bracket colors.
   monaco.languages.setLanguageConfiguration(MARKDOWN_LANGUAGE_ID, { colorizedBracketPairs: [] })
 
-  let tokensProviderPromise: Promise<Monaco.languages.TokensProvider> | undefined
   monaco.languages.registerTokensProviderFactory(MARKDOWN_LANGUAGE_ID, {
-    create: () => {
-      tokensProviderPromise ??= import('./markdown-textmate-tokens')
+    // Monaco caches this result, so a TextMate load failure falls back to the built-in Monarch tokenizer.
+    create: () =>
+      import('./markdown-textmate-tokens')
         .then(({ createMarkdownTokensProvider }) => createMarkdownTokensProvider(monaco))
-        .catch((error: unknown) => {
-          tokensProviderPromise = undefined
-          throw error
+        .catch(async (error: unknown) => {
+          console.warn('[markdown] TextMate highlighting failed to load; using Monarch', error)
+          const { language } =
+            await import('monaco-editor/esm/vs/basic-languages/markdown/markdown.js')
+          return language
         })
-      return tokensProviderPromise
-    }
   })
 
   monaco.languages.registerDocumentSymbolProvider(MARKDOWN_LANGUAGE_ID, {

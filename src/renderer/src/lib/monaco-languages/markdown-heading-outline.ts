@@ -10,6 +10,8 @@ export type MarkdownHeadingSection = {
   children: MarkdownHeadingSection[]
 }
 
+// Why: bounds the heading regexes' backtracking on pathological lines; real headings are far shorter.
+const MAX_HEADING_LINE_LENGTH = 1000
 const ATX_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/
@@ -54,6 +56,10 @@ function scanHeadings(lines: readonly string[]): FlatHeading[] {
         fence = null
       }
       previousIsParagraph = false
+      continue
+    }
+    if (line.length > MAX_HEADING_LINE_LENGTH) {
+      previousIsParagraph = true
       continue
     }
     const fenceOpen = line.match(FENCE_OPEN)?.[1]
