@@ -1,5 +1,8 @@
 import { WORKSPACE_ATTACHMENT_RUNTIME_CAPABILITIES } from './workspace-attachment-capabilities'
 
+export const WORKTREE_OPEN_EXISTING_BRANCH_RUNTIME_CAPABILITY =
+  'worktree.open-existing-branch.v1' as const
+
 export const PROJECT_HOST_SETUP_RUNTIME_CAPABILITY = 'project-host-setup.v1' as const
 // Why: older hosts strip `hostId` from setup update/delete and act on the first same-id twin.
 export const PROJECT_HOST_SETUP_HOST_TARGET_RUNTIME_CAPABILITY =
@@ -45,6 +48,7 @@ export function assertCrossMachineLineageSupported(
 
 export const WORKTREE_RUNTIME_CAPABILITIES = [
   WORKTREE_CROSS_MACHINE_LINEAGE_CAPABILITY,
+  WORKTREE_OPEN_EXISTING_BRANCH_RUNTIME_CAPABILITY,
   PROJECT_HOST_SETUP_RUNTIME_CAPABILITY,
   PROJECT_HOST_SETUP_HOST_TARGET_RUNTIME_CAPABILITY,
   WORKSPACE_RUN_CONTEXT_RUNTIME_CAPABILITY,

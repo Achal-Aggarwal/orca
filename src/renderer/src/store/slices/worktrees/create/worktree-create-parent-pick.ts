@@ -20,6 +20,15 @@ import type { ParentWorktreeRef } from '../../../../../../shared/worktree/lineag
 import { selectFolderWorkspaces } from '../../../workspace-record-selectors'
 import { findIndexedFolderWorkspaceOwner } from '@/lib/worktree-runtime-owner-index'
 
+import type { RuntimeClientTarget as RuntimeTarget } from '../../../../../../shared/runtime-client-target'
+import type { CreatedWorktreeResult } from './worktree-create-payload'
+
+export type CreateAttemptOutcome = {
+  result: CreatedWorktreeResult
+  /** The host had no such parent, so this attempt was retried unattached. */
+  droppedParent: boolean
+}
+
 export type WorktreeCreateParentPick = {
   /** Workspace the create attaches to. Undefined once a stale pick is dropped. */
   parentWorkspace?: WorkspaceKey
@@ -30,6 +39,25 @@ export type WorktreeCreateParentPick = {
   pickedDisplayName: string | null
   /** The pick no longer qualifies, so the create runs unattached. */
   staleBeforeCreate: boolean
+}
+
+/** True when the create landed without the nesting the caller asked for. */
+export function lostRequestedParent(
+  outcome: CreateAttemptOutcome,
+  parent: WorktreeCreateParentPick,
+  target: RuntimeTarget
+): boolean {
+  if (outcome.droppedParent) {
+    return true
+  }
+  if (parent.pickedParentWorktreeId) {
+    return !outcome.result.lineage
+  }
+  // Why local-only: older hosts predate the top-level workspace lineage field, so its absence
+  // over RPC would warn about a nesting that actually landed.
+  return (
+    target.kind === 'local' && Boolean(parent.parentWorkspace) && !outcome.result.workspaceLineage
+  )
 }
 
 /** Resolves the composer pick against the current store, falling back to the active folder scope. */

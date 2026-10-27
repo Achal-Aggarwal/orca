@@ -1,4 +1,5 @@
 import { WORKTREE_METADATA_DOMAINS } from '../persistence/loading-store/worktree-identity-metadata'
+import { conversationRecordReader } from './orchestration/structured-session-lineage'
 import type { RuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { installRuntimeLinearCommandSurface } from './runtime-linear-command-surface'
 import { publishWorkspaceViewChanges } from './runtime-workspace-view-change-events'
@@ -148,7 +149,7 @@ class OrcaRuntimeService extends OrcaRuntimeSidebarBase {
         createReferenceAgentIndex(
           this,
           this.getOrchestrationDbIfAvailable(),
-          await this.openAgentSessionRecordStore(),
+          conversationRecordReader(await this.openAgentSessionRecordStore()),
           workspaceKeys,
           referenceConnectionHosts(this.listRepos())
         )

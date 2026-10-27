@@ -1,21 +1,7 @@
 import type { TuiAgent } from '../../shared/tui-agent'
 import { parseCliAgent } from '../agent-launch-request'
 import { RuntimeClientError } from '../runtime-client'
-
-function getPresentStringFlag(
-  flags: Map<string, string | boolean>,
-  name: string,
-  options: { allowEmpty?: boolean } = {}
-): string | undefined {
-  if (!flags.has(name)) {
-    return undefined
-  }
-  const value = flags.get(name)
-  if (typeof value === 'string' && (options.allowEmpty || value.length > 0)) {
-    return value
-  }
-  throw new RuntimeClientError('invalid_argument', `Missing value for --${name}`)
-}
+import { getPresentStringFlag } from '../flags'
 
 export function getOptionalStartupAgent(
   flags: Map<string, string | boolean>

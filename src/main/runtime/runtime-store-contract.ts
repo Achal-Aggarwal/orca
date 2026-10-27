@@ -80,6 +80,7 @@ export type RuntimeStore = {
   withdrawTerminalPane?: Store['withdrawTerminalPane']
   applyLayoutCommand?: Store['applyLayoutCommand']
   applyTabRenames?: Store['applyTabRenames']
+  moveTerminalLeafToNewTab?: Store['moveTerminalLeafToNewTab']
   moveTabToWorkspaceAcrossPartitions?: Store['moveTabToWorkspaceAcrossPartitions']
   applyEditorFileRenamesAcrossPartitions?: Store['applyEditorFileRenamesAcrossPartitions']
   getSshRemotePtyLeases?: Store['getSshRemotePtyLeases']
@@ -114,6 +115,8 @@ export type RuntimeStore = {
     codexManagedAccounts?: GlobalSettings['codexManagedAccounts']
     nestedWorkerMaxDepth?: GlobalSettings['nestedWorkerMaxDepth']
     orchestrationChatErrorEscalationEnabled?: GlobalSettings['orchestrationChatErrorEscalationEnabled']
+    orchestrationHeartbeatsEnabled?: GlobalSettings['orchestrationHeartbeatsEnabled']
+    orchestrationHeartbeatIntervalMinutes?: GlobalSettings['orchestrationHeartbeatIntervalMinutes']
     workspaceDir: string
     nestWorkspaces: boolean
     workspaceDirHistory?: GlobalSettings['workspaceDirHistory']
@@ -139,6 +142,7 @@ export type RuntimeStore = {
     floatingTerminalCwd?: GlobalSettings['floatingTerminalCwd']
     floatingTerminalTrustedCwds?: GlobalSettings['floatingTerminalTrustedCwds']
     agentStatusHooksEnabled?: GlobalSettings['agentStatusHooksEnabled']
+    claudeSubagentNavigationEnabled?: GlobalSettings['claudeSubagentNavigationEnabled']
     followSymlinkedDirectories?: GlobalSettings['followSymlinkedDirectories']
     tabAutoGenerateTitle?: GlobalSettings['tabAutoGenerateTitle']
     terminalCopyTrimsGutter?: GlobalSettings['terminalCopyTrimsGutter']

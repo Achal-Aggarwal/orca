@@ -31,7 +31,7 @@ export { runWorktreeDeletesInParallel, runWorktreeDeleteWithToast }
 /** Standard Git-worktree deletion funnel; stale record/instance guards precede confirmation preferences. */
 export function runWorktreeDelete(worktreeId: string, options: WorktreeDeleteOptions = {}): void {
   const state = useAppStore.getState()
-  // Qualify row actions by host to avoid deleting same-ID local checkouts; unqualified callers retain first-wins compatibility.
+  // Qualify row actions by host; an unqualified id shared by two hosts resolves to nothing, never the first copy.
   const target =
     getRegisteredWorktreeDeleteTarget(
       state,

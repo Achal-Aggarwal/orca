@@ -98,7 +98,7 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
     )
     const session = this.store?.getWorkspaceSession?.()
     const countedPtyIds = new Set<string>()
-    const workingTerminalEvidenceByWorktreeId = applyRuntimeWorktreePsTerminalActivity({
+    const terminalTitleEvidenceByWorktreeId = applyRuntimeWorktreePsTerminalActivity({
       freshPtyLiveness,
       countedPtyIds,
       leaves: this.leaves.values(),
@@ -130,7 +130,7 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
       })
     attachRuntimeWorktreeAgentRows({
       summaries,
-      workingTerminalEvidenceByWorktreeId,
+      terminalTitleEvidenceByWorktreeId,
       rowSources: collectRuntimeWorktreeAgentSources({
         mirroredWorktreeIdByTabId,
         connectedPtyEvidence,

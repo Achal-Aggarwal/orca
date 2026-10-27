@@ -1,5 +1,6 @@
 import { readWorktreeLineageCorpus } from '../../worktree-lineage-candidates'
 import { RuntimeLineageError } from '../runtime-worktree-lineage-resolution'
+import { detectProjectLaunchContext } from '../../preflight/workspace-agent-detection'
 import { OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree } from '../terminal/launch/terminal-workspace-scope'
 import type { ResolvedWorktree } from '../runtime-worktree-path-identity'
 import { splitWorktreeIdForFilesystem, worktreeIdentityKey } from '../../../shared/worktree/id'
@@ -20,6 +21,7 @@ import type {
 } from '../runtime-worktree-lineage-resolution'
 import type { OrchestrationDb } from '../orchestration/db/orchestration-db'
 import { resolveNestedWorkerMaxDepth } from '../../../shared/nested-worker-depth'
+import { resolveOrchestrationHeartbeatMinutes } from '../../../shared/orchestration-heartbeat'
 import { chatWorkerErrorEscalationEnabled } from '../orchestration/chat-worker-error-escalation'
 import type { WorkspaceLineage, WorktreeLineage } from '../../../shared/worktree/lineage-types'
 import type { WorkspaceKey } from '../../../shared/folder-workspace-types'
@@ -210,6 +212,10 @@ export abstract class RuntimeWorkspaceSelectors extends OrcaRuntimeWithResolveBr
     })
   }
 
+  getOrchestrationHeartbeatMinutes(): number | null {
+    return resolveOrchestrationHeartbeatMinutes(this.store?.getSettings?.())
+  }
+
   hydrateInferredWorktreeLineage(): Promise<void> {
     return this.worktreeLineage.hydrate()
   }
@@ -259,6 +265,11 @@ export abstract class RuntimeWorkspaceSelectors extends OrcaRuntimeWithResolveBr
       throw new Error('selector_ambiguous')
     }
     throw new Error('repo_not_found')
+  }
+
+  async detectProjectLaunchContext(repoSelector: string) {
+    const repo = await this.resolveRepoSelector(repoSelector)
+    return detectProjectLaunchContext(this.requireStore(), repo)
   }
 
   requireStore(): RuntimeStore {

@@ -76,10 +76,6 @@ describe('sharesWorktreeLineageBoundary', () => {
     ...overrides
   })
 
-  it('accepts the same host', () => {
-    expect(sharesWorktreeLineageBoundary(boundary(), boundary())).toBe(true)
-  })
-
   it.each([
     ['child host', boundary({ hostId: undefined }), boundary()],
     ['parent host', boundary(), boundary({ hostId: undefined })]

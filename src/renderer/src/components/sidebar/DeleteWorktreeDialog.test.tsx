@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => {
     get worktreesByRepo(): Record<string, Worktree[]> {
       return { 'repo-1': this.allWorktrees() }
     },
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     repos: [] as Repo[],
     worktreeLineageById: {} as Record<string, WorktreeLineage>,
     updateSettings: vi.fn(),
