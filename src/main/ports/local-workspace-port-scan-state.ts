@@ -18,6 +18,8 @@ let reusedListenerKeys = new Set<string>()
 
 export type WorkspacePortScanOptions = {
   requireMetadata?: boolean
+  /** WSL distros holding scanned workspaces; their forwarded listeners resolve inside the guest. */
+  wslDistros?: readonly string[]
 }
 
 export type RawListeningPort = {

@@ -5,6 +5,7 @@ import type {
   WorkspacePortProbe
 } from '../../shared/workspace-ports'
 import type { AdvertisedUrlWatcher } from './advertised-url-watcher'
+import { foldWslUncPathCaseInsensitiveParts } from '../../shared/wsl-paths'
 import { connectHostForBindHost } from './local-workspace-port-address'
 import type {
   NormalizedWorkspacePortProbe,
@@ -193,6 +194,11 @@ function includesPathBoundary(commandLine: string, normalizedPath: string): bool
 }
 
 function normalizeComparablePath(input: string): string {
+  // \\wsl$ and \\wsl.localhost name the same distro share.
+  const wslShare = process.platform === 'win32' ? foldWslUncPathCaseInsensitiveParts(input) : null
+  if (wslShare) {
+    return normalizeComparableText(wslShare)
+  }
   if (input.startsWith('/')) {
     // Windows may evaluate remote POSIX paths; native resolve would reinterpret /repo as G:/repo.
     return normalizeComparableText(path.posix.resolve(input))

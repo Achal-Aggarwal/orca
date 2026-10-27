@@ -1,0 +1,144 @@
+import { parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
+import type { WorkspacePortProbe } from '../../shared/workspace-ports'
+import { isWslDistroRunning } from '../wsl-background-distro-gate'
+import { runWslProcess } from '../wsl/wsl-runner'
+import { parseProcAddress } from './local-workspace-port-address'
+import type { ProcessMetadata, RawListeningPort } from './local-workspace-port-scan-state'
+
+const WSL_GUEST_PORT_SCAN_TIMEOUT_MS = 5_000
+
+// One guest process: listening sockets, the PIDs holding them, then each PID's metadata.
+const WSL_GUEST_PORT_SCAN_SCRIPT = String.raw`
+listeners=$(for f in /proc/net/tcp /proc/net/tcp6; do
+  [ -r "$f" ] && awk 'FNR>1 && $4=="0A" {print "L", $2, $10}' "$f"
+done)
+[ -n "$listeners" ] || exit 0
+printf '%s\n' "$listeners"
+inodes=$(printf '%s\n' "$listeners" | awk '{print $3}' | tr '\n' ' ')
+sockets=$(ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v want="$inodes" '
+  BEGIN { n = split(want, w, " "); for (i = 1; i <= n; i++) keep["socket:[" w[i] "]"] = 1 }
+  /^\/proc\/[0-9]+\/fd:$/ { split($0, p, "/"); pid = p[3]; next }
+  ($NF in keep) { s = $NF; gsub(/[^0-9]/, "", s); print "S", pid, s }
+')
+[ -n "$sockets" ] || exit 0
+printf '%s\n' "$sockets"
+for pid in $(printf '%s\n' "$sockets" | awk '{print $2}' | sort -u); do
+  printf 'C %s %s\n' "$pid" "$(readlink "/proc/$pid/cwd" 2>/dev/null)"
+  printf 'N %s %s\n' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)"
+  printf 'A %s %s\n' "$pid" "$(tr '\000\n' '  ' < "/proc/$pid/cmdline" 2>/dev/null)"
+done
+`
+
+type GuestListener = { port: number; metadata: ProcessMetadata }
+
+/** WSL2 NAT forwards every guest listener through one wslrelay.exe, which carries no workspace cwd. */
+export function isWslRelayListener(port: Pick<RawListeningPort, 'processName'>): boolean {
+  return port.processName?.toLowerCase() === 'wslrelay.exe'
+}
+
+export function wslDistrosOfWorkspaces(worktrees: readonly WorkspacePortProbe[]): string[] {
+  const distros = new Map<string, string>()
+  for (const worktree of worktrees) {
+    const distro = parseWslUncPath(worktree.path)?.distro
+    if (distro && !distros.has(distro.toLowerCase())) {
+      distros.set(distro.toLowerCase(), distro)
+    }
+  }
+  return [...distros.values()]
+}
+
+/** Guest listeners whose owning process this distro can see, with Windows-form cwd for attribution. */
+export function parseWslGuestPortScan(output: string, distro: string): GuestListener[] {
+  const listeners: { port: number; inode: number }[] = []
+  const pidByInode = new Map<number, number>()
+  const metadata = new Map<number, ProcessMetadata>()
+  const metadataOf = (pid: number): ProcessMetadata => {
+    const existing = metadata.get(pid)
+    if (existing) {
+      return existing
+    }
+    const created: ProcessMetadata = {}
+    metadata.set(pid, created)
+    return created
+  }
+  for (const line of output.split('\n')) {
+    const match = line.match(/^([LSCNA]) (\S+) ?(.*)$/)
+    if (!match) {
+      continue
+    }
+    const [, tag, first, rest] = match
+    const value = rest.trim()
+    if (tag === 'L') {
+      const address = parseProcAddress(first)
+      const inode = Number.parseInt(value, 10)
+      if (address && Number.isSafeInteger(inode) && inode > 0) {
+        listeners.push({ port: address.port, inode })
+      }
+      continue
+    }
+    const pid = Number.parseInt(first, 10)
+    if (!Number.isSafeInteger(pid) || pid <= 0) {
+      continue
+    }
+    if (tag === 'S') {
+      const inode = Number.parseInt(value, 10)
+      if (Number.isSafeInteger(inode)) {
+        pidByInode.set(inode, pid)
+      }
+    } else if (tag === 'C' && value.startsWith('/')) {
+      metadataOf(pid).cwd = toWindowsWslPath(value, distro)
+    } else if (tag === 'N' && value) {
+      metadataOf(pid).processName = value
+    } else if (tag === 'A' && value) {
+      metadataOf(pid).commandLine = value
+    }
+  }
+  return listeners.flatMap(({ port, inode }) => {
+    const pid = pidByInode.get(inode)
+    return pid === undefined ? [] : [{ port, metadata: metadata.get(pid) ?? {} }]
+  })
+}
+
+async function scanWslGuestListeners(distro: string): Promise<GuestListener[]> {
+  // Background scans must not boot a stopped distro.
+  if (!(await isWslDistroRunning(distro).catch(() => false))) {
+    return []
+  }
+  const result = await runWslProcess({
+    distro,
+    script: WSL_GUEST_PORT_SCAN_SCRIPT,
+    loginPath: 'none',
+    timeoutMs: WSL_GUEST_PORT_SCAN_TIMEOUT_MS,
+    maxOutputBytes: 4 * 1024 * 1024
+  }).catch(() => null)
+  return result && result.code === 0 && !result.timedOut
+    ? parseWslGuestPortScan(result.stdout, distro)
+    : []
+}
+
+/** Replace wslrelay.exe owners with the guest process behind each forwarded port. */
+export async function attributeWslRelayListeners(
+  ports: RawListeningPort[],
+  distros: readonly string[],
+  scanGuest: (distro: string) => Promise<GuestListener[]> = scanWslGuestListeners
+): Promise<RawListeningPort[]> {
+  if (distros.length === 0 || !ports.some(isWslRelayListener)) {
+    return ports
+  }
+  const guestByPort = new Map<number, ProcessMetadata>()
+  for (const listeners of await Promise.all(distros.map(scanGuest))) {
+    for (const { port, metadata } of listeners) {
+      if (!guestByPort.has(port)) {
+        guestByPort.set(port, metadata)
+      }
+    }
+  }
+  return ports.map((port) => {
+    const guest = isWslRelayListener(port) ? guestByPort.get(port.port) : undefined
+    if (!guest) {
+      return port
+    }
+    // Guest PIDs are not Windows PIDs, and signaling the relay would cut every forwarded port.
+    return { host: port.host, port: port.port, ...guest }
+  })
+}

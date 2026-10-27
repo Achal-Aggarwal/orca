@@ -7,6 +7,7 @@ import {
   reconcileAdvertisedUrls
 } from './local-workspace-port-attribution'
 import { scanPlatformListeningPorts } from './local-workspace-platform-port-scanner'
+import { wslDistrosOfWorkspaces } from './wsl-guest-listening-ports'
 import {
   getWorkspacePortScanCooldown,
   isWorkspacePortScanCommandTimeout,
@@ -33,7 +34,10 @@ export async function scanWorkspacePorts(
   }
 
   try {
-    const { ports: rawPorts, metadataAvailable } = await scanPlatformListeningPorts(options)
+    const { ports: rawPorts, metadataAvailable } = await scanPlatformListeningPorts({
+      ...options,
+      wslDistros: wslDistrosOfWorkspaces(worktrees)
+    })
     recordWorkspacePortScanSuccess()
     const normalizedWorktrees = normalizeWorkspacePortProbes(worktrees)
     // Missing metadata cannot prove listener loss; eviction would discard URLs only PTY output can restore (#11161).

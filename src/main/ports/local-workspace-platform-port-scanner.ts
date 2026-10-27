@@ -15,6 +15,7 @@ import {
   type RawListeningPort,
   type WorkspacePortScanOptions
 } from './local-workspace-port-scan-state'
+import { attributeWslRelayListeners } from './wsl-guest-listening-ports'
 import {
   dedupeRawPorts,
   parseAddressWithPort,
@@ -175,7 +176,10 @@ async function scanWindowsNetstatPorts(
     new Set(ports.flatMap((p) => (p.pid ? [p.pid] : [])))
   )
   return {
-    ports: ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port })),
+    ports: await attributeWslRelayListeners(
+      ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port })),
+      options.wslDistros ?? []
+    ),
     metadataAvailable: true
   }
 }
