@@ -274,7 +274,13 @@ it.each([100, 1000])(
       'INSERT OR REPLACE INTO agent_session_records VALUES (?, ?)'
     )
     insert.run(records[0].sessionId, JSON.stringify(encodeAgentSessionRecord(records[0])))
-    writeMailHold(h.database.db, records[0].sessionId, { version: 1, status: 'released' }, true)
+    writeMailHold(h.database.db, records[0].sessionId, {
+      version: 1,
+      status: 'held',
+      members: ['legacy-A'],
+      ambiguous: false,
+      releasedThrough: 0
+    })
     const root = resources.track(
       new AgentSessionJournal({
         database: h.database,
@@ -290,7 +296,14 @@ it.each([100, 1000])(
           : records[index]
       insert.run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
     }
-    writeMailHold(h.database.db, records[0].sessionId, { version: 1, status: 'released' }, true)
+    expect(bootstrapJournalMailBoundary(h.database.db, records[count - 1].sessionId)).toMatchObject(
+      {
+        status: 'held',
+        members: ['legacy-A'],
+        ambiguous: false
+      }
+    )
+    await root.appendQueueResume(0)
     expect(bootstrapJournalMailBoundary(h.database.db, records[count - 1].sessionId).status).toBe(
       'released'
     )
