@@ -1,4 +1,5 @@
 import { registerAutomationHostReselectionTests } from './AutomationManager.host-reselection.spec'
+import { registerAutomationRunHistoryTests } from './AutomationManager.run-history.spec'
 import { AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { AutomationEditor } from './AutomationEditor'
@@ -159,6 +160,7 @@ async function mount(loseCreate: boolean | 'legacy' = false) {
 }
 
 describe('mobile automation navigation and setup', () => {
+  registerAutomationRunHistoryTests({ mount, root, press })
   registerAutomationHostReselectionTests({
     inventory,
     root,

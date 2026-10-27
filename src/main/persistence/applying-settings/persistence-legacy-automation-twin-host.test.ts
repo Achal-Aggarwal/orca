@@ -16,6 +16,7 @@ import { getDefaultPersistedState } from '../../../shared/constants'
 import { resolveAutomationRunTarget } from '../../automations/run-target-resolution'
 import { AutomationService } from '../../automations/service'
 import * as prechecks from '../../automations/precheck-runner'
+import * as repoTargets from '../../../shared/automation-repo-target'
 
 vi.mock('electron', () => ({
   app: { getPath: () => testState.dir },
@@ -96,6 +97,59 @@ describe('legacy automation on a repo id two hosts share', () => {
   afterEach(async () => {
     await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
+  })
+
+  it.each([5, 50])('bounds cold and run-invalidated owner projection at scale %s', (size) => {
+    const repos = Array.from({ length: size }, (_, index) => ({
+      ...localRow,
+      id: `repo-${index}`
+    }))
+    writeDataFile({
+      ...getDefaultPersistedState(testState.dir),
+      repos,
+      automations: Array.from({ length: size }, (_, index) =>
+        legacyAutomation({
+          id: `automation-${index}`,
+          projectId: 'repo-0',
+          runContext: null
+        })
+      )
+    })
+    const store = createStore()
+    const resolve = vi.spyOn(repoTargets, 'findAutomationRepo')
+    const diagnose = vi.spyOn(repoTargets, 'automationRequiresHostReselection')
+    const visits = () =>
+      resolve.mock.calls.reduce((count, [rows]) => count + rows.length, 0) +
+      diagnose.mock.calls.reduce((count, [, rows]) => count + rows.length, 0)
+    try {
+      const cold = store.listAutomationsForScope()
+      expect(cold.items).toHaveLength(size)
+      expect(cold.items.every((item) => item.selector.kind === 'self')).toBe(true)
+      expect(visits()).toBeGreaterThanOrEqual(size)
+      expect(visits()).toBeLessThanOrEqual(6 * size)
+      resolve.mockClear()
+      diagnose.mockClear()
+      expect(store.listAutomationsForScope()).toBe(cold)
+      expect(visits()).toBe(0)
+
+      const automation = cold.automations[0]!
+      const run = store.createAutomationRun(automation, Date.now(), 'manual')
+      store.updateAutomationRun({ runId: run.id, status: 'completed' })
+      resolve.mockClear()
+      diagnose.mockClear()
+      const invalidated = store.listAutomationsForScope()
+      expect(invalidated).not.toBe(cold)
+      expect(invalidated.items).toHaveLength(size)
+      expect(visits()).toBeGreaterThanOrEqual(size)
+      expect(visits()).toBeLessThanOrEqual(6 * size)
+      resolve.mockClear()
+      diagnose.mockClear()
+      expect(store.listAutomationsForScope()).toBe(invalidated)
+      expect(visits()).toBe(0)
+    } finally {
+      resolve.mockRestore()
+      diagnose.mockRestore()
+    }
   })
 
   it('preserves explicit null contexts across an unrelated saved edit and restart', async () => {

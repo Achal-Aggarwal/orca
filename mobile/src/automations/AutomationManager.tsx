@@ -74,7 +74,8 @@ export function AutomationManager(props: {
     historyScope,
     catalog.revision,
     catalog.connected,
-    view.kind === 'run' ? view.run : undefined
+    view.kind === 'run' ? view.run : undefined,
+    view.kind === 'detail' || view.kind === 'run' || (view.kind === 'list' && tab === 'runs')
   )
   function selectFilter(id: string) {
     const selected = catalog.rows.find((entry) => entry.automation.id === id)

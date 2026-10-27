@@ -18,7 +18,8 @@ export function useAutomationRuns(
   query: AutomationRunScope,
   revision: number,
   connected: boolean,
-  selected?: MobileAutomationRun
+  selected?: MobileAutomationRun,
+  observing = true
 ) {
   const records = useRef(new Map<string, MobileAutomationRun>())
   const histories = useRef(new Map<string, History>())
@@ -29,6 +30,8 @@ export function useAutomationRuns(
   const lock = useRef(false)
   const pending = useRef(false)
   const key = query ? JSON.stringify(query) : GLOBAL_SCOPE
+  const observation = useRef(observing)
+  observation.current = observing
   const scope = useRef(query)
   scope.current = query
   const selection = useRef(selected)
@@ -41,7 +44,7 @@ export function useAutomationRuns(
 
   const load = useCallback(
     async function read(next?: string): Promise<void> {
-      if (!client || client.getState() !== 'connected') {
+      if (!observation.current || !client || client.getState() !== 'connected') {
         return
       }
       if (lock.current) {
@@ -70,6 +73,9 @@ export function useAutomationRuns(
       let cursor = next
       try {
         for (;;) {
+          if (!observation.current) {
+            return
+          }
           const reply = await automationRunsRead.request(client, {
             limit: 30,
             ...requestScope,
@@ -101,6 +107,15 @@ export function useAutomationRuns(
           loaded: true,
           selectionId: selectedRun?.id
         })
+        const retained = new Set([...histories.current.values()].flatMap((entry) => entry.ids))
+        if (selection.current) {
+          retained.add(selection.current.id)
+        }
+        for (const id of records.current.keys()) {
+          if (!retained.has(id)) {
+            records.current.delete(id)
+          }
+        }
         setError(null)
       } catch (failure) {
         if (current()) {
@@ -131,10 +146,10 @@ export function useAutomationRuns(
     }
   }, [client, key, connected])
   useEffect(() => {
-    if (connected) {
+    if (connected && observing) {
       void load()
     }
-  }, [load, connected, revision, selected?.id])
+  }, [load, connected, observing, revision, selected?.id])
   return {
     runs: history.ids.flatMap((id) => {
       const run = records.current.get(id)

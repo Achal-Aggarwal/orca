@@ -32,7 +32,7 @@ function desktopStoreHolds(automations: Automation[]): void {
   scopedList(automations)
 }
 
-async function createSweep(): Promise<void> {
+async function createSweep(beforeSave?: () => Promise<void>): Promise<void> {
   await act(async () => {
     mocks.listPanel?.openCreateDialog()
   })
@@ -46,6 +46,7 @@ async function createSweep(): Promise<void> {
       workspaceId: WORKSPACE_ID
     }))
   })
+  await beforeSave?.()
   await act(async () => {
     await mocks.editorDialog?.onSave()
   })
@@ -54,6 +55,31 @@ async function createSweep(): Promise<void> {
 
 describe('AutomationsPage save visibility', () => {
   installAutomationsPageHarness()
+
+  it('keeps the editor and explains an unavailable target without writing', async () => {
+    desktopStoreHolds([])
+    mocks.state.automationHostFilter = DESKTOP_SELF_FILTER
+    mocks.state.endpointProjectHostSetups = mocks.state.endpointProjectHostSetups.map((setup) => ({
+      ...setup,
+      setupState: 'error'
+    }))
+    await renderPage()
+    await settleHostQueries()
+
+    await createSweep(async () => {
+      const control = mocks.editorDialog?.createDestination
+      const self = control?.entries.find((entry) => entry.stableRef.selector.kind === 'self')
+      expect(self).toBeDefined()
+      await act(async () => control?.onSelect(self!.stableKey))
+    })
+
+    expect(api.automations.create).not.toHaveBeenCalled()
+    expect(api.automations.update).not.toHaveBeenCalled()
+    expect(mocks.editorDialog?.notice).toBeNull()
+    expect(mocks.toastError.mock.calls).toEqual([['Choose an available workspace before saving.']])
+    expect(mocks.editorDialog?.open).toBe(true)
+    expect(mocks.editorDialog?.draft).toMatchObject({ name: 'Sweep', prompt: 'Do the sweep' })
+  })
 
   it.each([true, false])(
     'saves an explicit same-project host selection (orphan=%s)',

@@ -91,6 +91,69 @@ function queries(
   })
 }
 
+describe('RuntimeManagedWorktreeQueries.buildVisibilityMatchers', () => {
+  it.each([false, true])(
+    'preserves repo-ID matcher inputs and defaults (reversed=%s)',
+    (reversed) => {
+      const local = folderRepo({
+        customWorktreeVisibilitySources: [{ id: 'local-source', rootPath: '/local-source' }]
+      })
+      const remote = folderRepo({
+        connectionId: 'builder',
+        path: '/remote/app',
+        worktreeBasePath: '.claude/worktrees',
+        customWorktreeVisibilitySources: [{ id: 'remote-source', rootPath: '/remote-source' }]
+      })
+      const repos = reversed ? [remote, local] : [local, remote]
+      const winner = repos[1]!
+      const worktrees = ['/checkout/first', '/checkout/second'].map((path) =>
+        mergeWorktree(local.id, {
+          path,
+          head: 'abc',
+          branch: 'topic',
+          isBare: false,
+          isMainWorktree: false
+        })
+      )
+      const defaults = { customSources: [{ id: 'default-source', rootPath: '/default-source' }] }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the public matcher only reads repos and settings.
+      const store = {
+        getRepos: () => [...repos, folderRepo({ id: 'without-checkout' })],
+        getSettings: () => ({ ...settings, worktreeVisibilityDefaults: defaults })
+      } as unknown as RuntimeStore
+      const catalog = queries(store)
+      const matchers = catalog.buildVisibilityMatchers(worktrees)
+
+      expect([...matchers.keys()]).toEqual([local.id])
+      const matcher = matchers.get(local.id)!
+      for (const checkout of worktrees) {
+        expect(matcher(`${checkout.path}/.claude/worktrees/topic`)).toEqual({
+          kind: 'built-in',
+          id: 'claude'
+        })
+      }
+      expect(matcher('/local-source/topic')).toEqual(
+        reversed ? { kind: 'custom', id: 'local-source' } : null
+      )
+      expect(matcher('/remote-source/topic')).toEqual(
+        reversed ? null : { kind: 'custom', id: 'remote-source' }
+      )
+      expect(matcher(`${winner.path}/.claude/worktrees/topic`)).toEqual(
+        reversed ? { kind: 'built-in', id: 'claude' } : null
+      )
+      expect(matcher('/default-source/topic')).toEqual({ kind: 'custom', id: 'default-source' })
+      expect(
+        catalog.buildVisibilityMatchers(worktrees, false).get(local.id)!('/default-source/topic')
+      ).toBeNull()
+      expect(
+        catalog.buildVisibilityMatchers(worktrees, true, settings).get(local.id)!(
+          '/default-source/topic'
+        )
+      ).toBeNull()
+    }
+  )
+})
+
 describe('RuntimeManagedWorktreeQueries.listDetected', () => {
   it('stamps a scanned listing with the generation its scan began at', async () => {
     resetLocalWorktreeScanGenerationsForTests()
@@ -175,6 +238,77 @@ describe('RuntimeManagedWorktreeQueries.listDetected', () => {
 })
 
 describe('RuntimeManagedWorktreeQueries.list host scope', () => {
+  it.each([5, 50])('bounds listing hydration and ownership work at scale %s', async (size) => {
+    let idReads = 0
+    let hydrated = 0
+    const local = folderRepo({ kind: 'git', externalWorktreeVisibility: 'hide' })
+    const ssh = folderRepo({
+      kind: 'git',
+      connectionId: 'builder',
+      externalWorktreeVisibility: 'show'
+    })
+    const repos = [
+      local,
+      ssh,
+      ...Array.from({ length: size }, (_, index) => folderRepo({ id: `unrelated-${index}` }))
+    ]
+    const getRepos = vi.fn(() =>
+      repos.map((repo) => {
+        hydrated++
+        return new Proxy(
+          { ...repo },
+          {
+            get(row, key, receiver) {
+              if (key === 'id') {
+                idReads++
+              }
+              return Reflect.get(row, key, receiver)
+            }
+          }
+        )
+      })
+    )
+    const rows: ResolvedWorktree[] = [local, ssh].flatMap((repo) =>
+      Array.from({ length: size }, (_, index) => {
+        const git: GitWorktreeInfo = {
+          path: index === 0 ? repo.path : `/outside/work-${index}`,
+          head: 'abc',
+          branch: `branch-${index}`,
+          isBare: false,
+          isMainWorktree: index === 0
+        }
+        return {
+          ...mergeWorktree(repo.id, git, undefined),
+          hostId: repo.connectionId ? ('ssh:builder' as const) : ('local' as const),
+          parentWorktreeId: null,
+          childWorktreeIds: [],
+          lineage: null,
+          git
+        }
+      })
+    )
+    // SAFETY: the real listing reads only this store surface; metadata is deliberately absent.
+    const store = {
+      getRepos,
+      getAllWorktreeMeta: () => ({}),
+      getWorktreeMeta: () => undefined,
+      getSettings: () => settings
+    } as unknown as RuntimeStore
+    const listing = queries(store, {
+      listResolved: async () => rows,
+      listKnownHostIds: () => ['local', 'ssh:builder']
+    })
+
+    const page = await listing.list(undefined, 2)
+
+    expect(page.totalCount).toBe(size + 1)
+    expect(page.truncated).toBe(true)
+    expect(page.worktrees.map((row) => row.hostId)).toEqual(['local', 'ssh:builder'])
+    expect(getRepos.mock.calls.length).toBeLessThanOrEqual(3)
+    expect(hydrated).toBeLessThanOrEqual(3 * repos.length)
+    expect(idReads).toBeLessThanOrEqual(20 * (repos.length + rows.length))
+  })
+
   it.each([false, true])(
     'preserves host twins, expandable coverage and per-host visibility (reversed=%s)',
     async (reversed) => {

@@ -3,6 +3,7 @@ import {
   automationRequiresHostReselection,
   findAutomationRepo
 } from '../../../shared/automation-repo-target'
+import type { Repo } from '../../../shared/repo-types'
 import type { Automation, AutomationRun } from '../../../shared/automations-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import {
@@ -110,6 +111,12 @@ export function automationProjectionContext(
   storageAuthority: AutomationStorageAuthority,
   withUsage: boolean
 ): AutomationProjectionContext {
+  const reposById = new Map<string, Repo[]>()
+  for (const repo of state.repos) {
+    const rows = reposById.get(repo.id) ?? []
+    rows.push(repo)
+    reposById.set(repo.id, rows)
+  }
   const usage = withUsage ? automationUsageSummaries(state) : null
   const targetIdByGeneration = new Map(
     (state.sshTargets ?? []).flatMap((target) =>
@@ -120,11 +127,15 @@ export function automationProjectionContext(
     storageAuthority,
     requiresHostReselection: (automation) =>
       resolveAutomationWorkspaceHost(folderWorkspaceHostState(state), automation.workspaceId)
-        .kind === 'unpinned' && automationRequiresHostReselection(automation, state.repos),
+        .kind === 'unpinned' &&
+      automationRequiresHostReselection(
+        automation,
+        reposById.get(automation.runContext?.repoId ?? automation.projectId) ?? []
+      ),
     sshTargetGeneration: (targetId) => sshTargetGenerationForConnection(state, targetId),
     sshTargetIdForGeneration: (generation) => targetIdByGeneration.get(generation),
     repoConnectionId: (repoId, automation) => {
-      const repo = findAutomationRepo(state.repos, repoId, automation?.runContext)
+      const repo = findAutomationRepo(reposById.get(repoId) ?? [], repoId, automation?.runContext)
       return repo ? getRepoSshConnectionId(repo) : undefined
     },
     workspaceHost: (automation) =>

@@ -1,6 +1,10 @@
 import type { RuntimeManagedWorktreeQueryDependencies } from './runtime-managed-worktree-query-dependencies'
 import { resolveWorktreeHostRouting } from './worktree-launch-host-repo'
-import { buildRuntimeWorktreeVisibilityMatchers } from './runtime-worktree-visibility'
+import { createRepoRowExecutionHostLookup } from '../../shared/worktree-execution-host-resolution'
+import {
+  buildRuntimeWorktreeVisibilityMatchers,
+  buildRuntimeWorktreeVisibilityMatchersByRepoId
+} from './runtime-worktree-visibility'
 import { getRepoHostIdentityForParts } from '../../shared/repo-host-identity'
 import type { DetectedWorktreeListResult, Worktree } from '../../shared/worktree/types'
 import {
@@ -61,22 +65,37 @@ export class RuntimeManagedWorktreeQueries {
     }
     const resolved = await this.deps.listResolved()
     const scopedRepo = repoSelector ? await this.deps.resolveRepo(repoSelector) : null
+    const repos = this.deps.getStore()?.getRepos() ?? []
+    const repoLookup = createRepoRowExecutionHostLookup(repos)
+    const repoOwnerCounts = new Map<string, number>()
+    for (const repo of repos) {
+      repoOwnerCounts.set(repo.id, (repoOwnerCounts.get(repo.id) ?? 0) + 1)
+    }
     const matchers = buildRuntimeWorktreeVisibilityMatchers(
-      this.deps.getStore()?.getRepos() ?? [],
+      repos,
       resolved,
       this.visibilityDefaults(defaultsSupported)
     )
     const hiddenRepos = runtimeHiddenRepos(this.deps.getStore())
-    const worktrees = resolved.filter(
-      (worktree) =>
-        !hiddenRepos.hasWorktree(worktree) &&
-        (!scopedRepo || worktree.repoId === scopedRepo.id) &&
-        this.isVisible(
+    const worktrees = resolved.filter((worktree) => {
+      if (hiddenRepos.hasWorktree(worktree) || (scopedRepo && worktree.repoId !== scopedRepo.id)) {
+        return false
+      }
+      const routing = resolveWorktreeHostRouting(repos, worktree, repoLookup)
+      const repo = routing.kind === 'resolved' ? routing.repo : null
+      return (
+        !repo ||
+        this.toDetected(
+          repo,
           worktree,
           matchers.get(getRepoHostIdentityForParts(worktree.repoId, worktree.hostId ?? 'local')),
-          defaultsSupported
-        )
-    )
+          defaultsSupported,
+          undefined,
+          undefined,
+          repoOwnerCounts.get(repo.id)
+        ).visible
+      )
+    })
     // Scoped reads must name requested hosts even without rows; hidden retained repos must never reenter scope.
     const knownHostIds = withoutHiddenHosts(
       listingKnownHostIds(scopedRepo, () => this.deps.listKnownHostIds()),
@@ -213,24 +232,10 @@ export class RuntimeManagedWorktreeQueries {
     defaultsSupported = true,
     settingsOverride?: ReturnType<RuntimeStore['getSettings']>
   ): Map<string, WorktreeVisibilitySourceMatcher> {
-    const checkoutPathsByRepoId = new Map<string, string[]>()
-    for (const worktree of worktrees) {
-      const checkoutPaths = checkoutPathsByRepoId.get(worktree.repoId) ?? []
-      checkoutPaths.push(worktree.path)
-      checkoutPathsByRepoId.set(worktree.repoId, checkoutPaths)
-    }
-    const visibilityDefaults = this.visibilityDefaults(defaultsSupported, settingsOverride)
-    return new Map(
-      (this.deps.getStore()?.getRepos() ?? [])
-        .filter((repo) => checkoutPathsByRepoId.has(repo.id))
-        .map((repo) => [
-          repo.id,
-          createWorktreeVisibilitySourceMatcher(
-            [repo.path, ...(checkoutPathsByRepoId.get(repo.id) ?? [])],
-            resolveCustomWorktreeVisibilitySources(repo, visibilityDefaults),
-            resolveConfiguredWorktreeBasePaths(repo)
-          )
-        ])
+    return buildRuntimeWorktreeVisibilityMatchersByRepoId(
+      this.deps.getStore()?.getRepos() ?? [],
+      worktrees,
+      this.visibilityDefaults(defaultsSupported, settingsOverride)
     )
   }
 
@@ -240,7 +245,8 @@ export class RuntimeManagedWorktreeQueries {
     matcher?: WorktreeVisibilitySourceMatcher,
     defaultsSupported = true,
     settingsOverride?: ReturnType<RuntimeStore['getSettings']>,
-    providedMeta?: WorktreeMeta | null
+    providedMeta?: WorktreeMeta | null,
+    repoOwnerCount?: number
   ) {
     const store = this.deps.getStore()
     const settings = settingsOverride ?? store?.getSettings()
@@ -264,7 +270,7 @@ export class RuntimeManagedWorktreeQueries {
                 repo,
                 worktree.id,
                 store.getAllWorktreeMeta(),
-                store.getRepos().filter((row) => row.id === repo.id).length
+                repoOwnerCount ?? store.getRepos().filter((row) => row.id === repo.id).length
               ))
             : undefined
           : (providedMeta ?? undefined),
