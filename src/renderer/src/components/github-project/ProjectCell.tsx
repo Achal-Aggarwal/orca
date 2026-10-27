@@ -3,7 +3,6 @@ import React from 'react'
 import { TYPE_FIELD_DATA_TYPE } from './columns'
 import type {
   GitHubIssueType,
-  GitHubProjectLinkedPullRequests,
   GitHubProjectField,
   GitHubProjectFieldMutationValue,
   GitHubProjectRow
@@ -27,7 +26,7 @@ type Props = {
   onEditAssignees?: (add: string[], remove: string[]) => void
   onEditLabels?: (add: string[], remove: string[]) => void
   onEditIssueType?: (issueType: GitHubIssueType | null) => void
-  onOpenDialog?: (pullRequest?: GitHubProjectLinkedPullRequests['pullRequests'][number]) => void
+  onOpenDialog?: () => void
   sourceHost?: string
   sourceTarget: RuntimeClientTarget
 }
@@ -47,7 +46,7 @@ export default function ProjectCell({
   const value = row.fieldValuesByFieldId[field.id]
   const editableValue = editable && row.itemType !== 'REDACTED'
   if (field.dataType === 'TITLE') {
-    return <ProjectTitleCell row={row} onOpenDialog={() => onOpenDialog?.()} />
+    return <ProjectTitleCell row={row} onOpenDialog={onOpenDialog} />
   }
   if (field.dataType === TYPE_FIELD_DATA_TYPE) {
     return (
@@ -115,11 +114,7 @@ export default function ProjectCell({
               onKeyDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation()
-                if (onOpenDialog) {
-                  onOpenDialog(pr)
-                } else {
-                  void window.api.shell.openUrl(pr.url)
-                }
+                void window.api.shell.openUrl(pr.url)
               }}
             >
               #{pr.number}

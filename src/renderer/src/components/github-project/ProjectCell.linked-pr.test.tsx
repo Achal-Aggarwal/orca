@@ -1,84 +1,68 @@
 // @vitest-environment happy-dom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
-import { useAppStore } from '@/store'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { Repo } from '../../../../shared/repo-types'
 import ProjectViewList from './ProjectViewList'
-import { useProjectRowActions } from './useProjectRowActions'
-import { linkedPullRequestsTable } from './ProjectCell.test-fixture'
+import { linkedPullRequestsRow, linkedPullRequestsTable } from './ProjectCell.test-fixture'
 
-const { lookupSlugMatches } = vi.hoisted(() => ({ lookupSlugMatches: vi.fn() }))
-vi.mock('@/lib/repo-slug-index', () => ({
-  useRepoSlugIndex: () => ({ ready: true, lookupSlug: () => [], lookupSlugMatches })
-}))
-vi.mock('./useProjectRowMutations', () => ({ useProjectRowMutations: () => ({}) }))
-vi.mock('@/lib/launch-work-item-direct', () => ({ launchWorkItemDirect: vi.fn() }))
+afterEach(cleanup)
 
-const initialState = useAppStore.getInitialState()
-afterEach(() => {
-  cleanup()
-  useAppStore.setState(initialState, true)
-})
-
-it('opens each linked PR in its own repository without opening or selecting the issue row', () => {
-  const repo: Repo = {
-    id: 'api',
-    path: '/repos/api',
-    displayName: 'API',
-    badgeColor: '#000',
-    addedAt: 1
+it('opens exact linked PR URLs with native activation and preserves the issue title action', async () => {
+  const user = userEvent.setup()
+  const pullRequests = [
+    { number: 93, title: 'Origin PR', url: 'https://github.com/fork/widgets/pull/93' },
+    { number: 93, title: 'Upstream PR', url: 'https://github.com/upstream/widgets/pull/93' },
+    { number: 93, title: 'Enterprise PR', url: 'https://github.example.com/fork/widgets/pull/93' }
+  ]
+  const row = {
+    ...linkedPullRequestsRow,
+    content: {
+      ...linkedPullRequestsRow.content,
+      linkedPullRequests: { pullRequests, totalCount: 5 }
+    }
   }
-  useAppStore.setState({ repos: [repo] })
-  lookupSlugMatches.mockImplementation((slug, host) => ({
-    origin: slug === 'other/api' && host === 'github.example.com' ? [repo] : [],
-    upstream: []
-  }))
   const openUrl = vi.fn().mockResolvedValue(undefined)
   Object.assign(window, { api: { shell: { openUrl } } })
+  const onOpenDialog = vi.fn()
   const rowClick = vi.fn()
-  const selectedRepoIds = new Set(['api'])
-  function Harness() {
-    const actions = useProjectRowActions({
-      table: linkedPullRequestsTable,
-      currentCacheKey: 'cache',
-      selectedRepoIds
-    })
-    return (
-      <TooltipProvider>
-        <div onClick={rowClick} onKeyDown={rowClick}>
-          <ProjectViewList
-            table={linkedPullRequestsTable}
-            sourceTarget={{ kind: 'local' }}
-            onOpenDialog={actions.openDialog}
-          />
-        </div>
-        <output data-testid="opened-pr">{JSON.stringify(actions.resolvedDialogRepoItem)}</output>
-      </TooltipProvider>
-    )
+  const rowKeyDown = vi.fn()
+  render(
+    <TooltipProvider>
+      <div onClick={rowClick} onKeyDown={rowKeyDown}>
+        <ProjectViewList
+          table={{ ...linkedPullRequestsTable, rows: [row] }}
+          sourceTarget={{ kind: 'local' }}
+          onOpenDialog={onOpenDialog}
+        />
+      </div>
+    </TooltipProvider>
+  )
+  const title = screen.getByRole('button', { name: `#7 ${row.content.title}` })
+  const buttons = screen.getAllByRole('button', { name: '#93' })
+  buttons[0].focus()
+  await user.tab()
+  expect(document.activeElement).toBe(buttons[1])
+  await user.tab({ shift: true })
+  expect(document.activeElement).toBe(buttons[0])
+  rowKeyDown.mockClear()
+  for (const [index, pr] of pullRequests.entries()) {
+    const button = buttons[index]
+    await user.hover(button)
+    expect(button.getAttribute('title')).toBe(pr.title)
+    await user.click(button)
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+    expect(openUrl.mock.calls.slice(index * 3)).toEqual([[pr.url], [pr.url], [pr.url]])
   }
-  render(<Harness />)
-  const crossRepoPR = screen.getByRole('button', { name: '#93' })
-  expect(crossRepoPR.getAttribute('title')).toBe('Support cross-repository links')
-  crossRepoPR.focus()
-  expect(document.activeElement).toBe(crossRepoPR)
-  fireEvent.keyDown(crossRepoPR, { key: 'Enter' })
-  fireEvent.click(crossRepoPR)
-  const opened = JSON.parse(screen.getByTestId('opened-pr').textContent ?? 'null')
-  expect(opened).toMatchObject({
-    repoId: 'api',
-    workItem: {
-      type: 'pr',
-      number: 93,
-      title: 'Support cross-repository links',
-      url: 'https://github.example.com/other/api/pull/93',
-      prRepo: { owner: 'other', repo: 'api', host: 'github.example.com' }
-    }
-  })
-  expect(opened.origin).toBeUndefined()
-  fireEvent.click(screen.getByRole('button', { name: '#42' }))
-  expect(openUrl).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/app/pull/42')
+  expect(openUrl).toHaveBeenCalledTimes(9)
+  expect(onOpenDialog).not.toHaveBeenCalled()
   expect(rowClick).not.toHaveBeenCalled()
+  expect(rowKeyDown).not.toHaveBeenCalled()
+  expect(buttons[0].parentElement?.textContent).toBe('#93, #93, #93 +2')
   expect(screen.getByText(/\+2/).closest('button')).toBeNull()
+  await user.click(title)
+  expect(onOpenDialog).toHaveBeenCalledExactlyOnceWith(row)
+  expect(openUrl).toHaveBeenCalledTimes(9)
 })
