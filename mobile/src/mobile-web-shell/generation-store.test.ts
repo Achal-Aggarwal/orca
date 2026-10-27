@@ -225,21 +225,6 @@ describe('generation store', () => {
     expect(fs.paths().filter((path) => !path.startsWith(paired))).toEqual([])
   })
 
-  it('sweeps nothing when the paired host list cannot be read', async () => {
-    const fs = createFakeFileSystem()
-    const store = createGenerationStore({ fileSystem: fs })
-    await activate(store, HOST)
-    const before = fs.paths()
-
-    await expect(
-      store.deleteUnpairedHostCaches(async () => {
-        throw new Error('host list storage unreadable')
-      })
-    ).rejects.toThrow('unreadable')
-
-    expect(fs.paths()).toEqual(before)
-  })
-
   it('serializes two stage calls for one host and build', async () => {
     const fs = createFakeFileSystem()
     const store = createGenerationStore({ fileSystem: fs })

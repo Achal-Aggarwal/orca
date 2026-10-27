@@ -7,6 +7,9 @@ const doubles = vi.hoisted(() => ({
 }))
 
 vi.mock('expo-file-system', () => ({ Directory: class {}, File: class {}, Paths: { cache: '' } }))
+vi.mock('../../modules/orca-mobile-web-shell/src', () => ({
+  excludeFromBackup: async () => undefined
+}))
 vi.mock('../transport/rpc-operation', () => ({
   defineRpcOperation: (definition: unknown) => definition,
   runRpcOperation: () => doubles.manifest()
