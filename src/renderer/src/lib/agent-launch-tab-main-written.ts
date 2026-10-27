@@ -1,5 +1,5 @@
 import { agentLaunchPaneAttemptCurrent } from './agent-launch-pane-start'
-import { afterLayoutFrame } from '@/runtime/layout-frame-position'
+import { afterLayoutFrame, layoutFramesFlowing } from '@/runtime/layout-frame-position'
 import type { AgentLaunchPaneVerdictEvent } from '../../../shared/agent-launch-pane-verdict'
 import type {
   AgentLaunchTabPublished,
@@ -13,7 +13,6 @@ import {
   rememberAgentLaunchPanePrompt
 } from './agent-launch-pane-prompt'
 import { revealWorkspaceSurface } from './workspace-surface-reveal'
-import { layoutFramesFlowing } from '@/runtime/layout-frame-position'
 import { layoutFrameTerminalTab } from '@/runtime/layout-frame-terminal-panes'
 
 /** Main owns tab creation/closure; attach this window’s session-only prompt, pane verdict and presentation state when its frame draws, retaining them for undrawn workspaces. */

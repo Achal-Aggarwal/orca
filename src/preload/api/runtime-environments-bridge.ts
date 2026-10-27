@@ -1,4 +1,7 @@
-import type { RuntimeRpcDispatchObservation } from '../../shared/runtime-rpc-envelope'
+import type {
+  RuntimeRpcDispatchObservation,
+  RuntimeRpcResponse
+} from '../../shared/runtime-rpc-envelope'
 import { ipcRenderer } from 'electron'
 import {
   RUNTIME_HOST_STATUS_CHANNEL,
@@ -6,7 +9,6 @@ import {
 } from '../../shared/runtime-host-status'
 import type { VerifyAndAddRuntimeEnvironmentResult } from '../../shared/remote-pairing-verification'
 import type { RuntimeStatus } from '../../shared/runtime-types'
-import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 import type {
   PublicKnownRuntimeEnvironment,
   RuntimeEnvironmentRemoval

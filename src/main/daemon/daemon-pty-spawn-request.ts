@@ -1,4 +1,7 @@
-import { SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION } from './daemon-protocol-version'
+import {
+  SESSION_SWITCH_PHYSICAL_PROTOCOL_VERSION,
+  HISTORY_SEED_TRANSFER_PROTOCOL_VERSION
+} from './daemon-protocol-version'
 import type { SpawnIntent } from '../../shared/host-spawn-admission'
 import type { ColdRestorePayload } from './cold-restore-payload-cache'
 import type { DaemonAuditObservation } from './daemon-audit-classifier'
@@ -9,7 +12,6 @@ import {
   type SnapshotCheckpointResult
 } from './daemon-pty-runtime-state'
 import { isDaemonGoneError } from './daemon-endpoint-errors'
-import { HISTORY_SEED_TRANSFER_PROTOCOL_VERSION } from './daemon-protocol-version'
 import type { ColdRestoreInfo } from './history-reader'
 import { NdjsonLineTooLongError } from './ndjson'
 import {

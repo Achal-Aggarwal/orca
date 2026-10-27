@@ -2,7 +2,7 @@ import { noteSwitchPresentationUse } from '@/lib/conversation-switch-projection'
 import { emitNativeChatToggled } from '@/lib/native-chat-telemetry'
 import type { TuiAgent } from '../../../../../shared/tui-agent'
 import type { AppState } from '../../types'
-import type { TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
+import type { TabsSliceGet, TabsSliceSet, TabsLabelActions } from './tabs-slice-contract'
 import { findTabAndWorktree, patchTab, updateGroup } from '../tab-group-state'
 import {
   applyTabOrderSortValues,
@@ -20,7 +20,6 @@ import { recordTabOrderInLayoutOwner } from './tab-order-layout-owner'
 import { withPreviewEnded } from './tab-preview-flag'
 import { endsPreviewHere, promotePreviewTabsThroughLayoutOwner } from './preview-tab-promotion'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../shared/layout-owner-switch'
-import type { TabsLabelActions } from './tabs-slice-contract'
 
 function oppositeViewMode(mode: 'terminal' | 'chat'): 'terminal' | 'chat' {
   return mode === 'chat' ? 'terminal' : 'chat'

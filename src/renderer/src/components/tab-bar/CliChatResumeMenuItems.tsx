@@ -1,4 +1,4 @@
-import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import { useConversationSwitchReadiness, runCliChatResume } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
@@ -6,7 +6,6 @@ import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { AiVaultSessionSurfaceSwitchMenuItems } from '../right-sidebar/AiVaultSessionSurfaceSwitchMenuItems'
 import { resolveCliChatResumeSource, useCliChatResumeCapability } from './cli-chat-resume-source'
-import { runCliChatResume } from '@/lib/conversation-surface-switch'
 
 export function CliChatResumeMenuItems({
   tab,

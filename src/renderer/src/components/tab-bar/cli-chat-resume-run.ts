@@ -1,6 +1,10 @@
 import { toast } from 'sonner'
 import { conversationSwitchSourceKept } from '@/lib/conversation-switch-feedback'
-import { conversationSwitchChanged } from '@/lib/pending-conversation-surface-switches'
+import {
+  conversationSwitchChanged,
+  isCliChatResumePending,
+  pendingCliChatResumes as pending
+} from '@/lib/pending-conversation-surface-switches'
 import { useAppStore } from '@/store'
 import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
@@ -18,10 +22,6 @@ import { reportCliChatResumeFailure, startCliChatReturn } from './cli-chat-resum
 import { adoptingAgentOnHost } from '../right-sidebar/ai-vault-session-resume-in-chat-launch'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { captureSourceTerminal } from './cli-chat-resume-terminal-capture'
-import {
-  isCliChatResumePending,
-  pendingCliChatResumes as pending
-} from '@/lib/pending-conversation-surface-switches'
 
 /** The execution host closes only the captured shell; refused or unknown closes leave it alone. */
 async function retireSwitchedTerminalPane(

@@ -1,5 +1,10 @@
 import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
-import { useNativeChatClaudeSignIn } from './native-chat-claude-sign-in'
+import {
+  useNativeChatClaudeSignIn,
+  isClaudeSignInFailureKind,
+  nativeChatClaudeSignInLabel,
+  type NativeChatClaudeSignIn
+} from './native-chat-claude-sign-in'
 import { nativeChatAntigravitySignInContent } from './native-chat-antigravity-settings'
 import { translate } from '@/i18n/i18n'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -7,11 +12,6 @@ import { agentSessionRefusalCauseParts } from '../../../../shared/agent-session-
 import type { StructuredLaunchFailure } from '@/lib/structured-agent-session-launch-failure'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import {
-  isClaudeSignInFailureKind,
-  nativeChatClaudeSignInLabel,
-  type NativeChatClaudeSignIn
-} from './native-chat-claude-sign-in'
 import type {
   NativeChatComposerNotice,
   NativeChatComposerNoticeContent

@@ -1,3 +1,5 @@
+import type { StoreApi } from 'zustand'
+import type { AppState } from '../../src/renderer/src/store/types'
 import { createTestStore } from '@/store/slices/store-test-helpers'
 import { createTabsSliceMockApi } from '@/store/slices/tabs-slice-test-harness'
 import { publishAgentLaunchTab as windowPublish } from '@/lib/agent-launch-tab-publication'
@@ -22,7 +24,7 @@ import { DaemonRequestTimeoutError } from '../../src/main/daemon/daemon-errors'
 import type { RuntimePtyController } from '../../src/main/runtime/runtime-pty-controller-contract'
 
 const renderer = vi.hoisted(() => {
-  const ref: { store: ReturnType<typeof createTestStore> | null } = { store: null }
+  const ref: { store: StoreApi<AppState> | null } = { store: null }
   return ref
 })
 vi.mock('@/store', () => ({

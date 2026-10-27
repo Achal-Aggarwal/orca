@@ -1,4 +1,7 @@
-import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import {
+  useConversationSwitchReadiness,
+  runNativeChatCliSwitch
+} from '@/lib/conversation-surface-switch'
 import { useShallow } from 'zustand/react/shallow'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
@@ -12,7 +15,6 @@ import {
 } from './tab-session-history-switch'
 import { runNativeChatCliFork, useNativeChatCliForkPending } from './native-chat-cli-fork-run'
 import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
-import { runNativeChatCliSwitch } from '@/lib/conversation-surface-switch'
 
 /** "Switch to CLI" where the chat's host switches its agent in place; otherwise the fork. */
 export function NativeChatCliForkMenuItems({

@@ -1,4 +1,4 @@
-import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import { useConversationSwitchReadiness, runCliChatResume } from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { useShallow } from 'zustand/react/shallow'
 import { MessagesSquare } from 'lucide-react'
@@ -10,7 +10,6 @@ import {
   resolveCliChatResumeSource,
   useCliChatResumeCapability
 } from '../tab-bar/cli-chat-resume-source'
-import { runCliChatResume } from '@/lib/conversation-surface-switch'
 
 export function TerminalPaneResumeInChatButton({
   tabId,

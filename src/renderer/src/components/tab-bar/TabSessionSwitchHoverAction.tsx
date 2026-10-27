@@ -1,4 +1,8 @@
-import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import {
+  useConversationSwitchReadiness,
+  runCliChatResume,
+  runNativeChatCliSwitch
+} from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { useShallow } from 'zustand/react/shallow'
 import { MessagesSquare, SquareTerminal } from 'lucide-react'
@@ -8,8 +12,6 @@ import { useAppStore } from '@/store'
 import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { resolveCliChatResumeSource, useCliChatResumeCapability } from './cli-chat-resume-source'
-import { runCliChatResume } from '@/lib/conversation-surface-switch'
-import { runNativeChatCliSwitch } from '@/lib/conversation-surface-switch'
 import {
   resolveNativeChatCliForkIdentity,
   type NativeChatTabSession

@@ -26,9 +26,11 @@ import {
   deliverResizes
 } from '../../src/renderer/src/components/native-chat/native-chat-windowing-test-harness'
 import { resetStructuredAgentSessionReadOwnersForTests } from '../../src/renderer/src/components/native-chat/structured-agent-session-read-owner'
-import type { AgentSessionHistoryResult } from '../../src/shared/agent-session-wire'
+import type {
+  AgentSessionHistoryResult,
+  AgentSessionSubscribeEvent
+} from '../../src/shared/agent-session-wire'
 import type * as StructuredAgentSessionClientModule from '@/runtime/structured-agent-session-client'
-import type { AgentSessionSubscribeEvent } from '../../src/shared/agent-session-wire'
 
 // @vitest-environment happy-dom
 

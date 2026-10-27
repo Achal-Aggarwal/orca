@@ -1,7 +1,8 @@
 import {
   agentSessionRefusalFromReference,
   refuse,
-  refuseUnclassified
+  refuseUnclassified,
+  agentSessionRefusalError
 } from '../../../shared/agent-session-wire-refusals'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
@@ -12,7 +13,6 @@ import {
   selectStructuredAgentSessionOperationChild
 } from './structured-agent-session-operation-child'
 import { structuredAgentSessionSwitchBlocked } from './structured-agent-session-switch-admission'
-import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sameProviderChild } from './structured-agent-session-provider-child'
 import { recordStructuredAgentSessionStartFailure } from './structured-agent-session-start-failure-row'
 import { structuredAgentSessionEndedChildFailure } from './structured-agent-session-ended-child-failure'

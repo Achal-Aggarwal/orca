@@ -14,11 +14,10 @@ import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-m
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
 import { AiVaultSessionSurfaceSwitchMenuItems } from './AiVaultSessionSurfaceSwitchMenuItems'
-import type { AiVaultAgent } from '../../../../shared/ai-vault-types'
+import type { AiVaultAgent, AiVaultSession } from '../../../../shared/ai-vault-types'
 import { isAiVaultFolderWorkspaceId } from './ai-vault-session-worktree-affordances'
 import { useAppStore } from '@/store'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
-import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 
 export function SessionActionMenuItems({
   menuKind = 'dropdown',

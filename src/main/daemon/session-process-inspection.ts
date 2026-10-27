@@ -2,9 +2,7 @@ import type { SessionOutputPlane } from './session-output-plane'
 
 import type { TerminalShellRecoveryBarrier } from './terminal-shell-recovery-barrier'
 
-import type { SubprocessHandle } from './session-subprocess-handle'
-
-import type { ChildProcessVerdictRead } from './session-subprocess-handle'
+import type { SubprocessHandle, ChildProcessVerdictRead } from './session-subprocess-handle'
 
 import { SessionSwitchUse } from './session-switch-use'
 

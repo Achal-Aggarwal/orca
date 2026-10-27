@@ -1,4 +1,7 @@
-import type { RuntimeRpcDispatchObservation } from '../../shared/runtime-rpc-envelope'
+import type {
+  RuntimeRpcDispatchObservation,
+  RuntimeRpcResponse
+} from '../../shared/runtime-rpc-envelope'
 import type { ManagedOrcadPreloadApi } from './managed-orcad-api'
 import type { WslHostsPreloadApi } from './wsl-hosts-api'
 import type { RuntimeHostStatusSnapshot } from '../../shared/runtime-host-status'
@@ -9,7 +12,6 @@ import type {
   RuntimeSyncWindowGraphResult,
   RuntimeTerminalDriverState
 } from '../../shared/runtime-types'
-import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 import type { ClientHostedBrowserRowsEvent } from '../../shared/client-hosted-browser-rows'
 import type { SidebarInputsChangedEvent } from '../../shared/sidebar-list/sidebar-inputs-feed-contract'
 import type {

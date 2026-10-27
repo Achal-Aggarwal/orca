@@ -1,4 +1,7 @@
-import { useConversationSwitchReadiness } from '@/lib/conversation-surface-switch'
+import {
+  useConversationSwitchReadiness,
+  runNativeChatCliSwitch
+} from '@/lib/conversation-surface-switch'
 import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { SquareTerminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,7 +11,6 @@ import { useAppStore } from '@/store'
 import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { SwitchToCliTooltipText } from '../right-sidebar/ai-vault-session-cli-fork-copy'
-import { runNativeChatCliSwitch } from '@/lib/conversation-surface-switch'
 import { resolveTabSessionHistorySubject } from '../tab-bar/tab-session-history-switch'
 import { NativeChatFindBar } from './NativeChatFindBar'
 import type { NativeChatFind } from './use-native-chat-find'

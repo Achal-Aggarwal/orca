@@ -1,5 +1,7 @@
-import type { RuntimeRpcDispatchObservation } from '../shared/runtime-rpc-envelope'
-import type { RuntimeRpcResponse } from '../shared/runtime-rpc-envelope'
+import type {
+  RuntimeRpcDispatchObservation,
+  RuntimeRpcResponse
+} from '../shared/runtime-rpc-envelope'
 
 type RuntimeEnvironmentSubscribeArgs = {
   subscriptionId?: string

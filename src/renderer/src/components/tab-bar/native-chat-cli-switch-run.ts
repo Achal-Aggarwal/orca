@@ -1,4 +1,7 @@
-import { conversationSwitchChanged } from '@/lib/pending-conversation-surface-switches'
+import {
+  conversationSwitchChanged,
+  pendingNativeChatCliSwitches as pending
+} from '@/lib/pending-conversation-surface-switches'
 import { conversationSwitchFailureText } from '@/lib/conversation-switch-feedback'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
@@ -13,7 +16,6 @@ import { AiVaultChatForkSourceSchema } from '../../../../shared/ai-vault-chat-fo
 import type { AiVaultAgent } from '../../../../shared/ai-vault-types'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
-import { pendingNativeChatCliSwitches as pending } from '@/lib/pending-conversation-surface-switches'
 
 const changed = conversationSwitchChanged
 /** Moves a chat's conversation into a terminal on the same id: the host stops the idle chat, the

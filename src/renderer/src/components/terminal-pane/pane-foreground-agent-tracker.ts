@@ -4,11 +4,11 @@ import { createPaneForegroundProcessReader } from './pane-foreground-process-rea
 import { FOREGROUND_COMMAND_READS } from '../../../../shared/foreground-command-settle'
 import type {
   ForegroundReadReason,
-  PaneForegroundAgentTrackerDeps
+  PaneForegroundAgentTrackerDeps,
+  PaneForegroundAgentTracker
 } from './pane-foreground-agent-tracker-contract'
 import { confirmPaneForegroundProcessExit } from './pane-foreground-process-exit'
 import { shouldRetryForegroundAgentRead } from './pane-foreground-agent-retry'
-import type { PaneForegroundAgentTracker } from './pane-foreground-agent-tracker-contract'
 
 const VISIBLE_PTY_SETTLE_MS = 350
 

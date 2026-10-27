@@ -22,7 +22,10 @@ import type {
   PtyProcessInfo,
   PtySpawnResult
 } from '../providers/pty-provider-contract'
-import type { PtyProcessInspection } from '../providers/pty-process-inspection'
+import type {
+  PtyProcessInspection,
+  PtyProcessInspectionOptions
+} from '../providers/pty-process-inspection'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { StartupCwdFallback } from '../../shared/startup-cwd-fallback'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
@@ -32,7 +35,6 @@ import type {
   PtyFencedTerminationOutcome
 } from '../../shared/pty-fenced-termination'
 import type { AgentSessionSwitchAuthority } from '../../shared/agent-session-switch-execution'
-import type { PtyProcessInspectionOptions } from '../providers/pty-process-inspection'
 
 export type PtyInventoryRefreshOptions = {
   includeForegroundProcessEvidence?: boolean
