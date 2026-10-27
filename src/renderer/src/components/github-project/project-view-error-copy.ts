@@ -7,7 +7,7 @@ type ProjectViewErrorCopyContext = {
   totalCount?: number
 }
 
-// Returns undefined for a missing reason or one from a newer host that this build does not know.
+// Returns undefined when no reason is set.
 function reasonCopy(error: GitHubProjectViewError): string | undefined {
   const detail = error.detail ?? ''
   switch (error.reason) {
@@ -83,9 +83,11 @@ function reasonCopy(error: GitHubProjectViewError): string | undefined {
         'Unexpected REST response: {{detail}}',
         { detail }
       )
-    default:
+    case undefined:
       return undefined
   }
+  // A reason from a newer host falls through to the type copy.
+  return undefined
 }
 
 // Sentences each `type` identifies on its own, so older hosts without `reason` still get them.
@@ -153,9 +155,12 @@ function typeCopy(
             { detail: error.detail }
           )
         : translate('projectViews.error.schemaDrift', 'Could not read this project view.')
-    default:
+    case 'not_found':
+    case 'validation_error':
+    case 'unknown':
       return undefined
   }
+  return undefined
 }
 
 /** Localized copy for a project-view failure; GitHub's own text and unknown failures keep `message`. */
