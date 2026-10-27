@@ -98,6 +98,20 @@ describe('internal WSL distro allowlist', () => {
     expect(refusal('git', ['-d', 'Ubuntu'])).toBeNull()
   })
 
+  it('stops at the first positional argument, which wsl.exe runs in the default distro', () => {
+    vi.stubEnv(WSL_DISTRO_ALLOWLIST_ENV, 'orca-test-a')
+    for (const args of [
+      ['ls', '-d', 'orca-test-a'],
+      ['-u', 'root', 'ls', '-d', 'orca-test-a'],
+      ['--cd', '/tmp', 'sh', '-c', 'true', '-d', 'orca-test-a']
+    ]) {
+      expect(refusal(WSL, args), args.join(' ')).toMatchObject({
+        code: WSL_DISTRO_NOT_ALLOWLISTED_CODE
+      })
+    }
+    expect(refusal(WSL, ['-d', 'orca-test-a', 'ls', '-d', 'Ubuntu'])).toBeNull()
+  })
+
   it('malformed: fails closed for every distro and logs once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     for (const value of ['', ' ', 'orca-test-a,', 'orca test', 'a;b']) {

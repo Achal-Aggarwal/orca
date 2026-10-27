@@ -13,8 +13,7 @@ type LocalPtySpawn = (
 export async function loadLocalPtyRuntimeSpawn(): Promise<LocalPtySpawn> {
   const pty = await import('node-pty')
   const ptySpawn: typeof pty.spawn = (file, args, options) => {
-    // node-pty also accepts a Windows command line; distro names never contain spaces.
-    assertWslDistroAllowed(file, typeof args === 'string' ? args.split(/\s+/) : args)
+    assertWslDistroAllowed(file, args)
     return pty.spawn(file, args, options)
   }
   return (params) => spawnShellWithFallback({ ...params, ptySpawn })

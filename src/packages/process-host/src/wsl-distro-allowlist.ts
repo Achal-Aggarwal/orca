@@ -60,7 +60,8 @@ function refusalReason(
   let exemptOnly = true
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
-    if (COMMAND_START.has(arg)) {
+    // wsl.exe runs its first positional argument as a command in the current target distro.
+    if (COMMAND_START.has(arg) || !arg.startsWith('-')) {
       exemptOnly = false
       break
     }
@@ -110,7 +111,7 @@ function readAllowlist(value: string): ReadonlySet<string> | null {
 }
 
 /** Throw before a wsl.exe call reaches a distro the allowlist excludes. Unset: returns at once. */
-export function assertWslDistroAllowed(program: string, args: readonly string[]): void {
+export function assertWslDistroAllowed(program: string, args: readonly string[] | string): void {
   const value = process.env[WSL_DISTRO_ALLOWLIST_ENV]
   if (value === undefined) {
     return
@@ -118,7 +119,9 @@ export function assertWslDistroAllowed(program: string, args: readonly string[])
   if (!isWslProgram(program)) {
     return
   }
-  const reason = refusalReason(args, readAllowlist(value))
+  // node-pty also accepts a Windows command line; distro names never contain spaces.
+  const argv = typeof args === 'string' ? args.split(/\s+/).filter(Boolean) : args
+  const reason = refusalReason(argv, readAllowlist(value))
   if (reason !== null) {
     throw Object.assign(new Error(`WSL exec refused: ${reason}`), {
       code: WSL_DISTRO_NOT_ALLOWLISTED_CODE
