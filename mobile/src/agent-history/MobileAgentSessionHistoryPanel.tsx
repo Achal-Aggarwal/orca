@@ -7,6 +7,7 @@ import { colors } from '../theme/mobile-theme'
 import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useWorkspaceClient } from '../transport/use-workspace-client'
 import { useWorkspaceRouteHandoff } from '../navigation/workspace-route-handoff'
+import { useSessionScreenHandlers } from '../session/session-screen-handlers'
 import { worktreeCatalogRead } from '../worktree/worktree-catalog-operations'
 import { getWorktreeLabel } from '../session/worktree-label'
 import {
@@ -57,6 +58,7 @@ function MobileAgentSessionHistoryPanelContent({
   useMobileColorScheme()
   // Use handoff, not useRouter: resumed session is a native route outside this single-document page.
   const router = useWorkspaceRouteHandoff()
+  const sessionBelow = useSessionScreenHandlers(hostId, worktreeId)
   const { client, state: connState } = useWorkspaceClient(hostId)
   const claimResumeOwnership = useMobileResumeOperationOwnership(
     hostId,
@@ -214,7 +216,7 @@ function MobileAgentSessionHistoryPanelContent({
           hostTerminalWindowsShell,
           settings
         })
-        await resumeAiVaultSessionInTerminal(
+        const resumed = await resumeAiVaultSessionInTerminal(
           client,
           target.worktreeId,
           {
@@ -235,6 +237,7 @@ function MobileAgentSessionHistoryPanelContent({
         setResumeMessage('Agent session queued.')
         // From a session screen the same workspace is the screen below; otherwise the session takes this screen's place.
         if (origin === 'session' && target.worktreeId === worktreeId) {
+          sessionBelow?.onResumedTerminal(resumed.terminal)
           router.back()
         } else {
           router.replace(
@@ -254,6 +257,7 @@ function MobileAgentSessionHistoryPanelContent({
       connState,
       hostId,
       origin,
+      sessionBelow,
       resumeHost,
       hostTerminalWindowsShell,
       router,

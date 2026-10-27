@@ -42,14 +42,23 @@ vi.mock('react-native-safe-area-context', () => ({
 }))
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path' }))
 vi.mock('lucide-react-native', () => ({ ChevronLeft: 'Icon', Play: 'Icon', RefreshCw: 'Icon' }))
-const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), replace: vi.fn() }))
+const notifications = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+  replace: vi.fn(),
+  back: vi.fn()
+}))
 vi.mock('../platform/haptics', () => ({
   triggerError: notifications.error,
   triggerSuccess: notifications.success
 }))
 vi.mock('../components/MobileAgentIcon', () => ({ MobileAgentIcon: () => null }))
 vi.mock('../navigation/route-handoff', () => ({
-  useRouteHandoff: () => ({ replace: notifications.replace, back: vi.fn(), canGoBack: () => false })
+  useRouteHandoff: () => ({
+    replace: notifications.replace,
+    back: notifications.back,
+    canGoBack: () => false
+  })
 }))
 vi.mock('../transport/host-client-hooks', () => ({
   useHostClient: () => ({ client: state.client, state: state.connection }),
@@ -85,6 +94,7 @@ vi.mock('./MobileAgentSessionHistoryList', () => ({
   }
 }))
 import { MobileAgentSessionHistoryPanel } from './MobileAgentSessionHistoryPanel'
+import { useProvideSessionScreenHandlers } from '../session/session-screen-handlers'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it.each([
@@ -346,5 +356,92 @@ it.each([
     }
   } finally {
     await act(async () => rendered.tree?.unmount())
+  }
+})
+
+it('resuming into the session it was opened from shows the resumed terminal there', async () => {
+  notifications.replace.mockClear()
+  notifications.back.mockClear()
+  state.legacy = false
+  state.generation = 1
+  state.connection = 'connected'
+  state.session = {
+    id: 'qoder:owned-session',
+    executionHostId: 'local',
+    agent: 'qoder',
+    sessionId: 'owned-session',
+    title: 'Owned session',
+    cwd: '/owned/workspace',
+    branch: null,
+    model: null,
+    filePath: '/owned/qoder-session.json',
+    codexHome: null,
+    createdAt: null,
+    updatedAt: null,
+    modifiedAt: '2026-10-04T00:00:00.000Z',
+    messageCount: 2,
+    totalTokens: 10,
+    previewMessages: [],
+    queuedMessageCount: 0,
+    subagentTranscriptCount: 0,
+    resumeCommand: '',
+    subagent: null
+  }
+  const replies: Record<string, unknown> = {
+    'repo.list': { repos: [{ id: 'owned-repo', path: '/owned/workspace', connectionId: null }] },
+    'folderWorkspace.list': { workspaces: [] },
+    'projectGroup.list': { groups: [] },
+    'worktree.ps': {
+      worktrees: [{ worktreeId: 'owned-worktree', repoId: 'owned-repo', path: '/owned/workspace' }]
+    },
+    'settings.get': {},
+    'session.tabs.createTerminal': {
+      tab: { type: 'terminal', id: 'owned-tab', terminal: 'owned-pty', title: 'Terminal' }
+    }
+  }
+  state.client = {
+    ...createFakeRpcClient({ getGeneration: () => state.generation }),
+    sendRequest: vi.fn<RpcClient['sendRequest']>(async (method) => ({
+      id: 'owned-reply',
+      ok: true,
+      result: replies[method]
+    }))
+  }
+  const onResumedTerminal = vi.fn()
+  function SessionBelow() {
+    useProvideSessionScreenHandlers('owned-host', 'owned-worktree', {
+      onFileOpenStart: vi.fn(),
+      onOpenedFileDiff: vi.fn(),
+      onResumedTerminal
+    })
+    return null
+  }
+  let tree: ReactTestRenderer | null = null
+  await act(async () => {
+    tree = create(
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(SessionBelow),
+        React.createElement(MobileAgentSessionHistoryPanel, {
+          hostId: 'owned-host',
+          worktreeId: 'owned-worktree',
+          origin: 'session'
+        })
+      )
+    )
+  })
+  try {
+    await act(async () => {
+      if (!state.session || !state.onResume) {
+        throw new Error('missing resume callback')
+      }
+      await state.onResume(state.session)
+    })
+    expect(onResumedTerminal).toHaveBeenCalledExactlyOnceWith('owned-pty')
+    expect(notifications.back).toHaveBeenCalledTimes(1)
+    expect(notifications.replace).not.toHaveBeenCalled()
+  } finally {
+    await act(async () => tree?.unmount())
   }
 })
