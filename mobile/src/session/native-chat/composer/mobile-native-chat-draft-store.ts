@@ -89,7 +89,9 @@ export function resetMobileNativeChatDraftStoreForTests(): void {
 
 const noImages: PendingNativeChatImage[] = []
 const noFiles: readonly PendingNativeChatFile[] = []
-const emptyAttachments: DraftAttachments = { images: noImages, files: noFiles }
+function readDraftAttachments(draft: Draft | undefined): DraftAttachments {
+  return { images: draft?.images ?? noImages, files: draft?.files ?? noFiles }
+}
 let attachmentId = 0
 export function nextMobileDraftAttachmentId(prefix: string): string {
   return `${prefix}-${++attachmentId}`
@@ -99,19 +101,19 @@ export function useMobileDraftAttachments<K extends keyof DraftAttachments>(
   scope: string | null,
   kind: K
 ) {
-  const empty = emptyAttachments[kind]
-  const read = (): DraftAttachments[K] => (scope ? drafts.get(scope)?.[kind] : undefined) ?? empty
+  const read = (): DraftAttachments[K] =>
+    readDraftAttachments(scope ? drafts.get(scope) : undefined)[kind]
   const value = useSyncExternalStore(subscribe, read, read)
   const update = useCallback(
     (key: string, change: (current: DraftAttachments[K]) => DraftAttachments[K]) => {
       const current = drafts.get(key) ?? { text: '', editGeneration: 0 }
-      const next = change(current[kind] ?? empty)
+      const next = change(readDraftAttachments(current)[kind])
       drafts.set(key, { ...current, [kind]: next })
       for (const listener of listeners) {
         listener()
       }
     },
-    [kind, empty]
+    [kind]
   )
   return [value, update] as const
 }

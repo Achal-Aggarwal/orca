@@ -5,6 +5,7 @@ import { FakeSession } from '../transport/mobile-endpoint-supervisor-test-fakes'
 import { resetMobileNativeChatStaleInputForTests } from './native-chat/mobile-native-chat-stale-input'
 import { resetMobileNativeChatTerminalWritesForTests } from './native-chat/mobile-native-chat-terminal-write-lock'
 import { useMobileSessionImageAttachments } from './use-mobile-session-image-attachments'
+import { resetMobileNativeChatDraftStoreForTests } from './native-chat/composer/mobile-native-chat-draft-store'
 
 vi.mock('../platform/media-picker', () => ({
   useMediaPicker: () => ({
@@ -67,6 +68,7 @@ describe('useMobileSessionImageAttachments', () => {
 
   beforeEach(() => {
     vi.useFakeTimers()
+    resetMobileNativeChatDraftStoreForTests()
     resetMobileNativeChatStaleInputForTests()
     resetMobileNativeChatTerminalWritesForTests()
   })

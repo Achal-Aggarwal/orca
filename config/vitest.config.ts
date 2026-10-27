@@ -21,7 +21,17 @@ const paletteMeasurementFile =
 const measurementFiles = [measurementFile, paletteMeasurementFile]
 const phoneContractModules = [
   'mobile/src/session/native-chat/mobile-native-chat-stream-frame.ts',
-  'mobile/src/session/mobile-native-chat-render-data.ts'
+  'mobile/src/session/mobile-native-chat-render-data.ts',
+  'mobile/src/session/mobile-structured-queued-message-cards.ts',
+  'mobile/src/session/mobile-agent-message-attribution.ts',
+  'mobile/src/session/mobile-native-chat-image-preview.ts',
+  'mobile/src/files/file-preview-reply-schema.ts',
+  'mobile/src/transport/request-single-flight.ts',
+  'mobile/src/transport/rpc-acceptance-policies.ts',
+  'mobile/src/transport/rpc-incompatible-reply-error.ts',
+  'mobile/src/transport/rpc-operation-reply.ts',
+  'mobile/src/transport/rpc-operation-result-reader.ts',
+  'mobile/src/transport/rpc-operation.ts'
 ].map((file) => normalizePath(resolve(file)))
 const phoneContractPattern = new RegExp(
   `^(?:${phoneContractModules.map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:\\?.*)?$`

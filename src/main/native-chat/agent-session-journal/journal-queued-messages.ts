@@ -61,9 +61,7 @@ export class JournalQueuedMessages {
     return this.deps.sessionId
   }
 
-  displayState() {
-    return this.deps.state()
-  }
+  displayState = () => this.deps.state()
 
   revision(): string {
     const { epoch, queue } = this.deps.state()
@@ -91,7 +89,8 @@ export class JournalQueuedMessages {
   }
 
   get(messageId: string): QueuedMessageRow | null {
-    return this.list().find((card) => card.messageId === messageId) ?? null
+    const own = this.deps.state().queue.cards.get(messageId)
+    return own ?? this.list().find((card) => card.messageId === messageId) ?? null
   }
 
   // Card insertion, attachment claims and send receipt must commit together.
