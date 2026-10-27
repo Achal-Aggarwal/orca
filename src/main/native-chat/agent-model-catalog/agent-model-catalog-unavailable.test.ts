@@ -58,7 +58,11 @@ function rig(initialProbe: AgentModelCatalogProbe = signedOut) {
   const service = createAgentModelCatalogService({
     store,
     getConversation: () => undefined,
-    getRecord: () => agentSessionRecordFixture({ provider: 'grok', accountHome: ACCOUNT_HOME }),
+    getRecord: () => ({
+      ...agentSessionRecordFixture(),
+      provider: 'grok',
+      accountHome: ACCOUNT_HOME
+    }),
     drivesRecord: () => true,
     resolveAccountHome: async () => ACCOUNT_HOME,
     probes: { grok: probe }
@@ -83,20 +87,30 @@ function unavailableOf(result: AgentSessionModelCatalogResult) {
 
 describe('a reason the probe found', () => {
   it('survives a real chat listing and a stale receipt; only a probe success clears it', async () => {
-    const { probed, answerWith, service } = rig()
+    const { probed, answerWith, service, pastTtl } = rig()
     await probed()
     // Signed-out Grok can still return a live model listing.
     const sessionId = agentSessionRecordFixture().sessionId
     service.recordLiveListing(sessionId, { models: listing('gpt-live', 'live-session').models })
+    expect(await service.read({ agent: 'grok' })).toMatchObject({
+      origin: 'live-session',
+      models: [{ id: 'gpt-live' }]
+    })
     expect(unavailableOf(await service.read({ agent: 'grok' }))).toEqual(SIGNED_OUT)
     service.recordLiveListing(
       sessionId,
       { models: listing('stale', 'live-session').models },
       () => false
     )
+    expect(await service.read({ agent: 'grok' })).toMatchObject({
+      origin: 'live-session',
+      models: [{ id: 'gpt-live' }]
+    })
     expect(unavailableOf(await service.read({ agent: 'grok' }))).toEqual(SIGNED_OUT)
 
     answerWith(async () => listing('gpt-probe', 'probe'))
+    // The later probe must be newer than the live receipt on the fixture clock.
+    pastTtl()
     await probed()
     const result = await service.read({ agent: 'grok' })
     expect(result).not.toHaveProperty('unavailable')
