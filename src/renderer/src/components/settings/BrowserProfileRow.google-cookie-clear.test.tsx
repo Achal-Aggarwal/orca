@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
   confirm: vi.fn(),
   target: vi.fn(),
-  clear: vi.fn()
+  clear: vi.fn(),
+  fromPartition: vi.fn()
 }))
 vi.mock('@/store', async () => {
   const { useStore } = await import('zustand')
@@ -44,9 +45,8 @@ vi.mock('../../../../main/browser/cookies/browser-cookie-import', () => ({
 }))
 vi.mock('electron', () => ({
   ipcMain: {},
-  session: { fromPartition: vi.fn() }
+  session: { fromPartition: mocks.fromPartition }
 }))
-import { session } from 'electron'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 
 type ProfileDispatcher = {
@@ -337,10 +337,7 @@ it.each(['warning', 'menu', 'confirmation'])(
         rows = []
       })
     }
-    vi.mocked(session.fromPartition).mockReturnValue(
-      // SAFETY: the real clear primitive only accesses this Session's cookie API.
-      { cookies } as ReturnType<typeof session.fromPartition>
-    )
+    mocks.fromPartition.mockReturnValue({ cookies })
     let stamped = true
     let repaired = false
     const status = createCompatibleRuntimeStatusResponse('cached-A').result
