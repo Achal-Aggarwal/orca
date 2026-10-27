@@ -15,7 +15,7 @@ import type {
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { structuredAgentRuntimeRegistration } from '../runtime/structured-agent-runtime-registrations'
+import { structuredAgentRuntimeMetadata } from '../runtime/structured-agent-runtime-metadata'
 import { readPiSessionHeader } from '../pi/rpc-launch-resolution'
 import { copyStructuredChatRecordConversation } from './structured-chat-conversation-copy'
 import { isAiVaultAgent } from './session-list-result-validation'
@@ -110,12 +110,12 @@ export async function resolveStructuredChatCliSource(
     host && host.deps.store.selectWritableRecord(sourceChat.sessionId).kind !== 'missing'
       ? host.deps.store.requireWritableRecord(sourceChat.sessionId)
       : undefined
-  const registration = record && structuredAgentRuntimeRegistration(record.provider)
+  const metadata = record && structuredAgentRuntimeMetadata(record.provider)
   const head = record && agentSessionProviderHandleChainHead(record.providerHandleChain)
   if (
     !host ||
     !record ||
-    !registration ||
+    !metadata ||
     !head ||
     record.location.workspaceId !== sourceChat.workspaceId ||
     record.location.executionHostId !== LOCAL_EXECUTION_HOST_ID ||
@@ -152,12 +152,12 @@ export async function resolveStructuredChatCliSource(
   if (!cwd || !isAbsolute(cwd) || isWslUncPath(cwd)) {
     throw new Error('The chat workspace is unavailable on this host.')
   }
-  const providerSessionId = registration.sessionHistory.rowSessionId(head)
+  const providerSessionId = metadata.sessionHistory.rowSessionId(head)
   if (!providerSessionId.trim()) {
     throw new Error('This chat has no saved conversation to copy.')
   }
   assertNativeConversationContent(await host.journalSnapshot(record.sessionId))
-  return { host, record, registration, head, agent, cwd, providerSessionId, requireCurrent }
+  return { host, record, metadata, head, agent, cwd, providerSessionId, requireCurrent }
 }
 
 /** Prepares the record's current conversation on its execution host, without a History inventory. */
@@ -166,7 +166,7 @@ export async function prepareStructuredChatCliFork(
   prepare: AiVaultSessionResumePreparation
 ): Promise<AiVaultPrepareSessionResumeResult> {
   const source = await resolveStructuredChatCliSource(args.sourceChat, true)
-  const { record, registration, agent, cwd, providerSessionId } = source
+  const { record, metadata, agent, cwd, providerSessionId } = source
   if (agentForksThroughChat(agent)) {
     source.requireCurrent()
     const result = await copyStructuredChatRecordConversation(record, providerSessionId)
@@ -178,7 +178,7 @@ export async function prepareStructuredChatCliFork(
       ...result,
       cliForkSource: {
         agent: copy.agent,
-        sourceAgent: registration.sessionHistory.rowAgents.at(-1) ?? agent,
+        sourceAgent: metadata.sessionHistory.rowAgents.at(-1) ?? agent,
         sessionId: copy.sessionId,
         filePath: copy.filePath ?? '',
         codexHome: null,
@@ -197,8 +197,8 @@ export async function prepareStructuredChatCliTranscript(
   prepare: AiVaultSessionResumePreparation,
   fork: boolean
 ): Promise<AiVaultPrepareSessionResumeResult> {
-  const { host, record, registration, head, agent, cwd, providerSessionId } = source
-  const importer = registration.transcriptImport
+  const { host, record, metadata, head, agent, cwd, providerSessionId } = source
+  const importer = metadata.transcriptImport
   if (!importer) {
     throw new Error('This chat cannot be opened in the CLI.')
   }
