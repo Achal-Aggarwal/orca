@@ -41,17 +41,34 @@ export async function awaitRepoOwnerHostKnown(
   }
 }
 
+export function registeredWslSelection(
+  state: Pick<AppState, 'settings' | 'runtimeEnvironments'>,
+  path: string
+) {
+  const parsed = parseWslUncPath(normalizeWindowsWslPath(path))
+  if (
+    !parsed ||
+    !state.settings?.experimentalWslHosts ||
+    !window.api.runtimeEnvironments?.wslHosts
+  ) {
+    return null
+  }
+  return {
+    linuxPath: parsed.linuxPath,
+    environment: state.runtimeEnvironments.find(
+      (row) =>
+        row.orcadDeployment?.kind === 'wsl' &&
+        row.orcadDeployment.distro.toLowerCase() === parsed.distro.toLowerCase()
+    )
+  }
+}
+
 /** A failed multi-method registration can still have saved a usable row on its owner. */
 export async function refreshWslRegistrationAfterFailure(
   getState: () => AppState,
   path: string
 ): Promise<void> {
-  const parsed = parseWslUncPath(normalizeWindowsWslPath(path))
-  if (
-    !parsed ||
-    !getState().settings?.experimentalWslHosts ||
-    !window.api.runtimeEnvironments?.wslHosts
-  ) {
+  if (!registeredWslSelection(getState(), path)) {
     return
   }
   try {
@@ -59,11 +76,7 @@ export async function refreshWslRegistrationAfterFailure(
   } catch (error) {
     console.warn('[add-project] could not read the partial registration owner', error)
   }
-  const environment = getState().runtimeEnvironments.find(
-    (row) =>
-      row.orcadDeployment?.kind === 'wsl' &&
-      row.orcadDeployment.distro.toLowerCase() === parsed.distro.toLowerCase()
-  )
+  const environment = registeredWslSelection(getState(), path)?.environment
   if (!environment) {
     return
   }

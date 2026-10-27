@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { AppState } from '../types'
 import type { Repo } from '../../../../shared/repo-types'
 import { isGitRepoKind } from '../../../../shared/repo-kind'
+import { isDrvfsLinuxPath } from '../../../../shared/wsl-paths'
 import { getRepoHostIdentity } from '../slices/repo-host-identity'
 import { callRuntimeRpc } from '../../runtime/runtime-rpc-client'
 import { runtimeTargetForOwnerEnvironment } from '../../runtime/runtime-client-target'
@@ -12,7 +13,8 @@ import { markOnboardingProjectAdded } from '@/lib/onboarding-project-checklist'
 import { translate } from '@/i18n/i18n'
 import {
   getRepoExecutionHostId,
-  getWorktreeExecutionHostId
+  getWorktreeExecutionHostId,
+  parseExecutionHostId
 } from '../../../../shared/execution-host'
 import type { RepoSlice } from './repo-state'
 import { ERROR_TOAST_DURATION } from './repo-state'
@@ -23,10 +25,15 @@ import { warnIfProjectKnownInAnotherProfile } from '../projects/project-profile-
 import { warnIfProjectCrossesWslFilesystemBoundary } from '../projects/project-wsl-filesystem-boundary-advisory'
 import {
   awaitRepoOwnerHostKnown,
-  refreshWslRegistrationAfterFailure
+  refreshWslRegistrationAfterFailure,
+  registeredWslSelection
 } from './repo-owner-host-readiness'
 import { selectWorktreesByRepo } from '../workspace-record-selectors'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
+import {
+  clearPendingRuntimeRepoRemoval,
+  runExclusiveForRuntimeEnvironment
+} from './pending-runtime-repo-removals'
 
 export function createRepoAddActions(
   set: Parameters<StateCreator<AppState>>[0],
@@ -44,24 +51,48 @@ export function createRepoAddActions(
         let repo: Repo
         try {
           if (target.kind === 'local') {
-            const result = await window.api.repos.add({
-              path,
-              kind,
-              ...(displayName ? { displayName } : {})
-            })
-            if ('error' in result) {
-              throw new Error(result.error)
+            const selection = registeredWslSelection(get(), path)
+            const environment =
+              selection && !isDrvfsLinuxPath(selection.linuxPath)
+                ? selection.environment
+                : undefined
+            const add = async () => {
+              const result = await window.api.repos.add({
+                path,
+                kind,
+                ...(displayName ? { displayName } : {})
+              })
+              if ('error' in result) {
+                throw new Error(result.error)
+              }
+              const owner = parseExecutionHostId(getRepoExecutionHostId(result.repo))
+              if (
+                environment &&
+                owner?.kind === 'runtime' &&
+                owner.environmentId === environment.id
+              ) {
+                clearPendingRuntimeRepoRemoval(environment.id, result.repo.id)
+              }
+              return result.repo
             }
-            repo = result.repo
+            repo = environment
+              ? await runExclusiveForRuntimeEnvironment(environment.id, add)
+              : await add()
           } else {
-            repo = (
-              await callRuntimeRpc<{ repo: Repo }>(
-                target,
-                'repo.add',
-                { path, kind, ...(displayName ? { displayName } : {}) },
-                { timeoutMs: 15_000 }
-              )
-            ).repo
+            const environmentId = target.environmentId
+            // Queued behind any replayed removal, so a re-add of the same project is never undone.
+            repo = await runExclusiveForRuntimeEnvironment(environmentId, async () => {
+              const added = (
+                await callRuntimeRpc<{ repo: Repo }>(
+                  target,
+                  'repo.add',
+                  { path, kind, ...(displayName ? { displayName } : {}) },
+                  { timeoutMs: 15_000 }
+                )
+              ).repo
+              clearPendingRuntimeRepoRemoval(environmentId, added.id)
+              return added
+            })
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
