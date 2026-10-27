@@ -2,6 +2,8 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { expect, it, vi } from 'vitest'
 import { MobileAgentLaunchPicker } from './MobileAgentLaunchPicker'
+import { MobileAgentPickerPermissionFields } from './MobileAgentPickerPermissionFields'
+import { agentPickerDraft } from '../../../src/shared/agent-launch-picker'
 import type { AgentPickerEntry } from '../../../src/shared/agent-launch-picker'
 
 vi.mock('react-native', () => ({
@@ -95,6 +97,53 @@ it('search launches the default or alternate once; chevron opens an editable set
     choices: {},
     arguments: null
   })
+  await act(async () => {
+    view?.unmount()
+  })
+})
+
+it('native Permissions reflect Arguments ownership only for terminals and chip removal produces a launch-only override', async () => {
+  const ownEntry: AgentPickerEntry = {
+    ...entry,
+    arguments: '--ask-for-approval never --search'
+  }
+  const onChange = vi.fn()
+  let view: ReactTestRenderer | undefined
+  const props = {
+    entry: ownEntry,
+    draft: agentPickerDraft(ownEntry, 'terminal'),
+    showArguments: true,
+    onChange
+  }
+  await act(async () => {
+    view = create(createElement(MobileAgentPickerPermissionFields, props))
+  })
+  if (!view) {
+    throw new Error('Permission fields did not mount')
+  }
+  expect(
+    view.root.findAllByType('button').find((button) => button.props.accessibilityState?.disabled)
+      ?.props.disabled
+  ).toBe(true)
+  expect(view.root.findByProps({ accessibilityLabel: 'Arguments' }).props.value).toBe('--search')
+  await act(async () => {
+    view?.root
+      .findByProps({ accessibilityLabel: 'Remove --ask-for-approval never' })
+      .props.onPress()
+  })
+  expect(onChange).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ arguments: '--search' })
+  )
+  await act(async () => {
+    view?.update(
+      createElement(MobileAgentPickerPermissionFields, {
+        ...props,
+        draft: agentPickerDraft(ownEntry, 'chat')
+      })
+    )
+  })
+  expect(view.root.findAllByType('button').every((button) => !button.props.disabled)).toBe(true)
+  expect(ownEntry.arguments).toBe('--ask-for-approval never --search')
   await act(async () => {
     view?.unmount()
   })

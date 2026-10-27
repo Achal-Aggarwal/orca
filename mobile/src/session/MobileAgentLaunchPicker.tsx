@@ -2,28 +2,19 @@ import { useState } from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 import { MobileAgentIcon } from '../components/MobileAgentIcon'
+import { MobileAgentPickerPermissionFields } from './MobileAgentPickerPermissionFields'
 import { colors, spacing, typography, radii } from '../theme/mobile-theme'
 import {
   agentPickerDraft,
   agentPickerModels,
   agentPickerEffectiveChoices,
   agentPickerEntryOptions,
-  agentPickerPermissions,
   agentPickerButtonOrder,
   searchAgentPickerSetups,
   editAgentPickerDraft,
-  editAgentPickerArguments,
   type AgentPickerEntry,
   type AgentPickerDraft
 } from '../../../src/shared/agent-launch-picker'
-
-const permissionLabels = {
-  own: 'Use agent configuration',
-  ask: 'Ask',
-  'accept-edits': 'Accept edits',
-  auto: 'Approve for me',
-  'full-access': 'Full access'
-}
 
 export function MobileAgentLaunchPicker({
   entries,
@@ -144,52 +135,13 @@ export function MobileAgentLaunchPicker({
             </View>
           </View>
         ))}
-        <Text style={styles.label}>Permissions</Text>
-        <View style={styles.options}>
-          <Choice
-            disabled={disabled}
-            label="Agents defaults"
-            selected={draft.choices.permissionMode === undefined}
-            onPress={() => setDraft(editAgentPickerDraft(draft, { permissionMode: 'default' }))}
-          />
-          {agentPickerPermissions(entry.agent, draft.surface).map((choice) => (
-            <Choice
-              disabled={disabled}
-              key={choice}
-              label={permissionLabels[choice]}
-              selected={draft.choices.permissionMode === choice}
-              onPress={() => setDraft(editAgentPickerDraft(draft, { permissionMode: choice }))}
-            />
-          ))}
-        </View>
-        {draft.surface === 'terminal' || mode === 'launch' ? (
-          <View style={styles.field}>
-            <Text style={styles.label}>Arguments</Text>
-            <TextInput
-              accessibilityLabel="Arguments"
-              style={[styles.input, styles.code]}
-              value={
-                draft.arguments === undefined ? (entry.arguments ?? '') : (draft.arguments ?? '')
-              }
-              onChangeText={(text) => setDraft(editAgentPickerArguments(draft, text))}
-              editable={!disabled}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.hint}>
-              Applies only to CLI launches. {draft.arguments === undefined ? 'Agents defaults' : ''}
-            </Text>
-            {draft.arguments !== undefined ? (
-              <Pressable
-                accessibilityRole="button"
-                disabled={disabled}
-                onPress={() => setDraft({ ...draft, arguments: undefined })}
-              >
-                <Text style={styles.text}>Reset to default</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        <MobileAgentPickerPermissionFields
+          entry={entry}
+          draft={draft}
+          showArguments={draft.surface === 'terminal' || mode === 'launch'}
+          disabled={disabled}
+          onChange={setDraft}
+        />
         <View style={styles.footer}>
           {mode === 'save' ? (
             <Choice label="Use" selected disabled={disabled} onPress={() => onUse(draft)} />
@@ -371,7 +323,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     fontSize: typography.bodySize
   },
-  code: { fontFamily: typography.monoFamily },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   choice: {
     borderWidth: StyleSheet.hairlineWidth,

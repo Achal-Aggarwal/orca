@@ -10,6 +10,8 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
+import { AgentArgsChoiceChips } from '../settings/AgentPermissionChoiceControls'
+import { agentPickerArgumentPermission } from '../../../../shared/agent-launch-picker-permission'
 import {
   agentPickerButtonOrder,
   agentPickerDraft,
@@ -61,6 +63,8 @@ export function AgentLaunchSetupPanel({
   const currentModel = effective.model
   const options = agentPickerEntryOptions(entry, currentModel, draft.surface)
   const showArguments = draft.surface === 'terminal' || mode === 'launch'
+  const argumentPermission = agentPickerArgumentPermission(entry, draft)
+  const permissionOwnedByArguments = argumentPermission?.locked ? argumentPermission : undefined
   const use = (surface: AgentPickerSurface) => onUse({ ...draft, surface })
   return (
     <div
@@ -181,8 +185,10 @@ export function AgentLaunchSetupPanel({
       <div className="space-y-1">
         <Label>{translate('agentPicker.permissions', 'Permissions')}</Label>
         <Select
-          disabled={disabled}
-          value={draft.choices.permissionMode ?? DEFAULT}
+          disabled={disabled || Boolean(permissionOwnedByArguments)}
+          value={
+            permissionOwnedByArguments ? '__arguments__' : (draft.choices.permissionMode ?? DEFAULT)
+          }
           onValueChange={(permissionMode) => {
             const choice = agentPickerPermissions(entry.agent, draft.surface).find(
               (choice) => choice === permissionMode
@@ -190,10 +196,13 @@ export function AgentLaunchSetupPanel({
             setDraft(editAgentPickerDraft(draft, { permissionMode: choice ?? 'default' }))
           }}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label={translate('agentPicker.permissions', 'Permissions')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            {permissionOwnedByArguments ? (
+              <SelectItem value="__arguments__">{permissionOwnedByArguments.flag}</SelectItem>
+            ) : null}
             <SelectItem value={DEFAULT}>
               {translate('agentPicker.agentsDefaults', 'Agents defaults')}
               {effective.permissionMode
@@ -213,14 +222,41 @@ export function AgentLaunchSetupPanel({
           <Label htmlFor={`agent-arguments-${entry.agent}`}>
             {translate('agentPicker.arguments', 'Arguments')}
           </Label>
+          {argumentPermission ? (
+            <div className="pb-5">
+              <AgentArgsChoiceChips
+                disabled={disabled}
+                chips={[
+                  {
+                    key: 'permissionMode',
+                    label: entry.label,
+                    source: 'arguments',
+                    flag: argumentPermission.flag,
+                    onRemove: () => argumentPermission.remainingArguments
+                  }
+                ]}
+                onRemove={() =>
+                  setDraft(editAgentPickerArguments(draft, argumentPermission.remainingArguments))
+                }
+              />
+            </div>
+          ) : null}
           <Input
             id={`agent-arguments-${entry.agent}`}
             className="font-mono text-xs"
             disabled={disabled}
             value={
-              draft.arguments === undefined ? (entry.arguments ?? '') : (draft.arguments ?? '')
+              argumentPermission?.remainingArguments ??
+              (draft.arguments === undefined ? (entry.arguments ?? '') : (draft.arguments ?? ''))
             }
-            onChange={(event) => setDraft(editAgentPickerArguments(draft, event.target.value))}
+            onChange={(event) =>
+              setDraft(
+                editAgentPickerArguments(
+                  draft,
+                  [argumentPermission?.flag, event.target.value].filter(Boolean).join(' ')
+                )
+              )
+            }
           />
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
