@@ -12,7 +12,10 @@ import {
   type ProviderProcessTeardownVerdict
 } from './provider-process-teardown'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
-import { isMissingProviderExecutable } from './provider-executable-missing'
+import {
+  isMissingProviderExecutable,
+  withMissingProviderExecutable
+} from './provider-executable-missing'
 import { supervisedProviderSpawnFailure } from './provider-spawn-failure-report'
 import { guardSupervisedProviderGroup } from './provider-group-orphan-guard'
 import {
@@ -184,7 +187,14 @@ export function spawnManagedProviderProcess(
       const failure =
         spawnError ??
         (observed ? supervisedProviderSpawnFailure(observed.code, stderrTail)?.error : null)
-      return isMissingProviderExecutable(failure, launch.command)
+      if (!isMissingProviderExecutable(failure, launch.command)) {
+        return false
+      }
+      // Tag the error as executable missing for later classification.
+      if (failure && typeof failure === 'object' && failure instanceof Error) {
+        withMissingProviderExecutable(failure)
+      }
+      return true
     },
     stderrTail: () => stderrTail,
     get lastCloseResult() {
