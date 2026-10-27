@@ -1,6 +1,9 @@
 import { AcpStructuredOptions } from './acp-structured-options'
 import { createAgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
-import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import {
+  AgentModelCatalogStore,
+  type AgentModelCatalogEntry
+} from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import {
   agentReadsProjectModelConfig,
   workspaceMayOverrideDefaultModel
@@ -129,13 +132,20 @@ it.each([
     const store = new AgentModelCatalogStore()
     let saves = 0
     let savedBytes = 0
+    let pending: (() => readonly AgentModelCatalogEntry[]) | undefined
     await store.attachPersistence({
       load: async () => [],
-      save: (entries) => {
+      save: (snapshot) => {
         saves++
-        savedBytes += Buffer.byteLength(JSON.stringify(entries))
+        pending = snapshot
       },
-      flush: async () => {}
+      flush: async () => {
+        const snapshot = pending
+        pending = undefined
+        if (snapshot) {
+          savedBytes += Buffer.byteLength(JSON.stringify(snapshot()))
+        }
+      }
     })
     const catalog = createAgentModelCatalogService({
       store,
@@ -155,6 +165,7 @@ it.each([
       expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
       await ready()
       await rig.settle()
+      await store.flushPersistence()
       saves = 0
       savedBytes = 0
       reads.mockClear()
@@ -189,7 +200,12 @@ it.each([
       expect(projectionReads).toBe(updates * 2)
       expect(projectedModelRows).toBe(updates * modelRows * 2)
       expect(saves).toBe(1)
-      const saved = catalog.snapshot({ agent: 'grok', sessionId: SESSION })
+      await store.flushPersistence()
+      const saved = await catalog.prepareSaved({
+        agent: 'grok',
+        sessionId: SESSION,
+        inSessionWorkspace: true
+      })
       if (saved.origin === 'unknown') {
         throw new Error('missing saved live catalog')
       }
