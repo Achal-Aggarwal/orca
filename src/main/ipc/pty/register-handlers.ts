@@ -302,7 +302,7 @@ export function registerPtyHandlers(
   })
   installPtyWriteIpcHandlers({ mainWindow, runtime })
   installPtyResizeVisibilityIpc(session)
-  installPtyInspectIpcHandlers({ getLocalPtyProviderStartupPromise })
+  installPtyInspectIpcHandlers({ getLocalPtyProviderStartupPromise, runtime })
   installPtyCodexSharedServerIpcHandler({ getLocalPtyProviderStartupPromise })
   installPtyClaudeOldTerminalIpcHandler({ getLocalPtyProviderStartupPromise })
   installPtyClaudeDiffPanelNoticeIpcHandler({ getLocalPtyProviderStartupPromise })

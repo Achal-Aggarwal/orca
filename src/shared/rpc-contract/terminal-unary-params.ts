@@ -56,6 +56,7 @@ export const TerminalReveal = z.object({
 
 /** Only inspectProcess accepts the decision-bearing process scan; sibling handle methods must not acquire this option. */
 export const TerminalInspectProcess = TerminalHandle.extend({
+  steadyState: z.boolean().optional(),
   // Additive request member understood by newer hosts; legacy hosts safely ignore it.
   scanChildProcesses: z.boolean().optional()
 })

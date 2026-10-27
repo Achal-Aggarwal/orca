@@ -147,17 +147,23 @@ export type RuntimePtyController = {
     opts?: { keepHistory?: boolean; deadlineMs?: number }
   ): Promise<boolean>
   getCwd?(ptyId: string): Promise<string | null>
-  getForegroundProcess(ptyId: string): Promise<string | null>
+  getForegroundProcess(
+    ptyId: string,
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  ): Promise<string | null>
   inspectProcess?(
     ptyId: string,
     options?: {
       expectedIncarnationId?: PtyIncarnationId
       scanChildProcesses?: boolean
-      terminalInterface?: boolean
       steadyState?: boolean
+      includePresentation?: boolean
     }
   ): Promise<PtyProcessInspection>
-  confirmForegroundProcess?(ptyId: string): Promise<string | null>
+  confirmForegroundProcess?(
+    ptyId: string,
+    acceptPresentation?: Parameters<RuntimePtyController['getForegroundProcess']>[1]
+  ): Promise<string | null>
   confirmShellForeground?(ptyId: string): Promise<boolean>
   hasChildProcesses?(ptyId: string): Promise<boolean>
   clearBuffer?(ptyId: string): Promise<void>

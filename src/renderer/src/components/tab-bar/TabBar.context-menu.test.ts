@@ -334,27 +334,6 @@ describe('TabBar context menu wiring', () => {
     vi.unstubAllGlobals()
   })
 
-  it('wires the shared agent projection selector into the production TabBar', async () => {
-    const projections = await import('./tab-agent-types-by-tab-id')
-    const selectProjections = vi.spyOn(projections, 'selectTabBarAgentProjections')
-
-    try {
-      await renderTabBar({ tabs: [], editorFiles: [], browserTabs: [], tabBarOrder: [] })
-
-      expect(selectProjections).toHaveBeenCalledWith(
-        expect.objectContaining({ unifiedTabsByWorktree: appStoreSnapshot.unifiedTabsByWorktree })
-      )
-      expect(selectProjections).toHaveReturnedWith({
-        nativeChatEnabled: false,
-        tabAgentTypesByTabId: {},
-        nativeChatTabWideFallbackUnsafeTabsById: {},
-        nativeChatShellForegroundTabsById: {}
-      })
-    } finally {
-      selectProjections.mockRestore()
-    }
-  })
-
   it('counts every tab kind for SortableTab.tabCount', async () => {
     // Count all tab kinds so Close Others stays enabled with non-terminal siblings.
     const element = await renderTabBar({

@@ -314,7 +314,6 @@ export function createAgentCompletionCoordinator(
     seedHookStatus: hookObserver.seedHookStatus,
     startProcessTracking: () => processMonitor.start(),
     observeForegroundAgentProcess: processMonitor.observeRecognizedProcess,
-    invalidateProcessInspection: processMonitor.incrementGeneration,
     hasPendingHookDoneCompletion: lifecycle.hasPendingHookDoneCompletion,
     canAnnounceCompletion: notification.canAnnounceCompletion,
     resetCompletionState: lifecycle.resetCompletionState,

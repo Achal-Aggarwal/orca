@@ -218,7 +218,6 @@ describe('useIpcEvents browser tab close routing', () => {
           onCredentialResolved: () => () => {}
         },
         runtime: {
-          subscribe: async () => ({ unsubscribe: () => {} }),
           getTerminalFitOverrides: () => Promise.resolve([]),
           getTerminalDrivers: () => Promise.resolve([]),
           getBrowserDrivers: () => Promise.resolve([]),
@@ -448,7 +447,6 @@ describe('useIpcEvents browser tab close routing', () => {
           onCredentialResolved: () => () => {}
         },
         runtime: {
-          subscribe: async () => ({ unsubscribe: () => {} }),
           getTerminalFitOverrides: () => Promise.resolve([]),
           getTerminalDrivers: () => Promise.resolve([]),
           getBrowserDrivers: () => Promise.resolve([]),
@@ -673,7 +671,6 @@ describe('useIpcEvents browser tab close routing', () => {
           onCredentialResolved: () => () => {}
         },
         runtime: {
-          subscribe: async () => ({ unsubscribe: () => {} }),
           getTerminalFitOverrides: () => Promise.resolve([]),
           getTerminalDrivers: () => Promise.resolve([]),
           getBrowserDrivers: () => Promise.resolve([]),

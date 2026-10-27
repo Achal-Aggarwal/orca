@@ -1,4 +1,3 @@
-import type { TerminalInterfaceObservation } from '../../../src/shared/terminal-interface-observation'
 import type { MobileFileMedia } from '../files/mobile-file-media'
 import type { StructuredAgentId } from '../../../src/shared/agent-session-provider-handle'
 import type { DiffComment } from '../../../src/shared/diff-comment-types'
@@ -20,14 +19,14 @@ export type MobileSessionTabType = 'terminal' | 'markdown' | 'file' | 'browser' 
 export type MobileSessionTab =
   | {
       type: 'terminal'
-      incarnationId?: string | null
-      terminalInterface?: TerminalInterfaceObservation
       id: string
       title: string
       parentTabId?: string
       leafId?: string
       status?: 'pending-handle' | 'ready'
       terminal: string | null
+      incarnationId?: string | null
+      presentation?: import('../../../src/shared/terminal-foreground-presentation').TerminalPresentationObservation
       agentStatus?: AgentStatusEntry | null
       // Launch identity enables chat before live agent status arrives.
       launchAgent?: TuiAgent

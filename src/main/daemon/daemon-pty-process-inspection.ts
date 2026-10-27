@@ -49,36 +49,60 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
       ...(options?.expectedIncarnationId
         ? { expectedIncarnationId: options.expectedIncarnationId }
         : {}),
+      ...(options?.includePresentation === true ? { includePresentation: true } : {}),
       // Additive: an older daemon ignores it and pays for the full capture.
       ...(options?.steadyState === true ? { steadyState: true } : {}),
-      ...(options?.ignoreDetached === true ? { ignoreDetached: true } : {}),
-      ...(options?.terminalInterface === true ? { terminalInterface: true } : {})
+      ...(options?.ignoreDetached === true ? { ignoreDetached: true } : {})
     })
   }
 
-  async getForegroundProcess(id: string): Promise<string | null> {
+  async getForegroundProcess(
+    id: string,
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  ): Promise<string | null> {
     if (this.protocolVersion < GET_FOREGROUND_PROCESS_PROTOCOL_VERSION) {
       return null
     }
     try {
-      const result = await this.client.request<{ foregroundProcess: string | null }>(
-        'getForegroundProcess',
-        { sessionId: id }
+      const result = await this.client.request<{
+        foregroundProcess: string | null
+        foregroundPresentationSupported?: true
+        foregroundPresentation?: 'agent-in-front' | 'not-in-front'
+      }>('getForegroundProcess', {
+        sessionId: id,
+        ...(acceptPresentation ? { includePresentation: true } : {})
+      })
+      acceptPresentation?.(
+        result.foregroundPresentationSupported ? result.foregroundPresentation : null
       )
       return result.foregroundProcess
-    } catch {
+    } catch (error) {
+      if (acceptPresentation) {
+        throw error
+      }
       return null
     }
   }
 
-  async confirmForegroundProcess(id: string): Promise<string | null> {
+  async confirmForegroundProcess(
+    id: string,
+    accept?: Parameters<DaemonPtyProcessInspection['getForegroundProcess']>[1]
+  ): Promise<string | null> {
     try {
-      const result = await this.client.request<{ foregroundProcess: string | null }>(
-        'confirmForegroundProcess',
-        { sessionId: id }
-      )
+      const result = await this.client.request<{
+        foregroundProcess: string | null
+        foregroundPresentationSupported?: true
+        foregroundPresentation?: 'agent-in-front' | 'not-in-front'
+      }>('confirmForegroundProcess', {
+        sessionId: id,
+        ...(accept ? { includePresentation: true } : {})
+      })
+      accept?.(result.foregroundPresentationSupported ? result.foregroundPresentation : null)
       return result.foregroundProcess
-    } catch {
+    } catch (error) {
+      if (accept) {
+        throw error
+      }
       return null
     }
   }

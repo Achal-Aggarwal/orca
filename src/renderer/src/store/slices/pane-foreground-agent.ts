@@ -1,4 +1,3 @@
-import type { TerminalInterfaceObservation } from '../../../../shared/terminal-interface-observation'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type { TerminalAgent } from '../../../../shared/terminal-agent'
@@ -25,13 +24,6 @@ export type PaneForegroundAgentEntry = {
 
 /** Local process-table evidence at OSC 133 boundaries supports agents without hooks/titles, below hook rows in icon priority. */
 export type PaneForegroundAgentSlice = {
-  terminalInterfaceByPtyId: Record<
-    string,
-    {
-      observation: TerminalInterfaceObservation
-      environmentId: string | null
-    }
-  >
   paneForegroundAgentByPaneKey: Record<string, PaneForegroundAgentEntry>
   setPaneForegroundAgent: (paneKey: string, entry: PaneForegroundAgentEntry) => void
   clearPaneForegroundAgent: (paneKey: string) => void
@@ -47,7 +39,6 @@ export const createPaneForegroundAgentSlice: StateCreator<
   [],
   PaneForegroundAgentSlice
 > = (set) => ({
-  terminalInterfaceByPtyId: {},
   paneForegroundAgentByPaneKey: {},
   setPaneForegroundAgent: (paneKey, entry) => {
     set((s) => {

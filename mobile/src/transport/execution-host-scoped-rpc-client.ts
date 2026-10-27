@@ -4,9 +4,6 @@ import type { RpcClient } from './rpc-client'
 import type { RpcEnvelopeFields } from './rpc-envelope-fields'
 
 const scopedViews = new WeakMap<RpcClient, Map<ExecutionHostId, RpcClient>>()
-export function executionHostScopedClients(client: RpcClient): Iterable<RpcClient> {
-  return scopedViews.get(client)?.values() ?? []
-}
 
 // Server calls need both desktop relay support and a transport carrying executionHost; older shells cannot forward the envelope.
 export function relaysToServers(client: RpcClient, hostCapabilities: readonly string[]): boolean {

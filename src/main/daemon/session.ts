@@ -1,5 +1,3 @@
-import type { TerminalInterfaceSnapshot } from '../providers/terminal-interface-process-evidence'
-import { inspectSessionTerminalInterface } from '../providers/terminal-interface-process-evidence'
 import { isValidPtySize } from './daemon-pty-size'
 import type { SessionOutputPlane, AttachedClient } from './session-output-plane'
 import { createSessionOutputPipeline } from './session-output-pipeline'
@@ -14,12 +12,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import { randomUUID } from 'node:crypto'
 import { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 
-import type {
-  SessionState,
-  ShellReadyState,
-  TakePendingOutputResult,
-  TerminalSnapshot
-} from './types'
+import type * as types from './types'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 
 export class Session {
@@ -30,7 +23,7 @@ export class Session {
   readonly wslDistro: string | null
   readonly processNameIsSpawnFile: boolean
   readonly shellIsRootChild: boolean
-  private _state: SessionState = 'running'
+  private _state: types.SessionState = 'running'
   private _exitCode: number | null = null
   private _disposed = false
   private subprocess: SubprocessHandle
@@ -52,7 +45,12 @@ export class Session {
     this.shellIsRootChild = opts.subprocess.shellIsRootChild === true
     this.onSessionExit = opts.onExit
     const pipeline = createSessionOutputPipeline({
-      ...opts,
+      cols: opts.cols,
+      rows: opts.rows,
+      scrollback: opts.scrollback,
+      wslDistro: opts.wslDistro,
+      historySeedChunks: opts.historySeedChunks,
+      ownerBackend: opts.ownerBackend,
       subprocess: this.subprocess,
       isAlive: () => !this._disposed && this._state !== 'exited'
     })
@@ -93,11 +91,11 @@ export class Session {
     this.subprocess.onExit((code, cause) => this.handleSubprocessExit(code, cause))
   }
 
-  get state(): SessionState {
+  get state(): types.SessionState {
     return this._state
   }
 
-  get shellState(): ShellReadyState {
+  get shellState(): types.ShellReadyState {
     return this.shellReady.state
   }
 
@@ -203,7 +201,7 @@ export class Session {
     this.producerPause.release({ resume: true })
   }
 
-  getSnapshot(opts: { scrollbackRows?: number } = {}): TerminalSnapshot | null {
+  getSnapshot(opts: { scrollbackRows?: number } = {}): types.TerminalSnapshot | null {
     this.startupIngress.snapshotBarrier()
     return this.output.getSnapshot(opts)
   }
@@ -219,7 +217,7 @@ export class Session {
   takePendingOutput(
     includeSnapshot: boolean,
     opts: { teardownSnapshot?: boolean } = {}
-  ): TakePendingOutputResult | null {
+  ): types.TakePendingOutputResult | null {
     if (this._disposed) {
       return null
     }
@@ -236,15 +234,15 @@ export class Session {
     return this.subprocess.inspectChildProcesses?.(fresh, ignoreDetached) ?? 'unverifiable'
   }
 
-  inspectTerminalInterface(snapshot?: TerminalInterfaceSnapshot) {
-    return inspectSessionTerminalInterface(this.subprocess, snapshot)
-  }
-
-  getForegroundProcess(options?: { rawFallback?: boolean; cachedOnly?: boolean }): string | null {
+  getForegroundProcess(
+    options?: Parameters<SubprocessHandle['getForegroundProcess']>[0]
+  ): string | null {
     return this.subprocess.getForegroundProcess(options)
   }
 
-  async confirmForegroundProcess(context?: { decision?: boolean }): Promise<string | null> {
+  async confirmForegroundProcess(
+    context?: Parameters<NonNullable<SubprocessHandle['confirmForegroundProcess']>>[0]
+  ): Promise<string | null> {
     return (
       this.subprocess.confirmForegroundProcess?.(context) ?? this.subprocess.getForegroundProcess()
     )

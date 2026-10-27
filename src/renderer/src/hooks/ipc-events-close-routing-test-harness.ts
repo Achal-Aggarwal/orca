@@ -62,7 +62,9 @@ export async function useIpcEventsForCloseRouting({
     const actual = await vi.importActual<typeof ReactModule>('react')
     return {
       ...actual,
-      useEffect: (effect: () => void | (() => void)) => void effect()
+      useEffect: (effect: () => void | (() => void)) => {
+        effect()
+      }
     }
   })
 
@@ -274,7 +276,6 @@ export async function useIpcEventsForCloseRouting({
       },
       ssh: createIdleSshApiStub(),
       runtime: {
-        subscribe: async () => ({ unsubscribe: () => {} }),
         getTerminalFitOverrides: () => Promise.resolve([]),
         getTerminalDrivers: () => Promise.resolve([]),
         getBrowserDrivers: () => Promise.resolve([]),

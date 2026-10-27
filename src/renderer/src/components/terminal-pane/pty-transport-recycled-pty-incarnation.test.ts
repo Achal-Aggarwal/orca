@@ -58,11 +58,8 @@ describe('createIpcPtyTransport against a relay-recycled PTY id', () => {
       { id: RECYCLED_PTY_ID, incarnationId: FRESH_INCARNATION_ID }
     )
 
-    // The new shell must bind with its original stamp; a bailed-out connect is not success.
-    expect(result).toEqual({
-      id: RECYCLED_PTY_ID,
-      incarnationId: FRESH_INCARNATION_ID
-    })
+    // Require the PTY ID too; negative dead-result matching alone could pass a connect that bailed out.
+    expect(result).toBe(RECYCLED_PTY_ID)
     expect(paneExit).not.toHaveBeenCalled()
   })
 

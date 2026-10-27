@@ -1,3 +1,4 @@
+import { retractDesktopPresentations } from '../terminal-foreground-presentation'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { clearWebSessionCloseIntentsForOwner } from '../web-session-close-intent'
 import { clearWebSessionFocusIntentsForOwner } from '../web-session-focus-intent'
@@ -154,6 +155,7 @@ export function installGlobalSessionTabsSubscriptions({
               }
               // Why: an end frame never reaches onClose, and an error response leaves the stream dead.
               if (!response.ok || isSessionTabsStreamEnd(response.result)) {
+                retractDesktopPresentations(environmentId)
                 ended()
               }
               handleGlobalSessionEvent({
@@ -173,11 +175,13 @@ export function installGlobalSessionTabsSubscriptions({
             },
             onError: (error) => {
               if (isCurrent()) {
+                retractDesktopPresentations(environmentId)
                 console.warn('[web-session-tabs-sync] global subscription error:', error.message)
               }
             },
             onClose: () => {
               if (isCurrent()) {
+                retractDesktopPresentations(environmentId)
                 ended()
               }
             }
@@ -210,6 +214,7 @@ export function installGlobalSessionTabsSubscriptions({
       refs.snapshotAccepted.current = () => {}
       dispose()
       for (const { environmentId, expectedEnvironmentPairingRevision } of environments) {
+        retractDesktopPresentations(environmentId)
         const owner = { environmentId, pairingRevision: expectedEnvironmentPairingRevision }
         clearWebSessionCloseIntentsForOwner(owner)
         clearWebSessionFocusIntentsForOwner(owner)

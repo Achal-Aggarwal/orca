@@ -31,7 +31,6 @@ export type TabBarItemSurfaceRuntime = Pick<
   | 'unifiedTabByVisibleId'
   | 'tabAgentTypesByTabId'
   | 'nativeChatTabWideFallbackUnsafeTabsById'
-  | 'nativeChatShellForegroundTabsById'
   | 'nativeChatTranscriptIsLocalReadable'
   | 'managedBrowserCreationEnabled'
   | 'statusByRelativePath'
@@ -69,7 +68,6 @@ export function renderTabBarItems({
     unifiedTabByVisibleId,
     tabAgentTypesByTabId,
     nativeChatTabWideFallbackUnsafeTabsById,
-    nativeChatShellForegroundTabsById,
     nativeChatTranscriptIsLocalReadable,
     managedBrowserCreationEnabled,
     statusByRelativePath
@@ -119,8 +117,7 @@ export function renderTabBarItems({
           detectedAgent,
           resolvedAgent: tabWideFallbackSafe ? resolvedAgent : null,
           nativeChatTranscriptIsLocalReadable,
-          isChatViewMode: unifiedTabForItem.viewMode === 'chat',
-          shellForeground: nativeChatShellForegroundTabsById[terminalTab.id] === true
+          isChatViewMode: unifiedTabForItem.viewMode === 'chat'
         })
       isChatView = unifiedTabForItem?.viewMode === 'chat'
       viewModeTabId = unifiedTabForItem?.id

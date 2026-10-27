@@ -22,9 +22,9 @@ import { registerTerminalSideEffectFactConsumer } from '../terminal-side-effect-
 import { isAgentTaskCompleteTrackingEnabled } from './agent-task-complete-settings'
 import { isAgentProcessInspectionCostly } from '../agent-process-inspection-cost'
 import { isRemoteExecutionHostPtyId } from '../../../../../shared/remote-execution-host-pty-id'
+import { retireLiveAgentRowOnConfirmedProcessExit } from './confirmed-process-exit-row-retire'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
-import { readPaneObservationOwner } from './agent-departure'
 
 /** Keydown intent, PTY fit binding, side-effect fact consumption, and the agent completion coordinator. */
 export function installTerminalKeydownFit(session: ConnectPanePtySession): void {
@@ -60,10 +60,7 @@ export function installTerminalKeydownFit(session: ConnectPanePtySession): void 
     }
     // Enter at shell foreground backs up OSC 133;C hooks replaced by shell frameworks; confirm only panes without live agent identity.
     if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      session.sampleVisiblePaneForegroundAgent(
-        useAppStore.getState().paneForegroundAgentByPaneKey[session.cacheKey]?.shellForeground ===
-          true
-      )
+      session.sampleVisiblePaneForegroundAgent()
     }
   }
   // Infer from focused key events; raw bytes conflate Escape with Alt/meta and programmatic writes must not clear status.
@@ -215,12 +212,12 @@ export function installTerminalKeydownFit(session: ConnectPanePtySession): void 
         currentAgentForExited !== exited.agent
       )
     },
-    getObservationOwner: () => readPaneObservationOwner(session),
-    onForegroundAgentObserved: (process) =>
-      session.paneForegroundAgentTracker.onForegroundAgentObserved(process),
-    onForegroundShellObserved: (process) =>
-      session.acceptAgentDeparture('foreground-release', process),
-    onForegroundAgentExited: (process) => session.acceptAgentDeparture('process-exit', process),
+    // Why: the pane's only re-derivation of a process read where the shell emits no command marks.
+    onForegroundAgentExited: (exited) => {
+      session.paneForegroundAgentTracker?.onProcessExitConfirmed(exited)
+      // Why: not behind the tracker's process-read guard, so hook-identified panes retire too.
+      retireLiveAgentRowOnConfirmedProcessExit(session, exited)
+    },
     dispatchCompletion: (title, meta) => {
       if (meta?.source === 'process-exit') {
         session.clearSuppressedTitleSideEffects()

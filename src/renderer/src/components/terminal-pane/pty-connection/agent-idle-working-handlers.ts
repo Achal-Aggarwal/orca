@@ -28,7 +28,8 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
     }
   }
   session.onAgentExited = (): void => {
-    session.acceptAgentDeparture('title')
+    // Transient reconnect ineligibility cannot prevent authoritative shell-title exit from native chat.
+    session.deps.onAgentExitedRef.current(session.pane.leafId)
     session.clearSuppressedTitleSideEffects()
     session.clearCommandInferredPaneAgent()
     session.requestKnownWindowsShiftEnterReconfirmation()

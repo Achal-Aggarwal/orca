@@ -1,3 +1,4 @@
+import { acceptDesktopPresentationFrame } from '../terminal-foreground-presentation'
 import type {
   RuntimeMobileSessionTabsRemovedResult,
   RuntimeMobileSessionTabsResult
@@ -58,6 +59,7 @@ export type StructuredSessionSnapshotApplyOptions = {
   onAcceptedAgentSession?: (worktreeId: string, sessionId: string) => void
   /** Workspaces main's frames draw: the listing writes none of their tabs, only collects labels. */
   framesDraw?: (worktreeId: string) => boolean
+  onAcceptedPresentation?: (snapshot: RuntimeMobileSessionTabsResult) => void
   /** Collects host titles for drawn chat tabs, applied as content after the store patch. */
   onDrawnChatLabel?: (change: DrawnChatLabel) => void
 }
@@ -69,10 +71,12 @@ export function applyStructuredSessionTabSnapshots(
 ): void {
   const acceptedAgentSessions: { worktreeId: string; sessionId: string }[] = []
   const drawnChatLabels: DrawnChatLabel[] = []
+  const presentationFrames: RuntimeMobileSessionTabsResult[] = []
   const settleStructuredSessionMirror = applyWebSessionTabsStorePatch(
     (state) =>
       applyLocalStructuredSessionTabSnapshots(state, snapshots, owner, undefined, {
         ...options,
+        onAcceptedPresentation: (snapshot) => presentationFrames.push(snapshot),
         onAcceptedAgentSession: (worktreeId, sessionId) => {
           acceptedAgentSessions.push({ worktreeId, sessionId })
           options.onAcceptedAgentSession?.(worktreeId, sessionId)
@@ -84,6 +88,9 @@ export function applyStructuredSessionTabSnapshots(
     { frames: [] }
   )
   settleStructuredSessionMirror()
+  for (const frame of presentationFrames) {
+    acceptDesktopPresentationFrame(owner, frame)
+  }
   const { setTabLabel } = useAppStore.getState()
   for (const { tabId, label } of drawnChatLabels) {
     setTabLabel(tabId, label)
@@ -154,6 +161,7 @@ export function applyLocalStructuredSessionTabSnapshots<
       continue
     }
     const effectiveSnapshot = suppressCancelledStructuredSessionTabs(snapshot, { kind: 'local' })
+    options.onAcceptedPresentation?.(effectiveSnapshot)
     for (const tab of effectiveSnapshot.tabs) {
       if (tab.type === 'agent-session') {
         options.onAcceptedAgentSession?.(snapshot.worktree, tab.sessionId)

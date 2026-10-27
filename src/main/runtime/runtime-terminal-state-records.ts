@@ -1,3 +1,5 @@
+import type { RunningAgentLaunchPane } from '../agent-launch/agent-launch-pane-attachment'
+import type { TerminalPresentationObservation } from '../../shared/terminal-foreground-presentation'
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { AgentStatusState } from '../../shared/agent-status-types'
 import type {
@@ -90,6 +92,8 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
     incarnationId: PtyIncarnationId | null
     byKey: Map<string, CliWriterConversation>
   }
+  presentation?: TerminalPresentationObservation
+  pendingAgentLaunch?: RunningAgentLaunchPane
   foregroundAgent: TerminalAgent | null
   connected: boolean
   disconnectedAt: number | null

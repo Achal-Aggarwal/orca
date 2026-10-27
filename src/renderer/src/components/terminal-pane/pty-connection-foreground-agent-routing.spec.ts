@@ -106,7 +106,7 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
       expect(mockStoreState.removeAgentStatus).not.toHaveBeenCalled()
     })
 
-    it('preserves pre-hook launch intent when shell is observed before agent recognition', async () => {
+    it('clears pre-hook launch config when an Orca-started command exits', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout'] })
       const { connectPanePty } = await import('./pty-connection')
       vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('zsh')
@@ -161,7 +161,7 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
       await vi.advanceTimersByTimeAsync(350)
       await flushAsyncTicks()
 
-      expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
+      expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(paneKey)
       expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
     })
 
@@ -237,7 +237,9 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
 
       await vi.advanceTimersByTimeAsync(350)
 
-      expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId)
+      expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId, {
+        includePresentation: true
+      })
       expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
         agent: 'droid',
         agentEvidence: 'process-read',
@@ -283,7 +285,9 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
       )
       await flushAsyncTicks()
 
-      expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId)
+      expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledWith(ptyId, {
+        includePresentation: true
+      })
       expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
         agent: 'droid',
         agentEvidence: 'process-read',
@@ -438,10 +442,8 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
       connectPanePty(...mockPanePtyArgs(pane, createManager(1), createDeps({ tabId })))
       await vi.advanceTimersByTimeAsync(20)
       await flushAsyncTicks()
-      mockStoreState.agentStatusByPaneKey[paneKey] = { agentType: 'droid', state: 'working' }
       mockStoreState.paneForegroundAgentByPaneKey[paneKey] = {
         agent: 'droid',
-        agentEvidence: 'process-read',
         routingTrusted: true,
         shellForeground: false
       }
@@ -451,7 +453,6 @@ export function registerPtyConnectionForegroundAgentRoutingTests(): void {
 
       expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
         agent: 'droid',
-        agentEvidence: 'process-read',
         routingRevoked: true,
         routingConfirmationPending: true,
         shellForeground: false

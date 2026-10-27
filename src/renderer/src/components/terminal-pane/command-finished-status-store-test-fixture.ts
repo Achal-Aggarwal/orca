@@ -1,13 +1,11 @@
-import { createStore, type StoreApi } from 'zustand/vanilla'
+import { createStore } from 'zustand/vanilla'
 import type { AppState } from '@/store/types'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { createAgentStatusSlice } from '@/store/slices/agent-status/agent-status'
 import { createTerminalTabPresentationActions } from '@/store/terminals/terminal-tab-presentation'
 
 export function createCommandFinishedStatusStore(): {
-  getState: StoreApi<AppState>['getState']
-  subscribe: StoreApi<AppState>['subscribe']
-  acceptClaudeStatus: (paneKey: string, state: 'working' | 'done') => AgentStatusEntry
+  acceptWorkingClaudeStatus: (paneKey: string) => AgentStatusEntry
   dropAgentStatus: (paneKey: string) => void
   getStatus: (paneKey: string) => AgentStatusEntry | undefined
 } {
@@ -22,21 +20,19 @@ export function createCommandFinishedStatusStore(): {
       ...createAgentStatusSlice(...args),
       ...createTerminalTabPresentationActions(args[0], args[1])
     } satisfies Partial<AppState>
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the real status/launch/drop actions use only the external fields and title actions composed above.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only fixed working-Claude acceptance, row reads, and drop are exposed; their external fields and real title action are composed above.
     return state as AppState
   })
   return {
-    getState: store.getState,
-    subscribe: store.subscribe,
-    acceptClaudeStatus: (paneKey, state) => {
+    acceptWorkingClaudeStatus: (paneKey) => {
       store.getState().setAgentStatus(paneKey, {
-        state,
+        state: 'working',
         prompt: 'ship it',
         agentType: 'claude'
       })
       const row = store.getState().agentStatusByPaneKey[paneKey]
       if (!row) {
-        throw new Error('Claude status was not accepted')
+        throw new Error('Working Claude status was not accepted')
       }
       return row
     },

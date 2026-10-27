@@ -62,6 +62,18 @@ describe('host-stamped remote foreground resolver', () => {
     })
   })
 
+  it('projects shell from the same capture, keeping stopped/background rows and refusing live shared-group work', () => {
+    const rows = rowsFor(['node /opt/codex'])
+    rows[0] = { ...rows[0], tpgid: 100, stat: 'Ss+' }
+    rows[1] = { ...rows[1], stat: 'T', tpgid: 100 }
+    const read = () =>
+      resolveRemoteForegroundEvidence({ rootPid: 100, fallbackProcess: 'zsh' }, metadata, rows)
+    expect(read()).toMatchObject({ verdict: 'live', shellForeground: true, processName: null })
+    rows[1] = { ...rows[1], stat: 'S+', pgid: 100, command: 'sleep 30' }
+    expect(read().shellForeground).toBeUndefined()
+    expect(read()).toMatchObject({ verdict: 'live', processName: null })
+  })
+
   it.each([
     ['multiplexer_boundary', rowsFor(['tmux new-session'])],
     ['ambiguous_foreground_group', rowsFor(['node /opt/codex', 'node /opt/claude'])],

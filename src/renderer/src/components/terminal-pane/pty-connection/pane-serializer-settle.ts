@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
 import type { SessionRestoredBannerReason } from '../session-restored-banner-pane-state'
 import { hasPtySerializer } from '../pty-buffer-serializer'
@@ -63,7 +62,6 @@ export function bindSettlePaneSerializer(session: ConnectPanePtySession): void {
       ? { command: session.paneStartup.command, resumeSource: session.paneStartup.resumeSource }
       : null
     : null
-  notifyPaneStartupStateChanged()
   const startupSource = session.paneStartup?.resumeSource
   const startupDraftReadyScanner = session.ownsStartupDraftPaste
     ? createDraftPasteReadyScanner(

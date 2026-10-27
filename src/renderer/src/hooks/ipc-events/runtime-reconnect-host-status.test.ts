@@ -109,9 +109,6 @@ describe('remote Orca server reconnect', () => {
         }
       )
     })
-    Object.assign(window.api, {
-      runtime: { subscribe: async () => ({ unsubscribe: () => {} }) }
-    })
     useAppStore.setState({
       settings: { activeRuntimeEnvironmentId: ENVIRONMENT_ID } as never,
       runtimeEnvironments: [environment()],

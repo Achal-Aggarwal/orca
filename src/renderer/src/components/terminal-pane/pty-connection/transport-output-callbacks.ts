@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import {
   applyTerminalLaunchResult,
   captureTerminalLaunchContext
@@ -140,7 +139,6 @@ export function bindCaptureTransportOutputCallbacks(session: ConnectPanePtySessi
         onSpawnDeferred: (reason: SpawnDeferralReason): void => {
           if (isCurrent()) {
             session.pendingSpawnDeferral = reason
-            notifyPaneStartupStateChanged()
           }
         }
       }

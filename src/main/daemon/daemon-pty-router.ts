@@ -223,8 +223,12 @@ export class DaemonPtyRouter implements IPtyProvider {
     return this.adapterFor(id).hasChildProcesses(id)
   }
 
-  async getForegroundProcess(id: string): Promise<string | null> {
-    return this.adapterFor(id).getForegroundProcess(id)
+  async getForegroundProcess(
+    id: string,
+    accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ): Promise<string | null> {
+    const provider = this.adapterFor(id)
+    return accept ? provider.getForegroundProcess(id, accept) : provider.getForegroundProcess(id)
   }
 
   async inspectProcess(
@@ -234,8 +238,14 @@ export class DaemonPtyRouter implements IPtyProvider {
     return this.adapterForInspection(id).inspectProcess(id, options)
   }
 
-  async confirmForegroundProcess(id: string): Promise<string | null> {
-    return this.adapterFor(id).confirmForegroundProcess(id)
+  async confirmForegroundProcess(
+    id: string,
+    accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ): Promise<string | null> {
+    const provider = this.adapterFor(id)
+    return accept
+      ? provider.confirmForegroundProcess(id, accept)
+      : provider.confirmForegroundProcess(id)
   }
 
   async confirmShellForeground(id: string): Promise<boolean> {

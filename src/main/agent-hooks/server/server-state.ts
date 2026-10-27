@@ -1,6 +1,3 @@
-import { canWriteHookServerLegacyStatusRow } from './server-status-admission'
-import type { TerminalInterfaceOwner } from './terminal-interface-authority'
-import { TerminalInterfaceAuthority } from './terminal-interface-authority'
 import type {
   AgentProcessPresence,
   AgentProcessVerdict
@@ -10,6 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 
 import {
   createHookListenerState,
+  canAdmitLegacyAgentStatusEntry,
   type HookListenerState
 } from '../../../shared/agent-hook-listener/listener-state'
 import {
@@ -29,6 +27,7 @@ import type { AgentStatusClearIpcPayload } from '../../../shared/agent-status-ty
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
 import type { SpoolRecord } from '../../../shared/agent-hook-spool'
 import { createAgentStatusStore, type AgentStatusStore } from '../../../shared/agent-status-store'
+import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
 import type { AgentStatusSubject } from '../../../shared/agent-status-subject'
 import type {
   AgentHookAuthorityEvidence,
@@ -52,12 +51,16 @@ import type {
   StatusRowMutationListener
 } from './server-types'
 import { RevisionedMap } from './revisioned-map'
-import { forgetPaneAgentExit, type AgentExitEvidence } from './agent-exit-evidence'
+import { forgetAgentExit, type AgentExitEvidence } from './agent-exit-evidence'
 
 export abstract class AgentHookServerState {
-  readonly terminalInterfaces = new TerminalInterfaceAuthority()
   protected canWriteLegacyStatusRow(entry: AgentHookEventPayload): boolean {
-    return canWriteHookServerLegacyStatusRow(this.state, entry)
+    return canAdmitLegacyAgentStatusEntry(
+      this.state,
+      'main-status-update',
+      entry,
+      AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+    )
   }
 
   // Lazy initialization avoids needing live crypto when the singleton module is imported.
@@ -75,8 +78,10 @@ export abstract class AgentHookServerState {
 
   /** A successor or worker attach invalidates the old agent's exit. */
   forgetAgentExit(paneKey: string): void {
+    const forgotten = forgetAgentExit(this.agentExitedAtByPaneKey, paneKey)
     if (
-      forgetPaneAgentExit(this.agentExitedAtByPaneKey, paneKey, this.resolvePaneKeyAlias(paneKey))
+      forgetAgentExit(this.agentExitedAtByPaneKey, this.resolvePaneKeyAlias(paneKey)) ||
+      forgotten
     ) {
       this.scheduleStatusPersist()
     }
@@ -229,9 +234,7 @@ export abstract class AgentHookServerState {
     onAccepted?: () => void,
     origin?: AgentStatusObservationOrigin,
     observedAt?: number,
-    mutationBefore?: EnrichedAgentHookEventPayload,
-    newRun?: boolean,
-    acceptInterfaceHook?: (owner: TerminalInterfaceOwner) => void
+    mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined
   protected abstract emitEnrichedStatus(enriched: EnrichedAgentHookEventPayload): void
   protected abstract clearAssistantMessageRetry(paneKey: string): void

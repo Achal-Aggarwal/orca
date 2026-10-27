@@ -5,6 +5,7 @@ import type { StoreState } from './pty-connection-test-store-state'
 
 export function createInitialStoreState(getState: () => StoreState): StoreState {
   return {
+    unifiedTabsByWorktree: {},
     activeWorktreeId: 'wt-1',
     tabsByWorktree: {
       'wt-1': [{ id: 'tab-1', ptyId: 'tab-pty' }]

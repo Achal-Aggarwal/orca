@@ -191,9 +191,15 @@ export type IPtyProvider = {
   setColorQueryReplyColors?: (colors: TerminalOscColorQueryReplyColors) => void
   acknowledgeDataEvent(id: string, charCount: number): void
   hasChildProcesses(id: string): Promise<boolean>
-  getForegroundProcess(id: string): Promise<string | null>
+  getForegroundProcess(
+    id: string,
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  ): Promise<string | null>
   /** Strong process evidence captured after the caller's command boundary. */
-  confirmForegroundProcess?: (id: string) => Promise<string | null>
+  confirmForegroundProcess?: (
+    id: string,
+    acceptPresentation?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ) => Promise<string | null>
   /** Fresh execution-host proof that the spawned shell owns the PTY foreground. */
   confirmShellForeground?: (id: string) => Promise<boolean>
   serialize(ids: string[]): Promise<string>

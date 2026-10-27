@@ -22,8 +22,6 @@ import {
 import { extractOscTitleScanTail } from '../../../../shared/osc-title-scan-tail'
 
 export abstract class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecutionContext {
-  protected abstract setPtyConnected(pty: RuntimePtyWorktreeRecord, connected: boolean): void
-
   protected abstract recordOsc7MetadataForPty(
     ptyId: string,
     data: string
@@ -100,7 +98,6 @@ export abstract class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePty
     sequenceChars = data.length,
     transformed = false
   ): number {
-    this.terminalInterfaces?.activity(ptyId)
     const outputSequence = (this.ptyOutputSequenceById.get(ptyId) ?? 0) + sequenceChars
     this.ptyOutputSequenceById.set(ptyId, outputSequence)
     this.scanProviderModeTrackers(ptyId, data)
@@ -133,9 +130,7 @@ export abstract class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePty
     let ptyTailAfter: ReturnType<typeof appendNormalizedToTailBuffer> | null = null
     let ptyNormalized: ReturnType<typeof normalizeTerminalChunk> | null = null
     if (pty) {
-      if (!pty.connected) {
-        this.setPtyConnected(pty, true)
-      }
+      pty.connected = true
       pty.disconnectedAt = null
       pty.lastOutputAt = at
       const normalized = normalizeTerminalChunk(data, pty.tailPendingAnsi)

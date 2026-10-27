@@ -1,10 +1,6 @@
 import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
 import { takeSleepingAgentWakeRequest } from '@/lib/sleeping-agent-wake-requests'
-import {
-  holdPaneResumeUntilShown,
-  notifyPaneStartupStateChanged,
-  releasePaneResumeHold
-} from '@/lib/pane-spawn-deferral-registry'
+import { holdPaneResumeUntilShown, releasePaneResumeHold } from '@/lib/pane-spawn-deferral-registry'
 import { startDeferredSessionReattach } from './deferred-session-reattach-connect'
 import { pendingSpawnByPaneKey } from './pty-connect-limits'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
@@ -53,7 +49,6 @@ export function deferHiddenAgentResume(
     }
   }
   session.hibernatedWakeTarget = target
-  notifyPaneStartupStateChanged()
   session.hiddenAgentResumeHeldTarget = target
   // Retain record ownership while armed, woken or connecting; cleared layout bindings alone would let activation launch a duplicate.
   session.hiddenAgentResumeHold ??= (): boolean =>

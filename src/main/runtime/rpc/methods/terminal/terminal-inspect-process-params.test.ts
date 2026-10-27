@@ -38,6 +38,13 @@ describe('terminal.inspectProcess registration', () => {
     ).resolves.toEqual({ terminal: 'term_1', options: { scanChildProcesses: true } })
   })
 
+  it('forwards genuine cadence without changing advisory defaults', async () => {
+    expect(await callRegisteredHandler({ terminal: 'term_1', steadyState: true })).toEqual({
+      terminal: 'term_1',
+      options: { steadyState: true }
+    })
+  })
+
   it('carries it alongside the incarnation fence', async () => {
     await expect(
       callRegisteredHandler({

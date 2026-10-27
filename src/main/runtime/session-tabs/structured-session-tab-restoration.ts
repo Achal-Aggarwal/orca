@@ -1,3 +1,4 @@
+import { hostedReviewExecutionOptions } from '../hosted-review-execution-options'
 import type { OrcaRuntimeWithScheduleMobileSessionTabsChanged as ScheduleMobileSessionTabsChangedMethods } from './session-tabs-change-publication'
 import { defaultAgentChatLabel } from '../../../shared/agent-session/agent-session-chat-label'
 import { OrcaRuntimeWithGetStructuredAgentSessionCreateSupport } from './structured-session-create-support'
@@ -222,7 +223,11 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
 
   async inspectTerminalProcess(
     terminalSelector: string,
-    options?: { expectedIncarnationId?: string; scanChildProcesses?: boolean }
+    options?: {
+      expectedIncarnationId?: string
+      scanChildProcesses?: boolean
+      steadyState?: boolean
+    }
   ): Promise<PtyProcessInspection> {
     const leaf = this.resolveLiveLeafForHandle(terminalSelector)
     if (!leaf?.ptyId || !this.ptyController) {
@@ -232,8 +237,8 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
       // Preserve one-argument unfenced calls; providers may use arity to select legacy versus fenced inspection.
       const inspection =
         options === undefined
-          ? await this.ptyController.inspectProcess(leaf.ptyId)
-          : await this.ptyController.inspectProcess(leaf.ptyId, options)
+          ? await this.ptyForegroundAgent.inspect(leaf.ptyId)
+          : await this.ptyForegroundAgent.inspect(leaf.ptyId, options)
       const evidence = inspection.foregroundProcessEvidence
       // The runtime handle is the request identity on this wire; keep the
       // host-owned leaf PTY id out of the client-facing comparison.
@@ -280,13 +285,7 @@ export abstract class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce exten
   ):
     | { localGitExecOptions: LocalProjectGhExecOptions & { admissionTier?: GitAdmissionTier } }
     | undefined {
-    const localGitOptions = {
-      ...this.getLocalGitExecutionOptionArgs(repo)[0],
-      ...(admissionTier && { admissionTier })
-    }
-    return Object.keys(localGitOptions).length > 0
-      ? { localGitExecOptions: localGitOptions }
-      : undefined
+    return hostedReviewExecutionOptions(this.getLocalGitExecutionOptionArgs(repo)[0], admissionTier)
   }
 
   protected getLocalGitExecutionOptionArgs(repo: Repo): [] | [LocalProjectGhExecOptions] {

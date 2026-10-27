@@ -1,11 +1,7 @@
-import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 import type { PtyChildProcessVerdict } from '../../shared/terminal-process-inspection'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
 import { getCheapProcessTableSnapshot } from '../../shared/cheap-process-table-snapshot-reader'
-import {
-  getProcessTableSnapshot,
-  getStrictProcessTableSnapshotWithAge
-} from '../../shared/process-table-snapshot-reader'
+import { getStrictProcessTableSnapshotWithAge } from '../../shared/process-table-snapshot-reader'
 import { confirmShellForegroundProcess } from './agent-foreground-process'
 import { confirmFreshPtyForeground } from './pty-foreground-confirmation'
 import {
@@ -16,7 +12,10 @@ import {
   inspectSpawnFileChildProcessesFromRows,
   inspectSpawnFileWindowsChildProcesses
 } from '../daemon/pty-subprocess/spawn-file-child-processes'
-import { buildPaneProcessFingerprint } from './posix-pane-foreground-fingerprint'
+import {
+  buildPaneProcessFingerprint,
+  readPosixSteadyState
+} from './posix-pane-foreground-fingerprint'
 import { isRetiredPtyMaster } from '../pty/node-pty-master-fd-retirement'
 import { ptyShellProcessId } from '../windows/windows-pty-job'
 import { resolveForegroundFallbackProcess } from './local-pty-launch-helpers'
@@ -38,8 +37,7 @@ import { isWindowsPtyJobReadable, readWindowsPtyJobProcessIds } from './windows-
 export async function inspectLocalPtyChildProcesses(
   id: string,
   fresh = true,
-  ignoreDetached = false,
-  rows?: readonly ProcessTableRow[]
+  ignoreDetached = false
 ): Promise<PtyChildProcessVerdict> {
   const proc = ptyProcesses.get(id)
   if (!proc) {
@@ -59,7 +57,7 @@ export async function inspectLocalPtyChildProcesses(
       return ptyProcesses.get(id) === proc ? verdict : 'unverifiable'
     }
     if (ptyProcessNameIsSpawnFile(proc)) {
-      const snapshot = rows ? { rows } : await getStrictProcessTableSnapshotWithAge()
+      const snapshot = await getStrictProcessTableSnapshotWithAge()
       return ptyProcesses.get(id) === proc
         ? inspectSpawnFileChildProcessesFromRows(
             snapshot.rows,
@@ -110,9 +108,9 @@ async function revalidateCachedPosixAgent(
 
 export async function getLocalPtyForegroundProcess(
   id: string,
-  rows?: readonly ProcessTableRow[],
-  anchoredOnly = false
+  accept?: (presentation: 'agent-in-front' | 'not-in-front' | null | undefined) => void
 ): Promise<string | null> {
+  accept?.(undefined)
   const proc = ptyProcesses.get(id)
   if (!proc) {
     ptyLastRecognizedForeground.delete(id)
@@ -144,6 +142,9 @@ export async function getLocalPtyForegroundProcess(
         identityAgeMs: Date.now() - (cachedEntry?.at ?? 0)
       })
       if (verdict === 'confirmed' || verdict === 'unproven') {
+        if (verdict === 'confirmed') {
+          accept?.('agent-in-front')
+        }
         return cachedAgent
       }
       if (verdict === 'exited') {
@@ -161,7 +162,6 @@ export async function getLocalPtyForegroundProcess(
   }
   if (
     process.platform !== 'win32' &&
-    !rows &&
     cachedEntry &&
     cachedAgent !== null &&
     (await revalidateCachedPosixAgent(proc, cachedEntry, fallbackProcess))
@@ -170,15 +170,12 @@ export async function getLocalPtyForegroundProcess(
       return null
     }
     ptyLastRecognizedForeground.set(id, { ...cachedEntry, at: Date.now() })
+    accept?.('agent-in-front')
     return cachedAgent
-  }
-  if (anchoredOnly) {
-    return null
   }
   try {
     const resolution = await createPtyForegroundResolver(proc)(proc.pid, fallbackProcess, {
       contextPaths: ptyAgentForegroundContextPaths.get(id),
-      rows,
       ...(cachedEntry?.pid != null
         ? { anchorProcessId: cachedEntry.pid, anchorProcessName: cachedEntry.name }
         : {})
@@ -203,7 +200,7 @@ export async function getLocalPtyForegroundProcess(
         : resolution
     const stable = resolveStableForegroundProcess(stableResolution, lastRecognizedAgent)
     if (stable.lastRecognizedAgent && stableResolution.available) {
-      const steady = await readPosixSteadyState(proc.pid, fallbackProcess, rows)
+      const steady = await readPosixSteadyState(proc.pid, fallbackProcess)
       if (ptyProcesses.get(id) !== proc) {
         return null
       }
@@ -226,6 +223,13 @@ export async function getLocalPtyForegroundProcess(
     } else if (!stable.lastRecognizedAgent) {
       ptyLastRecognizedForeground.delete(id)
     }
+    if (stableResolution.available) {
+      if (resolvedAgent) {
+        accept?.('agent-in-front')
+      } else if (resolution.shellForeground) {
+        accept?.('not-in-front')
+      }
+    }
     return stable.processName
   } catch {
     if (ptyProcesses.get(id) !== proc) {
@@ -236,30 +240,12 @@ export async function getLocalPtyForegroundProcess(
   }
 }
 
-/** Null for Windows/unfenced panes, requiring a full scan next time. */
-async function readPosixSteadyState(
-  shellPid: number,
-  fallbackProcess: string | null,
-  rows?: readonly ProcessTableRow[]
-): Promise<{ fingerprint: string; fallbackProcess: string | null } | null> {
-  if (process.platform === 'win32') {
-    return null
-  }
-  try {
-    const fingerprint = await buildPaneProcessFingerprint(
-      rows ?? (await getProcessTableSnapshot()),
-      shellPid
-    )
-    return fingerprint === null ? null : { fingerprint, fallbackProcess }
-  } catch {
-    return null
-  }
-}
-
 export async function confirmLocalPtyForegroundProcess(
   id: string,
-  decision = false
+  decision = false,
+  accept?: (presentation: 'agent-in-front' | 'not-in-front' | null | undefined) => void
 ): Promise<string | null> {
+  accept?.(undefined)
   const proc = ptyProcesses.get(id)
   if (!proc) {
     return null
@@ -282,6 +268,13 @@ export async function confirmLocalPtyForegroundProcess(
     // Why: a fresh scan can outlive this PTY id; never publish identity from an exited or same-id-reusing session.
     if (ptyProcesses.get(id) !== proc) {
       return null
+    }
+    if (resolution.available && processName === resolution.processName) {
+      if (recognizeAgentProcessFromCommandLine(resolution.processName ?? '')) {
+        accept?.('agent-in-front')
+      } else if (resolution.shellForeground) {
+        accept?.('not-in-front')
+      }
     }
     if (windowsDecision) {
       const recognized = recognizeAgentProcessFromCommandLine(resolution.processName ?? '')

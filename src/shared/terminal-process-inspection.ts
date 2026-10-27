@@ -1,4 +1,7 @@
-import type { TerminalInterfaceEvidence } from './terminal-interface-observation'
+import type {
+  TerminalForegroundPresentation,
+  TerminalPresentationObservation
+} from './terminal-foreground-presentation'
 import type { RemoteForegroundEvidence } from './foreground-process-evidence'
 
 /** Keep unverifiable distinct from no-children; legacy booleans collapsed failed inspection and Windows relay defaults into false, bypassing close guards. */
@@ -13,11 +16,13 @@ export type ClientOnlyUnverifiableReason =
 
 /** Forbid host identity on renderer-only verdicts so transport failures cannot masquerade as host observations. */
 export type ClientOnlyUnverifiableInspection = {
-  terminalInterface?: never
   foregroundProcess: null
   hasChildProcesses: false
   verdict: 'unverifiable'
   reason: string
+  foregroundPresentationSupported?: never
+  presentation?: never
+  foregroundPresentation?: never
   foregroundProcessEvidence?: never
   childProcessEvidence?: never
   authorityGeneration?: never
@@ -29,7 +34,9 @@ export type ClientOnlyUnverifiableInspection = {
 
 /** Compatibility-shaped host/local inspection returned by the inspect RPC. */
 export type HostProcessInspection = {
-  terminalInterface?: TerminalInterfaceEvidence
+  foregroundPresentationSupported?: true
+  presentation?: TerminalPresentationObservation
+  foregroundPresentation?: TerminalForegroundPresentation
   foregroundProcess: string | null
   hasChildProcesses: boolean
   /** Optional on old hosts; the renderer treats an omitted field as old-host unverifiable. */

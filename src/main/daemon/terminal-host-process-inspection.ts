@@ -20,13 +20,15 @@ import { SessionNotFoundError } from './types'
 import type { PtyProcessInspectionOptions } from '../providers/pty-process-inspection'
 
 export type TerminalHostProcessInspection = {
+  foregroundPresentationSupported?: true
   foregroundProcess: string | null
   hasChildProcesses: boolean
   childProcessEvidence?: PtyChildProcessVerdict
   foregroundProcessEvidence?: RemoteForegroundEvidence
+  foregroundPresentation?: 'agent-in-front' | 'not-in-front' | 'gone'
 }
 
-type RetiredIncarnation = { incarnationId: string; code: number; expiresAt: number }
+export type RetiredIncarnation = { incarnationId: string; code: number; expiresAt: number }
 
 /** Cheap POSIX polls reuse anchored identity; unresolved reads escalate to full evidence capture. */
 export type TerminalHostInspectionTier = 'full' | 'cheap'
@@ -37,6 +39,7 @@ export async function inspectTerminalHostProcess(args: {
   currentSession?: () => Session | undefined
   expectedIncarnationId?: string
   /** The caller is a self-correcting poll that only reads the process name, never evidence. */
+  includePresentation?: boolean
   steadyState?: boolean
   ignoreDetached?: boolean
   retiredIncarnation?: RetiredIncarnation
@@ -53,6 +56,8 @@ export async function inspectTerminalHostProcess(args: {
     ) {
       return {
         foregroundProcess: null,
+        foregroundPresentationSupported: true,
+        foregroundPresentation: 'gone',
         hasChildProcesses: false,
         foregroundProcessEvidence: {
           authorityGeneration: args.authorityGeneration,
@@ -75,7 +80,12 @@ export async function inspectTerminalHostProcess(args: {
     if (anchored !== null) {
       args.onTier?.('cheap')
       // A tty-less capture cannot supply fencing evidence to remote or restore consumers.
-      return { foregroundProcess: anchored, hasChildProcesses: true }
+      return {
+        foregroundPresentationSupported: true,
+        foregroundProcess: anchored,
+        hasChildProcesses: true,
+        foregroundPresentation: 'agent-in-front'
+      }
     }
   }
   args.onTier?.('full')
@@ -85,13 +95,21 @@ export async function inspectTerminalHostProcess(args: {
   let childProcessEvidence: PtyChildProcessVerdict | undefined = session.processNameIsSpawnFile
     ? 'unverifiable'
     : undefined
+  let foregroundPresentation: 'agent-in-front' | 'not-in-front' | undefined
   let evidence: RemoteForegroundEvidence
   if (!incarnationMatches) {
     evidence = unverifiableEvidence(args, session, 'incarnation_mismatch')
   } else if (process.platform === 'win32') {
     if (windowsDecision || session.processNameIsSpawnFile) {
       foregroundProcess = await session.confirmForegroundProcess(
-        windowsDecision ? { decision: true } : undefined
+        windowsDecision
+          ? {
+              decision: true,
+              acceptPresentation: (value) => {
+                foregroundPresentation = value ?? undefined
+              }
+            }
+          : undefined
       )
     }
     // A steady-state poll never decides adoption or close, so it may read the cached process table.
@@ -135,6 +153,7 @@ export async function inspectTerminalHostProcess(args: {
     }
   }
   if (!session.isAlive || (args.currentSession && args.currentSession() !== session)) {
+    foregroundPresentation = undefined
     childProcessEvidence = 'unverifiable'
     evidence = unverifiableEvidence(args, session, 'session_changed')
   }
@@ -143,6 +162,7 @@ export async function inspectTerminalHostProcess(args: {
   const ordinaryForeground =
     nonShellForeground && !recognizeAgentProcess(foregroundProcess) ? foregroundProcess : null
   return {
+    foregroundPresentationSupported: true,
     foregroundProcess:
       evidence.verdict === 'live'
         ? (evidence.processName ?? ordinaryForeground)
@@ -152,7 +172,15 @@ export async function inspectTerminalHostProcess(args: {
         ? nonShellForeground
         : childProcessEvidence !== 'no-children',
     ...(childProcessEvidence === undefined ? {} : { childProcessEvidence }),
-    foregroundProcessEvidence: evidence
+    ...(foregroundPresentation ? { foregroundPresentation } : {}),
+    foregroundProcessEvidence: evidence,
+    ...(evidence.verdict === 'live'
+      ? evidence.shellForeground === true
+        ? { foregroundPresentation: 'not-in-front' as const }
+        : recognizeAgentProcess(evidence.processName)
+          ? { foregroundPresentation: 'agent-in-front' as const }
+          : {}
+      : {})
   }
 }
 

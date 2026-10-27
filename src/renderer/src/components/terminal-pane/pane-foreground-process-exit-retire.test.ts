@@ -40,12 +40,7 @@ function createUnmarkedPane(args: { visible: boolean }) {
     dispatchCompletion: vi.fn(),
     isLive: () => true,
     shouldPollProcessCadence: () => args.visible,
-    onForegroundAgentObserved: tracker.onForegroundAgentObserved,
-    onForegroundShellObserved: () => tracker.onShellForegroundObserved(),
-    onForegroundAgentExited: (exited) => {
-      tracker.onProcessExitConfirmed(exited)
-      onConfirmedShellForeground('process-exit')
-    }
+    onForegroundAgentExited: (exited) => tracker.onProcessExitConfirmed(exited)
   })
   coordinator.startProcessTracking()
   return {
@@ -86,7 +81,7 @@ describe('process monitor retires a latched foreground read', () => {
     pane.setForeground('zsh', false)
     await vi.advanceTimersByTimeAsync(5_000)
 
-    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: true })
+    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: false })
     expect(pane.onConfirmedShellForeground).toHaveBeenCalledWith('process-exit')
     expect(sidebarAgent('', pane.getEntry())).toBeNull()
     expect(sidebarAgent('user@host: ~/repo', pane.getEntry())).toBeNull()
@@ -103,7 +98,7 @@ describe('process monitor retires a latched foreground read', () => {
     expect(sidebarAgent('repo', pane.getEntry())).toBeNull()
   })
 
-  it('withholds agent foreground while the shell owns input but children remain', async () => {
+  it('keeps the row while Codex runs a nested shell', async () => {
     const pane = createUnmarkedPane({ visible: true })
     pane.tracker.onVisiblePtyBound()
     await vi.advanceTimersByTimeAsync(2_500)
@@ -111,7 +106,7 @@ describe('process monitor retires a latched foreground read', () => {
     pane.setForeground('zsh', true)
     await vi.advanceTimersByTimeAsync(10_000)
 
-    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: true })
+    expect(sidebarAgent('repo', pane.getEntry())).toBe('codex')
     expect(pane.onConfirmedShellForeground).not.toHaveBeenCalled()
   })
 
@@ -127,7 +122,7 @@ describe('process monitor retires a latched foreground read', () => {
     expect(sidebarAgent('repo', pane.getEntry())).toBeNull()
   })
 
-  it('retires display after an accepted exit supersedes an unfinished command read', async () => {
+  it('leaves an in-flight command-finished read to decide the pane', async () => {
     const pane = createUnmarkedPane({ visible: true })
     pane.tracker.onVisiblePtyBound()
     await vi.advanceTimersByTimeAsync(2_500)
@@ -139,7 +134,7 @@ describe('process monitor retires a latched foreground read', () => {
     pane.tracker.onProcessExitConfirmed({ agent: 'codex', processName: 'codex' })
     await flushAsyncTicks()
 
-    expect(pane.getEntry()).toEqual({ agent: null, shellForeground: false })
+    expect(pane.getEntry()).toMatchObject({ agent: 'codex', agentEvidence: 'process-read' })
     expect(pane.onConfirmedShellForeground).not.toHaveBeenCalled()
   })
 

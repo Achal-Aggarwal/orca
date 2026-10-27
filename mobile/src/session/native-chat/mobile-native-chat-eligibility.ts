@@ -1,4 +1,3 @@
-import type { TerminalInterfaceObservation } from '../../../../src/shared/terminal-interface-observation'
 import { isStructuredAgentId } from '../../../../src/shared/agent-session-provider-handle'
 import type { AgentStatusEntry } from '../../../../src/shared/agent-status-types'
 import { isRuntimeOwnedSshTargetId } from '../../../../src/shared/execution-host'
@@ -31,10 +30,10 @@ export type MobileNativeChatIdentity = {
 }
 
 export type MobileNativeChatTab = {
-  type: string
-  terminalInterface?: TerminalInterfaceObservation
+  terminal?: string | null
   incarnationId?: string | null
-  status?: string
+  presentation?: import('../../../../src/shared/terminal-foreground-presentation').TerminalPresentationObservation
+  type: string
   launchAgent?: string | null
   agentStatus?: AgentStatusEntry | null
   nativeChatIdentity?: MobileNativeChatIdentity
@@ -42,19 +41,6 @@ export type MobileNativeChatTab = {
   launchDraftCreatedAt?: number
   sessionId?: string | null
   agent?: string | null
-}
-
-/** Cold mobile snapshots lack the renderer's startup ladder; that one case stays ambiguous. */
-export function mobileTerminalInterfaceReleasesChat(tab: MobileNativeChatTab): boolean {
-  const observation = tab.terminalInterface
-  return Boolean(
-    tab.type === 'terminal' &&
-    tab.status === 'ready' &&
-    observation &&
-    tab.incarnationId === observation.incarnationId &&
-    observation.state === 'shell' &&
-    observation.basis !== 'cold'
-  )
 }
 
 export function resolveMobileNativeChat(
@@ -69,9 +55,6 @@ export function resolveMobileNativeChat(
     return tab.sessionId && isStructuredAgentId(tab.agent)
       ? { agent: tab.agent, sessionId: tab.sessionId, transcriptPath: null, agentConfirmed: true }
       : null
-  }
-  if (mobileTerminalInterfaceReleasesChat(tab)) {
-    return null
   }
   if (tab.type !== 'terminal') {
     return null

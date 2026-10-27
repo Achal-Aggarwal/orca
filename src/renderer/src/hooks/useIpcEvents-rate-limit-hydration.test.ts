@@ -170,7 +170,6 @@ describe('useIpcEvents rate-limit hydration', () => {
           onDetectedPortsChanged: () => () => {}
         },
         runtime: {
-          subscribe: async () => ({ unsubscribe: () => {} }),
           getTerminalFitOverrides: () => Promise.resolve([]),
           getTerminalDrivers: () => Promise.resolve([]),
           getBrowserDrivers: () => Promise.resolve([]),

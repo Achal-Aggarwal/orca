@@ -1,3 +1,4 @@
+import type { TerminalPresentationObservation } from './terminal-foreground-presentation'
 import type { AgentStatusEntry } from './agent-status-types'
 import type { BrowserCertificateFailure, BrowserLoadError } from './browser-workspace-types'
 import type { RuntimeBrowserPlacement } from './runtime-browser-placement'
@@ -21,6 +22,7 @@ export type RuntimeMobileSessionTerminalTab = {
   ptyId?: string | null
   /** Host-owned PTY incarnation used to fence remote identity observations. */
   incarnationId?: string | null
+  presentation?: TerminalPresentationObservation
   terminalTheme?: RuntimeMobileTerminalTheme
   agentStatus?: AgentStatusEntry | null
   /** Event-only lead-turn end time for paired clients; never persisted in AgentStatusEntry. */
@@ -136,14 +138,8 @@ export type RuntimeMobileSessionSnapshotTab =
   | RuntimeMobileSessionAgentTab
 
 export type RuntimeMobileSessionTerminalClientTab =
-  | (RuntimeMobileSessionTerminalTab & {
-      status: 'pending-handle'
-      terminal: null
-    })
-  | (RuntimeMobileSessionTerminalTab & {
-      status: 'ready'
-      terminal: string
-    })
+  | (RuntimeMobileSessionTerminalTab & { status: 'pending-handle'; terminal: null })
+  | (RuntimeMobileSessionTerminalTab & { status: 'ready'; terminal: string })
 
 export type RuntimeMobileSessionClientTab =
   | RuntimeMobileSessionTerminalClientTab

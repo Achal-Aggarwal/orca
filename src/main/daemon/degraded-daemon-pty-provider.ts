@@ -2,9 +2,12 @@ import { shutdownRoutedDegradedSession } from './daemon-routed-session-shutdown'
 import { terminateResolvedDaemonSession } from './daemon-fenced-termination'
 import type { PtyFencedTerminationRequest } from '../../shared/pty-fenced-termination'
 import type { DaemonPtyAdapter } from './daemon-pty-adapter'
-import { combineUnsubscribes } from './combine-unsubscribes'
+import { combineUnsubscribes, trackProviderReplaySubscription } from './combine-unsubscribes'
 import { shutdownDegradedFallbackSessions } from './degraded-daemon-fallback-shutdown'
-import { inspectPtyProviderProcess } from '../providers/pty-process-inspection'
+import {
+  inspectPtyProviderProcess,
+  type PtyProcessInspectionOptions
+} from '../providers/pty-process-inspection'
 import type {
   IPtyProvider,
   PtyBackgroundStreamEvent,
@@ -14,12 +17,7 @@ import type {
   PtySpawnOptions,
   PtySpawnResult
 } from '../providers/pty-provider-contract'
-import {
-  adoptOwningProvider,
-  attachDaemonOwnedSession,
-  findDaemonAdapter,
-  listProviderSessionIds
-} from './degraded-daemon-session-routing'
+import * as routing from './degraded-daemon-session-routing'
 import { DegradedDaemonFreshSpawnRouter } from './degraded-daemon-fresh-spawn-routing'
 import { DegradedDaemonOwnerRecovery } from './degraded-daemon-owner-recovery'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
@@ -91,7 +89,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   spawn = (opts: PtySpawnOptions): Promise<PtySpawnResult> => this.ownerRecovery.spawn(opts)
 
   attach = (id: string): ReturnType<IPtyProvider['attach']> =>
-    attachDaemonOwnedSession(this.providerFor(id), this.fallback, id)
+    routing.attachDaemonOwnedSession(this.providerFor(id), this.fallback, id)
 
   hasPty(id: string): boolean {
     const mapped = this.sessionProviders.get(id)
@@ -186,16 +184,32 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
     return this.providerFor(id).hasChildProcesses(id)
   }
 
-  async getForegroundProcess(id: string): Promise<string | null> {
-    return this.providerFor(id).getForegroundProcess(id)
+  async getForegroundProcess(
+    id: string,
+    accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ): Promise<string | null> {
+    const provider = this.providerFor(id)
+    return accept ? provider.getForegroundProcess(id, accept) : provider.getForegroundProcess(id)
   }
-  inspectProcess(id: string) {
+  inspectProcess(id: string, options?: PtyProcessInspectionOptions) {
     return this.hasPty(id)
-      ? inspectPtyProviderProcess(this.providerFor(id), id)
+      ? inspectPtyProviderProcess(
+          this.providerFor(id),
+          id,
+          options?.includePresentation ? options : undefined
+        )
       : Promise.reject(new Error('terminal_gone'))
   }
-  async confirmForegroundProcess(id: string): Promise<string | null> {
-    return this.providerFor(id).confirmForegroundProcess?.(id) ?? null
+  async confirmForegroundProcess(
+    id: string,
+    accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ): Promise<string | null> {
+    const provider = this.providerFor(id)
+    return (
+      (accept
+        ? provider.confirmForegroundProcess?.(id, accept)
+        : provider.confirmForegroundProcess?.(id)) ?? null
+    )
   }
   async confirmShellForeground(id: string): Promise<boolean> {
     return (await this.providerFor(id).confirmShellForeground?.(id)) ?? false
@@ -247,21 +261,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   onReplay(callback: (payload: { id: string; data: string }) => void): () => void {
-    const unsubscribes = this.allProviders().map((provider) => provider.onReplay(callback))
-    let active = true
-    const trackedUnsubscribe = (): void => {
-      if (!active) {
-        return
-      }
-      active = false
-      const idx = this.unsubscribers.indexOf(trackedUnsubscribe)
-      if (idx !== -1) {
-        this.unsubscribers.splice(idx, 1)
-      }
-      combineUnsubscribes(unsubscribes)()
-    }
-    this.unsubscribers.push(trackedUnsubscribe)
-    return trackedUnsubscribe
+    return trackProviderReplaySubscription(this.allProviders(), this.unsubscribers, callback)
   }
 
   onExit(callback: Parameters<IPtyProvider['onExit']>[0]): () => void {
@@ -275,15 +275,15 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   ackColdRestore(sessionId: string): void {
-    findDaemonAdapter(this.sessionProviders, this.allDaemonAdapters(), sessionId)?.ackColdRestore(
-      sessionId
-    )
+    routing
+      .findDaemonAdapter(this.sessionProviders, this.allDaemonAdapters(), sessionId)
+      ?.ackColdRestore(sessionId)
   }
 
   clearTombstone(sessionId: string): void {
-    findDaemonAdapter(this.sessionProviders, this.allDaemonAdapters(), sessionId)?.clearTombstone(
-      sessionId
-    )
+    routing
+      .findDaemonAdapter(this.sessionProviders, this.allDaemonAdapters(), sessionId)
+      ?.clearTombstone(sessionId)
   }
 
   async reconcileOnStartup(validWorktreeIds: Set<string>): Promise<{
@@ -310,7 +310,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
 
   getSessionIdsRoutedTo(route: 'current-daemon' | 'fallback'): string[] {
     const target = route === 'fallback' ? this.fallback : this.current
-    return listProviderSessionIds(this.sessionProviders, target)
+    return routing.listProviderSessionIds(this.sessionProviders, target)
   }
 
   fanoutCurrentDaemonSyntheticExits(code: number, exit: { replacedByRestart?: true } = {}): void {
@@ -350,7 +350,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   private findProviderForExistingSession(sessionId: string): IPtyProvider | null {
-    return adoptOwningProvider(this.sessionProviders, this.allProviders(), sessionId)
+    return routing.adoptOwningProvider(this.sessionProviders, this.allProviders(), sessionId)
   }
 
   private allProviders(): IPtyProvider[] {

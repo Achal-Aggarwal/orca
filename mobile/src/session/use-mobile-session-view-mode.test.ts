@@ -1,4 +1,11 @@
-import { createElement } from 'react'
+import { createFakeRpcClient } from '../mobile-web-shell/bridge-host-test-fakes'
+import { useMobileNativeChatActiveResolution } from './use-mobile-native-chat-active-resolution'
+import {
+  acceptMobilePresentationFrame,
+  retractMobilePresentations
+} from '../terminal/terminal-presentation'
+import type { RpcClient } from '../transport/rpc-client'
+import { createElement, useRef } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -39,6 +46,8 @@ vi.mock('expo-router', async () => {
     }
   }
 })
+
+vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove: vi.fn() }) } }))
 
 vi.mock('../storage/session-view-preferences', () => ({
   loadDefaultSessionView: vi.fn(),
@@ -84,6 +93,85 @@ describe('useMobileSessionViewMode', () => {
       await Promise.resolve()
     })
   }
+
+  it('applies first-join quit to real preferences, keeps Terminal after fg and retracts stale tab negatives', async () => {
+    vi.mocked(loadDefaultSessionView).mockResolvedValue('chat')
+    const client: RpcClient = {
+      ...createFakeRpcClient(),
+      sendRequest: vi.fn<RpcClient['sendRequest']>(async () => ({
+        id: 'inspect',
+        ok: true,
+        result: { process: {} }
+      }))
+    }
+    const negative = {
+      support: 'supported' as const,
+      incarnationId: 'inc',
+      version: 1,
+      state: 'not-in-front' as const
+    }
+    const tab = {
+      id: 'quit',
+      type: 'terminal',
+      terminal: 'term-quit',
+      incarnationId: 'inc',
+      launchAgent: 'codex',
+      presentation: negative
+    }
+    const active: { current?: ReturnType<typeof useMobileNativeChatActiveResolution> } = {}
+    function Harness(): null {
+      active.current = useMobileNativeChatActiveResolution({
+        client,
+        connState: 'connected',
+        hostId: 'h',
+        worktreeId: 'w',
+        activeSessionTab: tab,
+        activeSessionTabId: tab.id,
+        activeHandleRef: useRef(tab.terminal),
+        nativeChatTranscriptIsLocalReadable: true
+      })
+      return null
+    }
+    acceptMobilePresentationFrame(client, [tab], 'w')
+    await act(async () => {
+      renderer = create(createElement(Harness))
+    })
+    expect(active.current?.showNativeChat).toBe(false)
+    expect(updateSessionViewOverride).toHaveBeenLastCalledWith('h', 'w', 'quit', 'terminal')
+    const writes = vi.mocked(updateSessionViewOverride).mock.calls.length
+    await act(async () => {
+      acceptMobilePresentationFrame(client, [tab], 'w')
+      acceptMobilePresentationFrame(
+        client,
+        [{ ...tab, presentation: { ...negative, version: 2, state: 'agent-in-front' } }],
+        'w'
+      )
+    })
+    expect(active.current?.showNativeChat).toBe(false)
+    expect(updateSessionViewOverride).toHaveBeenCalledTimes(writes)
+    await act(async () => {
+      active.current!.setTabView('quit', 'chat')
+    })
+    expect(active.current?.showNativeChat).toBe(true)
+    await act(async () => {
+      retractMobilePresentations(client)
+    })
+    // The still-rendered tab carries version-one shell; it cannot revive a retracted release.
+    expect(active.current?.showNativeChat).toBe(true)
+    expect(updateSessionViewOverride).toHaveBeenCalledTimes(writes + 1)
+    await act(async () => {
+      acceptMobilePresentationFrame(
+        client,
+        [{ ...tab, presentation: { ...negative, version: 3 } }],
+        'w'
+      )
+    })
+    expect(active.current?.showNativeChat).toBe(false)
+    expect(updateSessionViewOverride).toHaveBeenLastCalledWith('h', 'w', 'quit', 'terminal')
+    act(() => renderer?.unmount())
+    renderer = null
+    retractMobilePresentations(client)
+  })
 
   it('follows the default when a tab has no override', async () => {
     await mount({ defaultView: 'terminal' })

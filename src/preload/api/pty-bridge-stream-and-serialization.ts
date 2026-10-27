@@ -7,6 +7,11 @@ import type { TerminalProcessInspection } from '../../shared/terminal-process-in
 import type { CodexSharedServerStatus } from '../../shared/codex-shared-server-command'
 import type { NewerDaemonHeldScreen, NewerDaemonReopenResult } from '../../shared/newer-daemon-hold'
 
+const confirmForegroundProcess: PreloadApi['pty']['confirmForegroundProcess'] = (
+  id: string,
+  options?: { includePresentation: true }
+) => ipcRenderer.invoke('pty:confirmForegroundProcess', { id, ...options })
+
 export const ptyStreamAndSerializationApi = {
   inspectProcess: (
     id: string,
@@ -17,8 +22,7 @@ export const ptyStreamAndSerializationApi = {
     }
   ): Promise<TerminalProcessInspection> =>
     ipcRenderer.invoke('pty:inspectProcess', { id, ...options }),
-  confirmForegroundProcess: (id: string): Promise<string | null> =>
-    ipcRenderer.invoke('pty:confirmForegroundProcess', { id }),
+  confirmForegroundProcess,
   isCodexOnSharedServer: (id: string): Promise<CodexSharedServerStatus> =>
     ipcRenderer.invoke('pty:isCodexOnSharedServer', { id }),
   disableCodexSharedServerAutoStart: (id: string): Promise<boolean> =>

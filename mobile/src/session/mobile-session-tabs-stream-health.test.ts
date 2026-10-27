@@ -1,3 +1,10 @@
+import { createFakeRpcClient } from '../mobile-web-shell/bridge-host-test-fakes'
+import { terminalInputSend } from '../terminal/mobile-terminal-operations'
+import {
+  mobilePresentationEntry,
+  mobilePresentationSnapshot,
+  subscribeMobilePresentation
+} from '../terminal/terminal-presentation'
 import { describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import type { RpcResponse } from '../transport/types'
@@ -415,4 +422,84 @@ describe('MobileSessionTabsStreamHealth', () => {
     await retry
     expect(harness.apply).toHaveBeenCalledTimes(1)
   })
+})
+
+describe('terminal presentation through the phone feed and send owners', () => {
+  it.each([10, 100])(
+    'delivers %s writes without reads or presentation notifications',
+    async (n) => {
+      const sendRequest = vi.fn(
+        async (_method: string, _params: unknown): Promise<RpcResponse> => ({
+          id: 'send',
+          ok: true,
+          result: { send: { accepted: true } }
+        })
+      )
+      const client: RpcClient = { ...createFakeRpcClient({ getGeneration: () => 1 }), sendRequest }
+      const listeners = [vi.fn(), vi.fn()]
+      const stops = listeners.map((listener) =>
+        subscribeMobilePresentation(client, 'term', listener)
+      )
+      const controller = new MobileSessionTabsStreamHealth<{ tabs: unknown[] }, unknown>({
+        client,
+        scope: 'wt',
+        apply: (value) => ({ accepted: true, effectiveTabs: value.tabs }),
+        consumeAccepted: vi.fn(),
+        hasRecoveryNeed: () => false
+      })
+      const feed = controller.beginSubscription()
+      const tab = {
+        terminal: 'term',
+        incarnationId: 'inc',
+        presentation: {
+          support: 'supported',
+          incarnationId: 'inc',
+          version: 1,
+          state: 'not-in-front'
+        }
+      }
+      feed.listener({ type: 'updated', tabs: [tab] })
+      expect(mobilePresentationSnapshot(client, 'term')?.state).toBe('not-in-front')
+      listeners.forEach((listener) => listener.mockClear())
+      for (let i = 0; i < n; i++) {
+        expect(
+          terminalInputSend.interpret(
+            await terminalInputSend.request(client, { terminal: 'term', text: 'x', enter: false })
+          )
+        ).toBe(true)
+      }
+      expect(sendRequest).toHaveBeenCalledTimes(n)
+      expect(sendRequest.mock.calls.every(([method]) => method === 'terminal.send')).toBe(true)
+      listeners.forEach((listener) => expect(listener).not.toHaveBeenCalled())
+      for (let i = 0; i < n; i++) {
+        const other = new MobileSessionTabsStreamHealth<{ tabs: unknown[] }, unknown>({
+          client,
+          scope: `other-${i}`,
+          apply: (value) => ({ accepted: true, effectiveTabs: value.tabs }),
+          consumeAccepted: vi.fn(),
+          hasRecoveryNeed: () => false
+        })
+        other.beginSubscription().listener({ type: 'updated', tabs: [tab] })
+        other.dispose()
+        expect(mobilePresentationSnapshot(client, 'term')?.state).toBe('not-in-front')
+      }
+      feed.listener({ type: 'updated', tabs: [tab] })
+      listeners.forEach((listener) => expect(listener).not.toHaveBeenCalled())
+      feed.listener({ type: 'updated', tabs: [{ terminal: 'term', incarnationId: 'replacement' }] })
+      expect(mobilePresentationSnapshot(client, 'term')).toBeUndefined()
+      expect(mobilePresentationEntry(client, 'term').value).toBeUndefined()
+      feed.listener({ type: 'updated', tabs: [] })
+      expect(mobilePresentationSnapshot(client, 'term')).toBeUndefined()
+      feed.listener({
+        type: 'updated',
+        tabs: [{ ...tab, presentation: { ...tab.presentation, version: 2 } }]
+      })
+      expect(listeners[0]).toHaveBeenCalledTimes(2)
+      feed.listener({ type: 'end' })
+      expect(mobilePresentationSnapshot(client, 'term')).toBeUndefined()
+      expect(listeners[0]).toHaveBeenCalledTimes(3)
+      controller.dispose()
+      stops.forEach((stop) => stop())
+    }
+  )
 })

@@ -1,7 +1,6 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { NOT_REOPENED, reopenPaneAfterMissingReattach } from './cold-restore-resume-startup'
 import { writeStartupCwdFallbackNotice } from './startup-cwd-fallback-notice'
-import { armPaneOwnerRetry, isPaneOwnerRefusal } from './pane-owner-recovery'
+import { armPaneOwnerRetry } from './pane-owner-recovery'
 import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
 import { warnTerminalLifecycleAnomaly } from '../terminal-lifecycle-diagnostics'
 import { isSshSessionGoneError, recordPtyConnectDiagnostic } from './pty-connect-limits'
@@ -124,7 +123,6 @@ function connectDeferredSessionReattach(
   )
   session.beginReattachLiveDataDeferral(outputCallbacks.generation)
   session.transportConnectInFlightSince = Date.now()
-  notifyPaneStartupStateChanged()
   const reattachPromise = session.transport.connect({
     url: '',
     cols: session.cols,
@@ -156,7 +154,6 @@ function connectDeferredSessionReattach(
     .catch(() => null)
     .finally(() => {
       session.transportConnectInFlightSince = null
-      notifyPaneStartupStateChanged()
     })
   const outcome = Promise.resolve(reattachPromise)
     .then(async (result): Promise<HeldPaneReopenOutcome> => {
@@ -278,7 +275,10 @@ function connectDeferredSessionReattach(
       if (!isCurrentReattach()) {
         return NOT_REOPENED
       }
-      if (isPaneOwnerRefusal(message)) {
+      if (
+        message.includes(PANE_OWNER_UNVERIFIED_ERROR) ||
+        message.includes(PANE_OWNER_CHANGED_ERROR)
+      ) {
         outputCallbacks.callbacks.onError(message)
         armPaneOwnerRetry(session, outputCallbacks.generation, () =>
           connectDeferredSessionReattach(session, deferredReattachSessionId)

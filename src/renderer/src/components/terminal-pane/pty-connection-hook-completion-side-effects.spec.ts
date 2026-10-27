@@ -202,7 +202,7 @@ export function registerPtyConnectionHookCompletionSideEffectsTests(): void {
         RESET_TERMINAL_CURSOR_STYLE,
         expect.any(Function)
       )
-      expect(storeSubscribers).toHaveLength(2)
+      expect(storeSubscribers).toHaveLength(1)
     })
 
     it('preserves accepted hook effects and shared completion with desktop banners and attention disabled', async () => {

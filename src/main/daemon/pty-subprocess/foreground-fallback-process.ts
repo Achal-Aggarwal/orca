@@ -1,3 +1,6 @@
+import { isShellProcess } from '../../../shared/shell-process-detection'
+import { isAgentForegroundWrapperProcess } from '../../../shared/agent-process-recognition'
+import { shouldInspectOuterWrapperForegroundName } from '../../../shared/foreground-wrapper-agent'
 import { win32 as pathWin32 } from 'node:path'
 import { isTerminalScopeWrapper } from '../terminal-scopes-runtime'
 
@@ -23,3 +26,10 @@ export function resolveFallbackForegroundProcess(
   }
   return normalizeForegroundProcessName(pathWin32.basename(shellPath))
 }
+
+export const shouldInspectFallback = (fallbackProcess: string | null): boolean =>
+  fallbackProcess !== null &&
+  (isShellProcess(fallbackProcess) ||
+    isAgentForegroundWrapperProcess(fallbackProcess) ||
+    shouldInspectOuterWrapperForegroundName(fallbackProcess) ||
+    process.platform !== 'win32')

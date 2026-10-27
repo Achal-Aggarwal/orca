@@ -12,14 +12,20 @@ export type SubprocessHandle = {
   shellIsRootChild?: boolean
   inspectChildProcesses?(fresh?: boolean, ignoreDetached?: boolean): ChildProcessVerdictRead
   /** cachedOnly must neither query the process nor schedule inspection. */
-  getForegroundProcess(options?: { rawFallback?: boolean; cachedOnly?: boolean }): string | null
+  getForegroundProcess(options?: {
+    rawFallback?: boolean
+    cachedOnly?: boolean
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  }): string | null
   /** Await process-table evidence captured after this confirmation request. */
-  confirmForegroundProcess?(context?: { decision?: boolean }): Promise<string | null>
+  confirmForegroundProcess?(context?: {
+    decision?: boolean
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  }): Promise<string | null>
   /** Proves a fresh post-boundary PTY process tree contains only the shell. */
   confirmShellForeground?(): Promise<boolean>
   /** Skip stdin command delivery when shell arguments already delivered it. */
   startupCommandDeliveredInShellArgs?: boolean
-  loginWrapped?: boolean
   /** Report the actual fallback shell so unsupported readiness markers cannot stall startup. */
   shellPath?: string
   shellCwd?: string

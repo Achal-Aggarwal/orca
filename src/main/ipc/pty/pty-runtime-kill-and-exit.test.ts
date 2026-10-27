@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { OrcaRuntimeService } from '../../runtime/orca-runtime'
 import { spawnMock } from '../pty-ipc-mock-registry'
 import { makeDeferred } from '../pty-ipc-test-constants'
 import { setupPtyIpcSuite } from '../pty-ipc-test-harness'
@@ -138,6 +139,21 @@ describe('registerPtyHandlers', () => {
 
     await expect(controller.confirmForegroundProcess('missing-pty')).resolves.toBeNull()
     deletePtyOwnership('missing-pty')
+  })
+  it('keeps an opted-in controller failure unknown in the host envelope', async () => {
+    vi.spyOn(getLocalPtyProvider(), 'confirmForegroundProcess').mockRejectedValue(
+      new Error('daemon unavailable')
+    )
+    const runtime = new OrcaRuntimeService()
+    runtime.registerPty('failed-modern-confirm', '/repo')
+    handlers.clear()
+    registerPtyHandlers(mainWindow, runtime)
+    expect(
+      await handlers.get('pty:confirmForegroundProcess')!(null, {
+        id: 'failed-modern-confirm',
+        includePresentation: true
+      })
+    ).toEqual({ foregroundProcess: null, presentation: undefined })
   })
   it('rejects runtime terminal IDs before unowned local provider routing', async () => {
     const shutdown = vi.spyOn(getLocalPtyProvider(), 'shutdown')

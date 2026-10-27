@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { installPtyKittyFileReader } from './pty-kitty-file-reader'
 import { installSpawnDeferredSleep } from './spawn-deferred-sleep'
 import type { PaneManager, ManagedPane } from '@/lib/pane-manager/pane-manager'
@@ -78,7 +77,6 @@ export function connectPanePty(
   session.cleanupStartupDraftPasteTimers = (): void => {}
   session.unregisterE2ePtyDataInjection = (): void => {}
   session.startupInjectTimer = null
-  notifyPaneStartupStateChanged()
   session.agentTaskCompleteNotificationGraceTimer = null
   session.agentTaskCompleteNotificationMaxTimer = null
   session.hookOwnedIdleAbsorbsBell = false

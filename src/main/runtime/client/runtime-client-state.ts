@@ -1,3 +1,4 @@
+import type { PtyProcessInspectionOptions } from '../../providers/pty-process-inspection'
 import { OrcaRuntimeWithStateFields } from '../construction/runtime-construction'
 import {
   persistClientHostedBrowserPages,
@@ -53,6 +54,18 @@ export abstract class OrcaRuntimeWithPtyForegroundProcessReads extends OrcaRunti
     options: { afterTitleObservation?: number } = {}
   ): Promise<boolean> {
     return this.ptyForegroundAgent.refresh(ptyId, options.afterTitleObservation ?? 0)
+  }
+
+  async getPtyForegroundProcess(ptyId: string): Promise<string | null> {
+    return (await this.ptyForegroundAgent.read(ptyId))?.process ?? null
+  }
+
+  inspectPtyForegroundProcess(ptyId: string, options?: PtyProcessInspectionOptions) {
+    return this.ptyForegroundAgent.inspect(ptyId, options)
+  }
+
+  confirmPtyForegroundPresentation(ptyId: string) {
+    return this.ptyForegroundAgent.confirmPresentation(ptyId)
   }
 
   // Compatibility seam for diagnostics/tests that inspect waiter ownership.

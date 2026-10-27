@@ -1,4 +1,5 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
+import { inspectDesktopShownTerminal } from '@/runtime/runtime-terminal-inspection'
+import { getCachedUnifiedTerminalTabForWorktree } from '../terminal-unified-tab-lookup'
 import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
 import { captureNotificationTransportOwner } from '@/attention/notification-subject-owner'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
@@ -78,6 +79,7 @@ export function installPanePtyVisibilityBind(session: ConnectPanePtySession): vo
       session.reportPanePtyVisibility(session.activePanePtyBinding, false)
     }
     session.setPanePtyFitBinding(ptyId)
+    const firstBind = session.activePanePtyBinding !== ptyId
     session.activePanePtyBinding = ptyId
     session.reportPanePtyVisibility(ptyId, session.deps.isVisibleRef.current)
     // Why: record bind time on the spawn/attach chokepoint so the reconcile
@@ -132,13 +134,26 @@ export function installPanePtyVisibilityBind(session: ConnectPanePtySession): vo
         session.paneForegroundAgentTracker.onCommandStarted(freshSpawnLaunchAgent)
       }
     }
+    if (
+      firstBind &&
+      session.deps.isVisibleRef.current &&
+      getCachedUnifiedTerminalTabForWorktree(
+        state.unifiedTabsByWorktree,
+        session.deps.worktreeId,
+        session.deps.tabId
+      )?.viewMode === 'chat' &&
+      !session.paneForegroundAgentTracker.hasReadInFlight()
+    ) {
+      void inspectDesktopShownTerminal(ptyId, {
+        expectedIncarnationId: session.remotePtyIncarnationId ?? undefined
+      }).catch(() => {})
+    }
     return true
   }
 
   session.onPtySpawn = (ptyId: string): void => {
     // Track actual fresh spawns so unused shell-startup failures remain visible; reattach/cold restore must retain ordinary exit semantics.
     session.spawnedFreshPtyId = ptyId
-    notifyPaneStartupStateChanged()
     // Seed Command Code working state once bound; it has no prompt-start hook, and later hooks refine it.
     const bound = session.bindActivePanePty(ptyId, { seedInitialAgentStatus: true })
     if (!bound) {
@@ -161,7 +176,6 @@ export function installPanePtyVisibilityBind(session: ConnectPanePtySession): vo
       return
     }
     session.remotePtyIncarnationId = incarnationId ?? null
-    notifyPaneStartupStateChanged()
     // Handle rotation replaces store identity within the same pane/session generation, without fresh-spawn exit semantics.
     session.bindActivePanePty(ptyId, { replacePtyId: replacedPtyId })
   }

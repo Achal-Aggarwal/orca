@@ -102,7 +102,8 @@ export const TERMINAL_QUERY_METHODS = [
         ...(params.expectedIncarnationId
           ? { expectedIncarnationId: params.expectedIncarnationId }
           : {}),
-        ...(params.scanChildProcesses === true ? { scanChildProcesses: true } : {})
+        ...(params.scanChildProcesses === true ? { scanChildProcesses: true } : {}),
+        ...(params.steadyState === true ? { steadyState: true } : {})
       }
       return {
         process: await runtime.inspectTerminalProcess(

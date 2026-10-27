@@ -21,8 +21,6 @@ export type NativeChatAvailabilityInput = {
   nativeChatTranscriptIsLocalReadable?: boolean
   /** Allow return to terminal even if a restart lost agent evidence. */
   isChatViewMode?: boolean
-  /** Positive foreground ownership overrides retained conversation identity. */
-  shellForeground?: boolean
 }
 
 /** Existing chat views may return to terminal; entry requires supported, readable agent identity in detected/launch/resolved order. */
@@ -32,9 +30,6 @@ export function canToggleNativeChat(input: NativeChatAvailabilityInput): boolean
   }
   if (input.isChatViewMode === true) {
     return true
-  }
-  if (input.shellForeground === true) {
-    return false
   }
   const agent = input.detectedAgent ?? input.launchAgent ?? input.resolvedAgent
   if (

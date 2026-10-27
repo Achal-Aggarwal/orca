@@ -1,3 +1,4 @@
+import type { TerminalPresentationObservation } from '../../shared/terminal-foreground-presentation'
 import type { PaintedRestorePane } from '../../shared/painted-restore-ack'
 import type {
   PtyFencedTerminationRequest,
@@ -161,7 +162,20 @@ export type PtyApi = {
       steadyState?: boolean
     }
   ) => Promise<TerminalProcessInspection>
-  confirmForegroundProcess: (id: string) => Promise<string | null>
+  confirmForegroundProcess: {
+    (id: string): Promise<string | null>
+    (
+      id: string,
+      options: { includePresentation: true }
+    ): Promise<
+      | string
+      | null
+      | {
+          foregroundProcess: string | null
+          presentation?: TerminalPresentationObservation
+        }
+    >
+  }
   /** Local panes only; never joined for any other pane. */
   isCodexOnSharedServer: (id: string) => Promise<CodexSharedServerStatus>
   /** Runs the fix with the pane's own Codex; true only once verified. Local panes only. */

@@ -3,6 +3,7 @@ export type GetForegroundProcessRequest = {
   type: 'getForegroundProcess'
   payload: {
     sessionId: string
+    includePresentation?: boolean
   }
 }
 
@@ -18,7 +19,6 @@ export type InspectProcessRequest = Omit<GetForegroundProcessRequest, 'type'> & 
   type: 'inspectProcess'
   payload: GetForegroundProcessRequest['payload'] & {
     expectedIncarnationId?: string
-    terminalInterface?: boolean
     /** Older daemons ignore this and return a full capture. */
     steadyState?: boolean
     /** Older daemons still count detached daemons as children. */

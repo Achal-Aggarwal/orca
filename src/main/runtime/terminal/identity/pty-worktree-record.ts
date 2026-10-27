@@ -31,8 +31,8 @@ export abstract class OrcaRuntimeWithRecordPtyWorktree extends RuntimeWorkspaceR
   /** An inventory's connection verdict; main's panes that bind the terminal re-compose. */
   protected setPtyConnected(pty: RuntimePtyWorktreeRecord, connected: boolean): void {
     const prior = mainPaneRecordFacts(pty)
-    if (pty.connected !== connected) {
-      this.terminalInterfaces?.inventoryChanged()
+    if (pty.connected && !connected) {
+      this.ptyForegroundAgent.forget(pty.ptyId)
     }
     pty.connected = connected
     pty.disconnectedAt = connected ? null : (pty.disconnectedAt ?? Date.now())
@@ -81,15 +81,6 @@ export abstract class OrcaRuntimeWithRecordPtyWorktree extends RuntimeWorkspaceR
       state = withoutPaneClaim(state)
     }
     let pty = this.ptysById.get(ptyId)
-    if (
-      !pty ||
-      pty.worktreeId !== worktreeId ||
-      (['connected', 'incarnationId', 'connectionId', 'isWsl', 'tabId', 'paneKey'] as const).some(
-        (key) => state[key] !== undefined && state[key] !== pty?.[key]
-      )
-    ) {
-      this.terminalInterfaces?.inventoryChanged()
-    }
     if (!pty) {
       const titleObservedAt = state.title ? this.nextTitleObservationSequence() : null
       const connectionId = state.connectionId ?? parseAppSshPtyId(ptyId)?.connectionId ?? null

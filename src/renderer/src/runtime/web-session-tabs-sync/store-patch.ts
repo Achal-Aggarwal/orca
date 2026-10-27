@@ -1,3 +1,4 @@
+import { acceptDesktopPresentationFrame } from '../terminal-foreground-presentation'
 import {
   markStructuredAgentSessionLaunchesPublished,
   publishedStructuredSessions
@@ -34,7 +35,8 @@ export function applyWebSessionTabsStorePatch(
   buildPatch: (state: AppState) => WebSessionTabsSyncState | Partial<WebSessionTabsSyncState>,
   hostMirrorVerdict: HostSessionMirrorPatchVerdict,
   agentStatusSnapshots?: RuntimeMobileSessionTabsResult | readonly RuntimeMobileSessionTabsResult[],
-  allowCompletionNotification = false
+  allowCompletionNotification = false,
+  presentationSource = 'snapshot'
 ): HostSessionMirrorSettle {
   let mirroredAgentStatusChanged = false
   // Zustand commits before notifying subscribers, so a completed producer has landed even if a subscriber throws.
@@ -192,6 +194,7 @@ export function applyWebSessionTabsStorePatch(
 
   for (const { environmentId, source, decision } of hostMirrorVerdict.frames) {
     if (decision.apply && source) {
+      acceptDesktopPresentationFrame(environmentId, source, presentationSource)
       markStructuredAgentSessionLaunchesPublished(
         toRuntimeExecutionHostId(environmentId),
         publishedStructuredSessions([source])

@@ -1,34 +1,12 @@
+import type { DaemonRequestRouterOptions } from './daemon-request-router-contract'
 import { handleDaemonTerminalKill } from './daemon-terminal-kill'
 import { handleDaemonFencedTermination } from './daemon-fenced-termination'
 import { performance } from 'node:perf_hooks'
 import { setPtyOwnerHostColors } from '../../shared/pty-owner-color-query-colors'
-import type { ConnectedDaemonClient, DaemonClientConnections } from './daemon-client-connections'
-import type { DaemonFileLog } from './daemon-file-log'
-import type { DaemonPtySpawnPreparations } from './daemon-pty-spawn-preparations'
-import type { DaemonServerLifecycle } from './daemon-server-lifecycle'
-import type { DaemonSessionAttachments } from './daemon-session-attachments'
-import type { DaemonSessionBackgroundRouting } from './daemon-session-background-routing'
+import type { ConnectedDaemonClient } from './daemon-client-connections'
 import { recordDaemonStreamBacklogEvent } from './daemon-stream-backlog-probe'
-import type { DaemonStreamDataBatcher } from './daemon-stream-data-batcher'
-import type { DaemonTerminalAdmission } from './daemon-terminal-admission'
 import { DaemonHealthRequests } from './daemon-health-requests'
-import type { TerminalHistorySeedTransferRegistry } from './terminal-history-seed-transfer-registry'
-import type { TerminalHost } from './terminal-host'
 import { SessionNotFoundError, type DaemonRequest } from './types'
-
-type DaemonRequestRouterOptions = {
-  host: TerminalHost
-  connections: DaemonClientConnections
-  lifecycle: DaemonServerLifecycle
-  admission: DaemonTerminalAdmission
-  preparations: DaemonPtySpawnPreparations
-  attachments: DaemonSessionAttachments
-  historySeedTransfers: TerminalHistorySeedTransferRegistry
-  sessionBackgroundRouting: DaemonSessionBackgroundRouting
-  streamDataBatcher: DaemonStreamDataBatcher
-  ptySpawnHealthCheck: () => Promise<void>
-  log: DaemonFileLog
-}
 
 export class DaemonRequestRouter {
   private readonly health: DaemonHealthRequests
@@ -118,29 +96,47 @@ export class DaemonRequestRouter {
         return {}
       case 'getCwd':
         return { cwd: await this.options.host.getCwd(request.payload.sessionId) }
-      case 'getForegroundProcess':
-        return {
-          foregroundProcess: this.options.host.getForegroundProcess(request.payload.sessionId)
-        }
+      case 'getForegroundProcess': {
+        let foregroundPresentation: 'agent-in-front' | 'not-in-front' | null | undefined
+        let foregroundPresentationSupported: true | undefined
+        const foregroundProcess = this.options.host.getForegroundProcess(
+          request.payload.sessionId,
+          request.payload.includePresentation
+            ? (value) => {
+                foregroundPresentation = value
+                foregroundPresentationSupported = true
+              }
+            : undefined
+        )
+        return { foregroundProcess, foregroundPresentation, foregroundPresentationSupported }
+      }
       case 'inspectProcess': {
         const options = {
           ...(request.payload.expectedIncarnationId
             ? { expectedIncarnationId: request.payload.expectedIncarnationId }
             : {}),
+          ...(request.payload.includePresentation === true ? { includePresentation: true } : {}),
           ...(request.payload.steadyState === true ? { steadyState: true } : {}),
-          ...(request.payload.ignoreDetached === true ? { ignoreDetached: true } : {}),
-          ...(request.payload.terminalInterface === true ? { terminalInterface: true } : {})
+          ...(request.payload.ignoreDetached === true ? { ignoreDetached: true } : {})
         }
         return Object.keys(options).length > 0
           ? this.options.host.inspectProcess(request.payload.sessionId, options)
           : this.options.host.inspectProcess(request.payload.sessionId)
       }
-      case 'confirmForegroundProcess':
-        return {
-          foregroundProcess: await this.options.host.confirmForegroundProcess(
-            request.payload.sessionId
-          )
-        }
+      case 'confirmForegroundProcess': {
+        let foregroundPresentation: 'agent-in-front' | 'not-in-front' | null | undefined
+        let foregroundPresentationSupported: true | undefined
+        const foregroundProcess = await this.options.host.confirmForegroundProcess(
+          request.payload.sessionId,
+          request.payload.includePresentation
+            ? (value) => {
+                foregroundPresentation = value
+                foregroundPresentationSupported = true
+              }
+            : undefined
+        )
+        return { foregroundProcess, foregroundPresentation, foregroundPresentationSupported }
+      }
       case 'confirmShellForeground':
         return {
           confirmed: await this.options.host.confirmShellForeground(request.payload.sessionId)
@@ -294,3 +290,5 @@ export class DaemonRequestRouter {
     this.options.streamDataBatcher.flush(client.clientId)
   }
 }
+
+export type { DaemonRequestRouterOptions } from './daemon-request-router-contract'

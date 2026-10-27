@@ -117,7 +117,11 @@ export type TabsSlice = {
     }
   ) => void
   setTabLabel: (tabId: string, label: string) => void
-  setTabViewMode: (tabId: string, mode: 'terminal' | 'chat') => void
+  setTabViewMode: (
+    tabId: string,
+    mode: 'terminal' | 'chat',
+    settled?: (accepted: boolean) => void
+  ) => void
   /** Flip a tab between terminal and native-chat renderings; the live TerminalPane stays mounted. */
   toggleTabViewMode: (tabId: string) => void
   setTabCustomLabel: (

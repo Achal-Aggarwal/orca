@@ -1,3 +1,8 @@
+import {
+  withSelf,
+  DEFAULT_WINDOWS_ROWS,
+  type NativeProcessRow
+} from './agent-foreground-process-test-fixtures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { execFileMock } = vi.hoisted(() => ({
@@ -17,13 +22,6 @@ import {
   resolveAgentForegroundProcess,
   resolveAgentForegroundProcessWithAvailability
 } from './agent-foreground-process'
-// Toolhelp denial may return an empty table; require the querying process to distinguish a readable snapshot.
-const SELF_PROCESS_ROW = { pid: process.pid, ppid: 0, name: 'vitest.exe', commandLine: 'vitest' }
-const withSelf = <T>(rows: readonly T[]): (T | typeof SELF_PROCESS_ROW)[] => [
-  SELF_PROCESS_ROW,
-  ...rows
-]
-
 // Why: the POSIX reader wraps execFile with promisify, so the mock must honor
 // the Node callback contract — invoke the last arg with (err, { stdout, stderr }).
 function mockPs(stdout: string): void {
@@ -32,28 +30,6 @@ function mockPs(stdout: string): void {
     callback(null, { stdout, stderr: '' })
   })
 }
-
-type NativeProcessRow = {
-  pid: number
-  ppid: number
-  name: string
-  commandLine?: string
-}
-
-const DEFAULT_WINDOWS_ROWS: NativeProcessRow[] = [
-  {
-    pid: 100,
-    ppid: 99,
-    name: 'powershell.exe',
-    commandLine: 'powershell.exe'
-  },
-  {
-    pid: 101,
-    ppid: 100,
-    name: 'node.exe',
-    commandLine: 'node C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd'
-  }
-]
 
 function mockWindowsRows(rows: NativeProcessRow[] = DEFAULT_WINDOWS_ROWS): void {
   getAllProcessesMock.mockImplementation((cb: (snapshot: NativeProcessRow[]) => void) => {
@@ -478,7 +454,7 @@ describe('resolveAgentForegroundProcess', () => {
 
     await expect(
       resolveAgentForegroundProcessWithAvailability(100, 'powershell.exe')
-    ).resolves.toEqual({ available: true, processName: 'powershell.exe' })
+    ).resolves.toEqual({ available: true, processName: 'powershell.exe', shellForeground: true })
   })
 
   it('does not restore a recognized fallback that disappeared before confirmation', async () => {
@@ -534,6 +510,7 @@ describe('resolveAgentForegroundProcess', () => {
     ).resolves.toEqual({
       available: true,
       processName: 'powershell.exe',
+      shellForeground: true,
       anchorPidForeign: true
     })
   })
@@ -553,6 +530,7 @@ describe('resolveAgentForegroundProcess', () => {
     ).resolves.toEqual({
       available: true,
       processName: 'powershell.exe',
+      shellForeground: true,
       anchorPidForeign: true
     })
   })
@@ -569,7 +547,7 @@ describe('resolveAgentForegroundProcess', () => {
         anchorProcessId: 999,
         anchorProcessName: 'claude'
       })
-    ).resolves.toEqual({ available: true, processName: 'powershell.exe' })
+    ).resolves.toEqual({ available: true, processName: 'powershell.exe', shellForeground: true })
   })
 
   it('treats a query-denied anchor row as inconclusive, never foreign', async () => {
@@ -898,7 +876,7 @@ describe('resolveAgentForegroundProcess', () => {
         fresh: true,
         readWindowsConsoleAttachedProcessIds: async () => new Set([100, 999])
       })
-    ).resolves.toEqual({ available: true, processName: 'powershell.exe' })
+    ).resolves.toEqual({ available: true, processName: 'powershell.exe', shellForeground: true })
   })
 
   it('does not fork the ConPTY membership helper when no Windows agent is inferred', async () => {
@@ -918,7 +896,7 @@ describe('resolveAgentForegroundProcess', () => {
         fresh: true,
         readWindowsConsoleAttachedProcessIds
       })
-    ).resolves.toEqual({ available: true, processName: 'powershell.exe' })
+    ).resolves.toEqual({ available: true, processName: 'powershell.exe', shellForeground: true })
     expect(readWindowsConsoleAttachedProcessIds).not.toHaveBeenCalled()
   })
 })

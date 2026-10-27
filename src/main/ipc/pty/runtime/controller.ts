@@ -72,9 +72,11 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
     retireRejectedPty: (ptyId, stopConfirmed, incarnationId) =>
       retireRejectedPtyFromRuntimeController(deps, ptyId, stopConfirmed, incarnationId),
     stopAndWait: (ptyId, opts) => stopAndWaitPtyFromRuntimeController(deps, ptyId, opts),
-    getForegroundProcess: (ptyId) => getForegroundProcessFromRuntimeController(ptyId),
+    getForegroundProcess: (ptyId, acceptPresentation) =>
+      getForegroundProcessFromRuntimeController(ptyId, acceptPresentation),
     inspectProcess: (ptyId, options) => inspectProcessFromRuntimeController(ptyId, options),
-    confirmForegroundProcess: (ptyId) => confirmForegroundProcessFromRuntimeController(ptyId),
+    confirmForegroundProcess: (ptyId, accept) =>
+      confirmForegroundProcessFromRuntimeController(ptyId, accept),
     confirmShellForeground: (ptyId) => confirmShellForegroundFromRuntimeController(ptyId),
     getCwd: (ptyId) => getCwdFromRuntimeController(ptyId),
     hasChildProcesses: (ptyId) => hasChildProcessesFromRuntimeController(ptyId),

@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { resolveLiveAgentStatusConnectionRouting } from '@/lib/agent-status-connection-ownership'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
@@ -91,10 +90,8 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
   session.handledExitPtyId = null
   // Only genuine fresh, never-typed PTYs keep startup errors visible; dead reattached sessions must still close normally.
   session.spawnedFreshPtyId = null
-  notifyPaneStartupStateChanged()
   // Suppressed hidden hibernation exits still owe a wake; retain the exact PTY/record so a later session cannot be adopted.
   session.hibernatedWakeTarget = null
-  notifyPaneStartupStateChanged()
   session.wakeHibernatedAgentPane = null
   // Latch mobile wakes between record write and kill-exit arming; mobile never reveals the desktop to retry the lost edge.
   session.pendingHibernatedWakeTarget = null
@@ -116,7 +113,6 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
       getProviderSessionClaimKey(currentRecord) !== getProviderSessionClaimKey(target.record)
     ) {
       session.hibernatedWakeTarget = null
-      notifyPaneStartupStateChanged()
       session.pendingHibernatedWakeTarget = null
       return null
     }
@@ -124,7 +120,6 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
     // Null or the old PTY means no replacement; a different bound ID proves another flow already owns the pane.
     if (currentPtyId !== null && currentPtyId !== target.ptyId) {
       session.hibernatedWakeTarget = null
-      notifyPaneStartupStateChanged()
       session.pendingHibernatedWakeTarget = null
       return null
     }
@@ -138,7 +133,6 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
     // Claim synchronously before spawn because one wake visits multiple aliases of the same provider session.
     claimedProviderSessions?.add(claimKey)
     session.hibernatedWakeTarget = null
-    notifyPaneStartupStateChanged()
     session.pendingHibernatedWakeTarget = null
     session.hibernatedWakeInFlightClaimKey = claimKey
     // Reveal must resume the recorded session or fresh shell behind the otherwise frozen frame.
@@ -148,7 +142,6 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
         if (!spawnedPtyId) {
           // On transient spawn failure, re-arm the exact retained record so later mobile wakes can retry after full ownership validation.
           session.hibernatedWakeTarget = target
-          notifyPaneStartupStateChanged()
         }
       })
       .finally(() => {
@@ -245,7 +238,6 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
         // Disarm input-eating modes on the dead frozen TUI, then arm its reveal wake.
         session.writeInputModeGround(POST_REPLAY_MODE_RESET)
         session.hibernatedWakeTarget = { ptyId, record: sleepingRecordEntry.record }
-        notifyPaneStartupStateChanged()
         const pendingWakeMatches =
           session.pendingHibernatedWakeTarget?.ptyId === ptyId &&
           session.pendingHibernatedWakeTarget.record === sleepingRecordEntry.record

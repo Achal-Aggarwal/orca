@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { applyTerminalLaunchResult } from './terminal-launch-result-policy'
 import { armPaneOwnerRetry, isPaneOwnerRefusal } from './pane-owner-recovery'
 import type { SpawnDeferralReason } from '../../../../../shared/host-spawn-admission'
@@ -57,7 +56,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
     session.authoritativeReattachGeneration += 1
     // Every connect creates/rebinds ownership; legacy replies lacking incarnationId cannot inherit the old fence.
     session.remotePtyIncarnationId = null
-    notifyPaneStartupStateChanged()
     session.clearPaneMode2031State()
     session.clearHiddenOutputRestoreState()
     // Cancelled replay can retain isUserScrolling; replacement shells must start following output.
@@ -83,9 +81,7 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
     }
 
     session.transportConnectInFlightSince = Date.now()
-    notifyPaneStartupStateChanged()
     session.pendingSpawnDeferral = null
-    notifyPaneStartupStateChanged()
     const visibleAtSpawn = session.deps.isVisibleRef.current === true
     let ownerRefused = false
     const outputCallbacks = session.captureTransportOutputCallbacks(
@@ -129,7 +125,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       .catch(() => null)
       .finally(() => {
         session.transportConnectInFlightSince = null
-        notifyPaneStartupStateChanged()
       })
     const trackedPromise: Promise<string | null> = Promise.resolve(spawnedRaw)
       .then(async (spawnedPtyId) => {
@@ -148,7 +143,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
           ? null
           : session.pendingSpawnDeferral
         session.pendingSpawnDeferral = null
-        notifyPaneStartupStateChanged()
         if (deferral) {
           // Why before the launch-config cleanup below: a deferred launch is postponed, not dead.
           releaseDeferredCwdFence()
@@ -157,12 +151,12 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
           session.enterSpawnDeferredSleep(deferral, startupOverride, options, visibleAtSpawn)
           return null
         }
-        const spawnedPtyResult =
-          spawnedPtyId && typeof spawnedPtyId === 'object' ? spawnedPtyId : null
-        const connectResult = spawnedPtyResult && 'id' in spawnedPtyResult ? spawnedPtyResult : null
+        const connectResult =
+          spawnedPtyId && typeof spawnedPtyId === 'object' && 'id' in spawnedPtyId
+            ? spawnedPtyId
+            : null
         // Legacy replies may omit incarnationId; remote evidence remains unverifiable until a stamped attach result.
         session.remotePtyIncarnationId = connectResult?.incarnationId ?? null
-        notifyPaneStartupStateChanged()
         if (connectResult?.isReattach) {
           if (
             session.pendingStartupCommand?.resumeSource === effectiveStartup?.resumeSource &&
@@ -170,7 +164,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
               session.pendingStartupCommand?.command === effectiveStartup?.command)
           ) {
             session.pendingStartupCommand = null
-            notifyPaneStartupStateChanged()
           }
           const accepted = await session.handleReattachResult(
             connectResult,
@@ -208,12 +201,20 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
           session.keepUnrunResumeHandle(startupOverride)
         }
         if (resolvedPtyId) {
-          if (spawnedPtyResult?.startupCwdFallback?.kind === 'worktree') {
+          if (
+            spawnedPtyId &&
+            typeof spawnedPtyId === 'object' &&
+            spawnedPtyId.startupCwdFallback?.kind === 'worktree'
+          ) {
             writeTerminalOutput(session.pane.terminal, STARTUP_CWD_FALLBACK_NOTICE, {
               foreground: shouldWritePtyOutputForeground(session.deps.isVisibleRef.current)
             })
           }
-          if (spawnedPtyResult?.agentResumeUnavailable) {
+          if (
+            spawnedPtyId &&
+            typeof spawnedPtyId === 'object' &&
+            spawnedPtyId.agentResumeUnavailable
+          ) {
             // Dropped resume argv starts a new session; do not claim the previous session was restored.
             options.onAgentResumeUnavailable?.()
           } else if (coldRestore?.hasSleepingRecord) {
@@ -229,7 +230,9 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
         }
         if (
           resolvedPtyId &&
-          connectResult &&
+          spawnedPtyId &&
+          typeof spawnedPtyId === 'object' &&
+          'id' in spawnedPtyId &&
           session.activePanePtyBinding !== resolvedPtyId &&
           session.transport.getPtyId() === resolvedPtyId
         ) {
@@ -280,7 +283,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       .finally(() => {
         if (pendingSpawnByPaneKey.get(session.pendingSpawnKey) === trackedPromise) {
           pendingSpawnByPaneKey.delete(session.pendingSpawnKey)
-          notifyPaneStartupStateChanged()
           pendingSpawnGenerationByPaneKey.delete(session.pendingSpawnKey)
         }
       })
@@ -316,7 +318,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
     })
     // Key concurrent spawns by tab and pane so a remount cannot adopt its sibling’s PTY.
     pendingSpawnByPaneKey.set(session.pendingSpawnKey, trackedPromise)
-    notifyPaneStartupStateChanged()
     pendingSpawnGenerationByPaneKey.set(session.pendingSpawnKey, session.tabGeneration)
     return trackedPromise
   }

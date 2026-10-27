@@ -70,8 +70,7 @@ export const localProjectRuntimeSpy = vi.fn(() => undefined)
 const AGENT_PROJECTIONS = Object.freeze({
   nativeChatEnabled: false,
   tabAgentTypesByTabId: Object.freeze({}),
-  nativeChatTabWideFallbackUnsafeTabsById: Object.freeze({}),
-  nativeChatShellForegroundTabsById: Object.freeze({})
+  nativeChatTabWideFallbackUnsafeTabsById: Object.freeze({})
 })
 const CREATION_POLICY = Object.freeze({
   'managed-browser': { state: 'enabled' },

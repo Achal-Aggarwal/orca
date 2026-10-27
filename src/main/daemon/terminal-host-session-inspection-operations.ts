@@ -1,9 +1,23 @@
 import type { Session } from './session'
 import type { TakePendingOutputResult, TerminalSnapshot } from './types'
 
+export function getTerminalHostForegroundProcess(
+  session: Session | undefined,
+  acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+): string | null {
+  if (!session || !session.isAlive) {
+    return null
+  }
+  return session.getForegroundProcess(acceptPresentation ? { acceptPresentation } : undefined)
+}
+
 export async function confirmTerminalHostForegroundProcess(
-  session: Session | undefined
+  session: Session | undefined,
+  acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
 ): Promise<string | null> {
+  if (acceptPresentation && session?.isAlive) {
+    return session.confirmForegroundProcess({ acceptPresentation })
+  }
   if (!session || !session.isAlive) {
     return null
   }

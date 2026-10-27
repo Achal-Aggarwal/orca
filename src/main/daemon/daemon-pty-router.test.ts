@@ -73,6 +73,14 @@ it('preserves client-only unverifiable inspection from the owning legacy daemon'
     verdict: 'unverifiable',
     reason: 'old_host'
   })
+  const observed = vi.fn()
+  vi.mocked(legacy.getForegroundProcess).mockImplementation(async (_id, accept) => {
+    accept?.('agent-in-front', 25)
+    return 'codex'
+  })
+  await expect(router.getForegroundProcess('legacy-session', observed)).resolves.toBe('codex')
+  expect(observed).toHaveBeenCalledExactlyOnceWith('agent-in-front', 25)
+  expect(legacy.getForegroundProcess).toHaveBeenCalledTimes(1)
 })
 
 it('forwards the owning legacy daemon sequence from attach', async () => {

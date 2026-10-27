@@ -142,7 +142,6 @@ export function createDaemonPtySubprocessHandle(args: {
             inspectSpawnFileWindowsChildProcesses(proc, shellPath, fresh, ignoreDetached)
         }
       : {}),
-    loginWrapped: !reportsChildExitStatus,
     shellPath: args.shellPath,
     shellCwd: args.spawnCwd,
     shellPathEnv: args.env.PATH,

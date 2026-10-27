@@ -4,12 +4,8 @@ import type { IPtyProvider } from '../../../providers/pty-provider-contract'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import { ptyOwnership } from '../provider/ownership-state'
 import { ptySizes } from '../delivery/visibility-state'
-import { rendererSerializerReadiness } from '../pane/serializer-state'
 import { getProviderForPty, localProvider, resolvePtyExecutionHost } from '../provider/registry'
-import {
-  inspectPtyProviderProcess,
-  type PtyProcessInspectionOptions
-} from '../../../providers/pty-process-inspection'
+import { inspectPtyProviderProcess } from '../../../providers/pty-process-inspection'
 import type { PtyRuntimeControllerDeps } from './controller-deps'
 import {
   writeRefused,
@@ -18,6 +14,12 @@ import {
   type WriteSettlement
 } from '../../../../shared/pty-write-settlement'
 import { isDrivingInputKind, type TerminalInputKind } from '../../../../shared/terminal-input-kind'
+
+export {
+  hasRendererSerializerFromRuntimeController,
+  getRendererSerializerGenerationFromRuntimeController,
+  waitForRendererSerializerFromRuntimeController
+} from '../pane/serializer-state'
 
 type RuntimeWriteDeps = Pick<PtyRuntimeControllerDeps, 'runtime'>
 
@@ -147,9 +149,25 @@ export async function attachPtyFromRuntimeController(
   }
 }
 
-export async function getForegroundProcessFromRuntimeController(ptyId: string) {
+export async function getForegroundProcessFromRuntimeController(
+  ptyId: string,
+  acceptPresentation?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+) {
   try {
-    return await getProviderForPty(ptyId).getForegroundProcess(ptyId)
+    let annotated = false
+    const result = await getProviderForPty(ptyId).getForegroundProcess(
+      ptyId,
+      acceptPresentation
+        ? (value) => {
+            annotated = true
+            acceptPresentation(value)
+          }
+        : undefined
+    )
+    if (acceptPresentation && !annotated) {
+      acceptPresentation(null)
+    }
+    return result
   } catch {
     return null
   }
@@ -157,16 +175,40 @@ export async function getForegroundProcessFromRuntimeController(ptyId: string) {
 
 export async function inspectProcessFromRuntimeController(
   ptyId: string,
-  options?: PtyProcessInspectionOptions
+  options?: {
+    expectedIncarnationId?: string
+    scanChildProcesses?: boolean
+    steadyState?: boolean
+    includePresentation?: boolean
+  }
 ) {
   return inspectPtyProviderProcess(getProviderForPty(ptyId), ptyId, options)
 }
 
-export async function confirmForegroundProcessFromRuntimeController(ptyId: string) {
+export async function confirmForegroundProcessFromRuntimeController(
+  ptyId: string,
+  accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+) {
   try {
     const provider = getProviderForPty(ptyId)
     // Cached foreground identity cannot resolve a fresh shell conflict.
-    return (await provider.confirmForegroundProcess?.(ptyId)) ?? null
+    if (!provider.confirmForegroundProcess) {
+      return null
+    }
+    let annotated = false
+    const result = await provider.confirmForegroundProcess(
+      ptyId,
+      accept
+        ? (value) => {
+            annotated = true
+            accept(value)
+          }
+        : undefined
+    )
+    if (accept && !annotated) {
+      accept(null)
+    }
+    return result
   } catch {
     return null
   }
@@ -265,24 +307,6 @@ export function resizePtyFromRuntimeController(ptyId: string, cols: number, rows
   } catch {
     return false
   }
-}
-
-export function hasRendererSerializerFromRuntimeController(ptyId: string): boolean {
-  // Renderer readiness decides whether its restore or the daemon snapshot seeds history.
-  return rendererSerializerReadiness.has(ptyId)
-}
-
-export function getRendererSerializerGenerationFromRuntimeController(ptyId: string) {
-  return rendererSerializerReadiness.generation(ptyId)
-}
-
-export function waitForRendererSerializerFromRuntimeController(
-  ptyId: string,
-  afterGeneration = 0,
-  timeoutMs?: number,
-  signal?: AbortSignal
-) {
-  return rendererSerializerReadiness.wait(ptyId, afterGeneration ?? 0, timeoutMs, signal)
 }
 
 export function getSizeFromRuntimeController(ptyId: string) {

@@ -1,3 +1,4 @@
+import type { WindowVisibilitySubscriptionParking } from '../window-visibility-subscription-parking'
 import type {
   RuntimeMobileSessionTabsResult,
   RuntimeMobileSessionTabsRemovedResult
@@ -46,4 +47,22 @@ export type MirroredRuntimeEnvironment = {
   environmentId: string
   expectedEnvironmentConnectionGeneration: number
   expectedEnvironmentPairingRevision?: number
+}
+
+type Ref<T> = { current: T }
+
+export type ActiveSubscriptionArgs = {
+  activeWorktreeId: string | null
+  activeWorktreeRuntimeEnvironmentId: string | null | undefined
+  activeWorktreeRuntimeConnectionGeneration: number
+  activeWorktreeRuntimePairingRevision: number | undefined
+  workspaceSessionReady: boolean
+  visibilitySnapshotReceipt: Ref<SessionTabsSnapshotHandler<void>>
+  visibilitySnapshotApply: Ref<SessionTabsSnapshotHandler<boolean>>
+  visibilitySnapshotAccepted: Ref<SessionTabsSnapshotHandler<void>>
+}
+
+export type ActiveSessionTabsSubscription = WindowVisibilitySubscriptionParking & {
+  /** The worktree became selected again while its stream stayed warm. */
+  reconsiderSelected: () => void
 }

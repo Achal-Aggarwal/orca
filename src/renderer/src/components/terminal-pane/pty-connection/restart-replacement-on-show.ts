@@ -1,11 +1,9 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { useAppStore } from '@/store'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 /** After confirmed service-restart death, replace on reveal with saved output and optional agent resume; never resume every hidden agent at once. */
 export function armRestartReplacement(session: ConnectPanePtySession, ptyId: string): void {
   session.restartReplacementPtyId = ptyId
-  notifyPaneStartupStateChanged()
   if (session.deps.isVisibleRef.current) {
     // Deferred off the exit handler, as the hibernation wake is.
     queueMicrotask(() => consumeRestartReplacement(session))
@@ -19,7 +17,6 @@ export function consumeRestartReplacement(session: ConnectPanePtySession): void 
     return
   }
   session.restartReplacementPtyId = null
-  notifyPaneStartupStateChanged()
   const currentPtyId = session.transport.getPtyId()
   const storedPtyId =
     useAppStore.getState().terminalLayoutsByTabId[session.deps.tabId]?.ptyIdsByLeafId?.[

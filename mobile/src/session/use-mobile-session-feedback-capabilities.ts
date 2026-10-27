@@ -47,7 +47,7 @@ export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTermina
   clientRef.current = client
   connStateRef.current = connState
   activeSessionTabTypeRef.current = activeSessionTab?.type ?? null
-  sessionTabsRef.current = scope.acceptedSessionTabs ?? sessionTabs
+  sessionTabsRef.current = sessionTabs
   activeSessionTabIdRef.current = activeSessionTabId
   markdownDocsRef.current = markdownDocs
   const reconciledCreateWarningState = reconcileMobileSessionCreateWarningState(

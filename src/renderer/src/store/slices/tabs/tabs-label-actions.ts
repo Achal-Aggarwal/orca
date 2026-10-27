@@ -1,6 +1,6 @@
+import { oppositeViewMode, launchAgentOf } from './tab-view-mode-values'
 import { emitNativeChatToggled } from '@/lib/native-chat-telemetry'
 import type { TuiAgent } from '../../../../../shared/tui-agent'
-import type { AppState } from '../../types'
 import type { TabsSlice, TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
 import { findTabAndWorktree, patchTab, updateGroup } from '../tab-group-state'
 import {
@@ -19,10 +19,6 @@ import { recordTabOrderInLayoutOwner } from './tab-order-layout-owner'
 import { withPreviewEnded } from './tab-preview-flag'
 import { endsPreviewHere, promotePreviewTabsThroughLayoutOwner } from './preview-tab-promotion'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../shared/layout-owner-switch'
-
-function oppositeViewMode(mode: 'terminal' | 'chat'): 'terminal' | 'chat' {
-  return mode === 'chat' ? 'terminal' : 'chat'
-}
 
 export function createTabsLabelActions(
   set: TabsSliceSet,
@@ -52,14 +48,6 @@ export function createTabsLabelActions(
       }
     })
     mirrorTabViewModeToHost(get(), tabId, mode)
-  }
-
-  // Why: launchAgent lives on the legacy terminal tab (keyed by entityId); toggle telemetry attributes by it.
-  function launchAgentOf(state: AppState, worktreeId: string, entityId: string): TuiAgent | null {
-    return (
-      (state.tabsByWorktree[worktreeId] ?? []).find((terminal) => terminal.id === entityId)
-        ?.launchAgent ?? null
-    )
   }
 
   /** `to`: the mode main switched to, which a frame may already show. */
@@ -108,7 +96,8 @@ export function createTabsLabelActions(
     tabId: string,
     mode: 'terminal' | 'chat',
     local: () => void,
-    shown?: () => void
+    shown?: () => void,
+    answered?: (accepted: boolean) => void
   ): boolean {
     const state = get()
     // Why an object: only this send's answer clears its entry, not an earlier send's of the same mode.
@@ -130,8 +119,12 @@ export function createTabsLabelActions(
         shown: () => {
           settle()
           shown?.()
+          answered?.(true)
         },
-        refused: settle
+        refused: () => {
+          settle()
+          answered?.(false)
+        }
       }
     )
     if (sent) {
@@ -209,10 +202,13 @@ export function createTabsLabelActions(
       set((state) => patchTab(state.unifiedTabsByWorktree, tabId, { label }) ?? state)
     },
 
-    setTabViewMode: (tabId, mode) => {
-      const local = (): void => setTabViewModeHere(tabId, mode)
+    setTabViewMode: (tabId, mode, settled) => {
+      const local = (): void => {
+        setTabViewModeHere(tabId, mode)
+        settled?.(true)
+      }
       // Switch point: main switches its copy first, then the window shows the same mode.
-      if (!ORCA_LAYOUT_OWNER_IS_MAIN || !sendViewMode(tabId, mode, local)) {
+      if (!ORCA_LAYOUT_OWNER_IS_MAIN || !sendViewMode(tabId, mode, local, undefined, settled)) {
         local()
       }
     },

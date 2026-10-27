@@ -1,4 +1,3 @@
-import { terminalInterfaceReleasesChat } from '../native-chat/terminal-interface-presentation'
 import { useCallback, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import {
@@ -113,6 +112,9 @@ export function useTerminalPaneProjection(controller: TerminalPaneMobileControll
     ? managedPanes.some((pane) => pane.leafId === chatLeafId)
     : false
   useEffect(() => {
+    if (isChatViewMode && !effectiveChatViewMode) {
+      return
+    }
     const activeLeafId = activePane?.leafId ?? null
     applyNativeChatLeafRoute(
       resolveNativeChatLeafRoute({
@@ -120,18 +122,12 @@ export function useTerminalPaneProjection(controller: TerminalPaneMobileControll
         chatLeafId,
         activeLeafId,
         chatLeafStillMounted,
-        chatLeafHasConfirmedAgentExit:
-          chatLeafId !== null &&
-          terminalInterfaceReleasesChat(
-            useAppStore.getState(),
-            `${controller.tabId}:${chatLeafId}`
-          ),
         activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId)
       })
     )
   }, [
-    controller.tabId,
     isChatViewMode,
+    effectiveChatViewMode,
     chatLeafId,
     activePane?.leafId,
     chatLeafStillMounted,
@@ -139,7 +135,7 @@ export function useTerminalPaneProjection(controller: TerminalPaneMobileControll
     isChatEligibleForLeaf
   ])
   const chatPane =
-    isChatViewMode && chatLeafId
+    effectiveChatViewMode && chatLeafId
       ? (managedPanes.find((pane) => pane.leafId === chatLeafId) ?? null)
       : null
   const chatPanePtyId = chatPane
@@ -158,7 +154,7 @@ export function useTerminalPaneProjection(controller: TerminalPaneMobileControll
     leafIds: getNativeChatLeafIds()
   })
   const activePaneIsChatLeaf = Boolean(
-    isChatViewMode && activePane?.leafId && activePane.leafId === chatLeafId
+    effectiveChatViewMode && activePane?.leafId && activePane.leafId === chatLeafId
   )
   const resolveAgentForLeaf = (leafId: string | null): string | null => {
     const detectedAgent = leafId ? (tabAgentTypeByLeaf[leafId] ?? null) : null

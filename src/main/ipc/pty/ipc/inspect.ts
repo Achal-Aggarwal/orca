@@ -1,3 +1,4 @@
+import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime-pty-id'
 import { getPtyIpc } from '../pty-host-bindings'
 import { inspectPtyProviderProcessForRenderer } from '../../../providers/pty-process-inspection'
@@ -23,6 +24,7 @@ import {
 
 export function installPtyInspectIpcHandlers(deps: {
   getLocalPtyProviderStartupPromise: (hostId?: ResolvedPtyHost) => Promise<void> | undefined
+  runtime?: OrcaRuntimeService
 }): void {
   const ipcMain = getPtyIpc()
   const { getLocalPtyProviderStartupPromise } = deps
@@ -116,7 +118,9 @@ export function installPtyInspectIpcHandlers(deps: {
       if (typeof args?.id !== 'string' || !hasPtyProviderForInspection(args.id)) {
         return null
       }
-      return getProviderForPty(args.id).getForegroundProcess(args.id)
+      return deps.runtime
+        ? deps.runtime.getPtyForegroundProcess(args.id)
+        : getProviderForPty(args.id).getForegroundProcess(args.id)
     }
   )
 
@@ -147,6 +151,12 @@ export function installPtyInspectIpcHandlers(deps: {
         ...(args.scanChildProcesses === true ? { scanChildProcesses: true } : {}),
         ...(args.steadyState === true ? { steadyState: true } : {})
       }
+      if (deps.runtime) {
+        return deps.runtime.inspectPtyForegroundProcess(
+          args.id,
+          Object.keys(options).length > 0 ? options : undefined
+        )
+      }
       return Object.keys(options).length > 0
         ? inspectPtyProviderProcessForRenderer(getProviderForPty(args.id), args.id, options)
         : inspectPtyProviderProcessForRenderer(getProviderForPty(args.id), args.id)
@@ -155,13 +165,14 @@ export function installPtyInspectIpcHandlers(deps: {
 
   ipcMain.handle(
     'pty:confirmForegroundProcess',
-    async (_event, args: { id: string }): Promise<string | null> => {
+    async (_event, args: { id: string; includePresentation?: boolean }) => {
       if (typeof args?.id !== 'string' || !hasPtyProviderForInspection(args.id)) {
         return null
       }
-      const provider = getProviderForPty(args.id)
-      // Cached foreground identity cannot authorize a command-boundary decision.
-      return provider.confirmForegroundProcess?.(args.id) ?? null
+      if (args.includePresentation && deps.runtime) {
+        return deps.runtime.confirmPtyForegroundPresentation(args.id)
+      }
+      return getProviderForPty(args.id).confirmForegroundProcess?.(args.id) ?? null
     }
   )
 

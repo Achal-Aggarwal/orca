@@ -1,4 +1,3 @@
-import { notifyPaneStartupStateChanged } from '@/lib/pane-spawn-deferral-registry'
 import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime-pty-id'
 import { useAppStore } from '@/store'
 import { ambiguousWorkspaceOwnerMessage } from '@/lib/duplicate-paired-servers'
@@ -204,7 +203,6 @@ export function installPtyInputRecovery(session: ConnectPanePtySession): void {
 
   // Live PTYs with detached bindings can reject input while showing cached frames; remount because dead-session checks cannot detect that state (#8104).
   session.transportConnectInFlightSince = null
-  notifyPaneStartupStateChanged()
   session.requestRecoveryForUndeliverableInput = (providerRejected = false): void => {
     if (
       !providerRejected &&

@@ -1,4 +1,22 @@
-import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
+import {
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useEffect,
+  useSyncExternalStore,
+  type MutableRefObject
+} from 'react'
+import { useFocusEffect } from 'expo-router'
+import { AppState } from 'react-native'
+import type { RpcClient } from '../transport/rpc-client'
+import type { ConnectionState } from '../transport/types'
+import { decideTerminalForegroundPresentation } from '../../../src/shared/terminal-foreground-presentation'
+import {
+  mobilePresentationSnapshot,
+  subscribeMobilePresentation,
+  retractMobilePresentations,
+  readMobilePresentation
+} from '../terminal/terminal-presentation'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import {
   resolveMobileNativeChat,
@@ -10,6 +28,8 @@ import {
 } from './use-mobile-session-view-mode'
 
 export function useMobileNativeChatActiveResolution(args: {
+  client?: RpcClient | null
+  connState?: ConnectionState
   hostId: string
   worktreeId: string
   activeSessionTab: MobileNativeChatTab | null
@@ -47,14 +67,69 @@ export function useMobileNativeChatActiveResolution(args: {
   const {
     ready: sessionViewReady,
     isTabChatView,
-    setTabView,
-    toggleTabChatView
+    setTabView: setTabViewBase,
+    toggleTabChatView: toggleTabChatViewBase
   } = useMobileSessionViewMode({ hostId, worktreeId })
+  const client = args.client ?? null
+  const terminal =
+    activeSessionTab?.type === 'terminal'
+      ? (activeSessionTab.terminal ?? activeHandleRef.current)
+      : null
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      client && terminal ? subscribeMobilePresentation(client, terminal, listener) : () => {},
+    [client, terminal]
+  )
+  const snapshot = useCallback(
+    () => (client && terminal ? mobilePresentationSnapshot(client, terminal) : undefined),
+    [client, terminal]
+  )
+  const presentation = useSyncExternalStore(subscribe, snapshot, snapshot)
+  const sampleShown = useCallback(() => {
+    if (client && terminal && (args.connState === undefined || args.connState === 'connected')) {
+      void readMobilePresentation(client, terminal, activeSessionTab?.incarnationId)
+    }
+  }, [client, terminal, args.connState, activeSessionTab?.incarnationId])
+  useFocusEffect(
+    useCallback(() => {
+      sampleShown()
+    }, [sampleShown])
+  )
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        sampleShown()
+      }
+    })
+    return () => subscription.remove()
+  }, [sampleShown])
+  useLayoutEffect(() => {
+    if (client && args.connState && args.connState !== 'connected') {
+      retractMobilePresentations(client)
+    }
+  }, [client, args.connState])
+  const setTabView = setTabViewBase
+  const toggleTabChatView = toggleTabChatViewBase
   const tabWantsChat =
     activeSessionTab?.type === 'agent-session' ||
     (activeSessionTabId ? isTabChatView(activeSessionTabId) : false)
+  const release =
+    decideTerminalForegroundPresentation({
+      accepted: presentation?.state,
+      currentBinding:
+        Boolean(terminal) &&
+        (!activeSessionTab?.incarnationId ||
+          presentation?.incarnationId === activeSessionTab.incarnationId),
+      member: activeSessionTab?.type === 'terminal',
+      wantsChat: tabWantsChat
+    }) === 'release'
+  useLayoutEffect(() => {
+    if (release && activeSessionTabId) {
+      setTabViewBase(activeSessionTabId, 'terminal')
+    }
+  }, [release, activeSessionTabId, setTabViewBase])
   const activeChatResolution =
-    activeSessionTab && activeSessionTabId && tabWantsChat
+    activeSessionTab && activeSessionTabId && tabWantsChat && !release
       ? resolveMobileNativeChat(activeSessionTab, nativeChatTranscriptIsLocalReadable)
       : null
   const showNativeChat = activeChatResolution != null

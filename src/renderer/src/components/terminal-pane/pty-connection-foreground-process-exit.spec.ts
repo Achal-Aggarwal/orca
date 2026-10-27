@@ -99,7 +99,7 @@ export function registerPtyConnectionForegroundProcessExitTests(): void {
 
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toEqual({
         agent: null,
-        shellForeground: true
+        shellForeground: false
       })
       expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(cacheKey)
       expect(deps.onAgentExitedRef.current).toHaveBeenCalledWith(LEAF_1)
@@ -108,7 +108,7 @@ export function registerPtyConnectionForegroundProcessExitTests(): void {
       foreground = 'codex'
       children = true
       binding.sampleForegroundAgentOnFocus()
-      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(3_000)
       expect(mockStoreState.paneForegroundAgentByPaneKey[cacheKey]).toMatchObject({
         agent: 'codex',
         agentEvidence: 'process-read'

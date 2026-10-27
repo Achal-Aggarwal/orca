@@ -1,3 +1,4 @@
+import { retractDesktopPresentations } from '../terminal-foreground-presentation'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { isRuntimeSubscriptionReplayResponse } from '../../../../shared/runtime-subscription-replay'
@@ -7,10 +8,7 @@ import { isFrameDrawnServerWorkspace } from './frame-drawn-server-workspaces'
 import { mirroredRuntimeEnvironmentIdForWorkspace } from './mirrored-workspace-owner'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { recoverMirroredTerminalOrphansBeforeApply } from './mirror-terminal-orphan-recovery'
-import {
-  installWindowVisibilitySubscriptionParking,
-  type WindowVisibilitySubscriptionParking
-} from '../window-visibility-subscription-parking'
+import { installWindowVisibilitySubscriptionParking } from '../window-visibility-subscription-parking'
 import {
   recordReceivedWebSessionTabsSnapshot,
   shouldApplyRecoveredWebSessionTabsSnapshot
@@ -45,26 +43,16 @@ import { createInitialTerminalSeeder } from './initial-terminal-seeder'
 import { toRuntimeWorktreeSelector } from '../runtime-worktree-selector'
 import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-authority'
 import { isSessionTabsStreamEnd, type SessionTabsStreamEvent } from './state'
-import type { SessionTabsSnapshotHandler } from './visibility-resume-types'
 import { subscribeRuntimeEnvironment } from '../runtime-environment-pairing-refresh'
 
-type Ref<T> = { current: T }
-
-export type ActiveSubscriptionArgs = {
-  activeWorktreeId: string | null
-  activeWorktreeRuntimeEnvironmentId: string | null | undefined
-  activeWorktreeRuntimeConnectionGeneration: number
-  activeWorktreeRuntimePairingRevision: number | undefined
-  workspaceSessionReady: boolean
-  visibilitySnapshotReceipt: Ref<SessionTabsSnapshotHandler<void>>
-  visibilitySnapshotApply: Ref<SessionTabsSnapshotHandler<boolean>>
-  visibilitySnapshotAccepted: Ref<SessionTabsSnapshotHandler<void>>
-}
-
-export type ActiveSessionTabsSubscription = WindowVisibilitySubscriptionParking & {
-  /** The worktree became selected again while its stream stayed warm. */
-  reconsiderSelected: () => void
-}
+export type {
+  ActiveSubscriptionArgs,
+  ActiveSessionTabsSubscription
+} from './visibility-resume-types'
+import type {
+  ActiveSubscriptionArgs,
+  ActiveSessionTabsSubscription
+} from './visibility-resume-types'
 
 export function installActiveSessionTabsSubscription({
   activeWorktreeId,
@@ -181,7 +169,8 @@ export function installActiveSessionTabsSubscription({
           ]
         },
         recovered,
-        event.type === 'updated' && !replayed
+        event.type === 'updated' && !replayed,
+        'active'
       )
       visibilitySnapshotAccepted.current(environmentId, recovered, receivedFrame, runtimeId)
       // Applied frames release awaiting-mirror only after seeding checked the held latch; pending RPCs retain claims and later frames decide retries.
@@ -241,10 +230,12 @@ export function installActiveSessionTabsSubscription({
               }
               if (response.ok === false) {
                 console.warn('[web-session-tabs-sync] subscription failed:', response.error.message)
+                retractDesktopPresentations(environmentId, activeWorktreeId, 'active')
                 ended()
                 return
               }
               if (isSessionTabsStreamEnd(response.result)) {
+                retractDesktopPresentations(environmentId, activeWorktreeId, 'active')
                 ended()
                 return
               }
@@ -278,11 +269,13 @@ export function installActiveSessionTabsSubscription({
             },
             onError: (error) => {
               if (isCurrent()) {
+                retractDesktopPresentations(environmentId, activeWorktreeId, 'active')
                 console.warn('[web-session-tabs-sync] subscription error:', error.message)
               }
             },
             onClose: () => {
               if (isCurrent()) {
+                retractDesktopPresentations(environmentId, activeWorktreeId, 'active')
                 ended()
               }
             }
@@ -302,6 +295,7 @@ export function installActiveSessionTabsSubscription({
   return Object.assign(
     () => {
       seeder.dispose()
+      retractDesktopPresentations(environmentId, activeWorktreeId, 'active')
       parking()
     },
     {

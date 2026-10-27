@@ -50,9 +50,6 @@ export type AgentCompletionCoordinatorOptions = {
   shouldSuppressConfirmedProcessExitCompletion?: (exited: RecognizedAgentProcess) => boolean
   /** Fired once per confirmed exit (settled local absence, or the host's `exited` verdict). */
   onForegroundAgentExited?: (exited: RecognizedAgentProcess) => void
-  onForegroundShellObserved?: (process: RecognizedAgentProcess) => void
-  onForegroundAgentObserved?: (process: RecognizedAgentProcess) => void
-  getObservationOwner?: () => string | null
   isLive: () => boolean
   /** Identified ends belong to hooks; ambiguous ends retain title-lane authority; null means no hook ownership. */
   titleTurnEndEvidence?: (
@@ -80,7 +77,6 @@ export type AgentCompletionCoordinator = {
   startProcessTracking: () => void
   /** Another reader saw this agent in the foreground; lets the monitor confirm its exit. */
   observeForegroundAgentProcess: (process: RecognizedAgentProcess) => void
-  invalidateProcessInspection: () => void
   hasPendingHookDoneCompletion: () => boolean
   /** Whether a turn end observed now could be announced (live, with agent evidence, not re-arming). */
   canAnnounceCompletion: () => boolean

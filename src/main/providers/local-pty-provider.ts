@@ -152,14 +152,19 @@ export class LocalPtyProvider implements IPtyProvider {
       (options?.expectedIncarnationId && options.expectedIncarnationId !== incarnation)
     ) {
       return {
+        foregroundPresentationSupported: true,
         foregroundProcess: null,
         hasChildProcesses: true,
         childProcessEvidence: 'unverifiable'
       }
     }
+    let foregroundPresentation: 'agent-in-front' | 'not-in-front' | undefined
+    const accept = (value: typeof foregroundPresentation | null): void => {
+      foregroundPresentation = value ?? undefined
+    }
     const foregroundProcess = await (process.platform === 'win32' && options?.steadyState !== true
-      ? confirmLocalPtyForegroundProcess(id, true)
-      : getLocalPtyForegroundProcess(id))
+      ? confirmLocalPtyForegroundProcess(id, process.platform === 'win32', accept)
+      : getLocalPtyForegroundProcess(id, accept))
     // A steady-state poll never decides adoption or close, so it may read the cached process table.
     const childProcessEvidence = await inspectLocalPtyChildProcesses(
       id,
@@ -169,24 +174,33 @@ export class LocalPtyProvider implements IPtyProvider {
     // Neither asynchronous inspection may publish a replacement pane's identity.
     if (ptyProcesses.get(id) !== proc || ptyIncarnations.get(id) !== incarnation) {
       return {
+        foregroundPresentationSupported: true,
         foregroundProcess: null,
         hasChildProcesses: true,
         childProcessEvidence: 'unverifiable'
       }
     }
     return {
+      foregroundPresentationSupported: true,
+      ...(foregroundPresentation ? { foregroundPresentation } : {}),
       foregroundProcess,
       hasChildProcesses: childProcessEvidence !== 'no-children',
       childProcessEvidence
     }
   }
 
-  getForegroundProcess(id: string): Promise<string | null> {
-    return getLocalPtyForegroundProcess(id)
+  getForegroundProcess(
+    id: string,
+    acceptPresentation?: (value: 'agent-in-front' | 'not-in-front' | null | undefined) => void
+  ): Promise<string | null> {
+    return getLocalPtyForegroundProcess(id, acceptPresentation)
   }
 
-  confirmForegroundProcess(id: string): Promise<string | null> {
-    return confirmLocalPtyForegroundProcess(id)
+  confirmForegroundProcess(
+    id: string,
+    accept?: Parameters<IPtyProvider['getForegroundProcess']>[1]
+  ): Promise<string | null> {
+    return confirmLocalPtyForegroundProcess(id, false, accept)
   }
 
   confirmShellForeground(id: string): Promise<boolean> {

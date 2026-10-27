@@ -13,7 +13,6 @@ import {
 } from '../../../../shared/terminal-process-inspection'
 import type { ProcessMonitorOptions } from './agent-completion-process-types'
 import { createAgentCompletionPollScheduler } from './agent-completion-poll-scheduler'
-import { isObservationOwnerSuperseded } from './pane-foreground-agent-tracker-contract'
 import {
   handleAgentCompletionInspectionResult,
   type RemoteInspectionState
@@ -104,7 +103,6 @@ export function createAgentCompletionProcessMonitor({
     bindRemoteInspectionGeneration(ptyId, expectedIncarnationIdAtRequest)
     state.inspectionInFlight = true
     const generationAtRequest = state.inspectionGeneration
-    const ownerAtRequest = options.getObservationOwner?.()
     const requestStartedAtMonotonic = performance.now()
     const pendingTitleIdAtRequest = priority === 'pending-title' ? pendingTitle.get()?.id : null
     enqueueAgentProcessInspection({
@@ -162,7 +160,6 @@ export function createAgentCompletionProcessMonitor({
             options.isLive() &&
             options.getPtyId() === ptyId &&
             generationAtRequest === state.inspectionGeneration &&
-            !isObservationOwnerSuperseded(ownerAtRequest, options.getObservationOwner?.()) &&
             (options.getExpectedIncarnationId?.() ?? null) === expectedIncarnationIdAtRequest
           ) {
             const currentPendingTitle = pendingTitle.get()
@@ -179,10 +176,7 @@ export function createAgentCompletionProcessMonitor({
                 clearAgentRunEvidence,
                 hasPendingHookDone,
                 scheduleNextPoll,
-                handleRecognizedProcess: (process) => {
-                  handleRecognizedProcess(process)
-                  options.onForegroundAgentObserved?.(process)
-                },
+                handleRecognizedProcess,
                 dispatchCompletion,
                 remoteInspection
               })

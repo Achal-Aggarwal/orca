@@ -1,7 +1,13 @@
+import {
+  deliverDesktopPresentationInspection,
+  desktopPresentationSnapshot
+} from './terminal-foreground-presentation'
 import type { RuntimeTerminalSend } from '../../../shared/runtime-types'
 import { isTerminalInputTooLargeWithDeferredMeasurement } from '../../../shared/terminal-input'
 import { recordRuntimeTerminalInputForPtyId } from './runtime-terminal-input-recording'
-import { callRuntimeRpc } from './runtime-rpc-client'
+import { callRuntimeRpc, runtimeEnvironmentSupportsCapability } from './runtime-rpc-client'
+import { ensureLocalRuntimeCapabilities } from './local-runtime-capabilities'
+import { TERMINAL_FOREGROUND_PRESENTATION_CAPABILITY } from '../../../shared/terminal-runtime-capabilities'
 import {
   getRemoteRuntimePtyEnvironmentId,
   getRemoteRuntimePtyOwner
@@ -61,6 +67,18 @@ export async function inspectRuntimeTerminalProcess(
   ptyId: string,
   options?: { expectedIncarnationId?: string; scanChildProcesses?: boolean; steadyState?: boolean }
 ): Promise<RuntimeTerminalProcessInspection> {
+  const startedAt = performance.now()
+  const expectedIncarnationId =
+    options?.expectedIncarnationId ?? desktopPresentationSnapshot(ptyId)?.incarnationId ?? null
+  const accept = (result: RuntimeTerminalProcessInspection): RuntimeTerminalProcessInspection => {
+    deliverDesktopPresentationInspection(ptyId, result, {
+      remote,
+      expectedIncarnationId,
+      startedAt
+    })
+    return normalizeInspectionResult(result, remote)
+  }
+
   const owner = getRemoteRuntimePtyOwner(ptyId)
   const remote = isRemoteInspectionPtyId(ptyId)
   if (!owner) {
@@ -68,11 +86,11 @@ export async function inspectRuntimeTerminalProcess(
       const result = await (options
         ? window.api.pty.inspectProcess(ptyId, options)
         : window.api.pty.inspectProcess(ptyId))
-      return normalizeInspectionResult(result, remote)
+      return accept(result)
     } catch (error) {
       const reason = classifyTerminalProcessInspectionFailure(error)
       if (reason) {
-        return clientOnlyUnverifiableInspection(reason)
+        return accept(clientOnlyUnverifiableInspection(reason))
       }
       throw error
     }
@@ -88,18 +106,50 @@ export async function inspectRuntimeTerminalProcess(
           ? { expectedIncarnationId: options.expectedIncarnationId }
           : {}),
         // Close guards request real process scans; dropping this causes unverifiable and confirmation on every idle remote Windows close.
-        ...(options?.scanChildProcesses === true ? { scanChildProcesses: true } : {})
+        ...(options?.scanChildProcesses === true ? { scanChildProcesses: true } : {}),
+        ...(options?.steadyState === true ? { steadyState: true } : {})
       },
       { timeoutMs: 15_000 }
     )
-    return normalizeInspectionResult(result.process, true)
+    return accept(result.process)
   } catch (error) {
     const reason = classifyTerminalProcessInspectionFailure(error)
     if (reason) {
-      return clientOnlyUnverifiableInspection(reason)
+      return accept(clientOnlyUnverifiableInspection(reason))
     }
     throw error
   }
+}
+
+const shownReads = new Map<string, Promise<void>>()
+export function inspectDesktopShownTerminal(
+  ptyId: string,
+  options?: { expectedIncarnationId?: string }
+): Promise<void> {
+  const prior = shownReads.get(ptyId)
+  if (prior) {
+    return prior
+  }
+  const request = (async () => {
+    const owner = getRemoteRuntimePtyOwner(ptyId)
+    const supported = owner
+      ? await runtimeEnvironmentSupportsCapability(
+          owner.target.environmentId,
+          TERMINAL_FOREGROUND_PRESENTATION_CAPABILITY
+        )
+      : (await ensureLocalRuntimeCapabilities())?.includes(
+          TERMINAL_FOREGROUND_PRESENTATION_CAPABILITY
+        )
+    if (supported) {
+      await inspectRuntimeTerminalProcess(ptyId, options)
+    }
+  })().finally(() => {
+    if (shownReads.get(ptyId) === request) {
+      shownReads.delete(ptyId)
+    }
+  })
+  shownReads.set(ptyId, request)
+  return request
 }
 
 /**
@@ -121,7 +171,24 @@ export async function confirmRuntimeTerminalForegroundProcess(
   if (typeof confirmForegroundProcess !== 'function') {
     return null
   }
-  return confirmForegroundProcess(ptyId).catch(() => null)
+  const startedAt = performance.now()
+  const expectedIncarnationId = desktopPresentationSnapshot(ptyId)?.incarnationId ?? null
+  try {
+    const result = await confirmForegroundProcess(ptyId, { includePresentation: true })
+    const inspection =
+      result !== null && typeof result === 'object' ? result : { foregroundProcess: result }
+    if (result === null || (typeof result === 'object' && !result.presentation)) {
+      return inspection.foregroundProcess
+    }
+    deliverDesktopPresentationInspection(
+      ptyId,
+      { ...inspection, hasChildProcesses: true },
+      { remote: isRemoteInspectionPtyId(ptyId), expectedIncarnationId, startedAt }
+    )
+    return inspection.foregroundProcess
+  } catch {
+    return null
+  }
 }
 
 export function sendRuntimePtyInput(

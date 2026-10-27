@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { collectDescendantsFromIndex, getProcessTableIndex } from '../../shared/process-table-index'
-import { parseLinuxProcStatStartTime } from '../../shared/process-table-snapshot-reader'
+import {
+  getProcessTableSnapshot,
+  parseLinuxProcStatStartTime
+} from '../../shared/process-table-snapshot-reader'
 
 /** Cheap-tier job-control columns omit command/tty by design. */
 export type PaneFingerprintRow = {
@@ -76,4 +79,20 @@ export async function buildPaneProcessFingerprint(
   }
   members.sort()
   return `${rootPid}@${rootStart}#${root.tpgid}:${jobControlState(root.stat)}|${members.join(',')}`
+}
+
+/** Null for Windows/unfenced panes, requiring a full scan next time. */
+export async function readPosixSteadyState(
+  shellPid: number,
+  fallbackProcess: string | null
+): Promise<{ fingerprint: string; fallbackProcess: string | null } | null> {
+  if (process.platform === 'win32') {
+    return null
+  }
+  try {
+    const fingerprint = await buildPaneProcessFingerprint(await getProcessTableSnapshot(), shellPid)
+    return fingerprint === null ? null : { fingerprint, fallbackProcess }
+  } catch {
+    return null
+  }
 }

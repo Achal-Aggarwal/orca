@@ -1,3 +1,15 @@
+import {
+  acceptPtyForegroundPresentation,
+  confirmPtyForegroundPresentation,
+  type ForegroundPresentationDependencies,
+  type ForegroundInspectionEntry,
+  type ForegroundSourceAdmissions
+} from './runtime-pty-foreground-presentation'
+import type { TerminalForegroundPresentation } from '../../shared/terminal-foreground-presentation'
+import type {
+  PtyProcessInspection,
+  PtyProcessInspectionOptions
+} from '../providers/pty-process-inspection'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import type { TerminalAgent } from '../../shared/terminal-agent'
 import { withTimeoutResult } from './runtime-async-boundaries'
@@ -8,14 +20,6 @@ import type {
   PtyForegroundProcessRead,
   PtyForegroundProcessReadEntry
 } from './runtime-terminal-contracts'
-import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
-
-type Dependencies = {
-  getController(): RuntimePtyController | null
-  getPty(ptyId: string): RuntimePtyWorktreeRecord | null
-  touchSnapshot(ptyId: string): void
-  finishDelayedSnapshot(ptyId: string, changed: boolean): void
-}
 
 const NATIVE_CLAUDE_VERSION_NAME = /^\d+\.\d+\.\d+$/
 
@@ -23,6 +27,7 @@ export class RuntimePtyForegroundAgent {
   private readonly refreshes = new Map<string, PtyForegroundAgentRefresh>()
   private readonly reads = new Map<string, PtyForegroundProcessReadEntry>()
   private readonly delayedTitles = new Map<string, number>()
+  private readonly inspections = new Map<string, ForegroundInspectionEntry>()
   private readonly identifies = new Map<string, Promise<TerminalAgent | null>>()
   // A scan's recognized agent for a version name holds while that name stays in the foreground.
   private readonly confirmedByPtyId = new Map<
@@ -30,7 +35,66 @@ export class RuntimePtyForegroundAgent {
     { foregroundName: string; agent: TerminalAgent }
   >()
 
-  constructor(private readonly deps: Dependencies) {}
+  constructor(private readonly deps: ForegroundPresentationDependencies) {}
+
+  private readonly sourceAdmissions: ForegroundSourceAdmissions = new Map()
+
+  inspect(ptyId: string, options?: PtyProcessInspectionOptions): Promise<PtyProcessInspection> {
+    const controller = this.deps.getController()
+    if (!controller?.inspectProcess) {
+      return Promise.resolve({ foregroundProcess: null, hasChildProcesses: true })
+    }
+    const pty = this.deps.getPty(ptyId)
+    const incarnation = pty?.incarnationId
+    const pending = this.inspections.get(ptyId)
+    if (
+      pending?.controller === controller &&
+      pending.incarnation === incarnation &&
+      pending.options?.steadyState === options?.steadyState &&
+      pending.options?.expectedIncarnationId === options?.expectedIncarnationId &&
+      pending.options?.ignoreDetached === options?.ignoreDetached &&
+      pending.options?.scanChildProcesses === options?.scanChildProcesses
+    ) {
+      return pending.promise
+    }
+    const startedAt = performance.now()
+    const promise = controller
+      .inspectProcess(ptyId, { ...options, includePresentation: true })
+      .then((result) => {
+        if (
+          result.verdict === 'unverifiable' ||
+          (options?.expectedIncarnationId && options.expectedIncarnationId !== incarnation)
+        ) {
+          return result
+        }
+        const presentation = acceptPtyForegroundPresentation(
+          this.deps,
+          this.sourceAdmissions,
+          pty,
+          controller,
+          incarnation,
+          result.foregroundPresentation,
+          result.foregroundPresentationSupported ? 'supported' : 'legacy',
+          startedAt,
+          result.foregroundProcessEvidence
+        )
+        return { ...result, presentation }
+      })
+    const entry = { controller, promise, incarnation, options }
+    this.inspections.set(ptyId, entry)
+    void promise
+      .finally(() => {
+        if (this.inspections.get(ptyId) === entry) {
+          this.inspections.delete(ptyId)
+        }
+      })
+      .catch(() => {})
+    return promise
+  }
+
+  confirmPresentation(ptyId: string) {
+    return confirmPtyForegroundPresentation(this.deps, this.sourceAdmissions, ptyId)
+  }
 
   read(ptyId: string, afterTitle = 0): Promise<PtyForegroundProcessRead> | null {
     const controller = this.deps.getController()
@@ -47,9 +111,19 @@ export class RuntimePtyForegroundAgent {
       )
     }
     const unavailable: PtyForegroundProcessRead = { controller, process: null, available: false }
+    const pty = this.deps.getPty(ptyId)
+    const incarnation = pty?.incarnationId
+    let foregroundPresentation: TerminalForegroundPresentation | null | undefined
+    let annotated = false
+    const startedAt = performance.now()
     let processRead: Promise<string | null>
     try {
-      processRead = Promise.resolve(controller.getForegroundProcess(ptyId))
+      processRead = Promise.resolve(
+        controller.getForegroundProcess(ptyId, (value) => {
+          foregroundPresentation = value
+          annotated = true
+        })
+      )
     } catch {
       const entry: PtyForegroundProcessReadEntry = {
         controller,
@@ -62,7 +136,23 @@ export class RuntimePtyForegroundAgent {
     }
     let entry: PtyForegroundProcessReadEntry
     const promise = processRead
-      .then((process) => ({ controller, process, available: true }))
+      .then((process) => {
+        if (annotated) {
+          acceptPtyForegroundPresentation(
+            this.deps,
+            this.sourceAdmissions,
+            pty,
+            controller,
+            incarnation,
+            foregroundPresentation ?? undefined,
+            foregroundPresentation === null ? 'legacy' : 'supported',
+            startedAt,
+            undefined,
+            !this.refreshes.has(ptyId)
+          )
+        }
+        return { controller, process, available: true }
+      })
       .catch(() => unavailable)
       .finally(() => this.deleteRead(ptyId, entry))
     entry = { controller, startedAfterTitleObservation: afterTitle, promise }
@@ -151,6 +241,13 @@ export class RuntimePtyForegroundAgent {
   }
 
   forget(ptyId: string): void {
+    this.sourceAdmissions.delete(ptyId)
+    const pty = this.deps.getPty(ptyId)
+    if (pty) {
+      pty.pendingAgentLaunch?.forgetPresentation()
+      pty.presentation = undefined
+    }
+    this.inspections.delete(ptyId)
     this.delayedTitles.delete(ptyId)
     this.confirmedByPtyId.delete(ptyId)
   }
@@ -161,17 +258,18 @@ export class RuntimePtyForegroundAgent {
     if (!controller || !pty?.connected || pty.launchAgent) {
       return false
     }
+    const presentation = pty.presentation
     const result = await this.read(ptyId, afterTitle)
     if (!result || result.controller !== this.deps.getController() || !result.available) {
       return false
     }
     const agent = result.process ? (recognizeAgentProcess(result.process)?.agent ?? null) : null
-    if (pty.foregroundAgent === agent) {
-      return false
-    }
+    const changed = pty.foregroundAgent !== agent || pty.presentation !== presentation
     pty.foregroundAgent = agent
-    this.deps.touchSnapshot(ptyId)
-    return true
+    if (changed) {
+      this.deps.touchSnapshot(ptyId)
+    }
+    return changed
   }
 
   private async identify(ptyId: string): Promise<TerminalAgent | null> {

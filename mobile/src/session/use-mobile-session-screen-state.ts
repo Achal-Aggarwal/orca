@@ -1,8 +1,4 @@
-import {
-  mobileTerminalInterfaceReplica,
-  deriveMobileTerminalInterfaces
-} from './mobile-terminal-interface-replica'
-import { useState, useRef, useMemo, useSyncExternalStore, useCallback } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { Animated, type ScrollView } from 'react-native'
 import type { MobileTerminalLinkOpenMode } from '../storage/preferences'
 import type { TerminalKeyboardAvoidanceMetrics } from '../terminal/terminal-webview-contract'
@@ -30,29 +26,11 @@ import type {
 import { useMobileSessionTabActionTargets } from './use-mobile-session-tab-action-targets'
 import type { MobileSessionFoundationModel } from './use-mobile-session-foundation'
 
-const emptyObservations = new Map<string, never>()
-
 export function useMobileSessionScreenState(scope: MobileSessionFoundationModel) {
   const { worktreeId, hostId, initialCreateWarning } = scope
   const [terminals, setTerminals] = useState<Terminal[]>([])
   const terminalsRef = useRef<Terminal[]>([])
-  const replica = useMemo(
-    () => scope.client && mobileTerminalInterfaceReplica(scope.client),
-    [scope.client]
-  )
-  const observations = useSyncExternalStore(
-    useCallback(
-      (listener: () => void) =>
-        scope.connState === 'connected' && replica ? replica.subscribe(listener) : () => {},
-      [replica, scope.connState]
-    ),
-    replica?.read ?? (() => emptyObservations)
-  )
   const [sessionTabs, setSessionTabs] = useState<MobileSessionTab[]>([])
-  const observedSessionTabs = useMemo(
-    () => deriveMobileTerminalInterfaces(sessionTabs, observations, worktreeId),
-    [sessionTabs, observations, worktreeId]
-  )
   const sessionTabsRef = useRef<MobileSessionTab[]>([])
   const appliedSnapshotMarkerRef = useRef<AppliedSnapshotMarker>({ epoch: null, version: -1 })
   const appliedSessionTabsRevisionRef = useRef(0)
@@ -145,8 +123,7 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     terminals,
     setTerminals,
     terminalsRef,
-    sessionTabs: observedSessionTabs,
-    acceptedSessionTabs: sessionTabs,
+    sessionTabs,
     setSessionTabs,
     sessionTabsRef,
     appliedSnapshotMarkerRef,

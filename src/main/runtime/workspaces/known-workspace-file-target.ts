@@ -151,7 +151,6 @@ export abstract class OrcaRuntimeWithResolveKnownWorkspaceFileTarget extends Orc
     }
     const handle = this.createPreAllocatedTerminalHandle()
     this.handleByPtyId.set(ptyId, handle)
-    this.terminalInterfaces?.inventoryChanged()
     return handle
   }
 
@@ -198,7 +197,6 @@ export abstract class OrcaRuntimeWithResolveKnownWorkspaceFileTarget extends Orc
       this.invalidatePtyIncarnationHandle(ptyId)
     }
     this.handleByPtyId.set(ptyId, handle)
-    this.terminalInterfaces?.inventoryChanged()
     for (const leaf of this.getLeavesForPty(ptyId)) {
       this.adoptPreAllocatedHandle(leaf)
     }

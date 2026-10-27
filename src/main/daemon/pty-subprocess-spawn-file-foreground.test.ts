@@ -155,7 +155,9 @@ describe.each(['linux', 'darwin'] as const)('static spawn-file foreground on %s'
     readFresh.mockResolvedValue(rows)
     readSnapshot.mockResolvedValue(rows)
     readStrict.mockResolvedValue({ rows, capturedAgeMs: 0 })
-    expect(await handle.confirmForegroundProcess?.()).toBe('zsh')
+    const acceptPresentation = vi.fn()
+    expect(await handle.confirmForegroundProcess?.({ acceptPresentation })).toBe('zsh')
+    expect(acceptPresentation).toHaveBeenLastCalledWith('not-in-front')
     const inspection = await inspect(handle)
     expect(inspection).toMatchObject({
       foregroundProcess: null,
@@ -219,7 +221,8 @@ it('ignores stopped/background children and another terminal beneath the same ro
   rows.push({ ...rows[0], pid: 103, ppid: 100, tty: 'ttys009', command: 'claude' })
   expect(resolveSpawnFileForegroundFromRows(rows, 100)).toEqual({
     available: true,
-    processName: 'zsh'
+    processName: 'zsh',
+    shellForeground: true
   })
   expect(resolveSpawnFileForegroundFromRows(rows, 999)).toEqual({
     available: false,

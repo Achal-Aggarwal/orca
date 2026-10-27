@@ -51,6 +51,7 @@ export type RemoteForegroundEvidence =
   | ({
       verdict: 'live'
       processName: string | null
+      shellForeground?: boolean
       fence: PosixFence | WindowsFence
     } & HostObservation)
   | ({ verdict: 'unverifiable'; reason: string } & HostObservation)

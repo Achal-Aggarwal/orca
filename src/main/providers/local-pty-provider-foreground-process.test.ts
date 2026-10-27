@@ -1,3 +1,4 @@
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
 import type * as ForegroundProcess from './agent-foreground-process'
@@ -330,6 +331,9 @@ describe('LocalPtyProvider', () => {
                 scanChildProcesses: true,
                 ignoreDetached: true
               })
+              if (name === 'live young anchor' || name === 'live old anchor') {
+                expect(observed.foregroundPresentation, name).not.toBe('not-in-front')
+              }
               alone = inspectionShowsShellAlone(observed)
               return alone
             }
@@ -725,6 +729,58 @@ describe('LocalPtyProvider', () => {
   })
 
   describe('confirmForegroundProcess', () => {
+    it('carries the same paid Windows confirmation through the host owner', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const actual = await vi.importActual<typeof ForegroundProcess>('./agent-foreground-process')
+      resolveAgentForegroundProcessMock.mockImplementation(
+        actual.resolveAgentForegroundProcessWithAvailability
+      )
+      mockProc.pid = 100
+      mockProc.process = 'powershell.exe'
+      const { id, incarnationId } = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        shellOverride: 'powershell.exe'
+      })
+      assert(incarnationId, 'fixture incarnation missing')
+      const shell = {
+        pid: 100,
+        ppid: 1,
+        name: 'powershell.exe',
+        command: 'powershell.exe',
+        creationTimeMs: 100
+      }
+      fullTable.mockResolvedValue([shell])
+      identityTable.mockResolvedValue([shell])
+      readWindowsPtyJobProcessIdsMock.mockReturnValue(new Set([100]))
+      consoleMembers.mockResolvedValue(new Set([100]))
+      const boundaries = [fullTable, identityTable, consoleMembers, readWindowsPtyJobProcessIdsMock]
+      boundaries.forEach((boundary) => boundary.mockClear())
+      const legacy = await provider.confirmForegroundProcess(id)
+      const paid = boundaries.map((boundary) => boundary.mock.calls.length)
+      boundaries.forEach((boundary) => boundary.mockClear())
+      const runtime = new OrcaRuntimeService()
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: provider.getForegroundProcess.bind(provider),
+        confirmForegroundProcess: provider.confirmForegroundProcess.bind(provider)
+      })
+      runtime.registerPty(id, '/repo', null, {
+        tabId: 'windows',
+        leafId: '11111111-1111-4111-8111-111111111111',
+        incarnationId
+      })
+      const result = await runtime.confirmPtyForegroundPresentation(id)
+      expect(result.foregroundProcess).toBe(legacy)
+      expect(result.presentation).toMatchObject({
+        support: 'supported',
+        state: 'not-in-front',
+        incarnationId
+      })
+      expect(boundaries.map((boundary) => boundary.mock.calls.length)).toEqual(paid)
+    })
+
     it('drops a delayed result after the PTY exits', async () => {
       let resolveScan!: (resolution: { available: boolean; processName: string }) => void
       resolveAgentForegroundProcessMock.mockReturnValue(

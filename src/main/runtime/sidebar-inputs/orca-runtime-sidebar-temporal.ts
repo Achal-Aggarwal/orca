@@ -98,7 +98,9 @@ export abstract class OrcaRuntimeWithSidebarTemporal extends OrcaRuntimeWithDete
     super(...args)
     this.workspaceActivityFacts.revision.onChange(() => this.sidebarTemporal.noteActivityChange())
     this.store?.onUIChanged?.(() => this.sidebarTemporal.noteViewChange())
-    this.terminalRunFacts.onInput((ptyId, now) => this.terminalUse.noteTerminalUse(ptyId, now))
+    this.terminalRunFacts.onInput((ptyId, now) => {
+      this.terminalUse.noteTerminalUse(ptyId, now)
+    })
     // Before any store attaches, so its rows reach the stamps as seeds; titles flow without one.
     this.sortStamps.attachAgentTransitions(this.agentTransitions)
     // Only this layer's enabled stamps pay for byte scanning; hookless titles then reach all detector readers.

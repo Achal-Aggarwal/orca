@@ -131,7 +131,7 @@ describe('daemon foreground confirmation composes with pane tracking', () => {
     tracker.onCommandFinished()
     await vi.advanceTimersByTimeAsync(350 + 1_200 + 6_000)
 
-    expect(publish).not.toHaveBeenCalled()
+    expect(publish).toHaveBeenCalledExactlyOnceWith({ agent: null, shellForeground: false })
     expect(resolveForegroundMock).toHaveBeenCalledTimes(3)
   })
 })

@@ -1,5 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { inspectRuntimeTerminalProcess, sendRuntimePtyInput } from './runtime-terminal-inspection'
+// @vitest-environment happy-dom
+import {
+  createRuntimeTerminalInspectionFixtures,
+  liveEvidence
+} from './runtime-terminal-inspection-test-fixtures'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  inspectDesktopShownTerminal,
+  inspectRuntimeTerminalProcess,
+  sendRuntimePtyInput
+} from './runtime-terminal-inspection'
 import { recordRuntimeTerminalInputForPtyId } from './runtime-terminal-input-recording'
 import { sendRuntimePtyInputVerified } from './runtime-terminal-verified-input'
 import { CLIPBOARD_TEXT_MEASURE_YIELD_CODE_UNITS } from '../../../shared/clipboard-text'
@@ -7,10 +16,8 @@ import {
   createCompatibleRuntimeStatusResponseIfNeeded,
   type RuntimeEnvironmentCallRequest
 } from './runtime-compatibility-test-fixture'
-import { clearRuntimeCompatibilityCacheForTests } from './runtime-rpc-client'
 import { TERMINAL_INPUT_MAX_BYTES } from '../../../shared/terminal-input'
 import { useAppStore } from '../store'
-import type { RemoteForegroundEvidence } from '../../../shared/foreground-process-evidence'
 import {
   clientOnlyUnverifiableInspection,
   type ClientOnlyUnverifiableInspection
@@ -18,75 +25,20 @@ import {
 
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = `tab-1:${LEAF_ID}`
-
 function makeByteOversizedTerminalInput(): string {
   return '😀'.repeat(Math.floor(TERMINAL_INPUT_MAX_BYTES / 4) + 1)
 }
 
-function liveEvidence(ptyId: string, processName = 'bash'): RemoteForegroundEvidence {
-  return {
-    authorityGeneration: 'authority-1',
-    observationEpoch: 1,
-    capturedAgeMs: 0,
-    ptyId,
-    ptyIncarnationId: 'incarnation-1',
-    verdict: 'live',
-    processName,
-    fence: {
-      platform: 'posix',
-      shellPid: 1,
-      shellStartTime: '1',
-      tty: '/dev/pts/1',
-      foregroundPgid: 1
-    }
-  }
-}
-
 describe('runtime terminal owner routing', () => {
-  const runtimeCall = vi.fn()
-  const runtimeTransportCall = vi.fn()
-  const localWrite = vi.fn()
-  const localWriteAccepted = vi.fn()
-  const localForeground = vi.fn()
-  const localHasChildren = vi.fn()
-  const localInspect = vi.fn()
-
-  beforeEach(() => {
-    clearRuntimeCompatibilityCacheForTests()
-    vi.clearAllMocks()
-    runtimeCall.mockResolvedValue({
-      ok: true,
-      result: {
-        process: {
-          foregroundProcess: 'bash',
-          hasChildProcesses: true,
-          foregroundProcessEvidence: liveEvidence('terminal-1')
-        }
-      },
-      _meta: { runtimeId: 'runtime-1' }
-    })
-    runtimeTransportCall.mockImplementation((args: RuntimeEnvironmentCallRequest) => {
-      return createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeCall(args)
-    })
-    vi.stubGlobal('window', {
-      api: {
-        runtimeEnvironments: { call: runtimeTransportCall },
-        pty: {
-          write: localWrite,
-          writeAccepted: localWriteAccepted,
-          getForegroundProcess: localForeground,
-          hasChildProcesses: localHasChildren,
-          inspectProcess: localInspect
-        }
-      }
-    })
-    useAppStore.setState({
-      settings: { experimentalAgentHibernation: true } as never,
-      terminalLayoutsByTabId: {},
-      lastTerminalInputAtByPaneKey: {}
-    })
-  })
-
+  const {
+    runtimeCall,
+    runtimeTransportCall,
+    localWrite,
+    localWriteAccepted,
+    localForeground,
+    localHasChildren,
+    localInspect
+  } = createRuntimeTerminalInspectionFixtures()
   it('records runtime input markers even before hibernation is enabled', () => {
     useAppStore.setState({
       settings: { experimentalAgentHibernation: false } as never,
@@ -179,6 +131,44 @@ describe('runtime terminal owner routing', () => {
       timeoutMs: 15_000
     })
   })
+
+  it.each([true, false])(
+    'qualified shown read admits new SSH capability=%s once',
+    async (supported) => {
+      const id = `remote:env-show-${supported}@@terminal-shown`
+      runtimeTransportCall.mockImplementation((args: RuntimeEnvironmentCallRequest) => {
+        const status = createCompatibleRuntimeStatusResponseIfNeeded(args)
+        if (status && status.ok) {
+          status.result.capabilities = status.result.capabilities?.filter(
+            (value) => supported || value !== 'terminal.foreground-presentation.v1'
+          )
+          return status
+        }
+        return runtimeCall(args)
+      })
+      runtimeCall.mockResolvedValue({
+        ok: true,
+        result: {
+          process: {
+            foregroundProcess: 'bash',
+            hasChildProcesses: true,
+            foregroundProcessEvidence: liveEvidence('terminal-shown'),
+            presentation: {
+              support: 'supported',
+              incarnationId: 'incarnation-1',
+              version: 1,
+              state: 'not-in-front'
+            }
+          }
+        }
+      })
+      const first = inspectDesktopShownTerminal(id)
+      expect(inspectDesktopShownTerminal(id)).toBe(first)
+      await first
+      expect(runtimeCall).toHaveBeenCalledTimes(supported ? 1 : 0)
+      expect(localInspect).not.toHaveBeenCalled()
+    }
+  )
 
   it('maps an old host inspection to client-only unverifiable', async () => {
     runtimeCall.mockResolvedValue({

@@ -1,3 +1,5 @@
+import { getFirstCommandToken } from '../../shared/command-token-scanner'
+import { isShellProcess } from '../../shared/shell-process-detection'
 import { hasControllingTty } from '../../shared/posix-controlling-terminal'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
 import type {
@@ -106,6 +108,13 @@ export function resolveRemoteForegroundEvidenceFromRows(
     ...metadata,
     verdict: 'live',
     processName: candidate?.name.processName ?? null,
+    ...(!candidate &&
+    root.pgid === root.tpgid &&
+    root.stat.includes('+') &&
+    foreground.every((row) => /[TZ]/.test(row.stat)) &&
+    isShellProcess(getFirstCommandToken(root.command).replace(/^-/, ''))
+      ? { shellForeground: true }
+      : {}),
     fence
   }
 }

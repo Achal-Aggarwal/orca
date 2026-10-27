@@ -71,6 +71,7 @@ export function resolveSpawnFileForegroundFromRows(
   const selected = selectForegroundProcessCandidate(candidates, tree)
   return {
     available: name.length > 0,
+    shellForeground: !selected && isShellProcess(name),
     processName: selected
       ? resolveOuterWrapperForegroundProcess(selected.recognized, selected.candidate, tree)
       : recognizeAgentProcess(name)
@@ -86,9 +87,9 @@ export async function resolveSpawnFileForegroundProcess(
 ): Promise<AgentForegroundProcessResolution> {
   try {
     if (process.platform !== 'win32') {
-      const rows =
-        options.rows ??
-        (options.fresh ? await getFreshProcessTableSnapshot() : await getProcessTableSnapshot())
+      const rows = options.fresh
+        ? await getFreshProcessTableSnapshot()
+        : await getProcessTableSnapshot()
       return resolveSpawnFileForegroundFromRows(rows, proc.pid)
     }
     const resolution = await resolveAgentForegroundProcessWithAvailability(
@@ -105,7 +106,11 @@ export async function resolveSpawnFileForegroundProcess(
       return { available: false, processName: null }
     }
     if (members.size === 1) {
-      return { available: true, processName: fallbackProcess }
+      return {
+        available: true,
+        processName: fallbackProcess,
+        shellForeground: isShellProcess(fallbackProcess ?? '')
+      }
     }
     const rows = options.fresh
       ? await readWindowsProcessIdentityTableFresh()
@@ -118,7 +123,12 @@ export async function resolveSpawnFileForegroundProcess(
       return resolution
     }
     return candidate
-      ? { available: true, processName: candidate.name, processId: candidate.pid }
+      ? {
+          available: true,
+          processName: candidate.name,
+          processId: candidate.pid,
+          shellForeground: isShellProcess(candidate.name)
+        }
       : { available: false, processName: null }
   } catch {
     return { available: false, processName: null }

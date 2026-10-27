@@ -110,7 +110,6 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHook
           res.end(JSON.stringify(this.claudeAgentViews.receive(body)))
           return
         }
-        const captureInterfaceHook = this.terminalInterfaces.captureIngress()
         await this.initializeStatusHookOwner()
         if (!isStatusCurrent()) {
           res.writeHead(404)
@@ -181,15 +180,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHook
             this.observations.rebind(event.paneKey)
           }
           this.recordCurrentAuthorityObservation(event)
-          const enriched = this.applyNormalizedStatus(
-            event,
-            normalized.onAccepted,
-            'hook',
-            undefined,
-            undefined,
-            false,
-            captureInterfaceHook(event.paneKey, event.terminalHandle)
-          )
+          const enriched = this.applyNormalizedStatus(event, normalized.onAccepted)
           if (enriched) {
             this.checkAgentPresenceAfterHook(event, enriched)
             this.scheduleAssistantMessageRetry(source, aliasedBody, enriched)
@@ -246,9 +237,16 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHook
     }
   }
 
+  private rollbackTransportStart(): void {
+    this.server?.close()
+    this.server = null
+    this.port = 0
+    this.token = ''
+    this.endpointFileWritten = false
+  }
+
   /** Quit retains status until chat teardown reads resumable child and background work. */
   stop(options?: { keepStatus?: boolean }): void {
-    this.terminalInterfaces.stop()
     this.startup.stop()
     this.claudeAgentViews.clear()
     // Terminal status may still have a pending write while hook ingress is disabled.

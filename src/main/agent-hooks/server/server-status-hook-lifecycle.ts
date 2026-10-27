@@ -37,14 +37,6 @@ export abstract class AgentHookServerStatusHookLifecycle extends AgentHookServer
     return this.statusHookInitialization
   }
 
-  protected rollbackTransportStart(): void {
-    this.server?.close()
-    this.server = null
-    this.port = 0
-    this.token = ''
-    this.endpointFileWritten = false
-  }
-
   private async loadStatusHookOwner(): Promise<void> {
     const token = this.token
     const statusHookGeneration = this.statusHookGeneration

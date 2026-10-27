@@ -1,4 +1,3 @@
-import { TERMINAL_INTERFACE_CAPABILITY } from '../../../../shared/terminal-interface-observation'
 import {
   getRegisteredSshState,
   listRegisteredSshTargets
@@ -14,23 +13,14 @@ export const CLIENT_EVENT_METHODS = [
     name: 'runtime.clientEvents.subscribe',
     permission: 'workspace',
     params: null,
-    handler: async (
-      _params,
-      { runtime, connectionId, clientKind, clientCapabilities, caller },
-      emit
-    ) => {
+    handler: async (_params, { runtime, connectionId, clientKind }, emit) => {
       await new Promise<void>((resolve) => {
         // Mobile discards terminalSideEffects; filter per-OSC batch frames before they cross the relay.
         const unsubscribe = runtime.onClientEvent(
           (event) => {
-            if (
-              event.type !== 'terminalInterfaces' ||
-              clientCapabilities?.includes(TERMINAL_INTERFACE_CAPABILITY)
-            ) {
-              emit(event)
-            }
+            emit(event)
           },
-          { consumesTerminalSideEffects: clientKind !== 'mobile' && caller?.kind !== 'desktop' }
+          { consumesTerminalSideEffects: clientKind !== 'mobile' }
         )
 
         const seq = ++clientEventSubscriptionSeq
@@ -52,11 +42,6 @@ export const CLIENT_EVENT_METHODS = [
         for (const event of runtime.getNativeChatLaunchDraftResolutionClientEventSnapshot?.() ??
           []) {
           emit(event)
-        }
-        if (clientCapabilities?.includes(TERMINAL_INTERFACE_CAPABILITY)) {
-          for (const event of runtime.getTerminalInterfaceClientEventSnapshot()) {
-            emit(event)
-          }
         }
         const sshStates = listRegisteredSshTargets().flatMap((target) => {
           const state = getPublicSshState(getRegisteredSshState(target.id) ?? null)

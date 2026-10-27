@@ -1,5 +1,3 @@
-import { withEvidenceBudget } from './process-evidence-budget'
-export { withEvidenceBudget, PROCESS_TABLE_EVIDENCE_BUDGET_MS } from './process-evidence-budget'
 import { execFile as execFileCb } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
@@ -300,6 +298,29 @@ export async function getFreshProcessTableSnapshot(): Promise<ProcessTableRow[]>
 
 export async function getStrictProcessTableSnapshot(): Promise<ProcessTableRow[]> {
   return (await processTableReader.getSnapshot()).strict()
+}
+
+/** Evidence needs current observations, unlike identity probes that wait up to 15s. Idle command= costs ~1.15s/1,948 processes;
+ * 2s freshness ceiling minus up to 500ms cached age and transit leaves 1.2s. Slower captures fail age gates anyway
+ * (measured 4–18.6s at load 46, 2.5–9s on a 2,002-process laptop), so return unverifiable promptly. */
+export const PROCESS_TABLE_EVIDENCE_BUDGET_MS = 1_200
+
+/** Bound only this wait; leave shared identity captures running to fill the cache instead of spawning another expensive ps. */
+export async function withEvidenceBudget<T>(pending: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new ProcessTableCaptureError('capture_over_budget')),
+          PROCESS_TABLE_EVIDENCE_BUDGET_MS
+        )
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getStrictProcessTableSnapshotWithAge(): Promise<{

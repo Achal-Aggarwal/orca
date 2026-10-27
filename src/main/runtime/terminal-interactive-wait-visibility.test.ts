@@ -52,39 +52,18 @@ describe('Interactive wait visibility and terminal admission', () => {
     return `]9999;${JSON.stringify({ state, prompt: 'ship it', agentType: 'claude' })}`
   }
 
-  const cleanups: (() => void)[] = []
-
-  function restoreRealTimers(): void {
-    const errors: unknown[] = []
-    try {
-      for (const cleanup of cleanups.splice(0).toReversed()) {
-        try {
-          cleanup()
-        } catch (error) {
-          errors.push(error)
-        }
-      }
-      if (errors.length) {
-        throw new AggregateError(errors, 'Failed to stop transcript status stores')
-      }
-    } finally {
-      vi.useRealTimers()
-    }
-  }
-
   async function createPane(
     options: TranscriptPaneOptions
   ): Promise<Awaited<ReturnType<typeof createTranscriptPane>>> {
     // Use production status wiring so OSC rows reach the real hook store.
     const statusWiring = makeAgentStatusStoreWiring()
-    cleanups.push(() => statusWiring.statusStore.stop())
     return createTranscriptPane(options, statusWiring.deps)
   }
 
   // Cursor uses the same spinner title for working and waiting, so title alone cannot distinguish them.
   const CURSOR_TITLE = '⠇ Cursor Agent'
 
-  afterEach(restoreRealTimers)
+  afterEach(() => vi.useRealTimers())
 
   describe('terminal interactive-wait visibility (STA-4513, STA-3714)', () => {
     describe('cursor-agent approval menu, the case no hook reports', () => {
@@ -401,7 +380,7 @@ describe('Interactive wait visibility and terminal admission', () => {
 
         expect(probes).toBe(1)
       } finally {
-        restoreRealTimers()
+        vi.useRealTimers()
       }
     }, 20_000)
 
@@ -452,7 +431,7 @@ describe('Interactive wait visibility and terminal admission', () => {
         const show = await showing
         expect('agentWait' in show).toBe(false)
       } finally {
-        restoreRealTimers()
+        vi.useRealTimers()
       }
     }, 15_000)
 

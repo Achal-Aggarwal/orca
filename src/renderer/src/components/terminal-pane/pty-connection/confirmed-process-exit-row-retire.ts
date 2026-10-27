@@ -11,8 +11,8 @@ export function retireLiveAgentRowOnConfirmedProcessExit(
   exited: RecognizedAgentProcess
 ): void {
   const ptyId = session.transport.getPtyId()
-  // Remote rows remain execution-host owned even after accepted presentation departure.
-  if (!ptyId || isRemoteExecutionHostPtyId(ptyId)) {
+  // Why: an armed 133;D drop owns its own confirming read, and a remote pane's host owns its rows.
+  if (session.deferredCommandFinishedStatusDrop || !ptyId || isRemoteExecutionHostPtyId(ptyId)) {
     return
   }
   const entry = useAppStore.getState().agentStatusByPaneKey[session.cacheKey]

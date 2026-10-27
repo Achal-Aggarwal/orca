@@ -66,3 +66,21 @@ export function settlePendingPaneSerializer(paneKey: string, gen: number): boole
 export function hasPendingRendererSerializerForPaneKey(paneKey: string): boolean {
   return isValidPaneKey(paneKey) && pendingByPaneKey.has(paneKey)
 }
+
+export function hasRendererSerializerFromRuntimeController(ptyId: string): boolean {
+  // Renderer readiness decides whether its restore or the daemon snapshot seeds history.
+  return rendererSerializerReadiness.has(ptyId)
+}
+
+export function getRendererSerializerGenerationFromRuntimeController(ptyId: string) {
+  return rendererSerializerReadiness.generation(ptyId)
+}
+
+export function waitForRendererSerializerFromRuntimeController(
+  ptyId: string,
+  afterGeneration = 0,
+  timeoutMs?: number,
+  signal?: AbortSignal
+) {
+  return rendererSerializerReadiness.wait(ptyId, afterGeneration ?? 0, timeoutMs, signal)
+}

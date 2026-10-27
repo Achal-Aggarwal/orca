@@ -10,7 +10,7 @@ import { collectDescendantsFromIndex, getProcessTableIndex } from '../../shared/
 import {
   resolveWindowsAgentForegroundProcessWithAvailability,
   shouldInspectWindowsAgentForeground,
-  type AgentForegroundResolutionOptions as WindowsAgentForegroundResolutionOptions
+  type AgentForegroundResolutionOptions
 } from './windows-agent-foreground-process'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import {
@@ -23,9 +23,7 @@ import {
   type WindowsProcessIdentityRow
 } from '../windows/windows-process-table'
 
-export type AgentForegroundResolutionOptions = WindowsAgentForegroundResolutionOptions & {
-  rows?: readonly ProcessTableRow[]
-}
+export type { AgentForegroundResolutionOptions } from './windows-agent-foreground-process'
 export {
   resolveAgentForegroundProcessesBatch,
   resolveAgentForegroundProcessesFromIndex,
@@ -38,6 +36,7 @@ export {
 
 export type AgentForegroundProcessResolution = {
   available: boolean
+  shellForeground?: boolean
   processName: string | null
   /** Windows liveness anchor for an unambiguous recognized name; omitted for fallbacks and POSIX. */
   processId?: number
@@ -145,6 +144,7 @@ export async function resolveAgentForegroundProcessWithAvailability(
     )
     return {
       available: resolution.available,
+      ...(resolution.shellForeground === true ? { shellForeground: true } : {}),
       // A forced scan that loses the recognized fallback proves exit during confirmation.
       processName:
         resolution.processName ??
@@ -160,15 +160,22 @@ export async function resolveAgentForegroundProcessWithAvailability(
   }
 
   try {
-    const rows =
-      options.rows ??
-      (options.fresh ? await getFreshProcessTableSnapshot() : await getProcessTableSnapshot())
-    if ((options.fresh || options.rows) && !getProcessTableIndex(rows).byPid.has(shellPid)) {
+    const rows = options.fresh
+      ? await getFreshProcessTableSnapshot()
+      : await getProcessTableSnapshot()
+    if (options.fresh && !getProcessTableIndex(rows).byPid.has(shellPid)) {
       return { available: false, processName: fallbackProcess }
     }
+    const shellForeground =
+      isShellProcess(fallbackProcess ?? '') &&
+      getProcessTableIndex(rows).byPid.get(shellPid)?.stat.includes('+') === true &&
+      isShellProcess(
+        commandExecutable(getProcessTableIndex(rows).byPid.get(shellPid)?.command ?? '')
+      )
     return {
       available: true,
-      processName: resolveAgentForegroundProcessFromPs(rows, shellPid) ?? fallbackProcess
+      processName: resolveAgentForegroundProcessFromPs(rows, shellPid) ?? fallbackProcess,
+      ...(shellForeground ? { shellForeground: true } : {})
     }
   } catch {
     // Why: a failed scan cannot prove fallback ownership; callers retain the last recognized agent.

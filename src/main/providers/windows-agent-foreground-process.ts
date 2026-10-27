@@ -31,6 +31,7 @@ export type AgentForegroundResolutionOptions = {
 }
 
 export type WindowsAgentForegroundResolution = {
+  shellForeground?: boolean
   available: boolean
   processName: string | null
   /** Unambiguous recognized-name anchor; use the outer wrapper PID so embedded-child restarts do not imply exit. */
@@ -94,6 +95,7 @@ export async function resolveWindowsAgentForegroundProcessWithAvailability(
         anchorRow.command !== anchorRow.name)
   return {
     available: true,
+    shellForeground: filteredCandidates.length === 0 && isShellProcess(fallbackProcess),
     ...resolveWindowsForegroundIdentity(filteredCandidates, fallbackProcess, options.contextPaths),
     ...(anchorPidForeign ? { anchorPidForeign: true } : {})
   }

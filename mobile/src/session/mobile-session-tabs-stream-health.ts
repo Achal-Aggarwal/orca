@@ -1,52 +1,23 @@
-import { sessionTabsListRead } from './mobile-session-read-operations'
-import type { RpcClient } from '../transport/rpc-client'
 import type { RpcFailure } from '../transport/types'
+import {
+  acceptMobilePresentationFrame,
+  retractMobilePresentations
+} from '../terminal/terminal-presentation'
+import { sessionTabsListRead } from './mobile-session-read-operations'
 
-export { RECONCILIATION_INTERVAL_MS } from './mobile-session-reconciliation-cadence'
-
-export type SessionTabsApplyOutcome<Tab> =
-  | { accepted: false }
-  | { accepted: true; effectiveTabs: readonly Tab[]; applicationRevision?: number }
-
-export type SessionTabsStreamSource = 'list' | 'stream'
-
-type StreamHealth = 'probing' | 'live' | 'degraded'
-
-type RequestOwner = {
-  generation: number
-  barrier: number
-  requirement: number
-  applicationRevision: number
-}
-
-type RequestCohort = {
-  promise: Promise<void>
-  resolve: () => void
-  retry: boolean
-}
-
-type ControllerOptions<Result, Tab> = {
-  client: RpcClient
-  scope: string
-  apply: (result: Result) => SessionTabsApplyOutcome<Tab>
-  consumeAccepted: (
-    result: Result,
-    effectiveTabs: readonly Tab[],
-    source: SessionTabsStreamSource
-  ) => void
-  hasRecoveryNeed: () => boolean
-  allowRecoveryPoll?: () => boolean
-  getApplicationRevision?: () => number
-  onFetchStarted?: () => void
-  onFetchSucceeded?: (result: Result) => void
-  onFetchFailed?: (failure: RpcFailure) => void
-  onFetchErrored?: (error: unknown) => void
-}
-
-type StreamSubscription = {
-  listener: (payload: unknown) => void
-  cancel: () => void
-}
+export type {
+  SessionTabsApplyOutcome,
+  SessionTabsStreamSource
+} from './mobile-session-tabs-stream-contract'
+import type {
+  SessionTabsApplyOutcome,
+  SessionTabsStreamSource,
+  StreamHealth,
+  RequestOwner,
+  RequestCohort,
+  ControllerOptions,
+  StreamSubscription
+} from './mobile-session-tabs-stream-contract'
 
 export class MobileSessionTabsStreamHealth<Result, Tab> {
   private readonly inFlight = new Map<string, RequestCohort>()
@@ -149,6 +120,7 @@ export class MobileSessionTabsStreamHealth<Result, Tab> {
   }
 
   dispose(): void {
+    retractMobilePresentations(this.options.client, this.options.scope)
     this.disposed = true
     this.subscriptionEpoch += 1
   }
@@ -197,11 +169,15 @@ export class MobileSessionTabsStreamHealth<Result, Tab> {
       outcome.applicationRevision === undefined
         ? this.applicationRevision + 1
         : Math.max(this.applicationRevision, outcome.applicationRevision)
+    acceptMobilePresentationFrame(this.options.client, outcome.effectiveTabs, this.options.scope)
     this.options.consumeAccepted(result, outcome.effectiveTabs, source)
     return outcome
   }
 
   private invalidateStream(health: Exclude<StreamHealth, 'live'>): void {
+    if (health === 'degraded') {
+      retractMobilePresentations(this.options.client, this.options.scope)
+    }
     this.barrier += 1
     this.health = health
     this.snapshotSeen = false

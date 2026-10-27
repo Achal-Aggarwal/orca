@@ -49,7 +49,6 @@ function createHarness() {
   let nextId = 0
   vi.stubGlobal('window', {
     api: {
-      runtime: { subscribe: async () => ({ unsubscribe: () => {} }) },
       runtimeEnvironments: {
         subscribe: (args: Args, callbacks: Callbacks) =>
           subscribeRuntimeEnvironmentFromPreload(ipc, args, callbacks, () => `sub-${nextId++}`),

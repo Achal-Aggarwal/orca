@@ -206,7 +206,6 @@ describe('useIpcEvents updater integration', () => {
           onUpdate: () => () => {}
         },
         runtime: {
-          subscribe: async () => ({ unsubscribe: () => {} }),
           getTerminalFitOverrides: () => Promise.resolve([]),
           getTerminalDrivers: () => Promise.resolve([]),
           getBrowserDrivers: () => Promise.resolve([]),
