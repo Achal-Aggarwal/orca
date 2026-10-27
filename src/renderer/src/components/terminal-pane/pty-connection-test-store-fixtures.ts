@@ -14,6 +14,7 @@ export function createInitialStoreState(getState: () => StoreState): StoreState 
       'tab-1': ['tab-pty']
     },
     terminalPaneStartsByPaneKey: {},
+    terminalPaneResumeOutcomesByPaneKey: {},
     terminalLayoutsByTabId: {
       'tab-1': {
         root: { type: 'leaf', leafId: LEAF_1 },
@@ -29,11 +30,12 @@ export function createInitialStoreState(getState: () => StoreState): StoreState 
     },
     runtimeStatusByEnvironmentId: new Map(),
     repos: [{ id: 'repo1', connectionId: null, displayName: 'orca' }],
-    projects: [],
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     sshConnectionStates: new Map(),
     transientClearedAgentStatusConnectionIds: {},
     cacheTimerByKey: {},
-    // Why: terminalMainSideEffectAuthority false pins the legacy renderer byte-parser wiring this suite asserts on (onTitleChange/onBell); authority-on mode has its own tests.
+    // Pin legacy byte-parser wiring; main-authority facts have separate coverage.
     settings: {
       promptCacheTimerEnabled: true,
       experimentalTerminalAttention: true,

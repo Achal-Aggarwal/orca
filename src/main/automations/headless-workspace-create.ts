@@ -12,8 +12,7 @@ export function buildHeadlessAutomationWorkspaceName(
   runTitle: string,
   scheduledFor: number
 ): string {
-  // Why: generated workspace names must stay deterministic and short enough for
-  // cross-provider branch/path displays while still carrying the run timestamp.
+  // Bound names for branch/path displays while retaining a deterministic run timestamp.
   const slug = runTitle
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -43,6 +42,7 @@ export function buildHeadlessAutomationWorktreeCreateArgs({
     createdWithAgent: automation.agentId,
     startupAgent: automation.agentId,
     startupPrompt: automation.prompt,
+    startupSuppressUpdatePrompt: true,
     ...(automation.extraAgentArgs ? { startupExtraAgentArgs: automation.extraAgentArgs } : {}),
     telemetrySource: 'unknown',
     automationProvenance: buildAutomationWorkspaceProvenance(automation, run, repo, createdAt)

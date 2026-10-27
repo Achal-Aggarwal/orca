@@ -11,13 +11,7 @@ export function acquireCombinedDiffSectionOperation(file: OpenFile, sectionPath:
   })
 }
 
-/**
- * Resolve the SSH connectionId that owns a combined-diff section's file.
- *
- * Why: folder workspaces mix local and SSH child repos, so the workspace
- * worktree is an ambiguous owner; the section must resolve its host by the
- * concrete child-repo path or a remote read is misrouted locally (#6688).
- */
+/** Mixed local/SSH folder workspaces need child-repo path ownership to route section reads to the correct host. */
 export function getCombinedDiffSectionConnectionId(
   worktreeId: string | null,
   worktreeRootPath: string,

@@ -1,6 +1,10 @@
+import {
+  registerEditorOwnerInterpretationContracts,
+  runtimeEnvironment
+} from './editor-file-operation-owner-interpretation.spec'
 // @vitest-environment happy-dom
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import {
   assertEditorFileOperationCurrent,
@@ -24,6 +28,7 @@ import {
   makeFolderWorkspace,
   makeProjectGroup
 } from '@/components/sidebar/folder-workspace-composer-submit-fixtures'
+import { ORCA_EDITOR_FILE_SAVED_EVENT } from '@/components/editor/editor-autosave'
 import { createEditorSaveQueue } from '@/components/editor/editor-save-queue'
 import type * as RuntimeFileMutationClient from '@/runtime/runtime-file-mutation-client'
 import type { OpenFile } from '@/store/slices/editor'
@@ -39,20 +44,6 @@ vi.mock('@/runtime/runtime-file-mutation-client', async (importOriginal) => ({
 vi.mock('../../../shared/layout-owner-switch', () => ({ ORCA_LAYOUT_OWNER_IS_MAIN: true }))
 
 const worktreeId = 'repo::/remote/repo'
-
-function runtimeEnvironment(id: string, pairingRevision: number) {
-  return {
-    id,
-    name: id,
-    createdAt: 1,
-    updatedAt: pairingRevision,
-    pairingRevision,
-    lastUsedAt: null,
-    runtimeId: id,
-    preferredEndpointId: 'endpoint',
-    endpoints: [{ id: 'endpoint', kind: 'websocket' as const, label: id, endpoint: 'ws://host' }]
-  }
-}
 
 beforeEach(() => {
   writeRuntimeFile.mockReset()
@@ -106,6 +97,7 @@ describe('editor file operation owner', () => {
           finish = resolve
         })
       )
+      const events = vi.spyOn(window, 'dispatchEvent')
       const queue = createEditorSaveQueue(useAppStore)
       const pending = queue.queueSave(source, 'source text')
       await vi.waitFor(() => expect(writeRuntimeFile).toHaveBeenCalledOnce())
@@ -124,6 +116,10 @@ describe('editor file operation owner', () => {
       await expect(pending).resolves.toBe(ok ? 'written' : 'blocked-stale')
       expect(useAppStore.getState().openFiles[0]).toEqual(replacement)
       expect(useAppStore.getState().editorDrafts[source.id]).toBe('other draft')
+      expect(
+        events.mock.calls.filter(([event]) => event.type === ORCA_EDITOR_FILE_SAVED_EVENT)
+      ).toEqual([])
+      events.mockRestore()
       queue.dispose()
     }
   )
@@ -282,7 +278,7 @@ describe('editor file operation owner', () => {
       expectedSshConnectionGeneration: 7
     })
     const key = getEditorModelOwnerKey(file, initial)
-    expect(key).toBe(JSON.stringify(['hub-a', 'runtime:hub-a']))
+    expect(key).toBe(JSON.stringify(['hub-a', 'ssh:box']))
     const saved = buildEditorSessionData(
       [{ ...file, isDirty: true }],
       { [file.id]: 'retained draft' },
@@ -325,7 +321,10 @@ describe('editor file operation owner', () => {
     expect(getEditorFileOperationContext(useAppStore.getState(), restored, '')).toMatchObject(
       context
     )
-    expect(getEditorModelOwnerKey(restored, useAppStore.getState())).toBe(key)
+    expect(restored.operationProvenance).toBeUndefined()
+    expect(getEditorModelOwnerKey(restored, useAppStore.getState())).toBe(
+      JSON.stringify(['hub-a', 'runtime:hub-a'])
+    )
     let finishWrite!: (value: { ok: true }) => void
     writeRuntimeFile.mockResolvedValue({ ok: true }).mockReturnValueOnce(
       new Promise<{ ok: true }>((resolve) => {
@@ -336,6 +335,9 @@ describe('editor file operation owner', () => {
     useAppStore.getState().setLastKnownDiskSignature(restored.id, 'baseline')
     useAppStore.getState().markFileDirty(restored.id, true)
     const firstSave = queue.queueSave(useAppStore.getState().openFiles[0], 'first')
+    expect(
+      getEditorModelOwnerKey(useAppStore.getState().openFiles[0], useAppStore.getState())
+    ).toBe(key)
     await vi.waitFor(() => expect(writeRuntimeFile).toHaveBeenCalledOnce())
     expect(writeRuntimeFile.mock.calls[0][0]).toMatchObject(context)
     useAppStore.getState().setEditorDraft(restored.id, 'queued revised draft')
@@ -370,6 +372,12 @@ describe('editor file operation owner', () => {
     )
     const next = captureEditorFileOperationProvenance(useAppStore.getState(), id, 'hub-a', true)
     expect(isSameOwnedDocument({ ...file, operationProvenance: next }, file)).toBe(false)
+    const replacement = { ...file, id: 'other-host', operationProvenance: next, isDirty: false }
+    useAppStore.setState((state) => ({ openFiles: [...state.openFiles, replacement] }))
+    expect(useAppStore.getState().editorBufferIdOf[replacement.id]).not.toBe(
+      useAppStore.getState().editorBufferIdOf[file.id]
+    )
+    expect(useAppStore.getState().editorDrafts[replacement.id]).toBeUndefined()
     const other = getEditorFileOperationContext(
       useAppStore.getState(),
       { ...file, operationProvenance: next },
@@ -413,6 +421,17 @@ describe('editor file operation owner', () => {
         ]
       ])
     }))
+    const reconnected = {
+      ...file,
+      id: 'reconnected',
+      operationProvenance: incoming,
+      isDirty: false
+    }
+    useAppStore.setState((state) => ({ openFiles: [...state.openFiles, reconnected] }))
+    expect(useAppStore.getState().editorBufferIdOf[reconnected.id]).toBe(
+      useAppStore.getState().editorBufferIdOf[file.id]
+    )
+    expect(useAppStore.getState().editorDrafts[reconnected.id]).toBe('queued revised draft')
     expect(() => assertEditorFileOperationCurrent(useAppStore.getState(), id, provenance)).toThrow(
       'Reopen the file'
     )
@@ -676,3 +695,7 @@ describe('editor file operation owner', () => {
     })
   })
 })
+
+afterEach(() => vi.unstubAllGlobals())
+
+registerEditorOwnerInterpretationContracts()

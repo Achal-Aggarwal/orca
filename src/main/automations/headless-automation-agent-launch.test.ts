@@ -45,7 +45,8 @@ function harness(
       paneKey: 'tab-1:leaf-1',
       ptyId: 'pty-1',
       worktreeId: 'wt-1',
-      title: 'Nightly'
+      title: 'Nightly',
+      suppressStartupUpdatePrompt: true
     })),
     resolveManagedTerminalWorkspaceTarget: vi.fn(async () => ({
       managedWorktree: {
@@ -68,7 +69,7 @@ function harness(
       })
     ),
     deliverStartupFollowup: vi.fn(
-      async (_handle: string, _followup: { expectedProcess: string; prompt: string }) => true
+      async (_handle: string, _followup: { agent: string; prompt: string }) => true
     )
   }
   return runtime
@@ -222,7 +223,8 @@ describe('headless automation agent launch', () => {
       {
         agent: 'hermes',
         prompt: 'fix the flaky test',
-        title: 'Nightly'
+        title: 'Nightly',
+        suppressStartupUpdatePrompt: true
       },
       { worktree: { displayName: 'repo' }, repo: TARGET.repo }
     )
@@ -241,6 +243,7 @@ describe('headless automation agent launch', () => {
         agent: 'claude',
         prompt: 'fix the flaky test',
         title: 'Nightly',
+        suppressStartupUpdatePrompt: true,
         extraAgentArgs: '--model opus'
       },
       { worktree: { displayName: 'repo' }, repo: TARGET.repo }
@@ -266,7 +269,6 @@ describe('headless automation agent launch', () => {
 
     const launched = await launch(runtime, { agentId: 'aider' })
 
-    // The run is recorded while the agent is still coming up, as before.
     expect(launched.terminalPaneKey).toBe('tab-1:leaf-1')
     expect(runtime.launchAgentTerminal).toHaveBeenCalledWith(
       'id:wt-1',
@@ -275,7 +277,7 @@ describe('headless automation agent launch', () => {
     )
     expect(runtime.deliverStartupFollowup).toHaveBeenCalledTimes(1)
     expect(runtime.deliverStartupFollowup).toHaveBeenCalledWith('term_existing', {
-      expectedProcess: 'aider',
+      agent: 'aider',
       prompt: 'fix the flaky test'
     })
     finishDelivery(true)
@@ -284,15 +286,11 @@ describe('headless automation agent launch', () => {
   it('creates a new-per-run workspace agent-first with the argv prompt', async () => {
     const runtime = harness()
 
-    const launched = await launch(
-      runtime,
-      {
-        workspaceMode: 'new_per_run',
-        workspaceId: null,
-        extraAgentArgs: '--model opus'
-      },
-      { worktree: { displayName: 'repo' }, repo: TARGET.repo }
-    )
+    const launched = await launch(runtime, {
+      workspaceMode: 'new_per_run',
+      workspaceId: null,
+      extraAgentArgs: '--model opus'
+    })
 
     expect(runtime.createManagedWorktree).toHaveBeenCalledTimes(1)
     const args = runtime.createManagedWorktree.mock.calls[0]![0]
@@ -328,7 +326,7 @@ describe('headless automation agent launch', () => {
     expect(runtime.createManagedWorktree.mock.calls[0]![0]).not.toHaveProperty('startupPrompt')
     expect(runtime.deliverStartupFollowup).toHaveBeenCalledTimes(1)
     expect(runtime.deliverStartupFollowup).toHaveBeenCalledWith('term_new', {
-      expectedProcess: 'goose',
+      agent: 'goose',
       prompt: 'fix the flaky test'
     })
   })

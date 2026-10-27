@@ -16,8 +16,7 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
       session.requiresFreshWorkingForAgentTaskCompleteNotification = false
       session.agentCompletionCoordinator.observeTitleWorking()
     }
-    // Why: a new API call refreshes the prompt-cache TTL, so clear any running
-    // countdown. The timer will restart when the agent becomes idle again.
+    // New API calls refresh cache TTL; restart the countdown only at the next idle transition.
     session.deps.setCacheTimerStartedAt(session.cacheKey, null)
     session.clearPendingAgentTaskCompleteNotification()
     if (session.pendingTerminalBellNotification) {
@@ -25,24 +24,18 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
     }
   }
   session.onAgentExited = (): void => {
-    // Why: eligibility can disappear transiently during reconnect, but a
-    // confirmed shell-title transition is authoritative for native-chat exit.
+    // Transient reconnect ineligibility cannot prevent authoritative shell-title exit from native chat.
     session.deps.onAgentExitedRef.current(session.pane.leafId)
     session.clearSuppressedTitleSideEffects()
     session.clearCommandInferredPaneAgent()
     session.requestKnownWindowsShiftEnterReconfirmation()
-    // Why: when the terminal title reverts to a plain shell (e.g., "bash", "zsh"),
-    // the agent has exited. Clear any running cache timer so the sidebar doesn't
-    // show a stale countdown for a tab that no longer has an active Claude session.
+    // Clear cache countdown when title returns to shell; process/PTY lifecycle owns actual agent-row removal.
     session.deps.setCacheTimerStartedAt(session.cacheKey, null)
     session.clearTitleOnlyInterruptTimer()
     // Why: title reversion alone is not process death. The process/PTY tracker
     // owns removing agent rows when the TUI actually exits.
   }
-  // Why: inject ORCA_PANE_KEY so global Claude/Codex hooks can attribute their
-  // callbacks to the correct Orca pane without resolving worktrees from cwd.
-  // The key matches the `${tabId}:${leafId}` composite used for cacheTimerByKey
-  // and agentStatusByPaneKey. Treat it as opaque outside Orca.
+  // Inject opaque ORCA_PANE_KEY matching tabId:leafId so global hooks can attribute callbacks without cwd lookup.
   session.state = useAppStore.getState()
   session.parsedWorkspaceKey = parseWorkspaceKey(session.deps.worktreeId)
   session.restoredPtyIdForTransport =
@@ -97,18 +90,14 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
     !session.worktreeProvesLocalHost &&
     session.runtimeEnvironmentId === null &&
     session.worktreeConnectionId === undefined
-  // Why: an SSH host nested under a HUB is execution identity, not permission for the paired client to dial that host.
-  // A set id is a relay-era `ssh:` row not yet converted to its managed runtime: the pane never
-  // spawns there, the reconnect overlay owns it, and the converted row remounts the pane.
+  // HUB-nested SSH identity grants no direct dial authority; unconverted relay rows wait for the overlay to convert and remount.
   session.unservedSshTargetId =
     !session.terminalOwnerUnresolved &&
     !session.connectionOwnerHydrating &&
     session.runtimeEnvironmentId === null
       ? (session.worktreeConnectionId ?? null)
       : null
-  // Generation is part of ownership: a recovery remount must not join a spawn
-  // started by the pane instance it replaced, while StrictMode remounts keep
-  // the same generation and may still share their in-flight spawn.
+  // Recovery generations cannot join replaced spawns; StrictMode preserves generation and may share in-flight work.
   session.pendingSpawnKey = JSON.stringify([session.cacheKey, session.tabGeneration])
   session.settlePaneAttachAttempt = (status: 'success' | 'failed' | 'timed-out'): void => {
     settleTerminalPaneRecovery(session.deps.tabId, session.terminalRecoveryGeneration, status)

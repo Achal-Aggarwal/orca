@@ -8,7 +8,7 @@
  * the host a navigation named — so those, and only those, are the key.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AutomationRun } from '../../../../shared/automations-types'
 import type { AutomationAuthorityRef } from '../../../../shared/automation-owner-ref'
 import {
@@ -23,6 +23,7 @@ import {
   dispatchAutomationRunHistory
 } from './automation-row-action-dispatch'
 import {
+  getAutomationAuthorityTarget,
   getAutomationTargetFromHostId,
   listAutomationRunsForTarget,
   type AutomationHostTarget
@@ -32,6 +33,7 @@ import { automationRuntimePairingRevision } from './automation-authority-identit
 
 export type SelectedAutomationRunNavigation = {
   automationId: string
+  runId?: string | null
   hostId?: string | null
 } | null
 
@@ -43,6 +45,8 @@ export type SelectedAutomationRunHistoryOutcome = {
   ownerKey: string | null
   authority: AutomationAuthorityRef | null
   capturedOwner?: AutomationCapturedOwner
+  navigation: SelectedAutomationRunNavigation
+  reloadToken: number
   runs: AutomationRun[]
   /**
    * Non-null when the host refused or failed the read. The runs are then unknown
@@ -91,9 +95,11 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
   ) {
     const captured = capturedAutomationOwner(input.context.capturedOwners, selected.key)
     const navigationHost = navigationHostId(input.navigation, selected.automation.id)
-    const target = navigationHost
-      ? getAutomationTargetFromHostId(navigationHost)
-      : (input.legacyTarget(selected) ?? { kind: 'local' as const })
+    const target = captured.owner
+      ? getAutomationAuthorityTarget(captured.owner.authority)
+      : navigationHost
+        ? getAutomationTargetFromHostId(navigationHost)
+        : (input.legacyTarget(selected) ?? { kind: 'local' as const })
     const authority: AutomationAuthorityRef =
       captured.owner?.authority ??
       (target.kind === 'environment'
@@ -123,8 +129,15 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
   }
   const request = acquired.current
   const inputRef = useRef(input)
-  inputRef.current = input
+  useLayoutEffect(() => {
+    inputRef.current = input
+  })
   const reloadToken = input.reloadToken
+  const navigation =
+    input.navigation?.runId && input.navigation.automationId === request?.selected.automation.id
+      ? input.navigation
+      : null
+  const settled = useRef<{ request: typeof request; reloadToken: number } | null>(null)
 
   useEffect(() => {
     const { onSettled } = inputRef.current
@@ -134,11 +147,21 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
         rowKey: null,
         ownerKey: null,
         authority: null,
+        navigation: null,
+        reloadToken,
         runs: [],
         notice: null
       })
       return
     }
+    if (
+      !navigation &&
+      settled.current?.request === request &&
+      settled.current.reloadToken === reloadToken
+    ) {
+      return
+    }
+    settled.current = null
     let cancelled = false
     const { selected, context, captured, target, authority: rowAuthority } = request
     const automationId = selected.automation.id
@@ -158,6 +181,7 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
       if (cancelled) {
         return
       }
+      settled.current = { request, reloadToken }
       // A refused or failed read still settles: leaving the previous automation's
       // ID in place strands anything waiting on this one and shows its runs as zero.
       onSettled(
@@ -167,6 +191,8 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
               rowKey,
               ownerKey: owner,
               authority: rowAuthority,
+              navigation,
+              reloadToken,
               ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
               runs: result.value,
               notice: null
@@ -176,6 +202,8 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
               rowKey,
               ownerKey: owner,
               authority: rowAuthority,
+              navigation,
+              reloadToken,
               ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
               runs:
                 inputRef.current.retained?.rowKey === rowKey &&
@@ -189,5 +217,5 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
     return () => {
       cancelled = true
     }
-  }, [request, reloadToken])
+  }, [request, reloadToken, navigation])
 }

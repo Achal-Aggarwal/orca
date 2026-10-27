@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { readEditorPanelFileContent } from './editor-panel-file-reads'
 import type { OpenFile } from '@/store/slices/editor'
 import { getConnectionIdForFile, isWorktreeConnectionResolved } from '@/lib/connection-context'
 import { useAppStore } from '@/store'
@@ -15,9 +16,7 @@ import {
 import {
   WORKTREE_OWNER_NOT_READY_ERROR,
   type EditorPanelFileContentLoader,
-  type UseEditorPanelFileContentLoaderParams,
-  type FileContent,
-  type InFlightContentRead
+  type UseEditorPanelFileContentLoaderParams
 } from './editor-panel-content-types'
 import type { EditorPanelContentLoadOptions } from './useEditorPanelExternalContentEvents'
 import { migrateRestoredEditorFileOwner } from './migrate-restored-editor-file-owner'
@@ -25,6 +24,8 @@ import { findRestoredEditorWorkspaceRuntimeOwner } from './restored-editor-works
 import type { RuntimeWorkspaceFileRoute } from '@/lib/runtime-workspace-file-route'
 import { editorTabFileAccess, isClientLocalReadOnlyTab } from '@/lib/local-file-access'
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
+import { grantRestoredHostFile } from './restored-host-file-grant'
+import { captureRuntimeEnvironmentRequestRevision } from '@/runtime/runtime-environment-revision'
 import { chatScratchFileAddress } from '@/runtime/runtime-chat-scratch-file-address'
 import { stampCleanTabDiskBaseline } from './editor-clean-tab-disk-baseline'
 import {
@@ -36,8 +37,6 @@ import {
   acquireEditorFileOperation,
   isSameEditorFileOperationIdentity
 } from '@/lib/editor-file-operation-owner'
-
-const inFlightFileReads = new Map<string, InFlightContentRead<FileContent>>()
 
 function inFlightReadKey(connectionId: string | undefined, filePath: string): string {
   return `${connectionId ?? ''}::${filePath}`
@@ -101,8 +100,7 @@ export function useEditorPanelFileContentLoader({
         }
         const isLiveTailLogTab =
           restoredOpenFile?.readOnly === true && restoredOpenFile.liveTail === true
-        // Why: these tabs name a file on this client, so the worktree's SSH or runtime owner must
-        // never be inferred for them (a stamp still routes).
+        // Client-local tabs must not inherit workspace SSH/runtime ownership; explicit stamps still route.
         const isClientLocalTab = restoredOpenFile
           ? isClientLocalReadOnlyTab(restoredOpenFile)
           : false
@@ -118,6 +116,8 @@ export function useEditorPanelFileContentLoader({
           readTarget.kind === 'environment' ? readTarget.environmentId : undefined
         readConnectionId = connectionId
         let readWorktreeId = worktreeId
+        let readGrantId = restoredOpenFile?.terminalArtifactGrantId
+        let readGrantPairing: number | undefined
         let readRelativePath = restoredOpenFile?.relativePath ?? relativePath
         // Re-owning re-keys the tab, which starts a fresh load under the new owner.
         const reownRestoredFile = async (
@@ -160,15 +160,11 @@ export function useEditorPanelFileContentLoader({
           !readOwnerEnvironmentId &&
           !isWorktreeConnectionResolved(worktreeId ?? null)
         ) {
-          // Why: the backing repo hasn't hydrated yet (SSH still connecting), so
-          // we can't tell local from remote. Reading locally would deny a remote
-          // path with a terminal "access denied" (#6648); fail retryably instead.
+          // Unhydrated owners may be remote; fail retryably rather than turning a bad client-local read into terminal access denial.
           throw new Error(WORKTREE_OWNER_NOT_READY_ERROR)
         }
         if (restoredOpenFile?.filePath === filePath && restoredOpenFile.relativePath === filePath) {
-          // Why: an out-of-worktree absolute path in an SSH workspace belongs to the
-          // remote host, so the resolved connection owns it even when the tab predates
-          // (or was opened outside) the terminal-link path that stamps the target id.
+          // Absolute paths in SSH workspaces belong to their resolved host, including legacy tabs without terminal-link stamps.
           const externalSshOwnerId =
             restoredOpenFile.externalSshTargetId?.trim() ||
             (isClientLocalTab ? undefined : connectionId)
@@ -193,14 +189,27 @@ export function useEditorPanelFileContentLoader({
             if (
               runtimeEnvironmentId &&
               !route &&
-              !restoredOpenFile.terminalArtifactGrantId &&
+              !readGrantId &&
               !chatScratchFileAddress(filePath)
             ) {
-              throw new Error('External local files are not available for remote workspaces.')
+              readGrantPairing =
+                readTarget.kind === 'environment'
+                  ? captureRuntimeEnvironmentRequestRevision(readTarget.environmentId)
+                  : undefined
+              const restored = await grantRestoredHostFile(
+                readTarget,
+                readWorktreeId,
+                filePath,
+                readGrantPairing
+              )
+              readGrantId = restored.grantId
+              // Why: a read-only grant stays off the tab, so its save asks the host again and is refused.
+              if (!restored.readOnly) {
+                useAppStore.getState().setTerminalArtifactGrant(id, readGrantId)
+              }
             }
             if (!externalSshOwnerId) {
-              // Why: a client-local external tab names a client path, so this read must stay off
-              // the worktree's SSH host.
+              // Client-local external tabs must stay off the workspace’s SSH host.
               readConnectionId = undefined
             }
           }
@@ -224,20 +233,9 @@ export function useEditorPanelFileContentLoader({
           !restoredOpenFile?.isDirty &&
           (!/\.(csv|tsv)$/i.test(filePath) || useAppStore.getState().editorDrafts[id] === undefined)
         // Keep file authorization and editable drafts isolated between concurrent reads.
-        const key = `${inFlightReadKey(readScope, filePath)}::${JSON.stringify(acquisition?.file.operationProvenance)}::${access?.kind ?? ''}${allowPagedPreview ? '' : '::editable'}`
-        const registeredRead = inFlightFileReads.get(key)
-        if (
-          options?.force &&
-          (options.externalEventGeneration === undefined ||
-            registeredRead?.externalEventGeneration !== options.externalEventGeneration)
-        ) {
-          // Why: forced reloads must not attach to a currently registered read
-          // started before the external change landed.
-          inFlightFileReads.delete(key)
-        }
-        let pending = inFlightFileReads.get(key)
-        if (!pending) {
-          const promise = readEditorCsvFileContent(
+        const key = `${inFlightReadKey(readScope, filePath)}::${JSON.stringify(acquisition?.file.operationProvenance)}::${access?.kind ?? ''}${allowPagedPreview ? '' : '::editable'}${options?.wakeWslDistro ? '::wake' : ''}`
+        const result = await readEditorPanelFileContent(key, options, () =>
+          readEditorCsvFileContent(
             {
               target: readTarget,
               filePath,
@@ -247,20 +245,14 @@ export function useEditorPanelFileContentLoader({
               expectedExternalSshTargetId: restoredOpenFile?.externalSshTargetId,
               includeLocalLogMetadata: isLiveTailLogTab,
               access,
-              terminalArtifactGrantId: restoredOpenFile?.terminalArtifactGrantId,
-              pageOversizedBinary: true
+              terminalArtifactGrantId: readGrantId,
+              expectedEnvironmentPairingRevision: readGrantPairing,
+              pageOversizedBinary: true,
+              ...(options?.wakeWslDistro ? { wakeWslDistro: true } : {})
             },
             allowPagedPreview
           )
-          pending = { externalEventGeneration: options?.externalEventGeneration, promise }
-          inFlightFileReads.set(key, pending)
-          queueMicrotask(() => {
-            if (inFlightFileReads.get(key) === pending) {
-              inFlightFileReads.delete(key)
-            }
-          })
-        }
-        const result = await pending.promise
+        )
         if (!requestCurrent()) {
           return
         }

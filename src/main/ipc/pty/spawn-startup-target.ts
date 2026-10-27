@@ -1,5 +1,3 @@
-// Where a new PTY starts and in which shell/runtime, for both the window and the host spawn lane.
-
 import {
   isWslShellName,
   type LocalWindowsTerminalRuntimeOptions
@@ -26,7 +24,7 @@ import { wslUncDirectoryExistsAsync } from '../../wsl'
 import { getCodexSelectionTargetForPty } from './host-env/codex-home'
 import { probeLocalStartupCwdDirectory } from './host-env/startup-cwd-directory-exists'
 
-// TEMPORARY (row 13b removes it): the window uses the renderer's runtime; the host reads the store.
+// Window runtime comes from the renderer; host runtime comes from persistence.
 export type PtySpawnProjectRuntimeSource =
   | { kind: 'sent'; projectRuntime: ProjectExecutionRuntimeResolution | undefined }
   | {
@@ -230,8 +228,7 @@ async function resolveStartupCwdWithFallback(
     onFallbackToWorkspaceRoot
   })
   if (allowMissingCwdFallback) {
-    // Why replay: the shared resolver asks synchronously, so probe each folder it asks about off
-    // the main thread, in its order, until a dry run asks about none it lacks.
+    // Replay synchronous resolution, asynchronously probing each requested folder until no unknown directory remains.
     for (;;) {
       unprobedDirectory = undefined
       resolveStartupCwd(worktreeId, args.cwd, missingDirFallback())

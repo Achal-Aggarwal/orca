@@ -8,13 +8,10 @@ import {
 import type { AppState } from './types'
 import { getFolderWorkspaceWorktree } from './slices/worktrees/listing/detected-worktree-meta'
 
-// The one read path for workspace records. Backed by today's store fields; readers outside the
-// writers go through here (config/scripts/check-workspace-record-read-ratchet.mjs).
+// Route workspace readers here; check-workspace-record-read-ratchet.mjs enforces this boundary.
 
 export type WorkspaceRecordState = Pick<AppState, 'worktreesByRepo' | 'folderWorkspaces'> &
   Partial<Pick<AppState, 'repos' | 'projectGroups'>>
-
-// ─── Compatibility views ─────────────────────────────────────────────
 
 /** Git worktrees per repo id, in listing order. */
 export function selectWorktreesByRepo(

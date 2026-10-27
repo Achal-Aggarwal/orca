@@ -169,7 +169,7 @@ export async function loadAutomationAgents(
     requireCurrent()
     const settings = automationAgentSettingsRead.interpret(settingsReply).settings
     const detected = refresh
-      ? preflightRefreshAgentsRead.interpret(detectedReply).agents
+      ? preflightRefreshAgentsRead.interpret(detectedReply)
       : preflightDetectAgentsRead.interpret(detectedReply)
     return buildMobileNewTabAgentOptions(settings, detected)
   } finally {

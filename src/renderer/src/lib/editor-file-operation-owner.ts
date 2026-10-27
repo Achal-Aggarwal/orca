@@ -8,6 +8,7 @@ import {
 export {
   captureEditorFileOperationProvenance,
   assertEditorFileOperationCurrent,
+  resolveEditorOwnerRoute,
   type EditorFileOperationProvenance
 } from './editor-file-operation-provenance'
 import {

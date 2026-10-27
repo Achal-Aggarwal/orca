@@ -1,5 +1,7 @@
 import { bindDeferredRpcOperation, defineRpcOperation } from './rpc-operation'
 import type { RpcCompatibleReader } from './rpc-operation-contract'
+import { normalizeSourceControlGroupOrder } from '../../../src/shared/source-control-group-order'
+import type { SourceControlGroupOrder } from '../../../src/shared/ui-chrome-types'
 
 function settingsMember(raw: unknown): unknown {
   const boxed: { readonly settings?: unknown } | null | undefined = raw == null ? raw : Object(raw)
@@ -13,7 +15,7 @@ function settingsField(settings: unknown, key: string): unknown {
   return boxed[key]
 }
 
-// Settings remain opaque: callers historically retain fields without validating their shapes.
+// Keep settings opaque because callers retain fields without validating their shapes.
 const settingsReader: RpcCompatibleReader<unknown, 'settings-member', unknown> = (raw) => ({
   compatible: true,
   variant: 'settings-member',
@@ -95,8 +97,7 @@ const copyTrimsGutterReader: RpcCompatibleReader<unknown, 'copy-trims-gutter', b
   return {
     compatible: true,
     variant: 'copy-trims-gutter',
-    // Why `!== false`: a host predating the setting sends no key, and the
-    // desktop default is on, so absence must read as on.
+    // Older hosts omit this setting; absence inherits the desktop’s enabled default.
     value: trims !== false,
     salvage: { droppedPaths: [], droppedCount: 0 }
   }
@@ -118,7 +119,7 @@ type HostListSettings = {
   newCardStyle: boolean
 }
 
-// Why `=== true` throughout: a host predating a setting sends no key, and each desktop default is off.
+// Older hosts omit these settings; only explicit true overrides their disabled defaults.
 const hostListSettingsReader: RpcCompatibleReader<
   unknown,
   'host-list-settings',
@@ -138,7 +139,6 @@ const hostListSettingsReader: RpcCompatibleReader<
   }
 }
 
-/** The desktop settings the workspace list mirrors: pinned placement, Card layout and card style. */
 export const hostListSettingsRead = bindDeferredRpcOperation(
   defineRpcOperation({
     name: 'settings.host-list-settings-or-skip',
@@ -146,6 +146,33 @@ export const hostListSettingsRead = bindDeferredRpcOperation(
     acceptance: 'success-result-or-skip',
     barrier: 'after-caller-barrier',
     read: hostListSettingsReader
+  })
+)
+
+// Older hosts omit the setting; the shared normalizer falls back to desktop's default order.
+const sourceControlGroupOrderReader: RpcCompatibleReader<
+  unknown,
+  'source-control-group-order',
+  SourceControlGroupOrder
+> = (raw) => {
+  const settings = raw == null ? undefined : settingsMember(raw)
+  return {
+    compatible: true,
+    variant: 'source-control-group-order',
+    value: normalizeSourceControlGroupOrder(
+      settings == null ? undefined : settingsField(settings, 'sourceControlGroupOrder')
+    ),
+    salvage: { droppedPaths: [], droppedCount: 0 }
+  }
+}
+
+export const sourceControlGroupOrderRead = bindDeferredRpcOperation(
+  defineRpcOperation({
+    name: 'settings.source-control-group-order-or-skip',
+    method: 'settings.get',
+    acceptance: 'success-result-or-skip',
+    barrier: 'after-caller-barrier',
+    read: sourceControlGroupOrderReader
   })
 )
 

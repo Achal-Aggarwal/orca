@@ -1,11 +1,6 @@
 // @vitest-environment happy-dom
 
-/**
- * A refused history read is an answer too. It used to be dropped on the floor,
- * which left the previous automation's ID in place — so the pane showed zero
- * runs for a question the host never answered, and anything waiting on this
- * read waited forever.
- */
+/** Settle refused history reads explicitly so previous selection cannot masquerade as zero runs and waiters always complete. */
 
 import type * as AutomationRowActionDispatch from './automation-row-action-dispatch'
 import { act } from 'react'
@@ -22,6 +17,7 @@ import {
 } from '@/runtime/runtime-rpc-client'
 import { makeAutomation, makeRun } from './automations-page-fixtures'
 import { automationListRowKey, type AutomationListRow } from './automation-list-row-identity'
+import * as automationHostClient from './automation-host-client'
 import {
   useSelectedAutomationRunHistory,
   type SelectedAutomationRunHistoryInput,
@@ -240,6 +236,8 @@ describe('useSelectedAutomationRunHistory', () => {
         rowKey: DESKTOP_ROW.key,
         ownerKey: 'uncaptured',
         authority: { kind: 'desktop' },
+        navigation: null,
+        reloadToken: 0,
         runs: [],
         notice: { message: 'web-01 is not connected', recovery: 'reconnect', severity: 'failure' }
       }
@@ -276,6 +274,8 @@ describe('useSelectedAutomationRunHistory', () => {
         rowKey: DESKTOP_ROW.key,
         ownerKey: 'uncaptured',
         authority: { kind: 'desktop' },
+        navigation: null,
+        reloadToken: 0,
         runs,
         notice: null
       }
@@ -301,6 +301,8 @@ describe('useSelectedAutomationRunHistory', () => {
       rowKey: DESKTOP_ROW.key,
       ownerKey: 'uncaptured',
       authority: { kind: 'desktop' },
+      navigation: null,
+      reloadToken: 1,
       runs: [],
       notice: null
     })
@@ -321,11 +323,41 @@ describe('useSelectedAutomationRunHistory', () => {
 
     await render(input)
 
-    // The ID alone is unique only inside one authority, so the outcome carries
-    // the owner and the pane can refuse a result read for a different host.
+    // Carry owner identity with outcomes so the pane can reject a same-ID result from another host.
     expect(settled(input).at(-1)?.ownerKey).toBe(ownerKey(owner))
     expect(settled(input).at(-1)?.authority).toEqual(owner.authority)
     expect(mocks.dispatch.mock.calls[0][3]).toEqual(owner.authority)
+  })
+
+  it('keeps the requested overview host for a row without a captured owner', async () => {
+    // SAFETY: this acquisition reads only the runtime's identity and pairing revision.
+    useAppStore.setState({
+      runtimeEnvironments: [{ id: 'gpu', createdAt: 1, pairingRevision: 7 }] as ReturnType<
+        typeof useAppStore.getState
+      >['runtimeEnvironments']
+    })
+    const runs = [makeRun()]
+    const listRuns = vi
+      .spyOn(automationHostClient, 'listAutomationRunsForTarget')
+      .mockResolvedValueOnce(runs)
+    mocks.dispatch.mockImplementationOnce(
+      async (_context: unknown, _row: unknown, legacy: () => Promise<AutomationRun[]>) => ({
+        ok: true,
+        value: await legacy()
+      })
+    )
+    const input = makeInput({
+      navigation: { automationId: 'a-1', runId: null, hostId: 'runtime:gpu' }
+    })
+
+    try {
+      await render(input)
+
+      expect(listRuns).toHaveBeenCalledWith({ kind: 'environment', environmentId: 'gpu' }, 'a-1', 7)
+      expect(settled(input).at(-1)?.runs).toEqual(runs)
+    } finally {
+      listRuns.mockRestore()
+    }
   })
 
   it('clears the pane when nothing is selected', async () => {
@@ -334,8 +366,90 @@ describe('useSelectedAutomationRunHistory', () => {
     await render(input)
 
     expect(settled(input)).toEqual([
-      { automationId: null, rowKey: null, ownerKey: null, authority: null, runs: [], notice: null }
+      {
+        automationId: null,
+        rowKey: null,
+        ownerKey: null,
+        authority: null,
+        navigation: null,
+        reloadToken: 0,
+        runs: [],
+        notice: null
+      }
     ])
     expect(mocks.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('refreshes each navigation and keeps its answer when navigation is consumed', async () => {
+    mocks.dispatch.mockResolvedValue({ ok: true, value: [] })
+    const input = makeInput()
+    const rerender = await render(input)
+    const navigation = { automationId: 'a-1', runId: 'run-27' }
+    const runs = [makeRun({ id: navigation.runId })]
+    mocks.dispatch.mockResolvedValue({ ok: true, value: runs })
+
+    await rerender({ ...input, navigation })
+
+    expect(settled(input).at(-1)?.runs).toEqual(runs)
+    expect(settled(input).at(-1)?.navigation).toBe(navigation)
+    expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+
+    await rerender(input)
+    expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+
+    const repeatedNavigation = { ...navigation }
+    await rerender({ ...input, navigation: repeatedNavigation })
+    expect(mocks.dispatch).toHaveBeenCalledTimes(3)
+    expect(settled(input).at(-1)?.navigation).toBe(repeatedNavigation)
+  })
+
+  it('ignores a previous navigation that finishes after a newer navigation', async () => {
+    const obsolete = Promise.withResolvers<{ ok: true; value: AutomationRun[] }>()
+    const current = Promise.withResolvers<{ ok: true; value: AutomationRun[] }>()
+    mocks.dispatch.mockReturnValueOnce(obsolete.promise).mockReturnValueOnce(current.promise)
+    const firstNavigation = { automationId: 'a-1', runId: 'run-26' }
+    const input = makeInput({ navigation: firstNavigation })
+    const rerender = await render(input)
+    const secondNavigation = { automationId: 'a-1', runId: 'run-27' }
+    await rerender({ ...input, navigation: secondNavigation })
+
+    await act(async () => {
+      current.resolve({ ok: true, value: [makeRun({ id: secondNavigation.runId })] })
+    })
+    await act(async () => {
+      obsolete.resolve({ ok: true, value: [makeRun({ id: firstNavigation.runId })] })
+    })
+
+    expect(settled(input)).toHaveLength(1)
+    expect(settled(input)[0]?.navigation).toBe(secondNavigation)
+    expect(settled(input)[0]?.runs[0]?.id).toBe('run-27')
+  })
+
+  it('refreshes a reselected row after an intervening read was cancelled', async () => {
+    const obsolete = Promise.withResolvers<{ ok: true; value: AutomationRun[] }>()
+    const oldRun = makeRun({ id: 'run-26' })
+    const freshRun = makeRun({ id: 'run-27' })
+    mocks.dispatch
+      .mockResolvedValueOnce({ ok: true, value: [oldRun] })
+      .mockReturnValueOnce(obsolete.promise)
+      .mockResolvedValueOnce({ ok: true, value: [freshRun, oldRun] })
+    const input = makeInput()
+    const rerender = await render(input)
+
+    await rerender({
+      ...input,
+      selected: {
+        ...DESKTOP_ROW,
+        key: automationListRowKey('host:desktop|self', 'a-2'),
+        automation: makeAutomation({ id: 'a-2' })
+      }
+    })
+    await rerender(input)
+    await act(async () => {
+      obsolete.resolve({ ok: true, value: [makeRun({ automationId: 'a-2' })] })
+    })
+
+    expect(mocks.dispatch).toHaveBeenCalledTimes(3)
+    expect(settled(input).at(-1)?.runs).toEqual([freshRun, oldRun])
   })
 })

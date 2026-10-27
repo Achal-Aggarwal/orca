@@ -8,7 +8,7 @@ import type {
   AutomationOwnerRef
 } from '../../../../shared/automation-owner-ref'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime-pty-id'
+import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { toWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
 import { makeAutomation, makeAutomationListRow, makeRun } from './automations-page-fixtures'
 import {
@@ -644,5 +644,18 @@ describe('historical affordance, physical owner, exact pane and serving authorit
     expect(current.list.selectedAutomationRunsWithWorkspaceNames[0].workspaceDisplayName).toBe(
       'Server name'
     )
+  })
+
+  it('asks the server to open a run whose pane it slept, PTY id dropped', async () => {
+    mocks.state = storeState(false)
+
+    openRun({ ...run, terminalPtyId: null })
+    await vi.waitFor(() => expect(mocks.activateWebRuntimeSessionTab).toHaveBeenCalled())
+
+    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith(WT)
+    expect(mocks.activateWebRuntimeSessionTab).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeId: WT, tabId: HOST_TAB, environmentId: ENV, leafId: LEAF })
+    )
+    expect(mocks.toastMessage).not.toHaveBeenCalled()
   })
 })

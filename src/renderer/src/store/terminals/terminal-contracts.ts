@@ -42,4 +42,6 @@ export type HydrateWorkspaceSessionOptions = {
   contestedHostWorkspaceSessions?: HostSessionSlices
   /** Partition each restored session key was read from; omitted leaves the store's copy. */
   contestedPrimaryHostBySessionKey?: Record<string, ExecutionHostId>
+  /** Runtime partitions the cold read loaded; omitted leaves the store's copy. */
+  hydratedRuntimeSessionHostIds?: ExecutionHostId[]
 } & WorkspaceSessionHydrationOptions

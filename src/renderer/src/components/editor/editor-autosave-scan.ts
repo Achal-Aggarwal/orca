@@ -1,89 +1,68 @@
 import type { OpenFile } from '@/store/slices/editor'
-import type { AppStoreApi, EditorSaveKeys, EditorSaveQueue } from './editor-save-queue'
-import type { acquireEditorFileOperation } from '@/lib/editor-file-operation-owner'
+import type { AppStoreApi } from './editor-save-queue'
+import type { EditorSaveRequest } from './editor-save-slots'
+import type { EditorSaveResult, EditorSaveTrigger } from './editor-save-disk-precondition'
 import type { AutoSaveHolds } from './editor-autosave-holds'
-import {
-  canAutoSaveOpenFile,
-  isAutosaveSuspendedForFile,
-  normalizeAutoSaveDelayMs
-} from './editor-autosave'
+import { normalizeAutoSaveDelayMs } from './editor-autosave'
+import { editorAutoSaveDueRecords } from './editor-autosave-due-records'
+import { releaseNonUtf8PausesWithoutDirtyTab } from './editor-non-utf8-autosave-pause'
 
 export function createEditorAutoSaveScan(
   store: AppStoreApi,
-  keys: EditorSaveKeys,
   holds: AutoSaveHolds,
-  autoSaveTimers: Map<string, number>,
-  autoSaveScheduledContent: Map<string, string>,
-  clearScheduledAutoSave: (key: string) => void,
-  captureSave: (file: OpenFile) => {
-    operation?: ReturnType<typeof acquireEditorFileOperation>
-    error?: unknown
-  },
-  queueSave: EditorSaveQueue['queueSave']
+  timers: Map<string, number>,
+  scheduledContent: Map<string, string>,
+  clearScheduled: (key: string) => void,
+  capture: (file: OpenFile, draft: string, trigger: EditorSaveTrigger) => EditorSaveRequest,
+  enqueue: (request: EditorSaveRequest) => Promise<EditorSaveResult>
 ): () => void {
-  return (): void => {
+  const scanAutoSave = (): void => {
     const state = store.getState()
     holds.flagOverdue(state)
-    const openFilesByKey = new Map(
-      state.openFiles.map((file) => [keys.schedule(state, file.id), file])
-    )
-
-    for (const key of Array.from(autoSaveTimers.keys())) {
-      const file = openFilesByKey.get(key)
-      const draft = file ? state.editorDrafts[file.id] : undefined
-      const shouldKeepTimer =
-        state.settings?.editorAutoSave &&
-        file &&
-        file.isDirty &&
-        canAutoSaveOpenFile(file) &&
-        // Why: suspension holds until the user picks a side via the banner (or saves manually).
-        !isAutosaveSuspendedForFile(file) &&
-        !holds.isHeld(state, file) &&
-        draft !== undefined
-      if (!shouldKeepTimer) {
-        clearScheduledAutoSave(key)
+    releaseNonUtf8PausesWithoutDirtyTab(state.openFiles)
+    const due = editorAutoSaveDueRecords(state, holds.isHeld)
+    for (const key of timers.keys()) {
+      if (!due.has(key)) {
+        clearScheduled(key)
       }
     }
-
-    if (!state.settings?.editorAutoSave) {
-      return
-    }
-
-    const autoSaveDelayMs = normalizeAutoSaveDelayMs(state.settings.editorAutoSaveDelayMs)
-    for (const file of state.openFiles) {
-      const key = keys.schedule(state, file.id)
-      const draft = state.editorDrafts[file.id]
-      if (
-        !file.isDirty ||
-        draft === undefined ||
-        !canAutoSaveOpenFile(file) ||
-        isAutosaveSuspendedForFile(file) ||
-        holds.isHeld(state, file)
-      ) {
-        clearScheduledAutoSave(key)
+    const delay = normalizeAutoSaveDelayMs(state.settings?.editorAutoSaveDelayMs)
+    for (const [key, { file, draft }] of due) {
+      if (timers.has(key) && scheduledContent.get(key) === draft) {
         continue
       }
-
-      if (autoSaveTimers.has(key) && autoSaveScheduledContent.get(key) === draft) {
-        continue
-      }
-
-      const acquisition = captureSave(file)
-
-      clearScheduledAutoSave(key)
-      autoSaveScheduledContent.set(key, draft)
-      const timerId = window.setTimeout(() => {
-        autoSaveTimers.delete(key)
-        autoSaveScheduledContent.delete(key)
-        if (!acquisition.operation) {
-          console.error('[editor] autosave failed', acquisition.error)
-          return
-        }
-        void queueSave(acquisition.operation.file, draft, 'autosave').catch((error) => {
-          console.error('[editor] autosave failed', error)
-        })
-      }, autoSaveDelayMs)
-      autoSaveTimers.set(key, timerId)
+      const request = capture(file, draft, 'autosave')
+      const currentDraft = store.getState().editorDrafts[request.fileId] ?? draft
+      clearScheduled(key)
+      clearScheduled(request.recordId)
+      scheduledContent.set(request.recordId, currentDraft)
+      timers.set(
+        request.recordId,
+        window.setTimeout(() => {
+          timers.delete(request.recordId)
+          scheduledContent.delete(request.recordId)
+          void enqueue(request).catch((error) => console.error('[editor] autosave failed', error))
+        }, delay)
+      )
     }
   }
+
+  let scanningAutoSave = false
+  let autoSaveScanRequested = false
+  const syncAutoSave = (): void => {
+    autoSaveScanRequested = true
+    if (scanningAutoSave) {
+      return
+    }
+    scanningAutoSave = true
+    try {
+      do {
+        autoSaveScanRequested = false
+        scanAutoSave()
+      } while (autoSaveScanRequested)
+    } finally {
+      scanningAutoSave = false
+    }
+  }
+  return syncAutoSave
 }

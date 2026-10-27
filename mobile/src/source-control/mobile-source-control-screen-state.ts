@@ -24,6 +24,7 @@ import {
   canOpenMobileGitStatusEntry,
   isMobileGitDiscardableEntry,
   isMobileGitStageableEntry,
+  isMobileGitUnstageableEntry,
   type MobileGitFileStatus,
   type MobileGitStatusEntry
 } from './mobile-git-status'
@@ -53,13 +54,13 @@ export type MobileGitStatusEntryView = MobileGitStatusEntry & {
   canDiscard: boolean
   canOpen: boolean
   canStage: boolean
+  canUnstage: boolean
   discardActionId: string
   stageActionId: string
   unstageActionId: string
 }
 
-// Decorate raw status entries with the row-level capability/action-id fields the
-// file list needs. Opener guards must use the same canOpen rule.
+// File openers must use the same row canOpen rule as the list.
 export function buildMobileGitStatusEntryViews(
   entries: readonly MobileGitStatusEntry[]
 ): MobileGitStatusEntryView[] {
@@ -68,6 +69,7 @@ export function buildMobileGitStatusEntryViews(
     canDiscard: isMobileGitDiscardableEntry(entry),
     canOpen: canOpenMobileGitStatusEntry(entry),
     canStage: isMobileGitStageableEntry(entry),
+    canUnstage: isMobileGitUnstageableEntry(entry),
     discardActionId: `discard:${entry.path}`,
     stageActionId: `stage:${entry.path}`,
     unstageActionId: `unstage:${entry.path}`

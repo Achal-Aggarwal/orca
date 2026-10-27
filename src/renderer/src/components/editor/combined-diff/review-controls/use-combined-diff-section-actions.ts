@@ -19,6 +19,8 @@ import type { DiffSection } from '../../diff-section-types'
 import type { DiffSectionItemProps } from '../../diff-section-item-props'
 import { getDiskBaselineSignature } from '../../../../../../shared/disk-baseline-signature'
 import { writeEditorSave } from '../../editor-save-disk-precondition'
+import { withEditorFileWriteLock } from '../../editor-file-write-lock'
+import { editorPathHoldKey } from '../../editor-autosave-holds'
 
 export type CombinedDiffSectionActions = {
   handleSectionSaveRef: DiffSectionItemProps['handleSectionSaveRef']
@@ -111,8 +113,7 @@ export function useCombinedDiffSectionActions({
     ]
   )
 
-  // Why: match single-file HTML diffs — preview the on-disk working tree file
-  // beside the combined view when the section is still present on disk.
+  // Match single-file HTML diffs by previewing the on-disk working file beside this combined view.
   const openSectionPreview = useCallback(
     (section: DiffSection) => {
       if (
@@ -127,8 +128,7 @@ export function useCombinedDiffSectionActions({
       ) {
         return
       }
-      // Why: use this combined-diff tab's group, not worktree activeGroupId —
-      // in a multi-pane layout the active group may be a different split.
+      // Use this tab’s split group; the workspace active group may belong to another pane.
       const state = useAppStore.getState()
       const sourceGroupId =
         (state.unifiedTabsByWorktree[file.worktreeId] ?? []).find(
@@ -197,14 +197,24 @@ export function useCombinedDiffSectionActions({
       }
       try {
         operation.assertCurrent()
-        const writeResult = await writeEditorSave(
-          operation.mutationContext(),
-          absolutePath,
-          content,
-          undefined,
-          mode === 'overwrite' || loaded === undefined
-            ? { kind: 'explicit-overwrite' }
-            : { kind: 'guarded', signature: getDiskBaselineSignature(loaded), allowMissing: false }
+        const writeResult = await withEditorFileWriteLock(
+          editorPathHoldKey(useAppStore.getState(), operation.file, absolutePath),
+          () => {
+            operation.assertCurrent()
+            return writeEditorSave(
+              operation.mutationContext(),
+              absolutePath,
+              content,
+              undefined,
+              mode === 'overwrite' || loaded === undefined
+                ? { kind: 'explicit-overwrite' }
+                : {
+                    kind: 'guarded',
+                    signature: getDiskBaselineSignature(loaded),
+                    allowMissing: false
+                  }
+            )
+          }
         )
         if (!writeResult.ok) {
           markConflict()
@@ -232,7 +242,7 @@ export function useCombinedDiffSectionActions({
             }
             const written =
               s.diffResult?.kind === 'text' ? { ...s.diffResult, modifiedContent: content } : null
-            // Why: edits made while this write was in flight are newer; only the baseline moves.
+            // Typing during the write is newer intent; advance only the baseline.
             if (s.modifiedContent !== content) {
               return written ? { ...s, diffResult: written, saveConflict: undefined } : s
             }
@@ -270,7 +280,7 @@ export function useCombinedDiffSectionActions({
     ]
   )
 
-  // Why per section: each save builds its precondition only after the previous one settles.
+  // Build each precondition after that section’s prior save settles.
   const sectionSaveChainsRef = useRef(new Map<string, Promise<void>>())
   const handleSectionSave = useCallback(
     (index: number, mode?: 'overwrite'): Promise<void> => {

@@ -54,7 +54,6 @@ export function reserveAgentBackgroundSessionIdentity(args: {
   }
 }
 
-/** Publishes a hidden run tab already bound to its live PTY (#2989). */
 export async function adoptAgentBackgroundSessionTab(args: {
   store: Store
   worktreeId: string
@@ -103,7 +102,6 @@ export async function adoptAgentBackgroundSessionTab(args: {
     executionFacts: args.executionFacts,
     activate: false,
     recordInteraction: false,
-    // Switch point: main records the tab under the pane id its terminal already runs as.
     ...(ORCA_LAYOUT_OWNER_IS_MAIN ? { initialLeafId: parsePaneKey(args.paneKey)?.leafId } : {})
   })
   const paneKey = args.paneKey

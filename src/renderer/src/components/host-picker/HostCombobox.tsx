@@ -40,10 +40,7 @@ function groupOptions(
   return [...groups].map(([heading, grouped]) => ({ heading, options: grouped }))
 }
 
-/**
- * Single choice among hosts. Replaces a Select, which mounts an item per option even while closed:
- * this mounts nothing until opened, then a bounded, searchable result list.
- */
+/** Mount only a bounded searchable list on open; eager Select items can exhaust memory on large host catalogs. */
 export function HostCombobox({
   id,
   value,

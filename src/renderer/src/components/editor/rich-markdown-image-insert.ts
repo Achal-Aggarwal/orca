@@ -146,8 +146,7 @@ export async function insertRichMarkdownImageFromPath({
 }
 
 function encodeMarkdownImageBasename(destPath: string): string {
-  // Why: unescaped spaces and delimiters in markdown image destinations make
-  // screenshot filenames render as literal text or broken partial paths.
+  // Escape filename spaces and delimiters or Markdown interprets them as broken destinations or literal text.
   return encodeURIComponent(basename(destPath))
 }
 

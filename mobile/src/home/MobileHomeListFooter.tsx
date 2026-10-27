@@ -19,7 +19,7 @@ export function MobileHomeListFooter(props: {
   connectedHosts: HostProfile[]
   resumeCard: HomeResumeCard | null
   taskProvidersByHost: Record<string, TaskProvider[]>
-  onCreateWorkspace: (hostId: string) => void
+  onCreateWorkspace: () => void
   onOpenAccounts: (hostId: string) => void
   onOpenResume: (card: HomeResumeCard) => void
   onOpenTasks: (hostId: string, provider?: TaskProvider) => void

@@ -13,7 +13,7 @@ import {
 } from '@/lib/execution-host-facts'
 import { getFolderWorkspaceConnectionId } from '@/lib/folder-workspace-connection'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
-import { repoIsRemote } from '../../../shared/agent-launch-remote'
+import { launchHostIsRemote } from '../../../shared/agent-launch-remote'
 import {
   getRepoExecutionHostId,
   getRepoSshConnectionId,
@@ -53,13 +53,12 @@ function resolveLaunchHostFact(
   worktreeId: string,
   worktreePath: string | undefined,
   resolvedTarget?: ResolvedAgentBackgroundTarget
-): Pick<AgentBackgroundLaunchHost, 'platform' | 'isLocalHost'> & { isSshHost: boolean } {
+): Pick<AgentBackgroundLaunchHost, 'platform' | 'isLocalHost'> & { isRemoteHost: boolean } {
   const fact = resolveWorktreeExecutionHostPlatform(store, worktreeId, worktreePath, resolvedTarget)
   return {
     platform: requireExecutionHostPlatform(fact),
     isLocalHost: fact.kind === 'known' && fact.hostKind === 'local',
-    // Why: an SSH target (nested ones too) runs the relay shim as plain `orca`.
-    isSshHost: fact.kind === 'known' && fact.hostKind === 'ssh'
+    isRemoteHost: fact.kind === 'known' && launchHostIsRemote(fact.hostKind, worktreePath)
   }
 }
 
@@ -83,7 +82,7 @@ export function resolveAgentBackgroundLaunchHost(args: {
         : selectedHost?.kind === 'ssh'
           ? selectedHost.targetId
           : getRepoSshConnectionId(repo)
-    const { isSshHost, ...hostFact } = resolveLaunchHostFact(
+    const { isRemoteHost, ...hostFact } = resolveLaunchHostFact(
       store,
       worktreeId,
       worktreePath,
@@ -92,7 +91,7 @@ export function resolveAgentBackgroundLaunchHost(args: {
     return {
       connectionId: sshConnectionId,
       ...hostFact,
-      isRemote: args.resolvedTarget ? !hostFact.isLocalHost : repoIsRemote(repo) || isSshHost,
+      isRemote: args.resolvedTarget ? !hostFact.isLocalHost : repoIsRemote(repo) || isRemoteHost,
       expectedConnectionId: sshConnectionId
     }
   }
@@ -101,11 +100,11 @@ export function resolveAgentBackgroundLaunchHost(args: {
   if (isFolderWorkspace && folderWorkspaceConnectionId === undefined) {
     throw new Error('The target folder workspace host is unavailable or ambiguous.')
   }
-  const { isSshHost, ...hostFact } = resolveLaunchHostFact(store, worktreeId, worktreePath)
+  const { isRemoteHost, ...hostFact } = resolveLaunchHostFact(store, worktreeId, worktreePath)
   return {
     connectionId: folderWorkspaceConnectionId ?? null,
     ...hostFact,
-    isRemote: Boolean(folderWorkspaceConnectionId) || isSshHost,
+    isRemote: Boolean(folderWorkspaceConnectionId) || isRemoteHost,
     expectedConnectionId: isFolderWorkspace ? (folderWorkspaceConnectionId ?? null) : undefined
   }
 }

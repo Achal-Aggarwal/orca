@@ -6,7 +6,7 @@ import {
   stubEditorWindowWithDisk,
   withLoadedBaselines
 } from './editor-autosave-controller-test-fixture'
-import { EDITOR_SAVE_KEYS } from './editor-save-queue'
+import * as dueRecords from './editor-autosave-due-records'
 
 export function registerEditorAutosaveAcquisitionBudgetTests(
   createEditorStore: () => StoreApi<AppState>
@@ -44,11 +44,11 @@ export function registerEditorAutosaveAcquisitionBudgetTests(
           state.setEditorDraft('/repo/file-0.ts', 'newer draft')
         }
       })
-      const scheduleKey = vi.spyOn(EDITOR_SAVE_KEYS, 'schedule')
+      const scans = vi.spyOn(dueRecords, 'editorAutoSaveDueRecords')
       const cleanup = attachEditorAutosaveController(store)
       try {
         expect(store.getState().openFiles.every((file) => file.operationProvenance)).toBe(true)
-        expect(scheduleKey.mock.calls.length).toBeLessThanOrEqual(4 * count)
+        expect(scans.mock.calls.length).toBeLessThanOrEqual(4)
         expect(vi.getTimerCount()).toBe(count)
         await vi.advanceTimersByTimeAsync(999)
         for (const file of store.getState().openFiles) {
@@ -71,7 +71,7 @@ export function registerEditorAutosaveAcquisitionBudgetTests(
       } finally {
         cleanup()
         unsubscribe()
-        scheduleKey.mockRestore()
+        scans.mockRestore()
       }
     }
   )

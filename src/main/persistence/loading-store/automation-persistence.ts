@@ -41,6 +41,7 @@ import {
 } from '../scheduling-automations/automation-run-operations'
 import {
   advanceAutomationNextRun as advanceAutomationNextRunOperation,
+  disableAutomations as disableAutomationsOperation,
   getLatestAutomationOccurrence as getLatestAutomationOccurrenceOperation
 } from '../scheduling-automations/automation-schedule-operations'
 import {
@@ -224,6 +225,17 @@ export class AutomationPersistence {
       },
       id,
       now
+    )
+  }
+
+  disableAutomations(ids: ReadonlySet<string>): number {
+    return disableAutomationsOperation(
+      this[automationPersistenceContext].runtime.state,
+      () => {
+        markAutomationDefinitionDomain(this)
+        this[automationPersistenceContext].flushBarriers.flush()
+      },
+      ids
     )
   }
 

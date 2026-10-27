@@ -1,5 +1,10 @@
 import { expect, it, vi } from 'vitest'
-import { testState, createStore, writeDataFile, makeRepo } from './persistence-test-harness'
+import {
+  testState,
+  createStore,
+  writeDataFile,
+  makeRepo
+} from './persistence/persistence-test-harness'
 import { getDefaultPersistedState } from '../shared/constants'
 import { OrcaRuntimeService } from './runtime/orca-runtime'
 import { resolveAutomationRunTarget } from './automations/run-target-resolution'

@@ -14,9 +14,13 @@ const { pruneLineageMock, pruneMetadataMock } = vi.hoisted(() => ({
 vi.mock('../worktree-lineage-pruning', () => ({
   pruneLineageForMissingRepoWorktrees: pruneLineageMock
 }))
-vi.mock('../ipc/worktrees/listing/authoritative-local-worktree-metadata-pruning', () => ({
-  pruneMetadataMissingFromAuthoritativeLocalScan: pruneMetadataMock
-}))
+vi.mock(
+  '../ipc/worktrees/listing/authoritative-local-worktree-metadata-pruning',
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    pruneMetadataMissingFromAuthoritativeLocalScan: pruneMetadataMock
+  })
+)
 const { hiddenHostIds } = vi.hoisted(() => ({ hiddenHostIds: new Set<string>() }))
 vi.mock('./runtime-visible-catalog', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -306,8 +310,7 @@ describe('RuntimeManagedWorktreeQueries.list host scope', () => {
     expect(scoped.hostScope?.omittedHostIds).toEqual(['ssh:conn-1'])
   })
 
-  // `getRepoExecutionHostId` derives the host from two spellings, and a scoped listing that named
-  // the wrong one would be worse than naming none. These pin both.
+  // Check both host spellings so scoped coverage names the actual execution host.
   it('names the local host for a scoped local repo', async () => {
     const repo = folderRepo({ id: 'repo-local', kind: 'git', path: '/workspace/local' })
     const store = {
@@ -419,6 +422,8 @@ describe('RuntimeManagedWorktreeQueries.listDetected overtaken scan', () => {
     const expectations: unknown[] = []
     const generations: number[] = []
     const store = gitStore({
+      pruneSessionlessMissingLocalWorktreeMetadataForRepo: vi.fn(() => []),
+      getProfileStorageDirectory: () => '/profile',
       captureNativeLocalWorktreeMetadataScanExpectation: vi.fn(() => {
         const expectation = { repo, metadata: [] }
         expectations.push(expectation)

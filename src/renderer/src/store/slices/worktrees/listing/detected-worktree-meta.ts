@@ -162,10 +162,7 @@ export function findKnownWorktreeById(
   if (visible) {
     return visible
   }
-  // Why the index: this miss path runs per activity row for exactly the worktrees the
-  // feature targets (retained agents on deleted worktrees); the cached index replaces a
-  // full scan of every repo's detected worktrees. The index holds the same row objects,
-  // so the cast restores the listing's row type.
+  // Cached index avoids fleet scans per deleted-worktree activity row; same row objects justify restoring the listing row type.
   const detectedCandidates = findIndexedDetectedWorktrees(
     state.detectedWorktreesByRepo,
     worktreeId

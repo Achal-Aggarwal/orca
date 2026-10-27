@@ -32,7 +32,6 @@ import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { layoutOwnerPaneGestures } from './terminal-pane-layout-owner-gestures'
 
-/** Builds the imperative PaneManager option bag from the mount context. */
 export function createTerminalPaneManagerOptions(
   context: TerminalPaneManagerOptionsContext
 ): PaneManagerOptions {
@@ -106,7 +105,6 @@ export function createTerminalPaneManagerOptions(
     },
     resolveExternalPaneDropTarget,
     onExternalPaneDrop,
-    // Switch point: in-tab pane moves and divider ratios go through main.
     ...(ORCA_LAYOUT_OWNER_IS_MAIN
       ? layoutOwnerPaneGestures({
           worktreeId,
