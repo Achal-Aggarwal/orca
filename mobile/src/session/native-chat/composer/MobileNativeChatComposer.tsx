@@ -18,12 +18,14 @@ import {
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import type { MobileComposerStructuredCatalog } from './mobile-native-chat-composer-menu'
 import { useMobileNativeChatComposerMenu } from './use-mobile-native-chat-composer-menu'
-import { recordMobileNativeChatSkillPick } from './mobile-native-chat-draft-store'
 import { keepHeldPressThroughLongPress } from '../../held-press-long-press'
 import { mobileNativeChatComposerShowsStop } from './mobile-native-chat-composer-layout'
 import { MobileNativeChatStopButton } from '../input/MobileNativeChatStopButton'
 import { mobileNativeChatComposerStyles as styles } from './mobile-native-chat-composer-styles'
-import { useMobileNativeChatDraft } from './mobile-native-chat-draft-store'
+import {
+  recordMobileNativeChatSkillPick,
+  useMobileNativeChatDraft
+} from './mobile-native-chat-draft-store'
 
 const NO_FILE_PATHS: string[] = []
 const NO_ATTACHMENTS: PendingNativeChatImage[] = []
