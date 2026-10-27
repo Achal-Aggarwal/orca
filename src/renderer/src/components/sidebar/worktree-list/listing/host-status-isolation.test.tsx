@@ -90,7 +90,9 @@ function environment(id: string, pairedDeviceId?: string): PublicKnownRuntimeEnv
 }
 function status(id: string): RuntimeStatus {
   const response = createCompatibleRuntimeStatusResponse(id)
-  if (!response.ok) throw new Error('Expected compatible status')
+  if (!response.ok) {
+    throw new Error('Expected compatible status')
+  }
   return response.result
 }
 function publish(id: string, sequence: number, patch: Partial<RuntimeHostStatusSnapshot> = {}) {
@@ -253,8 +255,9 @@ it('does zero device scans while off and preserves equal identities while on, in
   )
   const first = result.current
   const before = renders
-  for (let flip = 0; flip < 10; flip++)
+  for (let flip = 0; flip < 10; flip++) {
     act(() => publish('B', flip + 2, { status: flip % 2 ? null : status('B') }))
+  }
   expect(renders).toBe(before)
   expect(result.current).toBe(first)
   expect(counts.devices).toBe(0)
@@ -265,8 +268,9 @@ it('does zero device scans while off and preserves equal identities while on, in
   const on = result.current
   const onRenders = renders
   const scans = counts.visibility
-  for (let flip = 0; flip < 10; flip++)
+  for (let flip = 0; flip < 10; flip++) {
     act(() => publish('B', flip + 12, { verification: flip % 2 ? 'unavailable' : 'verified' }))
+  }
   act(() => publish('A', 2, { status: { ...status('A'), pairedDeviceId: 'mine' } }))
   expect(renders).toBe(onRenders)
   expect(result.current).toBe(on)
@@ -302,8 +306,9 @@ it('keeps equal host options and health-only changes out of the workspace row pl
   const first = result.current
   const before = renders
   const plans = counts.plan
-  for (let flip = 0; flip < 10; flip++)
+  for (let flip = 0; flip < 10; flip++) {
     act(() => publish('B', flip + 2, { status: { ...status('B'), liveTabCount: flip } }))
+  }
   act(() => publish('A', 2, { status: { ...status('A'), liveTabCount: 99 } }))
   expect(renders).toBe(before)
   expect(result.current).toBe(first)

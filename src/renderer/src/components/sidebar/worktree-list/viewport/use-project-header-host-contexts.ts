@@ -15,14 +15,18 @@ function createProjectHeaderHostContextsSelector(args: ContextArgs) {
   let result: ReturnType<typeof getProjectHeaderHostContexts> = new Map()
   return (state: AppState) => {
     const nextInputs = [state.runtimeEnvironments, state.sshConnectionStates]
-    if (shallow(inputs, nextInputs)) return result
+    if (shallow(inputs, nextInputs)) {
+      return result
+    }
     inputs = nextInputs
     const next = getProjectHeaderHostContexts({
       ...args,
       runtimeEnvironments: state.runtimeEnvironments,
       sshConnectionStates: state.sshConnectionStates
     })
-    if (!persistedUIValuesEqual([...result], [...next])) result = next
+    if (!persistedUIValuesEqual([...result], [...next])) {
+      result = next
+    }
     return result
   }
 }

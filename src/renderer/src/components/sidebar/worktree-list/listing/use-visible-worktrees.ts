@@ -30,15 +30,21 @@ function createSidebarPairedDeviceIdsSelector(enabled: boolean) {
   let inputs: readonly unknown[] = []
   let result = EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT
   return (state: AppState): ReadonlyMap<string, string> => {
-    if (!enabled) return EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT
+    if (!enabled) {
+      return EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT
+    }
     const nextInputs = [state.runtimeEnvironments, state.runtimeStatusByEnvironmentId]
-    if (shallow(inputs, nextInputs)) return result
+    if (shallow(inputs, nextInputs)) {
+      return result
+    }
     inputs = nextInputs
     const next = getPairedDeviceIdsByEnvironment(
       state.runtimeEnvironments,
       state.runtimeStatusByEnvironmentId
     )
-    if (!shallow(result, next)) result = next
+    if (!shallow(result, next)) {
+      result = next
+    }
     return result
   }
 }

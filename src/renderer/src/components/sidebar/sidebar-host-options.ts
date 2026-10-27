@@ -248,7 +248,9 @@ export function createSidebarHostOptionsSelector() {
       args.wslHostsEnabled,
       args.wslHostServerFilesMissing
     ]
-    if (shallow(inputs, nextInputs)) return result
+    if (shallow(inputs, nextInputs)) {
+      return result
+    }
     inputs = nextInputs
     const next = buildSidebarHostOptions(args)
     if (!persistedUIValuesEqual(result.map(sidebarHostSemantics), next.map(sidebarHostSemantics))) {
@@ -262,7 +264,9 @@ export function createSidebarHostLabelsSelector() {
   let result = new Map<ExecutionHostId, string>()
   return (hosts: readonly SidebarHostOption[]): ReadonlyMap<ExecutionHostId, string> => {
     const next = new Map(hosts.map((host) => [host.id, host.label]))
-    if (!shallow(result, next)) result = next
+    if (!shallow(result, next)) {
+      result = next
+    }
     return result
   }
 }

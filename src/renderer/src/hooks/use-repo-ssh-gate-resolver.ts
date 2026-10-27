@@ -25,7 +25,9 @@ function createRepoSshGateSelector(repos: ReadonlyMap<string, Repo>) {
       state.sshStateByEnvironment,
       state.runtimeStatusByEnvironmentId
     ]
-    if (shallow(inputs, nextInputs)) return resolve
+    if (shallow(inputs, nextInputs)) {
+      return resolve
+    }
     inputs = nextInputs
     const next = new Map<string, Gate>()
     for (const [key, repo] of targets) {

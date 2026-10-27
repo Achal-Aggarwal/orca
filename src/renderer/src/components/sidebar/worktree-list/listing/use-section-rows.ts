@@ -113,8 +113,8 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
     () => getHostDisplayLabelOverrides(args.settings),
     [args.settings]
   )
-  const selectHostOptions = useMemo(createSidebarHostOptionsSelector, [])
-  const selectHostLabels = useMemo(createSidebarHostLabelsSelector, [])
+  const selectHostOptions = useMemo(() => createSidebarHostOptionsSelector(), [])
+  const selectHostLabels = useMemo(() => createSidebarHostLabelsSelector(), [])
   const hostOptions = useAppStore((state) =>
     selectHostOptions({
       repos,
