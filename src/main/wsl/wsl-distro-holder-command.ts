@@ -31,7 +31,8 @@ export function buildWslDistroHolderScript(
   return [
     `f="$HOME/.orca/${ORCAD_WSL_HOLDER_RELEASE_FILENAME}"; b="$HOME/.orca/${ORCAD_WSL_HOLDER_BLOCKED_FILENAME}"; me=$(id -u)`,
     // A new holder means a client wants the distro: an older orcad's request no longer stands.
-    'rm -f "$f" "$b"',
+    // Also any note half-written by a holder killed mid-write.
+    'rm -f "$f" "$b" "$b".*',
     // Fails toward holding: any live process of this user outside the holder itself counts, so a
     // distro whose default user is root never releases; so does a /proc it cannot read, or a
     // status file it cannot parse. One exception: with /proc mounted hidepid, another user's
@@ -44,8 +45,9 @@ export function buildWslDistroHolderScript(
     'n= s= pp= u=',
     '{ while read -r k v r; do case $k in Name:) n=$v ;; State:) s=$v ;; PPid:) pp=$v ;; Uid:) u=$v; break ;; esac',
     'done < "$d/status"; } 2>/dev/null',
-    // A process that vanished mid-scan is gone; one still there that cannot be read counts.
-    '[ -n "$u" ] || { [ -d "$d" ] || continue; n=${n:-unreadable}; u=$me; }',
+    // A process that vanished mid-scan is gone; one still there that cannot be read counts only
+    // when its entry is this user's (hidepid=noaccess hides root's status files, not their dirs).
+    '[ -n "$u" ] || { [ -d "$d" ] || continue; set -- $(ls -nd "$d" 2>/dev/null); [ "${3:-}" = "$me" ] || continue; n=${n:-unreadable}; u=$me; }',
     // A running container is work whoever owns it (docker's shims run as root).
     'case $n in containerd-shim*) ;; *)',
     '[ "$u" = "$me" ] && [ "$pp" != "$$" ] || continue',
@@ -60,7 +62,10 @@ export function buildWslDistroHolderScript(
     "case $p in ''|*[!0-9]*) continue ;; esac",
     'while kill -0 "$p" 2>/dev/null; do sleep 1; done',
     // Why still held, for the desktop to read later (replaced whole); cleared on release.
-    'if user_busy; then printf \'%s\\n\' "${why# }" > "$b.$$" 2>/dev/null && mv -f "$b.$$" "$b"; continue; fi',
+    'if user_busy; then',
+    // Rewritten only when it changed, so a long hold costs no writes.
+    '[ "$(cat "$b" 2>/dev/null)" = "${why# }" ] || { printf \'%s\\n\' "${why# }" > "$b.$$" && mv -f "$b.$$" "$b"; } 2>/dev/null',
+    'continue; fi',
     'rm -f "$b"',
     'rm "$f" 2>/dev/null && exit 0',
     'done'

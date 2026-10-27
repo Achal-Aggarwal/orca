@@ -1,5 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -87,8 +95,8 @@ function fakeProcess(
 const blockedPath = (): string => join(home, '.orca', ORCAD_WSL_HOLDER_BLOCKED_FILENAME)
 
 /** A holder that already ran its start-up `rm -f`, then a request from an orcad that has exited. */
-async function holderWithRequest(options: { procReadable?: boolean } = {}) {
-  const holder = startHolder(undefined, options)
+async function holderWithRequest(options: { procReadable?: boolean; path?: string } = {}) {
+  const holder = startHolder({ HOME: home, PATH: options.path ?? process.env.PATH }, options)
   expect(await within(300, holder.exited)).toBe('running')
   const orcad = track(spawn('/bin/sh', ['-c', 'exit 0'], { stdio: 'ignore' }))
   await new Promise((resolve) => orcad.once('exit', resolve))
@@ -216,5 +224,31 @@ describe.skipIf(process.platform === 'win32')('WSL distro holder script', () => 
     const { exited } = await holderWithRequest()
     expect(await within(2_500, exited)).toBe('running')
     expect(readFileSync(blockedPath(), 'utf8')).toBe('mystery\n')
+  })
+
+  it("counts an unreadable entry only when it is the user's own (hidepid=noaccess)", async () => {
+    // Root's status files are unreadable under hidepid; their directories still show their owner.
+    const dir = join(proc, '7100')
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'status'), 'Name:\tsecret\n')
+    chmodSync(join(dir, 'status'), 0o000)
+    // The user's own unreadable entry holds.
+    const own = await holderWithRequest()
+    expect(await within(2_500, own.exited)).toBe('running')
+    own.child.kill('SIGKILL')
+    // Seen by another user, the same entry is someone else's and does not hold.
+    const bin = join(home, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'id'), `#!/bin/sh\necho ${me + 1}\n`, { mode: 0o755 })
+    const other = await holderWithRequest({ path: `${bin}:${process.env.PATH}` })
+    expect(await within(3_000, other.exited)).toBe(0)
+  })
+
+  it('cleans up a note a killed holder left half-written', async () => {
+    const stale = `${blockedPath()}.12345`
+    writeFileSync(stale, 'half')
+    const { exited } = startHolder()
+    expect(await within(500, exited)).toBe('running')
+    expect(existsSync(stale)).toBe(false)
   })
 })
