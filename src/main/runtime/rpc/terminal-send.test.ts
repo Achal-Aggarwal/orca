@@ -128,16 +128,11 @@ describe('terminal send RPC', () => {
       })
     )
 
-    expect(response.ok).toBe(true)
-    if (!response.ok) {
-      throw new Error(response.error.message)
-    }
-    expect(response.result).toEqual({
-      send: {
-        handle: 'terminal-1',
-        accepted: false,
-        bytesWritten: 0
-      }
+    expect(response).toStrictEqual({
+      id: 'req-1',
+      ok: true,
+      result: { send: { handle: 'terminal-1', accepted: false, bytesWritten: 0 } },
+      _meta: { runtimeId: 'test-runtime' }
     })
     expect(runtime.sendTerminal).not.toHaveBeenCalled()
     expect(runtime.mobileTookFloor).not.toHaveBeenCalled()
@@ -641,17 +636,18 @@ describe('terminal send RPC', () => {
       })
     )
 
-    expect(response.ok).toBe(true)
-    if (!response.ok) {
-      throw new Error(response.error.message)
-    }
-    expect(response.result).toEqual({
-      send: {
-        handle: 'terminal-1',
-        accepted: false,
-        bytesWritten: 0,
-        refusedReason: 'permission'
-      }
+    expect(response).toStrictEqual({
+      id: 'req-1',
+      ok: true,
+      result: {
+        send: {
+          handle: 'terminal-1',
+          accepted: false,
+          bytesWritten: 0,
+          refusedReason: 'permission'
+        }
+      },
+      _meta: { runtimeId: 'test-runtime' }
     })
     expect(runtime.getTerminalAgentStatus).toHaveBeenCalledWith('terminal-1')
     expect(runtime.sendTerminal).not.toHaveBeenCalled()
