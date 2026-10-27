@@ -19,7 +19,7 @@ import type { LinkedWorkItemSummary } from '@/lib/new-workspace'
 import type { ComposerDecisions } from './composer-decisions'
 import type { WorkspaceCreationTargetHint } from '@/lib/project-host-workspace-target'
 import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
-import { useWorkspaceBoardStatuses } from '@/components/sidebar/use-workspace-board-statuses'
+import { selectAllKnownWorkspaceStatuses } from '@/store/host-workspace-status-columns'
 
 export type ComposerStateInput = {
   initialRepoId?: string
@@ -114,8 +114,8 @@ export function useComposerTargetStore(options: ComposerStateInput, decisions: C
 
   const sparsePresetsByRepo = useAppStore((s) => s.sparsePresetsByRepo)
 
-  // Host columns too, so a host-only lane's + keeps its status.
-  const workspaceStatuses = useWorkspaceBoardStatuses()
+  // Every paired host's columns too, so a host-only lane's + keeps its status; submit scopes it to the target.
+  const workspaceStatuses = useAppStore(useShallow(selectAllKnownWorkspaceStatuses))
 
   const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
 

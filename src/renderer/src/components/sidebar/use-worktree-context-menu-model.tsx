@@ -6,7 +6,7 @@ import {
   getCyclicProjectedWorktreeLineageIds,
   getLineageRenderInfo
 } from '../../../../shared/sidebar-list/worktree-lineage-projection'
-import { useWorkspaceBoardStatuses } from './use-workspace-board-statuses'
+import { useWorkspaceStatusesForHost } from './use-workspace-board-statuses'
 import { getEligibleWorktreeParents } from './worktree-parent-candidates'
 import {
   hasSleepableWorkspaceActivity,
@@ -62,7 +62,6 @@ export function useWorktreeContextMenuModel({
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const setWorkspaceUnreadByUser = useAppStore((s) => s.setWorkspaceUnreadByUser)
   const setWorktreesPinnedAndReveal = useAppStore((s) => s.setWorktreesPinnedAndReveal)
-  const workspaceStatuses = useWorkspaceBoardStatuses()
   const openModal = useAppStore((s) => s.openModal)
   const projectGroups = useAppStore((s) => s.projectGroups)
   const createProjectGroup = useAppStore((s) => s.createProjectGroup)
@@ -132,6 +131,11 @@ export function useWorktreeContextMenuModel({
   const scopeRef = useRef<HTMLDivElement>(null)
   const contextMenuOpenedAtRef = useRef<number | null>(null)
   const activeContextWorktrees = menuOpen ? contextWorktrees : effectiveSelectedWorktrees
+  const contextHostIds = new Set(activeContextWorktrees.map((item) => item.hostId ?? 'local'))
+  // A paired host's own columns are offered only when every card is on that host.
+  const workspaceStatuses = useWorkspaceStatusesForHost(
+    contextHostIds.size === 1 ? [...contextHostIds][0] : null
+  )
   const isMultiContext = activeContextWorktrees.length > 1
   const workspaceScope = parseWorkspaceKey(worktree.id)
   const folderWorkspaceId =

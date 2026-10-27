@@ -31,7 +31,7 @@ import {
   getVisibleSidebarHostIdSet
 } from '../../../../shared/sidebar-list/host-filtering'
 import { selectFolderWorkspaces } from '@/store/workspace-record-selectors'
-import { selectWorkspaceBoardStatuses } from './use-workspace-board-statuses'
+import { selectWorkspaceBoardStatuses } from '@/store/host-workspace-status-columns'
 
 const EMPTY_REPO_ID_SET: ReadonlySet<string> = Object.freeze(new Set<string>())
 const EMPTY_IMPORTED_BY_REPO: ReadonlyMap<string, ImportedWorktreesCardCandidate> = new Map()

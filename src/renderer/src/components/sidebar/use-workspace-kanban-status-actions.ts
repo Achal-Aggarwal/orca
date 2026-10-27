@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useAppStore } from '@/store'
 import { getWorkspaceStatus } from './workspace-status'
 import { makeWorkspaceStatusId } from '../../../../shared/workspace-statuses'
+import { selectAllKnownWorkspaceStatuses } from '@/store/host-workspace-status-columns'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../shared/worktree/types'
 
@@ -74,7 +75,10 @@ export function useWorkspaceKanbanStatusActions(args: {
     const label = `Status ${args.workspaceStatuses.length + 1}`
     args.setWorkspaceStatuses([
       ...args.workspaceStatuses,
-      { id: makeWorkspaceStatusId(label, args.boardStatuses), label }
+      {
+        id: makeWorkspaceStatusId(label, selectAllKnownWorkspaceStatuses(useAppStore.getState())),
+        label
+      }
     ])
     recordInteraction()
   }, [args])

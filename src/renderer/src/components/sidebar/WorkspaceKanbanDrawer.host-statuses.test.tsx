@@ -122,7 +122,8 @@ beforeEach(() => {
     hostWorkspaceStatuses: {
       'env-1': [
         { id: 'status-6', label: '🔥 今天收尾' },
-        { id: 'todo', label: 'Host todo' }
+        { id: 'todo', label: 'Host todo' },
+        { id: 'status-7', label: 'No card here' }
       ]
     },
     removedRuntimeEnvironmentIds: new Set(),

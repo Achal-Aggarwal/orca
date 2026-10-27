@@ -1,39 +1,50 @@
 import { useMemo } from 'react'
 import { useAppStore } from '@/store'
-import type { AppState } from '@/store/types'
-import { mergeHostWorkspaceStatuses } from '../../../../shared/workspace-statuses'
+import {
+  selectWorkspaceBoardStatuses,
+  selectWorkspaceStatusesForHost
+} from '@/store/host-workspace-status-columns'
 import type { WorkspaceStatusDefinition } from '../../../../shared/worktree/types'
 
-type BoardStatusInputs = Pick<AppState, 'workspaceStatuses'> &
-  Partial<Pick<AppState, 'hostWorkspaceStatuses' | 'removedRuntimeEnvironmentIds'>>
-
-function boardStatuses(
-  local: readonly WorkspaceStatusDefinition[],
-  byHost: BoardStatusInputs['hostWorkspaceStatuses'],
-  removed: BoardStatusInputs['removedRuntimeEnvironmentIds']
-): readonly WorkspaceStatusDefinition[] {
-  return mergeHostWorkspaceStatuses(
-    local,
-    Object.entries(byHost ?? {}).flatMap(([environmentId, statuses]) =>
-      removed?.has(environmentId) ? [] : [statuses]
-    )
-  )
-}
-
-/** The columns cards group by: local ones plus each paired host's, so a host's card keeps its column. Edits use the local list. */
-export function selectWorkspaceBoardStatuses(
-  state: BoardStatusInputs
-): readonly WorkspaceStatusDefinition[] {
-  return boardStatuses(
-    state.workspaceStatuses,
-    state.hostWorkspaceStatuses,
-    state.removedRuntimeEnvironmentIds
-  )
-}
-
+/** The columns cards group by: local ones plus the paired hosts' columns their own cards use. Edits use the local list. */
 export function useWorkspaceBoardStatuses(): readonly WorkspaceStatusDefinition[] {
-  const local = useAppStore((s) => s.workspaceStatuses)
-  const byHost = useAppStore((s) => s.hostWorkspaceStatuses)
-  const removed = useAppStore((s) => s.removedRuntimeEnvironmentIds)
-  return useMemo(() => boardStatuses(local, byHost, removed), [local, byHost, removed])
+  const workspaceStatuses = useAppStore((s) => s.workspaceStatuses)
+  const hostWorkspaceStatuses = useAppStore((s) => s.hostWorkspaceStatuses)
+  const removedRuntimeEnvironmentIds = useAppStore((s) => s.removedRuntimeEnvironmentIds)
+  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
+  const folderWorkspaces = useAppStore((s) => s.folderWorkspaces)
+  return useMemo(
+    () =>
+      selectWorkspaceBoardStatuses({
+        workspaceStatuses,
+        hostWorkspaceStatuses,
+        removedRuntimeEnvironmentIds,
+        worktreesByRepo,
+        folderWorkspaces
+      }),
+    [
+      workspaceStatuses,
+      hostWorkspaceStatuses,
+      removedRuntimeEnvironmentIds,
+      worktreesByRepo,
+      folderWorkspaces
+    ]
+  )
+}
+
+/** The columns offered for a card or target on this host; null means a mix of hosts, so local only. */
+export function useWorkspaceStatusesForHost(
+  hostId: string | null | undefined
+): readonly WorkspaceStatusDefinition[] {
+  const workspaceStatuses = useAppStore((s) => s.workspaceStatuses)
+  const hostWorkspaceStatuses = useAppStore((s) => s.hostWorkspaceStatuses)
+  const removedRuntimeEnvironmentIds = useAppStore((s) => s.removedRuntimeEnvironmentIds)
+  return useMemo(
+    () =>
+      selectWorkspaceStatusesForHost(
+        { workspaceStatuses, hostWorkspaceStatuses, removedRuntimeEnvironmentIds },
+        hostId
+      ),
+    [workspaceStatuses, hostWorkspaceStatuses, removedRuntimeEnvironmentIds, hostId]
+  )
 }

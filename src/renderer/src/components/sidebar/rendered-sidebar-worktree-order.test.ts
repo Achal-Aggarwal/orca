@@ -249,7 +249,11 @@ describe('closed-sidebar Cmd+1-9 ordering (#9497)', () => {
   })
 
   it("orders a card in a paired host's own column by that column, not the default", () => {
-    const today = makeWorktree('wt-today', { workspaceStatus: 'status-6', sortOrder: 0 })
+    const today = makeWorktree('wt-today', {
+      hostId: 'runtime:env-1',
+      workspaceStatus: 'status-6',
+      sortOrder: 0
+    })
     const todo = makeWorktree('wt-todo', { workspaceStatus: 'todo', sortOrder: 1 })
     const doing = makeWorktree('wt-doing', { workspaceStatus: 'in-progress', sortOrder: 2 })
     seedStore([today, todo, doing], {
