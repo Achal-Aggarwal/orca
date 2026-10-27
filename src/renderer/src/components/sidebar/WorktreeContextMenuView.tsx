@@ -154,7 +154,7 @@ export default function WorktreeContextMenuView({ model }: { model: WorktreeCont
           onClickCapture={suppressOpeningPointerEvent}
           onCloseAutoFocus={handleCloseAutoFocus}
         >
-          <DropdownMenuLabel className="text-2xs font-medium text-muted-foreground">
+          <DropdownMenuLabel>
             {translate('auto.components.sidebar.WorktreeContextMenu.workspaceSection', 'Workspace')}
           </DropdownMenuLabel>
           {!isMultiContext && (
