@@ -3,6 +3,7 @@ import React from 'react'
 import { TYPE_FIELD_DATA_TYPE } from './columns'
 import type {
   GitHubIssueType,
+  GitHubProjectLinkedPullRequests,
   GitHubProjectField,
   GitHubProjectFieldMutationValue,
   GitHubProjectRow
@@ -26,7 +27,7 @@ type Props = {
   onEditAssignees?: (add: string[], remove: string[]) => void
   onEditLabels?: (add: string[], remove: string[]) => void
   onEditIssueType?: (issueType: GitHubIssueType | null) => void
-  onOpenDialog?: () => void
+  onOpenDialog?: (pullRequest?: GitHubProjectLinkedPullRequests['pullRequests'][number]) => void
   sourceHost?: string
   sourceTarget: RuntimeClientTarget
 }
@@ -46,7 +47,7 @@ export default function ProjectCell({
   const value = row.fieldValuesByFieldId[field.id]
   const editableValue = editable && row.itemType !== 'REDACTED'
   if (field.dataType === 'TITLE') {
-    return <ProjectTitleCell row={row} onOpenDialog={onOpenDialog} />
+    return <ProjectTitleCell row={row} onOpenDialog={() => onOpenDialog?.()} />
   }
   if (field.dataType === TYPE_FIELD_DATA_TYPE) {
     return (
@@ -98,14 +99,33 @@ export default function ProjectCell({
     if (!linked) {
       return <span className="text-xs text-muted-foreground" />
     }
-    const labels = linked.pullRequests.map((pr) => `#${pr.number}`)
     const overflow =
       linked.totalCount > linked.pullRequests.length
         ? ` +${linked.totalCount - linked.pullRequests.length}`
         : ''
     return (
       <span className="truncate text-xs text-muted-foreground">
-        {labels.join(', ')}
+        {linked.pullRequests.map((pr, index) => (
+          <React.Fragment key={pr.url}>
+            {index > 0 ? ', ' : null}
+            <button
+              type="button"
+              title={pr.title}
+              className="cursor-pointer rounded-sm hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onKeyDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                if (onOpenDialog) {
+                  onOpenDialog(pr)
+                } else {
+                  void window.api.shell.openUrl(pr.url)
+                }
+              }}
+            >
+              #{pr.number}
+            </button>
+          </React.Fragment>
+        ))}
         {overflow}
       </span>
     )

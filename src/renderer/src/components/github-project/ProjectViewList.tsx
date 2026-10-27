@@ -17,6 +17,7 @@ import {
 } from './column-widths'
 import type {
   GitHubIssueType,
+  GitHubProjectLinkedPullRequests,
   GitHubProjectField,
   GitHubProjectFieldMutationValue,
   GitHubProjectRow,
@@ -47,7 +48,10 @@ function buildProjectGridTemplate(
 
 type Props = {
   table: GitHubProjectTable
-  onOpenDialog?: (row: GitHubProjectRow) => void
+  onOpenDialog?: (
+    row: GitHubProjectRow,
+    pullRequest?: GitHubProjectLinkedPullRequests['pullRequests'][number]
+  ) => void
   onEditField?: (
     row: GitHubProjectRow,
     fieldId: string,
@@ -234,7 +238,7 @@ export default function ProjectViewList({
                     widths={widths}
                     onResizeColumn={setColumnPair}
                     editable
-                    onOpenDialog={() => onOpenDialog?.(row)}
+                    onOpenDialog={(pullRequest) => onOpenDialog?.(row, pullRequest)}
                     onEditField={(fieldId, value) => onEditField?.(row, fieldId, value)}
                     onEditAssignees={(add, remove) => onEditAssignees?.(row, add, remove)}
                     onEditLabels={(add, remove) => onEditLabels?.(row, add, remove)}

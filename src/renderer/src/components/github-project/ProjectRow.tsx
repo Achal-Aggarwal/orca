@@ -9,6 +9,7 @@ import { resolveWidth } from './column-widths'
 import ProjectCell from './ProjectCell'
 import type {
   GitHubIssueType,
+  GitHubProjectLinkedPullRequests,
   GitHubProjectField,
   GitHubProjectFieldMutationValue,
   GitHubProjectRow as GitHubProjectRowType
@@ -27,7 +28,7 @@ type Props = {
   widths: Readonly<Record<string, number>>
   onResizeColumn: (fieldId: string, width: number, nextFieldId: string, nextWidth: number) => void
   editable: boolean
-  onOpenDialog?: () => void
+  onOpenDialog?: (pullRequest?: GitHubProjectLinkedPullRequests['pullRequests'][number]) => void
   onEditField?: (fieldId: string, value: GitHubProjectFieldMutationValue | null) => void
   onEditAssignees?: (add: string[], remove: string[]) => void
   onEditLabels?: (add: string[], remove: string[]) => void
@@ -99,7 +100,7 @@ export default function ProjectRow({
                 onEditAssignees={onEditAssignees}
                 onEditLabels={onEditLabels}
                 onEditIssueType={onEditIssueType}
-                onOpenDialog={f.dataType === 'TITLE' ? onOpenDialog : undefined}
+                onOpenDialog={onOpenDialog}
                 sourceHost={sourceHost}
                 sourceTarget={sourceTarget}
               />

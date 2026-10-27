@@ -1,12 +1,17 @@
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import { parseGitHubIssueOrPRLink } from '@/lib/github-links'
 import { useRepoSlugIndex } from '@/lib/repo-slug-index'
 import { launchWorkItemDirect } from '@/lib/launch-work-item-direct'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { buildTaskSourceContextFromRepo } from '../../../../shared/task-source-context'
 import { githubProjectHost } from '../../../../shared/github/project-identity'
-import type { GitHubProjectRow, GitHubProjectTable } from '../../../../shared/github/project-types'
+import type {
+  GitHubProjectLinkedPullRequests,
+  GitHubProjectRow,
+  GitHubProjectTable
+} from '../../../../shared/github/project-types'
 import type { GitHubWorkItem } from '../../../../shared/github/work-item-types'
 import type { GitHubItemDialogProjectOrigin } from '@/components/GitHubItemDialog'
 import {
@@ -21,7 +26,7 @@ type DialogRepoItem = {
   workItem: GitHubWorkItem
   repoPath: string
   repoId: string
-  origin: GitHubItemDialogProjectOrigin
+  origin?: GitHubItemDialogProjectOrigin
 }
 
 export function useProjectRowActions({
@@ -105,14 +110,14 @@ export function useProjectRowActions({
   )
 
   const resolveRow = useCallback(
-    (row: GitHubProjectRow) => {
+    (row: GitHubProjectRow, host?: string) => {
       if (!table) {
         return null
       }
       return resolveSelectedProjectRowRepo({
         row,
         lookupSlugMatches,
-        host: table.project.host,
+        host,
         slugIndexReady,
         selectedRepoIds
       })
@@ -154,22 +159,45 @@ export function useProjectRowActions({
   )
 
   const openDialog = useCallback(
-    (row: GitHubProjectRow) => {
-      const origin = buildOrigin(row)
-      if (!origin) {
+    (
+      row: GitHubProjectRow,
+      pullRequest?: GitHubProjectLinkedPullRequests['pullRequests'][number]
+    ) => {
+      const parsed = pullRequest ? parseGitHubIssueOrPRLink(pullRequest.url) : null
+      const host = pullRequest ? parsed?.slug.host : table?.project.host
+      const dialogRow: GitHubProjectRow = pullRequest
+        ? {
+            ...row,
+            itemType: 'PULL_REQUEST',
+            content: {
+              ...row.content,
+              ...pullRequest,
+              repository: parsed ? `${parsed.slug.owner}/${parsed.slug.repo}` : null,
+              state: null,
+              isDraft: null,
+              labels: []
+            }
+          }
+        : row
+      const origin = pullRequest ? undefined : (buildOrigin(row) ?? undefined)
+      if (!origin && !pullRequest) {
         if (row.content.url) {
           void window.api.shell.openUrl(row.content.url)
         }
         return
       }
-      const resolution = resolveRow(row)
+      const resolution = resolveRow(dialogRow, host)
+      if (pullRequest && resolution?.status !== 'selected_match') {
+        void window.api.shell.openUrl(pullRequest.url)
+        return
+      }
       if (!resolution || messageForResolution(row, resolution.status)) {
         return
       }
-      if (resolution.status === 'no_global_match') {
+      if (resolution.status === 'no_global_match' && origin) {
         setSlugDialog({ origin })
       } else if (resolution.status === 'selected_match' && table) {
-        const workItem = buildProjectWorkItem(row, resolution.repo, table.project.host)
+        const workItem = buildProjectWorkItem(dialogRow, resolution.repo, host)
         if (workItem) {
           setDialogRepoItem({
             workItem,
@@ -186,7 +214,7 @@ export function useProjectRowActions({
   const startWork = useCallback(
     (row: GitHubProjectRow) => {
       const origin = buildOrigin(row)
-      const resolution = resolveRow(row)
+      const resolution = resolveRow(row, table?.project.host)
       if (!origin || !resolution || messageForResolution(row, resolution.status)) {
         return
       }
