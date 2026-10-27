@@ -112,7 +112,7 @@ it.each([
     '{"role":"assistant","tool_calls":"bad"}',
     '{"role":"tool","content":"missing id"}'
   ].map((bad) => ['', invalid, `${earlier}\n${bad}`, 0] as const)
-] as const)('%s outcome', (stderr, meaning, stdout = '', code = 1, local = false) => {
+] as const)('%s outcome', (stderr, meaning, stdout = '', code = 1, local: boolean = false) => {
   const result = finalizeFromAgentOutput({
     stdout,
     stderr,

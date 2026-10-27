@@ -57,7 +57,7 @@ it.each(['--', '--output-format=text', 'stream-json'])(
 
 it('keeps repeated-format planning linear', () => {
   const slice = Array.prototype.slice
-  const counts = []
+  const counts: number[] = []
   for (const n of [20, 200]) {
     const recipe = Array(n).fill('--output-format=text').join(' ')
     let copied = 0

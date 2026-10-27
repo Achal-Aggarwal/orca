@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import realKimiPrOutput from './official-kimi-2.3.1-real-pr.jsonl?raw'
 import realKimiOccupiedOutput from './official-kimi-2.3.1-session-occupied.jsonl?raw'
 
