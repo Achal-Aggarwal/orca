@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { createElement } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   normalizeItem,
@@ -144,26 +144,36 @@ function normalized(raw: RawItem): GitHubProjectRow {
   }
   return result.row
 }
-function renderColumns(row: GitHubProjectRow): void {
-  for (const [id, dataType] of [
-    ['field-pr', 'LINKED_PULL_REQUESTS'],
-    ['field-progress', 'SUB_ISSUES_PROGRESS']
-  ] as const) {
-    render(
-      createElement(ProjectCell, {
-        row,
-        field: { kind: 'field', id, name: dataType, dataType },
-        editable: false,
-        sourceTarget: { kind: 'local' }
-      })
-    )
-  }
+function renderColumns(row: GitHubProjectRow): {
+  pullRequests: HTMLElement
+  progress: HTMLElement
+} {
+  const [pullRequests, progress] = (
+    [
+      ['field-pr', 'LINKED_PULL_REQUESTS'],
+      ['field-progress', 'SUB_ISSUES_PROGRESS']
+    ] as const
+  ).map(
+    ([id, dataType]) =>
+      render(
+        createElement(ProjectCell, {
+          row,
+          field: { kind: 'field', id, name: dataType, dataType },
+          editable: false,
+          sourceTarget: { kind: 'local' }
+        })
+      ).container
+  )
+  return { pullRequests, progress }
 }
 
 describe('Project columns from the items response', () => {
-  it.each([prText, '1/2 (50%)'])(
-    'renders %s through one bounded items request on a named cloud host',
-    async (expectedText) => {
+  it.each([
+    { column: 'pullRequests', expectedText: prText },
+    { column: 'progress', expectedText: '1/2 (50%)' }
+  ] as const)(
+    'renders $expectedText through one bounded items request on a named cloud host',
+    async ({ column, expectedText }) => {
       vi.mocked(ghExecFileAsync).mockResolvedValueOnce(
         response([
           {
@@ -187,8 +197,8 @@ describe('Project columns from the items response', () => {
         throw new Error('Expected an items page')
       }
       const row = normalized(page.page.nodes[0])
-      renderColumns(row)
-      expect(screen.getByText(expectedText).textContent).toBe(expectedText)
+      const cells = renderColumns(row)
+      expect(cells[column].textContent).toBe(expectedText)
       expect(row.fieldValuesByFieldId).toEqual({
         notes: { kind: 'text', fieldId: 'notes', text: 'Keep this too' }
       })
@@ -204,10 +214,8 @@ describe('Project columns from the items response', () => {
     { completed: 0, total: 2, percentCompleted: 0 },
     { completed: 2, total: 2, percentCompleted: 100 }
   ])('preserves zero and complete counters: %j', (summary) => {
-    renderColumns(normalized({ ...item, content: { subIssuesSummary: summary } }))
-    expect(
-      screen.getByText(`${summary.completed}/2 (${summary.percentCompleted}%)`).textContent
-    ).toBeTruthy()
+    const cells = renderColumns(normalized({ ...item, content: { subIssuesSummary: summary } }))
+    expect(cells.progress.textContent).toBe(`${summary.completed}/2 (${summary.percentCompleted}%)`)
   })
 
   it('keeps old-host, draft, PR, redacted and zero-total rows blank', () => {
@@ -251,9 +259,9 @@ describe('Project columns from the items response', () => {
     expect(result.parentFieldDropped).toBe(parentDropped)
     expect(result.rows[0].content.parentIssue).toEqual(parentDropped ? null : parent)
     expect(warning).toHaveBeenCalledTimes(parentDropped ? 1 : 0)
-    renderColumns(result.rows[0])
-    expect(Boolean(screen.queryByText('1/2 (50%)'))).toBe(summary)
-    expect(Boolean(screen.queryByText(prText))).toBe(prs)
+    const cells = renderColumns(result.rows[0])
+    expect(cells.progress.textContent).toBe(summary ? '1/2 (50%)' : '')
+    expect(cells.pullRequests.textContent).toBe(prs ? prText : '')
     expect(ghExecFileAsync).toHaveBeenCalledTimes(2)
     const query = vi.mocked(ghExecFileAsync).mock.calls[1][0].join(' ')
     expect(query.includes('parent {')).toBe(!parentDropped)
@@ -395,10 +403,10 @@ describe('Project columns from the items response', () => {
       throw new Error('Expected linked PR content')
     }
     row.content.linkedPullRequests.totalCount = totalCount
-    renderColumns(row)
-    expect(
-      screen.getByText(totalCount === 12 ? prText : prText.replace(' +2', '')).textContent
-    ).toBeTruthy()
+    const cells = renderColumns(row)
+    expect(cells.pullRequests.textContent).toBe(
+      totalCount === 12 ? prText : prText.replace(' +2', '')
+    )
   })
 
   it('preserves populated and legacy rows through shared sorting, grouping and cells', async () => {
@@ -452,9 +460,9 @@ describe('Project columns from the items response', () => {
     expect(sorted.map((row) => row.id)).toEqual(['legacy', 'item-1'])
     const groups = groupRows(table, sorted)
     expect(groups.map((group) => group.label)).toEqual(['1', '2'])
-    renderColumns(groups[1].rows[0])
-    expect(screen.getByText(prText)).toBeTruthy()
-    expect(screen.getByText('1/2 (50%)')).toBeTruthy()
+    const cells = renderColumns(groups[1].rows[0])
+    expect(cells.pullRequests.textContent).toBe(prText)
+    expect(cells.progress.textContent).toBe('1/2 (50%)')
     cleanup()
     renderColumns(groups[0].rows[0])
     expect(document.body.textContent).toBe('')
@@ -518,8 +526,8 @@ describe('Project columns from the items response', () => {
       for (const [arguments_] of vi.mocked(ghExecFileAsync).mock.calls) {
         expect(arguments_.join(' ')).toContain('pullRequests(first:10)')
       }
-      renderColumns(result.rows[count - 1])
-      expect(screen.getByText(prText)).toBeTruthy()
+      const cells = renderColumns(result.rows[count - 1])
+      expect(cells.pullRequests.textContent).toBe(prText)
     }
   )
 })
