@@ -20,6 +20,7 @@ import { wslClaudeChatScenario } from './wsl-orcad-chat-scenario'
 import {
   expectWindowsDecoyReachable,
   expectWindowsDecoyUnrun,
+  expectWindowsOnlyChatRefused,
   probeWindowsDecoy
 } from './wsl-orcad-chat-windows-decoy'
 import {
@@ -34,7 +35,7 @@ export type ChatLane = WslChatHost & {
   reconnect(whileDisconnected: () => Promise<void>): Promise<void>
 }
 
-function envelope(
+export function envelope(
   sessionId: string,
   method: string,
   fields: Record<string, unknown>,
@@ -301,7 +302,9 @@ export async function proveWslStructuredChat(lane: ChatLane) {
   const folder = await exerciseChat(lane, install, folderWorktree, folderPath)
   const decoy = await expectWindowsDecoyReachable(lane)
   await expectWindowsDecoyUnrun(lane, home)
-  // Recorded, not asserted: whether a Windows-only install is picked up is the open question.
   const windowsOnly = await probeWindowsDecoy(lane, install, gitWorktree)
-  return { git, folder, decoy, windowsOnly }
+  expect(windowsOnly.errors, JSON.stringify(windowsOnly)).toEqual([])
+  const windowsOnlyChat = await expectWindowsOnlyChatRefused(lane, gitWorktree)
+  await expectWindowsDecoyUnrun(lane, home)
+  return { git, folder, decoy, windowsOnly, windowsOnlyChat }
 }
