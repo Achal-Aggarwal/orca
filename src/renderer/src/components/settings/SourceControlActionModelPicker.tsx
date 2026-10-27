@@ -1,10 +1,11 @@
+import { reconcileAgentChoiceArgs } from '../../../../shared/agent-choice-reconciliation'
 import {
   normalizeAgentModelOptionChoices,
   type AgentDedicatedChoices
 } from '../../../../shared/agent-launch-choices'
 import {
   findCatalogModel,
-  getAgentSessionOptionCatalog
+  getAgentSessionOptionLaunchCatalog
 } from '../../../../shared/agent-session-option-catalog'
 import type { SourceControlActionLaunchPreferences } from '../../../../shared/source-control-ai-actions'
 import {
@@ -42,7 +43,7 @@ export function AgentChoiceControls({
   if (!agent || !picksModel) {
     return null
   }
-  const catalog = picksModel ? getAgentSessionOptionCatalog(agent) : null
+  const catalog = picksModel ? getAgentSessionOptionLaunchCatalog(agent) : null
   const selected = value
   // Model and permission mode are saved independently; a model change keeps the mode.
   const save = (next: AgentDedicatedChoices): void =>
@@ -50,7 +51,6 @@ export function AgentChoiceControls({
       ...normalizeAgentModelOptionChoices(next),
       ...(next.permissionMode ? { permissionMode: next.permissionMode } : {})
     })
-  const { permissionMode } = selected ?? {}
   const unlistedModel =
     catalog && selected?.model && !findCatalogModel(catalog, selected.model)
       ? selected.model
@@ -67,22 +67,16 @@ export function AgentChoiceControls({
             value={selected?.model ?? AGENT_DEFAULT_VALUE}
             disabled={disabled}
             onValueChange={(model) =>
-              save({
-                ...(model === AGENT_DEFAULT_VALUE
-                  ? {
-                      options: Object.fromEntries(
-                        options
-                          .filter(({ option }) => option.apply.launchArgs)
-                          .flatMap(({ option }) =>
-                            selected?.options?.[option.id] === undefined
-                              ? []
-                              : [[option.id, selected.options[option.id]]]
-                          )
-                      )
-                    }
-                  : { model }),
-                permissionMode
-              })
+              onChange(
+                reconcileAgentChoiceArgs({
+                  agent,
+                  choices: selected ?? {},
+                  userArgs: '',
+                  mode: 'choice-edit',
+                  keys: new Set(['model']),
+                  patch: { model: model === AGENT_DEFAULT_VALUE ? null : model }
+                }).choices
+              )
             }
           >
             <SourceControlActionOptionTrigger

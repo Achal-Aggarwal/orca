@@ -8,6 +8,10 @@ import {
 } from './source-control-ai'
 import type { GlobalSettings } from './global-settings-types'
 import type { SourceControlActionRecipe } from './source-control-ai-actions'
+import { normalizeSourceControlAiActionDefaults } from './source-control-ai-actions'
+import { sourceControlActionLaunchOptions } from './source-control-action-launch-preferences'
+import { resolveAgentLaunchCommand, terminalSessionOptionInputs } from './tui-agent-launch-command'
+import { agentLaunchNeedsPreparedCommand } from './agent-launch-preferences'
 
 function settings(): GlobalSettings {
   const base = getDefaultSettings('/tmp')
@@ -30,6 +34,101 @@ function settings(): GlobalSettings {
 }
 
 describe('source-control AI action recipes', () => {
+  it.each(['claude', 'codex'] as const)(
+    'carries independent %s effort from the saved action to a prepared terminal command',
+    (agent) => {
+      const recipe = normalizeSourceControlAiActionDefaults({
+        fixChecks: {
+          agentId: agent,
+          launchPreferences: { agentId: agent, options: { effort: 'high' } }
+        }
+      })?.fixChecks
+      expect(recipe?.launchPreferences).toEqual({ agentId: agent, options: { effort: 'high' } })
+      const { sessionOptions } = sourceControlActionLaunchOptions(recipe ?? {}, agent)
+      expect(sessionOptions).toEqual({ effort: 'high' })
+      const launch = resolveAgentLaunchCommand({
+        agent,
+        platform: 'linux',
+        shell: 'posix',
+        cmdOverrides: {},
+        agentArgs: '--verbose',
+        ...terminalSessionOptionInputs({
+          agent,
+          agentArgs: '--verbose',
+          shell: 'posix',
+          sessionOptions
+        })
+      })
+      expect(launch.ok).toBe(true)
+      if (!launch.ok) {
+        throw new Error(launch.error)
+      }
+      expect(launch.appliedSessionOptions).toEqual({ effort: 'high' })
+      expect(launch.command).toBe(
+        agent === 'claude'
+          ? "claude '--verbose' '--effort' 'high'"
+          : "codex '--verbose' '-c' 'model_reasoning_effort=high'"
+      )
+      expect(agentLaunchNeedsPreparedCommand(agent, launch.appliedSessionOptions)).toBe(true)
+    }
+  )
+
+  it('yields an inherited action model and its effort to repository Arguments, while an owned choice replaces them', () => {
+    const base = settings()
+    base.sourceControlAi!.actions = {
+      fixChecks: {
+        agentId: 'claude',
+        launchPreferences: { agentId: 'claude', model: 'opus', options: { effort: 'high' } }
+      }
+    }
+    const resolve = (owned: boolean) =>
+      resolveSourceControlActionRecipe({
+        settings: base,
+        actionId: 'fixChecks',
+        repo: {
+          sourceControlAi: {
+            actionOverrides: {
+              fixChecks: {
+                agentArgs: '--model retired-unlisted-id --effort low',
+                ...(owned
+                  ? {
+                      launchPreferences: base.sourceControlAi!.actions!.fixChecks!.launchPreferences
+                    }
+                  : {})
+              }
+            }
+          }
+        }
+      })
+    for (const owned of [false, true]) {
+      const recipe = resolve(owned)
+      const options = sourceControlActionLaunchOptions(recipe, 'claude')
+      const launch = resolveAgentLaunchCommand({
+        agent: 'claude',
+        platform: 'linux',
+        shell: 'posix',
+        cmdOverrides: {},
+        agentArgs: recipe.agentArgs,
+        ...terminalSessionOptionInputs({
+          agent: 'claude',
+          shell: 'posix',
+          agentArgs: recipe.agentArgs,
+          sessionOptions: options.sessionOptions,
+          yieldToAgentArgs: options.sessionOptionsYieldToAgentArgs
+        })
+      })
+      expect(launch.ok).toBe(true)
+      if (!launch.ok) {
+        throw new Error(launch.error)
+      }
+      expect(launch.command).toBe(
+        owned
+          ? "claude '--model' 'opus' '--effort' 'high'"
+          : "claude '--model' 'retired-unlisted-id' '--effort' 'low'"
+      )
+      expect(launch.appliedSessionOptions).toEqual(owned ? { model: 'opus', effort: 'high' } : {})
+    }
+  })
   it('resolves text action CLI args into generation params', () => {
     const base = settings()
     base.sourceControlAi = {

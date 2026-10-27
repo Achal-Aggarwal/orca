@@ -1,4 +1,4 @@
-import * as permissionArgs from './agent-permission-args'
+import * as reconciliation from './agent-choice-reconciliation'
 import { getDefaultSettings } from './constants'
 import { legacyChatPermissionWrite } from '../main/persistence/applying-settings/legacy-chat-permission-write'
 import { measureSettingsWork, expectSettingsWorkScale } from './global-settings-test-fixture'
@@ -693,16 +693,17 @@ describe('permission carrier ownership across save, reload and consumers', () =>
 })
 
 const importWork = { chars: 0, visits: 0 }
-const cut = permissionArgs.permissionRecipeCut
-vi.spyOn(permissionArgs, 'permissionRecipeCut').mockImplementation((agent, text, recipe) => {
-  const { value, work } = measureSettingsWork(() => cut(agent, text, recipe))
+const reconcile = reconciliation.reconcileAgentChoiceArgs
+vi.spyOn(reconciliation, 'reconcileAgentChoiceArgs').mockImplementation((input) => {
+  const { userArgs: text } = input
+  const { value, work } = measureSettingsWork(() => reconcile(input))
   importWork.chars += work.chars
   importWork.visits += work.visits
   if (text.length < 100) {
     return value
   }
   const calls = work.inputs,
-    w = recipe.split(' ').length,
+    w = 8,
     t = text.split(' ').length
   expect(calls.filter((v) => v === text)).toHaveLength(3)
   // Fixed token/span/owner allowance plus native slices and two B construction passes per candidate.

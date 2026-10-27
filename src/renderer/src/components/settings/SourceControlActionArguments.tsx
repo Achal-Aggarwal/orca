@@ -5,7 +5,12 @@ import {
   resolveAgentPermission
 } from '../../../../shared/tui-agent-permission-choice'
 import { agentArgsSetPermission } from '../../../../shared/tui-agent-permission-lift'
-import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
+import { reconcileAgentChoiceArgs } from '../../../../shared/agent-choice-reconciliation'
+import type { AgentChoicePatch } from '../../../../shared/agent-launch-choices'
+import { composeAgentLaunchModel } from '../../../../shared/agent-session-option-launch'
+import { projectAgentLaunchProfile } from '../../../../shared/agent-launch-profile'
+import { sourceControlActionOptions } from '../../../../shared/source-control-action-launch-preferences'
+import { SourceControlActionModelPicker } from './SourceControlActionModelPicker'
 import { AGENT_CATALOG } from '@/lib/agent-catalog'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { useAppStore } from '@/store'
@@ -28,7 +33,10 @@ export function SourceControlActionArguments({
   disabled?: boolean
   showArguments?: boolean
   onArgsChange: (value: string, commit?: boolean) => void
-  onPreferencesChange: (value: SourceControlActionLaunchPreferences | undefined) => void
+  onPreferencesChange: (
+    value: SourceControlActionLaunchPreferences | undefined,
+    userArgs?: string
+  ) => void
 }): React.JSX.Element {
   const settings = useAppStore((state) => state.settings)
   const selected = preferences?.agentId === agent ? preferences : undefined
@@ -37,15 +45,67 @@ export function SourceControlActionArguments({
   const label = agent ? (AGENT_CATALOG.find((entry) => entry.id === agent)?.label ?? agent) : ''
   const flag = agent && selected?.permissionMode ? agentPermissionArgs(agent, choice) : ''
   const loose = agent ? agentArgsSetPermission(agent, value ?? '') : false
-  const select = (next: typeof choice | 'default'): void => {
+  const commit = (patch: AgentChoicePatch, text = value ?? ''): string => {
     if (!agent || disabled) {
-      return
+      return text
     }
-    const { permissionMode: _previous, ...rest } = selected ?? { agentId: agent }
+    const result = reconcileAgentChoiceArgs({
+      agent,
+      userArgs: text,
+      choices: selected ?? {},
+      mode: 'choice-edit',
+      keys: new Set(['model', 'effort', 'permissionMode']),
+      patch
+    })
     onPreferencesChange(
-      next !== 'default' ? { ...rest, permissionMode: next } : rest.model ? rest : undefined
+      Object.keys(result.choices).length ? { agentId: agent, ...result.choices } : undefined,
+      result.userArgs !== (value ?? '') ? result.userArgs : undefined
     )
+    return result.userArgs
   }
+  const select = (permissionMode: typeof choice | 'default'): void => {
+    commit({ permissionMode })
+  }
+  const chips = agent
+    ? Object.entries({ model: selected?.model, ...selected?.options }).flatMap(([key, chosen]) => {
+        if (!chosen) {
+          return []
+        }
+        const option = sourceControlActionOptions(agent, selected?.model ?? '').find(
+          ({ option }) => option.id === key
+        )?.option
+        const flag = option?.apply.composedIntoModel
+          ? `${option.label} ${chosen}`
+          : projectAgentLaunchProfile(
+              agent,
+              { agentPermissionDefault: 'own' },
+              {
+                target: 'legacy-permission',
+                userArgs: '',
+                choices:
+                  key === 'model'
+                    ? {
+                        model: composeAgentLaunchModel(agent, {
+                          ...selected?.options,
+                          model: chosen
+                        })
+                      }
+                    : { options: { [key]: chosen } }
+              }
+            ).args
+        return flag
+          ? [
+              {
+                key,
+                label,
+                flag,
+                onRemove: (text: string) =>
+                  commit(key === 'model' ? { model: null } : { options: { [key]: null } }, text)
+              }
+            ]
+          : []
+      })
+    : []
   return (
     <>
       {agent ? (
@@ -74,6 +134,33 @@ export function SourceControlActionArguments({
           />
         </div>
       ) : null}
+      {agent ? (
+        <SourceControlActionModelPicker
+          agent={agent}
+          value={selected}
+          disabled={disabled}
+          layout="contents"
+          onChange={(next) =>
+            commit({
+              ...(next?.model !== selected?.model ? { model: next?.model ?? null } : {}),
+              options: Object.fromEntries(
+                [
+                  ...new Set([
+                    ...Object.keys(selected?.options ?? {}),
+                    ...Object.keys(next?.options ?? {})
+                  ])
+                ]
+                  .filter(
+                    (key) =>
+                      next?.model === selected?.model &&
+                      next?.options?.[key] !== selected?.options?.[key]
+                  )
+                  .map((key) => [key, next?.options?.[key] ?? null])
+              )
+            })
+          }
+        />
+      ) : null}
       {showArguments ? (
         <div className="w-full min-w-0">
           <AgentDefaultArgsInput
@@ -87,26 +174,19 @@ export function SourceControlActionArguments({
                 onArgsChange(text, true)
               }
             }}
-            choiceChips={
-              flag && !loose
+            choiceChips={[
+              ...(flag && !loose
                 ? [
                     {
                       key: 'permissionMode',
                       label,
                       flag,
-                      onRemove: (text) => {
-                        const next = agent
-                          ? (liftActionPermissionArgs({ agentId: agent, agentArgs: text }, true)
-                              .agentArgs ?? text)
-                          : text
-                        onArgsChange(next)
-                        select('own')
-                        return next
-                      }
+                      onRemove: (text: string) => commit({ permissionMode: 'own' }, text)
                     }
                   ]
-                : undefined
-            }
+                : []),
+              ...chips
+            ]}
             note={
               loose
                 ? translate(

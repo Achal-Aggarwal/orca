@@ -1,6 +1,4 @@
-import { analyzeAgentChoiceArgs } from './agent-choice-args'
-import { getAgentSessionOptionCatalog } from './agent-session-option-catalog'
-import { OPENCODE_LAUNCH_OPTION_CATALOG } from './agent-session-option-catalog-opencode'
+import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
 import type { AgentChoiceCliForm } from './agent-launch-choices'
 import type { AgentPermissionChoice } from './tui-agent-permission-choice'
 import { agentRequiredValueOptions } from './agent-session-option-agent-args'
@@ -198,8 +196,7 @@ export function agentArgsSetPermission(agent: TuiAgent, text: string | null | un
 }
 
 export function agentChoiceCliForms(agent: TuiAgent) {
-  const catalog =
-    agent === 'opencode' ? OPENCODE_LAUNCH_OPTION_CATALOG : getAgentSessionOptionCatalog(agent)
+  const catalog = getAgentSessionOptionLaunchCatalog(agent)
   const options = [
     ...(catalog?.unknownModelOptions ?? []),
     ...(catalog?.models.flatMap((model) => model.options) ?? [])
@@ -225,27 +222,6 @@ export function agentChoiceCliForms(agent: TuiAgent) {
     }
   }
   return forms
-}
-
-export function permissionRecipeCut(
-  agent: TuiAgent,
-  text: string,
-  recipe: string
-): { args: string } | null {
-  const analysis = analyzeAgentChoiceArgs(agent, text)
-  const wanted = words(recipe)
-  const occurrence = analysis.occurrences.find(
-    (entry) =>
-      entry.key === 'permissionMode' &&
-      entry.lift &&
-      agentPermissionChoices(agent).some(
-        (choice) =>
-          choice === entry.value &&
-          words(agentPermissionArgs(agent, choice)).join(' ') === wanted.join(' ')
-      )
-  )
-  const args = occurrence ? analysis.cut([occurrence]) : null
-  return args === null ? null : { args }
 }
 
 export function agentPermissionArgsForLaunch(

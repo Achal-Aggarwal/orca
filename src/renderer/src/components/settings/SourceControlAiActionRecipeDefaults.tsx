@@ -237,8 +237,8 @@ export function SourceControlAiActionRecipeDefaults({
               surface={recipe?.surface}
               onAgentChange={(id, value, choice) => void onActionAgentChange(id, value, choice)}
               launchPreferences={actionRecipeDraftState.values[actionId].launchPreferences}
-              onLaunchPreferencesChange={(id, value) =>
-                void onActionLaunchPreferencesChange(id, value)
+              onLaunchPreferencesChange={(id, value, userArgs) =>
+                void onActionLaunchPreferencesChange(id, value, userArgs)
               }
               onTemplateChange={onActionTemplateChange}
               onAgentArgsChange={onActionAgentArgsChange}

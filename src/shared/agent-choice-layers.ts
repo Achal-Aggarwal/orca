@@ -32,21 +32,27 @@ export function resolveAgentChoiceLayers(input: AgentChoiceLayersInput): AgentDe
       (index === 2 && input.launchPreferencesYieldToAgentArgs)
     const hasRaw = (remove: ((tokens: readonly string[]) => string[]) | undefined) =>
       rawWins && (remove?.(tokens).length ?? tokens.length) < tokens.length
-    const model = hasRaw(catalog?.modelApply.removeAgentArgs) ? undefined : layer.model
+    const rawModel = hasRaw(catalog?.modelApply.removeAgentArgs)
+    if (rawModel) {
+      result = result.permissionMode ? { permissionMode: result.permissionMode } : {}
+    }
+    const model = rawModel ? undefined : layer.model
     const changingModel = model !== undefined && model !== result.model
     const options = Object.fromEntries(
-      Object.entries(layer.options ?? {}).filter(([id]) => {
-        const option = (
-          catalog?.models.find((entry) => entry.id === (model ?? result.model))?.options ??
-          catalog?.unknownModelOptions
-        )?.find((entry) => entry.id === id)
-        return !hasRaw(option?.apply.removeAgentArgs)
-      })
+      Object.entries({ ...(changingModel ? {} : result.options), ...layer.options }).filter(
+        ([id]) => {
+          const option = (
+            catalog?.models.find((entry) => entry.id === (model ?? result.model))?.options ??
+            catalog?.unknownModelOptions
+          )?.find((entry) => entry.id === id)
+          return !rawModel && !hasRaw(option?.apply.removeAgentArgs)
+        }
+      )
     )
     result = {
       ...result,
       ...(model ? { model } : {}),
-      options: { ...(changingModel ? {} : result.options), ...options },
+      options,
       ...(layer.permissionMode ? { permissionMode: layer.permissionMode } : {})
     }
   }

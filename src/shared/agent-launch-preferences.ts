@@ -30,7 +30,7 @@ export function toAgentLaunchPreferences(
   return Object.keys(preferences).length > 0 ? preferences : undefined
 }
 
-/** Authority v1 cannot carry a composed per-launch permission environment. */
+/** Older authority compilers lose effort-only choices and cannot carry permission environments. */
 export function agentLaunchNeedsPreparedCommand(
   agent: AgentType,
   applied: Readonly<Record<string, unknown>> | null | undefined

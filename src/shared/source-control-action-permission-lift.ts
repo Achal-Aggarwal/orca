@@ -1,5 +1,5 @@
 import { isTuiAgent } from './tui-agent-config'
-import { liftAgentPermissionArgs } from './tui-agent-permission-lift'
+import { reconcileAgentChoiceArgs } from './agent-choice-reconciliation'
 import {
   SOURCE_CONTROL_LAUNCH_ACTION_IDS,
   type AiActionId,
@@ -23,23 +23,24 @@ export function liftActionPermissionArgs<T extends PermissionRecipe>(
   if (!isTuiAgent(recipe.agentId) || typeof recipe.agentArgs !== 'string') {
     return recipe
   }
-  const lifted = liftAgentPermissionArgs(recipe.agentId, recipe.agentArgs)
-  if (!lifted.choice) {
-    return recipe
-  }
   const previous = recipe.launchPreferences
-  if (
-    previous &&
-    (previous.agentId !== recipe.agentId ||
-      (!edited && previous.permissionMode && previous.permissionMode !== lifted.choice))
-  ) {
+  if (previous && previous.agentId !== recipe.agentId) {
     return recipe
   }
-  return {
-    ...recipe,
-    agentArgs: lifted.args,
-    launchPreferences: { ...previous, agentId: recipe.agentId, permissionMode: lifted.choice }
-  }
+  const result = reconcileAgentChoiceArgs({
+    agent: recipe.agentId,
+    userArgs: recipe.agentArgs,
+    choices: previous ?? {},
+    mode: edited ? 'arguments-edit' : 'load',
+    keys: new Set(['permissionMode', 'model', 'effort'])
+  })
+  return result.userArgs === recipe.agentArgs
+    ? recipe
+    : {
+        ...recipe,
+        agentArgs: result.userArgs,
+        launchPreferences: { agentId: recipe.agentId, ...result.choices }
+      }
 }
 
 /** Only the row's own concrete agent proves which CLI grammar its saved text uses. */

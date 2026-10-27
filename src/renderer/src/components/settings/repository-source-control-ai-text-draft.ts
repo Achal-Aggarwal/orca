@@ -58,11 +58,13 @@ export function createRepoActionTextDraftEditors(
 ) {
   const updateActionLaunchPreferences = (
     actionId: SourceControlActionId,
-    value: SourceControlActionLaunchPreferences | undefined
+    value: SourceControlActionLaunchPreferences | undefined,
+    userArgs?: string
   ): void => {
     setActionTextDrafts((current) =>
       patchActionTextDraft(current, immediateRepoAiRef.current, actionId, {
-        launchPreferences: value
+        launchPreferences: value,
+        ...(userArgs !== undefined ? { agentArgs: userArgs } : {})
       })
     )
   }

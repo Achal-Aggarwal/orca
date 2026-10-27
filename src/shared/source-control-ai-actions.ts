@@ -1,7 +1,7 @@
 import { isCustomAgentId, type CustomAgentId } from './commit-message-agent-spec'
 import { isTuiAgent } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
-import { isAgentSessionOptions } from './agent-session-record'
+import { normalizeAgentModelOptionChoices } from './agent-launch-choices'
 import { agentPermissionChoices, type AgentPermissionChoice } from './tui-agent-permission-choice'
 
 // Keep the variable registry separate for max-lines headroom; no re-export so consumer searches stay complete.
@@ -167,30 +167,17 @@ export function normalizeSourceControlActionLaunchPreferences(
   if (!isTuiAgent(agentId)) {
     return undefined
   }
-  const model = typeof value.model === 'string' ? value.model.trim() : ''
+  const choices = normalizeAgentModelOptionChoices({
+    ...value,
+    options:
+      value.options ?? (typeof value.effort === 'string' ? { effort: value.effort } : undefined)
+  })
   const permissionMode = agentPermissionChoices(agentId).find(
     (mode) => mode === value.permissionMode
   )
-  // Options belong to a model; the permission mode has its own field.
-  const options = model
-    ? (value.options ?? (typeof value.effort === 'string' ? { effort: value.effort } : {}))
-    : {}
-  if (
-    !isAgentSessionOptions(options) ||
-    Object.keys(options).some(
-      (key) => !isSafeRecordKey(key) || ['agentId', 'model', 'permissionMode'].includes(key)
-    ) ||
-    (model && !isAgentSessionOptions({ ...options, model })) ||
-    (!model && !permissionMode)
-  ) {
-    return undefined
-  }
-  return {
-    agentId,
-    ...(model ? { model } : {}),
-    ...(Object.keys(options).length ? { options } : {}),
-    ...(permissionMode ? { permissionMode } : {})
-  }
+  return choices || permissionMode
+    ? { agentId, ...choices, ...(permissionMode ? { permissionMode } : {}) }
+    : undefined
 }
 
 export function normalizeSourceControlAiActionDefaults(

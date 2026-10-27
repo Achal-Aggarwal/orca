@@ -86,7 +86,7 @@ describe('dedicated agent choices', () => {
     expect(
       reconcileAgentChoiceArgs({ ...input, mode: 'choice-edit', patch: { model: null } })
     ).toEqual({
-      userArgs: '--model sonnet --effort high',
+      userArgs: '--model sonnet',
       choices: { options: { effort: 'high' } }
     })
     expect(
@@ -96,7 +96,83 @@ describe('dedicated agent choices', () => {
         mode: 'choice-edit',
         patch: { model: null }
       })
-    ).toEqual({ userArgs: '--effort high', choices: { options: { effort: 'high' } } })
+    ).toEqual({ userArgs: '', choices: { options: { effort: 'high' } } })
+  })
+
+  it('reconciles unpatched dirty choices and recomposes generated model options', () => {
+    expect(
+      reconcileAgentChoiceArgs({
+        agent: 'claude',
+        userArgs: '--model opus --effort low --verbose',
+        choices: { model: 'sonnet', options: { effort: 'high' } },
+        keys,
+        mode: 'choice-edit',
+        patch: { permissionMode: 'ask' }
+      })
+    ).toEqual({
+      userArgs: '--verbose',
+      choices: {
+        model: 'opus',
+        options: { effort: 'low' },
+        permissionMode: 'ask'
+      }
+    })
+    expect(
+      reconcileAgentChoiceArgs({
+        agent: 'claude',
+        userArgs: '',
+        choices: { model: 'opus', options: { effort: 'high' } },
+        keys,
+        mode: 'choice-edit',
+        patch: { model: 'haiku' }
+      }).choices
+    ).toEqual({ model: 'haiku' })
+    const choices = { model: 'claude-opus-4-8', options: { thinking: 'true', effort: 'high' } }
+    const next = reconcileAgentChoiceArgs({
+      agent: 'cursor',
+      userArgs: '--model claude-opus-4-8-thinking-high --verbose',
+      choices,
+      keys: new Set(['model', 'thinking', 'effort']),
+      mode: 'choice-edit',
+      patch: { options: { effort: null } }
+    })
+    expect(next).toEqual({
+      userArgs: '--verbose',
+      choices: {
+        model: choices.model,
+        options: { thinking: 'true' }
+      }
+    })
+    expect(
+      projectAgentLaunchProfile(
+        'cursor',
+        { agentPermissionDefault: 'own' },
+        {
+          target: 'terminal',
+          ...next
+        }
+      ).args
+    ).toBe('--model claude-opus-4-8-thinking --verbose')
+  })
+
+  it('does not revive remembered model/options when raw text defeats a yielding layer', () => {
+    const input = {
+      agent: 'claude' as const,
+      remembered: { model: 'sonnet', options: { effort: 'high' } },
+      action: { model: 'opus', options: { effort: 'low' }, permissionMode: 'ask' as const },
+      argumentOwner: 'launch' as const,
+      launchPreferencesYieldToAgentArgs: true
+    }
+    expect(resolveAgentChoiceLayers({ ...input, userArgs: '--model haiku' })).toEqual({
+      permissionMode: 'ask'
+    })
+    expect(resolveAgentChoiceLayers({ ...input, userArgs: '--effort medium' })).toEqual({
+      model: 'opus',
+      permissionMode: 'ask'
+    })
+    expect(
+      resolveAgentChoiceLayers({ ...input, userArgs: '--model haiku', explicit: { model: 'opus' } })
+    ).toEqual({ model: 'opus', permissionMode: 'ask' })
   })
 
   it('resolves raw inheritance before projecting and never imports another model’s options', () => {

@@ -10,12 +10,16 @@ import {
   getDefaultSourceControlAiSettings,
   normalizeSourceControlAiSettings
 } from '../../../../shared/source-control-ai'
-import type { RepoSourceControlAiOverrides } from '../../../../shared/source-control-ai-types'
+import type {
+  RepoSourceControlAiOverrides,
+  SourceControlAiSettings
+} from '../../../../shared/source-control-ai-types'
 import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
 import { sourceControlActionAgentArgs } from '../../../../shared/source-control-action-launch-preferences'
 import { agentPermissionArgsForLaunch } from '../../../../shared/tui-agent-launch-defaults'
 import { SourceControlActionArguments } from './SourceControlActionArguments'
 import { useRepositorySourceControlAiGlobalUx } from './repository-source-control-ai-global-ux'
+import { useSourceControlActionRecipeDraftState } from './source-control-action-recipe-draft-state'
 import { TooltipProvider } from '../ui/tooltip'
 
 const model = { agentId: 'claude', model: 'sonnet', options: { effort: 'high' } } as const
@@ -25,6 +29,7 @@ const initial = normalizeSourceControlAiSettings({
   actions: { fixChecks: { agentId: 'claude', agentArgs: '', launchPreferences: model } }
 })
 const write = vi.fn()
+const edit = vi.fn()
 
 function RepoHarness({ saved }: { saved: { value: RepoSourceControlAiOverrides } }) {
   const [persisted, setPersisted] = useState(saved.value)
@@ -48,15 +53,121 @@ function RepoHarness({ saved }: { saved: { value: RepoSourceControlAiOverrides }
         value={value?.agentArgs ?? ''}
         preferences={value?.launchPreferences}
         onArgsChange={(text, commit) => draft.updateActionAgentArgs('fixChecks', text, commit)}
-        onPreferencesChange={(preferences) =>
-          draft.updateActionLaunchPreferences('fixChecks', preferences)
-        }
+        onPreferencesChange={(preferences, userArgs) => {
+          edit(preferences, userArgs)
+          draft.updateActionLaunchPreferences('fixChecks', preferences, userArgs)
+        }}
       />
       <button onClick={() => void draft.saveActionRecipeText('fixChecks')}>Save</button>
       <button onClick={() => draft.discardActionRecipeText('fixChecks')}>Discard</button>
     </TooltipProvider>
   )
 }
+
+function GlobalHarness({ saved }: { saved: { value: SourceControlAiSettings } }) {
+  const [config, setConfig] = useState(saved.value)
+  const draft = useSourceControlActionRecipeDraftState({
+    config,
+    writeConfig: async (patch) => {
+      saved.value = {
+        ...saved.value,
+        ...(typeof patch === 'function' ? patch(saved.value) : patch)
+      }
+      write(saved.value)
+      setConfig(saved.value)
+    }
+  })
+  const value = draft.actionRecipeDraftState.values.fixChecks
+  return (
+    <TooltipProvider>
+      <SourceControlActionArguments
+        agent="claude"
+        value={value.agentArgs}
+        preferences={value.launchPreferences}
+        onArgsChange={(text, commit) => draft.onActionAgentArgsChange('fixChecks', text, commit)}
+        onPreferencesChange={(preferences, userArgs) => {
+          edit(preferences, userArgs)
+          draft.onActionLaunchPreferencesChange('fixChecks', preferences, userArgs)
+        }}
+      />
+      <button onClick={() => void draft.saveActionTemplateDraft('fixChecks')}>Save</button>
+      <button onClick={() => draft.discardActionTemplateDraft('fixChecks')}>Discard</button>
+    </TooltipProvider>
+  )
+}
+
+it.each(['global', 'repo'] as const)(
+  '%s: edits dirty choices atomically and saves/discards the badge collection',
+  async (scope) => {
+    write.mockClear()
+    edit.mockClear()
+    const global = { value: initial }
+    const repo: { value: RepoSourceControlAiOverrides } = {
+      value: { actionOverrides: { fixChecks: initial.actions?.fixChecks } }
+    }
+    const view = () =>
+      scope === 'global' ? <GlobalHarness saved={global} /> : <RepoHarness saved={repo} />
+    const saved = () =>
+      scope === 'global' ? global.value.actions?.fixChecks : repo.value.actionOverrides?.fixChecks
+    const rendered = render(view())
+    const input = screen.getByRole('textbox', { name: 'Arguments' })
+    fireEvent.change(input, { target: { value: '--model fable --verbose' } })
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sonnet' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+    expect(edit).toHaveBeenCalledExactlyOnceWith({ agentId: 'claude', model: 'haiku' }, '--verbose')
+    fireEvent.click(screen.getByText('Discard'))
+    edit.mockClear()
+    fireEvent.change(input, { target: { value: '--model fable --effort low --verbose' } })
+    await userEvent.click(screen.getByRole('combobox', { name: 'High' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Medium', exact: true }))
+    expect(edit).toHaveBeenCalledTimes(1)
+    expect(edit).toHaveBeenLastCalledWith(
+      { agentId: 'claude', model: 'fable', options: { effort: 'medium' } },
+      '--verbose'
+    )
+    expect(input).toHaveProperty('value', '--verbose')
+    expect(write).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+    expect(saved()?.agentArgs).toBe('--verbose')
+    expect(saved()?.launchPreferences).toEqual({
+      agentId: 'claude',
+      model: 'fable',
+      options: { effort: 'medium' }
+    })
+    rendered.unmount()
+    render(view())
+    const reopened = screen.getByRole('textbox', { name: 'Arguments' })
+    fireEvent.change(reopened, { target: { value: '--model fable --effort medium --verbose' } })
+    edit.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove --model fable' }))
+    expect(edit).toHaveBeenCalledExactlyOnceWith(
+      { agentId: 'claude', options: { effort: 'medium' } },
+      '--verbose'
+    )
+    expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+    fireEvent.click(screen.getByText('Discard'))
+    expect(screen.getByRole('combobox', { name: 'Fable' })).toBeDefined()
+    expect(reopened).toHaveProperty('value', '--verbose')
+    fireEvent.focus(reopened)
+    if (!(reopened instanceof HTMLTextAreaElement)) {
+      throw new Error('Missing Arguments')
+    }
+    reopened.setSelectionRange(0, 0)
+    edit.mockClear()
+    fireEvent.keyDown(reopened, { key: 'Backspace' })
+    const effort = screen.getByRole('button', { name: 'Remove --effort medium' })
+    expect(document.activeElement).toBe(effort)
+    expect(edit).not.toHaveBeenCalled()
+    fireEvent.keyDown(effort, { key: 'Backspace' })
+    expect(edit).toHaveBeenCalledExactlyOnceWith({ agentId: 'claude', model: 'fable' }, undefined)
+    expect(screen.getByRole('combobox', { name: 'Default' })).toBeDefined()
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2))
+    expect(saved()?.launchPreferences).toEqual({ agentId: 'claude', model: 'fable' })
+    expect(saved()?.agentArgs).toBe('--verbose')
+  }
+)
 
 it('repo: commits typed permission, drafts own removal and saves/discards args and model together', async () => {
   write.mockClear()
@@ -121,7 +232,8 @@ it('repo: commits typed permission, drafts own removal and saves/discards args a
   }
   args.setSelectionRange(0, 0)
   fireEvent.keyDown(args, { key: 'Backspace' })
-  expect(document.activeElement).toBe(screen.getByRole('button', { name: /Remove --dangerously/ }))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove --effort high' }))
+  screen.getByRole('button', { name: /Remove --dangerously/ }).focus()
   fireEvent.keyDown(document.activeElement ?? args, { key: 'Backspace' })
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(savedRecipe()?.launchPreferences?.permissionMode).toBe('own'))
@@ -165,7 +277,7 @@ it('disables the menu, input, reset and chip keyboard path while preserving geom
   await userEvent.click(screen.getByRole('button', { name: 'Claude permissions' }))
   expect(screen.getByRole('menuitemradio', { name: /Same as Claude ·/ })).toBeDefined()
   await userEvent.click(screen.getByRole('menuitemradio', { name: /Use Claude's own settings/ }))
-  expect(preferences).toHaveBeenLastCalledWith({ ...model, permissionMode: 'own' })
+  expect(preferences).toHaveBeenLastCalledWith({ ...model, permissionMode: 'own' }, undefined)
 })
 
 it.each([undefined, null])('keeps untouched %s arguments unowned until the user edits', (value) => {

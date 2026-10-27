@@ -132,7 +132,8 @@ export function useSourceControlActionRecipeDraftState({
 
   const onActionLaunchPreferencesChange = (
     actionId: SourceControlActionId,
-    update: SetStateAction<SourceControlActionLaunchPreferences | undefined>
+    update: SetStateAction<SourceControlActionLaunchPreferences | undefined>,
+    userArgs?: string
   ): void => {
     setActionRecipeDraftState((current) => {
       const latest = current.values[actionId].launchPreferences
@@ -145,7 +146,11 @@ export function useSourceControlActionRecipeDraftState({
         ...current,
         values: {
           ...current.values,
-          [actionId]: { ...current.values[actionId], launchPreferences: next }
+          [actionId]: {
+            ...current.values[actionId],
+            launchPreferences: next,
+            ...(userArgs !== undefined ? { agentArgs: userArgs } : {})
+          }
         }
       }
     })

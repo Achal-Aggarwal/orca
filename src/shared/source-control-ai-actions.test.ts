@@ -139,7 +139,10 @@ describe('source-control AI launch action defaults', () => {
           options: { effort: 'high' }
         }
       },
-      resolveConflicts: { agentId: 'claude' },
+      resolveConflicts: {
+        agentId: 'claude',
+        launchPreferences: { agentId: 'claude', options: { effort: 'high' } }
+      },
       resolveComments: { agentId: 'claude' }
     })
   })

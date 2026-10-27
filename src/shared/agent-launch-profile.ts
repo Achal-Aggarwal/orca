@@ -5,10 +5,8 @@ import {
   removeOverriddenAgentSessionArgs,
   resolveAgentSessionOptionLaunch
 } from './agent-session-option-launch'
-import {
-  getTuiAgentDefaultArgs,
-  type AgentLaunchProfileSettings
-} from './tui-agent-launch-defaults'
+import type { AgentLaunchProfileSettings } from './tui-agent-launch-defaults'
+import { YOLO_TUI_AGENT_ARGS } from './tui-agent-permissions'
 import { hasTypedAgentPermission, resolveAgentPermission } from './tui-agent-permission-choice'
 import {
   quoteStartupArg,
@@ -33,7 +31,7 @@ export function projectAgentLaunchProfile(
   const userArgs =
     input.userArgs ??
     settings?.agentDefaultArgs?.[agent] ??
-    (typed ? '' : getTuiAgentDefaultArgs(agent))
+    (typed ? '' : (YOLO_TUI_AGENT_ARGS[agent] ?? ''))
   const choices = resolveAgentChoiceLayers({
     agent,
     defaults: typed

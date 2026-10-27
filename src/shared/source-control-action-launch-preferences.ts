@@ -1,3 +1,4 @@
+import { normalizeAgentModelOptionChoices } from './agent-launch-choices'
 import type { ExecutionHostId } from './execution-host'
 import {
   resolveTuiAgentLaunchArgs,
@@ -5,6 +6,7 @@ import {
 } from './tui-agent-launch-defaults'
 import {
   findCatalogModel,
+  getAgentSessionOptionLaunchCatalog,
   getAgentSessionOptionCatalog,
   type CatalogOption
 } from './agent-session-option-catalog'
@@ -26,7 +28,9 @@ import {
 export function sourceControlActionAgentPicksModel(
   agent: string | null | undefined
 ): agent is TuiAgent {
-  return isTuiAgent(agent) && Boolean(getAgentSessionOptionCatalog(agent)?.models.length)
+  return (
+    isTuiAgent(agent) && Boolean(getAgentSessionOptionLaunchCatalog(agent)?.modelApply.launchArgs)
+  )
 }
 
 /** The one route a saved choice reaches, for the hint under its control; null reaches both. */
@@ -102,8 +106,10 @@ export function resolveSourceControlActionSessionOptions(
   if (!preferences || preferences.agentId !== agent) {
     return undefined
   }
+  const choices = normalizeAgentModelOptionChoices(preferences)
   return {
-    ...(preferences.model ? { ...preferences.options, model: preferences.model } : {}),
+    ...choices?.options,
+    ...(choices?.model ? { model: choices.model } : {}),
     ...(preferences.permissionMode
       ? { [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: preferences.permissionMode }
       : {})

@@ -74,7 +74,8 @@ type RepositorySourceControlAiActionRowsProps = {
   ) => void
   onActionLaunchPreferencesChange: (
     actionId: SourceControlActionId,
-    value: SourceControlActionLaunchPreferences | undefined
+    value: SourceControlActionLaunchPreferences | undefined,
+    userArgs?: string
   ) => void
   onActionTemplateChange: (actionId: SourceControlActionId, value: string) => void
   onActionAgentArgsChange: (
@@ -304,8 +305,8 @@ export function RepositorySourceControlAiActionRows({
                     onArgsChange={(value, commit) =>
                       onActionAgentArgsChange(actionId, value, commit)
                     }
-                    onPreferencesChange={(value) =>
-                      onActionLaunchPreferencesChange(actionId, value)
+                    onPreferencesChange={(value, userArgs) =>
+                      onActionLaunchPreferencesChange(actionId, value, userArgs)
                     }
                   />
                 ) : (

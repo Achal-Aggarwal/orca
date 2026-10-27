@@ -9,7 +9,14 @@ import { agentPermissionArgs } from './tui-agent-permission-choice'
 import { tokenizeStartupCommand } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
 
-type ChoiceOccurrence = { key: string; value: string; start: number; end: number; lift: boolean }
+type ChoiceOccurrence = {
+  key: string
+  value: string
+  start: number
+  end: number
+  lift: boolean
+  owned: boolean
+}
 
 /** All candidates and cuts refer to the same original text in every execution grammar. */
 export function analyzeAgentChoiceArgs(agent: TuiAgent, text: string) {
@@ -68,7 +75,7 @@ export function analyzeAgentChoiceArgs(agent: TuiAgent, text: string) {
           value = inline
             ? token.slice(name.length + (token[name.length] === '=' ? 1 : 0))
             : (first.parsed.tokens[index + 1] ?? '')
-          count = inline || !value || value.startsWith('-') ? 1 : 2
+          count = !inline && first.analysis.roles[index + 1] === `value:${name}` ? 2 : 1
           lift =
             form.lift !== 'never' &&
             (!inline || name.startsWith('--')) &&
@@ -108,7 +115,7 @@ export function analyzeAgentChoiceArgs(agent: TuiAgent, text: string) {
         })
         if (!seen.has(`${key}:${start}`)) {
           seen.add(`${key}:${start}`)
-          occurrences.push({ key, value, start, end, lift: lift && agreed })
+          occurrences.push({ key, value, start, end, lift: lift && agreed, owned: agreed })
         }
       }
     }

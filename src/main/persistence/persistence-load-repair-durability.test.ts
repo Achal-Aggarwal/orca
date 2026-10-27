@@ -1,7 +1,7 @@
-import * as permissionLift from '../../shared/tui-agent-permission-lift'
+import * as reconciliation from '../../shared/agent-choice-reconciliation'
 import * as terminalPreparation from './loading-store/prepare-loaded-terminal-settings'
 import * as domainWrites from './profile-state/profile-state-domain-writes'
-import * as permissionArgs from '../../shared/agent-permission-args'
+import * as choiceArgs from '../../shared/agent-choice-args'
 import * as shell from '../../shared/tui-agent-startup-shell'
 import { agentPermissionChoices } from '../../shared/tui-agent-permission-choice'
 import {
@@ -112,11 +112,11 @@ describe('load-time normalization durability', () => {
         actions: {
           fixChecks: {
             agentId: 'claude',
-            agentArgs: '--dangerously-skip-permissions --verbose',
-            launchPreferences: { agentId: 'claude', model: 'sonnet', options: { effort: 'high' } }
+            agentArgs:
+              '--model retired-unlisted-id --effort high --dangerously-skip-permissions --verbose'
           },
           resolveComments: { agentId: 'codex', agentArgs: literal },
-          resolveConflicts: { agentId: 'gemini', agentArgs: '--yolo' },
+          resolveConflicts: { agentId: 'claude', agentArgs: '--effort high' },
           fixPushFailure: { agentArgs: ' --dangerously-skip-permissions ' },
           fixCommitFailure: conflict,
           commitMessage: { agentId: 'claude', agentArgs: '--dangerously-skip-permissions' }
@@ -133,17 +133,18 @@ describe('load-time normalization durability', () => {
             fixChecks: {
               agentId: i % 2 ? 'claude' : 'codex',
               agentArgs: (i % 2
-                ? '--dangerously-skip-permissions'
-                : '--dangerously-bypass-approvals-and-sandbox'
+                ? '--model retired-unlisted-id --effort high --dangerously-skip-permissions'
+                : '-c model=retired-unlisted-id -c model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox'
               ).padEnd(64)
             },
-            resolveComments: { agentArgs: ' --dangerously-bypass-approvals-and-sandbox ' },
+            resolveComments: { agentArgs: ' --model untouched --effort high ' },
+            resolveConflicts: { agentId: 'custom', agentArgs: ' --model untouched --effort high ' },
             fixPushFailure: { agentId: null, agentArgs: literal }
           }
         }
       }))
-      const lift = vi.spyOn(permissionLift, 'liftAgentPermissionArgs')
-      const cut = vi.spyOn(permissionArgs, 'permissionRecipeCut')
+      const lift = vi.spyOn(reconciliation, 'reconcileAgentChoiceArgs')
+      const cut = vi.spyOn(choiceArgs, 'analyzeAgentChoiceArgs')
       const tokenize = vi.spyOn(shell, 'tokenizeStartupCommand')
       const prepare = terminalPreparation.prepareLoadedTerminalSettings
       const marks = vi.fn()
@@ -187,7 +188,7 @@ describe('load-time normalization durability', () => {
         agentArgs: '--verbose',
         launchPreferences: {
           agentId: 'claude',
-          model: 'sonnet',
+          model: 'retired-unlisted-id',
           options: { effort: 'high' },
           permissionMode: 'full-access'
         }
@@ -202,6 +203,8 @@ describe('load-time normalization durability', () => {
           agentArgs: '',
           launchPreferences: {
             agentId: row.sourceControlAi?.actionOverrides?.fixChecks?.agentId,
+            model: 'retired-unlisted-id',
+            options: { effort: 'high' },
             permissionMode: 'full-access'
           }
         })
@@ -211,7 +214,7 @@ describe('load-time normalization durability', () => {
       expect(actions?.fixChecks?.launchPreferences?.permissionMode).toBe('full-access')
       expect(actions?.resolveConflicts).toMatchObject({
         agentArgs: '',
-        launchPreferences: { agentId: 'gemini', permissionMode: 'full-access' }
+        launchPreferences: { agentId: 'claude', options: { effort: 'high' } }
       })
       expect(actions?.resolveComments?.agentArgs).toBe(literal)
       expect(actions?.fixPushFailure?.agentArgs).toBe(' --dangerously-skip-permissions ')
@@ -220,6 +223,9 @@ describe('load-time normalization durability', () => {
       const rows = reopened.getRepos()[0]?.sourceControlAi?.actionOverrides
       expect(rows?.resolveComments).toEqual(
         settled.repos[0]?.sourceControlAi?.actionOverrides?.resolveComments
+      )
+      expect(rows?.resolveConflicts).toEqual(
+        settled.repos[0]?.sourceControlAi?.actionOverrides?.resolveConflicts
       )
       expect(rows?.fixPushFailure).toEqual(
         settled.repos[0]?.sourceControlAi?.actionOverrides?.fixPushFailure
