@@ -12493,7 +12493,8 @@
           "copyLogs": "Copy",
           "accessFailed": "Couldn’t read its access",
           "retry": "Retry",
-          "noAccessReach": "Nothing outside its own files"
+          "noAccessReach": "Nothing outside its own files",
+          "customEditor": "Editor"
         },
         "PluginManagerRows": {
           "crashedCount": "Crashed {{value0}} times in a row",
@@ -12601,7 +12602,8 @@
           "keepOff": "Keep off",
           "replacesShortcut": "{{value0}} ({{value1}}) replaces your shortcut for {{value2}}.",
           "updatesKeepApproval": "Updates ask again only for new access",
-          "fullAccessUpdates": "Updates can change its code without asking"
+          "fullAccessUpdates": "Updates can change its code without asking",
+          "editsFileTypes": "Opens and edits {{value0}} files in Orca"
         },
         "PluginPageAction": {
           "failedTitle": "Couldn’t install {{value0}}",
@@ -16019,6 +16021,13 @@
           "view": "View plugin",
           "notNow": "Not now",
           "never": "Don't suggest for .{{value0}}"
+        },
+        "PluginCustomEditorFrame": {
+          "loading": "Loading editor…",
+          "unresponsive": "{{value0}} stopped responding. Switch to Source to keep editing.",
+          "loadFailed": "{{value0}} could not be loaded. Switch to Source to edit this file.",
+          "editTooLarge": "This file is too large for {{value0}} to save changes. Use Source instead.",
+          "editRateLimited": "{{value0}} is sending changes too quickly; some were skipped."
         }
       },
       "diff": {
