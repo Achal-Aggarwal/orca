@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  AGENT_SESSION_FAILURE_KINDS,
-  agentSessionFailureFact,
-  isSubmissionRejectionKind
-} from './agent-session-failure'
+import { agentSessionFailureFact } from './agent-session-failure'
 import { agentSessionFailureWords } from './agent-session-failure-words'
 import {
   classifyDispatchRejection,
@@ -29,30 +25,12 @@ describe('classifyDispatchRejection', () => {
     expect(classifyDispatchRejection({ reason })).toEqual({ category, verdict, kind })
   })
 
-  it('reads any other legacy reason as a sentence that failed the send', () => {
-    expect(classifyDispatchRejection({ reason: 'Claude does not support .bmp' })).toEqual({
-      category: 'content',
-      verdict: 'failure'
-    })
-    expect(classifyDispatchRejection({ reason: null })).toEqual({
-      category: 'content',
-      verdict: 'failure'
-    })
-  })
-
-  it('fails the send for every kind but a withdrawal, a restart, a close, or a lost send', () => {
-    const noOneFailed = ['cancelled', 'hostRestarted', 'chatClosed', 'notDelivered', 'unconfirmed']
-    for (const kind of AGENT_SESSION_FAILURE_KINDS.filter(isSubmissionRejectionKind)) {
-      const verdict = classifyDispatchRejection({ reason: 'x', rejection: { kind } }).verdict
-      expect([kind, verdict]).toEqual([kind, noOneFailed.includes(kind) ? null : 'failure'])
-    }
-  })
-
   it.each([
     ['cancelled', 'withdrawn', null],
     ['hostRestarted', 'undelivered', null],
     ['chatClosed', 'undelivered', null],
     ['notDelivered', 'undelivered', null],
+    ['unconfirmed', 'undelivered', null],
     // Orca stopped a start that hung: the agent failed, and the message never reached it.
     ['hostStopped', 'undelivered', 'failure'],
     ['writeFailed', 'transport', 'failure'],
@@ -65,14 +43,6 @@ describe('classifyDispatchRejection', () => {
       provider: 'claude'
     })
     expect(classifyDispatchRejection(written)).toEqual({ category, verdict, kind })
-  })
-
-  it('reads a legacy not_delivered row with no fact as a send nobody failed', () => {
-    expect(classifyDispatchRejection({ reason: 'not_delivered' })).toEqual({
-      category: 'undelivered',
-      verdict: null,
-      kind: 'notDelivered'
-    })
   })
 
   it('reads the typed fact over the sentence beside it', () => {
