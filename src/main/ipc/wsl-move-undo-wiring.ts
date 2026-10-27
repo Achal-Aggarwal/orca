@@ -39,8 +39,14 @@ export type WslMoveUndoPorts = {
 
 // What undo reads of the host's terminal list: whether each terminal is still running.
 const HostTerminalList = z.object({
-  terminals: z.array(z.object({ connected: z.boolean() }).passthrough())
+  terminals: z.array(
+    z.object({ connected: z.boolean(), worktreeId: z.string().optional() }).passthrough()
+  ),
+  truncated: z.boolean().optional()
 })
+
+// Far above any host's terminal count; a list cut off at it cannot prove what runs there.
+const HOST_TERMINAL_LIST_LIMIT = 10_000
 
 const SLEEP_TIMEOUT_MS = 60_000
 const LIST_TIMEOUT_MS = 10_000
@@ -77,6 +83,25 @@ export function createWslMoveUndoPorts(
         }
       }
       return stopWslMoveHostCopies(hostIds, {
+        workspacesWithTerminals: async () => {
+          const response = await call(
+            'terminal.list',
+            { limit: HOST_TERMINAL_LIST_LIMIT, includeVisualLayouts: false },
+            LIST_TIMEOUT_MS
+          )
+          const listed = response?.ok ? HostTerminalList.safeParse(response.result) : null
+          // An error answer, an unreadable one or a cut-off list cannot prove what runs there.
+          if (!listed?.success || listed.data.truncated === true) {
+            return null
+          }
+          return [
+            ...new Set(
+              listed.data.terminals
+                .map((terminal) => terminal.worktreeId)
+                .filter((id): id is string => typeof id === 'string' && scope.inScope(id))
+            )
+          ]
+        },
         sleepWorkspace: async (id) => {
           const response = await call('worktree.sleep', { worktree: `id:${id}` }, SLEEP_TIMEOUT_MS)
           return response === null ? null : response.ok

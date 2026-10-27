@@ -3,6 +3,7 @@ import { stopWslMoveHostCopies, type WslMoveHostCopyPort } from './wsl-move-host
 
 function port(overrides: Partial<WslMoveHostCopyPort> = {}): WslMoveHostCopyPort {
   return {
+    workspacesWithTerminals: vi.fn(async () => []),
     sleepWorkspace: vi.fn(async () => true),
     liveTerminals: vi.fn(async () => 0),
     wait: vi.fn(async () => {}),
@@ -46,5 +47,23 @@ describe("undo's stop of the host's copies", () => {
   it('checks exit even when the host refused the sleep itself', async () => {
     const host = port({ sleepWorkspace: async () => false })
     expect(await stopWslMoveHostCopies(['wt-a'], host)).toBe('stopped')
+  })
+
+  // verify-15c: with the host's orcad stopped, undo of a project this computer kept no tabs for
+  // asked the host nothing, released it, and left its host shell running.
+  it('refuses an unanswering host even when this computer names none of its workspaces', async () => {
+    const host = port({ workspacesWithTerminals: vi.fn(async () => null) })
+    expect(await stopWslMoveHostCopies([], host)).toBe('unreachable')
+    expect(host.sleepWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("stops the host's terminals in workspaces this computer kept no tabs for", async () => {
+    let checks = 0
+    const host = port({
+      workspacesWithTerminals: vi.fn(async () => ['wt-host-only']),
+      liveTerminals: vi.fn(async () => (checks++ < 2 ? 1 : 0))
+    })
+    expect(await stopWslMoveHostCopies([], host)).toBe('stopped')
+    expect(host.sleepWorkspace).toHaveBeenCalledWith('wt-host-only')
   })
 })

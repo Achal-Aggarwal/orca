@@ -7,6 +7,11 @@
 export type WslMoveHostCopyStop = 'stopped' | 'still-running' | 'unreachable'
 
 export type WslMoveHostCopyPort = {
+  /**
+   * The host workspaces in the move's scope with a terminal there; null when the host does not
+   * answer. Asked first and always, so an unanswering host refuses even with nothing else to ask.
+   */
+  workspacesWithTerminals: () => Promise<readonly string[] | null>
   /** Sleeps the host workspace; false when the host refused, null when it did not answer. */
   sleepWorkspace: (hostWorkspaceId: string) => Promise<boolean | null>
   /** The host workspace's terminals still running; null when the host did not answer. */
@@ -18,10 +23,17 @@ const EXIT_WAIT_MS = 20_000
 const EXIT_POLL_MS = 500
 
 export async function stopWslMoveHostCopies(
-  hostWorkspaceIds: readonly string[],
+  sessionWorkspaceIds: readonly string[],
   port: WslMoveHostCopyPort,
   exitWaitMs = EXIT_WAIT_MS
 ): Promise<WslMoveHostCopyStop> {
+  // The session here names only workspaces with tabs kept after the move (a moved project keeps
+  // just its chats), so the host's own list adds the ones it runs that this computer never saw.
+  const listed = await port.workspacesWithTerminals()
+  if (listed === null) {
+    return 'unreachable'
+  }
+  const hostWorkspaceIds = [...new Set([...sessionWorkspaceIds, ...listed])]
   // Why first: a host that cannot answer for every workspace must not have any of them stopped.
   for (const id of hostWorkspaceIds) {
     if ((await port.liveTerminals(id)) === null) {

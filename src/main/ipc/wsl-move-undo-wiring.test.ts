@@ -6,8 +6,11 @@ import { wslMoveCutoverFixture } from '../persistence/__fixtures__/wsl-mover/wsl
 import { wslMoverProfile } from '../persistence/__fixtures__/wsl-mover/wsl-mover-profiles'
 import { createWslMoveUndoPorts } from './wsl-move-undo-wiring'
 
+const rpc = vi.hoisted(() => ({
+  call: vi.fn(async (..._args: unknown[]): Promise<unknown> => null)
+}))
 vi.mock('./runtime-environments/runtime-environment-transport-routing', () => ({
-  callRuntimeEnvironment: vi.fn()
+  callRuntimeEnvironment: (...args: unknown[]) => rpc.call(...args)
 }))
 const host = vi.hoisted(() => ({
   disabled: new Array<string[]>(),
@@ -176,5 +179,55 @@ describe("undo's host automation port, refusing", () => {
     } finally {
       host.removalPending = false
     }
+  })
+})
+
+// verify-15c: with the host's orcad stopped, undo of a moved project this computer kept no tabs
+// for asked the host nothing, released it, and its host shell kept running.
+describe("undo's stop of the host's terminals", () => {
+  const move = wslMoveCutoverFixture('move-1', 'retained', {}, { repoIds: ['repo-a'] })
+  // A moved project keeps only its chats here, so this one names no workspace at all.
+  const store = {
+    getWorkspaceSession: () => getDefaultWorkspaceSession(),
+    patchWorkspaceSession: vi.fn(),
+    listAutomations: () => [],
+    updateAutomation: vi.fn()
+  }
+
+  it('refuses when the host does not answer, though this computer names none of its workspaces', async () => {
+    host.listed = true
+    rpc.call.mockReset()
+    rpc.call.mockRejectedValue(new Error('timed out'))
+    expect(await createWslMoveUndoPorts(store, '/user-data').stopHostCopies(move)).toBe(
+      'unreachable'
+    )
+    expect(rpc.call.mock.calls.map(([, , method]) => method)).toEqual(['terminal.list'])
+  })
+
+  it("sleeps the host's workspaces of the move that run a terminal, and only those", async () => {
+    host.listed = true
+    const live = new Set(['repo-a::/home/dev/repo-a'])
+    rpc.call.mockReset()
+    rpc.call.mockImplementation(async (...args: unknown[]) => {
+      const [, , method, params] = args
+      const worktree =
+        typeof params === 'object' && params !== null && 'worktree' in params
+          ? String(params.worktree).slice('id:'.length)
+          : null
+      if (method === 'worktree.sleep' && worktree) {
+        live.delete(worktree)
+        return { ok: true, result: {} }
+      }
+      const terminals = [
+        { worktreeId: 'repo-a::/home/dev/repo-a', connected: live.has('repo-a::/home/dev/repo-a') },
+        { worktreeId: 'repo-other::/home/dev/other', connected: true }
+      ].filter((terminal) => worktree === null || terminal.worktreeId === worktree)
+      return { ok: true, result: { terminals, truncated: false } }
+    })
+    expect(await createWslMoveUndoPorts(store, '/user-data').stopHostCopies(move)).toBe('stopped')
+    const slept = rpc.call.mock.calls
+      .filter(([, , method]) => method === 'worktree.sleep')
+      .map(([, , , params]) => params)
+    expect(slept).toEqual([{ worktree: 'id:repo-a::/home/dev/repo-a' }])
   })
 })
