@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { attributePortToWorkspace } from './local-workspace-port-attribution'
 import { scanWorkspacePorts } from './local-workspace-port-scanner'
 import { resetWorkspacePortScanTimeoutBackoffForTests } from './local-workspace-port-scan-state'
 
@@ -132,5 +133,14 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
     const forwarded = scan.ports.find((port) => port.port === 8123)
     expect(forwarded).toMatchObject({ kind: 'workspace', owner: { worktreeId: 'wt' } })
     expect(forwarded?.pid).toBeUndefined()
+  })
+
+  it('matches a command line that spells the share differently from the workspace', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const owner = attributePortToWorkspace(
+      { commandLine: 'node.exe \\\\wsl$\\Ubuntu\\home\\u\\repo\\server.js' },
+      wslWorkspace
+    )
+    expect(owner?.worktreeId).toBe('wt')
   })
 })

@@ -214,5 +214,8 @@ function normalizeComparablePath(input: string): string {
 
 function normalizeComparableText(input: string): string {
   const normalized = input.replace(/\\/g, '/').replace(/\/+/g, '/')
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+  // Command lines can spell a workspace's share either way.
+  return process.platform === 'win32'
+    ? normalized.toLowerCase().replaceAll('/wsl$/', '/wsl.localhost/')
+    : normalized
 }
