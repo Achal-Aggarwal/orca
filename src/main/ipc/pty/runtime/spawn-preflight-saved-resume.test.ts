@@ -1,3 +1,4 @@
+import { agentSessionConversationView } from '../../../../shared/agent-session-conversation-view'
 import { CLAUDE_CLI_CONVERSATIONS } from '../../../claude/claude-cli-conversations'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { localProvider } from '../provider/registry'
@@ -15,13 +16,28 @@ import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import { finishPtyShutdown } from '../provider/liveness'
 import { listStructuredProviderSessionOwnership } from '../../../native-chat/agent-session-wire/structured-provider-session-ownership'
 import type { PtyRuntimeControllerDeps } from './controller-deps'
-import { executeRuntimePtySpawn } from './spawn-execute'
+import { executePtySpawn } from '../spawn-execute'
+import { prepareSavedPtyResume } from '../spawn-resume'
 import {
   admitColdRestoreReattach,
   admitResumeSpawn,
   savedResumeResult
 } from '../host-env/saved-resume-admission'
 import { createRuntimePtySpawnState } from './spawn-state'
+
+async function executePreparedSpawn(ctx: ReturnType<typeof createRuntimePtySpawnState>) {
+  const facts = {
+    sessionId: ctx.sessionId,
+    paneKey: ctx.spawnIdentityPaneKey,
+    savedResumePaneKey: ctx.spawnIdentityPaneKey,
+    launchConfig: ctx.args.launchConfig,
+    suppressRefusedLaunch: () => {
+      ctx.launchCommand = undefined
+      ctx.env = ctx.spawnOptions.env
+    }
+  }
+  await executePtySpawn(ctx, facts, await prepareSavedPtyResume(ctx, facts))
+}
 
 const forgetRefusedPaneResume = vi.hoisted(() => vi.fn())
 vi.mock('../../../agent-hooks/server', () => ({ agentHookServer: { forgetRefusedPaneResume } }))
@@ -52,14 +68,15 @@ const chat = agentSessionRecordFixture(
 )
 
 const store = {
-  listRecords: () => [chat],
+  getRecord: (sessionId: string) => (sessionId === chat.sessionId ? chat : null),
+  listConversations: () => [agentSessionConversationView(chat)],
   getVisibleSessionTabIndex: () => ({ present: true, sessionIds: [chat.sessionId] })
 }
 
 /** A host whose one chat continues C at rest, with its tab open. */
 function chatHost() {
   return {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the two members `store` has.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the three members `store` has.
     openAgentSessionRecordStore: async () => store as unknown as AgentSessionRecordStore,
     getTerminalLaunchResult: vi.fn(),
     forgetRefusedSavedResume: vi.fn(async () => {}),
@@ -91,7 +108,10 @@ function deps(runtime: ReturnType<typeof chatHost>): PtyRuntimeControllerDeps {
     runtime: runtime as unknown as OrcaRuntimeService,
     store: undefined,
     getSettings: () => getDefaultSettings('/tmp'),
-    adoptStablePane: async () => null,
+    adoptStablePane: async (args) => {
+      await args.spawnFresh?.({ mustExist: false })
+      return null
+    },
     getLocalPtyStartupPromise: () => undefined,
     getLocalPtyProviderStartupPromise: () => undefined,
     prepareCodexResumeHome: () => null,
@@ -156,7 +176,13 @@ describe('actual runtime saved-resume outcomes', () => {
           handle: { ...link.handle, nativeId: `unrelated-${index}` }
         }))
       }))
-      const list = vi.spyOn(store, 'listRecords').mockImplementation(() => records)
+      const recordsBySessionId = new Map(records.map((record) => [record.sessionId, record]))
+      const getRecord = vi
+        .spyOn(store, 'getRecord')
+        .mockImplementation((sessionId) => recordsBySessionId.get(sessionId) ?? null)
+      const list = vi
+        .spyOn(store, 'listConversations')
+        .mockImplementation(() => records.map(agentSessionConversationView))
       const visible = vi.spyOn(store, 'getVisibleSessionTabIndex').mockReturnValue({
         present: true,
         sessionIds: records.map((record) => record.sessionId)
@@ -179,7 +205,7 @@ describe('actual runtime saved-resume outcomes', () => {
         if (ordinary) {
           delete ctx.args.resumeOrigin
         }
-        await executeRuntimePtySpawn(ctx)
+        await executePreparedSpawn(ctx)
         return ctx
       }
       const spawn = vi.spyOn(localProvider, 'spawn').mockResolvedValue({ id: 'counted-shell' })
@@ -222,6 +248,7 @@ describe('actual runtime saved-resume outcomes', () => {
         spawn.mockRestore()
         read.mockRestore()
         list.mockRestore()
+        getRecord.mockRestore()
         visible.mockRestore()
       }
     }
@@ -233,7 +260,7 @@ describe('actual runtime saved-resume outcomes', () => {
     const spawn = vi.spyOn(ctx.provider, 'spawn').mockResolvedValue({ id: 'plain-shell' })
     try {
       expect(ctx.args.command).toContain(C)
-      await executeRuntimePtySpawn(ctx)
+      await executePreparedSpawn(ctx)
       expect(spawn).toHaveBeenCalledWith(
         expect.objectContaining({
           env: { WORKSPACE: 'keep' }
@@ -263,7 +290,7 @@ describe('actual runtime saved-resume outcomes', () => {
       launchAgent: 'codex'
     })
     try {
-      await executeRuntimePtySpawn(ctx)
+      await executePreparedSpawn(ctx)
       expect(ctx.result).toMatchObject({
         id: 'already-live',
         isReattach: true,
@@ -326,7 +353,7 @@ it('unwinds a refused fresh claim before spawning an unclaimed shell', async () 
   const inventory = vi.spyOn(owners, 'reconcileAgentSessionOwnerListings').mockResolvedValue()
   const spawn = vi.spyOn(ctx.provider, 'spawn').mockResolvedValue({ id: 'refused-shell' })
   try {
-    await executeRuntimePtySpawn(ctx)
+    await executePreparedSpawn(ctx)
     expect(spawn).toHaveBeenCalledOnce()
     expect(ctx.spawnOptions.command).toBeUndefined()
     expect(ctx.result.agentSessionEnsure).toBeUndefined()
@@ -390,16 +417,18 @@ it('preserves case-distinct conversation heads and saved homes across the shared
     }))
   }
   const opencodeStore: AgentSessionRecordStore = Object.create(AgentSessionRecordStore.prototype)
-  opencodeStore.listRecords = () => [record]
+  opencodeStore.getRecord = (sessionId) => (sessionId === record.sessionId ? record : null)
+  opencodeStore.listConversations = () => [agentSessionConversationView(record)]
   opencodeStore.getVisibleSessionTabIndex = () => ({
     present: true,
     sessionIds: [record.sessionId]
   })
   const runtime = { openAgentSessionRecordStore: async () => opencodeStore }
-  expect(listStructuredProviderSessionOwnership([record]).map((holding) => holding.role)).toEqual([
-    'earlier',
-    'head'
-  ])
+  expect(
+    listStructuredProviderSessionOwnership([agentSessionConversationView(record)]).map(
+      (holding) => holding.role
+    )
+  ).toEqual(['earlier', 'head'])
   for (const [index, id] of ids.entries()) {
     await expect(
       admitResumeSpawn(

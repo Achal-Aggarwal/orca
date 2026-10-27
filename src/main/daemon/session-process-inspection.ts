@@ -20,8 +20,10 @@ export abstract class SessionProcessInspection extends SessionSwitchUse {
     return this.subprocess.getForegroundProcess(options)
   }
 
-  async confirmForegroundProcess(): Promise<string | null> {
-    return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
+  async confirmForegroundProcess(context?: { decision?: boolean }): Promise<string | null> {
+    return (
+      this.subprocess.confirmForegroundProcess?.(context) ?? this.subprocess.getForegroundProcess()
+    )
   }
 
   confirmShellForeground(): Promise<boolean> {

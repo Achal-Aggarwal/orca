@@ -7,6 +7,7 @@ import {
 import { argumentProblemOf } from '../structured-agent-arguments-error'
 import {
   agentSessionRefusalFromReference,
+  isAgentSessionRefusalError,
   readAgentSessionRefusalReference
 } from '../../../shared/agent-session-wire-refusals'
 import type {
@@ -70,6 +71,14 @@ export function claimStructuredAgentSessionAgent(
   startedFor?: string,
   check?: () => void
 ): StructuredAgentSessionStartClaim {
+  try {
+    context.deps.store.requireWritableRecord(sessionId)
+  } catch (error) {
+    if (isAgentSessionRefusalError(error)) {
+      return { outcome: Promise.resolve({ ok: false, refusal: error.refusal }) }
+    }
+    throw error
+  }
   const session = context.sessions.get(sessionId)
   const child = session?.child
   if (!structuredAgentSessionStartStillQueued(session, startedFor)) {

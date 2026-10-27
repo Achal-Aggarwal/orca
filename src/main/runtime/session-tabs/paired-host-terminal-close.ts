@@ -1,5 +1,5 @@
 import type { TerminalSurfaceCloseCapture } from '../../../shared/terminal-tab-close'
-import { parseRemoteRuntimePtyId } from '../../../shared/remote-runtime-pty-id'
+import { parseRemoteRuntimePtyId } from '../../../shared/remote-runtime/remote-runtime-pty-id'
 import type { RuntimeTerminalClose } from '../../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { findUnifiedTerminalTabs } from '../../../shared/workspace-session-terminal-tab-close'

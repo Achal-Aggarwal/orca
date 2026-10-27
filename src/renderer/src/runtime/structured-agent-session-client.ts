@@ -10,7 +10,7 @@ import type {
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionConversationOutline } from '../../../shared/agent-session/agent-session-conversation-outline'
-import { AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS } from '../../../shared/agent-session/agent-session-conversation-command'
+import { STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS } from './structured-agent-session-method-timeouts'
 import {
   AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
@@ -24,7 +24,10 @@ import {
   STRUCTURED_AGENT_SESSION_RENAME_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
-import { AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY } from '../../../shared/agent-session-create-capabilities'
+import {
+  AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CREATE_OPTIONS_MODE_RUNTIME_CAPABILITY
+} from '../../../shared/agent-session-create-capabilities'
 import {
   inPlaceSwitchCapability,
   inPlaceSwitchExecutionCapability,
@@ -60,6 +63,15 @@ export function supportsStructuredAgentSessionPromptCancel(
   target: RuntimeClientTarget
 ): Promise<boolean> {
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY)
+}
+
+export function supportsStructuredAgentSessionCreateOptionsMode(
+  target: RuntimeClientTarget
+): Promise<boolean> {
+  return structuredAgentSessionHostSupports(
+    target,
+    AGENT_SESSION_CREATE_OPTIONS_MODE_RUNTIME_CAPABILITY
+  )
 }
 
 export function supportsStructuredAgentSessionCreateMessage(
@@ -148,17 +160,6 @@ export async function readStructuredAgentSessionItem(
   )
   return result?.item ?? null
 }
-
-const STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS: ReadonlyMap<string, number> = new Map([
-  ['agentSession.conversationCommand', AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS],
-  // The host may start an agent at rest before rewinding it, as it does for a command.
-  ['agentSession.rewind', 195_000],
-  // Waiting model catalogs can take Claude’s 60s listing plus 15s account switch and 5s login environment.
-  ['agentSession.modelCatalog', 90_000],
-  ['agentSession.sleepWorkspace', 120_000],
-  // All bounded-concurrency provider starts and dispatch settlements precede the reply.
-  ['agentSession.restartContinue', 600_000]
-])
 
 export async function callStructuredAgentSession<TResult>(
   target: RuntimeClientTarget,

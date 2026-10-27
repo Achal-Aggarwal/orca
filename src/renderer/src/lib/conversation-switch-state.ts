@@ -1,3 +1,4 @@
+import { translate } from '@/i18n/i18n'
 import { useMemo, useSyncExternalStore } from 'react'
 import { useAppStore } from '@/store'
 import { conversationSwitchFailureText } from './conversation-switch-feedback'
@@ -84,15 +85,25 @@ export function useConversationSwitchReadiness(args: ConversationSwitch | null) 
   })
   const pending = useConversationSwitchPending(args)
   const capability = args ? inPlaceSwitchCapabilityNow(args.executionHostId, args.agent) : undefined
+  const updateRequired = args?.source?.hostUpdateRequired === true
   const reason = terminalRunning
     ? 'conversationOpenInTerminal'
     : runningTurn
       ? 'turnActive'
       : undefined
   return {
-    ready: Boolean(args && target && capability !== undefined && !pending && !reason),
+    ready: Boolean(
+      args && target && capability !== undefined && !pending && !reason && !updateRequired
+    ),
     pending,
-    explanation: args && reason ? conversationSwitchFailureText(null, args, reason) : undefined
+    explanation: updateRequired
+      ? translate(
+          'components.native-chat.resumeInNewChat.hostUpdateRequired',
+          'Update Orca on this host to continue in Chat UI.'
+        )
+      : args && reason
+        ? conversationSwitchFailureText(null, args, reason)
+        : undefined
   }
 }
 

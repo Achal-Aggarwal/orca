@@ -23,7 +23,7 @@ export function CliChatResumeMenuItems({
     source ? { direction: 'chat', ...source, source } : null
   )
   const enabled = useAppStore((state) => isNativeChatEnabled(state.settings))
-  if (!source || !enabled) {
+  if (!source || !enabled || source.hostUpdateRequired) {
     return null
   }
   return (

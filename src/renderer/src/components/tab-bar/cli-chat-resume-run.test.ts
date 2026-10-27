@@ -1,3 +1,4 @@
+import { verifyCliChatResumeSlotOrder } from './cli-chat-resume-slot-order.test-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliChatResumeSource } from './cli-chat-resume-source'
 import type * as ResumeSourceModule from './cli-chat-resume-source'
@@ -42,18 +43,17 @@ import { layoutApplyTestTransport } from '@/runtime/layout-apply-test-transport.
 import { runLegacyCliChatResume as runCliChatResume } from './cli-chat-resume-run'
 import { verifyExitedPaneHistoryReturn } from './cli-chat-resume-exit-return.test-fixture'
 import { switchIntoOwnerLegacy as switchIntoOwner } from './cli-chat-resume-feedback'
+import { toWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
 import {
   resetStructuredAgentLaunchRegistryForTests,
   structuredLaunchStates
 } from '@/lib/agent-session/launch/structured-agent-session-launch-registry'
 import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
 import {
-  clearWebSessionFocusIntent,
   peekWebSessionFocusIntent,
   resetWebSessionFocusIntentForTests
 } from '@/runtime/web-session-focus-intent'
 import { structuredAgentSessionFocusOwner } from '@/runtime/structured-agent-session-owner'
-import { registerSessionTabIpcBridge } from '@/hooks/ipc-events/session-tab-ipc-bridge'
 import {
   drawTabsFromMain,
   type TabsDrawnFromMain
@@ -161,6 +161,7 @@ vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => {
   ).runtimeRpcClientWithLayoutApply(actual)
   return {
     ...layout,
+    runtimeEnvironmentSupportsCapability: async () => true,
     callRuntimeRpc: (...args: Parameters<typeof actual.callRuntimeRpc>) =>
       args[1] === 'layout.apply' ? layout.callRuntimeRpc(...args) : mocks.rpc(...args)
   }
@@ -268,6 +269,8 @@ async function seedTabs() {
   return seeded
 }
 
+const HOST_LEAF = '11111111-1111-4111-8111-111111111111'
+
 describe('CLI identity resume through the existing launch owner', () => {
   it('returns an exited inactive pane from History after shell cleanup and preserves its selected sibling', async () => {
     await verifyExitedPaneHistoryReturn(
@@ -278,6 +281,90 @@ describe('CLI identity resume through the existing launch owner', () => {
       },
       deferred
     )
+  })
+
+  it.each([true, false])(
+    'resumes on the owning server with optional CLI-source capability: %s',
+    async (supported) => {
+      // A desktop sees the host's pane through its mirrored surface key.
+      const source: CliChatResumeSource = {
+        ...SOURCE,
+        executionHostId: 'runtime:server-1',
+        paneKey: `${toWebTerminalSurfaceTabId('host-tab-1')}:${HOST_LEAF}`
+      }
+      mocks.source = source
+      mocks.sourceCapability.mockResolvedValue(supported)
+      useAppStore.setState({
+        worktreesByRepo: {
+          repo: [
+            makeWorktree({
+              id: 'wt-1',
+              repoId: 'repo',
+              hostId: 'runtime:server-1',
+              runtimeOwnerEnvironmentId: 'server-1'
+            })
+          ]
+        }
+      })
+      mocks.call.mockImplementation(
+        async (_target, _method, params: StructuredAgentSessionCreateParams) => ({
+          ok: true,
+          value: { sessionId: params.envelope.sessionId, fence: 1 }
+        })
+      )
+      await runCliChatResume(source)
+      expect(mocks.sourceCapability).toHaveBeenCalledWith({
+        kind: 'environment',
+        environmentId: 'server-1'
+      })
+      expect(mocks.call).toHaveBeenCalledOnce()
+      expect(mocks.call).toHaveBeenCalledWith(
+        { kind: 'environment', environmentId: 'server-1' },
+        'agentSession.create',
+        expect.objectContaining({
+          resumeFrom: {
+            providerSessionId: 'provider-1',
+            ...(supported
+              ? { cliSource: { workspaceId: 'wt-1', paneKey: `host-tab-1:${HOST_LEAF}` } }
+              : {})
+          }
+        })
+      )
+      expect(mocks.toast).not.toHaveBeenCalled()
+    }
+  )
+
+  it('opens an existing conversation owner on the source server after a conflict', async () => {
+    const source: CliChatResumeSource = { ...SOURCE, executionHostId: 'runtime:server-1' }
+    mocks.source = source
+    useAppStore.setState({
+      worktreesByRepo: {
+        repo: [
+          makeWorktree({
+            id: 'wt-1',
+            repoId: 'repo',
+            hostId: 'runtime:server-1',
+            runtimeOwnerEnvironmentId: 'server-1'
+          })
+        ]
+      }
+    })
+    const owner = { sessionId: 'owner-chat', workspaceId: 'owner-workspace' }
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: {
+        code: 'agent_session_conflict',
+        message: 'owner',
+        details: { reason: 'conversationHeldElsewhere', owner },
+        createAttemptRefusedBeforeCommit: true
+      }
+    })
+    await runCliChatResume(source)
+    expect(mocks.activate).toHaveBeenCalledWith({ structuredSession: owner }, undefined, {
+      kind: 'environment',
+      environmentId: 'server-1'
+    })
+    expect(tabs()).toEqual([])
   })
 
   it('shares pending, sends only an advertised source, and survives source closure after dispatch', async () => {
@@ -640,78 +727,10 @@ describe('CLI identity resume through the existing launch owner', () => {
   ])(
     'keeps canonical membership through registered IPC (%s first, move %s to %s)',
     async (first, mover, requested, expected) => {
-      const [e, source, browser] = await seedTabs()
-      let move: Parameters<typeof window.api.ui.onMoveSessionTab>[0] = () => {}
-      vi.stubGlobal('api', {
-        ...window.api,
-        ui: {
-          ...window.api?.ui,
-          onCloseSessionTab: () => () => {},
-          onSessionTabCloseRequest: () => () => {},
-          onMoveSessionTab: (callback: typeof move) => {
-            move = callback
-            return () => {}
-          }
-        }
-      })
-      registerSessionTabIpcBridge([])
-      const reply = deferred<unknown>()
-      mocks.call.mockReturnValue(reply.promise)
-      const running = runCliChatResume(SOURCE)
-      await vi.waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-      const sessionId: string = mocks.call.mock.calls[0][2].envelope.sessionId
-      const slotId = `structured-agent-session-${sessionId}`
-      const store = useAppStore.getState()
-      const order = store.groupsByWorktree['wt-1'][0].tabOrder
-      expect(order).toEqual([e.id, source.id, browser.id, slotId])
-      const later = useAppStore
-        .getState()
-        .createUnifiedTab('wt-1', 'editor', { id: 'R', entityId: 'R' })
-      await redrawFromMain()
-      const beforeNoop = useAppStore.getState()
-      move({
-        kind: 'reorder',
-        worktreeId: 'wt-1',
-        targetGroupId: e.groupId,
-        tabId: browser.id,
-        tabOrder: [e.id, source.id, browser.id, later.id]
-      })
-      expect(useAppStore.getState()).toBe(beforeNoop)
-      move({
-        kind: 'reorder',
-        worktreeId: 'wt-1',
-        targetGroupId: e.groupId,
-        tabId: mover,
-        tabOrder: requested.split(' ')
-      })
-      const expectedOrder = expected.split(' ').map((id) => (id === 'D' ? slotId : id))
-      expect(useAppStore.getState().groupsByWorktree['wt-1'][0].tabOrder).toEqual(expectedOrder)
-      expect(readStructuredAgentLaunchRecord(sessionId)?.surfaceAddress).toEqual({
-        worktreeId: 'wt-1',
-        targetGroupId: e.groupId,
-        precedingTabIds: expectedOrder.slice(0, expectedOrder.indexOf(slotId))
-      })
-      const other = useAppStore.getState().createUnifiedTab('wt-1', 'editor', {
-        entityId: 'other',
-        split: { splitDirection: 'right', sourceGroupId: e.groupId }
-      })
-      await redrawFromMain()
-      clearWebSessionFocusIntent(structuredAgentSessionFocusOwner({ kind: 'local' }), 'wt-1')
-      if (first === 'inventory') {
-        applyStructuredSessionTabSnapshots([snapshot(sessionId)])
-      }
-      reply.resolve({ ok: true, value: { sessionId, fence: 1 } })
-      await running
-      expect(
-        useAppStore.getState().groupsByWorktree['wt-1'].find((group) => group.id === e.groupId)
-          ?.tabOrder
-      ).toEqual(expectedOrder)
-      expect(useAppStore.getState().activeGroupIdByWorktree['wt-1']).toBe(other.groupId)
-      useAppStore.getState().moveUnifiedTabToGroup(slotId, other.groupId)
-      applyStructuredSessionTabSnapshots([
-        { ...snapshot(sessionId), snapshotVersion: Date.now() + 1 }
-      ])
-      expect(tabs().find((tab) => tab.entityId === sessionId)?.groupId).toBe(other.groupId)
+      await verifyCliChatResumeSlotOrder(
+        { mocks, redrawFromMain, seedTabs, deferred, source: SOURCE },
+        { first, mover, requested, expected }
+      )
     }
   )
 

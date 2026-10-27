@@ -1,4 +1,5 @@
 import { useSwitchPresentationRows } from '@/lib/conversation-switch-presentation'
+import { copyChatMathSelection } from '../sidebar/chat-markdown-math-selection'
 import {
   nativeChatTranscriptOuterClass,
   NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS
@@ -354,6 +355,7 @@ export function NativeChatMessageList({
           <div
             ref={scrollRef}
             onScroll={onScroll}
+            onCopy={copyChatMathSelection}
             {...readerInput.scrollerProps}
             // Measurement finds this named scroll root independently of utility classes.
             data-native-chat-scroll

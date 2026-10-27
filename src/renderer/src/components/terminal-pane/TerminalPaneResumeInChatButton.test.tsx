@@ -10,8 +10,8 @@ import {
 import { useAppStore } from '@/store'
 import { createGlobalSettingsFixture } from '../../../../shared/global-settings-test-fixture'
 import { CliChatResumeMenuItems } from '../tab-bar/CliChatResumeMenuItems'
-import type { CliChatResumeSource } from '../tab-bar/cli-chat-resume-source'
 import { TerminalPaneResumeInChatButton } from './TerminalPaneResumeInChatButton'
+import type { CliChatResumeSource } from '../tab-bar/cli-chat-resume-source'
 
 const mocks = vi.hoisted(() => {
   const source: CliChatResumeSource = {
@@ -34,11 +34,15 @@ vi.mock('../tab-bar/cli-chat-resume-source', () => ({
 }))
 vi.mock('@/lib/conversation-surface-switch', () => ({
   runCliChatResume: mocks.run,
-  useConversationSwitchReadiness: () => ({ ready: !mocks.pending, pending: mocks.pending })
+  useConversationSwitchReadiness: (args: { source?: CliChatResumeSource } | null) => ({
+    ready: !mocks.pending && !args?.source?.hostUpdateRequired,
+    pending: mocks.pending
+  })
 }))
 afterEach(cleanup)
 beforeEach(() => {
   mocks.source.agent = 'claude'
+  delete mocks.source.hostUpdateRequired
   mocks.pending = false
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({ settings: createGlobalSettingsFixture({ experimentalNativeChat: true }) })
@@ -112,4 +116,30 @@ it('hides header and menu switches while Chat UI is off and follows live setting
   })
   expect(screen.queryByRole('button', { name: 'Switch to native chat', hidden: true })).toBeNull()
   expect(screen.queryByRole('menuitem')).toBeNull()
+})
+
+it('keeps an older host visible but disabled, telling the user to update it', async () => {
+  mocks.pending = false
+  mocks.run.mockClear()
+  Object.assign(mocks.source, {
+    executionHostId: 'runtime:server-1',
+    hostUpdateRequired: true
+  })
+  render(
+    <TooltipProvider delayDuration={0}>
+      <TerminalPaneResumeInChatButton tabId="tab-1" worktreeId="wt-1" paneKey="tab-1:leaf" />
+    </TooltipProvider>
+  )
+  const button = screen.getByRole('button', {
+    name: 'Resume in New Chat. Update Orca on this host to continue in Chat UI.'
+  })
+  expect(button.hasAttribute('disabled')).toBe(true)
+  const trigger = button.parentElement
+  if (trigger) {
+    fireEvent.focus(trigger)
+  }
+  expect(
+    (await screen.findAllByText('Update Orca on this host to continue in Chat UI.')).length
+  ).toBeGreaterThan(0)
+  expect(mocks.run).not.toHaveBeenCalled()
 })

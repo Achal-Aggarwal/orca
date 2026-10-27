@@ -28,9 +28,9 @@ export async function retireChatForAdmittedTerminalLaunch(
     return
   }
   const key = terminalConversationKey(decision.agent, decision.providerSession.id)
-  const holders = listStructuredProviderSessionOwnership(host.deps.store.listRecords()).filter(
-    (holding) => holding.role === 'head' && keysMayMatch(holding.key, key)
-  )
+  const holders = listStructuredProviderSessionOwnership(
+    host.deps.store.listConversations()
+  ).filter((holding) => holding.role === 'head' && keysMayMatch(holding.key, key))
   for (const holding of holders) {
     if (host.switchExecuting(holding.sessionId)) {
       continue

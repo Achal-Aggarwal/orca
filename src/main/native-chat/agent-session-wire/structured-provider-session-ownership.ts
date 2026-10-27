@@ -1,4 +1,7 @@
-import type { AgentSessionLease, AgentSessionRecord } from '../../../shared/agent-session-record'
+import type {
+  AgentSessionOwnerObservation,
+  AgentSessionConversationView
+} from '../../../shared/agent-session-conversation-view'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import { agentSessionLeasePossiblyWriting } from '../../../shared/agent-session-lease-adjudication'
 export { agentSessionLeasePossiblyWriting } from '../../../shared/agent-session-lease-adjudication'
@@ -16,7 +19,7 @@ export type StructuredProviderSessionOwnership = {
   provider: StructuredAgentId
   providerSessionId: string
   conversationName?: string
-  lease: AgentSessionLease
+  ownerObservation: AgentSessionOwnerObservation
   /** `head`: the conversation the chat continues now; `earlier`: one its chain held before. */
   role: 'head' | 'earlier'
   key: ConversationKey
@@ -24,7 +27,7 @@ export type StructuredProviderSessionOwnership = {
 
 /** Use registration-defined History row IDs for both ownership display and duplicate-adoption checks. */
 export function listStructuredProviderSessionOwnership(
-  records: readonly AgentSessionRecord[]
+  records: readonly AgentSessionConversationView[]
 ): StructuredProviderSessionOwnership[] {
   return records.flatMap((record) => {
     const history = structuredAgentRuntimeMetadata(record.provider)?.sessionHistory
@@ -41,7 +44,7 @@ export function listStructuredProviderSessionOwnership(
                   provider: record.provider,
                   providerSessionId: history.rowSessionId(link),
                   conversationName: record.conversationName,
-                  lease: record.lease,
+                  ownerObservation: record.ownerObservation,
                   // A repeat resume link of the head's id is the head too.
                   role: keysMayMatch(key, headKey) ? ('head' as const) : ('earlier' as const),
                   key
@@ -62,6 +65,6 @@ export function sameIdTerminalResumeEnabled(provider: StructuredAgentId): boolea
 export function terminalResumeBlocked(holding: StructuredProviderSessionOwnership): boolean {
   return (
     !sameIdTerminalResumeEnabled(holding.provider) ||
-    (holding.role === 'head' && agentSessionLeasePossiblyWriting(holding.lease))
+    (holding.role === 'head' && agentSessionLeasePossiblyWriting(holding.ownerObservation))
   )
 }

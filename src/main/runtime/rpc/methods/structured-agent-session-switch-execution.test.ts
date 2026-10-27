@@ -287,6 +287,7 @@ it('keeps an opened readable chat successful when conditional source-shell clean
     agent: 'codex',
     cwd: rig.root,
     providerSessionId: nativeId,
+    requireCurrent: vi.fn(),
     registration: structuredAgentRuntimeRegistration('codex')!
   })
   vi.spyOn(cliTranscript, 'prepareStructuredChatCliTranscript').mockResolvedValue({

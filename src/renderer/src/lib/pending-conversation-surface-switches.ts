@@ -1,7 +1,7 @@
 import type { CliChatResumeSource } from '@/components/tab-bar/cli-chat-resume-source'
 import type { AgentPaneConversationIdentity } from '@/store/slices/agent-pane-conversation'
 import { resolveAgentPaneAuthorityKey } from '@/store/slices/agent-pane-authority'
-import { getTabIdFromPaneKey } from '@/store/slices/agent-status-pane-key-tab-binding'
+import { getTabIdFromPaneKey } from '@/store/slices/agent-status/agent-status-pane-key-tab-binding'
 
 export const pendingCliChatResumes = new Map<
   AbortController,

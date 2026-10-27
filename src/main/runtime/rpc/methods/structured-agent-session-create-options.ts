@@ -1,4 +1,3 @@
-import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../../shared/agent-chat-permission-mode'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../../../shared/agent-session-wire'
 import type {
@@ -13,6 +12,7 @@ export function structuredAgentSessionCreateIntentFingerprint(params: {
   resumeFrom?: StructuredAgentSessionResumeSource
   tabId?: string
   firstMessage?: StructuredAgentSessionFirstMessage
+  optionsMode?: 'replace-model-selection'
   options?: Readonly<Record<string, string>>
 }): string {
   return computeAgentSessionPayloadFingerprint({
@@ -24,14 +24,10 @@ export function structuredAgentSessionCreateIntentFingerprint(params: {
       resumeFrom: params.resumeFrom,
       tabId: params.tabId,
       firstMessage: params.firstMessage,
+      optionsMode: params.optionsMode,
       options: params.options
     }
   })
 }
 
-export function seededPermissionMode(
-  options: Readonly<Record<string, string>> | undefined
-): Record<string, string> {
-  const mode = options?.[AGENT_CHAT_PERMISSION_MODE_OPTION_ID]
-  return mode ? { [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: mode } : {}
-}
+export { seededPermissionMode } from '../../../../shared/native-chat-session-option-defaults'

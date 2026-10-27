@@ -4,7 +4,7 @@ import type { CliChatResumeSource } from './cli-chat-resume-source'
 import type { RuntimeTerminalResolvePane } from '../../../../shared/runtime-types'
 import { getRemoteRuntimePtyOwner } from '@/runtime/runtime-terminal-stream'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
-import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime-pty-id'
+import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 
 import { parseHostAuthorityKey } from '../../../../shared/host-authority'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'

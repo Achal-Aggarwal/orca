@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { abortWhenRendererGone } from '../renderer-lifetime-abort'
 import { resolveEnvironment } from '../../../shared/runtime-environment-store'
-import type { RemoteRuntimeSubscription } from '../../../shared/remote-runtime-client'
+import type { RemoteRuntimeSubscription } from '../../../shared/remote-runtime/remote-runtime-client'
 import type {
   RuntimeRpcDispatchObservation,
   RuntimeRpcResponse

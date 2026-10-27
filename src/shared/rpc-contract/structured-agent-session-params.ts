@@ -1,4 +1,8 @@
-import { SendBody, MAX_OPTION_LABEL } from './structured-agent-session-message-params'
+import {
+  SendBody,
+  MAX_OPTION_LABEL,
+  AgentSessionOptions
+} from './structured-agent-session-message-params'
 import { TerminalClose } from './terminal-unary-params'
 import {
   Identifier,
@@ -8,7 +12,6 @@ import {
 } from './structured-agent-session-identifiers'
 import { z } from 'zod'
 import { CREATE_TAB_FIELDS } from './structured-agent-session-create-tab-params'
-import { isAgentSessionOptions } from '../agent-session-record'
 import { isStructuredAgentId } from '../agent-session-provider-handle-encoding'
 import { normalizeExecutionHostId } from '../execution-host'
 import { AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH } from '../agent-session-question-answer'
@@ -113,8 +116,6 @@ export const CreateSupportParams = z
   })
   .strict()
 
-const AgentSessionOptions = z.record(z.string(), z.string()).refine(isAgentSessionOptions)
-
 export const SendParams = z
   .object({
     envelope: MutationEnvelope,
@@ -145,7 +146,8 @@ export const CreateIntentParams = z
       })
       .strict()
       .optional(),
-    options: AgentSessionOptions.optional()
+    options: AgentSessionOptions.optional(),
+    optionsMode: z.literal('replace-model-selection').optional()
   })
   .strict()
 

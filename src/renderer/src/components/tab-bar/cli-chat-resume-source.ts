@@ -1,8 +1,5 @@
 import { useAppStore } from '@/store'
-import {
-  useInPlaceSwitchCapability,
-  inPlaceSwitchSupportedNow
-} from '@/lib/in-place-switch-support'
+import { useInPlaceSwitchCapability } from '@/lib/in-place-switch-support'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '@/store/types'
 import {
@@ -10,12 +7,12 @@ import {
   panePtyId,
   resolvePaneLastAgentConversation
 } from '@/lib/ai-vault-tab-title-requests'
-import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../../shared/execution-host'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import {
   adoptsCliConversations,
   type CliConversationRowAgent
 } from '../../../../shared/structured-agent-cli-conversation-adoption'
-import { canPaneOfferResumeInNewChat } from './tab-session-history-switch'
+import { resolvePaneResumeInNewChatOffer } from './tab-session-history-switch'
 
 export type CliChatResumeSource = {
   tabId: string
@@ -26,6 +23,8 @@ export type CliChatResumeSource = {
   executionHostId: ExecutionHostId
   /** The pane's PTY when this was resolved; only that execution may be retired. */
   ptyId: string | undefined
+  /** The host predates chat resume: show the action disabled and ask for an update. */
+  hostUpdateRequired?: true
 }
 
 /** The pane's last reported conversation, or the one the host launched in its current PTY. */
@@ -44,17 +43,17 @@ export function resolveCliChatResumeSource(
     : collectAgentPaneConversations(state, adoptsCliConversations, {
         tab: { worktreeId: args.tab.worktreeId, tabId: args.tab.id }
       }).find((candidate) => candidate.tabId === args.tab.id)
+  const offer = conversation
+    ? resolvePaneResumeInNewChatOffer(state, {
+        worktreeId: conversation.worktreeId,
+        paneKey: conversation.paneKey
+      })
+    : null
   if (
     !conversation ||
     conversation.tabId !== args.tab.id ||
     conversation.worktreeId !== args.tab.worktreeId ||
-    // A paired host moves a terminal's conversation only once it switches that agent in place.
-    (conversation.executionHostId !== LOCAL_EXECUTION_HOST_ID &&
-      !inPlaceSwitchSupportedNow(conversation.executionHostId, conversation.agent)) ||
-    !canPaneOfferResumeInNewChat(state, {
-      worktreeId: conversation.worktreeId,
-      paneKey: conversation.paneKey
-    })
+    !offer
   ) {
     return null
   }
@@ -65,7 +64,8 @@ export function resolveCliChatResumeSource(
     agent: conversation.agent,
     providerSessionId: conversation.providerSession.id,
     executionHostId: conversation.executionHostId,
-    ptyId: panePtyId(state, conversation.paneKey)
+    ptyId: panePtyId(state, conversation.paneKey),
+    ...(offer === 'host-update-required' ? { hostUpdateRequired: true as const } : {})
   }
 }
 

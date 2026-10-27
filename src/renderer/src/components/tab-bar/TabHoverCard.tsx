@@ -26,7 +26,7 @@ function TabHoverCardBody({
         {description && <div className="break-all text-muted-foreground">{description}</div>}
       </div>
       <div className="flex items-center gap-2 text-muted-foreground" data-tab-hover-card-program>
-        <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center" aria-hidden>
           {icon}
         </span>
         <span className="min-w-0 break-all">{programName}</span>

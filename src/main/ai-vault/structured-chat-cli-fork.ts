@@ -106,7 +106,10 @@ export async function resolveStructuredChatCliSource(
   fork: boolean
 ) {
   const host = getStructuredAgentSessionHost()
-  const record = host?.deps.store.getRecord(sourceChat.sessionId)
+  const record =
+    host && host.deps.store.selectWritableRecord(sourceChat.sessionId).kind !== 'missing'
+      ? host.deps.store.requireWritableRecord(sourceChat.sessionId)
+      : undefined
   const registration = record && structuredAgentRuntimeRegistration(record.provider)
   const head = record && agentSessionProviderHandleChainHead(record.providerHandleChain)
   if (
@@ -131,6 +134,18 @@ export async function resolveStructuredChatCliSource(
   ) {
     throw new Error('Send a message after rewinding this chat, then open it in a terminal.')
   }
+  const requireCurrent = (): void => {
+    const current = host.deps.store.requireWritableRecord(record.sessionId)
+    const currentHead = agentSessionProviderHandleChainHead(current.providerHandleChain)
+    if (
+      current.location.workspaceId !== record.location.workspaceId ||
+      current.location.executionHostId !== record.location.executionHostId ||
+      current.location.wslDistro !== record.location.wslDistro ||
+      currentHead?.linkId !== head.linkId
+    ) {
+      throw new Error('This chat has no saved conversation available on this host.')
+    }
+  }
   const agent = record.provider
   const cwd =
     (await host.deps.resolveWorkspacePath?.(record.location.workspaceId)) || record.launchDirectory
@@ -142,7 +157,7 @@ export async function resolveStructuredChatCliSource(
     throw new Error('This chat has no saved conversation to copy.')
   }
   assertNativeConversationContent(await host.journalSnapshot(record.sessionId))
-  return { host, record, registration, head, agent, cwd, providerSessionId }
+  return { host, record, registration, head, agent, cwd, providerSessionId, requireCurrent }
 }
 
 /** Prepares the record's current conversation on its execution host, without a History inventory. */
@@ -153,6 +168,7 @@ export async function prepareStructuredChatCliFork(
   const source = await resolveStructuredChatCliSource(args.sourceChat, true)
   const { record, registration, agent, cwd, providerSessionId } = source
   if (agentForksThroughChat(agent)) {
+    source.requireCurrent()
     const result = await copyStructuredChatRecordConversation(record, providerSessionId)
     const copy = result.forkedSession
     if (!copy || (agent === 'omp' && !copy.filePath)) {
@@ -214,6 +230,7 @@ export async function prepareStructuredChatCliTranscript(
     agent === 'codex' && isLegacyAgentSessionAccountHome(record.accountHome)
       ? record.accountHome.path
       : null
+  source.requireCurrent()
   const result = await prepare({
     agent,
     sessionId: providerSessionId,

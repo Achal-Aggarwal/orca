@@ -1,3 +1,4 @@
+import type { ResumeSpawnAdmission, ResumeSpawnRefusal } from './types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   normalizeAgentProviderSession,
@@ -23,6 +24,8 @@ import {
   terminalConversationKey
 } from '../../../native-chat/structured-conversation-key'
 
+export type { ResumeSpawnAdmission, ResumeSpawnRefusal } from './types'
+
 export type ResumeSpawnArgs = {
   connectionId?: string | null
   command?: string
@@ -43,18 +46,6 @@ type AdmissionRuntime = {
   ): Promise<SleepingAgentSessionRecord | undefined>
   openAgentSessionRecordStore(): Promise<AgentSessionRecordStore>
 }
-
-/** `chat-home`: an automatic restore of a conversation an open chat continues; `chat-writing`:
- *  any start of one a chat may be writing; `unverifiable`: an automatic restore with no records. */
-export type ResumeSpawnRefusal = {
-  sourceRecord?: SleepingAgentSessionRecord
-  verdict: 'chat-home' | 'chat-writing' | 'unverifiable'
-  refused: RefusedPaneResume
-}
-
-export type ResumeSpawnAdmission =
-  | { verdict: 'admitted'; refused: RefusedPaneResume; sourceRecord?: SleepingAgentSessionRecord }
-  | ResumeSpawnRefusal
 
 /** Saved-home policy only; ordinary terminal starts remain hook-observed. */
 export async function admitResumeSpawn(
@@ -134,7 +125,7 @@ async function judgeResumes(
     )
     return { verdict: 'unverifiable', refused: resumes[0] }
   }
-  const heads = listStructuredProviderSessionOwnership(store.listRecords()).filter(
+  const heads = listStructuredProviderSessionOwnership(store.listConversations()).filter(
     (holding) => holding.role === 'head'
   )
   const tabs = store.getVisibleSessionTabIndex()
@@ -142,7 +133,13 @@ async function judgeResumes(
     const holders = heads.filter((holding) =>
       keysOf(refused).some((key) => keysMayMatch(holding.key, key))
     )
-    if (holders.some((holding) => agentSessionLeasePossiblyWriting(holding.lease))) {
+    if (
+      holders.some((holding) =>
+        agentSessionLeasePossiblyWriting(
+          store.getRecord(holding.sessionId)?.lease ?? holding.ownerObservation
+        )
+      )
+    ) {
       return { verdict: 'chat-writing', refused }
     }
     if (switchStart) {

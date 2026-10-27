@@ -180,8 +180,9 @@ export class LocalPtyProvider implements IPtyProvider {
       }
     }
     let suspendedAgentProcess: string | undefined
-    const foregroundProcess = await (options?.scanChildProcesses
-      ? confirmLocalPtyForegroundProcess(id, (name) => {
+    const foregroundProcess = await (options?.scanChildProcesses ||
+    (process.platform === 'win32' && options?.steadyState !== true)
+      ? confirmLocalPtyForegroundProcess(id, process.platform === 'win32', (name) => {
           suspendedAgentProcess = name
         })
       : getLocalPtyForegroundProcess(id))

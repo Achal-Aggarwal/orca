@@ -19,6 +19,7 @@ import { latestSessionConversationTurn } from './ai-vault-session-display'
 import { SessionActionMenuItems } from './AiVaultSessionActionMenuItems'
 import { SessionRowTrailingActions } from './SessionRowTrailingActions'
 import { aiVaultSessionDeleteBlockedReason } from './ai-vault-session-deletability'
+import { useAiVaultSessionDeleteHost } from './ai-vault-session-delete-action'
 import type { AiVaultSessionResumeActions } from './ai-vault-session-resume'
 import type { AiVaultSessionWorktreeInfo } from './ai-vault-session-worktree'
 import {
@@ -112,8 +113,9 @@ export function VaultSessionRow({
   const switchLoading =
     useInPlaceSwitchCapability(session.executionHostId, session.agent) === undefined
   const latestTurn = latestSessionConversationTurn(session)
+  const deleteHost = useAiVaultSessionDeleteHost(session)
   const deleteBlockedReason = onRequestDelete
-    ? aiVaultSessionDeleteBlockedReason(session)
+    ? aiVaultSessionDeleteBlockedReason(session, deleteHost)
     : translate(
         'auto.components.right.sidebar.AiVaultSearchEvidence.sourceActionsUnavailable',
         'The transcript source is unavailable.'

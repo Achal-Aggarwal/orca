@@ -1,4 +1,9 @@
-import type { StructuredAgentSessionConversationLifetimeHost } from './structured-agent-session-conversation-lifetime-host'
+import {
+  createStructuredAgentSessionStopStartingChild,
+  type StructuredAgentSessionConversationLifetimeHost
+} from './structured-agent-session-conversation-lifetime-host'
+export type { StructuredAgentSessionConversationLifetime } from './structured-agent-session-host-types'
+import { closeStructuredAgentSessionHandovers } from './structured-agent-session-handing-over'
 import {
   AgentSessionRefusalError,
   agentSessionRefusalError
@@ -6,6 +11,7 @@ import {
 import { createJournalOpenReadRefusals } from '../agent-session-journal/journal-open-failure'
 import { releaseLeaseOfEndedStructuredAgentSessionChild } from './structured-agent-session-child-close'
 import {
+  beginFinalizedStructuredAgentSessionClose,
   holdClosedStructuredAgentSessionSends,
   closeStructuredAgentSessionConversationUnderSerialize,
   stopStructuredAgentSessionAgentUnderSerialize,
@@ -16,7 +22,6 @@ import type * as hostTypes from './structured-agent-session-host-types'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { sameProviderChild } from './structured-agent-session-provider-child'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import * as sleep from './structured-agent-session-workspace-sleep-stop'
 import type { StructuredAgentSessionExpiredStartup } from './structured-agent-session-startup-attempt'
@@ -26,10 +31,6 @@ import { settleStructuredAgentSessionFailedStart } from './structured-agent-sess
 import { createStructuredAgentSessionSwitchCommands } from './structured-agent-session-switch-commands'
 
 // Open conversations at rest; never start agents for reads. Acquire serialization once because the queue is nonreentrant.
-
-export type StructuredAgentSessionConversationLifetime = ReturnType<
-  typeof createStructuredAgentSessionConversationLifetime
->
 
 export function createStructuredAgentSessionConversationLifetime(
   host: StructuredAgentSessionConversationLifetimeHost
@@ -68,12 +69,15 @@ export function createStructuredAgentSessionConversationLifetime(
     )
   }
 
+  const closeContext = { sessions, serialize, closeConversation, deps }
+
   const holdStopClose = async <T>(
     sessionId: string,
     stop: () => Promise<T>,
     onCloseError?: (error: unknown) => void
   ): Promise<T> => {
     const session = sessions.get(sessionId)
+    const finishClose = beginFinalizedStructuredAgentSessionClose(closeContext, sessionId, session)
     if (session) {
       // Settle and pause before Stop so closed work cannot deliver automatically even if the handle stays open.
       await holdClosedStructuredAgentSessionSends(deps(), sessionId, session.journal, {
@@ -81,6 +85,7 @@ export function createStructuredAgentSessionConversationLifetime(
       })
     }
     const result = await stop()
+    finishClose?.()
     try {
       await closeConversation(sessionId)
     } catch (error) {
@@ -98,13 +103,19 @@ export function createStructuredAgentSessionConversationLifetime(
     executionHostId: ExecutionHostId
   ): Promise<sleep.WorkspaceSleepCloseResult | null> => {
     const matches = (): boolean => {
-      const location = deps().store.getRecord(sessionId)?.location
+      const location = deps().store.getConversation(sessionId)?.location
       return location?.workspaceId === workspaceId && location.executionHostId === executionHostId
     }
     const starts = sleep.workspaceSleepStartAborts(() => host.context().runtimeState, sessionId)
-    // Pending creates do not yet have a record; their queued close waits for founding to finish.
+    // Pending creates have no record yet; their queued close waits for founding.
     if (matches()) {
       switchCommands.revoke(sessionId)
+    }
+    if (matches() && deps().store.getRecord(sessionId)) {
+      const journal = sessions.get(sessionId)?.journal
+      if (journal) {
+        closeStructuredAgentSessionHandovers(journal)
+      }
       starts.abort()
     }
     const closed = serialize(sessionId, async () => {
@@ -112,13 +123,15 @@ export function createStructuredAgentSessionConversationLifetime(
         return null
       }
       readRefusals.forget(sessionId)
-      starts.abort()
-      const record = deps().store.getRecord(sessionId)
+      const record = deps().store.getConversation(sessionId)
       if (!record) {
         return null
       }
-      const fence = record.lease.runtimeFence
+      const fence = record.currentFence
       const admittedSends = deps().store.admittedSendCount(sessionId)
+      if (deps().store.getRecord(sessionId)) {
+        starts.abort()
+      }
       const session = sessions.get(sessionId)
       const child = session?.child
       const owned = deps().adapter.hasOwnedAcquisition?.(sessionId) === true
@@ -144,7 +157,7 @@ export function createStructuredAgentSessionConversationLifetime(
       )
       // Return the post-release fence for checks against a later restart.
       return {
-        fence: deps().store.getRecord(sessionId)?.lease.runtimeFence ?? fence,
+        fence: deps().store.getConversation(sessionId)?.currentFence ?? fence,
         stopped,
         admittedSends
       }
@@ -160,11 +173,11 @@ export function createStructuredAgentSessionConversationLifetime(
     deliveryActive: host.deliveryActive,
     childWorkOpen: host.childWorkOpen,
     store: {
-      getRecord: (sessionId) => deps().store.getRecord(sessionId),
+      getConversation: (sessionId) => deps().store.getConversation(sessionId),
       replacedRuntime: (sessionId) => deps().store.replacedRuntime(sessionId)
     },
     hasOpenDispatch: (sessionId) => {
-      const record = deps().store.getRecord(sessionId)
+      const record = deps().store.getConversation(sessionId)
       return record !== null && deps().hasOpenDispatch?.(record) === true
     },
     providerHoldsDispatch: (sessionId) => deps().adapter.holdsDispatch?.(sessionId) === true,
@@ -177,26 +190,7 @@ export function createStructuredAgentSessionConversationLifetime(
     ...deps().idleSweep
   })
 
-  const stopStartingChild = (
-    sessionId: string,
-    expired: hostTypes.StructuredAgentSessionProviderChildIdentity | null
-  ): void => {
-    void serialize(sessionId, async () => {
-      const child = sessions.get(sessionId)?.child
-      if (!expired || !child || child.phase !== 'starting' || !sameProviderChild(child, expired)) {
-        return
-      }
-      await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, {
-        cause: 'host-stop'
-      })
-    }).catch((error: unknown) =>
-      deps().logger.warn('stopping an agent that could not finish starting failed', {
-        scope: 'startup-limit',
-        sessionId,
-        error
-      })
-    )
-  }
+  const stopStartingChild = createStructuredAgentSessionStopStartingChild(host)
   return {
     ...switchCommands.controls,
     closeForWorkspaceSleep,
@@ -233,7 +227,7 @@ export function createStructuredAgentSessionConversationLifetime(
         readRefusals.forget(sessionId)
         return open
       }
-      const record = deps().store.getRecord(sessionId)
+      const record = deps().store.getConversation(sessionId)
       if (!record) {
         throw agentSessionRefusalError('agent_session_identity_required', {
           reason: 'recordMissing'
@@ -259,11 +253,19 @@ export function createStructuredAgentSessionConversationLifetime(
     /** Close resources while retaining durable chat/history and personal unsent text for the next turn. */
     close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> => {
       switchCommands.revoke(sessionId)
+      const journal = sessions.get(sessionId)?.journal
+      if (journal) {
+        closeStructuredAgentSessionHandovers(journal)
+      }
       // Abort outside serialization so hung startup cannot block close.
-      host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+      if (deps().store.selectWritableRecord(sessionId).kind !== 'unreadable') {
+        host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+      }
       return serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
-        host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+        if (deps().store.selectWritableRecord(sessionId).kind !== 'unreadable') {
+          host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+        }
         await holdStopClose(sessionId, () => stopAgent(sessionId, { cause }))
       })
     },

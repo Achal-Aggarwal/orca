@@ -4,7 +4,7 @@ import type { AgentStatusEntry, AgentType } from '../../../../shared/agent-statu
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '../types'
-import { findAgentPaneWorktreeId } from './agent-status-pane-key-tab-binding'
+import { findAgentPaneWorktreeId } from './agent-status/agent-status-pane-key-tab-binding'
 
 export type AgentPaneConversationIdentity = {
   paneKey: string

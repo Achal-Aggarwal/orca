@@ -2,7 +2,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { captureSourceTerminal } from '@/components/tab-bar/cli-chat-resume-terminal-capture'
-import { toRemoteRuntimePtyId } from '../../src/shared/remote-runtime-pty-id'
+import { toRemoteRuntimePtyId } from '../../src/shared/remote-runtime/remote-runtime-pty-id'
 import {
   createHarness,
   WORKTREE_ID,

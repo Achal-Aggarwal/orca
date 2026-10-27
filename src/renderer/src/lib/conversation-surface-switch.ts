@@ -1,3 +1,4 @@
+import { toHostSessionPaneKey } from '../../../shared/terminal-surface-id'
 import {
   captureSwitchProjection,
   releaseUnsentSwitchProjection
@@ -125,7 +126,10 @@ export async function runConversationSwitch(args: ConversationSwitch): Promise<b
         args.source.executionHostId,
         {
           providerSessionId: args.source.providerSessionId,
-          cliSource: { workspaceId: args.workspaceId, paneKey: args.source.paneKey }
+          cliSource: {
+            workspaceId: args.workspaceId,
+            paneKey: toHostSessionPaneKey(args.source.paneKey)
+          }
         }
       )
       sessionId = intent.sessionId

@@ -1,18 +1,17 @@
 import type { AgentSessionClaimedSpawnResult } from '../../../shared/agent-session-host-authority'
-import type { PtySpawnResult } from '../../providers/pty-provider-contract'
+import type { PtySpawnOutcome } from './spawn-outcome'
 import { codexReattachedHomeRouteField } from './host-env/codex-home'
 import { commitAttachedPtySize } from './delivery/attached-pty-size'
 import type { admitProviderReattachLaunchIdentity } from './pane/launch-authority'
 import { registerPersistedPtySpawn } from './pane/spawn-registration'
-import { resolvePaneSpawnReservation } from './pane/spawn-reservation'
 import { savePtySpawnPaneBinding } from './spawn-commit-binding'
 import type { PtySpawnCommitInput } from './spawn-commit-assembly'
 
-export async function commitAdoptedAgentSession<Reply extends PtySpawnResult>(
-  input: PtySpawnCommitInput<Reply>,
+export async function commitAdoptedAgentSession(
+  input: PtySpawnCommitInput,
   adopted: AgentSessionClaimedSpawnResult,
   providerReattachLaunchIdentity: ReturnType<typeof admitProviderReattachLaunchIdentity>
-): Promise<PtySpawnResult> {
+): Promise<PtySpawnOutcome> {
   const { state } = input
   const { result } = state
   const runtime = state.deps.runtime
@@ -78,13 +77,11 @@ export async function commitAdoptedAgentSession<Reply extends PtySpawnResult>(
   commitAttachedPtySize({
     result: adoptedResult,
     requested: { cols: state.args.cols, rows: state.args.rows },
-    cachedBeforeAttach: state.sessionSizeBeforeAttach,
+    cachedBeforeAttach: state.provisionalPtySize?.cachedBeforeAttach,
     reflowHeadlessTerminalToPtyGrid: runtime?.reflowHeadlessTerminalToPtyGrid?.bind(runtime)
   })
-  resolvePaneSpawnReservation(
-    state.paneSpawnReservationKey,
-    state.paneSpawnReservation,
-    adoptedResult
-  )
-  return adoptedResult
+  return {
+    kind: 'adopted',
+    result: { ...input.response, ...adoptedResult, agentSessionEnsure: adopted }
+  }
 }

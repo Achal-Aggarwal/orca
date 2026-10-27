@@ -12,6 +12,7 @@ import {
 import { structuredAgentSessionTargetForHost } from '@/runtime/structured-agent-session-owner'
 import { waitForPromiseWithSignal } from '../../../../shared/abort-signal-reason'
 import { CLI_CONVERSATION_ADOPTING_AGENTS } from '../../../../shared/structured-agent-cli-conversation-adoption'
+import { toHostSessionPaneKey } from '../../../../shared/terminal-surface-id'
 import { resolveCliChatResumeSource, type CliChatResumeSource } from './cli-chat-resume-source'
 import { reportCliChatResumeFailure, startCliChatReturn } from './cli-chat-resume-feedback'
 import { adoptingAgentOnHost } from '../right-sidebar/ai-vault-session-resume-in-chat-launch'
@@ -48,7 +49,7 @@ const keyFor = (source: CliChatResumeSource) =>
  *  that already holds it, revealed. The terminal pane closes once the chat has it. */
 export async function runLegacyCliChatResume(source: CliChatResumeSource): Promise<void> {
   const key = keyFor(source)
-  if (isCliChatResumePending(key)) {
+  if (isCliChatResumePending(key) || source.hostUpdateRequired) {
     return
   }
   const target = structuredAgentSessionTargetForHost(source.executionHostId)
@@ -123,9 +124,6 @@ export async function runLegacyCliChatResume(source: CliChatResumeSource): Promi
         supportsInPlaceSwitch(target, source.agent),
         controller.signal
       )
-      if (target.kind !== 'local' && !inPlace) {
-        return
-      }
       const cliSourceSupported = await waitForPromiseWithSignal(
         supportsStructuredAgentSessionCliSource(target),
         controller.signal
@@ -134,7 +132,7 @@ export async function runLegacyCliChatResume(source: CliChatResumeSource): Promi
         return
       }
       const agent = await waitForPromiseWithSignal(
-        adoptingAgentOnHost(source.agent, source.workspaceId),
+        adoptingAgentOnHost(source.agent, source.workspaceId, source.executionHostId),
         controller.signal
       )
       if (!isCurrent()) {
@@ -149,7 +147,12 @@ export async function runLegacyCliChatResume(source: CliChatResumeSource): Promi
         resumeFrom: {
           providerSessionId: source.providerSessionId,
           ...(cliSourceSupported
-            ? { cliSource: { workspaceId: source.workspaceId, paneKey: source.paneKey } }
+            ? {
+                cliSource: {
+                  workspaceId: source.workspaceId,
+                  paneKey: toHostSessionPaneKey(source.paneKey)
+                }
+              }
             : {})
         }
       })
