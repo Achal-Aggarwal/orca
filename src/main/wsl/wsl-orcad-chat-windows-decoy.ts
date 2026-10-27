@@ -1,7 +1,8 @@
 import { expect, vi } from 'vitest'
 import { quotePosixShell } from '../../shared/shell-argument-quoting'
 import { randomUUID } from 'node:crypto'
-import { envelope, type ChatInstall, type ChatLane } from './wsl-orcad-structured-chat-contract'
+import { envelope } from './wsl-orcad-chat-envelope'
+import type { ChatInstall, ChatLane } from './wsl-orcad-structured-chat-contract'
 
 /** Guest file the Windows-side `claude` decoy appends to each time anything runs it. */
 export const WSL_CHAT_DECOY_MARKER = 'orca-lane-claude-decoy-ran'
