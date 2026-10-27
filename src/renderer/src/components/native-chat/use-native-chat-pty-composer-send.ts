@@ -70,7 +70,7 @@ export function useNativeChatPtyComposerSend(args: {
       if (!target) {
         return false
       }
-      const classification = args.classifySend(text)
+      const classification = retry ? 'chat' : args.classifySend(text)
       if (classification === 'command' && answerNativeChatCommandInComposer(args)) {
         return false
       }

@@ -151,3 +151,122 @@ it.each(['before-body', 'between-body-enter', 'transport-unknown', 'submitted'] 
     expect(mounted.result.current.pending.filter((entry) => entry.delivery)).toEqual([])
   }
 )
+
+it('retries admitted skill chat through the notice and real transport without classifying or clearing a newer command draft', async () => {
+  const { classifyNativeChatSend } = await import('../../../../shared/native-chat-slash-commands')
+  const { answerNativeChatLocalCommand } = await import('./use-native-chat-local-command-answer')
+  let origin: string | null = '/context'
+  let draft = '/context'
+  let images = [{ path: '/original.png' }]
+  let disabled = false
+  let targetAvailable = true
+  const local = vi.fn((command: string, contextWindowTokens: (modelId: string) => number | null) =>
+    answerNativeChatLocalCommand({ agent: 'omp', command, messages: [], contextWindowTokens })
+  )
+  const setDraft = vi.fn((value: string) => {
+    draft = value
+  })
+  const clearOrigin = vi.fn(() => {
+    origin = null
+  })
+  const clearImages = vi.fn(() => {
+    images = []
+  })
+  const composerRef: { current: NativeChatComposerHandle | null } = { current: null }
+  const mounted = renderHook(() => {
+    const pending = useNativeChatPendingDelivery({
+      paneKey: 'skill-origin',
+      agent: 'omp',
+      session: { messages: [] },
+      composerRef
+    })
+    const optimistic = useNativeChatOptimisticSend(pending.record, () => {})
+    const lifecycle = useNativeChatSendLifecycle('tab', 'pty', pending.cancel, {
+      inputOwnedByCard: false,
+      onPendingSendRetired: pending.reject
+    })
+    const send = useNativeChatPtyComposerSend({
+      agent: 'omp',
+      draft,
+      draftScopeKey: 'skill-origin',
+      imageAttachments: images,
+      disabled,
+      isDispatchingSessionOption: false,
+      launchDraftResolved: true,
+      resolveTarget: () => (targetAvailable ? { ptyId: 'pty', settings: null } : null),
+      classifySend: (text) => classifyNativeChatSend(text, [{ name: 'context' }], origin, '/'),
+      onOptimisticSend: optimistic,
+      optimisticSendOutcome: pending,
+      answerCommandLocally: local,
+      sessionOptionsSurface: null,
+      terminalTabId: 'tab',
+      trackPendingSend: lifecycle.trackPendingSend,
+      setDraft,
+      setCaret: () => {},
+      clearSkillOrigin: clearOrigin,
+      clearImageAttachments: clearImages,
+      setNotice: () => {}
+    })
+    composerRef.current = {
+      resend: (text, imagePaths) => send({ text, imagePaths }),
+      focus: () => true,
+      insertTypedText: () => false,
+      acceptsText: () => true,
+      appendText: () => {},
+      handlePasteEvent: () => {},
+      pasteFromClipboard: () => {},
+      contains: () => false
+    }
+    return { pending, send }
+  })
+  act(() => {
+    expect(mounted.result.current.send()).toBe(true)
+  })
+  expect(local).not.toHaveBeenCalled()
+  expect(origin).toBeNull()
+  act(() => mounted.result.current.pending.reject(mounted.result.current.pending.pending[0]!.id))
+  draft = '/context newer draft'
+  images = [{ path: '/newer.png' }]
+  origin = '/newer-skill'
+  setDraft.mockClear()
+  clearOrigin.mockClear()
+  clearImages.mockClear()
+  disabled = true
+  mounted.rerender()
+  const oldId = mounted.result.current.pending.pending[0]!.id
+  act(() => [...mounted.result.current.pending.notices.values()][0]!.onSend?.())
+  expect(mounted.result.current.pending.pending[0]!.id).toBe(oldId)
+  disabled = false
+  targetAvailable = false
+  mounted.rerender()
+  act(() => [...mounted.result.current.pending.notices.values()][0]!.onSend?.())
+  expect(mounted.result.current.pending.pending[0]!.id).toBe(oldId)
+  targetAvailable = true
+  mounted.rerender()
+  act(() => [...mounted.result.current.pending.notices.values()][0]!.onSend?.())
+  expect(mounted.result.current.pending.pending).toMatchObject([
+    { text: '/context', imagePaths: ['/original.png'], recovery: true }
+  ])
+  expect(mounted.result.current.pending.pending[0]!.id).not.toBe(oldId)
+  expect(local).not.toHaveBeenCalled()
+  expect(setDraft).not.toHaveBeenCalled()
+  expect(clearOrigin).not.toHaveBeenCalled()
+  expect(clearImages).not.toHaveBeenCalled()
+  expect(draft).toBe('/context newer draft')
+  expect(origin).toBe('/newer-skill')
+  expect(images).toEqual([{ path: '/newer.png' }])
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000)
+  })
+  expect(writes.mock.calls.flat().join(' ')).toContain('/context')
+  expect(writes.mock.calls.flat().join(' ')).toContain('/original.png')
+  expect(writes.mock.calls.flat().join(' ')).not.toContain('newer')
+  origin = null
+  images = []
+  mounted.rerender()
+  act(() => {
+    expect(mounted.result.current.send()).toBe(false)
+  })
+  expect(local).toHaveBeenCalledWith('/context newer draft', expect.any(Function))
+  expect(setDraft).toHaveBeenCalledWith('')
+})

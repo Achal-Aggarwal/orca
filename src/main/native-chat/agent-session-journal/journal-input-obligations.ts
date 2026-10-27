@@ -6,6 +6,7 @@ import type {
   AgentJournalSubmission,
   AgentJournalStatusItem
 } from '../../../shared/agent-session-journal-types'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { readCodexErrorWillRetry } from '../../codex/codex-structured-thread-facts'
 import type { JournalReducerState } from './journal-reducer'
@@ -208,6 +209,9 @@ export function journalInputAttemptEnded(
   send: AgentJournalSubmission,
   work: JournalRecoveryWork | null
 ): boolean {
+  if (isQueuedAgentJournalSubmission(send)) {
+    return false
+  }
   const original = {
     ...send,
     fence:

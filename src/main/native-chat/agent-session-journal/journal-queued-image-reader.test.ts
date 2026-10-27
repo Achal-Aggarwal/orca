@@ -527,3 +527,127 @@ it('projects a still-active cut source before stateless and middle-page catch-up
   ).toContainEqual(expect.objectContaining({ itemId: key }))
   expect(journal.item(key)).toBeNull()
 })
+
+it('keeps proven unwritten input waiting after both old-process hold writes fail, then preserves one exact actionable copy', async () => {
+  const { holdUnsentSends } = await import('./journal-unsent-send-hold')
+  const { bindStructuredAgentSessionRecoveryWork, heldStructuredAgentSessionCurrentWork } =
+    await import('../agent-session-wire/structured-agent-session-host-current-work')
+  const { StructuredAgentSessionSendSettlement } =
+    await import('../agent-session-wire/structured-agent-session-send-settlement')
+  const open = async () => {
+    journal = await journals.open({ identity, stateDirectory: root, now: () => ++clock })
+    journal.queuedMessages.recoveryWork = () =>
+      structuredAgentSessionCurrentWork(journal, { record: agentSessionRecordFixture(lease) })
+  }
+  const full: AgentJournalMessageItem = {
+    ...body('never handed'),
+    blocks: [
+      { type: 'text', text: 'never handed' },
+      { type: 'image-ref', path: '/held.png' }
+    ]
+  }
+  await journal.appendSubmission({
+    clientMessageId: 'unwritten',
+    body: full,
+    payloadFingerprint: agentSessionSendBodyFingerprint(identity.sessionId, full),
+    fence: 7,
+    origin: 'client',
+    source: { kind: 'user' },
+    handoverRecorded: true,
+    options: { model: 'gpt-5' }
+  })
+  await journals.closeAll()
+  await open()
+  lease = { ...lease, claimStatus: 'released' }
+  const store = {
+    getRecord: () => agentSessionRecordFixture(lease),
+    replacedRuntime: () => undefined
+  }
+  const session = { journal }
+  bindStructuredAgentSessionRecoveryWork(store, identity.sessionId, session)
+  const current = () =>
+    heldStructuredAgentSessionCurrentWork(store, identity.sessionId, journal, session)
+  const cursor = journal.cursor()
+  const fail = vi
+    .spyOn(journal, 'resolveDispatch')
+    .mockRejectedValue(new Error('injected disk failure'))
+  await expect(
+    holdUnsentSends(journal, { fence: 7, hold: { cause: 'hostRestarted' } })
+  ).rejects.toThrow('settling unsent sends failed')
+  expect(fail).toHaveBeenCalledTimes(2)
+  fail.mockRestore()
+  expect(journal.cursor()).toEqual(cursor)
+  const raw = journal.submission('unwritten')!
+  expect(raw).toMatchObject({
+    dispatchState: 'pending',
+    handoverRecorded: true,
+    options: { model: 'gpt-5' }
+  })
+  expect(raw.handedOverAt).toBeUndefined()
+  expect(current().generationEnded(raw)).toBe(true)
+  expect(current().handsOver(raw)).toBe(false)
+  expect(journal.queuedMessages.attemptEnded('unwritten')).toBe(false)
+  expect(journal.queuedMessages.list()).toEqual([])
+  const settlements = new StructuredAgentSessionSendSettlement(() => ({
+    submissions: () => journal.submissions(),
+    cursor: () => journal.cursor(),
+    attemptEnded: (id) => journal.queuedMessages.attemptEnded(id),
+    activeTurnId: () => current().activeTurnId()
+  }))
+  try {
+    expect(await settlements.wait(identity.sessionId, 'unwritten', { budgetMs: 1 })).toBeUndefined()
+  } finally {
+    settlements.closeAll()
+  }
+  await journal.rollEpoch('unreconcilable_prefix', 7)
+  await journals.closeAll()
+  await open()
+  expect(journal.submissionBody('unwritten')).toEqual(full)
+  expect(journal.queuedMessages.attemptEnded('unwritten')).toBe(false)
+  await holdUnsentSends(journal, { fence: 7, hold: { cause: 'hostRestarted' } })
+  await holdUnsentSends(journal, { fence: 7, hold: { cause: 'hostRestarted' } })
+  expect(journal.queuedMessages.list()).toMatchObject([
+    { messageId: 'unwritten', state: 'waiting', body: full, options: { model: 'gpt-5' } }
+  ])
+  expect(journal.queuedMessages.list()).toHaveLength(1)
+  const card = journal.queuedMessages.get('unwritten')!
+  await journal.queuedMessages.update({
+    messageId: card.messageId,
+    expectedBodyFingerprint: card.fingerprint,
+    text: 'edited'
+  })
+  const edited = journal.queuedMessages.get(card.messageId)!
+  await journal.appendSubmission(
+    {
+      clientMessageId: 'selected',
+      body: edited.body,
+      payloadFingerprint: edited.fingerprint,
+      fence: 7,
+      handoverRecorded: true,
+      options: edited.options
+    },
+    { messageId: card.messageId, expect: 'waiting' }
+  )
+  expect(journal.queuedMessages.get(card.messageId)).toMatchObject({
+    state: 'dispatched',
+    consumedAs: 'selected'
+  })
+  expect(journal.submissionBody('selected')).toEqual(edited.body)
+  await journal.queuedMessages.insert({ messageId: 'delete', body: full })
+  await journal.queuedMessages.withdraw(['delete'])
+  await journals.closeAll()
+  await open()
+  expect(journal.queuedMessages.get('delete')?.state).toBe('withdrawn')
+  expect(journal.submissionBody('unwritten')).toEqual(full)
+  await journal.appendSubmission({
+    clientMessageId: 'legacy-no-handover-protocol',
+    body: full,
+    payloadFingerprint: agentSessionSendBodyFingerprint(identity.sessionId, full),
+    fence: 7,
+    origin: 'client',
+    source: { kind: 'user' }
+  })
+  expect(journal.submission('legacy-no-handover-protocol')?.handoverRecorded).toBeUndefined()
+  expect(journal.queuedMessages.attemptEnded('legacy-no-handover-protocol')).toBe(true)
+  expect(journal.queuedMessages.get('recovery:legacy-no-handover-protocol')?.state).toBe('returned')
+})
