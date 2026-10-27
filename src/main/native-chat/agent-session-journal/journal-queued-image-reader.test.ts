@@ -374,7 +374,7 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
     const original = journal.snapshot.bind(journal)
     function watched<T>(values: T[]): T[] {
       return new Proxy(values, {
-        get(target, key, receiver) {
+        get(target, key) {
           const adapter =
             new Error('population read').stack?.includes('queuedImageReaderSnapshot') === true
           const bucket = adapter ? 'adapter' : 'inherited'
@@ -390,7 +390,8 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
             operations[bucket]++
           }
           // Array methods use the proxy receiver, counting every numeric read, including map/slice/splice.
-          return Reflect.get(target, key, receiver)
+          // SAFETY: The trap forwards properties of plain journal arrays, leaving methods unbound.
+          return target[key as keyof typeof target]
         }
       })
     }
