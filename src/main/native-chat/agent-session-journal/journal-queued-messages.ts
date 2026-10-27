@@ -5,7 +5,11 @@ import { journalInputAttemptEnded } from './journal-input-obligations'
 // Drafts are NEVER owed work: nothing here feeds working status, teardown, or the idle sweep.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessageUpdateResult } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessageMoveAnchor,
+  AgentSessionQueuedMessageMoveResult,
+  AgentSessionQueuedMessageUpdateResult
+} from '../../../shared/agent-session-wire'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
 import {
   journalQueueRowBuilder,
@@ -36,7 +40,7 @@ import {
   unconfirmedRecoveryCards,
   type JournalRecoveryWork
 } from './journal-unconfirmed-recovery'
-import type { JournalReducerState } from './journal-reducer'
+import { queuedMessageMovePlan } from './queued-message-move'
 
 export type JournalQueuePlan = {
   rows: ((seq: number, ts: number) => JournalQueueRow)[]
@@ -57,7 +61,7 @@ export class JournalQueuedMessages {
     return this.deps.sessionId
   }
 
-  displayState(): JournalReducerState {
+  displayState() {
     return this.deps.state()
   }
 
@@ -210,21 +214,21 @@ export class JournalQueuedMessages {
     }, receipt)
   }
 
+  move(
+    input: { messageId: string } & AgentSessionQueuedMessageMoveAnchor,
+    receipt?: JournalOperationReceipt
+  ): Promise<AgentSessionQueuedMessageMoveResult> {
+    return this.write(() => queuedMessageMovePlan(this.list(), input), receipt)
+  }
+
   /** Adopt each selected legacy witness with its action; deletion is optional cleanup after commit. */
   plan(changes: readonly JournalQueueCardChange[]): JournalQueuePlan {
     const rows: JournalQueuePlan['rows'] = []
     const adopted: string[] = []
-    const witness = (id: string) => {
-      const value = this.legacy.witness(id)
-      if (value && !adopted.includes(value.messageId)) {
-        rows.push(journalQueueRowBuilder(this.deps.state, value.messageId, value.change))
-        adopted.push(value.messageId)
-      }
-    }
     for (const { messageId, change } of changes) {
       const source = this.get(messageId)?.recovers
       if (source) {
-        witness(source)
+        rows.push(...this.legacy.witnessRows(source, adopted))
       }
       const own = this.deps.state().queue.cards.has(messageId) || adopted.includes(messageId)
       const adoption = own
@@ -243,10 +247,7 @@ export class JournalQueuedMessages {
   }
 
   proofWitness(clientMessageId: string): JournalQueuePlan['rows'] {
-    const witness = this.legacy.witness(clientMessageId)
-    return witness
-      ? [journalQueueRowBuilder(this.deps.state, witness.messageId, witness.change)]
-      : []
+    return this.legacy.witnessRows(clientMessageId)
   }
 
   /** Validate the acted-on card on the lane; automatic drain must still own the next queued card. */

@@ -143,6 +143,19 @@ export class LegacyQueuedCards {
     return witness && !this.deps.state().queue.cards.has(witness.messageId) ? witness : undefined
   }
 
+  witnessRows(
+    clientMessageId: string,
+    adopted?: string[]
+  ): ReturnType<typeof journalQueueRowBuilder>[] {
+    const witness = this.witness(clientMessageId)
+    if (!witness || adopted?.includes(witness.messageId)) {
+      return []
+    }
+    const row = journalQueueRowBuilder(this.deps.state, witness.messageId, witness.change)
+    adopted?.push(witness.messageId)
+    return [row]
+  }
+
   /** Resolve adoption on the write lane from current disk state; null means no legacy card. */
   adoption(messageId: string): JournalQueuedChange | null {
     if (this.deps.state().queue.cards.has(messageId) || this.key() === '') {
