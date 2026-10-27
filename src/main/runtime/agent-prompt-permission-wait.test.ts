@@ -150,7 +150,7 @@ describe('agent prompt writer: onPermission wait', () => {
     const sent = runtime.sendTerminalAgentPrompt(handle, 'held prompt', {
       inputKind: 'driving',
       onPermission: 'wait',
-      signal: controller.signal
+      observationSignal: controller.signal
     })
     const rejected = expect(sent).rejects.toThrow('request_aborted')
     await vi.advanceTimersByTimeAsync(0)
@@ -194,18 +194,23 @@ describe('agent prompt writer: expectedBinding', () => {
     expect(writes).toEqual([])
   })
 
-  it('refuses a process replaced while the write guard runs', async () => {
+  it('refuses replacement during the asynchronous suffix guard', async () => {
+    vi.useFakeTimers()
+    let checks = 0
     const { runtime, handle, writes } = await createRuntime()
     const admitted = runtime.getTerminalPromptRequestBinding(handle)
 
-    await expect(
+    const rejected = expect(
       runtime.sendTerminalAgentPrompt(handle, 'bound prompt', {
         inputKind: 'driving',
         expectedBinding: {
           ptyId: admitted.ptyId,
           processIncarnation: admitted.processIncarnation
         },
-        beforeWrite: () => {
+        beforeWrite: async () => {
+          if (++checks !== 2) {
+            return
+          }
           vi.spyOn(runtime, 'getTerminalPromptRequestBinding').mockReturnValue({
             ...admitted,
             processIncarnation: 'replacement'
@@ -213,6 +218,8 @@ describe('agent prompt writer: expectedBinding', () => {
         }
       })
     ).rejects.toThrow('terminal_handle_stale')
-    expect(writes).toEqual([])
+    await vi.runAllTimersAsync()
+    await rejected
+    expect(writes).toHaveLength(1)
   })
 })

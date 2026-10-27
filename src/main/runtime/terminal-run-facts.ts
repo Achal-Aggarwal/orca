@@ -55,6 +55,23 @@ export class TerminalRunFactsRegister {
     return () => this.inputListeners.delete(listener)
   }
 
+  private readonly inputBytesByPtyId = new Map<string, Set<(data: string) => void>>()
+
+  onInputBytes(ptyId: string, listener: (data: string) => void): () => void {
+    let listeners = this.inputBytesByPtyId.get(ptyId)
+    if (!listeners) {
+      listeners = new Set()
+      this.inputBytesByPtyId.set(ptyId, listeners)
+    }
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0 && this.inputBytesByPtyId.get(ptyId) === listeners) {
+        this.inputBytesByPtyId.delete(ptyId)
+      }
+    }
+  }
+
   reserveSpawnCommit(commit: TerminalSpawnCommit): void {
     if (!commit.incarnationId) {
       return
@@ -120,6 +137,9 @@ export class TerminalRunFactsRegister {
       }
       for (const listener of this.inputListeners) {
         listener(ptyId, now)
+      }
+      for (const listener of this.inputBytesByPtyId.get(ptyId) ?? []) {
+        listener(data)
       }
       const pending = this.pendingByPtyId.get(ptyId)
       if (pending) {

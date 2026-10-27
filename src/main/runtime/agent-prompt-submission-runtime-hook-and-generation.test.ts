@@ -1,3 +1,4 @@
+import { ConversationChain } from '../external-conversations/external-conversation-chain'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_PROMPT_BRACKETED_PASTE_END,
@@ -482,22 +483,38 @@ describe('agent prompt submission runtime hook and generation cases', () => {
     expect(writes[0]).toContain(AGENT_PROMPT_BRACKETED_PASTE_END)
   })
 
-  it('does not send delayed Enter after cancellation during settlement', async () => {
+  const sources = ['signal', 'observationSignal', 'interrupt', 'exit'] as const
+  it.each(sources)('%s cancellation during settlement', async (source) => {
     vi.useFakeTimers()
     const controller = new AbortController()
     const { runtime, handle, writes } = await createPromptRuntime(() => undefined)
-    const submission = runtime.sendTerminalAgentPrompt(handle, 'review this', {
-      inputKind: 'driving',
-      signal: controller.signal
-    })
+    const chain = new ConversationChain(new AbortController().signal)
+    const send = (signal?: AbortSignal) =>
+      runtime.sendTerminalAgentPrompt(handle, 'review this', {
+        inputKind: 'driving',
+        signal,
+        observationSignal: source === 'observationSignal' ? controller.signal : undefined
+      })
+    const submission =
+      source === 'signal'
+        ? chain.enqueue('prompt', (signal) => send(signal).then(() => ({ outcome: 'accepted' })))
+        : send()
     const rejected = expect(submission).rejects.toThrow('request_aborted')
 
     await vi.advanceTimersByTimeAsync(0)
-    controller.abort()
+    const cancel = {
+      interrupt: () => runtime.terminalRunFacts.recordInput('pty-prompt', 'driving', 'a\x03'),
+      exit: () => runtime.onPtyExit('pty-prompt', 0),
+      signal: () => chain.cancel('prompt', 'conversation_cancelled'),
+      observationSignal: () => controller.abort()
+    }
+    void cancel[source]()
     await vi.runAllTimersAsync()
 
     await rejected
-    expect(writes.filter((data) => data === '\r')).toHaveLength(0)
+    expect(writes.filter((data) => data === '\r')).toHaveLength(
+      source === 'observationSignal' ? 1 : 0
+    )
   })
 
   it('does not send another Enter after cancellation during verification', async () => {
