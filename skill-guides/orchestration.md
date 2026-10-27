@@ -1,215 +1,177 @@
 ---
 name: orchestration
 description: >-
-  Coordinate supervised Orca workers, or work as a dispatched worker
-  (heartbeats, ask, worker_done): threaded messages, blocking ask/reply, task
-  dispatch, worker_done/escalation waits, task DAGs, decision gates,
-  coordinator loops, and decomposing work across agents. Use `orca-cli` for full
-  ownership handoffs — "hand off", "handoff", "handover", "give this to another
-  agent", "another worktree" — unless asked to supervise, monitor, or coordinate
-  a DAG, and for terminal control, lightweight terminal prompts, shell commands,
-  Orca worktree management, and reading or waiting on terminals.
+  Hand work to Orca worker agents and get their results back. Use when asked to
+  change code in a project (the worker gets a new workspace of that project),
+  to split work across parallel agents, to run work on a different agent or
+  model, or to run long work in the background; also when you are a dispatched
+  worker (a prompt with Task and Dispatch IDs: heartbeats, ask, worker_done).
+  Covers task DAGs, ask/reply, and decision gates. Not for questions or small
+  edits in your own checkout. Use `orca-cli` instead to give work away for good
+  with no result expected back ("hand off", "handover", "give this to another
+  agent"), and for terminal control, shell commands, worktree management, and
+  reading or waiting on terminals.
 ---
 
 # Orca orchestration
 
-Orchestration is Orca's structured coordination layer. It records who owns work,
-which attempt is authoritative, and when supervised work has settled.
+You (the coordinator) start worker agents through Orca, end your turn, and Orca
+wakes you when a worker reports back. Terms:
 
-## Outcome
+- **Run**: your inbox for one goal. Workers report to it.
+- **Task**: one piece of work. **Dispatch**: one attempt at a Task by one worker.
+- **Settled**: the worker sent `worker_done` (succeeded or failed).
 
-**Result:** every in-scope Task has one explicit outcome and every settled worker
-terminal has a next owner or cleanup decision. **Next consumer:** the user who
-requested supervision. **Done:** all expected Dispatches have settled, every
-delivered message was processed before acknowledgment, each settled worker was
-reused, explicitly retained, or released, and the turn ends only when the report
-to that user names, per Task, its outcome, the evidence behind it, and any
-unresolved blocker.
+## When to hand work to a worker
 
-**Safe failure:** preserve work and authority and report the state as unknown or
-`unverifiable`. Only positive proof of exit authorizes stop, abandon, or retry,
-and only an accepted settlement authorizes release. Every other observation,
-absence included, is a checkpoint.
+Hand off when:
 
-## Classify the role
+- The user asks for a code change in a project. The worker gets a new workspace
+  of that project, so its edits never collide with your checkout or another
+  agent's.
+- The work splits into parts that can run in parallel.
+- The user wants a different agent or model to do it.
+- The work is long and you should stay free to answer the user.
 
-| Current context                                                                                                                                | Role                    | Route                                                                          |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------ |
-| The user explicitly asks to supervise, monitor, wait for results, track completion, coordinate a DAG, use a decision gate, or manage ask/reply | Coordinator             | Use the supervised loop below                                                  |
-| The current prompt contains a live injected preamble with Task and Dispatch IDs                                                                | Dispatched worker       | Follow the preamble and the worker obligations below                           |
-| The user asks to hand off ownership or start another agent/worktree without supervision                                                        | Handoff owner           | Use `orca-cli`; create no Run, Task, or Dispatch and do not monitor completion |
-| A message carries a legacy authority label                                                                                                     | Compatibility operator  | Load the legacy contract reference before any lifecycle mutation               |
-| No live preamble and no explicit supervision                                                                                                   | Ordinary terminal agent | Do not emit lifecycle messages; use `orca-cli` for terminal/worktree work      |
+Do it yourself when the user asks a question, or wants a small edit in the
+checkout you are already working in.
 
-Model or effort selection does not make a handoff supervised: `orca-cli`'s
-`worktree create --agent` and `agent launch` take `--model` and `--effort`, and
-open a chat or a terminal per the user's Chat UI setting, as `worker-start` does.
-Never substitute a non-Orca subagent tool when Orca orchestration provenance was
-requested.
+If the user wants to give the work away for good and expects nothing back, use
+the `orca-cli` skill instead and create no Run.
 
-## Authority and safety floor
+## Main recipe
 
-- A Run is a durable namespace and coordinator inbox; it does not schedule or
-  place workers. A Task is work. A Dispatch is one authoritative Task attempt.
-- Lifecycle authority comes from the active Dispatch, not a terminal title,
-  copied ID, old database row, provider transcript, or visible pane.
-- Workers use the exact executable, handle, Task ID, and Dispatch ID in the live
-  preamble, plus any other flag it carries. Never reconstruct, translate, or
-  broaden those arguments.
-- After remote start, address the worker by Dispatch ID. The execution host owns
-  process, filesystem, transcript, stop, and cleanup facts. Preserve the verdicts
-  `live` / `unverifiable` / `exited`; contact loss is not process death.
-- Liveness is layered: `worker-list`'s `projection.liveness` is the fleet verdict
-  for the agent; `worker-show`'s `observation.status` is PTY liveness only. A live
-  terminal can still hold a dead or stuck agent.
-- Folder workspaces are valid; never require Git or assume a worktree.
-- Clients and remote servers update independently. Treat unknown optional fields
-  as absent. A new stream operation requires advertised capability because old
-  decoders may silently drop unknown opcodes. Never fall back to local execution
-  when remote authority or capability is unproven.
-- Use the executable you used to run `skills get` for the entire run. In the
-  examples below, replace `ORCA` with it; do not create a shell variable or run
-  `ORCA` literally. If it fails, report that exact error instead of switching.
-- `ORCA status --json` shows your Orca session ID as `caller.orcaSessionId` when you have one.
-- A successful `orchestration send` proves durable enqueue; its wake or nudge is
-  best-effort attention only and does not prove the recipient read or accepted it.
-
-## Worker obligations
-
-The injected preamble is authoritative. A dispatched worker must:
-
-1. Do only the current Task and use the preamble's `ask` command for a blocking
-   coordinator question. Never open a local question TUI the coordinator cannot
-   answer. Resume the same message ID after an ask timeout.
-2. Send heartbeats only at the cadence in the preamble. A heartbeat proves
-   liveness, not completion. If a background loop sends them, restart it if it
-   expires mid-task, and stop it before `worker_done`.
-3. Read coordinator follow-ups at each natural checkpoint — before starting a
-   new file, after a test run — and once more immediately before `worker_done`:
-   `ORCA orchestration check --terminal <your_handle> --json`.
-   After processing every message, ack the batch, which returns the next one, and
-   repeat until `count` is 0; an unacked batch replays and hides newer mail:
-   `ORCA orchestration check --terminal <your_handle> --ack <delivery_id> --json`.
-4. Send `worker_done` exactly once, from the dispatched terminal, with a
-   three-sentence executive summary, both lifecycle IDs, and explicit
-   `--outcome succeeded` or `--outcome failed`. Never encode failure only in prose.
-5. Append `--files-modified` and `--report-path` only with real values when
-   applicable. After `worker_done`, end the dispatched turn and idle; do not poll
-   or start new work.
-
-A direct user instruction after completion starts new user-owned work and takes
-precedence over the idle rule. Do not reuse the settled lifecycle IDs.
-
-## Canonical supervised loop
-
-Confirm the runtime, bind one Run, and start the full independent wave before
-waiting. `worker-start --spec` creates the Task and its attempt in one call:
+`ORCA` below stands for the executable you used to run `skills get`. Type that
+executable in its place; do not create a shell variable or run `ORCA`
+literally. If it fails, report its exact error; never switch to another one.
 
 ```text
-ORCA status --json
-ORCA orchestration run-create --objective "<objective>" --json
-ORCA orchestration worker-start --spec "<worker A task>" --worktree current --agent codex --json
-ORCA orchestration worker-start --spec "<worker B task>" --worktree current --agent claude --json
-ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
+ORCA repo list --json
+ORCA orchestration run-create --objective "<goal>" --json
+ORCA orchestration worker-start --spec "<task>" --worktree new-top-level --repo id:<repoId> --name <short-name> --agent claude --json
 ```
 
-After a restart, resume your own Run with `run-use --id <run_id>`. A worker
-cannot bind the Run it works for or an ancestor, and cannot use
-`--takeover-legacy`; an already-bound no-op remains allowed. When its
-coordinator directs a handoff, a replacement worker may resume a separate Run
-with plain `run-use`.
+- `--repo` names the project; `repo list` gives its id. Pass it whether or not
+  you are inside that project. `--name` names the new workspace.
+- `--agent` is the agent the user asked for, otherwise the kind you are. Add
+  `--model` only when the user named one.
+- For work that is not a code change, or a project that is a plain folder (not
+  Git), use `--worktree current` and drop `--repo` and `--name`.
+- Start every independent worker before you stop. One `worker-start --spec`
+  call creates the Task and its Dispatch.
+- If `worker-start` exits non-zero, do not run it again. Read `failedStage`
+  and `residualResources` in its output, then load
+  `references/recovery-and-cleanup.md`.
 
-If `worker-start` exits non-zero, do not relaunch. Read the receipt's
-`failedStage` and `residualResources`, then load
-`references/recovery-and-cleanup.md`.
+Then tell the user what you started and **end your turn**. Do not wait or poll.
 
-Use `task-create` plus `worker-start --task <task_id>` for planned fan-out with
-dependencies or a retry of a known Task. Use dependencies only for real ordering
-and prefer parallel waves over chains deeper than three or four steps; nested
-workers obey the depth limit, and a new Run does not reset the caller's depth.
-A dispatched worker starts its own helpers with `worker-start --spec` on the Run
-it works for, without `run-create`; the helpers report to that worker.
+## When Orca wakes you
 
-A consuming `check` names its caller with `--terminal <handle>`, never `--from`;
-omit it inside the coordinator's own Orca terminal. It returns the bound Run's
-oldest FIFO Delivery and replays that batch until acknowledged. Process every
-message: reply to questions, validate each `worker_done` against the expected
-active Dispatch, and decide each settled terminal's next owner before the ack:
+When a worker reports, Orca sends you a new message: "You have N orchestration
+messages. Run `orca orchestration check --run <run_id>`." In a terminal it is
+typed in for you; in a chat it arrives as a user message. Run that command and
+handle every message it returns:
 
 ```text
+ORCA orchestration check --run <run_id> --json
 ORCA orchestration reply --id <message_id> --body "<answer>" --json
 ORCA orchestration worker-release --dispatch <dispatch_id> --json
-ORCA orchestration check --ack <delivery_id> --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
+ORCA orchestration check --run <run_id> --ack <delivery_id> --json
 ```
 
-Keep waiting until every expected Dispatch settles. A timeout or empty result is
-a checkpoint, not a failure. Do not stop, retry, release, or launch a duplicate
-editor without the positive proof `## Outcome` requires.
+- Answer each `question` with `reply`. Check each `worker_done` against the
+  Dispatch you expect, then decide its worker's next owner (see Completion).
+- `--ack` marks the batch handled and returns the next one. Repeat until
+  `count` is 0. A batch you do not ack is returned again and hides newer mail.
+- Tell the user the result, or end your turn again while workers are still
+  running. A worker that has not reported is still working; a quiet inbox is
+  not a failure.
 
-After three consecutive empty waits, stop waiting blindly and enumerate with
-`ORCA orchestration worker-list --include-remote --json` (defaults to the bound
-Run; `--run <run_id>` overrides; the receipt's `scope` names which), acting on
-each row's `projection.attention` categories, `projection.attention.requiresAction`, and literal `projection.nextAction` argv.
-Rows come newest first and page at 100: while `page.hasMore`, follow `page.nextCursor` with `--cursor <value>`.
-A `none` `nextAction` has no argv to run: read `liveness.reason` and keep waiting
-with `check --wait`. Absence never earns an argv; settlement and pending work still do.
-Leave the wait only on positive proof the agent stopped: `exited` liveness, the
-worker's own observation of process exit, or a transcript whose final agent turn
-sent no `worker_done`. Then load `references/recovery-and-cleanup.md` and choose
-`worker-stop` or `worker-abandon` explicitly. `unverifiable` is absence,
-including when `worker-show` reports `agentWait` null. Absence never authorizes
-stop, abandon, retry, or release; keep waiting or inspect.
+**Waiting inside one turn.** Only when the user needs the result before your
+turn ends, or you run outside an Orca terminal or chat (nothing can wake you),
+block instead, with a timeout under 10 minutes:
 
-`worker-start` is the normal path, composing placement, terminal readiness,
-prompt injection, and supervised resource ownership. `dispatch --inject` leaves
-an operator-created process unsupervised and is only for an expressiveness gap.
+```text
+ORCA orchestration check --run <run_id> --wait --types "worker_done,escalation,question" --timeout-ms 540000 --json
+```
 
-## Task-spec contract
+A timeout is a checkpoint, not a failure: wait again or end the turn. After
+three empty waits in a row, inspect the workers with
+`references/recovery-and-cleanup.md`. After a restart, resume your Run with
+`ORCA orchestration run-use --id <run_id> --json`.
 
-Every Task spec must be self-contained and name:
+## Task spec
+
+The worker sees only its spec. Make each one self-contained:
 
 - **Target:** the files, component, or environment in scope.
 - **Change:** the concrete result to produce.
-- **Constraints:** invariants, compatibility rules, and do-not-touch boundaries.
-- **Ownership:** what this worker may edit and any coordination boundary.
-- **Observable acceptance:** the test, output, or evidence that proves completion.
+- **Constraints:** rules to keep, and what not to touch.
+- **Ownership:** what this worker may edit.
+- **Acceptance:** the test, output, or evidence that proves it is done.
 
-## Completion accounting
+## Completion
 
-After an accepted success or failure report, immediately do exactly one:
+A valid `worker_done` settles its Task; do not follow it with `task-update`.
+For each settled worker, before you ack, do exactly one:
 
-1. Reuse the same proven agent terminal for an immediate follow-up Dispatch.
-2. Record user-requested retention with `worker-retain`.
-3. Run `worker-release`.
+1. Give the same worker an immediate follow-up
+   (`references/coordinator-loop.md`).
+2. Keep it because the user asked, with `worker-retain`.
+3. Free it with `worker-release`.
 
-Release is post-settlement cleanup, not cancellation. Only an accepted
-settlement authorizes it; no other observation does. If release is uncertain,
-follow its exact recovery receipt and never substitute `terminal close`.
+Release is cleanup after settlement, never cancellation. You are done when
+`ORCA orchestration worker-list --run <run_id> --terminal-state reclaimable --json`
+returns nothing and you have told the user, per Task, the outcome, its
+evidence, and any open blocker.
 
-A valid `worker_done` settles the Task and Dispatch automatically; do not follow
-it with `task-update --status completed`. Enumerate the terminals still owing a
-decision with `worker-list --run <run_id> --terminal-state reclaimable --json`,
-and do not end the coordinator turn until it returns none.
+## Safety floor
 
-## Conditional references
+- Stop, abandon, or retry a worker only on positive proof that its agent
+  exited. Release it only after it settled. Silence, a timeout, or an
+  `unverifiable` reading proves nothing: keep waiting or inspect.
+- Liveness verdicts are `live`, `unverifiable`, or `exited`. Losing contact
+  with a remote host is `unverifiable`, not death.
+- Folder workspaces are valid workspaces; never require Git there.
+- Use one executable for the whole Run.
+- A successful `send` means the message is stored, not that it was read.
+- Never replace Orca workers with another subagent tool when the user asked
+  for Orca orchestration.
 
-This compact guide is sufficient for the normal local loop. At an action gate
-below, run `ORCA skills get orchestration --reference references/<file>.md` and
-read only that document; `--references` lists the names. If the CLI rejects
-`--reference`, run `ORCA skills get orchestration --full` once instead: it
-returns this exact kernel and every reference, so read only the named one. If an
-older CLI rejects `--full`, keep this kernel's safety floor, use that command's
-`--help`, and never guess newer flags.
+## If you are a dispatched worker
 
-| Action gate                                                                                                   | Bundled reference                         |
-| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Expanded DAG waves, launch model/effort, same-terminal reuse, or review ownership                             | `references/coordinator-loop.md`          |
-| You are a dispatched worker and the live preamble does not answer your question, or `check` returned an error | `references/worker-contract.md`           |
-| New worktree, exact workspace, SSH, WSL, or connected-server placement                                        | `references/placement-and-remote.md`      |
-| Inbox replay, follow-up messages, group addresses, or decision gates                                          | `references/messaging-and-gates.md`       |
-| Failed/stopped/unknown attempts, retry, stop, abandon, retain, or uncertain release                           | `references/recovery-and-cleanup.md`      |
-| Custom argv or terminal topology that `worker-start` cannot express                                           | `references/low-level-topology.md`        |
-| Any legacy label, adopted Run, compatibility receipt, or takeover                                             | `references/legacy-contract-migration.md` |
+Your prompt (the preamble) carries your Task ID, Dispatch ID, and exact
+commands. It is authoritative: copy its commands and flags, never rebuild them.
 
-Retired scheduler commands are not aliases for Run creation. Recovery commands
-must provide their exact next action; follow it with the same selected executable.
+1. Do only your Task. For a question the coordinator must answer, use the
+   preamble's `ask` command, never a local prompt. After an `ask` timeout,
+   resume the same message ID.
+2. Send heartbeats only at the preamble's cadence. Stop any heartbeat loop
+   before `worker_done`.
+3. At natural checkpoints and right before `worker_done`, read coordinator
+   mail with `ORCA orchestration check --terminal <your_handle> --json`, then
+   ack each batch with `--ack <delivery_id>` until `count` is 0.
+4. Send `worker_done` exactly once, from your own terminal or chat: three
+   sentences (what changed, what you found, what remains), both IDs, and
+   `--outcome succeeded` or `--outcome failed`. Add `--files-modified` and
+   `--report-path` only with real values.
+5. Then end your turn and idle. A later direct user instruction is new work;
+   do not reuse the settled IDs.
+
+## References
+
+Load a reference only when its situation applies:
+`ORCA skills get orchestration --reference references/<file>.md`
+(`--references` lists them). If the CLI rejects `--reference`, run
+`ORCA skills get orchestration --full` once and read only the named section.
+If it rejects `--full` too, use `--help` and never guess newer flags.
+
+| Situation                                                                                           | Reference                                 |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Task DAGs and dependencies, model/effort, reusing a settled worker, review-only work                | `references/coordinator-loop.md`          |
+| You are a worker and the preamble does not answer your question, or `check` errored                 | `references/worker-contract.md`           |
+| Child or exact workspaces, folder workspaces, SSH, WSL, or a connected Orca server                  | `references/placement-and-remote.md`      |
+| Batch replay, follow-ups to one worker, group addresses, or decision gates                          | `references/messaging-and-gates.md`       |
+| A failed, stopped, silent, or unknown worker; retry, stop, abandon, retain, or an uncertain release | `references/recovery-and-cleanup.md`      |
+| Custom argv or terminal layout that `worker-start` cannot express                                   | `references/low-level-topology.md`        |
+| A legacy label, adopted Run, compatibility receipt, or takeover                                     | `references/legacy-contract-migration.md` |

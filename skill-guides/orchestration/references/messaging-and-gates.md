@@ -26,8 +26,11 @@ that batch over unfiltered.
 `--peek` and `--all` are read-only inspection, not progress through the
 coordinator inbox.
 
-An empty wait or timeout is a checkpoint. Continue rolling waits until every
-expected Dispatch settles. Heartbeat or visible activity means alive, not done.
+Inside an Orca terminal or chat, new Run mail wakes the coordinator with a
+pointer to `check --run <run_id>`, so it may end its turn between batches. A
+caller that waits instead treats an empty wait or timeout as a checkpoint and
+keeps each wait under its tool-call limit. Heartbeat or visible activity means
+alive, not done.
 
 ## Addresses
 
@@ -37,7 +40,8 @@ Use a stable Dispatch address for attempt-specific coordinator guidance:
 ORCA orchestration send --to dispatch:<dispatch_id> --subject "Follow-up" --body "<guidance>" --json
 ```
 
-Do not substitute a remote terminal handle. Omit `--from` for ordinary
+Do not substitute a remote terminal handle. `ORCA status --json` shows your
+own Orca session ID as `caller.orcaSessionId` when you have one. Omit `--from` for ordinary
 coordinator calls; a dispatched worker instead copies the exact `--from` and
 other arguments in its preamble. `check` is the exception: it identifies
 its caller with `--terminal`, never `--from`.

@@ -85,3 +85,6 @@ Never take over while the original coordinator is actively coordinating.
 Do not launch a replacement editor merely because Orca updated or authority is
 unclear. Keep the original worker as the only editor until a stable handoff
 point, then use a fresh current Dispatch in a conflict-free placement.
+
+Retired scheduler commands are not aliases for Run creation. Recovery commands
+must provide their exact next action; follow it with the same executable.

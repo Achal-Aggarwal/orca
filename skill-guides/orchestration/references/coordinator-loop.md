@@ -1,17 +1,20 @@
 # Coordinator loop
 
 Load this reference for expanded DAG waves, per-invocation launch preferences,
-same-terminal reuse, or review ownership. The compact guide remains the source
-of truth for the loop order and completion boundary.
+same-terminal reuse, or review ownership. The main guide remains the source of
+truth for the loop order and when you are done.
 
 ## Ready waves
 
-Create independent Tasks before the first wait. Encode only real dependencies,
-then use the ready view as external memory:
+Create independent Tasks before you end your first turn. Encode only real
+dependencies, prefer parallel waves over chains deeper than three or four steps,
+and use the ready view as external memory. Start a planned Task, or retry a
+known one, with `--task`:
 
 ```text
 ORCA orchestration task-create --spec "<dependent work>" --deps <json_array> --json
 ORCA orchestration task-list --ready --brief --json
+ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
 ```
 
 `--brief` collapses whitespace and caps echoed specs at 160 characters;
