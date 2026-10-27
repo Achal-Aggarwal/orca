@@ -11,12 +11,9 @@ export type JournalReplacementItem = AgentJournalProducerLinkage & {
   identity: AgentJournalItemIdentity
   body: AgentJournalItemBody
   observedAt?: number
-  /** Absent for history rebuilt from a source that never stated one: derived from position, as
-   *  a legacy row's is, and then written down. */
+  /** Derive absent legacy scopes from timeline position before persisting them. */
   turnScope?: AgentJournalTurnScope
-  /** Carried from the epoch it came from (`JournalItemRow.ownerFence`), never the replacing
-   *  writer's fence: replacing history does not make it the current generation's work. */
+  /** Preserve original execution provenance; history replacement is not new work. */
   ownerFence: number
-  /** Carried the same way (`JournalItemRow.executionOwner`). */
   executionOwner?: number
 }

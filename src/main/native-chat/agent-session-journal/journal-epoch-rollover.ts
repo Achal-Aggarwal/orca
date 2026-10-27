@@ -21,7 +21,7 @@ export function publishNewEpoch(input: {
     kind: 'epoch',
     reason: input.reason,
     providerHandle: agentSessionJournalProviderHandle(input.identity),
-    // Carries no body: an older host must keep reading a turn-free session past row 1.
+    // Body-free epoch rows must remain readable by older hosts.
     v: journalRowSchemaVersion([]),
     epoch: input.epoch,
     seq: 1,

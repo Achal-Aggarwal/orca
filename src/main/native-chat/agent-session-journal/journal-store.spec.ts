@@ -157,7 +157,7 @@ export function registerJournalStoreTests(): void {
       })
       await bothAgreeOn('turn-1')
 
-      // The completion is a revision, so it keeps the row's creation sequence rather than moving it.
+      // Revisions retain creation position.
       await journal.appendItem(
         turnItem('turn-1'),
         { kind: 'turn', turnId: 'turn-1', state: 'completed' },
@@ -330,7 +330,7 @@ export function registerJournalStoreTests(): void {
 
     it('never splits a multi-byte character across the bound', () => {
       const limits = { inlineHeadBytes: 4 }
-      // Each character is three bytes, so a naive slice would land mid-sequence.
+      // Three-byte characters expose UTF-8 splits.
       const bounded = boundPayload('日本語テスト', limits)
       expect(bounded.head).toBe('日')
       expect(Buffer.byteLength(bounded.head, 'utf8')).toBeLessThanOrEqual(4)
@@ -460,8 +460,6 @@ export function registerJournalStoreTests(): void {
     })
   })
 
-  /** Opens the session database directly, so a case can stage a fault or read
-   *  back what a commit actually stored. */
   async function withJournalDatabase(
     stateDirectory: string,
     run: (db: Database.Database) => void

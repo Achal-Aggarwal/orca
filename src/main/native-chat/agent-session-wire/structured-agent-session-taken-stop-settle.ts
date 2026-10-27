@@ -1,5 +1,3 @@
-// What a Stop the provider took settles from its own answer, with no turn-ended event to wait on.
-
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { runningTurnLifecycleRevisions } from './structured-agent-session-stale-turn-verdict'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'

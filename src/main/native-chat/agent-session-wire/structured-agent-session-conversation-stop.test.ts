@@ -40,7 +40,7 @@ import {
   identityFor
 } from '../../codex/codex-structured-session-adapter-fixture'
 import { AgentModelCatalogStore } from '../agent-model-catalog/agent-model-catalog-store'
-import { CodexAppServerRequestError } from '../../codex/codex-app-server-request-error'
+import { CodexAppServerRequestError } from '../../codex/app-server/codex-app-server-request-error'
 
 const CALLER = { callerKey: 'client-1' }
 

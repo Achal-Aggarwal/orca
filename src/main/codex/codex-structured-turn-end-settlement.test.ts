@@ -45,7 +45,6 @@ async function turnEndRig() {
       body: CODEX_TEST_USER_MESSAGE,
       fence: 7
     })
-  // Codex answers a cold send before it opens the turn.
   const sendAndOpen = async (clientMessageId: string) => {
     const outcome = await send(clientMessageId)
     expect(turns.turnId).not.toBeNull()
@@ -76,7 +75,7 @@ describe('a Codex send its turn ended without echoing', () => {
     rig.turns.echo('client-1')
     await rig.send('client-2')
 
-    // A failed turn keeps its steered input: Codex records it after the error, before the end.
+    // Codex persists failed-turn input between error and turn/completed.
     rig.codex.connections[0]!.handlers.onNotification?.('error', {
       threadId: CODEX_TEST_THREAD_ID,
       turnId: 'turn-1',
@@ -102,7 +101,7 @@ describe('a Codex send its turn ended without echoing', () => {
     rig.turns.end('completed')
     expect(rig.settlements).toEqual([])
 
-    // Codex echoes before a completed end; this late one only proves the send is still armed.
+    // Artificially late echo verifies correlation survives completion.
     rig.turns.echo('client-1')
     expect(rig.settlements).toEqual([
       expect.objectContaining({

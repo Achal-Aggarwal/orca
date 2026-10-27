@@ -1,7 +1,4 @@
-// Where a send a Stop took back is drawn: after the turn it waited on, never above that turn's own
-// rows, and never below a later exchange, a restart included. Codex's resume rewrites every
-// finished turn's start time to its own whole seconds, so the order is decided by the journal alone.
-// Driven through the shipped host, journal and Codex adapter; only the Codex child is fake.
+// Codex resume rounds turn starts to seconds; only journal order can place withdrawn sends between exchanges, including after restart.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,9 +6,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   CodexAppServerConnection,
-  CodexAppServerConnectionHandlers,
-  openCodexAppServerConnection
-} from '../codex/codex-app-server-connection'
+  CodexAppServerConnectionHandlers
+} from '../codex/app-server/codex-app-server-connection-types'
+import type { openCodexAppServerConnection } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
 import type * as CodexTurnOpenWait from '../codex/codex-structured-turn-open-wait'
@@ -20,6 +17,7 @@ import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-it
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import { AGENT_SESSION_GOAL_CONTROL_COPY } from '../../shared/agent-session-goal-control-copy'
 import { NATIVE_CHAT_STOPPED_BEFORE_START_TEXT } from '../../shared/native-chat-stopped-before-start'
 import { projectNativeChatTranscript } from '../../shared/native-chat-transcript-projection'
 import { nativeChatRowsInDrawOrder } from '../../shared/native-chat-turn-grouping'
@@ -97,7 +95,7 @@ let turns: ReturnType<typeof codexTurnLifecycleFake>
 let interruptEndHeld: boolean
 let operations = 0
 
-/** The durable ledger stamps its own clock and refuses an id far from it. */
+/** Use the ledger clock; far-future operation ids are refused. */
 const operationId = (): string => `${Date.now()}-${(++operations).toString(16).padStart(32, '0')}`
 
 function envelope(method: string, fields: Record<string, unknown>) {
@@ -123,9 +121,14 @@ async function send(text: string): Promise<string> {
 }
 
 /** The chat's Stop; `turnId` names the turn it stops, as the phone does. */
-function stop(turnId?: string): Promise<unknown> {
+async function stop(turnId?: string): Promise<unknown> {
   const fields = turnId === undefined ? {} : { turnId }
-  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
+  const result = await host.cancel(CALLER, {
+    envelope: envelope('agentSession.cancel', fields),
+    ...fields
+  })
+  await host.collaboratorsForTests().serialize(SESSION, async () => {})
+  return result
 }
 
 function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessageId: string) {
@@ -161,10 +164,19 @@ const openConnection: typeof openCodexAppServerConnection = async (
   connectionHandlers = {}
 ) => {
   handlers = connectionHandlers
+  let closed = false
   const connection: CodexAppServerConnection = {
     pid: 4321,
-    closed: false,
+    get closed() {
+      return closed
+    },
+    get closeResult(): CodexAppServerConnection['closeResult'] {
+      return closed ? { root: 'exited', tree: 'exited' } : null
+    },
     request: async (method, params) => {
+      if (method === 'thread/goal/get') {
+        return { goal: null }
+      }
       if (method === 'thread/resume') {
         resumes += 1
         return { thread: { id: THREAD, ...(resumeTurns ? { turns: resumeTurns } : {}) } }
@@ -194,7 +206,10 @@ const openConnection: typeof openCodexAppServerConnection = async (
     notify: () => {},
     respond: () => {},
     respondWithError: () => {},
-    close: async () => true
+    close: async () => {
+      closed = true
+      return true
+    }
   }
   return connection
 }
@@ -292,7 +307,8 @@ describe("a send made while Codex held the first send's answer, then a Stop", ()
       'first',
       'streamed after the Stop',
       'second',
-      NATIVE_CHAT_STOPPED_BEFORE_START_TEXT
+      NATIVE_CHAT_STOPPED_BEFORE_START_TEXT,
+      AGENT_SESSION_GOAL_CONTROL_COPY.stopUnconfirmed
     ])
   })
 })
@@ -354,8 +370,7 @@ describe('a send a Stop took back before Codex echoed it', () => {
     await stop('turn-1')
     expect(['pending', 'unknown']).toContain(verdictOf(await submissions(), sent))
 
-    // Codex opened its turn before echoing it, so that turn, ended interrupted, is the send's: it
-    // carries the stop, and no row of its own follows the send.
+    // The opened turn belongs to this send and carries its Stop; none of its rows may follow the withdrawn send.
     const snapshot = await host.journalSnapshot(SESSION)
     const turnRecord = snapshot.items.find(
       (item) => readAgentJournalTurn(item.body)?.turnId === 'turn-1'

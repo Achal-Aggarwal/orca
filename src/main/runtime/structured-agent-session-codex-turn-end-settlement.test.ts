@@ -9,12 +9,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  CodexAppServerRequestError,
-  type CodexAppServerConnection,
-  type CodexAppServerConnectionHandlers,
-  type openCodexAppServerConnection
-} from '../codex/codex-app-server-connection'
+import { CodexAppServerRequestError } from '../codex/app-server/codex-app-server-request-error'
+import type {
+  CodexAppServerConnection,
+  CodexAppServerConnectionHandlers
+} from '../codex/app-server/codex-app-server-connection-types'
+import type { openCodexAppServerConnection } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
 import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
@@ -23,8 +23,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import { structuredAgentSessionStopNoteIdentity } from '../native-chat/agent-session-wire/structured-agent-session-command-turn'
+import { AGENT_SESSION_GOAL_CONTROL_COPY } from '../../shared/agent-session-goal-control-copy'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -157,6 +156,7 @@ async function stop(turnId?: string): Promise<void> {
   if (!stopped.ok) {
     throw new Error(JSON.stringify(stopped.refusal))
   }
+  await host.collaboratorsForTests().serialize(SESSION, async () => {})
 }
 
 /** `/compact` as the chat surface runs it; refused while the chat still owes work. */
@@ -217,10 +217,19 @@ beforeEach(async () => {
   ) => {
     handlers = connectionHandlers
     connections += 1
+    let closed = false
     const connection: CodexAppServerConnection = {
       pid: 4321,
-      closed: false,
+      get closed() {
+        return closed
+      },
+      get closeResult(): CodexAppServerConnection['closeResult'] {
+        return closed ? { root: 'exited', tree: 'exited' } : null
+      },
       request: async (method, params) => {
+        if (method === 'thread/goal/get') {
+          return { goal: null }
+        }
         if (method === 'thread/start' || method === 'thread/resume') {
           return { thread: { id: THREAD } }
         }
@@ -264,6 +273,7 @@ beforeEach(async () => {
           throw new Error('the kill timed out')
         }
         childCloses += 1
+        closed = true
         return true
       }
     }
@@ -333,7 +343,6 @@ describe('a Codex send its turn ended without taking it', () => {
   it('keeps doubt for a follow-up Codex steered into the turn a Stop ends, with no working latch', async () => {
     const opening = await runningTurn()
     const followUp = await send('and check the tests')
-    // Steered into the running turn by name, which fires no second turn/started.
     await vi.waitFor(() => expect(steers).toBe(1))
     expect(answers).toBe(1)
 
@@ -374,7 +383,6 @@ describe('a queued card sent now into the turn a Stop ends', () => {
   it("reads as the stopped turn's unconfirmed message, and nothing sends it again", async () => {
     await runningTurn()
     const { messageId: cardId } = await queueThenSendNow('and check the tests')
-    // Steered into the running turn, with no echo yet.
     await vi.waitFor(() => expect(steers).toBe(1))
     const [steered] = await handoffs(cardId)
     expect(steered?.dispatchState).toBe('pending')
@@ -389,7 +397,7 @@ describe('a queued card sent now into the turn a Stop ends', () => {
         }),
       { timeout: 5_000 }
     )
-    // A drain ignoring the pause re-sends only after the stopped turn ends: watch past that.
+    // Observe beyond turn end, when a drain ignoring the pause could resend.
     await vi.waitFor(() => expect(turns.turnId).toBeNull())
     const clock = createCoordinatorMailObservationClock(() => host, SESSION)
     clock.start()
@@ -446,8 +454,7 @@ describe("a queued card's Send-now while a Codex turn runs", () => {
   })
 
   it('is settled when a Stop ends that turn, on a Codex that names a steered start falsely', async () => {
-    // Before 0.148, a steered turn/start answers with an id no turn opens or ends under,
-    // so only the steer's own answer names the turn whose end settles the send.
+    // Before 0.148, steered turn/start returns an id no turn opens under; only the steer answer identifies the settling turn.
     turns = codexTurnLifecycleFake(
       THREAD,
       () => (method, params) => handlers?.onNotification?.(method, params),
@@ -460,7 +467,6 @@ describe("a queued card's Send-now while a Codex turn runs", () => {
 
     await stop('turn-1')
 
-    // A card's hand-off the agent may have: read as sent, never as refused.
     await vi.waitFor(async () =>
       expect(verdictOf((await settled()).submissions, sent)).toBe('pending')
     )
@@ -473,8 +479,7 @@ describe('a second send made after Codex answered the first, before it opened th
     const opening = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     const followUp = await send('and check the tests')
-    // Held until that turn opens, so Codex is never asked to steer into a turn it has not started:
-    // the delivery loop goes idle with no wait on turn-1, which a handover would have started.
+    // An unopened target keeps delivery idle; handover would have started a turn-open wait.
     const { loop } = host.collaboratorsForTests().conversationDelivery
     await vi.waitFor(() => expect(loop.isRunning(SESSION)).toBe(false))
     expect(openWaits.turnIds).toEqual([])
@@ -517,6 +522,7 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
     expect(await held).toBe('held')
     expect(interrupts).toBe(1)
     turns.start()
+    await vi.advanceTimersByTimeAsync(1)
     await stopping
 
     expect(interrupts).toBe(2)
@@ -544,15 +550,19 @@ describe('a Stop in that window that the turn never opens for', () => {
     return { stopping, sent }
   }
 
-  it('says Codex had no turn running when that turn ends first', async () => {
-    const { stopping } = await waitingStop()
+  it('ends the session even when that turn ends before the interrupt can take it', async () => {
+    const { stopping, sent } = await waitingStop()
 
     turns.end('interrupted')
     await stopping
 
     expect(interrupts).toBe(1)
-    expect(childCloses).toBe(0)
-    expect(await statusRows()).toContain('Codex had no turn running to stop.')
+    expect(childCloses).toBe(1)
+    // The request stays visible; the withdrawn send has its own stopped result.
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    )
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
   it('lets a chat closed behind it close within its bound and one eviction', async () => {
@@ -563,10 +573,7 @@ describe('a Stop in that window that the turn never opens for', () => {
       closing,
       CODEX_TURN_OPEN_WAIT_MS + CHILD_EVICTION_TIMEOUT_MS
     )
-    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS - 201)
-    expect(openWaits.ended).toEqual([])
-    expect(childCloses).toBe(0)
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS)
     expect(openWaits.ended).toEqual(['turn-1'])
 
     expect(await closedWithinBound).not.toBe('held')
@@ -585,10 +592,7 @@ describe('a Stop in that window that the turn never opens for', () => {
       stopStructuredAgentSessionRuntime(),
       CHILD_EVICTION_TIMEOUT_MS
     )
-    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS - 201)
-    expect(openWaits.ended).toEqual([])
-    expect(childCloses).toBe(0)
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS)
     expect(openWaits.ended).toEqual(['turn-1'])
     expect(await quitWithinBound).not.toBe('held')
     expect(childCloses).toBe(1)
@@ -635,13 +639,11 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
       state: 'interrupted',
       outcome: 'cancellation'
     })
-    // Codex's end, after its answer, settles the send.
     await vi.waitFor(async () => expect((await settled()).owesWork).toBe(false))
   })
 
-  // The Stop was read with no turn running; its note is the turn the interrupt took, as a normal
-  // Stop's is, never a conversation row below whatever came next.
-  it('keeps its note with the turn the interrupt took', async () => {
+  // The request was recorded before a turn was known, so a later turn cannot take its identity.
+  it('keeps its request separate from a turn that opens after acceptance', async () => {
     const release = turns.holdNextAnswer()
     await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
@@ -657,12 +659,8 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     const notes = items.filter(
       (item) => item.body.kind === 'status' && item.body.text === 'Cancellation requested.'
     )
-    expect(notes.map((note) => [note.itemId, note.turnScope])).toEqual([
-      [
-        agentJournalItemKey(structuredAgentSessionStopNoteIdentity('turn-1')),
-        { kind: 'turn', turnItemId: turn?.itemId }
-      ]
-    ])
+    expect(notes.map((note) => note.turnScope)).toEqual([{ kind: 'thread' }])
+    expect(notes[0]?.itemId).toMatch(/^orca:stop%3A\d{13}-/)
   })
 
   it('ends the child when its interrupt was refused and the turn has not opened by the end of its wait', async () => {
@@ -767,7 +765,7 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(childCloses).toBe(1)
     expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
-    expect(await statusRows()).toEqual(['Cancellation requested.'])
+    expect(await statusRows()).toEqual([AGENT_SESSION_GOAL_CONTROL_COPY.stopUnconfirmed])
   })
 
   // Handed over once the stopped turn read ended, it started its own turn, however late that

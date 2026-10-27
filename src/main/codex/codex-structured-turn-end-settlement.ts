@@ -21,7 +21,6 @@ import {
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import { codexAuthenticationFailure } from './codex-authentication-failure'
 
-/** A message Codex rejected, in the words that name Codex and its legacy markers. */
 export function codexDispatchRejection(
   failure: SubmissionRejectionFact,
   account?: CodexSession['account']
@@ -41,8 +40,7 @@ function errorDetail(params: unknown): ProviderDiagnostic | undefined {
   return message ? providerDiagnostic(message, 'person') : undefined
 }
 
-/** A final `error` naming a turn Codex never opened: before 0.148 that is the only end such a
- *  turn reports. One it opened still reports its own `turn/completed`. */
+/** Pre-0.148 unopened turns can end with only a final error; opened turns still send turn/completed. */
 function unopenedTurnFailure(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
   method: string,
@@ -66,7 +64,6 @@ function unopenedTurnFailure(
   }
 }
 
-/** The end a primary-thread notification reports for its turn, or null for any other frame. */
 export function readCodexTurnEnd(method: string, params: unknown): CodexTurnEnd | null {
   if (method !== 'turn/completed') {
     return null
@@ -100,7 +97,6 @@ export function noteCodexTurnOpened(
   }
 }
 
-/** Settles the sends bound to the turn this admitted notification ended. */
 export function settleCodexSendsInEndedTurn(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes' | 'account'>,
   frame: { sessionId: string; method: string; params: unknown }

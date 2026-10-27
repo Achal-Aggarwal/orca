@@ -12,6 +12,7 @@ import {
 } from './workspace-list-sections'
 import { DEFAULT_WORKSPACE_STATUSES } from '../../../src/shared/workspace-statuses'
 import { getMobileWorkspaceLineageGroupKey } from './mobile-workspace-lineage'
+import { getWorktreeDotStatus } from './workspace-list-ordering'
 
 function worktree(overrides: Partial<Worktree> = {}): Worktree {
   const worktreePath = join('/tmp', 'orca', 'worktrees', 'feature')
@@ -168,8 +169,7 @@ describe('filterWorktrees', () => {
   })
 
   it('keeps a sleeping folder workspace on hosts that omit isMainWorktree', () => {
-    // A folder workspace has no branch, so the legacy branch heuristic can never
-    // recognise it — without its own arm, #8873 still reproduces on old desktops.
+    // Legacy branch guessing cannot recognize branchless folder workspaces (#8873).
     const legacyFolder = worktree({
       workspaceKind: 'folder-workspace',
       worktreeId: 'folder:legacy-1',
@@ -251,6 +251,16 @@ describe('getWorktreeStatus', () => {
         })
       )
     ).toBe('active')
+  })
+})
+
+describe('getWorktreeDotStatus', () => {
+  it('shows the host’s agent verdict and keeps the phone rule for activity and unknown states', () => {
+    const row = worktree({ status: 'active', hasHostSidebarActivity: true })
+    expect(getWorktreeDotStatus({ ...row, sidebarStatus: 'failed' })).toBe('failed')
+    expect(getWorktreeDotStatus({ ...row, sidebarStatus: 'inactive' })).toBe('active')
+    expect(getWorktreeDotStatus({ ...row, sidebarStatus: 'from-a-newer-host' })).toBe('active')
+    expect(getWorktreeDotStatus(row)).toBe('active')
   })
 })
 
@@ -368,7 +378,6 @@ describe('buildSections', () => {
   })
 
   it('counts live terminal output as Recent activity for headless serve hosts', () => {
-    // Serve hosts only stamp lastActivityAt at creation, so output must rank.
     const streamingOnServe = worktree({
       worktreeId: 'streaming',
       displayName: 'streaming',
@@ -651,7 +660,8 @@ describe('buildSections', () => {
       [
         worktree({ worktreeId: 'none', linkedPR: null }),
         worktree({ worktreeId: 'open', linkedPR: { number: 1, state: 'open' } }),
-        worktree({ worktreeId: 'merged', linkedPR: { number: 2, state: 'merged' } })
+        worktree({ worktreeId: 'merged', linkedPR: { number: 2, state: 'merged' } }),
+        worktree({ worktreeId: 'uncached', linkedPR: { number: 3, state: 'unknown' } })
       ],
       'name',
       { ...NO_WORKSPACE_ROW_FILTERS },
@@ -664,6 +674,7 @@ describe('buildSections', () => {
       { key: 'pr:in-review', title: 'In review' },
       { key: 'pr:in-progress', title: 'In progress' }
     ])
+    expect(sections.at(-1)?.data.map((row) => row.worktreeId)).toEqual(['none', 'uncached'])
   })
 
   it('groups by desktop workspace status labels and order', () => {
@@ -690,7 +701,6 @@ describe('buildSections', () => {
     )
 
     expect(sections.map((section) => ({ key: section.key, title: section.title }))).toEqual([
-      // The desktop's default catalog order.
       { key: 'workspace-status:in-progress', title: 'In progress' },
       { key: 'workspace-status:in-review', title: 'In review' }
     ])

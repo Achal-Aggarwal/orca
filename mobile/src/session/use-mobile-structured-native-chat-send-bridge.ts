@@ -1,11 +1,13 @@
 import { useCallback } from 'react'
+import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
 import type { StructuredAgentId } from '../../../src/shared/agent-session-provider-handle'
-import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
-import type { MobileNativeChatSendOrigin } from './use-mobile-native-chat-drafts'
+import type { MobileNativeChatSendOutcome } from './native-chat/mobile-native-chat-send'
+import type { MobileNativeChatSendOrigin } from './native-chat/mobile-native-chat-pending-echo'
 import type { StructuredMobileSendAttachment } from './use-mobile-structured-send-with-outcome'
 
 export function useMobileStructuredNativeChatSendBridge(args: {
   agent: StructuredAgentId | undefined
+  sessionCommands?: readonly AgentSessionSlashCommand[]
   sendStructured: (
     text: string,
     images?: string[],
@@ -31,7 +33,8 @@ export function useMobileStructuredNativeChatSendBridge(args: {
     clearDraftForSend,
     onSendError,
     restoreRejectedDraft,
-    sendStructured
+    sendStructured,
+    sessionCommands
   } = args
   const sendWithOutcome = useCallback(
     async (
@@ -65,7 +68,15 @@ export function useMobileStructuredNativeChatSendBridge(args: {
       }
       return outcome
     },
-    [agent, captureSendOrigin, clearDraftForSend, onSendError, restoreRejectedDraft, sendStructured]
+    [
+      agent,
+      captureSendOrigin,
+      clearDraftForSend,
+      onSendError,
+      restoreRejectedDraft,
+      sendStructured,
+      sessionCommands
+    ]
   )
   const send = useCallback(
     async (

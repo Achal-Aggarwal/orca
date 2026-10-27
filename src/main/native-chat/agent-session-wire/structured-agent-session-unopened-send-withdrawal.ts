@@ -1,12 +1,11 @@
-// Which unanswered sends a person's Stop takes back as never sent, when Codex takes it or the child
-// ends, read from the journal at the settlement that lands, so a retried settle reads the same rows.
+// Derive withdrawals at settlement execution so retries read the same landed journal state.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentType } from '../../../shared/agent-status-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
-/** What the derivation reads; absent members (a narrow double) withdraw nothing. */
+/** Missing methods withdraw nothing. */
 export type UnopenedSendJournal = {
   agent?: AgentType
   queuedMessages?: Pick<AgentSessionJournal['queuedMessages'], 'userStopInForce'>
@@ -23,8 +22,7 @@ export type UnopenedSendJournal = {
   resolveDispatch?: AgentSessionJournal['resolveDispatch']
 }
 
-/** A send a dying child can take back: one still being handed over, or one this process left in
- *  doubt (its answer was lost). Never a queued card's, nor a send an earlier process left behind. */
+/** Only in-flight or locally unknown sends; never unhanded cards or recovered sends from an earlier process. */
 export function sendStopCanTakeBack(
   entry: Pick<
     AgentJournalSubmission,

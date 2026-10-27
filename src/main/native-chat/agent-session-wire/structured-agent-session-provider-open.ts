@@ -1,4 +1,5 @@
 import { finishFirstRecoveryPresentation } from './structured-agent-session-queued-publication'
+import { sameProviderChild } from './structured-agent-session-provider-child'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
 import {
@@ -6,7 +7,7 @@ import {
   type StructuredAgentSessionProviderStartedContext
 } from './structured-agent-session-provider-started'
 
-/** The host awaits protocol construction without holding the conversation's ordered steps. */
+/** Await protocol construction outside conversation serialization. */
 export async function openStructuredAgentSessionProviderChild(
   context: StructuredAgentSessionProviderStartedContext & {
     failStartingChild: (
@@ -26,7 +27,10 @@ export async function openStructuredAgentSessionProviderChild(
     }
     return
   }
-  const attempt = context.runtimeState.acquireAborts.begin(sessionId)
+  const attempt = context.runtimeState.acquireAborts.begin(sessionId, false, false, () => {
+    const current = context.sessions.get(sessionId)?.child
+    return current !== undefined && current !== null && sameProviderChild(current, child)
+  })
   const openedAt = context.now()
   try {
     attempt.signal.throwIfAborted()
@@ -52,7 +56,7 @@ export async function openStructuredAgentSessionProviderChild(
       attempt.signal
     )
   } catch (error) {
-    // Stop, close, quit and expiry already own the child's end.
+    // Aborted startup already has a Stop/close/quit/expiry owner.
     if (!attempt.signal.aborted) {
       const openMs = Math.max(0, context.now() - openedAt)
       await context

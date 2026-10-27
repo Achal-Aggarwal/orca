@@ -1,5 +1,4 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-// Republishing an epoch is ONE transaction.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -60,9 +59,7 @@ export function registerJournalEpochReplacementTests(): void {
   afterEach(async () => {
     try {
       database.close()
-    } catch {
-      // Already closed by the case.
-    }
+    } catch {}
     await journals.closeAll()
     await rm(root, { recursive: true, force: true })
   })
@@ -98,7 +95,6 @@ export function registerJournalEpochReplacementTests(): void {
       expect(reopened.snapshot()).toEqual(journal.snapshot())
     })
 
-    // Keyed by identity: a retired epoch's rows go by (chat, epoch), and no other chat's go with them.
     it.each([
       [
         'a replace',

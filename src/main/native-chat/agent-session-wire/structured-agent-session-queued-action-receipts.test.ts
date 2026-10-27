@@ -1,7 +1,3 @@
-// Send now, Delete and Resume accept through their own command receipt, committed with the draft or
-// row they change: no ledger policy decides them, a retry answers from that receipt, and an id
-// another command already used is refused.
-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
@@ -81,7 +77,6 @@ async function rewindConversation(): Promise<void> {
   await journal.rollEpoch('handle_forked', rig.store.getRecord(SESSION)!.lease.runtimeFence)
 }
 
-/** A stop that leaves a waiting card paused, which only a Resume lifts. */
 async function pausedQueue(): Promise<void> {
   await rig.workingSend()
   await queuedDraft('held by stop')
@@ -160,7 +155,6 @@ describe('Send now', () => {
       replayed: false,
       value: { clientMessageId: first }
     })
-    // The provider refuses the first hand-off: the card comes back, and another Send takes it.
     await rig.settleRejected(first, 'nope')
     const later = opId()
     expect(await rig.sendNow(draftId, later)).toMatchObject({
@@ -520,7 +514,7 @@ describe('an id reused across commands', () => {
     expect(await rig.deleteQueued(draftId, id)).toMatchObject(conflict)
     expect(await rig.resume(id)).toMatchObject(conflict)
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
-    // Only the Stop's own receipt: neither refused action committed anything over it.
+    // Refused actions cannot overwrite the Stop receipt.
     expect(receipt(id)).toMatchObject({
       verdict: 'readable',
       receipt: { method: 'agentSession.cancel', result: { kind: 'journal-row' } }

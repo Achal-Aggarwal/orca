@@ -37,7 +37,6 @@ async function queuedDraft(text: string): Promise<string> {
   return queued.value.queued.messageId
 }
 
-/** The chat's queue rows on disk, in order. */
 function queueRows(): { messageId: string; op: string }[] {
   return openTestJournalHostDatabase(rig.root)
     .db.prepare('SELECT row_json FROM journal_rows WHERE session_id = ? ORDER BY seq')
@@ -61,7 +60,6 @@ function queueRows(): { messageId: string; op: string }[] {
     })
 }
 
-/** Lets the drain run its steps; none may hand these cards off. */
 async function expectNothingSent(...draftIds: string[]): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 100))
   for (const draftId of draftIds) {
@@ -98,7 +96,7 @@ it('holds the cards behind it through a rewind, a new epoch, a restart and a Res
     { messageId: c, state: 'waiting' }
   ]
   await eventually(async () => expect(await rig.drafts()).toEqual(held))
-  // The refusal is the dispatch row alone: no card row records it.
+  // Refusal lives in dispatch state, without another card row.
   expect(queueRows()).toEqual([a, b, c].map((messageId) => ({ messageId, op: 'queued' })))
 
   // A rewind hides the refused bubble while retaining its canonical refusal and returned card.
@@ -125,7 +123,6 @@ it('holds the cards behind it through a rewind, a new epoch, a restart and a Res
     kind: 'providerRejected'
   })
 
-  // Its own Send hands it off under a fresh id; refused again, it holds the queue again.
   const resent = await rig.sendNow(a)
   if (!resent.ok || !('submission' in resent.value)) {
     throw new Error('expected the submission arm')
@@ -135,7 +132,6 @@ it('holds the cards behind it through a rewind, a new epoch, a restart and a Res
   await eventually(async () => expect(await rig.drafts()).toEqual(held))
   await expectNothingSent(b, c)
 
-  // Its own Delete releases the next card, in order.
   expect(await rig.deleteQueued(a)).toMatchObject({ ok: true, value: { deleted: true } })
   await eventually(async () => expect(await rig.handoff(b)).toBeDefined())
   expect(await rig.handoff(c)).toBeUndefined()

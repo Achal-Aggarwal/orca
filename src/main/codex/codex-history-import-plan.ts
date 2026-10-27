@@ -26,7 +26,7 @@ import {
 import { createCodexHistoryTranslator } from './codex-structured-journal-translation'
 import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 
-/** Invocation-local shared translation: nothing reaches the live sink until this plan is whole. */
+/** Build the entire import before anything reaches the live sink. */
 export function createCodexHistoryImportPlan(input: {
   sessionId: string
   threadId: string

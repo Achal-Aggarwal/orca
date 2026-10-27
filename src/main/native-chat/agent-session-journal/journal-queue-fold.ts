@@ -1,7 +1,4 @@
-// The queue's fold: each card as the chat's own rows say it stands. A card's outcome is decided by
-// the row that decides it (its hand-off's dispatch row) and kept from then on, so a later rewind
-// that retires the hand-off cannot change it, and replay reads the same. A hand-off ends the card's
-// queue life: it waits again only where Orca proves the agent never got it.
+// Latch handoff outcomes before rewind can retire their rows; requeue only proven-undelivered sends.
 
 import type {
   AgentJournalCursor,
@@ -30,13 +27,7 @@ export function createJournalQueueState(): JournalQueueState {
   return { cards: new Map(), returnedCommands: new Set(), revision: 0 }
 }
 
-/**
- * What a refusal makes of the dispatched card it handed off (`queuedHandOffOutcome`): one Orca
- * proves never reached the agent waits again at its own position under the queue's pause; one that
- * may have reached it stays spent; a failure returns the card with its reason, except a command
- * refused in its own turn, which is spent because that turn's row says why and a returned card
- * would hold every card behind it.
- */
+/** Proven non-delivery waits again; uncertainty stays spent; reported command refusals need no returned card. */
 export function rejectedCardTransition(
   card: QueuedMessageRow,
   rejected: AgentJournalSubmission,
@@ -60,20 +51,13 @@ export function rejectedCardTransition(
   }
 }
 
-/** The submission's command turn is in the journal: its own row reports the refusal. */
 function commandTurnReported(state: JournalReducerState, clientMessageId: string): boolean {
   return state.items.has(
     agentJournalItemKey(structuredAgentSessionCommandTurnIdentity(clientMessageId))
   )
 }
 
-/**
- * THE classification of a `queued` change, for the fold, the import and the read of a card not yet
- * imported, so each reads a card exactly as the others do. Its hand-off still in this epoch settles
- * it as that hand-off's answer does; gone, the saved refusal returns it, and with none it is a
- * hand-off nothing can answer: hidden, never resent and never shown as refused. Pure: the fold
- * settles a hand-off in doubt afterwards (`settleHandOffInDoubt`).
- */
+/** Share card classification across replay/import/read; missing handoffs never authorize resending. */
 export function queuedCardFromChange(
   state: JournalReducerState,
   messageId: string,
@@ -123,7 +107,6 @@ export function queuedCardFromChange(
   return card
 }
 
-/** After any row applies: what it does to the cards. */
 export function foldJournalQueueRow(state: JournalReducerState, row: JournalRow): void {
   if (row.kind === 'queue') {
     applyQueueRow(state, row)
@@ -186,8 +169,7 @@ function applyQueueRow(state: JournalReducerState, row: JournalQueueRow): void {
   }
 }
 
-/** The card handed off as this submission, while that is still its current hand-off: an older
- *  attempt's late answer never moves a newer one. */
+/** Late answers from earlier attempts must not move cards already handed off again. */
 function cardHandedOffAs(
   state: JournalReducerState,
   submission: AgentJournalSubmission | undefined
@@ -227,7 +209,7 @@ function settleHandOffInDoubt(
   }
 }
 
-/** A returned command card is spent once its own turn's row reports the refusal. */
+// Command turns already show their refusal; returned cards would block following work.
 function spendReportedCommandCards(state: JournalReducerState): void {
   for (const id of state.queue.returnedCommands) {
     const card = state.queue.cards.get(id)

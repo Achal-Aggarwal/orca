@@ -1,6 +1,4 @@
-// The queue's journal rows. Every fact about a queued message is one of these, in the chat's own
-// history beside the submission that hands it off and the dispatch row that answers it, so the
-// card is folded by THE reducer (`journal-queue-fold.ts`) and nothing stores it a second time.
+// Queue facts share the chat journal/reducer; no second stored copy may drift behind dispatch state.
 
 import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
@@ -21,15 +19,11 @@ export type JournalQueueChange =
   | {
       op: 'queued'
       body: AgentJournalMessageItem
-      /** Queue order: the queue sends the lowest first. */
       position: number
-      /** Where the journal stood when it was queued; null on a card from before it was recorded. */
+      /** null means a legacy card did not record its enqueue cursor. */
       queuedAt: AgentJournalCursor | null
-      /** Holds this one card from sending by itself (`QueuedMessageHoldReason`). */
       holdReason?: string
-      /** The model and effort its send carried. */
       options?: AgentSessionExecutionOptions
-      /** A restated or imported card's hand-off: the submission it went out as. */
       attempt?: string
       /** The doubtful submission resolved by the person's action on this card. */
       recovers?: string
@@ -46,16 +40,14 @@ export type JournalQueuedChange = Extract<JournalQueueChange, { op: 'queued' }>
 
 export type JournalQueueRow = JournalRowBase & {
   kind: 'queue'
-  /** The card's stable id: the send it was queued as. */
   messageId: string
   change: JournalQueueChange
 }
 
-/** One card's change; absent: only adopt the card into the journal (`journal-queue-import.ts`). */
+/** Absent change adopts the legacy card without altering it. */
 export type JournalQueueCardChange = { messageId: string; change?: JournalQueueChange }
 
-/** A queue row in the live epoch. Its fence is the journal's own: a card is no generation's work,
- *  so it never goes stale behind a newer owner. */
+/** Cards belong to the journal, not an execution generation, and must not expire with writer fences. */
 export function journalQueueRowBuilder(
   state: () => JournalReducerState,
   messageId: string,
@@ -83,8 +75,7 @@ export function buildJournalQueueRow(
   }
 }
 
-/** The row's own fields. Optional fields are read defensively by the fold, so only what a card
- *  cannot exist without fails the row; an op this build does not know is a newer build's. */
+/** Invalid annotations are dropped; missing essential fields are malformed, unknown ops unreadable. */
 export function journalQueueRowContent(
   record: Record<string, unknown>
 ): AgentJournalContentVerdict {

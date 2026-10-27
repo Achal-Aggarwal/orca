@@ -5,12 +5,12 @@ import type { RpcClient } from '../transport/rpc-client'
 import {
   resetMobileNativeChatDraftStoreForTests,
   useMobileDraftAttachments
-} from './mobile-native-chat-draft-store'
-import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
-import { useMobileNativeChatFileAttachments } from './use-mobile-native-chat-file-attachments'
+} from './native-chat/composer/mobile-native-chat-draft-store'
+import { useMobileNativeChatDrafts } from './native-chat/composer/use-mobile-native-chat-drafts'
+import { useMobileNativeChatFileAttachments } from './native-chat/composer/use-mobile-native-chat-file-attachments'
 import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
-import { useMobileNativeChatImageAttachments } from './use-mobile-native-chat-image-attachments'
-import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
+import { useMobileNativeChatImageAttachments } from './native-chat/composer/use-mobile-native-chat-image-attachments'
+import type { MobileNativeChatSendOutcome } from './native-chat/mobile-native-chat-send'
 
 vi.mock('../platform/media-picker', () => ({ useMediaPicker: () => ({ pickImages: vi.fn() }) }))
 const SCOPE_A = 'h\0w\0tab-a'

@@ -1,8 +1,6 @@
-// What attaching needs from the host, named explicitly.
-//
-// Passing the host itself would let this quietly grow new dependencies; an explicit context makes
-// each one a deliberate addition and keeps the orchestration testable without constructing a host.
-
+import type { AttachFlowInput } from './structured-agent-session-attach-flow'
+import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
+import type { StructuredAgentSessionAttachLock } from './structured-agent-session-attach-lock'
 import type {
   AgentSessionTurnActivity,
   AgentSessionWireRefusal
@@ -40,12 +38,29 @@ export type StructuredAgentSessionAttachContext = {
     child: StructuredAgentSessionProviderChildIdentity
   ) => void
   generationEnded?: StructuredAgentSessionLifetimeContext['generationEnded']
-  /** Joining a stop's close ends the child's record through the one exit handler. */
+  /** Route joined Stop exits through the single child-exit handler. */
   endExitedChild: StructuredAgentSessionLifetimeContext['endExitedChild']
   wakeDelivery?: StructuredAgentSessionLifetimeContext['wakeDelivery']
-  /** The conversation's one open journal, opened when closed; see `conversation-open`. */
+  /** Reopen the conversation-owned journal when needed. */
   openConversation: (
     sessionId: string,
     options?: StructuredAgentSessionConversationOpenOptions
   ) => Promise<StructuredAgentSessionHostSession | null>
+}
+
+export type StructuredAgentSessionAttachOptions = {
+  hostLaunchDirectory?: string
+  catalogModels?: AttachFlowInput['models']
+  recordPhase?: AgentSessionCreatePhaseRecorder
+  onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
+  startedFor?: string
+  startupOptions?: Readonly<Record<string, string>>
+  /** Preserve cancellation reason when host Stop/close/quit aborts attach. */
+  onAborted?: () => void
+  /** Startup expiry is failure, not user cancellation. */
+  onStartupExpired?: () => void
+  /** Background starts wait outside serialization and commit under it. */
+  lock?: StructuredAgentSessionAttachLock
+  startupAttemptId?: string
+  onPublished?: () => void
 }

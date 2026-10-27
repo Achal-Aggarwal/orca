@@ -1,6 +1,6 @@
 import { setImmediate } from 'node:timers/promises'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
-import type { CodexAppServerConnection } from './codex-app-server-connection'
+import type { CodexAppServerConnection } from './app-server/codex-app-server-connection-types'
 import { CODEX_RESTORE_MAX_OPERATIONS } from './codex-structured-journal-translation-restore'
 import {
   readCodexJournalRecord,
@@ -115,7 +115,7 @@ export async function discoverCodexHistory(
         continue
       }
       selected.add(id)
-      // Every missing turn necessarily writes a lifecycle row, even without content.
+      // Even empty turns consume a lifecycle row in the restore budget.
       if (++count > CODEX_RESTORE_MAX_OPERATIONS) {
         throw new Error('too-large')
       }
