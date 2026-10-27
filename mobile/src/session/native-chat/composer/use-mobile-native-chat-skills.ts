@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { z } from 'zod'
-import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import { isNativeChatSkillForAgent } from '../../../../../src/shared/native-chat-skill-visibility'
 import type { RpcClient } from '../../../transport/rpc-client'
 import { nativeChatSkillDiscoveryRead } from '../../mobile-session-read-operations'

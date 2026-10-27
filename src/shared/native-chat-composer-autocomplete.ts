@@ -13,14 +13,12 @@ import {
   buildNativeChatPickerItems,
   type NativeChatPickerItem,
   type NativeChatSkillDiscoverySnapshot
-} from '../../../../shared/native-chat/input/native-chat-picker-items'
+} from './native-chat/input/native-chat-picker-items'
 import {
   LEADING_SLASH_TRIGGER,
   MID_PROMPT_SLASH_TRIGGER,
-  matchSkillSigil,
-  type NativeChatPickerItem,
-  type NativeChatSkillDiscoverySnapshot
-} from './native-chat/input/native-chat-picker-items'
+  matchSkillSigil
+} from './native-chat/input/native-chat-picker-triggers'
 
 export type { SlashCommandSuggestion }
 export { filterSlashCommands, isSlashCommandDraft, applySlashSuggestion, slashCommandDispatchText }
@@ -28,8 +26,8 @@ export {
   classifyNativeChatSend,
   type NativeChatSendClassification
 } from './native-chat/input/native-chat-slash-commands'
+export { applyPickerSuggestion } from './native-chat/input/native-chat-picker-triggers'
 export {
-  applyPickerSuggestion,
   buildNativeChatPickerItems,
   type NativeChatPickerItem,
   type NativeChatSkillDiscoverySnapshot
@@ -178,7 +176,9 @@ export function nativeChatPickerScannedSkills(
     return []
   }
   const namePrefix = profile.skillNamePrefix
-  return namePrefix ? skills.map((skill) => ({ ...skill, name: `${namePrefix}${skill.name}` })) : skills
+  return namePrefix
+    ? skills.map((skill) => ({ ...skill, name: `${namePrefix}${skill.name}` }))
+    : skills
 }
 
 /** Replacing across an entire dismissed token starts a new occurrence; typing/deleting within it does not. */

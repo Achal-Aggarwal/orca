@@ -5,7 +5,7 @@ import {
   deriveComposerAutocomplete,
   isSkillPickerTriggered
 } from '../../../../../src/shared/native-chat-composer-autocomplete'
-import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import {
   boundedMenuItems,
   draftAfterSkillEdit,

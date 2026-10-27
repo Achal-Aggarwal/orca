@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyMentionSuggestion,
+  applyPickerSuggestion,
+  applySlashSuggestion,
+  buildNativeChatPickerItems,
+  classifyNativeChatSend,
   deriveComposerAutocomplete,
   editReplacesTriggerToken,
-  isSkillPickerTriggered
-} from './native-chat-composer-state'
-import { applyPickerSuggestion } from '../../../../shared/native-chat/input/native-chat-picker-triggers'
-import {
-  applySlashSuggestion,
-  classifyNativeChatSend,
   filterSlashCommands,
+  isSkillPickerTriggered,
   isSlashCommandDraft,
   slashCommandDispatchText,
-  sessionSlashCommandSuggestions,
   type SlashCommandSuggestion
 } from './native-chat-composer-autocomplete'
 import { sessionSlashCommandSuggestions } from './native-chat/input/native-chat-slash-commands'

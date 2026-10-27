@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deriveComposerAutocomplete } from '../../../../../src/shared/native-chat-composer-autocomplete'
-import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import {
   boundedMenuItems,
   draftAfterSkillEdit,

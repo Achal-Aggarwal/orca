@@ -1,4 +1,4 @@
-import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat/input/native-chat-picker-items'
 import { useCallback, useMemo } from 'react'
 import { nativeChatTaskListPredecessors } from '../../../src/shared/native-chat/input/native-chat-task-list-history'
 import {

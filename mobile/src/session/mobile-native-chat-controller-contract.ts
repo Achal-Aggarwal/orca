@@ -1,4 +1,4 @@
-import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat/input/native-chat-picker-items'
 import type { StructuredMobileSendAttachment } from './use-mobile-structured-send-with-outcome'
 import type { MobileSessionView } from '../storage/session-view-preferences'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'

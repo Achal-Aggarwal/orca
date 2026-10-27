@@ -1,4 +1,4 @@
-import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat-picker-items'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable, type TextInput, View } from 'react-native'
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react-native'
