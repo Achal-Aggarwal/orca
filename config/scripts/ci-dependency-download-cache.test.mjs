@@ -415,8 +415,9 @@ describe('CI dependency download caches', () => {
     expect(unitInstall.with['native-runtime']).toBe(warmInstall.with['native-runtime'])
     expect(warmInstall.with['node-version']).toBe('24')
     expect(unitInstall.with['node-version']).toBe('${{ matrix.node }}')
-    expect(unitInstall.with['cache-electron-package']).toBe(
-      warmInstall.with['cache-electron-package']
+    expect(unitInstall.with['cache-electron-package']).toBe('true')
+    expect(warmInstall.with['cache-electron-package']).toBe(
+      "${{ startsWith(matrix.runner, 'blacksmith-') }}"
     )
     const preflightInstalls = pr.jobs.preflight.steps.filter((step) => step.uses === installer)
     expect(preflightInstalls.map((step) => step.if)).toEqual([

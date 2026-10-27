@@ -35,11 +35,12 @@ jobs:
         with:
           native-runtime: node
           node-version: '24'
-          cache-electron-package: 'true'
-          # No hosted job restores the root store, so keep it out of GitHub's cache quota.
+          # Hosted consumers of these images restore neither the Electron archive nor the root store.
+          cache-electron-package: ${{ startsWith(matrix.runner, 'blacksmith-') }}
           cache-pnpm-store: ${{ startsWith(matrix.runner, 'blacksmith-') }}
           cache-pnpm-store-lookup-only: 'true'
       - name: Populate shared Electron archive
+        if: startsWith(matrix.runner, 'blacksmith-')
         run: node config/scripts/install-electron-package-binary.mjs
       - name: Verify native cache is usable
         run: node config/scripts/ensure-native-runtime.mjs --check-only
