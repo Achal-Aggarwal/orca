@@ -20,6 +20,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSession: mocks.subscribe
 }))
 
+import { useAppStore } from '@/store'
 import { useStructuredAgentSessionRead } from './use-structured-agent-session-read'
 import {
   getStructuredAgentSessionReadOwner,
@@ -583,8 +584,15 @@ describe('useStructuredAgentSessionRead stream failures', () => {
         submittedAt: i,
         resolvedAt: i
       }))
+      const receipt = owner.trackSend('receipt')
+      receipt.issue()
       owner.publishCreated({ ...page('tail', [], false), submissions })
-      const stop = owner.activate()
+      receipt.settle(false)
+      expect(findStructuredAgentSessionReadOwner('session-a', LOCAL_TARGET)).toBe(owner)
+      const stop = owner.activate({
+        getState: useAppStore.getState,
+        subscribeRetryNow: () => () => {}
+      })
       const send = owner.trackSend('unknown')
       send.issue()
       send.settle(true)

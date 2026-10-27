@@ -22,7 +22,8 @@ import { createStructuredAgentSessionReadActivity } from './structured-agent-ses
 import { createStructuredAgentSessionOlderPageLoader } from './structured-agent-session-older-page-loader'
 import type {
   StructuredAgentSessionReadSnapshot,
-  StructuredAgentSessionReadOwner
+  StructuredAgentSessionReadOwner,
+  StructuredAgentSessionReadEffects
 } from './structured-agent-session-read-owner-contract'
 export type {
   StructuredAgentSessionReadSnapshot,
@@ -64,7 +65,6 @@ function createReadOwner(
   let disposed = false
   const activity = createStructuredAgentSessionReadActivity(
     () => !disposed,
-    () => deleteIfUnused(),
     () => snapshot.state
   )
   const observePRLinks = target
@@ -197,7 +197,7 @@ function createReadOwner(
     }
   }
 
-  const start = (): void => {
+  const start = (effects: StructuredAgentSessionReadEffects): void => {
     if (!target) {
       return
     }
@@ -205,10 +205,11 @@ function createReadOwner(
       apply({ type: 'loading' })
     }
     const transport = startStructuredAgentSessionReadTransport({
+      subscribeRetryNow: effects.subscribeRetryNow,
       applyRequests: apply,
       applyEvent: (event, options) => {
         apply({ type: 'event', event, ...options })
-        observePRLinks(event)
+        observePRLinks(event, effects.getState)
       },
       applyError: (message, refusal) => {
         // After loading, transport failures retain history while retrying; host refusals are explicit answers to show.
@@ -247,7 +248,7 @@ function createReadOwner(
         apply({ type: 'history-page', page })
       }
     },
-    activate: () => {
+    activate: (effects) => {
       if (disposed) {
         return () => {}
       }
@@ -256,7 +257,7 @@ function createReadOwner(
       const token = Symbol(sessionId)
       activations.add(token)
       if (activations.size === 1) {
-        start()
+        start(effects)
       }
       return () => {
         activations.delete(token)
@@ -302,8 +303,6 @@ export function getStructuredAgentSessionReadOwner(
   target: RuntimeClientTarget | null,
   unroutableHost = ''
 ): StructuredAgentSessionReadOwner {
-  const key = target
-    ? structuredReadOwnerKey(sessionId, target)
-    : `unroutable:${unroutableHost}:${sessionId}`
+  const key = structuredReadOwnerKey(sessionId, target, unroutableHost)
   return getOrCreateStructuredReadOwner(key, () => createReadOwner(key, sessionId, target))
 }

@@ -123,6 +123,10 @@ import {
   resetStructuredAgentSessionSendsForTests
 } from './structured-agent-session-message-sender'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
+import {
+  getStructuredAgentSessionReadOwner,
+  findStructuredAgentSessionReadOwner
+} from './structured-agent-session-read-owner'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 
 async function closeChat(skipRunningProcessConfirm = false): Promise<void> {
@@ -370,6 +374,26 @@ describe('a chat whose start failed', () => {
     ).not.toBeNull()
     expect(closed).not.toHaveBeenCalled()
   })
+
+  it.each([undefined, 'ssh:gone'] as const)(
+    'retires the raw %s reader on close and purge',
+    (host) => {
+      for (const remove of ['close', 'purge']) {
+        const tab = { ...structuredTab, executionHostId: host }
+        store().setState({ unifiedTabsByWorktree: { [WORKTREE_ID]: [tab] } })
+        const owner = getStructuredAgentSessionReadOwner(SESSION_ID, null, host ?? '')
+        const send = owner.trackSend('unknown')
+        send.issue()
+        send.settle(true)
+        if (remove === 'close') {
+          store().getState().closeUnifiedTab(tab.id)
+        } else {
+          store().getState().purgeWorktreeTerminalState([WORKTREE_ID])
+        }
+        expect(findStructuredAgentSessionReadOwner(SESSION_ID, null, host ?? '')).toBeUndefined()
+      }
+    }
+  )
 
   it('drops the mark while a retry starts it, and leaves the started chat to the host', async () => {
     const emit = await connect()
