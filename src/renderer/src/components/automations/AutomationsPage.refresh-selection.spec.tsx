@@ -18,7 +18,10 @@ import {
 } from './automations-page-test-harness'
 import { listedRows } from './automations-page-listed-items'
 import { makeAutomation, makeRun, WORKSPACE_ID } from './automations-page-fixtures'
-import { AUTOMATIONS_CHANGED_EVENT } from '@/lib/automations-changed-window-event'
+import {
+  AUTOMATIONS_CHANGED_EVENT,
+  emitAutomationsChangedWindowEvent
+} from '@/lib/automations-changed-window-event'
 
 async function openAutomationRow(container: HTMLElement, name: string): Promise<void> {
   const row = [
@@ -44,6 +47,100 @@ describe('AutomationsPage refresh', () => {
       expect(args?.automationId).toBeTruthy()
     }
   })
+
+  it.each(['desktop', 'runtime'] as const)(
+    'refreshes count and exact saved output on successive %s completion events without re-entry',
+    async (authority) => {
+      const automation = makeAutomation({ name: 'Selected nightly' })
+      scopedList(authority === 'desktop' ? [automation] : [])
+      api.automations.list.mockResolvedValue(authority === 'desktop' ? [automation] : [])
+      if (authority === 'runtime') {
+        runtimeHost([automation], [])
+        mocks.state.automationHostFilter = RUNTIME_SELF_FILTER
+      }
+      const { container } = await renderPage()
+      await openAutomationRow(container, automation.name)
+      const count = container.querySelector('[data-testid="detail-run-count"]')
+      expect(count?.textContent).toBe('0')
+      const reads = (): unknown[][] =>
+        mocks.callRuntimeRpc.mock.calls.filter(([, method]) => method === 'automation.runs')
+      const beforeEvents = reads().length
+      for (const unrelated of [
+        {
+          environmentId: authority === 'desktop' ? 'gpu' : null,
+          selector: { kind: 'self' as const }
+        },
+        {
+          environmentId: authority === 'runtime' ? 'gpu' : null,
+          selector: { kind: 'ssh' as const, targetId: 'elsewhere' }
+        }
+      ]) {
+        await act(async () => emitAutomationsChangedWindowEvent({ ...unrelated, reason: 'run' }))
+        await settleHostQueries()
+        expect(reads()).toHaveLength(beforeEvents)
+        expect(container.querySelector('[data-testid="detail-run-count"]')).toBe(count)
+      }
+      const event = {
+        ...(authority === 'runtime' ? { environmentId: 'gpu' } : {}),
+        selector: { kind: 'self' as const },
+        reason: 'run' as const
+      }
+      const first = makeRun({
+        id: 'first-completed',
+        outputSnapshot: {
+          format: 'plain_text',
+          content: 'First exact reply',
+          capturedAt: 1,
+          truncated: false
+        }
+      })
+      const answer = (runs: (typeof first)[]): void => {
+        api.automations.listRuns.mockResolvedValue(runs)
+        if (authority === 'runtime') {
+          mocks.state.runtimeAnswers = { automations: [automation], runs }
+        }
+      }
+      answer([first])
+      await act(async () => emitAutomationsChangedWindowEvent(event))
+      await settleHostQueries()
+      expect(count?.textContent).toBe('1')
+      expect(mocks.detailPane?.selectedRuns).toEqual([first])
+      expect(reads()).toHaveLength(beforeEvents + 1)
+      await act(async () => mocks.detailPane?.openAutomationRunPage(first))
+      expect(container.textContent).toContain('First exact reply')
+      const revised = {
+        ...first,
+        outputSnapshot: { ...first.outputSnapshot!, content: 'Settled first exact reply' }
+      }
+      const second = makeRun({ id: 'second-completed' })
+      answer([second, revised])
+      await act(async () => emitAutomationsChangedWindowEvent(event))
+      await settleHostQueries()
+      expect(container.textContent).toContain('Settled first exact reply')
+      expect(reads()).toHaveLength(beforeEvents + 2)
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>('[aria-label="Back to runs"]')?.click()
+      )
+      expect(container.querySelector('[data-testid="detail-run-count"]')?.textContent).toBe('2')
+      expect(mocks.detailPane?.selectedRuns.map((run) => run.id)).toEqual([
+        'second-completed',
+        'first-completed'
+      ])
+      for (const [target, , params, options] of reads().slice(beforeEvents)) {
+        expect(target).toEqual(
+          authority === 'runtime'
+            ? { kind: 'environment', environmentId: 'gpu' }
+            : { kind: 'local' }
+        )
+        expect(params).toEqual({ automationId: automation.id, expectedOwner: SELF_PRECONDITION })
+        if (authority === 'runtime') {
+          expect(options).toMatchObject({ expectedEnvironmentPairingRevision: 4 })
+        }
+      }
+      await settleHostQueries()
+      expect(reads()).toHaveLength(beforeEvents + 2)
+    }
+  )
 
   it('reads row usage from the authority projection rather than from runs', async () => {
     const usageSummary = {
@@ -173,8 +270,13 @@ describe('AutomationsPage selection', () => {
     scopedList([])
     api.automations.list.mockResolvedValue([])
     api.automations.listRuns.mockRejectedValue(new Error('History temporarily unavailable'))
-    await act(async () => window.dispatchEvent(new Event(AUTOMATIONS_CHANGED_EVENT)))
+    const readsBeforeFailure = api.automations.listRuns.mock.calls.length
+    await act(async () =>
+      emitAutomationsChangedWindowEvent({ selector: { kind: 'self' }, reason: 'run' })
+    )
     await settleHostQueries()
+    expect(api.automations.listRuns.mock.calls.length).toBe(readsBeforeFailure + 1)
+    expect(container.textContent).toContain('Saved exact historical output')
     await rerender()
     const readsBeforeRetry = api.automations.listRuns.mock.calls.length
     await act(async () => retryHistory?.('retry'))

@@ -5,7 +5,7 @@
  * the dispatch context is rebuilt on every cache reprojection, and keying an
  * effect on it re-asks the same host for the same history in a loop. What
  * actually decides the request is the row, the owner it was listed under, and
- * the host a navigation named — so those, and only those, are the key.
+ * the host a navigation named. Matching lifecycle events re-read that same acquisition.
  */
 
 import { useEffect, useLayoutEffect, useRef } from 'react'
@@ -30,6 +30,9 @@ import {
 } from './automation-host-client'
 import { useAppStore } from '@/store'
 import { automationRuntimePairingRevision } from './automation-authority-identity'
+import { automationAuthorityCatalogKey } from './automation-host-catalog-types'
+import { isSameStableAutomationHost } from '../../../../shared/automation-owner-key'
+import { subscribeAutomationHostInvalidation } from './automation-host-invalidation-window-events'
 
 export type SelectedAutomationRunNavigation = {
   automationId: string
@@ -154,68 +157,89 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
       })
       return
     }
-    if (
-      !navigation &&
-      settled.current?.request === request &&
-      settled.current.reloadToken === reloadToken
-    ) {
-      return
-    }
-    settled.current = null
     let cancelled = false
+    let requestId = 0
     const { selected, context, captured, target, authority: rowAuthority } = request
     const automationId = selected.automation.id
     const rowKey = selected.key
     const owner = capturedAutomationOwnerKey(captured)
-    void dispatchAutomationRunHistory(
-      context,
-      { rowKey, automationId },
-      () =>
-        listAutomationRunsForTarget(
-          target,
-          automationId,
-          rowAuthority.kind === 'runtime' ? rowAuthority.pairingRevision : undefined
-        ),
-      rowAuthority
-    ).then((result) => {
-      if (cancelled) {
+    const read = (): void => {
+      const currentRequestId = ++requestId
+      settled.current = null
+      void dispatchAutomationRunHistory(
+        context,
+        { rowKey, automationId },
+        () =>
+          listAutomationRunsForTarget(
+            target,
+            automationId,
+            rowAuthority.kind === 'runtime' ? rowAuthority.pairingRevision : undefined
+          ),
+        rowAuthority
+      ).then((result) => {
+        if (cancelled || requestId !== currentRequestId) {
+          return
+        }
+        settled.current = { request, reloadToken }
+        // A refused or failed read still settles: leaving the previous automation's
+        // ID in place strands anything waiting on this one and shows its runs as zero.
+        onSettled(
+          result.ok
+            ? {
+                automationId,
+                rowKey,
+                ownerKey: owner,
+                authority: rowAuthority,
+                navigation,
+                reloadToken,
+                ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
+                runs: result.value,
+                notice: null
+              }
+            : {
+                automationId,
+                rowKey,
+                ownerKey: owner,
+                authority: rowAuthority,
+                navigation,
+                reloadToken,
+                ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
+                runs:
+                  inputRef.current.retained?.rowKey === rowKey &&
+                  inputRef.current.retained.ownerKey === owner
+                    ? inputRef.current.retained.runs
+                    : [],
+                notice: result.notice
+              }
+        )
+      })
+    }
+    const selector = captured.owner?.selector ?? captured.selector ?? selected.catalogRef?.selector
+    const unsubscribe = subscribeAutomationHostInvalidation((event) => {
+      if (
+        automationAuthorityCatalogKey(event.authority) !==
+          automationAuthorityCatalogKey(rowAuthority) ||
+        (event.selector &&
+          (!selector ||
+            !isSameStableAutomationHost(
+              { authority: rowAuthority, selector },
+              { authority: event.authority, selector: event.selector }
+            )))
+      ) {
         return
       }
-      settled.current = { request, reloadToken }
-      // A refused or failed read still settles: leaving the previous automation's
-      // ID in place strands anything waiting on this one and shows its runs as zero.
-      onSettled(
-        result.ok
-          ? {
-              automationId,
-              rowKey,
-              ownerKey: owner,
-              authority: rowAuthority,
-              navigation,
-              reloadToken,
-              ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
-              runs: result.value,
-              notice: null
-            }
-          : {
-              automationId,
-              rowKey,
-              ownerKey: owner,
-              authority: rowAuthority,
-              navigation,
-              reloadToken,
-              ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
-              runs:
-                inputRef.current.retained?.rowKey === rowKey &&
-                inputRef.current.retained.ownerKey === owner
-                  ? inputRef.current.retained.runs
-                  : [],
-              notice: result.notice
-            }
-      )
+      read()
     })
+    if (
+      navigation ||
+      settled.current?.request !== request ||
+      settled.current.reloadToken !== reloadToken
+    ) {
+      read()
+    }
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [request, reloadToken, navigation])
 }

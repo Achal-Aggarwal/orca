@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AutomationRun } from '../../../../shared/automations-types'
 import type { AutomationOwnerRef } from '../../../../shared/automation-owner-ref'
 import { ownerKey } from '../../../../shared/automation-owner-key'
+import { emitAutomationsChangedWindowEvent } from '@/lib/automations-changed-window-event'
 import { useAppStore } from '@/store'
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 import {
@@ -219,6 +220,144 @@ describe('useSelectedAutomationRunHistory', () => {
       mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
     ).toEqual(replacement)
   })
+  it.each([5, 50])(
+    'ignores %s unrelated publisher events for a captured runtime SSH history',
+    async (size) => {
+      const owner: AutomationOwnerRef = {
+        authority: { kind: 'runtime', environmentId: 'gpu', pairingRevision: 4 },
+        selector: { kind: 'ssh', targetId: 'box', targetGeneration: 7 }
+      }
+      const input = makeInput({
+        context: {
+          authority: owner.authority,
+          capturedOwners: new Map([[DESKTOP_ROW.key, { owner, selector: owner.selector }]])
+        }
+      })
+      mocks.dispatch.mockResolvedValue({ ok: true, value: [] })
+      const rerender = await render(input)
+      const before = mocks.dispatch.mock.calls.length
+      const outcomes = settled(input).length
+      for (let index = 0; index < size; index++) {
+        await act(async () =>
+          emitAutomationsChangedWindowEvent({
+            ...(index % 2 ? { environmentId: 'other' } : { environmentId: 'gpu' }),
+            selector: { kind: 'ssh', targetId: `unrelated-${index}` },
+            reason: 'run'
+          })
+        )
+        expect(mocks.dispatch).toHaveBeenCalledTimes(before)
+        expect(settled(input)).toHaveLength(outcomes)
+      }
+      await act(async () => emitAutomationsChangedWindowEvent())
+      expect(mocks.dispatch).toHaveBeenCalledTimes(before)
+      const completed = [makeRun({ id: 'ssh-completed' })]
+      mocks.dispatch.mockResolvedValue({ ok: true, value: completed })
+      await act(async () =>
+        emitAutomationsChangedWindowEvent({
+          environmentId: 'gpu',
+          selector: { kind: 'ssh', targetId: 'box' },
+          reason: 'run'
+        })
+      )
+      expect(mocks.dispatch).toHaveBeenCalledTimes(before + 1)
+      expect(settled(input).at(-1)?.runs).toEqual(completed)
+      expect(
+        mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
+      ).toEqual(owner)
+      await rerender({ ...input, context: { ...input.context } })
+      expect(mocks.dispatch).toHaveBeenCalledTimes(before + 1)
+      await act(async () => emitAutomationsChangedWindowEvent({ environmentId: 'gpu' }))
+      expect(mocks.dispatch).toHaveBeenCalledTimes(before + 2)
+    }
+  )
+
+  it('supersedes pending history on completion and keeps the event subscription after navigation is consumed', async () => {
+    const pending = Promise.withResolvers<{ ok: true; value: AutomationRun[] }>()
+    const finished = [
+      makeRun({
+        id: 'completed-with-saved-output',
+        outputSnapshot: {
+          format: 'plain_text',
+          content: 'Latest exact answer',
+          capturedAt: 3,
+          truncated: false
+        }
+      })
+    ]
+    mocks.dispatch
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue({ ok: true, value: finished })
+    const input = makeInput({ navigation: { automationId: 'a-1', runId: finished[0]!.id } })
+    const rerender = await render(input)
+    await act(async () => emitAutomationsChangedWindowEvent({ reason: 'run' }))
+    expect(settled(input).at(-1)?.runs).toEqual(finished)
+    await act(async () => pending.resolve({ ok: true, value: [makeRun({ id: 'obsolete' })] }))
+    expect(settled(input)).toHaveLength(1)
+    expect(settled(input).at(-1)?.runs).toEqual(finished)
+    await rerender({ ...input, navigation: null })
+    expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+    await act(async () => emitAutomationsChangedWindowEvent({ reason: 'run' }))
+    expect(mocks.dispatch).toHaveBeenCalledTimes(3)
+    expect(settled(input).at(-1)?.navigation).toBeNull()
+    expect(settled(input).at(-1)?.runs).toEqual(finished)
+  })
+
+  it('keeps captured ownership on event retries and refuses a late answer after explicit replacement acquisition', async () => {
+    const owner: AutomationOwnerRef = {
+      authority: { kind: 'desktop' },
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 7 }
+    }
+    const pending = Promise.withResolvers<{ ok: true; value: AutomationRun[] }>()
+    const original = [makeRun({ id: 'saved-exact-old-run' })]
+    mocks.dispatch
+      .mockResolvedValueOnce({ ok: true, value: original })
+      .mockReturnValueOnce(pending.promise)
+    const input = makeInput({
+      acquisitionToken: 0,
+      context: {
+        authority: owner.authority,
+        capturedOwners: new Map([[DESKTOP_ROW.key, { owner, selector: owner.selector }]])
+      }
+    })
+    const rerender = await render(input)
+    const retained = settled(input).at(-1)!
+    const event = { selector: { kind: 'ssh' as const, targetId: 'box' }, reason: 'run' as const }
+    await act(async () => emitAutomationsChangedWindowEvent(event))
+    const replacement: AutomationOwnerRef = {
+      ...owner,
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 8 }
+    }
+    const context = {
+      authority: owner.authority,
+      capturedOwners: new Map([
+        [DESKTOP_ROW.key, { owner: replacement, selector: replacement.selector }]
+      ])
+    }
+    await rerender({ ...input, context, retained })
+    expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+    mocks.dispatch.mockResolvedValueOnce({
+      ok: false,
+      notice: { message: 'Offline', recovery: 'retry', severity: 'failure' }
+    })
+    await act(async () => emitAutomationsChangedWindowEvent(event))
+    expect(
+      mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
+    ).toEqual(owner)
+    expect(settled(input).at(-1)?.runs).toBe(original)
+    expect(settled(input).at(-1)?.notice?.message).toBe('Offline')
+    const fresh = [makeRun({ id: 'explicit-new-acquisition' })]
+    mocks.dispatch.mockResolvedValueOnce({ ok: true, value: fresh })
+    await rerender({ ...input, context, retained, acquisitionToken: 1 })
+    expect(
+      mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
+    ).toEqual(replacement)
+    await act(async () =>
+      pending.resolve({ ok: true, value: [makeRun({ id: 'late-old-incarnation' })] })
+    )
+    expect(settled(input).at(-1)?.runs).toEqual(fresh)
+    expect(settled(input).at(-1)?.ownerKey).toBe(ownerKey(replacement))
+  })
+
   it('reports the refusal instead of leaving the pane on the previous automation', async () => {
     mocks.dispatch.mockResolvedValue({
       ok: false,
