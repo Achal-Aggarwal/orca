@@ -20,7 +20,7 @@ import { cancelLocalBatchFlush } from './filesystem-watcher-batch-control'
 import type { WaitForLocalWatcherRetry } from './filesystem-watcher-local-capacity'
 import {
   noteWslDistroMayHaveStopped,
-  stoppedWslDistroForPath
+  blockedWslDistroForPath
 } from '../../../wsl/wsl-unc-access-gate'
 import { deferUntilWslDistroRunning } from '../../../wsl-background-distro-gate'
 
@@ -48,9 +48,9 @@ export async function installLocalWatcher(
   let root: WatchedRoot
   try {
     // The stat and the watcher spawn would both boot a stopped distro; wait for it to run instead.
-    const stoppedDistro = await stoppedWslDistroForPath(worktreePath)
-    if (stoppedDistro) {
-      scheduleRetry(cancelToken.listeners, waitForDistro(stoppedDistro))
+    const blocked = await blockedWslDistroForPath(worktreePath)
+    if (blocked) {
+      scheduleRetry(cancelToken.listeners, waitForDistro(blocked.distro))
       return 'capacity'
     }
     try {

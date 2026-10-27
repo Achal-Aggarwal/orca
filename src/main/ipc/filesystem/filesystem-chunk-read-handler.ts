@@ -18,18 +18,22 @@ export function registerFilesystemChunkReadHandler({ store }: FilesystemHandlerC
         access?: LocalFileAccess
         offset: number
         length: number
+        wakeWslDistro?: boolean
       }
     ) => {
       validateFileRangeRequest(args.offset, args.length)
       if (args.connectionId) {
         throw new SshHostNotServedError(args.connectionId)
       }
-      return guardWslUncPathAccess(args.filePath, async () =>
-        readLocalFileRange(
-          await resolveLocalFileRequestPath(args.filePath, args.access, store),
-          args.offset,
-          args.length
-        )
+      return guardWslUncPathAccess(
+        args.filePath,
+        async () =>
+          readLocalFileRange(
+            await resolveLocalFileRequestPath(args.filePath, args.access, store),
+            args.offset,
+            args.length
+          ),
+        { wake: args.wakeWslDistro === true }
       )
     }
   )

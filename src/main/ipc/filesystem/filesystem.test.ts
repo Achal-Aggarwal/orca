@@ -26,7 +26,7 @@ vi.mock('electron', async () => (await import('./filesystem-test-harness')).elec
 // The distro these UNC fixtures name counts as running, so the boot gate lets the touch through.
 vi.mock('../../wsl-background-distro-gate', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  isWslDistroRunning: async () => true
+  readWslDistroRunningState: async () => 'running'
 }))
 vi.mock('fs/promises', async () => (await import('./filesystem-test-harness')).fsPromisesMock)
 vi.mock('node:fs/promises', async () => (await import('./filesystem-test-harness')).fsPromisesMock)

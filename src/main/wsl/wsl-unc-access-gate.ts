@@ -1,12 +1,16 @@
 import { parseWslUncPath } from '../../shared/wsl-paths'
-import { isWslDistroRunning, noteWslDistrosRunning } from '../wsl-background-distro-gate'
+import {
+  noteWslDistrosRunning,
+  readWslDistroRunningState,
+  type WslDistroRunningState
+} from '../wsl-background-distro-gate'
+
+export { noteWslDistroMayHaveStopped } from '../wsl-background-distro-gate'
 
 // Any 9P touch of `\\wsl.localhost\<distro>` boots a stopped distro, so background reads ask first.
-// Stops are signalled (watcher or relay exit), so a running read is trusted this long without one,
-// keeping wsl.exe spawns to about one a minute; a read started before a stop signal never counts.
+// Stops are signalled (watcher or relay exit, or a read that saw it), so a running read is trusted
+// this long without one, keeping wsl.exe spawns to about one a minute.
 export const WSL_UNC_RUNNING_LEASE_MS = 60_000
-
-const mayHaveStoppedAt = new Map<string, number>()
 
 export class WslDistroStoppedError extends Error {
   readonly code = 'WSL_DISTRO_STOPPED'
@@ -17,38 +21,38 @@ export class WslDistroStoppedError extends Error {
   }
 }
 
-function distroKey(distro: string): string {
-  return distro.trim().toLowerCase()
+export class WslDistroUnverifiableError extends Error {
+  readonly code = 'WSL_DISTRO_UNVERIFIABLE'
+
+  constructor(readonly distro: string) {
+    super(
+      `WSL didn't answer whether '${distro}' is running, so Orca left it alone. Retry in a moment.`
+    )
+    this.name = 'WslDistroUnverifiableError'
+  }
 }
 
-/** A link into the distro died; the next UNC touch needs a running read started after this. */
-export function noteWslDistroMayHaveStopped(distro: string): void {
-  mayHaveStoppedAt.set(distroKey(distro), performance.now())
-}
+export type BlockedWslDistro = { distro: string; state: Exclude<WslDistroRunningState, 'running'> }
 
-async function isWslDistroRunningForUncAccess(distro: string): Promise<boolean> {
-  const startedAfter = Math.max(
-    mayHaveStoppedAt.get(distroKey(distro)) ?? -Infinity,
-    performance.now() - WSL_UNC_RUNNING_LEASE_MS
-  )
-  return isWslDistroRunning(distro, { startedAfter })
-}
-
-/** The distro a background touch of `path` would boot, or null when the touch is safe. */
-export async function stoppedWslDistroForPath(path: string): Promise<string | null> {
+/** Why a background touch of `path` must not happen now, or null when it is safe. */
+export async function blockedWslDistroForPath(path: string): Promise<BlockedWslDistro | null> {
   if (process.platform !== 'win32') {
     return null
   }
   const parsed = parseWslUncPath(path)
-  if (!parsed || (await isWslDistroRunningForUncAccess(parsed.distro))) {
+  if (!parsed) {
     return null
   }
-  return parsed.distro
+  const state = await readWslDistroRunningState(parsed.distro, {
+    startedAfter: performance.now() - WSL_UNC_RUNNING_LEASE_MS,
+    retryUnverifiable: true
+  })
+  return state === 'running' ? null : { distro: parsed.distro, state }
 }
 
 /**
- * Refuses a background touch of a stopped distro's UNC path. `wake` is a user act: it may boot the
- * distro, and its success proves the distro runs so work waiting on it resumes.
+ * Refuses a background touch of a stopped (or unverifiable) distro's UNC path. `wake` is a user act:
+ * it may boot the distro, and its success proves the distro runs so work waiting on it resumes.
  */
 export async function guardWslUncPathAccess<T>(
   path: string,
@@ -67,14 +71,13 @@ export async function guardWslUncPathAccess<T>(
   return access()
 }
 
-/** Throws WslDistroStoppedError when a background touch of `path` would boot its distro. */
+/** Throws when a background touch of `path` would boot its distro, or WSL can't say it won't. */
 export async function assertWslUncPathRunning(path: string): Promise<void> {
-  const stopped = await stoppedWslDistroForPath(path)
-  if (stopped) {
-    throw new WslDistroStoppedError(stopped)
+  const blocked = await blockedWslDistroForPath(path)
+  if (blocked?.state === 'stopped') {
+    throw new WslDistroStoppedError(blocked.distro)
   }
-}
-
-export function _resetWslUncAccessGateForTests(): void {
-  mayHaveStoppedAt.clear()
+  if (blocked) {
+    throw new WslDistroUnverifiableError(blocked.distro)
+  }
 }

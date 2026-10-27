@@ -6,6 +6,8 @@ let cache: string[] | null = null
 let cacheStartedAt = -Infinity
 let retryAfterMs = 0
 let failureStreak = 0
+// One read per failure window may skip the backoff, so a single failed read cannot block gate reads for minutes.
+let backoffBypassed = false
 type RunningDistroObservation = { distros: string[]; confirmed: boolean }
 let inFlightProbe: Promise<RunningDistroObservation> | null = null
 // Monotonic start of the in-flight probe, and one probe chained after it for callers it predates.
@@ -68,15 +70,27 @@ function armRetryAfterFailure(): void {
   }
   failureStreak += 1
   retryAfterMs = now + wslDistroListRetryDelayMs(failureStreak)
+  backoffBypassed = false
+}
+
+export type RunningWslDistroReadOptions = {
+  requireConfirmed?: boolean
+  /** performance.now(): only a probe started later may answer, e.g. after an exit. */
+  startedAfter?: number
+  /** Probe once even inside the failure backoff; later requests in the same window still wait. */
+  bypassFailureBackoff?: boolean
 }
 
 /** Share probes; only failures use stale cache/backoff. A confirmed empty result means no running distros. */
 export async function resolveRunningWslDistros(
   probe: () => Promise<string[]>,
-  /** `startedAfter` (performance.now()): only a probe started later may answer, e.g. after an exit. */
-  options: { requireConfirmed?: boolean; startedAfter?: number } = {}
+  options: RunningWslDistroReadOptions = {}
 ): Promise<string[]> {
-  const observation = await observeRunningWslDistros(probe, options.startedAfter)
+  const observation = await observeRunningWslDistros(
+    probe,
+    options.startedAfter,
+    options.bypassFailureBackoff
+  )
   if (options.requireConfirmed && !observation.confirmed) {
     throw new Error('WSL running-distro discovery is unavailable. Retry when WSL is reachable.')
   }
@@ -85,7 +99,8 @@ export async function resolveRunningWslDistros(
 
 function observeRunningWslDistros(
   probe: () => Promise<string[]>,
-  startedAfter?: number
+  startedAfter?: number,
+  bypassFailureBackoff = false
 ): Promise<RunningDistroObservation> {
   if (startedAfter !== undefined && cache && cacheStartedAt > startedAfter) {
     return Promise.resolve({ distros: cache, confirmed: true })
@@ -102,7 +117,10 @@ function observeRunningWslDistros(
     return chainedProbe
   }
   if (Date.now() < retryAfterMs) {
-    return Promise.resolve({ distros: cache ?? [], confirmed: false })
+    if (!bypassFailureBackoff || backoffBypassed) {
+      return Promise.resolve({ distros: cache ?? [], confirmed: false })
+    }
+    backoffBypassed = true
   }
   const startedAt = performance.now()
   inFlightStartedAt = startedAt
@@ -113,6 +131,7 @@ function observeRunningWslDistros(
       cacheStartedAt = startedAt
       retryAfterMs = 0
       failureStreak = 0
+      backoffBypassed = false
       notifyStopped(previous, distros)
       notifyConfirmedObservation(distros)
       return { distros, confirmed: true }
@@ -139,6 +158,7 @@ export function peekConfirmedRunningWslDistros(): readonly string[] | null {
 export function _resetRunningWslDistroCacheForTests(): void {
   cache = null
   cacheStartedAt = -Infinity
+  backoffBypassed = false
   retryAfterMs = 0
   failureStreak = 0
   inFlightProbe = null

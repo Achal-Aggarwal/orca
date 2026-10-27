@@ -15,7 +15,11 @@ type UseFileExplorerTreeLoadEffectsParams = {
   loadingDirPaths: ReadonlySet<string>
   rootError: string | null
   isDirStale: (dirPath: string) => boolean
-  loadDir: (dirPath: string, depth: number, options?: { force?: boolean }) => Promise<boolean>
+  loadDir: (
+    dirPath: string,
+    depth: number,
+    options?: { force?: boolean; wakeWslDistro?: boolean }
+  ) => Promise<boolean>
   refreshTree: () => Promise<unknown>
   resetAndLoad: (options?: { wakeWslDistro?: boolean }) => void
   resetSelection: () => void
@@ -131,7 +135,11 @@ export function useFileExplorerTreeLoadEffects({
         continue
       }
       const depth = splitPathSegments(dirPath.slice(visibleFilesWorktreePath.length + 1)).length - 1
-      void loadDir(dirPath, depth, decision === 'reload' ? { force: true } : undefined)
+      // Runs when the user expands a folder or opens the workspace: a user act may start WSL.
+      void loadDir(dirPath, depth, {
+        wakeWslDistro: true,
+        ...(decision === 'reload' ? { force: true } : {})
+      })
     }
   }, [expanded, visibleFilesWorktreePath]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -95,21 +95,27 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
         connectionId?: string
         includeLocalLogMetadata?: boolean
         access?: LocalFileAccess
+        /** A user act (open, expand, Retry); may start a stopped WSL distro. */
+        wakeWslDistro?: boolean
       }
     ): Promise<LocalFileContent> => {
       if (args.connectionId) {
         throw new SshHostNotServedError(args.connectionId)
       }
-      return guardWslUncPathAccess(args.filePath, async () => {
-        const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
-        const media = readMediaPreview(event, args, store)
-        if (media) {
-          return media
-        }
-        return args.includeLocalLogMetadata === true
-          ? readLocalLogSnapshot(filePath)
-          : readLocalFileContent(filePath)
-      })
+      return guardWslUncPathAccess(
+        args.filePath,
+        async () => {
+          const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
+          const media = readMediaPreview(event, args, store)
+          if (media) {
+            return media
+          }
+          return args.includeLocalLogMetadata === true
+            ? readLocalLogSnapshot(filePath)
+            : readLocalFileContent(filePath)
+        },
+        { wake: args.wakeWslDistro === true }
+      )
     }
   )
 
@@ -146,16 +152,25 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
     'fs:stat',
     async (
       _event,
-      args: { filePath: string; connectionId?: string; access?: LocalFileAccess }
+      args: {
+        filePath: string
+        connectionId?: string
+        access?: LocalFileAccess
+        wakeWslDistro?: boolean
+      }
     ): Promise<{ size: number; isDirectory: boolean; mtime: number }> => {
       if (args.connectionId) {
         throw new SshHostNotServedError(args.connectionId)
       }
-      return guardWslUncPathAccess(args.filePath, async () => {
-        const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
-        const stats = await stat(windowsFsPath(filePath))
-        return { size: stats.size, isDirectory: stats.isDirectory(), mtime: stats.mtimeMs }
-      })
+      return guardWslUncPathAccess(
+        args.filePath,
+        async () => {
+          const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
+          const stats = await stat(windowsFsPath(filePath))
+          return { size: stats.size, isDirectory: stats.isDirectory(), mtime: stats.mtimeMs }
+        },
+        { wake: args.wakeWslDistro === true }
+      )
     }
   )
 

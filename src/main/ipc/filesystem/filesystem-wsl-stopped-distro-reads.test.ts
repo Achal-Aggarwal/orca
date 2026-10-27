@@ -12,10 +12,12 @@ import {
 const diskPreconditionMock = vi.hoisted(() => ({ writeLocalTextFileWithDiskPrecondition: vi.fn() }))
 vi.mock('./local-disk-write-precondition', () => diskPreconditionMock)
 vi.mock('electron', async () => (await import('./filesystem-test-harness')).electronMock)
-const isWslDistroRunningMock = vi.hoisted(() => vi.fn(async () => false))
+const readStateMock = vi.hoisted(() =>
+  vi.fn(async (_distro: string, _options?: unknown): Promise<string> => 'stopped')
+)
 vi.mock('../../wsl-background-distro-gate', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  isWslDistroRunning: isWslDistroRunningMock
+  readWslDistroRunningState: readStateMock
 }))
 vi.mock('fs/promises', async () => (await import('./filesystem-test-harness')).fsPromisesMock)
 vi.mock('node:fs/promises', async () => (await import('./filesystem-test-harness')).fsPromisesMock)
@@ -57,7 +59,7 @@ vi.mock(
 )
 
 import { registerFilesystemHandlers } from './filesystem'
-import { WslDistroStoppedError } from '../../wsl/wsl-unc-access-gate'
+import { WslDistroStoppedError, WslDistroUnverifiableError } from '../../wsl/wsl-unc-access-gate'
 
 const UNC_ROOT = '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo'
 const UNC_FILE = `${UNC_ROOT}\\README.md`
@@ -71,7 +73,7 @@ async function invoke(channel: string, args: unknown): Promise<unknown> {
 describe('filesystem reads of a stopped WSL distro', () => {
   beforeEach(() => {
     resetFilesystemIpcMocks()
-    isWslDistroRunningMock.mockReset().mockResolvedValue(false)
+    readStateMock.mockReset().mockResolvedValue('stopped')
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The harness store implements the accessors these handlers read.
     registerFilesystemHandlers(store as never)
@@ -92,7 +94,7 @@ describe('filesystem reads of a stopped WSL distro', () => {
     ['fs:listMarkdownDocuments', { rootPath: UNC_ROOT }]
   ])('%s refuses without a realpath, stat or read', async (channel, args) => {
     await expect(invoke(channel, args)).rejects.toBeInstanceOf(WslDistroStoppedError)
-    expect(isWslDistroRunningMock).toHaveBeenCalledWith('Ubuntu', expect.anything())
+    expect(readStateMock).toHaveBeenCalledWith('Ubuntu', expect.anything())
     expect(realpathMock).not.toHaveBeenCalled()
     expect(statMock).not.toHaveBeenCalled()
     expect(readdirMock).not.toHaveBeenCalled()
@@ -107,18 +109,31 @@ describe('filesystem reads of a stopped WSL distro', () => {
     expect(statMock).not.toHaveBeenCalled()
   })
 
-  it('a user-initiated fs:readDir goes ahead without asking', async () => {
-    await invoke('fs:readDir', { dirPath: UNC_ROOT, wakeWslDistro: true }).catch((error: unknown) =>
+  it.each([
+    ['fs:readDir', { dirPath: UNC_ROOT }],
+    ['fs:readFile', { filePath: UNC_FILE }],
+    ['fs:stat', { filePath: UNC_FILE }],
+    ['fs:readFileChunk', { filePath: UNC_FILE, offset: 0, length: 16 }]
+  ])('a user act (%s with wakeWslDistro) goes ahead without asking', async (channel, args) => {
+    await invoke(channel, { ...args, wakeWslDistro: true }).catch((error: unknown) =>
       expect(error).not.toBeInstanceOf(WslDistroStoppedError)
     )
-    expect(isWslDistroRunningMock).not.toHaveBeenCalled()
+    expect(readStateMock).not.toHaveBeenCalled()
+  })
+
+  it("refuses with WSL didn't answer when the running list can't be read", async () => {
+    readStateMock.mockResolvedValue('unverifiable')
+    await expect(invoke('fs:readDir', { dirPath: UNC_ROOT })).rejects.toBeInstanceOf(
+      WslDistroUnverifiableError
+    )
+    expect(realpathMock).not.toHaveBeenCalled()
   })
 
   it('a running distro reads as before', async () => {
-    isWslDistroRunningMock.mockResolvedValue(true)
+    readStateMock.mockResolvedValue('running')
     await invoke('fs:stat', { filePath: UNC_FILE }).catch((error: unknown) =>
       expect(error).not.toBeInstanceOf(WslDistroStoppedError)
     )
-    expect(isWslDistroRunningMock).toHaveBeenCalledTimes(1)
+    expect(readStateMock).toHaveBeenCalledTimes(1)
   })
 })

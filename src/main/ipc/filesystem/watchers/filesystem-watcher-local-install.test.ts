@@ -1,19 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WatcherProcessFailure } from '../watcher-process/parcel-watcher-process-failure'
 
-const { createLocalWatcherMock, createWslWatcherMock, statMock, stoppedWslDistroForPathMock } =
+const { createLocalWatcherMock, createWslWatcherMock, statMock, blockedWslDistroForPathMock } =
   vi.hoisted(() => ({
     createLocalWatcherMock: vi.fn(),
     createWslWatcherMock: vi.fn(),
     statMock: vi.fn(),
-    stoppedWslDistroForPathMock: vi.fn(async (_path: string): Promise<string | null> => null)
+    blockedWslDistroForPathMock: vi.fn(
+      async (_path: string): Promise<{ distro: string; state: string } | null> => null
+    )
   }))
 const { noteWslDistroMayHaveStoppedMock } = vi.hoisted(() => ({
   noteWslDistroMayHaveStoppedMock: vi.fn()
 }))
 vi.mock('../../../wsl/wsl-unc-access-gate', () => ({
   noteWslDistroMayHaveStopped: noteWslDistroMayHaveStoppedMock,
-  stoppedWslDistroForPath: stoppedWslDistroForPathMock
+  blockedWslDistroForPath: blockedWslDistroForPathMock
 }))
 
 vi.mock('node:fs/promises', () => ({ stat: statMock }))
@@ -80,7 +82,9 @@ describe('installLocalWatcher on a stopped WSL distro', () => {
     watcherLifecycleState.unwatchableRoots.clear()
     statMock.mockReset().mockResolvedValue({ isDirectory: () => true })
     createWslWatcherMock.mockReset()
-    stoppedWslDistroForPathMock.mockReset().mockResolvedValue('Ubuntu')
+    blockedWslDistroForPathMock
+      .mockReset()
+      .mockResolvedValue({ distro: 'Ubuntu', state: 'stopped' })
     _resetWslBackgroundDistroGateForTests()
   })
 
@@ -116,7 +120,7 @@ describe('installLocalWatcher on a stopped WSL distro', () => {
   })
 
   it('asks for a re-watch on the distro after its watcher dies on its own', async () => {
-    stoppedWslDistroForPathMock.mockResolvedValue(null)
+    blockedWslDistroForPathMock.mockResolvedValue(null)
     const root = {
       listeners: new Map(),
       batch: { cancelled: false },
