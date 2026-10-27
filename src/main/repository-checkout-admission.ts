@@ -37,7 +37,7 @@ export type SavedClaimRule =
   | { scope: 'wsl'; domain: ExecutionHostId | null; aliases: 'lexical' | 'realpath' }
   /** Desktop Add: rows without an SSH connection; realpath only against this computer's rows. */
   | { scope: 'desktop' }
-  /** Runtime add: the caller's host rows (every row when it names none), with no late re-check. */
+  /** Runtime add: the caller's host rows (every row when it names none). */
   | { scope: 'runtime'; executionHostId: ExecutionHostId | null | undefined }
 
 type Store = { getRepos(): Repo[] }
@@ -57,17 +57,20 @@ export async function admitRepositoryCheckout(
   }
   const registrationPath = info?.rootPath ?? selectedPath
   if (rule.scope === 'runtime') {
-    const candidates = store
-      .getRepos()
-      .filter((repo) => runtimeRepoIsRegistrationCandidate(repo, rule.executionHostId))
-    // Why: git's toplevel is already resolved through symlinks, so an alias of a tracked checkout finds it.
-    const saved =
-      candidates.find(
+    const candidates = () =>
+      store
+        .getRepos()
+        .filter((repo) => runtimeRepoIsRegistrationCandidate(repo, rule.executionHostId))
+    const findAtPath = () =>
+      candidates().find(
         (repo) =>
           runtimePathsEqual(repo.path, selectedPath) ||
           runtimePathsEqual(repo.path, registrationPath)
-      ) ?? (await findProjectAtSameRealPath(candidates, registrationPath))
-    const findSaved = liveClaim(() => store.getRepos(), saved)
+      )
+    // Why: git's toplevel is already resolved through symlinks, so an alias of a tracked checkout finds it.
+    const saved = findAtPath() ?? (await findProjectAtSameRealPath(candidates(), registrationPath))
+    const captured = liveClaim(() => store.getRepos(), saved)
+    const findSaved = () => findAtPath() ?? captured()
     return { selectedPath, registrationPath, saved: saved ?? undefined, findSaved }
   }
   const mainRepoPath = info?.mainRepoPath ? await getGitRepoRootAsync(info.mainRepoPath) : null

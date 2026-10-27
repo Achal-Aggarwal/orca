@@ -69,17 +69,7 @@ export class RuntimeRepositoryRegistrationController {
     const store = this.requireStore()
     if (placement.kind === 'saved') {
       const existing = requireSavedProject(store, placement.repo)
-      if (
-        existing.executionHostId == null &&
-        parseExecutionHostId(executionHostId)?.kind === 'runtime'
-      ) {
-        const adopted =
-          store.updateRepo(existing, { executionHostId }) ??
-          ({ ...existing, executionHostId } as Repo)
-        this.invalidate(existing.id)
-        return adopted
-      }
-      return existing
+      return this.reuseExisting(store, existing, executionHostId)
     }
     if (placement.kind === 'wsl') {
       return (
@@ -106,7 +96,7 @@ export class RuntimeRepositoryRegistrationController {
     // Another registration of the same checkout can finish while icon discovery is pending.
     const raceWinner = admission.findSaved()
     if (raceWinner) {
-      return raceWinner
+      return this.reuseExisting(store, raceWinner, executionHostId)
     }
     const repo: Repo = {
       id: randomUUID(),
@@ -123,6 +113,24 @@ export class RuntimeRepositoryRegistrationController {
     await prepareLocalWorktreeRootForRepo(store, repo)
     this.invalidate(repo.id)
     return store.getRepo(repo.id) ?? repo
+  }
+
+  private reuseExisting(
+    store: RuntimeStore,
+    existing: Repo,
+    executionHostId: ExecutionHostId | null | undefined
+  ): Repo {
+    if (
+      existing.executionHostId == null &&
+      parseExecutionHostId(executionHostId)?.kind === 'runtime'
+    ) {
+      const adopted =
+        store.updateRepo(existing, { executionHostId }) ??
+        ({ ...existing, executionHostId } as Repo)
+      this.invalidate(existing.id)
+      return adopted
+    }
+    return existing
   }
 
   async create(
