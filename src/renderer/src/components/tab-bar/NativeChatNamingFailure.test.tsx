@@ -13,6 +13,13 @@ const client = vi.hoisted(() => ({
   emit: (_event: AgentSessionStatusEvent) => {},
   regenerate: vi.fn<() => Promise<boolean>>()
 }))
+const settings = vi.hoisted(() => ({
+  openSettingsPage: vi.fn(),
+  openSettingsTarget: vi.fn()
+}))
+vi.mock('@/store', () => ({
+  useAppStore: { getState: () => settings }
+}))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSessionStatus: async (_target: unknown, emit: typeof client.emit) => {
     client.emit = emit
@@ -60,6 +67,7 @@ async function hoverChatTab(): Promise<void> {
 describe('chat tab naming failure', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.clearAllMocks()
     client.regenerate.mockResolvedValue(true)
   })
   afterEach(() => {
@@ -75,6 +83,13 @@ describe('chat tab naming failure', () => {
       await hoverChatTab()
       expect(screen.getAllByText("Couldn't name this chat").length).toBeGreaterThan(0)
       expect(screen.getAllByRole('button', { name: 'view error' }).length).toBeGreaterThan(0)
+      fireEvent.click(screen.getAllByRole('button', { name: 'Settings' })[0])
+      expect(settings.openSettingsPage).toHaveBeenCalledOnce()
+      expect(settings.openSettingsTarget).toHaveBeenCalledExactlyOnceWith({
+        pane: 'chat',
+        repoId: null,
+        sectionId: 'chat-names'
+      })
       const regenerate = screen.queryAllByRole('button', { name: 'Regenerate name' })
       expect(regenerate.length > 0).toBe(supported)
       if (supported) {

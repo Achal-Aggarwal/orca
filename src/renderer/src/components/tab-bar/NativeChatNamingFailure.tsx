@@ -1,5 +1,6 @@
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAppStore } from '@/store'
 import { NameGenerationFailedDialog } from '../sidebar/AutoRenameFailedDialog'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatNamingFailureControls } from './use-native-chat-naming-failure'
@@ -27,7 +28,7 @@ export function NativeChatNamingErrorBlock({
           'The chat-name agent stopped with an error, so the chat keeps its first message as its name.'
         )}
       </p>
-      <div className="flex items-center gap-1.5 pt-1 pl-4.5">
+      <div className="flex flex-wrap items-center gap-1.5 pt-1 pl-4.5">
         <Button
           type="button"
           variant="destructive-chip"
@@ -49,6 +50,19 @@ export function NativeChatNamingErrorBlock({
             {regenerateLabel(naming)}
           </Button>
         ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="chip"
+          onClick={() => {
+            const store = useAppStore.getState()
+            store.openSettingsPage()
+            store.openSettingsTarget({ pane: 'chat', repoId: null, sectionId: 'chat-names' })
+          }}
+        >
+          <Settings aria-hidden />
+          {translate('tabHoverCard.namingFailure.settings', 'Settings')}
+        </Button>
       </div>
     </div>
   )
