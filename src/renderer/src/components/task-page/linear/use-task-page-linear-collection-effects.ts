@@ -1,3 +1,8 @@
+import { useAppStore } from '@/store'
+import { getLinearReadScope, scopedLinearCacheKey } from '@/store/slices/linear/linear-slice-scope'
+import { linearCollectionCacheKey } from '@/store/slices/linear/linear-cache'
+import { subscribeToTaskPageLinearIssues } from './task-page-linear-cache-selectors'
+import { linearIssueReadError } from '@/lib/linear-read-error'
 import type { TaskPageLinearInOrcaEffectsModel } from './use-task-page-linear-in-orca-effects'
 import { useEffect } from 'react'
 import { LINEAR_ITEM_LIMIT } from '../task-page-source-context'
@@ -72,9 +77,7 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
       })
       .catch((error) => {
         if (!cancelled) {
-          setLinearProjectsError(
-            error instanceof Error ? error.message : 'Failed to load projects.'
-          )
+          setLinearProjectsError(linearIssueReadError(error))
           setLinearProjectsLoading(false)
         }
       })
@@ -126,9 +129,7 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
       })
       .catch((error) => {
         if (!cancelled) {
-          setLinearProjectDetailError(
-            error instanceof Error ? error.message : 'Failed to load project.'
-          )
+          setLinearProjectDetailError(linearIssueReadError(error))
           setLinearProjectDetailLoading(false)
         }
       })
@@ -156,6 +157,19 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
     setLinearProjectIssuesLoading(true)
     setLinearProjectIssuesError(null)
     const effectiveLimit = clampLinearIssueListLimit(linearProjectIssueLimit)
+    const cacheKey = scopedLinearCacheKey(
+      getLinearReadScope(useAppStore.getState().settings, linearTaskSourceContext),
+      linearCollectionCacheKey(
+        selectedLinearProject.workspaceId,
+        'project-issues',
+        selectedLinearProject.id,
+        effectiveLimit
+      )
+    )
+    const unsubscribe = subscribeToTaskPageLinearIssues(
+      () => useAppStore.getState().linearProjectIssueCache[cacheKey]?.data?.items ?? null,
+      (items) => setLinearProjectIssuesResult((current) => ({ ...current, items }))
+    )
     void listLinearProjectIssues(
       selectedLinearProject.id,
       selectedLinearProject.workspaceId,
@@ -173,14 +187,13 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
       })
       .catch((error) => {
         if (!cancelled) {
-          setLinearProjectIssuesError(
-            error instanceof Error ? error.message : 'Failed to load project issues.'
-          )
+          setLinearProjectIssuesError(linearIssueReadError(error))
           setLinearProjectIssuesLoading(false)
         }
       })
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [
     linearProjectIssueLimit,

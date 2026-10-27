@@ -1,3 +1,8 @@
+import { useAppStore } from '@/store'
+import { getLinearReadScope, scopedLinearCacheKey } from '@/store/slices/linear/linear-slice-scope'
+import { linearCollectionCacheKey } from '@/store/slices/linear/linear-cache'
+import { subscribeToTaskPageLinearIssues } from './task-page-linear-cache-selectors'
+import { linearIssueReadError } from '@/lib/linear-read-error'
 import type { TaskPageLinearInOrcaEffectsModel } from './use-task-page-linear-in-orca-effects'
 import { useEffect } from 'react'
 import {
@@ -78,9 +83,7 @@ export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEf
       })
       .catch((error) => {
         if (!cancelled) {
-          setLinearCustomViewsError(
-            error instanceof Error ? error.message : 'Failed to load views.'
-          )
+          setLinearCustomViewsError(linearIssueReadError(error))
           setLinearCustomViewsLoading(false)
         }
       })
@@ -116,6 +119,22 @@ export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEf
     setLinearCustomViewContentsLoading(true)
     setLinearCustomViewContentsError(null)
     const issueLimit = clampLinearIssueListLimit(linearCustomViewIssueLimit)
+    const cacheKey = scopedLinearCacheKey(
+      getLinearReadScope(useAppStore.getState().settings, linearTaskSourceContext),
+      linearCollectionCacheKey(
+        selectedLinearCustomView.workspaceId,
+        'custom-view-issues',
+        selectedLinearCustomView.id,
+        issueLimit
+      )
+    )
+    const unsubscribe = subscribeToTaskPageLinearIssues(
+      () =>
+        selectedLinearCustomView.model === 'issue'
+          ? (useAppStore.getState().linearCustomViewIssueCache[cacheKey]?.data?.items ?? null)
+          : null,
+      (items) => setLinearCustomViewIssuesResult((current) => ({ ...current, items }))
+    )
     const request =
       selectedLinearCustomView.model === 'issue'
         ? listLinearCustomViewIssues(
@@ -150,14 +169,13 @@ export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEf
       })
       .catch((error) => {
         if (!cancelled) {
-          setLinearCustomViewContentsError(
-            error instanceof Error ? error.message : 'Failed to load view contents.'
-          )
+          setLinearCustomViewContentsError(linearIssueReadError(error))
           setLinearCustomViewContentsLoading(false)
         }
       })
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [
     linearRefreshNonce,

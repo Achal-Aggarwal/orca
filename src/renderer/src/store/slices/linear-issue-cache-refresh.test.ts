@@ -203,7 +203,10 @@ describe('createLinearSlice caching', () => {
 
     await expect(
       store.getState().listLinearIssues({ kind: 'list', filter: 'all', limit: 36 }, { force: true })
-    ).resolves.toMatchObject({ items: [{ id: 'LIN-CACHED' }] })
+    ).rejects.toThrow('network down')
+    expect(
+      store.getState().getCachedLinearIssues({ kind: 'list', filter: 'all', limit: 36 })
+    ).toMatchObject({ items: [{ id: 'LIN-CACHED' }] })
   })
 
   it('rethrows attribute-filter unsupported errors so UI can surface an upgrade message', async () => {
@@ -262,7 +265,10 @@ describe('createLinearSlice caching', () => {
 
     await expect(
       store.getState().searchLinearIssues('loading', 36, { force: true })
-    ).resolves.toMatchObject([{ id: 'LIN-CACHED' }])
+    ).rejects.toThrow('network down')
+    expect(
+      store.getState().getCachedLinearIssues({ kind: 'search', query: 'loading', limit: 36 })
+    ).toMatchObject([{ id: 'LIN-CACHED' }])
   })
 
   it('returns stale cached rows for immediate rendering while revalidation decides freshness', () => {

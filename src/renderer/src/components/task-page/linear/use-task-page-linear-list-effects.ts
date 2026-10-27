@@ -3,20 +3,20 @@ import { useEffect } from 'react'
 import { isIntegrationCredentialDecryptionError } from '../../../../../shared/integration-credential-errors'
 import { saveLinearIssueView } from '../../linear-issue-view-storage'
 import { serializeLinearIssueViewResumeState } from '../../../../../shared/linear/issue-view-resume-state'
-import {
-  clampLinearIssueListLimit,
-  LINEAR_ISSUE_LIST_MAX
-} from '../../../../../shared/linear/issue-read-limits'
+import { clampLinearIssueListLimit } from '../../../../../shared/linear/issue-read-limits'
 import {
   buildLinearIssueListReadArgs,
   type LinearIssueListFilterRead,
   shouldForceLinearIssueListRead,
   buildLinearIssueListRequestSignature
 } from '@/components/task-page/linear/task-page-linear-issue-request'
-import type { LinearIssue } from '../../../../../shared/linear/issue-types'
-import type { LinearCollectionResult } from '../../../../../shared/linear/workspace-types'
 import { linearIssueAttributeFilterSignature } from '../../../../../shared/linear/issue-attribute-filter'
-import { reconcileTaskPageLinearIssuesAfterLandingRefresh } from './task-page-linear-cache-selectors'
+import { linearIssueReadError } from '@/lib/linear-read-error'
+import {
+  taskPageLinearIssuesHaveMore,
+  reconcileTaskPageLinearIssuesAfterLandingRefresh,
+  subscribeToTaskPageLinearIssues
+} from './task-page-linear-cache-selectors'
 import { LINEAR_ITEM_LIMIT } from '../task-page-source-context'
 import { useTaskSearchDebouncedApply } from '../use-task-search-debounced-apply'
 export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) {
@@ -154,19 +154,19 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
         } as const)
       : listReadArgs
     const cachedResult = getCachedLinearIssues(readArgs, {
-      sourceContext: linearTaskSourceContext
+      sourceContext: linearTaskSourceContext,
+      workspaceId: selectedLinearWorkspaceId
     })
     if (readArgs.kind === 'search') {
       setLinearIssuesHasMore(false)
-      if (cachedResult) {
-        setLinearIssues(cachedResult as LinearIssue[])
+    }
+    if (cachedResult) {
+      setLinearIssues(Array.isArray(cachedResult) ? cachedResult : cachedResult.items)
+      if (!Array.isArray(cachedResult)) {
+        setLinearIssuesHasMore(
+          taskPageLinearIssuesHaveMore(cachedResult, effectiveLinearIssueLimit)
+        )
       }
-    } else if (cachedResult) {
-      const collection = cachedResult as LinearCollectionResult<LinearIssue>
-      setLinearIssues(collection.items)
-      setLinearIssuesHasMore(
-        Boolean(collection.hasMore) && effectiveLinearIssueLimit < LINEAR_ISSUE_LIST_MAX
-      )
     }
     const nextFilterRead: LinearIssueListFilterRead = {
       workspaceId: linearAttributeFilterWorkspaceId,
@@ -188,6 +188,16 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
       searchQuery: searchActive ? trimmed : undefined
     })
     const previousRequest = lastLinearRequestRef.current
+    if (!cachedResult && previousRequest?.signature !== requestSignature) {
+      setLinearIssues([])
+    }
+    const unsubscribe = subscribeToTaskPageLinearIssues(() => {
+      const cached = getCachedLinearIssues(readArgs, {
+        sourceContext: linearTaskSourceContext,
+        workspaceId: selectedLinearWorkspaceId
+      })
+      return Array.isArray(cached) ? cached : (cached?.items ?? null)
+    }, setLinearIssues)
     const forceRefresh =
       filterForce ||
       (linearRefreshNonce > 0 &&
@@ -214,11 +224,13 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
       readArgs.kind === 'search'
         ? searchLinearIssues(readArgs.query, LINEAR_ITEM_LIMIT, {
             force: forceRefresh || shouldProbeOnLanding,
-            sourceContext: linearTaskSourceContext
+            sourceContext: linearTaskSourceContext,
+            workspaceId: selectedLinearWorkspaceId
           })
         : listLinearIssues(listReadArgs, {
             force: forceRefresh || shouldProbeOnLanding,
-            sourceContext: linearTaskSourceContext
+            sourceContext: linearTaskSourceContext,
+            workspaceId: selectedLinearWorkspaceId
           })
     void request
       .then((result) => {
@@ -229,28 +241,18 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
         ) {
           return
         }
-        setLinearError(null)
-        if (readArgs.kind === 'search') {
-          const issues = result as LinearIssue[]
-          setLinearIssuesHasMore(false)
-          if (shouldProbeOnLanding) {
-            setLinearIssues((current) =>
-              reconcileTaskPageLinearIssuesAfterLandingRefresh(current, issues)
-            )
-          } else {
-            setLinearIssues(issues)
-          }
-        } else {
-          const collection = result as LinearCollectionResult<LinearIssue>
-          setLinearIssuesHasMore(
-            Boolean(collection.hasMore) && effectiveLinearIssueLimit < LINEAR_ISSUE_LIST_MAX
-          )
-          setLinearIssues((current) =>
-            shouldProbeOnLanding
-              ? reconcileTaskPageLinearIssuesAfterLandingRefresh(current, collection.items)
-              : collection.items
-          )
-        }
+        setLinearError(
+          !Array.isArray(result) && result.errors?.length
+            ? linearIssueReadError(result.errors[0].message)
+            : null
+        )
+        const issues = Array.isArray(result) ? result : result.items
+        setLinearIssuesHasMore(taskPageLinearIssuesHaveMore(result, effectiveLinearIssueLimit))
+        setLinearIssues((current) =>
+          shouldProbeOnLanding
+            ? reconcileTaskPageLinearIssuesAfterLandingRefresh(current, issues)
+            : issues
+        )
         setLinearLoading(false)
       })
       .catch((err) => {
@@ -266,11 +268,12 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
           setLinearIssues([])
           setLinearIssuesHasMore(false)
         }
-        setLinearError(err instanceof Error ? err.message : 'Failed to load Linear issues.')
+        setLinearError(linearIssueReadError(err))
         setLinearLoading(false)
       })
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [
     taskSource,

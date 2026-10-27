@@ -187,9 +187,10 @@ export function largestCachedCollectionBelowLimit<T>(
   workspaceId: LinearWorkspaceSelection | null | undefined,
   mode: string,
   scopeId: string,
-  limit: number
+  limit: number,
+  cachePrefix?: string | null
 ): LinearCollectionResult<T> | null {
-  const keyPrefix = `${linearCollectionCacheKey(workspaceId, mode, scopeId)}::`
+  const keyPrefix = `${cachePrefix ? `${cachePrefix}::` : ''}${linearCollectionCacheKey(workspaceId, mode, scopeId)}::`
   let best: { limit: number; data: LinearCollectionResult<T> } | null = null
   for (const [key, entry] of Object.entries(cache)) {
     if (!entry?.data || !key.startsWith(keyPrefix)) {

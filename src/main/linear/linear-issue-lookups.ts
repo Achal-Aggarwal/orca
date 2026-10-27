@@ -178,7 +178,7 @@ export async function searchIssues(
     return []
   }
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     entries.map(async (entry) => {
       await acquire()
       try {
@@ -191,21 +191,25 @@ export async function searchIssues(
       } catch (error) {
         if (isAuthError(error)) {
           clearToken(entry.workspace.id)
-          if (shouldThrowAuthError(workspaceId)) {
-            throw error
-          }
         } else {
           console.warn('[linear] searchIssues failed:', error)
         }
-        return []
+        throw error
       } finally {
         release()
       }
     })
   )
+  const successful = results.flatMap((result) =>
+    result.status === 'fulfilled' ? result.value : []
+  )
+  const failure = results.find((result) => result.status === 'rejected')
+  if (failure?.status === 'rejected' && results.every((result) => result.status === 'rejected')) {
+    throw failure.reason
+  }
   // Single-workspace results must retain Linear relevance ranking instead of updatedAt order.
   if (entries.length === 1) {
-    return results.flat().slice(0, limit)
+    return successful.slice(0, limit)
   }
-  return sortAndLimitIssues(results.flat(), limit)
+  return sortAndLimitIssues(successful, limit)
 }

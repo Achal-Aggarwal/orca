@@ -62,7 +62,7 @@ export function createLinearIssueListActions(
         inflight &&
         inflight.contextKey === contextKey &&
         inflight.mutationGeneration === getLinearMutationGeneration() &&
-        (!options?.force || inflight.force)
+        !options?.force
       ) {
         return inflight.promise
       }
@@ -109,15 +109,12 @@ export function createLinearIssueListActions(
             if (!shouldRefreshStatusAfterRead(workspaceId, get().linearStatus)) {
               void get().checkLinearConnection(true)
             }
-            if (!credentialError) {
-              return []
-            }
           }
           // Why: [] would read as "no matches"; the caller shows this read's own error.
           if (credentialError) {
             throw new Error(credentialDecryptionMessage('Linear'))
           }
-          return get().linearSearchCache[cacheKey]?.data ?? []
+          throw error
         })
         .finally(() => {
           if (inflightSearchRequests.get(cacheKey) === entry) {
@@ -140,7 +137,6 @@ export function createLinearIssueListActions(
 
       entry = {
         promise,
-        force: Boolean(options?.force),
         generation: requestCacheGeneration,
         contextKey,
         mutationGeneration: requestMutationGeneration
@@ -170,7 +166,7 @@ export function createLinearIssueListActions(
         inflight &&
         inflight.contextKey === contextKey &&
         inflight.mutationGeneration === getLinearMutationGeneration() &&
-        (!options?.force || inflight.force)
+        !options?.force
       ) {
         return inflight.promise
       }
@@ -186,7 +182,20 @@ export function createLinearIssueListActions(
         attributeFilter
       )
         .then((result) => {
-          const data = result as LinearCollectionResult<LinearIssue>
+          const failedWorkspaces = new Set(result.errors?.map((error) => error.workspaceId))
+          const data: LinearCollectionResult<LinearIssue> = {
+            ...result,
+            items: [
+              ...result.items,
+              ...(get().linearListCache[cacheKey]?.data?.items ?? []).filter(
+                (issue) =>
+                  failedWorkspaces.has(issue.workspaceId ?? workspaceId ?? '') &&
+                  !result.items.some(
+                    (item) => item.id === issue.id && item.workspaceId === issue.workspaceId
+                  )
+              )
+            ]
+          }
           if (
             inflightListRequests.get(cacheKey) === entry &&
             canWriteLinearReadResult(
@@ -200,7 +209,7 @@ export function createLinearIssueListActions(
             set((s) => ({
               linearListCache: evictStaleEntries({
                 ...s.linearListCache,
-                [cacheKey]: { data, fetchedAt: Date.now() }
+                [cacheKey]: { data, fetchedAt: data.errors?.length ? 0 : Date.now() }
               })
             }))
           }
@@ -227,14 +236,11 @@ export function createLinearIssueListActions(
             if (!shouldRefreshStatusAfterRead(workspaceId, get().linearStatus)) {
               void get().checkLinearConnection(true)
             }
-            if (!credentialError) {
-              return emptyLinearCollection<LinearIssue>()
-            }
           }
           if (credentialError) {
             throw new Error(credentialDecryptionMessage('Linear'))
           }
-          return get().linearListCache[cacheKey]?.data ?? emptyLinearCollection<LinearIssue>()
+          throw error
         })
         .finally(() => {
           if (inflightListRequests.get(cacheKey) === entry) {
@@ -257,7 +263,6 @@ export function createLinearIssueListActions(
 
       entry = {
         promise,
-        force: Boolean(options?.force),
         generation: requestCacheGeneration,
         contextKey,
         mutationGeneration: requestMutationGeneration

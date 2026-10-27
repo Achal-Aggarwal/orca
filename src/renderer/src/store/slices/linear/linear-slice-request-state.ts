@@ -19,7 +19,6 @@ export type InflightLinearIssueRequest = {
 
 export type InflightLinearListRequest = {
   promise: Promise<LinearIssue[]>
-  force: boolean
   generation: number
   contextKey: string
   mutationGeneration: number
@@ -27,7 +26,6 @@ export type InflightLinearListRequest = {
 
 export type InflightLinearPlainListRequest = {
   promise: Promise<LinearCollectionResult<LinearIssue>>
-  force: boolean
   generation: number
   contextKey: string
   mutationGeneration: number
@@ -35,7 +33,6 @@ export type InflightLinearPlainListRequest = {
 
 export type InflightLinearCollectionRequest<T> = {
   promise: Promise<LinearCollectionResult<T>>
-  force: boolean
   generation: number
   contextKey: string
   mutationGeneration: number
@@ -43,14 +40,12 @@ export type InflightLinearCollectionRequest<T> = {
 
 export type InflightLinearDetailRequest<T> = {
   promise: Promise<T>
-  force: boolean
   contextKey: string
   mutationGeneration: number
 }
 
 export type InflightLinearTeamRequest = {
   promise: Promise<LinearTeam[]>
-  force: boolean
   generation: number
   contextKey: string
   mutationGeneration: number

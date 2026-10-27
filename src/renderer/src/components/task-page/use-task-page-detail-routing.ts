@@ -4,7 +4,6 @@ import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { JiraIssue } from '../../../../shared/jira/jira-types'
 import { useAppStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { findTaskPageLinearIssue } from './linear/task-page-linear-cache-selectors'
 import { findTaskPageJiraIssue } from '@/components/task-page-jira-cache-selectors'
 export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
   const {
@@ -19,28 +18,12 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     useState<LinearIssue | null>(null)
   const [selectedLinearIssueCanFloatState, setSelectedLinearIssueCanFloat] = useState(false)
 
-  // Why: subscribe to just the Linear caches so list and inline detail reflect optimistic cell edits without a second cache.
-  const linearCacheSnapshot = useAppStore(
-    useShallow((s) => ({
-      issueCache: s.linearIssueCache,
-      searchCache: s.linearSearchCache,
-      listCache: s.linearListCache
-    }))
-  )
-  const cachedSelectedLinearIssue = findTaskPageLinearIssue(
-    linearCacheSnapshot.issueCache,
-    linearCacheSnapshot.searchCache,
-    linearCacheSnapshot.listCache,
-    pageData.openLinearIssue?.id ?? selectedLinearIssueIdState
-  )
   const selectedLinearIssueId = pageData.openLinearIssue?.id ?? selectedLinearIssueIdState
   const selectedLinearIssueFallback = pageData.openLinearIssue ?? selectedLinearIssueFallbackState
   const selectedLinearIssueCanFloat = pageData.openLinearIssue
     ? true
     : selectedLinearIssueCanFloatState
-  const selectedLinearIssue = selectedLinearIssueId
-    ? (cachedSelectedLinearIssue ?? selectedLinearIssueFallback)
-    : null
+  const selectedLinearIssue = selectedLinearIssueId ? selectedLinearIssueFallback : null
   const linearDetailSourceContext = useMemo(() => {
     if (
       selectedLinearIssue &&
@@ -190,8 +173,6 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     setSelectedLinearIssueFallback: typeof setSelectedLinearIssueFallback
     selectedLinearIssueCanFloat: typeof selectedLinearIssueCanFloat
     setSelectedLinearIssueCanFloat: typeof setSelectedLinearIssueCanFloat
-    linearCacheSnapshot: typeof linearCacheSnapshot
-    cachedSelectedLinearIssue: typeof cachedSelectedLinearIssue
     selectedLinearIssue: typeof selectedLinearIssue
     linearDetailSourceContext: typeof linearDetailSourceContext
     setSelectedLinearIssue: typeof setSelectedLinearIssue
@@ -216,8 +197,6 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
   nextModel.setSelectedLinearIssueFallback = setSelectedLinearIssueFallback
   nextModel.selectedLinearIssueCanFloat = selectedLinearIssueCanFloat
   nextModel.setSelectedLinearIssueCanFloat = setSelectedLinearIssueCanFloat
-  nextModel.linearCacheSnapshot = linearCacheSnapshot
-  nextModel.cachedSelectedLinearIssue = cachedSelectedLinearIssue
   nextModel.selectedLinearIssue = selectedLinearIssue
   nextModel.linearDetailSourceContext = linearDetailSourceContext
   nextModel.setSelectedLinearIssue = setSelectedLinearIssue

@@ -1,11 +1,8 @@
-import type { CacheEntry } from '@/store/github/cache-model'
-import type { LinearIssue } from '../../../../../shared/linear/issue-types'
+import { useAppStore } from '@/store'
 import type { LinearCollectionResult } from '../../../../../shared/linear/workspace-types'
+import { LINEAR_ISSUE_LIST_MAX } from '../../../../../shared/linear/issue-read-limits'
+import type { LinearIssue } from '../../../../../shared/linear/issue-types'
 import { sortedStrings } from '../task-page-work-item-signatures'
-
-type LinearIssueCache = Record<string, CacheEntry<LinearIssue>>
-type LinearSearchCache = Record<string, CacheEntry<LinearIssue[]>>
-type LinearListCache = Record<string, CacheEntry<LinearCollectionResult<LinearIssue>>>
 
 function linearIssueKey(issue: LinearIssue): string {
   return issue.id
@@ -61,31 +58,23 @@ export function reconcileTaskPageLinearIssuesAfterLandingRefresh(
   return changed ? next : (currentIssues as LinearIssue[])
 }
 
-export function findTaskPageLinearIssue(
-  linearIssueCache: LinearIssueCache,
-  linearSearchCache: LinearSearchCache,
-  linearListCache: LinearListCache,
-  linearIssueId: string | null
-): LinearIssue | null {
-  if (!linearIssueId) {
-    return null
-  }
-  for (const entry of Object.values(linearIssueCache)) {
-    if (entry?.data?.id === linearIssueId) {
-      return entry.data
+export function subscribeToTaskPageLinearIssues(
+  read: () => LinearIssue[] | null,
+  publish: (issues: LinearIssue[]) => void
+): () => void {
+  let previous = read()
+  return useAppStore.subscribe(() => {
+    const issues = read()
+    if (issues && issues !== previous) {
+      previous = issues
+      publish(issues)
     }
-  }
-  for (const entry of Object.values(linearSearchCache)) {
-    const found = entry?.data?.find((issue) => issue.id === linearIssueId)
-    if (found) {
-      return found
-    }
-  }
-  for (const entry of Object.values(linearListCache)) {
-    const found = entry?.data?.items.find((issue) => issue.id === linearIssueId)
-    if (found) {
-      return found
-    }
-  }
-  return null
+  })
+}
+
+export function taskPageLinearIssuesHaveMore(
+  result: LinearIssue[] | LinearCollectionResult<LinearIssue> | null,
+  limit: number
+): boolean {
+  return !Array.isArray(result) && Boolean(result?.hasMore) && limit < LINEAR_ISSUE_LIST_MAX
 }

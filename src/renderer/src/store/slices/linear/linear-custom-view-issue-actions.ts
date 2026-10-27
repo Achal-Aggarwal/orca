@@ -58,7 +58,7 @@ export function createLinearCustomViewIssueActions(
         inflight &&
         inflight.contextKey === contextKey &&
         inflight.mutationGeneration === getLinearMutationGeneration() &&
-        (!options?.force || inflight.force)
+        !options?.force
       ) {
         return inflight.promise
       }
@@ -116,7 +116,8 @@ export function createLinearCustomViewIssueActions(
               workspaceId,
               'custom-view-issues',
               viewId,
-              effectiveLimit
+              effectiveLimit,
+              scope.cachePrefix
             ) ??
             emptyLinearCollection<LinearIssue>()
           return collectionWithWorkspaceError(fallback, workspaceId, error)
@@ -141,7 +142,6 @@ export function createLinearCustomViewIssueActions(
 
       entry = {
         promise,
-        force: Boolean(options?.force),
         generation: requestCacheGeneration,
         contextKey,
         mutationGeneration: requestMutationGeneration

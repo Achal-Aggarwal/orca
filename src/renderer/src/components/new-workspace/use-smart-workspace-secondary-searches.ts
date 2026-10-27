@@ -1,13 +1,12 @@
+import { getCachedSmartWorkspaceLinearIssues } from './smart-workspace-linear-read'
+import { linearIssueReadError } from '@/lib/linear-read-error'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { useEffect, useMemo, useRef } from 'react'
 import { searchRuntimeRepoBaseRefDetails } from '@/runtime/runtime-repo-client'
 import { lookupLinearIssueUrl } from '@/lib/linear-issue-url-lookup'
 import { searchJiraIssuesByKeyOrText } from '@/components/jira-key-or-text-search'
 import { linearWorkspaceScopeSignature } from '../../../../shared/linear/workspace-types'
-import {
-  credentialDecryptionMessage,
-  isIntegrationCredentialDecryptionError
-} from '../../../../shared/integration-credential-errors'
+import { isIntegrationCredentialDecryptionError } from '../../../../shared/integration-credential-errors'
 import { getSmartWorkspaceLinearSearchQuery } from '../../../../shared/new-workspace/smart-workspace-linear-intent'
 import type { parseBoundedSmartWorkspaceLinearIssueUrlIntent } from '../../../../shared/new-workspace/smart-workspace-linear-intent'
 import { RESULT_LIMIT } from './smart-workspace-name-field-model'
@@ -68,17 +67,10 @@ export function useSmartWorkspaceSecondarySearches({
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   linearStatusRef.current = linearStatus
   // Store action references can change with wiring; reads should only rerun for query/scope changes.
-  const linearReadMethodsRef = useRef({
-    fetchLinearIssue,
-    listLinearIssues,
-    searchLinearIssues
-  })
+  const linearReadMethods = { fetchLinearIssue, listLinearIssues, searchLinearIssues }
+  const linearReadMethodsRef = useRef(linearReadMethods)
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
-  linearReadMethodsRef.current = {
-    fetchLinearIssue,
-    listLinearIssues,
-    searchLinearIssues
-  }
+  linearReadMethodsRef.current = linearReadMethods
   const failedLinearReadRef = useRef<readonly unknown[] | null>(null)
   const linearConnected = linearStatus.connected === true
   const linearScopeSignature = linearWorkspaceScopeSignature(linearStatus)
@@ -181,6 +173,11 @@ export function useSmartWorkspaceSecondarySearches({
     if (trimmed === '') {
       setLinearIssues([])
     }
+    let readError: string | null = null
+    const readOptions = {
+      sourceContext: linearSourceContext,
+      ...(linearWorkspaceIdOverride !== undefined ? { workspaceId: linearWorkspaceIdOverride } : {})
+    }
     const request = linearUrlIntent
       ? lookupLinearIssueUrl({
           intent: linearUrlIntent,
@@ -196,39 +193,38 @@ export function useSmartWorkspaceSecondarySearches({
         ? linearReadMethodsRef.current.searchLinearIssues(
             getSmartWorkspaceLinearSearchQuery(trimmed),
             RESULT_LIMIT,
-            {
-              sourceContext: linearSourceContext,
-              ...(linearWorkspaceIdOverride !== undefined
-                ? { workspaceId: linearWorkspaceIdOverride }
-                : {})
-            }
+            readOptions
           )
         : linearReadMethodsRef.current
             .listLinearIssues(
               { kind: 'list', filter: 'assigned', limit: RESULT_LIMIT },
-              {
-                sourceContext: linearSourceContext,
-                ...(linearWorkspaceIdOverride !== undefined
-                  ? { workspaceId: linearWorkspaceIdOverride }
-                  : {})
-              }
+              readOptions
             )
-            .then((result) => result.items)
+            .then((result) => {
+              readError = result.errors?.length
+                ? linearIssueReadError(result.errors[0].message)
+                : null
+              return result.items
+            })
     void request
       .then((issues) => {
         if (!stale) {
           failedLinearReadRef.current = null
-          setLinearReadError(null)
+          setLinearReadError(readError)
           setLinearIssues(issues)
         }
       })
       .catch((error) => {
         if (!stale) {
-          setLinearIssues([])
-          // Why: the read reports its own host's failure; host-wide status may describe another host.
           const credentialError = isIntegrationCredentialDecryptionError(error)
+          const cached =
+            credentialError || linearUrlIntent
+              ? null
+              : getCachedSmartWorkspaceLinearIssues(trimmed, readOptions)
+          setLinearIssues(Array.isArray(cached) ? cached : (cached?.items ?? []))
+          // Why: the read reports its own host's failure; host-wide status may describe another host.
           failedLinearReadRef.current = credentialError ? readKey : null
-          setLinearReadError(credentialError ? credentialDecryptionMessage('Linear') : null)
+          setLinearReadError(linearIssueReadError(error))
         }
       })
       .finally(() => {
