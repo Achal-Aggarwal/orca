@@ -17,6 +17,7 @@ export type ConfirmationDialogOptions = {
   confirmLabel?: string
   cancelLabel?: string
   confirmVariant?: 'default' | 'destructive'
+  surface?: 'security'
   icon?: LucideIcon
   cancelVariant?: 'outline' | 'ghost'
   /** A notice, not a question: only the confirm button shows, and it settles true. */
