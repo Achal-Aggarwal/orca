@@ -12,6 +12,7 @@ import {
   ProfileStateWriterError,
   type ProfileStateWriterInitialization
 } from './profile-state-writer-worker-client'
+import { ProfileStateWriterReopenPolicy } from './profile-state-writer-reopen-policy'
 
 export type ProfileStateWorkerAuthorityOptions = {
   workerPath?: string
@@ -31,8 +32,7 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   private stopping: Promise<void> | undefined
   private idleTimer: ReturnType<typeof setTimeout> | undefined
   private inFlight = 0
-  private reopens = 0
-  private lastReopenLogMs: number | undefined
+  private readonly reopenPolicy = new ProfileStateWriterReopenPolicy()
   /** Abort while idle-stopped has no writer to fault, so it is remembered here instead. */
   private stoppedFailure: Error | undefined
   private backups: ProfileStateBackupRotation
@@ -67,7 +67,9 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
 
   async abort(): Promise<void> {
     this.cancelIdleStop()
-    await this.stopping
+    if (this.stopping) {
+      await this.stopping
+    }
     if (this.writer) {
       return this.writer.abort()
     }
@@ -222,14 +224,33 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
     if (this.closing) {
       throw closedWriterError()
     }
+    this.reopenPolicy.admit()
     const writer = new ProfileStateWriteWorkerClient(
       { ...this.initialization, revision: this.requireStoppedRevision() },
       { ...this.options, reportInitializationFailure: true }
     )
     this.writer = writer
-    this.recordReopen()
-    await writer.ready
+    this.reopenPolicy.recordAttempt()
+    try {
+      await writer.ready
+    } catch (error) {
+      this.forgetFailedReopen(writer, error)
+      throw error
+    }
+    this.reopenPolicy.recordSuccess()
     return writer
+  }
+
+  /** A spawn or open failure must not wedge saving: go back to stopped so a later command retries. */
+  private forgetFailedReopen(writer: ProfileStateWriteWorkerClient, error: unknown): void {
+    if (this.writer === writer && this.reopenPolicy.recordFailure(error)) {
+      this.writer = null
+      void writer.abort().catch(() => {})
+    }
+  }
+
+  get writerIdleStopPending(): boolean {
+    return this.idleTimer !== undefined
   }
 
   private scheduleIdleStopAfterReady(): void {
@@ -290,19 +311,8 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
       })
   }
 
-  /** Writes just over the idle window apart churn the thread; one line per window keeps that visible in logs. */
-  private recordReopen(): void {
-    this.reopens += 1
-    const now = Date.now()
-    if (this.lastReopenLogMs !== undefined && now - this.lastReopenLogMs < REOPEN_LOG_INTERVAL_MS) {
-      return
-    }
-    this.lastReopenLogMs = now
-    console.info(`[persistence] Reopened the idle profile writer (${this.reopens} reopens so far)`)
-  }
-
   get writerReopenCount(): number {
-    return this.reopens
+    return this.reopenPolicy.count
   }
 
   private requireStoppedRevision(): number {
@@ -312,8 +322,6 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
     return this.stoppedRevision
   }
 }
-
-const REOPEN_LOG_INTERVAL_MS = 10 * 60_000
 
 function closedWriterError(): ProfileStateWriterError {
   return new ProfileStateWriterError(
