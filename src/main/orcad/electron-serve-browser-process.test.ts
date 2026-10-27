@@ -523,6 +523,10 @@ it('forwards tab commands through startup to the Electron sidecar', async () => 
 it.each([false, true])(
   'installs the actual provider with executor support=%s and forwards owner stamps unchanged',
   async (supported) => {
+    const commandHost = {
+      ...host,
+      getRuntimeBrowserPageRegistry: () => new RuntimeBrowserPageRegistry()
+    }
     browserSessionRegistry.configureForOrcaProfile({
       orcaProfileId: 'fixture',
       profileDirectory: harnessRoot
@@ -549,7 +553,7 @@ it.each([false, true])(
     await startup.ready
     try {
       expect(runtimeBrowserCommandsFactorySupportsGoogleCookieClear()).toBe(supported)
-      const commands = createRuntimeBrowserCommands(host)
+      const commands = createRuntimeBrowserCommands(commandHost)
       await commands.browserTabList({})
       expect(await commands.browserProfileList()).toEqual(list)
       expect(
@@ -581,7 +585,7 @@ it.each([false, true])(
     await restarted.ready
     try {
       expect(runtimeBrowserCommandsFactorySupportsGoogleCookieClear()).toBe(!supported)
-      await createRuntimeBrowserCommands(host).browserTabList({})
+      await createRuntimeBrowserCommands(commandHost).browserTabList({})
     } finally {
       await restarted.stop()
     }
