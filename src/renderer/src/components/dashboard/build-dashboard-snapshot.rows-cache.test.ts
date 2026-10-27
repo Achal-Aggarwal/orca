@@ -116,7 +116,8 @@ describe('buildDashboardSnapshot rows cache', () => {
         activeRepoId: 'r1',
         activeWorkspaceExecutionHostId: 'local',
         activeWorktreeId: 'w1',
-        projects: [],
+        endpointProjects: [],
+        endpointProjectHostSetups: [],
         agentStatusEpoch: 1,
         ptyProcessMetadataById: {}
       } satisfies Parameters<typeof dashboardSnapshotInputsChanged>[0]
