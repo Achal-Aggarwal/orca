@@ -48,8 +48,12 @@ export function reduceGenerationVerified(
   if (session.state.kind !== 'ready') {
     return step(session, {})
   }
+  if (session.retriedOnce) {
+    return step(session, { state: failedState(session, 'document-load-failed') })
+  }
+  // Spend the page-failure budget, not renderer loss's: a later background renderer kill must still remount silently.
   return intact
-    ? remountOnce(session, 'document-load-failed')
+    ? step(session, { retriedOnce: true }, [{ kind: 'remount' }])
     : refetchOnce(session, 'document-load-failed', refetch)
 }
 

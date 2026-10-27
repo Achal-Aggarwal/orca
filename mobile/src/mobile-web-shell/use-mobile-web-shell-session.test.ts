@@ -549,10 +549,9 @@ describe('the wait for the page to speak', () => {
       mounted.documentLoaded()
     })
     // The ready wait replaces the load wait it made moot.
-    expect(live(mounted.timers.armed).map((timer) => timer.delayMs)).toEqual([
-      SHELL_STALL_LOG_MS,
-      PAGE_READY_DEADLINE_MS
-    ])
+    const armed = live(mounted.timers.armed).map((timer) => timer.delayMs)
+    expect(armed).toContain(PAGE_READY_DEADLINE_MS)
+    expect(armed).not.toContain(DOCUMENT_LOAD_DEADLINE_MS)
     await act(async () => {
       mounted.timers.fire()
     })

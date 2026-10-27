@@ -11,15 +11,15 @@ import {
   run,
   started,
   BUNDLE_REFUSED,
+  DOCUMENT_FAILED,
+  FILES_DAMAGED,
+  FILES_INTACT,
   LINK_LOST,
   withoutRecord
 } from './mobile-web-shell-session-test-fixtures'
 import { shellPageFrame } from './shell-page-frame'
 
 const NO_BUNDLE_WALL = { kind: 'wall', verdict: { kind: 'blocked', reason: 'bundle-unavailable' } }
-const DOCUMENT_FAILED = { type: 'shell-failed', reason: 'document-load-failed' } as const
-const FILES_DAMAGED = { type: 'generation-verified', intact: false } as const
-const FILES_INTACT = { type: 'generation-verified', intact: true } as const
 
 describe('the gates decide whether a step is taken at all', () => {
   it('waits while a connection is still being made', () => {
@@ -334,41 +334,6 @@ describe('recovery follows the shell view contract', () => {
     expect(step.session.state).toEqual({ kind: 'checking' })
     expect(step.session.retriedOnce).toBe(true)
     expect(step.session.cached).toBeNull()
-  })
-
-  // A page render fault reached this path on every entry and cost a full download each time.
-  it('checks the files on disk before deciding how to recover a failed document', () => {
-    const ready = readySession()
-    const step = run(ready.session, DOCUMENT_FAILED)
-    expect(step.effects).toEqual([{ kind: 'verify-generation', buildId: MANIFEST.buildId }])
-    expect(step.session.state).toEqual(ready.session.state)
-    expect(step.session.flow).toBe(ready.session.flow + 1)
-  })
-
-  it('remounts intact files once, then fails, and never deletes them', () => {
-    const first = run(readySession().session, DOCUMENT_FAILED, FILES_INTACT)
-    expect(first.effects).toEqual([{ kind: 'remount' }])
-    const remounted = run(first.session, { type: 'remounted', sessionId: 'session-two' })
-    const second = run(remounted.session, DOCUMENT_FAILED, FILES_INTACT)
-    expect(second.effects).toEqual([])
-    expect(second.session.state).toEqual({
-      kind: 'failed',
-      reason: 'document-load-failed',
-      retriedOnce: false
-    })
-  })
-
-  it('deletes this host cache and runs once more when the files no longer match', () => {
-    const step = run(readySession().session, DOCUMENT_FAILED, FILES_DAMAGED)
-    expect(step.effects).toEqual([{ kind: 'delete-cache' }, { kind: 'open-cache' }])
-    expect(step.session.state).toEqual({ kind: 'checking' })
-    expect(step.session.retriedOnce).toBe(true)
-  })
-
-  it('drops a check result once the generation is off screen', () => {
-    const failed = run(readySession().session, DOCUMENT_FAILED)
-    const retried = run(failed.session, { type: 'retry-pressed' })
-    expect(run(retried.session, FILES_DAMAGED).effects).toEqual([])
   })
 
   it('takes a recovery through the gate rather than back to a manifest check', () => {

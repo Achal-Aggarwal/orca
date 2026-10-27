@@ -42,7 +42,7 @@ export type StagedGeneration = {
 export type GenerationStore = {
   readActiveGeneration(hostKey: string): Promise<ActiveGeneration | null>
   openReusableAssets(hostKey: string): Promise<MobileWebBundleReusableAssets>
-  // True only when buildId is the host's activation and every asset on disk has its manifest length.
+  // True only when buildId's tree holds its manifest and every asset at its manifest length; rejects when unreadable.
   verifyActiveGeneration(hostKey: string, buildId: string): Promise<boolean>
   stageGeneration(hostKey: string, result: MobileWebBundleFetchResult): Promise<StagedGeneration>
   commitGeneration(staged: StagedGeneration): Promise<ActiveGeneration>
@@ -248,15 +248,18 @@ export function createGenerationStore(options: {
     return reusableAssetsOf(fs, await readActive(hostKey))
   }
 
+  // Read the mounted build's own tree; read failures reject so transient I/O never reads as damage.
   async function verifyActive(hostKey: string, buildId: string): Promise<boolean> {
-    const active = await readActive(hostKey)
-    if (active?.buildId !== buildId) {
+    const directory = joinUri(generationsRoot(hostKey), buildId)
+    const text = await fs.readText(joinUri(directory, MANIFEST_FILE_NAME))
+    const manifest = text === null ? null : parseManifest(text)
+    if (manifest?.buildId !== buildId) {
       return false
     }
     // Lengths, not hashes: bytes were hash-verified before staging, and truncation is what interrupted writes leave.
-    const reusable = reusableAssetsOf(fs, active)
-    for (const asset of active.manifest.assets) {
-      if (!(await reusable.check(asset))) {
+    for (const asset of manifest.assets) {
+      const size = await fs.fileSize(joinUri(directory, requireStorablePath(asset.path)))
+      if (size !== asset.byteLength) {
         return false
       }
     }
