@@ -1,4 +1,5 @@
 import { spawnWorktreeTarget } from '../../../shared/worktree/host-qualified-identity'
+import type { SpawnRequestFacts } from '../../../shared/host-spawn-admission'
 import {
   createSpawnAdmissionState,
   DEFAULT_SPAWN_ADMISSION_LIMITS,
@@ -324,7 +325,7 @@ describe('opening a workspace-slept running agent on a host with no window', () 
             hasAgentSessionClaim: false,
             hasHistorySeed: false,
             deadlineAt: 1000
-          }
+          } satisfies SpawnRequestFacts
           const decision = decideSpawnAdmission({
             state,
             facts,

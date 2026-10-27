@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ipcRenderer } from 'electron'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
+import type { WorktreeApi } from '../../../../preload/api/worktree-api'
 
 const { handlers } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>()
@@ -23,9 +24,10 @@ it('validates the bundled bridge argument before the runtime receives any trigge
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: registration reads only runtime; this test invokes only resumeSleptPane.
   registerWorktreeSleepHandlers({ runtime: { resumeSleptPane } } as unknown as WorktreeIpcContext)
   const pane = { worktreeId: 'wt', tabId: 'tab', leafId: 'leaf' }
-  await expect(worktreesApi.resumeSleptPane(pane)).resolves.toBe(true)
+  const bridge: WorktreeApi = worktreesApi
+  await expect(bridge.resumeSleptPane(pane)).resolves.toBe(true)
   for (const automatic of [undefined, false, true]) {
-    await expect(worktreesApi.resumeSleptPane(pane, automatic)).resolves.toBe(true)
+    await expect(bridge.resumeSleptPane(pane, automatic)).resolves.toBe(true)
     expect(resumeSleptPane).toHaveBeenLastCalledWith(pane, automatic)
   }
   resumeSleptPane.mockClear()

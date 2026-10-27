@@ -248,6 +248,7 @@ describe('connectPanePty: a restore the host kept asleep', () => {
     mockStoreState.sleepingAgentSessionsByPaneKey[paneKey] = record
     mockStoreState.agentStatusByPaneKey = {}
     mockStoreState.tabsByWorktree['wt-1'] = [{ id: 'tab-1', ptyId: null }]
+    mockStoreState.terminalLayoutsByTabId ??= {}
     mockStoreState.terminalLayoutsByTabId['tab-1'] = {
       root: { type: 'leaf', leafId: pane.leafId },
       activeLeafId: pane.leafId,
@@ -416,7 +417,7 @@ describe('connectPanePty: a restore the host kept asleep', () => {
       }
       if (outcome === 'teardown-refused') {
         mockStoreState.deleteStateByWorktreeId = {
-          'wt-1': { isDeleting: true, error: null, canForceDelete: false, forceDeleteReason: null }
+          'wt-1': { isDeleting: true }
         }
       }
       if (outcome === 'superseded') {
