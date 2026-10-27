@@ -14,18 +14,18 @@ export type PromptProjection = {
   dependencies: Set<string>
 }
 
-export function canReusePromptProjection(
+export function reusePromptProjection(
   journal: Partial<Pick<AgentSessionJournal, 'readSince'>>,
   prior: PromptProjection | undefined,
   cursor: Pick<PromptProjection, 'epoch' | 'sequence'>,
   liveFence: number | null
-): prior is PromptProjection {
+): AgentJournalRenderItem[] | undefined {
   if (
     prior?.epoch === cursor.epoch &&
     prior.sequence === cursor.sequence &&
     prior.fence === liveFence
   ) {
-    return true
+    return prior.items
   }
   if (prior?.epoch === cursor.epoch && prior.fence === liveFence && journal.readSince) {
     const delta = journal.readSince(prior, 200)
@@ -48,8 +48,8 @@ export function canReusePromptProjection(
       )
     ) {
       prior.sequence = cursor.sequence
-      return true
+      return prior.items
     }
   }
-  return false
+  return undefined
 }

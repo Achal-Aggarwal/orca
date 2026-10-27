@@ -1,5 +1,5 @@
 import {
-  canReusePromptProjection,
+  reusePromptProjection,
   type PromptProjection
 } from './structured-agent-session-actionable-prompts'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -232,8 +232,9 @@ export class StructuredAgentSessionCurrentWork {
   actionablePrompts(): AgentJournalRenderItem[] {
     const cursor = this.journal.cursor()
     const prior = promptProjections.get(this.journal)
-    if (canReusePromptProjection(this.journal, prior, cursor, this.liveFence)) {
-      return prior.items
+    const reusable = reusePromptProjection(this.journal, prior, cursor, this.liveFence)
+    if (reusable) {
+      return reusable
     }
     const dependencies = new Set<string>()
     const items: AgentJournalRenderItem[] = []
