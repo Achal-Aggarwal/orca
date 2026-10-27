@@ -15,7 +15,9 @@ function createRepoSshGateSelector(repo: Pick<Repo, 'connectionId' | 'executionH
   let hydrated: boolean | undefined
   let result = NO_GATE
   return (state: AppState): Gate => {
-    if (!connection) return NO_GATE
+    if (!connection) {
+      return NO_GATE
+    }
     const nextOwner =
       connection.environmentId === null
         ? undefined
@@ -37,7 +39,9 @@ function createRepoSshGateSelector(repo: Pick<Repo, 'connectionId' | 'executionH
     hydrated = nextHydrated
     entry = nextEntry
     const next = selectRepoSshGateInput(state, repo)
-    if (result.connectionId !== next.connectionId || result.status !== next.status) result = next
+    if (result.connectionId !== next.connectionId || result.status !== next.status) {
+      result = next
+    }
     return result
   }
 }

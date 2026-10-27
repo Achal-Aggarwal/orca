@@ -34,8 +34,9 @@ function createFolderPathStatusDependenciesSelector(requests: ReadonlyMap<string
       groups === state.projectGroups &&
       folders === state.folderWorkspaces &&
       ssh === state.sshConnectionStates
-    )
+    ) {
       return result
+    }
     if (
       repos !== state.repos ||
       groups !== state.projectGroups ||
@@ -66,7 +67,9 @@ function createFolderPathStatusDependenciesSelector(requests: ReadonlyMap<string
         next[index + 1] = status
       }
     }
-    if (next) result = next
+    if (next) {
+      result = next
+    }
     return result
   }
 }

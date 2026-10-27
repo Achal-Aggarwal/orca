@@ -62,11 +62,15 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
   let observing = false
   const wrapped = new WeakSet<object>()
   function instrument<K, V>(map: Map<K, V>) {
-    if (wrapped.has(map)) return
+    if (wrapped.has(map)) {
+      return
+    }
     wrapped.add(map)
     const get = map.get.bind(map)
     map.get = (key) => {
-      if (observing) reads++
+      if (observing) {
+        reads++
+      }
       return get(key)
     }
   }
@@ -74,7 +78,9 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
     instrument(state.runtimeStatusByEnvironmentId)
     instrument(state.sshStateByEnvironment)
     instrument(state.sshConnectionStates)
-    for (const bucket of state.sshStateByEnvironment.values()) instrument(bucket.connectionStates)
+    for (const bucket of state.sshStateByEnvironment.values()) {
+      instrument(bucket.connectionStates)
+    }
     observing = true
   })
   function publication(write: () => void) {
@@ -145,12 +151,10 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
   expect(commits).toHaveBeenCalledTimes(settled.commits)
   const equalOwner = work.authorities
   publication(() =>
-    useAppStore
-      .getState()
-      .setEnvironmentSshConnectionState('A', 'target-0', {
-        ...ssh('connected', 'target-0'),
-        error: 'diagnostic'
-      })
+    useAppStore.getState().setEnvironmentSshConnectionState('A', 'target-0', {
+      ...ssh('connected', 'target-0'),
+      error: 'diagnostic'
+    })
   )
   expect(work.authorities - equalOwner).toBe(1)
   expect(commits).toHaveBeenCalledTimes(settled.commits)
@@ -223,7 +227,9 @@ it('preserves owner, hydration, transport, refusal, removal and local-missing au
   )
   expect(disabled()).toBe(true)
   const ownerStatus = useAppStore.getState().runtimeStatusByEnvironmentId.get('A')?.status
-  if (!ownerStatus) throw new Error('Expected owner status')
+  if (!ownerStatus) {
+    throw new Error('Expected owner status')
+  }
   act(() =>
     publish('A', 2, {
       status: ownerStatus,

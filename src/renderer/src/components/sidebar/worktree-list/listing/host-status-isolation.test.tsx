@@ -21,6 +21,7 @@ import { useSidebarSectionRows } from './use-section-rows'
 import { useFolderWorkspacePathStatusRows } from './use-folder-path-statuses'
 import { createProjectGroup } from '../../../../../../shared/project-groups'
 import type * as FolderStatus from '@/store/folder-workspaces/folder-path-status'
+import type * as RuntimeRpcClient from '@/runtime/runtime-rpc-client'
 import { useSidebarHostVisibleScope } from './use-host-visible-scope'
 import { makeFolderWorkspace } from '../../../worktree-jump-palette-test-fixtures'
 import type { ProjectGroup } from '../../../../../../shared/project-group-types'
@@ -34,7 +35,7 @@ import { collapsedSameNameProjectHeaders } from '../../worktree-list-groups-test
 
 const runtimeRpc = vi.hoisted(() => ({ callRuntimeRpc: vi.fn() }))
 vi.mock('@/runtime/runtime-rpc-client', async (original) => ({
-  ...(await original<typeof import('@/runtime/runtime-rpc-client')>()),
+  ...(await original<typeof RuntimeRpcClient>()),
   callRuntimeRpc: runtimeRpc.callRuntimeRpc
 }))
 const counts = vi.hoisted(() => ({
@@ -520,7 +521,9 @@ it.each([
       const map = new Map([['outside', ssh(value, 'outside')]])
       const get = map.get.bind(map)
       map.get = (key) => {
-        if (key.startsWith('target-')) counts.statusReads++
+        if (key.startsWith('target-')) {
+          counts.statusReads++
+        }
         return get(key)
       }
       return map

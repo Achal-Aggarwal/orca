@@ -24,8 +24,11 @@ const originalApi = Object.getOwnPropertyDescriptor(window, 'api')
 afterEach(() => {
   cleanup()
   useAppStore.setState(initial, true)
-  if (originalApi) Object.defineProperty(window, 'api', originalApi)
-  else Reflect.deleteProperty(window, 'api')
+  if (originalApi) {
+    Object.defineProperty(window, 'api', originalApi)
+  } else {
+    Reflect.deleteProperty(window, 'api')
+  }
 })
 
 it('composes real dispatched headers, current repo gates and folder cache refresh without unrelated viewport work', async () => {
@@ -292,12 +295,13 @@ it('keeps empty requests inert, deduplicates owner routes and still fetches null
   )
   const first = result.current
   const settled = renders
-  for (let index = 0; index < 10; index++)
+  for (let index = 0; index < 10; index++) {
     act(() =>
       useAppStore.setState({
         sshConnectionStates: new Map([[`outside-${index}`, ssh('connected')]])
       })
     )
+  }
   expect(fetch).not.toHaveBeenCalled()
   expect(result.current).toBe(first)
   expect(renders).toBe(settled)
