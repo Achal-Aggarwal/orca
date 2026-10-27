@@ -19,6 +19,17 @@ import {
   ensureUnsupportedTerminalPromptReceipt,
   observeReplayedTerminalPrompt
 } from './terminal-prompt-receipt'
+import { observeQuestionAnswerSend } from './terminal-send-question-answered'
+
+// Every refused send reports the same zero-byte result, with the guard's reason when it has one.
+function refusedSend(
+  handle: string,
+  refusedReason?: NonNullable<ReturnType<typeof getTerminalSendGuardRefusedReason>>
+) {
+  return {
+    send: { handle, accepted: false, bytesWritten: 0, ...(refusedReason ? { refusedReason } : {}) }
+  }
+}
 
 export const TERMINAL_SEND_METHODS = [
   defineMethod({
@@ -77,24 +88,13 @@ export const TERMINAL_SEND_METHODS = [
       if (
         params.inputKind === 'query-reply' &&
         leaf?.ptyId &&
-        !runtime.isMobileTerminalQueryReplyAuthority(leaf.ptyId, queryReplyClientId!)
+        (!runtime.isMobileTerminalQueryReplyAuthority(leaf.ptyId, queryReplyClientId!) ||
+          !runtime.shouldForwardTerminalQueryReply(leaf.ptyId, params.text!))
       ) {
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return refusedSend(params.terminal)
       }
       if (leaf?.ptyId && isTerminalInputLockedForClient(runtime, leaf.ptyId, params.client)) {
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return refusedSend(params.terminal)
       }
       if (
         leaf?.ptyId &&
@@ -121,26 +121,14 @@ export const TERMINAL_SEND_METHODS = [
         )
         // Without a stream, sends cannot safely claim ownership; refuse stale geometry.
         if (!claim.updated || isTerminalInputLockedForClient(runtime, leaf.ptyId, params.client)) {
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0
-            }
-          }
+          return refusedSend(params.terminal)
         }
       }
       const hasText = typeof params.text === 'string' && params.text.length > 0
       const hasSuffix = params.enter === true || params.interrupt === true
       if (params.requireAgentStatus === 'sendable' && hasText && hasSuffix) {
         // Guarded sends are two-phase; combined payload/submit could partially deliver across a guard flip.
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return refusedSend(params.terminal)
       }
       // Recheck permission and agent presence immediately before PTY acceptance.
       const assertSendPreconditions =
@@ -163,26 +151,13 @@ export const TERMINAL_SEND_METHODS = [
           await assertSendPreconditions?.(leaf?.ptyId ?? undefined)
         } catch (error) {
           if (isTerminalSendGuardNotWritable(error)) {
-            return {
-              send: {
-                handle: params.terminal,
-                accepted: false,
-                bytesWritten: 0
-              }
-            }
+            return refusedSend(params.terminal)
           }
           const refusedReason = getTerminalSendGuardRefusedReason(error)
           if (!refusedReason) {
             throw error
           }
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0,
-              refusedReason
-            }
-          }
+          return refusedSend(params.terminal, refusedReason)
         }
       }
       const mobileFloorClientId = resolveMobileFloorClientId(driver, params.client)
@@ -211,6 +186,7 @@ export const TERMINAL_SEND_METHODS = [
               mobileFloorClaim.current = claim
             }
           : undefined
+      const answered = observeQuestionAnswerSend(params, runtime)
       let result
       let acceptedPromptCheckpoint: unknown
       try {
@@ -257,23 +233,10 @@ export const TERMINAL_SEND_METHODS = [
         }
         const refusedReason = getTerminalSendGuardRefusedReason(error)
         if (refusedReason) {
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0,
-              refusedReason
-            }
-          }
+          return refusedSend(params.terminal, refusedReason)
         }
         if (isTerminalSendGuardNotWritable(error)) {
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0
-            }
-          }
+          return refusedSend(params.terminal)
         }
         throw error
       }
@@ -297,7 +260,7 @@ export const TERMINAL_SEND_METHODS = [
         )
       }
       // Deliberate mobile input claims its driver floor; clientless sends use the current mobile driver.
-      return { send: result }
+      return { send: answered(result) }
     }
   })
 ]

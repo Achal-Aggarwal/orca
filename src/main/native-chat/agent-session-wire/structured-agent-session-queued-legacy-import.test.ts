@@ -7,67 +7,32 @@ import { readCodexHistoryJournalView } from '../../codex/codex-history-journal-v
 import { catchUpCodexThread } from '../../codex/codex-structured-thread-catch-up'
 import { createDeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { testEventSinkLogging } from './structured-agent-session-logger-test-support'
-import { readAgentSessionHistory } from './agent-session-history-page'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import { activeProviderContext } from '../../../shared/agent-session-provider-context'
 import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import { structuredAgentSessionCommandTurnIdentity } from '../../../shared/structured-agent-session-command-turn-identity'
-import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
-import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { readAgentSessionHistory } from './agent-session-history-page'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
-  HOST_TEST_SESSION as SESSION,
-  hostTestOperationId
-} from './structured-agent-session-host-test-data'
-import {
-  createQueuedMessageTestRig,
   eventually,
-  QUEUED_RIG_CALLER as CALLER,
-  type QueuedMessageTestRig
+  QUEUED_RIG_CALLER as CALLER
 } from './structured-agent-session-queued-message-rig.test-fixture'
-
-let rig: QueuedMessageTestRig
-
-beforeEach(async () => {
-  rig = await createQueuedMessageTestRig({ restartable: true, rewind: async () => ({ ok: true }) })
-})
-
-afterEach(() => rig.dispose())
-
-const db = () => openTestJournalHostDatabase(rig.root).db
-const message = (text: string): AgentJournalMessageItem => ({
-  kind: 'message',
-  role: 'user',
-  blocks: [{ type: 'text', text }],
-  ...(text === '/compact' ? { command: { name: 'compact' } } : {})
-})
-const words = (fact: 'providerRejected' | 'cancelled') =>
-  agentSessionFailureWords(
-    fact === 'providerRejected'
-      ? agentSessionFailureFact(fact, { detail: { text: 'refused', audience: 'person' } })
-      : agentSessionFailureFact(fact),
-    { surface: 'rejection' }
-  )
-
-function journalFor(sessionId: string): AgentSessionJournal {
-  return new AgentSessionJournal({
-    database: openTestJournalHostDatabase(rig.root),
-    identity: {
-      sessionId,
-      workspaceId: 'workspace-1',
-      hostId: 'local',
-      agent: 'codex',
-      providerHandle: activeProviderContext(rig.store.getRecord(SESSION)!).head!.handle
-    }
-  })
-}
+import {
+  SESSION,
+  rig,
+  db,
+  message,
+  words,
+  journalFor,
+  seedLegacy,
+  legacyIds
+} from './structured-agent-session-queued-legacy-import.test-fixture'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 
 /** An earlier build's hand-off of `card`, answered `as`. */
 async function handOff(
@@ -122,38 +87,6 @@ async function handOff(
         }
   )
 }
-
-type Legacy = [id: string, state: string, text: string | null, consumedAs?: string, hold?: string]
-
-function seedLegacy(sessionId: string, rows: readonly Legacy[]): void {
-  const insert = db().prepare(
-    `INSERT INTO queued_messages (session_id, message_id, position, body_json, fingerprint,
-       created_at, host_instance, state, hold_reason, returned_reason, consumed_as)
-     VALUES (?, ?, ?, ?, ?, 0, 'earlier', ?, ?, ?, ?)`
-  )
-  rows.forEach(([id, state, text, consumedAs, hold], index) => {
-    const body = text === null ? '{' : JSON.stringify(message(text))
-    const print = text === null ? '' : agentSessionSendBodyFingerprint(sessionId, message(text))
-    const reason = state === 'returned' ? 'refused before' : null
-    insert.run(
-      sessionId,
-      id,
-      index + 1,
-      body,
-      print,
-      state,
-      hold ?? null,
-      reason,
-      consumedAs ?? null
-    )
-  })
-}
-
-const legacyIds = (sessionId = SESSION) =>
-  db()
-    .prepare('SELECT message_id AS id FROM queued_messages WHERE session_id = ? ORDER BY position')
-    .all(sessionId)
-    .map((row) => (typeof row === 'object' && row !== null && 'id' in row ? row.id : null))
 
 /** Each queue row on disk: its card, op and whether it saved a refusal. */
 function queueRows(sessionId = SESSION): string[] {
