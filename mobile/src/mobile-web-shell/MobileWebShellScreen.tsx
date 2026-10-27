@@ -254,11 +254,7 @@ export function MobileWebShellScreen({
         router.dismissTo(href)
         return
       }
-      if (replace) {
-        router.replace(href)
-        return
-      }
-      router.push(href)
+      return void (replace ? router.replace(href) : router.push(href))
     },
     serveNativeVerb,
     onExternalLink: openUrlForPage,
