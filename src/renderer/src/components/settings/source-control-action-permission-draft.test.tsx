@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
+import { getDefaultSettings } from '../../../../shared/constants'
+import { resolveSourceControlActionRecipe } from '../../../../shared/source-control-ai-operation-policy'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as lifts from '../../../../shared/source-control-action-permission-lift'
@@ -31,13 +33,19 @@ const initial = normalizeSourceControlAiSettings({
 const write = vi.fn()
 const edit = vi.fn()
 
-function RepoHarness({ saved }: { saved: { value: RepoSourceControlAiOverrides } }) {
+function RepoHarness({
+  saved,
+  source = initial
+}: {
+  saved: { value: RepoSourceControlAiOverrides }
+  source?: SourceControlAiSettings
+}) {
   const [persisted, setPersisted] = useState(saved.value)
   const draft = useRepositorySourceControlAiGlobalUx({
     repoId: 'repo',
     persistedRepoAi: persisted,
-    settings: null,
-    source: initial,
+    settings: { ...getDefaultSettings('/tmp'), sourceControlAi: source },
+    source,
     updateRepo: async (_id, update) => {
       saved.value = update.sourceControlAi ?? {}
       write(update)
@@ -50,8 +58,15 @@ function RepoHarness({ saved }: { saved: { value: RepoSourceControlAiOverrides }
     <TooltipProvider>
       <SourceControlActionArguments
         agent="claude"
-        value={value?.agentArgs ?? ''}
-        preferences={value?.launchPreferences}
+        value={value?.agentArgs}
+        preferences={
+          resolveSourceControlActionRecipe({
+            settings: { sourceControlAi: source },
+            repo: { sourceControlAi: draft.displayRepoAi },
+            actionId: 'fixChecks'
+          }).launchPreferences
+        }
+        authoredPreferences={value?.launchPreferences ?? null}
         onArgsChange={(text, commit) => draft.updateActionAgentArgs('fixChecks', text, commit)}
         onPreferencesChange={(preferences, userArgs) => {
           edit(preferences, userArgs)
@@ -335,4 +350,40 @@ it('keeps the old Codex workspace-write Ask literal and explains that terminal t
       'These arguments may control Codex’s terminal permissions, so Orca adds no flag. Chats use the Permissions choice above.'
     )
   ).toBeDefined()
+})
+
+it('edits and saves a sparse repository model without authoring the inherited permission', async () => {
+  write.mockClear()
+  const source = {
+    ...initial,
+    actions: {
+      fixChecks: {
+        agentId: 'claude' as const,
+        launchPreferences: { ...model, permissionMode: 'ask' as const }
+      }
+    }
+  }
+  const saved = { value: { actionOverrides: { fixChecks: { agentArgs: '--verbose' } } } }
+  const view = () => <RepoHarness saved={saved} source={source} />
+  const rendered = render(view())
+  expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+  expect(screen.getByRole('combobox', { name: 'Default' })).toBeDefined()
+  await userEvent.click(screen.getByRole('combobox', { name: 'Agent default' }))
+  await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+  fireEvent.click(screen.getByText('Discard'))
+  expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+  await userEvent.click(screen.getByRole('combobox', { name: 'Agent default' }))
+  await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+  expect(saved.value.actionOverrides.fixChecks).toEqual({
+    agentId: 'claude',
+    agentArgs: '--verbose',
+    commandInputTemplate: '{basePrompt}',
+    launchPreferences: { agentId: 'claude', model: 'haiku' }
+  })
+  rendered.unmount()
+  render(view())
+  expect(screen.getByRole('combobox', { name: 'Haiku' })).toBeDefined()
+  expect(screen.queryByRole('button', { name: /Remove --permission-mode/ })).toBeNull()
 })

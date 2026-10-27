@@ -164,11 +164,15 @@ export function withRepoAiActionRecipeText(
   actionId: SourceControlActionId,
   text: ActionRecipeTextDraft
 ): RepoSourceControlAiOverrides {
-  const currentRecipe = readCompleteRecipeForDraft(base, settings, actionId)
   const preferencesEdited = !sameDraftLaunchPreferences(
     text,
     readActionRecipeTextDraft(base, actionId)
   )
+  const own = base.actionOverrides?.[actionId]
+  const currentRecipe =
+    !preferencesEdited && own?.agentArgs !== undefined
+      ? own
+      : readCompleteRecipeForDraft(base, settings, actionId)
   return normalizeRepoAiDraft(
     setActionOverride(base, actionId, {
       ...currentRecipe,

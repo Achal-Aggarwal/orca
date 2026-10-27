@@ -22,6 +22,7 @@ export function SourceControlActionArguments({
   agent,
   value,
   preferences,
+  authoredPreferences,
   disabled,
   showArguments = true,
   onArgsChange,
@@ -30,6 +31,7 @@ export function SourceControlActionArguments({
   agent: TuiAgent | null | undefined
   value: string | null | undefined
   preferences?: SourceControlActionLaunchPreferences
+  authoredPreferences?: SourceControlActionLaunchPreferences | null
   disabled?: boolean
   showArguments?: boolean
   onArgsChange: (value: string, commit?: boolean) => void
@@ -52,7 +54,17 @@ export function SourceControlActionArguments({
     const result = reconcileAgentChoiceArgs({
       agent,
       userArgs: text,
-      choices: selected ?? {},
+      choices: {
+        ...selected,
+        ...(authoredPreferences !== undefined
+          ? {
+              permissionMode:
+                authoredPreferences?.agentId === agent
+                  ? authoredPreferences.permissionMode
+                  : undefined
+            }
+          : {})
+      },
       mode: 'choice-edit',
       keys: new Set(['model', 'effort', 'permissionMode']),
       patch

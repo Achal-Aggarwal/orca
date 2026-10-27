@@ -414,7 +414,7 @@ describe('editing one repository action', () => {
     rerender({ ...legacy, enabled: true })
     expect(result.current.actionDirtyById.fixCommitFailure).toBe(true)
     act(() => result.current.discardActionRecipeText('fixCommitFailure'))
-    expect(effective().launchPreferences).toEqual(inherited)
+    expect(effective().launchPreferences).toEqual({ agentId: 'codex', permissionMode: 'ask' })
     act(() => result.current.updateActionLaunchPreferences('fixCommitFailure', undefined))
     await act(async () => result.current.saveActionRecipeText('fixCommitFailure'))
     const saved = updateRepo.mock.lastCall?.[1].sourceControlAi
@@ -445,17 +445,44 @@ describe('editing one repository action', () => {
     expect(set().launchPreferences).toBeUndefined()
   })
 
-  it('makes the copied model owned by the action, so it outranks the raw model it yielded to', () => {
+  it('keeps a prompt-only edit in the repository Args group without copying a global model', () => {
     const legacy = { actionOverrides: { fixCommitFailure: { agentArgs: '--model gpt-5.6-sol' } } }
     const stored = {
       settings,
       repo: { sourceControlAi: legacy },
       actionId: 'fixCommitFailure'
     } as const
-    expect(resolveSourceControlActionRecipe(stored).launchPreferencesYieldToAgentArgs).toBe(true)
+    expect(resolveSourceControlActionRecipe(stored).launchPreferences).toBeUndefined()
     const edited = reload(editPrompt(legacy, 'fixCommitFailure'), 'fixCommitFailure')
-    expect(edited).toMatchObject({ commandInputTemplate: 'mine', launchPreferences: terra })
+    expect(edited).toMatchObject({ commandInputTemplate: 'mine', agentArgs: '--model gpt-5.6-sol' })
+    expect(edited.launchPreferences).toBeUndefined()
     expect(edited.launchPreferencesYieldToAgentArgs).toBeUndefined()
+    const permissionSettings = {
+      ...settings,
+      sourceControlAi: {
+        ...settings.sourceControlAi,
+        actions: {
+          ...actions,
+          fixCommitFailure: {
+            ...global,
+            launchPreferences: { ...terra, permissionMode: 'ask' as const }
+          }
+        }
+      }
+    }
+    const promptOnly = withRepoAiActionRecipeText(legacy, permissionSettings, 'fixCommitFailure', {
+      ...readActionRecipeTextDraft(legacy, 'fixCommitFailure'),
+      commandInputTemplate: 'mine'
+    })
+    expect(promptOnly.actionOverrides?.fixCommitFailure?.launchPreferences).toBeUndefined()
+    expect(promptOnly.actionOverrides?.fixCommitFailure?.agentId).toBeUndefined()
+    expect(
+      resolveSourceControlActionRecipe({
+        settings: permissionSettings,
+        repo: { sourceControlAi: promptOnly },
+        actionId: 'fixCommitFailure'
+      }).launchPreferences
+    ).toEqual({ agentId: 'codex', permissionMode: 'ask' })
   })
 
   it('saves a prompt edit without authoring args the user never typed or touching a sibling', async () => {

@@ -74,8 +74,7 @@ export function sourceControlActionOptions(
   })
 }
 
-/** The action's choice as launch inputs, with whether this repository's own CLI arguments outrank
- *  an inherited choice on terminals. */
+/** The selected action group's typed inputs; the host composes them with actual raw Args. */
 export function sourceControlActionLaunchOptions(
   recipe: Pick<
     SourceControlActionRecipe,
@@ -87,14 +86,7 @@ export function sourceControlActionLaunchOptions(
   sessionOptionsYieldToAgentArgs?: true
 } {
   const sessionOptions = resolveSourceControlActionSessionOptions(recipe, agent)
-  return sessionOptions
-    ? {
-        sessionOptions,
-        ...(recipe.launchPreferencesYieldToAgentArgs
-          ? { sessionOptionsYieldToAgentArgs: true as const }
-          : {})
-      }
-    : {}
+  return sessionOptions ? { sessionOptions } : {}
 }
 
 /** The resolved agent alone can receive its bound action choice. */

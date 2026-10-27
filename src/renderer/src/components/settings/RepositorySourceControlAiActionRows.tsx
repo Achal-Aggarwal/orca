@@ -195,13 +195,7 @@ export function RepositorySourceControlAiActionRows({
                   <span>
                     {commandTemplateStateLabel({ hasOverride, inheritedTemplate, actionId })}
                   </span>
-                  <span>
-                    {agentArgsStateLabel({
-                      hasOverride: override?.agentArgs !== undefined,
-                      inheritedAgentArgs,
-                      repoAgentArgs: agentArgsValue
-                    })}
-                  </span>
+                  <span>{agentArgsStateLabel({ recipe, agent: pickerAgent, override })}</span>
                 </div>
               </div>
               <Select
@@ -227,7 +221,7 @@ export function RepositorySourceControlAiActionRows({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid items-start gap-3 sm:grid-cols-[180px_1fr]">
+            <div className="grid min-w-0 grid-cols-1 items-start gap-3">
               <div className="space-y-2">
                 <Label className="text-[11px] text-muted-foreground">
                   {translate(
@@ -290,6 +284,8 @@ export function RepositorySourceControlAiActionRows({
                 ) : agentSupportText ? (
                   <p className="text-[11px] text-muted-foreground">{agentSupportText}</p>
                 ) : null}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-start gap-3">
                 {isLaunchAction ? (
                   <SourceControlActionArguments
                     showArguments={shouldShowSourceControlActionArguments({
@@ -301,6 +297,7 @@ export function RepositorySourceControlAiActionRows({
                     agent={pickerAgent}
                     value={override?.agentArgs}
                     preferences={recipe.launchPreferences}
+                    authoredPreferences={override?.launchPreferences ?? null}
                     disabled={!hasOverride || actual.status === 'pending' || isSavingAction}
                     onArgsChange={(value, commit) =>
                       onActionAgentArgsChange(actionId, value, commit)

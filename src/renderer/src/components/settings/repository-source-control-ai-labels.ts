@@ -88,12 +88,22 @@ export function commandTemplateStateLabel(args: {
 }
 
 export function agentArgsStateLabel(args: {
-  hasOverride: boolean
-  inheritedAgentArgs: string
-  repoAgentArgs: string
+  recipe: SourceControlActionRecipe
+  agent: TuiAgent | null
+  override: SourceControlActionRecipe | undefined
 }): string {
-  if (args.hasOverride) {
-    return args.repoAgentArgs.trim() ? 'Repository custom args' : 'No args'
+  const choices = args.recipe.launchPreferences
+  const hasChoices =
+    choices?.agentId === args.agent &&
+    Boolean(choices?.model || Object.keys(choices?.options ?? {}).length)
+  if (!args.recipe.agentArgs?.trim() && !hasChoices) {
+    return 'No args'
   }
-  return args.inheritedAgentArgs.trim() ? 'Global custom args' : 'No args'
+  const ownChoices = args.override?.launchPreferences
+  const ownsChoices =
+    ownChoices?.agentId === args.agent &&
+    Boolean(ownChoices?.model || Object.keys(ownChoices?.options ?? {}).length)
+  return args.override?.agentArgs !== undefined || ownsChoices
+    ? 'Repository custom args'
+    : 'Global custom args'
 }

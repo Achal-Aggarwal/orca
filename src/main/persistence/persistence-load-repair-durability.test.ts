@@ -1,3 +1,8 @@
+import { projectSourceControlActionLaunch } from '../../shared/source-control-action-launch-preferences'
+import { resolveSourceControlActionRecipe } from '../../shared/source-control-ai-operation-policy'
+import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
+import { resolveAgentLaunchCommand } from '../../shared/tui-agent-launch-command'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import * as reconciliation from '../../shared/agent-choice-reconciliation'
 import * as terminalPreparation from './loading-store/prepare-loaded-terminal-settings'
 import * as domainWrites from './profile-state/profile-state-domain-writes'
@@ -269,6 +274,44 @@ describe('load-time normalization durability', () => {
             permissionMode: 'full-access'
           }
         })
+      }
+      for (const row of reopened.getRepos().slice(0, 2)) {
+        const recipe = resolveSourceControlActionRecipe({
+          settings: reopened.getSettings(),
+          repo: row,
+          actionId: 'fixChecks'
+        })
+        if (!isTuiAgent(recipe.agentId)) {
+          throw new Error('Missing concrete migrated agent')
+        }
+        const projection = projectSourceControlActionLaunch(recipe, recipe.agentId, {
+          basePrompt: 'Fix checks'
+        })
+        const launch = resolveAgentLaunchCommand(
+          resolveAgentStartupPlanInputs({
+            agent: recipe.agentId,
+            settings: reopened.getSettings(),
+            platform: 'linux',
+            isRemote: false,
+            shell: 'posix',
+            agentArgs: projection.agentArgs,
+            sessionOptions: projection.sessionOptions
+          })
+        )
+        expect(launch.ok).toBe(true)
+        if (!launch.ok) {
+          throw new Error(launch.error)
+        }
+        expect(launch.appliedSessionOptions).toEqual({
+          model: 'retired-unlisted-id',
+          effort: 'high',
+          permissionMode: 'full-access'
+        })
+        expect(launch.command).toBe(
+          recipe.agentId === 'claude'
+            ? "claude '--model' 'retired-unlisted-id' '--effort' 'high' '--dangerously-skip-permissions'"
+            : "codex '-m' 'retired-unlisted-id' '-c' 'model_reasoning_effort=high' '--dangerously-bypass-approvals-and-sandbox'"
+        )
       }
       const write = vi.spyOn(domainWrites, 'writeProfileStateDomains')
       const actions = reopened.getSettings().sourceControlAi?.actions

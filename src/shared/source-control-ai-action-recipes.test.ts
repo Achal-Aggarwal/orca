@@ -73,7 +73,7 @@ describe('source-control AI action recipes', () => {
     }
   )
 
-  it('yields an inherited action model and its effort to repository Arguments, while an owned choice replaces them', () => {
+  it('selects the whole repository Args group while preserving its own typed choices', () => {
     const base = settings()
     base.sourceControlAi!.actions = {
       fixChecks: {
@@ -127,6 +127,65 @@ describe('source-control AI action recipes', () => {
           : "claude '--model' 'retired-unlisted-id' '--effort' 'low'"
       )
       expect(launch.appliedSessionOptions).toEqual(owned ? { model: 'opus', effort: 'high' } : {})
+    }
+  })
+  it('owns empty, null and unrelated Args without inheriting model or effort, but keeps permission binding', () => {
+    const base = settings()
+    base.agentPermissionDefault = 'own'
+    base.sourceControlAi!.actions = {
+      fixChecks: {
+        agentId: 'claude',
+        surface: 'terminal',
+        launchPreferences: {
+          agentId: 'claude',
+          model: 'opus',
+          options: { effort: 'high' },
+          permissionMode: 'ask'
+        }
+      }
+    }
+    for (const agentArgs of ['', null, '--verbose', '--dangerously-skip-permissions']) {
+      const recipe = resolveSourceControlActionRecipe({
+        settings: base,
+        actionId: 'fixChecks',
+        repo: { sourceControlAi: { actionOverrides: { fixChecks: { agentArgs } } } }
+      })
+      expect(recipe.launchPreferences).toEqual({ agentId: 'claude', permissionMode: 'ask' })
+      expect(recipe).not.toHaveProperty('launchPreferencesYieldToAgentArgs')
+      const options = sourceControlActionLaunchOptions(recipe, 'claude')
+      const launch = resolveAgentLaunchCommand({
+        agent: 'claude',
+        platform: 'linux',
+        shell: 'posix',
+        cmdOverrides: {},
+        agentArgs: recipe.agentArgs,
+        ...terminalSessionOptionInputs({
+          agent: 'claude',
+          shell: 'posix',
+          agentArgs: recipe.agentArgs,
+          sessionOptions: options.sessionOptions
+        })
+      })
+      expect(launch.ok).toBe(true)
+      if (!launch.ok) {
+        throw new Error(launch.error)
+      }
+      expect(launch.command).toBe(
+        agentArgs === '--dangerously-skip-permissions'
+          ? "claude '--dangerously-skip-permissions'"
+          : `claude${agentArgs ? " '--verbose'" : ''} '--permission-mode' 'default'`
+      )
+      expect(launch.appliedSessionOptions).not.toHaveProperty('model')
+      const own = { agentId: 'codex', model: 'gpt-5.5' } as const
+      const bound = resolveSourceControlActionRecipe({
+        settings: base,
+        actionId: 'fixChecks',
+        repo: {
+          sourceControlAi: { actionOverrides: { fixChecks: { agentArgs, launchPreferences: own } } }
+        }
+      })
+      expect(bound.launchPreferences).toEqual(own)
+      expect(sourceControlActionLaunchOptions(bound, 'claude').sessionOptions).toBeUndefined()
     }
   })
   it('resolves text action CLI args into generation params', () => {
@@ -267,10 +326,7 @@ describe('source-control AI action recipes', () => {
 
     expect(resolve({ agentId: 'codex', agentArgs: '--search' }).launchPreferences).toBeUndefined()
     expect(resolve({ agentId: null }).launchPreferences).toBeUndefined()
-    expect(resolve({ agentArgs: '--search' }).launchPreferences).toEqual({
-      agentId: 'codex',
-      model: 'gpt-5.6-terra'
-    })
+    expect(resolve({ agentArgs: '--search' }).launchPreferences).toBeUndefined()
     expect(resolve({ agentId: 'claude' })).not.toHaveProperty('launchPreferences')
     expect(
       resolve({

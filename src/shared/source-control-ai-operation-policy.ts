@@ -212,19 +212,23 @@ export function resolveSourceControlActionRecipe(input: {
     ...globalWithoutModel
   } = globalRecipe
   const repoKeepsGlobalAgent = repoRecipe.agentId === undefined
+  const inheritedPreferences = repoKeepsGlobalAgent ? globalLaunchPreferences : undefined
   const launchPreferences =
-    repoRecipe.launchPreferences ?? (repoKeepsGlobalAgent ? globalLaunchPreferences : undefined)
+    repoRecipe.launchPreferences ??
+    (repoRecipe.agentArgs === undefined
+      ? inheritedPreferences
+      : inheritedPreferences?.permissionMode
+        ? {
+            agentId: inheritedPreferences.agentId,
+            permissionMode: inheritedPreferences.permissionMode
+          }
+        : undefined)
   const surface = repoRecipe.surface ?? (repoKeepsGlobalAgent ? globalSurface : undefined)
-  const inheritsChoiceUnderOwnArgs =
-    launchPreferences !== undefined &&
-    repoRecipe.launchPreferences === undefined &&
-    repoRecipe.agentArgs !== undefined
   return {
     ...globalWithoutModel,
     commandInputTemplate,
     ...(launchPreferences ? { launchPreferences } : {}),
     ...(surface ? { surface } : {}),
-    ...(inheritsChoiceUnderOwnArgs ? { launchPreferencesYieldToAgentArgs: true as const } : {}),
     ...(repoRecipe.agentId !== undefined ? { agentId: repoRecipe.agentId } : {}),
     ...(typeof repoRecipe.commandInputTemplate === 'string'
       ? { commandInputTemplate: repoRecipe.commandInputTemplate.trim() }
