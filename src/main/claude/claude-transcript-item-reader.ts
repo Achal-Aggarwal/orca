@@ -6,7 +6,7 @@ import {
 import { HISTORY_CATCH_UP_MAX_OPERATIONS } from '../native-chat/agent-session-wire/structured-agent-session-history-catch-up'
 import type { StructuredAgentSessionTransitionJournal } from '../native-chat/agent-session-wire/structured-agent-session-transition'
 import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import { claudePromptUuidForSubmission } from './claude-structured-session-id'
+import { claudePromptUuidForSubmission } from './structured/claude-structured-session-id'
 
 /** Every saved item used by the projection is a conditional commit dependency, even if equal. */
 export function createClaudeTranscriptItemReader(

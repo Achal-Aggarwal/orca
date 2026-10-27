@@ -15,7 +15,7 @@ import { AgentJournalRenderItemSchema } from '../../shared/agent-session-journal
 import { projectStructuredItemToNativeChat } from '../../shared/structured-agent-session-projection'
 import { agentSessionSendBodyFingerprint } from '../../shared/structured-agent-session-send-mutation'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
-import { claudePromptUuidForSubmission } from './claude-structured-session-id'
+import { claudePromptUuidForSubmission } from './structured/claude-structured-session-id'
 import { childExited, sessionFor, userMessage } from './claude-structured-dispatch-test-support'
 import {
   SESSION,

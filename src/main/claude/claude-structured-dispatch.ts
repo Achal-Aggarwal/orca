@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
-import { claudePromptUuidForSubmission } from './claude-structured-session-id'
+import { claudePromptUuidForSubmission } from './structured/claude-structured-session-id'
 import { isAbortSignalReason } from '../../shared/abort-signal-reason'
 import {
   forgetRetiredWaiter,
@@ -10,7 +10,10 @@ import {
 } from './claude-structured-dispatch-waiters'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { ClaudeDispatchWaiter, ClaudeSession } from './claude-structured-session-state'
+import type {
+  ClaudeDispatchWaiter,
+  ClaudeSession
+} from './structured/claude-structured-session-state'
 import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resolution'
 import {
   claudeDispatchContentKey,
