@@ -1,30 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createPiModelCatalogProbe, piModelCatalogFromListing } from './rpc-model-catalog-probe'
+import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
+import { createPiModelCatalogProbe } from './rpc-model-catalog-probe'
+import { readPiRpcSessionOptions } from './rpc-options'
 
-const TABLE = [
-  'provider   model            context  max-out  thinking  images',
-  'anthropic  claude-sonnet-4  200K     64K      yes       yes',
-  'openai     gpt-4o-mini      128K     16K      no        yes'
-].join('\n')
+const AVAILABLE_MODELS = {
+  models: [
+    {
+      provider: 'openai',
+      id: 'gpt-6',
+      name: 'GPT-6',
+      reasoning: true,
+      thinkingLevelMap: { off: null, xhigh: 'xhigh' }
+    },
+    { provider: 'openai', id: 'gpt-4o-mini', name: 'GPT-4o mini', reasoning: false }
+  ]
+}
 
 describe('Pi model catalog', () => {
-  it('reuses the listing identity, with the levels every reasoning model keeps and no default', () => {
-    expect(piModelCatalogFromListing(TABLE)).toEqual([
-      {
-        id: 'anthropic/claude-sonnet-4',
-        label: expect.any(String),
-        isDefault: false,
-        efforts: ['off', 'minimal', 'low', 'medium', 'high'].map((level) => ({
-          value: level,
-          label: level
-        }))
-      },
-      { id: 'openai/gpt-4o-mini', label: expect.any(String), isDefault: false, efforts: [] }
-    ])
-  })
-
-  it('lists under the pinned account with the chat launch env, through the shared runner', async () => {
-    const runListing = vi.fn(async () => TABLE)
+  it('lists each model with the menu a running chat shows, from a sessionless chat launch under the pinned account', async () => {
+    const launches: ProviderProcessLaunch[] = []
+    const close = vi.fn(async () => undefined)
     const probe = createPiModelCatalogProbe({
       resolveEnvironment: async () => ({
         PATH: '/usr/bin',
@@ -34,31 +29,91 @@ describe('Pi model catalog', () => {
       resolveCommand: () => '/opt/pi/bin/pi',
       probeVersion: async () => ({ version: '0.84.0' }),
       homePath: '/home/user',
+      connect: (launch) => {
+        launches.push(launch)
+        return {
+          request: async (command) => {
+            expect(command).toBe('get_available_models')
+            return AVAILABLE_MODELS
+          },
+          close
+        }
+      }
+    })
+    const success = await probe({ variable: 'PI_CODING_AGENT_DIR', path: '/homes/pi-a' })
+    const levels = (values: string[]) => values.map((value) => ({ value, label: value }))
+    expect(success.models).toEqual([
+      {
+        id: 'openai/gpt-6',
+        label: 'GPT-6',
+        isDefault: false,
+        efforts: levels(['minimal', 'low', 'medium', 'high', 'xhigh'])
+      },
+      { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini', isDefault: false, efforts: [] }
+    ])
+    const live = await readPiRpcSessionOptions({
+      request: async (command) =>
+        command === 'get_available_models'
+          ? AVAILABLE_MODELS
+          : { sessionFile: '/s.jsonl', isStreaming: false, isCompacting: false }
+    })
+    expect(success.models).toEqual(live.models)
+    expect(launches).toEqual([
+      expect.objectContaining({
+        command: '/opt/pi/bin/pi',
+        cwd: '/home/user',
+        args: ['--mode', 'rpc', '--no-session'],
+        env: expect.objectContaining({ PI_CODING_AGENT_DIR: '/homes/pi-a' }),
+        // Orca's status extension stays silent in a probe that belongs to no pane.
+        envToDelete: expect.arrayContaining(['ORCA_PANE_KEY'])
+      })
+    ])
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('falls back to the text listing when Pi cannot answer over RPC', async () => {
+    const runListing = vi.fn(async () =>
+      [
+        'provider   model            context  max-out  thinking  images',
+        'anthropic  claude-sonnet-4  200K     64K      yes       yes',
+        'openai     gpt-4o-mini      128K     16K      no        yes'
+      ].join('\n')
+    )
+    const probe = createPiModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+      resolveCommand: () => '/opt/pi/bin/pi',
+      probeVersion: async () => ({ version: '0.84.0' }),
+      homePath: '/home/user',
+      connect: () => ({
+        request: async () => {
+          throw new Error('pi exited before answering')
+        },
+        close: async () => undefined
+      }),
       runListing
     })
     const success = await probe({ variable: 'PI_CODING_AGENT_DIR', path: '/homes/pi-a' })
-    expect(success.models).toHaveLength(2)
+    expect(success.models.map((model) => [model.id, model.efforts.length])).toEqual([
+      ['anthropic/claude-sonnet-4', 5],
+      ['openai/gpt-4o-mini', 0]
+    ])
     expect(runListing).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: '/opt/pi/bin/pi',
-        args: ['--list-models'],
-        env: expect.objectContaining({ PI_CODING_AGENT_DIR: '/homes/pi-a' })
-      }),
-      { site: 'pi-model-catalog-probe' }
+      expect.objectContaining({ args: ['--list-models'] }),
+      expect.objectContaining({ site: 'pi-model-catalog-probe' })
     )
   })
 
   it('lists nothing from a Pi that runs no structured chat', async () => {
-    const runListing = vi.fn()
+    const connect = vi.fn()
     const probe = createPiModelCatalogProbe({
       resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
       resolveCommand: () => '/opt/pi/bin/pi',
       probeVersion: async () => ({ version: '0.83.9' }),
-      runListing
+      connect
     })
     await expect(probe({ variable: 'PI_CODING_AGENT_DIR', path: '/homes/pi-a' })).rejects.toThrow(
       /does not run structured chats/
     )
-    expect(runListing).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
   })
 })
