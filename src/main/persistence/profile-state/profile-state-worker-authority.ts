@@ -31,6 +31,8 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   private stopping: Promise<void> | undefined
   private idleTimer: ReturnType<typeof setTimeout> | undefined
   private inFlight = 0
+  private reopens = 0
+  private lastReopenLogMs: number | undefined
   /** Abort while idle-stopped has no writer to fault, so it is remembered here instead. */
   private stoppedFailure: Error | undefined
   private backups: ProfileStateBackupRotation
@@ -225,6 +227,7 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
       { ...this.options, reportInitializationFailure: true }
     )
     this.writer = writer
+    this.recordReopen()
     await writer.ready
     return writer
   }
@@ -287,6 +290,21 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
       })
   }
 
+  /** Writes just over the idle window apart churn the thread; one line per window keeps that visible in logs. */
+  private recordReopen(): void {
+    this.reopens += 1
+    const now = Date.now()
+    if (this.lastReopenLogMs !== undefined && now - this.lastReopenLogMs < REOPEN_LOG_INTERVAL_MS) {
+      return
+    }
+    this.lastReopenLogMs = now
+    console.info(`[persistence] Reopened the idle profile writer (${this.reopens} reopens so far)`)
+  }
+
+  get writerReopenCount(): number {
+    return this.reopens
+  }
+
   private requireStoppedRevision(): number {
     if (this.stoppedRevision === undefined) {
       throw new Error('Profile state writer stopped without an acknowledged revision')
@@ -294,6 +312,8 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
     return this.stoppedRevision
   }
 }
+
+const REOPEN_LOG_INTERVAL_MS = 10 * 60_000
 
 function closedWriterError(): ProfileStateWriterError {
   return new ProfileStateWriterError(

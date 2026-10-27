@@ -44,6 +44,19 @@ describe('worker authority idle stop', () => {
     await idleStopped(close, 2)
     await authority.writeSerializedDomains([{ domain: 'ui', payload: '{"after":"second"}' }])
     expect(readState().ui).toEqual({ after: 'second' })
+    expect(authority.writerReopenCount).toBe(2)
+  })
+
+  it('counts every reopen but logs churn at most once per window', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const { authority, close } = await idleFixture()
+    for (const [round, payload] of ['{"n":1}', '{"n":2}'].entries()) {
+      await idleStopped(close, round + 1)
+      await authority.writeSerializedDomains([{ domain: 'ui', payload }])
+    }
+    expect(authority.writerReopenCount).toBe(2)
+    const reopenLines = info.mock.calls.filter(([line]) => String(line).includes('Reopened'))
+    expect(reopenLines).toHaveLength(1)
   })
 
   it('lands a write that arrives while the stop is closing the writer', async () => {
