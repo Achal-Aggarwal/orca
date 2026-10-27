@@ -1,5 +1,4 @@
 import { shallow } from 'zustand/shallow'
-import { persistedUIValuesEqual } from '../../../../shared/persisted-ui-equality'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorkspaceHostScope } from '../../../../shared/ui-chrome-types'
@@ -219,7 +218,7 @@ export function getSidebarHostHealthLabel(
 }
 
 // Diagnostics do not change host choices; retain every other exposed registry field.
-function sidebarHostSemantics(host: SidebarHostOption & ExecutionHostRegistryEntry) {
+export function sidebarHostSemantics(host: SidebarHostOption & ExecutionHostRegistryEntry) {
   const { remoteControlState, ...option } = host
   return {
     ...option,
@@ -229,34 +228,6 @@ function sidebarHostSemantics(host: SidebarHostOption & ExecutionHostRegistryEnt
       lastClose: remoteControlState.lastClose,
       lastCloseCause: remoteControlState.lastCloseCause
     }
-  }
-}
-
-export function createSidebarHostOptionsSelector() {
-  let inputs: readonly unknown[] = []
-  let result: SidebarHostOption[] = []
-  return (args: Parameters<typeof buildSidebarHostOptions>[0]): SidebarHostOption[] => {
-    const nextInputs = [
-      args.repos,
-      args.sshTargetLabels,
-      args.sshConnectionStates,
-      args.settings,
-      args.runtimeStatusByEnvironmentId,
-      args.runtimeEnvironments,
-      args.hostLabelOverrides,
-      args.wslHostStatuses,
-      args.wslHostsEnabled,
-      args.wslHostServerFilesMissing
-    ]
-    if (shallow(inputs, nextInputs)) {
-      return result
-    }
-    inputs = nextInputs
-    const next = buildSidebarHostOptions(args)
-    if (!persistedUIValuesEqual(result.map(sidebarHostSemantics), next.map(sidebarHostSemantics))) {
-      result = next
-    }
-    return result
   }
 }
 

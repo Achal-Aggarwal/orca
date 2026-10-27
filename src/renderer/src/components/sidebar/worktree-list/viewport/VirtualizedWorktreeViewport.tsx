@@ -5,7 +5,6 @@ import { translate } from '@/i18n/i18n'
 import { WorktreeListScrollToTopButton } from '../../WorktreeListScrollToTopButton'
 import { renderWorktreeSidebarDropIndicators } from './drop-indicators'
 import { useWorktreeListScrollToTop } from './use-scroll-to-top'
-import { useRepoSshGateResolver } from '@/hooks/use-repo-ssh-gate-resolver'
 import { getActiveDescendantOptionId } from '../navigation/active-descendant-option'
 import { buildRenderableRows } from '../listing/renderable-rows'
 import { useFolderWorkspacePathStatusRows } from '../listing/use-folder-path-statuses'
@@ -61,7 +60,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const settings = useAppStore((s) => s.settings)
   const worktreeVisibilityDefaultsByHost = useAppStore((s) => s.worktreeVisibilityDefaultsByHost)
-  const getRepoSshGate = useRepoSshGateResolver(repoMap)
   const projectHeaderHostContexts = useProjectHeaderHostContexts({
     rows,
     visibleProjectRepoIdsBySection: props.visibleProjectRepoIdsBySection,
@@ -131,8 +129,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     allRepoIds: props.allRepoIds,
     repoMap,
     projectGroups,
-    folderWorkspaces: props.folderWorkspaces,
-    sshConnectionStates
+    folderWorkspaces: props.folderWorkspaces
   })
 
   const { showScrollToTop, scrollToTop } = useWorktreeListScrollToTop({
@@ -312,7 +309,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     measureVirtualRowElement,
     settings,
     worktreeVisibilityDefaultsByHost,
-    getRepoSshGate,
     newCardStyle,
     folderBackedProjectGroupIds,
     projectGroups,
