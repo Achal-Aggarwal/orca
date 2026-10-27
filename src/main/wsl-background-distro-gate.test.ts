@@ -12,7 +12,9 @@ import {
   deferUntilWslDistroRunning,
   isWslDistroRunning,
   isWslDistroRunningForBackgroundWork,
-  noteWslDistrosRunning
+  noteWslDistroMayHaveStopped,
+  noteWslDistrosRunning,
+  WSL_STOP_SETTLE_MS
 } from './wsl-background-distro-gate'
 import {
   _resetRunningWslDistroCacheForTests,
@@ -54,6 +56,28 @@ describe('isWslDistroRunning', () => {
     probe = () => Promise.reject(new Error('wsl.exe wedged'))
     await expect(isWslDistroRunning('Ubuntu')).resolves.toBe(false)
     await expect(isWslDistroRunning('Ubuntu')).resolves.toBe(false)
+  })
+})
+
+describe('the stop settle window', () => {
+  it('starts no running read inside the window, even when a timer fires early', async () => {
+    // Node truncates timer delays to whole ms on a ms clock, so a wake can land ~2ms short.
+    const realSetTimeout = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, ms?: number) =>
+      realSetTimeout(handler, Math.max(0, (ms ?? 0) - 2))) as typeof setTimeout)
+    const probeStarts: number[] = []
+    wslMocks.listRunningWslDistrosAsync.mockImplementation((options) =>
+      resolveRunningWslDistros(async () => {
+        probeStarts.push(performance.now())
+        return []
+      }, options)
+    )
+    const settledAt = performance.now() + WSL_STOP_SETTLE_MS
+    noteWslDistroMayHaveStopped('Ubuntu')
+
+    await expect(isWslDistroRunning('Ubuntu')).resolves.toBe(false)
+    expect(probeStarts).toHaveLength(1)
+    expect(probeStarts[0]).toBeGreaterThanOrEqual(settledAt)
   })
 })
 
