@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
+import {
+  agentSessionLeaseFixture,
+  agentSessionRecordFixture
+} from '../../shared/agent-session-record.test-fixture'
 import { ClaudeAtRestCommandCatalog } from './claude-at-rest-commands'
 import {
   bindAtRestCommandContexts,
@@ -150,10 +153,10 @@ it("lists a resting chat's `/` menu from the account it would start on, followin
     // Created on /home/user/.claude, but its next start uses the selected account.
     const chat = agentSessionRecordFixture()
     expect(await catalog.settled(chat, 1000)).toEqual([{ name: '/accounts/b', kind: 'skill' }])
-    const createdOnB = agentSessionRecordFixture({
-      sessionId: 'created-on-b',
+    const createdOnB = {
+      ...agentSessionRecordFixture(agentSessionLeaseFixture({ sessionId: 'created-on-b' })),
       accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/accounts/b' }
-    })
+    }
     expect(await catalog.settled(createdOnB, 1000)).toEqual([
       { name: '/accounts/b', kind: 'skill' }
     ])
