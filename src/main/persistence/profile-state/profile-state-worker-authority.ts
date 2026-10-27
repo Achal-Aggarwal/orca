@@ -9,31 +9,44 @@ import { runProfileStateBackupWorker } from './profile-state-backup-worker'
 import { quarantineProfileStateDatabase } from './profile-state-database-quarantine'
 import {
   ProfileStateWriteWorkerClient,
+  ProfileStateWriterError,
   type ProfileStateWriterInitialization
 } from './profile-state-writer-worker-client'
 
-/** Main owns backup scheduling; the persistent worker owns every live SQL command. */
+export type ProfileStateWorkerAuthorityOptions = {
+  workerPath?: string
+  backupWorkerPath?: string
+  onFailure?: (error: Error) => void
+  onSaveDelayChanged?: (delayed: boolean) => void
+  /** Close the writer thread after this long without a command; the next one reopens it (~22 ms). */
+  writerIdleStopMs?: number
+}
+
+/** Main owns backup scheduling; the worker owns every live SQL command while it runs. */
 export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   readonly asynchronous = true
-  private writer: ProfileStateWriteWorkerClient
+  /** Null while idle-stopped: nothing is pending and `stoppedRevision` is what it acknowledged last. */
+  private writer: ProfileStateWriteWorkerClient | null
+  private stoppedRevision: number | undefined
+  private stopping: Promise<void> | undefined
+  private idleTimer: ReturnType<typeof setTimeout> | undefined
+  private inFlight = 0
+  /** Abort while idle-stopped has no writer to fault, so it is remembered here instead. */
+  private stoppedFailure: Error | undefined
   private backups: ProfileStateBackupRotation
   private closing: Promise<void> | undefined
 
   constructor(
     private readonly initialization: ProfileStateWriterInitialization,
-    private readonly options: {
-      workerPath?: string
-      backupWorkerPath?: string
-      onFailure?: (error: Error) => void
-      onSaveDelayChanged?: (delayed: boolean) => void
-    } = {}
+    private readonly options: ProfileStateWorkerAuthorityOptions = {}
   ) {
     this.writer = new ProfileStateWriteWorkerClient(initialization, options)
     this.backups = this.createBackups()
+    this.scheduleIdleStopAfterReady()
   }
 
   get ready(): Promise<void> {
-    return this.writer.ready
+    return this.writer?.ready ?? Promise.resolve()
   }
 
   readSerializedState(): never {
@@ -41,44 +54,61 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   }
 
   assertWritable(): void {
-    this.writer.assertWritable()
+    if (this.writer) {
+      this.writer.assertWritable()
+    } else if (this.stoppedFailure) {
+      throw this.stoppedFailure
+    } else if (this.closing) {
+      throw closedWriterError()
+    }
   }
 
-  abort(): Promise<void> {
-    return this.writer.abort()
+  async abort(): Promise<void> {
+    this.cancelIdleStop()
+    await this.stopping
+    if (this.writer) {
+      return this.writer.abort()
+    }
+    this.stoppedFailure ??= new ProfileStateWriterError(
+      'profile-state-writer-aborted',
+      'Profile state writer was aborted',
+      'known-failure'
+    )
   }
 
   assertCurrentRevision(): Promise<void> {
-    return this.writer.assertCurrentRevision().then(() => {})
+    return this.run((writer) => writer.assertCurrentRevision()).then(() => {})
   }
 
   writeSerializedDomains(replacements: readonly ProfileStateDomainReplacement[]): Promise<void> {
-    return this.writer.writeSerializedDomains(replacements).then(() => {})
+    return this.run((writer) => writer.writeSerializedDomains(replacements)).then(() => {})
   }
 
   writeSerializedAutomationRuns(
     replacements: readonly ProfileStateDomainReplacement[],
     runs: readonly AutomationRun[]
   ): Promise<void> {
-    return this.writer.writeSerializedAutomationRuns(replacements, runs).then(() => {})
+    return this.run((writer) => writer.writeSerializedAutomationRuns(replacements, runs)).then(
+      () => {}
+    )
   }
 
   writeCompleteSerializedDomains(
     replacements: readonly ProfileStateDomainReplacement[]
   ): Promise<void> {
-    return this.writer.writeCompleteSerializedDomains(replacements).then(() => {})
+    return this.run((writer) => writer.writeCompleteSerializedDomains(replacements)).then(() => {})
   }
 
   writeSerializedState(payload: Buffer): Promise<void> {
-    return this.writer.writeSerializedState(payload).then(() => {})
+    return this.run((writer) => writer.writeSerializedState(payload)).then(() => {})
   }
 
   writeJsonExport(targetPath: string): Promise<number> {
-    return this.writer.writeJsonExport(targetPath)
+    return this.run((writer) => writer.writeJsonExport(targetPath))
   }
 
   writeLatestJsonExport(dataFile: string): Promise<number | undefined> {
-    return this.writer.writeLatestJsonExport(dataFile)
+    return this.run((writer) => writer.writeLatestJsonExport(dataFile))
   }
 
   scheduleBackup(): void {
@@ -95,16 +125,17 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   }
 
   close(): Promise<void> {
-    this.writer.stopAdmission()
+    this.cancelIdleStop()
+    this.writer?.stopAdmission()
     this.closing ??= this.finishClose()
     return this.closing
   }
 
   async pauseForMaintenance(): Promise<ProfileStateMaintenance> {
     this.assertWritable()
-    const writer = this.writer
     await this.close()
-    const revision = writer.acknowledgedRevision
+    const writer = this.writer
+    const revision = writer ? writer.acknowledgedRevision : this.requireStoppedRevision()
     let consumed = false
     return {
       resume: async () => {
@@ -118,6 +149,7 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
         )
         this.backups = this.createBackups()
         this.closing = undefined
+        this.scheduleIdleStopAfterReady()
         try {
           await this.writer.ready
           this.assertWritable()
@@ -141,7 +173,11 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
 
   private async finishClose(): Promise<void> {
     this.backups.stop()
-    const settled = await Promise.allSettled([this.backups.drain(), this.writer.close()])
+    // A stop already under way owns the writer; let it finish before deciding what is left to close.
+    const writerClosed = this.stopping
+      ? this.stopping.then(() => this.writer?.close())
+      : this.writer?.close()
+    const settled = await Promise.allSettled([this.backups.drain(), writerClosed])
     for (const result of settled) {
       if (result.status === 'rejected') {
         throw result.reason
@@ -158,4 +194,111 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
         runProfileStateBackupWorker(job, { workerPath: this.options.backupWorkerPath, signal })
     )
   }
+
+  /** A running writer dispatches synchronously, as before; only a stopped one is reopened first. */
+  private run<T>(command: (writer: ProfileStateWriteWorkerClient) => Promise<T>): Promise<T> {
+    this.cancelIdleStop()
+    this.inFlight += 1
+    const writer = this.writer
+    const result = writer && !this.stopping ? command(writer) : this.reopen().then(command)
+    return result.finally(() => {
+      this.inFlight -= 1
+      this.scheduleIdleStop()
+    })
+  }
+
+  private async reopen(): Promise<ProfileStateWriteWorkerClient> {
+    await this.stopping
+    if (this.writer) {
+      // A concurrent caller already reopened it; dispatch only once it initialized.
+      await this.writer.ready
+      return this.writer
+    }
+    if (this.stoppedFailure) {
+      throw this.stoppedFailure
+    }
+    if (this.closing) {
+      throw closedWriterError()
+    }
+    const writer = new ProfileStateWriteWorkerClient(
+      { ...this.initialization, revision: this.requireStoppedRevision() },
+      { ...this.options, reportInitializationFailure: true }
+    )
+    this.writer = writer
+    await writer.ready
+    return writer
+  }
+
+  private scheduleIdleStopAfterReady(): void {
+    void this.writer?.ready.then(
+      () => this.scheduleIdleStop(),
+      () => {}
+    )
+  }
+
+  private scheduleIdleStop(): void {
+    const delay = this.options.writerIdleStopMs
+    if (
+      delay === undefined ||
+      this.idleTimer ||
+      this.closing ||
+      this.inFlight > 0 ||
+      !this.writer
+    ) {
+      return
+    }
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined
+      this.stopIdleWriter()
+    }, delay)
+    this.idleTimer.unref?.()
+  }
+
+  private cancelIdleStop(): void {
+    clearTimeout(this.idleTimer)
+    this.idleTimer = undefined
+  }
+
+  private stopIdleWriter(): void {
+    const writer = this.writer
+    if (!writer || this.closing || this.inFlight > 0 || this.stopping) {
+      return
+    }
+    let revision: number
+    try {
+      // A faulted writer stays in place so assertWritable keeps reporting its failure.
+      writer.assertWritable()
+      revision = writer.acknowledgedRevision
+    } catch {
+      return
+    }
+    this.stopping = writer
+      .close()
+      .then(() => {
+        if (this.writer === writer) {
+          this.writer = null
+          this.stoppedRevision = revision
+        }
+      })
+      // The writer's own fault handling reports a failed close; it stays as the faulted writer.
+      .catch(() => {})
+      .finally(() => {
+        this.stopping = undefined
+      })
+  }
+
+  private requireStoppedRevision(): number {
+    if (this.stoppedRevision === undefined) {
+      throw new Error('Profile state writer stopped without an acknowledged revision')
+    }
+    return this.stoppedRevision
+  }
+}
+
+function closedWriterError(): ProfileStateWriterError {
+  return new ProfileStateWriterError(
+    'profile-state-writer-closed',
+    'Profile state writer is closing',
+    'known-failure'
+  )
 }
