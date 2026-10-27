@@ -18,12 +18,12 @@ import { structuredWorkerIdentities } from './structured-worker-identity'
 
 const SSH_SCOPE = JSON.stringify({ kind: 'ssh', targetId: 'ssh-1' })
 const PROCESS_INCARNATION = 'remote:ssh-1:pty-1:inc-1'
-const shellInspection: PtyProcessInspection = {
+const shellInspection = {
   foregroundProcess: 'zsh',
   hasChildProcesses: true,
   foregroundPresentationSupported: true,
   foregroundPresentation: 'not-in-front'
-}
+} satisfies PtyProcessInspection
 
 function runtimeWithInventory(
   listProcesses: (hostId?: string) => Promise<PtyProcessInfo[]>
@@ -310,7 +310,7 @@ describe('paid host fact publication work', () => {
     async (n) => {
       for (const listeners of [0, 1, 2]) {
         const runtime = new OrcaRuntimeService()
-        const inspectProcess = vi.fn(async (): Promise<PtyProcessInspection> => shellInspection)
+        const inspectProcess = vi.fn(async () => shellInspection)
         runtime.setPtyController({
           write: () => true,
           kill: () => true,
@@ -359,6 +359,7 @@ describe('paid host fact publication work', () => {
             }
             yield entry
           }
+          return undefined
         })
         // SAFETY: this is the existing internal terminal snapshot shape; all rows are registered above.
         runtime['mobileSessionTabsByWorktree'].set('cost-wt', {

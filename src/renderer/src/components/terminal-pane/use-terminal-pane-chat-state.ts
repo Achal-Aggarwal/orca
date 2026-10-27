@@ -123,7 +123,7 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
     }) === 'release'
   const activeLeaf = managerRef.current?.getActivePane()?.leafId ?? null
   const effectiveRoute =
-    release && !(routeAction.current?.fact === presentation && routeAction.current.refused)
+    release && !(routeAction.current?.fact === presentation && routeAction.current?.refused)
       ? resolveNativeChatLeafRoute({
           isChatViewMode,
           chatLeafId,

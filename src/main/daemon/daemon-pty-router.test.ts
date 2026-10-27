@@ -75,11 +75,11 @@ it('preserves client-only unverifiable inspection from the owning legacy daemon'
   })
   const observed = vi.fn()
   vi.mocked(legacy.getForegroundProcess).mockImplementation(async (_id, accept) => {
-    accept?.('agent-in-front', 25)
+    accept?.('agent-in-front')
     return 'codex'
   })
   await expect(router.getForegroundProcess('legacy-session', observed)).resolves.toBe('codex')
-  expect(observed).toHaveBeenCalledExactlyOnceWith('agent-in-front', 25)
+  expect(observed).toHaveBeenCalledExactlyOnceWith('agent-in-front')
   expect(legacy.getForegroundProcess).toHaveBeenCalledTimes(1)
 })
 

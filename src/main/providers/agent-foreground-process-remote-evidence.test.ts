@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { assert, describe, expect, it } from 'vitest'
 import { resolveRemoteForegroundEvidence } from './agent-foreground-process-batch'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 
@@ -70,8 +70,10 @@ describe('host-stamped remote foreground resolver', () => {
       resolveRemoteForegroundEvidence({ rootPid: 100, fallbackProcess: 'zsh' }, metadata, rows)
     expect(read()).toMatchObject({ verdict: 'live', shellForeground: true, processName: null })
     rows[1] = { ...rows[1], stat: 'S+', pgid: 100, command: 'sleep 30' }
-    expect(read().shellForeground).toBeUndefined()
-    expect(read()).toMatchObject({ verdict: 'live', processName: null })
+    const evidence = read()
+    assert(evidence.verdict === 'live')
+    expect(evidence.shellForeground).toBeUndefined()
+    expect(evidence).toMatchObject({ verdict: 'live', processName: null })
   })
 
   it.each([

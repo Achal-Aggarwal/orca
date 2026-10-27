@@ -1,4 +1,5 @@
 import { beforeEach, vi } from 'vitest'
+import { createGlobalSettingsFixture } from '../../../shared/global-settings-test-fixture'
 import { useAppStore } from '../store'
 import {
   createCompatibleRuntimeStatusResponseIfNeeded,
@@ -64,7 +65,10 @@ export function createRuntimeTerminalInspectionFixtures() {
       }
     })
     useAppStore.setState({
-      settings: { ...useAppStore.getState().settings, experimentalAgentHibernation: true },
+      settings: createGlobalSettingsFixture({
+        ...useAppStore.getState().settings,
+        experimentalAgentHibernation: true
+      }),
       terminalLayoutsByTabId: {},
       lastTerminalInputAtByPaneKey: {}
     })

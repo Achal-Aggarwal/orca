@@ -57,7 +57,7 @@ describe('POSIX static-name agent selection', () => {
         ],
         100
       )
-    ).toEqual({ available: true, processName: null })
+    ).toEqual({ available: true, processName: null, shellForeground: false })
   })
 
   it('does not promote a headless one-shot agent from its executable basename', () => {
@@ -69,7 +69,7 @@ describe('POSIX static-name agent selection', () => {
         ],
         100
       )
-    ).toEqual({ available: true, processName: null })
+    ).toEqual({ available: true, processName: null, shellForeground: false })
   })
 
   it.each(['vim', 'npm', 'sleep'])('retains the ordinary %s name', (command) => {
@@ -78,7 +78,7 @@ describe('POSIX static-name agent selection', () => {
         [root, { ...root, pid: 101, ppid: 100, pgid: 101, stat: 'S+', command }],
         100
       )
-    ).toEqual({ available: true, processName: command })
+    ).toEqual({ available: true, processName: command, shellForeground: false })
   })
 })
 
@@ -104,7 +104,7 @@ describe('Windows static-name agent selection', () => {
         fresh: true,
         readWindowsConsoleAttachedProcessIds: consoleMembers
       })
-    ).toEqual({ available: true, processName: 'powershell.exe' })
+    ).toEqual({ available: true, processName: 'powershell.exe', shellForeground: true })
     expect(consoleMembers).toHaveBeenCalledOnce()
   })
 
@@ -129,6 +129,6 @@ describe('Windows static-name agent selection', () => {
     installRows(['vim.exe'])
     expect(
       await resolveSpawnFileForegroundProcess(proc, 'powershell.exe', { fresh: true })
-    ).toEqual({ available: true, processName: 'vim.exe', processId: 101 })
+    ).toEqual({ available: true, processName: 'vim.exe', processId: 101, shellForeground: false })
   })
 })

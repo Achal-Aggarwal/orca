@@ -1,5 +1,5 @@
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
-import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { assert, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
 import type * as ForegroundProcess from './agent-foreground-process'
 import type { WindowsProcessRow } from '../windows/windows-process-table'
@@ -13,6 +13,13 @@ import {
   assertCliConversationWritersExited,
   type CliWriterHost
 } from '../runtime/structured-agent-cli-writers'
+
+let actualForegroundProcess: typeof ForegroundProcess
+beforeAll(async () => {
+  actualForegroundProcess = await vi.importActual<typeof ForegroundProcess>(
+    './agent-foreground-process'
+  )
+})
 
 const {
   fullTable,
@@ -731,9 +738,8 @@ describe('LocalPtyProvider', () => {
   describe('confirmForegroundProcess', () => {
     it('carries the same paid Windows confirmation through the host owner', async () => {
       Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-      const actual = await vi.importActual<typeof ForegroundProcess>('./agent-foreground-process')
       resolveAgentForegroundProcessMock.mockImplementation(
-        actual.resolveAgentForegroundProcessWithAvailability
+        actualForegroundProcess.resolveAgentForegroundProcessWithAvailability
       )
       mockProc.pid = 100
       mockProc.process = 'powershell.exe'

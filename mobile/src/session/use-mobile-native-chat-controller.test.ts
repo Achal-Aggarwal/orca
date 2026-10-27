@@ -6,6 +6,9 @@ import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import type { MobileNativeChatPrompts } from './native-chat/input/use-mobile-native-chat-prompts'
 
+vi.mock('expo-router', () => ({ useFocusEffect: () => {} }))
+vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove: vi.fn() }) } }))
+
 const acceptSend = vi.fn()
 const captureSendOrigin = vi.fn()
 const clearDraftForSend = vi.fn()

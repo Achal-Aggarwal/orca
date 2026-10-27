@@ -22,6 +22,11 @@ vi.mock('expo-router', async () => {
   const { useEffect } = await import('react')
   return { useFocusEffect: (callback: () => () => void) => useEffect(callback, [callback]) }
 })
+vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove: vi.fn() }) } }))
+vi.mock('../terminal/terminal-presentation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../terminal/terminal-presentation')>()),
+  readMobilePresentation: vi.fn(async () => {})
+}))
 
 vi.mock('../platform/haptics', () => ({
   triggerSuccess: vi.fn(),
@@ -68,7 +73,7 @@ function createScope(client: RpcClient) {
     worktreeId: 'workspace-1',
     client,
     hostCapabilities,
-    connState: 'connected',
+    connState: 'connected' as const,
     setTerminals: vi.fn(),
     terminalsRef: { current: [] },
     setSessionTabs: vi.fn<(updater: PlacementUpdater) => void>(),

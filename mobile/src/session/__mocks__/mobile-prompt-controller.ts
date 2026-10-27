@@ -12,9 +12,11 @@ import { MobileNativeChatAsk } from '../native-chat/input/MobileNativeChatAsk'
 import type { AskAnswerSelection } from '../../../../src/shared/native-chat-ask-answer'
 import { mobileNativeChatPromptDismissals } from '../native-chat/input/mobile-native-chat-prompt-dismissals'
 import { setMobileNativeChatDraftText } from '../native-chat/composer/mobile-native-chat-draft-store'
+vi.mock('expo-router', () => ({ useFocusEffect: () => {} }))
 vi.mock('react-native', async () => {
   const React = await import('react')
   return {
+    AppState: { addEventListener: () => ({ remove: vi.fn() }) },
     ActivityIndicator: 'ActivityIndicator',
     Image: 'Image',
     Platform: { OS: 'ios' },

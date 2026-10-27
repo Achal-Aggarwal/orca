@@ -15,7 +15,7 @@ import { LOCAL_STRUCTURED_SESSION_OWNER } from './local-structured-session-owner
 import { toRemoteRuntimePtyId } from '../../../shared/remote-runtime/remote-runtime-pty-id'
 
 type Entry = {
-  incarnationId?: string
+  incarnationId?: string | null
   value?: TerminalPresentationObservation
   members: Set<string>
   sources: Set<string>

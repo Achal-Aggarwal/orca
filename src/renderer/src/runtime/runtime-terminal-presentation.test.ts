@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { LOCAL_STRUCTURED_SESSION_OWNER } from './local-structured-session-owner'
+import { createGlobalSettingsFixture } from '../../../shared/global-settings-test-fixture'
+import type { TerminalInputKind } from '../../../shared/terminal-input-kind'
 import { setLocalRuntimeCapabilitiesForTests } from './local-runtime-capabilities'
 import { createRuntimeTerminalInspectionFixtures } from './runtime-terminal-inspection-test-fixtures'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -68,8 +70,8 @@ describe('runtime terminal presentation routing', () => {
       const id = `queue-${n}`
       const listener = vi.fn()
       const stop = subscribeDesktopPresentation(id, listener)
-      const writes = vi.fn(async (pty: string, data: string) => {
-        await sendRuntimePtyInput(pty, data)
+      const writes = vi.fn(async (pty: string, data: string, inputKind: TerminalInputKind) => {
+        await sendRuntimePtyInput(pty, data, inputKind)
       })
       const queue = createPtyInputWriteQueue({ isWritable: () => true, write: writes })
       const chunk = `${'x'.repeat(16 * 1024 - 1)}\n`
@@ -115,7 +117,10 @@ describe('runtime terminal presentation routing', () => {
         agentStatusByPaneKey: {},
         paneForegroundAgentByPaneKey: {},
         runtimePaneTitlesByTabId: { 'actual-tab': { 2: 'codex' } },
-        settings: { ...useAppStore.getState().settings, experimentalNativeChat: true }
+        settings: createGlobalSettingsFixture({
+          ...useAppStore.getState().settings,
+          experimentalNativeChat: true
+        })
       })
       const writes: string[] = []
       const unsubscribe = useAppStore.subscribe((state, previous) => {
@@ -372,6 +377,7 @@ describe('runtime terminal presentation routing', () => {
           valueVisits++
           yield value
         }
+        return undefined
       })
       const keySpy = vi.spyOn(Map.prototype, 'keys')
       const memberSpy = vi.spyOn(Set.prototype, 'has')
