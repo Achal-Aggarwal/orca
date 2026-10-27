@@ -136,16 +136,28 @@ it("answers a resting chat's `/` menu only for chats this host runs", async () =
 
 it("lists a resting chat's `/` menu from the account it would start on, following a switch", async () => {
   let selected = '/accounts/b'
+  const probed: string[] = []
   const catalog = new ClaudeAtRestCommandCatalog({
     resolveWorkspacePath: async () => '/work',
     resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: selected }),
-    probe: async ({ accountHomePath }) => [{ name: accountHomePath, kind: 'skill' }]
+    probe: async ({ accountHomePath }) => {
+      probed.push(accountHomePath)
+      return [{ name: accountHomePath, kind: 'skill' }]
+    }
   })
   const release = bindAtRestCommandContexts([catalog])
   try {
     // Created on /home/user/.claude, but its next start uses the selected account.
     const chat = agentSessionRecordFixture()
     expect(await catalog.settled(chat, 1000)).toEqual([{ name: '/accounts/b', kind: 'skill' }])
+    const createdOnB = agentSessionRecordFixture({
+      sessionId: 'created-on-b',
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/accounts/b' }
+    })
+    expect(await catalog.settled(createdOnB, 1000)).toEqual([
+      { name: '/accounts/b', kind: 'skill' }
+    ])
+    expect(probed).toEqual(['/accounts/b'])
 
     selected = '/accounts/a'
     retireAtRestCommandSettings(['activeClaudeManagedAccountId'])

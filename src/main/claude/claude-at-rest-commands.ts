@@ -24,7 +24,7 @@ const MAX_PROBES_RUNNING = 2
 
 export type ClaudeAtRestCommandsDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
-  /** The account a Claude start uses now; absent keeps the chat's saved account. */
+  /** A resting chat's next start follows the selected account, not the one it was created on. */
   resolveAccountHome?: () => Promise<AgentSessionAccountHome>
   probe?: ClaudeCommandCatalogProbe
   now?: () => number
@@ -42,6 +42,7 @@ export class ClaudeAtRestCommandCatalog extends AtRestCommandCatalog {
         supportsClaudeStructuredLocation(record.location) &&
         isLegacyAgentSessionAccountHome(record.accountHome),
       resolveWorkspacePath: deps.resolveWorkspacePath,
+      ...(deps.resolveAccountHome ? { resolveAccountHome: deps.resolveAccountHome } : {}),
       scan: (record, cwd, isCurrent) => scanClaudeAtRest(deps, probes, record, cwd, isCurrent),
       ...(deps.now ? { now: deps.now } : {})
     })
@@ -55,10 +56,7 @@ async function scanClaudeAtRest(
   cwd: string,
   isCurrent: () => boolean
 ): Promise<AtRestCommandScan> {
-  // A resting chat's next start follows the selected account, not the one it was created on.
-  const account = requireLegacyAgentSessionAccountHome(
-    (await deps.resolveAccountHome?.()) ?? record.accountHome
-  ).path
+  const account = requireLegacyAgentSessionAccountHome(record.accountHome).path
   if (deps.probe) {
     const release = await probes.acquire(0)
     try {
