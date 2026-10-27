@@ -22,6 +22,7 @@ type MobileFileTapHandlerOptions<T extends FileTapSessionTab> = {
   switchSessionTab: (tab: T) => void
   scheduleDelayedAction: (callback: () => void, delayMs: number) => unknown
   reportChatTapFailure: (message: string) => void
+  getLiveInteractionGeneration: () => number
 }
 
 // Share stable dispatch-time handlers and activation sequence so newer terminal/chat file taps supersede in-flight opens.
@@ -41,6 +42,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
     fetchSessionTabs,
     getActiveSessionTabId,
     getActiveSessionTabType,
+    getLiveInteractionGeneration,
     getSessionTabs,
     hostId,
     nativeChatSessionId,
@@ -65,6 +67,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
       fetchSessionTabs,
       getActiveSessionTabId,
       getActiveSessionTabType,
+      getLiveInteractionGeneration,
       getSessionTabs,
       hostId,
       nativeChatSessionId,
@@ -82,6 +85,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
     fetchSessionTabs,
     getActiveSessionTabId,
     getActiveSessionTabType,
+    getLiveInteractionGeneration,
     getSessionTabs,
     hostId,
     nativeChatSessionId,
@@ -106,6 +110,8 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
         return
       }
       const activationSeq = ++activationSeqRef.current
+      // Why: typing after the tap must not be followed by its stale click.
+      const liveInteraction = current.getLiveInteractionGeneration()
       openMobileFileTap<T>({
         client: current.client,
         hostId: current.hostId,
@@ -130,7 +136,13 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
         }),
         switchSessionTab: current.switchSessionTab,
         scheduleDelayedAction: current.scheduleDelayedAction,
-        onNoFile
+        onNoFile: onNoFile
+          ? () => {
+              if (current.getLiveInteractionGeneration() === liveInteraction) {
+                onNoFile()
+              }
+            }
+          : undefined
       })
     },
     []

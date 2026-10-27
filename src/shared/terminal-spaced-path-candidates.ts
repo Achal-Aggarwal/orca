@@ -11,7 +11,7 @@ const MAX_SPACED_PATH_WORDS = 10
 const PATH_WORD_CONTINUATION_REGEX = /[^\s()[\]{}'",;<>|`]*/y
 // One single-spaced word; quotes and brackets end a spaced path.
 const SPACED_PATH_WORD_REGEX = / ([^\s()[\]{}'",;<>|`]+)/y
-const FILENAME_PATTERN = /\.[A-Za-z0-9][A-Za-z0-9_+-]*(?::\d+)?(?::\d+)?[.,;:!?]*$/
+const FILENAME_PATTERN = /\.[\p{L}\p{N}][\p{L}\p{N}\p{M}_+-]*(?::\d+)?(?::\d+)?[.,;:!?]*$/u
 
 /** One reading per following word, up to ten; `wordEndIndex` ends the path's own word. */
 export function growSpacedPathRanges(

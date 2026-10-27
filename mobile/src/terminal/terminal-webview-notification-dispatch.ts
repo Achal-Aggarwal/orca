@@ -12,19 +12,23 @@ export type TerminalWebViewNotificationHandlers = Omit<
   reportEngineError: (message: string, fatal: boolean) => void
 }
 
-/** Counts the page's taps and input, so a withheld tap replays only if nothing newer happened. */
-export type TerminalInteractionCount = { current: number }
+const PAGE_GESTURE_TYPES = new Set([
+  'terminal-input',
+  'terminal-tap',
+  'terminal-file-tap',
+  'open-url',
+  'set-select-mode'
+])
+
+/** Counts the page's gestures, so a withheld tap replays only if nothing newer happened. */
+type TerminalInteractionCount = { current: number }
 
 export function dispatchTerminalWebViewNotification(
   msg: Record<string, unknown>,
   handlers: TerminalWebViewNotificationHandlers,
   interactions: TerminalInteractionCount
 ) {
-  if (
-    msg.type === 'terminal-input' ||
-    msg.type === 'terminal-tap' ||
-    msg.type === 'terminal-file-tap'
-  ) {
+  if (PAGE_GESTURE_TYPES.has(String(msg.type))) {
     interactions.current += 1
   }
   if (msg.type === 'log') {
