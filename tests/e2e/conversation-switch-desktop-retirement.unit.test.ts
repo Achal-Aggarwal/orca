@@ -89,7 +89,11 @@ it.each(['saved', 'empty'] as const)(
       expect(await rig.host.create(CREATE_TEST_CALLER, params)).toMatchObject({ ok: true })
       if (content === 'saved') {
         expect(await rig.host.switchToChat(HOST_TEST_SESSION)).toMatchObject({ ok: true })
-        rig.adapter.acquire.mock.calls[0]![0].events.appendItem(
+        const events = rig.adapter.acquire.mock.calls[0]?.[0].events
+        if (!events) {
+          throw new Error('Expected the host acquisition event sink')
+        }
+        events.appendItem(
           { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: 'saved', ordinal: 1 },
           hostTestMessage('Saved conversation'),
           { turnScope: { kind: 'thread' } }

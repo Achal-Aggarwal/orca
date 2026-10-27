@@ -4,6 +4,7 @@ import { useAppStore } from '@/store'
 import { captureSourceTerminal } from '@/components/tab-bar/cli-chat-resume-terminal-capture'
 import { buildMirroredTerminalTabs } from '@/runtime/web-session-tabs-sync/terminal-build'
 import { toRemoteRuntimePtyId } from '../../src/shared/remote-runtime/remote-runtime-pty-id'
+import type { captureTerminalSurfaceIdentity } from '../../src/shared/terminal-tab-close'
 import {
   createHarness,
   WORKTREE_ID,
@@ -151,14 +152,18 @@ it('captures a real mirrored source on host coordinates and keeps client continu
     tabId: mirror.tab.id,
     paneKey: `${mirror.tab.id}:${LEAF_ID}`
   }
-  const seedMirror = () =>
-    useAppStore.setState({
+  const seedMirror = () => {
+    const presentationState: NonNullable<Parameters<typeof captureTerminalSurfaceIdentity>[0]> = {
       tabsByWorktree: { [WORKTREE_ID]: [mirror.tab] },
       terminalLayoutsByTabId: { [mirror.tab.id]: mirror.layout },
-      terminalPtyIncarnationsByPaneKey: {},
+      terminalPtyIncarnationsByPaneKey: {}
+    }
+    useAppStore.setState({
+      ...presentationState,
       activeWorktreeId: WORKTREE_ID,
       activeWorkspaceExecutionHostId: 'runtime:paired'
     })
+  }
   seedMirror()
   let duringResolve = () => {}
   rpc.mockImplementation(

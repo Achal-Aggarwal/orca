@@ -13,7 +13,7 @@ import {
   WORKTREE_ID
 } from '../../src/main/runtime/main-owned-workspace-runtime-fixture'
 import { executeStructuredSessionSwitch } from '../../src/main/runtime/rpc/methods/structured-agent-session-switch-execution'
-import { structuredAgentRuntimeRegistration } from '../../src/main/runtime/structured-agent-runtime-registrations'
+import { structuredAgentRuntimeMetadata } from '../../src/main/runtime/structured-agent-runtime-metadata'
 import { agentSessionProviderHandleChainHead } from '../../src/shared/agent-session-provider-handle'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -159,7 +159,7 @@ it.each(['readable', 'refused', 'unmounted'] as const)(
       agent: 'codex',
       cwd: rig.root,
       providerSessionId: nativeId,
-      registration: structuredAgentRuntimeRegistration('codex')!,
+      metadata: structuredAgentRuntimeMetadata('codex')!,
       requireCurrent: () => {
         const current = rig.store.requireWritableRecord(record.sessionId)
         expect(current.location).toEqual(record.location)

@@ -47,7 +47,7 @@ async function setup(outcome: 'ready' | 'failed' | 'unknown' = 'ready') {
   renderer.store.getState().createUnifiedTab(wt, 'agent-session', {
     id: 'custom-source',
     entityId: 'source-chat',
-    agent: 'codex'
+    agentSessionAgent: 'codex'
   })
   const initial = makeWorkspaceSessionWithHeadlessTerminal()
   const session =
