@@ -83,7 +83,7 @@ it('distinguishes an entirely deleted source from an unreachable symlink or impo
   const missing = join(root, 'missing'),
     source = { root: missing, dbPath: join(missing, 'opencode.db'), api: 'v2' as const }
   expect(await readOpenCodeSessionPresence(source, 'ses_old')).toBe('absent')
-  symlinkSync(join(root, 'unreachable'), missing)
+  symlinkSync(join(root, 'unreachable'), missing, 'junction')
   expect(await readOpenCodeSessionPresence(source, 'ses_old')).toBe('unavailable')
   writeFileSync(join(root, 'opencode-next.db'), 'unknown import')
   expect(

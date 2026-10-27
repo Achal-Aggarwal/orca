@@ -81,11 +81,11 @@ it('projects no-service saved env in CLI/child/server order, retaining establish
     }
   })
   file(join(root, 'redirected/service.json'), {
-    env: { OPENCODE_DB: '/custom/session.db', XDG_DATA_HOME: '/too-late' }
+    env: { OPENCODE_DB: join(root, 'custom-session.db'), XDG_DATA_HOME: '/too-late' }
   })
   expect(await resolveOpenCodeSessionSource(args())).toEqual({
     root: join(root, 'child/opencode'),
-    dbPath: '/custom/session.db',
+    dbPath: join(root, 'custom-session.db'),
     api: 'v2'
   })
   expect(get).not.toHaveBeenCalled()

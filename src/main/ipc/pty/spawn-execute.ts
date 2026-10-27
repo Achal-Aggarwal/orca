@@ -170,13 +170,21 @@ export async function executePtySpawn(
             assertSpawnReplyWasLive(providerResult)
             facts.reportPtySpawnCommitted?.()
             ctx.stablePaneOwner = null
-            error.resolve({
-              ...providerResult,
-              ...savedResumeResult(ctx.resumeAdmission),
-              launchAgent: args.launchAgent,
-              launchConfig: args.launchConfig,
-              launchToken: typeof args.launchToken === 'string' ? args.launchToken : undefined
-            })
+            error.resolve(
+              providerResult.isReattach ||
+                providerResult.agentSessionEnsure?.disposition === 'adopted'
+                ? {
+                    ...providerResult,
+                    ...ctx.deps.runtime?.getTerminalLaunchResult?.(providerResult.id)
+                  }
+                : {
+                    ...providerResult,
+                    ...savedResumeResult(ctx.resumeAdmission),
+                    launchAgent: args.launchAgent,
+                    launchConfig: args.launchConfig,
+                    launchToken: typeof args.launchToken === 'string' ? args.launchToken : undefined
+                  }
+            )
           } catch (failure) {
             error.reject(failure)
             throw failure
