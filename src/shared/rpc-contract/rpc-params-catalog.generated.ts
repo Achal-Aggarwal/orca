@@ -569,8 +569,6 @@ import {
   ItemParams,
   ModelCatalogParams,
   OptionsParams,
-  SwitchToChatParams,
-  SwitchToTerminalParams,
   QueuedMessageActionParams,
   QueuedMessagesResumeParams,
   RespondParams,
@@ -583,6 +581,8 @@ import {
   SleepWorkspaceParams,
   SubscribeParams,
   SubscribeTurnCompletionsParams,
+  SwitchToChatParams,
+  SwitchToTerminalParams,
   ThreadGoalParams,
   UnsubscribeParams
 } from './structured-agent-session-params'
