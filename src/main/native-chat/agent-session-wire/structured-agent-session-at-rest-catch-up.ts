@@ -120,7 +120,7 @@ export async function catchUpStructuredSessionAtRest(input: {
     if (!isCodexVisibleHistoryRecord(record, paginated)) {
       continue
     }
-    const message = decodeCodexTranscriptLine(line, `#${index - 1}`)
+    const message = decodeCodexTranscriptLine(line, `#${index - 1}`, { historyImport: true })
     if (message) {
       retain({
         identity,

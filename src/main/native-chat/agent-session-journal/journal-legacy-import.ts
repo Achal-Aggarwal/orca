@@ -188,7 +188,8 @@ function replacementItem(
 
 const TRANSCRIPT_DECODERS = {
   claude: decodeClaudeTranscriptLine,
-  codex: decodeCodexTranscriptLine,
+  codex: (line: string, fallbackId: string) =>
+    decodeCodexTranscriptLine(line, fallbackId, { historyImport: true }),
   grok: decodeGrokTranscriptLine,
   omp: decodeOmpTranscriptLine
 } as const

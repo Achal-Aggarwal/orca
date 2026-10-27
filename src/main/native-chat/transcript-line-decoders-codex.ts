@@ -10,7 +10,7 @@ import {
   parseJsonObject,
   timestampMs
 } from '../ai-vault/session-scanner-values'
-import { toolResultOutput } from './transcript-record-blocks'
+import { claudeContentBlocks, toolResultOutput } from './transcript-record-blocks'
 import { CODEX_EVENT_TURN_ABORTED } from './transcript-turn-markers'
 
 /** Paginated completed items own visible messages; response tools retain their legacy format. */
@@ -32,7 +32,8 @@ export function isCodexVisibleHistoryRecord(
 
 export function decodeCodexTranscriptLine(
   line: string,
-  fallbackId: string
+  fallbackId: string,
+  options?: { historyImport: true }
 ): NativeChatMessage | null {
   const record = parseJsonObject(line)
   if (!record) {
@@ -47,7 +48,12 @@ export function decodeCodexTranscriptLine(
   const baseId = extractString(payload.id) ?? fallbackId
 
   if (record.type === 'response_item') {
-    return codexResponseItem(payload, baseId, timestamp)
+    return codexResponseItem(
+      payload,
+      baseId,
+      timestamp,
+      options?.historyImport ? codexTurnItemBlocks : claudeContentBlocks
+    )
   }
   if (record.type === 'event_msg') {
     return codexEventMessage(payload, baseId, timestamp)
@@ -73,7 +79,8 @@ function codexUnwrappedResponseItem(
 function codexResponseItem(
   payload: Record<string, unknown>,
   id: string,
-  timestamp: number | null
+  timestamp: number | null,
+  decodeMessageBlocks = claudeContentBlocks
 ): NativeChatMessage | null {
   if (payload.type === 'message') {
     const role =
@@ -81,7 +88,7 @@ function codexResponseItem(
     if (!role) {
       return null
     }
-    const decodedBlocks = codexTurnItemBlocks(payload.content)
+    const decodedBlocks = decodeMessageBlocks(payload.content)
     const blocks =
       role === 'user' ? decodedBlocks.filter((block) => !isSkillContext(block)) : decodedBlocks
     if (blocks.length === 0) {

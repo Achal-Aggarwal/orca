@@ -140,6 +140,28 @@ it('imports canonical completed items once with stable nested IDs, including rep
   ])
 })
 
+it.each([
+  ['user', 'input_text'],
+  ['assistant', 'output_text']
+] as const)('imports wrapped raw-only %s messages', async (role, type) => {
+  const filePath = join(root, 'rollout.jsonl')
+  await writeFile(
+    filePath,
+    JSON.stringify({
+      type: 'response_item',
+      payload: { type: 'message', role, content: [{ type, text: 'Raw-only message' }] }
+    })
+  )
+  const result = await prepareLegacyTranscriptImport({
+    agent: 'codex',
+    sessionId: CHILD,
+    options: { filePath }
+  })
+  expect(result.ok && result.items.map((item) => item.body)).toMatchObject([
+    { role, blocks: [{ type: 'text', text: 'Raw-only message' }] }
+  ])
+})
+
 it.each(['active', 'archive', 'compressed'] as const)(
   'reads %s prefixes oldest first, excludes later turns and leaves copied forks standalone',
   async (location) => {
