@@ -12,7 +12,8 @@ type AgentBrowserEnvelope = { success?: boolean; data?: unknown; error?: string 
 /** Parses --json output; a one-command batch reply becomes the single-command envelope. */
 export function parseAgentBrowserJsonOutput(stdout: string): AgentBrowserEnvelope {
   const parsed = JSON.parse(stdout)
-  if (!Array.isArray(parsed)) {
+  // Orca batches one command; a longer array is a passthrough `exec batch` reply.
+  if (!Array.isArray(parsed) || parsed.length !== 1) {
     return parsed
   }
   const [entry] = parsed
