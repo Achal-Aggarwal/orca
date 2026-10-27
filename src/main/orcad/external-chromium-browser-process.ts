@@ -165,7 +165,7 @@ export class ExternalChromiumBrowserProcess {
     }
     if (method === 'browserWait') {
       const { args, processTimeoutMs } = externalChromiumWaitCommand(params)
-      await this.session.run(args, processTimeoutMs)
+      await this.session.run(args, { timeoutMs: processTimeoutMs })
       return { waited: true }
     }
     if (method === 'browserSelectAll') {
