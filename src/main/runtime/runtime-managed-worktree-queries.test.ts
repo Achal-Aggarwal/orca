@@ -255,17 +255,13 @@ describe('RuntimeManagedWorktreeQueries.list host scope', () => {
     const getRepos = vi.fn(() =>
       repos.map((repo) => {
         hydrated++
-        return new Proxy(
-          { ...repo },
-          {
-            get(row, key, receiver) {
-              if (key === 'id') {
-                idReads++
-              }
-              return Reflect.get(row, key, receiver)
-            }
+        return {
+          ...repo,
+          get id() {
+            idReads++
+            return repo.id
           }
-        )
+        }
       })
     )
     const rows: ResolvedWorktree[] = [local, ssh].flatMap((repo) =>
