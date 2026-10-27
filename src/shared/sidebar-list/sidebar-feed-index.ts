@@ -26,13 +26,40 @@ import {
   type SidebarFeedWorkspace
 } from './sidebar-feed-worktrees'
 import { sortWorktreesByStamps, type SortBy } from './smart-sort'
+import type { PairedServerWorkspaceRow } from './paired-server-rows'
+import type { WorkspaceRow } from './workspace-rows'
+
+// By row object: a feed snapshot keeps an unchanged row's object, so only a changed row is read again.
+type FeedRow = WorkspaceRow | PairedServerWorkspaceRow
+const workspaceByRow = new WeakMap<
+  FeedRow,
+  { identity: string | undefined; read: SidebarFeedWorkspace | null }
+>()
+
+/** `identity`: the key a host's own row is listed under; a paired server's row carries its own. */
+function readRemembered(
+  row: FeedRow,
+  read: () => SidebarFeedWorkspace | null,
+  identity?: string
+): SidebarFeedWorkspace | null {
+  const remembered = workspaceByRow.get(row)
+  if (remembered && remembered.identity === identity) {
+    return remembered.read
+  }
+  const next = read()
+  workspaceByRow.set(row, { identity, read: next })
+  return next
+}
 
 function readFeedWorkspaces(domains: SidebarFeedDomains): SidebarFeedWorkspace[] {
   return [
     ...[...domains.workspaces].flatMap(
-      ([identity, row]) => readFeedWorkspaceRow(identity, row) ?? []
+      ([identity, row]) =>
+        readRemembered(row, () => readFeedWorkspaceRow(identity, row), identity) ?? []
     ),
-    ...[...domains.pairedServerRows.values()].flatMap((row) => readFeedPairedServerRow(row) ?? [])
+    ...[...domains.pairedServerRows.values()].flatMap(
+      (row) => readRemembered(row, () => readFeedPairedServerRow(row)) ?? []
+    )
   ]
 }
 
@@ -85,10 +112,7 @@ export type SidebarFeedIndex = {
   repoOf: (worktree: Pick<Worktree, 'repoId' | 'hostId'>) => Repo | undefined
 }
 
-/**
- * Its own host's registration when the catalog has one. A host that lists a same-id copy without
- * its own registration still reads as that repo's, as the window reads it.
- */
+/** Prefer the row host’s registration; missing same-ID registrations use repoMap fallback like the window. */
 function repoOfWorktree(
   repoMap: ReadonlyMap<string, Repo>,
   reposByKey: ReadonlyMap<HostScopedRepoKey, Repo>,
@@ -130,10 +154,7 @@ export function rankSidebarFeedWorktrees(
   ).map(getWorktreeHostIdentity)
 }
 
-/**
- * Presentation only: `live` with each workspace that `heldFrom` also lists keeping the Recent
- * stamp it had there, so project sections ordered by Recent hold still. New rows keep theirs.
- */
+/** Keep prior Recent stamps for existing rows during project recency hold; new rows retain live stamps. */
 export function withHeldProjectRecency(
   live: SidebarFeedIndex,
   heldFrom: SidebarFeedIndex

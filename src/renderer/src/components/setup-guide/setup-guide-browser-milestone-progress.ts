@@ -60,8 +60,7 @@ export function getSetupGuideBrowserMilestoneAwareProgress(
   const stepDone = Object.fromEntries(
     FEATURE_WALL_SETUP_STEPS.map((step) => [step.id, true])
   ) as Record<FeatureWallSetupStepId, boolean>
-  // Why: profiles that finished or dismissed the pre-browser checklist keep
-  // that prior checklist contract after the browser milestone is introduced.
+  // Preserve the checklist contract for profiles that completed or dismissed it before the browser milestone.
   return {
     ...progress,
     stepDone,

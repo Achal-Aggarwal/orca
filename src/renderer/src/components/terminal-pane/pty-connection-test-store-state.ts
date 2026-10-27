@@ -22,6 +22,7 @@ export type StoreState = {
   ptyIdsByTabId?: Record<string, string[]>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot>
   terminalPaneStartsByPaneKey?: AppState['terminalPaneStartsByPaneKey']
+  terminalPaneResumeOutcomesByPaneKey?: AppState['terminalPaneResumeOutcomesByPaneKey']
   /** Pty id → the agent its pane restarts as once the account change lands. */
   pendingPaneAccountRestarts?: AppState['pendingPaneAccountRestarts']
   unreadTerminalTabs?: Record<string, true>
@@ -54,7 +55,8 @@ export type StoreState = {
     displayName?: string
     executionHostId?: string | null
   }[]
-  projects: {
+  endpointProjectHostSetups: AppState['endpointProjectHostSetups']
+  endpointProjects: {
     id: string
     localWindowsRuntimePreference?:
       | { kind: 'inherit-global' }
@@ -101,6 +103,7 @@ export type StoreState = {
   removeDeferredSshSessionId: ReturnType<typeof vi.fn>
   consumePendingColdRestore: ReturnType<typeof vi.fn>
   consumePendingSnapshot: ReturnType<typeof vi.fn>
+  consumeTabStartupCommand?: ReturnType<typeof vi.fn>
   runtimePaneTitlesByTabId: Record<string, Record<number, string>>
   agentStatusByPaneKey: Record<string, unknown>
   retainedAgentsByPaneKey: Record<string, { agentType: AgentType }>

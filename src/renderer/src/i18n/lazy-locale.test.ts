@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   UI_LANGUAGE_CHINESE,
@@ -9,13 +9,7 @@ import {
 import { i18n, setRendererPluginLanguagePacks, setRendererUiLanguage } from './i18n'
 import { pluginLanguageResourceId } from '../../../shared/plugins/plugin-language-pack-artifact'
 
-// Why: the renderer now lazy-loads non-English catalogs through an i18next
-// backend instead of bundling all five into the startup chunk. This guards the
-// invariant that switching language (I18nProvider effect / Settings) resolves
-// real translations once changeLanguage() settles — and that any direct
-// i18n.changeLanguage() call (used across the codebase and tests) transparently
-// loads its catalog. A regression would silently show English to a user who
-// picked another language.
+// Every changeLanguage caller must transparently load real non-English translations before its promise settles.
 
 describe('renderer i18n lazy locale loading', () => {
   beforeEach(async () => {
@@ -43,6 +37,33 @@ describe('renderer i18n lazy locale loading', () => {
     expect(i18n.language).toBe('pt')
     expect(i18n.t('menu.file', { defaultValue: 'File' })).not.toBe('File')
   })
+
+  it.each(['network', 'http', 'invalid-json'] as const)(
+    'retries a rejected %s catalog load with a fresh request',
+    async (failure) => {
+      i18n.removeResourceBundle('ja', 'translation')
+      const request = vi.spyOn(globalThis, 'fetch')
+      if (failure === 'network') {
+        request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      } else {
+        request.mockResolvedValueOnce(
+          failure === 'http' ? new Response('', { status: 503 }) : new Response('{')
+        )
+      }
+      try {
+        await expect(setRendererUiLanguage('ja')).rejects.toThrow('Language catalog unavailable')
+        expect(i18n.language).toBe('en')
+        expect(i18n.hasResourceBundle('ja', 'translation')).toBe(false)
+
+        await setRendererUiLanguage('ja')
+        expect(i18n.language).toBe('ja')
+        expect(i18n.t('menu.file', { defaultValue: 'File' })).toBe('ファイル')
+        expect(request).toHaveBeenCalledTimes(2)
+      } finally {
+        request.mockRestore()
+      }
+    }
+  )
 
   it('uses the inline English default when a target catalog omits a key', async () => {
     await setRendererUiLanguage(UI_LANGUAGE_SPANISH)
