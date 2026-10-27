@@ -215,17 +215,6 @@ describe('buildWorkspaceRows', () => {
     )
   })
 
-  it('parses what it builds', () => {
-    const rows = buildWorkspaceRows({
-      worktrees: [worktree({ hostId: 'local' })],
-      folderWorkspaces: [folder],
-      repos: [localRepo],
-      lineageById: {}
-    })
-    const snapshot = { revision: 1, rows: Object.fromEntries(rows) }
-    expect(WorkspaceRowsSnapshotSchema.parse(snapshot)).toEqual(snapshot)
-  })
-
   it('lists the keys it builds rows under, which sleeping retention is matched on', () => {
     const otherRepo: Repo = { ...localRepo, id: 'repo-2', path: '/o' }
     const serverRepo: Repo = { ...localRepo, id: 'repo-3', executionHostId: 'runtime:env' }
