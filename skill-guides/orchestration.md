@@ -1,16 +1,14 @@
 ---
 name: orchestration
 description: >-
-  Hand work to Orca worker agents and get their results back. Use when asked to
-  change code in a project (the worker gets a new workspace of that project),
-  to split work across parallel agents, to run work on a different agent or
-  model, or to run long work in the background; also when you are a dispatched
-  worker (a prompt with Task and Dispatch IDs: heartbeats, ask, worker_done).
-  Covers task DAGs, ask/reply, and decision gates. Not for questions or small
-  edits in your own checkout. Use `orca-cli` instead to give work away for good
-  with no result expected back ("hand off", "handover", "give this to another
-  agent"), and for terminal control, shell commands, worktree management, and
-  reading or waiting on terminals.
+  Coordinate supervised Orca workers, or work as a dispatched worker
+  (heartbeats, ask, worker_done): threaded messages, blocking ask/reply, task
+  dispatch, worker_done/escalation waits, task DAGs, decision gates,
+  coordinator loops, and decomposing work across agents. Use `orca-cli` for full
+  ownership handoffs — "hand off", "handoff", "handover", "give this to another
+  agent", "another worktree" — unless asked to supervise, monitor, or coordinate
+  a DAG, and for terminal control, lightweight terminal prompts, shell commands,
+  Orca worktree management, and reading or waiting on terminals.
 ---
 
 # Orca orchestration
@@ -22,22 +20,18 @@ wakes you when a worker reports back. Terms:
 - **Task**: one piece of work. **Dispatch**: one attempt at a Task by one worker.
 - **Settled**: the worker sent `worker_done` (succeeded or failed).
 
-## When to hand work to a worker
+## Your role
 
-Hand off when:
+| Situation                                                                                                             | Role              | What to do                                                                |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| The user asks you to supervise or monitor workers, wait for their results, coordinate a task DAG, or manage ask/reply | Coordinator       | Follow the main recipe below                                              |
+| Your prompt has a live preamble with Task and Dispatch IDs                                                            | Dispatched worker | Follow the preamble and "If you are a dispatched worker" below            |
+| The user asks to hand work off or start another agent or worktree, without supervising it                             | Handoff owner     | Use the `orca-cli` skill; create no Run, Task, or Dispatch                |
+| A message carries a legacy authority label                                                                            | Compatibility     | Load `references/legacy-contract-migration.md` before changing any state  |
+| None of the above                                                                                                     | Ordinary agent    | Send no lifecycle messages; use `orca-cli` for terminal and worktree work |
 
-- The user asks for a code change in a project. The worker gets a new workspace
-  of that project, so its edits never collide with your checkout or another
-  agent's.
-- The work splits into parts that can run in parallel.
-- The user wants a different agent or model to do it.
-- The work is long and you should stay free to answer the user.
-
-Do it yourself when the user asks a question, or wants a small edit in the
-checkout you are already working in.
-
-If the user wants to give the work away for good and expects nothing back, use
-the `orca-cli` skill instead and create no Run.
+Choosing a model or effort does not make a handoff supervised: `orca-cli`'s
+`worktree create --agent` and `agent launch` take `--model` and `--effort` too.
 
 ## Main recipe
 
@@ -46,17 +40,21 @@ executable in its place; do not create a shell variable or run `ORCA`
 literally. If it fails, report its exact error; never switch to another one.
 
 ```text
-ORCA repo list --json
 ORCA orchestration run-create --objective "<goal>" --json
-ORCA orchestration worker-start --spec "<task>" --worktree new-top-level --repo id:<repoId> --name <short-name> --agent claude --json
+ORCA orchestration worker-start --spec "<task>" --worktree current --agent claude --json
 ```
 
-- `--repo` names the project; `repo list` gives its id. Pass it whether or not
-  you are inside that project. `--name` names the new workspace.
+- `--worktree current` runs the worker in your workspace; an exact workspace
+  selector runs it in another existing one. Placement goes on `worker-start`;
+  `run-create` takes none.
+- Create a new workspace only when the user asks for one, or sharing a checkout
+  would conflict (for example, the change belongs to a project you are not
+  in). Pass the project with `--repo`; `ORCA repo list --json` gives its id.
+  Without `--repo`, Orca uses the Git project you are in, and fails if you are
+  in none:
+  `ORCA orchestration worker-start --spec "<task>" --worktree new-top-level --repo id:<repoId> --name <short-name> --agent claude --json`
 - `--agent` is the agent the user asked for, otherwise the kind you are. Add
   `--model` only when the user named one.
-- For work that is not a code change, or a project that is a plain folder (not
-  Git), use `--worktree current` and drop `--repo` and `--name`.
 - Start every independent worker before you stop. One `worker-start --spec`
   call creates the Task and its Dispatch.
 - If `worker-start` exits non-zero, do not run it again. Read `failedStage`

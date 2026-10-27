@@ -5,20 +5,20 @@ WSL, or another connected Orca server.
 
 ## Placement choices
 
-A code change in a project gets a new top-level workspace of that project, so
-the worker's edits never collide with another checkout. Other work, and any
-project that is a plain folder, stays in the current workspace. Use a child
-workspace only when the user asks for stacked work.
+A fresh worker means a fresh agent terminal, not a new Git worktree. Use the
+current or an exact existing workspace by default. Create a worktree only when
+the user requested one or a concrete checkout or filesystem conflict makes
+sharing unsafe.
 
 ```text
-# New top-level workspace of a project. --repo is required when you are not inside it.
-ORCA orchestration worker-start --task <task_id> --worktree new-top-level --repo id:<repoId> --name <name> --agent codex --setup run --json
+# Current workspace; setup is not rerun.
+ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
 
 # Stacked child of the current worktree.
 ORCA orchestration worker-start --task <task_id> --worktree new-child --name <name> --agent codex --setup run --json
 
-# Current workspace; setup is not rerun.
-ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
+# Independent top-level worktree. --repo is required when you are not inside that project.
+ORCA orchestration worker-start --task <task_id> --worktree new-top-level --repo id:<repoId> --name <name> --agent codex --setup run --json
 ```
 
 `--worktree` takes workspace placement on `worker-start` only; `run-create`
