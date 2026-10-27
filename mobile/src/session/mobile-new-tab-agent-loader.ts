@@ -1,3 +1,7 @@
+import { z } from 'zod'
+import { AGENT_PERMISSION_CHOICES } from '../../../src/shared/tui-agent-permission-choice'
+import { agentPickerChoiceSeeds } from '../../../src/shared/agent-launch-picker'
+import { isNativeChatDefaultFor } from '../../../src/shared/structured-native-chat-launch-route'
 import { getRepoIdFromWorktreeId } from '../../../src/shared/worktree/id'
 import {
   PREFLIGHT_OTHER_RUNTIME_REFUSAL_RUNTIME_CAPABILITY,
@@ -94,16 +98,42 @@ export async function loadMobileNewTabAgentOptions(
   return newTabAgentInventory(context.settings, context.detectedAgents)
 }
 
+const pickerSettings = z.object({
+  experimentalNativeChat: z.boolean().optional(),
+  nativeChatProviders: z.record(z.string(), z.boolean()).optional(),
+  agentDefaultArgs: z.record(z.string(), z.string()).optional(),
+  agentPermissionDefault: z.enum(AGENT_PERMISSION_CHOICES).optional(),
+  agentPermissionOverrides: z.record(z.string(), z.enum(AGENT_PERMISSION_CHOICES)).optional(),
+  nativeChatSessionOptions: z
+    .record(
+      z.string(),
+      z.object({
+        model: z.string().optional(),
+        valuesByModel: z
+          .record(z.string(), z.record(z.string(), z.union([z.string(), z.boolean()])))
+          .optional()
+      })
+    )
+    .optional()
+})
+
 function newTabAgentInventory(
   settings: unknown,
   detectedAgents: unknown[]
 ): MobileNewTabAgentInventory {
+  const defaults = pickerSettings.safeParse(settings)
   return {
     options: buildMobileNewTabAgentOptions(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Preserve the established response shape at this boundary.
       settings as MobileNewTabAgentSettings | undefined,
       detectedAgents
-    ),
+    ).map((option) => ({
+      ...option,
+      pickerSeed: {
+        ...agentPickerChoiceSeeds(option.agent, defaults.success ? defaults.data : undefined),
+        chatDefault: defaults.success && isNativeChatDefaultFor(defaults.data, option.agent)
+      }
+    })),
     detectedAgents
   }
 }

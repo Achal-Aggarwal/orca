@@ -1,4 +1,35 @@
 {
+  "agentPicker": {
+    "chatOnly": "Apenas chat",
+    "search": "Buscar agentes e configurações…",
+    "selectAgent": "Selecionar um agente",
+    "configure": "Configurar {{agent}}",
+    "openAs": "Abrir como",
+    "chat": "Chat",
+    "terminal": "Terminal",
+    "model": "Modelo",
+    "agentDefault": "Padrão do agente",
+    "default": "Padrão",
+    "on": "Ativado",
+    "off": "Desativado",
+    "permissions": "Permissões",
+    "agentsDefaults": "Padrões dos agentes",
+    "arguments": "Argumentos",
+    "argumentsHint": "Aplica-se apenas às inicializações pela CLI.",
+    "resetArguments": "Restaurar padrão",
+    "use": "Usar",
+    "createChat": "Criar e abrir chat",
+    "createTerminal": "Criar e abrir terminal",
+    "openChat": "Abrir chat",
+    "openTerminal": "Abrir terminal",
+    "permission": {
+      "own": "Usar configuração do agente",
+      "ask": "Perguntar",
+      "accept-edits": "Aceitar edições",
+      "auto": "Aprovar por mim",
+      "full-access": "Acesso completo"
+    }
+  },
   "agentLaunch": {
     "opencode": {
       "updateRequired": "Esta versão do OpenCode não pode iniciar com segurança com o modelo escolhido. Atualize o OpenCode para uma versão compatível ou omita a escolha do modelo.",

@@ -77,7 +77,7 @@ export function createRepoActionTextDraftEditors(
 
   const updateActionAgentArgs = (
     actionId: SourceControlActionId,
-    value: string,
+    value: string | undefined,
     commit = false
   ): void => {
     setActionTextDrafts((current) => {

@@ -214,7 +214,43 @@ export function useSourceControlAgentActionDialog({
       selection: choice.pickerSelection,
       contextKey: choice.observation.contextKey,
       surface: choice.liveSurface,
-      onPick: onAgentPick
+      onPick: onAgentPick,
+      worktreeId,
+      setup: selectedAgent
+        ? {
+            agent: selectedAgent,
+            surface:
+              choice.liveSurface ??
+              (selection.choice?.route === 'structured-native-chat' ? 'chat' : 'terminal'),
+            choices:
+              recipe.launchPreferences?.agentId === selectedAgent
+                ? (({ agentId: _agent, ...choices }) => choices)(recipe.launchPreferences)
+                : {},
+            arguments: recipe.agentArgs
+          }
+        : undefined,
+      onSetup: (draft) => {
+        setLivePick(draft.surface)
+        setRecipe((current) => {
+          const {
+            launchPreferences: _preferences,
+            agentArgs: _args,
+            surface: _surface,
+            ...rest
+          } = current
+          const saved = savedSurfaceForPick(choice.observation.model, draft.agent, draft.surface)
+          return {
+            ...rest,
+            agentId: draft.agent,
+            ...(saved ? { surface: saved } : {}),
+            ...(Object.keys(draft.choices).length
+              ? { launchPreferences: { agentId: draft.agent, ...draft.choices } }
+              : {}),
+            ...(draft.arguments !== undefined ? { agentArgs: draft.arguments ?? '' } : {})
+          }
+        })
+        resetDeliveryPlan()
+      }
     },
     statusCopy,
     agentArgs,

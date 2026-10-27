@@ -116,6 +116,7 @@ export function useFolderSubmitOrchestration(input: FolderSubmitOrchestrationInp
           note,
           quickAgent: agent,
           launchChoice: options?.launchChoice,
+          launchSetup: options?.launchSetup,
           autoRenameBranchFromWork: settings?.autoRenameBranchFromWork,
           agentCmdOverrides: settings?.agentCmdOverrides,
           agentArgs: agent ? resolveTuiAgentLaunchArgs(agent, settings) : undefined,

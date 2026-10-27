@@ -1,4 +1,7 @@
+import type { AgentDedicatedChoices } from '../../../../shared/agent-launch-choices'
+import type { AgentPickerDraft } from '../../../../shared/agent-launch-picker'
 import React, { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { CommandItem, CommandSeparator } from '@/components/ui/command'
 import { AgentIcon, getAgentCatalog, type AgentCatalogEntry } from '@/lib/agent-catalog'
 import { searchAgentPickerEntries } from '@/lib/agent-picker-search'
@@ -20,10 +23,16 @@ import { AgentTerminalLaunchButton } from './AgentTerminalLaunchButton'
 
 /** The "+" menu's rows in the picker: a chat row picks the chat, its terminal button the CLI. */
 export type AgentComboboxSurfaceRows = {
+  setupSupported?: boolean
+  setupDefaults?: { agent: TuiAgent; choices?: AgentDedicatedChoices; arguments?: string | null }
   model: NewTabAgentMenuModel
   /** The user's explicit pick for the selected agent; absent follows the agent's own row. */
   surface?: AgentLaunchSurface
   selection: ReturnType<typeof resolveAgentMenuSelection>
+  pickerMode?: 'save' | 'create'
+  setup?: AgentPickerDraft
+  onSetup?: (draft: AgentPickerDraft) => void
+  worktreeId?: string
   contextKey?: string
   onPick: (agent: TuiAgent, surface: AgentLaunchSurface) => void
 }
@@ -193,22 +202,38 @@ export function SurfaceAgentItems({
             <span className="shrink-0 text-muted-foreground">
               {chatUnavailableLabel(row.reason)}
             </span>
-          ) : rowOffersTerminal(model, row) ? (
-            <AgentTerminalLaunchButton
-              title={terminalPickTitle(agentLabel)}
-              aria-pressed={pressed}
-              className={cn(
-                'hover:bg-background [[data-selected=true]_&]:opacity-100',
-                (pressed || armedValue === id) && 'bg-background opacity-100'
-              )}
-              // Keeps focus in the search box; the click picks the CLI, not the row.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.stopPropagation()
-                onPick(row.agent, 'terminal')
-              }}
-            />
-          ) : null
+          ) : (
+            <>
+              {rowOffersTerminal(model, row) ? (
+                <AgentTerminalLaunchButton
+                  title={terminalPickTitle(agentLabel)}
+                  aria-pressed={pressed}
+                  className={cn(
+                    'hover:bg-background [[data-selected=true]_&]:opacity-100',
+                    (pressed || armedValue === id) && 'bg-background opacity-100'
+                  )}
+                  // Keeps focus in the search box; the click picks the CLI, not the row.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onPick(row.agent, 'terminal')
+                  }}
+                />
+              ) : null}
+              {surfaceRows.onSetup && surfaceRows.setupSupported === false ? (
+                <button
+                  type="button"
+                  disabled
+                  aria-label={translate('agentPicker.configure', 'Configure {{agent}}', {
+                    agent: agentLabel
+                  })}
+                  className="size-6 shrink-0 text-muted-foreground opacity-50"
+                >
+                  <ChevronRight className="size-3.5" />
+                </button>
+              ) : null}
+            </>
+          )
         })}
       </React.Fragment>
     )

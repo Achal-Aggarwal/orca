@@ -462,3 +462,39 @@ describe('TabBarCreateEntry search behavior', () => {
     expect(tabSearchMock.calls.at(-1)).toEqual({ enabled: false, query: '' })
   })
 })
+
+it('uses the common setup search for Enter and dispatches its alternate button only once', () => {
+  const launched = vi.fn()
+  const entry = {
+    agent: 'codex' as const,
+    label: 'Codex',
+    rows: [{ agent: 'codex' as const, kind: 'chat' as const }],
+    surfaces: ['chat' as const, 'terminal' as const],
+    defaultSurface: 'chat' as const,
+    terminal: {},
+    structured: {},
+    catalog: {
+      origin: 'probe' as const,
+      fetchedAt: 1,
+      models: [
+        { id: 'astra', label: 'Astra', isDefault: true, efforts: [{ value: 'low', label: 'Low' }] }
+      ]
+    }
+  }
+  renderEntry({ agentPickerEntries: [entry], onLaunchAgentOption: launched })
+  setQuery('astra low')
+  submit()
+  expect(launched).toHaveBeenCalledOnce()
+  expect(launched.mock.calls[0][0].setup).toMatchObject({
+    surface: 'chat',
+    choices: { model: 'astra', options: { effort: 'low' } }
+  })
+  launched.mockClear()
+  renderEntry({ agentPickerEntries: [entry], onLaunchAgentOption: launched })
+  setQuery('astra low')
+  act(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Open terminal"]')?.click()
+  )
+  expect(launched).toHaveBeenCalledOnce()
+  expect(launched.mock.calls[0][0].setup.surface).toBe('terminal')
+})

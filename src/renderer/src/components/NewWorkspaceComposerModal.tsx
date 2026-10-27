@@ -1,3 +1,4 @@
+import type { AgentPickerDraft } from '../../../shared/agent-launch-picker'
 import { agentChoicePending } from '@/lib/host-chat-program'
 import type { AgentLaunchSurface } from '@/lib/agent-session-launch-plan'
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -198,6 +199,7 @@ function QuickTabBody({
   const [quickAgentPick, setQuickAgentPick] = useState<{
     agent: TuiAgent | null
     surface?: AgentLaunchSurface
+    setup?: AgentPickerDraft
   }>({ agent: null })
   const quickAgentSurface = quickAgentPick.agent === quickAgent ? quickAgentPick.surface : undefined
   const observation = useAgentMenuObservation(
@@ -228,9 +230,17 @@ function QuickTabBody({
     }
     await submitQuick(quickAgent, {
       setupOnly: quickSetupOnly,
+      launchSetup: quickAgentPick.agent === quickAgent ? quickAgentPick.setup : undefined,
       launchChoice: launchSelection.choice
     })
-  }, [createDisabled, quickAgent, launchSelection.choice, quickSetupOnly, submitQuick])
+  }, [
+    createDisabled,
+    quickAgent,
+    quickAgentPick,
+    launchSelection.choice,
+    quickSetupOnly,
+    submitQuick
+  ])
   // Layer Add Project without replacing the composer. Retain it for close animation and clone/scan cancellation; folder/non-Git navigation still tears down the modal.
   const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [addProjectMounted, setAddProjectMounted] = useState(false)
@@ -343,7 +353,24 @@ function QuickTabBody({
                 selection: launchSelection,
                 surface: quickAgentSurface,
                 contextKey: observation.contextKey,
-                onPick: handleQuickAgentChange
+                onPick: handleQuickAgentChange,
+                setup: quickAgentPick.agent === quickAgent ? quickAgentPick.setup : undefined,
+                pickerMode: 'create',
+                setupSupported:
+                  observation.model.state === 'settled' &&
+                  observation.model.pickerContext?.executionHostId === 'local',
+                onSetup: (draft) => {
+                  setQuickAgentOverride(draft.agent)
+                  setQuickAgentPick({ agent: draft.agent, surface: draft.surface, setup: draft })
+                  setQuickSelectionCleared(false)
+                  const selected = observation.selectionFor(draft.agent, draft.surface)
+                  if (selected.ready) {
+                    void submitQuick(draft.agent, {
+                      launchChoice: selected.choice,
+                      launchSetup: draft
+                    })
+                  }
+                }
               }
             : undefined
         }

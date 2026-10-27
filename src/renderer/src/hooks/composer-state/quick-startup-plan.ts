@@ -1,3 +1,8 @@
+import {
+  agentPickerSessionOptions,
+  type AgentPickerDraft
+} from '../../../../shared/agent-launch-picker'
+import { projectAgentLaunchProfile } from '../../../../shared/agent-launch-profile'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { AgentStartupShell } from '../../../../shared/tui-agent-startup-shell'
@@ -16,6 +21,7 @@ import {
 } from '@/lib/execution-host-facts'
 
 export type QuickComposerStartupInput = {
+  launchSetup?: AgentPickerDraft
   agent: TuiAgent | null
   prompt: string
   draftPrompt: string | null | undefined
@@ -35,6 +41,19 @@ export type QuickComposerStartup = {
 
 export function buildQuickComposerStartup(input: QuickComposerStartupInput): QuickComposerStartup {
   const { agent, draftPrompt, prompt, settings } = input
+  const setup = input.launchSetup?.agent === agent ? input.launchSetup : undefined
+  const agentArgs =
+    agent && setup
+      ? projectAgentLaunchProfile(agent, settings, {
+          target: 'terminal',
+          choices: setup.choices,
+          ...(setup.arguments !== undefined ? { userArgs: setup.arguments ?? '' } : {}),
+          shell: input.shell ?? undefined
+        }).args
+      : agent
+        ? resolveTuiAgentLaunchArgs(agent, settings)
+        : undefined
+  const sessionOptions = setup ? agentPickerSessionOptions(setup.choices) : undefined
   const draftLaunchPlan =
     agent === null || !draftPrompt
       ? null
@@ -42,7 +61,8 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
           agent,
           draft: draftPrompt,
           cmdOverrides: settings?.agentCmdOverrides ?? {},
-          agentArgs: resolveTuiAgentLaunchArgs(agent, settings),
+          agentArgs,
+          ...(sessionOptions ? { sessionOptions } : {}),
           agentEnv: resolveTuiAgentLaunchEnv(
             agent,
             settings,
@@ -70,7 +90,8 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
       agent,
       prompt,
       cmdOverrides: settings?.agentCmdOverrides ?? {},
-      agentArgs: resolveTuiAgentLaunchArgs(agent, settings),
+      agentArgs,
+      ...(sessionOptions ? { sessionOptions } : {}),
       agentEnv: resolveTuiAgentLaunchEnv(
         agent,
         settings,

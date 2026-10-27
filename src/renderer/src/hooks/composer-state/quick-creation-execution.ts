@@ -121,6 +121,13 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
         trimmedNote
       } = prepared
 
+      const launchSetup =
+        selectedRepoAgentLaunchFact.kind === 'known' &&
+        selectedRepoAgentLaunchFact.hostKind === 'local' &&
+        !selectedRepoIsRemote &&
+        !selectedEphemeralVmRecipeId
+          ? options?.launchSetup
+          : undefined
       const promptLinkedWorkItem = agent === null ? null : submitLinkedWorkItem
 
       const { prompt: quickPrompt, draftPrompt: quickDraftPrompt } =
@@ -132,6 +139,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
         telemetry: quickTelemetry
       } = buildQuickComposerStartup({
         agent,
+        launchSetup,
         prompt: quickPrompt,
         draftPrompt: quickDraftPrompt,
         settings,
@@ -195,6 +203,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       const structuredLaunch = agentLaunchRoute === 'structured-native-chat'
 
       const request = buildQuickCreationRequest({
+        launchSetup,
         repoId,
         ephemeralVmRecipe,
         indeterminateProgress:

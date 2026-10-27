@@ -107,7 +107,7 @@ export function useSourceControlActionRecipeDraftState({
 
   const onActionAgentArgsChange = (
     actionId: SourceControlActionId,
-    value: string,
+    value: string | undefined,
     commit = false
   ): void => {
     setActionRecipeDraftState((current) => {

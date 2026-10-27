@@ -22,7 +22,6 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { AgentComboboxSurfaceRows } from '@/components/agent/agent-combobox-surface-items'
-import { SourceControlAgentCliArgsField } from './SourceControlAgentCliArgsField'
 import { SourceControlActionVariableChips } from '../source-control/SourceControlActionVariableChips'
 import { describeSourceControlActionModel } from '../settings/source-control-action-model-copy'
 import { sourceControlActionRecipeSaveMatchesTarget } from './source-control-action-recipe-match'
@@ -93,8 +92,6 @@ export function SourceControlAgentActionDialogForm({
   detecting,
   surfaceRows,
   statusCopy,
-  agentArgs,
-  agentArgsApply,
   recipe,
   commandTemplate,
   savedCommandInputTemplate,
@@ -109,7 +106,6 @@ export function SourceControlAgentActionDialogForm({
   isStarting,
   startLabel,
   onAgentPick,
-  onAgentArgsChange,
   onCommandTemplateChange,
   onSaveLaunchRecipeChange,
   onSaveAgentDefaultChange,
@@ -198,12 +194,6 @@ export function SourceControlAgentActionDialogForm({
             </p>
           ) : null}
         </div>
-
-        <SourceControlAgentCliArgsField
-          applies={agentArgsApply}
-          value={agentArgs}
-          onChange={onAgentArgsChange}
-        />
 
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-3">

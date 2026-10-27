@@ -175,7 +175,7 @@ export function withRepoAiActionRecipeText(
       ...(typeof text.commandInputTemplate === 'string'
         ? { commandInputTemplate: text.commandInputTemplate }
         : {}),
-      ...(text.agentArgs !== undefined ? { agentArgs: text.agentArgs } : {}),
+      ...(Object.hasOwn(text, 'agentArgs') ? { agentArgs: text.agentArgs } : {}),
       ...(preferencesEdited ? { launchPreferences: text.launchPreferences } : {})
     })
   )

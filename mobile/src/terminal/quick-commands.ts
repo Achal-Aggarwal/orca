@@ -1,3 +1,4 @@
+import type { AgentPickerDraft } from '../../../src/shared/agent-launch-picker'
 import type { TerminalQuickCommand } from '../../../src/shared/terminal-quick-command-types'
 import type { TuiAgent } from '../../../src/shared/tui-agent'
 import {
@@ -45,6 +46,7 @@ export function supportsMobileQuickCommands(capabilities: readonly string[] | un
 export type MobileQuickCommandLaunch = {
   agent?: TuiAgent
   options: {
+    pickerSetup?: AgentPickerDraft
     agentPrompt?: string
     startupCommand?: string
     startupCommandDelivery?: 'shell-ready'

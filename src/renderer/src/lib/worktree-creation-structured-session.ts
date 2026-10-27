@@ -1,3 +1,4 @@
+import { agentPickerSessionOptions } from '../../../shared/agent-launch-picker'
 import { useAppStore } from '@/store'
 import { activateAndRevealWorktree, type ActivateAndRevealResult } from '@/lib/worktree-activation'
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
@@ -81,6 +82,9 @@ export async function launchStructuredWorktreeSession(
     // One create is one user action: a retry of it re-delivers the same request.
     requestId: args.creationId,
     agent,
+    ...(args.request.launchSetup
+      ? { launchOptions: agentPickerSessionOptions(args.request.launchSetup.choices) }
+      : {}),
     prompt: args.request.launchDraftPrompt ?? args.request.quickPrompt,
     ...(args.request.promptDelivery ? { promptDelivery: args.request.promptDelivery } : {})
   })

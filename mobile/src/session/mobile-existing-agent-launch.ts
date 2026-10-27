@@ -79,7 +79,7 @@ export async function launchAgentInExistingWorkspace(args: {
   hostCapabilities: readonly string[] | null | undefined
   worktreeId: string
   agent: TuiAgent
-  agentArgs?: string
+  agentArgs?: string | null
   surface?: 'chat' | 'terminal'
   prompt?: AgentLaunchPrompt
   /** Model and effort the host applies on whichever route it picks. */

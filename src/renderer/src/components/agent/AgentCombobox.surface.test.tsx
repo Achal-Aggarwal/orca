@@ -39,7 +39,8 @@ const CHAT_ROWS: NewTabAgentMenuRow[] = [
 function renderPicker(
   model: NewTabAgentMenuModel,
   value: TuiAgent | null,
-  surface?: AgentLaunchSurface
+  surface?: AgentLaunchSurface,
+  setupSupported?: false
 ): { onPick: ReturnType<typeof vi.fn> } {
   const onPick = vi.fn()
   const element: ReactElement = (
@@ -51,6 +52,8 @@ function renderPicker(
       surfaceRows={{
         model,
         surface,
+        setupSupported,
+        onSetup: setupSupported === false ? vi.fn() : undefined,
         onPick,
         selection: resolveAgentMenuSelection({
           agent: value,
@@ -196,4 +199,15 @@ it('keeps a recorded host chat without its CLI on CHAT after ArrowRight and Ente
   fireEvent.keyDown(input, { key: 'ArrowRight' })
   fireEvent.keyDown(input, { key: 'Enter' })
   expect(onPick).toHaveBeenCalledExactlyOnceWith('antigravity', 'chat')
+})
+
+it('keeps ordinary paired-host creation picks while its setup chevron is disabled', () => {
+  const { onPick } = renderPicker(settled(CHAT_ROWS), 'claude', undefined, false)
+  fireEvent.click(screen.getByRole('combobox'))
+  const configure = screen.getByRole('button', { name: 'Configure Claude' })
+  expect(configure).toHaveProperty('disabled', true)
+  fireEvent.click(configure)
+  expect(onPick).not.toHaveBeenCalled()
+  fireEvent.click(option('Claude'))
+  expect(onPick).toHaveBeenCalledExactlyOnceWith('claude', 'chat')
 })

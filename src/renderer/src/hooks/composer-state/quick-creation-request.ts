@@ -1,3 +1,4 @@
+import type { AgentPickerDraft } from '../../../../shared/agent-launch-picker'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
@@ -10,6 +11,7 @@ import type { SetupDecision } from '../../../../shared/worktree/create-types'
 import { toFolderWorkspaceLinkedTask } from '@/components/sidebar/folder-workspace-composer-helpers'
 
 export type QuickCreationRequestInput = {
+  launchSetup?: AgentPickerDraft
   repoId: string
   ephemeralVmRecipe: WorktreeCreationRequest['ephemeralVmRecipe']
   indeterminateProgress: boolean
@@ -57,6 +59,7 @@ export type QuickCreationRequestInput = {
 }
 
 export type QuickSubmitOptions = {
+  launchSetup?: AgentPickerDraft
   setupOnly?: boolean
   launchChoice?: AgentLaunchChoice
 }
@@ -118,6 +121,7 @@ export function buildQuickCreationRequest(
     pendingFirstAgentMessageRename: input.pendingFirstAgentMessageRename,
     note: input.note,
     startupPlan: input.startupPlan,
+    ...(input.launchSetup ? { launchSetup: input.launchSetup } : {}),
     quickPrompt: input.quickPrompt,
     ...(input.launchDraftPrompt ? { launchDraftPrompt: input.launchDraftPrompt } : {}),
     promptDelivery: input.promptDelivery,

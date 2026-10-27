@@ -1,3 +1,6 @@
+import type { AgentComboboxProps } from './agent-combobox-props'
+export type { AgentComboboxProps } from './agent-combobox-props'
+import { SetupAgentCombobox } from './AgentSetupCombobox'
 import React, { useCallback, useMemo, useState } from 'react'
 import { ArrowRight, ChevronsUpDown, Terminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -31,40 +34,18 @@ import {
   type AgentComboboxSurfaceRows
 } from './agent-combobox-surface-items'
 
-type DefaultAgentPreference = TuiAgent | 'blank' | null
-
-// Blank Terminal is opt-in; agent-only automation/source-control flows cannot run it or accept null.
-type AgentComboboxSelectionProps =
-  | { allowBlankTerminal: true; onValueChange: (agent: TuiAgent | null) => void }
-  | { allowBlankTerminal?: false; onValueChange: (agent: TuiAgent) => void }
-
-type AgentComboboxProps = AgentComboboxSelectionProps & {
-  blankLabel?: string
-  disabled?: boolean
-  agents: AgentCatalogEntry[]
-  value: TuiAgent | null
-  onOpenManageAgents?: () => void
-  /** Saved default used for list indicators and right-click default actions. */
-  defaultAgent?: DefaultAgentPreference
-  /** Enable default-setting context menus on the selected trigger and list items. */
-  onSetDefault?: (agent: DefaultAgentPreference) => void
-  triggerClassName?: string
-  /** Let the parent submit on Enter from the closed trigger instead of opening the picker. */
-  onTriggerEnter?: () => void
-  allowNarrowTrigger?: boolean
-  /** Clearing is separate from selecting Blank Terminal. */
-  clearSelection?: {
-    cleared: boolean
-    onClear: () => void
-  }
-  /** Lists the "+" menu's chat and CLI rows instead of `agents`; picks go to `onPick`. */
-  surfaceRows?: AgentComboboxSurfaceRows
-}
-
 const BLANK_VALUE = '__none__'
 const TRIGGER_MIN_WIDTH_CLASS = '!min-w-[260px]'
 
-export default function AgentCombobox({
+export default function AgentCombobox(props: AgentComboboxProps): React.JSX.Element {
+  return props.surfaceRows?.onSetup && props.surfaceRows.setupSupported !== false ? (
+    <SetupAgentCombobox {...props} />
+  ) : (
+    <SimpleAgentCombobox {...props} />
+  )
+}
+
+function SimpleAgentCombobox({
   agents,
   blankLabel,
   disabled,

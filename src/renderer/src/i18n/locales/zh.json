@@ -1,4 +1,35 @@
 {
+  "agentPicker": {
+    "chatOnly": "仅聊天",
+    "search": "搜索智能体和配置…",
+    "selectAgent": "选择智能体",
+    "configure": "配置 {{agent}}",
+    "openAs": "打开方式",
+    "chat": "聊天",
+    "terminal": "终端",
+    "model": "模型",
+    "agentDefault": "智能体默认值",
+    "default": "默认",
+    "on": "开启",
+    "off": "关闭",
+    "permissions": "权限",
+    "agentsDefaults": "智能体设置默认值",
+    "arguments": "参数",
+    "argumentsHint": "仅适用于 CLI 启动。",
+    "resetArguments": "恢复默认值",
+    "use": "使用",
+    "createChat": "创建并打开聊天",
+    "createTerminal": "创建并打开终端",
+    "openChat": "打开聊天",
+    "openTerminal": "打开终端",
+    "permission": {
+      "own": "使用智能体配置",
+      "ask": "询问",
+      "accept-edits": "接受编辑",
+      "auto": "为我批准",
+      "full-access": "完全访问"
+    }
+  },
   "agentLaunch": {
     "opencode": {
       "updateRequired": "此版本的 OpenCode 无法使用所选模型安全启动。请将 OpenCode 更新到受支持的版本，或不指定模型。",

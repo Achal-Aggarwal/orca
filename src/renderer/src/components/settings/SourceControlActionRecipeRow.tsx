@@ -1,5 +1,4 @@
 import { SourceControlActionAgentPicker } from './SourceControlActionAgentPicker'
-import { SourceControlActionArguments } from './SourceControlActionArguments'
 import { Terminal } from 'lucide-react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -28,11 +27,6 @@ import {
 } from './source-control-action-recipe-options'
 import { translate } from '@/i18n/i18n'
 import { SourceControlActionOptionField } from './SourceControlActionOptionField'
-import { useSourceControlActionAgent } from './use-source-control-action-agent'
-import { shouldShowSourceControlActionArguments } from './source-control-action-arguments-visibility'
-import { chatProviderAgents, useHostStructuredAgentsVersion } from '@/lib/chat-provider-agents'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
-import { useAppStore } from '@/store'
 
 const DEFAULT_AGENT_VALUE = '__default_agent__'
 
@@ -58,7 +52,7 @@ type SourceControlActionRecipeRowProps<ActionId extends AiActionId> = {
     value: SourceControlActionLaunchPreferences | undefined
   ) => void
   onTemplateChange: (actionId: ActionId, value: string) => void
-  onAgentArgsChange: (actionId: ActionId, value: string, commit?: boolean) => void
+  onAgentArgsChange: (actionId: ActionId, value: string | undefined, commit?: boolean) => void
   onAppendVariable: (actionId: ActionId, variable: string) => void
   onDiscard: (actionId: ActionId) => void
   onSave: (actionId: ActionId) => void
@@ -99,17 +93,6 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
   onDiscard,
   onSave
 }: SourceControlActionRecipeRowProps<ActionId>): React.JSX.Element {
-  const actual = useSourceControlActionAgent(selectedAgent, defaultTuiAgent)
-  const settings = useAppStore((state) => state.settings)
-  useHostStructuredAgentsVersion()
-  const showArguments = shouldShowSourceControlActionArguments({
-    agent: actual.status === 'ready' ? actual.agent : null,
-    settings,
-    launchKind: surface,
-    chatAgents: chatProviderAgents(LOCAL_EXECUTION_HOST_ID, undefined)
-  })
-  const expectedAgent = resolveAgentArgsPlaceholderAgent(selectedAgent, defaultTuiAgent)
-  const pickerAgent = selectedAgent || actual.status === 'pending' ? expectedAgent : actual.agent
   const isLaunchAction = !AI_TEXT_ACTION_ID_SET.has(actionId)
   const templateDirty =
     hasUnsavedChanges ?? JSON.stringify(draftValue) !== JSON.stringify(baseValue)
@@ -132,6 +115,17 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
             <SourceControlActionAgentPicker
               agent={selectedAgent && !isCustomAgentId(selectedAgent) ? selectedAgent : null}
               surface={surface}
+              preferences={launchPreferences}
+              argumentsValue={draftValue.agentArgs}
+              onSetup={(draft) => {
+                onLaunchPreferencesChange?.(
+                  actionId,
+                  Object.keys(draft.choices).length
+                    ? { agentId: draft.agent, ...draft.choices }
+                    : undefined
+                )
+                onAgentArgsChange(actionId, draft.arguments === null ? '' : draft.arguments)
+              }}
               onPick={(agent, choice) =>
                 onAgentChange(actionId, agent ?? DEFAULT_AGENT_VALUE, choice)
               }
@@ -184,19 +178,7 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
         </div>
       </div>
       <div className="mt-3 grid min-w-0 grid-cols-1 items-start gap-3">
-        {isLaunchAction ? (
-          <div className="flex min-w-0 flex-wrap items-start gap-3">
-            <SourceControlActionArguments
-              showArguments={showArguments}
-              agent={pickerAgent}
-              value={draftValue.agentArgs}
-              preferences={launchPreferences}
-              disabled={actual.status === 'pending' || isSavingTemplate}
-              onArgsChange={(value, commit) => onAgentArgsChange(actionId, value, commit)}
-              onPreferencesChange={(value) => onLaunchPreferencesChange?.(actionId, value)}
-            />
-          </div>
-        ) : (
+        {!isLaunchAction ? (
           <SourceControlActionOptionField
             label={translate('auto.components.settings.AgentsPane.cfb3f35775', 'Arguments')}
           >
@@ -209,7 +191,7 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
               className="h-8"
             />
           </SourceControlActionOptionField>
-        )}
+        ) : null}
         <div className="min-w-0 space-y-2">
           <Label variant="settings">
             {translate(

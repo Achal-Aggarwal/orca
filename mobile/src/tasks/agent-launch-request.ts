@@ -57,7 +57,7 @@ export function agentLaunchExistingParams(args: {
   worktreeId: string
   operationId: string
   prompt?: AgentLaunchPrompt
-  agentArgs?: string
+  agentArgs?: string | null
   surface?: 'chat' | 'terminal'
   launchSource?: string
   paneKey?: string

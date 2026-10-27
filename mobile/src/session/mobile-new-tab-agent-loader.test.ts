@@ -10,7 +10,10 @@ import {
 async function loadOptions(
   args: Parameters<typeof loadMobileNewTabAgentOptions>[0]
 ): Promise<unknown[]> {
-  return (await loadMobileNewTabAgentOptions(args)).options
+  return (await loadMobileNewTabAgentOptions(args)).options.map(({ agent, label }) => ({
+    agent,
+    label
+  }))
 }
 
 function createClient(
@@ -474,5 +477,37 @@ describe('mobile new-tab agent loading', () => {
       'settings.get',
       'preflight.detectAgents'
     ])
+  })
+  it('retains terminal Arguments and remembered chat choices for the old-host picker adapter', async () => {
+    const client = createClient(async (method) =>
+      method === 'settings.get'
+        ? {
+            ok: true,
+            result: {
+              settings: {
+                experimentalNativeChat: true,
+                agentPermissionDefault: 'ask',
+                agentDefaultArgs: { codex: '--add-dir docs' },
+                nativeChatSessionOptions: {
+                  codex: {
+                    model: 'opaque-model',
+                    valuesByModel: { 'opaque-model': { effort: 'high' } }
+                  }
+                }
+              }
+            }
+          }
+        : { ok: true, result: ['codex'] }
+    )
+    const inventory = await loadMobileNewTabAgentOptions({
+      client,
+      worktreeId: FLOATING_WORKSPACE_WORKTREE_ID
+    })
+    expect(inventory.options[0].pickerSeed).toMatchObject({
+      arguments: '--add-dir docs',
+      terminal: { permissionMode: 'ask' },
+      structured: { model: 'opaque-model', options: { effort: 'high' } },
+      chatDefault: true
+    })
   })
 })

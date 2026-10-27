@@ -244,3 +244,25 @@ it.each(['codex', null] as const)(
     expect(useAppStore.getState().settings).toBe(settings)
   }
 )
+
+it('Customize uses the shared setup and resets Arguments without losing an authored model', async () => {
+  const { result } = renderDialog(true, true, {
+    agentId: 'codex',
+    agentArgs: '--search',
+    launchPreferences: { agentId: 'codex', model: 'opaque-alias' }
+  })
+  await waitFor(() => expect(result.current.canStart).toBe(true))
+  act(() =>
+    result.current.surfaceRows.onSetup?.({
+      agent: 'codex',
+      surface: 'terminal',
+      choices: { model: 'opaque-alias' }
+    })
+  )
+  expect(result.current.recipe).not.toHaveProperty('agentArgs')
+  expect(result.current.recipe.launchPreferences).toEqual({
+    agentId: 'codex',
+    model: 'opaque-alias'
+  })
+  expect(result.current.surfaceRows.setup?.surface).toBe('terminal')
+})

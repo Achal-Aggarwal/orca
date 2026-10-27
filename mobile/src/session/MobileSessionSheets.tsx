@@ -1,7 +1,8 @@
+import { MobileNewAgentSheet } from './MobileNewAgentSheet'
 import { Platform } from 'react-native'
 import { getRepoIdFromWorktreeId } from '../../../src/shared/worktree/id'
 import { useClipboardWriter } from '../platform/clipboard'
-import { Copy, FileText, Globe, RefreshCw, SquareTerminal } from 'lucide-react-native'
+import { Copy, FileText, RefreshCw } from 'lucide-react-native'
 import { MobileSessionHeaderMoreActionsSheet } from './MobileSessionHeaderMoreActionsSheet'
 import { QuickCommandsSheet } from './QuickCommandsSheet'
 import { triggerSuccess, triggerError } from '../platform/haptics'
@@ -27,8 +28,6 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     sessionTabs,
     pendingDiffNotesDelivery,
     setPendingDiffNotesDelivery,
-    showCreateTabDrawer,
-    setShowCreateTabDrawer,
     showQuickCommands,
     setShowQuickCommands,
     setShowCreateBrowserModal,
@@ -59,7 +58,6 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     terminalModes,
     showDictationSetup,
     setShowDictationSetup,
-    browserScreencastSupported,
     quickCommandsSupported,
     quickCommandAgentPromptMaxLength,
     showToast,
@@ -75,9 +73,7 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     handleDeleteCustomKey,
     handleManageShortcuts,
     handleClearTerminal,
-    handleCreateTerminal,
     launchQuickCommand,
-    handleCreateMarkdownNote,
     handleCreateBrowser,
     handleBrowserNavigationCommand,
     handleRenameTerminal,
@@ -86,7 +82,6 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     bulkCloseActions,
     bulkCloseConfirm,
     closeWithBulkActions,
-    createTabAgentActions,
     sendDiffNotesAgentActions,
     handlePanelTap,
     openAgentSessionHistory,
@@ -118,53 +113,7 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
         agentPromptMaxLength={quickCommandAgentPromptMaxLength}
         onLaunch={launchQuickCommand}
       />
-      <ActionSheetModal
-        visible={showCreateTabDrawer}
-        title="New Tab"
-        actions={[
-          ...createTabAgentActions,
-          {
-            label: 'Terminal',
-            icon: SquareTerminal,
-            onPress: () => {
-              setShowCreateTabDrawer(false)
-              void handleCreateTerminal()
-            }
-          },
-          // Why: browser/markdown creation resolve a real worktree on the host
-          // (browser.tabCreate, files.createFile); the floating sentinel is
-          // terminal-only over RPC, so those options hide there.
-          ...(isFloatingWorkspaceRoute
-            ? []
-            : [
-                {
-                  label: 'Browser',
-                  icon: Globe,
-                  closeBeforePress: true,
-                  onPress: () => {
-                    if (browserScreencastSupported !== true) {
-                      showToast('Desktop update required for mobile browser streaming', 1600)
-                      return
-                    }
-                    setShowCreateBrowserModal(true)
-                  }
-                },
-                ...(onPairedHost
-                  ? [
-                      {
-                        label: 'Markdown Note',
-                        icon: FileText,
-                        onPress: () => {
-                          setShowCreateTabDrawer(false)
-                          void handleCreateMarkdownNote()
-                        }
-                      }
-                    ]
-                  : [])
-              ])
-        ]}
-        onClose={() => setShowCreateTabDrawer(false)}
-      />
+      <MobileNewAgentSheet controller={controller} onPairedHost={onPairedHost} />
       <ActionSheetModal
         visible={pendingDiffNotesDelivery !== null}
         title="Send Review Notes"

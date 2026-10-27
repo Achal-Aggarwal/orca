@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { act, create } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeExecutionHostId } from '../../../src/shared/execution-host'
@@ -18,7 +18,19 @@ vi.mock('lucide-react-native', () => ({
 }))
 vi.mock('../platform/clipboard', () => ({ useClipboardWriter: () => ({}) }))
 vi.mock('../platform/haptics', () => ({ triggerSuccess: () => {}, triggerError: () => {} }))
+vi.mock('../components/BottomDrawer', () => ({
+  BottomDrawer: ({ children }: { children: ReactNode }) => children
+}))
+vi.mock('./MobileAgentLaunchPicker', () => ({ MobileAgentLaunchPicker: () => null }))
+vi.mock('./mobile-agent-picker-inventory', () => ({ useMobileAgentPickerInventory: () => [] }))
 vi.mock('../components/ActionSheetModal', () => ({
+  ActionSheetContent: ({ title, actions }: { title: string; actions: ActionSheetAction[] }) => {
+    sheets.labelsByTitle.set(
+      title,
+      actions.map((action) => action.label)
+    )
+    return null
+  },
   ActionSheetModal: ({ title, actions }: { title: string; actions: ActionSheetAction[] }) => {
     sheets.labelsByTitle.set(
       title,

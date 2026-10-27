@@ -1,3 +1,6 @@
+import { AGENT_LAUNCH_SURFACE_RUNTIME_CAPABILITY } from '../../../src/shared/agent-launch-runtime-capability'
+import { supportsMobileExistingAgentLaunch } from './mobile-existing-agent-launch'
+import { agentPickerSessionOptions } from '../../../src/shared/agent-launch-picker'
 import type { MobileQuickCommandLaunch } from '../terminal/quick-commands'
 import type { MobileSessionTab } from './mobile-session-route-types'
 import type { TuiAgent } from '../../../src/shared/tui-agent'
@@ -22,6 +25,15 @@ export const PROMPT_UNCONFIRMED_MESSAGE =
   "The agent started, but couldn't confirm the prompt was sent."
 export const NOTES_UNCONFIRMED_MESSAGE =
   "The agent started, but couldn't confirm the notes were sent."
+
+export function supportsMobilePickerSetup(
+  capabilities: readonly string[] | null | undefined
+): boolean {
+  return (
+    supportsMobileExistingAgentLaunch(capabilities) &&
+    capabilities?.includes(AGENT_LAUNCH_SURFACE_RUNTIME_CAPABILITY) === true
+  )
+}
 
 export type NewTabAgentLaunchOptions = MobileQuickCommandLaunch['options'] & {
   onPromptSent?: () => void
@@ -61,6 +73,10 @@ export async function launchNewTabAgentThroughHost(args: {
   setCreateError: (message: string) => void
 }): Promise<boolean> {
   const { options, pendingSelectionRef, showToast } = args
+  if (options?.pickerSetup && !supportsMobilePickerSetup(args.hostCapabilities)) {
+    args.reportCreateFailure('Update Orca on this host to choose an agent setup.')
+    return true
+  }
   const prompt = options?.agentPrompt ?? options?.initialPrompt
   const reservation = reserveMobileAgentLaunch(args.agent)
   const afterTabId = args.hostCapabilities?.includes(AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY)
@@ -74,6 +90,16 @@ export async function launchNewTabAgentThroughHost(args: {
     worktreeId: args.worktreeId,
     agent: args.agent,
     reservation,
+    ...(options?.pickerSetup
+      ? {
+          surface: options.pickerSetup.surface,
+          sessionOptions: agentPickerSessionOptions(options.pickerSetup.choices),
+          ...(options.pickerSetup.surface === 'terminal' &&
+          options.pickerSetup.arguments !== undefined
+            ? { agentArgs: options.pickerSetup.arguments }
+            : {})
+        }
+      : {}),
     ...(afterTabId ? { placement: { afterTabId } } : {}),
     ...(prompt?.trim() ? { prompt: { text: prompt, delivery: 'submit' as const } } : {}),
     ...(options?.agentPrompt
@@ -84,6 +110,10 @@ export async function launchNewTabAgentThroughHost(args: {
   })
   if (launched.kind === 'unsupported') {
     pendingSelectionRef.current = withoutUnansweredLaunch(pendingSelectionRef.current, args.lock)
+    if (options?.pickerSetup) {
+      args.reportCreateFailure('Update Orca on this host to choose an agent setup.')
+      return true
+    }
     return false
   }
   if (launched.kind === 'failed') {

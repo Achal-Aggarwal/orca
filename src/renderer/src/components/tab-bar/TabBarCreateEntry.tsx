@@ -6,7 +6,10 @@ import {
   getTabEntryOptions,
   isTabEntryAbsolutePathLike
 } from './tab-create-entry-action'
-import { findMatchingTabAgentLaunchOptions } from './tab-agent-launch-options'
+import {
+  findMatchingTabAgentLaunchOptions,
+  matchingAgentPickerLaunchOptions
+} from './tab-agent-launch-options'
 import { findMatchingTabCreateMenuOptions } from './tab-create-menu-options'
 import { getActiveOptionId, type ActiveOption } from './tab-create-entry-active-option'
 import {
@@ -42,6 +45,7 @@ export default function TabBarCreateEntry(props: TabBarCreateEntryProps): React.
 
 function TabBarCreateEntrySession({
   agentOptions = EMPTY_AGENT_OPTIONS,
+  agentPickerEntries,
   groupId,
   menuOpen,
   menuOptions = EMPTY_MENU_OPTIONS,
@@ -148,8 +152,11 @@ function TabBarCreateEntrySession({
     () =>
       terminalQueryMode
         ? EMPTY_AGENT_OPTIONS
-        : findMatchingTabAgentLaunchOptions(query, agentOptions),
-    [agentOptions, query, terminalQueryMode]
+        : [
+            ...matchingAgentPickerLaunchOptions(agentPickerEntries ?? [], query),
+            ...findMatchingTabAgentLaunchOptions(query, agentOptions)
+          ],
+    [agentOptions, agentPickerEntries, query, terminalQueryMode]
   )
 
   const disabled = !onOpenEntry
@@ -377,6 +384,15 @@ function TabBarCreateEntrySession({
                 id={resultOptionDomId(index)}
                 option={option}
                 selected={index === activeSelectedIndex}
+                onOtherWay={
+                  option.kind === 'agent' && option.option.otherWay
+                    ? () =>
+                        submitOption({
+                          kind: 'agent',
+                          option: option.option.otherWay ?? option.option
+                        })
+                    : undefined
+                }
                 disabled={
                   disabled ||
                   pending ||

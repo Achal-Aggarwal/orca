@@ -1,3 +1,8 @@
+import {
+  agentPickerSessionOptions,
+  type AgentPickerDraft
+} from '../../../../shared/agent-launch-picker'
+import { projectAgentLaunchProfile } from '../../../../shared/agent-launch-profile'
 import { ensureAgentStartupInTerminal, type LinkedWorkItemSummary } from '@/lib/new-workspace'
 import { seedNativeChatLaunchDraftForAgentTab } from '@/lib/agent-launch-prompt-delivery'
 import { createBrowserUuid } from '@/lib/browser-uuid'
@@ -55,6 +60,7 @@ type SubmitFolderWorkspaceCreateParams = {
   linkedTaskSourceContext?: TaskSourceContext | null
   note: string
   quickAgent: TuiAgent | null
+  launchSetup?: AgentPickerDraft
   launchChoice?: AgentLaunchChoice
   autoRenameBranchFromWork: boolean | undefined
   agentCmdOverrides: Record<string, string> | undefined
@@ -77,6 +83,7 @@ export async function submitFolderWorkspaceCreate({
   note,
   quickAgent,
   launchChoice,
+  launchSetup,
   autoRenameBranchFromWork,
   agentCmdOverrides,
   agentArgs,
@@ -105,6 +112,21 @@ export async function submitFolderWorkspaceCreate({
   // SSH folders use the plain orca relay shim; keep the Linux-only local executable rename out of remote launches.
   const launchIsRemote = Boolean(projectGroup.connectionId)
   const launchShell = resolveExecutionHostAgentStartupShell(launchHost, terminalWindowsShell)
+  const setup =
+    launchHost.kind === 'known' &&
+    launchHost.hostKind === 'local' &&
+    launchSetup?.agent === quickAgent
+      ? launchSetup
+      : undefined
+  const setupArgs =
+    quickAgent && setup
+      ? projectAgentLaunchProfile(quickAgent, useAppStore.getState().settings, {
+          target: 'terminal',
+          choices: setup.choices,
+          userArgs: setup.arguments === undefined ? (agentArgs ?? '') : (setup.arguments ?? ''),
+          shell: launchShell
+        }).args
+      : agentArgs
   const startupPlan =
     quickAgent && launchPlatform && linkedWorkItem
       ? buildFolderWorkspaceLinkedStartupPlan({
@@ -112,7 +134,7 @@ export async function submitFolderWorkspaceCreate({
           linkedWorkItem,
           note,
           agentCmdOverrides,
-          agentArgs,
+          agentArgs: setupArgs,
           agentEnv,
           platform: launchPlatform,
           shell: launchShell,
@@ -123,7 +145,7 @@ export async function submitFolderWorkspaceCreate({
             agent: quickAgent,
             prompt: note,
             cmdOverrides: agentCmdOverrides ?? {},
-            agentArgs,
+            agentArgs: setupArgs,
             agentEnv,
             platform: launchPlatform,
             shell: launchShell,
@@ -143,6 +165,7 @@ export async function submitFolderWorkspaceCreate({
           runtimeEnvironmentId,
           executionHostId: getNewWorkspaceProjectGroupHostId(projectGroup)
         },
+        ...(setup ? { launchOptions: agentPickerSessionOptions(setup.choices) } : {}),
         prompt: launchDraftPrompt ?? note,
         promptDelivery: launchDraftPrompt ? ('draft' as const) : ('auto-submit' as const)
       }

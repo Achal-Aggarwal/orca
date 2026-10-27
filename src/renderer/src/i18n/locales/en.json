@@ -1,4 +1,35 @@
 {
+  "agentPicker": {
+    "chatOnly": "Chat only",
+    "search": "Search agents and setups…",
+    "selectAgent": "Select an agent",
+    "configure": "Configure {{agent}}",
+    "openAs": "Open as",
+    "chat": "Chat",
+    "terminal": "Terminal",
+    "model": "Model",
+    "agentDefault": "Agent default",
+    "default": "Default",
+    "on": "On",
+    "off": "Off",
+    "permissions": "Permissions",
+    "agentsDefaults": "Agents defaults",
+    "arguments": "Arguments",
+    "argumentsHint": "Applies only to CLI launches.",
+    "resetArguments": "Reset to default",
+    "use": "Use",
+    "createChat": "Create and open chat",
+    "createTerminal": "Create and open terminal",
+    "openChat": "Open chat",
+    "openTerminal": "Open terminal",
+    "permission": {
+      "own": "Use agent configuration",
+      "ask": "Ask",
+      "accept-edits": "Accept edits",
+      "auto": "Approve for me",
+      "full-access": "Full access"
+    }
+  },
   "agentLaunch": {
     "opencode": {
       "updateRequired": "OpenCode cannot safely start with a chosen model on this version. Update OpenCode to a supported release, or omit the model choice.",

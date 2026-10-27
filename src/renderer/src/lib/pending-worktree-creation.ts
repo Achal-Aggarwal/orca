@@ -1,3 +1,4 @@
+import type { AgentPickerDraft } from '../../../shared/agent-launch-picker'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { worktreeIdsEqual } from '../../../shared/worktree/id'
 import type { FolderWorkspaceLinkedTask } from '../../../shared/folder-workspace-types'
@@ -28,6 +29,7 @@ export type WorktreeCreationProgressMode = 'stepped' | 'indeterminate'
 /** Serializable creation intent, including any script checks deferred until
  * after the composer closes. Retained by the pending panel for Retry. */
 export type WorktreeCreationRequest = {
+  launchSetup?: AgentPickerDraft
   repoId: string
   /** Execution owner retained after script preparation, including retries. */
   executionHostId?: ExecutionHostId

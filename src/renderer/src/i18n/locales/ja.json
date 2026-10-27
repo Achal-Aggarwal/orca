@@ -1,4 +1,35 @@
 {
+  "agentPicker": {
+    "chatOnly": "チャットのみ",
+    "search": "エージェントと設定を検索…",
+    "selectAgent": "エージェントを選択",
+    "configure": "{{agent}} を設定",
+    "openAs": "開く形式",
+    "chat": "チャット",
+    "terminal": "ターミナル",
+    "model": "モデル",
+    "agentDefault": "エージェントのデフォルト",
+    "default": "デフォルト",
+    "on": "オン",
+    "off": "オフ",
+    "permissions": "権限",
+    "agentsDefaults": "エージェント設定のデフォルト",
+    "arguments": "引数",
+    "argumentsHint": "CLI での起動にのみ適用されます。",
+    "resetArguments": "デフォルトに戻す",
+    "use": "使用",
+    "createChat": "作成してチャットを開く",
+    "createTerminal": "作成してターミナルを開く",
+    "openChat": "チャットを開く",
+    "openTerminal": "ターミナルを開く",
+    "permission": {
+      "own": "エージェントの設定を使用",
+      "ask": "確認する",
+      "accept-edits": "編集を許可",
+      "auto": "自動承認",
+      "full-access": "フルアクセス"
+    }
+  },
   "agentLaunch": {
     "opencode": {
       "updateRequired": "このバージョンの OpenCode では、選択したモデルで安全に起動できません。OpenCode を対応バージョンに更新するか、モデルの指定を省略してください。",

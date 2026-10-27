@@ -1,3 +1,5 @@
+import type { AgentPickerDraft } from '../../../../shared/agent-launch-picker'
+import type { SourceControlActionLaunchPreferences } from '../../../../shared/source-control-ai-actions'
 import { pickSourceControlLaunchAgent } from '../../../../shared/source-control-launch-agent-selection'
 import AgentCombobox from '@/components/agent/AgentCombobox'
 import { useAgentMenuObservation } from '@/components/tab-bar/use-new-tab-agent-menu-rows'
@@ -21,6 +23,11 @@ type PickerProps = {
   surface?: SourceControlActionRecipe['surface']
   repoId?: string
   disabled?: boolean
+  preferences?: SourceControlActionLaunchPreferences
+  argumentsValue?: string | null
+  inheritedPreferences?: SourceControlActionLaunchPreferences
+  inheritedArguments?: string
+  onSetup?: (draft: AgentPickerDraft) => void
   onPick: (agent: TuiAgent | null, choice: Pick<SourceControlActionRecipe, 'surface'>) => void
 }
 
@@ -80,6 +87,7 @@ export function SourceControlActionAgentPickerView({
   observation: ReturnType<typeof useAgentMenuObservation>
   canSaveSurface: boolean
 }) {
+  const { agentId: _binding, ...savedChoices } = props.preferences ?? {}
   const pickerSelection = sourceControlAgentPickerSelection(
     observation.model,
     observation.selectionFor(props.agent, props.surface === 'terminal' ? 'terminal' : undefined)
@@ -102,6 +110,41 @@ export function SourceControlActionAgentPickerView({
         selection: pickerSelection,
         contextKey: observation.contextKey,
         surface: props.surface,
+        setupDefaults: props.agent
+          ? {
+              agent: props.agent,
+              choices:
+                props.inheritedPreferences?.agentId === props.agent
+                  ? props.inheritedPreferences
+                  : undefined,
+              arguments: props.inheritedArguments
+            }
+          : undefined,
+        ...(props.onSetup
+          ? {
+              setup: props.agent
+                ? {
+                    agent: props.agent,
+                    surface:
+                      props.surface ??
+                      (observation.model.state === 'settled' &&
+                      observation.model.rows.some(
+                        (row) => row.agent === props.agent && row.kind === 'chat'
+                      )
+                        ? 'chat'
+                        : 'terminal'),
+                    choices: props.preferences?.agentId === props.agent ? savedChoices : {},
+                    arguments: props.argumentsValue
+                  }
+                : undefined,
+              onSetup: (draft) => {
+                if (draft.agent !== props.agent || draft.surface !== props.surface) {
+                  props.onPick(draft.agent, { surface: canSaveSurface ? draft.surface : undefined })
+                }
+                props.onSetup?.(draft)
+              }
+            }
+          : {}),
         onPick: (agent, surface) =>
           props.onPick(agent, {
             surface: canSaveSurface

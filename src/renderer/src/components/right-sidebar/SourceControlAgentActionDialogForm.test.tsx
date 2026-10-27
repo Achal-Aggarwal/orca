@@ -8,14 +8,18 @@ import type { Repo } from '../../../../shared/repo-types'
 vi.mock('@/components/agent/AgentCombobox', () => ({
   default: ({
     value,
-    allowBlankTerminal
+    allowBlankTerminal,
+    surfaceRows
   }: {
     value: string | null
     allowBlankTerminal?: boolean
+    surfaceRows?: { setup?: unknown; onSetup?: unknown }
   }) =>
     React.createElement('div', {
       'data-agent-value': value ?? '',
-      'data-allow-blank': String(allowBlankTerminal === true)
+      'data-allow-blank': String(allowBlankTerminal === true),
+      'data-agent-setup': JSON.stringify(surfaceRows?.setup),
+      'data-can-configure': String(typeof surfaceRows?.onSetup === 'function')
     })
 }))
 
@@ -61,7 +65,9 @@ function renderForm(
       surfaceRows: {
         model: { state: 'loading', placeholderCount: 0 },
         selection: { ready: true, cli: false },
-        onPick: () => {}
+        onPick: () => {},
+        onSetup: () => {},
+        setup: { agent: 'codex', surface: 'terminal', choices: {}, arguments: '--search' }
       },
       statusCopy: null,
       agentArgs: '',
@@ -218,19 +224,12 @@ describe('SourceControlAgentActionDialogForm', () => {
   })
 })
 
-describe('CLI arguments field applicability', () => {
-  it('offers the field when the launch would apply the arguments', () => {
-    const markup = renderForm({ agentArgsApply: true })
-
-    expect(markup).toContain('source-control-agent-cli-args')
-    expect(markup).toContain('CLI arguments')
-  })
-
-  // Native chat launches ignore CLI arguments, so omit the field.
-  it('leaves the field out entirely when they would not apply', () => {
-    const markup = renderForm({ agentArgsApply: false })
-
+it.each([true, false])(
+  'passes setup editing to the shared picker with Arguments applicability %s',
+  (agentArgsApply) => {
+    const markup = renderForm({ agentArgsApply })
+    expect(markup).toContain('data-can-configure="true"')
+    expect(markup).toContain('--search')
     expect(markup).not.toContain('source-control-agent-cli-args')
-    expect(markup).not.toContain('CLI arguments')
-  })
-})
+  }
+)
