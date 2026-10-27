@@ -291,6 +291,7 @@ test('after a reboot on a host without ps, a recycled server PID does not keep t
     HOST !== 'docker' || !TEMPLATE_SOURCE,
     `Set ${ORCAD_CONVERT_HOST_ENV}=docker and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
   )
+  // Deploys a real server, then reconnects after a simulated reboot.
   test.setTimeout(10 * 60_000)
   const target = startDockerSshHostTarget(testInfo)
   const session = createRestartSession(testInfo, { ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_SOURCE! })
