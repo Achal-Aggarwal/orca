@@ -1111,7 +1111,31 @@ async function performLocalWorktreeCreate(
   let lastExistingReviewNumber: number | null = null
   const shouldRetireGeneratedName =
     args.nameWasGenerated === true && isGeneratedWorktreeCreateName(sanitizedName)
-  if (args.branchIntent === 'open-existing') {
+  if (
+    args.branchIntent === 'open-existing' &&
+    args.branchNameOverride &&
+    !args.pushTarget &&
+    getSelectedReviewBranch(args) === null
+  ) {
+    branchName = await resolveCreateBranchName(
+      repo.path,
+      args.branchNameOverride,
+      sanitizedName,
+      settings,
+      username,
+      localWorktreeGitOptions
+    )
+    const conflict = await getBranchConflictKind(
+      repo.path,
+      branchName,
+      baseBranch,
+      localWorktreeGitOptions
+    )
+    if (conflict === null) {
+      selectedReuseBranchName = branchName
+    }
+  }
+  if (args.branchIntent === 'open-existing-v2') {
     if (!args.branchNameOverride || args.pushTarget || getSelectedReviewBranch(args)) {
       throw new Error(
         'Reuse branch requires an explicit branch selection without a review push target.'
@@ -1371,7 +1395,7 @@ async function performLocalWorktreeCreate(
   const remoteTrackingBaseOption = remoteTrackingBase ? { remoteTrackingBase } : undefined
   const existingBranchOption = {
     checkoutExistingBranch,
-    ...(args.branchIntent === 'open-existing' && !checkoutExistingBranch
+    ...(args.branchIntent === 'open-existing-v2' && !checkoutExistingBranch
       ? { trackRemoteBranch: true }
       : {}),
     ...remoteTrackingBaseOption,
@@ -1383,7 +1407,7 @@ async function performLocalWorktreeCreate(
       : remoteTrackingBaseOption
   )
   const newBranchOptions =
-    args.branchIntent === 'open-existing'
+    args.branchIntent === 'open-existing-v2'
       ? addProjectGitOptions(existingBranchOption)
       : preparedWorktreeOptions
   let addResult: AddWorktreeResult
@@ -1393,7 +1417,7 @@ async function performLocalWorktreeCreate(
         if (
           sparseDirectories.length === 0 &&
           !checkoutExistingBranch &&
-          args.branchIntent !== 'open-existing'
+          args.branchIntent !== 'open-existing-v2'
         ) {
           const prepared = await consumePreparedWorktreeCreate({
             repoPath: repo.path,
@@ -1523,7 +1547,7 @@ async function performLocalWorktreeCreate(
     ...(args.automationProvenance ? { automationProvenance: args.automationProvenance } : {}),
     ...(args.cliProvenance ? { cliProvenance: args.cliProvenance } : {}),
     baseRef: metadataBaseRef,
-    ...(checkoutExistingBranch || args.branchIntent === 'open-existing'
+    ...(checkoutExistingBranch || args.branchIntent === 'open-existing-v2'
       ? { preserveBranchOnDelete: true }
       : {}),
     ...(configuredPushTarget ? { pushTarget: configuredPushTarget } : {}),
@@ -1709,6 +1733,9 @@ async function performLocalWorktreeCreate(
     repo.id,
     worktreeLineage?.parentWorktreeId
   )
+  const createWarning = [includeCopyWarning, addResult.upstreamWarning, stagedStartup.warning]
+    .filter((warning): warning is string => Boolean(warning))
+    .reduce<string | undefined>(appendWorktreeCreateWarning, undefined)
   return {
     worktree: {
       ...worktree,
@@ -1737,11 +1764,7 @@ async function performLocalWorktreeCreate(
       : {}),
     ...(stagedStartup.startupTerminal ? { startupTerminal: stagedStartup.startupTerminal } : {}),
     ...(baseFallback ? { baseFallback } : {}),
-    ...(stagedStartup.warning
-      ? { warning: appendWorktreeCreateWarning(includeCopyWarning, stagedStartup.warning) }
-      : includeCopyWarning
-        ? { warning: includeCopyWarning }
-        : {}),
+    ...(createWarning ? { warning: createWarning } : {}),
     timing: timing.finish()
   }
 }
