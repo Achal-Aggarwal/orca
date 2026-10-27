@@ -2,7 +2,6 @@ import { execFile, type ChildProcess, type ExecFileOptions } from 'node:child_pr
 import { recordSubprocessSpawn } from '../../diagnostics/main-thread-churn-probe'
 import { endSubprocessStdin } from '../../../shared/subprocess-stdin-write'
 import { runProcess } from '@orca/process-host'
-import { assertWslDistroAllowed } from '@orca/process-host/wsl-distro-allowlist'
 import { resolveSelectedLocalCommand } from '../../ipc/command-path-resolver'
 import type { WslProcessGroupTermination } from '../wsl-process-group-termination'
 import { createAbortError } from './abort-error'
@@ -206,8 +205,6 @@ export function execFileCapture(
     }
 
     try {
-      // Every WSL git/gh call funnels through here, on either the main or worker thread.
-      assertWslDistroAllowed(command, args)
       const spawnStartedAt = performance.now()
       // Why: our abort listener owns tree cleanup; Node's signal handler could kill wsl.exe before taskkill sees its children.
       const capture = useWorker ? workerExecFile : execFile
