@@ -26,6 +26,7 @@ import {
   findWslHostDeployment
 } from '../../src/shared/runtime-environment-wsl-host-store'
 import { WSL_HOSTS_INTERNAL_GATE_ENV } from '../../src/shared/wsl-host-internal-gate'
+import type { AppState } from '../../src/renderer/src/store/types'
 import { openSidebarProjectDialog } from './helpers/sidebar-project-dialog'
 import { ensureTerminalVisible, waitForSessionReady } from './helpers/store'
 import {
@@ -34,6 +35,15 @@ import {
   waitForActiveTerminalManager,
   waitForTerminalOutput
 } from './helpers/terminal'
+
+declare global {
+  // oxlint-disable-next-line typescript-eslint/consistent-type-definitions -- declaration merging requires interface
+  interface Window {
+    /** E8 drive-refusal steps: records where the held local add went. */
+    e2eRecordDriveRefusalScan?: (path: string, runtimeEnvironmentId: string | null) => void
+    e2eOriginalScanNestedRepos?: AppState['scanNestedRepos']
+  }
+}
 
 const WSL_ENVIRONMENT_ID = 'wsl:ubuntu'
 const WSL_HOST_LABEL = 'Ubuntu (WSL)'
@@ -209,10 +219,10 @@ async function checkWindowsFolderPicker(
       if (!store) {
         return
       }
-      Reflect.set(window, 'e2eOriginalScanNestedRepos', store.getState().scanNestedRepos)
+      window.e2eOriginalScanNestedRepos = store.getState().scanNestedRepos
       store.setState({
         scanNestedRepos: (path, _connectionId, controls) => {
-          Reflect.get(window, 'e2eRecordDriveRefusalScan')(path, controls.runtimeEnvironmentId)
+          window.e2eRecordDriveRefusalScan?.(path, controls.runtimeEnvironmentId)
           return new Promise(() => {})
         }
       })
@@ -227,9 +237,10 @@ async function checkWindowsFolderPicker(
     await expect(notice).toBeHidden()
     localAdds.length = 0
     await page.evaluate(() => {
-      window.__store?.setState({
-        scanNestedRepos: Reflect.get(window, 'e2eOriginalScanNestedRepos')
-      })
+      const original = window.e2eOriginalScanNestedRepos
+      if (original) {
+        window.__store?.setState({ scanNestedRepos: original })
+      }
       window.__store?.getState().closeModal()
     })
     await expect(dialog).toBeHidden()
