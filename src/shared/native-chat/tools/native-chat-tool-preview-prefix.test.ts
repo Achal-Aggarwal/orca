@@ -12,6 +12,9 @@ describe('unwrapLoginShellCommand', () => {
   it('keeps a command that only happens to mention a shell', () => {
     expect(unwrapLoginShellCommand('git status')).toBe('git status')
     expect(unwrapLoginShellCommand('echo /bin/zsh -lc')).toBe('echo /bin/zsh -lc')
+    expect(unwrapLoginShellCommand(`/bin/bash -lc 'echo /bin/bash -lc "ls"'`)).toBe(
+      'echo /bin/bash -lc "ls"'
+    )
   })
 
   it('leaves the wrapper alone when the remainder is not one quoted string', () => {

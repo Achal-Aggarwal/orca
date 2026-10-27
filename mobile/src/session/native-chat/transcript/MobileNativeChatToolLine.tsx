@@ -14,7 +14,6 @@ import {
 } from '../../../../../src/shared/native-chat/tools/native-chat-tool-identity'
 import { NATIVE_CHAT_TOOL_ACTIVITY_COPY } from '../../../../../src/shared/native-chat/tools/native-chat-tool-activity'
 import { nativeChatToolIconName } from '../../../../../src/shared/native-chat/tools/native-chat-tool-icon'
-import { nativeChatFullCommand } from '../../../../../src/shared/native-chat/tools/native-chat-tool-input-text'
 import { NATIVE_CHAT_TOOL_ROW_VERB_COPY } from '../../../../../src/shared/native-chat/tools/native-chat-tool-line-label'
 import { nativeChatToolLineView } from '../../../../../src/shared/native-chat/tools/native-chat-tool-line-view'
 import type {
@@ -166,7 +165,7 @@ export function MobileNativeChatToolLine({
     [block, result]
   )
   const fullCommand = label?.commandDetail ?? null
-  const copyCommand = call && label?.command ? nativeChatFullCommand(call.input) : null
+  const copyCommand = label?.fullCommand ?? null
   const verb = label?.verb ? NATIVE_CHAT_TOOL_ROW_VERB_COPY[label.verb] : null
   const commandAlone = label?.command === true && verb !== null && label.target.length > 0
   const mcp = call ? mcpToolIdentity(call.name, call.mcpIdentity) : null

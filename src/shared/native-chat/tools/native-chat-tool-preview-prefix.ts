@@ -30,7 +30,8 @@ export function collapsedToolInputPrefix(input: string): string {
 
 /** Strip login-shell wrappers only when the entire remainder is one quoted shell word. Pipelines/unpaired quotes stay literal.
  * Run before clipping: the closing quote proves the wrapper and would be lost from a bounded prefix. */
-const LOGIN_SHELL_PREFIX = /^\s*(?:.*[\\/])?(?:ba|z|k|da|fi)?sh(?:\.exe)?\s+-[a-zA-Z]*c\s+(?=['"])/
+const LOGIN_SHELL_PREFIX =
+  /^\s*(?:[^'"]*[\\/])?(?:ba|z|k|da|fi)?sh(?:\.exe)?\s+-[a-zA-Z]*c\s+(?=['"])/
 const DOUBLE_QUOTE_ESCAPABLE = '$`"\\\n'
 const PLAIN_WORD_CHAR = /[\w@%+=:,./-]/
 
