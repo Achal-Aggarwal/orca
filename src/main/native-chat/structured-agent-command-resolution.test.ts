@@ -1,3 +1,4 @@
+import { resolveCodexStructuredInvocation } from '../codex/codex-structured-launch-resolution'
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -74,6 +75,18 @@ describe('structured agent executable resolution', () => {
         { homePath: directory }
       )
     ).toBe(command)
+  })
+
+  it('resolves folder-relative PATH to each effective Codex executable before pooling', async () => {
+    const folders = [executable(), executable()]
+    for (const { directory, command } of folders) {
+      const invocation = await resolveCodexStructuredInvocation({
+        resolveEnvironment: async () => ({ PATH: '.' }),
+        resolveWorkingDirectory: () => directory,
+        resolveCommand: (options) => resolveCliCommand('agent custom', options)
+      })
+      expect(invocation.command).toBe(command)
+    }
   })
 
   it('rereads a changed override instead of storing another copy of the command', () => {

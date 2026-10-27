@@ -1,3 +1,4 @@
+import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { delimiter, isAbsolute, resolve as resolvePath } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { TuiAgent } from '../../shared/tui-agent'
@@ -84,6 +85,7 @@ export function resolveStructuredAgentCommand(
 }
 
 export type ProgramSearch<T> = {
+  signal?: AbortSignal
   env: (resolved: T) => NodeJS.ProcessEnv | undefined
   cwd?: () => Promise<string> | string
 }
@@ -105,7 +107,9 @@ async function foundNothing<T extends { command: string }>(
   if (relative.length === 0) {
     return true
   }
-  const from = (await search.cwd?.()) ?? process.cwd()
+  const from =
+    (await waitForPromiseWithSignal(Promise.resolve(search.cwd?.()), search.signal)) ??
+    process.cwd()
   assertStructuredAgentResolutionCurrent(operation)
   const found = resolveCliCommand(resolved.command, {
     pathEnv: relative.map((entry) => resolvePath(from, entry)).join(delimiter),
@@ -123,11 +127,11 @@ export async function resolveAgainAfterRefreshOnMissingProgram<T extends { comma
 ): Promise<T> {
   assertStructuredAgentResolutionCurrent(operation)
   if (!refreshAfterMiss) {
-    return resolve()
+    return waitForPromiseWithSignal(resolve(), search.signal)
   }
   const askedAt = Date.now()
   try {
-    const resolved = await resolve()
+    const resolved = await waitForPromiseWithSignal(resolve(), search.signal)
     assertStructuredAgentResolutionCurrent(operation)
     const missing = await foundNothing(resolved, search, operation)
     assertStructuredAgentResolutionCurrent(operation)
@@ -140,7 +144,9 @@ export async function resolveAgainAfterRefreshOnMissingProgram<T extends { comma
     }
   }
   assertStructuredAgentResolutionCurrent(operation)
-  await refreshAfterMiss(askedAt)
+  search.signal?.throwIfAborted()
+  await waitForPromiseWithSignal(refreshAfterMiss(askedAt), search.signal)
+  search.signal?.throwIfAborted()
   assertStructuredAgentResolutionCurrent(operation)
-  return resolve()
+  return waitForPromiseWithSignal(resolve(), search.signal)
 }
