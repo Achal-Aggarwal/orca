@@ -76,7 +76,8 @@ export function createFakeWslHostConnector(
         throw new Error(`${distro} is not running.`)
       }
       // A booting connect starts the distro, as wsl.exe would; atomic so no read sees half a file.
-      const tmp = `${config.distrosFile}.tmp`
+      // Own temp name: the test also stages distros.json writes beside it.
+      const tmp = `${config.distrosFile}.${process.pid}.tmp`
       writeFileSync(
         tmp,
         JSON.stringify(

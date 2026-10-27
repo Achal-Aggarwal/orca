@@ -194,13 +194,14 @@ test.describe('native chat on a WSL host', () => {
         await expect(composer).toContainText(text)
         await chat.getByRole('button', { name: 'Send', exact: true }).click()
       }
+      // The transcript only, so the composer still holding the prompt can't stand in for the message.
+      const transcript = chat.locator('[data-native-chat-scroll]')
       /** The prompt's message, followed later in the transcript by a stub reply. */
       const expectReplyAfter = async (text: string): Promise<void> => {
+        const prompt = transcript.getByText(text, { exact: true }).last()
+        await expect(prompt).toBeVisible({ timeout: 60_000 })
         await expect(
-          chat
-            .getByText(text, { exact: true })
-            .locator('xpath=following::*[text()="Stub reply."]')
-            .first()
+          prompt.locator('xpath=following::*[text()="Stub reply."]').first()
         ).toBeVisible({ timeout: 120_000 })
       }
       await send('hello from the desktop')
@@ -221,11 +222,12 @@ test.describe('native chat on a WSL host', () => {
         )
         .toContain('Ubuntu was stopped')
       await page.screenshot({ path: testInfo.outputPath('wsl-host-chat-stopped.png') })
-      expect(fakeWslConnects(connectLogFile)).toHaveLength(connectsBeforeStop)
-      expect(readDistroState(distrosFile)).toBe('stopped')
 
       // Switching away and back is the user acting on the host: that boots it and the chat goes on.
       await page.evaluate(() => window.__store?.getState().setActiveWorktree(null))
+      // The whole stopped window, up to the focus, booted nothing.
+      expect(fakeWslConnects(connectLogFile)).toHaveLength(connectsBeforeStop)
+      expect(readDistroState(distrosFile)).toBe('stopped')
       await expect.poll(() => focusProject(page, projectPath), { timeout: 30_000 }).toBeTruthy()
       await expect
         .poll(() => fakeWslConnects(connectLogFile).length, { timeout: 60_000 })
