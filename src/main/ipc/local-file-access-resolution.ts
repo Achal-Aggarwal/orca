@@ -57,7 +57,7 @@ export async function resolveUserNamedRegularFile(
 }
 
 // Chat uses img rendering; PDF previews need a different surface.
-function isChatImage(filePath: string): boolean {
+export function isChatImage(filePath: string): boolean {
   const extension = extname(filePath).toLowerCase()
   return Boolean(PREVIEWABLE_BINARY_MIME_TYPES[extension]) && extension !== '.pdf'
 }
