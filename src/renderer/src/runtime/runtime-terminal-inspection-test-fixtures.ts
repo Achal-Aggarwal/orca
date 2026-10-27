@@ -1,4 +1,4 @@
-import { beforeEach, vi } from 'vitest'
+import { beforeEach, vi, type Mock } from 'vitest'
 import { createGlobalSettingsFixture } from '../../../shared/global-settings-test-fixture'
 import { useAppStore } from '../store'
 import {
@@ -26,7 +26,15 @@ export function liveEvidence(ptyId: string, processName = 'bash'): RemoteForegro
   }
 }
 
-export function createRuntimeTerminalInspectionFixtures() {
+export function createRuntimeTerminalInspectionFixtures(): {
+  runtimeCall: Mock
+  runtimeTransportCall: Mock
+  localWrite: Mock
+  localWriteAccepted: Mock
+  localForeground: Mock
+  localHasChildren: Mock
+  localInspect: Mock
+} {
   const runtimeCall = vi.fn()
   const runtimeTransportCall = vi.fn()
   const localWrite = vi.fn()

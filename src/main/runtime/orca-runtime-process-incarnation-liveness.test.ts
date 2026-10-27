@@ -310,7 +310,13 @@ describe('paid host fact publication work', () => {
     async (n) => {
       for (const listeners of [0, 1, 2]) {
         const runtime = new OrcaRuntimeService()
-        const inspectProcess = vi.fn(async () => shellInspection)
+        const inspectProcess = vi.fn(
+          async (): Promise<
+            PtyProcessInspection & {
+              foregroundPresentation: 'agent-in-front' | 'not-in-front'
+            }
+          > => shellInspection
+        )
         runtime.setPtyController({
           write: () => true,
           kill: () => true,

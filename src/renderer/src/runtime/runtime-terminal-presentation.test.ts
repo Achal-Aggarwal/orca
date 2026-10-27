@@ -7,7 +7,7 @@ import { createRuntimeTerminalInspectionFixtures } from './runtime-terminal-insp
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { useState } from 'react'
 import { sendRuntimePtyInputVerified } from './runtime-terminal-verified-input'
-import { afterEach } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalPaneChatState } from '../components/terminal-pane/use-terminal-pane-chat-state'
 import { createPtyInputWriteQueue } from '../components/terminal-pane/pty-input-write-queue'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
@@ -22,7 +22,6 @@ import { makeUnifiedTab, makeTab } from '../store/slices/store-session-test-harn
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import type { TerminalPresentationObservation } from '../../../shared/terminal-foreground-presentation'
 import { makeHostSnapshot } from './host-session-mirror-frame-fixtures'
-import { describe, expect, it, vi } from 'vitest'
 import {
   confirmRuntimeTerminalForegroundProcess,
   inspectRuntimeTerminalProcess,
