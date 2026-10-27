@@ -1,3 +1,5 @@
+import { QueuedMessageImageCount } from './NativeChatQueuedMessageImageCount'
+import type { QueuedMessageDragPresentation } from './NativeChatQueuedMessageRows'
 import { useId, useState } from 'react'
 import {
   AlertCircle,
@@ -20,21 +22,25 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { translate } from '@/i18n/i18n'
-import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-rejection-words'
-import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
-import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import {
+  queuedMessageCardLine,
+  queuedMessageCardNeedsAttention,
   queuedMessageCardSteers,
+  queuedMessageReturnedNotice,
   type QueuedMessageCard
-} from './structured-agent-session-queued-cards'
+} from '../../../../shared/structured-agent-session-queued-cards'
 import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
+import { NativeChatPendingIcon } from './NativeChatPendingIcon'
+import type { QueuedMessagesPendingAction } from './use-structured-agent-session-queued-messages'
 import { useNativeChatClippedLine } from './use-native-chat-clipped-line'
-import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
-import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
+import { NativeChatQueuedMessageEditor } from './NativeChatQueuedMessageEditor'
+import type { QueuedEditAttachTarget } from './use-native-chat-queued-edit-image-intake'
+import type { QueuedMessageInlineEditor } from './use-structured-agent-session-queued-edit'
+import { nativeChatImageLabelCopy } from './native-chat-image-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(
@@ -44,34 +50,16 @@ export function queuedMessageCardCaption(
 ): string | null {
   switch (card.hold) {
     case 'returned': {
-      // Read exactly as a rejected submission: the typed fact decides, the reason is the fallback.
-      const reason = card.returnedReason ?? null
-      if (agentSessionFailureStatedByStartRow(card.returnedRejection, statedFailures)) {
-        return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
-      }
-      // A consumed draft whose submission a Stop withdrew is not a failure of the
-      // message — say what happened rather than "not sent".
-      if (
-        classifyDispatchRejection({ reason, rejection: card.returnedRejection }).category ===
-        'withdrawn'
-      ) {
-        return translate(
-          'components.native-chat.queuedMessages.withdrawnHold',
-          'Stopped before it was sent'
-        )
-      }
-      return agentSessionWriteNoticeText(
-        structuredAgentSessionAttemptFailureParts(
-          { kind: 'rejected', reason },
-          // The card's own Send is the retry, so the words leave out sending again.
-          { agentName, retryControl: true },
-          readWholeAgentSessionFailureFact(card.returnedRejection)
-        )
-      )
+      const notice = queuedMessageReturnedNotice(card, agentName, statedFailures)
+      return notice === 'withdrawn'
+        ? translate(
+            'components.native-chat.queuedMessages.withdrawnHold',
+            'Stopped before it was sent'
+          )
+        : agentSessionWriteNoticeText(notice)
     }
     case 'paused':
-      // A card's own hold; the queue's pause is the list's header. Markers localize, and an absent
-      // or unknown one (newer host) is a plain pause, never shown raw.
+      // Localize known pause markers; unknown newer-host markers fall back to a plain pause.
       if (card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
         // Its Send shows only while the agent is idle; the words match what is on the card.
         return card.waitsForAgent
@@ -89,11 +77,6 @@ export function queuedMessageCardCaption(
       return translate(
         'components.native-chat.queuedMessages.behindReturnedHold',
         'Waiting — a message ahead needs attention'
-      )
-    case 'awaiting-answer':
-      return translate(
-        'components.native-chat.queuedMessages.awaitingAnswerHold',
-        'Waiting for your answer'
       )
     case 'sending':
       return translate('components.native-chat.messageSending', 'Sending…')
@@ -135,9 +118,14 @@ export function NativeChatQueuedMessageCard({
   statedFailures,
   showsSteerShortcut,
   steerHeld = false,
+  pending = null,
   onSteer,
   onDelete,
   onEdit,
+  editor,
+  editAttachTo,
+  editDisabled = false,
+  drag,
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
@@ -149,44 +137,87 @@ export function NativeChatQueuedMessageCard({
   showsSteerShortcut: boolean
   /** The chat reads Stopping: the card waits for the stop (`NativeChatQueuedMessageList`). */
   steerHeld?: boolean
+  /** Disable the card during its own action or Clear all; spin only the pressed action. */
+  pending?: QueuedMessagesPendingAction | null
   onSteer: () => void
   onDelete: () => void
-  onEdit: () => void
+  /** Absent when the host cannot edit in place: the card then offers no Edit at all. */
+  onEdit?: () => void
+  /** This card is being edited here: the editor replaces its text and its actions. */
+  editor?: QueuedMessageInlineEditor
+  /** The chat files added in the editor attach to. */
+  editAttachTo?: QueuedEditAttachTarget
+  /** Another card in this pane is being edited. */
+  editDisabled?: boolean
+  drag?: QueuedMessageDragPresentation
   /** Absent when the host does not queue sends, so there is nothing to turn off. */
   onTurnOffQueueing?: () => void
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card, agentName, statedFailures)
+  const line = queuedMessageCardLine(card, nativeChatImageLabelCopy())
   const returned = card.state === 'returned'
+  const attention = queuedMessageCardNeedsAttention(card)
   const sendNow = queuedMessageCardSendNow(card)
+  const busy = pending !== null
   const isMac = isMacPlatform()
-  // A clipped line opens below the row, at the card's full width: a card can hold text the person
-  // never typed (another agent's message), and Steer or Delete must not be a blind choice.
+  // Allow inspecting clipped text before acting; another agent may have authored the card.
   const [expanded, setExpanded] = useState(false)
   const [clipped, measureLine] = useNativeChatClippedLine(false)
   const textId = useId()
+  const sender = card.from ? (
+    <NativeChatAgentMessageSenders from={card.from} chatWorktreeId={chatWorktreeId} queued />
+  ) : null
+  if (editor) {
+    return (
+      // The editor fills the row, so a drop anywhere on the card reaches it.
+      <li data-queued-message-id={card.messageId} data-queued-message-state={card.state}>
+        <NativeChatQueuedMessageEditor
+          editor={editor}
+          attachTo={editAttachTo}
+          sender={sender}
+          images={card.images ? <QueuedMessageImageCount images={card.images} /> : null}
+        />
+      </li>
+    )
+  }
   return (
     <li
+      ref={drag?.rowRef}
+      style={drag?.rowStyle}
       data-queued-message-id={card.messageId}
       data-queued-message-state={card.state}
-      className="px-2.5 py-1.5"
+      className="group/queued relative px-2.5 py-1.5"
     >
-      <div className="flex items-center gap-2">
-        {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
-          <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
-        ) : (
-          <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        )}
-        <div className="min-w-0 flex-1">
-          {card.from ? (
-            <NativeChatAgentMessageSenders
-              from={card.from}
-              chatWorktreeId={chatWorktreeId}
-              queued
+      {drag?.insertion ? (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-x-0 h-0.5 bg-primary',
+            drag.insertion === 'before' ? 'top-0' : 'bottom-0'
+          )}
+        />
+      ) : null}
+      <div className="flex items-center gap-1">
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          {attention && !drag?.grip ? (
+            <AlertCircle className="size-3.5 text-destructive" aria-hidden />
+          ) : (
+            <ListEnd
+              className={cn(
+                'size-3.5 text-muted-foreground',
+                drag?.grip &&
+                  'group-hover/queued:opacity-0 group-focus-within/queued:opacity-0 [@media(hover:none)]:opacity-0'
+              )}
+              aria-hidden
             />
-          ) : null}
+          )}
+          {drag?.grip}
+        </span>
+        <div className="min-w-0 flex-1">
+          {sender}
           {expanded ? null : (
-            <p ref={measureLine} className="truncate text-sm" title={card.text}>
-              {card.text}
+            <p ref={measureLine} className="truncate text-sm" title={line}>
+              {line}
             </p>
           )}
           {caption ? (
@@ -197,10 +228,17 @@ export function NativeChatQueuedMessageCard({
                   : 'truncate text-xs text-muted-foreground'
               }
             >
+              {attention && drag?.grip ? (
+                <AlertCircle
+                  className="mr-1 inline size-3.5 align-text-bottom text-destructive"
+                  aria-hidden
+                />
+              ) : null}
               {caption}
             </p>
           ) : null}
         </div>
+        {card.images ? <QueuedMessageImageCount images={card.images} /> : null}
         {expanded || clipped ? (
           <QueuedMessageExpandToggle
             expanded={expanded}
@@ -220,13 +258,15 @@ export function NativeChatQueuedMessageCard({
                     variant="ghost"
                     size="xs"
                     onClick={onSteer}
-                    disabled={steerHeld}
+                    disabled={steerHeld || busy}
                   >
-                    {sendNow.steers ? (
-                      <CornerDownRight className="size-3" />
-                    ) : (
-                      <Send className="size-3" />
-                    )}
+                    <NativeChatPendingIcon pending={pending === 'send'} className="size-3">
+                      {sendNow.steers ? (
+                        <CornerDownRight className="size-3" />
+                      ) : (
+                        <Send className="size-3" />
+                      )}
+                    </NativeChatPendingIcon>
                     {sendNow.label}
                   </Button>
                 </TooltipTrigger>
@@ -247,57 +287,65 @@ export function NativeChatQueuedMessageCard({
                   variant="ghost"
                   size="icon-xs"
                   aria-label={translate('components.native-chat.queuedMessages.delete', 'Delete')}
+                  disabled={busy}
                   onClick={onDelete}
                 >
-                  <Trash2 className="size-3.5" />
+                  <NativeChatPendingIcon pending={pending === 'delete'} className="size-3.5">
+                    <Trash2 className="size-3.5" />
+                  </NativeChatPendingIcon>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={4}>
                 {translate('components.native-chat.queuedMessages.delete', 'Delete')}
               </TooltipContent>
             </Tooltip>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={translate(
-                    'components.native-chat.queuedMessages.moreActions',
-                    'More actions'
-                  )}
-                >
-                  <MoreHorizontal className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {/* A command's text is not a draft: edited, it would become a message. */}
-                {card.command ? null : (
-                  <DropdownMenuItem onSelect={onEdit}>
-                    <Pencil />
-                    {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
-                  </DropdownMenuItem>
-                )}
-                {onTurnOffQueueing ? (
-                  <DropdownMenuItem onSelect={onTurnOffQueueing}>
-                    {translate(
-                      'components.native-chat.queuedMessages.turnOffQueueing',
-                      'Turn off queueing'
+            {(!card.command && onEdit) || onTurnOffQueueing ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={translate(
+                      'components.native-chat.queuedMessages.moreActions',
+                      'More actions'
                     )}
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    disabled={busy}
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {/* A command's text is not a draft: edited, it would become a message. */}
+                  {card.command || !onEdit ? null : (
+                    <DropdownMenuItem disabled={editDisabled} onSelect={onEdit}>
+                      <Pencil />
+                      {translate(
+                        'components.native-chat.queuedMessages.editMessage',
+                        'Edit message'
+                      )}
+                    </DropdownMenuItem>
+                  )}
+                  {onTurnOffQueueing ? (
+                    <DropdownMenuItem onSelect={onTurnOffQueueing}>
+                      {translate(
+                        'components.native-chat.queuedMessages.turnOffQueueing',
+                        'Turn off queueing'
+                      )}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </>
         )}
       </div>
       {expanded ? (
-        // Indented to the text, past the icon slot and its gap.
         <p
           id={textId}
           className="scrollbar-sleek mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pl-5.5 text-sm"
         >
-          {card.text}
+          {line}
         </p>
       ) : null}
     </li>
@@ -329,7 +377,12 @@ function QueuedMessageExpandToggle({
           aria-controls={controls}
           onClick={onToggle}
         >
-          <ChevronDown className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
+          <ChevronDown
+            className={cn(
+              'size-3.5 transition-transform motion-reduce:transition-none',
+              expanded && 'rotate-180'
+            )}
+          />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={4}>

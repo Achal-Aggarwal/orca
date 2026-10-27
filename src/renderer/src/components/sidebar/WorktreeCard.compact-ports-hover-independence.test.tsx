@@ -24,6 +24,9 @@ let settings: Partial<GlobalSettings> | null = { compactWorktreeCards: true }
 
 vi.mock('@/store', () => {
   const getState = () => ({
+    repos: [makeRepo()],
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     browserTabsByWorktree: {},
     agentActivityDisplayMode: undefined,
     createBrowserTab: vi.fn(),
@@ -59,7 +62,6 @@ vi.mock('@/store', () => {
   }
 })
 
-// Expose hover controls to verify compact identity and metadata have one owner.
 const openChangeByRoot = new Map<HTMLElement, (open: boolean) => void>()
 vi.mock('@/components/ui/hover-card', () => ({
   HoverCard: ({
@@ -107,10 +109,6 @@ vi.mock('@/components/ui/tooltip', () => ({
 
 vi.mock('@/lib/sidebar-worktree-activation', () => ({
   activateWorktreeFromSidebar: vi.fn()
-}))
-
-vi.mock('@/runtime/runtime-rpc-client', () => ({
-  getActiveRuntimeTarget: () => ({ kind: 'local' })
 }))
 
 vi.mock('./use-worktree-activity-status', () => ({

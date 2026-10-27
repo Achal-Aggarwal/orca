@@ -3,6 +3,10 @@ import type { z } from 'zod'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import { SkillDeleteRequestSchema } from '../../../../shared/skill-delete-contract'
 import {
+  BundledSkillExecuteRequestSchema,
+  BundledSkillPlanRequestSchema
+} from '../../../../shared/bundled-skill-plan'
+import {
   previewSkillDeleteRequest,
   runSkillDeleteRequest,
   type SkillDeleteRequestDependencies
@@ -28,6 +32,7 @@ import {
 } from '../../../skills/skill-discovery-target'
 import { SKILL_INSTALL_RESULT_V2_CAPABILITY } from '../../../../shared/skill-install-capability'
 import type { OrcaRuntimeService } from '../../orca-runtime'
+import { parseExecutionHostId } from '../../../../shared/execution-host'
 import {
   AGENT_SKILL_SHARING_UNSUPPORTED_ENVIRONMENT_CODE,
   AgentSkillShareRequestSchema,
@@ -39,8 +44,7 @@ import {
   SkillsGetInstallProgressParams
 } from '../../../../shared/rpc-contract/skills-params'
 
-/** Exported so the delete plan's root rebuild resolves its target exactly the
- *  way `skills.discover` resolved the scan's — including WSL. */
+// Use the same target resolution for discovery and delete-plan roots, including WSL.
 export function resolveDiscoveryTarget(
   params: z.infer<typeof SkillDiscoveryTargetSchema>,
   runtime: Pick<OrcaRuntimeService, 'resolveProjectRuntimeForWorktree'>
@@ -52,6 +56,21 @@ export function resolveDiscoveryTarget(
         projectRuntime: runtime.resolveProjectRuntimeForWorktree(params.worktreeId)
       }
   return resolveSkillDiscoveryTarget(target)
+}
+
+// A caller naming only the workspace gets its folder from the host, which refuses SSH workspaces like desktop.
+async function withWorkspaceCwd(
+  params: z.infer<typeof SkillsDiscoverParams>,
+  runtime: Pick<OrcaRuntimeService, 'resolveRuntimeFileTarget'>
+): Promise<z.infer<typeof SkillsDiscoverParams>> {
+  if (params.cwd?.trim() || !params.worktreeId) {
+    return params
+  }
+  const target = await runtime.resolveRuntimeFileTarget(`id:${params.worktreeId}`)
+  if (parseExecutionHostId(target.executionHostId)?.kind === 'ssh') {
+    throw new Error('Skill discovery is unavailable for SSH hosts.')
+  }
+  return { ...params, cwd: target.worktree.path }
 }
 
 function skillDeleteDependencies(
@@ -70,10 +89,11 @@ export const SKILL_METHODS = [
     permission: 'workspace',
     params: SkillsDiscoverParams,
     handler: async (params, { runtime }) => {
-      // Why: the executing runtime owns WSL project preferences. Remote callers
-      // send worktree identity only; trusting their projectRuntime absence
-      // would scan this host's native filesystem for a WSL-configured project.
-      const resolvedTarget = resolveDiscoveryTarget(params, runtime)
+      // Resolve WSL preferences on the executing host; remote clients provide workspace identity, not trusted runtime absence.
+      const resolvedTarget = await resolveDiscoveryTarget(
+        await withWorkspaceCwd(params, runtime),
+        runtime
+      )
       return discoverSkillsOnTarget(resolvedTarget, runtime.listRepos(), {
         providerRootOverrides: await runtime.resolveSkillDiscoveryProviderRoots(resolvedTarget),
         refresh: params.refresh === true
@@ -87,7 +107,7 @@ export const SKILL_METHODS = [
     handler: async (params, { runtime }) =>
       previewSkillDeleteRequest(
         params,
-        resolveDiscoveryTarget(params.target ?? {}, runtime),
+        await resolveDiscoveryTarget(params.target ?? {}, runtime),
         skillDeleteDependencies(runtime)
       )
   }),
@@ -98,9 +118,22 @@ export const SKILL_METHODS = [
     handler: async (params, { runtime }) =>
       runSkillDeleteRequest(
         params,
-        resolveDiscoveryTarget(params.target ?? {}, runtime),
+        await resolveDiscoveryTarget(params.target ?? {}, runtime),
         skillDeleteDependencies(runtime)
       )
+  }),
+  // The host plans Orca's skills on its own disk; a paired client never sends a WSL target.
+  defineMethod({
+    name: 'skills.planBundledOrca',
+    permission: 'workspace',
+    params: BundledSkillPlanRequestSchema,
+    handler: (params, { runtime }) => runtime.planLocalBundledSkills(params)
+  }),
+  defineMethod({
+    name: 'skills.executeBundledOrca',
+    permission: 'skills-admin',
+    params: BundledSkillExecuteRequestSchema,
+    handler: (params, { runtime }) => runtime.executeLocalBundledSkills(params)
   }),
   defineMethod({
     name: 'skills.share',
@@ -114,7 +147,7 @@ export const SKILL_METHODS = [
           'Publishing skills through a paired client is not supported. Run the command from Orca on the machine that stores the skills.'
         )
       }
-      const resolvedTarget = resolveDiscoveryTarget(params.target ?? {}, runtime)
+      const resolvedTarget = await resolveDiscoveryTarget(params.target ?? {}, runtime)
       if (resolvedTarget.kind !== 'native-host') {
         throw new AgentSkillSharingError(
           AGENT_SKILL_SHARING_UNSUPPORTED_ENVIRONMENT_CODE,

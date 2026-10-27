@@ -1,22 +1,17 @@
-// Runtime switches in one Cloud Storage object per cell (cells/<cellId>.json) in the
-// `<project-id>-relay-control` bucket. The bucket name comes from the metadata server, so the
-// image needs no env or startup-script change.
-//
-// Rules: boot runs on defaults until the first good read; losing contact (404, 5xx,
-// timeout, malformed body) keeps the applied values; a generation below the applied one is
-// ignored; the parser voids a whole object on any bad known value.
+// Per-cell runtime flags live in cells/<cellId>.json in the metadata-derived <project-id>-relay-control bucket.
+// Boot uses defaults; failed reads retain applied values, older generations are ignored, and any invalid known value voids the object.
 
 const METADATA_ROOT = 'http://metadata.google.internal/computeMetadata/v1'
 const STORAGE_ROOT = 'https://storage.googleapis.com/storage/v1'
 const REQUEST_TIMEOUT_MS = 3_000
 const MAX_OBJECT_BYTES = 64 * 1024
 export const CONTROL_FLAG_POLL_MS = 5_000
-// Refresh a cached access token this long before Google says it expires.
 const ACCESS_TOKEN_EARLY_REFRESH_MS = 60_000
 
-export type ControlFlagParse<Flags> = (body: unknown) => Flags | null
+// `ignoredKeys` are names this image does not know: a newer writer's, or a typo.
+export type ControlFlagParse<Flags> = (body: unknown) => { flags: Flags; ignoredKeys: string[] } | null
 
-export type AppliedControlFlags<Flags> = { generation: number; flags: Flags }
+export type AppliedControlFlags<Flags> = { generation: number; flags: Flags; ignoredKeys?: string[] }
 
 export type ControlFlagChannel<Flags> = {
   applied: () => AppliedControlFlags<Flags>
@@ -34,7 +29,6 @@ export function startControlFlagChannel<Flags>(input: {
   fetch?: typeof fetch
   random?: () => number
   pollMs?: number
-  // Tests drive poll() directly.
   autoStart?: boolean
 }): ControlFlagChannel<Flags> {
   const fetchImpl = input.fetch ?? fetch
@@ -125,7 +119,6 @@ export function startControlFlagChannel<Flags>(input: {
       discard()
       return
     }
-    seenGeneration = generation
     const text = await readBounded(response, MAX_OBJECT_BYTES)
     if (text === null) throw new ControlFlagPollError('malformed')
     let body: unknown
@@ -134,10 +127,13 @@ export function startControlFlagChannel<Flags>(input: {
     } catch {
       throw new ControlFlagPollError('malformed')
     }
-    const flags = input.parse(body)
-    if (flags === null) throw new ControlFlagPollError('void')
-    applied = { generation, flags }
-    console.log(JSON.stringify({ event: input.appliedEvent, generation, flags }))
+    // Mark seen only after a complete read or later 304s strand a truncated write forever.
+    seenGeneration = generation
+    const parsed = input.parse(body)
+    if (parsed === null) throw new ControlFlagPollError('void')
+    const { flags, ignoredKeys } = parsed
+    applied = ignoredKeys.length > 0 ? { generation, flags, ignoredKeys } : { generation, flags }
+    console.log(JSON.stringify({ event: input.appliedEvent, ...applied }))
   }
 
   const poll = (): Promise<void> => {
@@ -184,7 +180,6 @@ export function startControlFlagChannel<Flags>(input: {
   }
 }
 
-// Stops reading, and cancels the stream, at the first byte past the bound.
 async function readBounded(response: Response, maxBytes: number): Promise<string | null> {
   if (!response.body) return ''
   const reader = response.body.getReader()

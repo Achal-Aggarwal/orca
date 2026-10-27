@@ -7,8 +7,7 @@ import {
   writeFileDurable
 } from '../durable-file-write'
 
-// Why: per-source records are most of a usage cache (43 of 56 MB on one real Claude history) and
-// only a scan reads them, so they live in this worker-owned sidecar and never touch main.
+// Only scans need bulky per-source records; worker-owned sidecars keep them off main.
 
 /** Where one provider's per-source scan cache lives, and whether this scan may start from it. */
 export type UsageSourceCacheRef = {
@@ -18,8 +17,12 @@ export type UsageSourceCacheRef = {
   reuse: boolean
 }
 
-export type UsageCacheSplitRequest = { cacheFile: string; sourceKey: string }
-export type UsageCacheSplitResult = { reportText: string | null; migrated: boolean }
+export type UsageCacheSplitRequest = { cacheFile: string; sourceKey: string; providerId?: 'claude' }
+export type UsageCacheSplitResult = {
+  reportText: string | null
+  migrated: boolean
+  reportIntegrityVerified?: boolean
+}
 
 export function usageSourceCachePath(cacheFile: string): string {
   const { dir, name } = parse(cacheFile)
@@ -48,12 +51,8 @@ export async function writeUsageSourceCache(
   ref: UsageSourceCacheRef,
   sources: readonly unknown[]
 ): Promise<void> {
-  await mkdir(dirname(ref.path), { recursive: true }).catch(() => {})
-  // Why: a worker terminated mid-write orphans a multi-MB temp file; reclaim earlier launches' ones.
-  await removeStaleDurableWriteTempFiles(ref.path)
-  await writeFileDurable(
-    durableWriteTempPath(ref.path, threadId > 0 ? String(threadId) : undefined),
-    ref.path,
+  await writeUsageSourceCacheText(
+    ref,
     JSON.stringify({
       schemaVersion: ref.schemaVersion,
       worktreeFingerprint: ref.worktreeFingerprint,
@@ -62,10 +61,29 @@ export async function writeUsageSourceCache(
   )
 }
 
-/**
- * Caches written before the sidecar existed carry the per-source records inline. Move them into
- * the sidecar and hand back only the report, so main parses a few MB instead of the whole file.
- */
+export async function writeUsageSourceCacheText(
+  ref: UsageSourceCacheRef,
+  text: string
+): Promise<void> {
+  await writeUsageSourceCacheData(ref, text)
+}
+
+export async function writeUsageSourceCacheData(
+  ref: UsageSourceCacheRef,
+  data: string | Uint8Array
+): Promise<void> {
+  await mkdir(dirname(ref.path), { recursive: true }).catch(() => {})
+  // Reclaim old durable-write temps left by workers terminated mid-write.
+  await removeStaleDurableWriteTempFiles(ref.path)
+  await writeFileDurable(
+    durableWriteTempPath(ref.path, threadId > 0 ? String(threadId) : undefined),
+    ref.path,
+    data,
+    0o600
+  )
+}
+
+/** Move legacy inline source records to the sidecar so main parses only the compact report. */
 export async function splitUsageCacheFile(
   request: UsageCacheSplitRequest
 ): Promise<UsageCacheSplitResult> {

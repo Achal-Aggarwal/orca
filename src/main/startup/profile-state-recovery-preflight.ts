@@ -8,6 +8,7 @@ import {
   ProfileStateRecoveryCommandError,
   isProfileStateRecoveryCommandError,
   profileStateRecoveryRequestSchema,
+  type ProfileStateRecoveryRequest,
   type ProfileStateRecoveryResponse
 } from '../../shared/profile-state-recovery-command'
 import { translateMain } from '../i18n/main-i18n'
@@ -43,10 +44,9 @@ export function runProfileStateRecoveryPreflight(argv: readonly string[] = proce
   return true
 }
 
-/** Build the relaunch argv that applies a startup-dialog choice before ordinary startup. */
 export function profileStateDesktopRecoveryArgs(
   argv: readonly string[],
-  request: { userDataPath: string; selector: { kind: 'current-json' | 'current-sqlite' } }
+  request: ProfileStateRecoveryRequest
 ): string[] {
   return [
     ...stripRecoveryArgs(argv.slice(1)),
@@ -78,7 +78,7 @@ function runDesktopRecovery(argv: readonly string[]): void {
         buttons: [translateMain('profileState.recoveryNotApplied.quitButton', 'Quit')],
         title: translateMain(
           'profileState.recoveryNotApplied.title',
-          'Orca profile state was not changed'
+          'Orca could not finish recovering this profile'
         ),
         message: translateMain(
           'profileState.recoveryNotApplied.message',

@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import { codexPrimaryCommandTaskId } from '../../shared/structured-session-foreground-commands'
-import {
-  CodexAppServerRequestError,
-  type CodexAppServerConnection
-} from './codex-app-server-connection'
+import { CodexAppServerRequestError } from './app-server/codex-app-server-request-error'
+import type { CodexAppServerConnection } from './app-server/codex-app-server-connection-types'
 import {
   CodexAppServerTimeoutError,
   CodexAppServerUnsupportedError
@@ -14,6 +12,7 @@ import {
   terminateCodexBackgroundTerminals
 } from './codex-background-terminals'
 import {
+  acquireReadyCodexForTest,
   adapterFor,
   fakeCodex,
   identityFor,
@@ -47,7 +46,6 @@ function threadNotFound(method: string): CodexAppServerRequestError {
   )
 }
 
-/** Answers each request from `routes`, as a live app-server would, and records it. */
 function fakeRpc(routes: Record<string, Route>): {
   rpc: Pick<CodexAppServerConnection, 'request'>
   calls: Call[]
@@ -91,9 +89,8 @@ function commandItem(status: 'inProgress' | 'completed') {
   }
 }
 
-/** A turn that starts a dev server and ends with it still running. */
 async function backgroundedDevServer(codex: ReturnType<typeof codexWith>): Promise<void> {
-  await codex.adapter.acquire({ identity, fence: 7, spawnToken: 'spawn-1' })
+  await acquireReadyCodexForTest(codex.adapter, { identity, fence: 7, spawnToken: 'spawn-1' })
   codex.notify('turn/started', { threadId: THREAD_ID, turn: { id: TURN_ID, status: 'inProgress' } })
   codex.notify('item/started', {
     threadId: THREAD_ID,
@@ -163,7 +160,7 @@ describe('Codex background-command Stop', () => {
     await backgroundedDevServer(codex)
 
     expect(codex.adapter.backgroundTaskStops('session-1')).toEqual({
-      supportsTaskStop: false,
+      supportsTaskStop: true,
       supportsStopAll: false
     })
     expect(lastCommandStoppable(codex.evidence)).toBe(false)
@@ -186,7 +183,7 @@ describe('Codex background-command Stop', () => {
     await backgroundedDevServer(codex)
     expect(lastCommandStoppable(codex.evidence)).toBe(false)
     expect(codex.adapter.backgroundTaskStops('session-1')).toEqual({
-      supportsTaskStop: false,
+      supportsTaskStop: true,
       supportsStopAll: false
     })
 
@@ -194,7 +191,7 @@ describe('Codex background-command Stop', () => {
     await new Promise((resolve) => setImmediate(resolve))
 
     expect(lastCommandStoppable(codex.evidence)).toBe(true)
-    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsTaskStop).toBe(true)
+    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsStopAll).toBe(true)
   })
 
   it('probes the app-server once, not per command', async () => {
@@ -224,7 +221,7 @@ describe('Codex background-command Stop', () => {
         return { data: [], nextCursor: null }
       }
     })
-    await codex.adapter.acquire({ identity, fence: 7, spawnToken: 'spawn-1' })
+    await acquireReadyCodexForTest(codex.adapter, { identity, fence: 7, spawnToken: 'spawn-1' })
     codex.notify('turn/started', {
       threadId: THREAD_ID,
       turn: { id: TURN_ID, status: 'inProgress' }
@@ -236,7 +233,7 @@ describe('Codex background-command Stop', () => {
     })
     await new Promise((resolve) => setImmediate(resolve))
     expect(probes).toBe(1)
-    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsTaskStop).toBe(false)
+    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsStopAll).toBe(false)
 
     codex.notify('turn/completed', {
       threadId: THREAD_ID,
@@ -245,7 +242,7 @@ describe('Codex background-command Stop', () => {
     await new Promise((resolve) => setImmediate(resolve))
 
     expect(probes).toBe(2)
-    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsTaskStop).toBe(true)
+    expect(codex.adapter.backgroundTaskStops('session-1')?.supportsStopAll).toBe(true)
     expect(lastCommandStoppable(codex.evidence)).toBe(true)
   })
 

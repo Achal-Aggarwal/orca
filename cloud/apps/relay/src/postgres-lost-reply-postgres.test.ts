@@ -21,7 +21,9 @@ const PROBE_TABLE = 'relay_lost_reply_probe'
 // or, with `delayMs`, held that long and then delivered (a whole-VM database stall).
 async function blackholeProxy(target: URL, trigger: string, delayMs?: number) {
   const sockets = new Set<Socket>()
+  const timers = new Set<ReturnType<typeof setTimeout>>()
   const afterTrigger: Buffer[] = []
+  let forwardingResumed = false
   const server: Server = createServer((client) => {
     const upstream = connect(Number(target.port || 5432), target.hostname)
     sockets.add(client)
@@ -33,8 +35,16 @@ async function blackholeProxy(target: URL, trigger: string, delayMs?: number) {
       upstream.write(chunk)
     })
     upstream.on('data', (chunk: Buffer) => {
-      if (!swallowing) client.write(chunk)
-      else if (delayMs !== undefined) setTimeout(() => client.write(chunk), delayMs)
+      if (!swallowing || forwardingResumed) client.write(chunk)
+      else if (delayMs !== undefined) {
+        const timer = setTimeout(() => {
+          timers.delete(timer)
+          if (!client.destroyed) {
+            client.write(chunk)
+          }
+        }, delayMs)
+        timers.add(timer)
+      }
     })
     for (const socket of [client, upstream]) {
       socket.on('error', () => undefined)
@@ -52,8 +62,15 @@ async function blackholeProxy(target: URL, trigger: string, delayMs?: number) {
   url.port = String(address.port)
   return {
     url: url.toString(),
+    resumeForwarding: () => {
+      forwardingResumed = true
+    },
     sentAfterTrigger: () => Buffer.concat(afterTrigger).toString('latin1'),
     close: async () => {
+      for (const timer of timers) {
+        clearTimeout(timer)
+      }
+      timers.clear()
       for (const socket of sockets) socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
@@ -68,22 +85,28 @@ describePostgres('a lost PostgreSQL reply against a real server', () => {
 
   async function open(
     url: string,
-    options: { readTimeoutMarginMs?: number; poolMax?: number } = {}
+    options: {
+      readTimeoutMarginMs?: number
+      statementTimeoutMs?: number
+      poolMax?: number
+      readTimeoutMarginOverrideMs?: () => number | undefined
+    } = {}
   ): Promise<RelayDatabase> {
     const database = await openRelayDatabase({
       databaseUrl: url,
       dataDir: '',
       appliesPostgresSchema: false,
-      statementTimeoutMs: STATEMENT_TIMEOUT_MS,
+      statementTimeoutMs: options.statementTimeoutMs ?? STATEMENT_TIMEOUT_MS,
       readTimeoutMarginMs: options.readTimeoutMarginMs ?? READ_TIMEOUT_MARGIN_MS,
-      poolMax: options.poolMax
+      poolMax: options.poolMax,
+      readTimeoutMarginOverrideMs: options.readTimeoutMarginOverrideMs
     })
     cleanups.push(async () => await database.close())
     return database
   }
 
   it('fails within the read timeout, sends nothing after the lost statement, and recovers', async () => {
-    const direct = await open(databaseUrl!)
+    const direct = await open(databaseUrl!, { statementTimeoutMs: 5_000 })
     await direct.query(`CREATE TABLE IF NOT EXISTS ${PROBE_TABLE} (id TEXT PRIMARY KEY)`)
     await direct.query(`INSERT INTO ${PROBE_TABLE} (id) VALUES ('c1') ON CONFLICT DO NOTHING`)
     cleanups.push(async () => {
@@ -125,6 +148,32 @@ describePostgres('a lost PostgreSQL reply against a real server', () => {
     ).resolves.toEqual([{ id: 'c1' }])
   }, 20_000)
 
+  // The per-cell switch moves the margin per query, with no restart and no new pool.
+  it('applies the switch file margin per query, over the pool margin', async () => {
+    const direct = await open(databaseUrl!, { statementTimeoutMs: 5_000 })
+    await direct.query(`CREATE TABLE IF NOT EXISTS ${PROBE_TABLE} (id TEXT PRIMARY KEY)`)
+    cleanups.push(async () => {
+      await direct.query(`DROP TABLE IF EXISTS ${PROBE_TABLE}`)
+    })
+    const proxy = await blackholeProxy(new URL(databaseUrl!), `FROM ${PROBE_TABLE}`)
+    cleanups.push(proxy.close)
+    let override: number | undefined = 1_000
+    // The pool's own margin would hold the lost reply for 30 s.
+    const database = await open(proxy.url, {
+      readTimeoutMarginMs: 30_000,
+      readTimeoutMarginOverrideMs: () => override
+    })
+    await expect(database.query('SELECT 1 AS one')).resolves.toEqual([{ one: 1 }])
+    const startedAt = performance.now()
+    const failure = await database
+      .query(`SELECT id FROM ${PROBE_TABLE}`)
+      .catch((error: unknown) => error)
+    expect(isRelayDatabaseTransientError(failure)).toBe(true)
+    expect(performance.now() - startedAt).toBeLessThan(STATEMENT_TIMEOUT_MS + 1_000 + 1_000)
+    override = undefined
+    await expect(database.query('SELECT 1 AS one')).resolves.toEqual([{ one: 1 }])
+  }, 20_000)
+
   // A reply the server sent after statement_timeout, held up by a whole-VM stall, is still a
   // reply: the default margin must outlast the routine 5-7 s stalls.
   it('keeps a reply delayed 6.5 s by a stall, on the same connection', async () => {
@@ -143,6 +192,7 @@ describePostgres('a lost PostgreSQL reply against a real server', () => {
       { probe: 'stalled_reply_probe' }
     ])
     expect(performance.now() - startedAt).toBeGreaterThan(6_000)
+    proxy.resumeForwarding()
     // Not destroyed: the one pooled connection is still the same backend.
     expect(await pid()).toBe(before)
   }, 30_000)

@@ -20,6 +20,14 @@ describe('durable file write', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  it('durably writes a binary view without leaking bytes outside its bounds', async () => {
+    const final = join(dir, 'state.gz')
+    const backing = Buffer.from([99, 0x1f, 0x8b, 0, 0xff, 77])
+    await writeFileDurable(`${final}.tmp`, final, backing.subarray(1, -1))
+    expect(readFileSync(final)).toEqual(Buffer.from([0x1f, 0x8b, 0, 0xff]))
+    expect(existsSync(`${final}.tmp`)).toBe(false)
+  })
+
   for (const [label, write] of [
     ['async', (t: string, f: string, p: string) => writeFileDurable(t, f, p)],
     [
@@ -52,7 +60,6 @@ describe('durable file write', () => {
       })
 
       it('round-trips a multi-megabyte payload without truncation', async () => {
-        // Why: the real orca-data.json is large; a partial fsync would surface here.
         const final = join(dir, 'big.json')
         const payload = JSON.stringify({ blob: 'x'.repeat(4 * 1024 * 1024) })
         await write(`${final}.tmp`, final, payload)
@@ -69,8 +76,6 @@ describe('durable file write', () => {
       it('surfaces an unwritable temp path instead of silently succeeding', async () => {
         const final = join(dir, 'state.json')
         const tmp = join(dir, 'missing-subdir', 'state.json.tmp')
-        // The sync variant throws synchronously and the async one rejects; both must fail loudly
-        // and neither may publish a partial file.
         let failed = false
         try {
           await write(tmp, final, 'x')

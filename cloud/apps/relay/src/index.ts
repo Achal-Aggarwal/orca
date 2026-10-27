@@ -1,7 +1,7 @@
 import {
   formatAssignmentInventorySnapshot,
   readAssignmentInventorySnapshot
-} from './assignment-inventory-snapshot.js'
+} from './assignment/assignment-inventory-snapshot.js'
 import { readRegionCorrectionOutcomes } from './region-correction-outcomes.js'
 import { RelayAssignmentStore } from './assignment-store.js'
 import { loadRelayConfig } from './config.js'
@@ -9,10 +9,13 @@ import { startCellHeartbeat } from './cell-heartbeat-client.js'
 import {
   CELL_FLAG_DEFAULTS,
   CELL_FLAGS_APPLIED_EVENT,
+  type CellFlags,
   cellFlagObjectName,
   cellFlagParser
 } from './cell-flags.js'
 import { startControlFlagChannel } from './relay-control-flag-channel.js'
+import { readCloudRunInstanceZone } from './cloud-run-instance-zone.js'
+import { readSandboxTcpCounters } from './sandbox-tcp-counters.js'
 import {
   reconcileCellAdmissionAtStartup,
   roleOwnsAssignmentMaintenance
@@ -23,7 +26,7 @@ import {
   consumeRelayDatabasePoolPressure,
   readRelayDatabasePoolPressure
 } from './database.js'
-import { runAssignmentCleanup } from './assignment-cleanup-steps.js'
+import { runAssignmentCleanup } from './assignment/assignment-cleanup-steps.js'
 import { runRelayBackgroundOperation } from './relay-background-operation.js'
 import { readPostgresLockWaitSample } from './postgres-lock-wait-sample.js'
 import { jitteredSweepIntervalMs } from './relay-sweep-schedule.js'
@@ -36,15 +39,21 @@ import {
   readRegisteredMigrationInventory
 } from './registered-migration-inventory.js'
 
+// Both read the cell's switch file once it exists; until then, the boot values.
+let cellFlagsApplied: (() => CellFlags) | null = null
 // Before anything can start a database promise.
-process.on('unhandledRejection', handleRelayUnhandledRejection)
+process.on('unhandledRejection', (reason) =>
+  handleRelayUnhandledRejection(reason, cellFlagsApplied?.().rejectionFence ?? true)
+)
 const config = loadRelayConfig()
 const database = await openRelayDatabaseAtBoot({
   databaseUrl: config.databaseUrl,
   dataDir: config.dataDir,
   poolMax: config.databasePoolMax,
   applicationName: `orca-relay/${config.role}/${config.cellId}`,
-  appliesPostgresSchema: config.role !== 'cell'
+  appliesPostgresSchema: config.role !== 'cell',
+  retiresSlowConnections: config.role !== 'cell',
+  readTimeoutMarginOverrideMs: () => cellFlagsApplied?.().readTimeoutMarginMs
 })
 await reconcileCellAdmissionAtStartup(config, new RelayAssignmentStore(database))
 // Never awaited: the cell listens on defaults (all off) until the first read lands.
@@ -57,6 +66,7 @@ const cellFlagChannel =
         appliedEvent: CELL_FLAGS_APPLIED_EVENT
       })
     : null
+cellFlagsApplied = cellFlagChannel ? () => cellFlagChannel.applied().flags : null
 const {
   server,
   sessions,
@@ -69,9 +79,12 @@ const {
   cellIncarnation,
   shadowSeatPoller
 } = createRelayServer(config, database, { cellFlags: cellFlagChannel?.applied })
-// Same owner as the assignment sweep: the cleanup only expires credentials that every reader
-// already re-checks at read time, so running it in all 23 cells multiplied one table scan by 23
-// without changing any answer.
+// Cloud Run sets K_SERVICE; GCE cells and local runs skip the metadata read.
+if (process.env.K_SERVICE) {
+  void readCloudRunInstanceZone().then((zone) => observability.setInstanceZone(zone))
+  observability.setTcpCounterReader(() => readSandboxTcpCounters())
+}
+// Only assignment-maintenance owner reaps credentials; readers already enforce expiry, so cell-wide copies multiplied scans without changing answers.
 const cleanupTimer = roleOwnsAssignmentMaintenance(config.role)
   ? setInterval(
       () =>

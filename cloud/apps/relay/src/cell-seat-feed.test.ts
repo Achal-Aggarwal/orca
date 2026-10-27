@@ -67,7 +67,15 @@ const SeatFeedReplySchema = z.object({
   flagsApplied: z
     .object({
       generation: z.number(),
-      flags: z.object({ readinessLocal: z.boolean(), ticketCheck: z.enum(['off', 'shadow']) })
+      flags: z.object({
+        readinessLocal: z.boolean(),
+        ticketCheck: z.enum(['off', 'shadow', 'enforce']),
+        rejectionFence: z.boolean(),
+        admitMode: z.enum(['db', 'reserve']),
+        reserveDryRun: z.boolean(),
+        phonePath: z.enum(['db', 'memory'])
+      }),
+      ignoredKeys: z.array(z.string()).optional()
     })
     .optional(),
   seq: z.number(),
@@ -193,6 +201,7 @@ function createCell(relayConfig = config(), cellFlags?: () => AppliedControlFlag
     cellIncarnation: incarnation,
     cellSeatFeed: (sinceSeq) => registry.seatFeed(sinceSeq),
     cellFlags,
+    cellPhonePathEffective: () => registry.phonePathEffective(),
     isDraining: () => registry.isDraining(),
     runtimeCounts: () => ({
       totalConnections: 0,
@@ -333,14 +342,19 @@ describe('cell seat feed', () => {
     let applied: AppliedControlFlags<CellFlags> = { generation: 0, flags: CELL_FLAG_DEFAULTS }
     const { read, app } = createCell(config(), () => applied)
     expect((await read()).flagsApplied).toEqual({ generation: 0, flags: CELL_FLAG_DEFAULTS })
-    applied = { generation: 12, flags: { readinessLocal: true, ticketCheck: 'shadow' } }
+    applied = { generation: 12, flags: { ...CELL_FLAG_DEFAULTS, readinessLocal: true, ticketCheck: 'shadow' } }
     expect((await read()).flagsApplied).toEqual(applied)
     const runtime = await app.request('/v1/admin/runtime-status', {
       method: 'POST',
       headers: { authorization: 'Bearer deploy-token', 'content-type': 'application/json' },
       body: JSON.stringify({ v: 1 })
     })
-    expect(await runtime.json()).toMatchObject({ flagsApplied: applied })
+    expect(await runtime.json()).toMatchObject({
+      flagsApplied: applied,
+      // Not reserve mode, so db whatever the switch says.
+      phonePathEffective: 'db',
+      databasePoolMax: expect.any(Number)
+    })
   })
 
   it('accepts only the directors rehome identity, verified once per poll', async () => {
