@@ -45,6 +45,7 @@ export function useStructuredAgentSessionRead(args: {
           environmentId ? subscribeRuntimeHostContactRegained(environmentId, retry) : () => {}
       })
     }
+    return undefined
   }, [isVisible, owner, environmentId])
   useEffect(() => {
     const observedCursor = snapshot.state.cursor
