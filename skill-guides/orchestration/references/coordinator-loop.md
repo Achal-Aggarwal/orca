@@ -8,13 +8,15 @@ truth for the loop order and when you are done.
 
 Create independent Tasks before you end your first turn. Encode only real
 dependencies, prefer parallel waves over chains deeper than three or four steps,
-and use the ready view as external memory. Start a planned Task, or retry a
-known one, with `--task`:
+and use the ready view as external memory. Start a planned Task with `--task`,
+choosing placement as the main guide describes; workers editing the same files
+in parallel need separate workspaces. A retry also needs `--retry-of` (see
+`references/recovery-and-cleanup.md`):
 
 ```text
 ORCA orchestration task-create --spec "<dependent work>" --deps <json_array> --json
 ORCA orchestration task-list --ready --brief --json
-ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
+ORCA orchestration worker-start --task <task_id> --worktree <current|selector|new-top-level> --agent codex --json
 ```
 
 `--brief` collapses whitespace and caps echoed specs at 160 characters;

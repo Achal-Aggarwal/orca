@@ -100,12 +100,12 @@ long and, on timeout, returns the input-accepted receipt without resending.
 as the exact recovery text. Older hosts may omit `data`, so treat every field as
 optional.
 
-| Code                 | Meaning                                                                                                               | Recovery                                                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `task_not_found`     | No Task with that id, or not in the bound Run (`data.taskId`, `data.runId`)                                           | Check `task-list --json`; create the Task with `task-create` if it does not exist                                              |
-| `task_not_startable` | Task cannot start now: not `ready`, or invalid `--retry-of` (`data.status`, `data.unmetDependencies`, `data.retryOf`) | Wait for running dependencies with `check --wait`; retry or unblock failed ones; inspect `dispatch-show` if already dispatched |
-| `inject_rejected`    | `--inject` refused because no recognized agent runs in the target (`data.terminal`, `data.reason`)                    | Start a recognized agent there or pick another terminal; or dispatch without `--inject` and use `terminal send`                |
-| `runtime_error`      | Any other failure, including a target terminal that already owns an active Dispatch                                   | Read the message, inspect state, and do not retry unchanged                                                                    |
+| Code                 | Meaning                                                                                                               | Recovery                                                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `task_not_found`     | No Task with that id, or not in the bound Run (`data.taskId`, `data.runId`)                                           | Check `task-list --json`; create the Task with `task-create` if it does not exist                                                     |
+| `task_not_startable` | Task cannot start now: not `ready`, or invalid `--retry-of` (`data.status`, `data.unmetDependencies`, `data.retryOf`) | Wait for running dependencies to report (Orca wakes you); retry or unblock failed ones; inspect `dispatch-show` if already dispatched |
+| `inject_rejected`    | `--inject` refused because no recognized agent runs in the target (`data.terminal`, `data.reason`)                    | Start a recognized agent there or pick another terminal; or dispatch without `--inject` and use `terminal send`                       |
+| `runtime_error`      | Any other failure, including a target terminal that already owns an active Dispatch                                   | Read the message, inspect state, and do not retry unchanged                                                                           |
 
 ## Retry, stop, and abandon
 
