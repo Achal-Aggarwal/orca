@@ -153,7 +153,8 @@ it.each(['before-body', 'between-body-enter', 'transport-unknown', 'submitted'] 
 )
 
 it('retries admitted skill chat through the notice and real transport without classifying or clearing a newer command draft', async () => {
-  const { classifyNativeChatSend } = await import('../../../../shared/native-chat-slash-commands')
+  const { classifyNativeChatSend } =
+    await import('../../../../shared/native-chat/input/native-chat-slash-commands')
   const { answerNativeChatLocalCommand } = await import('./use-native-chat-local-command-answer')
   let origin: string | null = '/context'
   let draft = '/context'

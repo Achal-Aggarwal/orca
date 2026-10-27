@@ -4,7 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import {
   resetMobileNativeChatDraftStoreForTests,
-  useMobileDraftAttachments
+  useMobileDraftAttachments,
+  useMobileNativeChatDraft
 } from './native-chat/composer/mobile-native-chat-draft-store'
 import { useMobileNativeChatDrafts } from './native-chat/composer/use-mobile-native-chat-drafts'
 import { useMobileNativeChatFileAttachments } from './native-chat/composer/use-mobile-native-chat-file-attachments'
@@ -37,7 +38,7 @@ it('owns unknown text, images and files across screen teardown, retry and a late
   let answer = Promise.withResolvers<MobileNativeChatSendOutcome>()
   const sendStructured = vi.fn(() => answer.promise)
   let full!: {
-    drafts: ReturnType<typeof useMobileNativeChatDrafts>
+    drafts: ReturnType<typeof useMobileNativeChatDrafts> & { composerText: string }
     files: ReturnType<typeof useMobileNativeChatFileAttachments>
     images: Hook
     addImage: ReturnType<typeof useMobileDraftAttachments<'images'>>[1]
@@ -85,7 +86,7 @@ it('owns unknown text, images and files across screen teardown, retry and a late
       baseSend: bridge.sendWithOutcome
     })
     full = {
-      drafts,
+      drafts: { ...drafts, composerText: useMobileNativeChatDraft(drafts.draftKey) },
       files,
       images,
       addImage: useMobileDraftAttachments(scope, 'images')[1],
