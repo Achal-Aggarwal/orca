@@ -13,7 +13,7 @@ import type * as FsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createZstdDecompress, zstdCompressSync } from 'node:zlib'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import * as values from '../../ai-vault/session-scanner-values'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import {
@@ -34,10 +34,7 @@ vi.mock(import('node:fs'), async (original) => {
   const fs = await original()
   return { ...fs, createReadStream: vi.fn(fs.createReadStream) }
 })
-vi.mock(import('node:fs/promises'), async (original) => {
-  const fs = await original()
-  return { ...fs, readdir: vi.fn(fs.readdir) }
-})
+vi.mock('node:fs/promises', { spy: true })
 vi.mock(import('node:zlib'), async (original) => {
   const zlib = await original()
   return { ...zlib, createZstdDecompress: vi.fn(zlib.createZstdDecompress) }
@@ -47,6 +44,10 @@ const PARENT = '01a17c7f-6f58-7a73-b87a-a8702ff2da17'
 const CHILD = '01a17c81-30d1-72f0-b84e-002ddfe6fd47'
 const MIDDLE = '01a17c80-30d1-72f0-b84e-002ddfe6fd47'
 let root: string
+let fs: typeof FsPromises
+beforeAll(async () => {
+  fs = await vi.importActual<typeof FsPromises>('node:fs/promises')
+})
 const journals = createTrackedJournalOpener()
 beforeEach(async () => {
   const account = await mkdtemp(join(tmpdir(), 'orca-codex-lineage-'))
@@ -281,7 +282,6 @@ it('uses a readable active parent without consulting an inaccessible archive', a
   const parent = await writeCodexHistoryFixture(root, PARENT, ['sky'])
   const child = await writeCodexHistoryFixture(root, CHILD, ['ice'], parent.position)
   const archive = join(dirname(root), 'archived_sessions')
-  const fs = await vi.importActual<typeof FsPromises>('node:fs/promises')
   vi.mocked(readdir).mockImplementation((...args) => {
     if (args[0] === archive) {
       throw Object.assign(new Error('Archive is inaccessible.'), { code: 'EACCES' })

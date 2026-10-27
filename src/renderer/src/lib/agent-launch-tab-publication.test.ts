@@ -231,52 +231,58 @@ describe('placement', () => {
   })
 
   it('releases retirement on actual use or rollback without clearing a newer close', () => {
-    const source = store
-      .getState()
-      .createUnifiedTab(WT, 'agent-session', { entityId: 'saved-source' })
-    const owner = { environmentId: LOCAL_STRUCTURED_SESSION_OWNER }
-    const hostTabId = `agent-session:${source.entityId}`
-    const pending = (now = Date.now()) => isWebSessionCloseIntentPending(owner, WT, hostTabId, now)
-    const proposal = {
-      invocationId: 'retirement',
-      generation: 'retirement',
-      sessionId: source.entityId,
-      tabId: source.id,
-      phase: 'prepare' as const
-    }
-    const retiredAt = Date.now()
-    captureSwitchProjection(store.getState(), WT, proposal, vi.fn())
-    store.setState(retireSwitchProjection(store.getState(), proposal) ?? {})
-    expect(store.getState().unifiedTabsByWorktree[WT]).not.toContainEqual(source)
-    expect(pending(retiredAt + AGENT_SESSION_SWITCH_CLIENT_MS - 1)).toBe(true)
-    store
-      .getState()
-      .createUnifiedTab(WT, 'agent-session', { id: source.id, entityId: source.entityId })
-    store.getState().activateTab(source.id)
-    expect(pending()).toBe(false)
+    const fixedNow = 1_000_000
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
+    try {
+      const source = store
+        .getState()
+        .createUnifiedTab(WT, 'agent-session', { entityId: 'saved-source' })
+      const owner = { environmentId: LOCAL_STRUCTURED_SESSION_OWNER }
+      const hostTabId = `agent-session:${source.entityId}`
+      const pending = (now = fixedNow) => isWebSessionCloseIntentPending(owner, WT, hostTabId, now)
+      const proposal = {
+        invocationId: 'retirement',
+        generation: 'retirement',
+        sessionId: source.entityId,
+        tabId: source.id,
+        phase: 'prepare' as const
+      }
+      const retiredAt = fixedNow
+      captureSwitchProjection(store.getState(), WT, proposal, vi.fn())
+      store.setState(retireSwitchProjection(store.getState(), proposal) ?? {})
+      expect(store.getState().unifiedTabsByWorktree[WT]).not.toContainEqual(source)
+      expect(pending(retiredAt + AGENT_SESSION_SWITCH_CLIENT_MS - 1)).toBe(true)
+      store
+        .getState()
+        .createUnifiedTab(WT, 'agent-session', { id: source.id, entityId: source.entityId })
+      store.getState().activateTab(source.id)
+      expect(pending()).toBe(false)
 
-    const rollback = { ...proposal, invocationId: 'rollback', generation: 'rollback' }
-    captureSwitchProjection(store.getState(), WT, rollback, vi.fn())
-    store.setState(retireSwitchProjection(store.getState(), rollback) ?? {})
-    expect(pending()).toBe(true)
-    observeSwitchProjections(
-      store.getState(),
-      {
-        worktree: WT,
-        publicationEpoch: 'rollback',
-        snapshotVersion: 1,
-        activeGroupId: null,
-        activeTabId: null,
-        activeTabType: null,
-        tabs: [],
-        switchProjections: [{ ...rollback, phase: 'retain' }]
-      },
-      vi.fn()
-    )
-    expect(pending()).toBe(false)
-    recordWebSessionCloseIntent(owner, WT, hostTabId, Date.now())
-    disposeSwitchProjections()
-    expect(pending()).toBe(true)
+      const rollback = { ...proposal, invocationId: 'rollback', generation: 'rollback' }
+      captureSwitchProjection(store.getState(), WT, rollback, vi.fn())
+      store.setState(retireSwitchProjection(store.getState(), rollback) ?? {})
+      expect(pending()).toBe(true)
+      observeSwitchProjections(
+        store.getState(),
+        {
+          worktree: WT,
+          publicationEpoch: 'rollback',
+          snapshotVersion: 1,
+          activeGroupId: null,
+          activeTabId: null,
+          activeTabType: null,
+          tabs: [],
+          switchProjections: [{ ...rollback, phase: 'retain' }]
+        },
+        vi.fn()
+      )
+      expect(pending()).toBe(false)
+      recordWebSessionCloseIntent(owner, WT, hostTabId, fixedNow)
+      disposeSwitchProjections()
+      expect(pending()).toBe(true)
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   function twoGroups() {
