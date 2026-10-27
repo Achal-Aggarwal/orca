@@ -104,7 +104,7 @@ function History({
   originalPaneTarget = null
 }: {
   session: AiVaultSession
-  originalPaneTarget?: { worktreeId: string; tabId: string; paneKey: string } | null
+  originalPaneTarget?: { worktreeId: string; tabId: string; paneKey: string; leafId: string } | null
 }) {
   const state = useAppStore.getState()
   const targetState = {
@@ -280,7 +280,12 @@ it('routes a capable paired unowned row with a matching terminal through the sam
   render(
     <History
       session={session}
-      originalPaneTarget={{ worktreeId: 'workspace', tabId: 'terminal', paneKey: 'terminal:leaf' }}
+      originalPaneTarget={{
+        worktreeId: 'workspace',
+        tabId: 'terminal',
+        paneKey: 'terminal:leaf',
+        leafId: 'leaf'
+      }}
     />
   )
   await waitFor(() =>

@@ -3,20 +3,23 @@ import { createTabsSliceMockApi } from '@/store/slices/tabs-slice-test-harness'
 import { publishAgentLaunchTab as windowPublish } from '@/lib/agent-launch-tab-publication'
 import { applyAgentLaunchPaneVerdict } from '@/lib/agent-launch-pane-verdict-application'
 import { acceptAgentLaunchPaneAttempt } from '@/lib/agent-launch-pane-start'
-import { agentSessionSwitchDeadline } from '../../../../shared/agent-session-switch-execution'
+import { agentSessionSwitchDeadline } from '../../src/shared/agent-session-switch-execution'
 import { afterEach, expect, it, vi } from 'vitest'
-import '../../orca-runtime-test-lifecycle.spec'
-import { OrcaRuntimeService, electronMocks } from '../../orca-runtime-test-mocks.spec'
+import '../../src/main/runtime/orca-runtime-test-lifecycle.spec'
+import {
+  OrcaRuntimeService,
+  electronMocks
+} from '../../src/main/runtime/orca-runtime-test-mocks.spec'
 import {
   TEST_WORKTREE_ID as wt,
   makeRuntimeStoreWithWorkspaceSession,
   makeWorkspaceSessionWithHeadlessTerminal
-} from '../../orca-runtime-test-fixtures.spec'
-import { withChatTabChanges } from '../../agent-session/agent-session-tab-layout'
-import { committingSpawn } from '../../bind-first-pane.test-fixture'
-import type { RuntimeNotifier } from '../../runtime-notifier-contract'
-import { DaemonRequestTimeoutError } from '../../../daemon/daemon-errors'
-import type { RuntimePtyController } from '../../runtime-pty-controller-contract'
+} from '../../src/main/runtime/orca-runtime-test-fixtures.spec'
+import { withChatTabChanges } from '../../src/main/runtime/agent-session/agent-session-tab-layout'
+import { committingSpawn } from '../../src/main/runtime/bind-first-pane.test-fixture'
+import type { RuntimeNotifier } from '../../src/main/runtime/runtime-notifier-contract'
+import { DaemonRequestTimeoutError } from '../../src/main/daemon/daemon-errors'
+import type { RuntimePtyController } from '../../src/main/runtime/runtime-pty-controller-contract'
 
 const renderer = vi.hoisted(() => {
   const ref: { store: ReturnType<typeof createTestStore> | null } = { store: null }
@@ -33,7 +36,7 @@ vi.mock('@/hooks/ipc-events/terminal-command-state', () => ({
   focusTerminalInitiatedTab: () => {}
 }))
 
-vi.mock('../../../../shared/layout-owner-switch', () => ({ ORCA_LAYOUT_OWNER_IS_MAIN: false }))
+vi.mock('../../src/shared/layout-owner-switch', () => ({ ORCA_LAYOUT_OWNER_IS_MAIN: false }))
 
 async function setup(outcome: 'ready' | 'failed' | 'unknown' = 'ready') {
   createTabsSliceMockApi()
@@ -97,7 +100,7 @@ async function setup(outcome: 'ready' | 'failed' | 'unknown' = 'ready') {
     })
   )
   const { createMobileCreateTestNotifier } =
-    await import('../../orca-runtime-test-scenario-builders.spec')
+    await import('../../src/main/runtime/orca-runtime-test-scenario-builders.spec')
   service.setNotifier({
     ...createMobileCreateTestNotifier(vi.fn()),
     revealTerminalSession: reveal,
@@ -173,6 +176,9 @@ it('expires after preparation/publication without dispatching spawn, keeping the
   const original = publish.getMockImplementation()!
   publish.mockImplementation(async (request) => {
     const answer = await original(request)
+    if (!answer) {
+      throw new Error('missing window publication')
+    }
     expired = true
     return answer
   })
@@ -225,6 +231,9 @@ it.each(['input', 'replacement', 'preparing', 'layout'] as const)(
     const original = publish.getMockImplementation()!
     publish.mockImplementation(async (request) => {
       const receipt = await original(request)
+      if (!receipt) {
+        throw new Error('missing window publication')
+      }
       const key = `${request.tabId}:${request.leafId}`
       if (use === 'input') {
         renderer.store!.setState({ lastTerminalInputAtByPaneKey: { [key]: 1 } })

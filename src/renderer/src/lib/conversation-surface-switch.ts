@@ -210,7 +210,7 @@ export async function runConversationSwitch(args: ConversationSwitch): Promise<b
             }
           : openStructuredAgentSessionProvisionalTab({
               worktreeId: answer.workspaceId,
-              executionHostId: args.executionHostId,
+              executionHostId: hostId,
               sessionId,
               agent: answer.agent,
               targetGroupId: answer.placement?.groupId,

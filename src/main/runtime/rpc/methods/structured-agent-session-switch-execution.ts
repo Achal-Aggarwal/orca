@@ -129,15 +129,16 @@ export async function executeStructuredSessionSwitch(
               captureSwitchWitness: execution.invocationId
             })
             deadline.check()
-            switchWitness = inspection.switchWitness
+            switchWitness = 'switchWitness' in inspection ? inspection.switchWitness : undefined
             witnessBudget = deadline.remaining()
             if (inspection.childProcessEvidence !== 'no-children') {
-              throw agentSessionRefusalError('agent_session_operation_invalid', {
-                reason:
-                  inspection.childProcessEvidence === 'children'
-                    ? 'conversationOpenInTerminal'
-                    : 'outcomeUnknown'
-              })
+              throw inspection.childProcessEvidence === 'children'
+                ? agentSessionRefusalError('agent_session_operation_invalid', {
+                    reason: 'conversationOpenInTerminal'
+                  })
+                : agentSessionRefusalError('agent_session_operation_unknown', {
+                    reason: 'outcomeUnknown'
+                  })
             }
           }
           // Initial creation already imported this source before committing its record.

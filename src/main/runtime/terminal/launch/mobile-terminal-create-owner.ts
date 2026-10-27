@@ -17,24 +17,10 @@ export abstract class OrcaRuntimeWithMobileTerminalCreateOwner extends OrcaRunti
     request: Omit<AgentLaunchTabPublishRequest, 'requestId'>
   ): Promise<AgentLaunchTabPublished> | null
 
-  abstract publishAgentLaunchTabInMainLayout(
-    request: Omit<AgentLaunchTabPublishRequest, 'requestId'>,
-    check?: () => void
-  ): Promise<AgentLaunchTabPublished> | null
-
   abstract reportAgentLaunchPaneVerdict(
     pane: AgentLaunchPaneAddress,
     verdict: AgentLaunchPaneVerdict
   ): void
-
-  abstract withdrawAgentLaunchPaneInMainLayout(
-    pane: AgentLaunchPaneAddress,
-    current?: () => boolean,
-    withdrawalRoot?: string,
-    publicationOwner?: 'main' | 'window'
-  ): Promise<boolean>
-
-  abstract hasLiveTerminalForPaneKey(paneKey: string): boolean
 
   protected abstract resolveMobileSessionTerminalCommand(
     workspace: TerminalWorkspaceLaunchScope,

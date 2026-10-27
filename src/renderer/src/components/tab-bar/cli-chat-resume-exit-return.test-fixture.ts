@@ -233,6 +233,7 @@ export async function verifyExitedPaneHistoryReturn(
     switchAiVaultSessionToNativeChat(history, 'wt-1', {
       worktreeId: 'wt-1',
       tabId: 'shell',
+      leafId: LEAF_1,
       paneKey: pane.paneKey
     })
   ).toBe(true)
@@ -258,6 +259,7 @@ export async function verifyExitedPaneHistoryReturn(
       switchAiVaultSessionToNativeChat(history, 'wt-1', {
         worktreeId: 'wt-1',
         tabId: 'shell',
+        leafId: LEAF_1,
         paneKey: pane.paneKey
       })
     ).toBe(true)

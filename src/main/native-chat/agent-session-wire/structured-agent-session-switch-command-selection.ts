@@ -157,7 +157,7 @@ export function selectStructuredSessionSwitchCommand(args: {
   if (session) {
     session.switchCommand = command
   }
-  host.context().publishStatus(id)
+  host.context().publishStatus?.(id)
   void command.completion
     .finally(() => {
       command.settled = true
@@ -167,7 +167,7 @@ export function selectStructuredSessionSwitchCommand(args: {
           delete sessions.get(key)!.switchCommand
         }
       }
-      host.context().publishStatus(id)
+      host.context().publishStatus?.(id)
       if (isDisposed()) {
         return
       }

@@ -279,8 +279,8 @@ function trackEarlyAgentLaunchTab(args: {
               : failureCode === null
                 ? { kind: 'unconfirmed' }
                 : { kind: 'not-started', code: failureCode }
-        args.finishRunning(verdict)
         void args.report(verdict).catch(() => {})
+        args.finishRunning(verdict)
       })
     },
     placement: () => reply?.placement

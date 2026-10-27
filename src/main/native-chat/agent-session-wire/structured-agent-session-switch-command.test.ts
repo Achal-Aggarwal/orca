@@ -1,3 +1,4 @@
+import { structuredAgentSessionSwitchBlocked } from './structured-agent-session-switch-admission'
 import { nativeConversationContent } from '../../ai-vault/structured-chat-cli-fork'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { agentSessionSwitchDeadline } from '../../../shared/agent-session-switch-execution'
@@ -40,6 +41,22 @@ afterEach(async () => {
   deadlines.length = 0
   await rig.dispose()
   vi.restoreAllMocks()
+})
+
+it('admits an idle held child with no active turn and nothing delivering', async () => {
+  expect(await rig.host.switchToChat(id)).toMatchObject({ ok: true })
+  const session = rig.host.collaboratorsForTests().sessions.get(id)!
+  expect(session.child).not.toBeNull()
+  expect(session.journal.runningTurn()).toBeNull()
+  expect(
+    structuredAgentSessionSwitchBlocked({
+      session,
+      deps: rig.host.deps,
+      sessionId: id,
+      delivering: false,
+      background: false
+    })
+  ).toBeNull()
 })
 
 it('joins the command across its own resource close, without holding the session queue while waiting', async () => {

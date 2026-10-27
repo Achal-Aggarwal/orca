@@ -29,6 +29,7 @@ const NODE_RUNTIME_INCLUDE = [
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   // These reach Node SQLite through a shared helper or a dynamic import, which the scan skips.
+  'tests/e2e/mobile-terminal-session-switch.unit.test.ts',
   'src/main/claude/claude-transcript-catch-up.test.ts',
   'src/main/claude/claude-transcript-duration.test.ts',
   'tests/e2e/native-chat-startup-option-pickers.unit.test.ts',

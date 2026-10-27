@@ -11,6 +11,10 @@ import {
 import { createMockSubprocess } from './session-subprocess.test-fixture'
 import type * as PtyDescendantTerminationModule from '../pty-descendant-termination'
 
+const sweep = await vi.importActual<typeof PtyDescendantTerminationModule>(
+  '../pty-descendant-termination'
+)
+
 const killWithDescendantSweepMock = vi.hoisted(() => vi.fn())
 vi.mock('../pty-descendant-termination', () => ({
   killWithDescendantSweep: killWithDescendantSweepMock
@@ -583,9 +587,6 @@ describe('Session', () => {
               ? 'unverifiable'
               : 'no-children'
         })
-        const sweep = await vi.importActual<typeof PtyDescendantTerminationModule>(
-          '../pty-descendant-termination'
-        )
         killWithDescendantSweepMock.mockImplementation((pid, killRoot, options) =>
           sweep.killWithDescendantSweep(pid, killRoot, {
             ...options,
@@ -615,9 +616,6 @@ describe('Session', () => {
       createSession()
       const witness = session.captureSwitchWitness()
       const check = session.switchCloseCondition({ token: witness, remainingMs: 10_000 })
-      const sweep = await vi.importActual<typeof PtyDescendantTerminationModule>(
-        '../pty-descendant-termination'
-      )
       killWithDescendantSweepMock.mockImplementation((pid, killRoot, options) =>
         sweep.killWithDescendantSweep(pid, killRoot, {
           ...options,

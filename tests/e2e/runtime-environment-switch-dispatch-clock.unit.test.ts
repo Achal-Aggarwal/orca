@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { registerRuntimeEnvironmentSubscriptionHandlers } from '../../../main/ipc/runtime-environments/runtime-environment-subscription-handlers'
-import { subscribeRuntimeEnvironmentFromPreload } from '../../../preload/runtime-environment-subscriptions'
-import { sendSharedControlSubscription } from '../../../shared/remote-runtime/control/remote-runtime-shared-control-send'
-import type { SharedControlLogicalSubscription } from '../../../shared/remote-runtime/control/remote-runtime-shared-control-types'
-import { agentSessionSwitchDeadline } from '../../../shared/agent-session-switch-execution'
-import { callAbortableRuntimeEnvironment } from './abortable-runtime-environment-call'
-import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
+import { registerRuntimeEnvironmentSubscriptionHandlers } from '../../src/main/ipc/runtime-environments/runtime-environment-subscription-handlers'
+import { subscribeRuntimeEnvironmentFromPreload } from '../../src/preload/runtime-environment-subscriptions'
+import { sendSharedControlSubscription } from '../../src/shared/remote-runtime/control/remote-runtime-shared-control-send'
+import type { SharedControlLogicalSubscription } from '../../src/shared/remote-runtime/control/remote-runtime-shared-control-types'
+import { agentSessionSwitchDeadline } from '../../src/shared/agent-session-switch-execution'
+import { callAbortableRuntimeEnvironment } from '../../src/renderer/src/runtime/abortable-runtime-environment-call'
+import { stubRuntimeEnvironmentBridge } from '../../src/renderer/src/runtime/runtime-environment-bridge-fixture'
 
 // @vitest-environment happy-dom
 
@@ -13,16 +13,19 @@ type SubscriptionIpc = Parameters<typeof subscribeRuntimeEnvironmentFromPreload>
 type SubscriptionEvent = Parameters<Parameters<SubscriptionIpc['on']>[1]>[1]
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), subscribe: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: mocks.handle, on: vi.fn() } }))
-vi.mock('../../../shared/runtime-environment-store', () => ({
+vi.mock('../../src/shared/runtime-environment-store', () => ({
   resolveEnvironment: () => ({ id: 'paired', createdAt: 1, runtimeId: 'host' })
 }))
-vi.mock('../../../main/ipc/runtime-environments/runtime-environment-connectivity-handlers', () => ({
-  isRuntimeEnvironmentManuallyDisconnected: () => false
-}))
-vi.mock('../../../main/ipc/runtime-environments/runtime-environment-transport-generation', () => ({
+vi.mock(
+  '../../src/main/ipc/runtime-environments/runtime-environment-connectivity-handlers',
+  () => ({
+    isRuntimeEnvironmentManuallyDisconnected: () => false
+  })
+)
+vi.mock('../../src/main/ipc/runtime-environments/runtime-environment-transport-generation', () => ({
   getRuntimeEnvironmentTransportGeneration: () => 1
 }))
-vi.mock('../../../main/ipc/runtime-environments/runtime-environment-transport-routing', () => ({
+vi.mock('../../src/main/ipc/runtime-environments/runtime-environment-transport-routing', () => ({
   subscribeRuntimeEnvironment: mocks.subscribe
 }))
 afterEach(() => {
@@ -43,7 +46,7 @@ it.each(['ready after expiry', 'delayed sent receipt'] as const)(
     const sender = {
       id: 1,
       isDestroyed: () => false,
-      once: vi.fn(),
+      on: vi.fn(),
       removeListener: vi.fn(),
       send: (_channel: string, payload: SubscriptionEvent) => {
         queuedEvents.push(() => deliver?.(null, payload))
@@ -122,7 +125,8 @@ it.each(['ready after expiry', 'delayed sent receipt'] as const)(
       sent,
       deadline.delegateSend()
     )
-    const rejected = expect(call).rejects.toThrow()
+    void call.catch(() => undefined)
+    expect(mocks.subscribe).toHaveBeenCalledOnce()
     if (schedule === 'ready after expiry') {
       await vi.advanceTimersByTimeAsync(36_000)
       ready.resolve()
@@ -149,7 +153,7 @@ it.each(['ready after expiry', 'delayed sent receipt'] as const)(
     for (const send of queuedEvents.splice(0)) {
       send()
     }
-    await rejected
+    await expect(call).rejects.toThrow()
     deadline.dispose()
   }
 )

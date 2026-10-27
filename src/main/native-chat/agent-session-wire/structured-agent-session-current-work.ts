@@ -190,6 +190,21 @@ export class StructuredAgentSessionCurrentWork {
     )
   }
 
+  holdsHandedOverSend(): boolean {
+    const submissions = this.unansweredSends()
+    if (submissions.length === 0) {
+      return false
+    }
+    const held = this.heldSends?.()
+    const handingOver = structuredAgentSessionHandingOver(this.journal)
+    return (
+      held === undefined ||
+      submissions.some(
+        ({ clientMessageId }) => held.has(clientMessageId) || handingOver.has(clientMessageId)
+      )
+    )
+  }
+
   isCurrentItem(itemId: string): boolean {
     if (this.liveFence === null) {
       return false

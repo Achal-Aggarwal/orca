@@ -400,7 +400,7 @@ it.each([
     worktreeId: WT
   })
   spawnState.result = reply
-  const commit: PtySpawnCommitInput<typeof reply> = {
+  const commit: PtySpawnCommitInput = {
     state: spawnState,
     nativeWindowsConptySpawn: false,
     seedPaneKey: null,
@@ -412,13 +412,11 @@ it.each([
     },
     preAllocatedHandle: null,
     paneKey: null,
-    memorySessionId: null,
     resumeArgvDropped: false,
     codexLaunchEnv: undefined,
     initiallyHidden: false,
     hiddenDelivery: 'runtime-owned',
-    earlyExit: 'throw',
-    joinPayload: { reservation: reply, reply }
+    response: reply
   }
   const counts = () => ({
     ...Object.fromEntries(Object.entries(probes).map(([key, spy]) => [key, spy.mock.calls.length])),
@@ -427,7 +425,7 @@ it.each([
     ...visits
   })
   try {
-    expect(await publishCommittedPtySpawn(commit)).toBe(reply)
+    expect((await publishCommittedPtySpawn(commit)).result).toBe(reply)
     const beforeDrain = counts()
     await Promise.all(dismissals.mock.results.map(({ value }) => value))
     await settled()

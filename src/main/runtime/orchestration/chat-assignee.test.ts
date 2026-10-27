@@ -85,9 +85,10 @@ it('derives direct debt through legacy clear lineage and stops pinning once that
       }
     }
     const records = [root, sessionRecord(successor, { lease: { claimStatus: 'released' } })]
+    const conversations = records.map(agentSessionConversationView)
     const reader = {
-      getRecord: (id: string) => records.find((record) => record.sessionId === id) ?? null,
-      listRecords: () => records
+      getRecord: (id: string) => conversations.find((record) => record.sessionId === id) ?? null,
+      listRecords: () => conversations
     }
     const task = db.createTask({ runId: 'run_legacy_local', spec: 'original work' })
     const dispatch = createRootDispatch(db, task.id, `orca_session_id:${CHAT}`)

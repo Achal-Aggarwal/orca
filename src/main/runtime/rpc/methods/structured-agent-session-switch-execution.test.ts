@@ -179,6 +179,49 @@ it('keeps opened chat visible and returns the exact committed selected start fai
   expect(rig.store.getSessionTabId(id)).not.toBeNull()
 })
 
+it.each(['children', 'unknown'] as const)(
+  'retains the source with a factual typed refusal when inspection reports %s',
+  async (evidence) => {
+    const { runtime } = setupMainOwnedWorkspace()
+    vi.spyOn(runtime, 'inspectTerminalProcess').mockResolvedValue(
+      evidence === 'children'
+        ? { foregroundProcess: 'codex', hasChildProcesses: true, childProcessEvidence: 'children' }
+        : {
+            foregroundProcess: null,
+            hasChildProcesses: false,
+            verdict: 'unverifiable',
+            reason: 'timeout'
+          }
+    )
+    const close = vi.spyOn(runtime, 'closeSwitchedSourceTerminal')
+    const result = await executeStructuredSessionSwitch(
+      {
+        sessionId: id,
+        execution: {
+          invocationId: 'inspection',
+          source: { terminal: 'source', expectedIncarnationId: 'source-incarnation' }
+        }
+      },
+      { runtime },
+      'chat'
+    )
+    expect(result).toMatchObject({
+      status: evidence === 'children' ? 'refused' : 'uncertain',
+      refusal: {
+        code:
+          evidence === 'children'
+            ? 'agent_session_operation_invalid'
+            : 'agent_session_operation_unknown',
+        details: {
+          reason: evidence === 'children' ? 'conversationOpenInTerminal' : 'outcomeUnknown'
+        }
+      }
+    })
+    expect(rig.adapter.acquire).not.toHaveBeenCalled()
+    expect(close).not.toHaveBeenCalled()
+  }
+)
+
 it('reports a dispatched terminal with a lost answer as uncertain, preserving its source', async () => {
   const { runtime } = setupMainOwnedWorkspace()
   await rig.store.setSessionTabVisibility(id, false)

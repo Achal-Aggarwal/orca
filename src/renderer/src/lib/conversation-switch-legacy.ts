@@ -30,4 +30,5 @@ export function runLegacyConversationSwitch(args: ConversationSwitch, target: Ru
       newAgentLaunchRequestId()
     )
   }
+  return undefined
 }

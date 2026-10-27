@@ -36,7 +36,7 @@ export async function reportCliChatResumeFailure(
 }
 
 export async function switchIntoOwnerLegacy(
-  source: Pick<CliChatResumeSource, 'agent' | 'tabId' | 'workspaceId'>,
+  source: Pick<AiVaultSession, 'agent'> & Pick<CliChatResumeSource, 'tabId' | 'workspaceId'>,
   structuredSession: NonNullable<AiVaultSession['structuredSession']>,
   target: RuntimeClientTarget
 ): Promise<boolean> {
@@ -104,7 +104,7 @@ export async function switchIntoOwnerLegacy(
 
 /** Explicit returns await the selected child; ordinary lazy creation remains unchanged. */
 export async function startCliChatReturn(
-  source: Pick<CliChatResumeSource, 'agent'>,
+  source: Pick<AiVaultSession, 'agent'>,
   sessionId: string,
   target: RuntimeClientTarget
 ): Promise<boolean> {

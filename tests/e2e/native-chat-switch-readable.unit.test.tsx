@@ -1,39 +1,41 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import * as cliTranscript from '../../../../main/ai-vault/structured-chat-cli-fork'
-import { createRestTestRig } from '../../../../main/native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
+import * as cliTranscript from '../../src/main/ai-vault/structured-chat-cli-fork'
+import { createRestTestRig } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
 import {
   createTestParams,
   CREATE_TEST_CALLER
-} from '../../../../main/native-chat/agent-session-wire/structured-agent-session-create-test-fixture'
-import { HOST_TEST_SESSION } from '../../../../main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
-import { setStructuredAgentSessionHost } from '../../../../main/native-chat/agent-session-wire/structured-agent-session-registry'
+} from '../../src/main/native-chat/agent-session-wire/structured-agent-session-create-test-fixture'
+import { HOST_TEST_SESSION } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   setupMainOwnedWorkspace,
   WORKTREE_ID
-} from '../../../../main/runtime/main-owned-workspace-runtime-fixture'
-import { executeStructuredSessionSwitch } from '../../../../main/runtime/rpc/methods/structured-agent-session-switch-execution'
-import { structuredAgentRuntimeRegistration } from '../../../../main/runtime/structured-agent-runtime-registrations'
-import { agentSessionProviderHandleChainHead } from '../../../../shared/agent-session-provider-handle'
+} from '../../src/main/runtime/main-owned-workspace-runtime-fixture'
+import { executeStructuredSessionSwitch } from '../../src/main/runtime/rpc/methods/structured-agent-session-switch-execution'
+import { structuredAgentRuntimeRegistration } from '../../src/main/runtime/structured-agent-runtime-registrations'
+import { agentSessionProviderHandleChainHead } from '../../src/shared/agent-session-provider-handle'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
+import { agentSessionRefusalError } from '../../src/shared/agent-session-wire-refusals'
 import { beginSwitchPresentation } from '@/lib/conversation-switch-presentation'
-import { NativeChatStructuredSession } from './NativeChatStructuredSession'
+import { NativeChatStructuredSession } from '../../src/renderer/src/components/native-chat/NativeChatStructuredSession'
 import {
   stubLayout,
   stubResizeObserver,
   deliverResizes
-} from './native-chat-windowing-test-harness'
-import { resetStructuredAgentSessionReadOwnersForTests } from './structured-agent-session-read-owner'
-import type { AgentSessionHistoryResult } from '../../../../shared/agent-session-wire'
+} from '../../src/renderer/src/components/native-chat/native-chat-windowing-test-harness'
+import { resetStructuredAgentSessionReadOwnersForTests } from '../../src/renderer/src/components/native-chat/structured-agent-session-read-owner'
+import type { AgentSessionHistoryResult } from '../../src/shared/agent-session-wire'
 import type * as StructuredAgentSessionClientModule from '@/runtime/structured-agent-session-client'
-import type { AgentSessionSubscribeEvent } from '../../../../shared/agent-session-wire'
+import type { AgentSessionSubscribeEvent } from '../../src/shared/agent-session-wire'
 
 // @vitest-environment happy-dom
 
 const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted(async () =>
-  (await import('./NativeChatStructuredSession.test-harness')).createStructuredSessionMocks()
+  (
+    await import('../../src/renderer/src/components/native-chat/NativeChatStructuredSession.test-harness')
+  ).createStructuredSessionMocks()
 )
 const feed = vi.hoisted(() => ({ cursor: { epoch: 'epoch', sequence: 1 } }))
 vi.mock('@/lib/structured-agent-session-launch', () =>
@@ -62,12 +64,24 @@ vi.mock('@/runtime/structured-agent-session-client', async (actual) => ({
   subscribeStructuredAgentSessionStatus: async () => ({ unsubscribe: () => {} }),
   supportsStructuredAgentSessionQuietRepeatedStop: async () => false
 }))
-vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
-vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
-vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
-vi.mock('./NativeChatComposer', () => moduleFactories.nativeChatComposer())
-vi.mock('./NativeChatApprovalCard', () => moduleFactories.nativeChatApprovalCard())
-vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard())
+vi.mock('../../src/renderer/src/components/native-chat/use-native-chat-font-size', () =>
+  moduleFactories.useNativeChatFontSize()
+)
+vi.mock('../../src/renderer/src/components/native-chat/use-native-chat-file-link-context', () =>
+  moduleFactories.useNativeChatFileLinkContext()
+)
+vi.mock('../../src/renderer/src/components/native-chat/use-native-chat-file-link-click', () =>
+  moduleFactories.useNativeChatFileLinkClick()
+)
+vi.mock('../../src/renderer/src/components/native-chat/NativeChatComposer', () =>
+  moduleFactories.nativeChatComposer()
+)
+vi.mock('../../src/renderer/src/components/native-chat/NativeChatApprovalCard', () =>
+  moduleFactories.nativeChatApprovalCard()
+)
+vi.mock('../../src/renderer/src/components/native-chat/NativeChatQuestionCard', () =>
+  moduleFactories.nativeChatQuestionCard()
+)
 const restores: (() => void)[] = []
 const disposals: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -143,7 +157,14 @@ it.each(['readable', 'refused', 'unmounted'] as const)(
       agent: 'codex',
       cwd: rig.root,
       providerSessionId: nativeId,
-      registration: structuredAgentRuntimeRegistration('codex')!
+      registration: structuredAgentRuntimeRegistration('codex')!,
+      requireCurrent: () => {
+        const current = rig.store.requireWritableRecord(record.sessionId)
+        expect(current.location).toEqual(record.location)
+        expect(agentSessionProviderHandleChainHead(current.providerHandleChain)?.linkId).toBe(
+          head.linkId
+        )
+      }
     })
     vi.spyOn(cliTranscript, 'prepareStructuredChatCliTranscript').mockResolvedValue({
       useRealCodexHome: false,
@@ -181,7 +202,7 @@ it.each(['readable', 'refused', 'unmounted'] as const)(
       throw new Error('missing presentation')
     }
     const page = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
-    if (!page.ok) {
+    if (!page.ok || !page.page.liveCursor) {
       throw new Error('missing imported history')
     }
     feed.cursor = page.page.liveCursor

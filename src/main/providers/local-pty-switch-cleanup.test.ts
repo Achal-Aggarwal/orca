@@ -35,7 +35,7 @@ vi.mock('../pty-descendant-termination', async (importOriginal) => {
       sweep.killWithDescendantSweep(pid, killRoot, {
         ...options,
         platform: 'linux',
-        readTable: async () => ({ rows: [], capturedAtMs: Date.now() })
+        readTable: async () => ({ rows: [], capturedAtMs: 0 })
       })
   }
 })

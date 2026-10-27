@@ -1,5 +1,5 @@
 import type { RuntimeSyncWindowGraph } from '../../../shared/runtime-session-contracts'
-import type { RuntimeLeafRecord } from '../runtime-terminal-state-records'
+import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from '../runtime-terminal-state-records'
 
 export function runtimeGraphLeaf(
   leaf: RuntimeSyncWindowGraph['leaves'][number],
@@ -8,7 +8,7 @@ export function runtimeGraphLeaf(
   ptyGeneration: number,
   connected: boolean,
   graphStatus: string,
-  tailSource: Partial<RuntimeLeafRecord> | undefined,
+  tailSource: Partial<RuntimeLeafRecord | RuntimePtyWorktreeRecord> | undefined,
   graphSyncedAt: number
 ): RuntimeLeafRecord {
   return {

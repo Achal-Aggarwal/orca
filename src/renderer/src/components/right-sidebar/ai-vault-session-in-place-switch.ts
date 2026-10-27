@@ -96,6 +96,7 @@ function historyPaneSource(session: AiVaultSession, pane?: AiVaultOriginalPaneTa
     paneKey: pane.paneKey
   })
   return source &&
+    adoptsCliConversations(session.agent) &&
     source.executionHostId === session.executionHostId &&
     source.providerSessionId === session.sessionId &&
     cliConversationRowsShareAgent(source.agent, session.agent)
