@@ -1,3 +1,4 @@
+import { assertWslDistroAllowed } from '@orca/process-host/wsl-distro-allowlist'
 import {
   spawnShellWithFallback,
   type ShellSpawnParams,
@@ -11,5 +12,10 @@ type LocalPtySpawn = (
 /** Degraded daemon routing loads node-pty lazily, as the daemon does. */
 export async function loadLocalPtyRuntimeSpawn(): Promise<LocalPtySpawn> {
   const pty = await import('node-pty')
-  return (params) => spawnShellWithFallback({ ...params, ptySpawn: pty.spawn })
+  const ptySpawn: typeof pty.spawn = (file, args, options) => {
+    // node-pty also accepts a Windows command line; distro names never contain spaces.
+    assertWslDistroAllowed(file, typeof args === 'string' ? args.split(/\s+/) : args)
+    return pty.spawn(file, args, options)
+  }
+  return (params) => spawnShellWithFallback({ ...params, ptySpawn })
 }
