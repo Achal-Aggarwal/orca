@@ -23,7 +23,8 @@ import {
   settleHostQueries
 } from './automations-page-test-harness'
 import { listedRows } from './automations-page-listed-items'
-import { makeAutomation, makeRun } from './automations-page-fixtures'
+import { makeAutomation, makeRun, WORKSPACE_ID } from './automations-page-fixtures'
+import { AUTOMATIONS_CHANGED_EVENT } from '@/lib/automations-changed-window-event'
 
 async function openAutomationRow(container: HTMLElement, name: string): Promise<void> {
   const row = [
@@ -121,6 +122,157 @@ describe('AutomationsPage refresh', () => {
 
 describe('AutomationsPage selection', () => {
   installAutomationsPageHarness()
+
+  it('keeps an acquired exact run through definition removal, failed history settlement and Back', async () => {
+    const automation = makeAutomation({ id: 'a-1', name: 'Nightly' })
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    const run = makeRun({
+      id: 'old-run',
+      automationId: automation.id,
+      workspaceId: WORKSPACE_ID,
+      workspaceDisplayName: 'Original workspace',
+      terminalSessionId: 'recorded-tab',
+      terminalPaneKey: `recorded-tab:${leafId}`,
+      terminalPtyId: 'recorded-pty',
+      outputSnapshot: {
+        format: 'plain_text',
+        content: 'Saved exact historical output',
+        capturedAt: 1,
+        truncated: false
+      }
+    })
+    scopedList([automation])
+    api.automations.list.mockResolvedValue([automation])
+    api.automations.listRuns.mockResolvedValue([run])
+    mocks.state.selectedAutomationId = automation.id
+    mocks.state.setSelectedAutomationId = (id: string | null) => {
+      mocks.state.selectedAutomationId = id
+    }
+    mocks.state.tabsByWorktree = {}
+    mocks.state.folderWorkspaces = []
+    mocks.state.projectGroups = []
+    mocks.state.unifiedTabsByWorktree = {
+      [WORKSPACE_ID]: [
+        {
+          id: 'recorded-tab',
+          entityId: 'recorded-tab',
+          worktreeId: WORKSPACE_ID,
+          contentType: 'terminal',
+          executionHostId: 'local'
+        }
+      ]
+    }
+    mocks.state.terminalLayoutsByTabId = {
+      'recorded-tab': {
+        root: { type: 'leaf', leafId },
+        activeLeafId: leafId,
+        ptyIdsByLeafId: { [leafId]: 'recorded-pty' }
+      }
+    }
+    mocks.state.ptyIdsByTabId = { 'recorded-tab': ['recorded-pty'] }
+    const { container, rerender } = await renderPage()
+    await openAutomationRow(container, 'Nightly')
+    const retryHistory = mocks.detailPane?.recoverSelectedRuns
+    await act(async () => mocks.detailPane?.openAutomationRunPage(run))
+    expect(container.textContent).toContain('Saved exact historical output')
+    expect(
+      [...container.querySelectorAll('button')].some((button) => button.textContent === 'View run')
+    ).toBe(true)
+    scopedList([])
+    api.automations.list.mockResolvedValue([])
+    api.automations.listRuns.mockRejectedValue(new Error('History temporarily unavailable'))
+    await act(async () => window.dispatchEvent(new Event(AUTOMATIONS_CHANGED_EVENT)))
+    await settleHostQueries()
+    await rerender()
+    const readsBeforeRetry = api.automations.listRuns.mock.calls.length
+    await act(async () => retryHistory?.('retry'))
+    await settleHostQueries()
+    expect(api.automations.listRuns.mock.calls.length).toBeGreaterThan(readsBeforeRetry)
+    expect(container.textContent).toContain('Saved exact historical output')
+    expect(container.querySelector('[aria-label="Back to runs"]')).not.toBeNull()
+    expect(
+      [...container.querySelectorAll('button')].some((button) => button.textContent === 'View run')
+    ).toBe(true)
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Back to runs"]')?.click()
+    )
+    expect(container.querySelector('[data-testid="list-panel"]')).not.toBeNull()
+    expect(mocks.toastMessage).not.toHaveBeenCalledWith('Run history no longer available.')
+  })
+
+  it('reacquires a same-row SSH incarnation only after explicit selection, retaining old output through Retry and Back', async () => {
+    const automation = makeAutomation({ id: 'ssh-a', name: 'Captured SSH' })
+    mocks.state.selectedAutomationId = automation.id
+    mocks.state.setSelectedAutomationId = (id: string | null) => {
+      mocks.state.selectedAutomationId = id
+    }
+    const run = makeRun({
+      id: 'older-ssh-run',
+      automationId: automation.id,
+      outputSnapshot: {
+        format: 'plain_text',
+        content: 'Captured old output',
+        capturedAt: 1,
+        truncated: false
+      }
+    })
+    mocks.state.folderWorkspaces = []
+    mocks.state.projectGroups = []
+    let generation = 7
+    mocks.state.sshTargetLabels = new Map([['box', 'Box']])
+    mocks.state.sshTargetGenerations = new Map([['box', generation]])
+    mocks.state.sshConnectionStates = new Map([['box', { status: 'connected' }]])
+    api.automations.listScoped.mockImplementation(async (args) => ({
+      automations: args?.selector?.kind === 'ssh' ? [automation] : [],
+      items:
+        args?.selector?.kind === 'ssh'
+          ? [
+              {
+                automationId: automation.id,
+                selector: { kind: 'ssh', targetId: 'box', targetGeneration: generation }
+              }
+            ]
+          : [],
+      orphanCount: 0
+    }))
+    api.automations.listRuns.mockResolvedValue([run])
+    const { container, rerender } = await renderPage()
+    await openAutomationRow(container, 'Captured SSH')
+    await act(async () => mocks.detailPane?.openAutomationRunPage(run))
+    expect(container.textContent).toContain('Captured old output')
+    generation = 9
+    mocks.state.sshTargetGenerations = new Map([['box', generation]])
+    await rerender()
+    await act(async () => window.dispatchEvent(new Event(AUTOMATIONS_CHANGED_EVENT)))
+    await settleHostQueries()
+    expect(container.textContent).toContain('Captured old output')
+    const back = container.querySelector<HTMLButtonElement>('[aria-label="Back to runs"]')
+    expect(back).not.toBeNull()
+    await act(async () => back?.click())
+    expect(container.querySelector('[data-testid="detail-pane"]')).not.toBeNull()
+    const beforeRetry = api.automations.listRuns.mock.calls.length
+    await act(async () => mocks.detailPane?.recoverSelectedRuns('retry'))
+    await settleHostQueries()
+    expect(api.automations.listRuns.mock.calls.length).toBeGreaterThan(beforeRetry)
+    expect(
+      api.automations.listRuns.mock.calls
+        .slice(beforeRetry)
+        .every(([args]) => args?.expectedOwner?.selector?.targetGeneration !== 9)
+    ).toBe(true)
+    expect(mocks.detailPane?.selectedRuns).toEqual([run])
+    const automations = [...container.querySelectorAll<HTMLButtonElement>('nav button')].find(
+      (button) => button.textContent === 'Automations'
+    )
+    expect(automations).toBeTruthy()
+    await act(async () => automations?.click())
+    const beforeReselect = api.automations.listRuns.mock.calls.length
+    await openAutomationRow(container, 'Captured SSH')
+    expect(
+      api.automations.listRuns.mock.calls
+        .slice(beforeReselect)
+        .some(([args]) => args?.expectedOwner?.selector?.targetGeneration === 9)
+    ).toBe(true)
+  })
 
   it('loads the first automation into the detail pane and fetches its runs', async () => {
     const run = makeRun({ id: 'run-1', automationId: 'a-1' })

@@ -1,7 +1,4 @@
-import {
-  resolveQualifiedFolderWorkspace,
-  resolveQualifiedFolderWorkspaceResult
-} from '../../../../shared/folder-workspace-execution-host'
+import { resolveQualifiedFolderWorkspaceResult } from '../../../../shared/folder-workspace-execution-host'
 import { getConnectionExecutionHostId } from '../../../../shared/execution-host'
 import { stat } from 'node:fs/promises'
 import type { Store } from '../../../persistence'
@@ -13,6 +10,7 @@ import {
 } from '../../../../shared/terminal-startup-cwd'
 import {
   assertFolderWorkspacePathUsable,
+  getFolderWorkspacePathStatus,
   getResolvedFolderWorkspacePathStatus
 } from '../../../project-groups/folder-workspace-path-status'
 import {
@@ -57,9 +55,17 @@ export function assertFolderWorkspacePtyPathUsable(
     return
   }
   const selected = resolveSpawnFolder(store, workspaceScope.folderWorkspaceId, connectionId)
-  return getResolvedFolderWorkspacePathStatus(selected.workspace, selected.hostId).then(
-    assertFolderWorkspacePathUsable
-  )
+  if (selected.kind === 'missing') {
+    throw new Error('folder_workspace_path_scope_not_found')
+  }
+  return (
+    selected.kind === 'selected'
+      ? getResolvedFolderWorkspacePathStatus(selected.value.workspace, selected.value.hostId)
+      : getFolderWorkspacePathStatus(store, {
+          scope: 'folder-workspace',
+          folderWorkspaceId: workspaceScope.folderWorkspaceId
+        })
+  ).then(assertFolderWorkspacePathUsable)
 }
 
 export function resolvePtySpawnStartupCwd(
@@ -92,7 +98,7 @@ export function resolvePtySpawnStartupCwd(
 }
 
 function resolveSpawnFolder(store: Store, id: string, connectionId?: string | null) {
-  return resolveQualifiedFolderWorkspace(
+  return resolveQualifiedFolderWorkspaceResult(
     {
       folderWorkspaces: store.getFolderWorkspaces(),
       projectGroups: store.getProjectGroups(),

@@ -57,6 +57,7 @@ export function useAutomationsPageDestinationForm({
     editingHostStableKey,
     setEditingHostStableKey,
     setEditingDestination,
+    setTargetEdited,
     setDraft,
     draft,
     draftRef
@@ -66,6 +67,7 @@ export function useAutomationsPageDestinationForm({
   const editingRow = editingRowKey
     ? (visibleRows.find((row) => row.key === editingRowKey) ?? null)
     : null
+  const captured = capturedAutomationOwner(capturedAutomationOwners, editingRowKey)
   const editingRowCapturedOwner: AutomationCapturedOwner['owner'] = capturedAutomationOwner(
     capturedAutomationOwners,
     editingRowKey
@@ -73,6 +75,9 @@ export function useAutomationsPageDestinationForm({
   const automationDialogTarget: AutomationHostTarget = (() => {
     if (editingAutomationId === null) {
       return getAutomationListTarget(settings)
+    }
+    if (captured.authority) {
+      return getAutomationAuthorityTarget(captured.authority)
     }
     if (editingRow && !editingRowCapturedOwner) {
       return getAutomationOwnerTarget(editingRow.automation, automationHostTarget)
@@ -121,6 +126,7 @@ export function useAutomationsPageDestinationForm({
   }, [editDestinationRuntimeEnvironmentId, fetchRuntimeEnvironmentRepos])
 
   const handleEditHostChange = (stableKey: string): void => {
+    setTargetEdited(true)
     setEditingHostStableKey(stableKey)
     const resolved = resolveAutomationCreateDestination(
       editHostEntries.find((entry) => entry.stableKey === stableKey)
@@ -132,7 +138,7 @@ export function useAutomationsPageDestinationForm({
       !automationCreateProjectMismatch(repoTables, resolved, projectId)
     ) {
       setEditingDestination({ projectId, destination: resolved })
-      if (editingHostStableKey !== stableKey) {
+      if (editingHostStableKey !== null && editingHostStableKey !== stableKey) {
         setDraft((current) => ({ ...current, workspaceId: '', baseBranch: '' }))
         if (resolved.authority.kind === 'runtime') {
           void fetchWorktrees(projectId, {

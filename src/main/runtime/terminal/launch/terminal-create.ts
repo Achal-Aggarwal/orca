@@ -133,6 +133,7 @@ export abstract class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTermi
             telemetry: launchOpts.telemetry,
             connectionId: workspace.connectionId,
             worktreeId: workspace.id,
+            resolvedWorkspace: workspace,
             preAllocatedHandle,
             tabId,
             leafId,

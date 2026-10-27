@@ -1,4 +1,3 @@
-import { resolveQualifiedFolderWorkspace } from '../../../shared/folder-workspace-execution-host'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import type { OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree } from '../terminal/launch/terminal-workspace-scope'
 import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../session-tabs/structured-session-tab-restoration'
@@ -166,18 +165,9 @@ export abstract class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWit
   ) {
     const key = worktreeSelector.startsWith('id:') ? worktreeSelector.slice(3) : worktreeSelector
     const scope = parseWorkspaceKey(key)
-    const store = this.store
     const folder =
       scope?.type === 'folder'
-        ? resolveQualifiedFolderWorkspace(
-            {
-              folderWorkspaces: store?.getFolderWorkspaces?.() ?? [],
-              projectGroups: store?.getProjectGroups?.() ?? [],
-              repos: store?.getRepos() ?? []
-            },
-            scope.folderWorkspaceId,
-            requiredHostId
-          )
+        ? this.resolveFolderWorkspaceSelector(worktreeSelector, requiredHostId)
         : undefined
     const resolved =
       requiredHostId && scope?.type !== 'folder'
@@ -187,9 +177,7 @@ export abstract class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWit
       worktreeSelector,
       undefined,
       resolved,
-      folder
-        ? { ...folder.workspace, executionHostId: folder.hostId, connectionId: folder.connectionId }
-        : undefined,
+      folder ?? undefined,
       checkPath
     )
   }

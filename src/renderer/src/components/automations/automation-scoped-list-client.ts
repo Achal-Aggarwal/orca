@@ -259,15 +259,14 @@ export async function deleteAutomationForOwner(
  * Orphan rows have no owner to key by, so the orphan precondition is the fence.
  * The authority is still known and still probed: an orphan on an out-of-date
  * host is refused for the same reason an owned row there is.
- *
- * No destination is accepted — moving a row needs a host it can move to.
  */
 export async function updateOrphanAutomation(
   authority: AutomationAuthorityRef,
   id: string,
-  updates: AutomationUpdateInput
+  updates: AutomationUpdateInput,
+  destination?: AutomationDestination
 ): Promise<Automation> {
-  return await updateFenced(authority, id, updates, ORPHAN_OWNER_PRECONDITION)
+  return await updateFenced(authority, id, updates, ORPHAN_OWNER_PRECONDITION, destination)
 }
 
 export async function deleteOrphanAutomation(

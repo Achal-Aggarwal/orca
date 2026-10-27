@@ -211,10 +211,10 @@ export function activateAndRevealWorktree(
   // 3. Core activation: setActiveWorktree also restores per-worktree state, clears unread, bumps dead PTY generations, refreshes GitHub
   state.setActiveWorktree(worktreeId, opts?.executionHostId)
   const postActivationState = useAppStore.getState()
-  const ownerRuntimeEnvironmentId = runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(
-    postActivationState,
-    wt.id
-  )
+  const ownerRuntimeEnvironmentId =
+    opts && 'runtimeEnvironmentId' in opts
+      ? (opts.runtimeEnvironmentId ?? null)
+      : runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(postActivationState, wt.id)
   if (opts?.notifyHostRuntime !== false && isWebRuntimeSessionActive(ownerRuntimeEnvironmentId)) {
     // Why: paired web clients own only local selection, so the desktop host publishes session surfaces without treating it as a nav command.
     void activateWebRuntimeSessionWorktree({
@@ -308,6 +308,9 @@ export function activateAndRevealWorktree(
     opts?.providesInitialSurface !== true
   ) {
     ensureWebRuntimeWorktreeTerminalAfterWake(worktreeId, {
+      ...(opts && 'runtimeEnvironmentId' in opts
+        ? { runtimeEnvironmentId: ownerRuntimeEnvironmentId }
+        : {}),
       startup: opts?.startup,
       agent: opts?.agent
     })

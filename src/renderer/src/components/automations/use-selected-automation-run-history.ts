@@ -8,10 +8,14 @@
  * the host a navigation named — so those, and only those, are the key.
  */
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AutomationRun } from '../../../../shared/automations-types'
 import type { AutomationAuthorityRef } from '../../../../shared/automation-owner-ref'
-import { capturedAutomationOwner, capturedAutomationOwnerKey } from './automation-captured-owner'
+import {
+  capturedAutomationOwner,
+  capturedAutomationOwnerKey,
+  type AutomationCapturedOwner
+} from './automation-captured-owner'
 import type { AutomationListRow } from './automation-list-row-identity'
 import {
   type AutomationActionNotice,
@@ -23,6 +27,8 @@ import {
   listAutomationRunsForTarget,
   type AutomationHostTarget
 } from './automation-host-client'
+import { useAppStore } from '@/store'
+import { automationRuntimePairingRevision } from './automation-authority-identity'
 
 export type SelectedAutomationRunNavigation = {
   automationId: string
@@ -35,6 +41,8 @@ export type SelectedAutomationRunHistoryOutcome = {
   rowKey: string | null
   /** Which incarnation answered; a re-pairing makes the same row's answer stale. */
   ownerKey: string | null
+  authority: AutomationAuthorityRef | null
+  capturedOwner?: AutomationCapturedOwner
   runs: AutomationRun[]
   /**
    * Non-null when the host refused or failed the read. The runs are then unknown
@@ -45,12 +53,15 @@ export type SelectedAutomationRunHistoryOutcome = {
 
 export type SelectedAutomationRunHistoryInput = {
   selected: AutomationListRow | null
+  selection?: { automationId: string | null; rowKey: string | null }
+  retained?: SelectedAutomationRunHistoryOutcome
   context: AutomationDispatchContext
   /** The row's own host, used only when no owner was captured for it. */
   legacyTarget: (row: AutomationListRow) => AutomationHostTarget | null
   navigation: SelectedAutomationRunNavigation
   /** Changing this re-asks the host; it is how a failed read offers Retry. */
   reloadToken: number
+  acquisitionToken?: number
   onSettled: (outcome: SelectedAutomationRunHistoryOutcome) => void
 }
 
@@ -62,47 +73,86 @@ function navigationHostId(
 }
 
 export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHistoryInput): void {
+  const acquired = useRef<{
+    selected: AutomationListRow
+    context: AutomationDispatchContext
+    captured: AutomationCapturedOwner
+    target: AutomationHostTarget
+    authority: AutomationAuthorityRef
+    token: number | undefined
+  } | null>(null)
+  const selected = input.selected
+  const previous = acquired.current
+  if (
+    selected &&
+    (!previous ||
+      previous.selected.key !== selected.key ||
+      previous.token !== input.acquisitionToken)
+  ) {
+    const captured = capturedAutomationOwner(input.context.capturedOwners, selected.key)
+    const navigationHost = navigationHostId(input.navigation, selected.automation.id)
+    const target = navigationHost
+      ? getAutomationTargetFromHostId(navigationHost)
+      : (input.legacyTarget(selected) ?? { kind: 'local' as const })
+    const authority: AutomationAuthorityRef =
+      captured.owner?.authority ??
+      (target.kind === 'environment'
+        ? {
+            kind: 'runtime',
+            environmentId: target.environmentId,
+            pairingRevision: automationRuntimePairingRevision(
+              useAppStore.getState().runtimeEnvironments,
+              target.environmentId
+            )
+          }
+        : { kind: 'desktop' })
+    acquired.current = {
+      selected,
+      captured,
+      target,
+      authority,
+      token: input.acquisitionToken,
+      context: { authority, capturedOwners: new Map([[selected.key, captured]]) }
+    }
+  } else if (
+    !selected &&
+    (input.selection?.automationId !== acquired.current?.selected.automation.id ||
+      input.selection?.rowKey !== acquired.current?.selected.key)
+  ) {
+    acquired.current = null
+  }
+  const request = acquired.current
   const inputRef = useRef(input)
   inputRef.current = input
-
-  const automationId = input.selected?.automation.id ?? null
-  const rowKey = input.selected?.key ?? null
   const reloadToken = input.reloadToken
-  const fetchKey =
-    automationId && rowKey
-      ? [
-          rowKey,
-          capturedAutomationOwnerKey(capturedAutomationOwner(input.context.capturedOwners, rowKey)),
-          navigationHostId(input.navigation, automationId) ?? ''
-        ].join('|')
-      : ''
-  const captured = input.selected
-    ? capturedAutomationOwner(input.context.capturedOwners, input.selected.key).owner
-    : null
-  const authority = captured?.authority ?? input.context.authority
-  const rowAuthority = useMemo<AutomationAuthorityRef>(
-    () => (authority?.kind === 'runtime' ? authority : { kind: 'desktop' }),
-    [authority]
-  )
 
   useEffect(() => {
-    const { selected, context, legacyTarget, navigation, onSettled } = inputRef.current
-    if (!selected || !automationId || !rowKey) {
-      onSettled({ automationId: null, rowKey: null, ownerKey: null, runs: [], notice: null })
+    const { onSettled } = inputRef.current
+    if (!request) {
+      onSettled({
+        automationId: null,
+        rowKey: null,
+        ownerKey: null,
+        authority: null,
+        runs: [],
+        notice: null
+      })
       return
     }
     let cancelled = false
-    const owner = capturedAutomationOwnerKey(
-      capturedAutomationOwner(context.capturedOwners, rowKey)
-    )
-    const navigationHost = navigationHostId(navigation, automationId)
-    const target = navigationHost
-      ? getAutomationTargetFromHostId(navigationHost)
-      : (legacyTarget(selected) ?? { kind: 'local' })
+    const { selected, context, captured, target, authority: rowAuthority } = request
+    const automationId = selected.automation.id
+    const rowKey = selected.key
+    const owner = capturedAutomationOwnerKey(captured)
     void dispatchAutomationRunHistory(
       context,
       { rowKey, automationId },
-      () => listAutomationRunsForTarget(target, automationId),
+      () =>
+        listAutomationRunsForTarget(
+          target,
+          automationId,
+          rowAuthority.kind === 'runtime' ? rowAuthority.pairingRevision : undefined
+        ),
       rowAuthority
     ).then((result) => {
       if (cancelled) {
@@ -112,12 +162,32 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
       // ID in place strands anything waiting on this one and shows its runs as zero.
       onSettled(
         result.ok
-          ? { automationId, rowKey, ownerKey: owner, runs: result.value, notice: null }
-          : { automationId, rowKey, ownerKey: owner, runs: [], notice: result.notice }
+          ? {
+              automationId,
+              rowKey,
+              ownerKey: owner,
+              authority: rowAuthority,
+              ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
+              runs: result.value,
+              notice: null
+            }
+          : {
+              automationId,
+              rowKey,
+              ownerKey: owner,
+              authority: rowAuthority,
+              ...(captured.owner || captured.selector ? { capturedOwner: captured } : {}),
+              runs:
+                inputRef.current.retained?.rowKey === rowKey &&
+                inputRef.current.retained.ownerKey === owner
+                  ? inputRef.current.retained.runs
+                  : [],
+              notice: result.notice
+            }
       )
     })
     return () => {
       cancelled = true
     }
-  }, [automationId, rowAuthority, rowKey, fetchKey, reloadToken])
+  }, [request, reloadToken])
 }

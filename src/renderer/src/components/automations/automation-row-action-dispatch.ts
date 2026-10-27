@@ -135,7 +135,7 @@ export async function dispatchAutomationUpdate(
     (availability) =>
       updateOwnedAutomation(
         availability,
-        context.authority,
+        capturedAutomationOwner(context.capturedOwners, row.rowKey).authority ?? context.authority,
         row.automationId,
         updates,
         destination
@@ -153,7 +153,12 @@ export async function dispatchAutomationDelete(
     context,
     row,
     'delete',
-    (availability) => deleteOwnedAutomation(availability, context.authority, row.automationId),
+    (availability) =>
+      deleteOwnedAutomation(
+        availability,
+        capturedAutomationOwner(context.capturedOwners, row.rowKey).authority ?? context.authority,
+        row.automationId
+      ),
     legacy
   )
 }
@@ -181,7 +186,12 @@ export async function dispatchAutomationReread(
     context,
     row,
     'edit',
-    (availability) => showOwnedAutomation(availability, row.automationId),
+    (availability) =>
+      showOwnedAutomation(
+        availability,
+        row.automationId,
+        capturedAutomationOwner(context.capturedOwners, row.rowKey).authority
+      ),
     legacy
   )
 }
@@ -196,7 +206,12 @@ export async function dispatchAutomationRunHistory(
     context,
     row,
     'history',
-    (availability) => listOwnedAutomationRuns(availability, authority, row.automationId),
+    (availability) =>
+      listOwnedAutomationRuns(
+        availability,
+        capturedAutomationOwner(context.capturedOwners, row.rowKey).authority ?? authority,
+        row.automationId
+      ),
     legacy
   )
 }
@@ -213,7 +228,12 @@ export async function dispatchAutomationRunHistoryPage(
     row,
     'history',
     (availability) =>
-      listOwnedAutomationRunsPage(availability, authority, row.automationId, options),
+      listOwnedAutomationRunsPage(
+        availability,
+        capturedAutomationOwner(context.capturedOwners, row.rowKey).authority ?? authority,
+        row.automationId,
+        options
+      ),
     legacy
   )
 }

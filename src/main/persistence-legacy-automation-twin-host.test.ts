@@ -15,6 +15,7 @@ import type { Repo } from '../shared/repo-types'
 import { getDefaultPersistedState } from '../shared/constants'
 import { resolveAutomationRunTarget } from './automations/run-target-resolution'
 import { AutomationService } from './automations/service'
+import * as prechecks from './automations/precheck-runner'
 
 vi.mock('electron', () => ({
   app: { getPath: () => testState.dir },
@@ -340,122 +341,293 @@ describe('legacy automation on a repo id two hosts share', () => {
       }
     }
   )
-  it('keeps incomplete saved identity manageable until explicit same-target adoption through RPC and reload', async () => {
-    const now = Date.now()
-    const remote = { ...sshRow, connectionId: undefined, executionHostId: 'ssh:ssh-1' as const }
-    seed([remote], legacyAutomation())
-    let store = createStore()
-    const setup = store.getProjectHostSetups()[0]
-    const runContext = {
-      kind: 'workspace-run' as const,
-      projectId: setup.projectId,
-      projectHostSetupId: setup.id,
-      repoId: remote.id,
-      hostId: setup.hostId,
-      path: remote.path
-    }
-    await closeTestStores()
-    seed(
-      [remote],
-      legacyAutomation({
-        runContext,
-        rrule: '* * * * *',
-        dtstart: now - 120000,
-        nextRunAt: now - 60000,
-        precheck: { command: 'must never run', timeoutSeconds: 1 }
-      })
-    )
-    store = createStore()
-    const runtime = new OrcaRuntimeService(store)
-    const dispatcher = new RpcDispatcher({ runtime, methods: AUTOMATION_METHODS })
-    const service = new AutomationService(store, { tickMs: 60000 })
-    runtime.setAutomationService(service)
-    const send = vi.fn()
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only send/isDestroyed.
-    service.setWebContents({ isDestroyed: () => false, send } as never)
-    try {
-      const orphan = store.automationOwnerPrecondition('legacy-1')
-      expect(orphan).toMatchObject({ selector: { kind: 'orphan' } })
-      expect(storedAutomation(store)).toMatchObject({ executionTargetType: 'local', enabled: true })
-      expect(storedAutomation(store).executionTargetGeneration).toBeUndefined()
-      const read = await dispatcher.dispatch({
-        id: 'read',
-        authToken: 'test',
-        method: 'automation.show',
-        params: { id: 'legacy-1', expectedOwner: orphan }
-      })
-      expect(read).toMatchObject({ ok: true })
-      const unchanged = { ...storedAutomation(store) }
-      const edit = await dispatcher.dispatch({
-        id: 'edit',
-        authToken: 'test',
-        method: 'automation.update',
-        params: { id: 'legacy-1', expectedOwner: orphan, updates: { name: 'Renamed' } }
-      })
-      expect(edit).toMatchObject({ ok: true })
-      expect(storedAutomation(store)).toMatchObject({
-        executionTargetType: unchanged.executionTargetType,
-        executionTargetId: unchanged.executionTargetId,
-        runContext,
-        enabled: true
-      })
-      expect(storedAutomation(store).executionTargetGeneration).toBeUndefined()
-      const manual = await service.runNow('legacy-1')
-      expect(manual).toMatchObject({
-        status: 'skipped_unavailable',
-        error: expect.stringContaining('reselect')
-      })
-      service.setRendererReady()
-      await vi.waitFor(() =>
-        expect(
-          store.listAutomationRuns('legacy-1').some((run) => run.trigger === 'scheduled')
-        ).toBe(true)
-      )
-      const scheduled = store
-        .listAutomationRuns('legacy-1')
-        .find((run) => run.trigger === 'scheduled')
-      if (!scheduled) {
-        throw new Error('Missing due run')
+  it.each(['captured', 'explicit null'] as const)(
+    'keeps incomplete %s identity until explicit same-target adoption through RPC and reload',
+    async (contextKind) => {
+      const now = Date.now()
+      const remote = { ...sshRow, connectionId: undefined, executionHostId: 'ssh:ssh-1' as const }
+      seed([remote], legacyAutomation())
+      let store = createStore()
+      const setup = store.getProjectHostSetups()[0]
+      const runContext = {
+        kind: 'workspace-run' as const,
+        projectId: setup.projectId,
+        projectHostSetupId: setup.id,
+        repoId: remote.id,
+        hostId: setup.hostId,
+        path: remote.path
       }
-      expect(scheduled.status).toBe('skipped_unavailable')
-      expect(await service.runPrecheck('legacy-1', scheduled.id)).toMatchObject({
-        error: expect.stringContaining('reselect')
+      const savedContext = contextKind === 'captured' ? runContext : null
+      await closeTestStores()
+      seed([remote], {
+        ...legacyAutomation({
+          runContext: savedContext,
+          sourceContext: null,
+          timezone: 'Pacific/Chatham',
+          agentId: 'claude',
+          extraAgentArgs: '--model saved',
+          baseBranch: 'release',
+          setupDecision: 'skip',
+          missedRunGraceMinutes: 720,
+          rrule: '*/1 * * * *',
+          dtstart: now - 120000,
+          nextRunAt: now - 60000,
+          precheck: { command: 'must never run', timeoutSeconds: 1 }
+        }),
+        futureField: { retained: true }
       })
-      expect(send).not.toHaveBeenCalled()
-      const target = store.getSshTargets()[0]
-      const adopted = await dispatcher.dispatch({
-        id: 'adopt',
-        authToken: 'test',
-        method: 'automation.update',
-        params: {
-          id: 'legacy-1',
-          expectedOwner: orphan,
-          updates: { repo: 'id:twin', runContext },
-          destination: {
-            selector: { kind: 'ssh', targetId: target.id, targetGeneration: target.generation }
-          }
+      store = createStore()
+      store.updateSettings({
+        notifications: { ...store.getSettings().notifications, enabled: false }
+      })
+      const settings = structuredClone(store.getSettings())
+      const historical = store.createAutomationRun(
+        storedAutomation(store),
+        now - 86400000,
+        'manual'
+      )
+      store.updateAutomationRun({
+        runId: historical.id,
+        status: 'completed',
+        workspaceId: 'original-workspace',
+        terminalSessionId: 'original-tab',
+        terminalPaneKey: 'original-tab:original-pane',
+        terminalPtyId: 'original-pty',
+        outputSnapshot: {
+          format: 'plain_text',
+          content: 'Original output',
+          capturedAt: 1,
+          truncated: false
         }
       })
-      expect(adopted).toMatchObject({ ok: true })
-      expect(storedAutomation(store)).toMatchObject({
-        executionTargetType: 'ssh',
-        executionTargetId: target.id,
-        executionTargetGeneration: target.generation,
-        runContext,
-        name: 'Renamed',
-        enabled: true
+      const oldRun = structuredClone(store.listAutomationRuns('legacy-1')[0])
+      const preserved = {
+        timezone: 'Pacific/Chatham',
+        sourceContext: null,
+        rrule: '*/1 * * * *',
+        dtstart: now - 120000,
+        agentId: 'claude',
+        extraAgentArgs: '--model saved',
+        baseBranch: 'release',
+        setupDecision: 'skip',
+        precheck: { command: 'must never run', timeoutSeconds: 1 },
+        missedRunGraceMinutes: 720,
+        futureField: { retained: true }
+      }
+      const precheck = vi.spyOn(prechecks, 'runAutomationPrecheck').mockResolvedValue({
+        command: 'must never run',
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 0,
+        stdout: '',
+        stderr: '',
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        error: null,
+        startedAt: now,
+        completedAt: now
       })
-      await closeTestStores()
-      store = createStore()
-      expect(store.automationOwnerPrecondition('legacy-1')).toEqual({
-        selector: { kind: 'ssh', targetId: target.id, targetGeneration: target.generation }
-      })
-      expect(resolveAutomationRunTarget(store, storedAutomation(store))).toMatchObject({
-        ok: true,
-        repo: { id: remote.id, path: remote.path, executionHostId: remote.executionHostId }
-      })
-    } finally {
-      service.stop()
+      let runtime = new OrcaRuntimeService(store)
+      let dispatcher = new RpcDispatcher({ runtime, methods: AUTOMATION_METHODS })
+      let service = new AutomationService(store, { tickMs: 60000 })
+      runtime.setAutomationService(service)
+      const send = vi.fn()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only send/isDestroyed.
+      service.setWebContents({ isDestroyed: () => false, send } as never)
+      try {
+        const orphan = store.automationOwnerPrecondition('legacy-1')
+        expect(orphan).toMatchObject({ selector: { kind: 'orphan' } })
+        expect(storedAutomation(store)).toMatchObject({
+          executionTargetType: 'local',
+          enabled: true
+        })
+        expect(storedAutomation(store).executionTargetGeneration).toBeUndefined()
+        const read = await dispatcher.dispatch({
+          id: 'read',
+          authToken: 'test',
+          method: 'automation.show',
+          params: { id: 'legacy-1', expectedOwner: orphan }
+        })
+        expect(read).toMatchObject({ ok: true })
+        const unchanged = { ...storedAutomation(store) }
+        const edit = await dispatcher.dispatch({
+          id: 'edit',
+          authToken: 'test',
+          method: 'automation.update',
+          params: { id: 'legacy-1', expectedOwner: orphan, updates: { name: 'Renamed' } }
+        })
+        expect(edit).toMatchObject({ ok: true })
+        expect(storedAutomation(store)).toMatchObject({
+          executionTargetType: unchanged.executionTargetType,
+          executionTargetId: unchanged.executionTargetId,
+          ...preserved,
+          runContext: savedContext,
+          enabled: true
+        })
+        expect(storedAutomation(store).executionTargetGeneration).toBeUndefined()
+        const manual = await service.runNow('legacy-1')
+        expect(manual).toMatchObject({
+          status: 'skipped_unavailable',
+          error: expect.stringContaining('reselect')
+        })
+        service.setRendererReady()
+        await vi.waitFor(() =>
+          expect(
+            store.listAutomationRuns('legacy-1').some((run) => run.trigger === 'scheduled')
+          ).toBe(true)
+        )
+        const scheduled = store
+          .listAutomationRuns('legacy-1')
+          .find((run) => run.trigger === 'scheduled')
+        if (!scheduled) {
+          throw new Error('Missing due run')
+        }
+        expect(scheduled.status).toBe('skipped_unavailable')
+        expect(await service.runPrecheck('legacy-1', scheduled.id)).toMatchObject({
+          error: expect.stringContaining('reselect')
+        })
+        expect(send).not.toHaveBeenCalled()
+        expect(precheck).not.toHaveBeenCalled()
+        expect(storedAutomation(store).runContext).toEqual(savedContext)
+        const paused = contextKind === 'explicit null'
+        if (paused) {
+          await dispatcher.dispatch({
+            id: 'pause',
+            authToken: 'test',
+            method: 'automation.update',
+            params: { id: 'legacy-1', expectedOwner: orphan, updates: { enabled: false } }
+          })
+        }
+        service.stop()
+        await closeTestStores()
+        store = createStore()
+        expect(storedAutomation(store)).toMatchObject({
+          ...preserved,
+          runContext: savedContext,
+          executionTargetType: 'local',
+          executionTargetId: 'local',
+          enabled: !paused
+        })
+        expect(storedAutomation(store).executionTargetGeneration).toBeUndefined()
+        expect(store.listAutomationRuns('legacy-1').find((run) => run.id === oldRun.id)).toEqual(
+          oldRun
+        )
+        runtime = new OrcaRuntimeService(store)
+        dispatcher = new RpcDispatcher({ runtime, methods: AUTOMATION_METHODS })
+        service = new AutomationService(store, { tickMs: 60000 })
+        runtime.setAutomationService(service)
+        expect(await service.runNow('legacy-1')).toMatchObject({
+          status: 'skipped_unavailable',
+          error: expect.stringContaining('reselect')
+        })
+        expect(precheck).not.toHaveBeenCalled()
+        const target = store.getSshTargets()[0]
+        const adopted = await dispatcher.dispatch({
+          id: 'adopt',
+          authToken: 'test',
+          method: 'automation.update',
+          params: {
+            id: 'legacy-1',
+            expectedOwner: orphan,
+            updates: { repo: 'id:twin', runContext },
+            destination: {
+              selector: { kind: 'ssh', targetId: target.id, targetGeneration: target.generation }
+            }
+          }
+        })
+        expect(adopted).toMatchObject({ ok: true })
+        expect(storedAutomation(store)).toMatchObject({
+          executionTargetType: 'ssh',
+          executionTargetId: target.id,
+          executionTargetGeneration: target.generation,
+          runContext,
+          ...preserved,
+          name: 'Renamed',
+          enabled: !paused
+        })
+        expect(store.listAutomationRuns('legacy-1').find((run) => run.id === oldRun.id)).toEqual(
+          oldRun
+        )
+        service.stop()
+        await closeTestStores()
+        store = createStore()
+        expect(store.automationOwnerPrecondition('legacy-1')).toEqual({
+          selector: { kind: 'ssh', targetId: target.id, targetGeneration: target.generation }
+        })
+        expect(resolveAutomationRunTarget(store, storedAutomation(store))).toMatchObject({
+          ok: true,
+          repo: { id: remote.id, path: remote.path, executionHostId: remote.executionHostId }
+        })
+        expect(storedAutomation(store)).toMatchObject({
+          ...preserved,
+          enabled: !paused,
+          runContext
+        })
+        expect(store.getSettings()).toEqual(settings)
+        expect(store.listAutomationRuns('legacy-1').find((run) => run.id === oldRun.id)).toEqual(
+          oldRun
+        )
+        const reloadedService = new AutomationService(store, { tickMs: 60000 })
+        const dispatch = vi.fn()
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the renderer channel is read.
+        reloadedService.setWebContents({ isDestroyed: () => false, send: dispatch } as never)
+        try {
+          vi.useFakeTimers({ toFake: ['Date'] })
+          vi.setSystemTime(now + 300000)
+          reloadedService.setRendererReady()
+          if (!paused) {
+            await vi.waitFor(() =>
+              expect(dispatch).toHaveBeenCalledWith(
+                'automations:dispatchRequested',
+                expect.objectContaining({
+                  automation: expect.objectContaining({
+                    executionTargetId: target.id,
+                    executionTargetGeneration: target.generation,
+                    runContext
+                  }),
+                  run: expect.objectContaining({ trigger: 'scheduled' })
+                })
+              )
+            )
+          }
+          const manual = await reloadedService.runNow('legacy-1')
+          expect(manual.status).toBe('dispatching')
+          expect(dispatch).toHaveBeenCalledWith(
+            'automations:dispatchRequested',
+            expect.objectContaining({
+              automation: expect.objectContaining({
+                executionTargetId: target.id,
+                executionTargetGeneration: target.generation,
+                runContext
+              }),
+              run: expect.objectContaining({ id: manual.id, trigger: 'manual' })
+            })
+          )
+          const checkRun = store.createAutomationRun(
+            storedAutomation(store),
+            now + 60000,
+            'scheduled'
+          )
+          expect(await reloadedService.runPrecheck('legacy-1', checkRun.id)).toMatchObject({
+            exitCode: 0
+          })
+          expect(precheck).toHaveBeenCalledWith(
+            expect.objectContaining({
+              target: { type: 'ssh', cwd: remote.path, connectionId: target.id }
+            })
+          )
+          expect(storedAutomation(store).enabled).toBe(!paused)
+          if (paused) {
+            expect(dispatch.mock.calls).toHaveLength(1)
+          }
+        } finally {
+          vi.useRealTimers()
+          reloadedService.stop()
+        }
+      } finally {
+        precheck.mockRestore()
+        service.stop()
+      }
     }
-  })
+  )
 })

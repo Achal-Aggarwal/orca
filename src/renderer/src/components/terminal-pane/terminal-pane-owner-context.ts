@@ -14,7 +14,10 @@ import {
   toRuntimeExecutionHostId,
   UNRESOLVED_OWNER_HOST_ID
 } from '../../../../shared/execution-host'
-import { resolveQualifiedFolderWorkspaceResult } from '../../../../shared/folder-workspace-execution-host'
+import {
+  findLocalFolderWorkspaceRuntimeRepo,
+  resolveQualifiedFolderWorkspaceResult
+} from '../../../../shared/folder-workspace-execution-host'
 import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
 
 export function resolveTerminalPaneOwnerContext(
@@ -49,6 +52,17 @@ export function resolveTerminalPaneOwnerContext(
       )
     : []
   const repo = repos.length === 1 ? repos[0] : undefined
+  const runtimeRepo = folder
+    ? findLocalFolderWorkspaceRuntimeRepo(state, folder.workspace.id, {
+        ...folder.workspace,
+        executionHostId: folder.hostId,
+        connectionId: folder.connectionId
+      })
+    : repo
+  const projectRuntimeTarget =
+    worktree && runtimeRepo
+      ? { worktree: folder ? { ...worktree, repoId: runtimeRepo.id } : worktree, repo: runtimeRepo }
+      : undefined
   const connectionId = folder
     ? folder.connectionId
     : selectedHost?.kind === 'local'
@@ -88,6 +102,7 @@ export function resolveTerminalPaneOwnerContext(
     folderWorkspace: folder?.workspace ?? null,
     worktree,
     repo,
+    projectRuntimeTarget,
     connectionId,
     route,
     runtimeOwners,

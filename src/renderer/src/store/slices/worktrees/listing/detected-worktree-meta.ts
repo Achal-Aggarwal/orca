@@ -15,7 +15,10 @@ import {
   floatingWorkspaceToWorktree,
   isFloatingWorkspaceId
 } from '../../../../../../shared/floating-workspace-worktree'
-import { findIndexedDetectedWorktrees } from '@/lib/worktree-runtime-owner-index'
+import {
+  resolveQualifiedIndexedFolderWorkspace,
+  findIndexedDetectedWorktrees
+} from '@/lib/worktree-runtime-owner-index'
 import { findWorktreeById, withoutErasedRequiredWorktreeFields } from '../../worktree-helpers'
 import { worktreeMatchesHost } from './worktree-host-ownership'
 import { hostWorktreeTarget } from '../../../../../../shared/worktree/host-qualified-identity'
@@ -26,6 +29,14 @@ import {
 } from '../../../workspace-record-selectors'
 
 const folderWorkspaceWorktreeCache = new WeakMap<FolderWorkspace, Worktree>()
+const qualifiedFolderWorktreeCache = new WeakMap<
+  FolderWorkspace,
+  {
+    hostId: ExecutionHostId
+    connectionId: string | null
+    worktree: Worktree
+  }
+>()
 // Why a one-slot cache: the floating workspace is a singleton; retained selectors only need the
 // row's identity to hold while the resolved directory is unchanged.
 let floatingWorkspaceWorktreeCache: { path: string; worktree: Worktree } | null = null
@@ -77,7 +88,23 @@ export function folderWorkspaceMatchesHost(
 }
 
 /** Stable synthetic row per folder workspace object, so selectors keep referential equality. */
-export function getFolderWorkspaceWorktree(folderWorkspace: FolderWorkspace): Worktree {
+export function getFolderWorkspaceWorktree(
+  folderWorkspace: FolderWorkspace,
+  resolved?: { hostId: ExecutionHostId; connectionId: string | null }
+): Worktree {
+  if (resolved) {
+    const cached = qualifiedFolderWorktreeCache.get(folderWorkspace)
+    if (cached?.hostId === resolved.hostId && cached.connectionId === resolved.connectionId) {
+      return cached.worktree
+    }
+    const worktree = folderWorkspaceToWorktree({
+      ...folderWorkspace,
+      executionHostId: resolved.hostId,
+      connectionId: resolved.connectionId
+    })
+    qualifiedFolderWorktreeCache.set(folderWorkspace, { ...resolved, worktree })
+    return worktree
+  }
   const cached = folderWorkspaceWorktreeCache.get(folderWorkspace)
   if (cached) {
     return cached
@@ -91,7 +118,8 @@ export function findKnownWorktreeById(
   state: Pick<
     AppState,
     'worktreesByRepo' | 'detectedWorktreesByRepo' | 'folderWorkspaces' | 'floatingWorkspacePath'
-  >,
+  > &
+    Partial<Pick<AppState, 'projectGroups' | 'repos'>>,
   worktreeId: string,
   executionHostId?: ExecutionHostId
 ): Worktree | DetectedWorktreeListResult['worktrees'][number] | undefined {
@@ -109,12 +137,21 @@ export function findKnownWorktreeById(
   }
   const workspaceScope = parseWorkspaceKey(worktreeId)
   if (workspaceScope?.type === 'folder') {
-    const folderWorkspace = selectFolderWorkspaces(state).find(
-      (workspace) =>
-        workspace.id === workspaceScope.folderWorkspaceId &&
-        (!executionHostId || folderWorkspaceMatchesHost(workspace, executionHostId))
+    const result = resolveQualifiedIndexedFolderWorkspace(
+      state,
+      workspaceScope.folderWorkspaceId,
+      executionHostId
     )
-    return folderWorkspace ? getFolderWorkspaceWorktree(folderWorkspace) : undefined
+    if (result.kind === 'selected') {
+      return getFolderWorkspaceWorktree(result.value.workspace, result.value)
+    }
+    // Preserve unqualified path access for narrow snapshots.
+    const rows = selectFolderWorkspaces(state).filter(
+      (workspace) => workspace.id === workspaceScope.folderWorkspaceId
+    )
+    return !executionHostId && (!state.projectGroups || !state.repos) && rows.length === 1
+      ? getFolderWorkspaceWorktree(rows[0])
+      : undefined
   }
   const visible = executionHostId
     ? selectWorkspaceByHostTarget(

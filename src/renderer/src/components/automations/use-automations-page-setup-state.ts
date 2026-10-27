@@ -11,7 +11,6 @@ import {
   type ExecutionHostId
 } from '../../../../shared/execution-host'
 import { getVisibleAutomationSetupDecision } from './automation-setup-decision'
-import { capturedAutomationOwner, capturedAutomationOwnerKey } from './automation-captured-owner'
 import type { AutomationsPageListState } from './use-automations-page-list-state'
 import type { AutomationsPageLocalState } from './use-automations-page-local-state'
 import type { AutomationsPageStoreState } from './use-automations-page-store-state'
@@ -37,12 +36,7 @@ export function useAutomationsPageSetupState({
     automationHostTargetKey,
     selectedAutomationRunPageId
   } = local
-  const {
-    selected,
-    selectedRow,
-    selectedAutomationRunsWithWorkspaceNames,
-    capturedAutomationOwners
-  } = list
+  const { selected, selectedRow, selectedAutomationRunsWithWorkspaceNames: historyRuns } = list
 
   const getDraftSetupDecisionDefault = useCallback(
     (
@@ -156,17 +150,15 @@ export function useAutomationsPageSetupState({
   }, [setupDecisionTouchedRef])
 
   const selectedRunsMatchSelection =
-    selectedRow !== null &&
-    selectedAutomationRuns.rowKey === selectedRow.key &&
-    selectedAutomationRuns.ownerKey ===
-      capturedAutomationOwnerKey(capturedAutomationOwner(capturedAutomationOwners, selectedRow.key))
+    selectedAutomationRuns.automationId === (selected?.id ?? store.selectedId) &&
+    selectedAutomationRuns.rowKey === (selectedRow?.key ?? local.selectedRowKey)
   const selectedRunsNotice = selectedRunsMatchSelection ? selectedAutomationRuns.notice : null
   const selectedRuns = useMemo(
     () =>
-      selected && selectedRunsMatchSelection
-        ? selectedAutomationRunsWithWorkspaceNames.filter((run) => run.automationId === selected.id)
+      selectedRunsMatchSelection
+        ? historyRuns.filter((run) => run.automationId === selectedAutomationRuns.automationId)
         : [],
-    [selected, selectedRunsMatchSelection, selectedAutomationRunsWithWorkspaceNames]
+    [selectedAutomationRuns.automationId, selectedRunsMatchSelection, historyRuns]
   )
   const selectedAutomationRunPage = selectedAutomationRunPageId
     ? (selectedRuns.find((run) => run.id === selectedAutomationRunPageId) ?? null)

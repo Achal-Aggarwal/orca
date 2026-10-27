@@ -1,6 +1,7 @@
 import type { GitDiffResult } from '../../../../shared/git-diff-compare-types'
 import type { GitStatusEntry } from '../../../../shared/git-status-types'
 import type { LargeDiffRenderLimit } from './large-diff-render-limit'
+import type { acquireEditorFileOperation } from '@/lib/editor-file-operation-owner'
 
 export type DiffSection = {
   key: string
@@ -20,6 +21,7 @@ export type DiffSection = {
   /** A save was refused because disk changed since this section loaded. */
   saveConflict?: true
   diffResult: GitDiffResult | null
+  operation?: ReturnType<typeof acquireEditorFileOperation>
   largeDiffRenderLimit: LargeDiffRenderLimit | null
   // Why: combined sections keep Monaco models by path; bump on reload so
   // refetched git content does not replay through keepCurrent* model reuse.

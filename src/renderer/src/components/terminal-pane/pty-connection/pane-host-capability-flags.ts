@@ -105,8 +105,7 @@ export function installPaneHostCapabilityFlags(session: ConnectPanePtySession): 
   session.projectRuntime =
     !session.tab?.forceHostRuntime &&
     session.runtimeEnvironmentId === null &&
-    (!session.ownerContext.selectedHost ||
-      (session.ownerContext.worktree && session.ownerContext.repo))
+    (!session.ownerContext.selectedHost || session.ownerContext.projectRuntimeTarget)
       ? getLocalProjectExecutionRuntimeContext(
           session.state,
           session.deps.worktreeId,
@@ -115,9 +114,7 @@ export function installPaneHostCapabilityFlags(session: ConnectPanePtySession): 
             wslAvailable: session.localWindowsTerminalCapabilities?.wslAvailable,
             availableWslDistros: session.localWindowsTerminalCapabilities?.wslDistros ?? null
           },
-          session.ownerContext.worktree && session.ownerContext.repo
-            ? { worktree: session.ownerContext.worktree, repo: session.ownerContext.repo }
-            : undefined
+          session.ownerContext.projectRuntimeTarget
         )
       : undefined
   session.shouldOwnAgentStatusInRenderer = session.runtimeEnvironmentId !== null

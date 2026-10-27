@@ -4,7 +4,10 @@ import { dirname, basename } from '@/lib/path'
 import { getConnectionId } from '@/lib/connection-context'
 import { useAppStore } from '@/store'
 import { importExternalPathsToRuntime } from '@/runtime/runtime-file-import-client'
-import { getEditorFileOperationContext } from '@/lib/editor-file-operation-owner'
+import {
+  acquireEditorFileOperation,
+  getEditorFileOperationContext
+} from '@/lib/editor-file-operation-owner'
 import { editorTabDocumentFolderAccess } from '@/lib/local-file-access'
 import { requireRuntimeTargetForFileOwner } from '@/lib/file-owner-runtime-target'
 import { captureDirectSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
@@ -36,15 +39,28 @@ export async function insertRichMarkdownImageFromPath({
 }: RichMarkdownImageInsertArgs): Promise<void> {
   try {
     const state = useAppStore.getState()
-    const worktreePath = getWorktreePath(worktreeId)
+    const openDocument = state.openFiles.find(
+      (file) =>
+        file.filePath === filePath &&
+        file.worktreeId === worktreeId &&
+        (file.runtimeEnvironmentId ?? null) === (runtimeEnvironmentId ?? null)
+    )
+    const acquisition =
+      openDocument?.mode === 'edit'
+        ? acquireEditorFileOperation(useAppStore.getState, openDocument)
+        : null
+    const worktreePath = acquisition
+      ? acquisition.context.worktreePath
+      : getWorktreePath(worktreeId)
     const parsedWorkspace = worktreeId ? parseWorkspaceKey(worktreeId) : null
     const resolvedConnectionId = getConnectionId(worktreeId)
-    if (parsedWorkspace?.type === 'folder' && resolvedConnectionId === undefined) {
+    if (!acquisition && parsedWorkspace?.type === 'folder' && resolvedConnectionId === undefined) {
       throw new Error("Couldn't verify which host owns this file. Reopen the file and try again.")
     }
     const connectionId = resolvedConnectionId ?? undefined
-    const fileContext =
-      worktreeId && parsedWorkspace?.type !== 'folder'
+    const fileContext = acquisition
+      ? acquisition.mutationContext()
+      : worktreeId && parsedWorkspace?.type !== 'folder'
         ? getEditorFileOperationContext(state, { worktreeId, runtimeEnvironmentId }, worktreePath)
         : {
             target: requireRuntimeTargetForFileOwner(state, worktreeId, runtimeEnvironmentId),
@@ -71,16 +87,18 @@ export async function insertRichMarkdownImageFromPath({
     // Why: image bytes should live beside the note instead of inside markdown;
     // this keeps rich-mode size checks based on document text, not binary data.
     // Why: a document opened outside every project still gets its image beside it.
-    const openDocument = state.openFiles.find(
-      (file) => file.filePath === filePath && file.worktreeId === worktreeId
-    )
+    acquisition?.assertCurrent()
     const { results } = await importExternalPathsToRuntime(
       fileContext,
       [sourcePath],
       dirname(filePath),
-      { access: openDocument ? editorTabDocumentFolderAccess(state, openDocument) : undefined }
+      {
+        access: openDocument ? editorTabDocumentFolderAccess(state, openDocument) : undefined,
+        ...(acquisition ? { assertCurrent: acquisition.assertCurrent } : {})
+      }
     )
     const imported = results.find((result) => result.status === 'imported')
+    acquisition?.assertCurrent()
     if (!imported) {
       toast.error(
         translate('auto.components.editor.useLocalImagePick.175cb8b8ce', 'Failed to insert image.')

@@ -25,6 +25,7 @@ import type {
 } from '../../../../shared/agent-session-host-authority'
 import { localProvider } from '../provider/registry'
 import type { StartupCwdFallback } from '../../../../shared/startup-cwd-fallback'
+import type { TerminalWorkspaceLaunchScope } from '../../../runtime/runtime-legacy-worker-terminal-recovery-types'
 
 export type RuntimePtySpawnState = {
   deps: PtyRuntimeControllerDeps
@@ -98,6 +99,7 @@ export type RuntimePtySpawnState = {
 }
 
 export type RuntimePtySpawnArgs = {
+  resolvedWorkspace?: TerminalWorkspaceLaunchScope
   cols: number
   rows: number
   cwd?: string

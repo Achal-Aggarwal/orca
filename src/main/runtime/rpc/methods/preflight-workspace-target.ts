@@ -25,7 +25,8 @@ export async function resolveQualifiedAgentDetectionHost(
         repos
       },
       scope.folderWorkspaceId,
-      hostId
+      hostId,
+      () => new Error('worktree_execution_host_unresolved')
     )
     return resolveWorkspaceAgentDetectionHost(
       {

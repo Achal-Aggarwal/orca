@@ -1,4 +1,5 @@
 import type { PaneSpawnOperation } from '../ipc/pty/pane/pane-spawn-operation'
+import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
 import type { AgentLaunchRuntime } from '../../shared/agent-launch-runtime'
 import type {
   AutomaticWorkResumeOutcome,
@@ -62,6 +63,7 @@ export type RuntimePtyController = {
     materialized?: true
   } | null>
   spawn?(opts: {
+    resolvedWorkspace?: TerminalWorkspaceLaunchScope
     cols: number
     rows: number
     cwd?: string

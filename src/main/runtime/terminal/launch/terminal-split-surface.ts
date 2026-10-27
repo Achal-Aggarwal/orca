@@ -76,6 +76,7 @@ export abstract class OrcaRuntimeWithSplitPtyBackedTerminal extends OrcaRuntimeW
       envToDelete: opts.envToDelete,
       connectionId: workspace.connectionId,
       worktreeId: workspace.id,
+      resolvedWorkspace: workspace,
       preAllocatedHandle,
       tabId: parentTabId,
       leafId,

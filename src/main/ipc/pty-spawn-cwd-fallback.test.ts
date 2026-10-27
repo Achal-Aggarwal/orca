@@ -13,6 +13,7 @@ import { _setWslCachesForTests } from '../wsl'
 import { acquireWatcherRemovalGate } from './watcher-removal-gate'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { join } from 'node:path'
+import { getFolderWorkspacePathErrorCopy } from '../../renderer/src/lib/folder-workspace-path-status'
 import { getShellReadyWrapperRoot } from '../providers/local-pty-shell-ready-wrapper-root'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
@@ -213,10 +214,19 @@ describe('registerPtyHandlers', () => {
       expect(spawnMock.mock.calls.at(-1)?.[2]).toMatchObject({ cwd: '/selected' })
       folders = [remote]
       spawnMock.mockClear()
-      await expect(spawn('.')).rejects.toThrow('worktree_execution_host_unresolved')
+      await expect(spawn('.')).rejects.toThrow('folder_workspace_path_scope_not_found')
       expect(spawnMock).not.toHaveBeenCalled()
       folders = [local, { ...local }]
-      await expect(spawn('.')).rejects.toThrow('worktree_execution_host_unresolved')
+      const failure = await spawn('.').then(
+        () => {
+          throw new Error('ambiguous spawn succeeded')
+        },
+        (error: Error) => error
+      )
+      expect(failure.message).toContain('folder_workspace_connection_ambiguous:/selected')
+      expect(getFolderWorkspacePathErrorCopy(failure.message)?.title).toBe(
+        'Cannot determine connection'
+      )
       expect(spawnMock).not.toHaveBeenCalled()
     }
   )

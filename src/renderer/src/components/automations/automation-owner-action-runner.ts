@@ -43,6 +43,7 @@ import {
   listAutomationRunsForOwner,
   listAutomationRunsPageForOwner,
   listAutomationsForOwner,
+  listScopedAutomations,
   listOrphanAutomationRuns,
   listOrphanAutomationRunsPage,
   matchAutomationOwnerConflict,
@@ -166,7 +167,7 @@ export async function updateOwnedAutomation(
   return await attempt(
     availability,
     (owner) => updateAutomationForOwner(owner, id, updates, destination),
-    () => updateOrphanAutomation(authority, id, updates)
+    () => updateOrphanAutomation(authority, id, updates, destination)
   )
 }
 
@@ -196,12 +197,22 @@ export async function runOwnedAutomationNow(
  */
 export async function showOwnedAutomation(
   availability: AutomationActionAvailability,
-  id: string
+  id: string,
+  authority?: AutomationAuthorityRef
 ): Promise<AutomationActionResult<Automation | null>> {
-  return await attempt(availability, async (owner) => {
-    const result = await listAutomationsForOwner(owner)
-    return result.automations.find((automation) => automation.id === id) ?? null
-  })
+  return await attempt(
+    availability,
+    async (owner) => {
+      const result = await listAutomationsForOwner(owner)
+      return result.automations.find((automation) => automation.id === id) ?? null
+    },
+    authority
+      ? async () => {
+          const result = await listScopedAutomations(authority, { kind: 'orphan' })
+          return result.automations.find((automation) => automation.id === id) ?? null
+        }
+      : undefined
+  )
 }
 
 export async function listOwnedAutomationRuns(

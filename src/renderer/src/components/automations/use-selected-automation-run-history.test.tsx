@@ -7,12 +7,19 @@
  * read waited forever.
  */
 
+import type * as AutomationRowActionDispatch from './automation-row-action-dispatch'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AutomationRun } from '../../../../shared/automations-types'
 import type { AutomationOwnerRef } from '../../../../shared/automation-owner-ref'
 import { ownerKey } from '../../../../shared/automation-owner-key'
+import { useAppStore } from '@/store'
+import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
+import {
+  markRuntimeEnvironmentCompatible,
+  clearRuntimeCompatibilityCache
+} from '@/runtime/runtime-rpc-client'
 import { makeAutomation, makeRun } from './automations-page-fixtures'
 import { automationListRowKey, type AutomationListRow } from './automation-list-row-identity'
 import {
@@ -21,13 +28,18 @@ import {
   type SelectedAutomationRunHistoryOutcome
 } from './use-selected-automation-run-history'
 
-const mocks = vi.hoisted(() => ({ dispatch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), callEnvironment: vi.fn() }))
+
+vi.mock('@/runtime/runtime-rpc-environment-call', () => ({
+  callRuntimeEnvironmentWithRevision: (...args: unknown[]) => mocks.callEnvironment(...args)
+}))
 
 vi.mock('./automation-row-action-dispatch', () => ({
   dispatchAutomationRunHistory: (...args: unknown[]) => mocks.dispatch(...args)
 }))
 
 const roots: Root[] = []
+const originalRuntimeEnvironments = useAppStore.getState().runtimeEnvironments
 
 const DESKTOP_ROW: AutomationListRow = {
   key: automationListRowKey('host:desktop|self', 'a-1'),
@@ -85,9 +97,134 @@ afterEach(async () => {
   await act(async () => {
     roots.splice(0).forEach((root) => root.unmount())
   })
+  clearRuntimeCompatibilityCache()
+  replaceRuntimeEnvironmentRevisions([])
+  useAppStore.setState({ runtimeEnvironments: originalRuntimeEnvironments })
 })
 
 describe('useSelectedAutomationRunHistory', () => {
+  it('retains a legacy acquisition origin when the current fallback host changes', async () => {
+    const actual = await vi.importActual<typeof AutomationRowActionDispatch>(
+      './automation-row-action-dispatch'
+    )
+    mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
+    const environments = ['gpu', 'other'].map((id) => ({ id, createdAt: 1, pairingRevision: 4 }))
+    // SAFETY: the hook and transport only read these environment identity fields.
+    useAppStore.setState({
+      runtimeEnvironments: environments as ReturnType<
+        typeof useAppStore.getState
+      >['runtimeEnvironments']
+    })
+    replaceRuntimeEnvironmentRevisions(environments)
+    environments.forEach(({ id }) => markRuntimeEnvironmentCompatible(id))
+    mocks.callEnvironment.mockResolvedValue({
+      ok: true,
+      result: { runs: [makeRun({ id: 'original-authority-run' })] }
+    })
+    const input = makeInput({ legacyTarget: () => ({ kind: 'environment', environmentId: 'gpu' }) })
+    const rerender = await render(input)
+    expect(mocks.callEnvironment.mock.calls.at(-1)?.[0].environmentId).toBe('gpu')
+    await rerender({
+      ...input,
+      legacyTarget: () => ({ kind: 'environment', environmentId: 'other' }),
+      reloadToken: 1
+    })
+    expect(mocks.callEnvironment.mock.calls.at(-1)?.[0].environmentId).toBe('gpu')
+    expect(settled(input).at(-1)?.authority).toEqual({
+      kind: 'runtime',
+      environmentId: 'gpu',
+      pairingRevision: 4
+    })
+  })
+  it('pins a legacy history retry to its acquired runtime pairing through the actual RPC path', async () => {
+    const actual = await vi.importActual<typeof AutomationRowActionDispatch>(
+      './automation-row-action-dispatch'
+    )
+    mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
+    const environments = [{ id: 'gpu', createdAt: 1, pairingRevision: 4 }]
+    // SAFETY: this test supplies the only runtime identity fields read by the acquisition hook.
+    useAppStore.setState({
+      runtimeEnvironments: environments as ReturnType<
+        typeof useAppStore.getState
+      >['runtimeEnvironments']
+    })
+    replaceRuntimeEnvironmentRevisions(environments)
+    markRuntimeEnvironmentCompatible('gpu')
+    mocks.callEnvironment.mockResolvedValue({
+      ok: true,
+      result: { runs: [makeRun({ id: 'acquired-run' })] }
+    })
+    const input = makeInput({ legacyTarget: () => ({ kind: 'environment', environmentId: 'gpu' }) })
+    const rerender = await render(input)
+    expect(settled(input).at(-1)?.authority).toEqual({
+      kind: 'runtime',
+      environmentId: 'gpu',
+      pairingRevision: 4
+    })
+    expect(mocks.callEnvironment.mock.calls.at(-1)?.[0].expectedEnvironmentPairingRevision).toBe(4)
+    replaceRuntimeEnvironmentRevisions([{ id: 'gpu', createdAt: 1, pairingRevision: 5 }], {
+      retired: ['gpu'],
+      sameHost: []
+    })
+    await rerender({ ...input, reloadToken: 1 })
+    const retries = mocks.callEnvironment.mock.calls.slice(1)
+    expect(retries.every(([request]) => request.expectedEnvironmentPairingRevision === 4)).toBe(
+      true
+    )
+  })
+  it('keeps acquired owner and saved output across disappearance, errors and Retry until explicit reselect', async () => {
+    const owner: AutomationOwnerRef = {
+      authority: { kind: 'desktop' },
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 7 }
+    }
+    const captured = { owner, selector: owner.selector }
+    const original = [makeRun({ id: 'saved-old-run' })]
+    mocks.dispatch.mockResolvedValue({ ok: true, value: original })
+    const input = makeInput({
+      acquisitionToken: 0,
+      context: {
+        authority: owner.authority,
+        capturedOwners: new Map([[DESKTOP_ROW.key, captured]])
+      }
+    })
+    const rerender = await render(input)
+    const retained = settled(input).at(-1)!
+    const replacement: AutomationOwnerRef = {
+      ...owner,
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 8 }
+    }
+    const context = {
+      authority: owner.authority,
+      capturedOwners: new Map([
+        [DESKTOP_ROW.key, { owner: replacement, selector: replacement.selector }]
+      ])
+    }
+    mocks.dispatch.mockResolvedValue({
+      ok: false,
+      notice: { message: 'Offline', recovery: 'retry', severity: 'failure' }
+    })
+    await rerender({
+      ...input,
+      selected: null,
+      selection: { automationId: DESKTOP_ROW.automation.id, rowKey: DESKTOP_ROW.key },
+      retained,
+      context,
+      reloadToken: 1
+    })
+    expect(settled(input).at(-1)?.runs).toBe(original)
+    expect(settled(input).at(-1)?.capturedOwner).toEqual(captured)
+    expect(mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)).toEqual(
+      captured
+    )
+    await rerender({ ...input, context, retained, reloadToken: 2 })
+    expect(mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)).toEqual(
+      captured
+    )
+    await rerender({ ...input, context, acquisitionToken: 1, reloadToken: 2 })
+    expect(
+      mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
+    ).toEqual(replacement)
+  })
   it('reports the refusal instead of leaving the pane on the previous automation', async () => {
     mocks.dispatch.mockResolvedValue({
       ok: false,
@@ -102,6 +239,7 @@ describe('useSelectedAutomationRunHistory', () => {
         automationId: 'a-1',
         rowKey: DESKTOP_ROW.key,
         ownerKey: 'uncaptured',
+        authority: { kind: 'desktop' },
         runs: [],
         notice: { message: 'web-01 is not connected', recovery: 'reconnect', severity: 'failure' }
       }
@@ -133,7 +271,14 @@ describe('useSelectedAutomationRunHistory', () => {
     await render(input)
 
     expect(settled(input)).toEqual([
-      { automationId: 'a-1', rowKey: DESKTOP_ROW.key, ownerKey: 'uncaptured', runs, notice: null }
+      {
+        automationId: 'a-1',
+        rowKey: DESKTOP_ROW.key,
+        ownerKey: 'uncaptured',
+        authority: { kind: 'desktop' },
+        runs,
+        notice: null
+      }
     ])
   })
 
@@ -155,6 +300,7 @@ describe('useSelectedAutomationRunHistory', () => {
       automationId: 'a-1',
       rowKey: DESKTOP_ROW.key,
       ownerKey: 'uncaptured',
+      authority: { kind: 'desktop' },
       runs: [],
       notice: null
     })
@@ -178,6 +324,8 @@ describe('useSelectedAutomationRunHistory', () => {
     // The ID alone is unique only inside one authority, so the outcome carries
     // the owner and the pane can refuse a result read for a different host.
     expect(settled(input).at(-1)?.ownerKey).toBe(ownerKey(owner))
+    expect(settled(input).at(-1)?.authority).toEqual(owner.authority)
+    expect(mocks.dispatch.mock.calls[0][3]).toEqual(owner.authority)
   })
 
   it('clears the pane when nothing is selected', async () => {
@@ -186,7 +334,7 @@ describe('useSelectedAutomationRunHistory', () => {
     await render(input)
 
     expect(settled(input)).toEqual([
-      { automationId: null, rowKey: null, ownerKey: null, runs: [], notice: null }
+      { automationId: null, rowKey: null, ownerKey: null, authority: null, runs: [], notice: null }
     ])
     expect(mocks.dispatch).not.toHaveBeenCalled()
   })

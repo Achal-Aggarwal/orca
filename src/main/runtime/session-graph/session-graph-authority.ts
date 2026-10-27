@@ -2,7 +2,8 @@ import { resolveQualifiedFolderWorkspaceResult } from '../../../shared/folder-wo
 import {
   getRepoExecutionHostId,
   getRepoSshConnectionId,
-  parseExecutionHostId
+  parseExecutionHostId,
+  type ExecutionHostId
 } from '../../../shared/execution-host'
 import { WORKSPACE_ON_OTHER_RUNTIME } from '../../../shared/protocol-version'
 import type { OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree as ResolveBrowserNetworkExecutionHostForWorktreeMethods } from '../terminal/launch/terminal-workspace-scope'
@@ -155,7 +156,10 @@ export abstract class OrcaRuntimeWithTransitionGraphReloadToTerminalState extend
     }
   }
 
-  protected resolveFolderWorkspaceSelector(selector: string): FolderWorkspace | null {
+  protected resolveFolderWorkspaceSelector(
+    selector: string,
+    requiredHostId?: ExecutionHostId
+  ): FolderWorkspace | null {
     const workspaceSelector = selector.startsWith('id:') ? selector.slice(3) : selector
     const parsed = parseWorkspaceKey(workspaceSelector)
     if (parsed?.type !== 'folder') {
@@ -167,7 +171,8 @@ export abstract class OrcaRuntimeWithTransitionGraphReloadToTerminalState extend
         projectGroups: this.store?.getProjectGroups?.() ?? [],
         repos: this.store?.getRepos() ?? []
       },
-      parsed.folderWorkspaceId
+      parsed.folderWorkspaceId,
+      requiredHostId
     )
     if (result.kind !== 'selected') {
       throw new Error(result.kind === 'missing' ? 'selector_not_found' : 'selector_ambiguous')

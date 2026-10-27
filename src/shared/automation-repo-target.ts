@@ -52,7 +52,7 @@ export function automationRequiresHostReselection(
     automation.executionTargetType === 'local' &&
     automation.executionTargetId === 'local' &&
     automation.executionTargetGeneration === undefined &&
-    !!automation.runContext &&
+    automation.runContext !== undefined &&
     !!repo &&
     !repo.connectionId?.trim() &&
     parseExecutionHostId(repo.executionHostId)?.kind === 'ssh'

@@ -20,6 +20,7 @@ export function createAutomationRunActions({
   const {
     projectHostSetups,
     sshConnectionStates,
+    sshStateByEnvironment,
     runtimeStatusByEnvironmentId,
     repoForRow,
     worktreeForRow
@@ -45,6 +46,7 @@ export function createAutomationRunActions({
       workspace,
       projectHostSetups,
       sshConnectionStates,
+      sshStateByEnvironment,
       runtimeStatusByEnvironmentId,
       automationHostTarget: rowHostTarget,
       sourceHostAvailability: automationSourceHostAvailabilityByRowKey.get(row.key)

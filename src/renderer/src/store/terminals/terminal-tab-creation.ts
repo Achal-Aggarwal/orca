@@ -1,3 +1,4 @@
+import { resolveTerminalCreatedShell } from './terminal-created-shell'
 import { warnIfZCodeCannotOpenSession } from '@/components/terminal-pane/zcode-missing-tui-notice'
 import { clearWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
@@ -20,7 +21,6 @@ import { dedupeTabOrder } from '../../../../shared/workspace-layout/tab-order'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { emptySplitGroup, insertSplitGroup } from '../slices/tabs/tabs-group-actions'
 import { ownsGlobalSelection } from '../global-selection-owner'
-import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import {
@@ -28,11 +28,6 @@ import {
   terminalTabCreateCommand,
   withMainTerminalFacts
 } from './terminal-tab-create-through-layout-owner'
-import {
-  getRemoteConnectionIdForWorktree,
-  resolveCreatedTabShellOverride,
-  worktreeUsesWslPath
-} from './terminal-workspace-routing'
 import type { AppState } from '../types'
 import { normalizeTabStartupCommand } from './terminal-startup-queues'
 
@@ -91,29 +86,12 @@ export function createTerminalTabCreationActions(
         const quickCommandLabel = options?.quickCommandLabel?.trim()
         const startupCwd = options?.startupCwd
         const facts = options?.executionFacts
-        const remoteConnectionId = facts
-          ? facts.connectionId
-          : getRemoteConnectionIdForWorktree(s, worktreeId)
-        const isRemoteWorktree = facts?.isRemote ?? Boolean(remoteConnectionId)
-        const isWslWorktree = facts?.isWsl ?? worktreeUsesWslPath(s, worktreeId)
-        const createdShellOverride = resolveCreatedTabShellOverride(
+        const { folder, createdShellOverride } = resolveTerminalCreatedShell(
+          s,
+          worktreeId,
           shellOverride,
-          s.settings?.terminalWindowsShell,
-          // Why: SSH PTYs ignore local Windows shell selection; a local shell icon would mislabel a remote terminal.
-          isRemoteWorktree,
+          options,
           facts
-            ? facts.platform
-            : remoteConnectionId
-              ? ((s.sshConnectionStates.get(remoteConnectionId)
-                  ?.remotePlatform as NodeJS.Platform | null) ?? null)
-              : null,
-          // Why: new terminals enter the worktree's repo-scoped WSL distro even when the global Windows shell is PowerShell/cmd.exe.
-          isWslWorktree,
-          facts
-            ? facts.projectRuntime
-            : isRemoteWorktree || options?.forceHostRuntime
-              ? undefined
-              : getLocalProjectExecutionRuntimeContext(s, worktreeId)
         )
         tab = {
           id,
@@ -203,7 +181,7 @@ export function createTerminalTabCreationActions(
           groupId: group.id,
           worktreeId,
           contentType: 'terminal' as const,
-          ...(facts ? { executionHostId: facts.hostId } : {}),
+          ...(facts || folder ? { executionHostId: facts?.hostId ?? folder?.hostId } : {}),
           label: tab.title,
           ...(tab.quickCommandLabel?.trim()
             ? { quickCommandLabel: tab.quickCommandLabel.trim() }

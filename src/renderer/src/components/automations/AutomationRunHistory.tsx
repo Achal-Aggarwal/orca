@@ -275,9 +275,7 @@ export function AutomationRunHistory({
               if (!run) {
                 return null
               }
-              const runWorktree = run.workspaceId
-                ? (worktreeMap.get(run.workspaceId) ?? null)
-                : null
+              const runWorktree = run.workspaceId ? (worktreeMap.get(run.id) ?? null) : null
               const workspaceLabel = getAutomationRunWorkspaceDisplay({
                 run,
                 worktree: runWorktree

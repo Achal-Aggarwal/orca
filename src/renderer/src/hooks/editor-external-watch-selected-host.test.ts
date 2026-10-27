@@ -1,4 +1,6 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { useAppStore } from '@/store'
+import { subscribeEditorRuntimeFileWatch } from './editor-runtime-file-watch'
 import type { AppState } from '@/store/types'
 import { makeFolderWorkspace, makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import { getDefaultSettings } from '../../../shared/constants'
@@ -9,6 +11,91 @@ import {
 
 type SelectedHostState = EditorExternalWatchTargetState &
   Pick<AppState, 'activeWorkspaceExecutionHostId'>
+
+it('retains the inherited folder root through subscription, events and reconnect catch-up in both orders', async () => {
+  for (const reverse of [false, true]) {
+    const rows = [
+      makeFolderWorkspace({ id: 'same-folder', folderPath: '/local', executionHostId: 'local' }),
+      makeFolderWorkspace({ id: 'same-folder', folderPath: '/remote', projectGroupId: 'inherited' })
+    ]
+    const state: SelectedHostState = {
+      ...makeState('folder'),
+      activeWorkspaceExecutionHostId: 'runtime:owner-a',
+      folderWorkspaces: reverse ? rows.toReversed() : rows,
+      projectGroups: [
+        { id: 'inherited', executionHostId: 'runtime:owner-a', connectionId: 'box' } as never
+      ]
+    }
+    const callbacks: { onResponse: (response: unknown) => void }[] = []
+    const subscribe = vi.fn(async (_request, listener) => {
+      callbacks.push(listener)
+      return { unsubscribe: vi.fn() }
+    })
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          subscribe,
+          call: vi.fn(async () => ({
+            id: 'unwatch',
+            ok: true,
+            result: {},
+            _meta: { runtimeId: 'test' }
+          }))
+        }
+      }
+    })
+    useAppStore.setState({ runtimeStatusByEnvironmentId: new Map() })
+    const selected = selectEditorExternalWatchTargets(state).targets[0]
+    expect
+      .soft(selected)
+      .toMatchObject({ runtimeEnvironmentId: 'owner-a', worktreePath: '/remote' })
+    const payload = vi.fn()
+    const error = vi.fn()
+    const stop = subscribeEditorRuntimeFileWatch(
+      { ...selected, runtimeEnvironmentId: 'owner-a' },
+      payload,
+      error
+    )
+    try {
+      await vi.waitFor(() => expect(subscribe).toHaveBeenCalledTimes(1))
+      expect(subscribe.mock.calls[0][0]).toMatchObject({
+        selector: 'owner-a',
+        method: 'files.watch',
+        params: { worktree: 'id:folder:same-folder' }
+      })
+      callbacks[0].onResponse({
+        id: 'event',
+        ok: true,
+        result: {
+          type: 'changed',
+          worktree: 'folder:same-folder',
+          events: [{ kind: 'update', absolutePath: '/remote/a.txt' }]
+        },
+        _meta: { runtimeId: 'test' }
+      })
+      expect.soft(payload).toHaveBeenCalledWith({
+        worktreePath: '/remote',
+        events: [{ kind: 'update', absolutePath: '/remote/a.txt' }]
+      })
+      useAppStore.setState({
+        runtimeStatusByEnvironmentId: new Map([
+          ['owner-a', { hostContactEpoch: 1, connectionGeneration: 1 } as never]
+        ])
+      })
+      await vi.waitFor(() => expect(payload).toHaveBeenCalledTimes(2))
+      expect.soft(payload).toHaveBeenCalledWith({
+        worktreePath: '/remote',
+        events: [{ kind: 'overflow', absolutePath: '/remote' }],
+        resync: true
+      })
+      expect(error).not.toHaveBeenCalled()
+    } finally {
+      stop()
+      await Promise.resolve()
+      vi.unstubAllGlobals()
+    }
+  }
+})
 
 const hosts = ['host-a', 'host-b'] as const
 function makeState(

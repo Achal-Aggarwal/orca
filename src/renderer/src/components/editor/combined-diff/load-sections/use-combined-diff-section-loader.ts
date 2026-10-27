@@ -16,6 +16,7 @@ import { getDiffSectionLoadErrorMessage } from './combined-diff-section-load-tim
 import { getInitialCombinedDiffSectionLoadIndices } from './combined-diff-initial-section-load'
 import { isUnchangedDiffSectionReload } from './combined-diff-section-load-state'
 import type { CombinedDiffSectionLoadRegistry } from './combined-diff-section-load-registry'
+import { acquireCombinedDiffSectionOperation } from './combined-diff-section-connection'
 
 export function useCombinedDiffSectionLoader({
   entrySet,
@@ -87,17 +88,22 @@ export function useCombinedDiffSectionLoader({
       }
 
       let result: GitDiffResult
+      let operation: DiffSection['operation']
       let error: string | undefined
       try {
-        result = await fetchCombinedDiffSection({
+        operation = acquireCombinedDiffSectionOperation(file, entry.path)
+        const loaded = await fetchCombinedDiffSection({
           branchCompare,
           commitCompare,
           entry,
           file,
           isAllMode,
           isBranchMode,
-          isCommitMode
+          isCommitMode,
+          operation
         })
+        result = loaded.result
+        operation = loaded.operation
       } catch (err) {
         error = getDiffSectionLoadErrorMessage(err)
         result = {
@@ -115,6 +121,11 @@ export function useCombinedDiffSectionLoader({
         return
       }
       loadingIndicesRef.current.delete(index)
+      try {
+        operation?.assertCurrent()
+      } catch {
+        return
+      }
       const invalidatedMidFlight = (sectionLoadTokensRef.current.get(index) ?? 0) !== loadToken
       if (invalidatedMidFlight && !supersededLoadIndicesRef.current.has(index)) {
         // Why: an invalidation landed mid-flight and deferred its reload to this settle point, so
@@ -159,6 +170,20 @@ export function useCombinedDiffSectionLoader({
           modifiedContent: storedContent.modifiedContent
         })
       ) {
+        if (
+          JSON.stringify(current.operation?.provenance) !== JSON.stringify(operation?.provenance)
+        ) {
+          setSections((prev) => {
+            try {
+              operation?.assertCurrent()
+            } catch {
+              return prev
+            }
+            return prev.map((section, i) =>
+              i === index && !section.dirty ? { ...section, operation } : section
+            )
+          })
+        }
         return
       }
       if (wasShowingContent) {
@@ -166,11 +191,17 @@ export function useCombinedDiffSectionLoader({
         setSectionHeights((prev) => removeDiffSectionMeasuredHeight(prev, index))
       }
       setSections((prev) => {
+        try {
+          operation?.assertCurrent()
+        } catch {
+          return prev
+        }
         return prev.map((s, i) =>
           i === index && !s.dirty
             ? {
                 ...s,
                 diffResult: storedResult,
+                operation,
                 originalContent: storedContent.originalContent,
                 modifiedContent: storedContent.modifiedContent,
                 loading: false,

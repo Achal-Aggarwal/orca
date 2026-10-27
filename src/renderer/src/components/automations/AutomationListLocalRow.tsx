@@ -1,3 +1,4 @@
+import type { RuntimeEnvironmentSshBucket } from '../../store/slices/runtime-environment-ssh'
 import React from 'react'
 import { MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import {
@@ -70,6 +71,7 @@ export type AutomationListLocalRowProps = {
   worktreeForRow?: (row: AutomationListRow, repo: Repo | undefined) => Worktree | undefined
   projectHostSetups: readonly ProjectHostSetup[]
   sshConnectionStates: ReadonlyMap<string, Pick<SshConnectionState, 'status'>>
+  sshStateByEnvironment?: ReadonlyMap<string, RuntimeEnvironmentSshBucket>
   runtimeStatusByEnvironmentId: ReadonlyMap<string, RuntimeEnvironmentStatus>
   hostTargetFor: (row: AutomationListRow) => AutomationHostTarget | null
   automationSourceHostAvailabilityByRowKey: ReadonlyMap<string, TaskSourceHostAvailability[]>
@@ -121,6 +123,7 @@ export function AutomationListLocalRow({
   worktreeForRow,
   projectHostSetups,
   sshConnectionStates,
+  sshStateByEnvironment,
   runtimeStatusByEnvironmentId,
   hostTargetFor,
   automationSourceHostAvailabilityByRowKey,
@@ -135,9 +138,13 @@ export function AutomationListLocalRow({
   const allows = (row: AutomationListRow, action: AutomationRowAction): boolean =>
     isActionEnabled?.(row, action) ?? true
   const { automation } = row
-  const automationRepo = repoForRow?.(row) ?? repoMap.get(getAutomationRunRepoId(automation))
+  const automationRepo = repoForRow
+    ? repoForRow(row)
+    : repoMap.get(getAutomationRunRepoId(automation))
   const automationWorktree = automation.workspaceId
-    ? (worktreeForRow?.(row, automationRepo) ?? worktreeMap.get(automation.workspaceId))
+    ? worktreeForRow
+      ? worktreeForRow(row, automationRepo)
+      : worktreeMap.get(automation.workspaceId)
     : null
   const automationRunAvailability = getAutomationTargetAvailability({
     automation,
@@ -145,6 +152,7 @@ export function AutomationListLocalRow({
     workspace: automationWorktree,
     projectHostSetups,
     sshConnectionStates,
+    sshStateByEnvironment,
     runtimeStatusByEnvironmentId,
     automationHostTarget: hostTargetFor(row),
     sourceHostAvailability: automationSourceHostAvailabilityByRowKey.get(row.key)

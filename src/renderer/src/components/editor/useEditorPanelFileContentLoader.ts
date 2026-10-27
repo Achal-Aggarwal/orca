@@ -1,14 +1,12 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback } from 'react'
 import type { OpenFile } from '@/store/slices/editor'
 import { getConnectionIdForFile, isWorktreeConnectionResolved } from '@/lib/connection-context'
 import { useAppStore } from '@/store'
 import { getRuntimeFileReadScope } from '@/runtime/runtime-file-routing'
 import { readEditorCsvFileContent } from './csv/csv-file-content'
-import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import { requireRuntimeTargetForFileOwner } from '@/lib/file-owner-runtime-target'
 import { findWorkspaceFileRoute } from '@/lib/runtime-workspace-file-route'
-import { selectWorktreeHostConnectionPhase } from '@/lib/worktree-host-connection-phase'
 import {
   LOCAL_EXECUTION_HOST_ID,
   toRuntimeExecutionHostId,
@@ -16,6 +14,8 @@ import {
 } from '../../../../shared/execution-host'
 import {
   WORKTREE_OWNER_NOT_READY_ERROR,
+  type EditorPanelFileContentLoader,
+  type UseEditorPanelFileContentLoaderParams,
   type FileContent,
   type InFlightContentRead
 } from './editor-panel-content-types'
@@ -27,26 +27,17 @@ import { editorTabFileAccess, isClientLocalReadOnlyTab } from '@/lib/local-file-
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
 import { chatScratchFileAddress } from '@/runtime/runtime-chat-scratch-file-address'
 import { stampCleanTabDiskBaseline } from './editor-clean-tab-disk-baseline'
-import { applyEditorFileLoadFailure } from './editor-deleted-file-reload'
+import {
+  applyEditorFileLoadFailure,
+  getEditorFileLoadFailureContent
+} from './editor-deleted-file-reload'
+export type { EditorPanelFileContentLoader } from './editor-panel-content-types'
+import {
+  acquireEditorFileOperation,
+  isSameEditorFileOperationIdentity
+} from '@/lib/editor-file-operation-owner'
 
 const inFlightFileReads = new Map<string, InFlightContentRead<FileContent>>()
-
-export type EditorPanelFileContentLoader = (
-  filePath: string,
-  id: string,
-  worktreeId?: string,
-  relativePath?: string,
-  options?: EditorPanelContentLoadOptions
-) => Promise<void>
-
-type UseEditorPanelFileContentLoaderParams = {
-  fileLoadRetryAttemptsRef: MutableRefObject<Record<string, number>>
-  fileReadGenerationCounterRef: MutableRefObject<number>
-  fileReadGenerationRef: MutableRefObject<Record<string, number>>
-  openFilesRef: MutableRefObject<OpenFile[]>
-  outstandingFileReadsRef: MutableRefObject<Record<string, number>>
-  setFileContents: Dispatch<SetStateAction<Record<string, FileContent>>>
-}
 
 function inFlightReadKey(connectionId: string | undefined, filePath: string): string {
   return `${connectionId ?? ''}::${filePath}`
@@ -73,10 +64,41 @@ export function useEditorPanelFileContentLoader({
       fileReadGenerationRef.current[id] = generation
       outstandingFileReadsRef.current[id] = generation
       let readConnectionId: string | undefined
+      let acquisition: ReturnType<typeof acquireEditorFileOperation> | null = null
+      let requestedFile: OpenFile | undefined
+      let requiredLive = false
+      const matchesRequest = (file: OpenFile): boolean =>
+        file.filePath === filePath &&
+        (worktreeId === undefined || file.worktreeId === worktreeId) &&
+        (relativePath === undefined || file.relativePath === relativePath)
+      const requestCurrent = (): boolean => {
+        if (fileReadGenerationRef.current[id] !== generation) {
+          return false
+        }
+        const live = useAppStore.getState().openFiles.find((file) => file.id === id)
+        if ((live && !matchesRequest(live)) || (requiredLive && !live)) {
+          return false
+        }
+        if (requestedFile && live && !isSameEditorFileOperationIdentity(requestedFile, live)) {
+          return false
+        }
+        try {
+          acquisition?.assertCurrent()
+          return true
+        } catch {
+          return false
+        }
+      }
       try {
         const resolvedConnectionId = getConnectionIdForFile(worktreeId ?? null, filePath)
         const connectionId = resolvedConnectionId ?? undefined
-        const restoredOpenFile = openFilesRef.current.find((file) => file.id === id)
+        const liveAtStart = useAppStore.getState().openFiles.find((file) => file.id === id)
+        const restoredOpenFile = liveAtStart ?? openFilesRef.current.find((file) => file.id === id)
+        requestedFile = restoredOpenFile
+        requiredLive = liveAtStart !== undefined
+        if (restoredOpenFile && restoredOpenFile.filePath !== filePath) {
+          return
+        }
         const isLiveTailLogTab =
           restoredOpenFile?.readOnly === true && restoredOpenFile.liveTail === true
         // Why: these tabs name a file on this client, so the worktree's SSH or runtime owner must
@@ -84,7 +106,7 @@ export function useEditorPanelFileContentLoader({
         const isClientLocalTab = restoredOpenFile
           ? isClientLocalReadOnlyTab(restoredOpenFile)
           : false
-        const readTarget: RuntimeClientTarget =
+        let readTarget: RuntimeClientTarget =
           isClientLocalTab && restoredOpenFile?.runtimeEnvironmentId === undefined
             ? { kind: 'local' }
             : requireRuntimeTargetForFileOwner(
@@ -183,6 +205,17 @@ export function useEditorPanelFileContentLoader({
             }
           }
         }
+        if (restoredOpenFile && !matchesRequest(restoredOpenFile)) {
+          return
+        }
+        acquisition =
+          liveAtStart && !isClientLocalTab
+            ? acquireEditorFileOperation(useAppStore.getState, restoredOpenFile)
+            : null
+        if (acquisition) {
+          readTarget = acquisition.context.target
+          readConnectionId = acquisition.context.connectionId
+        }
         const readScope = getRuntimeFileReadScope(readTarget, readConnectionId)
         const access = restoredOpenFile
           ? editorTabFileAccess(useAppStore.getState(), restoredOpenFile)
@@ -191,7 +224,7 @@ export function useEditorPanelFileContentLoader({
           !restoredOpenFile?.isDirty &&
           (!/\.(csv|tsv)$/i.test(filePath) || useAppStore.getState().editorDrafts[id] === undefined)
         // Keep file authorization and editable drafts isolated between concurrent reads.
-        const key = `${inFlightReadKey(readScope, filePath)}::${access?.kind ?? ''}${allowPagedPreview ? '' : '::editable'}`
+        const key = `${inFlightReadKey(readScope, filePath)}::${JSON.stringify(acquisition?.file.operationProvenance)}::${access?.kind ?? ''}${allowPagedPreview ? '' : '::editable'}`
         const registeredRead = inFlightFileReads.get(key)
         if (
           options?.force &&
@@ -228,9 +261,10 @@ export function useEditorPanelFileContentLoader({
           })
         }
         const result = await pending.promise
-        if (fileReadGenerationRef.current[id] !== generation) {
+        if (!requestCurrent()) {
           return
         }
+        acquisition?.assertCurrent()
         if (result.csvPreview && useAppStore.getState().editorDrafts[id] !== undefined) {
           throw new Error(
             'CSV grew too large for editing. Your draft has been kept; reopen the file to preview it.'
@@ -240,44 +274,28 @@ export function useEditorPanelFileContentLoader({
           useAppStore.getState().setCsvPreviewOnly(id, Boolean(result.csvPreview))
         }
         delete fileLoadRetryAttemptsRef.current[id]
-        setFileContents((prev) => ({ ...prev, [id]: result }))
+        setFileContents((prev) => (requestCurrent() ? { ...prev, [id]: result } : prev))
         stampCleanTabDiskBaseline(id, result)
       } catch (err) {
-        if (fileReadGenerationRef.current[id] !== generation) {
+        if (!requestCurrent()) {
           return
         }
-        const hostConnection = selectWorktreeHostConnectionPhase(
+        const failure = getEditorFileLoadFailureContent(
           useAppStore.getState(),
-          worktreeId ?? null
+          worktreeId,
+          readConnectionId,
+          err
         )
-        // Why: a read through an SSH host that is still connecting failed on the connection,
-        // not the file; the retry gate waits for it rather than showing "connection dropped".
-        const hostConnecting =
-          hostConnection.phase === 'connecting' &&
-          readConnectionId !== undefined &&
-          readConnectionId === hostConnection.targetId
-        const message = hostConnecting
-          ? WORKTREE_OWNER_NOT_READY_ERROR
-          : err instanceof Error
-            ? err.message
-            : String(err)
-        // Why: a host may put prose on the message and the machine token on `.code`;
-        // classifiers downstream must see the token, not only its rendering (#21041).
-        const loadErrorCode =
-          !hostConnecting && err instanceof RuntimeRpcCallError ? err.code : undefined
-        const failure: FileContent = {
-          content: '',
-          isBinary: false,
-          loadError: message,
-          ...(loadErrorCode ? { loadErrorCode } : {})
-        }
         applyEditorFileLoadFailure({
           error: err,
           fileId: id,
           filePath,
           tabs: openFilesRef.current,
           failure,
-          setFileContents
+          setFileContents: (update) =>
+            setFileContents((prev) =>
+              requestCurrent() ? (typeof update === 'function' ? update(prev) : update) : prev
+            )
         })
       } finally {
         if (outstandingFileReadsRef.current[id] === generation) {

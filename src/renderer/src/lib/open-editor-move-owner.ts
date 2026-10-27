@@ -45,8 +45,9 @@ function openFileOwner(
     'externalSshTargetId' | 'operationProvenance' | 'runtimeEnvironmentId' | 'worktreeId'
   >
 ): FileOwner {
-  const captured = file.operationProvenance?.generation.route
-  const capturedHost = parseExecutionHostId(captured?.executionHostId)
+  const generation = file.operationProvenance?.generation
+  const captured = generation?.route
+  const capturedHost = parseExecutionHostId(generation?.authority?.at ?? captured?.executionHostId)
   const runtimeEnvironmentId =
     file.runtimeEnvironmentId !== undefined
       ? file.runtimeEnvironmentId?.trim() || null
@@ -58,9 +59,11 @@ function openFileOwner(
     sshHostId:
       capturedHost?.kind === 'ssh'
         ? capturedHost.id
-        : file.externalSshTargetId
-          ? toSshExecutionHostId(file.externalSshTargetId)
-          : undefined
+        : generation?.authority
+          ? null
+          : file.externalSshTargetId
+            ? toSshExecutionHostId(file.externalSshTargetId)
+            : undefined
   }
 }
 

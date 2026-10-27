@@ -13,7 +13,11 @@
  * stays view-only until its authority advertises fencing.
  */
 
-import type { AutomationOwnerRef } from '../../../../shared/automation-owner-ref'
+import { AUTOMATION_ORPHAN_ISSUES } from '../../../../shared/automation-list-scope'
+import type {
+  AutomationAuthorityRef,
+  AutomationOwnerRef
+} from '../../../../shared/automation-owner-ref'
 import { ownerKey } from '../../../../shared/automation-owner-key'
 import type { AutomationOwnerPrecondition } from '../../../../shared/automation-owner-precondition'
 import { translate } from '@/i18n/i18n'
@@ -35,6 +39,7 @@ export type AutomationActionBlock = {
 
 export type AutomationCapturedOwner = {
   owner: AutomationOwnerRef | null
+  authority?: AutomationAuthorityRef
   /** How the authority qualified the row; null when no list metadata was captured at all. */
   selector: AutomationHostRowSelector | null
 }
@@ -92,7 +97,11 @@ export function automationActionAvailability(
     return { kind: 'uncaptured' }
   }
   if (captured.selector.kind === 'orphan') {
-    return ORPHAN_ACTIONS.has(action)
+    const repair =
+      captured.authority &&
+      captured.selector.issue === AUTOMATION_ORPHAN_ISSUES.hostReselection &&
+      (action === 'edit' || action === 'save')
+    return ORPHAN_ACTIONS.has(action) || repair
       ? { kind: 'orphan-fenced', precondition: ORPHAN_OWNER_PRECONDITION }
       : { kind: 'blocked', block: orphanBlock() }
   }
@@ -131,7 +140,7 @@ export function captureAutomationOwners(
 ): Map<string, AutomationCapturedOwner> {
   const captured = new Map<string, AutomationCapturedOwner>()
   for (const { rowKey, row } of rows) {
-    captured.set(rowKey, { owner: row.owner, selector: row.selector })
+    captured.set(rowKey, { owner: row.owner, selector: row.selector, authority: row.authority })
   }
   return captured
 }
@@ -145,7 +154,10 @@ export function capturedAutomationOwnerKey(captured: AutomationCapturedOwner): s
   if (captured.owner) {
     return ownerKey(captured.owner)
   }
-  return captured.selector ? `selector:${captured.selector.kind}` : 'uncaptured'
+  const authority = captured.authority
+    ? ownerKey({ authority: captured.authority, selector: { kind: 'self' } })
+    : ''
+  return captured.selector ? `${authority}selector:${captured.selector.kind}` : 'uncaptured'
 }
 
 export function capturedAutomationOwner(

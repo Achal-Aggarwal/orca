@@ -31,6 +31,8 @@ import type { AutomationCreateDestinationControl } from './use-automation-create
 import type { ExternalAutomationListEntry } from './external-automation-list-entries'
 import type { AutomationListRow } from './automation-list-row-identity'
 import type { AutomationListViewItem } from './automation-list-view'
+import { AutomationDestinationField } from './AutomationDestinationField'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { resetAutomationCapabilityProbes } from './automation-scoped-list-client'
 import {
   addRuntimeProject as addRuntimeProjectFixture,
@@ -82,6 +84,8 @@ export type DetailPaneProps = {
   toggleAutomation: (automation: Automation) => void
   requestDeleteAutomation: (automation: Automation) => void
   openEditDialog: (automation: Automation) => void
+  openAutomationRunPage: (run: AutomationRun) => void
+  recoverSelectedRuns: (action: 'retry') => void
 }
 
 export type EditorDialogProps = {
@@ -93,6 +97,7 @@ export type EditorDialogProps = {
   onNoticeRecover?: (action: string) => void
   repos?: { id: string }[]
   draft?: { projectId: string; workspaceId: string }
+  canSave?: boolean
   onSave: () => void
   onDraftChange: (updater: (current: unknown) => unknown) => void
 }
@@ -172,6 +177,7 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', () => ({
 }))
 
 vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipContent: () => null
@@ -245,7 +251,19 @@ vi.mock('./AutomationsDetailPane', () => ({
 vi.mock('./AutomationEditorDialog', () => ({
   AutomationEditorDialog: (props: EditorDialogProps) => {
     mocks.editorDialog = props
-    return <div data-testid="editor-dialog">{props.open ? 'open' : 'closed'}</div>
+    return (
+      <div data-testid="editor-dialog">
+        {props.open ? 'open' : 'closed'}
+        {props.open && props.editDestination ? (
+          <TooltipProvider>
+            <AutomationDestinationField control={props.editDestination} />
+            <button data-testid="editor-save" disabled={!props.canSave} onClick={props.onSave}>
+              Save changes
+            </button>
+          </TooltipProvider>
+        ) : null}
+      </div>
+    )
   }
 }))
 
@@ -415,6 +433,7 @@ export function installAutomationsPageHarness(): void {
     mocks.deleteDialog = null
     const fixtures = makeStoreState()
     mocks.state = fixtures.state
+    mocks.state.folderWorkspaces = []
     mocks.state.setAutomationHostFilter = mocks.setAutomationHostFilter
     mocks.repoMap = fixtures.repoMap
     mocks.worktreeMap = fixtures.worktreeMap

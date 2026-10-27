@@ -120,8 +120,19 @@ export function useAutomationsPageDestinationState({
     [automationHostTarget, capturedAutomationOwners]
   )
   const automationHostTargetFor = useCallback(
-    (row: { key: string }): AutomationHostTarget | null => automationHostTargetForRowKey(row.key),
-    [automationHostTargetForRowKey]
+    (row: {
+      key: string
+      catalogRef?: StableAutomationCatalogRef | null
+    }): AutomationHostTarget | null => {
+      const authority = row.catalogRef?.authority
+      if (!capturedAutomationOwner(capturedAutomationOwners, row.key).owner && authority) {
+        return authority.kind === 'runtime'
+          ? { kind: 'environment', environmentId: authority.environmentId }
+          : { kind: 'local' }
+      }
+      return automationHostTargetForRowKey(row.key)
+    },
+    [automationHostTargetForRowKey, capturedAutomationOwners]
   )
   const automationAuthorityForRow = useCallback(
     (row: { catalogRef?: StableAutomationCatalogRef | null }): AutomationAuthorityRef => {

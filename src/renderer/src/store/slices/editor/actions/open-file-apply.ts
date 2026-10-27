@@ -109,6 +109,9 @@ export function applyOpenFileToState(
     const updatedPreview = isPreview ? existing.isPreview : false
     const nextExternalSshTargetId = file.externalSshTargetId ?? existing.externalSshTargetId
     const refreshExternalSshProvenance = file.externalSshTargetId !== undefined
+    const nextOperationProvenance = refreshExternalSshProvenance
+      ? operationProvenance
+      : (existing.operationProvenance ?? operationProvenance)
     // Why: a re-click mints a fresh grant; the old one may have expired.
     const nextGrantId = file.terminalArtifactGrantId ?? existing.terminalArtifactGrantId
     const fileContentReloadNonce = shouldRequestExistingFileContentReload(
@@ -140,6 +143,7 @@ export function applyOpenFileToState(
       existing.externalSshTargetId !== nextExternalSshTargetId ||
       existing.terminalArtifactGrantId !== nextGrantId ||
       refreshExternalSshProvenance ||
+      existing.operationProvenance !== nextOperationProvenance ||
       existing.fileContentReloadNonce !== fileContentReloadNonce ||
       existing.readOnly !== nextReadOnly ||
       existing.liveTail !== nextLiveTail
@@ -157,9 +161,7 @@ export function applyOpenFileToState(
               runtimeEnvironmentId,
               externalSshTargetId: nextExternalSshTargetId,
               terminalArtifactGrantId: nextGrantId,
-              operationProvenance: refreshExternalSshProvenance
-                ? operationProvenance
-                : f.operationProvenance,
+              operationProvenance: nextOperationProvenance,
               mode: file.mode,
               diffSource: file.diffSource,
               branchCompare: file.branchCompare,

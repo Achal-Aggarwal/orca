@@ -1,6 +1,6 @@
 import type { Repo } from '../../../../shared/repo-types'
 import { structuralValuesEqual } from '../../../../shared/structural-value-equality'
-import { getRepoHostIdentity } from './repo-host-identity'
+import { getRepoRowIdentity } from './repo-host-identity'
 import { reconcileCatalogRows } from '../../../../shared/catalog-row-reconcile'
 
 // Why: after a drag-reorder we optimistically set `repos`, persist, and main
@@ -18,7 +18,7 @@ export function reconcileFetchedRepos(
   previous: readonly Repo[],
   next: readonly Repo[]
 ): readonly Repo[] {
-  return reconcileCatalogRows(previous, next, getRepoHostIdentity)
+  return reconcileCatalogRows(previous, next, getRepoRowIdentity)
 }
 
 /**

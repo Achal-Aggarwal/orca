@@ -34,6 +34,7 @@ export function AutomationDestinationField({
   return (
     <Field label={label} labelClassName={labelClassName}>
       <HostCombobox
+        notifyOnReselect
         value={selected?.stableKey ?? ''}
         onChange={control.onSelect}
         ariaLabel={label}

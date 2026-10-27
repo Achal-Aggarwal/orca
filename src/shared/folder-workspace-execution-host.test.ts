@@ -11,6 +11,7 @@ import {
   findFolderWorkspaceCandidateRepos,
   resolveFolderWorkspaceHost,
   resolveQualifiedFolderWorkspace,
+  resolveQualifiedFolderWorkspaceResult,
   type FolderWorkspaceHostState
 } from './folder-workspace-execution-host'
 
@@ -64,7 +65,47 @@ function state(overrides: Partial<FolderWorkspaceHostState> = {}): FolderWorkspa
   }
 }
 
+const unavailable = () => new Error('worktree_execution_host_unresolved')
+
 describe('folder workspace execution host', () => {
+  it('keeps absent catalog evidence unknown while honoring own and inherited pins', () => {
+    const row = workspace()
+    expect(resolveQualifiedFolderWorkspaceResult({ folderWorkspaces: [row] }, row.id).kind).toBe(
+      'ambiguous'
+    )
+    expect(
+      resolveQualifiedFolderWorkspaceResult(
+        { folderWorkspaces: [{ ...row, folderPath: undefined }], repos: [], projectGroups: [] },
+        row.id
+      ).kind
+    ).toBe('ambiguous')
+    const inherited = state({
+      repos: [],
+      projectGroups: [
+        { ...state().projectGroups[0], executionHostId: 'runtime:server', connectionId: 'box' }
+      ]
+    })
+    expect(
+      resolveQualifiedFolderWorkspaceResult(inherited, row.id, 'runtime:server')
+    ).toMatchObject({ kind: 'selected', value: { hostId: 'runtime:server', connectionId: 'box' } })
+    expect(
+      resolveQualifiedFolderWorkspaceResult(
+        {
+          ...inherited,
+          folderWorkspaces: [{ ...row, executionHostId: 'local', connectionId: null }]
+        },
+        row.id,
+        'local'
+      )
+    ).toMatchObject({ kind: 'selected', value: { hostId: 'local', connectionId: null } })
+    expect(
+      resolveQualifiedFolderWorkspaceResult(
+        { ...inherited, folderWorkspaces: [{ ...row, executionHostId: 'ssh:own' }] },
+        row.id,
+        'ssh:own'
+      )
+    ).toMatchObject({ kind: 'selected', value: { hostId: 'ssh:own', connectionId: 'own' } })
+  })
   it.each([false, true])(
     'canonicalizes equivalent group pins before selecting a row (%s)',
     (reverse) => {
@@ -75,7 +116,9 @@ describe('folder workspace execution host', () => {
         { ...group, executionHostId: 'ssh:box' as const }
       ]
       catalog.projectGroups = reverse ? groups.toReversed() : groups
-      expect(resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'ssh:box')).toMatchObject({
+      expect(
+        resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'ssh:box', unavailable)
+      ).toMatchObject({
         hostId: 'ssh:box',
         connectionId: 'box',
         workspace: { folderPath: '/work/app' }
@@ -330,13 +373,18 @@ describe('folder workspace execution host', () => {
       const remote = workspace({ executionHostId: 'ssh:box', folderPath: '/remote' })
       const catalog = state({ folderWorkspaces: reverse ? [remote, local] : [local, remote] })
       expect(resolveFolderWorkspaceHost(catalog, 'fw-1')).toEqual({ kind: 'ambiguous' })
-      expect(resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'ssh:box').workspace).toBe(remote)
-      expect(resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'local').workspace).toBe(local)
+      expect(
+        resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'ssh:box', unavailable).workspace
+      ).toBe(remote)
+      expect(resolveQualifiedFolderWorkspace(catalog, 'fw-1', 'local', unavailable).workspace).toBe(
+        local
+      )
       expect(() =>
         resolveQualifiedFolderWorkspace(
           { ...catalog, folderWorkspaces: [remote, { ...remote }] },
           'fw-1',
-          'ssh:box'
+          'ssh:box',
+          unavailable
         )
       ).toThrow('worktree_execution_host_unresolved')
       const group = catalog.projectGroups[0]
@@ -348,7 +396,8 @@ describe('folder workspace execution host', () => {
             projectGroups: [{ ...group, executionHostId: 'ssh:box' }, group]
           },
           'fw-1',
-          'local'
+          'local',
+          unavailable
         )
       ).toThrow('worktree_execution_host_unresolved')
       const runtime = { ...group, executionHostId: 'runtime:server', connectionId: 'nested' }
@@ -356,7 +405,8 @@ describe('folder workspace execution host', () => {
         resolveQualifiedFolderWorkspace(
           { ...catalog, folderWorkspaces: [workspace()], projectGroups: [runtime] },
           'fw-1',
-          'runtime:server'
+          'runtime:server',
+          unavailable
         )
       ).toMatchObject({ hostId: 'runtime:server', connectionId: 'nested' })
     }

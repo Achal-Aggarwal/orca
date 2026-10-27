@@ -121,13 +121,14 @@ export async function listAutomationsForTarget(
  */
 export async function listAutomationRunsForTarget(
   target: AutomationHostTarget,
-  automationId: string
+  automationId: string,
+  expectedEnvironmentPairingRevision?: number
 ): Promise<AutomationRun[]> {
   const result = await callRuntimeRpc<{ runs: AutomationRun[] }>(
     target,
     'automation.runs',
     { automationId },
-    { timeoutMs: 15_000 }
+    { timeoutMs: 15_000, expectedEnvironmentPairingRevision }
   )
   return result.runs
 }

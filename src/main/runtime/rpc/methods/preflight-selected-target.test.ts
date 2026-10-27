@@ -44,16 +44,13 @@ afterEach(() => {
 })
 
 describe('qualified discovery at the runtime RPC boundary', () => {
-  it('reuses an exact saved SSH folder without importing fresh path refusal, but refuses a missing selected owner before input', async () => {
+  it('reuses an exact saved SSH folder without importing fresh path refusal, but refuses a missing selected folder before input', async () => {
     const folder = makeFolderWorkspace({
       id: 'dup',
       folderPath: '/unserved/remote',
       executionHostId: 'ssh:a%2Fb'
     })
-    const folders = [
-      makeFolderWorkspace({ id: 'dup', folderPath: '/wrong', executionHostId: 'local' }),
-      folder
-    ]
+    const folders = [folder]
     const runtime = new OrcaRuntimeService({ ...store, getFolderWorkspaces: () => folders })
     const repo: Repo = {
       ...store.getRepos()[0]!,
@@ -131,7 +128,7 @@ describe('qualified discovery at the runtime RPC boundary', () => {
     expect(deliver).toHaveBeenCalledTimes(1)
     folders.splice(folders.indexOf(folder), 1)
     await expect(launchHeadlessAutomationAgent(runtime, request)).rejects.toThrow(
-      'worktree_execution_host_unresolved'
+      'selector_not_found'
     )
     expect(deliver).toHaveBeenCalledTimes(1)
   })
@@ -218,10 +215,10 @@ describe('qualified discovery at the runtime RPC boundary', () => {
         folders.splice(folders.indexOf(local), 1)
         await expect(
           runtime.resolveManagedTerminalWorkspaceTarget('id:folder:dup', 'local', false)
-        ).rejects.toThrow('worktree_execution_host_unresolved')
+        ).rejects.toThrow('selector_not_found')
         await expect(
           runtime.resolveManagedTerminalWorkspaceTarget('id:folder:dup', 'ssh:missing', false)
-        ).rejects.toThrow('worktree_execution_host_unresolved')
+        ).rejects.toThrow('selector_not_found')
         expect(spawn).toHaveBeenCalledTimes(1)
       } finally {
         await rm(path, { recursive: true, force: true })

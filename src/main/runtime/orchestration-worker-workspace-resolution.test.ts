@@ -1,3 +1,4 @@
+import './rpc/unused-default-rpc-methods.test-fixture'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,6 +22,13 @@ vi.mock('electron', () => electronMocks)
 const scanLocalRepoWorktreesForResolution = vi.hoisted(() => vi.fn())
 vi.mock('./repo-worktree-resolution-scan', () => ({ scanLocalRepoWorktreesForResolution }))
 
+import { MIXED_FOLDER } from '../../shared/folder-workspace-host-routing.test-fixture'
+import { formatCliError } from '../../cli/cli-error'
+import { RuntimeRpcFailureError } from '../../cli/runtime/types'
+import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
+import { RpcDispatcher } from './rpc/dispatcher'
+import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
+import { OrchestrationDb } from './orchestration/db'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
@@ -259,6 +267,93 @@ describe('orchestration worker workspace resolution', () => {
     expect(scanLocalRepoWorktreesForResolution).not.toHaveBeenCalled()
   })
 
+  it.each([false, true])(
+    'preserves worker selector recovery before dispatch or launch (reversed=%s)',
+    async (reverse) => {
+      const folder = {
+        ...MIXED_FOLDER,
+        id: 'dup',
+        folderPath: '/workspace'
+      }
+      let folders: FolderWorkspace[] = [
+        { ...folder, executionHostId: 'local' },
+        { ...folder, executionHostId: 'ssh:prod' }
+      ]
+      if (reverse) {
+        folders.reverse()
+      }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the real selector reads the catalog methods supplied by this fixture.
+      const runtime = new OrcaRuntimeService({
+        ...makeStore(),
+        getFolderWorkspaces: () => folders
+      } as never)
+      const db = new OrchestrationDb(':memory:')
+      runtime.setOrchestrationDb(db)
+      const paneKey = 'tab_coord:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      const run = db.createRun({
+        objective: 'folder placement',
+        coordinatorHandle: 'term_coord',
+        coordinatorPaneKey: paneKey
+      })
+      vi.spyOn(runtime, 'getTerminalPaneKey').mockReturnValue(paneKey)
+      vi.spyOn(runtime, 'getLiveTerminalPaneKey').mockReturnValue(paneKey)
+      vi.spyOn(runtime, 'getTerminalProcessIncarnation').mockReturnValue(
+        'runtime_test:term_coord:1'
+      )
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: caller placement reads only this coordinator handle and workspace identity.
+      vi.spyOn(runtime, 'showTerminal').mockResolvedValue({
+        handle: 'term_coord',
+        worktreeId: WORKTREE_ID
+      } as never)
+      vi.spyOn(runtime, 'validateOrchestrationAgentLauncher').mockImplementation(() => {})
+      const createDispatch = vi.spyOn(db, 'createStartingWorkerDispatch')
+      const createTerminal = vi
+        .spyOn(runtime, 'createTerminal')
+        .mockRejectedValue(new Error('unexpected launch'))
+      const sendPrompt = vi.spyOn(runtime, 'sendTerminalAgentPrompt')
+      const dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
+      try {
+        for (const selector of ['folder:dup', 'id:folder:dup']) {
+          for (const missing of [false, true]) {
+            const task = db.createTask({ spec: 'existing folder', runId: run.id })
+            const response = await dispatcher.dispatch({
+              id: `${selector}:${missing}`,
+              authToken: 'fixture-token',
+              orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
+              orchestrationRequestId: `${selector}:${missing}`,
+              method: 'orchestration.workerStart',
+              params: { from: 'term_coord', task: task.id, worktree: selector, agent: 'codex' }
+            })
+            expect(response.ok).toBe(false)
+            if (response.ok) {
+              throw new Error('placement unexpectedly succeeded')
+            }
+            expect(response.error.code).toBe(missing ? 'selector_not_found' : 'selector_ambiguous')
+            expect(
+              formatCliError(new RuntimeRpcFailureError(response), { worktreeSelector: selector })
+            ).toContain('Next step:')
+            expect(db.getDispatchContext(task.id)).toBeUndefined()
+            folders = []
+          }
+          folders = reverse
+            ? [
+                { ...folder, executionHostId: 'ssh:prod' },
+                { ...folder, executionHostId: 'local' }
+              ]
+            : [
+                { ...folder, executionHostId: 'local' },
+                { ...folder, executionHostId: 'ssh:prod' }
+              ]
+        }
+        expect(createDispatch).not.toHaveBeenCalled()
+        expect(createTerminal).not.toHaveBeenCalled()
+        expect(sendPrompt).not.toHaveBeenCalled()
+      } finally {
+        db.close()
+      }
+    }
+  )
+
   it('rejects a folder workspace whose execution host is ambiguous', async () => {
     const folderPath = '/workspace'
     const group = { id: 'group-1', name: 'Group', parentPath: folderPath } as ProjectGroup
@@ -282,7 +377,7 @@ describe('orchestration worker workspace resolution', () => {
     )
 
     await expect(runtime.showManagedTerminalWorkspace('folder:folder-1')).rejects.toThrow(
-      'worktree_execution_host_unresolved'
+      'selector_ambiguous'
     )
     expect(scanLocalRepoWorktreesForResolution).not.toHaveBeenCalled()
   })

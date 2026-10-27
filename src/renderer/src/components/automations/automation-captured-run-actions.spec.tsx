@@ -1,0 +1,301 @@
+import { createElement } from 'react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { expect, it, vi } from 'vitest'
+import type { Automation } from '../../../../shared/automations-types'
+import type { AutomationOwnerRef } from '../../../../shared/automation-owner-ref'
+import type { ProjectHostSetup } from '../../../../shared/project-types'
+import type { Repo } from '../../../../shared/repo-types'
+import type { Worktree } from '../../../../shared/worktree/types'
+import type { AutomationListRow } from './automation-list-row-identity'
+import type { AppState } from '@/store/types'
+import {
+  adoptEndpointRepo,
+  adoptEndpointProjectHostSetup
+} from '../../../../shared/endpoint-catalog-adoption'
+import { withRepoHostOwnership } from '@/store/slices/worktrees/listing/worktree-host-ownership'
+import { mergeFetchedReposForHost } from '@/store/repos/repo-catalog-identity'
+import { getAutomationTargetAvailability } from './automation-target-availability'
+import { createAutomationRunActions } from './automation-run-actions'
+import { useAutomationsPageStoreState } from './use-automations-page-store-state'
+import { AutomationListLocalRow } from './AutomationListLocalRow'
+import { AutomationDetail } from './AutomationDetail'
+import { TooltipProvider } from '@/components/ui/tooltip'
+
+export function registerCapturedAutomationRunActionTests({
+  actionMocks,
+  makeAutomation,
+  makeRepo,
+  makeWorkspace,
+  makeProjectHostSetup
+}: {
+  actionMocks: {
+    rpc: ReturnType<typeof vi.fn>
+    interaction: ReturnType<typeof vi.fn>
+    error: ReturnType<typeof vi.fn>
+    state: AppState
+  }
+  makeAutomation: (overrides?: Partial<Automation>) => Automation
+  makeRepo: (overrides?: Partial<Repo>) => Repo
+  makeWorkspace: (overrides?: Partial<Worktree>) => Worktree
+  makeProjectHostSetup: (overrides?: Partial<ProjectHostSetup>) => ProjectHostSetup
+}): void {
+  it.each([
+    ['local', false],
+    ['local', true],
+    ['ssh', false],
+    ['ssh', true],
+    ['runtime', false],
+    ['runtime', true],
+    ['runtime-ssh', false],
+    ['runtime-ssh', true],
+    ['runtime-ssh-offline', false],
+    ['runtime-ssh-offline', true],
+    ['ambiguous', false],
+    ['ambiguous', true]
+  ] as const)(
+    'runs the canonical %s definition through its captured RPC with copied IDs, reversed=%s',
+    async (kind, reverse) => {
+      vi.clearAllMocks()
+      const isRuntime =
+        kind === 'runtime' || kind === 'runtime-ssh' || kind === 'runtime-ssh-offline'
+      const blocked = kind === 'ambiguous' || kind === 'runtime-ssh-offline'
+      const blockedMessage =
+        kind === 'ambiguous'
+          ? 'The target project is no longer available.'
+          : 'Connect this SSH host before running manually.'
+      const isSsh = kind === 'ssh' || kind === 'runtime-ssh' || kind === 'runtime-ssh-offline'
+      const host = isRuntime ? 'runtime:gpu' : isSsh ? 'ssh:box' : 'local'
+      const owner: AutomationOwnerRef = {
+        authority: isRuntime
+          ? { kind: 'runtime', environmentId: 'gpu', pairingRevision: 4 }
+          : { kind: 'desktop' },
+        selector: isSsh ? { kind: 'ssh', targetId: 'box', targetGeneration: 7 } : { kind: 'self' }
+      }
+      const saved = makeAutomation({
+        enabled: false,
+        agentId: 'claude',
+        executionTargetType: isSsh ? 'ssh' : 'local',
+        executionTargetId: isSsh ? 'box' : 'local',
+        runContext: {
+          kind: 'workspace-run',
+          projectId: 'project-1',
+          projectHostSetupId: 'setup-1',
+          repoId: 'repo-1',
+          path: '/repo',
+          hostId: isSsh ? 'ssh:box' : isRuntime ? 'local' : host
+        }
+      })
+      const before = structuredClone(saved)
+      if (kind === 'ambiguous') {
+        saved.runContext = null
+        before.runContext = null
+      }
+      const target = { kind: 'environment' as const, environmentId: 'gpu' }
+      const runtimeRepos = ['local', 'ssh:box'].map((executionHostId) =>
+        adoptEndpointRepo(
+          target,
+          makeRepo({
+            executionHostId: executionHostId === 'local' ? 'local' : 'ssh:box',
+            connectionId: executionHostId === 'local' ? null : 'box'
+          })
+        )
+      )
+      const repos = [
+        ...['local', 'ssh:box'].map((executionHostId) =>
+          makeRepo({
+            executionHostId: executionHostId === 'local' ? 'local' : 'ssh:box'
+          })
+        ),
+        ...mergeFetchedReposForHost([], runtimeRepos, 'runtime:gpu')
+      ]
+      const worktrees = [
+        makeWorkspace({ hostId: 'local' }),
+        makeWorkspace({ hostId: 'ssh:box' }),
+        ...(['local', 'ssh:box'] as const).map((hostId) =>
+          withRepoHostOwnership(makeWorkspace({ hostId }), 'runtime:gpu')
+        )
+      ]
+      if (reverse) {
+        repos.reverse()
+        worktrees.reverse()
+      }
+      const row: AutomationListRow = {
+        key: `row-${kind}`,
+        automation: saved,
+        hostLabel: kind,
+        usageSummary: null,
+        catalogRef: {
+          authority:
+            owner.authority.kind === 'runtime'
+              ? { kind: 'runtime', environmentId: 'gpu' }
+              : { kind: 'desktop' },
+          selector: isSsh ? { kind: 'ssh', targetId: 'box' } : { kind: 'self' }
+        }
+      }
+      // SAFETY: the store hook reads only these slice values; mutation/editor paths are not mounted.
+      actionMocks.state = {
+        repos,
+        worktreesByRepo: { 'repo-1': worktrees },
+        folderWorkspaces: [],
+        projectHostSetups: [
+          makeProjectHostSetup({ hostId: 'local' }),
+          makeProjectHostSetup({ hostId: 'ssh:box' }),
+          ...(['local', 'ssh:box'] as const).map((hostId) =>
+            adoptEndpointProjectHostSetup(
+              target,
+              makeProjectHostSetup({
+                hostId,
+                connectionId: hostId === 'local' ? null : 'box',
+                executionHostId: hostId
+              })
+            )
+          )
+        ],
+        sshConnectionStates: new Map(
+          kind === 'runtime-ssh-offline'
+            ? [['box', { status: 'connected' }]]
+            : isRuntime
+              ? reverse
+                ? [['box', { status: 'auth-failed' }]]
+                : []
+              : [['box', { status: 'connected' }]]
+        ),
+        sshStateByEnvironment: new Map([
+          [
+            'gpu',
+            {
+              targetsHydrated: true,
+              targetLabels: new Map([['box', 'Server box']]),
+              targetGenerations: new Map([['box', 7]]),
+              removedTargetLabels: new Map(),
+              connectionStates: new Map([
+                ['box', { status: kind === 'runtime-ssh-offline' ? 'disconnected' : 'connected' }]
+              ])
+            }
+          ]
+        ]),
+        sshTargetLabels: new Map(),
+        runtimeEnvironments: [],
+        runtimeStatusByEnvironmentId: new Map(),
+        settings: { disabledTuiAgents: ['claude'] },
+        recordFeatureInteraction: actionMocks.interaction
+      } as unknown as AppState
+      let store!: ReturnType<typeof useAutomationsPageStoreState>
+      let runNow!: () => Promise<void>
+      const hostTargetFor = () =>
+        isRuntime
+          ? { kind: 'environment' as const, environmentId: 'gpu' }
+          : { kind: 'local' as const }
+      function Controls() {
+        store = useAutomationsPageStoreState()
+        const repo = store.repoForRow(row)
+        const workspace = store.worktreeForRow(row, repo)
+        const availability = getAutomationTargetAvailability({
+          automation: saved,
+          repo,
+          workspace,
+          projectHostSetups: store.projectHostSetups,
+          sshConnectionStates: store.sshConnectionStates,
+          sshStateByEnvironment: store.sshStateByEnvironment,
+          automationHostTarget: hostTargetFor()
+        })
+        return createElement(
+          TooltipProvider,
+          null,
+          createElement(AutomationListLocalRow, {
+            ...store,
+            row,
+            selectedRowKey: row.key,
+            isSelectedLocal: true,
+            lastRunByAutomationId: new Map(),
+            relativeNow: 1,
+            hostTargetFor,
+            automationSourceHostAvailabilityByRowKey: new Map(),
+            onSelect: vi.fn(),
+            onRunNow: () => void runNow(),
+            onEdit: vi.fn(),
+            onToggle: vi.fn(),
+            onDelete: vi.fn()
+          }),
+          createElement(AutomationDetail, {
+            automation: saved,
+            runs: [],
+            projectName: repo?.displayName ?? 'Missing',
+            workspaceName: workspace?.displayName ?? 'Missing',
+            projectDefaultBaseRef: null,
+            runNowAvailability: availability,
+            now: 1,
+            onRunNow: () => void runNow(),
+            onEdit: vi.fn(),
+            onToggle: vi.fn(),
+            onDelete: vi.fn()
+          })
+        )
+      }
+      render(createElement(Controls))
+      expect(store.repoForRow(row)?.executionHostId).toBe(kind === 'ambiguous' ? undefined : host)
+      expect(store.worktreeForRow(row, store.repoForRow(row))?.hostId).toBe(
+        kind === 'ambiguous' ? undefined : isRuntime && isSsh ? 'ssh:box' : host
+      )
+      actionMocks.rpc.mockResolvedValue({ run: { id: 'returned-run' } })
+      const refresh = vi.fn(async () => undefined)
+      // SAFETY: runNow reads these page members; editor and fallback transport are not installed.
+      const actions = createAutomationRunActions({
+        store,
+        local: {},
+        destination: {
+          automationHostTargetFor: () =>
+            isRuntime ? { kind: 'environment', environmentId: 'gpu' } : { kind: 'local' },
+          automationDispatchContext: {
+            authority: { kind: 'desktop' },
+            capturedOwners: new Map([[row.key, { owner, selector: owner.selector }]])
+          },
+          reportOwnerAction: vi.fn(),
+          invalidateRowHost: vi.fn()
+        },
+        sourceAvailability: { automationSourceHostAvailabilityByRowKey: new Map() },
+        pageRefresh: { hydratePersistedUIState: refresh, refresh }
+      } as unknown as Parameters<typeof createAutomationRunActions>[0])
+      runNow = () => actions.runNow(row)
+      const detailButton = screen.getByRole('button', { name: 'Run Now' })
+      expect(detailButton.hasAttribute('disabled')).toBe(blocked)
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('button', { name: 'Automation actions' }))
+      const item = await screen.findByRole('menuitem', {
+        name: blocked ? blockedMessage : 'Run Now'
+      })
+      expect(item.getAttribute('aria-disabled')).toBe(blocked ? 'true' : null)
+      await user.keyboard('{Escape}')
+      if (blocked) {
+        await runNow()
+      } else {
+        await user.click(detailButton)
+        await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2))
+      }
+      if (blocked) {
+        expect(actionMocks.error).toHaveBeenCalledWith(blockedMessage)
+        expect(actionMocks.rpc).not.toHaveBeenCalled()
+        expect(saved).toEqual(before)
+        return
+      }
+      expect(actionMocks.error).not.toHaveBeenCalled()
+      expect(actionMocks.rpc).toHaveBeenCalledOnce()
+      expect(actionMocks.rpc).toHaveBeenCalledWith(
+        isRuntime ? { kind: 'environment', environmentId: 'gpu' } : { kind: 'local' },
+        'automation.runNow',
+        {
+          id: saved.id,
+          expectedOwner: {
+            selector: isSsh
+              ? { kind: 'ssh', targetId: 'box', targetGeneration: 7 }
+              : { kind: 'self' }
+          }
+        },
+        expect.objectContaining(isRuntime ? { expectedEnvironmentPairingRevision: 4 } : {})
+      )
+      expect(refresh).toHaveBeenCalledTimes(2)
+      expect(saved).toEqual(before)
+    }
+  )
+}

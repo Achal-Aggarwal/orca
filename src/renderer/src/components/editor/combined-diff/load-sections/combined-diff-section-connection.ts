@@ -1,5 +1,15 @@
 import { getConnectionIdForFile } from '@/lib/connection-context'
 import { joinPath } from '@/lib/path'
+import { useAppStore } from '@/store'
+import { acquireEditorFileOperation } from '@/lib/editor-file-operation-owner'
+import type { OpenFile } from '@/store/slices/editor'
+
+export function acquireCombinedDiffSectionOperation(file: OpenFile, sectionPath: string) {
+  return acquireEditorFileOperation(useAppStore.getState, file, {
+    filePath: joinPath(file.filePath, sectionPath),
+    worktreePath: file.filePath
+  })
+}
 
 /**
  * Resolve the SSH connectionId that owns a combined-diff section's file.

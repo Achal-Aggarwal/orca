@@ -6,14 +6,19 @@ import {
 } from '../../../shared/local-windows-terminal-runtime'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
 import type { StartupCwdFallback } from '../../../shared/startup-cwd-fallback'
-import type { TerminalStartupCwdMissingDirFallback } from '../../../shared/terminal-startup-cwd'
+import {
+  resolveTerminalStartupCwd,
+  type TerminalStartupCwdMissingDirFallback
+} from '../../../shared/terminal-startup-cwd'
+import type { TerminalWorkspaceLaunchScope } from '../../runtime/runtime-legacy-worker-terminal-recovery-types'
 import { isWslUncPath, toWindowsWslPath } from '../../../shared/wsl-paths'
 import type { CodexAccountSelectionTarget } from '../../codex-accounts/runtime-selection'
 import { resolveWslSessionContext } from '../../daemon/wsl-session-context'
 import {
-  resolveLocalProjectRuntimeForWorktreeId,
+  resolvePlainTerminalWorkspace,
+  resolvePlainTerminalProjectRuntime,
   resolveLocalPtyOptions,
-  type ProjectRuntimeResolutionStore
+  type LaunchScopeRuntimeStore
 } from '../../local-project-runtime-resolution'
 import type { PtySpawnResult } from '../../providers/pty-provider-contract'
 import { normalizeWindowsTerminalCwd } from '../../providers/windows-shell-args'
@@ -24,7 +29,13 @@ import { probeLocalStartupCwdDirectory } from './host-env/startup-cwd-directory-
 // TEMPORARY (row 13b removes it): the window uses the renderer's runtime; the host reads the store.
 export type PtySpawnProjectRuntimeSource =
   | { kind: 'sent'; projectRuntime: ProjectExecutionRuntimeResolution | undefined }
-  | { kind: 'store'; store: ProjectRuntimeResolutionStore | undefined }
+  | {
+      kind: 'store'
+      store: LaunchScopeRuntimeStore | undefined
+      workspace?: TerminalWorkspaceLaunchScope
+      connectionId?: string | null
+      tabId?: string
+    }
 
 export type PtySpawnStartupTarget = {
   cwd: string | undefined
@@ -62,23 +73,53 @@ export async function resolvePtySpawnStartupTarget(
   args: PtySpawnStartupArgs
 ): Promise<PtySpawnStartupTarget> {
   const source = args.projectRuntimeSource
+  // A live pane and a quoted launch already own their runtime; only a fresh plain start derives it.
+  const workspace =
+    source.kind === 'store'
+      ? args.preAdopted || args.plannedPty
+        ? source.workspace
+        : resolvePlainTerminalWorkspace(
+            source.store,
+            args.worktreeId,
+            source.connectionId,
+            source.workspace
+          )
+      : undefined
+  const startupArgs = workspace
+    ? {
+        ...args,
+        resolveStartupCwd: (
+          _id: string | undefined,
+          cwd: string | undefined,
+          fallback?: TerminalStartupCwdMissingDirFallback
+        ) => resolveTerminalStartupCwd(workspace.path, cwd, fallback)
+      }
+    : args
   const terminalRuntimeOptions =
     args.plannedPty ??
     resolveLocalPtyOptions(
       args.getSettings?.(),
-      source.kind === 'sent'
-        ? source.projectRuntime
-        : resolveLocalProjectRuntimeForWorktreeId(source.store, args.worktreeId),
+      args.preAdopted
+        ? undefined
+        : source.kind === 'sent'
+          ? source.projectRuntime
+          : resolvePlainTerminalProjectRuntime(
+              source.store,
+              args.worktreeId,
+              workspace,
+              source.tabId,
+              source.connectionId
+            ),
       args.shellOverride,
       process.env.COMSPEC || 'powershell.exe'
     )
   const startup = args.preAdopted
     ? {
-        cwd: args.resolveStartupCwd(args.worktreeId, args.cwd),
+        cwd: args.cwd,
         startupCwdFallback: undefined,
         correctStartupCwd: undefined
       }
-    : await resolveStartupCwdWithFallback(args, terminalRuntimeOptions)
+    : await resolveStartupCwdWithFallback(startupArgs, terminalRuntimeOptions)
   const expectedWslDistro =
     resolveWslSessionContext({
       cwd: startup.cwd,
@@ -89,7 +130,7 @@ export async function resolvePtySpawnStartupTarget(
   return {
     ...startup,
     requestedCwd: startup.startupCwdFallback
-      ? args.resolveStartupCwd(args.worktreeId, args.cwd)
+      ? startupArgs.resolveStartupCwd(args.worktreeId, args.cwd)
       : startup.cwd,
     terminalRuntimeOptions,
     expectedWslDistro,

@@ -14,10 +14,15 @@ import { resolveWebSessionVisibleTabId } from '@/runtime/web-session-focus-inten
 export function activateTerminalTabOnOwner(
   worktreeId: string,
   tabId: string,
-  leafId: string | null
+  leafId: string | null,
+  ownerEnvironmentId?: string | null,
+  expectedPairingRevision?: number
 ): void {
   const state = useAppStore.getState()
-  const environmentId = runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(state, worktreeId)
+  const environmentId =
+    ownerEnvironmentId === undefined
+      ? runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(state, worktreeId)
+      : ownerEnvironmentId
   if (!environmentId || !isWebRuntimeSessionActive(environmentId)) {
     return
   }
@@ -26,6 +31,7 @@ export function activateTerminalTabOnOwner(
     tabId,
     environmentId,
     leafId,
+    expectedPairingRevision,
     expectedCurrentLocalTabId: resolveWebSessionVisibleTabId(state, worktreeId)
   })
 }

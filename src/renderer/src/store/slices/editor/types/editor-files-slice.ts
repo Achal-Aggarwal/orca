@@ -69,6 +69,12 @@ export type EditorFilesSlice = {
     onShown?: (result: EditorOpenResult | null) => void
   ) => EditorOpenResult | null
   openNewMarkdownInActiveWorkspace: (groupId: string) => Promise<void>
+  acquireEditorFileOperationProvenance: (
+    file: OpenFile,
+    selected?: OpenFile['operationProvenance']
+  ) => OpenFile & {
+    operationProvenance: NonNullable<OpenFile['operationProvenance']>
+  }
   // Why: sequences openFile/setMarkdownViewMode/reveal around an async Monaco remount. See docs/markdown-internal-link-opening-design.md.
   activateMarkdownLink: (
     rawHref: string | undefined,
@@ -90,7 +96,7 @@ export type EditorFilesSlice = {
       | 'runtimeEnvironmentId'
       | 'externalSshTargetId'
     > &
-      Partial<Pick<OpenFile, 'terminalArtifactGrantId' | 'readOnly'>>,
+      Partial<Pick<OpenFile, 'terminalArtifactGrantId' | 'readOnly' | 'operationProvenance'>>,
     options?: { anchor?: string | null; targetGroupId?: string; sourceFileId?: string }
   ) => void
   makePreviewFilePermanent: (fileId: string, tabId?: string) => void

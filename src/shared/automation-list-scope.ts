@@ -62,7 +62,8 @@ export const AUTOMATION_ORPHAN_ISSUES = {
   projectMissing: 'Its project no longer exists, so its host cannot be resolved.',
   projectUnverified: 'Its project could not be checked from here, so its host is unconfirmed.',
   workspaceHostAmbiguous: 'Its workspace spans more than one host, so it has no single owner.',
-  malformed: 'Its stored host record is incomplete.'
+  malformed: 'Its stored host record is incomplete.',
+  hostReselection: 'Edit this automation and reselect its host before running it.'
 } as const
 
 /** Where a record's workspace executes; `unpinned` leaves the repo to decide. */
@@ -176,7 +177,13 @@ export function projectAutomationSelector(
     return orphan(AUTOMATION_ORPHAN_ISSUES.projectMissing)
   }
   // A local record whose project points at an SSH connection contradicts itself.
-  return connectionId ? orphan(AUTOMATION_ORPHAN_ISSUES.malformed) : { kind: 'self' }
+  return connectionId
+    ? orphan(
+        context.requiresHostReselection?.(automation)
+          ? AUTOMATION_ORPHAN_ISSUES.hostReselection
+          : AUTOMATION_ORPHAN_ISSUES.malformed
+      )
+    : { kind: 'self' }
 }
 
 /** The orphan diagnoses that answer "does this record still have one usable host?" */
@@ -185,6 +192,7 @@ export type AutomationCapturedHostIssue =
   | typeof AUTOMATION_ORPHAN_ISSUES.targetReplaced
   | typeof AUTOMATION_ORPHAN_ISSUES.workspaceHostAmbiguous
   | typeof AUTOMATION_ORPHAN_ISSUES.malformed
+  | typeof AUTOMATION_ORPHAN_ISSUES.hostReselection
 
 // Keyed by the union, not a list of it: a list stays valid when the union grows, so a
 // fourth diagnosis would compile while never reaching dispatch. This makes omitting it here
@@ -192,6 +200,7 @@ export type AutomationCapturedHostIssue =
 const CAPTURED_HOST_ISSUES: Record<AutomationCapturedHostIssue, true> = {
   [AUTOMATION_ORPHAN_ISSUES.targetMissing]: true,
   [AUTOMATION_ORPHAN_ISSUES.malformed]: true,
+  [AUTOMATION_ORPHAN_ISSUES.hostReselection]: true,
   [AUTOMATION_ORPHAN_ISSUES.targetReplaced]: true,
   // No single owner is as unrunnable as no owner: dispatching would pick a host the user never chose.
   [AUTOMATION_ORPHAN_ISSUES.workspaceHostAmbiguous]: true

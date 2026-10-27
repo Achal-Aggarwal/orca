@@ -71,7 +71,13 @@ export async function prepareRuntimePtySpawn(
     sessionId: ctx.sessionId,
     shellOverride: args.shellOverride,
     plannedPty: args.launchRuntime?.pty,
-    projectRuntimeSource: { kind: 'store', store: ctx.deps.store },
+    projectRuntimeSource: {
+      kind: 'store',
+      store: ctx.deps.store,
+      workspace: args.resolvedWorkspace,
+      connectionId: args.connectionId,
+      tabId: args.tabId
+    },
     preAdopted: ctx.preAdoptedStablePane !== null,
     getSettings: ctx.deps.getSettings,
     resolveStartupCwd: (id, cwd, fallback) =>

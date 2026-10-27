@@ -1,12 +1,10 @@
+import { createEditorAutoSaveScan } from './editor-autosave-scan'
 import type { StoreApi } from 'zustand'
 import type { AppState } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
-import { findWorktreeById } from '@/store/slices/worktree-helpers'
-import { getEditorFileOperationContext } from '@/lib/editor-file-operation-owner'
+import { acquireEditorFileOperation } from '@/lib/editor-file-operation-owner'
 import {
-  canAutoSaveOpenFile,
   isAutosaveSuspendedForFile,
-  normalizeAutoSaveDelayMs,
   ORCA_EDITOR_FILE_SAVED_EVENT,
   type EditorFileSavedDetail
 } from './editor-autosave'
@@ -35,7 +33,6 @@ import {
   type EditorSaveResult,
   type EditorSaveTrigger
 } from './editor-save-disk-precondition'
-import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 export type AppStoreApi = Pick<StoreApi<AppState>, 'getState' | 'subscribe'>
 
@@ -100,11 +97,21 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
     saveGeneration.set(key, (saveGeneration.get(key) ?? 0) + 1)
   }
 
+  const captureSave = (file: OpenFile) => {
+    try {
+      const operation = acquireEditorFileOperation(store.getState, file)
+      return { operation, access: editorTabFileAccess(store.getState(), operation.file) }
+    } catch (error) {
+      return { error }
+    }
+  }
+
   const queueSave = (
     file: OpenFile,
     fallbackContent: string,
     trigger: EditorSaveTrigger = 'user'
   ): Promise<EditorSaveResult> => {
+    const acquisition = captureSave(file)
     const scheduleKey = scheduleKeyOf(file.id)
     clearScheduledAutoSave(scheduleKey)
     const queuedGeneration = saveGeneration.get(scheduleKey) ?? 0
@@ -124,6 +131,10 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         if (!liveFile) {
           return 'failed'
         }
+        if (!acquisition.operation) {
+          throw acquisition.error
+        }
+        acquisition.operation.assertCurrent()
         if (liveFile.csvPreviewOnly === true) {
           throw new Error('Large CSV previews are read-only.')
         }
@@ -159,10 +170,8 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         ) {
           return 'failed'
         }
-        const worktree = liveFile.worktreeId
-          ? findWorktreeById(selectWorktreesByRepo(state) ?? {}, liveFile.worktreeId)
-          : null
-        const fileContext = getEditorFileOperationContext(state, liveFile, worktree?.path ?? null)
+        acquisition.operation.assertCurrent()
+        const fileContext = acquisition.operation.mutationContext()
         const connectionId = fileContext.connectionId
         const precondition = editorSavePrecondition(liveFile, trigger)
         if (precondition.kind === 'blocked') {
@@ -184,7 +193,7 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
             fileContext,
             liveFile.filePath,
             contentToSave,
-            editorTabFileAccess(state, liveFile),
+            acquisition.access,
             precondition
           )
         } catch (error) {
@@ -194,6 +203,11 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         }
         if (!writeResult.ok) {
           clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)
+          try {
+            acquisition.operation.assertCurrent()
+          } catch {
+            return 'blocked-stale'
+          }
           // Why: the banner (or deleted tombstone) explains the refusal and pauses autosave.
           setModelExternalMutation(
             store.getState(),
@@ -203,6 +217,11 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           return 'blocked-stale'
         }
 
+        try {
+          acquisition.operation.assertCurrent()
+        } catch {
+          return 'written'
+        }
         // Why before the superseded check: disk holds this text either way, so the next save compares against it.
         rebaselineAfterEditorWrite(store.getState(), file.id, contentToSave)
         if ((saveGeneration.get(scheduleKey) ?? 0) !== queuedGeneration) {
@@ -254,63 +273,33 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
     await pendingSave?.catch(() => undefined)
   }
 
+  const scanAutoSave = createEditorAutoSaveScan(
+    store,
+    keys,
+    holds,
+    autoSaveTimers,
+    autoSaveScheduledContent,
+    clearScheduledAutoSave,
+    captureSave,
+    queueSave
+  )
+
+  let scanningAutoSave = false
+  let autoSaveScanRequested = false
   const syncAutoSave = (): void => {
-    const state = store.getState()
-    holds.flagOverdue(state)
-    const openFilesByKey = new Map(
-      state.openFiles.map((file) => [keys.schedule(state, file.id), file])
-    )
-
-    for (const key of Array.from(autoSaveTimers.keys())) {
-      const file = openFilesByKey.get(key)
-      const draft = file ? state.editorDrafts[file.id] : undefined
-      const shouldKeepTimer =
-        state.settings?.editorAutoSave &&
-        file &&
-        file.isDirty &&
-        canAutoSaveOpenFile(file) &&
-        // Why: suspension holds until the user picks a side via the banner (or saves manually).
-        !isAutosaveSuspendedForFile(file) &&
-        !holds.isHeld(state, file) &&
-        draft !== undefined
-      if (!shouldKeepTimer) {
-        clearScheduledAutoSave(key)
-      }
-    }
-
-    if (!state.settings?.editorAutoSave) {
+    autoSaveScanRequested = true
+    if (scanningAutoSave) {
       return
     }
-
-    const autoSaveDelayMs = normalizeAutoSaveDelayMs(state.settings.editorAutoSaveDelayMs)
-    for (const file of state.openFiles) {
-      const key = keys.schedule(state, file.id)
-      const draft = state.editorDrafts[file.id]
-      if (
-        !file.isDirty ||
-        draft === undefined ||
-        !canAutoSaveOpenFile(file) ||
-        isAutosaveSuspendedForFile(file) ||
-        holds.isHeld(state, file)
-      ) {
-        clearScheduledAutoSave(key)
-        continue
-      }
-
-      if (autoSaveTimers.has(key) && autoSaveScheduledContent.get(key) === draft) {
-        continue
-      }
-
-      clearScheduledAutoSave(key)
-      autoSaveScheduledContent.set(key, draft)
-      const timerId = window.setTimeout(() => {
-        autoSaveTimers.delete(key)
-        autoSaveScheduledContent.delete(key)
-        void queueSave(file, draft, 'autosave').catch((error) => {
-          console.error('[editor] autosave failed', error)
-        })
-      }, autoSaveDelayMs)
-      autoSaveTimers.set(key, timerId)
+    scanningAutoSave = true
+    try {
+      // Acquisition publishes to subscribers; drain their changes after this scan.
+      do {
+        autoSaveScanRequested = false
+        scanAutoSave()
+      } while (autoSaveScanRequested)
+    } finally {
+      scanningAutoSave = false
     }
   }
 

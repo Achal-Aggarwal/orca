@@ -502,6 +502,8 @@ describe('runtime owner identity indexes', () => {
       projectGroups
     }
 
+    let warmedFolderReads = 0
+    let warmedGroupReads = 0
     for (let lookup = 0; lookup < 200; lookup += 1) {
       runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(indexedState, targetWorktreeId)
       ownerEnvironmentId(indexedState, targetWorktreeId)
@@ -512,13 +514,17 @@ describe('runtime owner identity indexes', () => {
       )
       ownerEnvironmentId(indexedState, `folder:${targetFolderWorkspaceId}`)
       getExecutionHostIdForWorktree(indexedState, `folder:${targetFolderWorkspaceId}`)
+      if (lookup === 0) {
+        warmedFolderReads = folderWorkspaceIdReads
+        warmedGroupReads = projectGroupIdReads
+      }
     }
 
     expect(worktreeIdReads).toBe(10_000)
     // One build each for the owner index and the operation-route index, then no rescans.
     expect(repoIdReads).toBe(200)
-    expect(folderWorkspaceIdReads).toBe(1_000)
-    expect(projectGroupIdReads).toBe(1_000)
+    expect(folderWorkspaceIdReads).toBe(warmedFolderReads)
+    expect(projectGroupIdReads).toBe(warmedGroupReads)
     expect(runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(indexedState, targetWorktreeId)).toBe(
       'repo-owner'
     )

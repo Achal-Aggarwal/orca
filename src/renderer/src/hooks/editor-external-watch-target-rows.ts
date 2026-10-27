@@ -11,6 +11,7 @@ import {
 } from '../../../shared/execution-host'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { selectFolderWorkspaces, selectWorktreesByRepo } from '@/store/workspace-record-selectors'
+import { resolveQualifiedIndexedFolderWorkspace } from '@/lib/worktree-runtime-owner-index'
 
 type WatchTargetRowState = Pick<
   AppState,
@@ -53,8 +54,18 @@ export function resolveEditorExternalWatchTargetRows(
         : null)
   )
   const workspaceScope = parseWorkspaceKey(worktreeId)
-  const folderWorkspace =
+  const qualifiedFolder =
     workspaceScope?.type === 'folder'
+      ? resolveQualifiedIndexedFolderWorkspace(
+          state,
+          workspaceScope.folderWorkspaceId,
+          hostId ?? undefined
+        )
+      : null
+  const selectedFolder = qualifiedFolder?.kind === 'selected' ? qualifiedFolder.value : null
+  const folderWorkspace =
+    selectedFolder?.workspace ??
+    (workspaceScope?.type === 'folder'
       ? pickHostRow(
           selectFolderWorkspaces(state).filter(
             (workspace) => workspace.id === workspaceScope.folderWorkspaceId
@@ -62,7 +73,7 @@ export function resolveEditorExternalWatchTargetRows(
           hostId,
           (row) => row.executionHostId
         )
-      : undefined
+      : undefined)
   if (!worktree && !folderWorkspace) {
     return null
   }
@@ -75,7 +86,9 @@ export function resolveEditorExternalWatchTargetRows(
           : state.repos.find((candidate) => candidate.id === worktree.repoId)))
       : state.repos.find((candidate) => candidate.id === worktree.repoId)
     : undefined
-  const folderHost = parseExecutionHostId(folderWorkspace?.executionHostId)
+  const folderHost = parseExecutionHostId(
+    selectedFolder?.hostId ?? folderWorkspace?.executionHostId
+  )
   const projectGroup = folderWorkspace
     ? state.projectGroups.find(
         (group) =>
@@ -83,15 +96,17 @@ export function resolveEditorExternalWatchTargetRows(
           parseExecutionHostId(group.executionHostId)?.id === folderHost?.id
       )
     : undefined
-  const connectionId = folderWorkspace
-    ? folderHost
-      ? folderHost.kind === 'ssh'
-        ? folderHost.targetId
-        : null
-      : getFolderWorkspaceConnectionId(state, folderWorkspace.id)
-    : repo
-      ? (repo.connectionId ?? null)
-      : undefined
+  const connectionId = selectedFolder
+    ? selectedFolder.connectionId
+    : folderWorkspace
+      ? folderHost
+        ? folderHost.kind === 'ssh'
+          ? folderHost.targetId
+          : null
+        : getFolderWorkspaceConnectionId(state, folderWorkspace.id)
+      : repo
+        ? (repo.connectionId ?? null)
+        : undefined
   return { worktree, repo, folderWorkspace, projectGroup, connectionId }
 }
 

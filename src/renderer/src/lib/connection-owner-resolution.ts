@@ -5,7 +5,8 @@ import {
   resolveIndexedWorktreeOwner
 } from './worktree-runtime-owner-index'
 import { resolveWorktreeExecutionHost } from '../../../shared/worktree-execution-host-resolution'
-import { getRepoSshConnectionId } from '../../../shared/execution-host'
+import { getRepoExecutionHostId, getRepoSshConnectionId } from '../../../shared/execution-host'
+import type { Repo } from '../../../shared/repo-types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
@@ -110,9 +111,17 @@ export function getConnectionIdForFileFromState(
   worktreeId: string | null,
   filePath: string
 ): string | null | undefined {
+  return getFileConnectionOwnerFromState(state, worktreeId, filePath)?.connectionId
+}
+
+export function getFileConnectionOwnerFromState(
+  state: ConnectionOwnerState,
+  worktreeId: string | null,
+  filePath: string
+): { connectionId: string | null; repo?: Repo } | undefined {
   const connectionId = getConnectionIdFromState(state, worktreeId)
   if (connectionId !== undefined || !worktreeId) {
-    return connectionId
+    return connectionId === undefined ? undefined : { connectionId }
   }
   const parsedWorkspaceKey = parseWorkspaceKey(worktreeId)
   if (parsedWorkspaceKey?.type !== 'folder') {
@@ -130,10 +139,16 @@ export function getConnectionIdForFileFromState(
   if (!longestPathLength) {
     return undefined
   }
-  const connectionIds = new Set(
-    matchingRepos
-      .filter((candidate) => candidate.normalizedPath.length === longestPathLength)
-      .map(({ repo }) => repo.connectionId ?? null)
+  const longest = matchingRepos.filter(
+    (candidate) => candidate.normalizedPath.length === longestPathLength
   )
-  return connectionIds.size === 1 ? ([...connectionIds][0] ?? null) : undefined
+  const owners = new Set(
+    longest.map(({ repo }) =>
+      JSON.stringify([getRepoExecutionHostId(repo), getRepoSshConnectionId(repo)])
+    )
+  )
+  const repo = longest[0]?.repo
+  return owners.size === 1 && repo
+    ? { connectionId: getRepoSshConnectionId(repo), repo }
+    : undefined
 }

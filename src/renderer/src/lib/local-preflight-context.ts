@@ -20,11 +20,9 @@ import { getActiveWorkspaceOwnerTarget } from './resolved-worktree-execution-hos
 import { getEnvironmentRuntimeContextKey } from './provider-runtime-context'
 import { getRendererAppPlatform } from './renderer-app-platform'
 import {
-  getCachedWindowsTerminalCapabilities,
-  hasCachedWindowsTerminalCapabilities
-} from './windows-terminal-capabilities'
-import {
   getProjectRuntimePreflightContext,
+  getCachedLocalProjectRuntimeWslContext,
+  type LocalProjectRuntimeWslContext,
   getWslPreflightContext,
   type LocalPreflightContext
 } from './local-preflight-context-cache'
@@ -43,16 +41,11 @@ type LocalProjectRuntimeState = Pick<
   AppState,
   'activeRepoId' | 'activeWorktreeId' | 'projects' | 'repos' | 'settings' | 'worktreesByRepo'
 > &
-  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>>
+  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups' | 'activeWorkspaceExecutionHostId'>>
 
 // Why: the shared indexes are WeakMap-keyed on slice identity, so a fresh `{}`
 // or `[]` fallback would miss the cache on every read.
 const EMPTY_REPOS: AppState['repos'] = []
-
-type LocalProjectRuntimeWslContext = {
-  wslAvailable?: boolean
-  availableWslDistros?: readonly string[] | null
-}
 
 /** Extracts a WSL distribution name from supported UNC path forms. */
 export function getWslDistroFromPath(path?: string | null): string | null {
@@ -270,19 +263,6 @@ function isActiveWorkspaceOnAnotherHost(state: AppState): boolean {
   return Boolean(repo) && (!isLocalRuntimeRepo(repo) || !isLocalRuntimeWorktree(activeWorktree))
 }
 
-function getCachedLocalProjectRuntimeWslContext(): LocalProjectRuntimeWslContext {
-  // Why: preflight selectors are synchronous. Reuse an existing capability
-  // answer when available without spawning WSL probes from store reads.
-  if (!hasCachedWindowsTerminalCapabilities()) {
-    return {}
-  }
-  const capabilities = getCachedWindowsTerminalCapabilities()
-  return {
-    wslAvailable: capabilities.wslAvailable,
-    availableWslDistros: capabilities.wslDistros
-  }
-}
-
 function getLocalPreflightWslDistro(state: AppState, worktreeId?: string | null): string | null {
   const activeWorktree = getLocalProjectRuntimeWorkspace(state, worktreeId)
   const repo = getLocalRuntimeRepoForWorktree(state, activeWorktree)
@@ -295,12 +275,19 @@ function getLocalPreflightWslDistro(state: AppState, worktreeId?: string | null)
 
 function getLocalRuntimeRepoForWorktree(
   state: LocalProjectRuntimeState,
-  worktree?: Pick<Worktree, 'repoId'> | null
+  worktree?: Pick<Worktree, 'repoId' | 'hostId'> | null
 ): Pick<Repo, 'id' | 'path' | 'connectionId' | 'executionHostId'> | undefined {
   if (!worktree && parseWorkspaceKey(state.activeWorktreeId ?? '')?.type === 'folder') {
     return undefined
   }
   const repoId = worktree?.repoId ?? state.activeRepoId
+  if (worktree) {
+    const repos = (state.repos ?? EMPTY_REPOS).filter(
+      (repo) =>
+        repo.id === repoId && (!worktree.hostId || getRepoExecutionHostId(repo) === worktree.hostId)
+    )
+    return repos.length === 1 ? repos[0] : undefined
+  }
   return repoId ? getIndexedRepoMap(state.repos ?? EMPTY_REPOS).get(repoId) : undefined
 }
 

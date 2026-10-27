@@ -9,7 +9,7 @@ export type WorkspaceDirectoryState = Pick<
   AppState,
   'worktreesByRepo' | 'folderWorkspaces' | 'floatingWorkspacePath'
 > &
-  Partial<Pick<AppState, 'detectedWorktreesByRepo'>>
+  Partial<Pick<AppState, 'detectedWorktreesByRepo' | 'projectGroups' | 'repos'>>
 
 const NO_DETECTED_WORKTREES: AppState['detectedWorktreesByRepo'] = {}
 
@@ -23,6 +23,8 @@ export function resolveWorkspaceDirectory(
   executionHostId?: ExecutionHostId | null
 ): string | null {
   const catalog = {
+    projectGroups: state.projectGroups,
+    repos: state.repos,
     worktreesByRepo: selectWorktreesByRepo(state),
     detectedWorktreesByRepo: state.detectedWorktreesByRepo ?? NO_DETECTED_WORKTREES,
     folderWorkspaces: selectFolderWorkspaces(state),

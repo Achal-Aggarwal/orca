@@ -112,6 +112,7 @@ export abstract class OrcaRuntimeWithSplitPaneInMain extends OrcaRuntimeWithSpli
       envToDelete: opts.envToDelete,
       connectionId: workspace.connectionId,
       worktreeId: workspace.id,
+      resolvedWorkspace: workspace,
       preAllocatedHandle,
       tabId: source.tabId,
       leafId,

@@ -55,6 +55,7 @@ export function toScopedAutomationHostRows(
     rows.push({
       automation,
       owner: ownerForItem(authority, item),
+      authority,
       selector: item.selector,
       usageSummary,
       // An absent or unreadable projection reads as unavailable rather than as zero usage.

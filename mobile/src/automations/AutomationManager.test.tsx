@@ -1,3 +1,4 @@
+import { registerAutomationHostReselectionTests } from './AutomationManager.host-reselection.spec'
 import { AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { AutomationEditor } from './AutomationEditor'
@@ -158,6 +159,15 @@ async function mount(loseCreate: boolean | 'legacy' = false) {
 }
 
 describe('mobile automation navigation and setup', () => {
+  registerAutomationHostReselectionTests({
+    inventory,
+    root,
+    press,
+    setTree: (value) => {
+      tree = value
+    }
+  })
+
   it('preserves edited target values through same selections and away/back adoption', async () => {
     const targets = automationTargets()
     const setup = targets.setups[0]!

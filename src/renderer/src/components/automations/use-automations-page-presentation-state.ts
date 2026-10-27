@@ -33,6 +33,7 @@ export function useAutomationsPagePresentationState({
   const {
     projectHostSetups,
     sshConnectionStates,
+    sshStateByEnvironment,
     runtimeStatusByEnvironmentId,
     sshTargetLabels,
     runtimeEnvironments,
@@ -56,6 +57,7 @@ export function useAutomationsPagePresentationState({
         workspace: selectedWorktree,
         projectHostSetups,
         sshConnectionStates,
+        sshStateByEnvironment,
         runtimeStatusByEnvironmentId,
         automationHostTarget: automationHostTargetFor(selectedRow),
         sourceHostAvailability: automationSourceHostAvailabilityByRowKey.get(selectedRow.key)
@@ -64,6 +66,7 @@ export function useAutomationsPagePresentationState({
   const canSaveDraft =
     editingAutomationId === null ||
     !draftAtOpen ||
+    local.targetEdited ||
     JSON.stringify(draft) !== JSON.stringify(draftAtOpen) ||
     (editingAutomationId !== null &&
       local.editingHostStableKey !== destination.rowRecoveryHost(local.editingRowKey)?.stableKey)
