@@ -828,7 +828,10 @@ describe('MobileNativeChatQueuedMessages', () => {
       )
     ).toBe(true)
     act(() => expect(list().props.onMove({ movedId: 'b', afterId: 'd' })).toBe(true))
-    const published = [messages[0]!, messages[2]!, messages[3]!, messages[1]!]
+    // The host republishes the moved order with fresh positions; cards sort by position.
+    const published = [messages[0]!, messages[2]!, messages[3]!, messages[1]!].map(
+      (message, position) => ({ ...message, position })
+    )
     await act(async () => renderer!.update(createElement(Harness, { published })))
     expect(ids()).toEqual(['a', 'c', 'd', 'b'])
     await act(async () => renderer!.unmount())
