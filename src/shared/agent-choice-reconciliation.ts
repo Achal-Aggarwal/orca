@@ -46,7 +46,7 @@ export function reconcileAgentChoiceArgs(input: AgentChoiceArgsInput): {
         choices.options = Object.fromEntries(
           Object.entries(choices.options).filter(
             ([id]) =>
-              value === null &&
+              (value === null || choices.model === undefined) &&
               independent.some((option) => option.id === id && option.apply.launchArgs)
           )
         )

@@ -90,6 +90,67 @@ describe('load-time normalization durability', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
+  it.each(['claude', 'codex'] as const)(
+    'retains independent %s effort when lifting a model through load, save and reopen',
+    async (agent) => {
+      const settled = await settledProfile()
+      await closeTestStores()
+      const source = settled.settings.sourceControlAi
+      if (!source) {
+        throw new Error('Missing settled Source Control settings')
+      }
+      const model = agent === 'claude' ? 'opus' : 'gpt-5.4'
+      const rawModel = `--model ${model}`
+      const rawEffort = agent === 'claude' ? '--effort low' : '-c model_reasoning_effort=low'
+      const choices = { agentId: agent, options: { effort: 'high' } }
+      settled.settings.sourceControlAi = {
+        ...source,
+        actions: {
+          fixChecks: {
+            agentId: agent,
+            agentArgs: `${rawModel} ${rawEffort}`,
+            launchPreferences: choices
+          }
+        }
+      }
+      settled.repos = [
+        {
+          id: 'independent-effort',
+          displayName: 'recipe',
+          badgeColor: '',
+          addedAt: 0,
+          path: '/tmp/recipe',
+          sourceControlAi: {
+            actionOverrides: {
+              fixChecks: { agentId: agent, agentArgs: rawModel, launchPreferences: choices }
+            }
+          }
+        }
+      ]
+      writeDataFile(settled)
+      const expected = { agentId: agent, model, options: { effort: 'high' } }
+      const assertChoices = (store: ReturnType<typeof createStore>) => {
+        expect(store.getSettings().sourceControlAi?.actions?.fixChecks).toMatchObject({
+          agentArgs: rawEffort,
+          launchPreferences: expected
+        })
+        expect(store.getRepos()[0]?.sourceControlAi?.actionOverrides?.fixChecks).toMatchObject({
+          agentArgs: '',
+          launchPreferences: expected
+        })
+      }
+      const store = createStore()
+      assertChoices(store)
+      store.flush()
+      await closeTestStores()
+      const persisted = readDataFile()
+      const reopened = createStore()
+      assertChoices(reopened)
+      reopened.flush()
+      expect(readDataFile()).toEqual(persisted)
+    }
+  )
+
   const loadWork: number[][] = []
   it.each([32, 320])(
     'migrates %i owned rows through actual typed-profile load, flush and no-op reopen',
