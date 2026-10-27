@@ -91,12 +91,16 @@ export type MobileWebShellSessionEffect =
       readonly buildId: string
       readonly totalBytes: number
     }
+  // Compare the mounted build's files with its manifest; only a mismatch justifies deleting and refetching them.
+  | { readonly kind: 'verify-generation'; readonly buildId: string }
   | { readonly kind: 'delete-cache' }
   | { readonly kind: 'remount' }
-  // Stamp expiry with its flow; the reducer ignores it once ready arrives, so the runner owns timing without deciding recovery.
+  // Stamp expiry with its flow; arming either deadline replaces the armed one, so the runner owns timing without deciding recovery.
   | { readonly kind: 'await-page-ready' }
   // A refused/uncommitted local load may report nothing; only the deadline can end it.
   | { readonly kind: 'await-document-load' }
+  // A ready page makes both deadlines moot; left armed they outlive the document they guard.
+  | { readonly kind: 'cancel-deadlines' }
   // Persist on-device evidence for Troubleshoot because release builds forward no console output.
   | { readonly kind: 'record-update-failure'; readonly failure: MobileWebShellUpdateFailureFacts }
   | { readonly kind: 'forget-update-failures' }
@@ -133,6 +137,7 @@ export type MobileWebShellSessionEvent =
       readonly elapsedMs: number
     }
   | { readonly type: 'remounted'; readonly flow: number; readonly sessionId: string }
+  | { readonly type: 'generation-verified'; readonly flow: number; readonly intact: boolean }
   | {
       readonly type: 'download-failed'
       readonly flow: number

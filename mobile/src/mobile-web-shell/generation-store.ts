@@ -42,6 +42,8 @@ export type StagedGeneration = {
 export type GenerationStore = {
   readActiveGeneration(hostKey: string): Promise<ActiveGeneration | null>
   openReusableAssets(hostKey: string): Promise<MobileWebBundleReusableAssets>
+  // True only when buildId is the host's activation and every asset on disk has its manifest length.
+  verifyActiveGeneration(hostKey: string, buildId: string): Promise<boolean>
   stageGeneration(hostKey: string, result: MobileWebBundleFetchResult): Promise<StagedGeneration>
   commitGeneration(staged: StagedGeneration): Promise<ActiveGeneration>
   abortStagedGeneration(staged: StagedGeneration): Promise<void>
@@ -246,6 +248,21 @@ export function createGenerationStore(options: {
     return reusableAssetsOf(fs, await readActive(hostKey))
   }
 
+  async function verifyActive(hostKey: string, buildId: string): Promise<boolean> {
+    const active = await readActive(hostKey)
+    if (active?.buildId !== buildId) {
+      return false
+    }
+    // Lengths, not hashes: bytes were hash-verified before staging, and truncation is what interrupted writes leave.
+    const reusable = reusableAssetsOf(fs, active)
+    for (const asset of active.manifest.assets) {
+      if (!(await reusable.check(asset))) {
+        return false
+      }
+    }
+    return true
+  }
+
   async function sweep(): Promise<void> {
     // Sweep every host’s tmp tree; interrupted downloads may belong to a host this launch never opens.
     for (const host of await listHostDirectories()) {
@@ -272,6 +289,7 @@ export function createGenerationStore(options: {
   return {
     readActiveGeneration: (hostKey) => serialize(() => openActive(hostKey)),
     openReusableAssets: (hostKey) => serialize(() => openReusable(hostKey)),
+    verifyActiveGeneration: (hostKey, buildId) => serialize(() => verifyActive(hostKey, buildId)),
     stageGeneration: (hostKey, result) => serialize(() => stage(hostKey, result)),
     commitGeneration: (staged) => serialize(() => commit(staged)),
     abortStagedGeneration: (staged) =>

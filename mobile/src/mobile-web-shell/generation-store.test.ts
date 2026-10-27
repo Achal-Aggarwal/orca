@@ -619,6 +619,31 @@ describe('reusable assets for the next download', () => {
   })
 })
 
+// A page failure deletes cached files only on this evidence; a page bug alone must not cost a redownload.
+describe('verifying the files of a failed page', () => {
+  it('passes the active build whose files all have their manifest length', async () => {
+    const store = createGenerationStore({ fileSystem: createFakeFileSystem() })
+    await activate(store, HOST)
+    expect(await store.verifyActiveGeneration(HOST, BUILD)).toBe(true)
+  })
+
+  it('fails a truncated or missing file, another build, and a host with nothing cached', async () => {
+    const fs = createFakeFileSystem()
+    const store = createGenerationStore({ fileSystem: fs })
+    expect(await store.verifyActiveGeneration(HOST, BUILD)).toBe(false)
+    await activate(store, HOST)
+    expect(await store.verifyActiveGeneration(HOST, SECOND_BUILD)).toBe(false)
+    fs.seed(`${HOST}/generations/${BUILD}/assets/app.js`, {
+      kind: 'file',
+      bytes: new Uint8Array(1)
+    })
+    expect(await store.verifyActiveGeneration(HOST, BUILD)).toBe(false)
+    await fs.delete(`${ROOT}/${HOST}/generations/${BUILD}/assets/app.js`)
+    expect(fs.bytes(`${HOST}/generations/${BUILD}/assets/app.js`)).toBeNull()
+    expect(await store.verifyActiveGeneration(HOST, BUILD)).toBe(false)
+  })
+})
+
 // Older builds could leave manifest-next.json after an interrupted rewrite; this reader must ignore it.
 describe('a pending manifest left by an older build', () => {
   const MANIFEST_PATH = `${HOST}/generations/${BUILD}/manifest.json`

@@ -132,6 +132,7 @@ export function stamp(flow: number, event: PendingEvent): MobileWebShellSessionE
     case 'download-staged':
     case 'activated':
     case 'remounted':
+    case 'generation-verified':
     case 'download-failed':
     case 'page-ready-deadline':
     case 'document-load-deadline':
