@@ -184,8 +184,10 @@ describe('createPtySubprocess', () => {
 
     try {
       const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
-      await expect(handle.forceKill()).rejects.toThrow('SIGKILL rejected')
-      await expect(handle.forceKill()).resolves.toBeUndefined()
+      // ConPTY force-kill settles synchronously; POSIX awaits the process table.
+      const forceKill = async (): Promise<void> => handle.forceKill()
+      await expect(forceKill()).rejects.toThrow('SIGKILL rejected')
+      await expect(forceKill()).resolves.toBeUndefined()
       expect(killSpy).toHaveBeenCalledTimes(2)
       expect(proc.kill).toHaveBeenCalledOnce()
     } finally {
@@ -485,6 +487,24 @@ describe('createPtySubprocess', () => {
       expect(killSpy).not.toHaveBeenCalled()
       killSpy.mockRestore()
     })
+
+    it.skipIf(process.platform === 'win32')(
+      'forceKill skips the root pid when it exits while the process table is read',
+      async () => {
+        const proc = mockPtyProcess(55)
+        spawnMock.mockReturnValue(proc)
+        const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+        try {
+          const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
+          const pending = handle.forceKill()
+          proc._simulateExit(0)
+          await pending
+          expect(killSpy).not.toHaveBeenCalledWith(55, 'SIGKILL')
+        } finally {
+          killSpy.mockRestore()
+        }
+      }
+    )
 
     it('signal is a no-op once proc.onExit has fired', async () => {
       const proc = mockPtyProcess(55)

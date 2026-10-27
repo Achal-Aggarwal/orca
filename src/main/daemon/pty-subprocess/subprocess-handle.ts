@@ -134,7 +134,10 @@ export function createDaemonPtySubprocessHandle(args: {
   }
 
   const killRoot = (): void => {
-    process.kill(proc.pid, 'SIGKILL')
+    // The process-table read awaits; once node-pty reaps the root its pid may be reused.
+    if (!exited) {
+      process.kill(proc.pid, 'SIGKILL')
+    }
   }
   const fallBackToNodePtyKill = (signalError: unknown): void => {
     try {
@@ -149,9 +152,7 @@ export function createDaemonPtySubprocessHandle(args: {
     if (dead) {
       return
     }
-    await forceKillPosixPtyProcessGroups(proc.pid, killRoot, { ownsRoot: () => !exited }).catch(
-      fallBackToNodePtyKill
-    )
+    await forceKillPosixPtyProcessGroups(proc.pid, killRoot).catch(fallBackToNodePtyKill)
   }
   // Stays synchronous: dispose() reads nodePtyKillIssued right after to avoid double-closing ConPTY.
   const forceKillConpty = (): void => {

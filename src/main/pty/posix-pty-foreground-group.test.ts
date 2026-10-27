@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProcessResult } from '@orca/process-host/process-spec'
+import type { ProcessResult, ProcessSpec } from '@orca/process-host/process-spec'
 import {
   getPosixPtyForegroundGroup,
   resetPosixPtyForegroundGroupOwnRowCache,
   signalPosixPtyForegroundGroup
 } from './posix-pty-foreground-group'
 
-const { runProcessMock } = vi.hoisted(() => ({ runProcessMock: vi.fn() }))
+const { runProcessMock } = vi.hoisted(() => ({
+  runProcessMock: vi.fn<(spec: ProcessSpec) => Promise<ProcessResult>>()
+}))
+const pidArg = (spec: ProcessSpec): string => {
+  const args = spec.args ?? []
+  return args[args.indexOf('-p') + 1]
+}
 vi.mock('@orca/process-host', () => ({ runProcess: runProcessMock }))
 
 const psResult = (stdout: string): ProcessResult => ({
@@ -20,33 +26,33 @@ const psResult = (stdout: string): ProcessResult => ({
 const macosTable = ['84644 84985 ttys318', '  4242     4242 ttys002'].join('\n')
 
 describe('getPosixPtyForegroundGroup', () => {
-  it('returns the tty foreground group, not the root pid group', async () => {
+  it('returns the tty foreground group, not the root pid group', () => {
     // macOS login(1) is the root; the shell moves into the group that actually receives resize signals.
     expect(getPosixPtyForegroundGroup(macosTable, 84644, '/dev/ttys318', 4242)).toBe(84985)
   })
 
-  it('accepts a Linux pts device name', async () => {
+  it('accepts a Linux pts device name', () => {
     expect(getPosixPtyForegroundGroup('900 931 pts/3', 900, '/dev/pts/3', 4242)).toBe(931)
   })
 
-  it('refuses when the pid now answers for a different tty', async () => {
+  it('refuses when the pid now answers for a different tty', () => {
     // A recycled root PID must not signal another terminal's group.
     expect(getPosixPtyForegroundGroup(macosTable, 84644, '/dev/ttys999', 4242)).toBeNull()
   })
 
-  it('refuses when this process shares the PTY', async () => {
+  it('refuses when this process shares the PTY', () => {
     // A dev daemon can inherit its launch TTY; group signals must not reach Orca.
     const shared = ['84644 84985 ttys318', '4242 84985 ttys318'].join('\n')
     expect(getPosixPtyForegroundGroup(shared, 84644, '/dev/ttys318', 4242)).toBeNull()
   })
 
-  it('refuses a detached tty or an unowned foreground group', async () => {
+  it('refuses a detached tty or an unowned foreground group', () => {
     expect(getPosixPtyForegroundGroup('84644 84985 ??', 84644, '/dev/ttys318', 4242)).toBeNull()
     expect(getPosixPtyForegroundGroup('84644 -1 ttys318', 84644, '/dev/ttys318', 4242)).toBeNull()
     expect(getPosixPtyForegroundGroup('84644 1 ttys318', 84644, '/dev/ttys318', 4242)).toBeNull()
   })
 
-  it('refuses when the root pid is absent from the table', async () => {
+  it('refuses when the root pid is absent from the table', () => {
     expect(getPosixPtyForegroundGroup('4242 4242 ttys002', 84644, '/dev/ttys318', 4242)).toBeNull()
   })
 })
@@ -164,11 +170,9 @@ describe('process table lookup', () => {
       expect(runProcessMock).toHaveBeenCalled()
       let timeoutBudget = 0
       for (const [spec] of runProcessMock.mock.calls) {
-        const args = spec.args as string[]
-        const pidArg = args[args.indexOf('-p') + 1]
-        expect(pidArg).toMatch(/^\d+$/)
-        expect(args.filter((arg) => arg === '-p')).toHaveLength(1)
-        timeoutBudget += spec.timeoutMs
+        expect(pidArg(spec)).toMatch(/^\d+$/)
+        expect(spec.args?.filter((arg) => arg === '-p')).toHaveLength(1)
+        timeoutBudget += spec.timeoutMs ?? Infinity
       }
       expect(timeoutBudget).toBeLessThanOrEqual(250)
     } finally {
@@ -188,8 +192,8 @@ describe('process table lookup', () => {
 
     try {
       runProcessMock.mockReset()
-      runProcessMock.mockImplementation(async (spec: { args: string[] }) => {
-        const pid = Number(spec.args[spec.args.indexOf('-p') + 1])
+      runProcessMock.mockImplementation(async (spec) => {
+        const pid = Number(pidArg(spec))
         if (pid === 4242) {
           return psResult('4242 4242 ttys002')
         }
@@ -213,9 +217,7 @@ describe('process table lookup', () => {
         }
       }
 
-      const pidArgs = runProcessMock.mock.calls.map(([spec]) =>
-        Number(spec.args[spec.args.indexOf('-p') + 1])
-      )
+      const pidArgs = runProcessMock.mock.calls.map(([spec]) => Number(pidArg(spec)))
       expect(pidArgs.filter((pid) => pid === 4242)).toHaveLength(1)
       expect(pidArgs).toHaveLength(9)
       expect(kill).toHaveBeenCalledTimes(8)

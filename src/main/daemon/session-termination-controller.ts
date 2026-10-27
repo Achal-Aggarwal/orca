@@ -98,7 +98,7 @@ export class SessionTerminationController {
     this.deps.subprocess.signal(sig)
   }
 
-  /** Disposal releases the handle next, so a refused signal has nobody left to retry it. */
+  /** Folds a synchronous throw into the rejection; disposal leaves no owner to retry a refused signal. */
   async forceKillDuringDispose(): Promise<void> {
     await this.deps.subprocess.forceKill()
   }

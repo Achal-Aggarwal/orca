@@ -5,7 +5,7 @@ import {
   readLinuxProcessSessionId,
   readLinuxProcessSessionIdAsync,
   readPosixPtyProcessTable,
-  readPtyProcessTable
+  readPosixPtyProcessTableSync
 } from './posix-pty-process-table'
 
 type PosixPtyGroupSignalDeps = {
@@ -24,8 +24,6 @@ export type PosixPtyProcessGroupSignalDeps = PosixPtyGroupSignalDeps & {
   readProcessTable?: () => Promise<string>
   /** Linux session id of a pid, or null when unreadable. */
   readProcessSessionId?: (pid: number) => Promise<number | null>
-  /** False once the root has exited; a stale table could then name recycled groups. */
-  ownsRoot?: () => boolean
 }
 
 export function isPosixPtyRootStopped(output: string, rootPid: number): boolean {
@@ -123,9 +121,6 @@ export async function signalPosixPtyProcessGroups(
   } catch {
     groups = null
   }
-  if (deps.ownsRoot && !deps.ownsRoot()) {
-    return
-  }
   deliverPosixPtyGroupSignal(groups, signal, fallback, deps)
 }
 
@@ -143,7 +138,7 @@ function signalPosixPtyProcessGroupsSync(
   let groups: number[] | null
   try {
     groups = getPosixPtyProcessGroups(
-      (deps.readProcessTable ?? (() => readPtyProcessTable(rootPid)))(),
+      (deps.readProcessTable ?? (() => readPosixPtyProcessTableSync(rootPid)))(),
       rootPid,
       deps.currentPid ?? process.pid,
       deps.readProcessSessionId ?? (platform === 'linux' ? readLinuxProcessSessionId : undefined)

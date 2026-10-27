@@ -24,7 +24,7 @@ export function resetPosixPtyProcessTableDialectForTests(): void {
   dialectProbe = undefined
 }
 
-export type ProcessRow = {
+type ProcessRow = {
   pid: number
   pgid: number
   tty: string
@@ -122,7 +122,7 @@ function processTableSpec(args: string[]) {
   }
 }
 
-export function readPtyProcessTable(rootPid: number): string {
+export function readPosixPtyProcessTableSync(rootPid: number): string {
   const queries = processTableQueries(rootPid)
   let next = queries.next()
   while (!next.done) {
@@ -135,12 +135,13 @@ export async function readPosixPtyProcessTable(
   rootPid: number,
   signal?: AbortSignal
 ): Promise<string> {
-  while (dialectProbe) {
+  // Wait out one probe only: chaining behind each failed probe would stack their timeouts.
+  if (dialectProbe) {
     await waitForPromiseWithSignal(dialectProbe, signal)
   }
   signal?.throwIfAborted()
   let releaseProbe: (() => void) | undefined
-  if (psDialect === undefined) {
+  if (psDialect === undefined && !dialectProbe) {
     dialectProbe = new Promise<void>((resolve) => {
       releaseProbe = resolve
     })

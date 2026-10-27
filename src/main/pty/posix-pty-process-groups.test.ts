@@ -340,11 +340,11 @@ describe('asynchronous PTY process discovery', () => {
 })
 
 describe('POSIX PTY process-group termination', () => {
-  it('returns every group attached to the root PTY with the root group last', async () => {
+  it('returns every group attached to the root PTY with the root group last', () => {
     expect(getPosixPtyProcessGroups(TABLE, 100, 999)).toEqual([101, 103, 100])
   })
 
-  it('refuses an unbound root or a PTY shared with Orca itself', async () => {
+  it('refuses an unbound root or a PTY shared with Orca itself', () => {
     expect(getPosixPtyProcessGroups(TABLE, 300, 999)).toBeNull()
     expect(getPosixPtyProcessGroups(TABLE, 100, 102)).toBeNull()
     expect(getPosixPtyProcessGroups(TABLE, 999, 998)).toBeNull()
@@ -435,27 +435,6 @@ describe('POSIX PTY process-group termination', () => {
     expect(signalProcessGroup).toHaveBeenCalledTimes(3)
   })
 
-  it('signals nothing when the root exits while the table is read', async () => {
-    // node-pty reaps the root on exit, so the captured groups and pid may already be recycled.
-    let rootExited = false
-    const fallback = vi.fn()
-    const signalProcessGroup = vi.fn()
-
-    await forceKillPosixPtyProcessGroups(100, fallback, {
-      platform: 'darwin',
-      currentPid: 999,
-      readProcessTable: async () => {
-        rootExited = true
-        return TABLE
-      },
-      ownsRoot: () => !rootExited,
-      signalProcessGroup
-    })
-
-    expect(signalProcessGroup).not.toHaveBeenCalled()
-    expect(fallback).not.toHaveBeenCalled()
-  })
-
   it('uses the existing fallback on Windows without reading ps', async () => {
     const fallback = vi.fn()
     const readProcessTable = vi.fn(async () => TABLE)
@@ -480,7 +459,7 @@ describe('Linux terminal session identity (#27337)', () => {
 600 600 pts/6 Ss
 `
 
-  it('parses the session id past a comm containing spaces and parentheses', async () => {
+  it('parses the session id past a comm containing spaces and parentheses', () => {
     expect(parseLinuxProcStatSessionId(procStat(42, 7, 'evil) S 1 2 3 (x'))).toBe(7)
     expect(parseLinuxProcStatSessionId('42 (bash')).toBeNull()
     expect(parseLinuxProcStatSessionId('42 (bash) S 1 42')).toBeNull()
@@ -514,7 +493,7 @@ describe('Linux terminal session identity (#27337)', () => {
     expect(signalProcessGroup.mock.calls).toEqual([[100], [101]])
   })
 
-  it('excludes candidates whose session can no longer be read', async () => {
+  it('excludes candidates whose session can no longer be read', () => {
     expect(
       getPosixPtyProcessGroups(COLLIDING_TABLE, 100, 999, (pid) =>
         pid === 101 ? null : pid < 200 ? 100 : pid
