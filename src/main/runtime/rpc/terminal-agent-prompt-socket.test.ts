@@ -113,9 +113,7 @@ it.each(['before', 'after'] as const)(
     try {
       await Promise.race([
         received.promise,
-        exited.then(() => {
-          throw new Error('CLI exited before sending')
-        })
+        exited.then(() => expect.fail('CLI exited before sending'))
       ])
       await (boundary === 'after' ? pasted.promise : received.promise)
       child.stdin.end('exit') // The test-owned child exits itself; no process-tree termination.

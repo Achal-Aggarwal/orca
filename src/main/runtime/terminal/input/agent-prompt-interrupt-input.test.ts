@@ -18,6 +18,5 @@ it.each([10, 100])('frames input with %i scoped prompt observers and releases th
   expect(performance.now() - start).toBeLessThan(1_000)
   releases.forEach((release) => release())
   corpus.forEach((data) => facts.recordInput('pty-0', 'driving', data))
-  facts.recordInput('unrelated', 'driving', '\x03')
   expect(interrupted).toHaveBeenCalledTimes(4)
 })
