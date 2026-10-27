@@ -30,6 +30,7 @@
   ],
   "rules": {
     "app-store-performance/require-selector": "error",
+    "app-store-performance/no-whole-hot-map-selector": "warn",
     "app-store-performance/no-identity-selector": "error",
     "app-store-performance/no-fresh-selector-result": "error",
     "quadratic-buffer-concat/no-loop-carried-concat": "error"
