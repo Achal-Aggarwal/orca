@@ -45,6 +45,8 @@ export function createDaemonPtySubprocessHandle(args: {
   const nativeProc: DisposableNativePty = proc
   const events = new PtyPreListenerEvents()
   let dead = false
+  // Unlike dead, disposal keeps this false so an in-flight force-kill still lands.
+  let exited = false
   // I/O failure is not exit evidence; keep termination and producer flow control available.
   let ioFailed = false
   let disposed = false
@@ -112,6 +114,7 @@ export function createDaemonPtySubprocessHandle(args: {
   const acceptExit = ({ exitCode, signal }: { exitCode: number; signal?: number }): void => {
     // Exit listeners may re-enter cleanup; retire signal authority before notifying them.
     dead = true
+    exited = true
     clearMasterRetiredTimer()
     foreground.markDead()
     // Neutralize kill before an async socket-close SIGHUP can target a recycled PID.
@@ -128,6 +131,43 @@ export function createDaemonPtySubprocessHandle(args: {
     acceptExit(args.startupEvents.exit)
   } else {
     proc.onExit(acceptExit)
+  }
+
+  const killRoot = (): void => {
+    process.kill(proc.pid, 'SIGKILL')
+  }
+  const fallBackToNodePtyKill = (signalError: unknown): void => {
+    try {
+      proc.kill()
+      nodePtyKillIssued = true
+    } catch {
+      nodePtyKillIssued = false
+      throw signalError
+    }
+  }
+  const forceKillPosix = async (): Promise<void> => {
+    if (dead) {
+      return
+    }
+    await forceKillPosixPtyProcessGroups(proc.pid, killRoot, { ownsRoot: () => !exited }).catch(
+      fallBackToNodePtyKill
+    )
+  }
+  // Stays synchronous: dispose() reads nodePtyKillIssued right after to avoid double-closing ConPTY.
+  const forceKillConpty = (): void => {
+    if (dead) {
+      return
+    }
+    // Escalate a ConPTY kill through the job without double-closing node-pty's shell handle.
+    if (nodePtyKillIssued) {
+      terminatePtyJob(proc)
+      return
+    }
+    try {
+      killRoot()
+    } catch (signalError) {
+      fallBackToNodePtyKill(signalError)
+    }
   }
 
   const slavePath = readPtySlavePath(proc)
@@ -215,29 +255,7 @@ export function createDaemonPtySubprocessHandle(args: {
       }
     },
     terminateOwnedTree: () => terminatePtyJob(proc),
-    forceKill: () => {
-      if (dead) {
-        return
-      }
-      // Escalate a ConPTY kill through the job without double-closing node-pty's shell handle.
-      if (process.platform === 'win32' && nodePtyKillIssued) {
-        terminatePtyJob(proc)
-        return
-      }
-      try {
-        forceKillPosixPtyProcessGroups(proc.pid, () => {
-          process.kill(proc.pid, 'SIGKILL')
-        })
-      } catch (signalError) {
-        try {
-          proc.kill()
-          nodePtyKillIssued = true
-        } catch {
-          nodePtyKillIssued = false
-          throw signalError
-        }
-      }
-    },
+    forceKill: () => (process.platform === 'win32' ? forceKillConpty() : forceKillPosix()),
     signal: (sig) => {
       if (dead) {
         return
@@ -255,7 +273,9 @@ export function createDaemonPtySubprocessHandle(args: {
       }
       // SIGWINCH belongs to the tty foreground group; destructive signals keep the root-pid target.
       if (sig === 'SIGWINCH') {
-        signalPosixPtyForegroundGroup(proc.pid, readPtsName(proc), sig, signalRootPid)
+        void signalPosixPtyForegroundGroup(proc.pid, readPtsName(proc), sig, signalRootPid, {
+          ownsRoot: () => !exited
+        })
         return
       }
       signalRootPid()

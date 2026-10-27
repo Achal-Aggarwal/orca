@@ -98,6 +98,11 @@ export class SessionTerminationController {
     this.deps.subprocess.signal(sig)
   }
 
+  /** Disposal releases the handle next, so a refused signal has nobody left to retry it. */
+  async forceKillDuringDispose(): Promise<void> {
+    await this.deps.subprocess.forceKill()
+  }
+
   disposeSubprocessHandle(): void {
     if (this.subprocessDisposed) {
       return
@@ -120,26 +125,24 @@ export class SessionTerminationController {
     this.killTimer = setTimeout(() => {
       this.killTimer = null
       if (!this.deps.isExited()) {
-        try {
-          this.requestForceKill()
-        } catch (error) {
+        this.requestForceKill().catch((error: unknown) => {
           console.warn('[Session] failed to force-kill terminating subprocess:', error)
           // A transient force-kill rejection must not consume the only fallback attempt.
           if (attemptsRemaining > 1) {
             this.armForceKillFallback(SESSION_FORCE_KILL_RETRY_MS, attemptsRemaining - 1)
           }
-        }
+        })
       }
     }, delayMs)
   }
 
-  private requestForceKill(): void {
+  private async requestForceKill(): Promise<void> {
     if (this.deps.isExited() || this.forceKillSent) {
       return
     }
     this.forceKillSent = true
     try {
-      this.deps.subprocess.forceKill()
+      await this.deps.subprocess.forceKill()
     } catch (error) {
       this.forceKillSent = false
       throw error
@@ -150,7 +153,7 @@ export class SessionTerminationController {
     let lastError: unknown
     for (let attempt = 0; attempt < SESSION_FORCE_KILL_MAX_ATTEMPTS; attempt++) {
       try {
-        this.requestForceKill()
+        await this.requestForceKill()
         return
       } catch (error) {
         lastError = error

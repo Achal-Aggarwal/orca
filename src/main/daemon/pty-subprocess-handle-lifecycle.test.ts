@@ -184,8 +184,8 @@ describe('createPtySubprocess', () => {
 
     try {
       const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
-      expect(() => handle.forceKill()).toThrow('SIGKILL rejected')
-      expect(() => handle.forceKill()).not.toThrow()
+      await expect(handle.forceKill()).rejects.toThrow('SIGKILL rejected')
+      await expect(handle.forceKill()).resolves.toBeUndefined()
       expect(killSpy).toHaveBeenCalledTimes(2)
       expect(proc.kill).toHaveBeenCalledOnce()
     } finally {
@@ -199,7 +199,7 @@ describe('createPtySubprocess', () => {
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
 
     const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
-    handle.forceKill()
+    await handle.forceKill()
 
     expect(killSpy).toHaveBeenCalledWith(77, 'SIGKILL')
     killSpy.mockRestore()

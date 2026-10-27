@@ -2,7 +2,7 @@ import type * as pty from 'node-pty'
 import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import { killWithDescendantSweep } from '../pty-descendant-termination'
 import { terminateShutdownDescendants } from '../daemon/terminal-descendant-shutdown'
-import { forceKillPosixPtyProcessGroups } from '../pty/posix-pty-process-groups'
+import { forceKillPosixPtyProcessGroupsSync } from '../pty/posix-pty-process-groups'
 import { terminatePtyJob } from '../windows/windows-pty-job'
 import {
   clearLocalPtyForceKillTimer,
@@ -51,7 +51,7 @@ function killLocalPtyProcess(proc: pty.IPty, immediate: boolean): void {
     proc.kill('SIGTERM')
     return
   }
-  forceKillPosixPtyProcessGroups(proc.pid, () => proc.kill('SIGKILL'))
+  forceKillPosixPtyProcessGroupsSync(proc.pid, () => proc.kill('SIGKILL'))
 }
 
 function armLocalPtyForceKill(
@@ -243,7 +243,7 @@ export function killAllLocalPtys(): void {
       try {
         if (ptyAgentSessionIds.has(id) && process.platform !== 'win32') {
           // Synchronous quit must sweep agent groups before releasing node-pty or OMP workers can survive.
-          forceKillPosixPtyProcessGroups(proc.pid, () => proc.kill('SIGKILL'))
+          forceKillPosixPtyProcessGroupsSync(proc.pid, () => proc.kill('SIGKILL'))
         } else {
           proc.kill()
         }
