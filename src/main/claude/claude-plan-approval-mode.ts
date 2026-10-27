@@ -6,7 +6,8 @@ import type { ClaudeSession } from './structured/claude-structured-session-state
 export function claudePlanApprovalMode(
   session: Pick<ClaudeSession, 'launchIntent' | 'firstRootInit'>
 ): PermissionMode {
-  const mode = session.launchIntent?.permissionMode ?? session.firstRootInit?.permissionMode
+  const mode =
+    session.launchIntent?.permissionMode ?? session.firstRootInit?.permissionMode ?? 'default'
   switch (mode) {
     case 'default':
     case 'acceptEdits':
