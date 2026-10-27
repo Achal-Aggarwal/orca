@@ -1,12 +1,11 @@
 import './unused-default-rpc-methods.test-fixture'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import { z } from 'zod'
 import { createAgentPromptSubmissionRuntime } from '../agent-prompt-submission-runtime-test-fixture'
 import { UnixSocketTransport } from './unix-socket-transport'
 import { RpcDispatcher } from './dispatcher'
@@ -45,10 +44,8 @@ it.each(['before', 'after'] as const)(
     )
     const db = new OrchestrationDb(':memory:')
     runtime.setOrchestrationDb(db)
-    const dispatcher = new RpcDispatcher({
-      runtime,
-      methods: [...STATUS_METHODS, ...TERMINAL_METHODS]
-    })
+    const methods = [...STATUS_METHODS, ...TERMINAL_METHODS]
+    const dispatcher = new RpcDispatcher({ runtime, methods })
     Object.defineProperty(runtime, 'createAgentPromptRenderGate', {
       value: () => ({ arm: () => {}, wait: () => release.promise, dispose: () => {} })
     })
@@ -78,28 +75,21 @@ it.each(['before', 'after'] as const)(
     writeFileSync(join(root, 'orca-runtime.json'), JSON.stringify(discovery))
     const preload = join(root, 'exit-on-input.ts')
     writeFileSync(preload, "process.stdin.once('data', () => process.exit(0))")
-    const manifest = createRequire(resolve('package.json')).resolve('bun/package.json')
-    const packageSchema = z.object({ bin: z.object({ bun: z.string() }) })
-    const { bin } = packageSchema.parse(JSON.parse(readFileSync(manifest, 'utf8')))
+    const program = createRequire(resolve('package.json')).resolve('bun/bin/bun.exe')
     const env = {
       ...Object.fromEntries(
-        'HOME USERPROFILE APPDATA LOCALAPPDATA XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME ORCA_E2E_HOME_DIR ORCA_E2E_USER_DATA_DIR ORCA_USER_DATA_PATH TEMP TMP TMPDIR'
+        'HOME USERPROFILE APPDATA LOCALAPPDATA XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME ORCA_E2E_HOME_DIR ORCA_E2E_USER_DATA_DIR ORCA_USER_DATA_PATH TEMP TMP TMPDIR CODEX_HOME CLAUDE_CONFIG_DIR'
           .split(' ')
           .map((key) => [key, root])
       ),
-      CODEX_HOME: join(root, 'codex'),
-      CLAUDE_CONFIG_DIR: join(root, 'claude'),
       ORCA_BACKGROUND_LAUNCH: '1',
       ORCA_DISABLE_MACOS_LOGIN_SHELL: '1',
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot
     }
     const args = ['terminal', 'send', '--terminal', handle, '--text', 'first', '--enter', '--json']
-    const child = spawn(
-      join(dirname(manifest), bin.bun),
-      ['--preload', preload, resolve('src/cli/index.ts'), ...args],
-      { cwd: root, env, stdio: 'pipe' }
-    )
+    const command = ['--preload', preload, resolve('src/cli/index.ts'), ...args]
+    const child = spawn(program, command, { cwd: root, env, stdio: 'pipe' })
     const exited = once(child, 'close')
     child.stderr.resume()
     try {
