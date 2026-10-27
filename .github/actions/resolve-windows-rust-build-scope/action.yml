@@ -1,0 +1,28 @@
+name: Resolve the Windows Rust build scope
+description: Ensures a Rust toolchain and reports what scopes cached Windows Rust executables beyond their sources.
+
+outputs:
+  toolchain:
+    description: rustc release; restore-key prefixes include it because the reuse fingerprint does not.
+    value: ${{ steps.scope.outputs.toolchain }}
+  app-version:
+    description: package.json version stamped into each executable and checked by its reuse fingerprint.
+    value: ${{ steps.scope.outputs.app-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the Rust toolchain and app version
+      id: scope
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+        }
+        $rustc = (rustc --version).Split(' ')[1]
+        $app = node -p "require('./package.json').version"
+        if (-not $rustc -or -not $app) { throw 'Missing rustc or package.json version' }
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "toolchain=rustc$rustc"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "app-version=$app"

@@ -331,12 +331,12 @@ const NATIVE_CACHE_FILES = new Set([
   'config/scripts/shared-electron-dist-cache.mjs',
   'config/scripts/shared-tree-publish.mjs',
   'config/scripts/space-sharing-copy.mjs',
-  'config/scripts/native-build-entry.cjs',
-  'config/scripts/native-build-entry-probe.cjs',
-  'config/scripts/shared-native-build.mjs'
+  'config/scripts/shared-native-build.mjs',
+  'config/scripts/native-dependency-lock-digest.mjs'
 ])
 
 const NATIVE_CACHE_PREFIXES = [
+  'config/scripts/native-build-entry',
   'config/patches/node-pty@',
   'config/patches/@vscode__windows-process-tree',
   // The vendored addons' sources: build/ and bin/ beside them are ignored, so nothing else lands here.
