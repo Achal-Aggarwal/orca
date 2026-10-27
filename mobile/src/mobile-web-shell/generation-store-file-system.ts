@@ -53,6 +53,11 @@ function adoptLegacyCacheTree(): void {
     }
     if (!storeRootDirectory().exists) {
       legacy.move(storeRootDirectory())
+      // The removed host cap's recency index.
+      const hostIndex = new File(storeRootDirectory(), 'hosts.json')
+      if (hostIndex.exists) {
+        hostIndex.delete()
+      }
       return
     }
     legacy.delete()

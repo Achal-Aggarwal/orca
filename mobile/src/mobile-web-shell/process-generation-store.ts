@@ -1,6 +1,11 @@
 import { readStoredHostProfilesForMutation } from '../transport/host-metadata-store'
 import { createGenerationStore, type GenerationStore } from './generation-store'
-import { createExpoGenerationFileSystem } from './generation-store-file-system'
+import { excludeFromBackup } from '../../modules/orca-mobile-web-shell/src'
+import {
+  createExpoGenerationFileSystem,
+  generationDirectoryPath,
+  type GenerationFileSystem
+} from './generation-store-file-system'
 import { deriveHostCacheKey } from './host-cache-key'
 
 let processStore: GenerationStore | null = null
@@ -15,10 +20,20 @@ async function readPairedHostKeys(): Promise<ReadonlySet<string>> {
   return new Set(hosts.map(({ id }) => deriveHostCacheKey(id)))
 }
 
+// Mark on every launch so an adopted tree is covered too; a failure only leaves the bundle in backups.
+function excludeRootFromBackup(fileSystem: GenerationFileSystem): void {
+  void fileSystem
+    .createDirectory(fileSystem.rootUri)
+    .then(() => excludeFromBackup(generationDirectoryPath(fileSystem.rootUri)))
+    .catch(() => undefined)
+}
+
 // Share one store queue across native callers so host removal cannot interleave with generation/failure-log writes.
 export function processGenerationStore(): GenerationStore {
   if (processStore === null) {
-    processStore = createGenerationStore({ fileSystem: createExpoGenerationFileSystem() })
+    const fileSystem = createExpoGenerationFileSystem()
+    excludeRootFromBackup(fileSystem)
+    processStore = createGenerationStore({ fileSystem })
     // Queued first, once per launch: reclaims hosts whose removal-time delete never ran.
     void processStore.deleteUnpairedHostCaches(readPairedHostKeys).catch(() => undefined)
   }

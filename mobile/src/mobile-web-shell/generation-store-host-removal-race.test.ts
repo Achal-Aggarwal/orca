@@ -7,18 +7,29 @@ import {
 } from './generation-file-system-fake'
 
 const fake = vi.hoisted(
-  (): { fileSystem: FakeGenerationFileSystem | null; pairedHostIds: () => Promise<string[]> } => ({
+  (): {
+    fileSystem: FakeGenerationFileSystem | null
+    pairedHostIds: () => Promise<string[]>
+    excludedFromBackup: string[]
+  } => ({
     fileSystem: null,
-    pairedHostIds: async () => []
+    pairedHostIds: async () => [],
+    excludedFromBackup: []
   })
 )
 
 vi.mock('expo-file-system', () => ({ Directory: class {}, File: class {}, Paths: { cache: '' } }))
 vi.mock('expo-crypto', () => ({ getRandomBytes: (length: number) => new Uint8Array(length) }))
-vi.mock('./generation-store-file-system', () => ({
+vi.mock('./generation-store-file-system', async (importOriginal) => ({
+  ...(await importOriginal()),
   createExpoGenerationFileSystem: () => fake.fileSystem
 }))
 vi.mock('../transport/host-store', () => ({ removeHost: async () => undefined }))
+vi.mock('../../modules/orca-mobile-web-shell/src', () => ({
+  excludeFromBackup: async (path: string) => {
+    fake.excludedFromBackup.push(path)
+  }
+}))
 vi.mock('../transport/host-metadata-store', () => ({
   readStoredHostProfilesForMutation: async () => (await fake.pairedHostIds()).map((id) => ({ id }))
 }))
@@ -151,6 +162,7 @@ async function removeDuringRecord(sides: Sides): Promise<FakeGenerationFileSyste
 beforeEach(() => {
   fake.fileSystem = createFakeGenerationFileSystem()
   fake.pairedHostIds = async () => [REMOVED, KEPT, OPENED]
+  fake.excludedFromBackup = []
   resetProcessGenerationStoreForTests()
 })
 
@@ -213,5 +225,12 @@ describe('the launch sweep', () => {
     resetProcessGenerationStoreForTests()
     fake.pairedHostIds = async () => []
     expect(await hostsWithTrees()).toEqual([KEPT, OPENED])
+  })
+})
+
+describe('the process store', () => {
+  it('keeps its root out of device backups', async () => {
+    createMobileWebShellRuntime().createStore()
+    await vi.waitFor(() => expect(fake.excludedFromBackup).toEqual(['/cache/mobile-web']))
   })
 })

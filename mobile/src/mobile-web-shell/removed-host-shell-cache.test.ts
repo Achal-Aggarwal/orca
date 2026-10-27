@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('expo-file-system', () => ({ Directory: class {}, File: class {}, Paths: { cache: '' } }))
+vi.mock('../../modules/orca-mobile-web-shell/src', () => ({
+  excludeFromBackup: async () => undefined
+}))
 vi.mock('./generation-store-file-system', async () => {
   const { createFakeGenerationFileSystem } = await import('./generation-file-system-fake')
   const fileSystem = createFakeGenerationFileSystem()

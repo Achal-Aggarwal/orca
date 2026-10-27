@@ -24,7 +24,9 @@ vi.mock('expo-file-system', () => {
   }
   return {
     Directory,
-    File: class {},
+    File: class {
+      exists = false
+    },
     Paths: { cache: 'file:///app/cache', document: 'file:///app/files' }
   }
 })

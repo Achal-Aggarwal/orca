@@ -13,6 +13,9 @@ const doubles = vi.hoisted((): Doubles => ({ failures: [], hosts: [] }))
 
 vi.mock('react-native', () => ({ Text: 'Text', View: 'View' }))
 vi.mock('expo-file-system', () => ({ Directory: class {}, File: class {}, Paths: { cache: '' } }))
+vi.mock('../../modules/orca-mobile-web-shell/src', () => ({
+  excludeFromBackup: async () => undefined
+}))
 vi.mock('../mobile-web-shell/generation-store', () => ({
   createGenerationStore: () => ({
     readUpdateFailures: async () => doubles.failures,
@@ -20,7 +23,7 @@ vi.mock('../mobile-web-shell/generation-store', () => ({
   })
 }))
 vi.mock('../mobile-web-shell/generation-store-file-system', () => ({
-  createExpoGenerationFileSystem: () => ({})
+  createExpoGenerationFileSystem: () => ({ rootUri: '', createDirectory: async () => undefined })
 }))
 vi.mock('../transport/host-store', () => ({ loadHosts: async () => doubles.hosts }))
 vi.mock('./troubleshoot-screen-styles', () => ({ troubleshootScreenStyles: {} }))
