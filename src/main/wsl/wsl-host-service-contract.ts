@@ -1,4 +1,4 @@
-import type { WslHostStatus } from '../../shared/wsl-host-types'
+import type { WslHostConnectIntent, WslHostStatus } from '../../shared/wsl-host-types'
 
 export type { WslHostConnector, WslHostReachability } from './wsl-host-connector-contract'
 
@@ -20,4 +20,9 @@ export type WslHostServiceDependencies = {
     timeoutMs: number,
     beforeSend?: () => void
   ) => Promise<unknown>
+}
+
+export type WslHostConnectOptions = {
+  intent?: WslHostConnectIntent
+  withdrawPendingRemoval?: boolean
 }

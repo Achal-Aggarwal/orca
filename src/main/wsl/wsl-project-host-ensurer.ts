@@ -3,6 +3,7 @@ import type { WslHostAddResult } from '../../shared/wsl-host-types'
 import { admitWslHostDistro, sameWslDistro, wslHostRunRefusal } from './wsl-host-add-admission'
 import type { WslHostDistroCandidate } from './wsl-host-distro-list'
 import type { WslHostServiceDependencies } from './wsl-host-service-contract'
+import type { WslHostConnector } from './wsl-host-connector-contract'
 
 type WslProjectHostDependencies = {
   userDataPath(): string
@@ -80,4 +81,23 @@ export function createWslProjectCaller(getDependencies: () => WslHostServiceDepe
     }
     return deps.call(environmentId, method, params, 10 * 60_000, beforeSend)
   }
+}
+
+export function createWslProjectEnsurer(
+  getDependencies: () => WslHostServiceDependencies,
+  getConnector: () => Pick<WslHostConnector, 'listDistros'>,
+  service: {
+    add(args: { distro: string; startIfStopped?: boolean }): Promise<WslHostAddResult>
+    connect(environmentId: string): Promise<void>
+  }
+): (distro: string) => Promise<string> {
+  const projectHosts = new WslProjectHostEnsurer({
+    userDataPath: () => getDependencies().userDataPath(),
+    isEnabled: () => getDependencies().isEnabled(),
+    hasServerFiles: () => getDependencies().hasServerFiles(),
+    listDistros: () => getConnector().listDistros(),
+    add: (distro) => service.add({ distro, startIfStopped: true }),
+    connect: (environmentId) => service.connect(environmentId)
+  })
+  return (distro) => projectHosts.ensure(distro)
 }

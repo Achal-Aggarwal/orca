@@ -1,4 +1,5 @@
 import { buildComposerHostOptions } from './composer-target-store'
+import { selectCanonicalProjectHostSetups } from '@/store/project-host-setup-selector'
 import type { ComposerModel } from './composer-model'
 
 type TargetChangeActionsInput = Pick<
@@ -243,7 +244,7 @@ export function useTargetChangeActions(input: TargetChangeActionsInput) {
       const liveHosts = buildComposerHostOptions(state)
       const target = buildProjectHostSetupOptions({
         projectId: selectedRepoProjectId,
-        projectHostSetups: state.projectHostSetups,
+        projectHostSetups: selectCanonicalProjectHostSetups(state),
         eligibleRepos: getComposerEligibleRepos(state.repos),
         hosts: [
           ...liveHosts,
