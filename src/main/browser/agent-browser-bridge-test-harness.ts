@@ -135,12 +135,15 @@ export function agentBrowserCommandOf(args: readonly string[], stdin?: string): 
     const [command]: string[][] = JSON.parse(stdin)
     return command
   }
-  const start = args.indexOf('--cdp') + 2
-  return args.slice(start > 1 ? start : 0).filter((arg) => arg !== '--json')
+  let start = 0
+  while (args[start]?.startsWith('--')) {
+    start += 2
+  }
+  return args.slice(start).filter((arg) => arg !== '--json')
 }
 
 export function agentBrowserCommandsIn(stdinWrites: readonly string[]): string[][] {
-  return stdinWrites.map((stdin) => agentBrowserCommandOf(['batch'], stdin))
+  return stdinWrites.map((stdin) => JSON.parse(stdin)[0])
 }
 
 type FakeAgentBrowserChild = EventEmitter & { kill: Mock }

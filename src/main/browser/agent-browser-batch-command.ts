@@ -7,7 +7,7 @@ export function agentBrowserBatchInput(command: readonly string[]): string {
   return JSON.stringify([command.map((token) => token.toWellFormed())])
 }
 
-type AgentBrowserEnvelope = { success?: boolean; data?: unknown; error?: string }
+export type AgentBrowserEnvelope = { success?: boolean; data?: unknown; error?: string }
 
 /** Parses --json output; a one-command batch reply becomes the single-command envelope. */
 export function parseAgentBrowserJsonOutput(stdout: string): AgentBrowserEnvelope {

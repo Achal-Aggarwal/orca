@@ -144,7 +144,8 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
   ): Promise<string> {
     // Every invocation must pin CDP ownership or a restarted daemon may launch Chrome.
     const args = ['--session', sessionName, '--cdp', String(session.proxy.getPort())]
-    if (!execOptions?.cliArgv) {
+    // A caller's own stdin (eval --stdin) cannot share the pipe with batch input.
+    if (!execOptions?.cliArgv && execOptions?.stdinText === undefined) {
       return this.runAgentBrowserRaw(sessionName, [...args, ...AGENT_BROWSER_BATCH_ARGS], {
         ...execOptions,
         stdinText: agentBrowserBatchInput(commandArgs)
@@ -179,8 +180,7 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
     await this.execAgentBrowser(sessionName, ['focus', element])
     // Send one stdin edit to avoid argv limits and focus changes between chunks.
     await this.execAgentBrowser(sessionName, ['eval', '--stdin'], {
-      stdinText: focusedRichTextEditExpression(JSON.stringify(value), { selectAll: true }),
-      cliArgv: true
+      stdinText: focusedRichTextEditExpression(JSON.stringify(value), { selectAll: true })
     })
   }
 

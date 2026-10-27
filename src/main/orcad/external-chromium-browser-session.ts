@@ -163,7 +163,7 @@ export class ExternalChromiumBrowserSession {
     options: {
       timeoutMs?: number
       signal?: AbortSignal
-      /** Send tokens as argv so global options apply; only for Orca-authored or raw CLI tokens. */
+      /** Raw CLI tokens: global options apply, so only for Orca-authored or passthrough lines. */
       cliArgv?: boolean
     } = {}
   ): Promise<unknown> {
