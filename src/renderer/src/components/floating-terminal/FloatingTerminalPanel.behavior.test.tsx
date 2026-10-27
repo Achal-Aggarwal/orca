@@ -13,6 +13,10 @@ vi.mock('@/lib/app-keyboard-router', () => ({
     window.removeEventListener(type, handler, { capture: true })
 }))
 
+vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
+  isStructuredAgentSessionBusy: vi.fn(() => false)
+}))
+
 vi.mock('zustand/react/shallow', () => ({
   // Why: zustand resolves the real react (unmocked in node_modules); the memo wrapper is inert here.
   useShallow: (selector: unknown) => selector

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
+import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
 import { terminalOwnerRows } from '../terminal/terminal-tab-owner-rows.test-fixture'
 
 vi.mock('../confirmation-dialog-context', () => ({
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   closeFile: vi.fn(),
   closeTab: vi.fn(),
   closeUnifiedTab: vi.fn(),
+  structuredSessionBusy: vi.fn<() => boolean>(),
   closeWebRuntimeSessionTab: vi.fn(),
   callRuntimeRpc: vi.fn(),
   runtimeEnvironmentSupportsCapability: vi.fn(),
@@ -41,6 +43,10 @@ const mocks = vi.hoisted(() => ({
 
 const storeBox = vi.hoisted(() => ({
   state: null as Record<string, unknown> | null
+}))
+
+vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
+  isStructuredAgentSessionBusy: mocks.structuredSessionBusy
 }))
 
 vi.mock(import('react'), async (importOriginal) => {
@@ -184,6 +190,7 @@ function resetStore(): void {
 describe('useTabGroupWorkspaceModel terminal activation focus', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.structuredSessionBusy.mockReturnValue(false)
     mocks.createWebRuntimeSessionTerminal.mockResolvedValue({
       status: 'failed',
       message: 'The workspace is not connected to a remote Orca host.'
@@ -201,6 +208,7 @@ describe('useTabGroupWorkspaceModel terminal activation focus', () => {
   })
 
   afterEach(() => {
+    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
     vi.unstubAllGlobals()
   })
 
@@ -217,7 +225,8 @@ describe('useTabGroupWorkspaceModel terminal activation focus', () => {
     expect(mocks.focusTerminalTabSurface).toHaveBeenCalledWith('terminal-1', null)
   })
 
-  it('routes durable native owner close through the unified tab action', async () => {
+  it.each([false, true])('routes native owner close with busy=%s through consent', async (busy) => {
+    mocks.structuredSessionBusy.mockReturnValue(busy)
     const agentTab = {
       id: 'structured-agent-session-codex-session-1',
       entityId: 'codex-session-1',
@@ -251,7 +260,20 @@ describe('useTabGroupWorkspaceModel terminal activation focus', () => {
 
     model.commands.closeItem(agentTab.id)
 
-    await vi.waitFor(() => expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(agentTab.id))
+    if (busy) {
+      expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
+      expect(
+        useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+      ).toMatchObject({
+        terminalTabId: agentTab.id,
+        copyKind: 'chat-agent'
+      })
+      useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+      expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
+      model.commands.closeItem(agentTab.id)
+      useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
+    }
+    expect(mocks.closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(agentTab.id)
     // Why: the unified store action owns cancellation and host retirement for every close path.
     expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
   })
