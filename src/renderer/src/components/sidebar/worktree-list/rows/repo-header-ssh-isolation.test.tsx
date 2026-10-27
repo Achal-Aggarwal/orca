@@ -111,6 +111,22 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
       useAppStore
         .getState()
         .setEnvironmentSshConnectionState(
+          'B',
+          'outside',
+          ssh(sequence % 2 ? 'connected' : 'disconnected', 'outside')
+        )
+    )
+    publication(() =>
+      useAppStore.setState({
+        sshConnectionStates: new Map([
+          ['outside', ssh(sequence % 2 ? 'connected' : 'disconnected', 'outside')]
+        ])
+      })
+    )
+    publication(() =>
+      useAppStore
+        .getState()
+        .setEnvironmentSshConnectionState(
           'A',
           `target-${size - 1}`,
           ssh(sequence % 2 ? 'connected' : 'disconnected', `target-${size - 1}`)
@@ -122,10 +138,21 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
   expect(commits).toHaveBeenCalledTimes(settled.commits)
   expect(viewportRenders).toBe(settled.viewportRenders)
   // Three selected lookups per mounted consumer; independent of hidden catalog size.
-  expect(reads).toBe(20 * 2 * 3)
+  expect(reads).toBe(40 * 2 * 3)
   const equal = work.authorities
   publication(() => publish('A', 2))
   expect(work.authorities - equal).toBe(2)
+  expect(commits).toHaveBeenCalledTimes(settled.commits)
+  const equalOwner = work.authorities
+  publication(() =>
+    useAppStore
+      .getState()
+      .setEnvironmentSshConnectionState('A', 'target-0', {
+        ...ssh('connected', 'target-0'),
+        error: 'diagnostic'
+      })
+  )
+  expect(work.authorities - equalOwner).toBe(1)
   expect(commits).toHaveBeenCalledTimes(settled.commits)
   const baseline = work.authorities
   publication(() => useAppStore.setState({ workspaceHostOrder: ['local'] }))
@@ -142,6 +169,7 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
   // A hidden target reads current truth when mounted, including after H=0.
   rerender(<PaintedHeaders painted={[]} />)
   const hidden = work.authorities
+  reads = 0
   publication(() =>
     useAppStore
       .getState()
@@ -152,6 +180,7 @@ it.each([10, 100])('bounds mounted Create work independently of a %i-target cata
       )
   )
   expect(work.authorities).toBe(hidden)
+  expect(reads).toBe(0)
   rerender(<PaintedHeaders painted={[repos[size - 1]!]} />)
   expect(getAllByRole('button')[0]?.hasAttribute('disabled')).toBe(true)
   rerender(<PaintedHeaders painted={repos.slice(0, 4)} />)
