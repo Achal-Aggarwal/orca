@@ -509,10 +509,7 @@ describe('createPtySubprocess', () => {
     it.skipIf(process.platform === 'win32')(
       'dispose keeps the PTY master open until an in-flight force-kill has swept',
       async () => {
-        const proc = mockPtyProcess(56) as ReturnType<typeof mockPtyProcess> & {
-          destroy: ReturnType<typeof vi.fn>
-        }
-        proc.destroy = vi.fn()
+        const proc = { ...mockPtyProcess(56), destroy: vi.fn() }
         spawnMock.mockReturnValue(proc)
         const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
         try {
