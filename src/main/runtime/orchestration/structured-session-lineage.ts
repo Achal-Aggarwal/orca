@@ -2,6 +2,10 @@
 
 import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
+import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../../shared/structured-agent-session-projection'
 import { structuredWorkerHostScope } from '../structured-worker-identity'
 
 export type AgentSessionRecordReader = {
@@ -105,4 +109,14 @@ export function lineageLiveSession(
 ): AgentSessionConversationView | null {
   const running = resolveLineageRunningSession(store, sessionId)
   return running.kind === 'unverifiable' ? null : running.record
+}
+
+/** The chat row a session's conversation shows under now; an unverifiable lineage keeps its own row. */
+export function lineageDisplayPaneKey(
+  store: AgentSessionRecordReader | null,
+  sessionId: string
+): string {
+  const running = resolveLineageRunningSession(store, sessionId)
+  const current = running.kind === 'unverifiable' ? sessionId : running.sessionId
+  return structuredAgentSessionPaneKey(structuredAgentSessionTabId(current), current)
 }

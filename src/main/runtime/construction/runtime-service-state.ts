@@ -44,6 +44,11 @@ import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
 import { mainListsEveryPane } from '../terminal/surface/main-terminal-surfaces'
 import { TUI_IDLE_QUIESCENCE_MS } from '../orca-runtime-postlude'
 import { screenClearsBlockedTail } from '../blocked-tail-screen-clear'
+import { structuredWorkerIdentities } from '../structured-worker-identity'
+import {
+  lineageDisplayPaneKey,
+  readAgentSessionRecordStore
+} from '../orchestration/structured-session-lineage'
 
 export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId {
   protected readonly stopRequestedPtyIds = new Set<string>()
@@ -124,7 +129,10 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
     getHandleForPaneKey: (paneKey) => this.getTerminalHandleForPaneKey(paneKey),
     getPaneKey: (handle) => this.getPaneKeyForTerminalHandle(handle),
     getDispatchAuthority: (handle) => this.getOrchestrationDispatchAuthority(handle),
-    getAgentStatusSnapshot: () => this.getOrchestrationFleetAgentStatusSnapshot()
+    getAgentStatusSnapshot: () => this.getOrchestrationFleetAgentStatusSnapshot(),
+    getStructuredWorkers: () => structuredWorkerIdentities.list(),
+    getSessionDisplayPaneKey: (orcaSessionId) =>
+      lineageDisplayPaneKey(readAgentSessionRecordStore(), orcaSessionId)
   })
 
   protected readonly terminalList = new RuntimeTerminalList({

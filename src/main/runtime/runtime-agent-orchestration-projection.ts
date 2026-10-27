@@ -28,6 +28,10 @@ type RuntimeAgentOrchestrationDependencies = {
   getPaneKey(handle: string): string | null
   getDispatchAuthority(handle: string): OrchestrationCompatibilityTerminalAuthority | null
   getAgentStatusSnapshot(): readonly FleetAgentStatusEvidence[]
+  /** Chat workers have no leaf or PTY; their minted pane key is a mailbox credential, not a row. */
+  getStructuredWorkers(): Iterable<{ handle: string; sessionId: string; paneKey: string }>
+  /** The chat row showing this session's conversation now, after any /clear. */
+  getSessionDisplayPaneKey(orcaSessionId: string): string | null
 }
 
 export class RuntimeAgentOrchestrationProjection {
@@ -73,6 +77,21 @@ export class RuntimeAgentOrchestrationProjection {
       queriedHandles.add(handle)
       const context = this.getForHandle(handle, db, {
         paneKey,
+        evidence: evidenceByPaneKey.get(paneKey),
+        deferAttention: batchAttention
+      })
+      if (context) {
+        contexts[paneKey] = context
+      }
+    }
+    for (const worker of this.deps.getStructuredWorkers()) {
+      const paneKey = this.deps.getSessionDisplayPaneKey(worker.sessionId)
+      if (!paneKey || contexts[paneKey] || queriedHandles.has(worker.handle)) {
+        continue
+      }
+      queriedHandles.add(worker.handle)
+      const context = this.getForHandle(worker.handle, db, {
+        paneKey: worker.paneKey,
         evidence: evidenceByPaneKey.get(paneKey),
         deferAttention: batchAttention
       })
@@ -194,25 +213,43 @@ export class RuntimeAgentOrchestrationProjection {
       sameCreatorPane
         ? (creatorPaneHandle ?? undefined)
         : undefined
-    const coordinator = this.resolveLivePane(
-      coordinatorHandle,
-      owningRun?.legacy === 0 ? owningRun.coordinator_pane_key : null
-    )
-    const creator = currentCreatorHandle
-      ? {
-          handle: currentCreatorHandle,
-          paneKey: this.deps.getPaneKey(currentCreatorHandle) ?? undefined
-        }
-      : creatorLineageInRun
-        ? this.resolveLivePane(creatorPaneHandle, creatorPaneKey ?? null)
-        : undefined
+    const selfSession = dispatch.assignee_orca_session_id
+    const coordinatorSession =
+      owningRun?.legacy === 0 ? owningRun.coordinator_orca_session_id : null
+    // Why: a chat party nests by its visible row; its handle and minted pane key match no row.
+    const coordinator = coordinatorSession
+      ? this.resolveSessionPane(coordinatorSession)
+      : this.resolveLivePane(
+          coordinatorHandle,
+          owningRun?.legacy === 0 ? owningRun.coordinator_pane_key : null
+        )
+    const creatorSession =
+      dispatch.creator_orca_session_id && dispatch.creator_orca_session_id !== selfSession
+        ? dispatch.creator_orca_session_id
+        : null
+    const creator = creatorSession
+      ? this.resolveSessionPane(creatorSession)
+      : currentCreatorHandle
+        ? {
+            handle: currentCreatorHandle,
+            paneKey: this.deps.getPaneKey(currentCreatorHandle) ?? undefined
+          }
+        : creatorLineageInRun
+          ? this.resolveLivePane(creatorPaneHandle, creatorPaneKey ?? null)
+          : undefined
     const coordinatorIsSelf =
       coordinator.handle === handle ||
+      (coordinatorSession !== null && coordinatorSession === selfSession) ||
       (paneKey !== undefined &&
         coordinator.paneKey !== undefined &&
         coordinator.paneKey === paneKey)
     // Why: a creator whose pane is gone still has a coordinator to nest under.
-    const parent = creator?.handle ? creator : coordinatorIsSelf ? {} : coordinator
+    const parent =
+      creator?.handle || (creatorSession && creator?.paneKey)
+        ? creator
+        : coordinatorIsSelf
+          ? {}
+          : coordinator
     const attention =
       !deferAttention && db && typeof db.getWorkerAttentionFacts === 'function'
         ? buildWorkerAttentionContext({ db, dispatch, task, evidence })
@@ -229,6 +266,11 @@ export class RuntimeAgentOrchestrationProjection {
       ...(orchestrationRunId ? { orchestrationRunId } : {}),
       ...(attention ? { attention } : {})
     }
+  }
+
+  private resolveSessionPane(orcaSessionId: string): { handle?: string; paneKey?: string } {
+    const paneKey = this.deps.getSessionDisplayPaneKey(orcaSessionId)
+    return paneKey ? { paneKey } : {}
   }
 
   /** Never publish stale process-local handles; re-resolve the durable pane key, retaining it while offline so restored rows can nest again. */
