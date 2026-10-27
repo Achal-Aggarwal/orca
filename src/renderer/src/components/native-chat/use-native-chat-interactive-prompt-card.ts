@@ -3,7 +3,7 @@ import { useAppStore } from '../../store'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { resolveNativeChatInteractivePromptCard } from '../../../../shared/native-chat-interactive-prompt'
 import { sayNativeChatApprovalTranslated } from './native-chat-interactive-prompt'
-import { type InteractivePromptCard } from '../../../../shared/native-chat-interactive-prompt'
+import type { InteractivePromptCard } from '../../../../shared/native-chat-interactive-prompt'
 
 export function useNativeChatInteractivePromptCard({
   paneKey,

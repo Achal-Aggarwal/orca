@@ -15,7 +15,7 @@ import {
   hasAskAnswer,
   type AskAnswerSelection
 } from '../../../../shared/native-chat-ask-answer'
-import { type AskPrompt } from '../../../../shared/native-chat/input/native-chat-ask-types'
+import type { AskPrompt } from '../../../../shared/native-chat/input/native-chat-ask-types'
 import {
   sendNativeChatAskAnswer,
   sendNativeChatMessage,

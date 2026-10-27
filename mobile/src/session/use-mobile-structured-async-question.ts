@@ -4,7 +4,7 @@ import {
   formatAskAnswer,
   type AskAnswerSelection
 } from '../../../src/shared/native-chat-ask-answer'
-import { type AskPrompt } from '../../../src/shared/native-chat/input/native-chat-ask-types'
+import type { AskPrompt } from '../../../src/shared/native-chat/input/native-chat-ask-types'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
