@@ -506,6 +506,29 @@ describe('createPtySubprocess', () => {
       }
     )
 
+    it.skipIf(process.platform === 'win32')(
+      'dispose keeps the PTY master open until an in-flight force-kill has swept',
+      async () => {
+        const proc = mockPtyProcess(56) as ReturnType<typeof mockPtyProcess> & {
+          destroy: ReturnType<typeof vi.fn>
+        }
+        proc.destroy = vi.fn()
+        spawnMock.mockReturnValue(proc)
+        const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+        try {
+          const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
+          const pending = handle.forceKill()
+          handle.dispose()
+          expect(proc.destroy).not.toHaveBeenCalled()
+          await pending
+          await vi.waitFor(() => expect(proc.destroy).toHaveBeenCalledOnce())
+          expect(killSpy).toHaveBeenCalledWith(56, 'SIGKILL')
+        } finally {
+          killSpy.mockRestore()
+        }
+      }
+    )
+
     it('signal is a no-op once proc.onExit has fired', async () => {
       const proc = mockPtyProcess(55)
       spawnMock.mockReturnValue(proc)

@@ -435,6 +435,27 @@ describe('POSIX PTY process-group termination', () => {
     expect(signalProcessGroup).toHaveBeenCalledTimes(3)
   })
 
+  it('signals nothing when the root exits while the table is read', async () => {
+    // A reaped root frees its pid and TTY, so the table may now describe another terminal.
+    let rootExited = false
+    const fallback = vi.fn()
+    const signalProcessGroup = vi.fn()
+
+    await forceKillPosixPtyProcessGroups(100, fallback, {
+      platform: 'darwin',
+      currentPid: 999,
+      readProcessTable: async () => {
+        rootExited = true
+        return TABLE
+      },
+      ownsRoot: () => !rootExited,
+      signalProcessGroup
+    })
+
+    expect(signalProcessGroup).not.toHaveBeenCalled()
+    expect(fallback).not.toHaveBeenCalled()
+  })
+
   it('uses the existing fallback on Windows without reading ps', async () => {
     const fallback = vi.fn()
     const readProcessTable = vi.fn(async () => TABLE)

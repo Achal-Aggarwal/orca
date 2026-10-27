@@ -47,6 +47,7 @@ export function createDaemonPtySubprocessHandle(args: {
   let dead = false
   // Unlike dead, disposal keeps this false so an in-flight force-kill still lands.
   let exited = false
+  let posixForceKillInFlight: Promise<void> | null = null
   // I/O failure is not exit evidence; keep termination and producer flow control available.
   let ioFailed = false
   let disposed = false
@@ -134,10 +135,7 @@ export function createDaemonPtySubprocessHandle(args: {
   }
 
   const killRoot = (): void => {
-    // The process-table read awaits; once node-pty reaps the root its pid may be reused.
-    if (!exited) {
-      process.kill(proc.pid, 'SIGKILL')
-    }
+    process.kill(proc.pid, 'SIGKILL')
   }
   const fallBackToNodePtyKill = (signalError: unknown): void => {
     try {
@@ -152,7 +150,18 @@ export function createDaemonPtySubprocessHandle(args: {
     if (dead) {
       return
     }
-    await forceKillPosixPtyProcessGroups(proc.pid, killRoot).catch(fallBackToNodePtyKill)
+    // A reaped root frees its pid and TTY for reuse, so a table read that outlives it signals nothing.
+    const sweep = forceKillPosixPtyProcessGroups(proc.pid, killRoot, {
+      ownsRoot: () => !exited
+    }).catch(fallBackToNodePtyKill)
+    posixForceKillInFlight = sweep
+    const settled = (): void => {
+      if (posixForceKillInFlight === sweep) {
+        posixForceKillInFlight = null
+      }
+    }
+    sweep.then(settled, settled)
+    await sweep
   }
   // Stays synchronous: dispose() reads nodePtyKillIssued right after to avoid double-closing ConPTY.
   const forceKillConpty = (): void => {
@@ -292,15 +301,23 @@ export function createDaemonPtySubprocessHandle(args: {
       clearMasterRetiredTimer()
       inputClosedListener = null
       events.clear()
+      const destroy = (): void => {
+        try {
+          nativeProc.destroy?.()
+        } catch {}
+      }
       // POSIX destroy() can asynchronously signal a recycled pid; Windows needs kill() to close ConPTY.
       if (process.platform !== 'win32') {
         nativeProc.kill = () => {}
       } else if (nodePtyKillIssued) {
         return
       }
-      try {
-        nativeProc.destroy?.()
-      } catch {}
+      // Closing the master hangs up the shell; let an in-flight sweep see the root alive first.
+      if (posixForceKillInFlight) {
+        posixForceKillInFlight.then(destroy, destroy)
+        return
+      }
+      destroy()
     }
   }
 }

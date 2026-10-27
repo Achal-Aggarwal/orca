@@ -24,6 +24,8 @@ export type PosixPtyProcessGroupSignalDeps = PosixPtyGroupSignalDeps & {
   readProcessTable?: () => Promise<string>
   /** Linux session id of a pid, or null when unreadable. */
   readProcessSessionId?: (pid: number) => Promise<number | null>
+  /** False once the root has exited; its pid and TTY may then belong to another terminal. */
+  ownsRoot?: () => boolean
 }
 
 export function isPosixPtyRootStopped(output: string, rootPid: number): boolean {
@@ -120,6 +122,9 @@ export async function signalPosixPtyProcessGroups(
     )
   } catch {
     groups = null
+  }
+  if (deps.ownsRoot && !deps.ownsRoot()) {
+    return
   }
   deliverPosixPtyGroupSignal(groups, signal, fallback, deps)
 }
