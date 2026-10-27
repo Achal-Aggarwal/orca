@@ -67,6 +67,7 @@ import { useStructuredNativeChatSubmitReveal } from './use-structured-native-cha
 import { useNativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
 import type { QueuedEditTransport } from './use-structured-agent-session-queued-edit'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const NO_EDIT: QueuedEditTransport = {
   target: { kind: 'local' },
@@ -95,6 +96,8 @@ type ControllerInput = {
   queuedMessages?: AgentSessionQueuedMessage[]
   queuePause?: AgentSessionQueuePause | null
   submissions?: AgentJournalSubmission[]
+  sending?: StructuredAgentSessionPendingSend[]
+  isWorking?: boolean
 }
 
 function renderController(initialProps: ControllerInput = {}) {
@@ -112,7 +115,8 @@ function renderController(initialProps: ControllerInput = {}) {
         queuePause: input.queuePause === undefined ? { reason: 'stopped' } : input.queuePause,
         submissions: input.submissions ?? [],
         hasPendingPrompt: false,
-        isWorking: false,
+        isWorking: input.isWorking ?? false,
+        sending: input.sending,
         composerScopeKey: undefined,
         mutate,
         admit,
@@ -231,6 +235,34 @@ describe('published recovery membership through the Resume controller', () => {
       )
     }
   )
+
+  it('never offers Resume for a local Sending placeholder with a stale host pause', () => {
+    const { result } = renderController({
+      queuedMessages: [],
+      isWorking: true,
+      sending: [
+        {
+          clientMessageId: 'local',
+          sessionId: 'session-1',
+          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'on its way' }] },
+          previewUris: [],
+          queuedAt: 1,
+          phase: 'sending',
+          issued: true,
+          delivery: 'queue-if-active'
+        }
+      ]
+    })
+    render(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList chatWorktreeId={null} controller={result.current} />
+      </TooltipProvider>
+    )
+    expect(screen.getByText('Sending…')).toBeTruthy()
+    expect(result.current.cards).toMatchObject([{ messageId: 'local', hold: 'sending' }])
+    expect(result.current.pause).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull()
+  })
 
   it('uses published membership before hiding catch-up handoffs; old-host Q still blocks its suffix', () => {
     const { result, rerender } = renderController({ queuedMessages: [recovery, w1, q, w2] })
