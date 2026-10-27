@@ -57,7 +57,7 @@ export class RuntimeRepositoryRegistrationController {
       )
     const existing = findAtPath() ?? (await findProjectAtSameRealPath(sameHostRepos(), repoPath))
     if (existing) {
-      return this.reuseExisting(existing, executionHostId)
+      return this.reuseExisting(store, existing, executionHostId)
     }
     // This controller validated/read the path locally; runtime: is the paired-client address, not another machine.
     const detected = await detectRepoIconAndUpstream({
@@ -68,7 +68,7 @@ export class RuntimeRepositoryRegistrationController {
     // A concurrent add of the same folder can finish while the awaits above are pending.
     const raceWinner = findAtPath()
     if (raceWinner) {
-      return this.reuseExisting(raceWinner, executionHostId)
+      return this.reuseExisting(store, raceWinner, executionHostId)
     }
     const repo: Repo = {
       id: randomUUID(),
@@ -87,13 +87,17 @@ export class RuntimeRepositoryRegistrationController {
     return store.getRepo(repo.id) ?? repo
   }
 
-  private reuseExisting(existing: Repo, executionHostId: ExecutionHostId | null | undefined): Repo {
+  private reuseExisting(
+    store: RuntimeStore,
+    existing: Repo,
+    executionHostId: ExecutionHostId | null | undefined
+  ): Repo {
     if (
       existing.executionHostId == null &&
       parseExecutionHostId(executionHostId)?.kind === 'runtime'
     ) {
       const adopted =
-        this.requireStore().updateRepo(existing, { executionHostId }) ??
+        store.updateRepo(existing, { executionHostId }) ??
         ({ ...existing, executionHostId } as Repo)
       this.invalidate(existing.id)
       return adopted
