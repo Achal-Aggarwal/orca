@@ -21,7 +21,7 @@ import { MARKDOWN_TONES, scaledMarkdownText, styles } from './mobile-markdown-st
 import { MarkdownText } from './mobile-markdown-text'
 import { codeFenceClosed, plainText } from './mobile-markdown-tree'
 import { MermaidDiagram } from './pr-sidebar/MermaidDiagram'
-import { MobileSourceCopyButton } from './MobileSourceCopyButton'
+import { MobileMarkdownCodeBlock } from './MobileMarkdownCodeBlock'
 
 /** Prose base size — passed to MermaidDiagram fallback mono text. */
 const MERMAID_BASE = 13
@@ -32,6 +32,7 @@ const MAX_NESTING = 8
 export type MarkdownBlockContext = MarkdownInlineContext & {
   /** The text is still arriving: a diagram stays code until it stops. */
   growing: boolean
+  /** Size only: the colour comes from `tone`, which a quote resets for its own panel. */
   listText: StyleProp<TextStyle>
   /** Interactive children own their touches and must forward the row action. */
   rowLongPress?: () => void
@@ -54,25 +55,17 @@ function renderCode(node: Code, key: number, ctx: MarkdownBlockContext): ReactNo
     )
   }
   return (
-    <View key={key} style={styles.codeBlock}>
-      <View style={styles.codeBody}>
-        {node.lang ? <NativeText style={styles.codeLanguage}>{node.lang}</NativeText> : null}
-        <MarkdownText
-          selectable
-          style={[styles.codeText, scaledMarkdownText(styles.codeText, ctx.textScale)]}
-        >
-          {node.value}
-        </MarkdownText>
-      </View>
-      {node.value ? (
-        <MobileSourceCopyButton text={node.value} accessibilityLabel="Copy code" />
-      ) : null}
-    </View>
+    <MobileMarkdownCodeBlock
+      key={key}
+      code={node.value}
+      language={node.lang ?? undefined}
+      textScale={ctx.textScale}
+    />
   )
 }
 
 function renderList(node: List, key: number, ctx: MarkdownBlockContext, depth: number): ReactNode {
-  const itemText: ParagraphText = { style: ctx.listText, selectable: true }
+  const itemText: ParagraphText = { style: [ctx.listText, ctx.tone.text], selectable: true }
   return (
     <View key={key} style={styles.list}>
       {node.children.map((item, itemIndex) => (
@@ -81,7 +74,7 @@ function renderList(node: List, key: number, ctx: MarkdownBlockContext, depth: n
             {item.checked == null
               ? node.ordered
                 ? `${(node.start ?? 1) + itemIndex}.`
-                : '-'
+                : '•'
               : item.checked
                 ? '[x]'
                 : '[ ]'}
@@ -99,12 +92,18 @@ function renderTable(node: Table, key: number, ctx: MarkdownBlockContext): React
   const rows = node.children.map((row) => row.children)
   // Rows lay out independently, so a shared width per column is what lines them up.
   const columnWidths = mobileMarkdownTableColumnWidths(
-    rows.map((cells) => cells.map((cell) => plainText(cell)))
+    rows.map((cells) => cells.map((cell) => plainText(cell))),
+    ctx.textScale
   )
   // A table keeps its own dark surface, so its spans keep the default palette.
   const cellCtx = { ...ctx, tone: MARKDOWN_TONES.default }
   return (
-    <ScrollView key={key} horizontal showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      key={key}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tableScroll}
+    >
       <View style={styles.table}>
         {rows.map((cells, rowIndex) => (
           <View key={rowIndex} style={styles.tableRow}>
@@ -116,7 +115,7 @@ function renderTable(node: Table, key: number, ctx: MarkdownBlockContext): React
                   styles.tableCell,
                   rowIndex === 0 ? styles.tableHeader : null,
                   scaledMarkdownText(styles.tableCell, ctx.textScale),
-                  { width: width * ctx.textScale, textAlign: node.align?.[cellIndex] ?? 'left' }
+                  { width, textAlign: node.align?.[cellIndex] ?? 'left' }
                 ]}
               >
                 {renderInline(cells[cellIndex]?.children ?? [], cellCtx)}
@@ -200,24 +199,23 @@ function renderBlock(
           {renderInline(node.children, ctx)}
         </MarkdownText>
       )
-    case 'blockquote':
+    case 'blockquote': {
+      // A quote keeps its own dark panel, so its text keeps the default palette, like a table.
+      const quoteCtx = { ...ctx, tone: MARKDOWN_TONES.default }
       return (
         <View key={key} style={styles.quote}>
           {renderBlocks(
             node.children,
-            ctx,
+            quoteCtx,
             {
-              style: [
-                styles.quoteText,
-                scaledMarkdownText(styles.quoteText, ctx.textScale),
-                ctx.tone.secondary
-              ],
+              style: [styles.quoteText, scaledMarkdownText(styles.quoteText, ctx.textScale)],
               selectable: true
             },
             depth + 1
           )}
         </View>
       )
+    }
     case 'code':
       return renderCode(node, key, ctx)
     case 'list':
@@ -233,7 +231,12 @@ function renderBlock(
             {`[${node.label ?? node.identifier}]`}
           </NativeText>
           <View style={styles.listItemBody}>
-            {renderBlocks(node.children, ctx, { style: ctx.listText, selectable: true }, depth + 1)}
+            {renderBlocks(
+              node.children,
+              ctx,
+              { style: [ctx.listText, ctx.tone.text], selectable: true },
+              depth + 1
+            )}
           </View>
         </View>
       )

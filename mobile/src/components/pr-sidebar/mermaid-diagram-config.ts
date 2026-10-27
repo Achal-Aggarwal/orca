@@ -7,9 +7,13 @@ export const MERMAID_DIAGRAM_CONFIG = {
   securityLevel: 'strict',
   darkMode: true,
   suppressErrorRendering: true,
+  // The page's own text face; mermaid defaults to Trebuchet.
+  fontFamily: 'system-ui, sans-serif',
   themeVariables: {
     background: colors.bgRaised,
     primaryColor: colors.bgPanel,
+    primaryBorderColor: colors.borderSubtle,
+    nodeBorder: colors.borderSubtle,
     primaryTextColor: colors.textPrimary,
     lineColor: colors.textSecondary,
     textColor: colors.textPrimary

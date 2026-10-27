@@ -58,11 +58,7 @@ function MobileMarkdownContent({
     tone,
     textScale,
     // Zoomed list text has read a size above the sheet's since it first scaled; kept as it was.
-    listText: [
-      styles.listText,
-      scaledMarkdownText({ fontSize: 14, lineHeight: 20 }, textScale),
-      tone.text
-    ],
+    listText: [styles.listText, scaledMarkdownText({ fontSize: 14, lineHeight: 20 }, textScale)],
     rowLongPress: setup.androidTranscript ? setup.onLongPress : undefined,
     directives,
     renderVisual,
