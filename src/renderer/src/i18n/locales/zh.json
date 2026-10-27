@@ -20571,6 +20571,13 @@
       "pushFailed": "推送失败。请解决推送错误后重试。"
     }
   },
+  "modifiedInstall": {
+    "title": "重新安装 Orca",
+    "message": "Orca 的部分应用文件在安装后被修改。",
+    "detail": "重新安装前，Orca 的部分功能无法加载，重启也无法解决。已修改的文件（{{fileCount}} 个）：{{files}}\n\n重新安装 Orca 即可恢复。你的工作区和设置会保留。",
+    "download": "打开下载页面",
+    "close": "关闭"
+  },
   "rendererRecovery": {
     "reload": "重新加载",
     "copyCommands": "复制命令",
