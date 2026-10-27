@@ -38,6 +38,9 @@ export const TERMINAL_SEND_METHODS = [
         replayedMutationReceipt
       }
     ) => {
+      const notAccepted = () => ({
+        send: { handle: params.terminal, accepted: false, bytesWritten: 0 }
+      })
       await assertTerminalSendTextWithinLimit(params.text)
       await assertTerminalSendTextWithinLimit(params.resolvedLaunchDraft?.text)
       if (params.text) {
@@ -84,22 +87,10 @@ export const TERMINAL_SEND_METHODS = [
         (!runtime.isMobileTerminalQueryReplyAuthority(leaf.ptyId, queryReplyClientId!) ||
           !runtime.shouldForwardTerminalQueryReply(leaf.ptyId, params.text!))
       ) {
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return notAccepted()
       }
       if (leaf?.ptyId && isTerminalInputLockedForClient(runtime, leaf.ptyId, params.client)) {
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return notAccepted()
       }
       if (
         leaf?.ptyId &&
@@ -126,26 +117,14 @@ export const TERMINAL_SEND_METHODS = [
         )
         // Without a stream, sends cannot safely claim ownership; refuse stale geometry.
         if (!claim.updated || isTerminalInputLockedForClient(runtime, leaf.ptyId, params.client)) {
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0
-            }
-          }
+          return notAccepted()
         }
       }
       const hasText = typeof params.text === 'string' && params.text.length > 0
       const hasSuffix = params.enter === true || params.interrupt === true
       if (params.requireAgentStatus === 'sendable' && hasText && hasSuffix) {
         // Guarded sends are two-phase; combined payload/submit could partially deliver across a guard flip.
-        return {
-          send: {
-            handle: params.terminal,
-            accepted: false,
-            bytesWritten: 0
-          }
-        }
+        return notAccepted()
       }
       // Recheck permission and agent presence immediately before PTY acceptance.
       const assertSendPreconditions =
@@ -168,13 +147,7 @@ export const TERMINAL_SEND_METHODS = [
           await assertSendPreconditions?.(leaf?.ptyId ?? undefined)
         } catch (error) {
           if (isTerminalSendGuardNotWritable(error)) {
-            return {
-              send: {
-                handle: params.terminal,
-                accepted: false,
-                bytesWritten: 0
-              }
-            }
+            return notAccepted()
           }
           const refusedReason = getTerminalSendGuardRefusedReason(error)
           if (!refusedReason) {
@@ -273,13 +246,7 @@ export const TERMINAL_SEND_METHODS = [
           }
         }
         if (isTerminalSendGuardNotWritable(error)) {
-          return {
-            send: {
-              handle: params.terminal,
-              accepted: false,
-              bytesWritten: 0
-            }
-          }
+          return notAccepted()
         }
         throw error
       }
