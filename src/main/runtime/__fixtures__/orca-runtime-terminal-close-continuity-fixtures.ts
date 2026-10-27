@@ -23,6 +23,7 @@ import {
   WORKTREE_PATH,
   canaryProcess,
   makeDeferred,
+  makeRepo,
   makeSession
 } from './orca-runtime-terminal-close-continuity-state-fixture'
 import { createCloseContinuityGraphFixture } from './orca-runtime-terminal-close-continuity-graph-fixture'
@@ -91,13 +92,7 @@ function createHarness(
   let includeSiblingPty = false
   let victimPtyListed = true
   let flushError: Error | null = null
-  const repo = {
-    id: REPO_ID,
-    path: WORKTREE_PATH,
-    displayName: 'close-continuity',
-    badgeColor: '#000000',
-    addedAt: 1
-  }
+  const repo = makeRepo()
   const store = withDurableRuntimeStore({
     ...terminalClose.terminalCloseStoreDefaults(),
     getRepos: () => [repo],

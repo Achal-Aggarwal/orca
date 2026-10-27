@@ -198,6 +198,38 @@ it.each(['chat', 'terminal'] as const)(
   }
 )
 
+it('keeps suspended and live jobs disabled, with fg guidance only for suspension', () => {
+  const paneKey = 'terminal:leaf'
+  const source = {
+    tabId: 'terminal',
+    workspaceId: subject.workspaceId,
+    paneKey,
+    agent: subject.agent,
+    providerSessionId: 'provider-session',
+    executionHostId: 'local' as const,
+    ptyId: 'pty'
+  }
+  useAppStore.getState().setPaneForegroundAgent(paneKey, {
+    agent: null,
+    suspendedAgent: 'codex',
+    shellForeground: true
+  })
+  const { result } = renderHook(() =>
+    useConversationSwitchReadiness({ ...subject, direction: 'chat', source })
+  )
+  expect(result.current.ready).toBe(false)
+  expect(result.current.explanation).toContain('If you suspended a job, run fg and exit it')
+  act(() => {
+    useAppStore.getState().setPaneForegroundAgent(paneKey, {
+      agent: 'codex',
+      shellForeground: false
+    })
+  })
+  expect(result.current.ready).toBe(false)
+  expect(result.current.explanation).toContain('Exit the job, then switch.')
+  expect(result.current.explanation).not.toContain('fg')
+})
+
 it('formats real refusal categories once, with agent and next step, never raw errors or platform-wrong job control', async () => {
   const text = (reason: string, platform = 'darwin') =>
     conversationSwitchFailureText(null, { ...subject, platform }, reason)

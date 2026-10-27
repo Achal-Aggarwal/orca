@@ -5,6 +5,12 @@ import type { RuntimeTerminalResolvePane } from '../../../../shared/runtime-type
 import { getRemoteRuntimePtyOwner } from '@/runtime/runtime-terminal-stream'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
+import { getKnownExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
+import {
+  HOST_TERMINAL_SURFACE_SEPARATOR,
+  toHostSessionPaneKey,
+  toHostSessionTabId
+} from '../../../../shared/terminal-surface-id'
 
 import { parseHostAuthorityKey } from '../../../../shared/host-authority'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
@@ -26,12 +32,9 @@ export async function captureSourceTerminal(source: CliChatResumeSource) {
   if (source.paneKey !== `${source.tabId}:${leafId}`) {
     return null
   }
-  const renderer = captureTerminalSurfaceIdentity(
-    useAppStore.getState(),
-    source.workspaceId,
-    source.tabId,
-    leafId
-  )
+  const state = useAppStore.getState()
+  const rendererHost = owner ? getKnownExecutionHostIdForWorktree(state, source.workspaceId) : null
+  const renderer = captureTerminalSurfaceIdentity(state, source.workspaceId, source.tabId, leafId)
   const sourceTarget = structuredAgentSessionTargetForHost(source.executionHostId)
   if (
     owner &&
@@ -46,7 +49,7 @@ export async function captureSourceTerminal(source: CliChatResumeSource) {
       target,
       'terminal.resolvePane',
       {
-        paneKey: source.paneKey,
+        paneKey: owner ? toHostSessionPaneKey(source.paneKey) : source.paneKey,
         worktreeId: source.workspaceId
       }
     )
@@ -57,7 +60,10 @@ export async function captureSourceTerminal(source: CliChatResumeSource) {
       !original ||
       !terminal.incarnationId ||
       original.worktreeId !== source.workspaceId ||
-      original.tabId !== source.tabId ||
+      original.tabId !==
+        (owner
+          ? toHostSessionTabId(source.tabId).split(HOST_TERMINAL_SURFACE_SEPARATOR)[0]
+          : source.tabId) ||
       original.leafId !== leafId ||
       (terminal.executionHostId != null && terminal.executionHostId !== authority?.at) ||
       original.ptyId !== terminal.ptyId ||
@@ -65,12 +71,25 @@ export async function captureSourceTerminal(source: CliChatResumeSource) {
     ) {
       return null
     }
+    const currentState = useAppStore.getState()
+    const current = captureTerminalSurfaceIdentity(
+      currentState,
+      source.workspaceId,
+      source.tabId,
+      leafId
+    )
+    const currentHost = owner
+      ? getKnownExecutionHostIdForWorktree(currentState, source.workspaceId)
+      : null
     const matches = owner
       ? terminal.handle === owner.terminal &&
+        currentHost === rendererHost &&
+        (currentHost === null || currentHost === source.executionHostId) &&
+        (renderer === null
+          ? current === null
+          : isRetainedTerminalSurfaceIdentity(renderer, current)) &&
         (renderer === null ||
           ((renderer.ptyId === null || renderer.ptyId === source.ptyId) &&
-            renderer.createdAt === original.createdAt &&
-            renderer.generation === original.generation &&
             (!renderer.hasLeaf || original.hasLeaf) &&
             (renderer.incarnationId === null || renderer.incarnationId === original.incarnationId)))
       : (source.ptyId === undefined || terminal.ptyId === source.ptyId) &&

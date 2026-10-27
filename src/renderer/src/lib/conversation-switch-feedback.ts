@@ -12,7 +12,8 @@ export function conversationSwitchFailureText(
     history?: unknown
     platform?: string
   },
-  reasonOverride?: string
+  reasonOverride?: string,
+  context?: { suspended: boolean }
 ): string {
   const failure = structuredLaunchFailure(error)
   const reason = reasonOverride ?? failure?.details?.reason
@@ -65,11 +66,13 @@ export function conversationSwitchFailureText(
           )
   }
   if (reason === 'conversationOpenInTerminal') {
+    const suspended =
+      context?.suspended ?? (args.platform === 'darwin' || args.platform === 'linux')
     return translate(
-      args.platform === 'darwin' || args.platform === 'linux'
+      suspended
         ? 'components.tab.bar.switch.terminalBusyPosix'
         : 'components.tab.bar.switch.terminalBusy',
-      args.platform !== 'win32' && (args.platform === 'darwin' || args.platform === 'linux')
+      suspended
         ? '{{agent}} cannot switch while this terminal has a running job. If you suspended a job, run fg and exit it, then switch.'
         : '{{agent}} cannot switch while this terminal has a running job. Exit the job, then switch.',
       values

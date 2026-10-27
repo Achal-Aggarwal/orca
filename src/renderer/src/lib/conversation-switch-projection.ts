@@ -1,6 +1,11 @@
 import type { AppState } from '@/store'
 import type { Tab } from '../../../shared/tab-types'
-import type { SessionSwitchProjection } from '../../../shared/agent-session-switch-execution'
+import {
+  AGENT_SESSION_SWITCH_CLIENT_MS,
+  type SessionSwitchProjection
+} from '../../../shared/agent-session-switch-execution'
+import { recordWebSessionCloseIntent } from '@/runtime/web-session-close-intent'
+import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { createKeptWorktreeSurfacePruners } from '@/store/slices/tabs/kept-worktree-surface-pruning'
 
@@ -11,6 +16,7 @@ type Guard = {
   placement: string
   used: boolean
   notified: boolean
+  releaseClose?: () => void
   retain: (converged?: boolean) => void
 }
 const guards = new Map<string, Guard>()
@@ -52,6 +58,7 @@ export function captureSwitchProjection(
     if (guard.workspaceId !== workspaceId || guard.proposal.sessionId !== proposal.sessionId) {
       continue
     }
+    guard.releaseClose?.()
     guard.retain()
     guards.delete(generation)
   }
@@ -73,6 +80,7 @@ export function captureSwitchProjection(
 export function noteSwitchPresentationUse(tabOrSessionId: string): void {
   for (const guard of guards.values()) {
     if (guard.tab?.id === tabOrSessionId || guard.proposal.sessionId === tabOrSessionId) {
+      guard.releaseClose?.()
       guard.used = true
       if (!guard.notified) {
         guard.notified = true
@@ -95,6 +103,9 @@ export function observeSwitchProjections(
     const guard = guards.get(proposal.generation)
     if (guard) {
       guard.proposal = proposal
+      if (proposal.phase === 'retain') {
+        guard.releaseClose?.()
+      }
     }
   }
 }
@@ -122,6 +133,13 @@ export function retireSwitchProjection(
     fileIds: new Set(),
     browserTabIds: new Set()
   })
+  guard.releaseClose = recordWebSessionCloseIntent(
+    { environmentId: LOCAL_STRUCTURED_SESSION_OWNER },
+    guard.workspaceId,
+    `agent-session:${proposal.sessionId}`,
+    Date.now(),
+    AGENT_SESSION_SWITCH_CLIENT_MS
+  )
   return {
     unifiedTabsByWorktree: prune.unifiedTabs(state.unifiedTabsByWorktree),
     groupsByWorktree: prune.groups(state.groupsByWorktree),
@@ -179,6 +197,7 @@ export function protectSwitchProjections<
     }
     const current = indexed.current.get(guard.tab.id)
     if (current && indexed.placements.get(current.id) !== guard.placement) {
+      guard.releaseClose?.()
       guard.used = true
     }
     const present = indexed.present.has(guard.tab.id)
@@ -186,6 +205,7 @@ export function protectSwitchProjections<
       (guard.proposal.phase === 'retain' && present) ||
       (guard.proposal.phase === 'retire' && !guard.used && !present)
     ) {
+      guard.releaseClose?.()
       guards.delete(guard.proposal.generation)
       queueMicrotask(() => guard.retain(true))
       continue
@@ -267,6 +287,7 @@ export function protectSwitchProjections<
 /** Teardown retains unresolved sources before releasing this view's transient protection. */
 export function disposeSwitchProjections(): void {
   for (const guard of guards.values()) {
+    guard.releaseClose?.()
     guard.retain()
   }
   guards.clear()

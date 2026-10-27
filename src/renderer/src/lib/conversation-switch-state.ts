@@ -75,22 +75,22 @@ export function useConversationSwitchReadiness(args: ConversationSwitch | null) 
       ),
     [held]
   )
-  const terminalRunning = useAppStore((state) => {
+  const terminalJob = useAppStore((state) => {
     const key = args?.source?.paneKey
     if (!key) {
       return false
     }
     const foreground = state.paneForegroundAgentByPaneKey[key]
-    return Boolean(foreground?.suspendedAgent || (foreground?.agent && !foreground.shellForeground))
+    return foreground?.suspendedAgent
+      ? 'suspended'
+      : foreground?.agent && !foreground.shellForeground
+        ? 'live'
+        : false
   })
   const pending = useConversationSwitchPending(args)
   const capability = args ? inPlaceSwitchCapabilityNow(args.executionHostId, args.agent) : undefined
   const updateRequired = args?.source?.hostUpdateRequired === true
-  const reason = terminalRunning
-    ? 'conversationOpenInTerminal'
-    : runningTurn
-      ? 'turnActive'
-      : undefined
+  const reason = terminalJob ? 'conversationOpenInTerminal' : runningTurn ? 'turnActive' : undefined
   return {
     ready: Boolean(
       args && target && capability !== undefined && !pending && !reason && !updateRequired
@@ -102,7 +102,9 @@ export function useConversationSwitchReadiness(args: ConversationSwitch | null) 
           'Update Orca on this host to continue in Chat UI.'
         )
       : args && reason
-        ? conversationSwitchFailureText(null, args, reason)
+        ? conversationSwitchFailureText(null, args, reason, {
+            suspended: terminalJob === 'suspended'
+          })
         : undefined
   }
 }

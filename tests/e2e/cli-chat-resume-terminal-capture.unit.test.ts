@@ -2,6 +2,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { captureSourceTerminal } from '@/components/tab-bar/cli-chat-resume-terminal-capture'
+import { buildMirroredTerminalTabs } from '@/runtime/web-session-tabs-sync/terminal-build'
 import { toRemoteRuntimePtyId } from '../../src/shared/remote-runtime/remote-runtime-pty-id'
 import {
   createHarness,
@@ -130,33 +131,102 @@ it.each(['row', 'incarnation', 'pty', 'workspace', 'leaf', 'host'] as const)(
   }
 )
 
-it('keeps remote proxy and host PTY namespaces distinct, and refuses absent or changed remote owners', async () => {
+it('captures a real mirrored source on host coordinates and keeps client continuity independent of host clocks', async () => {
   const harness = createHarness({ registerPtyBacked: true, publishMobileSurface: true })
-  seed(harness)
-  const terminal = harness.runtime.resolveTerminalPane(`${TAB_ID}:${LEAF_ID}`, WORKTREE_ID)
-  const proxy = toRemoteRuntimePtyId(terminal.handle, 'paired')
-  useAppStore.setState({
-    terminalLayoutsByTabId: {
-      ...useAppStore.getState().terminalLayoutsByTabId,
-      [TAB_ID]: {
-        ...useAppStore.getState().terminalLayoutsByTabId[TAB_ID],
-        ptyIdsByLeafId: { [LEAF_ID]: proxy }
-      }
+  harness.editSession((session) => ({
+    ...session,
+    tabsByWorktree: {
+      ...session.tabsByWorktree,
+      [WORKTREE_ID]: session.tabsByWorktree[WORKTREE_ID].map((row) => ({ ...row, generation: 7 }))
     }
-  })
-  rpc.mockResolvedValue({ terminal })
-  expect(await captureSourceTerminal(source(proxy, 'runtime:paired'))).toMatchObject({
+  }))
+  const snapshot = await harness.runtime.listMobileSessionTabs(`id:${WORKTREE_ID}`)
+  const terminal = harness.runtime.resolveTerminalPane(`${TAB_ID}:${LEAF_ID}`, WORKTREE_ID)
+  const [mirror] = buildMirroredTerminalTabs(snapshot, 'paired', new Map(), {}, {}, 0, 9000)
+  if (!mirror || !terminal.presentation) {
+    throw new Error('Expected a real published terminal')
+  }
+  const mirrored = {
+    ...source(mirror.layout.ptyIdsByLeafId?.[LEAF_ID], 'runtime:paired'),
+    tabId: mirror.tab.id,
+    paneKey: `${mirror.tab.id}:${LEAF_ID}`
+  }
+  const seedMirror = () =>
+    useAppStore.setState({
+      tabsByWorktree: { [WORKTREE_ID]: [mirror.tab] },
+      terminalLayoutsByTabId: { [mirror.tab.id]: mirror.layout },
+      terminalPtyIncarnationsByPaneKey: {},
+      activeWorktreeId: WORKTREE_ID,
+      activeWorkspaceExecutionHostId: 'runtime:paired'
+    })
+  seedMirror()
+  let duringResolve = () => {}
+  rpc.mockImplementation(
+    async (_target, method, params: { paneKey: string; worktreeId: string }) => {
+      expect(method).toBe('terminal.resolvePane')
+      expect(params).toEqual({ paneKey: `${TAB_ID}:${LEAF_ID}`, worktreeId: WORKTREE_ID })
+      duringResolve()
+      return { terminal: harness.runtime.resolveTerminalPane(params.paneKey, params.worktreeId) }
+    }
+  )
+  expect(mirrored.tabId).not.toBe(terminal.presentation.identity.tabId)
+  expect(mirror.tab.createdAt).not.toBe(terminal.presentation.identity.createdAt)
+  expect(mirror.tab.generation ?? 0).not.toBe(terminal.presentation.identity.generation)
+  expect(await captureSourceTerminal(mirrored)).toEqual({
     target: { kind: 'environment', environmentId: 'paired' },
-    handle: terminal.handle
+    handle: terminal.handle,
+    incarnationId: terminal.incarnationId,
+    presentation: terminal.presentation
   })
+  for (const change of ['generation', 'adoption', 'binding', 'owner', 'incarnation'] as const) {
+    seedMirror()
+    duringResolve = () =>
+      useAppStore.setState({
+        ...(change === 'generation' || change === 'adoption'
+          ? {
+              tabsByWorktree: {
+                [WORKTREE_ID]: [
+                  {
+                    ...mirror.tab,
+                    ...(change === 'generation' ? { generation: 1 } : { createdAt: 9001 })
+                  }
+                ]
+              }
+            }
+          : {}),
+        ...(change === 'binding'
+          ? {
+              terminalLayoutsByTabId: {
+                [mirror.tab.id]: {
+                  ...mirror.layout,
+                  ptyIdsByLeafId: { [LEAF_ID]: toRemoteRuntimePtyId('successor', 'paired') }
+                }
+              }
+            }
+          : {}),
+        ...(change === 'owner' ? { activeWorkspaceExecutionHostId: 'runtime:successor' } : {}),
+        ...(change === 'incarnation'
+          ? {
+              terminalPtyIncarnationsByPaneKey: { [mirrored.paneKey]: 'successor' }
+            }
+          : {})
+      })
+    expect(await captureSourceTerminal(mirrored), change).toBeNull()
+  }
+  seedMirror()
+  duringResolve = () => {}
   expect(
-    await captureSourceTerminal(source(toRemoteRuntimePtyId(terminal.handle), 'runtime:paired'))
+    await captureSourceTerminal({ ...mirrored, ptyId: toRemoteRuntimePtyId(terminal.handle) })
   ).toBeNull()
-  expect(await captureSourceTerminal(source(undefined, 'runtime:paired'))).toBeNull()
-  expect(await captureSourceTerminal(source(proxy, 'local'))).toBeNull()
-  terminal.handle = 'different'
-  expect(await captureSourceTerminal(source(proxy, 'runtime:paired'))).toBeNull()
-  expect(rpc).toHaveBeenCalledTimes(2)
+  expect(await captureSourceTerminal({ ...mirrored, ptyId: undefined })).toBeNull()
+  expect(await captureSourceTerminal({ ...mirrored, executionHostId: 'local' })).toBeNull()
+  rpc.mockImplementation(async (_target, _method, params) => ({
+    terminal: {
+      ...harness.runtime.resolveTerminalPane(params.paneKey, params.worktreeId),
+      handle: 'different'
+    }
+  }))
+  expect(await captureSourceTerminal(mirrored)).toBeNull()
 })
 
 it('requires a real row/leaf for the new missing-binding exception while retaining existing nonnull-source admission', async () => {
