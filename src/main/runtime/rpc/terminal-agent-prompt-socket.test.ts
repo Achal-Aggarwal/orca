@@ -14,8 +14,7 @@ import { TERMINAL_METHODS } from './methods/terminal'
 import { STATUS_METHODS } from './methods/status'
 import { OrchestrationDb } from '../orchestration/db'
 import { writePtyFromRuntimeController } from '../../ipc/pty/runtime/operations'
-import { getLocalPtyProvider, setLocalPtyProvider } from '../../ipc/pty/provider/registry'
-import type { IPtyProvider } from '../../providers/pty-provider-contract'
+import { getLocalPtyProvider } from '../../ipc/pty/provider/registry'
 
 vi.mock('../../git/worktree', () => {
   const read = async () => [
@@ -34,9 +33,7 @@ it.each(['before', 'after'] as const)(
     const endpoint =
       kind === 'named-pipe' ? `\\\\.\\pipe\\${root.split(/[/\\]/).at(-1)}` : join(root, 'rpc')
     const transport = new UnixSocketTransport({ endpoint, kind })
-    const prior = getLocalPtyProvider()
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this test's controller uses only provider.write.
-    setLocalPtyProvider({ write: () => true } as IPtyProvider)
+    const providerWrite = vi.spyOn(getLocalPtyProvider(), 'write').mockReturnValue(true)
     const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(
       () => pasted.resolve(),
       'claude',
@@ -121,7 +118,7 @@ it.each(['before', 'after'] as const)(
       await transport.stop()
       await Promise.allSettled(done)
       db.close()
-      setLocalPtyProvider(prior)
+      providerWrite.mockRestore()
       rmSync(root, { recursive: true, force: true })
     }
   },
