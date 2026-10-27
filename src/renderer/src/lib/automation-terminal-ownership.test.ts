@@ -1,8 +1,18 @@
+import { randomUUID } from 'node:crypto'
+import { createRuntimeAutomationService } from '../../../main/automations/runtime-automation-service'
+import { runtimeStub } from '../../../main/runtime/rpc/methods/agent-launch.test-fixture'
+import { createQueuedMessageTestRig } from '../../../main/native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
+import { hostTestAttachParams } from '../../../main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import { setStructuredAgentSessionHost } from '../../../main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { readAutomationRunReceipt } from '../../../main/automations/automation-run-receipt'
+import { hostWorktreeTarget } from '../../../shared/worktree/host-qualified-identity'
+import { revealCreatedTerminal } from '../../../main/runtime/terminal/launch/terminal-create-reveal'
+import { OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal } from '../../../main/runtime/session-tabs/pty-backed-session-publication'
+import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../../../main/runtime/session-tabs/structured-session-tab-restoration'
+import type { RuntimeMobileSessionTabsSnapshot } from '../../../shared/runtime-types'
 import { stopRevokers } from '../../../main/automations/desktop-run-terminal-stop'
-import type { PtyShutdownOptions } from '../../../main/providers/pty-provider-contract'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { OrcaRuntimeWithStopExactTerminalsForWorktree } from '../../../main/runtime/terminal/stop/worktree-terminal-stop-targets'
 import { AutomationService } from '../../../main/automations/service'
 import {
   createStore,
@@ -13,39 +23,21 @@ import {
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { EventEmitter } from 'node:events'
-import type * as pty from 'node-pty'
+import type { EventEmitter } from 'node:events'
 import type { OrcaRuntimeService } from '../../../main/runtime/orca-runtime'
-import type { Store } from '../../../main/persistence'
 import type { ConnectPanePtySession } from '@/components/terminal-pane/pty-connection/connect-pane-pty-session'
 import { buildProfileStateCutoverFixture } from '../../../main/persistence/profile-state-cutover-fixture'
-import {
-  createTestStore,
-  makeTab,
-  makeWorktree,
-  seedStore
-} from '@/store/slices/store-test-helpers'
-import { createStoreSessionMockApi } from '@/store/slices/store-session-test-harness'
+import type { createTestStore } from '@/store/slices/store-test-helpers'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import {
   recordTerminalInputActivity,
   flushTerminalInputActivity
 } from './terminal-input-activity-coalescing'
 import { createAutomationTerminalOwnership } from './automation-terminal-ownership'
-import { registerTerminalPresentationIpcBridge } from '@/hooks/ipc-events/terminal-presentation-ipc-bridge'
-import { registerAgentLaunchTabIpcBridge } from '@/hooks/ipc-events/agent-launch-tab-ipc-bridge'
-import {
-  createDesktopRunTerminalLifecycle,
-  cancelDesktopTerminalRetirement
-} from '../../../main/automations/desktop-run-terminal-lifecycle'
-import {
-  shutdownLocalPty,
-  createPtyPhysicalExit
-} from '../../../main/providers/local-pty-termination'
+import { cancelDesktopTerminalRetirement } from '../../../main/automations/desktop-run-terminal-lifecycle'
 import {
   ptyProcesses,
   ptyIncarnations,
-  ptyPhysicalExits,
   ptyShutdownOperations,
   clearPtyState
 } from '../../../main/providers/local-pty-provider-state'
@@ -98,7 +90,10 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
 
 const state = buildProfileStateCutoverFixture('/fixture')
-const WT = 'repo1::/repo1/main'
+import {
+  createAutomationTerminalOwnershipFixture,
+  OWNERSHIP_WORKSPACE_ID as WT
+} from './automation-terminal-ownership-test-harness'
 const noop = () => {}
 const cleanups: (() => void)[] = []
 beforeEach(() => {
@@ -118,250 +113,7 @@ afterEach(() => {
 })
 
 function fixture() {
-  const store = createTestStore()
-  let subscribers = 0
-  const subscribe = store.subscribe
-  vi.spyOn(store, 'subscribe').mockImplementation((listener) => {
-    const release = subscribe(listener)
-    subscribers++
-    return () => {
-      subscribers--
-      release()
-    }
-  })
-  mocks.store = store
-  const api = createStoreSessionMockApi()
-  const listeners = new EventEmitter()
-  const events: string[] = []
-  const web = Object.assign(new EventEmitter(), {
-    mainFrame: {},
-    isDestroyed: () => false,
-    send: (channel: string, payload: unknown) => {
-      events.push(
-        channel === 'automations:terminalLifecycleRequest' &&
-          typeof payload === 'object' &&
-          payload !== null &&
-          'operation' in payload
-          ? `${payload.operation}:${'phase' in payload ? payload.phase : ''}`
-          : channel
-      )
-      listeners.emit(channel, payload)
-    }
-  })
-  const win = Object.assign(new EventEmitter(), { webContents: web, isDestroyed: () => false })
-  const on = (channel: string) => (listener: (...payload: unknown[]) => void) => {
-    listeners.on(channel, listener)
-    return () => {
-      listeners.off(channel, listener)
-    }
-  }
-  const session = {
-    set: vi.fn(async () => {
-      events.push('session:set')
-    }),
-    flush: vi.fn(async () => {
-      events.push('session:flush')
-    })
-  }
-  vi.stubGlobal('window', {
-    dispatchEvent: vi.fn(),
-    api: {
-      ...api,
-      session,
-      automations: {
-        onTerminalLifecycleRequest: on('automations:terminalLifecycleRequest'),
-        respondTerminalLifecycle: (reply: unknown) =>
-          mocks.ipc!.emit(
-            'automations:terminalLifecycleResponse',
-            { sender: web, senderFrame: web.mainFrame },
-            reply
-          )
-      },
-      ui: {
-        onLaunchRecipe: on('recipe'),
-        onCreateTerminal: on('ui:createTerminal'),
-        onRequestTerminalTabMount: on('mount'),
-        onPublishAgentLaunchTab: on('ui:publishAgentLaunchTab'),
-        onAgentLaunchPaneVerdict: on('verdict'),
-        replyAgentLaunchTabPublish: vi.fn(),
-        replyTerminalCreate: vi.fn()
-      }
-    }
-  })
-  seedStore(store, {
-    worktreesByRepo: { repo1: [makeWorktree({ id: WT, repoId: 'repo1', path: '/repo1/main' })] },
-    activeWorktreeId: 'other',
-    activeTabId: 'other-tab',
-    activeTabType: 'terminal',
-    tabsByWorktree: { [WT]: [makeTab({ id: 'sibling', worktreeId: WT, ptyId: 'setup' })] },
-    ptyIdsByTabId: { sibling: ['setup'] }
-  })
-  const unsubs: (() => void)[] = []
-  registerTerminalPresentationIpcBridge(unsubs)
-  registerAgentLaunchTabIpcBridge(unsubs)
-  cleanups.push(() => unsubs.forEach((release) => release()))
-  // SAFETY: the sibling has a fake physical process; every exercised stop owner must leave it live.
-  ptyProcesses.set('setup', {
-    pid: 4343,
-    kill: () => {
-      throw new Error('sibling stopped')
-    }
-  } as unknown as pty.IPty)
-  ptyIncarnations.set('setup', 'setup')
-  let expectedPty = ''
-  let expectedPane = ''
-  let provenance: string | undefined
-  let stopFailure: 'live' | 'unproven' | null = null
-  const runtime = {
-    getAuthoritativeWindow: () => win,
-    getTerminalPtyIdForHandle: () => expectedPty,
-    getTerminalHandleForPaneKey: () => 'term-current',
-    getPtyExecutionHostMetadata: () => ({ incarnationId: 'original', executionHostId: 'local' }),
-    terminalRunFacts: { readLastDrivingInputAt: () => null },
-    stopExactTerminalsForWorktree: vi.fn(
-      async (
-        _selector: string,
-        ids: string[],
-        opts: NonNullable<Parameters<OrcaRuntimeService['stopExactTerminalsForWorktree']>[2]>
-      ) => {
-        if (stopFailure) {
-          expect(await opts.authorizeStop!()).toBe(true)
-          if (stopFailure === 'unproven') {
-            ptyProcesses.delete(expectedPty)
-            throw new Error('lost reply')
-          }
-          throw new Error('still alive')
-        }
-        // Actual exact-stop owner proves the target exited while retaining the live sibling.
-        const inventory = new Map([
-          [ids[0], { worktreeId: WT, ptyId: ids[0], connected: true, incarnationId: 'original' }],
-          ['setup', { worktreeId: WT, ptyId: 'setup', connected: true, incarnationId: 'setup' }]
-        ])
-        const exact = Object.assign(
-          Object.create(OrcaRuntimeWithStopExactTerminalsForWorktree.prototype),
-          {
-            captureReadyGraphEpoch: noop,
-            assertStableReadyGraph: noop,
-            resolveWorktreeSelector: async () => ({ id: WT }),
-            getResolvedWorktreeMap: async () => new Map(),
-            refreshPtyWorktreeRecordsFromController: async () =>
-              new Set([...ptyProcesses.keys(), 'setup']),
-            leaves: new Map(),
-            ptysById: inventory,
-            intentionalPtyStops: { mark: () => noop },
-            ptyController: {
-              stopAndWait: async (id: string, options: PtyShutdownOptions) => {
-                events.push('provider:prepare')
-                await shutdownLocalPty(id, { ...options, immediate: true })
-                events.push('provider:stopped')
-                return true
-              }
-            }
-          }
-        )
-        return exact.stopExactTerminalsForWorktree(_selector, ids, opts)
-      }
-    ),
-    listTerminals: async () => ({
-      terminals: [...ptyProcesses.keys()].map((ptyId) => ({
-        ptyId,
-        connected: true,
-        incarnationId: 'original'
-      }))
-    })
-  }
-  // SAFETY: transport/window and OS doubles implement the exercised runtime/store boundaries; lifecycle and local stop are real.
-  const lifecycle = createDesktopRunTerminalLifecycle(
-    runtime as unknown as OrcaRuntimeService,
-    {
-      getWorktreeMeta: () => ({ automationProvenance: { automationRunId: provenance } }),
-      listAutomationRuns: () => []
-    } as unknown as Store,
-    async (_id, operation) => operation()
-  )
-  cleanups.push(lifecycle.stop)
-  function publish(
-    index = 1,
-    preserve = true,
-    early = true,
-    saved?: (typeof state.automationRuns)[number]
-  ) {
-    const run = {
-      ...state.automationRuns[0],
-      id: `run-${index}`,
-      ...saved,
-      workspaceId: WT,
-      terminalPtyId: `pty-${index}`,
-      status: 'completed' as const
-    }
-    provenance = preserve ? run.id : undefined
-    const owner = lifecycle.begin(
-      { ...state.automations[0], reuseSession: false },
-      run,
-      `operation-${index}`
-    )!
-    expectedPty = run.terminalPtyId
-    expectedPane = owner.paneKey
-    const [tabId, leafId] = expectedPane.split(':')
-    if (early) {
-      owner.reserve(WT)
-    } else {
-      owner.policy.onWorkspaceCreated!(WT)
-    }
-    if (early) {
-      web.send('ui:publishAgentLaunchTab', {
-        requestId: 'publish',
-        worktreeId: WT,
-        tabId,
-        leafId,
-        viewer: 'background',
-        launchAgent: 'codex'
-      })
-    }
-    // SAFETY: node-pty's destructive OS boundary is a fake; exit and exact process maps are the real owner state.
-    ptyProcesses.set(expectedPty, {
-      pid: 4242,
-      kill: () => {
-        events.push('os:exit')
-        ptyPhysicalExits.get(run.terminalPtyId)?.markExited()
-        clearPtyState(run.terminalPtyId)
-      }
-    } as unknown as pty.IPty)
-    ptyIncarnations.set(expectedPty, 'original')
-    createPtyPhysicalExit(expectedPty)
-    owner.policy.onSurfacePublished!({
-      worktreeId: WT,
-      outcome: { kind: 'terminal', paneKey: expectedPane, handle: 'term-original' }
-    } as never)
-    store
-      .getState()
-      .setAgentStatus(
-        expectedPane,
-        { state: 'done', prompt: 'resume', agentType: 'codex' },
-        'Codex',
-        { updatedAt: 2000, stateStartedAt: 1000 },
-        { tabId, worktreeId: WT },
-        { providerSession: { key: 'session_id', id: `session-${index}` } }
-      )
-    return { run, owner, tabId, leafId, paneKey: expectedPane }
-  }
-  return {
-    store,
-    activeSubscribers: () => subscribers,
-    session,
-    runtime,
-    lifecycle,
-    publish,
-    events,
-    web,
-    listeners,
-    prepare: (fn: () => Promise<void>) => {
-      mocks.prepare = fn
-    },
-    failStop: (kind: typeof stopFailure) => {
-      stopFailure = kind
-    }
-  }
+  return createAutomationTerminalOwnershipFixture(mocks, cleanups)
 }
 
 describe('desktop completion through local publication and process owner', () => {
@@ -702,45 +454,247 @@ describe('desktop completion through local publication and process owner', () =>
       f.lifecycle.begin({ ...state.automations[0], reuseSession: true }, t.run, 'reuse')
     ).toBeNull()
   })
-  it.each([5, 50])('bounds repeated cleanup resources at N=%i', async (count) => {
-    const timers = vi.spyOn(globalThis, 'setTimeout')
-    const cleared = vi.spyOn(globalThis, 'clearTimeout')
-    const f = fixture()
-    for (let n = 1; n <= count; n++) {
-      const t = f.publish(n, n % 2 === 0, n % 3 === 0)
-      expect(await f.lifecycle.finalize(t.run)).toMatchObject({ terminalPtyId: null })
-      expect([...ptyProcesses.keys()]).toEqual(['setup'])
-      expect(ptyShutdownOperations.size).toBe(0)
+})
+
+it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', async (count) => {
+  vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
+  const root = mkdtempSync(join(tmpdir(), 'orca-34332-fallback-'))
+  testState.dir = root
+  const disk = createStore(),
+    f = fixture()
+  const rig = await createQueuedMessageTestRig({ restartable: true })
+  setStructuredAgentSessionHost(rig.host)
+  const timers = vi.spyOn(globalThis, 'setTimeout'),
+    cleared = vi.spyOn(globalThis, 'clearTimeout')
+  const tabs = new Map<string, RuntimeMobileSessionTabsSnapshot>()
+  const bindings = new Map<string, { paneKey: string; ptyId: string }>()
+  const publisher = Object.assign(
+    Object.create(OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal.prototype),
+    {
+      mobileSessionTabsByWorktree: tabs,
+      isMobileSessionSurfaceMembershipAllowed: () => true,
+      getPtyDisplayRecord: (record: unknown) => record,
+      getPtyManualTitle: () => null,
+      storeMobileSessionSnapshot: (id: string, snapshot: RuntimeMobileSessionTabsSnapshot) => {
+        tabs.set(id, snapshot)
+        return snapshot
+      },
+      notifyMobileSessionTabsChanged: vi.fn()
+    }
+  )
+  const chatPublisher = Object.assign(
+    Object.create(OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce.prototype),
+    {
+      mobileSessionTabsByWorktree: tabs,
+      saveWindowlessAgentSessionTab: vi.fn(),
+      storeMobileSessionSnapshot: publisher.storeMobileSessionSnapshot,
+      emitMobileSessionTabsSnapshot: vi.fn()
+    }
+  )
+  let mode = 'unavailable',
+    currentRun = '',
+    service: ReturnType<typeof createRuntimeAutomationService> | undefined
+  const trace: string[] = []
+  const runtime = {
+    ...runtimeStub(),
+    ...f.runtime,
+    requireStore: () => disk,
+    setAutomationService: vi.fn(),
+    notifyAutomationsChanged: vi.fn(),
+    openAgentSessionRecordStore: async () => rig.store,
+    showRepo: async () => disk.getRepo('repo1'),
+    showAutomation: (id: string) => disk.listAutomations().find((a) => a.id === id),
+    listAutomationRuns: (id: string) => disk.listAutomationRuns(id),
+    getAgentStatusRowsForPane: () => [],
+    getTerminalPtyIdForHandle: (handle: string) => bindings.get(handle)?.ptyId ?? null,
+    getTerminalPaneKey: (handle: string) => bindings.get(handle)?.paneKey ?? null,
+    getTerminalHandleForPaneKey: (paneKey: string) =>
+      [...bindings].find(([, b]) => b.paneKey === paneKey && ptyProcesses.has(b.ptyId))?.[0] ??
+      null,
+    showManagedWorktree: async () => ({ displayName: 'Fallback' }),
+    getStructuredAgentSessionCreateSupport: async () => {
+      trace.push('support')
+      if (mode === 'unknown') {
+        throw new Error('support unavailable')
+      }
+      return { supported: mode === 'refused' || mode === 'chat', reason: 'chat-program' as const }
+    },
+    resolveStructuredAgentSessionCreateIntent: async () => {
+      if (mode === 'refused') {
+        throw new Error('structured_agent_session_unsupported')
+      }
+      const { envelope: _, ...params } = hostTestAttachParams(null)
+      return { ...params, location: { ...params.location, workspaceId: WT } }
+    },
+    publishStructuredAgentSessionTab:
+      chatPublisher.publishStructuredAgentSessionTab.bind(chatPublisher),
+    createManagedWorktree: async (
+      args: Parameters<OrcaRuntimeService['createManagedWorktree']>[0]
+    ) => {
+      trace.push('create')
+      currentRun = args.automationProvenance!.automationRunId
+      disk.setWorktreeMeta(hostWorktreeTarget({ id: WT, hostId: 'local' }), {
+        automationProvenance: args.automationProvenance
+      })
+      args.onWorkspaceCreated!(WT)
+      return { worktree: { id: WT, path: '/repo1/main' } }
+    },
+    createTerminal: async (
+      _selector: string,
+      options: NonNullable<Parameters<OrcaRuntimeService['createTerminal']>[1]>
+    ) => {
+      trace.push('terminal')
+      const tabId = options.tabId ?? randomUUID(),
+        leafId = options.leafId ?? randomUUID()
+      const paneKey = `${tabId}:${leafId}`
+      const ptyId = `actual-${bindings.size}`,
+        handle = `term-${bindings.size}`
+      bindings.set(handle, { paneKey, ptyId })
+      f.bindProcess(ptyId, paneKey)
+      publisher.publishPtyBackedMobileSessionTerminal(
+        WT,
+        { ptyId, incarnationId: 'original', launchAgent: 'codex' },
+        { tabId, leafId, title: 'Codex', activate: false, selectIfNoActiveTab: false }
+      )
+      await revealCreatedTerminal({
+        notifier: null,
+        workspace: { id: WT, path: '/repo1/main' },
+        ptyId,
+        handle,
+        cwd: '/repo1/main',
+        launchOpts: options,
+        opts: options,
+        tabId,
+        leafId,
+        presentation: options.presentation,
+        adoptedStablePane: false,
+        effectiveLaunchConfig: undefined,
+        launchToken: undefined
+      })
+      options.onPtySpawnDispatched?.()
+      options.onStartupPromptCarry?.(true)
+      return { handle, paneKey }
+    },
+    deliverStartupFollowup: async () => true,
+    waitForTerminal: async (_handle: string, options: { signal: AbortSignal }) =>
+      new Promise<never>((_resolve, reject) => {
+        if (options.signal.aborted) {
+          reject(new Error('aborted'))
+        } else {
+          options.signal.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true
+          })
+        }
+      }),
+    readTerminal: async () => ({ tail: [] })
+  }
+  try {
+    disk.addRepo({ ...state.repos[0], id: 'repo1', path: '/repo1/main', connectionId: null })
+    // SAFETY: only runtime OS/transport boundaries are scripted; service, common executor, receipt, lifecycle, renderer transaction and stop owner are real.
+    service = createRuntimeAutomationService({
+      store: disk,
+      runtime: runtime as unknown as OrcaRuntimeService,
+      headless: false
+    })
+    service.setWebContents(f.web)
+    service.setRendererReady()
+    let eligible = 0,
+      retained = 0,
+      chats = 0
+    for (let n = 0; n < count; n++) {
+      mode = ['unavailable', 'unknown', 'refused', 'chat', 'unavailable'][n % 5]
+      const reuseSession = n % 5 === 4
+      const automation = disk.createAutomation({
+        name: 'Fallback',
+        prompt: 'check',
+        agentId: 'codex',
+        projectId: 'repo1',
+        workspaceMode: reuseSession ? 'existing' : 'new_per_run',
+        workspaceId: reuseSession ? WT : null,
+        surface: reuseSession ? 'terminal' : 'chat',
+        reuseSession,
+        timezone: 'UTC',
+        rrule: 'FREQ=DAILY',
+        dtstart: Date.now() + 86400000,
+        setupDecision: 'skip'
+      })
+      const start = f.events.length
+      const run = await service.runNow(automation.id)
+      expect(run.status).toBe('dispatched')
+      expect(readAutomationRunReceipt(rig.store, run)?.accepted).toBe(true)
+      expect(trace.splice(0)).toEqual(
+        reuseSession
+          ? ['terminal']
+          : mode === 'chat'
+            ? ['create', 'support']
+            : ['create', 'support', 'terminal']
+      )
+      if (mode === 'chat') {
+        chats++
+        expect(run.sessionKind).toBe('chat')
+        expect(f.events.slice(start)).toContain('arm:')
+        expect(f.events.slice(start)).not.toContain('ui:createTerminal')
+        expect(tabs.get(WT)!.tabs.filter((t) => t.type === 'agent-session')).toHaveLength(chats)
+        expect(chatPublisher.saveWindowlessAgentSessionTab.mock.lastCall[1].activate).toBe(false)
+      } else if (reuseSession) {
+        retained++
+        expect(f.events.slice(start).some((e) => e.startsWith('arm:'))).toBe(false)
+      } else {
+        eligible++
+        expect(f.events.slice(start).filter((e) => e.startsWith('arm:'))).toHaveLength(1)
+        expect(f.events.slice(start).filter((e) => e.startsWith('bind:'))).toHaveLength(1)
+        expect(f.events.indexOf('arm:', start)).toBeLessThan(
+          f.events.indexOf('ui:createTerminal', start)
+        )
+        f.store
+          .getState()
+          .setAgentStatus(
+            run.terminalPaneKey!,
+            { state: 'done', prompt: 'resume', agentType: 'codex' },
+            'Codex',
+            { updatedAt: 2000, stateStartedAt: 1000 },
+            { tabId: run.terminalSessionId!, worktreeId: WT },
+            { providerSession: { key: 'session_id', id: currentRun } }
+          )
+      }
+      const finalized = await service.markDispatchResult({ runId: run.id, status: 'completed' })
+      expect(finalized.terminalPtyId).toBe(reuseSession ? run.terminalPtyId : null)
       expect(stopRevokers.size).toBe(0)
       expect(f.activeSubscribers()).toBe(0)
+      expect(ptyShutdownOperations.size).toBe(0)
       expect(f.web.eventNames()).toEqual([])
       expect(mocks.ipc!.eventNames()).toEqual([])
-      expect(isPtyDataHandlerShutdownPending(t.run.terminalPtyId)).toBe(false)
+      expect(ptyProcesses.size).toBe(1 + retained)
+      expect(ptyProcesses.has('setup')).toBe(true)
+      const persisted = JSON.parse(readPersistedStateJson(join(root, 'orca-data.json')))
+      expect(
+        persisted.automationRuns.find((row: { id: string }) => row.id === run.id)
+      ).toMatchObject({
+        status: 'completed',
+        chatSessionId: run.chatSessionId,
+        terminalPtyId: finalized.terminalPtyId
+      })
     }
-    expect(f.store.getState().tabsByWorktree[WT]).toHaveLength(1 + Math.floor(count / 2))
-    expect(
-      Object.values(f.store.getState().sleepingAgentSessionsByPaneKey).filter(
-        (r) => r.origin === 'worktree-sleep'
-      )
-    ).toHaveLength(Math.floor(count / 2))
-    const protocolTimers = timers.mock.calls.flatMap((args, index) =>
-      args[1] === 20_000 ? [timers.mock.results[index].value] : []
+    const sessions = rig.host.collaboratorsForTests().sessions
+    expect(Reflect.get(sessions, 'observers').size).toBe(0)
+    expect(Reflect.get(sessions, 'attachments').size).toBe(chats + 1)
+    const protocol = timers.mock.calls.flatMap((args, i) =>
+      args[1] === 20_000 ? [timers.mock.results[i].value] : []
     )
-    expect(protocolTimers.length).toBeGreaterThan(0)
-    expect(protocolTimers.length).toBeLessThanOrEqual(5 * count)
-    for (const timer of protocolTimers) {
+    for (const timer of protocol) {
       expect(cleared).toHaveBeenCalledWith(timer)
     }
+    const sleepers = Object.keys(f.store.getState().sleepingAgentSessionsByPaneKey).length
+    expect(sleepers).toBe(eligible)
+    expect(f.store.getState().tabsByWorktree[WT]).toHaveLength(1 + eligible)
     process.stdout.write(
-      `${JSON.stringify({
-        desktopRuns: count,
-        livePtys: ptyProcesses.size,
-        shutdowns: ptyShutdownOperations.size,
-        registrations: stopRevokers.size,
-        subscribers: f.activeSubscribers(),
-        relayListeners: mocks.ipc!.eventNames().length,
-        protocolTimers: protocolTimers.length
-      })}\n`
+      `${JSON.stringify({ desktopRuns: count, canonicalSources: Reflect.get(sessions, 'attachments').size, logicalObservers: Reflect.get(sessions, 'observers').size, eligible, retainedReuse: retained, chats, ptys: ptyProcesses.size, desktopTabs: f.store.getState().tabsByWorktree[WT].length, runtimeTabs: tabs.get(WT)!.tabs.length, sleepers, registrations: stopRevokers.size, subscribers: f.activeSubscribers(), timersCreated: protocol.length, timersCleared: protocol.filter((timer) => cleared.mock.calls.some(([clearedTimer]) => timer === clearedTimer)).length })}\n`
     )
-  })
+  } finally {
+    service?.stop()
+    setStructuredAgentSessionHost(null)
+    await rig.dispose()
+    await closeTestStores()
+    rmSync(root, { recursive: true, force: true })
+  }
 })

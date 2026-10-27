@@ -273,7 +273,7 @@ export function createDesktopRunTerminalLifecycle(
       run: Pick<AutomationRun, 'id' | 'createdAt'>,
       operationId: string
     ) => {
-      if (automation.reuseSession || (automation.surface ?? 'terminal') !== 'terminal') {
+      if (automation.reuseSession) {
         return null
       }
       try {

@@ -24,7 +24,7 @@ import {
 } from '../../../shared/structured-agent-session-live-turn'
 import { readJournalSince } from './journal-cursor'
 import type { JournalHostDatabase } from './journal-host-database'
-import { journalRowsAfterReader, type JournalLoad } from './journal-open'
+import { journalRowsAfterReader } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
@@ -115,7 +115,7 @@ export class AgentSessionJournal {
       readOnly: () => this.database.readOnly,
       cursor: this.cursor,
       adopt: (loaded) => {
-        this.adoptLoadedJournal(loaded)
+        this.state = loaded.state
         this.onCommitted?.()
       },
       commit: (rows, savedAt) => {
@@ -176,8 +176,14 @@ export class AgentSessionJournal {
   }
 
   /** One nonthrowing listener; undefined rows mean adopted history, an empty array means metadata. */
-  observeCommits(listener: (rows?: readonly JournalRow[]) => void): void {
-    this.onCommitted = listener
+  observeCommits(listener: (rows?: readonly JournalRow[]) => void): () => void {
+    const registered: typeof listener = (...args) => listener(...args)
+    this.onCommitted = registered
+    return () => {
+      if (this.onCommitted === registered) {
+        this.onCommitted = null
+      }
+    }
   }
 
   cursor = (): AgentJournalCursor => ({
@@ -367,9 +373,5 @@ export class AgentSessionJournal {
     ...args: Parameters<JournalEpochController['replace']>
   ): Promise<AgentJournalCursor> {
     return this.epochController.replace(...args)
-  }
-
-  private adoptLoadedJournal(loaded: JournalLoad): void {
-    this.state = loaded.state
   }
 }

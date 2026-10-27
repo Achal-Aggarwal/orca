@@ -11,7 +11,12 @@ import {
   AutomationRunLaunchError,
   type HeadlessAutomationDispatchLaunch
 } from './headless-dispatch'
-import { parsePaneKey } from '../../shared/stable-pane-id'
+import {
+  publishedLaunchTarget,
+  enrichAutomationRunTarget,
+  automationRunAcceptedTarget
+} from './automation-agent-run-result'
+export { publishedLaunchTarget } from './automation-agent-run-result'
 import { automationRunOperationId, AUTOMATION_AGENT_CALLER } from './automation-run-operation'
 import { createAutomationDispatchToken } from './dispatch-tokens'
 import { mergeExtraAgentArgs, hasExtraAgentArgs } from '../../shared/automation-extra-agent-args'
@@ -41,7 +46,10 @@ export async function launchHeadlessAutomationAgent(
   lifecycle?: ReturnType<ReturnType<typeof createDesktopRunTerminalLifecycle>['begin']>
 ): Promise<HeadlessAutomationAgentLaunch> {
   try {
-    return await launchAutomationAgent(runtime, request, lifecycle)
+    return await enrichAutomationRunTarget(
+      runtime,
+      await launchAutomationAgent(runtime, request, lifecycle)
+    )
   } catch (error) {
     lifecycle?.release()
     if (error instanceof AutomationRunLaunchError) {
@@ -98,6 +106,10 @@ async function launchAutomationAgent(
         liveSession: (previous) => runOwnHandle(runtime, previous)
       })
       if (reused) {
+        published = publishedLaunchTarget(runtime, {
+          worktreeId: automation.workspaceId,
+          outcome: { kind: 'terminal', handle: reused }
+        })
         const operationId = automationRunOperationId(run, 'reuse-terminal-launch')
         try {
           const result = await launchAgentOnHost(
@@ -115,19 +127,13 @@ async function launchAutomationAgent(
           )
           published ??= publishedLaunchTarget(runtime, result)
           if (result.prompt?.outcome === 'handed-to-terminal') {
-            return launchOutcome(runtime, result)
+            return publishedLaunchTarget(runtime, result)
           }
           throw new AutomationRunLaunchError(
             `${tuiAgentDisplayName(automation.agentId)} could not confirm this run's prompt. Open the terminal before running again.`,
             published
           )
         } catch (error) {
-          if (published) {
-            throw new AutomationRunLaunchError(
-              `${tuiAgentDisplayName(automation.agentId)} could not confirm this run's prompt. Open the terminal before running again.`,
-              published
-            )
-          }
           const records = await runtime.openAgentSessionRecordStore()
           const row = records.getOperationRow(
             rpcCallerOperationKey(AUTOMATION_AGENT_CALLER),
@@ -135,8 +141,9 @@ async function launchAutomationAgent(
           )
           // Only the launch owner's durable no-effect verdict permits a different launch.
           if (row?.outcome.status !== 'failed') {
-            throw error
+            return automationRunAcceptedTarget(runtime, run, published, error, automation.agentId)
           }
+          published = undefined
         }
       }
     }
@@ -205,7 +212,7 @@ async function launchAutomationAgent(
         published ?? publishedLaunchTarget(runtime, result)
       )
     }
-    return launchOutcome(runtime, result)
+    return publishedLaunchTarget(runtime, result)
   } catch (error) {
     if (
       error instanceof Error &&
@@ -217,65 +224,8 @@ async function launchAutomationAgent(
         `${tuiAgentDisplayName(automation.agentId)} could not start because this run waited too long. Run the automation again.`
       )
     }
-    if (published && !(error instanceof AutomationRunLaunchError)) {
-      throw new AutomationRunLaunchError(
-        `${tuiAgentDisplayName(automation.agentId)} started, but Orca could not confirm this run's prompt. Open the run before trying again.`,
-        published
-      )
-    }
-    throw error
+    return automationRunAcceptedTarget(runtime, run, published, error, automation.agentId)
   }
-}
-
-export function publishedLaunchTarget(
-  runtime: Pick<OrcaRuntimeService, 'getTerminalPaneKey' | 'getTerminalPtyIdForHandle'>,
-  result: AgentLaunchResult
-): HeadlessAutomationAgentLaunch {
-  let paneKey = result.outcome.kind === 'terminal' ? (result.outcome.paneKey ?? null) : null
-  let ptyId: string | null = null
-  if (result.outcome.kind === 'terminal') {
-    try {
-      paneKey ??= runtime.getTerminalPaneKey(result.outcome.handle)
-    } catch {
-      /* Keep publication identity. */
-    }
-    try {
-      ptyId = runtime.getTerminalPtyIdForHandle(result.outcome.handle)
-    } catch {
-      /* Process evidence is optional for opening. */
-    }
-  }
-  return {
-    workspaceId: result.worktreeId,
-    workspaceDisplayName: null,
-    sessionKind: result.outcome.kind === 'structured' ? 'chat' : 'terminal',
-    chatSessionId: result.outcome.kind === 'structured' ? result.outcome.sessionId : null,
-    terminalHandle: result.outcome.kind === 'terminal' ? result.outcome.handle : null,
-    terminalSessionId: parsePaneKey(paneKey ?? '')?.tabId ?? null,
-    terminalPaneKey: paneKey,
-    terminalPtyId: ptyId
-  }
-}
-
-async function launchOutcome(
-  runtime: OrcaRuntimeService,
-  result: AgentLaunchResult
-): Promise<HeadlessAutomationAgentLaunch> {
-  const target = publishedLaunchTarget(runtime, result)
-  try {
-    const shown = await runtime.showManagedWorktree(`id:${result.worktreeId}`)
-    target.workspaceDisplayName = shown.displayName ?? null
-  } catch {
-    // Publication already owns the target; optional display metadata cannot erase it.
-  }
-  if (result.outcome.kind === 'terminal' && !target.terminalSessionId) {
-    try {
-      target.terminalSessionId = (await runtime.showTerminal(result.outcome.handle)).tabId ?? null
-    } catch {
-      // Keep the published pane and process identity when its presentation is unavailable.
-    }
-  }
-  return target
 }
 
 /** A pane may have been reused by a later process. */

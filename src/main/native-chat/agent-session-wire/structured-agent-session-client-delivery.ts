@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
 import { StructuredAgentSessionRequestFailures } from './structured-agent-session-request-failures'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { AT_REST_COMMANDS_READ_BUDGET_MS } from './at-rest-command-catalog'
@@ -50,7 +51,11 @@ export class StructuredAgentSessionClientDelivery {
     onChildWorkChanged: (sessionId: string) => void,
     // Current clients interpret an absent opening roster as no tasks.
     readBackgroundTasks: NonNullable<SubscriberFieldHooks['readBackgroundTasks']>,
-    starting?: (sessionId: string) => boolean
+    starting?: (sessionId: string) => boolean,
+    private readonly publications?: Pick<
+      StructuredAgentSessionConversations,
+      'publish' | 'endPublications'
+    >
   ) {
     this.requestFailures = new StructuredAgentSessionRequestFailures({
       sessions,
@@ -156,6 +161,7 @@ export class StructuredAgentSessionClientDelivery {
     this.statusFeed.childWorkIncomplete(sessionId)
 
   publishStatusAndSettlement = (sessionId: string): void => {
+    this.publications?.publish(sessionId, 'operational')
     this.statusFeed.publish(sessionId)
     const journal = this.sessions.get(sessionId)?.journal
     if (journal) {
@@ -182,6 +188,7 @@ export class StructuredAgentSessionClientDelivery {
     // Invalidate cached work before every reader re-derives.
     session.operationalRevision = (session.operationalRevision ?? 0) + 1
     const { journal } = session
+    this.publications?.publish(sessionId, 'operational')
     if (options.restate) {
       const fence = structuredAgentSessionConversationFence(this.deps().store, sessionId)
       this.subscribers.snapshot(sessionId, journal, fence)
@@ -197,6 +204,7 @@ export class StructuredAgentSessionClientDelivery {
   }
 
   publishRestored = (sessionId: string): void => {
+    this.publications?.publish(sessionId, 'reset')
     this.statusFeed.publish(sessionId, undefined, { replay: true })
     this.turnCompletionFeed.observe(sessionId, undefined, { historical: true })
   }
@@ -214,6 +222,7 @@ export class StructuredAgentSessionClientDelivery {
 
   /** Closing handles retains session-list rows; agent-status retains them only while tabs need them. */
   closeSession(sessionId: string, options: { listed: boolean }): void {
+    this.publications?.publish(sessionId, 'detach')
     this.requestFailures.forget(sessionId)
     this.sendSettlement.closeSession(sessionId)
     if (options.listed) {
@@ -226,6 +235,7 @@ export class StructuredAgentSessionClientDelivery {
   }
 
   closeAll(): void {
+    this.publications?.endPublications()
     this.requestFailures.clear()
     this.stopAtRestCommandUpdates()
     this.sendSettlement.closeAll()

@@ -1,3 +1,4 @@
+import type { JournalPublication } from '../native-chat/agent-session-wire/structured-agent-session-conversations'
 import type { AutomationRun } from '../../shared/automations-types'
 import type { AgentJournalSnapshot } from '../../shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../shared/agent-session-wire'
@@ -34,20 +35,7 @@ export function chatAutomationRunObservation(
   if (!submission) {
     return null
   }
-  const keys = new Set([
-    agentJournalSubmissionKey(submission.clientMessageId),
-    ...(submission.providerItemId ? [submission.providerItemId] : [])
-  ])
-  const turnItem = snapshot.items.find((item) => {
-    const turn = readAgentJournalTurn(item.body)
-    return (
-      turn &&
-      !item.agentId &&
-      (keys.has(turn.userItemId ?? '') ||
-        (submission.answeredInTurn?.via === 'start' &&
-          submission.answeredInTurn.turnItemId === item.itemId))
-    )
-  })
+  const turnItem = submissionTurn(snapshot, submission)
   const turn = turnItem ? readAgentJournalTurn(turnItem.body) : null
   if (!turn || !turnItem) {
     return submission.dispatchState === 'rejected' || submission.dispatchState === 'unknown'
@@ -90,6 +78,26 @@ export function chatAutomationRunObservation(
   }
 }
 
+function submissionTurn(
+  snapshot: AgentJournalSnapshot,
+  submission: AgentJournalSnapshot['submissions'][number]
+) {
+  const keys = new Set([
+    agentJournalSubmissionKey(submission.clientMessageId),
+    ...(submission.providerItemId ? [submission.providerItemId] : [])
+  ])
+  return snapshot.items.find((item) => {
+    const turn = readAgentJournalTurn(item.body)
+    return (
+      turn &&
+      !item.agentId &&
+      (keys.has(turn.userItemId ?? '') ||
+        (submission.answeredInTurn?.via === 'start' &&
+          submission.answeredInTurn.turnItemId === item.itemId))
+    )
+  })
+}
+
 export async function observeAutomationChatRun(
   runtime: OrcaRuntimeService,
   run: AutomationRun,
@@ -122,9 +130,11 @@ export async function observeAutomationChatRun(
     let settled = false
     let reading = false
     let dirty = false
-    let submissionSignature = ''
-    let turnSignature = ''
-    let queueSignature = ''
+    let fingerprint = ''
+    let source: JournalPublication['source'] = null
+    let currentJournal: JournalPublication['journal'] = null
+    let cursor: JournalPublication['cursor']
+    let revision = 0
     let submissionId = messageId
     let providerItemId: string | null = null
     let turnItemId: string | null = null
@@ -133,6 +143,9 @@ export async function observeAutomationChatRun(
         return
       }
       settled = true
+      source = null
+      currentJournal = null
+      cursor = undefined
       clearTimeout(deadline)
       signal.removeEventListener('abort', abort)
       release?.()
@@ -151,62 +164,56 @@ export async function observeAutomationChatRun(
         }),
       Math.max(1, (run.dispatchedAt ?? run.createdAt) + 6 * 60 * 60 * 1000 - Date.now())
     )
-    const rememberSubmission = (entry: AgentJournalSnapshot['submissions'][number]): boolean => {
-      const signature = JSON.stringify([
-        entry.clientMessageId,
-        entry.dispatchState,
-        entry.providerItemId,
-        entry.answeredInTurn
+    const interest = (): string => {
+      const journal = currentJournal
+      const card = journal?.queuedMessages.get(messageId)
+      const entry = journal?.submission(card?.consumedAs ?? submissionId)
+      const root = turnItemId ? journal?.item(journal.canonicalItemId(turnItemId)) : null
+      const turn = root ? readAgentJournalTurn(root.body) : null
+      return JSON.stringify([
+        card?.state,
+        card?.consumedAs,
+        entry?.clientMessageId,
+        entry?.dispatchState,
+        entry?.providerItemId,
+        entry?.answeredInTurn,
+        root && turn
+          ? [root.itemId, turn.userItemId, turn.state, readAgentJournalTurnOutcome(turn)]
+          : null
       ])
-      const changed = signature !== submissionSignature
-      submissionSignature = signature
-      submissionId = entry.clientMessageId
-      providerItemId = entry.providerItemId
-      turnItemId = entry.answeredInTurn?.via === 'start' ? entry.answeredInTurn.turnItemId : null
-      return changed
-    }
-    const rememberTurn = (item: AgentJournalSnapshot['items'][number]): boolean => {
-      const turn = readAgentJournalTurn(item.body)
-      if (
-        !turn ||
-        item.agentId ||
-        !(
-          item.itemId === turnItemId ||
-          (providerItemId !== null && turn.userItemId === providerItemId) ||
-          turn.userItemId === agentJournalSubmissionKey(submissionId)
-        )
-      ) {
-        return false
-      }
-      const signature = JSON.stringify([item.itemId, turn.state, readAgentJournalTurnOutcome(turn)])
-      const changed = signature !== turnSignature
-      turnSignature = signature
-      return changed
     }
     const read = async (): Promise<void> => {
       if (settled) {
         return
       }
       if (reading) {
-        dirty = true
         return
       }
       reading = true
       try {
         do {
           dirty = false
+          const version = revision
+          const readingSource = source
+          const current = () => !settled && version === revision && readingSource === source
           const snapshot = await host.journalSnapshot(sessionId)
+          if (!current()) {
+            continue
+          }
           const queued = await host.queuedSendAnswer(sessionId, messageId)
+          if (!current()) {
+            continue
+          }
           const submission =
             queued && 'submission' in queued
               ? queued.submission
               : snapshot.submissions.find((entry) => entry.clientMessageId === messageId)
           if (submission) {
-            rememberSubmission(submission)
+            submissionId = submission.clientMessageId
+            providerItemId = submission.providerItemId
+            turnItemId = submissionTurn(snapshot, submission)?.itemId ?? null
           }
-          for (const item of snapshot.items) {
-            rememberTurn(item)
-          }
+          fingerprint = interest()
           const observation = chatAutomationRunObservation(snapshot, messageId, agent, queued)
           if (observation) {
             finish(observation)
@@ -214,9 +221,14 @@ export async function observeAutomationChatRun(
           }
         } while (dirty && !settled)
       } catch (error) {
-        finish(undefined, error)
+        if (!dirty) {
+          finish(undefined, error)
+        }
       } finally {
         reading = false
+        if (dirty && !settled) {
+          queueMicrotask(() => void read())
+        }
       }
     }
     signal.addEventListener('abort', abort, { once: true })
@@ -224,55 +236,64 @@ export async function observeAutomationChatRun(
       abort()
       return
     }
-    void host
-      .subscribe({
-        id: `automation:${run.id}`,
-        sessionId,
-        emit: (event) => {
-          let changed = event.type !== 'batch'
-          const rows =
-            event.type === 'batch' ? event.batch : event.type === 'end' ? null : event.page
-          for (const entry of rows?.submissions ?? []) {
-            if (entry.clientMessageId !== messageId && entry.queuedMessageId !== messageId) {
-              continue
-            }
-            changed = rememberSubmission(entry) || changed
-          }
-          for (const item of rows?.items ?? []) {
-            changed = rememberTurn(item) || changed
-          }
-          if (
-            event.type === 'batch' &&
-            turnItemId &&
-            event.batch.removedItemIds?.includes(turnItemId)
-          ) {
-            changed = true
-          }
-          if (event.type !== 'end' && event.queuedMessages !== undefined) {
-            const card = event.queuedMessages?.find((entry) => entry.messageId === messageId)
-            const signature = JSON.stringify(
-              card ? [card.messageId, card.state, card.consumedAs] : null
-            )
-            if (signature !== queueSignature) {
-              changed = true
-              queueSignature = signature
-            }
-          }
-          if (changed) {
-            void read()
-          }
+    release = host.observeJournalPublications(sessionId, {
+      next: (hint) => {
+        if (settled) {
+          return
         }
-      })
-      .then(
-        (unsubscribe) => {
-          release = unsubscribe
-          if (settled) {
-            unsubscribe()
-          } else {
-            void read()
+        if (hint.kind === 'end') {
+          finish(undefined, new Error('Chat session host stopped'))
+          return
+        }
+        currentJournal = hint.journal
+        const semantic = interest()
+        const rows = hint.rows
+        const contiguous =
+          cursor &&
+          hint.cursor?.epoch === cursor.epoch &&
+          rows?.every(
+            (row, i) => row.epoch === cursor.epoch && row.seq === cursor.sequence + i + 1
+          ) &&
+          hint.cursor.sequence === cursor.sequence + rows.length
+        const linked = rows?.some((row) => {
+          if (row.kind === 'submission') {
+            return row.queuedMessageId === messageId && row.clientMessageId !== submissionId
           }
-        },
-        (error) => finish(undefined, error)
-      )
+          const mutations = row.kind === 'lifecycle-batch' ? row.mutations : [row]
+          return mutations.some((item) => {
+            if (item.kind !== 'item') {
+              return false
+            }
+            const turn = readAgentJournalTurn(item.body)
+            return (
+              (item.body.kind === 'message' && item.body.role === 'user') ||
+              (turn &&
+                !turnItemId &&
+                !item.agentId &&
+                (turn.userItemId === providerItemId ||
+                  turn.userItemId === agentJournalSubmissionKey(submissionId)))
+            )
+          })
+        })
+        const changed =
+          source !== hint.source ||
+          hint.kind !== 'commit' ||
+          !contiguous ||
+          semantic !== fingerprint ||
+          linked
+        source = hint.source
+        cursor = hint.cursor
+        fingerprint = semantic
+        if (changed) {
+          revision++
+          dirty = true
+          queueMicrotask(() => void read())
+        }
+      },
+      error: (error) => finish(undefined, error)
+    })
+    if (settled) {
+      release()
+    }
   })
 }
