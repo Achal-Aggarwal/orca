@@ -130,6 +130,7 @@ export abstract class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntim
     let baseline: AgentPromptActivity
     try {
       await beforeWrite(admissionSignal)
+      assertWritable(admissionSignal)
       if (options.onPermission === 'wait') {
         this.throwIfAgentPromptPermissionReturned(
           permissionBaseline,
@@ -178,6 +179,7 @@ export abstract class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntim
           throw error
         }
       }
+      assertWritable(deliverySignal)
       baseline = preSubmitBaseline ?? this.getAgentPromptActivity(handle, ptyId, waitTextCache)
       this.assertAgentPromptPermissionSafe(permissionBaseline, baseline)
       if (
