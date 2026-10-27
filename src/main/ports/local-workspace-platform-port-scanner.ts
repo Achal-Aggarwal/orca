@@ -175,14 +175,12 @@ async function scanWindowsNetstatPorts(
   const metadata = await loadWindowsProcessMetadata(
     new Set(ports.flatMap((p) => (p.pid ? [p.pid] : [])))
   )
-  const attributed = await attributeWslRelayListeners(
-    ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port })),
-    options.wslDistros ?? []
-  )
-  // An unread guest cannot prove its listeners gone; treat it like a skipped metadata pass.
+  const withMetadata = ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port }))
+  const attributed = await attributeWslRelayListeners(withMetadata, options.wslDistros ?? [])
+  // An unread guest cannot prove its listeners gone; keep fresh Windows metadata but skip eviction.
   return attributed
     ? { ports: attributed, metadataAvailable: true }
-    : { ports, metadataAvailable: false }
+    : { ports: withMetadata, metadataAvailable: false }
 }
 
 async function scanLinuxProcPorts(): Promise<PlatformListeningPortScan> {

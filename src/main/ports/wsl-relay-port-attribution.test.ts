@@ -143,4 +143,17 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
     )
     expect(owner?.worktreeId).toBe('wt')
   })
+
+  it('keeps fresh Windows metadata for native ports when a guest read fails', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('unverifiable')
+
+    const scan = await scanWorkspacePorts(wslWorkspace, urlWatcher, { requireMetadata: true })
+
+    expect(scan.ports.find((port) => port.port === 9000)).toMatchObject({
+      processName: 'wslrelay.exe',
+      pid: 28164
+    })
+    expect(mocks.runWslProcess).not.toHaveBeenCalled()
+  })
 })
