@@ -9,7 +9,7 @@ import {
   type AgentDefaultEnvDraftInvalidReason
 } from './agent-default-env-draft'
 import { useAgentLaunchFieldWrite } from './use-agent-launch-field-write'
-import { AgentPermissionArgsChip } from './AgentPermissionChoiceControls'
+import { AgentArgsChoiceChips, type AgentArgsChoice } from './AgentPermissionChoiceControls'
 
 export function AgentCommandOverrideInput({
   defaultCmd,
@@ -87,7 +87,7 @@ export function AgentDefaultArgsInput({
   defaultArgs,
   argsOverride,
   onSaveArgs,
-  permissionChip,
+  choiceChips,
   note,
   disabled = false,
   onDraftChange
@@ -95,12 +95,7 @@ export function AgentDefaultArgsInput({
   defaultArgs: string
   argsOverride: string
   onSaveArgs: (value: string) => void | Promise<void>
-  permissionChip?: {
-    label: string
-    flag: string
-    removeRecipe: (text: string) => string | null
-    onRemove: () => void
-  }
+  choiceChips?: readonly AgentArgsChoice[]
   note?: string
   disabled?: boolean
   onDraftChange?: (value: string) => void
@@ -111,6 +106,7 @@ export function AgentDefaultArgsInput({
   const chipButtonRef = useRef<HTMLButtonElement>(null)
   const argsDraft = onDraftChange ? argsOverride : (draft ?? argsOverride)
   const { pending, write } = useAgentLaunchFieldWrite()
+  const chipFlags = choiceChips?.map((chip) => chip.flag).join(' ')
   useLayoutEffect(() => {
     const input = inputRef.current
     const chip = chipRef.current
@@ -128,7 +124,7 @@ export function AgentDefaultArgsInput({
     const observer = new ResizeObserver(measure)
     observer.observe(chip)
     return () => observer.disconnect()
-  }, [permissionChip?.flag])
+  }, [chipFlags])
   const commitArgs = (): void => {
     if (disabled || pending || (!onDraftChange && draft === null)) {
       return
@@ -164,26 +160,24 @@ export function AgentDefaultArgsInput({
             }
           }}
         >
-          {permissionChip && (
-            <AgentPermissionArgsChip
-              {...permissionChip}
+          {choiceChips?.length ? (
+            <AgentArgsChoiceChips
+              chips={choiceChips}
               chipRef={chipRef}
               buttonRef={chipButtonRef}
               disabled={disabled || pending}
-              onRemove={() => {
+              onRemove={(chip) => {
                 if (disabled || pending) {
                   return
                 }
-                if (onDraftChange) {
-                  onDraftChange(permissionChip.removeRecipe(argsDraft) ?? argsDraft)
-                } else if (draft !== null) {
-                  setDraft(permissionChip.removeRecipe(draft) ?? draft)
+                const next = chip.onRemove(argsDraft)
+                if (!onDraftChange && draft !== null) {
+                  setDraft(next)
                 }
                 inputRef.current?.focus()
-                permissionChip.onRemove()
               }}
             />
-          )}
+          ) : null}
           <Textarea
             variant="composite"
             ref={inputRef}
@@ -200,7 +194,7 @@ export function AgentDefaultArgsInput({
                 return
               }
               if (
-                permissionChip &&
+                choiceChips?.length &&
                 event.key === 'Backspace' &&
                 !event.repeat &&
                 !event.altKey &&
@@ -222,7 +216,7 @@ export function AgentDefaultArgsInput({
               }
             }}
             placeholder={
-              permissionChip
+              choiceChips?.length
                 ? undefined
                 : defaultArgs ||
                   translate(

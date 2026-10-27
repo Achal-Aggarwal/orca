@@ -54,6 +54,13 @@ function claudeEffortWithChoices(choices: typeof EXTENDED_EFFORT_CHOICES): Catal
     },
     apply: {
       launchArgs: (value) => ['--effort', String(value)],
+      cli: [
+        {
+          kind: 'value',
+          names: ['--effort'],
+          lift: 'separate-and-long-equals'
+        }
+      ],
       removeAgentArgs: (tokens) => removeAgentArgOption('claude', tokens, ['--effort']),
       midSession: { kind: 'command', build: (value) => `/effort ${String(value)}` }
     }
@@ -127,6 +134,13 @@ export const CLAUDE_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   ],
   modelApply: {
     launchArgs: (value) => ['--model', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('claude', tokens, ['--model']),
     midSession: {
       kind: 'command',
@@ -167,6 +181,15 @@ function codexEffort(ceiling: 'xhigh' | 'max' | 'ultra'): CatalogOption {
     },
     apply: {
       launchArgs: (value) => ['-c', `model_reasoning_effort=${String(value)}`],
+      cli: [
+        {
+          kind: 'config',
+          names: ['-c', '--config'],
+          key: 'model_reasoning_effort',
+          lift: 'codex-bare-string'
+        },
+        { kind: 'value', names: ['--reasoning-effort'], lift: 'never' }
+      ],
       removeAgentArgs: (tokens) =>
         removeCodexAgentArgs(tokens, ['--reasoning-effort'], 'model_reasoning_effort'),
       midSession: { kind: 'agent-picker', command: '/model', delivery: 'type' }
@@ -191,6 +214,14 @@ export const CODEX_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   ],
   modelApply: {
     launchArgs: (value) => ['-m', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['-m', '--model'],
+        lift: 'separate-and-long-equals'
+      },
+      { kind: 'config', names: ['-c', '--config'], key: 'model', lift: 'codex-bare-string' }
+    ],
     removeAgentArgs: (tokens) => removeCodexAgentArgs(tokens, ['-m', '--model'], 'model'),
     // Codex treats multi-character writes as paste; type the command and let its picker select an account-supported model.
     midSession: { kind: 'agent-picker', command: '/model', delivery: 'type' }

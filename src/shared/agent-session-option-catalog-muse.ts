@@ -21,6 +21,13 @@ const MUSE_EFFORT: CatalogOption = {
   },
   apply: {
     launchArgs: (value) => ['--reasoning-effort', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['--reasoning-effort'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('muse', tokens, ['--reasoning-effort'])
   }
 }
@@ -31,6 +38,13 @@ export const MUSE_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   models: [],
   modelApply: {
     launchArgs: (value) => ['--model', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('muse', tokens, ['--model'])
   },
   unknownModelOptions: [MUSE_EFFORT]

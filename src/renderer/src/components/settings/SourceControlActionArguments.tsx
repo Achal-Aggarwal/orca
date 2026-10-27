@@ -87,18 +87,24 @@ export function SourceControlActionArguments({
                 onArgsChange(text, true)
               }
             }}
-            permissionChip={
+            choiceChips={
               flag && !loose
-                ? {
-                    label,
-                    flag,
-                    removeRecipe: (text) =>
-                      agent
-                        ? (liftActionPermissionArgs({ agentId: agent, agentArgs: text }, true)
-                            .agentArgs ?? null)
-                        : null,
-                    onRemove: () => select('own')
-                  }
+                ? [
+                    {
+                      key: 'permissionMode',
+                      label,
+                      flag,
+                      onRemove: (text) => {
+                        const next = agent
+                          ? (liftActionPermissionArgs({ agentId: agent, agentArgs: text }, true)
+                              .agentArgs ?? text)
+                          : text
+                        onArgsChange(next)
+                        select('own')
+                        return next
+                      }
+                    }
+                  ]
                 : undefined
             }
             note={

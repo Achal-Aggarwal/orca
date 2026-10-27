@@ -14,6 +14,13 @@ export const GEMINI_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   ],
   modelApply: {
     launchArgs: (value) => ['-m', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['-m', '--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('gemini', tokens, ['-m', '--model']),
     midSession: { kind: 'agent-picker', command: '/model' }
   }
@@ -83,6 +90,13 @@ export const CURSOR_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   ],
   modelApply: {
     launchArgs: (value) => ['--model', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['-m', '--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('cursor', tokens, ['-m', '--model']),
     midSession: { kind: 'command', build: (value) => `/model ${String(value)}` }
   },

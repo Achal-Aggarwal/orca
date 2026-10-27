@@ -9,6 +9,13 @@ export const OPENCODE_LAUNCH_OPTION_CATALOG: AgentSessionOptionCatalog = {
   models: [],
   modelApply: {
     launchArgs: (value) => ['--model', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['-m', '--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('opencode', tokens, MODEL_FLAGS)
   }
 }

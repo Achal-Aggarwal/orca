@@ -30,6 +30,13 @@ function grokEffort(ceiling: 'high' | 'xhigh'): CatalogOption {
     },
     apply: {
       launchArgs: (value) => ['--reasoning-effort', String(value)],
+      cli: [
+        {
+          kind: 'value',
+          names: ['--effort', '--reasoning-effort'],
+          lift: 'separate-and-long-equals'
+        }
+      ],
       // Why: grok reads both spellings.
       removeAgentArgs: (tokens) =>
         removeAgentArgOption('grok', tokens, ['--effort', '--reasoning-effort']),
@@ -68,6 +75,13 @@ export const GROK_SESSION_OPTION_CATALOG: AgentSessionOptionCatalog = {
   ],
   modelApply: {
     launchArgs: (value) => ['-m', String(value)],
+    cli: [
+      {
+        kind: 'value',
+        names: ['-m', '--model'],
+        lift: 'separate-and-long-equals'
+      }
+    ],
     removeAgentArgs: (tokens) => removeAgentArgOption('grok', tokens, ['-m', '--model']),
     // agent-picker replaces the list and never persists a model, preventing -m emission.
     midSession: { kind: 'command', build: (value) => `/model ${String(value)}` }

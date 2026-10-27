@@ -1,0 +1,148 @@
+import { describe, expect, it } from 'vitest'
+import { normalizeAgentModelOptionChoices } from './agent-launch-choices'
+import { reconcileAgentChoiceArgs } from './agent-choice-reconciliation'
+import { resolveAgentChoiceLayers } from './agent-choice-layers'
+import { projectAgentLaunchProfile } from './agent-launch-profile'
+import { agentLaunchNeedsPreparedCommand } from './agent-launch-preferences'
+
+const keys = new Set(['model', 'effort', 'permissionMode'])
+const load = (agent: 'claude' | 'codex', userArgs: string) =>
+  reconcileAgentChoiceArgs({ agent, userArgs, choices: {}, mode: 'load', keys })
+
+describe('dedicated agent choices', () => {
+  it('retains independent options and bounded opaque model ids without discovery', () => {
+    expect(normalizeAgentModelOptionChoices({ options: { effort: 'high' } })).toEqual({
+      options: { effort: 'high' }
+    })
+    expect(normalizeAgentModelOptionChoices({ model: 'retired-unlisted-id' })).toEqual({
+      model: 'retired-unlisted-id'
+    })
+    expect(normalizeAgentModelOptionChoices({ options: { model: 'other' } })).toBeUndefined()
+    expect(normalizeAgentModelOptionChoices({ model: 'x'.repeat(513) })).toBeUndefined()
+  })
+
+  it('lifts a complete tuple atomically and keeps surviving raw bytes', () => {
+    expect(
+      load('claude', '--model saved-unlisted-id  --effort high --permission-mode auto')
+    ).toEqual({
+      userArgs: '',
+      choices: { model: 'saved-unlisted-id', options: { effort: 'high' }, permissionMode: 'auto' }
+    })
+    expect(load('codex', '-c model=opus --search -c model_reasoning_effort=high')).toEqual({
+      userArgs: '--search',
+      choices: { model: 'opus', options: { effort: 'high' } }
+    })
+    expect(load('claude', '--effort high')).toEqual({
+      userArgs: '',
+      choices: { options: { effort: 'high' } }
+    })
+    expect(load('claude', '--model opus --append-system-prompt "keep  spacing"').userArgs).toBe(
+      '--append-system-prompt "keep  spacing"'
+    )
+  })
+
+  it('keeps duplicates, operands, uncertain regions and unproved TOML literal', () => {
+    for (const text of [
+      '-m old --model new',
+      '-m old -m old',
+      '-m old -c model=new',
+      '-c model=42',
+      '-c model=true',
+      `-c 'model="foo"'`,
+      '-- --model other',
+      '--new-unknown-option --model other',
+      '--model'
+    ]) {
+      expect(load('codex', text), text).toEqual({ userArgs: text, choices: {} })
+    }
+    for (const text of [
+      '--append-system-prompt "--model=other"',
+      '--system-prompt "--model sonnet"',
+      '--model op\\ us',
+      "--model 'opus'"
+    ]) {
+      expect(load('claude', text), text).toEqual({ userArgs: text, choices: {} })
+    }
+    expect(load('codex', '-m old --model new -c model_reasoning_effort=high')).toEqual({
+      userArgs: '-m old --model new',
+      choices: { options: { effort: 'high' } }
+    })
+  })
+
+  it('distinguishes load conflicts, deliberate edits and independent option removal', () => {
+    const input = {
+      agent: 'claude' as const,
+      userArgs: '--model sonnet --effort high',
+      choices: { model: 'opus', options: { effort: 'high' } },
+      keys
+    }
+    expect(reconcileAgentChoiceArgs({ ...input, mode: 'load' })).toEqual({
+      userArgs: '--model sonnet',
+      choices: input.choices
+    })
+    expect(reconcileAgentChoiceArgs({ ...input, mode: 'arguments-edit' }).choices.model).toBe(
+      'sonnet'
+    )
+    expect(
+      reconcileAgentChoiceArgs({ ...input, mode: 'choice-edit', patch: { model: null } })
+    ).toEqual({
+      userArgs: '--model sonnet --effort high',
+      choices: { options: { effort: 'high' } }
+    })
+    expect(
+      reconcileAgentChoiceArgs({
+        ...input,
+        userArgs: '--model opus --effort high',
+        mode: 'choice-edit',
+        patch: { model: null }
+      })
+    ).toEqual({ userArgs: '--effort high', choices: { options: { effort: 'high' } } })
+  })
+
+  it('resolves raw inheritance before projecting and never imports another model’s options', () => {
+    expect(
+      resolveAgentChoiceLayers({
+        agent: 'claude',
+        defaults: { model: 'sonnet' },
+        action: { model: 'opus' },
+        userArgs: '--append-system-prompt hello',
+        argumentOwner: 'launch',
+        launchPreferencesYieldToAgentArgs: true
+      })
+    ).toEqual({ model: 'opus' })
+    expect(
+      resolveAgentChoiceLayers({
+        agent: 'claude',
+        remembered: { model: 'sonnet', options: { effort: 'high' } },
+        explicit: { model: 'opus' },
+        argumentOwner: 'defaults'
+      })
+    ).toEqual({ model: 'opus' })
+    expect(
+      resolveAgentChoiceLayers({
+        agent: 'claude',
+        remembered: { model: 'sonnet' },
+        defaults: { options: { effort: 'high' } },
+        argumentOwner: 'defaults'
+      })
+    ).toEqual({ model: 'sonnet', options: { effort: 'high' } })
+    expect(
+      projectAgentLaunchProfile(
+        'claude',
+        { agentPermissionDefault: 'ask' },
+        { target: 'terminal', choices: { options: { effort: 'high' } }, userArgs: '' }
+      ).args
+    ).toContain('--effort')
+    expect(
+      projectAgentLaunchProfile(
+        'claude',
+        { agentPermissionDefault: 'ask' },
+        { target: 'structured', choices: { model: 'opus' }, userArgs: '' }
+      )
+    ).toEqual({ args: '', choices: { model: 'opus', permissionMode: 'ask' } })
+    expect(agentLaunchNeedsPreparedCommand('claude', { effort: 'high' })).toBe(true)
+    expect(agentLaunchNeedsPreparedCommand('codex', { model: 'unlisted', effort: 'high' })).toBe(
+      false
+    )
+  })
+})
