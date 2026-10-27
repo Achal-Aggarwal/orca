@@ -20,11 +20,15 @@ import {
   taskPageGitHubSnapshotKey
 } from './task-page-github-work-item-mutation-keys'
 import { clearTaskPageGitHubQuietStates } from './task-page-github-work-item-quiet-state'
+import { githubRepoIdentityKey } from '../../../../../shared/github/repository-identity-key'
 type Listener = () => void
 const listeners = new Set<Listener>()
 const pendingByKey = new Map<string, PendingOp>()
 const generations = new Map<string, number>()
-const confirmedSnapshots = new Map<string, GitHubAssignableUser[]>()
+const confirmedSnapshots = new Map<
+  string,
+  { users: GitHubAssignableUser[]; ownerRepo?: GitHubOwnerRepo | null }
+>()
 /** Remember source scope after pending clears so overlays can still resolve confirmed authority. */
 const itemSourceScopeByItemKey = new Map<string, string | null>()
 const stickyHideByItemKey = new Map<string, StickyHideEntry>()
@@ -180,26 +184,48 @@ export function getConfirmedListSnapshot(
   sourceScope: string | null,
   repoId: string,
   itemId: string,
-  family: TaskPageGitHubListFamily
+  family: TaskPageGitHubListFamily,
+  ownerRepo?: GitHubOwnerRepo | null
 ): GitHubAssignableUser[] | undefined {
-  return confirmedSnapshots.get(taskPageGitHubSnapshotKey(sourceScope, repoId, itemId, family))
+  const entry = confirmedSnapshots.get(
+    taskPageGitHubSnapshotKey(sourceScope, repoId, itemId, family)
+  )
+  if (
+    ownerRepo !== undefined &&
+    entry?.ownerRepo &&
+    (!ownerRepo || githubRepoIdentityKey(ownerRepo) !== githubRepoIdentityKey(entry.ownerRepo))
+  ) {
+    return undefined
+  }
+  return entry?.users
 }
 export function setConfirmedListSnapshot(
   sourceScope: string | null,
   repoId: string,
   itemId: string,
   family: TaskPageGitHubListFamily,
-  users: readonly GitHubAssignableUser[]
+  users: readonly GitHubAssignableUser[],
+  ownerRepo?: GitHubOwnerRepo | null
 ): void {
   rememberItemSourceScope(repoId, itemId, sourceScope)
-  confirmedSnapshots.set(taskPageGitHubSnapshotKey(sourceScope, repoId, itemId, family), [...users])
+  confirmedSnapshots.set(taskPageGitHubSnapshotKey(sourceScope, repoId, itemId, family), {
+    users: [...users],
+    ownerRepo
+  })
 }
 export function deleteConfirmedListSnapshot(
   sourceScope: string | null,
   repoId: string,
   itemId: string,
-  family: TaskPageGitHubListFamily
+  family: TaskPageGitHubListFamily,
+  ownerRepo?: GitHubOwnerRepo | null
 ): void {
+  if (
+    ownerRepo !== undefined &&
+    getConfirmedListSnapshot(sourceScope, repoId, itemId, family, ownerRepo) === undefined
+  ) {
+    return
+  }
   confirmedSnapshots.delete(taskPageGitHubSnapshotKey(sourceScope, repoId, itemId, family))
 }
 export function setLastConfirmedClientValue(

@@ -127,7 +127,13 @@ export function getRegistryMergedTaskPageGitHubWorkItem(
 
   for (const family of ['assignees', 'reviewRequests'] as const) {
     const familyOps = pendingListOpsForFamily(ops, family)
-    let snapshot = getConfirmedListSnapshot(sourceScope, item.repoId, item.id, family)
+    let snapshot = getConfirmedListSnapshot(
+      sourceScope,
+      item.repoId,
+      item.id,
+      family,
+      parseGitHubIssueOrPRLink(item.url)?.slug ?? null
+    )
     if (!snapshot && familyOps.length === 0) {
       continue
     }

@@ -1,4 +1,5 @@
 import type { GitHubWorkItem } from '../../../../../shared/github/work-item-types'
+import { parseGitHubIssueOrPRLink } from '../../../../../shared/github/links'
 import {
   getTaskSourceCacheScope,
   type TaskSourceContext
@@ -99,18 +100,27 @@ export function beginTaskPageGitHubWorkItemMutation(
     opKey: built.opKey
   }
   const generation = nextTaskPageGitHubMutationGeneration(key)
+  const ownerRepo = parseGitHubIssueOrPRLink(args.item.url)?.slug ?? null
 
   if (built.kind === 'list') {
     const existing = getConfirmedListSnapshot(
       sourceScope,
       args.item.repoId,
       args.item.id,
-      built.family
+      built.family,
+      ownerRepo
     )
     if (!existing) {
       const ops = listPendingTaskPageGitHubOpsForItem(args.item.repoId, args.item.id, sourceScope)
       const snapshot = stripFamilyPendingFromList(args.item, built.family, ops)
-      setConfirmedListSnapshot(sourceScope, args.item.repoId, args.item.id, built.family, snapshot)
+      setConfirmedListSnapshot(
+        sourceScope,
+        args.item.repoId,
+        args.item.id,
+        built.family,
+        snapshot,
+        ownerRepo
+      )
     }
   }
 
@@ -134,7 +144,8 @@ export function beginTaskPageGitHubWorkItemMutation(
       : built.next
 
   args.patchWorkItem(args.item.id, composedFields, args.item.repoId, {
-    sourceContext: args.sourceContext
+    sourceContext: args.sourceContext,
+    ownerRepo
   })
 
   recomputeSoftHideForItem({

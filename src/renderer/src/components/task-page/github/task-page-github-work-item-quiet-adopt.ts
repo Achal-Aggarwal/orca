@@ -173,7 +173,8 @@ export function adoptQuietSearchFieldsForItem(args: {
           args.sourceScope,
           args.item.repoId,
           args.item.id,
-          family
+          family,
+          ownerRepo
         )
         if (!snapshot) {
           return true
@@ -181,9 +182,21 @@ export function adoptQuietSearchFieldsForItem(args: {
         return loginSetsEqual(loginSetOfUsers(snapshot), loginSetOfUsers(serverListValue))
       },
       () =>
-        getConfirmedListSnapshot(args.sourceScope, args.item.repoId, args.item.id, family) !==
-        undefined,
-      () => deleteConfirmedListSnapshot(args.sourceScope, args.item.repoId, args.item.id, family)
+        getConfirmedListSnapshot(
+          args.sourceScope,
+          args.item.repoId,
+          args.item.id,
+          family,
+          ownerRepo
+        ) !== undefined,
+      () =>
+        deleteConfirmedListSnapshot(
+          args.sourceScope,
+          args.item.repoId,
+          args.item.id,
+          family,
+          ownerRepo
+        )
     )
   }
   return { needTrailing }

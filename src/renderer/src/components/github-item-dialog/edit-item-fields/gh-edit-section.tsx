@@ -274,6 +274,8 @@ function GHEditSectionItem({
   const handleAssigneeToggle = useCallback(
     (login: string) => {
       runGHEditAssigneeToggle({
+        item,
+        knownAssignees: [...(item.assignees ?? []), ...repoAssignees.data],
         login,
         localAssignees,
         assigneesItemKey,
@@ -286,19 +288,21 @@ function GHEditSectionItem({
         issueRepo,
         run,
         setLocalAssignees,
+        patchWorkItem,
         patchProjectRowIfNeeded,
         onMutated
       })
     },
     [
-      item.number,
-      item.repoId,
+      item,
+      repoAssignees.data,
       assigneesItemKey,
       repoPath,
       sourceContext,
       projectOrigin,
       issueRepo,
       localAssignees,
+      patchWorkItem,
       patchProjectRowIfNeeded,
       run,
       onMutated

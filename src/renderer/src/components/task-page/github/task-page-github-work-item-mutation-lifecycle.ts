@@ -1,5 +1,6 @@
 import type { ParsedTaskQuery } from '../../../../../shared/task-query'
 import type { GitHubWorkItem } from '../../../../../shared/github/work-item-types'
+import { parseGitHubIssueOrPRLink } from '../../../../../shared/github/links'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import { applyTaskPageGitHubListOps } from './task-page-github-work-item-mutation-patches'
 import {
@@ -26,6 +27,7 @@ import type { TaskPageGitHubPatchWorkItem } from './task-page-github-work-item-m
 function applyServerEntityIfPresent(
   key: TaskPageGitHubMutationKey,
   opts: {
+    item: GitHubWorkItem
     serverEntity?: Partial<GitHubWorkItem>
     patchWorkItem?: TaskPageGitHubPatchWorkItem
     sourceContext?: TaskSourceContext | null
@@ -35,6 +37,7 @@ function applyServerEntityIfPresent(
     return
   }
   const entityPatch: Partial<GitHubWorkItem> = {}
+  const ownerRepo = parseGitHubIssueOrPRLink(opts.item.url)?.slug ?? null
   if (opts.serverEntity.state !== undefined) {
     entityPatch.state = opts.serverEntity.state
     setLastConfirmedClientValue(
@@ -57,17 +60,25 @@ function applyServerEntityIfPresent(
   }
   if (opts.serverEntity.assignees) {
     const users = freezeTaskPageGitHubUsers(opts.serverEntity.assignees)
-    setConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, 'assignees', users)
+    setConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, 'assignees', users, ownerRepo)
     entityPatch.assignees = users
   }
   if (opts.serverEntity.reviewRequests) {
     const users = freezeTaskPageGitHubUsers(opts.serverEntity.reviewRequests)
-    setConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, 'reviewRequests', users)
+    setConfirmedListSnapshot(
+      key.sourceScope,
+      key.repoId,
+      key.itemId,
+      'reviewRequests',
+      users,
+      ownerRepo
+    )
     entityPatch.reviewRequests = users
   }
   if (Object.keys(entityPatch).length > 0) {
     opts.patchWorkItem(key.itemId, entityPatch, key.repoId, {
-      sourceContext: opts.sourceContext
+      sourceContext: opts.sourceContext,
+      ownerRepo
     })
   }
 }
@@ -90,9 +101,10 @@ export function confirmTaskPageGitHubWorkItemMutation(
     return 'stale'
   }
   const { skipMeQualifiers, listOp, next } = pending
+  const ownerRepo = parseGitHubIssueOrPRLink(opts.item.url)?.slug ?? null
   if (listOp) {
     const snapshot =
-      getConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, listOp.family) ??
+      getConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, listOp.family, ownerRepo) ??
       freezeTaskPageGitHubUsers(
         listOp.family === 'assignees'
           ? (opts.item.assignees ?? [])
@@ -100,7 +112,14 @@ export function confirmTaskPageGitHubWorkItemMutation(
       )
     // Confirm list ops into snapshots immediately; lastConfirmedClientValue stores scalar authority only.
     const applied = applyTaskPageGitHubListOps(snapshot, [listOp])
-    setConfirmedListSnapshot(key.sourceScope, key.repoId, key.itemId, listOp.family, applied)
+    setConfirmedListSnapshot(
+      key.sourceScope,
+      key.repoId,
+      key.itemId,
+      listOp.family,
+      applied,
+      ownerRepo
+    )
   } else {
     if (next.state !== undefined) {
       setLastConfirmedClientValue(key.sourceScope, key.repoId, key.itemId, 'state', next.state)
@@ -124,7 +143,7 @@ export function confirmTaskPageGitHubWorkItemMutation(
       key.itemId,
       { assignees: merged.assignees, reviewRequests: merged.reviewRequests },
       key.repoId,
-      { sourceContext: opts.sourceContext }
+      { sourceContext: opts.sourceContext, ownerRepo }
     )
   }
   if (isTaskPageGitHubMutationQueryKeyCurrent(opts.queryKey)) {
@@ -171,7 +190,10 @@ export function rollbackTaskPageGitHubWorkItemMutation(args: {
         ? { assignees: merged.assignees }
         : { reviewRequests: merged.reviewRequests },
       args.key.repoId,
-      { sourceContext: args.sourceContext }
+      {
+        sourceContext: args.sourceContext,
+        ownerRepo: parseGitHubIssueOrPRLink(args.item.url)?.slug ?? null
+      }
     )
   } else {
     const recomposed = getRegistryMergedTaskPageGitHubWorkItem(
@@ -185,7 +207,10 @@ export function rollbackTaskPageGitHubWorkItemMutation(args: {
         autoMergeEnabled: recomposed.autoMergeEnabled
       },
       args.key.repoId,
-      { sourceContext: args.sourceContext }
+      {
+        sourceContext: args.sourceContext,
+        ownerRepo: parseGitHubIssueOrPRLink(args.item.url)?.slug ?? null
+      }
     )
   }
   const after = getRegistryMergedTaskPageGitHubWorkItem(args.item, args.key.sourceScope)
