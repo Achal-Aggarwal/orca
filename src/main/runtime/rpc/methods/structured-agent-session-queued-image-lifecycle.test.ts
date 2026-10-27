@@ -171,7 +171,7 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   ).toMatchObject({ result: { page: { queuedMessages: [expect.objectContaining({ body })] } } })
   await rig.quitRestartHostProcess()
   setStructuredAgentSessionHost(rig.host)
-  expect((await history({}, false)).page.queuedMessages?.[0]).not.toHaveProperty(
+  expect((await history({ direction: 'tail' }, false)).page.queuedMessages?.[0]).not.toHaveProperty(
     'independentRecovery'
   )
   const reopened = await history()

@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS } from '../../../src/shared/structured-agent-session-coalescer'
 import { useMobileNativeChatComposerTray } from './native-chat/composer/use-mobile-native-chat-composer-tray'
 import type { AgentJournalRenderItem } from '../../../src/shared/agent-session-journal-types'
+import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -429,7 +430,13 @@ describe('current recovery publication and normal Resume', () => {
         revision: 1,
         sequence: 2,
         observedAt: 2,
-        body: { kind: 'status', text: 'Sign in to Claude.', failure: { kind: 'notSignedIn' } }
+        body: {
+          kind: 'status',
+          ...agentSessionFailureWords(
+            { kind: 'notSignedIn' },
+            { surface: 'row', agentName: 'Claude' }
+          )
+        }
       }
       const running = [...snapshotEvent({ runningTurn: true }).page.items, failure]
       const event = batchEvent()
