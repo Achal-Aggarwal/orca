@@ -17,10 +17,12 @@ import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { WslSpec } from '../wsl/wsl-runner'
 import type * as WslPaths from '../../shared/wsl-paths'
 
-const guest = vi.hoisted(() => ({
-  home: '',
-  failure: null as null | { code: number; stdout: string }
-}))
+const guest = vi.hoisted(
+  (): { home: string; failure: { code: number; stdout: string } | null } => ({
+    home: '',
+    failure: null
+  })
+)
 // Emulate the guest with local POSIX paths and /bin/sh.
 vi.mock('../../shared/wsl-paths', async (original) => ({
   ...(await original<typeof WslPaths>()),
