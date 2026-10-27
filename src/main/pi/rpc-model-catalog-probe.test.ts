@@ -103,6 +103,40 @@ describe('Pi model catalog', () => {
     )
   })
 
+  it.each([false, true])(
+    'stops without fallback when aborted during RPC or teardown (teardown=%s)',
+    async (duringClose) => {
+      const stop = new AbortController()
+      const runListing = vi.fn()
+      const close = vi.fn(async () => {
+        if (duringClose) {
+          stop.abort()
+        }
+      })
+      const probe = createPiModelCatalogProbe({
+        resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+        resolveCommand: () => '/opt/pi/bin/pi',
+        probeVersion: async () => ({ version: '1.1.0' }),
+        homePath: '/home/user',
+        connect: () => ({
+          request: async () => {
+            if (!duringClose) {
+              stop.abort()
+            }
+            throw new Error('RPC interrupted')
+          },
+          close
+        }),
+        runListing
+      })
+      await expect(
+        probe({ variable: 'PI_CODING_AGENT_DIR', path: '/homes/pi' }, { signal: stop.signal })
+      ).rejects.toThrow()
+      expect(close).toHaveBeenCalledOnce()
+      expect(runListing).not.toHaveBeenCalled()
+    }
+  )
+
   it('lists nothing from a Pi that runs no structured chat', async () => {
     const connect = vi.fn()
     const probe = createPiModelCatalogProbe({

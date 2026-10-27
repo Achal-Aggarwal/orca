@@ -10,7 +10,7 @@ export function nearestAgentEffort(
   previous: string,
   supported: readonly string[]
 ): string | undefined {
-  const rank = (level: string): number => EFFORT_RANK.indexOf(level)
+  const rank = (level: string): number => EFFORT_RANK.indexOf(level === 'off' ? 'none' : level)
   const distance = (level: string): number => Math.abs(rank(level) - rank(previous))
   if (supported.includes(previous)) {
     return previous
