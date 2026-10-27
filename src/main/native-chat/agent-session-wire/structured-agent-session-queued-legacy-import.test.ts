@@ -16,6 +16,7 @@ import {
 import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import { structuredAgentSessionCommandTurnIdentity } from '../../../shared/structured-agent-session-command-turn-identity'
 import { readAgentSessionHistory } from './agent-session-history-page'
+import { readPublishedQueuedMessages } from './structured-agent-session-queued-publication'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
@@ -508,6 +509,9 @@ it.each([false, true])(
     }
     await open()
     const independent = journal.queuedMessages.get('Q-proof')!
+    expect(
+      readPublishedQueuedMessages(journal).find((card) => card.messageId === 'Q-proof')
+    ).toMatchObject({ independentRecovery: true, body: editedBody })
     expect(independent).toMatchObject({
       state: 'waiting',
       consumedAs: null,

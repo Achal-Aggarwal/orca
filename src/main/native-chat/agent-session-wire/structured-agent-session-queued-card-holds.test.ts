@@ -263,12 +263,12 @@ describe('after a restart, nothing sends by itself', () => {
     await rig.host.close(HOST_TEST_SESSION, 'evict')
     expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
     await expectNothingSent(first, second)
-    // The unconfirmed opener needs attention; the other cards wait behind its recovery copy.
+    // The independent recovery needs attention; ordinary waiting cards keep their own policy.
     expect(views.at(-1)).toMatchObject({
       working: false,
       header: false,
       cards: 3,
-      holds: ['returned', 'behind-returned', 'behind-returned'],
+      holds: ['returned', 'turn', 'turn'],
       steers: [false, true, true]
     })
     expect(await rig.drafts()).toEqual([

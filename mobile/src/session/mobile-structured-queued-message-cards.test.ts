@@ -130,6 +130,7 @@ describe('mobileQueuedMessageCards', () => {
       messageId: 'a',
       text: 'body of a',
       state: 'waiting',
+      resumeEligible: true,
       paused: false,
       needsAttention: false,
       caption: null,

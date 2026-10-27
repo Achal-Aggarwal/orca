@@ -73,6 +73,7 @@ function computePublishedQueuedMessages(
       position: row.position,
       body: row.body,
       state: row.state,
+      ...(row.recovers ? { independentRecovery: true as const } : {}),
       ...(held ? { paused: true as const } : {}),
       // Unknown stored reasons remain plain holds.
       ...(held && isPublishedPausedReason(row.holdReason) ? { pausedReason: row.holdReason } : {}),

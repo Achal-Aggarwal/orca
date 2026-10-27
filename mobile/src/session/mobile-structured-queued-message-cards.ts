@@ -25,6 +25,8 @@ export type MobileQueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   paused: boolean
+  /** Visible unheld waiting work before an ordinary returned barrier in published order. */
+  resumeEligible?: true
   needsAttention: boolean
   // Leave plain waits uncaptioned; the question or queue-pause row already explains the hold.
   caption: string | null
@@ -73,17 +75,9 @@ function pausedCaption(reason: string | undefined, waitsForAgent: boolean): stri
   return 'Paused'
 }
 
-// Returned cards stop the drain, so waiting cards behind one cannot make Resume useful.
+// Membership is derived in published order before hiding handoffs or previewing a move.
 export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageCard[]): boolean {
-  for (const card of cards) {
-    if (card.state === 'returned') {
-      return false
-    }
-    if (!card.paused) {
-      return true
-    }
-  }
-  return false
+  return cards.some((card) => card.resumeEligible)
 }
 
 // Hide waiting cards with non-rejected hand-offs until catch-up publishes the final queue; rejected hand-offs and returned cards must remain reachable.
@@ -109,6 +103,10 @@ export function mobileQueuedMessageCards(
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
   for (const draft of queuedMessages) {
+    const resumeEligible = draft.state === 'waiting' && !draft.paused && !behindReturned
+    if (draft.state === 'returned' && !draft.independentRecovery) {
+      behindReturned = true
+    }
     if (draft.state !== 'returned' && handedOff.has(draft.messageId)) {
       continue
     }
@@ -130,6 +128,7 @@ export function mobileQueuedMessageCards(
       text: queuedMessageBodyText(draft.body),
       state: draft.state,
       paused,
+      ...(resumeEligible ? { resumeEligible: true as const } : {}),
       needsAttention:
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
@@ -142,9 +141,6 @@ export function mobileQueuedMessageCards(
           }
         : {})
     })
-    if (draft.state === 'returned') {
-      behindReturned = true
-    }
   }
   return cards
 }

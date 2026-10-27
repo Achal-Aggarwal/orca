@@ -33,6 +33,8 @@ export type QueuedMessageCard = {
   images?: readonly NativeChatImageRefBlock[]
   state: 'waiting' | 'returned'
   hold: QueuedMessageCardHold
+  /** Visible unheld waiting work before an ordinary returned barrier in published order. */
+  resumeEligible?: true
   /** A conversation command such as /compact: it never steers into a running turn. */
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
@@ -64,11 +66,11 @@ export function projectQueuedMessageCards(
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
   )
-  const ordered = [...(queuedMessages ?? [])]
-    .sort((left, right) => left.position - right.position)
-    .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
+  const ordered = [...(queuedMessages ?? [])].sort((left, right) => left.position - right.position)
   let behindReturned = false
-  return ordered.map((message) => {
+  // Establish semantic membership before handoff filtering, including during catch-up.
+  const cards = ordered.map((message) => {
+    const resumeEligible = message.state === 'waiting' && !message.paused && !behindReturned
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -79,7 +81,8 @@ export function projectQueuedMessageCards(
             : session.queuePaused
               ? 'queue-paused'
               : 'turn'
-    behindReturned = behindReturned || message.state === 'returned'
+    behindReturned =
+      behindReturned || (message.state === 'returned' && !message.independentRecovery)
     const from = readAgentMessageSource(message.body.from)
     return {
       messageId: message.messageId,
@@ -88,6 +91,7 @@ export function projectQueuedMessageCards(
       ...queuedMessageCardImages(message.body),
       state: message.state,
       hold,
+      ...(resumeEligible ? { resumeEligible: true as const } : {}),
       ...(message.body.command !== undefined
         ? {
             command: true as const,
@@ -102,6 +106,7 @@ export function projectQueuedMessageCards(
       ...(from ? { from } : {})
     }
   })
+  return cards.filter((card) => card.state === 'returned' || !handedOff.has(card.messageId))
 }
 
 /** Later sends queue behind commands even with follow-ups off; individually held cards do not block them. */
@@ -119,7 +124,7 @@ export function queuedMessagesQueuePause(
   cards: readonly QueuedMessageCard[],
   queuePause: AgentSessionQueuePause | null
 ): AgentSessionQueuePause | null {
-  return cards.some((card) => card.hold === 'queue-paused') ? queuePause : null
+  return cards.some((card) => card.resumeEligible) ? queuePause : null
 }
 
 /** Steer moves turn-waiting cards mid-turn, even during queue pause; returned/individually held cards use Send, commands never steer. */

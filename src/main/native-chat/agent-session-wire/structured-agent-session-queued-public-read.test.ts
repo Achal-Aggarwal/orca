@@ -9,6 +9,34 @@ import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-w
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
 import { createAgentSessionCatchUpReader } from './agent-session-history-page'
+import { readPublishedQueuedMessages } from './structured-agent-session-queued-publication'
+import { buildSubscriberFrame } from './agent-session-subscriber-frame-fields'
+import { boundedQueuePublication } from './agent-session-bounded-queue'
+import { BOUNDED_FRAME_CONTENT_BUDGET_BYTES } from './agent-session-history-page-bounds'
+import {
+  EMPTY_STRUCTURED_AGENT_SESSION,
+  reduceStructuredAgentSession
+} from '../../../shared/structured-agent-session-reducer'
+import {
+  projectQueuedMessageCards,
+  queuedMessagesQueuePause
+} from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from '../../../shared/agent-session-wire'
+
+// Execute the actual phone feed without introducing RN ambient types into the Node program.
+const { reduceMobileQueuedMessageFeed, reduceMobileQueuePause } = await vi.importActual<{
+  reduceMobileQueuedMessageFeed: (
+    previous: AgentSessionQueuedMessage[] | null,
+    event: AgentSessionSubscribeEvent
+  ) => AgentSessionQueuedMessage[] | null
+  reduceMobileQueuePause: (
+    previous: AgentSessionQueuePause | null,
+    event: AgentSessionSubscribeEvent
+  ) => AgentSessionQueuePause | null
+}>('../../../../mobile/src/session/mobile-structured-queued-message-feed')
 import {
   SESSION,
   db,
@@ -345,4 +373,143 @@ it('public metadata follows legacy-only commits, item recreation and epoch repla
   expect(journal.publicRead().normalizationKey).toBe('')
   expect(journal.snapshot().items).toEqual([])
   await journal.close()
+})
+
+it('carries canonical derived and adopted recovery markers through real publication, bounded snapshot/reset/catch-up/live and both reducers', async () => {
+  const journal = journalFor(SESSION)
+  await journal.open()
+  try {
+    const body = message('immutable full original')
+    await journal.appendSubmission({
+      clientMessageId: 'original',
+      body,
+      payloadFingerprint: agentSessionSendBodyFingerprint(SESSION, body),
+      fence: 0,
+      origin: 'client',
+      handoverRecorded: true,
+      options: { model: 'default' }
+    })
+    await journal.resolveDispatch({
+      clientMessageId: 'original',
+      state: 'pending',
+      fence: 0,
+      turnScope: AGENT_JOURNAL_THREAD_SCOPE
+    })
+    journal.queuedMessages.recoveryWork = () => ({
+      allowsRecovery: () => true,
+      owesSend: () => false,
+      generationEnded: () => true,
+      activeTurnId: () => null,
+      recoveryViewKey: () => 'ended'
+    })
+    await journal.queuedMessages.insert({ messageId: 'W', body: message('waiting') })
+    const cards = readPublishedQueuedMessages(journal)
+    expect(cards).toMatchObject([
+      {
+        messageId: 'recovery:original',
+        independentRecovery: true,
+        state: 'returned',
+        body: message('immutable full original'),
+        returnedRejection: { kind: 'unconfirmed' }
+      },
+      { messageId: 'W', state: 'waiting' }
+    ])
+    expect(cards[1]).not.toHaveProperty('independentRecovery')
+    expect(readPublishedQueuedMessages(journal)).toBe(cards)
+    // A real queue move adopts the derived row without changing its source/body.
+    await journal.queuedMessages.move({ messageId: 'recovery:original', afterMessageId: 'W' })
+    const adopted = readPublishedQueuedMessages(journal)
+    expect(adopted.find((c) => c.independentRecovery)).toEqual({
+      ...cards[0],
+      position: adopted.find((c) => c.independentRecovery)!.position
+    })
+    expect(journal.queuedMessages.isDerivedRecovery('recovery:original')).toBe(false)
+    const publication = {
+      queuedMessages: adopted,
+      queuePause: { reason: 'stopped' } as const,
+      nextQueuedMessageId: null
+    }
+    const events: AgentSessionSubscribeEvent[] = []
+    const feed = new AgentSessionSubscribers({ readQueuePublication: () => publication })
+    feed.open({
+      id: 'bounded',
+      sessionId: SESSION,
+      journal,
+      fence: 0,
+      boundedFrames: true,
+      emit: (event) => events.push(event)
+    })
+    const snapshot = events.find((event) => event.type === 'snapshot')
+    if (!snapshot || snapshot.type !== 'snapshot') {
+      throw new Error('missing snapshot')
+    }
+    const hooks = { readQueuePublication: () => publication }
+    const subscriber = { sessionId: SESSION, boundedFrames: true }
+    const batch: AgentSessionSubscribeEvent = {
+      type: 'batch',
+      sessionId: SESSION,
+      batch: { cursor: journal.cursor(), items: [], removedItemIds: [], submissions: [] }
+    }
+    const withheld = buildSubscriberFrame(hooks, subscriber, batch, true)
+    expect(withheld.frames.every((e) => e.type === 'end' || e.queuedMessages === undefined)).toBe(
+      true
+    )
+    const final = buildSubscriberFrame(hooks, subscriber, batch, false)
+    const reset: AgentSessionSubscribeEvent = { ...snapshot, type: 'reset', reset: 'epoch_changed' }
+    events.push(
+      ...withheld.frames,
+      ...final.frames,
+      ...buildSubscriberFrame(hooks, subscriber, reset, false).frames
+    )
+    let desktop = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
+      type: 'history-page',
+      page: { ...snapshot.page, queuedMessages: adopted, queuePause: publication.queuePause }
+    })
+    let phone: AgentSessionQueuedMessage[] | null = null
+    let pause: AgentSessionQueuePause | null = null
+    for (const event of events) {
+      desktop = reduceStructuredAgentSession(desktop, { type: 'event', event })
+      phone = reduceMobileQueuedMessageFeed(phone, event)
+      pause = reduceMobileQueuePause(pause, event)
+    }
+    expect(desktop.queuedMessages).toEqual(adopted)
+    expect(phone).toEqual(adopted)
+    expect(pause).toEqual(publication.queuePause)
+    const projected = projectQueuedMessageCards(desktop.queuedMessages, desktop.submissions, {
+      queuePaused: true
+    })
+    expect(projected.map((c) => c.hold)).toEqual(['queue-paused', 'returned'])
+    expect(queuedMessagesQueuePause(projected, desktop.queuePause ?? null)).toEqual(
+      publication.queuePause
+    )
+    await journal.queuedMessages.move({ messageId: 'recovery:original', beforeMessageId: 'W' })
+    const heldBody = message('x'.repeat(Math.floor(BOUNDED_FRAME_CONTENT_BUDGET_BYTES / 3)))
+    for (const messageId of ['P1', 'P2', 'P3']) {
+      await journal.queuedMessages.insert({ messageId, body: heldBody, holdReason: 'send_failed' })
+    }
+    await journal.queuedMessages.move({ messageId: 'W', afterMessageId: 'P3' })
+    const bounded = boundedQueuePublication({
+      ...publication,
+      queuedMessages: readPublishedQueuedMessages(journal)
+    })
+    expect(bounded.queuedMessages.map((c) => c.messageId)).toEqual([
+      'recovery:original',
+      'P1',
+      'P2'
+    ])
+    expect(bounded.queuedMessages[0]).toMatchObject({
+      messageId: 'recovery:original',
+      independentRecovery: true,
+      body
+    })
+    expect(bounded.queuedMessages.slice(1).map((c) => c.body)).toEqual([heldBody, heldBody])
+    expect(
+      queuedMessagesQueuePause(
+        projectQueuedMessageCards(bounded.queuedMessages, [], {}),
+        publication.queuePause
+      )
+    ).toBeNull()
+  } finally {
+    await journal.close()
+  }
 })

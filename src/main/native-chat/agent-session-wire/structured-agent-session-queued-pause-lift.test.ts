@@ -459,6 +459,57 @@ describe('Resume', () => {
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: false } })
   })
 
+  it.each([1, 2])(
+    'normal Resume drains W1/W2 FIFO around %i independent recoveries without resending them',
+    async (count) => {
+      const original = [await rig.workingSend()]
+      const first = await queuedDraft('W1')
+      const second = await queuedDraft('W2')
+      await rig.stop()
+      if (count === 2) {
+        original.push(await handedOverUserSend('second unknown input'))
+        await rig.stop()
+      }
+      await laneDrained()
+      await expectPaused(first, second)
+      const result = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+      expect(result).toMatchObject({
+        ok: true,
+        page: {
+          queuePause: { reason: 'stopped' },
+          queuedMessages: [
+            ...original.map((id) => ({
+              messageId: `recovery:${id}`,
+              state: 'returned',
+              independentRecovery: true,
+              returnedRejection: { kind: 'unconfirmed' }
+            })),
+            { messageId: first, state: 'waiting' },
+            { messageId: second, state: 'waiting' }
+          ]
+        }
+      })
+      expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+      await handedOver(first)
+      expect(await rig.handoff(second)).toBeUndefined()
+      await rig.settleAccepted(await rig.handoffId(first), 'first-accepted')
+      await handedOver(second)
+      expect(rig.dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([
+        ...original,
+        await rig.handoffId(first),
+        await rig.handoffId(second)
+      ])
+      const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+      for (const id of original) {
+        expect(journal.receiptFor(id)).toBeNull()
+        expect(journal.queuedMessages.get(`recovery:${id}`)).toMatchObject({
+          recovers: id,
+          state: 'returned'
+        })
+      }
+    }
+  )
+
   it('is idempotent: a replay of the same Resume answers without lifting a later pause', async () => {
     const working = await rig.workingSend()
     const draftId = await queuedDraft('paused twice')
