@@ -1,13 +1,64 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the import-time native module to test only the URI converter.
-vi.mock('expo-file-system', () => ({
-  Directory: class {},
-  File: class {},
-  Paths: { cache: '' }
-}))
+// Model only the directory calls the store root and its migration make, over a set of existing paths.
+const disk = vi.hoisted(() => ({ directories: new Set<string>() }))
 
-import { generationDirectoryPath } from './generation-store-file-system'
+vi.mock('expo-file-system', () => {
+  class Directory {
+    uri: string
+    constructor(...segments: (string | Directory)[]) {
+      this.uri = segments
+        .map((segment) => (typeof segment === 'string' ? segment : segment.uri))
+        .join('/')
+    }
+    get exists(): boolean {
+      return disk.directories.has(this.uri)
+    }
+    move(to: Directory): void {
+      disk.directories.delete(this.uri)
+      disk.directories.add(to.uri)
+    }
+    delete(): void {
+      disk.directories.delete(this.uri)
+    }
+  }
+  return {
+    Directory,
+    File: class {},
+    Paths: { cache: 'file:///app/cache', document: 'file:///app/files' }
+  }
+})
+
+import {
+  createExpoGenerationFileSystem,
+  generationDirectoryPath
+} from './generation-store-file-system'
+
+const LEGACY_ROOT = 'file:///app/cache/mobile-web'
+const ROOT = 'file:///app/files/mobile-web'
+
+describe('the store root', () => {
+  beforeEach(() => {
+    disk.directories.clear()
+  })
+
+  it('lives outside the cache directory the OS purges', () => {
+    expect(createExpoGenerationFileSystem().rootUri).toBe(ROOT)
+  })
+
+  it('adopts the tree an earlier build kept in the cache directory', () => {
+    disk.directories.add(LEGACY_ROOT)
+    createExpoGenerationFileSystem()
+    expect([...disk.directories]).toEqual([ROOT])
+  })
+
+  it('deletes the old tree rather than merge it into a store that already exists', () => {
+    disk.directories.add(LEGACY_ROOT)
+    disk.directories.add(ROOT)
+    createExpoGenerationFileSystem()
+    expect([...disk.directories]).toEqual([ROOT])
+  })
+})
 
 describe('generationDirectoryPath', () => {
   it('hands the native view the absolute path both loaders demand', () => {

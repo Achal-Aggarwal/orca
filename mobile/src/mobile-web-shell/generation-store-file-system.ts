@@ -39,9 +39,32 @@ export function generationDirectoryPath(uri: string): string {
   return decodeURIComponent(uri.slice(FILE_URI_PREFIX.length))
 }
 
+// The OS purges cache directories under storage pressure or on Clear cache, which cost every host a full download.
+function storeRootDirectory(): Directory {
+  return new Directory(Paths.document, MOBILE_WEB_CACHE_DIRECTORY_NAME)
+}
+
+// Adopt the tree earlier builds kept in the cache directory so upgrading costs no download.
+function adoptLegacyCacheTree(): void {
+  const legacy = new Directory(Paths.cache, MOBILE_WEB_CACHE_DIRECTORY_NAME)
+  try {
+    if (!legacy.exists) {
+      return
+    }
+    if (!storeRootDirectory().exists) {
+      legacy.move(storeRootDirectory())
+      return
+    }
+    legacy.delete()
+  } catch {
+    // A tree left behind only costs space; the store never reads it.
+  }
+}
+
 export function createExpoGenerationFileSystem(): GenerationFileSystem {
+  adoptLegacyCacheTree()
   return {
-    rootUri: new Directory(Paths.cache, MOBILE_WEB_CACHE_DIRECTORY_NAME).uri,
+    rootUri: storeRootDirectory().uri,
     async list(uri) {
       const directory = new Directory(uri)
       if (!directory.exists) {

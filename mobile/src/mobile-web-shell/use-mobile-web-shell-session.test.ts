@@ -158,6 +158,7 @@ function createFakeStore(): {
     openReusableAssets: async () => ({ has: () => false, check: async () => false }),
     sweepStagedGenerations: async () => undefined,
     deleteHostCache: async () => undefined,
+    deleteUnpairedHostCaches: async () => undefined,
     recordUpdateFailure: async () => undefined,
     readUpdateFailures: async () => [],
     forgetHostUpdateFailures: async () => undefined
