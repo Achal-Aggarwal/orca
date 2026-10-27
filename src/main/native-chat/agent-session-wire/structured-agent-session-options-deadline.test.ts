@@ -19,7 +19,7 @@ function restingJournal() {
   }
 }
 
-it('shares the original legacy read deadline with saved-scope and Auto preparation', async () => {
+it('bounds legacy saved-scope preparation without changing saved Auto', async () => {
   vi.useFakeTimers()
   const args = Promise.withResolvers<string[]>()
   const resolving = vi.fn(() => args.promise)
@@ -75,7 +75,7 @@ it('shares the original legacy read deadline with saved-scope and Auto preparati
     await vi.advanceTimersByTimeAsync(0)
     expect(resolving).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(30_001)
-    await expect(answer).resolves.toMatchObject({ current: { permissionMode: 'ask' } })
+    await expect(answer).resolves.toMatchObject({ current: { permissionMode: 'auto' } })
     expect(resolving).toHaveBeenCalledOnce()
     args.resolve([])
     await vi.advanceTimersByTimeAsync(0)

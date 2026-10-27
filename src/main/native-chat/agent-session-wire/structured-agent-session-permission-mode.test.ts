@@ -70,7 +70,7 @@ describe('a chat permission mode', () => {
   })
 
   it.each([true, false, undefined])(
-    'projects cold saved Auto without work, then prepares start/outgrown support=%s',
+    'keeps saved Auto independent of cold catalog support=%s and explicit preparation',
     async (supportsAutoMode) => {
       const home = { variable: 'CLAUDE_CONFIG_DIR', path: '/saved-auto-account' }
       const key = agentModelCatalogScopeFingerprint(
@@ -154,7 +154,7 @@ describe('a chat permission mode', () => {
         )
         expect(attached.ok, JSON.stringify(attached)).toBe(true)
         expect(rig.adapter.acquire).toHaveBeenLastCalledWith(
-          expect.objectContaining({ permissionMode: 'ask' })
+          expect.objectContaining({ permissionMode: 'auto' })
         )
         await rig.restart({ modelCatalog: catalog })
         await read('auto')
@@ -163,24 +163,28 @@ describe('a chat permission mode', () => {
           expect(work).not.toHaveBeenCalled()
         }
         expect(rig.adapter.acquire).toHaveBeenCalledTimes(1)
+        await catalog.prepareSaved({
+          agent: 'claude',
+          sessionId: SESSION,
+          inSessionWorkspace: true
+        })
         const fence = () => rig.store.getRecord(SESSION)!.lease.runtimeFence
         expect((await rig.host.send(CALLER, restTestSend('prepared start', fence()))).ok).toBe(true)
         await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledTimes(1))
-        const launchMode = supportsAutoMode === true ? 'auto' : 'ask'
         expect(rig.adapter.acquire).toHaveBeenLastCalledWith(
-          expect.objectContaining({ permissionMode: launchMode })
+          expect.objectContaining({ permissionMode: 'auto' })
         )
         expect(prepare).toHaveBeenCalled()
         expect(resolve).toHaveBeenCalledOnce()
         prepare.mockClear()
-        await read(supportsAutoMode === undefined ? 'auto' : launchMode)
+        await read('auto')
         expect(prepare).not.toHaveBeenCalled()
         rig.adapter.closeSession.mockClear()
         expect((await rig.host.send(CALLER, restTestSend('outgrown comparison', fence()))).ok).toBe(
           true
         )
         await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledTimes(2))
-        expect(prepare).toHaveBeenCalled()
+        expect(prepare).not.toHaveBeenCalled()
         expect(rig.adapter.acquire).toHaveBeenCalledTimes(2)
         expect(rig.adapter.closeSession).not.toHaveBeenCalled()
         expect(run).not.toHaveBeenCalled()
@@ -260,6 +264,8 @@ describe('a chat permission mode', () => {
       expect(rig.adapter.acquire).toHaveBeenLastCalledWith(
         expect.objectContaining({ permissionMode: 'auto' })
       )
+      expect(resolve).not.toHaveBeenCalled()
+      await catalog.prepareSaved({ agent: 'claude', sessionId: SESSION, inSessionWorkspace: true })
       expect(resolve).toHaveBeenCalledWith(
         home,
         '/project',

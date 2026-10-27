@@ -36,6 +36,8 @@ it.each(['before-settlement', 'after-settlement'])(
         clientMessageId: 'first',
         body: USER_MESSAGE
       })
+      finishTurn()
+      await tick()
       const writing = adapter.dispatch({
         sessionId: 'session-1',
         fence: 7,
