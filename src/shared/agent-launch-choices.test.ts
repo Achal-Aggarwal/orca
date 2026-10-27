@@ -11,6 +11,36 @@ const load = (agent: 'claude' | 'codex', userArgs: string) =>
   reconcileAgentChoiceArgs({ agent, userArgs, choices: {}, mode: 'load', keys })
 
 describe('dedicated agent choices', () => {
+  it.each([
+    ['-c modelx', undefined, false],
+    ['--config=modelx', undefined, false],
+    ['-c model_reasoning_effortx', undefined, false],
+    ['-c model=value', { model: 'value' }, true],
+    ['-c model_reasoning_effort=low', { options: { effort: 'low' } }, true],
+    ['-c model=42', undefined, true]
+  ] as const)('requires a config assignment for %s ownership', (userArgs, choices, owned) => {
+    const migrated = load('codex', userArgs)
+    const patch = { model: 'gpt-5.5', options: { effort: 'high' } }
+    const edited = reconcileAgentChoiceArgs({
+      agent: 'codex',
+      userArgs,
+      choices: {},
+      mode: 'choice-edit',
+      keys,
+      patch
+    })
+    const projected = projectAgentLaunchProfile(
+      'codex',
+      { agentPermissionDefault: 'own' },
+      { target: 'terminal', userArgs, choices: patch }
+    )
+    expect.soft(migrated).toEqual(choices ? { userArgs: '', choices } : { userArgs, choices: {} })
+    expect.soft(edited).toEqual({ userArgs: owned ? '' : userArgs, choices: patch })
+    expect(projected.args).toBe(
+      ['-m gpt-5.5 -c model_reasoning_effort=high', owned ? '' : userArgs].filter(Boolean).join(' ')
+    )
+  })
+
   it('bounds range comparisons and copied bytes on repeated-flag choice edits', () => {
     const analyze = choiceArgs.analyzeAgentChoiceArgs
     const slice = String.prototype.slice

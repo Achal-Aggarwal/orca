@@ -31,7 +31,7 @@ export function projectAgentLaunchProfile(
   const userArgs =
     input.userArgs ??
     settings?.agentDefaultArgs?.[agent] ??
-    (typed ? '' : (YOLO_TUI_AGENT_ARGS[agent] ?? ''))
+    (typed || input.choices?.permissionMode !== undefined ? '' : (YOLO_TUI_AGENT_ARGS[agent] ?? ''))
   const choices = resolveAgentChoiceLayers({
     agent,
     defaults: typed

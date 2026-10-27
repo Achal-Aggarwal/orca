@@ -1,4 +1,5 @@
 import * as reconciliation from './agent-choice-reconciliation'
+import { projectAgentLaunchProfile } from './agent-launch-profile'
 import { getDefaultSettings } from './constants'
 import { legacyChatPermissionWrite } from '../main/persistence/applying-settings/legacy-chat-permission-write'
 import { measureSettingsWork, expectSettingsWorkScale } from './global-settings-test-fixture'
@@ -126,6 +127,31 @@ describe('one-time move of permission flags out of Arguments', () => {
 })
 
 describe('terminal launch composes the stored choice', () => {
+  it.each([
+    ['claude', '--permission-mode default', '--dangerously-skip-permissions'],
+    [
+      'codex',
+      '-a on-request -s read-only -c approvals_reviewer=user',
+      '--dangerously-bypass-approvals-and-sandbox'
+    ]
+  ] as const)('%s uses explicit permission before legacy fallback', (agent, ask, bypass) => {
+    for (const permissionMode of ['ask', 'own'] as const) {
+      const recipe = permissionMode === 'ask' ? ask : ''
+      for (const userArgs of [undefined, '', '--search', bypass]) {
+        const expected = userArgs === bypass ? bypass : [recipe, userArgs].filter(Boolean).join(' ')
+        const settings = userArgs === undefined ? {} : { agentDefaultArgs: { [agent]: userArgs } }
+        const input = { target: 'terminal' as const, userArgs, choices: { permissionMode } }
+        const projected = projectAgentLaunchProfile(agent, {}, input)
+        expect.soft(resolveTuiAgentLaunchArgs(agent, settings, permissionMode)).toBe(expected)
+        expect.soft(projected.args).toBe(expected)
+      }
+    }
+    expect(resolveTuiAgentLaunchArgs(agent, {})).toBe(bypass)
+    const choices = { options: { effort: 'high' } }
+    const optionOnly = projectAgentLaunchProfile(agent, {}, { target: 'terminal', choices })
+    expect(optionOnly.args).toContain(bypass)
+  })
+
   const typed = {
     agentPermissionDefault: 'full-access',
     agentPermissionOverrides: { claude: 'ask', codex: 'own' },

@@ -8,6 +8,7 @@ import {
 import { agentPermissionArgs } from './tui-agent-permission-choice'
 import { tokenizeStartupCommand } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
+import { agentChoiceConfigValue } from './agent-choice-cli-apply'
 
 type ChoiceOccurrence = {
   key: string
@@ -82,10 +83,11 @@ export function analyzeAgentChoiceArgs(agent: TuiAgent, text: string) {
             !!value &&
             !value.startsWith('-')
           if (form.kind === 'config') {
-            if (value.slice(0, value.indexOf('=')).trim() !== form.key) {
+            const configValue = agentChoiceConfigValue(value, form.key)
+            if (configValue === undefined) {
               continue
             }
-            value = value.slice(value.indexOf('=') + 1)
+            value = configValue
             lift &&=
               /^[A-Za-z_][A-Za-z0-9_./:-]*$/.test(value) && !/^(true|false|inf|nan)$/i.test(value)
           }

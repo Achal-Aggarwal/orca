@@ -5,6 +5,13 @@ import { removeAgentArgOption } from './agent-session-option-agent-args'
 
 type ChoiceCliArgumentForm = Exclude<AgentChoiceCliForm, { kind: 'recipe' }>
 
+export function agentChoiceConfigValue(value: string, key: string): string | undefined {
+  const separator = value.indexOf('=')
+  return separator !== -1 && value.slice(0, separator).trim() === key
+    ? value.slice(separator + 1)
+    : undefined
+}
+
 /** The declared grammar owns both forward spelling and conflicting argument removal. */
 export function agentChoiceCliApply(
   agent: AgentType,
@@ -26,7 +33,7 @@ export function agentChoiceCliApply(
             kept,
             form.names,
             form.kind === 'config'
-              ? (value) => value?.slice(0, value.indexOf('=')).trim() === form.key
+              ? (value) => agentChoiceConfigValue(value ?? '', form.key) !== undefined
               : undefined
           ),
         [...tokens]
