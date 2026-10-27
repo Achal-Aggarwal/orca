@@ -4,7 +4,9 @@ import { createProviderStderrTail } from './provider-stderr-tail'
 describe('provider stderr tail', () => {
   it('redacts colored credential labels before exposing diagnostics', () => {
     const tail = createProviderStderrTail(8192)
-    const bytes = Buffer.from('\u001b[31mMY_CREDENTIAL\u001b[0m=private-value\nfailed to start 🔒')
+    const bytes = Buffer.from(
+      '\u001b[31mMY_CREDENTIAL\u001b(B\u001b[m=private-value\nfailed to start 🔒'
+    )
     for (const byte of bytes) {
       tail.write(Buffer.from([byte]))
     }

@@ -142,10 +142,10 @@ function isCommitFenceInfoCharacter(code: number): boolean {
 export function stripAnsiControlSequences(value: string): string {
   const esc = String.fromCharCode(27)
   const bel = String.fromCharCode(7)
-  // Raw CLI failures can contain both CSI colors/cursor and OSC titles/hyperlinks.
+  // CLI failures mix CSI colors/cursor, OSC titles/hyperlinks, and short escapes like tput sgr0's ESC(B.
   return value.replace(
     new RegExp(
-      `${esc}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${bel}${esc}\\r\\n]*(?:${bel}|${esc}\\\\))`,
+      `${esc}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${bel}${esc}\\r\\n]*(?:${bel}|${esc}\\\\)|[ -/]*[0-~])`,
       'g'
     ),
     ''

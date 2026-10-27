@@ -3,26 +3,28 @@ import { createOutputSink } from '@orca/process-host/bounded-output-sink'
 import { stripAnsiControlSequences } from '../../shared/commit-message-agent-output'
 import { redactString } from '../../shared/secret-redaction'
 
+const PEM_MARKER = /-----(BEGIN|END) [A-Z ]+-----/g
+
 /** A byte-bounded stderr tail whose text is redacted for display. */
 export function createProviderStderrTail(maxBytes: number) {
-  let output = createOutputSink(maxBytes, 'tail')
-  let line = createOutputSink(maxBytes)
+  const output = createOutputSink(maxBytes, 'tail')
   const decoder = new StringDecoder('utf8')
+  // Tail capture keeps the last PEM marker of an overlong line.
+  let line = createOutputSink(maxBytes, 'tail')
   let insidePem = false
 
+  // Cut lines and PEM blocks are omitted: neither can be redacted reliably line by line.
   const finishLine = (separator: string): void => {
     const text = stripAnsiControlSequences(line.text())
-    let omit = insidePem
-    for (const marker of text.matchAll(/-----(BEGIN|END) [A-Z ]+-----/g)) {
+    let omit = insidePem || line.truncated()
+    for (const marker of text.matchAll(PEM_MARKER)) {
       insidePem = marker[1] === 'BEGIN'
       omit = true
     }
-    if (line.truncated()) {
-      output = createOutputSink(maxBytes, 'tail')
-    } else if (!omit) {
+    if (!omit) {
       output.write(text + separator)
     }
-    line = createOutputSink(maxBytes)
+    line = createOutputSink(maxBytes, 'tail')
   }
 
   return {
@@ -30,8 +32,8 @@ export function createProviderStderrTail(maxBytes: number) {
       const text = decoder.write(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
       const parts = text.split(/(\r\n|[\r\n\u2028\u2029])/)
       for (let index = 0; index < parts.length; index += 2) {
-        // One excess character detects overflow without retaining a giant backing buffer.
-        line.write(parts[index].slice(0, maxBytes + 1))
+        // One excess character still marks overflow without encoding a giant part.
+        line.write(parts[index].slice(-(maxBytes + 1)))
         const separator = parts[index + 1]
         if (separator !== undefined) {
           finishLine(separator)
@@ -39,15 +41,13 @@ export function createProviderStderrTail(maxBytes: number) {
       }
     },
     text(): string {
-      if (line.truncated()) {
-        return ''
-      }
       const pending = stripAnsiControlSequences(line.text())
-      const text =
-        discardPartialLine(output.text(), output.truncated()) +
-        (!insidePem && !/-----BEGIN [A-Z ]+-----/.test(pending) ? pending : '')
+      const visiblePending =
+        insidePem || line.truncated() || pending.includes('-----BEGIN ') ? '' : pending
       const redacted = createOutputSink(maxBytes, 'tail')
-      redacted.write(redactString(text))
+      redacted.write(
+        redactString(discardPartialLine(output.text(), output.truncated()) + visiblePending)
+      )
       return discardPartialLine(redacted.text(), redacted.truncated())
     }
   }
