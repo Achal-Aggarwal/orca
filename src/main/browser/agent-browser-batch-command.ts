@@ -3,7 +3,8 @@
 export const AGENT_BROWSER_BATCH_ARGS = ['batch', '--json'] as const
 
 export function agentBrowserBatchInput(command: readonly string[]): string {
-  return JSON.stringify([command])
+  // serde_json rejects lone surrogates; argv used to turn them into U+FFFD.
+  return JSON.stringify([command.map((token) => token.toWellFormed())])
 }
 
 type AgentBrowserEnvelope = { success?: boolean; data?: unknown; error?: string }

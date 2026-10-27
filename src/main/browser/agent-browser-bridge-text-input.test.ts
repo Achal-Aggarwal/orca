@@ -86,10 +86,9 @@ function succeedForContentEditable(data: unknown = { ok: true }): void {
   })
 }
 
+// Fill scripts go to `eval --stdin`; every other command arrives as batch JSON.
 function evalScripts(stdin: string[]): string[] {
-  return agentBrowserCommandsIn(stdin)
-    .filter(([name]) => name === 'eval')
-    .map(([, script]) => script)
+  return stdin.filter((text) => !text.startsWith('[['))
 }
 
 class TestEvent {
@@ -308,8 +307,13 @@ describe('AgentBrowserBridge', () => {
 
     await bridge.fill('@editor', `${firstChunk}tail`)
 
+    const evalCalls = execFileMock.mock.calls.filter((call: unknown[]) =>
+      (call[1] as string[]).includes('eval')
+    )
     runFillEvalExpressions(stdinWrites, environment.document, environment.windowObject)
 
+    expect(evalCalls).toHaveLength(1)
+    expect(evalCalls[0][1]).toContain('--stdin')
     expect(evalScripts(stdinWrites)).toHaveLength(1)
     expect(environment.editor.textContent).toBe(`${firstChunk}tail`)
   })
@@ -426,8 +430,13 @@ describe('AgentBrowserBridge', () => {
 
     await bridge.fill('@textarea', text)
 
+    const evalCalls = execFileMock.mock.calls.filter((call: unknown[]) =>
+      (call[1] as string[]).includes('eval')
+    )
+    expect(evalCalls).toHaveLength(1)
+    expect(evalCalls[0][1]).toContain('--stdin')
     expect(evalScripts(stdinWrites)).toHaveLength(1)
-    expect(execFileMock.mock.calls.flatMap((call) => call[1]).join('')).not.toContain(text)
+    expect((evalCalls[0][1] as string[]).join('')).not.toContain(text)
     const input = createFillEvalNode({ tagName: 'TEXTAREA' })
     runFillEvalExpressions(stdinWrites, {
       activeElement: input.node,

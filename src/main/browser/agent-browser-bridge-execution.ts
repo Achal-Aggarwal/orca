@@ -177,11 +177,11 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
     value: string
   ): Promise<void> {
     await this.execAgentBrowser(sessionName, ['focus', element])
-    // One edit avoids focus changes between chunks.
-    await this.execAgentBrowser(sessionName, [
-      'eval',
-      focusedRichTextEditExpression(JSON.stringify(value), { selectAll: true })
-    ])
+    // Send one stdin edit to avoid argv limits and focus changes between chunks.
+    await this.execAgentBrowser(sessionName, ['eval', '--stdin'], {
+      stdinText: focusedRichTextEditExpression(JSON.stringify(value), { selectAll: true }),
+      cliArgv: true
+    })
   }
 
   protected createPageUnavailableError(sessionName: string): BrowserError {
