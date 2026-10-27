@@ -1,3 +1,4 @@
+import { prepareClaudeProfileForLaunch } from './claude-profile-launch-preparation'
 import { getClaudeAgentViewService } from '../claude/agent-view-service'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -9,13 +10,12 @@ import {
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
   CLAUDE_USER_CONFIG_DIR_ENV
 } from '../../shared/claude-profile-routing'
-import { claudeProfileMissing, claudeProfileSetupFailed } from './claude-profile-launch-errors'
+import { claudeProfileMissing } from './claude-profile-launch-errors'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeRecentClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import {
-  claudeProfileMarkerPath,
   describeClaudeProfile,
   type ClaudeProfileDescriptor,
   readUserClaudeConfigDir,
@@ -41,8 +41,6 @@ import {
   type ClaudeFolderLogin
 } from './claude-account-folder'
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
-
-const REFRESH_WAIT_MS = 5_000
 
 export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
@@ -178,21 +176,23 @@ export class ClaudeProfileRouter {
     if (!profile) {
       return this.preparation()
     }
-    // A missing marker means initial setup has not completed.
-    if (!existsSync(claudeProfileMarkerPath(profile))) {
-      const report = await this.setUp(profile).catch(() => null)
-      if (report?.outcome !== 'prepared') {
-        throw claudeProfileSetupFailed()
-      }
-      return this.preparation()
-    }
-    // Run with the previous setup if refreshing fails or exceeds the deadline.
-    const refresh = this.setUp(profile).catch((error: unknown) => {
-      console.warn('[claude-profile] Account refresh failed:', error)
-    })
-    const waitMs = this.args.refreshWaitMs ?? REFRESH_WAIT_MS
-    await Promise.race([refresh, new Promise((resolve) => setTimeout(resolve, waitMs).unref())])
+    await prepareClaudeProfileForLaunch(
+      profile,
+      (value) => this.setUp(value),
+      this.args.refreshWaitMs
+    )
     return this.preparation()
+  }
+
+  /** Prepare an observed receiving route without mutating selection or adopting a System-default alias. */
+  async prepareReceivingAccount(accountId: string): Promise<string> {
+    const profile = this.describe(accountId)
+    await prepareClaudeProfileForLaunch(
+      profile,
+      (value) => this.setUp(value),
+      this.args.refreshWaitMs
+    )
+    return profile.home
   }
 
   accountHome(accountId: string): string {

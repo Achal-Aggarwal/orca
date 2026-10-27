@@ -41,6 +41,9 @@ export function createClaudeSessionPublication(input: {
   return {
     acquisition: {
       process: input.process,
+      ...(input.initialization.accountRecipe
+        ? { accountRecipe: input.initialization.accountRecipe }
+        : {}),
       acquisitionGeneration: input.acquisitionGeneration,
       accountHome: agentSessionAccountHome(
         CLAUDE_STRUCTURED_AGENT,
@@ -81,5 +84,31 @@ export function createClaudeSessionPublication(input: {
       link,
       initialization: input.initialization
     }
+  }
+}
+
+/** Pin successful launch inputs before publishing the host's fenced acquisition. */
+export function claudeSessionInitialization(
+  launch: Pick<
+    ClaudeSession['initialization'],
+    'account' | 'accountRecipe' | 'resumesTranscript' | 'claudeConfigDir' | 'cwd'
+  > & { resumeLeafUuid: string | null },
+  proof: ClaudeSession['initialization']['proof'],
+  contextActivity: number,
+  onLateRefusal: (error: Error) => void
+): ClaudeSession['initialization'] {
+  return {
+    proof,
+    account: launch.account,
+    ...(launch.accountRecipe ? { accountRecipe: launch.accountRecipe } : {}),
+    resumesTranscript: launch.resumesTranscript,
+    claudeConfigDir: launch.claudeConfigDir,
+    cwd: launch.cwd,
+    history: {
+      leafUuid: launch.resumeLeafUuid,
+      covered: !launch.resumesTranscript || launch.resumeLeafUuid === null,
+      contextActivity
+    },
+    onLateRefusal
   }
 }

@@ -1,3 +1,4 @@
+import type { NativeResponseEvidence } from '../../runtime/orchestration/structured-parent-account-work'
 import type { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type {
   OpenedStructuredAgentSessionConversation,
@@ -187,6 +188,11 @@ export type StructuredAgentSessionHostDeps = {
   /** The account home a start of this chat would launch under now, read without side effects;
    *  null for an agent whose chats keep the account they were created on. May throw. */
   launchAccountHome?: (record: AgentSessionRecord) => Promise<AgentSessionAccountHome | null>
+  parentAccountWork?: (
+    record: AgentSessionRecord,
+    root: string,
+    response: NativeResponseEvidence
+  ) => boolean
   conversationNaming?: StructuredAgentSessionConversationNaming
 }
 

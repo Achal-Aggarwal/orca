@@ -1,3 +1,4 @@
+import { structuredAgentSessionAttachAccount } from './structured-agent-session-attach-account'
 import {
   publishAttachedChild,
   readBoundChildRewind,
@@ -240,6 +241,7 @@ async function runAttachUnderAbort(
       },
       ...(options.startupOptions ? { startupOptions: options.startupOptions } : {}),
       launchPermissionMode: structuredAgentSessionAttachPermission(context, options, lock),
+      launchAccountRecipe: structuredAgentSessionAttachAccount(context, options.startedFor, lock),
       assertNoTerminalWriter: async (record) => {
         await lock.wait(Promise.resolve(context.deps.assertNoTerminalWriter?.(record)))
       },

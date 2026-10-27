@@ -1,3 +1,4 @@
+import { structuredAgentSessionReceivingAccount } from './structured-agent-session-receiving-account'
 // Open conversations with queued sends always need delivery; opening also wakes leftover recovery.
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
@@ -138,7 +139,9 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         },
         launchAccountHome: async () => {
           const record = deps.store.getRecord(sessionId)
-          return record && deps.launchAccountHome ? deps.launchAccountHome(record) : null
+          return record
+            ? (await structuredAgentSessionReceivingAccount(deps, record, session, next)).home
+            : null
         },
         logger: deps.logger
       })

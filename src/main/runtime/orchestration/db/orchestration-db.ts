@@ -43,6 +43,13 @@ class OrchestrationDbCore {
     // After every open step that creates Runs, before any step that deletes work.
     installRemovedWorkCapture(this.db, removedWorkCaptureWasIntact)
     backfillStructuredWorkerOrcaSessionIds(this.db)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_dispatch_creator_account_work
+        ON dispatch_contexts(creator_orca_session_id, status);
+      CREATE INDEX IF NOT EXISTS idx_messages_native_account_work
+        ON messages(run_id, to_handle, type)
+        WHERE read = 0 AND delivered_at IS NULL AND delivery_contract <> 'audit_only';
+    `)
     reconcileSettledWorkerDispatches(this.db)
     createCoordinatorMailRoutingTrigger.call(this as unknown as OrchestrationDb)
     rememberCurrentRunCoordinatorHandles.call(this as unknown as OrchestrationDb)

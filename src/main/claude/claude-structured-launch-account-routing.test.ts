@@ -91,8 +91,15 @@ it('launches each acquisition under the current selection, not the account it wa
     ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
   })
 
+  const receipt = routed.accountRecipe
+  expect(receipt).toEqual({ route: 'managed', accountId: 'a', home })
   settings.activeClaudeManagedAccountId = null
   expect((await resolve({ identity })).claudeConfigDir).toBe(resolvePath('/user/own'))
+  const prepareAccount = vi.spyOn(router, 'prepareReceivingAccount')
+  expect((await resolve({ identity, accountRecipe: receipt })).claudeConfigDir).toBe(home)
+  expect(prepareAccount).toHaveBeenCalledWith('a')
+  expect(settings.activeClaudeManagedAccountId).toBeNull()
+  prepareAccount.mockRestore()
   expect(read()).toBe(resolvePath('/user/own'))
 })
 

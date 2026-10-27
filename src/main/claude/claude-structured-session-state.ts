@@ -217,6 +217,7 @@ export type ClaudeSession = {
   initialization: {
     proof: ClaudeInitProof
     account: ClaudeStructuredLaunch['account']
+    accountRecipe?: ClaudeStructuredLaunch['accountRecipe']
     resumesTranscript: boolean
     /** The account home the child writes its transcript in, pinned at launch. */
     claudeConfigDir: string
