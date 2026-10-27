@@ -1,4 +1,4 @@
-import { seededPermissionMode } from '../../../../shared/native-chat-session-option-defaults'
+import { seededPermissionMode } from '../../../../shared/native-chat/input/native-chat-session-option-defaults'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../../shared/agent-chat-permission-mode'
 import { assertAgentPromptRequestActive } from '../../orca-runtime-core'
 import { refuse, AgentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'

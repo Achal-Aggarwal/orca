@@ -30,4 +30,4 @@ export function structuredAgentSessionCreateIntentFingerprint(params: {
   })
 }
 
-export { seededPermissionMode } from '../../../../shared/native-chat-session-option-defaults'
+export { seededPermissionMode } from '../../../../shared/native-chat/input/native-chat-session-option-defaults'
