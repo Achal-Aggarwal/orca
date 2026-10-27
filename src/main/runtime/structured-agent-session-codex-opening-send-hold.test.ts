@@ -582,9 +582,21 @@ describe('a send in a turn Codex opened, when Codex reports the thread idle', ()
     await stop()
 
     await vi.waitFor(async () =>
-      expect(verdictOf((await settled()).submissions, steered)).toBe('pending')
+      expect(verdictOf((await settled()).submissions, steered)).toBe('unknown')
     )
     expect(lateSettlements(steered)).toEqual([])
+    expect(await submission(steered)).toMatchObject({
+      dispatchState: 'unknown',
+      providerItemId: null,
+      origin: 'host',
+      options: { model: MODEL.model }
+    })
+    expect(
+      host.collaboratorsForTests().sessions.get(SESSION)!.journal.submissionBody(steered)
+    ).toEqual(hostTestMessage('and also this'))
+    expect(answers).toBe(1)
+    expect(steers).toBe(1)
+    expect(host.currentWork(SESSION)?.working()).toBe(false)
   })
 
   it('makes no delivery verdict when Stop ends the opener before its receipt', async () => {
@@ -596,9 +608,21 @@ describe('a send in a turn Codex opened, when Codex reports the thread idle', ()
     await stop()
 
     await vi.waitFor(async () =>
-      expect(verdictOf((await settled()).submissions, first)).toBe('pending')
+      expect(verdictOf((await settled()).submissions, first)).toBe('unknown')
     )
     expect(lateSettlements(first)).toEqual([])
+    expect(await submission(first)).toMatchObject({
+      dispatchState: 'unknown',
+      providerItemId: null,
+      origin: 'host',
+      options: { model: MODEL.model }
+    })
+    expect(
+      host.collaboratorsForTests().sessions.get(SESSION)!.journal.submissionBody(first)
+    ).toEqual(hostTestMessage('look around'))
+    expect(answers).toBe(1)
+    expect(steers).toBe(0)
+    expect(host.currentWork(SESSION)?.working()).toBe(false)
   })
 
   it('raises no doubt when its turn completes with it echoed', async () => {

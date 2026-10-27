@@ -88,6 +88,7 @@ let fence: number
 let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
 let resumes: number
+let historyReads: number
 /** What `thread/resume` reports as the thread's turns, as Codex does: times in whole seconds. */
 let resumeTurns: unknown[] | null
 let turns: ReturnType<typeof codexTurnLifecycleFake>
@@ -181,6 +182,10 @@ const openConnection: typeof openCodexAppServerConnection = async (
         resumes += 1
         return { thread: { id: THREAD, ...(resumeTurns ? { turns: resumeTurns } : {}) } }
       }
+      if (method === 'thread/turns/list') {
+        historyReads += 1
+        return { data: (resumeTurns ?? []).toReversed(), nextCursor: null }
+      }
       if (method === 'thread/start') {
         return { thread: { id: THREAD } }
       }
@@ -253,6 +258,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-stopped-send-resume-'))
   answers = 0
   resumes = 0
+  historyReads = 0
   resumeTurns = null
   interruptEndHeld = false
   turns = codexTurnLifecycleFake(
@@ -330,7 +336,19 @@ describe('a send a Stop took back, then a send made while it read Stopping', () 
     turns.end('completed')
     await vi.waitFor(async () => expect(verdictOf(await submissions(), second)).toBe('accepted'))
     const live = await drawn()
-    expect(live).toEqual(['look around', 'Cancellation requested.', 'sent while stopping'])
+    expect(live).toEqual([
+      'look around',
+      AGENT_SESSION_GOAL_CONTROL_COPY.stopUnconfirmed,
+      'sent while stopping'
+    ])
+    expect((await submissions()).find((entry) => entry.clientMessageId === first)).toMatchObject({
+      dispatchState: 'unknown',
+      providerItemId: null
+    })
+    expect(
+      host.collaboratorsForTests().sessions.get(SESSION)!.journal.submissionBody(first)
+    ).toEqual(hostTestMessage('look around'))
+    expect(answers).toBe(2)
 
     // Restart: the resume reports each finished turn with its start in Codex's whole seconds.
     resumeTurns = (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
@@ -347,37 +365,51 @@ describe('a send a Stop took back, then a send made while it read Stopping', () 
           ]
         : []
     })
+    const beforeRestart = (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
+      const turn = readAgentJournalTurn(item.body)
+      return turn ? [{ id: turn.turnId, startedAt: turn.startedAt }] : []
+    })
     await stopStructuredAgentSessionRuntime()
     await startHost()
     await attach(fence)
     await vi.waitFor(() => expect(resumes).toBeGreaterThan(0))
-    await vi.waitFor(async () => {
-      const restored = (await host.journalSnapshot(SESSION)).items
-        .map((item) => readAgentJournalTurn(item.body)?.startedAt)
-        .find((startedAt) => startedAt !== undefined)
-      expect((restored ?? 1) % 1000).toBe(0)
-    })
+    await vi.waitFor(() => expect(historyReads).toBeGreaterThan(0))
+    await host.collaboratorsForTests().serialize(SESSION, async () => {})
+    expect(
+      (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
+        const turn = readAgentJournalTurn(item.body)
+        return turn ? [{ id: turn.turnId, startedAt: turn.startedAt }] : []
+      })
+    ).toEqual(beforeRestart)
 
     expect(await drawn()).toEqual(live)
   })
 })
 
 describe('a send a Stop took back before Codex echoed it', () => {
-  it('is drawn as the opener of the turn Codex opened for it, with no row of its own', async () => {
+  it('keeps the unproved original independent of the opened turn and its Stop feedback', async () => {
     const sent = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     turns.start()
     await stop('turn-1')
     expect(['pending', 'unknown']).toContain(verdictOf(await submissions(), sent))
 
-    // The opened turn belongs to this send and carries its Stop; none of its rows may follow the withdrawn send.
+    // A turn opening proves its own identity, not which input it accepted.
     const snapshot = await host.journalSnapshot(SESSION)
     const turnRecord = snapshot.items.find(
       (item) => readAgentJournalTurn(item.body)?.turnId === 'turn-1'
     )
     expect(
       structuredAgentTurnAnchors(snapshot.items, snapshot.submissions).get(turnRecord!.itemId)
-    ).toBe(agentJournalSubmissionKey(sent))
+    ).not.toBe(agentJournalSubmissionKey(sent))
+    expect(verdictOf(snapshot.submissions, sent)).toBe('unknown')
+    expect(
+      host.collaboratorsForTests().sessions.get(SESSION)!.journal.submissionBody(sent)
+    ).toEqual(hostTestMessage('look around'))
+    expect(
+      snapshot.submissions.find((entry) => entry.clientMessageId === sent)?.providerItemId
+    ).toBeNull()
+    expect(answers).toBe(1)
     expect(await drawn()).toEqual(['look around', 'Cancellation requested.'])
   })
 
@@ -421,6 +453,18 @@ describe('a send a Stop took back before Codex echoed it', () => {
     }
     expect(verdictOf(await submissions(), sent)).toBe('unknown')
 
-    expect(await drawn()).toEqual(['warm up', 'look around', 'Cancellation requested.'])
+    expect(await drawn()).toEqual([
+      'warm up',
+      'look around',
+      AGENT_SESSION_GOAL_CONTROL_COPY.stopUnconfirmed
+    ])
+    expect(answers).toBe(2)
+    expect((await submissions()).find((entry) => entry.clientMessageId === sent)).toMatchObject({
+      dispatchState: 'unknown',
+      providerItemId: null
+    })
+    expect(
+      host.collaboratorsForTests().sessions.get(SESSION)!.journal.submissionBody(sent)
+    ).toEqual(hostTestMessage('look around'))
   })
 })

@@ -174,25 +174,43 @@ function expectOneWorkingRun(views: readonly ClientView[]): void {
 }
 
 describe('a Stop holds the queue, in order', () => {
-  it('a card typed while the Stop lands waits behind the held one; Resume sends both in order, never reading idle between them', async () => {
+  it('a send after the accepted Stop joins after shutdown, then its started turn releases the held draft without reading idle', async () => {
     const working = await rig.workingSend()
     const held = await queuedDraft('held by the stop')
     await rig.stop()
-    const typed = await queuedDraft('typed while the stop lands')
-    const views = await watchClient()
-    // Still winding down: the paused row shows while it runs, and stays once it is over.
-    expect(views.at(-1)).toMatchObject({ working: true, header: true })
+    // Main queues child shutdown before the next admission, even before Stop's answer is read.
+    const typed = rig.send('typed while the stop lands', 'queue-if-active')
+    expect(await typed.result).toMatchObject({
+      ok: true,
+      value: { submission: { clientMessageId: typed.id, fence: 2 } }
+    })
+    await eventually(async () =>
+      expect((await rig.submission(typed.id))?.handedOverAt).toBeDefined()
+    )
+    expect(rig.closeSession).toHaveBeenCalledTimes(1)
     await rig.settleAccepted(working, 'stopped')
-    await eventually(() => expect(views.at(-1)).toMatchObject({ working: false, header: true }))
-    await expectNothingSent(held, typed)
-    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
-    const resumedAt = views.length
+    const views = await watchClient()
+    expect(views.at(-1)).toMatchObject({ working: true, header: false })
+    await expectNothingSent(held)
+    expect(derivedPauses()).toEqual(['stopped'])
+    expect(await rig.handoff(typed.id)).toBeUndefined()
+    const startsAt = views.length
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await expectNothingSent(held)
+    await rig.settleAccepted(typed.id, 'typed-started')
     await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
-    expect(await rig.handoff(typed)).toBeUndefined()
-    await rig.settleAccepted(await rig.handoffId(held), 'held')
-    await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
-    expectOneWorkingRun(views.slice(resumedAt))
+    expectOneWorkingRun(views.slice(startsAt))
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+    expect(journal.submissionBody(working)).toEqual(hostTestMessage('work on this'))
+    expect(journal.submissionBody(typed.id)).toEqual(hostTestMessage('typed while the stop lands'))
+    await eventually(async () =>
+      expect(rig.dispatch.mock.calls.map(([send]) => send.clientMessageId)).toEqual([
+        working,
+        typed.id,
+        await rig.handoffId(held)
+      ])
+    )
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: false } })
   })
 
   it('after Resume over held cards the chat goes from idle and paused straight to working with Stop', async () => {

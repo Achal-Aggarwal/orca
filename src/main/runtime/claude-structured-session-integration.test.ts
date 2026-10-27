@@ -526,11 +526,32 @@ describe('a structured Claude session over agentSession.*', () => {
       await vi.waitFor(() => expect(connection.sent).toHaveLength(1))
       connection.handlers.onExit?.(new Error('claude stream-json exited (code 1): crashed'))
 
-      expect((await inFlight).submission).toMatchObject({
-        dispatchState: 'unknown',
-        reason: 'provider_exited_before_acknowledgement'
-      })
+      const response = await inFlight
+      expect(response.submission).toMatchObject({ dispatchState: 'unknown' })
+      expect([null, 'provider_exited_before_acknowledgement']).toContain(response.submission.reason)
       await waitForStructuredAgentSessionRecovery()
+      const runtime = getStructuredAgentSessionHost()!
+      const journal = runtime.collaboratorsForTests().sessions.get(SESSION)!.journal
+      const original = journal.submissions()[0]
+      expect(original).toMatchObject({
+        dispatchState: 'unknown',
+        providerItemId: null,
+        reason: 'provider_exited_before_acknowledgement',
+        options: {}
+      })
+      expect(journal.submissionBody(original.clientMessageId)).toEqual(body)
+      const page = await runtime.history({ sessionId: SESSION, direction: 'tail' })
+      expect(page.ok && page.page.queuedMessages).toMatchObject([
+        { messageId: `recovery:${original.clientMessageId}`, body, state: 'returned' }
+      ])
+      expect(
+        page.ok &&
+          page.page.items.filter((item) => item.body.kind === 'status').map((item) => item.body)
+      ).toEqual([
+        expect.objectContaining({
+          text: 'Claude stopped while this response was in progress. You can continue in this conversation.'
+        })
+      ])
       expect(claude.connections).toHaveLength(1)
       expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'released', handoffStage: null })
       const next = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'after' }] }
@@ -542,6 +563,20 @@ describe('a structured Claude session over agentSession.*', () => {
       expect(claude.live().launch.options).toMatchObject({ resume: PROVIDER_SESSION })
       await vi.waitFor(() => expect(claude.live().sent).toHaveLength(1))
       expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'live', handoffStage: null })
+      expect(connection.sent).toHaveLength(1)
+      expect(claude.live().sent[0]).toMatchObject({
+        message: { content: [{ type: 'text', text: 'after' }] }
+      })
+      expect(
+        journal.submissions().filter((send) => send.clientMessageId !== original.clientMessageId)
+      ).toMatchObject([{ dispatchState: 'accepted', providerItemId: expect.any(String) }])
+      expect(
+        journal.submissions().find((send) => send.clientMessageId === original.clientMessageId)
+      ).toEqual(original)
+      expect(journal.submissionBody(original.clientMessageId)).toEqual(body)
+      expect(
+        journal.queuedMessages.list().filter((card) => card.recovers === original.clientMessageId)
+      ).toMatchObject([{ body, options: {}, state: 'returned' }])
     }
   )
 
