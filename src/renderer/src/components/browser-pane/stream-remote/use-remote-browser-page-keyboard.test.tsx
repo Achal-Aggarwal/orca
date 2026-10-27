@@ -117,7 +117,7 @@ describe('streamed browser page keyboard input', () => {
     fireEvent.keyDown(frame, { key: 'x', code: 'KeyX', ctrlKey: true })
 
     await waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(4))
-    expect(callRuntimeRpc.mock.calls.every((call) => call[1] === 'browser.eval')).toBe(true)
+    expect(sentInput().every(([method]) => method === 'browser.eval')).toBe(true)
     // The empty second copy must not clear what the first one wrote.
     expect(order).toEqual([
       'eval copy',
@@ -146,7 +146,7 @@ describe('streamed browser page keyboard input', () => {
     fireEvent.paste(frame, { clipboardData: { getData: () => 'OLD' } })
 
     await waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(3))
-    expect(callRuntimeRpc.mock.calls[2]?.slice(1, 3)).toEqual([
+    expect(sentInput()[2]).toEqual([
       'browser.keyboardInsertText',
       { worktree: 'worktree-a', page: 'page-a', text: 'NEW' }
     ])
