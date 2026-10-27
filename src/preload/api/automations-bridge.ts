@@ -1,4 +1,8 @@
 import type { ExecutionHostId } from '../../shared/execution-host'
+import type {
+  AutomationTerminalLifecycleRequest,
+  AutomationTerminalLifecycleResponse
+} from '../../shared/automation-terminal-lifecycle'
 import { ipcRenderer } from 'electron'
 import type { ExternalAutomationManagerResult, PreloadApi } from '../api-types'
 import type {
@@ -36,6 +40,19 @@ export const automationsApi = {
     displayName: string
   }): Promise<number> => ipcRenderer.invoke('automations:snapshotWorkspaceName', args),
   rendererReady: (): Promise<void> => ipcRenderer.invoke('automations:rendererReady'),
+  onTerminalLifecycleRequest: (
+    callback: (request: AutomationTerminalLifecycleRequest) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      request: AutomationTerminalLifecycleRequest
+    ) => callback(request)
+    ipcRenderer.on('automations:terminalLifecycleRequest', listener)
+    return () => ipcRenderer.removeListener('automations:terminalLifecycleRequest', listener)
+  },
+  respondTerminalLifecycle: (response: AutomationTerminalLifecycleResponse): void => {
+    ipcRenderer.send('automations:terminalLifecycleResponse', response)
+  },
   onDispatchRequested: (callback: (request: AutomationDispatchRequest) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: AutomationDispatchRequest) =>
       callback(request)

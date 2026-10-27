@@ -12,6 +12,7 @@ import type {
   HeadlessAutomationDispatcher,
   HeadlessAutomationDispatchLaunch
 } from './headless-dispatch'
+import { AutomationRunLaunchError } from './headless-dispatch'
 import type { AutomationRunTargetResult } from './run-target-resolution'
 import type { AutomationRunWriter } from './automation-run-writer'
 
@@ -59,6 +60,9 @@ export async function runHeadlessAutomationDispatch(
       status:
         error instanceof AutomationDispatchRefusedError ? 'skipped_unavailable' : 'dispatch_failed',
       workspaceId: automation.workspaceId,
+      ...(error instanceof AutomationRunLaunchError ? error.target : {}),
+      dispatchedAt,
+      precheckResult,
       error: describeDispatchError(error)
     })
   }

@@ -1,12 +1,17 @@
 import type { Automation, AutomationRun } from '../../shared/automations-types'
 import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
+import type { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { launchAgentOnHost } from '../runtime/rpc/methods/agent-launch'
 import { findReusableAutomationRun } from '../../shared/automation-session-reuse'
 import { reuseAutomationChat } from './automation-chat-session-reuse'
 import { buildHeadlessAutomationWorkspaceName } from './headless-workspace-create'
 import type { AutomationRunTargetResult } from './run-target-resolution'
-import type { HeadlessAutomationDispatchLaunch } from './headless-dispatch'
+import {
+  AutomationRunLaunchError,
+  type HeadlessAutomationDispatchLaunch
+} from './headless-dispatch'
+import { parsePaneKey } from '../../shared/stable-pane-id'
 import { automationRunOperationId, AUTOMATION_AGENT_CALLER } from './automation-run-operation'
 import { createAutomationDispatchToken } from './dispatch-tokens'
 import { mergeExtraAgentArgs, hasExtraAgentArgs } from '../../shared/automation-extra-agent-args'
@@ -32,11 +37,13 @@ export type AutomationAgentLaunchRequest = {
 
 export async function launchHeadlessAutomationAgent(
   runtime: OrcaRuntimeService,
-  request: AutomationAgentLaunchRequest
+  request: AutomationAgentLaunchRequest,
+  lifecycle?: ReturnType<ReturnType<typeof createDesktopRunTerminalLifecycle>['begin']>
 ): Promise<HeadlessAutomationAgentLaunch> {
   try {
-    return await launchAutomationAgent(runtime, request)
+    return await launchAutomationAgent(runtime, request, lifecycle)
   } catch (error) {
+    lifecycle?.release()
     if (error instanceof AutomationRunLaunchError) {
       throw error
     }
@@ -47,16 +54,21 @@ export async function launchHeadlessAutomationAgent(
   }
 }
 
-class AutomationRunLaunchError extends Error {}
-
 async function launchAutomationAgent(
   runtime: OrcaRuntimeService,
-  request: AutomationAgentLaunchRequest
+  request: AutomationAgentLaunchRequest,
+  lifecycle?: ReturnType<ReturnType<typeof createDesktopRunTerminalLifecycle>['begin']>
 ): Promise<HeadlessAutomationAgentLaunch> {
   const { automation, run, target } = request
   const surface = automation.surface ?? 'terminal'
   const context = { runtime, caller: AUTOMATION_AGENT_CALLER }
+  let published: HeadlessAutomationAgentLaunch | undefined
   const policy = {
+    ...lifecycle?.policy,
+    onSurfacePublished: (result: AgentLaunchResult) => {
+      published = publishedLaunchTarget(runtime, result)
+      lifecycle?.policy.onSurfacePublished?.(result)
+    },
     terminalTitle: run.title,
     suppressStartupUpdatePrompt: true,
     unprovableHost: 'write-unless-shell'
@@ -101,15 +113,21 @@ async function launchAutomationAgent(
             context,
             policy
           )
+          published ??= publishedLaunchTarget(runtime, result)
           if (result.prompt?.outcome === 'handed-to-terminal') {
             return launchOutcome(runtime, result)
           }
-          if (result.prompt?.outcome !== 'not-delivered') {
+          throw new AutomationRunLaunchError(
+            `${tuiAgentDisplayName(automation.agentId)} could not confirm this run's prompt. Open the terminal before running again.`,
+            published
+          )
+        } catch (error) {
+          if (published) {
             throw new AutomationRunLaunchError(
-              `${tuiAgentDisplayName(automation.agentId)} could not confirm this run's prompt. Open the terminal before running again.`
+              `${tuiAgentDisplayName(automation.agentId)} could not confirm this run's prompt. Open the terminal before running again.`,
+              published
             )
           }
-        } catch (error) {
           const records = await runtime.openAgentSessionRecordStore()
           const row = records.getOperationRow(
             rpcCallerOperationKey(AUTOMATION_AGENT_CALLER),
@@ -145,11 +163,15 @@ async function launchAutomationAgent(
       `${tuiAgentDisplayName(automation.agentId)} could not start. ${merged.error}`
     )
   }
+  if (automation.workspaceMode === 'existing' && automation.workspaceId) {
+    lifecycle?.reserve(automation.workspaceId)
+  }
   try {
     const result = await launchAgentOnHost(
       {
         agent: automation.agentId,
         operationId,
+        ...(lifecycle ? { paneKey: lifecycle.paneKey } : {}),
         surface,
         presentation: 'background',
         prompt: { text: automation.prompt, delivery: 'submit' },
@@ -179,7 +201,8 @@ async function launchAutomationAgent(
     )
     if (result.prompt?.outcome !== 'journaled' && result.prompt?.outcome !== 'handed-to-terminal') {
       throw new AutomationRunLaunchError(
-        `${tuiAgentDisplayName(automation.agentId)} started, but Orca could not confirm this run's prompt. Open the run before trying again.`
+        `${tuiAgentDisplayName(automation.agentId)} started, but Orca could not confirm this run's prompt. Open the run before trying again.`,
+        published ?? publishedLaunchTarget(runtime, result)
       )
     }
     return launchOutcome(runtime, result)
@@ -194,7 +217,43 @@ async function launchAutomationAgent(
         `${tuiAgentDisplayName(automation.agentId)} could not start because this run waited too long. Run the automation again.`
       )
     }
+    if (published && !(error instanceof AutomationRunLaunchError)) {
+      throw new AutomationRunLaunchError(
+        `${tuiAgentDisplayName(automation.agentId)} started, but Orca could not confirm this run's prompt. Open the run before trying again.`,
+        published
+      )
+    }
     throw error
+  }
+}
+
+export function publishedLaunchTarget(
+  runtime: Pick<OrcaRuntimeService, 'getTerminalPaneKey' | 'getTerminalPtyIdForHandle'>,
+  result: AgentLaunchResult
+): HeadlessAutomationAgentLaunch {
+  let paneKey = result.outcome.kind === 'terminal' ? (result.outcome.paneKey ?? null) : null
+  let ptyId: string | null = null
+  if (result.outcome.kind === 'terminal') {
+    try {
+      paneKey ??= runtime.getTerminalPaneKey(result.outcome.handle)
+    } catch {
+      /* Keep publication identity. */
+    }
+    try {
+      ptyId = runtime.getTerminalPtyIdForHandle(result.outcome.handle)
+    } catch {
+      /* Process evidence is optional for opening. */
+    }
+  }
+  return {
+    workspaceId: result.worktreeId,
+    workspaceDisplayName: null,
+    sessionKind: result.outcome.kind === 'structured' ? 'chat' : 'terminal',
+    chatSessionId: result.outcome.kind === 'structured' ? result.outcome.sessionId : null,
+    terminalHandle: result.outcome.kind === 'terminal' ? result.outcome.handle : null,
+    terminalSessionId: parsePaneKey(paneKey ?? '')?.tabId ?? null,
+    terminalPaneKey: paneKey,
+    terminalPtyId: ptyId
   }
 }
 
@@ -202,30 +261,21 @@ async function launchOutcome(
   runtime: OrcaRuntimeService,
   result: AgentLaunchResult
 ): Promise<HeadlessAutomationAgentLaunch> {
-  const shown = await runtime.showManagedWorktree(`id:${result.worktreeId}`)
-  if (result.outcome.kind === 'structured') {
-    return {
-      workspaceId: result.worktreeId,
-      workspaceDisplayName: shown.displayName ?? null,
-      sessionKind: 'chat',
-      chatSessionId: result.outcome.sessionId,
-      terminalHandle: null,
-      terminalSessionId: null,
-      terminalPaneKey: null,
-      terminalPtyId: null
+  const target = publishedLaunchTarget(runtime, result)
+  try {
+    const shown = await runtime.showManagedWorktree(`id:${result.worktreeId}`)
+    target.workspaceDisplayName = shown.displayName ?? null
+  } catch {
+    // Publication already owns the target; optional display metadata cannot erase it.
+  }
+  if (result.outcome.kind === 'terminal' && !target.terminalSessionId) {
+    try {
+      target.terminalSessionId = (await runtime.showTerminal(result.outcome.handle)).tabId ?? null
+    } catch {
+      // Keep the published pane and process identity when its presentation is unavailable.
     }
   }
-  const terminal = await runtime.showTerminal(result.outcome.handle)
-  return {
-    workspaceId: result.worktreeId,
-    workspaceDisplayName: shown.displayName ?? null,
-    sessionKind: 'terminal',
-    chatSessionId: null,
-    terminalHandle: result.outcome.handle,
-    terminalSessionId: terminal.tabId ?? null,
-    terminalPaneKey: result.outcome.paneKey ?? runtime.getTerminalPaneKey(result.outcome.handle),
-    terminalPtyId: runtime.getTerminalPtyIdForHandle(result.outcome.handle)
-  }
+  return target
 }
 
 /** A pane may have been reused by a later process. */

@@ -100,11 +100,12 @@ describe('automations through agent.launch', () => {
           target: { kind: 'existing', worktree: 'id:wt-1' }
         }),
         expect.objectContaining({ runtime }),
-        {
+        expect.objectContaining({
           terminalTitle: run.title,
           suppressStartupUpdatePrompt: true,
-          unprovableHost: 'write-unless-shell'
-        }
+          unprovableHost: 'write-unless-shell',
+          onSurfacePublished: expect.any(Function)
+        })
       )
       expect(result).toMatchObject({
         sessionKind: 'terminal',
@@ -312,3 +313,62 @@ describe('automations through agent.launch', () => {
     expect(mocks.launch).toHaveBeenCalledTimes(1)
   })
 })
+
+it.each(['terminal', 'chat', 'reuse-terminal'] as const)(
+  'preserves published %s identity for refused, uncertain and throwing settlement',
+  async (kind) => {
+    const { runtime } = fixture()
+    const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const published =
+      kind === 'chat'
+        ? chat
+        : { ...terminal, outcome: { kind: 'terminal' as const, handle: 'term-1', paneKey } }
+    for (const outcome of ['not-delivered', 'unconfirmed', 'throw'] as const) {
+      mocks.launch.mockImplementationOnce(async (_params, _context, policy) => {
+        policy.onSurfacePublished(published)
+        if (outcome === 'throw') {
+          throw new Error('settlement transport lost')
+        }
+        return { ...published, prompt: { delivery: 'submit', outcome } }
+      })
+      const result = await launchHeadlessAutomationAgent(runtime, {
+        automation: {
+          ...automation,
+          surface: kind === 'chat' ? 'chat' : 'terminal',
+          reuseSession: kind === 'reuse-terminal'
+        },
+        run,
+        target,
+        runs:
+          kind === 'reuse-terminal'
+            ? [
+                {
+                  ...run,
+                  id: 'old',
+                  status: 'completed',
+                  workspaceId: 'wt-1',
+                  sessionKind: 'terminal',
+                  terminalPaneKey: 'old:leaf',
+                  terminalPtyId: 'pty-1'
+                }
+              ]
+            : []
+      }).catch((error) => error)
+      expect(result).toMatchObject({
+        target: {
+          workspaceId: 'wt-1',
+          sessionKind: kind === 'chat' ? 'chat' : 'terminal',
+          ...(kind === 'chat'
+            ? { chatSessionId: 'claude_chat', terminalPaneKey: null, terminalSessionId: null }
+            : {
+                terminalPaneKey: paneKey,
+                terminalSessionId: 'tab-1',
+                terminalPtyId: 'pty-1'
+              })
+        }
+      })
+    }
+    expect(mocks.launch).toHaveBeenCalledTimes(3)
+    expect(mocks.host.send).not.toHaveBeenCalled()
+  }
+)

@@ -1,5 +1,6 @@
 import type { AutomationRun } from '../../shared/automations-types'
 import type { AgentJournalSnapshot } from '../../shared/agent-session-journal-types'
+import type { AgentSessionSendResult } from '../../shared/agent-session-wire'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import {
   readAgentJournalTurn,
@@ -15,14 +16,26 @@ import { tuiAgentDisplayName } from '../../shared/tui-agent-display-names'
 export function chatAutomationRunObservation(
   snapshot: AgentJournalSnapshot,
   messageId: string,
-  agent: string
+  agent: string,
+  queued: AgentSessionSendResult | null = null
 ): AutomationRunCompletionObservation | null {
-  const submission = snapshot.submissions.find((entry) => entry.clientMessageId === messageId)
+  if (queued && 'queued' in queued) {
+    return queued.queued.state === 'withdrawn' || queued.queued.state === 'returned'
+      ? {
+          status: 'dispatch_failed',
+          error: `${agent} did not receive this queued prompt. Open the chat before running again.`
+        }
+      : null
+  }
+  const submission =
+    queued && 'submission' in queued
+      ? queued.submission
+      : snapshot.submissions.find((entry) => entry.clientMessageId === messageId)
   if (!submission) {
     return null
   }
   const keys = new Set([
-    agentJournalSubmissionKey(messageId),
+    agentJournalSubmissionKey(submission.clientMessageId),
     ...(submission.providerItemId ? [submission.providerItemId] : [])
   ])
   const turnItem = snapshot.items.find((item) => {
@@ -91,7 +104,12 @@ export async function observeAutomationChatRun(
   const receipt = readAutomationRunReceipt(store, run)
   const agent =
     tuiAgentDisplayName(store.getConversation(run.chatSessionId)?.provider ?? 'Agent') ?? 'Agent'
-  if (receipt?.kind !== 'chat' || receipt.sessionId !== run.chatSessionId) {
+  if (
+    receipt?.kind !== 'chat' ||
+    receipt.sessionId !== run.chatSessionId ||
+    !receipt.messageId ||
+    !receipt.accepted
+  ) {
     return {
       status: 'dispatch_failed',
       error: `${agent} could not confirm this run's prompt. Open the chat before running again.`
@@ -104,6 +122,12 @@ export async function observeAutomationChatRun(
     let settled = false
     let reading = false
     let dirty = false
+    let submissionSignature = ''
+    let turnSignature = ''
+    let queueSignature = ''
+    let submissionId = messageId
+    let providerItemId: string | null = null
+    let turnItemId: string | null = null
     const finish = (result?: AutomationRunCompletionObservation, error?: unknown): void => {
       if (settled) {
         return
@@ -127,6 +151,38 @@ export async function observeAutomationChatRun(
         }),
       Math.max(1, (run.dispatchedAt ?? run.createdAt) + 6 * 60 * 60 * 1000 - Date.now())
     )
+    const rememberSubmission = (entry: AgentJournalSnapshot['submissions'][number]): boolean => {
+      const signature = JSON.stringify([
+        entry.clientMessageId,
+        entry.dispatchState,
+        entry.providerItemId,
+        entry.answeredInTurn
+      ])
+      const changed = signature !== submissionSignature
+      submissionSignature = signature
+      submissionId = entry.clientMessageId
+      providerItemId = entry.providerItemId
+      turnItemId = entry.answeredInTurn?.via === 'start' ? entry.answeredInTurn.turnItemId : null
+      return changed
+    }
+    const rememberTurn = (item: AgentJournalSnapshot['items'][number]): boolean => {
+      const turn = readAgentJournalTurn(item.body)
+      if (
+        !turn ||
+        item.agentId ||
+        !(
+          item.itemId === turnItemId ||
+          (providerItemId !== null && turn.userItemId === providerItemId) ||
+          turn.userItemId === agentJournalSubmissionKey(submissionId)
+        )
+      ) {
+        return false
+      }
+      const signature = JSON.stringify([item.itemId, turn.state, readAgentJournalTurnOutcome(turn)])
+      const changed = signature !== turnSignature
+      turnSignature = signature
+      return changed
+    }
     const read = async (): Promise<void> => {
       if (settled) {
         return
@@ -139,11 +195,19 @@ export async function observeAutomationChatRun(
       try {
         do {
           dirty = false
-          const observation = chatAutomationRunObservation(
-            await host.journalSnapshot(sessionId),
-            messageId,
-            agent
-          )
+          const snapshot = await host.journalSnapshot(sessionId)
+          const queued = await host.queuedSendAnswer(sessionId, messageId)
+          const submission =
+            queued && 'submission' in queued
+              ? queued.submission
+              : snapshot.submissions.find((entry) => entry.clientMessageId === messageId)
+          if (submission) {
+            rememberSubmission(submission)
+          }
+          for (const item of snapshot.items) {
+            rememberTurn(item)
+          }
+          const observation = chatAutomationRunObservation(snapshot, messageId, agent, queued)
           if (observation) {
             finish(observation)
             return
@@ -165,12 +229,36 @@ export async function observeAutomationChatRun(
         id: `automation:${run.id}`,
         sessionId,
         emit: (event) => {
-          // Token deltas do not change completion; read the full journal only at request/turn boundaries.
+          let changed = event.type !== 'batch'
+          const rows =
+            event.type === 'batch' ? event.batch : event.type === 'end' ? null : event.page
+          for (const entry of rows?.submissions ?? []) {
+            if (entry.clientMessageId !== messageId && entry.queuedMessageId !== messageId) {
+              continue
+            }
+            changed = rememberSubmission(entry) || changed
+          }
+          for (const item of rows?.items ?? []) {
+            changed = rememberTurn(item) || changed
+          }
           if (
-            event.type !== 'batch' ||
-            event.batch.submissions.some((entry) => entry.clientMessageId === messageId) ||
-            event.batch.items.some((item) => readAgentJournalTurn(item.body))
+            event.type === 'batch' &&
+            turnItemId &&
+            event.batch.removedItemIds?.includes(turnItemId)
           ) {
+            changed = true
+          }
+          if (event.type !== 'end' && event.queuedMessages !== undefined) {
+            const card = event.queuedMessages?.find((entry) => entry.messageId === messageId)
+            const signature = JSON.stringify(
+              card ? [card.messageId, card.state, card.consumedAs] : null
+            )
+            if (signature !== queueSignature) {
+              changed = true
+              queueSignature = signature
+            }
+          }
+          if (changed) {
             void read()
           }
         }

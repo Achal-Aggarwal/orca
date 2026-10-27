@@ -1,18 +1,25 @@
-import { execFile } from 'node:child_process'
 import type { JobTerminationOutcome } from './windows/windows-pty-job'
 import { terminateWindowsProcessTree, type WindowsTreeKiller } from './windows-process-tree-kill'
 import {
   verifyWindowsTreeKillTarget,
   type WindowsTreeKillTarget
 } from './windows-pty-root-identity'
-import { parseProcessTable, type ProcessTableRow } from './pty-process-table-parser'
+import type { ProcessTableRow } from './pty-process-table-parser'
+import {
+  readFreshProcessTable,
+  DESCENDANT_SNAPSHOT_TIMEOUT_MS,
+  type ProcessTableCapture,
+  type ProcessTableReader
+} from './pty-descendant-snapshot'
 
 export { parseProcessTable, type ProcessTableRow } from './pty-process-table-parser'
+export {
+  DESCENDANT_SNAPSHOT_TIMEOUT_MS,
+  type ProcessTableCapture,
+  type ProcessTableReader
+} from './pty-descendant-snapshot'
 
 export const DESCENDANT_KILL_GRACE_MS = 2_000
-export const DESCENDANT_SNAPSHOT_TIMEOUT_MS = 1_000
-// Busy hosts can exceed execFile’s 1MB default; truncated output would omit descendants.
-const PS_MAX_BUFFER_BYTES = 32 * 1024 * 1024
 
 export type PosixProcessIdentity = Pick<ProcessTableRow, 'pid' | 'startedAt'>
 
@@ -28,41 +35,7 @@ export type DescendantSnapshot = {
   reDerivedPids?: ReadonlySet<number>
 }
 
-export type ProcessTableCapture = {
-  rows: ProcessTableRow[]
-  /** Start boundary of the scan that produced rows, never a later consumer's time. */
-  capturedAtMs: number
-}
-
-export type ProcessTableReader = (timeoutMs?: number) => Promise<ProcessTableCapture>
 export type SignalSender = (pid: number, signal: NodeJS.Signals) => void
-
-function readFreshProcessTable(
-  timeoutMs = DESCENDANT_SNAPSHOT_TIMEOUT_MS
-): Promise<ProcessTableCapture> {
-  // Stamp before ps starts so a capture-second PID cannot appear older after a clock rollover.
-  const capturedAtMs = Date.now()
-  return new Promise((resolve, reject) => {
-    execFile(
-      'ps',
-      ['-axo', 'pid=,ppid=,pgid=,tpgid=,lstart='],
-      {
-        maxBuffer: PS_MAX_BUFFER_BYTES,
-        timeout: timeoutMs,
-        killSignal: 'SIGKILL',
-        // Pin lstart’s locale so delayed identity checks parse it consistently.
-        env: { ...process.env, LANG: 'C', LC_ALL: 'C' }
-      },
-      (error, stdout) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        resolve({ rows: parseProcessTable(stdout), capturedAtMs })
-      }
-    )
-  })
-}
 
 /** Share only scans not yet started; later requests need fresh identities before signalling. */
 export function createProcessTableSnapshotReader(
@@ -124,6 +97,12 @@ export function readProcessTableBeforeDeadline(
   })
 }
 
+type SnapshotDeps = {
+  readTable?: ProcessTableReader
+  platform?: NodeJS.Platform
+  timeoutMs?: number
+}
+
 export function collectDescendantRows(
   rootPid: number,
   table: ProcessTableRow[],
@@ -174,12 +153,6 @@ export function collectDescendantRows(
   }
 }
 
-type SnapshotDeps = {
-  readTable?: ProcessTableReader
-  platform?: NodeJS.Platform
-  timeoutMs?: number
-}
-
 /** Capture before signalling the root: exited parents’ descendants reparent and become unfindable; failure returns null. */
 export async function captureDescendantSnapshot(
   rootPid: number,
@@ -202,6 +175,7 @@ export async function captureDescendantSnapshot(
 type KillSweepDeps = SnapshotDeps &
   TerminateDeps & {
     ownsRoot?: () => boolean
+    authorizeStop?: () => Promise<boolean>
     /** Shutdown can retain the owner until descendant escalation finishes. */
     terminateDescendants?: (snapshot: DescendantSnapshot) => void | Promise<unknown>
     awaitEscalation?: boolean | (() => boolean)
@@ -219,6 +193,13 @@ export async function killWithDescendantSweep(
 ): Promise<void> {
   const platform = deps.platform ?? process.platform
   if (platform === 'win32') {
+    const verify = deps.verifyTreeKillTarget ?? verifyWindowsTreeKillTarget
+    const preparedTarget = deps.authorizeStop
+      ? await verify(rootPid).catch((): WindowsTreeKillTarget => 'unknown')
+      : null
+    if (deps.authorizeStop && !(await deps.authorizeStop())) {
+      throw new Error('terminal_stop_declined')
+    }
     try {
       if ((deps.ownsRoot?.() ?? true) && Number.isInteger(rootPid) && rootPid > 0) {
         // Owned jobs survive PID reuse and include descendants reparented away from the shell.
@@ -227,7 +208,8 @@ export async function killWithDescendantSweep(
         }
         // ConPTY closes the shell handle before JS sees exit; require OS identity to reject recycled PIDs.
         const verify = deps.verifyTreeKillTarget ?? verifyWindowsTreeKillTarget
-        const target = await verify(rootPid).catch((): WindowsTreeKillTarget => 'unknown')
+        const target =
+          preparedTarget ?? (await verify(rootPid).catch((): WindowsTreeKillTarget => 'unknown'))
         // Re-check ownership: the identity query awaits, so exit can land meanwhile.
         if (target === 'own' && (deps.ownsRoot?.() ?? true)) {
           const killTree =
@@ -244,6 +226,9 @@ export async function killWithDescendantSweep(
   }
 
   const snapshot = await captureDescendantSnapshot(rootPid, deps)
+  if (deps.authorizeStop && !(await deps.authorizeStop())) {
+    throw new Error('terminal_stop_declined')
+  }
   let descendants: void | Promise<unknown> = undefined
   const awaitEscalation =
     typeof deps.awaitEscalation === 'function' ? deps.awaitEscalation() : deps.awaitEscalation

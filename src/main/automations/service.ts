@@ -14,7 +14,7 @@ import {
 } from '../../shared/automations-types'
 import type { ClaudeUsageStore } from '../claude-usage/store'
 import type { CodexUsageStore } from '../codex-usage/store'
-import { failedPrecheckResult, runAutomationPrecheck } from './precheck-runner'
+import { runAutomationRunPrecheck, runAutomationPrecheck } from './precheck-runner'
 import {
   captureLegacyRunTarget,
   resolveAutomationRunTarget,
@@ -58,6 +58,9 @@ export class AutomationService {
   private readonly automationLanes = new Map<string, Promise<void>>()
   /** Close unused completed terminals on headless hosts; return the count. */
   releaseFinishedRunTerminals: (() => Promise<number>) | null = null
+  private readonly onRunFinalized:
+    | ((run: AutomationRun) => Promise<AutomationDispatchResult | null>)
+    | undefined
   private readonly publish: PublishAutomationsChanged | null
   private readonly runs: AutomationRunWriter
   private readonly completionWatcher: AutomationRunCompletionWatcher | null
@@ -67,6 +70,7 @@ export class AutomationService {
   constructor(
     private readonly store: Store,
     opts: {
+      onRunFinalized?: (run: AutomationRun) => Promise<AutomationDispatchResult | null>
       tickMs?: number
       claudeUsage?: ClaudeUsageStore
       codexUsage?: CodexUsageStore
@@ -76,6 +80,7 @@ export class AutomationService {
       onAutomationsChanged?: PublishAutomationsChanged
     } = {}
   ) {
+    this.onRunFinalized = opts.onRunFinalized
     this.tickMs = opts.tickMs ?? 60_000
     this.claudeUsage = opts.claudeUsage ?? null
     this.codexUsage = opts.codexUsage ?? null
@@ -163,38 +168,27 @@ export class AutomationService {
   }
 
   async runPrecheck(automationId: string, runId: string): Promise<AutomationPrecheckResult | null> {
-    const automation = this.store.listAutomations().find((entry) => entry.id === automationId)
-    if (!automation) {
-      throw new Error('Automation not found.')
-    }
-    const run = this.store.listAutomationRuns(automationId).find((entry) => entry.id === runId)
-    if (!run) {
-      throw new Error('Automation run not found.')
-    }
-    if (run.trigger !== 'scheduled' || !automation.precheck) {
-      return null
-    }
-    const target = this.resolveTarget(automation)
-    if (!target.ok) {
-      return failedPrecheckResult(automation.precheck, Date.now(), target.error)
-    }
-    return await runAutomationPrecheck({
-      precheck: automation.precheck,
-      target:
-        automation.executionTargetType === 'ssh'
-          ? { type: 'ssh', cwd: target.cwd, connectionId: automation.executionTargetId }
-          : { type: 'local', cwd: target.cwd }
-    })
+    return runAutomationRunPrecheck(
+      this.store,
+      automationId,
+      runId,
+      (automation) => this.resolveTarget(automation),
+      runAutomationPrecheck
+    )
   }
 
   async markDispatchResult(result: AutomationDispatchResult): Promise<AutomationRun> {
-    const run = await this.runs.updateRun(result)
+    let run = await this.runs.updateRun(result)
     clearAutomationDispatchTokens(run.automationId, run.id)
     if (!isFinalAutomationRunStatus(run.status)) {
       if (run.status === 'dispatched') {
         this.completionWatcher?.watch(run)
       }
       return run
+    }
+    const retirement = await this.onRunFinalized?.(run)
+    if (retirement) {
+      run = await this.runs.updateRun(retirement)
     }
     this.completionWatcher?.forget(run.id)
     // Duplicate completion effects must not recalculate usage with a later attribution window.

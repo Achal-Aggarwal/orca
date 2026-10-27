@@ -21,6 +21,7 @@ import type { ExecutionHostId } from '../../shared/execution-host'
 import type {
   PtyProviderBufferSnapshot,
   PtyProcessInfo,
+  PtyShutdownOptions,
   PtySpawnResult
 } from '../providers/pty-provider-contract'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
@@ -144,7 +145,10 @@ export type RuntimePtyController = {
   retireRejectedPty?(ptyId: string, stopConfirmed: boolean, incarnationId: string | undefined): void
   stopAndWait?(
     ptyId: string,
-    opts?: { keepHistory?: boolean; deadlineMs?: number }
+    opts?: Pick<
+      PtyShutdownOptions,
+      'keepHistory' | 'deadlineMs' | 'expectedIncarnationId' | 'authorizeStop'
+    >
   ): Promise<boolean>
   getCwd?(ptyId: string): Promise<string | null>
   getForegroundProcess(ptyId: string): Promise<string | null>

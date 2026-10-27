@@ -213,3 +213,33 @@ it('keeps Run Details output and opens the workspace when the recorded chat is g
   )
   expect(mocks.openChat).not.toHaveBeenCalled()
 })
+
+it.each(['terminal', 'chat'] as const)(
+  'opens the actual published %s target even when delivery failed',
+  async (kind) => {
+    Object.assign(mocks.state, storeState(false))
+    mocks.openChat.mockClear()
+    mocks.activateWebRuntimeSessionTab.mockClear()
+    const failed = {
+      ...run,
+      status: 'dispatch_failed' as const,
+      error: 'Prompt delivery could not be confirmed.',
+      sessionKind: kind,
+      ...(kind === 'chat'
+        ? {
+            chatSessionId: 'claude_published',
+            terminalSessionId: null,
+            terminalPaneKey: null,
+            terminalPtyId: null
+          }
+        : {})
+    }
+    openRun(failed)
+    await vi.waitFor(() =>
+      expect(
+        kind === 'chat' ? mocks.openChat : mocks.activateWebRuntimeSessionTab
+      ).toHaveBeenCalledOnce()
+    )
+    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith(WT)
+  }
+)

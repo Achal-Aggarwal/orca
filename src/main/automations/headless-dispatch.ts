@@ -28,6 +28,15 @@ export type HeadlessAutomationDispatcher = (request: {
   target: Extract<AutomationRunTargetResult, { ok: true }>
 }) => Promise<HeadlessAutomationDispatchLaunch>
 
+export class AutomationRunLaunchError extends Error {
+  constructor(
+    message: string,
+    readonly target?: HeadlessAutomationDispatchLaunch
+  ) {
+    super(message)
+  }
+}
+
 export function createHeadlessAutomationOutputSnapshotBuffer(): {
   append: (chunk: string) => void
   snapshot: () => AutomationRunOutputSnapshot | null

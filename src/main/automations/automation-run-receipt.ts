@@ -5,15 +5,22 @@ import { rpcCallerOperationKey } from '../runtime/rpc/rpc-caller-identity'
 import { AUTOMATION_AGENT_CALLER, automationRunOperationId } from './automation-run-operation'
 
 export type AutomationRunReceipt =
-  | { kind: 'chat'; sessionId: string; workspaceId: string; messageId: string }
+  | {
+      kind: 'chat'
+      sessionId: string
+      workspaceId: string
+      messageId: string | null
+      accepted: boolean
+    }
   | {
       kind: 'terminal'
+      accepted: boolean
       launch: AgentLaunchResult & {
         outcome: Extract<AgentLaunchResult['outcome'], { kind: 'terminal' }>
       }
     }
 
-/** Recover only recorded acceptance; a restart never sends the prompt again. */
+/** Publication and acceptance are separate receipts; neither recovery path sends again. */
 export function readAutomationRunReceipt(
   store: Pick<AgentSessionRecordStore, 'getOperationRow' | 'getConversation'>,
   run: Pick<AutomationRun, 'id' | 'createdAt'>
@@ -28,16 +35,21 @@ export function readAutomationRunReceipt(
       return null
     }
     const launch = row.outcome.launch
-    if (launch.outcome.kind === 'structured' && launch.prompt?.outcome === 'journaled') {
+    if (launch.outcome.kind === 'structured') {
       return {
         kind: 'chat',
         sessionId: launch.outcome.sessionId,
         workspaceId: launch.worktreeId,
-        messageId: launch.prompt.messageId
+        messageId: launch.prompt?.outcome === 'journaled' ? launch.prompt.messageId : null,
+        accepted: launch.prompt?.outcome === 'journaled'
       }
     }
-    if (launch.outcome.kind === 'terminal' && launch.prompt?.outcome === 'handed-to-terminal') {
-      return { kind: 'terminal', launch: { ...launch, outcome: launch.outcome } }
+    if (launch.outcome.kind === 'terminal') {
+      return {
+        kind: 'terminal',
+        accepted: launch.prompt?.outcome === 'handed-to-terminal',
+        launch: { ...launch, outcome: launch.outcome }
+      }
     }
     return null
   }
@@ -52,7 +64,8 @@ export function readAutomationRunReceipt(
         kind: 'chat',
         sessionId: send.outcome.sessionId,
         workspaceId: conversation.location.workspaceId,
-        messageId
+        messageId,
+        accepted: true
       }
     : null
 }

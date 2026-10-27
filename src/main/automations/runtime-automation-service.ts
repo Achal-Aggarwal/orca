@@ -1,7 +1,9 @@
+import { createDesktopRunTerminalLifecycle } from './desktop-run-terminal-lifecycle'
+import { automationRunOperationId } from './automation-run-operation'
 import { observeAutomationChatRun } from './runtime-chat-run-observer'
 import { readAutomationRunReceipt } from './automation-run-receipt'
+import { withLiveTerminalHandle } from '../runtime/rpc/methods/agent-launch-replay'
 import { tuiAgentDisplayName } from '../../shared/tui-agent-display-names'
-import { parsePaneKey } from '../../shared/stable-pane-id'
 import type { ClaudeUsageStore } from '../claude-usage/store'
 import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
@@ -13,7 +15,11 @@ import {
   isTuiAgent,
   TUI_AGENT_CONFIG
 } from '../../shared/tui-agent-config'
-import { launchHeadlessAutomationAgent, runOwnHandle } from './headless-automation-agent-launch'
+import {
+  launchHeadlessAutomationAgent,
+  publishedLaunchTarget,
+  runOwnHandle
+} from './headless-automation-agent-launch'
 import {
   AGENT_HOOKS_REVIEW_BLOCKED_ERROR,
   createRuntimeAutomationRunTerminalObserver
@@ -40,19 +46,23 @@ export function createRuntimeAutomationService(input: {
         store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId
       )
   })
+  let desktop: ReturnType<typeof createDesktopRunTerminalLifecycle> | undefined
   const service = new AutomationService(store, {
     claudeUsage,
     codexUsage,
+    onRunFinalized: (run) => desktop?.finalize(run) ?? Promise.resolve(null),
     terminalObserver: {
       ...observer,
       resolveRunTerminal: (run) =>
         run.sessionKind === 'chat' || run.status === 'dispatching'
           ? `automation:${run.id}`
-          : ((run.terminalPaneKey ? launchedHandles.get(run.terminalPaneKey) : undefined) ??
+          : (runOwnHandle(runtime, run) ??
+            (run.terminalPaneKey ? launchedHandles.get(run.terminalPaneKey) : undefined) ??
             observer.resolveRunTerminal(run)),
       observeCompletion: async (handle, options) => {
         let run = options.run
-        if (run && handle.startsWith('automation:')) {
+        let originalHandle: string | undefined
+        if (run && (handle.startsWith('automation:') || run.sessionKind !== 'chat')) {
           if (!run.chatSessionId) {
             const records = await runtime.openAgentSessionRecordStore()
             const receipt = readAutomationRunReceipt(records, run)
@@ -67,24 +77,42 @@ export function createRuntimeAutomationService(input: {
                 error: `${agent} could not confirm this run after Orca restarted. Open its workspace before running again.`
               }
             }
-            const terminal = receipt.kind === 'terminal' ? receipt.launch.outcome : null
-            const terminalPaneKey = terminal
-              ? (terminal.paneKey ?? runtime.getTerminalPaneKey(terminal.handle))
-              : null
+            const originalPtyId =
+              receipt.kind === 'terminal'
+                ? runtime.getTerminalPtyIdForHandle(receipt.launch.outcome.handle)
+                : null
+            const projected =
+              receipt.kind === 'terminal' ? withLiveTerminalHandle(receipt.launch, runtime) : null
+            const terminal = projected?.outcome.kind === 'terminal' ? projected.outcome : null
+            const observable =
+              receipt.accepted &&
+              (!terminal ||
+                (originalPtyId !== null &&
+                  (!run.terminalPtyId || run.terminalPtyId === originalPtyId) &&
+                  runtime.getTerminalPtyIdForHandle(terminal.handle) === originalPtyId))
+            const target = projected
+              ? publishedLaunchTarget(runtime, projected)
+              : {
+                  workspaceId: receipt.kind === 'chat' ? receipt.workspaceId : null,
+                  sessionKind: 'chat' as const,
+                  chatSessionId: receipt.kind === 'chat' ? receipt.sessionId : null,
+                  terminalPaneKey: null,
+                  terminalSessionId: null
+                }
             run = await service.markDispatchResult({
+              ...target,
               runId: run.id,
-              status: 'dispatched',
-              workspaceId:
-                receipt.kind === 'chat' ? receipt.workspaceId : receipt.launch.worktreeId,
-              sessionKind: receipt.kind,
-              chatSessionId: receipt.kind === 'chat' ? receipt.sessionId : null,
-              terminalSessionId: terminal
-                ? (parsePaneKey(terminalPaneKey ?? '')?.tabId ?? null)
-                : null,
-              terminalPaneKey,
-              terminalPtyId: terminal ? runtime.getTerminalPtyIdForHandle(terminal.handle) : null
+              status: observable ? 'dispatched' : 'dispatch_failed',
+              error: observable
+                ? null
+                : `${agent} could not confirm this run's prompt or original process. Open the run before trying again.`,
+              terminalPtyId: originalPtyId
             })
-            if (terminal) {
+            if (!observable) {
+              return { status: 'dispatch_failed', error: run.error }
+            }
+            if (terminal && receipt.kind === 'terminal') {
+              originalHandle = receipt.launch.outcome.handle
               handle = terminal.handle
             }
           }
@@ -108,7 +136,25 @@ export function createRuntimeAutomationService(input: {
             }
           }
         }
+        const originalProcessMissing = (): boolean =>
+          Boolean(
+            run?.terminalPtyId &&
+            (runtime.getTerminalPtyIdForHandle(handle) !== run.terminalPtyId ||
+              (originalHandle !== undefined &&
+                runtime.getTerminalPtyIdForHandle(originalHandle) !== run.terminalPtyId))
+          )
+        const processLost = {
+          status: 'dispatch_failed' as const,
+          error:
+            'The agent’s original process is no longer available. Open the run before trying again.'
+        }
+        if (originalProcessMissing()) {
+          return processLost
+        }
         const observation = await observer.observeCompletion(handle, { ...options, run })
+        if (originalProcessMissing()) {
+          return processLost
+        }
         if (options.run && observation.error === AGENT_HOOKS_REVIEW_BLOCKED_ERROR) {
           const markDispatchResult = service.markDispatchResult.bind(service)
           void closeEarlierHookReviewRunTerminals(
@@ -121,13 +167,25 @@ export function createRuntimeAutomationService(input: {
         return observation
       }
     },
-    onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
+    onAutomationsChanged: (payload) => {
+      desktop?.reconcile()
+      runtime.notifyAutomationsChanged(payload)
+    },
     allowRemoteHostScheduling: input.headless,
     headlessDispatcher: async (request) => {
-      const { terminalHandle, ...launch } = await launchHeadlessAutomationAgent(runtime, {
-        ...request,
-        runs: store.listAutomationRuns(request.automation.id)
-      })
+      const lifecycle = desktop?.begin(
+        request.automation,
+        request.run,
+        automationRunOperationId(request.run, 'fresh-launch')
+      )
+      const { terminalHandle, ...launch } = await launchHeadlessAutomationAgent(
+        runtime,
+        {
+          ...request,
+          runs: store.listAutomationRuns(request.automation.id)
+        },
+        lifecycle
+      )
       if (launch.terminalPaneKey && terminalHandle) {
         launchedHandles.set(launch.terminalPaneKey, terminalHandle)
         if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
@@ -141,6 +199,15 @@ export function createRuntimeAutomationService(input: {
   runtime.setAutomationService(service)
   if (input.headless) {
     bindHeadlessRunTerminalRetention(service, store, runtime)
+  } else {
+    desktop = createDesktopRunTerminalLifecycle(runtime, store, (id, operation) =>
+      service.runInAutomationLane(id, operation)
+    )
+    const stop = service.stop.bind(service)
+    service.stop = () => {
+      desktop?.stop()
+      stop()
+    }
   }
   return service
 }

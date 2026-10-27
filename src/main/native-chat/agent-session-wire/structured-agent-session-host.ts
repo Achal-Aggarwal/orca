@@ -9,7 +9,6 @@ import { createRestartReconciler } from './structured-agent-session-restart-reco
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
 import * as reveal from './structured-agent-session-reveal'
-import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { structuredAgentSessionEntryDelegates } from './structured-agent-session-create'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
@@ -312,14 +311,14 @@ export class StructuredAgentSessionHost {
   })
 
   /** Read the store; idle-released chats have no session-map entry. */
-  handoffStatus = (sessionId: string) => structuredAgentSessionOwnerStatus(this.deps, sessionId)
+  handoffStatus = (sessionId: string) => this.backgroundTasks.handoffStatus(sessionId)
 
   history: StructuredAgentSessionBackgroundTaskChannel['history'] = (...args) =>
     this.backgroundTasks.history(...args)
 
-  /** Full reduction: absence from a bounded page cannot prove a revised/tombstoned item is absent. */
-  journalSnapshot = async (sessionId: string) =>
-    (await this.lifetime.conversation(sessionId)).journal.snapshot()
+  journalSnapshot = (sessionId: string) => this.backgroundTasks.journalSnapshot(sessionId)
+  queuedSendAnswer = (sessionId: string, messageId: string) =>
+    this.backgroundTasks.queuedSendAnswer(sessionId, messageId)
 
   currentWork = this.clientDelivery.readCurrentWork
   readCurrentRequests: StructuredAgentSessionBackgroundTaskChannel['currentRequests'] = (...args) =>

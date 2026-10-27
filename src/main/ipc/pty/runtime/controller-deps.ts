@@ -45,7 +45,7 @@ export type PtyRuntimeControllerDeps = PtySpawnCodexResumeDeps & {
   shutdownProviderAndDetectExit: (
     provider: IPtyProvider,
     id: string,
-    opts: { immediate?: boolean; keepHistory?: boolean; deadlineMs?: number }
+    opts: Parameters<IPtyProvider['shutdown']>[1]
   ) => Promise<boolean>
   rememberSyntheticKillExit: (id: string, incarnationId?: string) => void
   rememberRetiredRejectedPty: (id: string) => void

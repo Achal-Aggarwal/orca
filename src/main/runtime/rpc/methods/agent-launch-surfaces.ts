@@ -1,3 +1,4 @@
+import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import { terminalImageViewerSupported } from '../../terminal-image-viewer-env'
 /** Use ordinary user-facing terminal/chat creation; worker factories add redrive, mailbox and background-tab behavior.
  * The executor selects surface and prompt delivery; this factory supplies the wire-shaped runtime calls. */
@@ -38,6 +39,8 @@ export type AgentLaunchHostPolicy = {
   terminalTitle?: string
   suppressStartupUpdatePrompt?: true
   unprovableHost?: 'write-unless-shell'
+  onWorkspaceCreated?: (worktreeId: string) => void
+  onSurfacePublished?: (result: AgentLaunchResult) => void
 }
 
 /** Replay-safe launches keep the nested attach in the same stable caller namespace as the launch. */
@@ -209,7 +212,10 @@ export function agentLaunchSurfaceFactory(
         return runtime.deliverStartupFollowup(
           handle,
           { agent, prompt: prompt.text },
-          { agentLaunch: true, ...(signal ? { signal } : {}) }
+          {
+            agentLaunch: policy.unprovableHost !== 'write-unless-shell',
+            ...(signal ? { signal } : {})
+          }
         )
       }
       return deliverTerminalAgentLaunchPrompt({

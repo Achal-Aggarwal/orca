@@ -100,7 +100,14 @@ export function agentLaunchWorkspaceFactory(
           createdWithAgent: agent,
           ...(policy.suppressStartupUpdatePrompt ? { startupSuppressUpdatePrompt: true } : {}),
           ...(promisedAgentChat ? { promisedAgentChat } : {}),
-          ...(onWorkspaceCreated ? { onWorkspaceCreated } : {}),
+          onWorkspaceCreated: (id) => {
+            try {
+              policy.onWorkspaceCreated?.(id)
+            } catch (error) {
+              console.warn('[agent-launch] workspace bookkeeping failed', error)
+            }
+            onWorkspaceCreated?.(id)
+          },
           // Chats have no startup command to sequence after setup; provision setup synchronously and return its completion token.
           awaitTerminalProvisioning: true,
           observeSetupCompletion: true

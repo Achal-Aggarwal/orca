@@ -2,7 +2,6 @@
  * Keep worktree.create's PTY/handle contract for older clients.
  * operationId adds durable at-most-once execution and recorded replay; unknown outcomes refuse, while stranded-surface recovery remains separate. */
 
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
@@ -43,7 +42,10 @@ import {
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
-import { assertAgentLaunchTargetAuthorized } from './agent-launch-target-authorization'
+import {
+  assertAgentLaunchTargetAuthorized,
+  supportsAgentLaunch
+} from './agent-launch-target-authorization'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
   publishEarlyTab,
@@ -51,15 +53,7 @@ import {
   type AgentLaunchView
 } from './agent-launch-tab-publication'
 
-/** agent.launch.v2 declares support for both outcomes. CLI/runtime-socket and SSH bridges have no clientKind/capabilities; the desktop renderer is a runtime client and must advertise support. */
-export function supportsAgentLaunch(
-  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
-): boolean {
-  return (
-    context.clientKind === undefined ||
-    context.clientCapabilities?.includes(AGENT_LAUNCH_RUNTIME_CAPABILITY) === true
-  )
-}
+export { supportsAgentLaunch } from './agent-launch-target-authorization'
 
 type HostLaunchContext = RpcContext & { agentLaunchPolicy?: AgentLaunchHostPolicy }
 
@@ -95,6 +89,11 @@ async function runAgentLaunch(
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent, context.agentLaunchPolicy),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
+      try {
+        context.agentLaunchPolicy?.onSurfacePublished?.(surface)
+      } catch (error) {
+        console.warn('[agent-launch] publication bookkeeping failed', error)
+      }
       view.early?.surfacePublished(surface)
       replaySafe?.recordSurface(withPlacement(surface, view))
       if (callerNavigationId !== null && view.presentation !== 'background') {

@@ -180,7 +180,10 @@ export function retireRejectedPtyFromRuntimeController(
 export async function stopAndWaitPtyFromRuntimeController(
   deps: PtyRuntimeControllerDeps,
   ptyId: string,
-  opts?: { keepHistory?: boolean; deadlineMs?: number }
+  opts?: Pick<
+    Parameters<IPtyProvider['shutdown']>[1],
+    'keepHistory' | 'deadlineMs' | 'expectedIncarnationId' | 'authorizeStop'
+  >
 ): Promise<boolean> {
   // A final relay stop is owed until the relay proves it, so an unproven one still reads as closing.
   const relayOwesStop =
@@ -200,7 +203,10 @@ export async function stopAndWaitPtyFromRuntimeController(
 async function stopAndWaitPty(
   deps: PtyRuntimeControllerDeps,
   ptyId: string,
-  opts?: { keepHistory?: boolean; deadlineMs?: number }
+  opts?: Pick<
+    Parameters<IPtyProvider['shutdown']>[1],
+    'keepHistory' | 'deadlineMs' | 'expectedIncarnationId' | 'authorizeStop'
+  >
 ): Promise<boolean> {
   const {
     runtime,
@@ -209,7 +215,10 @@ async function stopAndWaitPty(
     shutdownProviderAndDetectExit,
     finishPtyShutdown
   } = deps
-  runtime?.markPtyStopRequested?.(ptyId)
+  if (!opts?.authorizeStop) {
+    runtime?.markPtyStopRequested?.(ptyId)
+  }
+  const expectedIncarnationId = opts?.expectedIncarnationId
   const connectionId = getPtySshConnectionId(ptyId)
   if (connectionId && isLegacyRelayBridgedPty(ptyId)) {
     // A reversible stop must not leave the bridge's durable stop behind, so the pane stays live.
@@ -264,13 +273,18 @@ async function stopAndWaitPty(
     }
     return false
   }
-  const stoppingIncarnationId = ptyIncarnationById.get(ptyId)
+  const stoppingIncarnationId = expectedIncarnationId ?? ptyIncarnationById.get(ptyId)
+  if (expectedIncarnationId && ptyIncarnationById.get(ptyId) !== expectedIncarnationId) {
+    return false
+  }
   let providerExitObserved = false
   try {
     providerExitObserved = await shutdownProviderAndDetectExit(provider, ptyId, {
       immediate: true,
       keepHistory: opts?.keepHistory ?? false,
-      deadlineMs
+      deadlineMs,
+      expectedIncarnationId,
+      authorizeStop: opts?.authorizeStop
     })
   } catch (err) {
     if (!isPtyAlreadyGoneError(err)) {

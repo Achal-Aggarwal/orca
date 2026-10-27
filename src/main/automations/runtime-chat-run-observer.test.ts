@@ -8,11 +8,25 @@ import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-it
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cutover-fixture'
 import { chatAutomationRunObservation, observeAutomationChatRun } from './runtime-chat-run-observer'
+import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import {
+  createQueuedMessageTestRig,
+  eventually
+} from '../native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
+import {
+  HOST_TEST_SESSION,
+  HOST_TEST_THREAD,
+  hostTestMessage
+} from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session-journal-types'
 import { automationRunOperationId } from './automation-run-operation'
 
-const mocks = vi.hoisted(() => ({ host: { journalSnapshot: vi.fn(), subscribe: vi.fn() } }))
+const mocks = vi.hoisted(() => ({
+  actualHost: null as StructuredAgentSessionHost | null,
+  host: { journalSnapshot: vi.fn(), subscribe: vi.fn(), queuedSendAnswer: vi.fn(async () => null) }
+}))
 vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
-  getStructuredAgentSessionHost: () => mocks.host
+  getStructuredAgentSessionHost: () => mocks.actualHost ?? mocks.host
 }))
 const submission: AgentJournalSubmission = {
   clientMessageId: 'prompt',
@@ -61,8 +75,14 @@ function snapshot(items: AgentJournalRenderItem[] = []): AgentJournalSnapshot {
     submissions: [submission]
   }
 }
-beforeEach(() => vi.clearAllMocks())
-afterEach(() => vi.useRealTimers())
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.actualHost = null
+})
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 describe('exact automation chat turn', () => {
   it('waits for its own prompt even when a later human turn completed', () => {
     expect(
@@ -200,4 +220,321 @@ describe('restart observation and disposal', () => {
     ).toMatchObject({ status: 'dispatch_failed', error: expect.stringContaining('confirm') })
     expect(mocks.host.subscribe).not.toHaveBeenCalled()
   })
+})
+
+// The provider is scripted; queue ownership, journal, catch-up and publication are real.
+describe('real host queue publication and operation bounds', () => {
+  it.each([100, 1000])(
+    'observes Q→S at %i prior turns without token-triggered history scans',
+    async (history) => {
+      const rig = await createQueuedMessageTestRig({ restartable: true })
+      mocks.actualHost = rig.host
+      const controller = new AbortController()
+      try {
+        const working = await rig.workingSend()
+        let sink = rig.providerEvents()
+        for (let n = 0; n < history; n++) {
+          sink.appendItem(
+            { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: `old-${n}`, ordinal: 0 },
+            { kind: 'turn', turnId: `old-${n}`, state: 'completed', outcome: 'success' },
+            { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+          )
+          if (n % 100 === 99) {
+            await sink.written?.()
+          }
+        }
+        await sink.written?.()
+        const run = {
+          ...buildProfileStateCutoverFixture('/fixture').automationRuns[0],
+          createdAt: Date.now(),
+          dispatchedAt: Date.now(),
+          sessionKind: 'chat' as const,
+          chatSessionId: HOST_TEST_SESSION
+        }
+        const q = automationRunOperationId(run, 'reuse-send')
+        const body = hostTestMessage('automation behind human backlog')
+        const fields = { body, delivery: 'queue-if-active' as const }
+        expect(
+          await rig.host.send(
+            { callerKey: 'client-1' },
+            {
+              ...fields,
+              envelope: rig.envelope(fields, 'agentSession.send', q)
+            }
+          )
+        ).toMatchObject({ ok: true, value: { queued: { messageId: q, state: 'waiting' } } })
+        const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+        let projections = 0,
+          projectedRows = 0,
+          scannedRows = 0
+        const materialized = new WeakSet<object>()
+        const realPublicRead = journal.publicRead.bind(journal)
+        vi.spyOn(journal, 'publicRead').mockImplementation(() => {
+          const view = realPublicRead()
+          return {
+            get normalizationKey() {
+              return view.normalizationKey
+            },
+            get snapshot() {
+              const result = view.snapshot
+              if (!materialized.has(view)) {
+                materialized.add(view)
+                projections++
+                projectedRows += result.items.length + result.submissions.length
+              }
+              return result
+            }
+          }
+        })
+        const visitItems = journal.visitItems.bind(journal)
+        vi.spyOn(journal, 'visitItems').mockImplementation((visit) =>
+          visitItems((...args) => {
+            scannedRows++
+            visit(...args)
+          })
+        )
+        let deltaRows = 0
+        const readSince = journal.readSince.bind(journal)
+        const deltas = vi.spyOn(journal, 'readSince').mockImplementation((...args) => {
+          const value = readSince(...args)
+          if (value.ok) {
+            deltaRows += value.rows.length
+          }
+          return value
+        })
+        const timers = vi.spyOn(globalThis, 'setTimeout'),
+          cleared = vi.spyOn(globalThis, 'clearTimeout')
+        let visited = 0
+        const realSnapshot = journal.snapshot.bind(journal)
+        const full = vi.spyOn(journal, 'snapshot').mockImplementation((...args) => {
+          const value = realSnapshot(...args)
+          visited += value.items.length + value.submissions.length
+          return value
+        })
+        const tokenBurst = async () => {
+          for (let n = 0; n < 25; n++) {
+            sink.appendItem(
+              { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: 'unrelated', ordinal: 1 },
+              {
+                kind: 'message',
+                role: 'assistant',
+                blocks: [{ type: 'text', text: `token-${n}` }]
+              },
+              { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+            )
+            sink.publish()
+            await sink.written?.()
+            await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
+          }
+        }
+        const deltaBaseline = [deltas.mock.calls.length, deltaRows]
+        const beforeBaseline = full.mock.calls.length
+        const projectionBaseline = [projections, projectedRows, scannedRows]
+        const visitedBeforeBaseline = visited
+        await tokenBurst()
+        const baselineDeltas = [
+          deltas.mock.calls.length - deltaBaseline[0],
+          deltaRows - deltaBaseline[1]
+        ]
+        const baselineSnapshots = full.mock.calls.length - beforeBaseline
+        const baselineVisited = visited - visitedBeforeBaseline
+        const baselineProjection = [projections, projectedRows, scannedRows].map(
+          (v, i) => v - projectionBaseline[i]
+        )
+        const releases: (() => void)[] = []
+        const eventTypes: Record<string, number> = {}
+        const latest: unknown[] = []
+        const observerReads = vi.spyOn(rig.host, 'journalSnapshot')
+        const realSubscribe = rig.host.subscribe.bind(rig.host)
+        const subscribe = vi.spyOn(rig.host, 'subscribe').mockImplementation(async (...args) => {
+          const input = args[0]
+          const release = await realSubscribe({
+            ...input,
+            emit: (event) => {
+              eventTypes[event.type] = (eventTypes[event.type] ?? 0) + 1
+              if (event.type !== 'end') {
+                latest.push(event.type === 'batch' ? event.latestTurn : event.page.latestTurn)
+              }
+              input.emit(event)
+            }
+          })
+          const wrapped = vi.fn(release)
+          releases.push(wrapped)
+          return wrapped
+        })
+        // SAFETY: only receipt acquisition is a transport stand-in; the observer uses the actual host below.
+        const runtime = {
+          ensureStructuredAgentSessionHost: async () => {},
+          openAgentSessionRecordStore: async () => ({
+            getOperationRow: (_caller: string, id: string) =>
+              id === q
+                ? { outcome: { status: 'succeeded', sessionId: HOST_TEST_SESSION } }
+                : undefined,
+            getConversation: () => ({ provider: 'codex', location: { workspaceId: 'workspace-1' } })
+          })
+        } as unknown as OrcaRuntimeService
+        let pending = observeAutomationChatRun(runtime, run, controller.signal)
+        void pending.catch(() => {})
+        await eventually(() => expect(subscribe).toHaveBeenCalledOnce())
+        await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
+        await eventually(() => expect(full.mock.calls.length).toBeGreaterThan(0))
+        const beforeTokens = full.mock.calls.length
+        const projectionTokens = [projections, projectedRows, scannedRows]
+        const tokenDeltas = [deltas.mock.calls.length, deltaRows]
+        const readsBeforeTokens = observerReads.mock.calls.length
+        const visitedBeforeTokens = visited
+        await tokenBurst()
+        expect(observerReads.mock.calls.length).toBe(readsBeforeTokens)
+        expect(full.mock.calls.length - beforeTokens).toBeLessThanOrEqual(baselineSnapshots)
+        expect(visited - visitedBeforeTokens).toBeLessThanOrEqual(baselineVisited)
+        expect(
+          [projections, projectedRows, scannedRows].map((v, i) => v - projectionTokens[i])
+        ).toEqual(baselineProjection)
+        // One row per token in ordinary catch-up and one in prompt-cache invalidation.
+        expect([deltas.mock.calls.length - tokenDeltas[0], deltaRows - tokenDeltas[1]]).toEqual([
+          baselineDeltas[0] + 50,
+          baselineDeltas[1] + 50
+        ])
+        controller.abort()
+        await expect(pending).rejects.toThrow('request_aborted')
+        expect(releases[0]).toHaveBeenCalledOnce()
+        pending = observeAutomationChatRun(runtime, run, new AbortController().signal)
+        await eventually(() => expect(subscribe).toHaveBeenCalledTimes(2))
+        await rig.settleAccepted(working, 'human')
+        sink.appendItem(
+          { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: 'turn-human', ordinal: 1 },
+          { kind: 'turn', turnId: 'turn-human', state: 'completed', outcome: 'success' },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE, lifecycle: true }
+        )
+        sink.publish({ lifecycle: true })
+        expect(await sink.written?.()).toEqual({ ok: true })
+        await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
+        await eventually(async () => expect(await rig.handoff(q)).toBeDefined())
+        const sent = await rig.handoffId(q)
+        expect(sent).not.toBe(q)
+        await eventually(() => expect(journal.submission(sent)?.handedOverAt).toBeDefined())
+        await rig.settleAccepted(sent, 'automation')
+        const accepted = await rig.submission(sent)
+        sink = rig.providerEvents()
+        const ownId = {
+          provider: 'codex' as const,
+          threadId: HOST_TEST_THREAD,
+          turnId: 'turn-automation',
+          ordinal: 1
+        }
+        sink.appendItem(
+          ownId,
+          {
+            kind: 'turn',
+            turnId: 'turn-automation',
+            userItemId: accepted!.providerItemId!,
+            state: 'completed',
+            outcome: 'success'
+          },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE, lifecycle: true }
+        )
+        sink.publish({ lifecycle: true })
+        expect(await sink.written?.()).toEqual({ ok: true })
+        await rig.host.flushStreamedEvents(HOST_TEST_SESSION)
+        expect(await pending).toMatchObject({ status: 'completed' })
+        expect(rig.dispatch).toHaveBeenCalledTimes(2)
+        expect(releases).toHaveLength(2)
+        for (const release of releases) {
+          expect(release).toHaveBeenCalledOnce()
+        }
+        expect(latest).toContainEqual(
+          expect.objectContaining({
+            turn: expect.objectContaining({ turnId: 'turn-automation', state: 'completed' })
+          })
+        )
+        for (const [index, args] of timers.mock.calls.entries()) {
+          if (Number(args[1]) > 5 * 60 * 60 * 1000) {
+            expect(cleared).toHaveBeenCalledWith(timers.mock.results[index].value)
+          }
+        }
+        // Fixed work includes both hydrations, canonical queue handoff and accepted root completion.
+        expect(full.mock.calls.length - 2 * baselineSnapshots).toBe(23)
+        expect(visited - 2 * baselineVisited).toBeLessThan((history + 30) * 23)
+        process.stdout.write(
+          `${JSON.stringify({
+            history,
+            baselineSnapshots,
+            baselineVisited,
+            baselineProjection,
+            baselineDeltas,
+            projections,
+            projectedRows,
+            scannedRows,
+            deltaReads: deltas.mock.calls.length,
+            deltaRows,
+            observerReads: observerReads.mock.calls.length,
+            eventTypes,
+            fullSnapshots: full.mock.calls.length,
+            visited,
+            subscriptions: subscribe.mock.calls.length
+          })}\n`
+        )
+      } finally {
+        controller.abort()
+        mocks.actualHost = null
+        await rig.dispose()
+      }
+    }
+  )
+  it.each(['withdraw', 'return'] as const)(
+    'settles a queue-only %s without resending',
+    async (outcome) => {
+      const rig = await createQueuedMessageTestRig()
+      mocks.actualHost = rig.host
+      try {
+        await rig.workingSend()
+        const queued = rig.send('queued', 'queue-if-active')
+        await queued.result
+        const q = queued.id
+        const run = {
+          ...buildProfileStateCutoverFixture('/fixture').automationRuns[0],
+          createdAt: Date.now(),
+          chatSessionId: HOST_TEST_SESSION
+        }
+        // Exercise canonical queue answers directly as well as live publisher observation above.
+        expect(
+          chatAutomationRunObservation(
+            await rig.host.journalSnapshot(HOST_TEST_SESSION),
+            q,
+            'Codex',
+            await rig.host.queuedSendAnswer(HOST_TEST_SESSION, q)
+          )
+        ).toBeNull()
+        await rig.stop()
+        expect(
+          chatAutomationRunObservation(
+            await rig.host.journalSnapshot(HOST_TEST_SESSION),
+            q,
+            'Codex',
+            await rig.host.queuedSendAnswer(HOST_TEST_SESSION, q)
+          )
+        ).toBeNull()
+        if (outcome === 'withdraw') {
+          await rig.deleteQueued(q)
+        } else {
+          await rig.stop()
+          await rig.sendNow(q)
+          const handoff = await rig.handoffId(q)
+          await rig.settleRejected(handoff, 'provider refused')
+        }
+        expect(
+          chatAutomationRunObservation(
+            await rig.host.journalSnapshot(HOST_TEST_SESSION),
+            q,
+            'Codex',
+            await rig.host.queuedSendAnswer(HOST_TEST_SESSION, q)
+          )
+        ).toMatchObject({ status: 'dispatch_failed' })
+        expect(run.chatSessionId).toBe(HOST_TEST_SESSION)
+      } finally {
+        mocks.actualHost = null
+        await rig.dispose()
+      }
+    }
+  )
 })
