@@ -19,7 +19,11 @@ const mocks = vi.hoisted(() => {
   const state: PlacementTestState = { ownerRepos: [], target: (path) => path, handlers: new Map() }
   return Object.assign(state, {
     ensure: vi.fn(async (_distro: string) => 'wsl:ubuntu'),
-    call: vi.fn()
+    call: vi.fn(),
+    mkdir: vi.fn(),
+    access: vi.fn(),
+    readdir: vi.fn(),
+    rm: vi.fn()
   })
 })
 // Why win32: the handlers resolve these UNC parents as Windows does; POSIX would call them relative.
@@ -29,9 +33,10 @@ vi.mock('node:path', async (importOriginal) => {
 })
 vi.mock('node:fs/promises', async (importOriginal) => ({
   ...(await importOriginal<typeof NodeFsPromises>()),
-  access: vi.fn(async () => {}),
-  mkdir: vi.fn(async () => {}),
-  readdir: vi.fn(async () => []),
+  access: mocks.access,
+  mkdir: mocks.mkdir,
+  readdir: mocks.readdir,
+  rm: mocks.rm,
   realpath: vi.fn(async (path: string) => path)
 }))
 vi.mock('electron', () => ({
@@ -77,6 +82,8 @@ vi.mock('../worktree-root-preparation', () => ({
   prepareLocalWorktreeRootForRepo: vi.fn(async () => {})
 }))
 
+import { gitExecFileAsync } from '../git/runner'
+import { resolveGitCommandWithoutProbe } from '../git/command-runner/git-command-resolution'
 import { registerRepoCreationHandlers } from '../ipc/repos/repo-creation-handlers'
 import { registerNestedRepoImportHandler } from '../ipc/repos/nested-repo-import-handler'
 import { addLocalRepoFromPath } from '../ipc/repos/local-repo-registration'
@@ -146,6 +153,11 @@ describe('one placement per project operation', () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', '1')
     mocks.ensure.mockReset().mockResolvedValue('wsl:ubuntu')
+    mocks.mkdir.mockReset().mockResolvedValue(undefined)
+    mocks.access.mockReset().mockResolvedValue(undefined)
+    mocks.readdir.mockReset().mockResolvedValue([])
+    mocks.rm.mockReset().mockResolvedValue(undefined)
+    vi.mocked(gitExecFileAsync).mockReset().mockResolvedValue({ stdout: '', stderr: '' })
     vi.mocked(realpath).mockClear()
     mocks.ownerRepos = []
     mocks.target = (path) => path
@@ -267,6 +279,103 @@ describe('one placement per project operation', () => {
       }
     }
   )
+
+  it('creates a Windows-owned Git project through a denied UNC drive mount without overwriting or over-deleting', async () => {
+    const parentPath = String.raw`\\wsl.localhost\Ubuntu\mnt\c\Users\qa\DriveParent`
+    const targetPath = `${parentPath}\\App`
+    const driveParent = String.raw`C:\Users\qa\DriveParent`
+    const driveTarget = `${driveParent}\\App`
+    let exists = false
+    let entries: string[] = []
+    const opened: string[] = []
+    const open = (path: string) => {
+      if (path.startsWith('\\\\')) {
+        throw Object.assign(new Error(`EPERM: operation not permitted, '${path}'`), {
+          code: 'EPERM'
+        })
+      }
+      opened.push(path)
+    }
+    mocks.mkdir.mockImplementation(async (path: string) => {
+      open(path)
+      if (path === driveTarget) {
+        exists = true
+      }
+    })
+    mocks.access.mockImplementation(async (path: string) => {
+      open(path)
+      if (!exists) {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+      }
+    })
+    mocks.readdir.mockImplementation(async (path: string) => {
+      open(path)
+      return entries
+    })
+    mocks.rm.mockImplementation(async (path: string) => {
+      open(path)
+      if (path === driveTarget) {
+        exists = false
+      }
+    })
+    const repos: Repo[] = []
+    const store = makeStore(repos)
+    registerRepoCreationHandlers(mainWindow, store)
+    const create = () =>
+      mocks.handlers.get('repos:create')!(null, { parentPath, name: 'App', kind: 'git' })
+
+    await expect(create()).resolves.toMatchObject({ repo: { path: targetPath, kind: 'git' } })
+    expect(repos[0].executionHostId ?? 'local').toBe('local')
+    expect(mocks.ensure).not.toHaveBeenCalled()
+    expect(mocks.mkdir.mock.calls).toEqual([
+      [driveParent, { recursive: true }],
+      [driveTarget, { recursive: false }]
+    ])
+    expect(vi.mocked(gitExecFileAsync).mock.calls).toEqual([
+      [['init'], { cwd: targetPath }],
+      [['commit', '--allow-empty', '-m', 'Initial commit'], { cwd: targetPath }]
+    ])
+    const command = resolveGitCommandWithoutProbe(['init'], { cwd: targetPath })
+    expect(command.binary).toBe('wsl.exe')
+    expect(command.args.at(-1)).toContain("cd '/mnt/c/Users/qa/DriveParent/App' && ")
+    expect(command.cwd).not.toBe(targetPath)
+    repos.length = 0
+    entries = ['keep.txt']
+    store.addRepo.mockClear()
+    vi.mocked(gitExecFileAsync).mockClear()
+    await expect(create()).resolves.toMatchObject({ error: expect.stringContaining('not empty') })
+    expect(gitExecFileAsync).not.toHaveBeenCalled()
+    expect(store.addRepo).not.toHaveBeenCalled()
+    expect(mocks.rm).not.toHaveBeenCalled()
+
+    exists = false
+    entries = []
+    vi.mocked(gitExecFileAsync).mockRejectedValueOnce(new Error('init failed'))
+    await expect(create()).resolves.toMatchObject({
+      error: expect.stringContaining('Failed to initialize')
+    })
+    expect(mocks.rm).toHaveBeenLastCalledWith(driveTarget, { recursive: true, force: true })
+    expect(exists).toBe(false)
+    exists = true
+    mocks.rm.mockClear()
+    vi.mocked(gitExecFileAsync)
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+      .mockRejectedValueOnce(new Error('commit failed'))
+    await expect(create()).resolves.toMatchObject({
+      error: expect.stringContaining('Failed to create initial commit')
+    })
+    expect(mocks.rm).toHaveBeenCalledExactlyOnceWith(`${driveTarget}\\.git`, {
+      recursive: true,
+      force: true
+    })
+    expect(exists).toBe(true)
+    expect(store.addRepo).not.toHaveBeenCalled()
+    expect(
+      opened.every(
+        (path) => path === driveParent || path === driveTarget || path === `${driveTarget}\\.git`
+      )
+    ).toBe(true)
+  })
 
   it('matches selected/root/non-folder-main on an old owner without adopting foreign or case-neighbor rows', async () => {
     const root = '\\\\wsl$\\Ubuntu\\home\\me\\topic'

@@ -21,6 +21,7 @@ import { addLocalRepoFromPath } from './local-repo-registration'
 import { placeProject } from '../../wsl/project-placement'
 import { requireSavedProject } from '../../repository-checkout-admission'
 import { registerOnWslOwner } from '../../wsl/wsl-project-registration'
+import { windowsFsPath } from '../../wsl/wsl-unc-drive-fs-path'
 
 const GIT_AVAILABILITY_TIMEOUT_MS = 1500
 
@@ -128,13 +129,15 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
         return { repo: result.repo }
       }
 
+      const targetFsPath = windowsFsPath(targetPath)
+
       // Accept empty preexisting folders without overwriting user files.
       let createdDir = false
       let targetExists = false
       try {
         // Fresh installs may lack the default project parent.
-        await mkdir(parentPath, { recursive: true })
-        await access(targetPath)
+        await mkdir(windowsFsPath(parentPath), { recursive: true })
+        await access(targetFsPath)
         targetExists = true
       } catch (err) {
         // Only ENOENT proves the target is free; uncoded errors retain message-based compatibility.
@@ -153,7 +156,7 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
 
       if (targetExists) {
         try {
-          const entries = await readdir(targetPath)
+          const entries = await readdir(targetFsPath)
           if (entries.length > 0) {
             return {
               error: `"${name}" already exists at this location and is not empty.`
@@ -165,7 +168,7 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
         }
       } else {
         try {
-          await mkdir(targetPath, { recursive: false })
+          await mkdir(targetFsPath, { recursive: false })
           createdDir = true
         } catch (err) {
           // A concurrent create may win mkdir; reuse its registration on EEXIST.
@@ -197,9 +200,9 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
         } catch (err) {
           // Rollback may remove only what this request created; preserve preexisting folders.
           if (createdDir) {
-            await rm(targetPath, { recursive: true, force: true }).catch(() => {})
+            await rm(targetFsPath, { recursive: true, force: true }).catch(() => {})
           } else if (step === 'commit') {
-            await rm(join(targetPath, '.git'), { recursive: true, force: true }).catch(() => {})
+            await rm(join(targetFsPath, '.git'), { recursive: true, force: true }).catch(() => {})
           }
           const message = err instanceof Error ? err.message : String(err)
           if (
