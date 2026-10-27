@@ -137,7 +137,8 @@ it('owns unknown text, images and files across screen teardown, retry and a late
     'complete prompt',
     ['file:///preview.png'],
     expect.any(Number),
-    [image, { kind: 'file', id: file.id, path: file.path }]
+    [image, { kind: 'file', id: file.id, path: file.path }],
+    []
   ])
   act(() => {
     full.drafts.setComposerText('newer typing')

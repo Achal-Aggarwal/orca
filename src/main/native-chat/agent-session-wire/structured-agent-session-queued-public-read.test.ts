@@ -21,22 +21,6 @@ import {
   projectQueuedMessageCards,
   queuedMessagesQueuePause
 } from '../../../shared/structured-agent-session-queued-cards'
-import type {
-  AgentSessionQueuedMessage,
-  AgentSessionQueuePause
-} from '../../../shared/agent-session-wire'
-
-// Execute the actual phone feed without introducing RN ambient types into the Node program.
-const { reduceMobileQueuedMessageFeed, reduceMobileQueuePause } = await vi.importActual<{
-  reduceMobileQueuedMessageFeed: (
-    previous: AgentSessionQueuedMessage[] | null,
-    event: AgentSessionSubscribeEvent
-  ) => AgentSessionQueuedMessage[] | null
-  reduceMobileQueuePause: (
-    previous: AgentSessionQueuePause | null,
-    event: AgentSessionSubscribeEvent
-  ) => AgentSessionQueuePause | null
-}>('../../../../mobile/src/session/mobile-structured-queued-message-feed')
 import {
   SESSION,
   db,
@@ -465,16 +449,12 @@ it('carries canonical derived and adopted recovery markers through real publicat
       type: 'history-page',
       page: { ...snapshot.page, queuedMessages: adopted, queuePause: publication.queuePause }
     })
-    let phone: AgentSessionQueuedMessage[] | null = null
-    let pause: AgentSessionQueuePause | null = null
+    // Desktop and phone now consume this same production reducer.
     for (const event of events) {
       desktop = reduceStructuredAgentSession(desktop, { type: 'event', event })
-      phone = reduceMobileQueuedMessageFeed(phone, event)
-      pause = reduceMobileQueuePause(pause, event)
     }
     expect(desktop.queuedMessages).toEqual(adopted)
-    expect(phone).toEqual(adopted)
-    expect(pause).toEqual(publication.queuePause)
+    expect(desktop.queuePause).toEqual(publication.queuePause)
     const projected = projectQueuedMessageCards(desktop.queuedMessages, desktop.submissions, {
       queuePaused: true
     })

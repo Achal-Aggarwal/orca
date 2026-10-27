@@ -59,7 +59,7 @@ const { buildMobileNativeChatTransientData } = await vi.importActual<{
 }>('../../../../../mobile/src/session/mobile-native-chat-render-data')
 const { isRenderableImageUri } = await vi.importActual<{
   isRenderableImageUri: (uri: string | undefined) => boolean
-}>('../../../../../mobile/src/session/mobile-native-chat-image-preview')
+}>('../../../../../mobile/src/session/native-chat/visual/mobile-native-chat-image-preview')
 
 const OLD = { ...STRUCTURED_MOBILE_CLIENT, clientId: 'old-phone', connectionId: 'old-phone' }
 const MODERN = {

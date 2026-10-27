@@ -445,7 +445,7 @@ describe('current recovery publication and normal Resume', () => {
         )
       )
       expect(hook!.queued.cards.map((c) => c.messageId)).toEqual(['W1', 'C', 'auth'])
-      expect(hook!.queued.cards[0]).toMatchObject({ paused: true, caption: 'Paused' })
+      expect(hook!.queued.cards[0]).toMatchObject({ hold: 'paused', caption: 'Paused' })
       await act(async () =>
         renderer!.update(
           createElement(Harness, {

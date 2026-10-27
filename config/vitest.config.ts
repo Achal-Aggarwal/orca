@@ -24,7 +24,7 @@ const phoneContractModules = [
   'mobile/src/session/mobile-native-chat-render-data.ts',
   'mobile/src/session/mobile-structured-queued-message-cards.ts',
   'mobile/src/session/mobile-agent-message-attribution.ts',
-  'mobile/src/session/mobile-native-chat-image-preview.ts',
+  'mobile/src/session/native-chat/visual/mobile-native-chat-image-preview.ts',
   'mobile/src/files/file-preview-reply-schema.ts',
   'mobile/src/transport/request-single-flight.ts',
   'mobile/src/transport/rpc-acceptance-policies.ts',
