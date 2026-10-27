@@ -20,7 +20,7 @@ import {
 import {
   projectQueuedMessageCards,
   queuedMessagesQueuePause
-} from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
+} from '../../../shared/structured-agent-session-queued-cards'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause

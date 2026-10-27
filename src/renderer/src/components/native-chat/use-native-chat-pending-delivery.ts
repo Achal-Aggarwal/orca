@@ -4,14 +4,16 @@ import { returnMessageToComposer } from './structured-agent-session-message-hand
 import { translate } from '@/i18n/i18n'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
-  appendPendingSendCache,
-  nextNativeChatPendingSendId,
   pendingSendsAsMessages,
   prunePendingSends,
-  readPendingSendCache,
   releaseEmptyTranscriptClaims,
-  writePendingSendCache,
   type NativeChatPendingSend
+} from '../../../../shared/native-chat-pending-sends'
+import {
+  appendPendingSendCache,
+  nextNativeChatPendingSendId,
+  readPendingSendCache,
+  writePendingSendCache
 } from './native-chat-pending'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { ReadState } from './native-chat-live-session-contract'

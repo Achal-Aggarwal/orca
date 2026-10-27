@@ -16,7 +16,7 @@ import {
   projectQueuedMessageCards,
   queuedMessageCardSteers,
   queuedMessagesQueuePause
-} from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
+} from '../../../shared/structured-agent-session-queued-cards'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   readQueuePublication,
