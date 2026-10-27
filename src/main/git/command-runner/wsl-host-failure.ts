@@ -1,7 +1,5 @@
+import { readWslHostDiagnostic, WSL_HOST_FAILURE_EXIT_CODE } from '../../wsl/wsl-process-failure'
 import type { ResolvedCommand } from './wsl-command-resolution'
-
-/** wsl.exe's own launch-failure exit, distinct from any status the guest process can return. */
-export const WSL_HOST_FAILURE_EXIT_CODE = 0xffffffff
 
 function outputText(value: unknown): string {
   if (typeof value === 'string') {
@@ -29,7 +27,7 @@ export function readWslHostFailureDiagnostic(
   if (exitCode !== WSL_HOST_FAILURE_EXIT_CODE || outputText(stderr).trim().length > 0) {
     return null
   }
-  const diagnostic = outputText(stdout).replaceAll('\u0000', '').trim()
+  const diagnostic = readWslHostDiagnostic(outputText(stdout))
   return diagnostic.length > 0 ? diagnostic : 'wsl.exe reported no diagnostic.'
 }
 
