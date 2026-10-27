@@ -3,6 +3,7 @@ import { publicRuntimeEnvironment } from '@/runtime/paired-runtime-environment-t
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createRef, type ReactNode } from 'react'
+import { useStore } from 'zustand'
 import { ConfirmationDialogContext } from '../confirmation-dialog-context'
 import { createTestStore, createBrowserMockApi } from '@/store/slices/browser-slice-test-harness'
 import type { AppState } from '@/store/types'
@@ -106,10 +107,12 @@ const environment = publicRuntimeEnvironment({
 })
 
 let api: ReturnType<typeof createBrowserMockApi>
-function surface(name: string) {
+function Surface({ name }: { name: string }) {
+  const hostId = useStore(store, (s) => s.browserSessionHostIdOverride ?? 'local')
   if (name === 'row') {
     return (
       <BrowserProfileRow
+        hostId={hostId}
         profile={profile}
         detectedBrowsers={[browser]}
         importState={null}
@@ -121,6 +124,7 @@ function surface(name: string) {
   if (name === 'setup') {
     return (
       <BrowserUseCookieImportStep
+        hostId={hostId}
         cookiesImported={false}
         isImportingDefault={false}
         sourceLabel={null}
@@ -222,7 +226,7 @@ it.each(
     const imported = Promise.withResolvers<BrowserCookieImportResult>()
     api.browser.sessionImportFromBrowser.mockReturnValue(imported.promise)
     api.browser.sessionImportCookies.mockReturnValue(imported.promise)
-    mount(surface(name))
+    mount(<Surface name={name} />)
     await openImport(name)
     expect(screen.getByText("Google logins aren't imported")).toBeTruthy()
     expect(screen.getByText('Sign in to Google directly in Orca.')).toBeTruthy()
@@ -261,7 +265,7 @@ it.each(
 )
 
 it('canceled file import produces no warning', async () => {
-  mount(surface('row'))
+  mount(<Surface name="row" />)
   await openImport('row')
   api.browser.sessionImportCookies.mockResolvedValue({ ok: false, reason: 'canceled' })
   fireEvent.click(screen.getByText('From File…'))
@@ -290,9 +294,9 @@ it.each([10, 100])(
       <>
         {Array.from({ length: count }, (_, i) => (
           <div key={i}>
-            {surface('row')}
-            {surface('hint')}
-            {surface('toolbar')}
+            <Surface name="row" />
+            <Surface name="hint" />
+            <Surface name="toolbar" />
           </div>
         ))}
       </>
@@ -365,7 +369,7 @@ it.each(['warning', 'menu', 'confirmation'])(
         return response
       }
     )
-    mount(surface('row'))
+    mount(<Surface name="row" />)
     await openImport('row')
     fireEvent.click(screen.getByText('From Google Chrome'))
     await waitFor(() => expect(mocks.warning).toHaveBeenCalled())
@@ -500,7 +504,7 @@ it.each(['same host', 'changed host', 'changed pairing'])(
     const overlay = Promise.withResolvers<Record<string, never>>()
     const overlayReader = vi.fn().mockReturnValueOnce(overlay.promise).mockResolvedValue({})
     Object.assign(api.browser, { sessionClientRouteImportSources: overlayReader })
-    mount(surface('row'))
+    mount(<Surface name="row" />)
     await openImport('row')
     await waitFor(() => expect(overlayReader).toHaveBeenCalledTimes(1))
     await act(async () => {

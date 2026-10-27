@@ -1,4 +1,5 @@
 import { useGoogleCookieClear } from '@/components/use-google-cookie-clear'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { Import, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { emitBrowserCookieImportToast } from '@/lib/browser-cookie-import-toast'
@@ -23,6 +24,7 @@ import { getBrowserUsePaneSearchEntries } from './browser-use-search'
 import { translate } from '@/i18n/i18n'
 
 type BrowserUseCookieImportStepProps = {
+  hostId: ExecutionHostId
   cookiesImported: boolean
   isImportingDefault: boolean
   sourceLabel: string | null
@@ -30,6 +32,7 @@ type BrowserUseCookieImportStepProps = {
 }
 
 export function BrowserUseCookieImportStep({
+  hostId,
   cookiesImported,
   isImportingDefault,
   sourceLabel,
@@ -37,7 +40,7 @@ export function BrowserUseCookieImportStep({
 }: BrowserUseCookieImportStepProps): React.JSX.Element {
   const detectedBrowsers = useAppStore((s) => s.detectedBrowsers)
   const fetchDetectedBrowsers = useAppStore((s) => s.fetchDetectedBrowsers)
-  const googleCookieClear = useGoogleCookieClear('default', undefined)
+  const googleCookieClear = useGoogleCookieClear(hostId, 'default')
 
   const handleImportFromBrowser = async (
     browserFamily: string,

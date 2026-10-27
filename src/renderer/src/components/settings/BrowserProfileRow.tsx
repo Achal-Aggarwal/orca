@@ -1,4 +1,5 @@
 import { useGoogleCookieClear } from '@/components/use-google-cookie-clear'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { Import, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { emitBrowserCookieImportToast } from '@/lib/browser-cookie-import-toast'
@@ -32,6 +33,7 @@ type DetectedBrowser = {
 }
 
 export type BrowserProfileRowProps = {
+  hostId: ExecutionHostId
   profile: BrowserSessionProfile
   detectedBrowsers: DetectedBrowser[]
   importState: {
@@ -46,6 +48,7 @@ export type BrowserProfileRowProps = {
 }
 
 export function BrowserProfileRow({
+  hostId,
   profile,
   detectedBrowsers,
   importState,
@@ -55,7 +58,7 @@ export function BrowserProfileRow({
 }: BrowserProfileRowProps): React.JSX.Element {
   const isImporting = importState?.profileId === profile.id && importState.status === 'importing'
   const fetchDetectedBrowsers = useAppStore((s) => s.fetchDetectedBrowsers)
-  const googleCookieClear = useGoogleCookieClear(profile.id, profile.label)
+  const googleCookieClear = useGoogleCookieClear(hostId, profile.id, profile.label)
 
   const handleImportFromBrowser = async (
     browserFamily: string,

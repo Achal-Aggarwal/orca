@@ -7,10 +7,7 @@ import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../../shared/browser-
 import type { ConfirmationDialogContextValue } from '@/components/confirmation-dialog-context'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
-import {
-  getBrowserSettingsHostId,
-  getBrowserSettingsRuntimeEnvironmentId
-} from '@/store/slices/browser/browser-host-state'
+import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import type { BrowserCookieImportExecutionResult } from '@/store/slices/browser/browser-slice-contract'
 
@@ -36,13 +33,14 @@ export function remoteGoogleCookieClearAvailable(
 }
 
 export async function captureGoogleCookieClearTarget(
+  hostId: ExecutionHostId,
   profileId: string,
   label: string | undefined,
   remote: boolean
 ) {
   const state = useAppStore.getState()
-  const hostId = getBrowserSettingsHostId(state)
-  const environmentId = getBrowserSettingsRuntimeEnvironmentId(state)
+  const parsedHost = parseExecutionHostId(hostId)
+  const environmentId = parsedHost?.kind === 'runtime' ? parsedHost.environmentId : null
   const local = await window.api.browser.sessionGoogleCookieClearTarget({
     profileId,
     environmentId

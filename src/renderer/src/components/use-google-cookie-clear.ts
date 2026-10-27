@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
-import {
-  getBrowserSettingsHostId,
-  getBrowserSettingsRuntimeEnvironmentId
-} from '@/store/slices/browser/browser-host-state'
+import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { BrowserCookieImportExecutionResult } from '@/store/slices/browser/browser-slice-contract'
 import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../../shared/browser-runtime-capabilities'
 import { useConfirmationDialog } from './confirmation-dialog-context'
@@ -41,11 +38,11 @@ export function useGoogleCookieClearRunner() {
   }
 }
 
-export function useGoogleCookieClear(profileId: string, label?: string) {
+export function useGoogleCookieClear(hostId: ExecutionHostId, profileId: string, label?: string) {
   const runner = useGoogleCookieClearRunner()
   const { offer } = runner
-  const hostId = useAppStore(getBrowserSettingsHostId)
-  const environmentId = useAppStore(getBrowserSettingsRuntimeEnvironmentId)
+  const parsedHost = parseExecutionHostId(hostId)
+  const environmentId = parsedHost?.kind === 'runtime' ? parsedHost.environmentId : null
   const revision = useAppStore((s) => {
     const environment = s.runtimeEnvironments.find((entry) => entry.id === environmentId)
     return environment?.pairingRevision ?? environment?.createdAt
@@ -66,7 +63,7 @@ export function useGoogleCookieClear(profileId: string, label?: string) {
     const capturedGeneration = generation
     const current = ++capturedGeneration.current
     setChecking(true)
-    void captureGoogleCookieClearTarget(profileId, label, open)
+    void captureGoogleCookieClearTarget(hostId, profileId, label, open)
       .catch(() => ({ available: false }))
       .then((next) => {
         if (generation.current !== current) {

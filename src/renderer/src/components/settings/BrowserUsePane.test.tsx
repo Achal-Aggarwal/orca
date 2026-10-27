@@ -58,13 +58,13 @@ afterEach(() => {
 
 it('shows cookie import as available before skill setup and disables it during import', () => {
   localStorage.setItem(BROWSER_USE_ENABLED_STORAGE_KEY, '1')
-  const { rerender } = render(<BrowserUseSetup />)
+  const { rerender } = render(<BrowserUseSetup hostId="local" />)
   const importButton = screen.getByRole('button', { name: 'Import' })
 
   expect(importButton.hasAttribute('disabled')).toBe(false)
   expect(importButton.closest('.opacity-60')).toBeNull()
 
   state.browserSessionImportState = { profileId: 'default', status: 'importing' }
-  rerender(<BrowserUseSetup />)
+  rerender(<BrowserUseSetup hostId="local" />)
   expect(screen.getByRole('button', { name: 'Import' }).hasAttribute('disabled')).toBe(true)
 })

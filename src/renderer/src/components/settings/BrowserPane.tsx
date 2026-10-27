@@ -220,6 +220,7 @@ export function BrowserPane({
     <div ref={setBrowserPaneRootNode} className="space-y-6">
       {showBrowserUse ? (
         <BrowserUseSetup
+          hostId={selectedBrowserSessionHostId}
           onConfigureMoreBrowsers={scrollToSessionCookies}
           onOpenComputerUse={onOpenComputerUse}
         />
