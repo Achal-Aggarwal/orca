@@ -47,7 +47,20 @@ vi.mock('electron', () => ({
   session: { fromPartition: vi.fn() }
 }))
 import { session } from 'electron'
-import { browserProfileRpcFixture } from '../../../../main/runtime/browser/browser-profile-rpc-test-fixture'
+import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
+
+type ProfileDispatcher = {
+  dispatch(request: {
+    id: string
+    authToken: string
+    method: string
+    params?: Record<string, unknown>
+  }): Promise<RuntimeRpcResponse<unknown>>
+}
+const { browserProfileRpcFixture } = await vi.importActual<{
+  browserProfileRpcFixture(executorRuntimeId: string): { dispatcher: ProfileDispatcher }
+}>('../../../../main/runtime/browser/browser-profile-rpc-test-fixture')
+
 import { BrowserProfileRow } from './BrowserProfileRow'
 import { BrowserUseCookieImportStep } from './BrowserUseCookieImportStep'
 import { BrowserImportHintButton } from '../browser-pane/assemble-chrome/BrowserImportHintButton'
@@ -317,7 +330,9 @@ it.each(['warning', 'menu', 'confirmation'])(
     let executor = browserProfileRpcFixture('B').dispatcher
     let rows = [{ name: 'SID', domain: '.google.com', path: '/', secure: true }]
     const cookies = {
-      get: vi.fn(async () => rows),
+      get: vi.fn(async () =>
+        rows.map((row) => ({ ...row, value: 'live', sameSite: 'unspecified' as const }))
+      ),
       remove: vi.fn(async () => {
         rows = []
       })
@@ -370,6 +385,14 @@ it.each(['warning', 'menu', 'confirmation'])(
       })
     )
     const oldWarning = warningAction()
+    if (held === 'warning') {
+      act(() => oldWarning())
+      await waitFor(() => expect(cookies.get).toHaveBeenCalledTimes(2))
+      expect(cookies.remove).toHaveBeenCalledTimes(1)
+      rows = [{ name: 'SID', domain: '.google.com', path: '/', secure: true }]
+      cookies.remove.mockClear()
+      api.runtimeEnvironments.call.mockClear()
+    }
     const confirmation = Promise.withResolvers<boolean>()
     if (held === 'menu') {
       await openImport('row')

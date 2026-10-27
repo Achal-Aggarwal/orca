@@ -1,12 +1,33 @@
 import type * as ClientHostRuntime from './paired-runtime-browser-client-host-runtime'
-import { publicRuntimeEnvironment } from '../../renderer/src/runtime/paired-runtime-environment-test-fixture'
+import type { PublicKnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import { z } from 'zod'
-import type { GoogleCookieClearLocalTarget } from '../../shared/browser-google-cookie-clear'
+import type {
+  GoogleCookieClearLocalTarget,
+  GoogleCookieClearTarget
+} from '../../shared/browser-google-cookie-clear'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { BrowserSessionProfile } from '../../shared/browser-workspace-types'
+import type {
+  BrowserCookieImportResult,
+  BrowserCookieImportSummary,
+  BrowserSessionProfile
+} from '../../shared/browser-workspace-types'
+
+type ImportExecution = BrowserCookieImportResult & {
+  executionHostLabel: string
+  executionMachine: 'client' | 'remote'
+  executionRemoteEnvironment: boolean
+}
+type ClearOffer = { executionMachine: 'client' | 'remote'; onClick(): void }
+type BrowserTestStore = {
+  setState(state: Record<string, unknown>): void
+  getState(): {
+    importCookiesFromBrowser(profileId: string, browserFamily: string): Promise<ImportExecution>
+  }
+}
+let importStore: BrowserTestStore
 
 const mocks = vi.hoisted(() => ({
   root: '',
@@ -16,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   import: vi.fn(),
   detect: vi.fn(),
   pick: vi.fn(),
+  warning: vi.fn(),
   handlers: new Map<string, (event: { sender: unknown }, args: unknown) => unknown>()
 }))
 vi.mock('electron', () => ({
@@ -42,6 +64,10 @@ vi.mock('./browser-manager', () => ({ browserManager: {} }))
 vi.mock('./client-route-cookie-import-source-store', () => ({
   recordClientRouteCookieImportSource: vi.fn()
 }))
+vi.mock('@/store', () => ({ useAppStore: { getState: () => importStore.getState() } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: mocks.warning }
+}))
 import { browserSessionRegistry } from './browser-session-registry'
 vi.mock('./paired-runtime-browser-client-host-registry', () => ({
   PairedRuntimeBrowserClientHostRegistry: class {
@@ -50,6 +76,35 @@ vi.mock('./paired-runtime-browser-client-host-registry', () => ({
     retireEnvironment = async () => true
   }
 }))
+const { publicRuntimeEnvironment } = await vi.importActual<{
+  publicRuntimeEnvironment(
+    fields: Pick<PublicKnownRuntimeEnvironment, 'id'> & Partial<PublicKnownRuntimeEnvironment>
+  ): PublicKnownRuntimeEnvironment
+}>('../../renderer/src/runtime/paired-runtime-environment-test-fixture')
+const runtime = await vi.importActual<typeof ClientHostRuntime>(
+  './paired-runtime-browser-client-host-runtime'
+)
+
+const { createTestStore } = await vi.importActual<{
+  createTestStore(): BrowserTestStore
+}>('../../renderer/src/store/slices/browser-slice-test-harness')
+const { googleCookieClearImportTarget, offerGoogleCookieClear } = await vi.importActual<{
+  googleCookieClearImportTarget(result: ImportExecution): GoogleCookieClearTarget | undefined
+  offerGoogleCookieClear(
+    target: GoogleCookieClearTarget | undefined,
+    confirm: () => Promise<boolean>,
+    run: (action: () => Promise<void>) => void
+  ): ClearOffer | undefined
+}>('../../renderer/src/lib/browser-google-cookie-clear')
+const { emitBrowserCookieImportToast } = await vi.importActual<{
+  emitBrowserCookieImportToast(
+    summary: BrowserCookieImportSummary,
+    message: string,
+    execution: ImportExecution,
+    offer?: ClearOffer
+  ): void
+}>('../../renderer/src/lib/browser-cookie-import-toast')
+
 import { registerBrowserHandlers } from '../ipc/browser'
 import { setTrustedBrowserRendererWebContentsId } from '../ipc/browser-renderer-trust'
 import {
@@ -112,7 +167,9 @@ function jar(count = 1) {
     { name: 'other', domain: 'example.com', path: '/', secure: true }
   ]
   const cookies = {
-    get: vi.fn(async () => rows),
+    get: vi.fn(async () =>
+      rows.map((row) => ({ ...row, value: 'live', sameSite: 'unspecified' as const }))
+    ),
     remove: vi.fn(async (_url: string, name: string) => {
       rows = rows.filter((row) => row.name !== name)
     })
@@ -145,6 +202,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   rmSync(mocks.root, { recursive: true, force: true })
 })
 
@@ -222,7 +280,7 @@ it.each([
     const session = jar(count)
     session.cookies.get.mockResolvedValueOnce([
       ...(await session.cookies.get()),
-      { name: 'SID0', domain: '.google.com', path: '/', secure: true }
+      ...(await session.cookies.get()).filter((row) => row.name === 'SID0')
     ])
     session.cookies.get.mockClear()
     const decoy = jar()
@@ -267,9 +325,10 @@ it.each(['between selectors', 'queued profile'])(
 )
 
 import { browserProfileRpcFixture } from '../runtime/browser/browser-profile-rpc-test-fixture'
+import { RuntimeBrowserProfiles } from '../runtime/browser/browser-profiles'
 it('validates required executor params at the dispatcher before owner entry', async () => {
-  const { profiles: first, dispatcher } = browserProfileRpcFixture('S1')
-  const clear = vi.spyOn(first, 'browserProfileClearGoogleCookies')
+  const clear = vi.spyOn(RuntimeBrowserProfiles.prototype, 'browserProfileClearGoogleCookies')
+  const { dispatcher } = browserProfileRpcFixture('S1')
   expect(
     await dispatcher.dispatch({
       id: 'clear',
@@ -279,9 +338,15 @@ it('validates required executor params at the dispatcher before owner entry', as
     })
   ).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
   expect(clear).not.toHaveBeenCalled()
-  await expect(
-    first.browserProfileClearGoogleCookies({ profileId: 'absent', executorRuntimeId: 'S1' })
-  ).rejects.toThrow('not found')
+  expect(
+    await dispatcher.dispatch({
+      id: 'valid-clear',
+      authToken: 'fixture',
+      method: 'browser.profileClearGoogleCookies',
+      params: { profileId: 'absent', executorRuntimeId: 'S1' }
+    })
+  ).toMatchObject({ ok: false, error: { message: expect.stringContaining('not found') } })
+  expect(clear).toHaveBeenCalledTimes(1)
 })
 
 it.each(['reject after delete', 'first read', 'last read'])(
@@ -327,9 +392,6 @@ it('retains actual local/file/client import destinations, source-only replacemen
     })
     expect(mocks.import.mock.calls.at(-1)?.[1]).toBe(selected.partition)
   }
-  const runtime = await vi.importActual<typeof ClientHostRuntime>(
-    './paired-runtime-browser-client-host-runtime'
-  )
   runtime.configurePairedRuntimeBrowserClientHostsForOrcaProfile({ orcaProfileId: 'orca' })
   await runtime.startPairedRuntimeBrowserClientHost({
     authorityRuntimeId: 'D',
@@ -348,10 +410,39 @@ it('retains actual local/file/client import destinations, source-only replacemen
     }
   })
   mocks.route.mockImplementation(runtime.getPairedRuntimeBrowserClientRouteIdentity)
-  const result = await importCookiesIntoClientRoutePartition({
-    ...request,
-    browserProfileId: 'default'
+  const remoteCall = vi.fn()
+  const localClear = vi.fn(async (args: unknown) => call('clearGoogleCookies', args))
+  vi.stubGlobal('window', {
+    api: {
+      browser: {
+        sessionImportFromBrowserForClientHost: (args: unknown) =>
+          call('importFromBrowserForClientHost', args),
+        sessionClearGoogleCookies: localClear
+      },
+      runtimeEnvironments: { call: remoteCall }
+    }
   })
+  importStore = createTestStore()
+  importStore.setState({
+    browserSessionHostIdOverride: 'runtime:server',
+    runtimeEnvironments: [publicRuntimeEnvironment({ id: 'server' })],
+    runtimeStatusByEnvironmentId: new Map([
+      ['server', { checkedAt: 1, status: { capabilities: [] } }]
+    ]),
+    fetchBrowserSessionProfiles: vi.fn(async () => {})
+  })
+  mocks.import.mockResolvedValue({
+    ok: true,
+    summary: {
+      totalCookies: 1,
+      importedCookies: 0,
+      skippedCookies: 1,
+      googleCookiesSkipped: 1,
+      domains: []
+    }
+  })
+  const result = await importStore.getState().importCookiesFromBrowser('default', 'chrome')
+  expect(result).toMatchObject({ ok: true, executionMachine: 'client' })
   const target = targetSchema.parse(result?.ok ? result.googleCookieClearTarget?.local : null)
   expect(target.partition).toBe(mocks.import.mock.calls.at(-1)?.[1])
   const session = jar(2)
@@ -362,7 +453,26 @@ it('retains actual local/file/client import destinations, source-only replacemen
       importedAt: 1
     })
   })
-  expect(await call('clearGoogleCookies', target)).toBe('remaining')
+  expect(target).toMatchObject({ environmentId: 'server', routeIdentity: expect.any(String) })
+  const captured = googleCookieClearImportTarget(result)
+  expect(captured).toEqual(result.ok ? result.googleCookieClearTarget : undefined)
+  const confirm = vi.fn(async () => true)
+  let execution: Promise<void> | undefined
+  const offer = offerGoogleCookieClear(captured, confirm, (action) => {
+    execution = action()
+  })
+  if (!result.ok) {
+    throw new Error('client import failed')
+  }
+  emitBrowserCookieImportToast(result.summary, 'Imported', result, offer)
+  const warning = mocks.warning.mock.calls.at(-1)?.[1]
+  expect(warning?.action.label).toBe('Clear Google cookies…')
+  warning.action.onClick()
+  await execution
+  expect(confirm).toHaveBeenCalledTimes(1)
+  expect(localClear).toHaveBeenCalledWith(target)
+  expect(await localClear.mock.results[0]?.value).toBe('remaining')
+  expect(remoteCall).not.toHaveBeenCalled()
   expect(session.cookies.remove).toHaveBeenCalledTimes(2)
   expect(browserSessionRegistry.getProfile('default')).not.toBe(selected)
   const release = await acquireCookieMutationLock(session)

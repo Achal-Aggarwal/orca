@@ -79,6 +79,7 @@ export function createBrowserProfileListActions(
       } catch {
         /* best-effort — stale profile list is preferable to a crash */
       }
+      return undefined
     },
 
     createBrowserSessionProfile: async (scope, label) => {

@@ -59,6 +59,8 @@ vi.mock('../browser/cookies/browser-cookie-import', () => ({
 import { browserSessionRegistry } from '../browser/browser-session-registry'
 import { browserProfileRpcFixture } from '../runtime/browser/browser-profile-rpc-test-fixture'
 
+const actual = await vi.importActual<typeof OrcadBrowserProviderModule>('./orcad-browser-provider')
+
 const FAKE_SIDECAR = join(import.meta.dirname, '__fixtures__', 'fake-orcad-electron-sidecar.cjs')
 const INSTALLED_EXECUTABLE = join('/Applications', 'Orca.app', 'Contents', 'MacOS', 'Orca')
 
@@ -521,9 +523,6 @@ it('forwards tab commands through startup to the Electron sidecar', async () => 
 it.each([false, true])(
   'installs the actual provider with executor support=%s and forwards owner stamps unchanged',
   async (supported) => {
-    const actual = await vi.importActual<typeof OrcadBrowserProviderModule>(
-      './orcad-browser-provider'
-    )
     browserSessionRegistry.configureForOrcaProfile({
       orcaProfileId: 'fixture',
       profileDirectory: harnessRoot

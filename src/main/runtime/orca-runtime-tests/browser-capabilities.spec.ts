@@ -44,9 +44,8 @@ describe('OrcaRuntimeService', () => {
         supportsGoogleCookieClear: supported === undefined ? undefined : () => supported
       })
       const runtime = createRuntime()
-      expect(runtime.getStatus().capabilities.includes('browser.google-cookie-clear.v1')).toBe(
-        supported === true
-      )
+      const capabilities = runtime.getStatus().capabilities ?? []
+      expect(capabilities.includes('browser.google-cookie-clear.v1')).toBe(supported === true)
       available = false
       expect(runtime.getStatus().capabilities).not.toContain('browser.google-cookie-clear.v1')
       expect(runtimeAdvertisesBrowserClientHosting(runtime.getStatus().capabilities)).toBe(true)

@@ -16,7 +16,7 @@ export function browserProfileRpcFixture(executorRuntimeId: string, outerRuntime
       getBrowserHostLeaseRegistry: unavailable
     },
     { requireAgentBrowserBridge: unavailable, resolveBrowserCommandTarget: async () => ({}) },
-    { describeBrowserTab: unavailable, resolveClientHostedBrowserPage: async () => null }
+    { describeBrowserTab: unavailable, resolveClientHostedBrowserPage: async () => undefined }
   )
   const runtime = {
     getRuntimeId: () => outerRuntimeId,
