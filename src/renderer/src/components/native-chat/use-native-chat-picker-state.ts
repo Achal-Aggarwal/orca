@@ -16,9 +16,11 @@ import {
 } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-profiles'
-import type {
-  NativeChatSessionSkill,
-  SlashCommandSuggestion
+import {
+  classifyNativeChatSend,
+  type NativeChatSendClassification,
+  type NativeChatSessionSkill,
+  type SlashCommandSuggestion
 } from '../../../../shared/native-chat/input/native-chat-slash-commands'
 import { isStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import {
@@ -30,11 +32,9 @@ import {
 } from './native-chat-composer-state'
 import { applyPickerSuggestion } from '../../../../shared/native-chat/input/native-chat-picker-triggers'
 import {
-  classifyNativeChatSend,
-  type NativeChatSendClassification
-} from '../../../../shared/native-chat/input/native-chat-slash-commands'
-import type { NativeChatPickerItem } from '../../../../shared/native-chat/input/native-chat-picker-items'
-import { classifyPickerCommands } from '../../../../shared/native-chat/input/native-chat-picker-items'
+  classifyPickerCommands,
+  type NativeChatPickerItem
+} from '../../../../shared/native-chat/input/native-chat-picker-items'
 import { useNativeChatSkills } from './use-native-chat-skills'
 import {
   emitNativeChatPickerItemAccepted,

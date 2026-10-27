@@ -12,10 +12,10 @@ import {
   filterSlashCommands,
   isSlashCommandDraft,
   slashCommandDispatchText,
+  sessionSlashCommandSuggestions,
   type SlashCommandSuggestion
 } from '../../../../shared/native-chat/input/native-chat-slash-commands'
 import { buildNativeChatPickerItems } from '../../../../shared/native-chat/input/native-chat-picker-items'
-import { sessionSlashCommandSuggestions } from '../../../../shared/native-chat/input/native-chat-slash-commands'
 import type { DiscoveredSkill } from '../../../../shared/skills'
 import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-profiles'
 import { pickedSkillsInText } from '../../../../shared/structured-agent-session-send-mutation'
