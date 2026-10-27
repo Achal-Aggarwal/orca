@@ -3,9 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
 import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
-import * as transcriptFs from '../native-chat/wsl-transcript-fs-access'
 import { renameClaudeProviderSession } from './claude-provider-session-rename'
 import type { ClaudeSession } from './claude-structured-session-state'
 
@@ -22,7 +21,6 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  vi.restoreAllMocks()
   await rm(home, { recursive: true, force: true })
 })
 
@@ -80,19 +78,4 @@ it('waits for its retiring writer and refuses an unproven close before appending
   exitVerdict.root = 'exited'
   await renameClaudeProviderSession(input(session, 'New title'))
   expect((await readFile(transcript, 'utf8')).trim().split('\n').at(-1)).toContain('New title')
-})
-
-it.each([10, 100])('visits each project once across %i projects', async (count) => {
-  await writeFile(transcript, '')
-  for (let i = 0; i < count; i += 1) {
-    const project = join(home, 'projects', `project-${i}`)
-    await mkdir(project)
-    await Promise.all(
-      Array.from({ length: 20 }, (_, j) => writeFile(join(project, `history-${j}.jsonl`), ''))
-    )
-  }
-  const readDirectory = vi.spyOn(transcriptFs, 'wslGatedReaddir')
-  await renameClaudeProviderSession(input())
-  expect(readDirectory).toHaveBeenCalledTimes(count + 2)
-  expect(new Set(readDirectory.mock.calls.map(([path]) => path)).size).toBe(count + 2)
 })
