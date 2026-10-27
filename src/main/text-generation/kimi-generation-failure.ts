@@ -1,6 +1,25 @@
 import { stripAnsiControlSequences } from '../../shared/commit-message-agent-output'
 import { withMacTailscaleDnsHint } from '../network/macos-tailscale-dns-diagnostic'
 
+function isKimiOptionError(line: string): boolean {
+  const prefix = "error: option '"
+  if (!line.startsWith(prefix) || /[\r\n\u2028\u2029]/.test(line)) {
+    return false
+  }
+  const argument = line.indexOf("' argument '", prefix.length + 1)
+  const reason =
+    argument === -1 ? -1 : line.indexOf("' is invalid. ", argument + "' argument '".length + 1)
+  const conflict = line.indexOf("' cannot be used with option '", prefix.length + 1)
+  return (
+    (line.endsWith("' argument missing") &&
+      line.length > prefix.length + "' argument missing".length) ||
+    (reason !== -1 && reason + "' is invalid. ".length < line.length) ||
+    (conflict !== -1 &&
+      line.endsWith("'") &&
+      conflict + "' cannot be used with option '".length < line.length - 1)
+  )
+}
+
 export function formatKimiGenerationFailure(
   declared: string | null,
   stderr: string,
@@ -35,9 +54,7 @@ function stderrDiagnosis(stderr: string): string | null {
       return 'Kimi received conflicting or repeated agent options. Keep a single --agent or --agent-file option in the generation recipe or CLI arguments, then retry.'
     }
     if (
-      /^error: option '.+' (?:argument missing|argument '.+' is invalid\. .+|cannot be used with option '.+')$/.test(
-        line
-      ) ||
+      isKimiOptionError(line) ||
       /^error: unknown option '.+'$/.test(line) ||
       /^unknown command '.+'\. See 'kimi --help'\.$/.test(line)
     ) {

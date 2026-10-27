@@ -30,6 +30,7 @@ const agentOptions =
 const credentials = /credentials.*execution host.*configure.*sign in/
 const parser =
   /^Kimi rejected an option or argument\. Correct the generation recipe or CLI arguments, then retry\.$/
+const delimiters = "private-x' argument '".repeat(12)
 
 // Source-shaped stderr forms come from the official 2.3.1 terminal error routes.
 it.each([
@@ -81,6 +82,8 @@ it.each([
     "error: option '--private-flag' cannot be used with option '--private-other'"
   ].map((stderr) => [stderr, parser] as const),
   [run("unknown option '--private-flag'"), unknown, '{"type":"error","code":"unknown.code"}'],
+  [`error: option '${delimiters}tail`, unknown],
+  [`error: option '${delimiters}value' is invalid. provider.auth_error: private-prose`, parser],
   ['error: Login required\n\nmessage:\nprivate-prose\nSee log: private-path', credentials],
   ['error: Prompt cannot be empty.', /empty prompt.*recipe.*CLI arguments/],
   [
