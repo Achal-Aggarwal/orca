@@ -68,6 +68,24 @@ async function stoppedDraft(): Promise<string> {
   return draftId
 }
 
+function expectOriginalRecovery(id: string): void {
+  const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+  const body = hostTestMessage('work on this')
+  expect(journal.submissionBody(id)).toEqual(body)
+  expect(journal.queuedMessages.get(`recovery:${id}`)).toMatchObject({
+    recovers: id,
+    body,
+    options: {},
+    state: 'returned'
+  })
+  expect(journal.submissions().find((send) => send.clientMessageId === id)).toMatchObject({
+    dispatchState: 'unknown',
+    providerItemId: null,
+    options: {}
+  })
+  expect(rig.dispatch.mock.calls.filter(([send]) => send.clientMessageId === id)).toHaveLength(1)
+}
+
 function laneDrained(): Promise<void> {
   return rig.host.collaboratorsForTests().serialize(HOST_TEST_SESSION, async () => {})
 }
@@ -125,7 +143,7 @@ describe("a Stop's queue pause", () => {
   })
 
   it("a draft typed after the Stop waits with the rest: the pause is the queue's", async () => {
-    await rig.workingSend()
+    const working = await rig.workingSend()
     const olderId = await queuedDraft('paused by the stop')
     await rig.stop()
     await laneDrained()
@@ -134,7 +152,9 @@ describe("a Stop's queue pause", () => {
     const typedId = await queuedDraft('typed while that send waits')
     await rig.settleRejected(refused, 'turn/start refused')
     await expectPaused(olderId, typedId)
+    expectOriginalRecovery(working)
     expect(await rig.drafts()).toEqual([
+      { messageId: `recovery:${working}`, state: 'returned' },
       { messageId: olderId, state: 'waiting' },
       { messageId: typedId, state: 'waiting' }
     ])
@@ -232,12 +252,13 @@ describe('a card queued after a Stop is a new instruction', () => {
   installRigLifecycleHooks()
 
   it('a correction typed after a Stop over an empty queue goes straight to the next agent', async () => {
-    await rig.workingSend()
+    const working = await rig.workingSend()
     await rig.stop()
 
     const correction = await rig.send('typed right after the stop', 'queue-if-active').result
     expect(correction).toMatchObject({ ok: true, value: { submission: { fence: 2 } } })
-    expect(await rig.drafts()).toEqual([])
+    expect(await rig.drafts()).toEqual([{ messageId: `recovery:${working}`, state: 'returned' }])
+    expectOriginalRecovery(working)
     expect(await rig.queuePause()).toBeNull()
   })
 
@@ -439,7 +460,7 @@ describe('Resume', () => {
   })
 
   it('is idempotent: a replay of the same Resume answers without lifting a later pause', async () => {
-    await rig.workingSend()
+    const working = await rig.workingSend()
     const draftId = await queuedDraft('paused twice')
     await rig.stop()
     const operationId = hostTestOperationId()
@@ -451,7 +472,10 @@ describe('Resume', () => {
     release()
     await stopping
     await eventually(async () =>
-      expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+      expect(await rig.drafts()).toEqual([
+        { messageId: `recovery:${working}`, state: 'returned' },
+        { messageId: draftId, state: 'waiting' }
+      ])
     )
     const withdrawn = await rig.handoffId(draftId)
     expect(await rig.resume(operationId)).toMatchObject({
@@ -462,6 +486,7 @@ describe('Resume', () => {
     await observationClock.observe(250)
     expect(await rig.handoffId(draftId)).toBe(withdrawn)
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expectOriginalRecovery(working)
   })
 
   it("of a Stop from before a restart, which no client offers there, also lifts the restart's pause", async () => {
