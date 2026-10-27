@@ -38,11 +38,11 @@ describe('real foreground process captures', () => {
 })
 
 it('keeps a stopped real Codex subtree distinct from foreground routing after Ctrl-Z', () => {
-  const captures = JSON.parse(
+  const captures: CapturedRun[] = JSON.parse(
     gunzipSync(readFileSync(join(__dirname, '__fixtures__', 'real-agent-rows.json.gz'))).toString(
       'utf8'
     )
-  ) as CapturedRun[]
+  )
   const capture = captures.find((run) => run.agent === 'codex')!
   const stopped = capture.rows.map((row) =>
     row.pid === capture.shellPid

@@ -148,8 +148,10 @@ export function createTabsLabelActions(set: TabsSliceSet, get: TabsSliceGet): Ta
 
   return {
     reorderUnifiedTabs: (groupId, tabIds, opts) => {
-      for (const tabId of tabIds) {
-        noteSwitchPresentationUse(tabId)
+      if (opts?.recordInteraction !== false) {
+        for (const tabId of tabIds) {
+          noteSwitchPresentationUse(tabId)
+        }
       }
       let reordered = false
       const changes: { worktreeId: string; from: string[]; to: string[] }[] = []

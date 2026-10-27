@@ -17,7 +17,10 @@ import {
 } from '../agent-session-journal/journal-legacy-import'
 import type { JournalReplacementItem } from '../agent-session-journal/journal-epoch-replacement'
 import { splitTranscriptStreamLines } from '../transcript-stream-lines'
-import { decodeCodexTranscriptLine } from '../transcript-line-decoders-codex'
+import {
+  decodeCodexTranscriptLine,
+  isCodexVisibleHistoryRecord
+} from '../transcript-line-decoders-codex'
 import { decodeCodexTurnLifecycle } from '../transcript-turn-lifecycle'
 
 /** Refresh a retained read owner without starting a provider or replacing native submissions. */
@@ -114,11 +117,7 @@ export async function catchUpStructuredSessionAtRest(input: {
       include = false
       continue
     }
-    if (
-      paginated &&
-      (record?.type === 'response_item' ||
-        (record?.type === 'event_msg' && payload?.type !== 'item_completed'))
-    ) {
+    if (!isCodexVisibleHistoryRecord(record, paginated)) {
       continue
     }
     const message = decodeCodexTranscriptLine(line, `#${index - 1}`)

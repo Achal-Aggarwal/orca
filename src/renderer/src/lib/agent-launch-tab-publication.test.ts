@@ -6,7 +6,8 @@ import {
   forgetAgentLaunchPaneAttempts
 } from './agent-launch-pane-start'
 import { applyAgentLaunchPaneVerdict } from './agent-launch-pane-verdict-application'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureSwitchProjection, disposeSwitchProjections } from './conversation-switch-projection'
 import type * as AgentStatusModule from '@/lib/agent-status'
 import type { AgentLaunchTabPublishRequest } from '../../../shared/agent-launch-tab-publication'
 import { createTabsSliceMockApi } from '../store/slices/tabs-slice-test-harness'
@@ -78,6 +79,7 @@ beforeEach(() => {
   focusTerminalInitiatedTab.mockClear()
   store.getState().setActiveWorktree(WT)
 })
+afterEach(() => disposeSwitchProjections())
 
 describe('publishing a launch tab before its agent exists', () => {
   it('creates the tab under the host ids with its one pane laid out and no process', () => {
@@ -173,6 +175,50 @@ describe('publishing a launch tab before its agent exists', () => {
 })
 
 describe('placement', () => {
+  it('places the destination after a guarded source without retaining it until a user reorders', async () => {
+    const source = store.getState().createUnifiedTab(WT, 'agent-session', {
+      id: 'source-chat',
+      entityId: 'saved-source',
+      agentSessionAgent: 'codex'
+    })
+    const following = store.getState().createTab(WT)
+    store.getState().activateTab(source.id)
+    const order = () =>
+      store.getState().groupsByWorktree[WT]!.find((group) => group.id === source.groupId)!.tabOrder
+    expect(order()).toEqual([source.id, following.id])
+    const retain = vi.fn()
+    captureSwitchProjection(
+      store.getState(),
+      WT,
+      {
+        invocationId: 'switch-placement',
+        generation: 'switch-generation',
+        sessionId: source.entityId,
+        tabId: source.id,
+        phase: 'prepare'
+      },
+      retain
+    )
+
+    const published = publishAgentLaunchTab(
+      request({
+        operationId: 'switch-placement',
+        launchAgent: 'codex',
+        placement: { groupId: source.groupId, afterTabId: source.id }
+      })
+    )
+    expect(published).toMatchObject({ tabId: TAB_ID, created: true })
+    expect(launchTab()).toMatchObject({ id: TAB_ID, entityId: TAB_ID, groupId: source.groupId })
+    expect(order()).toEqual([source.id, TAB_ID, following.id])
+    await Promise.resolve()
+    expect(retain).not.toHaveBeenCalled()
+
+    store.getState().reorderUnifiedTabs(source.groupId!, [following.id, source.id, TAB_ID])
+    expect(order()).toEqual([following.id, source.id, TAB_ID])
+    await Promise.resolve()
+    expect(retain).toHaveBeenCalledOnce()
+  })
+
   function twoGroups() {
     const anchor = store.getState().createUnifiedTab(WT, 'terminal')
     const sourceGroupId = store.getState().groupsByWorktree[WT]![0]!.id

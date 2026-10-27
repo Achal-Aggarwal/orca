@@ -4,6 +4,7 @@ import {
   fixture,
   admitRuntimeSpawnPane
 } from '../../persistence/loading-store/profile-state-delayed-authority-fixture'
+import { LocalPtyProvider } from '../../providers/local-pty-provider'
 import type { IPtyProvider, PtySpawnResult } from '../../providers/pty-provider-contract'
 import { savePtySpawnPaneBinding } from './spawn-commit-binding'
 
@@ -24,8 +25,10 @@ it('reconciles a dispatched child through real topology creation after a queued 
     outcome: 'refused' as const,
     reason: 'unverifiable' as const
   }))
-  // SAFETY: this schedule reaches only optional fenced cleanup, never any ordinary provider operation.
-  const provider = { killFenced, shutdown } as unknown as IPtyProvider
+  const provider: IPtyProvider = Object.assign(new LocalPtyProvider(), {
+    killFenced,
+    shutdown
+  })
   const result: PtySpawnResult = {
     id: 'A',
     incarnationId,

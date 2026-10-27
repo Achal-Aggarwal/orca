@@ -12,6 +12,23 @@ import {
 import { toolResultOutput } from './transcript-record-blocks'
 import { CODEX_EVENT_TURN_ABORTED } from './transcript-turn-markers'
 
+/** Paginated completed items own visible messages; response tools retain their legacy format. */
+export function isCodexVisibleHistoryRecord(
+  record: Record<string, unknown> | null,
+  paginated: boolean
+): boolean {
+  const payload = asRecord(record?.payload)
+  return (
+    !paginated ||
+    !(
+      (record?.type === 'response_item' &&
+        (payload?.type === 'message' || payload?.type === 'reasoning')) ||
+      (record?.type === 'event_msg' &&
+        (payload?.type === 'user_message' || payload?.type === 'agent_message'))
+    )
+  )
+}
+
 export function decodeCodexTranscriptLine(
   line: string,
   fallbackId: string
@@ -160,6 +177,16 @@ function codexCompletedTurnItem(
     return null
   }
   const id = extractString(item.id) ?? fallbackId
+  if (item.type === 'Reasoning') {
+    return codexResponseItem(
+      {
+        type: 'reasoning',
+        text: codexSummaryText(item.summary_text) ?? codexSummaryText(item.raw_content)
+      },
+      id,
+      timestamp
+    )
+  }
   const blocks = codexTurnItemBlocks(item.content)
   if (blocks.length === 0) {
     return null
