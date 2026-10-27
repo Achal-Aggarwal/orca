@@ -83,14 +83,6 @@ export class AgentModelCatalogFailures {
     }
   }
 
-  /** Chat listing failures cannot replace a probe's sign-in/CLI verdict. */
-  chatFailed(fingerprint: string, detail: string, agent?: string): void {
-    if (this.failures.get(fingerprint)?.unavailable) {
-      return
-    }
-    this.failures.set(fingerprint, { ...(agent ? { agent } : {}), detail, failedAt: this.now() })
-  }
-
   /** Failed probes replace prior verdicts without inventing unavailability reasons. */
   probeFailed(fingerprint: string, agent: string, error: unknown): void {
     this.failures.set(fingerprint, {

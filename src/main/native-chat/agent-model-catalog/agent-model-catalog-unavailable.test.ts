@@ -58,21 +58,19 @@ function rig(initialProbe: AgentModelCatalogProbe = signedOut) {
   const service = createAgentModelCatalogService({
     store,
     getConversation: () => undefined,
-    getRecord: () => undefined,
+    getRecord: () => agentSessionRecordFixture({ provider: 'grok', accountHome: ACCOUNT_HOME }),
     drivesRecord: () => true,
     resolveAccountHome: async () => ACCOUNT_HOME,
     probes: { grok: probe }
   })
-  const chat = { store, fingerprint: FINGERPRINT, accountHomePath: HOME }
   return {
     store,
     probe,
     service,
-    chat,
     /** Lets the probe's verdict land. */
     probed: async () => {
       await service.prepareSaved({ agent: 'grok' })
-      await store.refresh(FINGERPRINT, 'grok', probe, () => probe(ACCOUNT_HOME))
+      await store.refresh(FINGERPRINT, 'grok', () => probe(ACCOUNT_HOME))
     },
     answerWith: (next: AgentModelCatalogProbe) => (answer = next),
     pastTtl: () => (now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS)
@@ -84,16 +82,18 @@ function unavailableOf(result: AgentSessionModelCatalogResult) {
 }
 
 describe('a reason the probe found', () => {
-  it("survives the chat's own listing, success or failure; only a probe success clears it", async () => {
-    const { store, chat, probed, answerWith, service } = rig()
+  it('survives a real chat listing and a stale receipt; only a probe success clears it', async () => {
+    const { probed, answerWith, service } = rig()
     await probed()
     // Signed-out Grok can still return a live model listing.
-    await store.refresh(FINGERPRINT, 'grok', chat, async () => listing('gpt-live', 'live-session'))
+    const sessionId = agentSessionRecordFixture().sessionId
+    service.recordLiveListing(sessionId, { models: listing('gpt-live', 'live-session').models })
     expect(unavailableOf(await service.read({ agent: 'grok' }))).toEqual(SIGNED_OUT)
-    await store.refresh(FINGERPRINT, 'grok', { ...chat }, () =>
-      Promise.reject(new Error('401 Unauthorized'))
+    service.recordLiveListing(
+      sessionId,
+      { models: listing('stale', 'live-session').models },
+      () => false
     )
-    store.recordFailure(FINGERPRINT, 'grok model listing failed')
     expect(unavailableOf(await service.read({ agent: 'grok' }))).toEqual(SIGNED_OUT)
 
     answerWith(async () => listing('gpt-probe', 'probe'))
@@ -122,7 +122,7 @@ describe('a reason the probe found', () => {
 
   it('is expired, not dropped, by a change to that agent’s account settings', async () => {
     const store = new AgentModelCatalogStore()
-    await store.refresh(FINGERPRINT, 'codex', signedOut, signedOut)
+    await store.refresh(FINGERPRINT, 'codex', signedOut)
     expireAgentModelCatalogFailuresForSettings(store, { activeClaudeManagedAccountId: 'other' })
     expect(store.hasActiveFailure(FINGERPRINT)).toBe(true)
     expireAgentModelCatalogFailuresForSettings(store, { activeCodexManagedAccountId: 'other' })
@@ -172,13 +172,13 @@ describe('a chat that starts under the account', () => {
 })
 
 describe('an expired failure that carries no reason', () => {
-  it('is dropped, so failures cannot pile up', () => {
+  it('is dropped, so failures cannot pile up', async () => {
     const { store, pastTtl } = rig()
-    store.recordFailure(FINGERPRINT, 'listing timed out', 'grok')
+    await store.refresh(FINGERPRINT, 'grok', () => Promise.reject(new Error('listing timed out')))
     pastTtl()
     expect(store.hasActiveFailure(FINGERPRINT)).toBe(false)
     expect(store.failure(FINGERPRINT)).toBeNull()
-    store.recordFailure(FINGERPRINT, 'listing timed out', 'codex')
+    await store.refresh(FINGERPRINT, 'codex', () => Promise.reject(new Error('listing timed out')))
     expireAgentModelCatalogFailuresForSettings(store, { activeCodexManagedAccountId: 'other' })
     expect(store.failure(FINGERPRINT)).toBeNull()
   })

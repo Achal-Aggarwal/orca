@@ -109,7 +109,6 @@ async function startHost({ startupLimits, supportsGoals }: StartupHostOptions = 
       peek: () => null,
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
       recordLiveListing,
-      retainedLiveModelIds: vi.fn(async () => []),
       prewarm: vi.fn(async () => {}),
       stop: vi.fn(),
       providerStarted

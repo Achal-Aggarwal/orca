@@ -214,7 +214,7 @@ describe('a saved-only catalog read', () => {
   it('carries a held reason without re-checking it past its TTL', async () => {
     const { store, probe, service, advance } = rig()
     await store
-      .refresh(FINGERPRINT, 'grok', probe, () =>
+      .refresh(FINGERPRINT, 'grok', () =>
         Promise.reject(new AgentModelCatalogUnavailableError(SIGNED_OUT))
       )
       .catch(() => undefined)
@@ -346,7 +346,9 @@ it.each(['success', 'failure'] as const)(
       await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce())
       store.expireLaunchScopes()
       service.retireContext()
-      store.recordFailure(FINGERPRINT, 'new account failure', 'grok')
+      await store.refresh(FINGERPRINT, 'grok', () =>
+        Promise.reject(new Error('new account failure'))
+      )
       if (outcome === 'success') {
         stale.resolve(listing('retired'))
       } else {

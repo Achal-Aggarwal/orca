@@ -66,7 +66,6 @@ describe('the host catalog lifetime', () => {
       retireContext: vi.fn(),
       peek: () => null,
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
-      retainedLiveModelIds: vi.fn(async () => []),
       recordLiveListing: vi.fn(),
       prewarm: vi.fn(async () => {}),
       stop: vi.fn(),

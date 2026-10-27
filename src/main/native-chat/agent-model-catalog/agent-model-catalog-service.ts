@@ -244,7 +244,7 @@ export function createAgentModelCatalogService(
         workspacePath: cwd ?? folder
       })
       if (probe && probeHome && deps.store.probeDue(fingerprint)) {
-        void deps.store.refresh(fingerprint, params.agent, probe, list, current)
+        void deps.store.refresh(fingerprint, params.agent, list, current, signal)
       }
       // Demand owns ingestion until settlement, even when its caller only needs the snapshot.
       ready.resolve()
@@ -291,7 +291,6 @@ export function createAgentModelCatalogService(
       }
       return snapshot(params)
     },
-    retainedLiveModelIds: async (_sessionId, listing) => listing.models.map((model) => model.id),
     recordLiveListing: live.recordLiveListing,
     async prewarm() {
       await prewarmAgentModelCatalog(deps, lifetime.signal, (params) => this.read(params))

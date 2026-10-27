@@ -96,7 +96,6 @@ describe('a live Grok listing', () => {
       retireContext: vi.fn(),
       peek: () => null,
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
-      retainedLiveModelIds: vi.fn(async () => []),
       recordLiveListing: vi.fn().mockImplementationOnce(() => {
         throw new Error('catalog unavailable')
       }),

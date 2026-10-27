@@ -117,7 +117,9 @@ it('retires a producer on effective Refresh before new publication and fences la
   const before = JSON.stringify(agentModelCatalogStore.get(h.fingerprint))
   const writes = h.save.mock.calls.length
   const ingested = vi.spyOn(agentModelCatalogStore, 'recordSuccess')
-  agentModelCatalogStore.recordFailure(h.fingerprint, 'current failure', 'grok')
+  await agentModelCatalogStore.refresh(h.fingerprint, 'grok', () =>
+    Promise.reject(new Error('current failure'))
+  )
   h.service.recordLiveListing(h.record.sessionId, h.listing('late A'), sourceA)
   h.service.providerStarted(h.record, sourceA)
   await vi.waitFor(() => expect(h.defaults).toHaveBeenCalledTimes(2))
@@ -250,18 +252,26 @@ it('catalog-scale settles retired publication chains and bounds Refresh registra
     let serializedBytes = 0
     let serializedModels = 0
     let firstSnapshotModels = 0
+    let pendingSnapshot:
+      | (() => readonly NonNullable<ReturnType<typeof agentModelCatalogStore.get>>[])
+      | undefined
     await agentModelCatalogStore.attachPersistence({
       load: async () => [],
-      save: (entries) => {
+      save: (snapshot) => {
         saves++
+        pendingSnapshot = snapshot
+      },
+      flush: async () => {
+        const entries = pendingSnapshot?.()
+        pendingSnapshot = undefined
+        if (!entries) {
+          return
+        }
         serializedBytes += Buffer.byteLength(JSON.stringify(entries))
         const snapshotModels = entries.reduce((count, entry) => count + entry.models.length, 0)
-        if (saves === 1) {
-          firstSnapshotModels = snapshotModels
-        }
+        firstSnapshotModels = snapshotModels
         serializedModels += snapshotModels
-      },
-      flush: async () => {}
+      }
     })
     const service = createAgentModelCatalogService({
       store: agentModelCatalogStore,
@@ -352,10 +362,10 @@ it('catalog-scale settles retired publication chains and bounds Refresh registra
       await vi.waitFor(() => expect(success).toHaveBeenCalledTimes(owners * 2))
       await vi.waitFor(() => expect(pendingFolders).toBe(0))
       expect(saves).toBe(owners)
+      expect(serializedModels).toBe(0)
+      await agentModelCatalogStore.flushPersistence()
       expect(serializedModels).toBeGreaterThanOrEqual(owners * models.length)
-      expect(serializedModels).toBeLessThanOrEqual(
-        owners * (firstSnapshotModels + (owners - 1) * models.length)
-      )
+      expect(serializedModels).toBe(firstSnapshotModels)
       nextSources.forEach((source) => source.release?.())
       expect(nextSources.every((source) => !source())).toBe(true)
       process.stdout.write(

@@ -455,11 +455,6 @@ describe('one account, one catalog key', () => {
       resolveAccountHome: async () => HOME('GROK_HOME', managedHome)
     })
     service.recordLiveListing('session-1', { models: listing('gpt-live').models })
-    const incoming = { models: [...listing('gpt-live').models, ...listing('gpt-new').models] }
-    const retained = (launchOnlyModelId: string) =>
-      service.retainedLiveModelIds('session-1', { ...incoming, launchOnlyModelId })
-    expect(await retained('gpt-live')).toEqual(['gpt-live', 'gpt-new'])
-    expect(await retained('gpt-new')).toEqual(['gpt-live', 'gpt-new'])
     const adapterAccess = agentModelCatalogSessionAccess(
       store,
       { agent: 'grok', accountHomeVariable: 'GROK_HOME' },
@@ -514,7 +509,7 @@ it('keeps old producers from publishing rows, defaults or failure expiry after r
   store.expireAgent(record.provider)
   const key = agentModelCatalogFingerprintForRecord(record, '/project')
   const current = store.recordSuccess(key, record.provider, listing('current'), 'discovery')
-  store.recordFailure(key, 'current failure', record.provider)
+  await store.refresh(key, record.provider, () => Promise.reject(new Error('current failure')))
   const save = vi.fn()
   await store.attachPersistence({ load: async () => [], save, flush: async () => {} })
   folder.resolve('/project')

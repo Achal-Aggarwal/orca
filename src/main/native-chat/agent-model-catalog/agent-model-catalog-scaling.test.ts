@@ -12,6 +12,7 @@ it('catalog-scale retires a many-scope frontier and releases actual listing wait
     let started = 0
     let cancelled = 0
     let identityReads = 0
+    const perKeyReads = Array.from({ length: scopes }, () => 0)
     let pendingWaiters = 0
     let peakWaiters = 0
     let recover = false
@@ -61,6 +62,7 @@ it('catalog-scale retires a many-scope frontier and releases actual listing wait
         selector: `workspace-${index}`,
         identity: () => {
           identityReads++
+          perKeyReads[index]++
           return `scope-${index}`
         },
         resolve: async () => ({ path: `/generated-project/${index}`, identity: `scope-${index}` })
@@ -79,7 +81,10 @@ it('catalog-scale retires a many-scope frontier and releases actual listing wait
       )
       const pendingIdentityReads = identityReads
       expect(pendingIdentityReads).toBeGreaterThanOrEqual(scopes)
-      expect(pendingIdentityReads).toBeLessThanOrEqual(scopes * (2 * scopes + 16))
+      perKeyReads.fill(0)
+      service.snapshot(params[0])
+      expect(perKeyReads[0]).toBeGreaterThan(0)
+      expect(perKeyReads.slice(1)).toEqual(Array.from({ length: scopes - 1 }, () => 0))
       expect(peakWaiters).toBe(scopes)
       store.expireAgent('opencode')
       service.retireContext()
@@ -113,5 +118,72 @@ it('catalog-scale retires a many-scope frontier and releases actual listing wait
       service.stop()
       vi.restoreAllMocks()
     }
+  }
+})
+
+it('settles owner deadlines and joined readers without releasing ignored native attempts early', async () => {
+  vi.useFakeTimers()
+  const store = new AgentModelCatalogStore()
+  const attempts: ReturnType<typeof Promise.withResolvers<AgentModelCatalogSuccess>>[] = []
+  let active = 0
+  let peak = 0
+  const service = createAgentModelCatalogService({
+    store,
+    getConversation: () => undefined,
+    getRecord: () => undefined,
+    drivesRecord: () => true,
+    resolveAccountHome: async () => ({ variable: 'HOME', path: '/account' }),
+    listsInChatFolder: new Set(['opencode']),
+    probes: {
+      opencode: async () => {
+        const attempt = Promise.withResolvers<AgentModelCatalogSuccess>()
+        attempts.push(attempt)
+        peak = Math.max(peak, ++active)
+        try {
+          return await attempt.promise
+        } finally {
+          active--
+        }
+      }
+    }
+  })
+  const params = (workspacePath: string) => ({ agent: 'opencode', workspacePath })
+  try {
+    const a = service.demand(params('/a'))
+    const joined = service.demand(params('/a'))
+    const b = service.demand(params('/b'))
+    expect(joined).toBe(a)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(attempts).toHaveLength(2)
+    const read = service.read({ ...params('/a'), waitForListing: true })
+    await vi.advanceTimersByTimeAsync(30_000)
+    await Promise.all([a, joined, b, read])
+    expect(service.snapshot(params('/a')).listingInProgress).toBeUndefined()
+    expect(active).toBe(2)
+    const replacement = service.demand(params('/a'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(attempts).toHaveLength(2)
+    attempts[0]!.resolve({
+      origin: 'probe',
+      models: [{ id: 'old', label: 'Old', efforts: [], isDefault: true }]
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(attempts).toHaveLength(3)
+    expect(peak).toBe(2)
+    expect(service.snapshot(params('/a')).origin).toBe('unknown')
+    attempts[2]!.resolve({
+      origin: 'probe',
+      models: [{ id: 'new', label: 'New', efforts: [], isDefault: true }]
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    await replacement
+    expect(service.snapshot(params('/a'))).toMatchObject({ models: [{ id: 'new' }] })
+  } finally {
+    service.stop()
+    for (const attempt of attempts) {
+      attempt.resolve({ origin: 'probe', models: [] })
+    }
+    await vi.advanceTimersByTimeAsync(0)
+    vi.useRealTimers()
   }
 })

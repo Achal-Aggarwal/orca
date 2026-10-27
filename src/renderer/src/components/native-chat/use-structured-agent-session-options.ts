@@ -250,7 +250,7 @@ export function useStructuredAgentSessionOptions(args: StructuredAgentSessionOpt
       }
       if (!transportEnabled || fence === null) {
         // No fence yet: the launch holds it and applies it before anything else is sent.
-        const applied = holdStructuredAgentSessionLaunchOption(sessionId, id, encoded, view)
+        const applied = holdStructuredAgentSessionLaunchOption(sessionId, id, encoded)
         void applied?.then(settleLaunchOptionPick)
         return applied !== null
       }

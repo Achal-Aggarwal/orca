@@ -233,16 +233,6 @@ export function commitStructuredAgentSessionOption(
   return { ...state, pendingId: null }
 }
 
-/** Inventory describes controls; it cannot retire an accepted input on model changes. */
-export function structuredAgentSessionModelOffers(
-  _state: Pick<StructuredAgentSessionOptionState, 'catalog' | 'verifiedModelIds'>,
-  _modelId: string,
-  _id: string,
-  _value: SessionOptionValue
-): boolean {
-  return true
-}
-
 export function commitStructuredAgentSessionOptionValues(
   state: StructuredAgentSessionOptionState,
   values: Readonly<Record<string, string>>

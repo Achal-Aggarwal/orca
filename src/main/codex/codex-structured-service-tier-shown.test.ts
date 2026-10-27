@@ -91,7 +91,7 @@ async function hostRuns(
     : undefined
   if (child) {
     offline = true
-    store.recordFailure('codex-account', 'offline', 'codex')
+    await store.refresh('codex-account', 'codex', () => Promise.reject(new Error('offline')))
   }
   observeProjection?.(await resolvedCodexMessageOptions(session, saved))
   await startCodexTurn(session, {

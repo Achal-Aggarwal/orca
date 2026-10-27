@@ -271,7 +271,7 @@ describe('agent model catalog service', () => {
       const service = createAgentModelCatalogService({
         store,
         getConversation: () => undefined,
-        getRecord: () => undefined,
+        getRecord: () => record('/homes/selected'),
         drivesRecord: () => true,
         resolveAccountHome: async () => GROK_HOME('/homes/selected'),
         probes: { grok: probe }
@@ -294,158 +294,27 @@ describe('agent model catalog service', () => {
       expect(probe).toHaveBeenCalledTimes(1)
     })
 
-    it("answers from a chat's listing already running instead of starting a probe", async () => {
-      const pending = deferredListing()
-      const probe = vi.fn(() => new Promise<AgentModelCatalogSuccess>(() => {}))
-      const { store, service } = coldService(probe)
-      const chat = {
-        store,
-        fingerprint: selectedHomeFingerprint('/homes/selected'),
-        accountHomePath: '/homes/selected'
+    it('publishes a real live listing beside a held probe and preserves probe failure', async () => {
+      const pendingProbe = deferredListing()
+      const { store, service } = coldService(() => pendingProbe.promise)
+      const fingerprint = selectedHomeFingerprint('/homes/selected')
+      try {
+        await discover(service, { agent: 'grok' })
+        await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
+        const terminal = store.pendingListing(fingerprint, true, true)
+        const waited = service.read({ agent: 'grok', waitForListing: true })
+        service.recordLiveListing('session-1', { models: listing('gpt-chat').models })
+        expect(await waited).toMatchObject({ origin: 'live-session', models: [{ id: 'gpt-chat' }] })
+        expect(store.isListing(fingerprint)).toBe(true)
+        pendingProbe.reject(new Error('probe timed out'))
+        await terminal
+        expect(store.failureDetail(fingerprint)).toBe('probe timed out')
+        service.recordLiveListing('session-1', { models: listing('gpt-new-chat').models })
+        expect(store.get(fingerprint)?.models[0]?.id).toBe('gpt-new-chat')
+        expect(store.hasActiveFailure(fingerprint)).toBe(true)
+      } finally {
+        service.stop()
       }
-      void store.refresh(chat.fingerprint, 'grok', chat, () => pending.promise)
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      pending.resolve(listing('gpt-chat'))
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-chat')
-      expect(probe).not.toHaveBeenCalled()
-    })
-
-    it('uses a chat listing that starts after the picker began waiting on a probe', async () => {
-      const pendingProbe = deferredListing()
-      const pendingChat = deferredListing()
-      const { store, service } = coldService(() => pendingProbe.promise)
-      expect(await discover(service, { agent: 'grok' })).toEqual({
-        origin: 'unknown',
-        listingInProgress: true
-      })
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      await Promise.resolve()
-      const fingerprint = selectedHomeFingerprint('/homes/selected')
-      await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
-      const chat = { store, fingerprint, accountHomePath: '/homes/selected' }
-      const chatListing = store.refresh(fingerprint, 'grok', chat, () => pendingChat.promise)
-      pendingChat.resolve(listing('gpt-chat'))
-      await chatListing
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-chat')
-      pendingProbe.reject(new Error('probe timed out'))
-    })
-
-    it('continues waiting when the probe fails before a newly started chat finishes', async () => {
-      const pendingProbe = deferredListing()
-      const pendingChat = deferredListing()
-      const { store, service } = coldService(() => pendingProbe.promise)
-      await discover(service, { agent: 'grok' })
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      await Promise.resolve()
-      const fingerprint = selectedHomeFingerprint('/homes/selected')
-      await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
-      const chat = { store, fingerprint, accountHomePath: '/homes/selected' }
-      const chatListing = store.refresh(fingerprint, 'grok', chat, () => pendingChat.promise)
-      pendingProbe.reject(new Error('probe timed out'))
-      await vi.waitFor(() => expect(store.hasActiveFailure(fingerprint)).toBe(true))
-      let completed = false
-      void waited.then(() => (completed = true))
-      await Promise.resolve()
-      expect(completed).toBe(false)
-
-      pendingChat.resolve(listing('gpt-chat'))
-      await chatListing
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-chat')
-    })
-
-    it('releases when a second chat succeeds while the first chat is still listing', async () => {
-      const pendingProbe = deferredListing()
-      const firstChat = deferredListing()
-      const secondChat = deferredListing()
-      const { store, service } = coldService(() => pendingProbe.promise)
-      await discover(service, { agent: 'grok' })
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      await Promise.resolve()
-      const fingerprint = selectedHomeFingerprint('/homes/selected')
-      await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
-      const first = store.refresh(
-        fingerprint,
-        'grok',
-        { store, fingerprint, accountHomePath: '/homes/selected' },
-        () => firstChat.promise
-      )
-      pendingProbe.reject(new Error('probe timed out'))
-      await vi.waitFor(() => expect(store.hasActiveFailure(fingerprint)).toBe(true))
-      const second = store.refresh(
-        fingerprint,
-        'grok',
-        { store, fingerprint, accountHomePath: '/homes/selected' },
-        () => secondChat.promise
-      )
-      secondChat.resolve(listing('gpt-second'))
-      await second
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-second')
-      firstChat.reject(new Error('first chat timed out'))
-      await first
-    })
-
-    it('keeps waiting for a later chat after the first chat also fails', async () => {
-      const pendingProbe = deferredListing()
-      const firstChat = deferredListing()
-      const secondChat = deferredListing()
-      const { store, service } = coldService(() => pendingProbe.promise)
-      await discover(service, { agent: 'grok' })
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      await Promise.resolve()
-      const fingerprint = selectedHomeFingerprint('/homes/selected')
-      await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
-      const first = store.refresh(
-        fingerprint,
-        'grok',
-        { store, fingerprint, accountHomePath: '/homes/selected' },
-        () => firstChat.promise
-      )
-      pendingProbe.reject(new Error('probe timed out'))
-      await vi.waitFor(() => expect(store.hasActiveFailure(fingerprint)).toBe(true))
-      const second = store.refresh(
-        fingerprint,
-        'grok',
-        { store, fingerprint, accountHomePath: '/homes/selected' },
-        () => secondChat.promise
-      )
-      firstChat.reject(new Error('first chat timed out'))
-      await first
-      let completed = false
-      void waited.then(() => (completed = true))
-      await Promise.resolve()
-      expect(completed).toBe(false)
-
-      secondChat.resolve(listing('gpt-second'))
-      await second
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-second')
-    })
-
-    it('waits for a running chat even while a failed probe is inside its TTL', async () => {
-      const pendingProbe = deferredListing()
-      const pendingChat = deferredListing()
-      const { store, service } = coldService(() => pendingProbe.promise)
-      await discover(service, { agent: 'grok' })
-      const fingerprint = selectedHomeFingerprint('/homes/selected')
-      await vi.waitFor(() => expect(store.isListing(fingerprint)).toBe(true))
-      const chat = { store, fingerprint, accountHomePath: '/homes/selected' }
-      const chatListing = store.refresh(fingerprint, 'grok', chat, () => pendingChat.promise)
-      pendingProbe.reject(new Error('probe timed out'))
-      await vi.waitFor(() => expect(store.hasActiveFailure(fingerprint)).toBe(true))
-
-      const waited = service.read({ agent: 'grok', waitForListing: true })
-      let completed = false
-      void waited.then(() => (completed = true))
-      await Promise.resolve()
-      expect(completed).toBe(false)
-      pendingChat.resolve(listing('gpt-chat'))
-      await chatListing
-      const result = await waited
-      expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-chat')
     })
 
     it('answers a plain unknown when the listing fails', async () => {
@@ -461,7 +330,9 @@ describe('agent model catalog service', () => {
         throw new Error('spawn failed')
       })
       const { store, service } = coldService(probe)
-      store.recordFailure(selectedHomeFingerprint('/homes/selected'), 'spawn failed')
+      await store.refresh(selectedHomeFingerprint('/homes/selected'), 'grok', () =>
+        Promise.reject(new Error('spawn failed'))
+      )
       expect(await service.read({ agent: 'grok', waitForListing: true })).toEqual({
         origin: 'unknown'
       })

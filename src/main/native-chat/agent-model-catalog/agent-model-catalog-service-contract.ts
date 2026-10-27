@@ -43,11 +43,6 @@ export type AgentModelCatalogService = {
   retireContext: (workspaceId?: string) => void
   peek: (sessionId: string, verifiedOnly?: boolean) => AgentModelCatalogEntry | null
   read: (params: AgentModelCatalogReadParams) => Promise<AgentSessionModelCatalogResult>
-  /** Incoming listing ids, checking only a launch-added row against the pinned account. */
-  retainedLiveModelIds: (
-    sessionId: string,
-    listing: AgentModelCatalogLiveListing
-  ) => Promise<string[]>
   /** Saves a session's listing and newly learned menus so the next chat starts warm. */
   recordLiveListing: (
     sessionId: string,
