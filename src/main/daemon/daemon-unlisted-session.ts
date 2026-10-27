@@ -1,6 +1,8 @@
 import { isHoldingForNewerProtocolDaemon } from './daemon-newer-protocol-hold'
 import { legacyDaemonProcessMayBeAlive } from './daemon-legacy-process-liveness'
-import { PREVIOUS_DAEMON_PROTOCOL_VERSIONS } from './types'
+import type { DaemonClient } from './client'
+import type { HistoryReader } from './history-reader'
+import { PREVIOUS_DAEMON_PROTOCOL_VERSIONS, type ListSessionsResult } from './types'
 
 export type SessionListingDaemon = {
   readonly protocolVersion: number
@@ -30,4 +32,39 @@ export async function mayAnyDaemonRunSession(
   }
   const listings = await Promise.all(daemons.map((daemon) => daemon.listsSession(id)))
   return listings.some((listed) => listed !== false)
+}
+
+/** Whether a daemon lists the session at all, alive or not; null when it can't answer. */
+export async function readDaemonSessionListing(
+  client: Pick<DaemonClient, 'isConnected' | 'request'>,
+  id: string,
+  timeoutMs: number
+): Promise<boolean | null> {
+  // Never start or respawn a daemon just to list it: unconnected cannot answer.
+  if (!client.isConnected()) {
+    return null
+  }
+  try {
+    const { sessions } = await client.request<ListSessionsResult>(
+      'listSessions',
+      undefined,
+      timeoutMs
+    )
+    return sessions.some((session) => session.sessionId === id)
+  } catch {
+    return null
+  }
+}
+
+/** A close found no session: true when its history is unended and no daemon may still run it. */
+export async function isUnlistedLostSession(
+  id: string,
+  historyReader: Pick<HistoryReader, 'probeRestorableHistory'> | null,
+  runtimeDir: string | null,
+  daemons: readonly SessionListingDaemon[]
+): Promise<boolean> {
+  return (
+    historyReader?.probeRestorableHistory(id).status === 'restorable' &&
+    !(await mayAnyDaemonRunSession(id, runtimeDir, daemons))
+  )
 }

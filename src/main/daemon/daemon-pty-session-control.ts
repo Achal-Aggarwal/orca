@@ -8,7 +8,7 @@ import { remainingDaemonRequestTimeoutMs, teardownReadBudgetMs } from './daemon-
 import type { ColdRestoreInfo } from './history-reader'
 import { normalizeWslColdRestoreCwd } from './wsl-cold-restore-cwd'
 import { readDaemonWslSleepCwd } from './daemon-wsl-sleep-cwd'
-import { mayAnyDaemonRunSession, type SessionListingDaemon } from './daemon-unlisted-session'
+import * as unlistedSession from './daemon-unlisted-session'
 import { SessionNotFoundError, type ListSessionsResult } from './types'
 import { resolveSafePtyDefaultCwd } from '../providers/pty-default-cwd'
 import type { PtySpawnResult } from '../providers/pty-provider-contract'
@@ -95,36 +95,15 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
   }
 
   /** Whether this daemon lists the session at all, alive or not; null when it can't answer. */
-  async listsSession(id: string): Promise<boolean | null> {
-    // Never start or respawn a daemon just to list it: unconnected cannot answer.
-    if (!this.client.isConnected()) {
-      return null
-    }
-    try {
-      const { sessions } = await this.client.request<ListSessionsResult>(
-        'listSessions',
-        undefined,
-        LIVENESS_PROBE_TIMEOUT_MS
-      )
-      return sessions.some((session) => session.sessionId === id)
-    } catch {
-      return null
-    }
+  listsSession(id: string): Promise<boolean | null> {
+    return unlistedSession.readDaemonSessionListing(this.client, id, LIVENESS_PROBE_TIMEOUT_MS)
   }
 
   /** The daemons that share this history dir and can answer for it; a router widens this. */
-  private listingDaemons: () => readonly SessionListingDaemon[] = () => [this]
+  private listingDaemons: () => readonly unlistedSession.SessionListingDaemon[] = () => [this]
 
-  shareSessionListingWith(daemons: () => readonly SessionListingDaemon[]): void {
+  shareSessionListingWith(daemons: () => readonly unlistedSession.SessionListingDaemon[]): void {
     this.listingDaemons = daemons
-  }
-
-  /** A close found no session: true when its history is unended and no daemon may still run it. */
-  private async isUnlistedLostSession(id: string): Promise<boolean> {
-    return (
-      this.historyReader?.probeRestorableHistory(id).status === 'restorable' &&
-      !(await mayAnyDaemonRunSession(id, this.runtimeDir, this.listingDaemons()))
-    )
   }
 
   async shutdown(
@@ -233,7 +212,15 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
       if (
         opts.keepHistory ||
         !(error instanceof SessionNotFoundError) ||
-        !(this.hostLossSessionIds.has(id) || (await this.isUnlistedLostSession(id)))
+        !(
+          this.hostLossSessionIds.has(id) ||
+          (await unlistedSession.isUnlistedLostSession(
+            id,
+            this.historyReader,
+            this.runtimeDir,
+            this.listingDaemons()
+          ))
+        )
       ) {
         throw error
       }
