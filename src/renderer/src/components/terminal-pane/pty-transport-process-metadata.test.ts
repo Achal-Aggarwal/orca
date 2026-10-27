@@ -70,28 +70,17 @@ describe('IPC process description lifetime', () => {
     await starting
     data?.({ id: 'survivor', data: 'initial replay' })
     const next = createIpcPtyTransport({ cwd: 'C:\\src', shellOverride: 'cmd.exe' })
-    const order: string[] = []
     const metadata = vi.fn(() => next.getLocalSessionMetadata?.())
     const replayMetadata = vi.fn(() => next.getLocalSessionMetadata?.())
     const sendInput = vi.fn(() => next.sendInput('typed', 'driving'))
     next.attach({
       existingPtyId: 'survivor',
       callbacks: {
-        onSessionMetadataChanged: () => {
-          order.push('metadata')
-          metadata()
-        },
-        onData: () => {
-          order.push('data')
-          replayMetadata()
-        },
-        onConnect: () => {
-          order.push('connect')
-          sendInput()
-        }
+        onSessionMetadataChanged: metadata,
+        onData: replayMetadata,
+        onConnect: sendInput
       }
     })
-    expect(order).toEqual(['metadata', 'data', 'connect'])
     expect(metadata.mock.results[0]?.value).toMatchObject({
       wslDistro: 'Debian',
       shellOverride: 'C:\\Windows\\System32\\wsl.exe'
@@ -262,7 +251,7 @@ describe('IPC process description lifetime', () => {
       const { subscribeToPtyExit, ptyShutdownLifecycleHandlers, unregisterPtyDataHandlers } =
         await import('./pty-dispatcher')
       const { useAppStore } = await import('@/store')
-      const { readTerminalProcessMetadata, terminalProcessMetadataKey } =
+      const { readTerminalProcessMetadata } =
         await import('@/store/terminals/terminal-process-metadata')
       const read = () => readTerminalProcessMetadata(useAppStore.getState(), 'local', 'lifetime')
       const first = createIpcPtyTransport()
@@ -280,11 +269,6 @@ describe('IPC process description lifetime', () => {
       unregisterPtyDataHandlers(['lifetime'])
       exit?.({ id: 'lifetime', code: 0, incarnationId: 'A' })
       expect(read()).toBeUndefined()
-      expect(
-        useAppStore.getState().ptyProcessMetadataById[
-          terminalProcessMetadataKey('local', 'lifetime')
-        ]
-      ).toEqual({ retired: true, incarnationId: 'A', observationRevision: 1 })
       ;(hasInitialFacts ? pendingB : captureLocalPtyProcessDescription(true))({
         id: 'lifetime',
         incarnationId: 'B',

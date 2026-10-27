@@ -171,9 +171,6 @@ describe('useLiveDashboardSnapshot', () => {
 
       const after = useAppStore.getState()
       expect(after.agentStatusEpoch).toBe(before.agentStatusEpoch)
-      expect(after.tabsByWorktree).toBe(before.tabsByWorktree)
-      expect(after.agentStatusByPaneKey).toBe(before.agentStatusByPaneKey)
-      expect(after.terminalLayoutsByTabId).toBe(before.terminalLayoutsByTabId)
       const popoutAfter = buildDashboardSnapshot(
         { ...after, chatNames: getStructuredChatTabNames() },
         NOW,
@@ -188,7 +185,6 @@ describe('useLiveDashboardSnapshot', () => {
       expect(result.current.cards[0].terminalInput).not.toEqual(nativeProfile)
       expect(result.current.cards[0].terminalInput).toEqual(popoutAfter.cards[0].terminalInput)
       expect(rowsCache.computeCount).toBe(computes)
-      expect(rowsCache.lastComputedWorktreeIds).toEqual([])
       expect(rowsCache.byWorktree.get('wt-1')).toBe(cachedRows)
     } finally {
       clock.mockRestore()

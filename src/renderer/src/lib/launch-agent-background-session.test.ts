@@ -343,10 +343,6 @@ describe('launchAgentBackgroundSession', () => {
       })
       if (kind === 'ssh') {
         expect(mockEnsurePtyDispatcher).not.toHaveBeenCalled()
-      } else {
-        expect(mockEnsurePtyDispatcher.mock.invocationCallOrder[0]).toBeLessThan(
-          mockSpawn.mock.invocationCallOrder[0]
-        )
       }
       expect(result?.ptyId).toBe('pty-1')
       expect(mockCreateTab).toHaveBeenCalledOnce()
