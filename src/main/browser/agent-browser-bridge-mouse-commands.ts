@@ -152,11 +152,9 @@ export abstract class AgentBrowserBridgeMouseCommands extends AgentBrowserBridge
     worktreeId?: string,
     browserPageId?: string
   ): Promise<unknown> {
+    const args = agentBrowserSetMediaArguments(colorScheme, reducedMotion)
     return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
-      return await this.execAgentBrowser(
-        sessionName,
-        agentBrowserSetMediaArguments(colorScheme, reducedMotion)
-      )
+      return await this.execAgentBrowser(sessionName, args)
     })
   }
 }
