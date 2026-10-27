@@ -13,10 +13,10 @@ import {
   preflightDetectAgentsRead,
   preflightRefreshAgentsRead
 } from '../session/mobile-session-read-operations'
-import { automationAgentSettingsRead } from './automation-operations'
 import { buildMobileNewTabAgentOptions } from '../session/mobile-new-tab-agent-options'
 import type { RpcClient } from '../transport/rpc-client'
 import {
+  automationAgentSettingsRead,
   automationWorkspacesRead,
   automationProjectsRead,
   automationSetupsRead,

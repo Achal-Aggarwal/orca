@@ -34,6 +34,10 @@ vi.mock('./automation-row-action-dispatch', () => ({
   dispatchAutomationRunHistory: (...args: unknown[]) => mocks.dispatch(...args)
 }))
 
+const actual = await vi.importActual<typeof AutomationRowActionDispatch>(
+  './automation-row-action-dispatch'
+)
+
 const roots: Root[] = []
 const originalRuntimeEnvironments = useAppStore.getState().runtimeEnvironments
 
@@ -100,9 +104,6 @@ afterEach(async () => {
 
 describe('useSelectedAutomationRunHistory', () => {
   it('retains a legacy acquisition origin when the current fallback host changes', async () => {
-    const actual = await vi.importActual<typeof AutomationRowActionDispatch>(
-      './automation-row-action-dispatch'
-    )
     mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
     const environments = ['gpu', 'other'].map((id) => ({ id, createdAt: 1, pairingRevision: 4 }))
     // SAFETY: the hook and transport only read these environment identity fields.
@@ -133,9 +134,6 @@ describe('useSelectedAutomationRunHistory', () => {
     })
   })
   it('pins a legacy history retry to its acquired runtime pairing through the actual RPC path', async () => {
-    const actual = await vi.importActual<typeof AutomationRowActionDispatch>(
-      './automation-row-action-dispatch'
-    )
     mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
     const environments = [{ id: 'gpu', createdAt: 1, pairingRevision: 4 }]
     // SAFETY: this test supplies the only runtime identity fields read by the acquisition hook.

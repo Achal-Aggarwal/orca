@@ -3,11 +3,16 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAutomationCatalog } from './use-automation-catalog'
 import { useAutomationRuns, type AutomationRunScope } from './use-automation-runs'
-import { automationClient, deferred, savedAutomation, savedRun } from './automation-test-fixtures'
+import {
+  automationClient,
+  automationTargets,
+  deferred,
+  savedAutomation,
+  savedRun
+} from './automation-test-fixtures'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { useAutomationCreateAttempt } from './use-automation-create-attempt'
 import { newAutomationDraft, validateAutomationDraft } from './automation-draft'
-import { automationTargets } from './automation-test-fixtures'
 import { AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
 import { AUTOMATION_OUTCOME_UNKNOWN } from './automation-error'
 

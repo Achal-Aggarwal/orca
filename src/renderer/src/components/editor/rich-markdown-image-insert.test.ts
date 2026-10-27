@@ -32,6 +32,11 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), info: vi.fn() }
 }))
 
+const { useAppStore: store } = await vi.importActual<typeof StoreModule>('@/store')
+const actualImport = await vi.importActual<typeof RuntimeFileImportClient>(
+  '@/runtime/runtime-file-import-client'
+)
+
 const openEditors: Editor[] = []
 
 function createRichMarkdownEditor(markdown: string): Editor {
@@ -88,7 +93,6 @@ describe('insertRichMarkdownImageFromPath', () => {
   it.each(['probe', 'stage'])(
     'stops an acquired image import after its source changes during %s',
     async (phase) => {
-      const { useAppStore: store } = await vi.importActual<typeof StoreModule>('@/store')
       store.setState(store.getInitialState(), true)
       const source: OpenFile = {
         id: 'image-note',
@@ -117,9 +121,6 @@ describe('insertRichMarkdownImageFromPath', () => {
       })
       const { useAppStore } = await import('@/store')
       vi.mocked(useAppStore.getState).mockImplementation(store.getState)
-      const actualImport = await vi.importActual<typeof RuntimeFileImportClient>(
-        '@/runtime/runtime-file-import-client'
-      )
       vi.mocked(importExternalPathsToRuntime).mockImplementation(
         actualImport.importExternalPathsToRuntime
       )

@@ -53,6 +53,10 @@ vi.mock('./automation-target-inventory', async (original) => ({
   loadAutomationAgents: (...args: unknown[]) => inventory.agents(...args)
 }))
 
+const actualInventory = await vi.importActual<typeof AutomationInventoryModule>(
+  './automation-target-inventory'
+)
+
 beforeEach(() => {
   inventory.targets.mockReset().mockImplementation(async () => automationTargets())
   inventory.agents.mockReset().mockResolvedValue([{ agent: 'codex', label: 'Codex' }])
@@ -353,10 +357,7 @@ describe('mobile automation navigation and setup', () => {
   )
 
   it('renders unserved SSH discovery truthfully without local probes or replacing a saved agent', async () => {
-    const actual = await vi.importActual<typeof AutomationInventoryModule>(
-      './automation-target-inventory'
-    )
-    inventory.agents.mockImplementation(actual.loadAutomationAgents)
+    inventory.agents.mockImplementation(actualInventory.loadAutomationAgents)
     const targets = automationTargets()
     const ssh = { ...targets.setups[0]!, hostId: 'ssh:builder' as const }
     inventory.targets.mockResolvedValue({ ...targets, setups: [ssh] })
