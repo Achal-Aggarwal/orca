@@ -1,9 +1,9 @@
 import { HIDDEN_WINDOW_FRAME_PUMP_STOP_CHANNEL } from '../../shared/hidden-window-frame-pump'
 
 type FramePumpWindow = {
-  once(event: 'show', listener: () => void): unknown
+  on(event: 'show', listener: () => void): unknown
   webContents: {
-    isDestroyed(): boolean
+    isDestroyed?(): boolean
     on(event: 'did-finish-load', listener: () => void): unknown
     send(channel: string): void
   }
@@ -13,13 +13,15 @@ type FramePumpWindow = {
 export function stopHiddenWindowFramePumpOnShow(window: FramePumpWindow): void {
   let shown = false
   const stop = (): void => {
-    if (!window.webContents.isDestroyed()) {
+    if (window.webContents.isDestroyed?.() !== true) {
       window.webContents.send(HIDDEN_WINDOW_FRAME_PUMP_STOP_CHANNEL)
     }
   }
-  window.once('show', () => {
-    shown = true
-    stop()
+  window.on('show', () => {
+    if (!shown) {
+      shown = true
+      stop()
+    }
   })
   window.webContents.on('did-finish-load', () => {
     if (shown) {

@@ -8,7 +8,7 @@ function fakeWindow(destroyed = false) {
   const contentsEvents = new EventEmitter()
   const send = vi.fn()
   const window = {
-    once: (event: 'show', listener: () => void) => windowEvents.once(event, listener),
+    on: (event: 'show', listener: () => void) => windowEvents.on(event, listener),
     webContents: {
       isDestroyed: () => destroyed,
       on: (event: 'did-finish-load', listener: () => void) => contentsEvents.on(event, listener),
