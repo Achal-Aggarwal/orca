@@ -349,6 +349,15 @@ describe('useStructuredAgentSessionRead history window', () => {
       cursor: view.result.current.first.state.cursor
     })
     expect(unsubscribe).toHaveBeenCalledTimes(2)
+    const owner = getStructuredAgentSessionReadOwner('session-switch-a', LOCAL_TARGET)
+    act(() => owner.resync?.())
+    await waitFor(() => expect(mocks.subscribe).toHaveBeenCalledTimes(4))
+    expect(unsubscribe).toHaveBeenCalledTimes(3)
+    expect(mocks.call).toHaveBeenCalledTimes(2)
+    view.unmount()
+    owner.resync?.()
+    expect(mocks.subscribe).toHaveBeenCalledTimes(4)
+    expect(unsubscribe).toHaveBeenCalledTimes(4)
   })
 })
 
