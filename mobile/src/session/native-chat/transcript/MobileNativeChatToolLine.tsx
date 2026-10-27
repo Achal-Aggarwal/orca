@@ -184,7 +184,7 @@ export function MobileNativeChatToolLine({
 
   return (
     <View testID={memberId}>
-      <View style={copyCommand ? styles.cardHeader : undefined}>
+      <View style={copyCommand ? styles.line : undefined}>
         <Pressable
           style={[styles.line, copyCommand && styles.cardToggle]}
           onPress={() => hasDetail && setExpanded(!expanded)}

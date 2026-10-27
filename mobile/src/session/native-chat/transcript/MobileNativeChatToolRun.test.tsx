@@ -215,10 +215,20 @@ describe('ToolRun', () => {
           name: 'exec_command',
           input: { cmd: "/bin/zsh -lc 'cd mobile &&\n  pnpm test'", workdir: '/repo' }
         },
-        { type: 'tool-result', output: 'ok' }
+        { type: 'tool-result', output: 'ok' },
+        { type: 'tool-call', name: 'shell', input: { command: ['git', 'commit', '-m', 'fix it'] } },
+        {
+          type: 'tool-call',
+          name: 'exec_command',
+          input: { cmd: '/bin/zsh -lc "rg \\"a|b\\" src"' }
+        }
       ])
       const copies = tree.root.findAll((node) => String(node.type) === 'CopyButton')
-      expect(copies.map((node) => node.props.text)).toEqual(['cd mobile &&\n  pnpm test'])
+      expect(copies.map((node) => node.props.text)).toEqual([
+        'cd mobile &&\n  pnpm test',
+        "git commit -m 'fix it'",
+        'rg "a|b" src'
+      ])
     })
 
     it('offers no caret on a row with nothing to show', () => {

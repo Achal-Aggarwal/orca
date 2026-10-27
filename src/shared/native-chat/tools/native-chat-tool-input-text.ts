@@ -1,3 +1,4 @@
+import { quotePosixShellUnlessPlain } from '../../shell-argument-quoting'
 import { unwrapLoginShellCommand } from './native-chat-tool-preview-prefix'
 import { normalizeToolInput } from './native-chat-tool-summary'
 
@@ -31,7 +32,7 @@ export function nativeChatToolInputText(
   return (key === 'command' || key === 'cmd') &&
     Array.isArray(field) &&
     field.every((part) => typeof part === 'string')
-    ? field.join(' ')
+    ? field.map(quotePosixShellUnlessPlain).join(' ')
     : null
 }
 
