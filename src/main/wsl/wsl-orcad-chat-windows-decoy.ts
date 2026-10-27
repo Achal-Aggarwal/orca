@@ -85,7 +85,12 @@ export async function probeWindowsDecoy(lane: ChatLane, install: ChatInstall, wo
   return { support, decoyRuns: runs, errors }
 }
 
-/** A chat with only a Windows `claude` must refuse as not installed (cliMissing), never start that copy. */
+/**
+ * A chat with only a Windows `claude` must refuse, never start that copy: `cliMissing` when the
+ * chat's login PATH shows the Windows copy, else a plain ENOENT (Debian's /etc/profile resets PATH).
+ */
+const WINDOWS_ONLY_REFUSAL = /cliMissing|spawn claude ENOENT/u
+
 export async function expectWindowsOnlyChatRefused(lane: ChatLane, worktree: string) {
   const sessionId = randomUUID()
   const fields = { worktree, agent: 'claude' }
@@ -114,13 +119,13 @@ export async function expectWindowsOnlyChatRefused(lane: ChatLane, worktree: str
         history = await outcome(
           lane.rpc('agentSession.history', { sessionId, direction: 'tail', limit: 50 })
         )
-        expect(JSON.stringify([created, sent, history])).toContain('cliMissing')
+        expect(JSON.stringify([created, sent, history])).toMatch(WINDOWS_ONLY_REFUSAL)
       },
       { timeout: 60_000, interval: 2_000 }
     )
     .catch(() => {})
   await outcome(lane.rpc('agentSession.close', { sessionId }))
   const seen = { created, sent, history }
-  expect(JSON.stringify(seen), JSON.stringify(seen)).toContain('cliMissing')
+  expect(JSON.stringify(seen), JSON.stringify(seen)).toMatch(WINDOWS_ONLY_REFUSAL)
   return seen
 }

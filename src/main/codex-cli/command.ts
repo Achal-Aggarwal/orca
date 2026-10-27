@@ -1,5 +1,6 @@
 import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 import { resolveGuestNativeProgram } from '../ipc/wsl-guest-windows-drive-path'
+import { WINDOWS_ONLY_AGENT_CLI_DIR } from './windows-only-agent-cli'
 
 export {
   getVersionManagerBinPaths,
@@ -8,11 +9,9 @@ export {
   resolveExecutableCommand,
   withCliRuntimeOnPath
 } from '../../shared/node-cli-command-resolution'
+export { WINDOWS_ONLY_AGENT_CLI_DIR } from './windows-only-agent-cli'
 
 type ResolveCommandOptions = NonNullable<Parameters<typeof resolveCliCommand>[1]>
-
-/** procfs takes no new entries, so nothing ever exists here. */
-export const WINDOWS_ONLY_AGENT_CLI_DIR = '/proc/orca-agent-cli-installed-only-on-windows'
 
 /**
  * On a WSL-host orcad, a Windows-only copy reads as not installed: a path every spawn (ENOENT) and
