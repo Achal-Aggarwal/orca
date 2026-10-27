@@ -11,6 +11,7 @@ import type { MobileDiffLine } from './mobile-diff-lines'
 import type { MobileHighlightedDiffLine, MobileSyntaxSegment } from './mobile-file-syntax'
 import type { TerminalRecord } from './mobile-terminal-records'
 import type { MobileNativeChatIdentity } from './native-chat/mobile-native-chat-eligibility'
+import type { TerminalPresentationObservation } from '../../../src/shared/terminal-foreground-presentation'
 
 export type Terminal = TerminalRecord
 
@@ -26,7 +27,7 @@ export type MobileSessionTab =
       status?: 'pending-handle' | 'ready'
       terminal: string | null
       incarnationId?: string | null
-      presentation?: import('../../../src/shared/terminal-foreground-presentation').TerminalPresentationObservation
+      presentation?: TerminalPresentationObservation
       agentStatus?: AgentStatusEntry | null
       // Launch identity enables chat before live agent status arrives.
       launchAgent?: TuiAgent

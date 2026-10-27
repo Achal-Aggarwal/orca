@@ -11,6 +11,7 @@ import { useMobileSessionTerminalCreateActions } from './use-mobile-session-term
 import { SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY } from '../../../src/shared/protocol-version'
 import { SESSION_TABS_CHAT_FORK_CLI_RUNTIME_CAPABILITY } from '../../../src/shared/session-tabs-runtime-capabilities'
 import type { MobileSessionTab } from './mobile-session-route-types'
+import type * as TerminalPresentation from '../terminal/terminal-presentation'
 
 type PlacementTab = { id: string; parentTabId?: string }
 type PlacementUpdater = (previous: PlacementTab[]) => PlacementTab[]
@@ -24,7 +25,7 @@ vi.mock('expo-router', async () => {
 })
 vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove: vi.fn() }) } }))
 vi.mock('../terminal/terminal-presentation', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../terminal/terminal-presentation')>()),
+  ...(await importOriginal<typeof TerminalPresentation>()),
   readMobilePresentation: vi.fn(async () => {})
 }))
 

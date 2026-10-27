@@ -1,5 +1,6 @@
 import { isStructuredAgentId } from '../../../../src/shared/agent-session-provider-handle'
 import type { AgentStatusEntry } from '../../../../src/shared/agent-status-types'
+import type { TerminalPresentationObservation } from '../../../../src/shared/terminal-foreground-presentation'
 import { isRuntimeOwnedSshTargetId } from '../../../../src/shared/execution-host'
 import {
   isNativeChatSupportedAgent,
@@ -32,7 +33,7 @@ export type MobileNativeChatIdentity = {
 export type MobileNativeChatTab = {
   terminal?: string | null
   incarnationId?: string | null
-  presentation?: import('../../../../src/shared/terminal-foreground-presentation').TerminalPresentationObservation
+  presentation?: TerminalPresentationObservation
   type: string
   launchAgent?: string | null
   agentStatus?: AgentStatusEntry | null
