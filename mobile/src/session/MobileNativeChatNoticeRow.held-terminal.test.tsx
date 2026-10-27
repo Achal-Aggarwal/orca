@@ -37,39 +37,54 @@ const heldScreen = {
 } satisfies NonNullable<ContextType<typeof MobileHeldTerminalContext>>
 const futureScreen = { ...heldScreen, agent: 'future-cli' }
 const missingScreen = { ...heldScreen, tabs: [] }
-it.each(['named', 'workspace', 'missing', 'replaced', 'legacy', 'unknown-agent'] as const)(
-  'renders a plain title only for the matching screen: %s',
-  (kind) => {
-    const text = renderToStaticMarkup(
-      <MobileHeldTerminalContext.Provider
-        value={
-          kind === 'missing' ? missingScreen : kind === 'unknown-agent' ? futureScreen : heldScreen
-        }
-      >
-        <MobileNativeChatNoticeRow
-          fontScale={1}
-          blocks={[
-            {
-              type: 'text',
-              tone: 'error',
-              text: 'Unnamed fallback',
-              failure: { kind: 'conversationOpenInTerminal' },
-              heldByTerminal: {
-                ...pairedWriterHoldingTerminal,
-                worktreeId: kind === 'workspace' ? 'other' : worktreeId,
-                incarnationId:
-                  kind === 'legacy' ? undefined : kind === 'replaced' ? 'old' : incarnationId
-              }
+const literalScreen = {
+  ...heldScreen,
+  tabs: heldScreen.tabs.map((tab) => ({ ...tab, title: 'Budget $&' }))
+}
+it.each([
+  'named',
+  'literal',
+  'workspace',
+  'missing',
+  'replaced',
+  'legacy',
+  'unknown-agent'
+] as const)('renders a plain title only for the matching screen: %s', (kind) => {
+  const text = renderToStaticMarkup(
+    <MobileHeldTerminalContext.Provider
+      value={
+        kind === 'missing'
+          ? missingScreen
+          : kind === 'unknown-agent'
+            ? futureScreen
+            : kind === 'literal'
+              ? literalScreen
+              : heldScreen
+      }
+    >
+      <MobileNativeChatNoticeRow
+        fontScale={1}
+        blocks={[
+          {
+            type: 'text',
+            tone: 'error',
+            text: 'Unnamed fallback',
+            failure: { kind: 'conversationOpenInTerminal' },
+            heldByTerminal: {
+              ...pairedWriterHoldingTerminal,
+              worktreeId: kind === 'workspace' ? 'other' : worktreeId,
+              incarnationId:
+                kind === 'legacy' ? undefined : kind === 'replaced' ? 'old' : incarnationId
             }
-          ]}
-        />
-      </MobileHeldTerminalContext.Provider>
-    )
-    expect(text).toContain(
-      kind === 'named' || kind === 'unknown-agent'
-        ? `${kind === 'named' ? 'Codex' : 'future-cli'} is already running this conversation in Review.`
-        : 'Unnamed fallback'
-    )
-    expect(text).not.toMatch(/<(a|button)\b/)
-  }
-)
+          }
+        ]}
+      />
+    </MobileHeldTerminalContext.Provider>
+  )
+  expect(text).toContain(
+    kind === 'named' || kind === 'literal' || kind === 'unknown-agent'
+      ? `${kind === 'unknown-agent' ? 'future-cli' : 'Codex'} is already running this conversation in ${kind === 'literal' ? 'Budget $&amp;' : 'Review'}.`
+      : 'Unnamed fallback'
+  )
+  expect(text).not.toMatch(/<(a|button)\b/)
+})
