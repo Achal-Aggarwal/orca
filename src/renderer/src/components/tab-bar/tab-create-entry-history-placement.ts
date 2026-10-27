@@ -51,12 +51,13 @@ export function placeHistoryRowsInEntryOptions(
     return rows
   }
   const urlClassification = options.find(isTypedUrlOption)?.classification
-  const typedUrlHistoryRow =
+  const normalizedTypedUrl =
     urlClassification?.kind === 'explicit-url' || urlClassification?.kind === 'host-url'
-      ? historyRows.find(
-          (row) => row.entry.normalizedUrl === normalizeBrowserHistoryUrl(urlClassification.url)
-        )
+      ? normalizeBrowserHistoryUrl(urlClassification.url)
       : undefined
+  const typedUrlHistoryRow = historyRows.find(
+    (row) => row.entry.normalizedUrl === normalizedTypedUrl
+  )
   // A replacement must keep the typed destination ahead of more frequently visited subpages.
   const rankedHistoryRows = typedUrlHistoryRow
     ? [typedUrlHistoryRow, ...historyRows.filter((row) => row !== typedUrlHistoryRow)]

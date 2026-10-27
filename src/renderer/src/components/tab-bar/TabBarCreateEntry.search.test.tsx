@@ -156,6 +156,18 @@ describe('TabBarCreateEntry search behavior', () => {
       ]
       const url = visitedRoot ? 'https://linear.app/' : 'https://linear.app/acme/issues'
       seedBrowserHistory(url, 'Linear')
+      useAppStore.setState((state) => ({
+        browserUrlHistory: [
+          {
+            url: 'https://linear.app/acme/inbox',
+            normalizedUrl: 'https://linear.app/acme/inbox',
+            title: 'Linear inbox',
+            lastVisitedAt: 2,
+            visitCount: 10
+          },
+          ...state.browserUrlHistory
+        ]
+      }))
       const onOpenEntry = vi.fn().mockResolvedValue(undefined)
       renderEntry({ onOpenEntry })
       setQuery('linear.app')
