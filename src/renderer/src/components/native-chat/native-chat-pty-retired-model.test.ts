@@ -4,8 +4,8 @@ import { GROK_SESSION_OPTION_CATALOG } from '../../../../shared/agent-session-op
 import {
   applyNativeChatSessionOptionSettingsMutation,
   updateNativeChatSessionOptionDefaults
-} from '../../../../shared/native-chat-session-option-defaults'
-import type { PersistedNativeChatSessionOptions } from '../../../../shared/native-chat-session-options'
+} from '../../../../shared/native-chat/input/native-chat-session-option-defaults'
+import type { PersistedNativeChatSessionOptions } from '../../../../shared/native-chat/input/native-chat-session-options'
 import {
   clearNativeChatSessionOptionCacheForTests,
   readNativeChatSessionOptionCache,
