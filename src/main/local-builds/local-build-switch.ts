@@ -42,11 +42,12 @@ export async function chooseLocalBuild(
         ? translateMain('localBuild.noLiveTerminals', 'No live terminals need to reconnect.')
         : compatibility.liveTerminalCount === 1
           ? translateMain(
-              'localBuild.oneLiveTerminal',
-              '1 live terminal will reconnect after restart.'
+              'localBuild.liveTerminals_one',
+              '{{count}} live terminal will reconnect after restart.',
+              { count: compatibility.liveTerminalCount }
             )
           : translateMain(
-              'localBuild.liveTerminals',
+              'localBuild.liveTerminals_other',
               '{{count}} live terminals will reconnect after restart.',
               { count: compatibility.liveTerminalCount }
             )

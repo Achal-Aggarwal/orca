@@ -21870,8 +21870,8 @@
     "manifestFilter": "Orca update manifest",
     "sameVersionError": "This build has the same version as the running app. Run pn build:mac again to create a uniquely versioned build.",
     "noLiveTerminals": "No live terminals need to reconnect.",
-    "oneLiveTerminal": "1 live terminal will reconnect after restart.",
-    "liveTerminals": "{{count}} live terminals will reconnect after restart.",
+    "liveTerminals_one": "{{count}} live terminal will reconnect after restart.",
+    "liveTerminals_other": "{{count}} live terminals will reconnect after restart.",
     "confirmTitle": "Use Local Orca Build?",
     "schemaCompatibility": "Workspace cards and settings are compatible with state schema {{schemaVersion}}.",
     "signatureRequirement": "The build must have the same valid code signature as Orca or installation will stop.",
@@ -21899,6 +21899,18 @@
       "jsonOption": "JSON: includes changes made in the older version. Changes this version saved since then are discarded.",
       "archiveNote": "Orca archives both copies before switching, then restarts."
     },
+    "repairChoice": {
+      "sectionStartsEmpty": "{{section}}: no readable backup, so it will start empty.",
+      "sectionRestored": "{{section}}: restored from the backup saved {{time}}.",
+      "projectsForgotten": "Orca will forget your projects and their workspace details. Files on disk are not touched.",
+      "newerProjectsRemoved": "Projects added after that backup will be removed from Orca, along with their workspace details. Files on disk are not touched.",
+      "repairButton": "Repair and Restart",
+      "quitButton": "Quit",
+      "title": "Repair profile",
+      "message": "Part of this profile's saved state is damaged.",
+      "restUnchanged": "Everything else stays as it is now.",
+      "damagedCopyKept": "Orca keeps a copy of the damaged file in its data folder, then restarts."
+    },
     "recoveryNotApplied": {
       "quitButton": "Quit",
       "title": "Orca could not finish recovering this profile",
@@ -21911,6 +21923,21 @@
       "indeterminateDetail": "Orca could not confirm whether your most recent change was saved. New changes will not be saved until you restart Orca.",
       "safeDetail": "Changes saved before this point are safe. New changes will not be saved until you restart Orca.",
       "okButton": "OK"
+    },
+    "section": {
+      "projects": "Projects",
+      "projectGroups": "Project groups",
+      "folderWorkspaces": "Folder workspaces",
+      "reviewComments": "Review comments",
+      "workspaceDetails": "Workspace details",
+      "settings": "Settings",
+      "windowLayout": "Window layout",
+      "openTabs": "Open tabs and terminals",
+      "sshHosts": "SSH hosts",
+      "automations": "Automations",
+      "automationHistory": "Automation history",
+      "onboarding": "Onboarding progress",
+      "other": "Other saved app state"
     }
   },
   "startupFailure": {

@@ -21506,9 +21506,21 @@
       "jsonOption": "JSON: 이전 버전에서 변경한 내용이 포함됩니다. 그 이후 이 버전이 저장한 변경 내용은 삭제됩니다.",
       "archiveNote": "Orca는 전환하기 전에 두 사본을 모두 보관한 다음 다시 시작합니다."
     },
+    "repairChoice": {
+      "sectionStartsEmpty": "{{section}}: 읽을 수 있는 백업이 없어 빈 상태로 시작합니다.",
+      "sectionRestored": "{{section}}: {{time}}에 저장된 백업에서 복원됩니다.",
+      "projectsForgotten": "Orca가 프로젝트와 해당 워크스페이스 세부정보를 잊습니다. 디스크의 파일은 변경되지 않습니다.",
+      "newerProjectsRemoved": "해당 백업 이후에 추가한 프로젝트는 워크스페이스 세부정보와 함께 Orca에서 제거됩니다. 디스크의 파일은 변경되지 않습니다.",
+      "repairButton": "복구 후 다시 시작",
+      "quitButton": "종료",
+      "title": "프로필 복구",
+      "message": "이 프로필에 저장된 상태의 일부가 손상되었습니다.",
+      "restUnchanged": "나머지는 모두 현재 상태로 유지됩니다.",
+      "damagedCopyKept": "Orca는 손상된 파일의 사본을 데이터 폴더에 보관한 다음 다시 시작합니다."
+    },
     "recoveryNotApplied": {
       "quitButton": "종료",
-      "title": "Orca 프로필 상태가 변경되지 않음",
+      "title": "Orca가 이 프로필 복구를 완료하지 못했습니다",
       "message": "Orca가 선택한 프로필 상태를 적용할 수 없습니다.",
       "reopenDetail": "Orca를 다시 열어 다시 선택하세요."
     },
@@ -21518,6 +21530,21 @@
       "indeterminateDetail": "Orca가 가장 최근 변경 내용이 저장되었는지 확인할 수 없습니다. Orca를 다시 시작할 때까지 새 변경 내용은 저장되지 않습니다.",
       "safeDetail": "이 시점 이전에 저장된 변경 내용은 안전합니다. Orca를 다시 시작할 때까지 새 변경 내용은 저장되지 않습니다.",
       "okButton": "확인"
+    },
+    "section": {
+      "projects": "프로젝트",
+      "projectGroups": "프로젝트 그룹",
+      "folderWorkspaces": "폴더 워크스페이스",
+      "reviewComments": "리뷰 댓글",
+      "workspaceDetails": "워크스페이스 세부정보",
+      "settings": "설정",
+      "windowLayout": "창 레이아웃",
+      "openTabs": "열린 탭과 터미널",
+      "sshHosts": "SSH 호스트",
+      "automations": "자동화",
+      "automationHistory": "자동화 기록",
+      "onboarding": "온보딩 진행 상황",
+      "other": "기타 저장된 앱 상태"
     }
   },
   "startupFailure": {
@@ -21529,8 +21556,8 @@
     "manifestFilter": "Orca 업데이트 매니페스트",
     "sameVersionError": "이 빌드는 실행 중인 앱과 버전이 같습니다. pn build:mac을 다시 실행하여 고유한 버전의 빌드를 만드세요.",
     "noLiveTerminals": "다시 연결해야 하는 실행 중인 터미널이 없습니다.",
-    "oneLiveTerminal": "실행 중인 터미널 1개가 다시 시작 후 다시 연결됩니다.",
-    "liveTerminals": "실행 중인 터미널 {{count}}개가 다시 시작 후 다시 연결됩니다.",
+    "liveTerminals_one": "실행 중인 터미널 {{count}}개가 다시 시작 후 다시 연결됩니다.",
+    "liveTerminals_other": "실행 중인 터미널 {{count}}개가 다시 시작 후 다시 연결됩니다.",
     "confirmTitle": "로컬 Orca 빌드를 사용할까요?",
     "schemaCompatibility": "워크스페이스 카드와 설정은 상태 스키마 {{schemaVersion}}과(와) 호환됩니다.",
     "signatureRequirement": "빌드에는 Orca와 동일한 유효한 코드 서명이 있어야 하며, 그렇지 않으면 설치가 중지됩니다.",

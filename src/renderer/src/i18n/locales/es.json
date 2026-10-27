@@ -21507,9 +21507,21 @@
       "jsonOption": "JSON: incluye los cambios hechos en la versión anterior. Se descartan los cambios que esta versión guardó desde entonces.",
       "archiveNote": "Orca archiva ambas copias antes de cambiar y luego se reinicia."
     },
+    "repairChoice": {
+      "sectionStartsEmpty": "{{section}}: no hay ninguna copia de seguridad legible, así que empezará vacío.",
+      "sectionRestored": "{{section}}: se restaura desde la copia de seguridad guardada el {{time}}.",
+      "projectsForgotten": "Orca olvidará tus proyectos y los detalles de sus espacios de trabajo. Los archivos en disco no se modifican.",
+      "newerProjectsRemoved": "Los proyectos añadidos después de esa copia de seguridad se quitarán de Orca, junto con los detalles de sus espacios de trabajo. Los archivos en disco no se modifican.",
+      "repairButton": "Reparar y reiniciar",
+      "quitButton": "Salir",
+      "title": "Reparar perfil",
+      "message": "Parte del estado guardado de este perfil está dañada.",
+      "restUnchanged": "Todo lo demás se queda como está.",
+      "damagedCopyKept": "Orca guarda una copia del archivo dañado en su carpeta de datos y luego se reinicia."
+    },
     "recoveryNotApplied": {
       "quitButton": "Salir",
-      "title": "El estado del perfil de Orca no se modificó",
+      "title": "Orca no pudo terminar de recuperar este perfil",
       "message": "Orca no pudo aplicar el estado del perfil seleccionado.",
       "reopenDetail": "Vuelve a abrir Orca para elegir de nuevo."
     },
@@ -21519,6 +21531,21 @@
       "indeterminateDetail": "Orca no pudo confirmar si se guardó tu cambio más reciente. Los cambios nuevos no se guardarán hasta que reinicies Orca.",
       "safeDetail": "Los cambios guardados antes de este momento están a salvo. Los cambios nuevos no se guardarán hasta que reinicies Orca.",
       "okButton": "Aceptar"
+    },
+    "section": {
+      "projects": "Proyectos",
+      "projectGroups": "Grupos de proyectos",
+      "folderWorkspaces": "Espacios de trabajo de carpeta",
+      "reviewComments": "Comentarios de revisión",
+      "workspaceDetails": "Detalles del espacio de trabajo",
+      "settings": "Ajustes",
+      "windowLayout": "Disposición de la ventana",
+      "openTabs": "Pestañas y terminales abiertos",
+      "sshHosts": "Hosts SSH",
+      "automations": "Automatizaciones",
+      "automationHistory": "Historial de automatizaciones",
+      "onboarding": "Progreso del onboarding",
+      "other": "Otro estado guardado de la app"
     }
   },
   "startupFailure": {
@@ -21530,8 +21557,8 @@
     "manifestFilter": "Manifiesto de actualización de Orca",
     "sameVersionError": "Esta compilación tiene la misma versión que la aplicación en ejecución. Vuelve a ejecutar pn build:mac para crear una compilación con una versión única.",
     "noLiveTerminals": "No hay terminales activos que deban volver a conectarse.",
-    "oneLiveTerminal": "1 terminal activo se volverá a conectar tras el reinicio.",
-    "liveTerminals": "{{count}} terminales activos se volverán a conectar tras el reinicio.",
+    "liveTerminals_one": "{{count}} terminal activo se volverá a conectar tras el reinicio.",
+    "liveTerminals_other": "{{count}} terminales activos se volverán a conectar tras el reinicio.",
     "confirmTitle": "¿Usar la compilación local de Orca?",
     "schemaCompatibility": "Las tarjetas del espacio de trabajo y la configuración son compatibles con el esquema de estado {{schemaVersion}}.",
     "signatureRequirement": "La compilación debe tener la misma firma de código válida que Orca; de lo contrario, la instalación se detendrá.",

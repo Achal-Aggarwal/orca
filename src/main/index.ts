@@ -185,7 +185,8 @@ if (preflightReady) {
             if (
               await chooseProfileStateRepair({
                 sections,
-                showMessageBox: (options) => dialog.showMessageBox(options)
+                showMessageBox: (options) => dialog.showMessageBox(options),
+                translate: translateMain
               })
             ) {
               app.relaunch({

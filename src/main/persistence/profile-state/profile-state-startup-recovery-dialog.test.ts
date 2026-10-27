@@ -8,7 +8,7 @@ import {
 
 // English copy with the fallback placeholders filled, as translateMain renders it before i18n loads.
 const english: ProfileStateDialogTranslate = (_key, fallback, options) =>
-  fallback.replace('{{time}}', options?.time ?? '')
+  fallback.replace(/\{\{(\w+)\}\}/g, (placeholder, name: string) => options?.[name] ?? placeholder)
 
 describe('profile state startup recovery dialog', () => {
   it('offers a copyable offline export command and does not mutate state', async () => {
@@ -121,7 +121,8 @@ describe('profile state startup recovery dialog', () => {
             { domain: 'settings', backupId: null }
           ],
           formatTime: (time) => `t${time.getTime()}`,
-          showMessageBox
+          showMessageBox,
+          translate: english
         })
       ).resolves.toBe(repair)
       expect(showMessageBox).toHaveBeenCalledWith({

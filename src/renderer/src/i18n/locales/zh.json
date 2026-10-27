@@ -21507,9 +21507,21 @@
       "jsonOption": "JSON：包含在旧版本中所做的更改。此版本此后保存的更改将被丢弃。",
       "archiveNote": "Orca 会在切换前归档两个副本，然后重新启动。"
     },
+    "repairChoice": {
+      "sectionStartsEmpty": "{{section}}：没有可读取的备份，因此将从空白开始。",
+      "sectionRestored": "{{section}}：将从 {{time}} 保存的备份中恢复。",
+      "projectsForgotten": "Orca 将忘记你的项目及其工作区详情。磁盘上的文件不受影响。",
+      "newerProjectsRemoved": "该备份之后添加的项目将连同其工作区详情一起从 Orca 中移除。磁盘上的文件不受影响。",
+      "repairButton": "修复并重新启动",
+      "quitButton": "退出",
+      "title": "修复配置文件",
+      "message": "此配置文件已保存状态的一部分已损坏。",
+      "restUnchanged": "其他所有内容保持不变。",
+      "damagedCopyKept": "Orca 会在其数据文件夹中保留损坏文件的副本，然后重新启动。"
+    },
     "recoveryNotApplied": {
       "quitButton": "退出",
-      "title": "Orca 配置文件状态未更改",
+      "title": "Orca 无法完成此配置文件的恢复",
       "message": "Orca 无法应用所选的配置文件状态。",
       "reopenDetail": "重新打开 Orca 以再次选择。"
     },
@@ -21519,6 +21531,21 @@
       "indeterminateDetail": "Orca 无法确认你最近的更改是否已保存。在重新启动 Orca 之前，新的更改将不会被保存。",
       "safeDetail": "此前保存的更改是安全的。在重新启动 Orca 之前，新的更改将不会被保存。",
       "okButton": "确定"
+    },
+    "section": {
+      "projects": "项目",
+      "projectGroups": "项目组",
+      "folderWorkspaces": "文件夹工作区",
+      "reviewComments": "评审评论",
+      "workspaceDetails": "工作区详情",
+      "settings": "设置",
+      "windowLayout": "窗口布局",
+      "openTabs": "打开的标签页和终端",
+      "sshHosts": "SSH 主机",
+      "automations": "自动化",
+      "automationHistory": "自动化历史",
+      "onboarding": "入门引导进度",
+      "other": "其他已保存的应用状态"
     }
   },
   "startupFailure": {
@@ -21530,8 +21557,8 @@
     "manifestFilter": "Orca 更新清单",
     "sameVersionError": "此构建与正在运行的应用版本相同。请再次运行 pn build:mac 以创建具有唯一版本的构建。",
     "noLiveTerminals": "没有需要重新连接的活动终端。",
-    "oneLiveTerminal": "1 个活动终端将在重新启动后重新连接。",
-    "liveTerminals": "{{count}} 个活动终端将在重新启动后重新连接。",
+    "liveTerminals_one": "{{count}} 个活动终端将在重新启动后重新连接。",
+    "liveTerminals_other": "{{count}} 个活动终端将在重新启动后重新连接。",
     "confirmTitle": "使用本地 Orca 构建？",
     "schemaCompatibility": "工作区卡片和设置与状态架构 {{schemaVersion}} 兼容。",
     "signatureRequirement": "该构建必须具有与 Orca 相同的有效代码签名，否则安装将停止。",

@@ -12,7 +12,7 @@ import {
 export type ProfileStateDialogTranslate = (
   key: string,
   englishFallback: string,
-  options?: { time: string }
+  options?: Record<string, string>
 ) => string
 
 export type ProfileStateStartupRecoveryDialogDeps = {
@@ -157,6 +157,7 @@ export type ProfileStateRepairChoiceDialogDeps = {
   sections: readonly ProfileStateRepairSection[]
   formatTime?: (time: Date) => string
   showMessageBox: (options: MessageBoxOptions) => Promise<MessageBoxReturnValue>
+  translate: ProfileStateDialogTranslate
 }
 
 /** Confirm replacement with older sections; false quits unchanged. */
@@ -165,10 +166,18 @@ export async function chooseProfileStateRepair(
 ): Promise<boolean> {
   const format = deps.formatTime ?? ((time: Date) => time.toLocaleString())
   const lines = deps.sections.map(({ domain, backupCreatedAtMs }) => {
-    const [label] = profileStateSectionLabels([domain])
+    const [section] = profileStateSectionLabels([domain], deps.translate)
     return backupCreatedAtMs === undefined
-      ? `${label}: no readable backup, so it will start empty.`
-      : `${label}: restored from the backup saved ${format(new Date(backupCreatedAtMs))}.`
+      ? deps.translate(
+          'profileState.repairChoice.sectionStartsEmpty',
+          '{{section}}: no readable backup, so it will start empty.',
+          { section }
+        )
+      : deps.translate(
+          'profileState.repairChoice.sectionRestored',
+          '{{section}}: restored from the backup saved {{time}}.',
+          { section, time: format(new Date(backupCreatedAtMs)) }
+        )
   })
   const projectSections = deps.sections.filter(({ domain }) => includesProjectListSection([domain]))
   const projectNote =
@@ -176,28 +185,46 @@ export async function chooseProfileStateRepair(
       ? []
       : projectSections.some(({ backupCreatedAtMs }) => backupCreatedAtMs === undefined)
         ? [
-            'Orca will forget your projects and their workspace details. Files on disk are not touched.',
+            deps.translate(
+              'profileState.repairChoice.projectsForgotten',
+              'Orca will forget your projects and their workspace details. Files on disk are not touched.'
+            ),
             ''
           ]
         : [
-            'Projects added after that backup will be removed from Orca, along with their workspace details. Files on disk are not touched.',
+            deps.translate(
+              'profileState.repairChoice.newerProjectsRemoved',
+              'Projects added after that backup will be removed from Orca, along with their workspace details. Files on disk are not touched.'
+            ),
             ''
           ]
   const { response } = await deps.showMessageBox({
     type: 'warning',
-    buttons: ['Repair and Restart', 'Quit'],
+    buttons: [
+      deps.translate('profileState.repairChoice.repairButton', 'Repair and Restart'),
+      deps.translate('profileState.repairChoice.quitButton', 'Quit')
+    ],
     defaultId: 0,
     cancelId: 1,
     noLink: true,
-    title: 'Repair profile',
-    message: "Part of this profile's saved state is damaged.",
+    title: deps.translate('profileState.repairChoice.title', 'Repair profile'),
+    message: deps.translate(
+      'profileState.repairChoice.message',
+      "Part of this profile's saved state is damaged."
+    ),
     detail: [
       ...new Set(lines),
       '',
-      'Everything else stays as it is now.',
+      deps.translate(
+        'profileState.repairChoice.restUnchanged',
+        'Everything else stays as it is now.'
+      ),
       '',
       ...projectNote,
-      'Orca keeps a copy of the damaged file in its data folder, then restarts.'
+      deps.translate(
+        'profileState.repairChoice.damagedCopyKept',
+        'Orca keeps a copy of the damaged file in its data folder, then restarts.'
+      )
     ].join('\n')
   })
   return response === 0
