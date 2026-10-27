@@ -42,14 +42,14 @@ vi.mock('react-native-safe-area-context', () => ({
 }))
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path' }))
 vi.mock('lucide-react-native', () => ({ ChevronLeft: 'Icon', Play: 'Icon', RefreshCw: 'Icon' }))
-const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), push: vi.fn() }))
+const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), replace: vi.fn() }))
 vi.mock('../platform/haptics', () => ({
   triggerError: notifications.error,
   triggerSuccess: notifications.success
 }))
 vi.mock('../components/MobileAgentIcon', () => ({ MobileAgentIcon: () => null }))
 vi.mock('../navigation/route-handoff', () => ({
-  useRouteHandoff: () => ({ push: notifications.push, back: vi.fn(), canGoBack: () => false })
+  useRouteHandoff: () => ({ replace: notifications.replace, back: vi.fn(), canGoBack: () => false })
 }))
 vi.mock('../transport/host-client-hooks', () => ({
   useHostClient: () => ({ client: state.client, state: state.connection }),
@@ -111,7 +111,7 @@ it.each([
   let hostId = 'owned-host'
   notifications.error.mockClear()
   notifications.success.mockClear()
-  notifications.push.mockClear()
+  notifications.replace.mockClear()
   state.legacy = boundary === 'accepted send'
   state.completedBoundary = state.legacy || boundary === 'owned create accepted'
   state.generation = 1
@@ -308,7 +308,7 @@ it.each([
       const completion = {
         errors: notifications.error.mock.calls.length,
         successes: notifications.success.mock.calls.length,
-        navigations: notifications.push.mock.calls.length
+        navigations: notifications.replace.mock.calls.length
       }
       if (scenario !== 'unmount') {
         await act(async () => {

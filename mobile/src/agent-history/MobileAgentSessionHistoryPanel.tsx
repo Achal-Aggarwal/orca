@@ -35,6 +35,7 @@ export type MobileAgentSessionHistoryPanelProps = {
   hostId: string
   worktreeId: string
   name?: string
+  origin?: string
 }
 
 const SCOPE_TABS: { scope: AiVaultScope; label: string }[] = [
@@ -50,7 +51,8 @@ export function MobileAgentSessionHistoryPanel(props: MobileAgentSessionHistoryP
 function MobileAgentSessionHistoryPanelContent({
   hostId,
   worktreeId,
-  name = ''
+  name = '',
+  origin = ''
 }: MobileAgentSessionHistoryPanelProps) {
   useMobileColorScheme()
   // Use handoff, not useRouter: resumed session is a native route outside this single-document page.
@@ -231,11 +233,14 @@ function MobileAgentSessionHistoryPanelContent({
           return
         }
         setResumeMessage('Agent session queued.')
-        router.push(
-          `/h/${encodeURIComponent(hostId)}/session/${encodeURIComponent(target.worktreeId)}` as Parameters<
-            typeof router.push
-          >[0]
-        )
+        // From a session screen the same workspace is the screen below; otherwise the session takes this screen's place.
+        if (origin === 'session' && target.worktreeId === worktreeId) {
+          router.back()
+        } else {
+          router.replace(
+            `/h/${encodeURIComponent(hostId)}/session/${encodeURIComponent(target.worktreeId)}`
+          )
+        }
       } catch (err) {
         triggerError()
         setResumeMessage(err instanceof Error ? err.message : 'Failed to resume session.')
@@ -248,6 +253,7 @@ function MobileAgentSessionHistoryPanelContent({
       client,
       connState,
       hostId,
+      origin,
       resumeHost,
       hostTerminalWindowsShell,
       router,

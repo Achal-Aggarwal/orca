@@ -229,8 +229,8 @@ export function MobileWebShellScreen({
       console.warn('[web-shell] refused to open this screen', issue)
       reportShellFailure('document-load-failed')
     },
-    // Push so Back reveals the mounted page without downloading or handshaking again.
-    onNavigate: (href: string) => {
+    // Push so Back reveals the mounted page without downloading or handshaking again, unless the page replaced itself.
+    onNavigate: (href: string, replace: boolean) => {
       if (overlay) {
         return void router.replace(href)
       }
@@ -252,6 +252,10 @@ export function MobileWebShellScreen({
       // The wide host route owns the session area; dismissTo pops to it or replaces after a cold deep link, avoiding a second copy.
       if (isWideLayout && isHostRouteOf(href, hostId)) {
         router.dismissTo(href)
+        return
+      }
+      if (replace) {
+        router.replace(href)
         return
       }
       router.push(href)
