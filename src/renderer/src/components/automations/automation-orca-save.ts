@@ -1,3 +1,8 @@
+import {
+  automationChatSupport,
+  automationDraftSurface,
+  automationLaunchWorkspace
+} from './automation-launch-surface'
 import { toast } from 'sonner'
 import type {
   Automation,
@@ -152,15 +157,27 @@ export async function saveOrcaAutomation(
     currentAutomation = (reread.ok ? reread.value : null) ?? currentAutomation
   }
 
+  const surface = automationDraftSurface(
+    draft,
+    store.settings,
+    automationChatSupport(
+      useAppStore.getState(),
+      draft,
+      automationLaunchWorkspace(draft, setupResolution ?? undefined)
+    )
+  )
+  const launchSetupPatch = {
+    surface,
+    ...(hasExtraAgentArgs(draft.extraAgentArgs) || currentAutomation?.extraAgentArgs
+      ? { arguments: { kind: 'legacy-extras' as const, value: draft.extraAgentArgs } }
+      : {})
+  }
   const updates: AutomationUpdateInput = {
     name: draft.name,
     prompt: draft.prompt,
     precheck,
     agentId: draft.agentId,
-    // Sent only when it carries or clears extras, so other edits stay legacy-shaped.
-    ...(hasExtraAgentArgs(draft.extraAgentArgs) || currentAutomation?.extraAgentArgs
-      ? { extraAgentArgs: draft.extraAgentArgs }
-      : {}),
+    launchSetupPatch,
     runContext,
     projectId: draft.projectId,
     workspaceMode: draft.workspaceMode,
@@ -180,7 +197,7 @@ export async function saveOrcaAutomation(
     prompt: draft.prompt,
     precheck,
     agentId: draft.agentId,
-    ...(hasExtraAgentArgs(draft.extraAgentArgs) ? { extraAgentArgs: draft.extraAgentArgs } : {}),
+    launchSetupPatch,
     runContext,
     projectId: draft.projectId,
     workspaceMode: draft.workspaceMode,

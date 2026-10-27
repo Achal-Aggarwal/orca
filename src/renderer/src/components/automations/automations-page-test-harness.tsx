@@ -1,3 +1,4 @@
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
 /** Record child props to test page orchestration rather than presentation. Import this harness first so shared vi.mock registrations precede AutomationsPage loading. */
 
@@ -392,6 +393,7 @@ export function installAutomationsPageHarness(): void {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     vi.clearAllMocks()
+    setLocalRuntimeCapabilitiesForTests([])
     // Confirmed capabilities are module-level and must not leak between tests.
     resetAutomationCapabilityProbes()
     // A prior test's wholesale mockImplementation must not leak forward.
@@ -429,5 +431,6 @@ export function installAutomationsPageHarness(): void {
       roots.splice(0).forEach((root) => root.unmount())
     })
     document.body.innerHTML = ''
+    setLocalRuntimeCapabilitiesForTests(null)
   })
 }

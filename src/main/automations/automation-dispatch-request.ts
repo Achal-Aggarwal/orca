@@ -11,12 +11,7 @@ import {
   runHeadlessAutomationDispatch
 } from './headless-dispatch-runner'
 import type { AutomationRunTargetResult } from './run-target-resolution'
-import { createAutomationDispatchToken } from './dispatch-tokens'
-import {
-  NO_DISPATCH_HOST,
-  describeScheduledRefusal,
-  sendRendererDispatch
-} from './dispatch-refusal'
+import { NO_DISPATCH_HOST, describeScheduledRefusal } from './dispatch-refusal'
 import { isOrcadFencedAutomation, ORCAD_FENCED_AUTOMATION } from './orcad-fenced-automation'
 import { AutomationDispatchCancelledError } from './automation-dispatch-cancelled-error'
 
@@ -31,7 +26,6 @@ type DispatchContext = Pick<
   store: Store
   runs: AutomationRunWriter
   isActive(): boolean
-  getRenderer(): AutomationRendererChannel | null
   headlessDispatcher: HeadlessAutomationDispatcher | null
   resolveTarget(automation: Automation): AutomationRunTargetResult
 }
@@ -115,7 +109,7 @@ export async function requestAutomationDispatch(
   let target = resolveCurrentTarget()
   const refusal = describeScheduledRefusal({
     target,
-    canDispatch: Boolean(ctx.getRenderer() || ctx.headlessDispatcher)
+    canDispatch: Boolean(ctx.headlessDispatcher)
   })
   if (refusal || !target.ok) {
     return refuse(refusal ?? NO_DISPATCH_HOST)
@@ -136,19 +130,6 @@ export async function requestAutomationDispatch(
   const lateRefusal = describeScheduledRefusal({ target, canDispatch: true })
   if (lateRefusal || !target.ok) {
     return refuse(lateRefusal ?? NO_DISPATCH_HOST)
-  }
-  const renderer = ctx.getRenderer()
-  if (renderer) {
-    return sendRendererDispatch(
-      renderer,
-      {
-        automation,
-        run,
-        dispatchToken: createAutomationDispatchToken(automation.id, run.id)
-      },
-      ctx.runs,
-      run
-    )
   }
   const dispatcher = ctx.headlessDispatcher
   if (!dispatcher) {

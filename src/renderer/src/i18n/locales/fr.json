@@ -20072,7 +20072,11 @@
       "caution": "Attention"
     },
     "automations": {
-      "runTerminalUnavailable": "Le terminal d'exécution est indisponible."
+      "runTerminalUnavailable": "Le terminal d'exécution est indisponible.",
+      "openIn": "Ouvrir dans",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "runChatUnavailable": "Le chat de cette exécution est indisponible. Son espace de travail est affiché ; toute sortie enregistrée reste dans les détails de l’exécution."
     },
     "jiraIssueTitleField": {
       "generate": "Générer le titre à partir de la description",

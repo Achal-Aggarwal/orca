@@ -43,10 +43,7 @@ import type {
   PublishAutomationsChanged
 } from '../../shared/runtime-client-events'
 
-const DEFAULT_TICK_MS = 60 * 1000
-
 export class AutomationService {
-  private readonly store: Store
   private readonly tickMs: number
   private timer: ReturnType<typeof setInterval> | null = null
   private webContents: AutomationRendererChannel | null = null
@@ -68,7 +65,7 @@ export class AutomationService {
   externalProbePriority: (<T>(run: () => T) => T) | null = null
 
   constructor(
-    store: Store,
+    private readonly store: Store,
     opts: {
       tickMs?: number
       claudeUsage?: ClaudeUsageStore
@@ -79,8 +76,7 @@ export class AutomationService {
       onAutomationsChanged?: PublishAutomationsChanged
     } = {}
   ) {
-    this.store = store
-    this.tickMs = opts.tickMs ?? DEFAULT_TICK_MS
+    this.tickMs = opts.tickMs ?? 60_000
     this.claudeUsage = opts.claudeUsage ?? null
     this.codexUsage = opts.codexUsage ?? null
     this.allowRemoteHostScheduling = opts.allowRemoteHostScheduling ?? false
@@ -124,7 +120,7 @@ export class AutomationService {
     this.completionWatcher?.reconcileRetainedRuns(this.store.listAutomationRuns())
     reportAutomationScheduleDrift(this.store.listAutomations())
     // Headless hosts need startup catch-up without a renderer-ready notification.
-    if (this.rendererReady || this.headlessDispatcher) {
+    if (this.rendererReady || (this.allowRemoteHostScheduling && this.headlessDispatcher)) {
       // Serve adopts PTYs and publishes its graph before start().
       this.completionWatcher?.markTerminalSurfaceReady()
       void this.evaluateDueRuns()
@@ -264,7 +260,9 @@ export class AutomationService {
 
     // Fold recurring refusals before creating rows so they do not evict real run history.
     const target = this.resolveTarget(automation)
-    const canDispatch = this.canDispatchToRenderer() || Boolean(this.headlessDispatcher)
+    const canDispatch =
+      this.canDispatchToRenderer() ||
+      Boolean(this.allowRemoteHostScheduling && this.headlessDispatcher)
     const refusal = describeScheduledRefusal({ target, canDispatch })
     // Once WSL owns the schedule, avoid churning skips on the retained local copy.
     if (refusal === WSL_MOVE_OWNED_BY_HOST) {
@@ -313,8 +311,10 @@ export class AutomationService {
           store: this.store,
           runs: this.runs,
           isActive: () => !this.stopped && generation === this.dispatchGeneration,
-          getRenderer: () => (this.canDispatchToRenderer() ? this.webContents : null),
-          headlessDispatcher: this.headlessDispatcher,
+          headlessDispatcher:
+            this.allowRemoteHostScheduling || this.canDispatchToRenderer()
+              ? this.headlessDispatcher
+              : null,
           resolveTarget: (current) => this.resolveTarget(current),
           runPrecheck: () => this.runPrecheck(automation.id, run.id),
           markDispatchResult: (result) => this.markDispatchResult(result),

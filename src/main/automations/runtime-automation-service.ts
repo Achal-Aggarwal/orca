@@ -1,3 +1,7 @@
+import { observeAutomationChatRun } from './runtime-chat-run-observer'
+import { readAutomationRunReceipt } from './automation-run-receipt'
+import { tuiAgentDisplayName } from '../../shared/tui-agent-display-names'
+import { parsePaneKey } from '../../shared/stable-pane-id'
 import type { ClaudeUsageStore } from '../claude-usage/store'
 import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
@@ -42,10 +46,69 @@ export function createRuntimeAutomationService(input: {
     terminalObserver: {
       ...observer,
       resolveRunTerminal: (run) =>
-        (run.terminalPaneKey ? launchedHandles.get(run.terminalPaneKey) : undefined) ??
-        observer.resolveRunTerminal(run),
+        run.sessionKind === 'chat' || run.status === 'dispatching'
+          ? `automation:${run.id}`
+          : ((run.terminalPaneKey ? launchedHandles.get(run.terminalPaneKey) : undefined) ??
+            observer.resolveRunTerminal(run)),
       observeCompletion: async (handle, options) => {
-        const observation = await observer.observeCompletion(handle, options)
+        let run = options.run
+        if (run && handle.startsWith('automation:')) {
+          if (!run.chatSessionId) {
+            const records = await runtime.openAgentSessionRecordStore()
+            const receipt = readAutomationRunReceipt(records, run)
+            const agent =
+              tuiAgentDisplayName(
+                store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId ??
+                  'Agent'
+              ) ?? 'Agent'
+            if (!receipt) {
+              return {
+                status: 'dispatch_failed',
+                error: `${agent} could not confirm this run after Orca restarted. Open its workspace before running again.`
+              }
+            }
+            const terminal = receipt.kind === 'terminal' ? receipt.launch.outcome : null
+            const terminalPaneKey = terminal
+              ? (terminal.paneKey ?? runtime.getTerminalPaneKey(terminal.handle))
+              : null
+            run = await service.markDispatchResult({
+              runId: run.id,
+              status: 'dispatched',
+              workspaceId:
+                receipt.kind === 'chat' ? receipt.workspaceId : receipt.launch.worktreeId,
+              sessionKind: receipt.kind,
+              chatSessionId: receipt.kind === 'chat' ? receipt.sessionId : null,
+              terminalSessionId: terminal
+                ? (parsePaneKey(terminalPaneKey ?? '')?.tabId ?? null)
+                : null,
+              terminalPaneKey,
+              terminalPtyId: terminal ? runtime.getTerminalPtyIdForHandle(terminal.handle) : null
+            })
+            if (terminal) {
+              handle = terminal.handle
+            }
+          }
+          if (run.sessionKind === 'chat') {
+            try {
+              return await observeAutomationChatRun(runtime, run, options.signal)
+            } catch (error) {
+              if (options.signal.aborted) {
+                throw error
+              }
+              console.error('[automations] chat run observation failed:', error)
+              const agent =
+                tuiAgentDisplayName(
+                  store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId ??
+                    ''
+                ) ?? 'The agent'
+              return {
+                status: 'dispatch_failed',
+                error: `${agent} stopped reporting this run's result. Open the chat before running again.`
+              }
+            }
+          }
+        }
+        const observation = await observer.observeCompletion(handle, { ...options, run })
         if (options.run && observation.error === AGENT_HOOKS_REVIEW_BLOCKED_ERROR) {
           const markDispatchResult = service.markDispatchResult.bind(service)
           void closeEarlierHookReviewRunTerminals(
@@ -60,22 +123,20 @@ export function createRuntimeAutomationService(input: {
     },
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: input.headless,
-    headlessDispatcher: input.headless
-      ? async (request) => {
-          const { terminalHandle, ...launch } = await launchHeadlessAutomationAgent(runtime, {
-            ...request,
-            runs: store.listAutomationRuns(request.automation.id)
-          })
-          if (launch.terminalPaneKey) {
-            launchedHandles.set(launch.terminalPaneKey, terminalHandle)
-            if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
-              launchedHandles.delete(launchedHandles.keys().next().value ?? '')
-            }
-          }
-          // Let the watcher retry wait timeouts until completion or its observation deadline.
-          return launch
+    headlessDispatcher: async (request) => {
+      const { terminalHandle, ...launch } = await launchHeadlessAutomationAgent(runtime, {
+        ...request,
+        runs: store.listAutomationRuns(request.automation.id)
+      })
+      if (launch.terminalPaneKey && terminalHandle) {
+        launchedHandles.set(launch.terminalPaneKey, terminalHandle)
+        if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
+          launchedHandles.delete(launchedHandles.keys().next().value ?? '')
         }
-      : undefined
+      }
+      // Let the watcher retry wait timeouts until completion or its observation deadline.
+      return launch
+    }
   })
   runtime.setAutomationService(service)
   if (input.headless) {

@@ -19932,7 +19932,11 @@
       "caution": "Precaución"
     },
     "automations": {
-      "runTerminalUnavailable": "La terminal de ejecución no está disponible."
+      "runTerminalUnavailable": "La terminal de ejecución no está disponible.",
+      "openIn": "Abrir en",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "runChatUnavailable": "El chat de la ejecución no está disponible. Se muestra su espacio de trabajo; la salida guardada sigue en Detalles de la ejecución."
     },
     "jiraIssueTitleField": {
       "generate": "Generar título a partir de la descripción",

@@ -28,7 +28,7 @@ vi.mock('./structured-agent-session-create', () => ({
     createStructuredSession(args)
 }))
 
-const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
+const { AGENT_LAUNCH_METHODS, launchAgentOnHost } = await import('./agent-launch')
 const { WORKTREE_METHODS } = await import('./worktree')
 
 const AGENT_LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
@@ -692,5 +692,48 @@ describe('launch inputs that cross the wire', () => {
     )
 
     expect(result.receipt).toMatchObject({ mode: 'terminal', reason: 'tui_launch_command' })
+  })
+})
+
+describe('trusted unattended launch policy', () => {
+  it('uses the ordinary terminal factory while suppressing updates and retaining the run title', async () => {
+    const runtime = runtimeStub()
+    const result = await launchAgentOnHost(
+      AGENT_LAUNCH.params.parse({
+        agent: 'claude',
+        surface: 'terminal',
+        presentation: 'background',
+        target: { kind: 'existing', worktree: 'id:wt-7' }
+      }),
+      rpcContext(runtime, {}),
+      { suppressStartupUpdatePrompt: true, terminalTitle: 'Nightly run 1' }
+    )
+    expect(result.outcome.kind).toBe('terminal')
+    expect(runtime.createTerminal).toHaveBeenCalledWith(
+      'id:wt-7',
+      expect.objectContaining({
+        startupAgent: 'claude',
+        suppressStartupUpdatePrompt: true,
+        title: 'Nightly run 1',
+        presentation: 'background'
+      })
+    )
+  })
+  it('forwards suppression through the ordinary new-workspace factory without exposing a wire option', async () => {
+    const runtime = runtimeStub()
+    const params = AGENT_LAUNCH.params.parse({
+      ...CREATE_LAUNCH,
+      surface: 'terminal',
+      suppressStartupUpdatePrompt: true
+    })
+    expect(params).not.toHaveProperty('suppressStartupUpdatePrompt')
+    await launchAgentOnHost(params, rpcContext(runtime, {}), { suppressStartupUpdatePrompt: true })
+    expect(runtime.createManagedWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startupAgent: 'claude',
+        startupSuppressUpdatePrompt: true,
+        createdWithAgent: 'claude'
+      })
+    )
   })
 })

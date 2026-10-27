@@ -1,256 +1,314 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AutomationRun } from '../../shared/automations-types'
+import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
+import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cutover-fixture'
+import { automationRunOperationId } from './automation-run-operation'
+import { tokenizeStartupCommand } from '../../shared/tui-agent-startup-shell'
 import { launchHeadlessAutomationAgent } from './headless-automation-agent-launch'
 
-const { deliverTerminalAgentLaunchPrompt } = vi.hoisted(() => ({
-  deliverTerminalAgentLaunchPrompt: vi.fn(async (_args: Record<string, unknown>) => true)
+const mocks = vi.hoisted(() => ({
+  launch: vi.fn(),
+  host: { journalSnapshot: vi.fn(), currentWork: vi.fn(), send: vi.fn() }
 }))
-vi.mock('../runtime/rpc/methods/agent-launch-terminal-prompt', () => ({
-  deliverTerminalAgentLaunchPrompt
+vi.mock('../runtime/rpc/methods/agent-launch', () => ({ launchAgentOnHost: mocks.launch }))
+vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
+  getStructuredAgentSessionHost: () => mocks.host
 }))
-
-beforeEach(() => {
-  deliverTerminalAgentLaunchPrompt.mockClear()
-  deliverTerminalAgentLaunchPrompt.mockResolvedValue(true)
-})
-
-const CHAT_DEFAULT_ON = { experimentalNativeChat: true }
-
-function harness(options: { startupTerminal?: Record<string, unknown> | null } = {}) {
+const state = buildProfileStateCutoverFixture('/fixture')
+const run = { ...state.automationRuns[0], id: 'run-1', createdAt: Date.now() }
+const automation = {
+  ...state.automations[0],
+  id: run.automationId,
+  agentId: 'claude' as const,
+  workspaceMode: 'existing' as const,
+  workspaceId: 'wt-1',
+  prompt: 'Audit',
+  extraAgentArgs: undefined
+}
+const target = { ok: true as const, repo: state.repos[0], cwd: '/fixture' }
+const terminal: AgentLaunchResult = {
+  worktreeId: 'wt-1',
+  outcome: { kind: 'terminal', handle: 'term-1', paneKey: 'tab-1:leaf-1' },
+  receipt: { mode: 'terminal', preferred: 'terminal', reason: 'requested', detail: 'Terminal' },
+  prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+}
+const chat: AgentLaunchResult = {
+  ...terminal,
+  outcome: { kind: 'structured', sessionId: 'claude_chat', handle: 'chat-tab' },
+  prompt: { delivery: 'submit', outcome: 'journaled', messageId: 'first-message' }
+}
+function fixture() {
+  const records = {
+    getOperationRow: vi.fn(),
+    getConversation: vi.fn(() => ({
+      sessionId: 'claude_prev',
+      provider: 'claude',
+      location: { workspaceId: 'wt-1' },
+      currentFence: 2
+    }))
+  }
   const runtime = {
-    requireStore: () => ({ getSettings: () => CHAT_DEFAULT_ON }),
-    getStructuredAgentSessionCreateSupport: vi.fn(async () => ({ supported: true })),
-    createManagedWorktree: vi.fn(async (_args: Record<string, unknown>) => ({
-      worktree: { id: 'repo-1::/wt/auto', displayName: 'auto-nightly' },
-      ...(options.startupTerminal === null
-        ? { warning: 'Startup terminal failed.' }
-        : {
-            startupTerminal: options.startupTerminal ?? {
-              handle: 'term_new',
-              tabId: 'tab-new',
-              paneKey: 'tab-new:leaf-1',
-              ptyId: 'pty-new'
-            }
-          })
+    requireStore: () => ({
+      getSettings: () => ({
+        experimentalNativeChat: true,
+        workspaceDir: '/fixture',
+        nestWorkspaces: false,
+        agentDefaultArgs: { claude: '--model sonnet --add-dir docs' }
+      })
+    }),
+    showTerminalWorkspaceLaunchScope: vi.fn(async () => ({
+      id: 'wt-1',
+      path: '/fixture',
+      connectionId: 'ssh-test'
     })),
-    launchAgentTerminal: vi.fn(async (_selector: string, _opts: Record<string, unknown>) => ({
-      handle: 'term_existing',
-      tabId: 'tab-1',
-      paneKey: 'tab-1:leaf-1',
-      ptyId: 'pty-1',
-      worktreeId: 'wt-1',
-      title: 'Nightly',
-      suppressStartupUpdatePrompt: true
-    })),
-    showManagedWorktree: vi.fn(async () => ({ displayName: 'repo' })),
-    getAgentStatusRowsForPane: vi.fn((_paneKey: string) => [
-      { state: 'done', agentType: 'claude', receivedAt: 2 }
-    ]),
-    getTerminalHandleForPaneKey: vi.fn((paneKey: string) =>
-      paneKey === 'tab-prev:leaf-1' ? 'term_prev' : null
-    ),
-    getTerminalPtyIdForHandle: vi.fn((_handle: string) => 'pty-prev'),
-    deliverStartupFollowup: vi.fn(
-      async (_handle: string, _followup: { agent: string; prompt: string }) => true
-    )
+    showManagedWorktree: vi.fn(async () => ({ displayName: 'Audit' })),
+    showTerminal: vi.fn(async () => ({ tabId: 'tab-1' })),
+    getTerminalPtyIdForHandle: vi.fn(() => 'pty-1'),
+    getTerminalPaneKey: vi.fn(() => 'tab-1:leaf-1'),
+    getTerminalHandleForPaneKey: vi.fn(() => 'term-prev'),
+    getAgentStatusRowsForPane: vi.fn(() => [{ state: 'done', agentType: 'claude', receivedAt: 1 }]),
+    ensureStructuredAgentSessionHost: vi.fn(),
+    openAgentSessionRecordStore: vi.fn(async () => records)
   }
-  return runtime
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the runtime boundaries above are reached; the ordinary launch is mocked separately.
+  return { runtime: runtime as unknown as OrcaRuntimeService, records }
 }
-
-function automation(overrides: Record<string, unknown>) {
-  return {
-    id: 'auto-1',
-    agentId: 'claude',
-    prompt: '  fix the flaky test  ',
-    workspaceMode: 'existing',
-    workspaceId: 'wt-1',
-    ...overrides
-  }
-}
-
-const RUN = { id: 'run-1', title: 'Nightly', scheduledFor: Date.UTC(2026, 9, 9, 3) }
-const TARGET = { ok: true, repo: { id: 'repo-1', path: '/repo', displayName: 'repo' } }
-
-function previousRun(overrides: Partial<AutomationRun> = {}): AutomationRun {
-  return {
-    id: 'run-0',
-    automationId: 'auto-1',
-    title: 'Nightly',
-    scheduledFor: 1,
-    status: 'completed',
-    trigger: 'scheduled',
-    workspaceId: 'wt-1',
-    workspaceDisplayName: 'repo',
-    sessionKind: 'terminal',
-    chatSessionId: null,
-    terminalSessionId: 'tab-prev',
-    terminalPaneKey: 'tab-prev:leaf-1',
-    terminalPtyId: 'pty-prev',
-    outputSnapshot: null,
-    precheckResult: null,
-    usage: null,
-    error: null,
-    startedAt: 1,
-    dispatchedAt: 1,
-    createdAt: 1,
-    ...overrides
-  }
-}
-
-function launch(
-  runtime: ReturnType<typeof harness>,
-  overrides: Record<string, unknown>,
-  runs: AutomationRun[] = []
-) {
-  return launchHeadlessAutomationAgent(
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch reads only the members faked in harness().
-    runtime as never,
-    {
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only these automation fields are read.
-      automation: automation(overrides) as never,
-      run: RUN,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the repo is read.
-      target: TARGET as never,
-      runs
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.launch.mockResolvedValue(terminal)
+  mocks.host.currentWork.mockReturnValue({ working: () => false })
+  mocks.host.send.mockResolvedValue({ ok: true })
+})
+describe('automations through agent.launch', () => {
+  it.each(['claude', 'codex'] as const)(
+    'pins legacy %s runs to Terminal and preserves unattended/background policy',
+    async (agentId) => {
+      const { runtime } = fixture()
+      const result = await launchHeadlessAutomationAgent(runtime, {
+        automation: { ...automation, surface: undefined, agentId },
+        run,
+        target,
+        runs: []
+      })
+      expect(mocks.launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: agentId,
+          surface: 'terminal',
+          operationId: automationRunOperationId(run, 'fresh-launch'),
+          prompt: { text: 'Audit', delivery: 'submit' },
+          presentation: 'background',
+          target: { kind: 'existing', worktree: 'id:wt-1' }
+        }),
+        expect.objectContaining({ runtime }),
+        {
+          terminalTitle: run.title,
+          suppressStartupUpdatePrompt: true,
+          unprovableHost: 'write-unless-shell'
+        }
+      )
+      expect(result).toMatchObject({
+        sessionKind: 'terminal',
+        chatSessionId: null,
+        terminalPtyId: 'pty-1'
+      })
     }
   )
-}
-
-describe('headless automation agent launch', () => {
-  it('starts a post-start agent bare and delivers its prompt once, after the terminal is recorded', async () => {
-    const runtime = harness()
-    let finishDelivery: (delivered: boolean) => void = () => {}
-    runtime.deliverStartupFollowup.mockImplementation(
-      () => new Promise<boolean>((resolve) => (finishDelivery = resolve))
-    )
-
-    const launched = await launch(runtime, { agentId: 'aider' })
-
-    expect(launched.terminalPaneKey).toBe('tab-1:leaf-1')
-    expect(runtime.launchAgentTerminal).toHaveBeenCalledWith(
-      'id:wt-1',
-      expect.objectContaining({ agent: 'aider', prompt: '' })
-    )
-    expect(runtime.deliverStartupFollowup).toHaveBeenCalledTimes(1)
-    expect(runtime.deliverStartupFollowup).toHaveBeenCalledWith('term_existing', {
-      agent: 'aider',
-      prompt: 'fix the flaky test'
+  it('merges Terminal extras over the live host defaults, and never applies them to Chat', async () => {
+    const { runtime } = fixture()
+    await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, extraAgentArgs: '--model opus' },
+      run,
+      target,
+      runs: []
     })
-    finishDelivery(true)
+    expect(tokenizeStartupCommand(mocks.launch.mock.calls[0][0].agentArgs, 'posix')).toMatchObject({
+      ok: true,
+      tokens: ['--add-dir', 'docs', '--model', 'opus']
+    })
+    mocks.launch.mockResolvedValue(chat)
+    await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, surface: 'chat', extraAgentArgs: '--model opus' },
+      run: { ...run, id: 'chat-run' },
+      target,
+      runs: []
+    })
+    expect(mocks.launch.mock.calls[1][0].agentArgs).toBeUndefined()
   })
-
-  it('fails the run with the create warning when no agent terminal started, without a second one', async () => {
-    const runtime = harness({ startupTerminal: null })
-
+  it('retains the actual pane for a reused terminal whose launch result has only a handle', async () => {
+    const { runtime } = fixture()
+    mocks.launch.mockResolvedValue({
+      ...terminal,
+      outcome: { kind: 'terminal', handle: 'term-prev' }
+    })
+    const result = await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, reuseSession: true },
+      run,
+      target,
+      runs: [
+        {
+          ...run,
+          id: 'old',
+          status: 'completed',
+          workspaceId: 'wt-1',
+          sessionKind: 'terminal',
+          terminalPaneKey: 'old:leaf',
+          terminalPtyId: 'pty-1'
+        }
+      ]
+    })
+    expect(result).toMatchObject({ terminalPaneKey: 'tab-1:leaf-1', terminalPtyId: 'pty-1' })
+    expect(mocks.launch).toHaveBeenCalledTimes(1)
+  })
+  it('refuses an expired admission without minting another launch identity', async () => {
+    const { runtime } = fixture()
+    mocks.launch.mockRejectedValue(new Error('agent_session_operation_expired'))
     await expect(
-      launch(runtime, { workspaceMode: 'new_per_run', workspaceId: null })
-    ).rejects.toThrow('Startup terminal failed.')
-    expect(runtime.launchAgentTerminal).not.toHaveBeenCalled()
-  })
-
-  it('logs a failure after the terminal was recorded instead of dropping it', async () => {
-    const runtime = harness()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    runtime.deliverStartupFollowup.mockRejectedValue(new Error('writer broke'))
-
-    const launched = await launch(runtime, { agentId: 'aider' })
-    await vi.waitFor(() =>
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('after its terminal was published'),
-        expect.objectContaining({ message: 'writer broke' })
-      )
+      launchHeadlessAutomationAgent(runtime, { automation, run, target, runs: [] })
+    ).rejects.toThrow(
+      'Claude could not start because this run waited too long. Run the automation again.'
     )
-
-    expect(launched.terminalHandle).toBe('term_existing')
-    warn.mockRestore()
+    expect(mocks.launch).toHaveBeenCalledTimes(1)
   })
-
-  it('refuses an existing-workspace run whose workspace is gone', async () => {
-    const runtime = harness()
-
-    await expect(launch(runtime, { workspaceId: null })).rejects.toThrow(
-      'The target workspace is no longer available.'
-    )
-    expect(runtime.launchAgentTerminal).not.toHaveBeenCalled()
-  })
-
-  it('sends a reuse-session prompt into the idle agent its previous run left', async () => {
-    const runtime = harness()
-
-    const launched = await launch(runtime, { reuseSession: true }, [previousRun()])
-
-    expect(deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith({
-      runtime,
-      handle: 'term_prev',
-      agent: 'claude',
-      freshLaunch: false,
-      text: 'fix the flaky test',
-      unprovableHost: 'write-unless-shell'
+  it('records the actual chat identity and delegates new workspace setup and provenance', async () => {
+    const { runtime } = fixture()
+    mocks.launch.mockResolvedValue(chat)
+    const result = await launchHeadlessAutomationAgent(runtime, {
+      automation: {
+        ...automation,
+        surface: 'chat',
+        workspaceMode: 'new_per_run',
+        workspaceId: null,
+        setupDecision: 'run'
+      },
+      run,
+      target,
+      runs: []
     })
-    expect(runtime.launchAgentTerminal).not.toHaveBeenCalled()
-    expect(launched).toEqual({
+    expect(mocks.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surface: 'chat',
+        target: {
+          kind: 'create-worktree',
+          create: expect.objectContaining({
+            setupDecision: 'run',
+            activate: false,
+            automationProvenanceRequest: expect.objectContaining({
+              automationId: automation.id,
+              automationRunId: run.id
+            })
+          })
+        }
+      }),
+      expect.anything(),
+      expect.anything()
+    )
+    expect(result).toMatchObject({
+      sessionKind: 'chat',
+      chatSessionId: 'claude_chat',
+      terminalHandle: null,
+      terminalPaneKey: null,
+      terminalSessionId: null,
+      terminalPtyId: null
+    })
+  })
+  it('separates a proven no-effect terminal reuse refusal from the fresh launch identity', async () => {
+    const { runtime, records } = fixture()
+    records.getOperationRow.mockReturnValue({ outcome: { status: 'failed' } })
+    mocks.launch
+      .mockRejectedValueOnce(new Error('no longer an agent'))
+      .mockResolvedValueOnce(terminal)
+    const previous = {
+      ...run,
+      id: 'old',
       workspaceId: 'wt-1',
-      workspaceDisplayName: 'repo',
-      terminalHandle: 'term_prev',
-      terminalSessionId: 'tab-prev',
-      terminalPaneKey: 'tab-prev:leaf-1',
-      terminalPtyId: 'pty-prev'
+      status: 'completed' as const,
+      sessionKind: 'terminal' as const,
+      terminalPaneKey: 'old:leaf',
+      terminalPtyId: 'pty-1'
+    }
+    await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, reuseSession: true },
+      run,
+      target,
+      runs: [previous]
     })
-  })
-
-  it('launches fresh when the idle agent did not take the prompt', async () => {
-    const runtime = harness()
-    deliverTerminalAgentLaunchPrompt.mockResolvedValue(false)
-
-    const launched = await launch(runtime, { reuseSession: true }, [previousRun()])
-
-    expect(deliverTerminalAgentLaunchPrompt).toHaveBeenCalledTimes(1)
-    expect(runtime.launchAgentTerminal).toHaveBeenCalledTimes(1)
-    expect(launched.terminalHandle).toBe('term_existing')
-  })
-
-  it.each([
-    ['its pane now holds another PTY', { ptyId: 'pty-restarted' }],
-    ['its agent is working', { row: { state: 'working', agentType: 'claude', receivedAt: 2 } }],
-    ['another agent is in it', { row: { state: 'done', agentType: 'codex', receivedAt: 2 } }],
-    ['the previous run did not complete', { run: { status: 'dispatch_failed' as const } }],
-    ['reuse is off', { reuseSession: false }]
-  ])('launches fresh without sending when %s', async (_label, setup) => {
-    const runtime = harness()
-    if ('ptyId' in setup) {
-      runtime.getTerminalPtyIdForHandle.mockReturnValue(setup.ptyId)
-    }
-    if ('row' in setup) {
-      runtime.getAgentStatusRowsForPane.mockReturnValue([setup.row])
-    }
-
-    await launch(runtime, { reuseSession: 'reuseSession' in setup ? setup.reuseSession : true }, [
-      previousRun('run' in setup ? setup.run : {})
+    expect(mocks.launch.mock.calls.map(([input]) => input.operationId)).toEqual([
+      automationRunOperationId(run, 'reuse-terminal-launch'),
+      automationRunOperationId(run, 'fresh-launch')
     ])
-
-    expect(deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
-    expect(runtime.launchAgentTerminal).toHaveBeenCalledTimes(1)
   })
-
-  it('launches fresh while the previous run is still working in the reused agent', async () => {
-    const runtime = harness()
-    const inFlight = previousRun({ id: 'run-scheduled', status: 'dispatched', dispatchedAt: 2 })
-
-    await launch(runtime, { reuseSession: true }, [previousRun(), inFlight])
-
-    expect(deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
-    expect(runtime.launchAgentTerminal).toHaveBeenCalledTimes(1)
+  it('never falls back after an ambiguous reuse launch', async () => {
+    const { runtime, records } = fixture()
+    records.getOperationRow.mockReturnValue({ outcome: { status: 'unknown' } })
+    mocks.launch.mockRejectedValue(new Error('lost reply'))
+    await expect(
+      launchHeadlessAutomationAgent(runtime, {
+        automation: { ...automation, reuseSession: true },
+        run,
+        target,
+        runs: [
+          {
+            ...run,
+            id: 'old',
+            workspaceId: 'wt-1',
+            status: 'completed',
+            terminalPaneKey: 'old:leaf',
+            terminalPtyId: 'pty-1'
+          }
+        ]
+      })
+    ).rejects.toThrow('Open its workspace before running again.')
+    expect(mocks.launch).toHaveBeenCalledTimes(1)
   })
-
-  it("reads the pane's newest status row, not a stale done", async () => {
-    const runtime = harness()
-    runtime.getAgentStatusRowsForPane.mockReturnValue([
-      { state: 'done', agentType: 'claude', receivedAt: 1 },
-      { state: 'working', agentType: 'claude', receivedAt: 3 }
-    ])
-
-    await launch(runtime, { reuseSession: true }, [previousRun()])
-
-    expect(deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
+  it('reuses only a completed compatible idle chat and derives a separate send identity', async () => {
+    const { runtime } = fixture()
+    const previous = {
+      ...run,
+      id: 'old',
+      status: 'completed' as const,
+      workspaceId: 'wt-1',
+      sessionKind: 'chat' as const,
+      chatSessionId: 'claude_prev'
+    }
+    const result = await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, surface: 'chat', reuseSession: true },
+      run,
+      target,
+      runs: [previous]
+    })
+    expect(mocks.launch).not.toHaveBeenCalled()
+    expect(mocks.host.send).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        envelope: expect.objectContaining({
+          sessionId: 'claude_prev',
+          clientOperationId: automationRunOperationId(run, 'reuse-send'),
+          expectedRuntimeFence: 2
+        })
+      })
+    )
+    expect(result.chatSessionId).toBe('claude_prev')
+  })
+  it('does not reuse a chat whose newest run or current human turn is unfinished', async () => {
+    const { runtime } = fixture()
+    mocks.launch.mockResolvedValue(chat)
+    mocks.host.currentWork.mockReturnValue({ working: () => true })
+    await launchHeadlessAutomationAgent(runtime, {
+      automation: { ...automation, surface: 'chat', reuseSession: true },
+      run,
+      target,
+      runs: [
+        {
+          ...run,
+          id: 'old',
+          status: 'completed',
+          workspaceId: 'wt-1',
+          sessionKind: 'chat',
+          chatSessionId: 'claude_prev'
+        }
+      ]
+    })
+    expect(mocks.host.send).not.toHaveBeenCalled()
+    expect(mocks.launch).toHaveBeenCalledTimes(1)
   })
 })

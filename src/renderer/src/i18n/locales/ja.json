@@ -19932,7 +19932,11 @@
       "caution": "注意"
     },
     "automations": {
-      "runTerminalUnavailable": "実行ターミナルを利用できません。"
+      "runTerminalUnavailable": "実行ターミナルを利用できません。",
+      "openIn": "開く場所",
+      "chat": "チャット",
+      "terminal": "ターミナル",
+      "runChatUnavailable": "実行チャットを利用できません。ワークスペースを表示しています。保存済みの出力は実行の詳細に残っています。"
     },
     "jiraIssueTitleField": {
       "generate": "説明からタイトルを生成",

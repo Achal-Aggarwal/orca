@@ -20344,7 +20344,11 @@
       "caution": "Caution"
     },
     "automations": {
-      "runTerminalUnavailable": "Run terminal is unavailable."
+      "runTerminalUnavailable": "Run terminal is unavailable.",
+      "openIn": "Open in",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "runChatUnavailable": "Run chat is unavailable. Showing its workspace; any saved output remains in Run Details."
     },
     "agentCombobox": {
       "clearSelection": "Clear agent selection",

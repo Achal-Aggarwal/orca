@@ -1,94 +1,206 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as AgentLauncher from './headless-automation-agent-launch'
 import type { HeadlessAutomationDispatcher } from './headless-dispatch'
 import type { AutomationRunTerminalObserver } from './run-completion-watcher'
+import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { Store } from '../persistence'
+import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cutover-fixture'
+import { automationRunOperationId } from './automation-run-operation'
 
-type CapturedServiceOptions = {
+type Options = {
   headlessDispatcher?: HeadlessAutomationDispatcher
   terminalObserver?: AutomationRunTerminalObserver
 }
-
-const captured = vi.hoisted((): { options: CapturedServiceOptions } => ({ options: {} }))
-
-const { deliverTerminalAgentLaunchPrompt } = vi.hoisted(() => ({
-  deliverTerminalAgentLaunchPrompt: vi.fn(async () => true)
-}))
-vi.mock('../runtime/rpc/methods/agent-launch-terminal-prompt', () => ({
-  deliverTerminalAgentLaunchPrompt
-}))
-
+const captured = vi.hoisted(() => {
+  const options: Options = {}
+  return {
+    options,
+    launch: vi.fn(),
+    observeChat: vi.fn(),
+    markDispatchResult: vi.fn()
+  }
+})
 vi.mock('./service', () => ({
   AutomationService: class {
     start(): void {}
     stop(): void {}
-    constructor(_store: unknown, opts: CapturedServiceOptions) {
+    markDispatchResult = captured.markDispatchResult
+    constructor(_store: unknown, opts: Options) {
       captured.options = opts
     }
   }
 }))
-
+vi.mock('./headless-automation-agent-launch', async (original) => ({
+  ...(await original<typeof AgentLauncher>()),
+  launchHeadlessAutomationAgent: captured.launch
+}))
+vi.mock('./runtime-chat-run-observer', () => ({ observeAutomationChatRun: captured.observeChat }))
 import { createRuntimeAutomationService } from './runtime-automation-service'
-
-function capturedOption<K extends keyof CapturedServiceOptions>(
-  key: K
-): NonNullable<CapturedServiceOptions[K]> {
-  const value = captured.options[key]
-  if (value === undefined) {
-    throw new Error(`the service was constructed without ${key}`)
-  }
-  return value
+const state = buildProfileStateCutoverFixture('/fixture')
+const run = {
+  ...state.automationRuns[0],
+  createdAt: Date.now(),
+  status: 'dispatching' as const,
+  chatSessionId: null
 }
-
-describe('headless automation dispatch', () => {
-  it('hands the launched run to its watcher instead of awaiting one tui-idle wait itself', async () => {
-    const runtime = {
-      setAutomationService: vi.fn(),
-      notifyAutomationsChanged: vi.fn(),
-      launchAgentTerminal: vi.fn(async () => ({
-        handle: 'terminal-1',
-        tabId: 'tab-1',
-        paneKey: 'tab-1:pane-1',
-        ptyId: 'pty-1',
-        worktreeId: 'wt-1'
-      })),
-      showManagedWorktree: vi.fn(async () => ({ displayName: 'repo' })),
-      waitForTerminal: vi.fn(),
-      getTerminalHandleForPaneKey: vi.fn(() => null),
-      getAgentStatusRowsForPane: vi.fn(() => [])
-    }
-    createRuntimeAutomationService({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service never reads the store; the dispatcher reads only past runs.
-      store: { listAutomationRuns: () => [] } as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the dispatcher reads only the members faked above.
-      runtime: runtime as never,
-      headless: true
-    })
-    const dispatcher = capturedOption('headlessDispatcher')
-    const launch = await dispatcher({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a reuse-workspace automation; only these fields are read.
-      automation: {
-        workspaceMode: 'existing',
+function fixture(headless: boolean) {
+  const rows = new Map<string, unknown>()
+  const runtime = {
+    setAutomationService: vi.fn(),
+    notifyAutomationsChanged: vi.fn(),
+    openAgentSessionRecordStore: async () => ({
+      getOperationRow: (_caller: string, id: string) => rows.get(id),
+      getConversation: () => ({
+        sessionId: 'claude_chat',
+        provider: 'claude',
+        location: { workspaceId: 'wt-1' }
+      })
+    }),
+    getTerminalHandleForPaneKey: vi.fn(() => null),
+    getTerminalPtyIdForHandle: vi.fn(() => 'pty-1'),
+    getTerminalPaneKey: vi.fn(
+      () => '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+    ),
+    waitForTerminal: vi.fn(async () => ({ state: 'done' })),
+    getAgentStatusRowsForPane: vi.fn(() => [])
+  }
+  createRuntimeAutomationService({
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: construction and recovery use only these store boundaries.
+    store: {
+      listAutomationRuns: () => [],
+      listAutomations: () => [{ id: run.automationId, agentId: 'claude' }]
+    } as unknown as Store,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launching and chat observation are mocked; the runtime implements the recovery boundaries.
+    runtime: runtime as unknown as OrcaRuntimeService,
+    headless
+  })
+  return { runtime, rows }
+}
+beforeEach(() => {
+  vi.clearAllMocks()
+  captured.markDispatchResult.mockImplementation(async (result) => ({ ...run, ...result }))
+  captured.observeChat.mockResolvedValue({ status: 'completed' })
+})
+describe('host-owned automation execution', () => {
+  it.each([false, true])(
+    'uses the same dispatcher on desktop/headless=%s and immediately hands completion to the watcher',
+    async (headless) => {
+      fixture(headless)
+      captured.launch.mockResolvedValue({
         workspaceId: 'wt-1',
-        agentId: 'goose'
-      } as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the title is read.
-      run: { title: 'Nightly' } as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unused for an existing workspace.
-      target: {} as never
+        terminalSessionId: 'tab-1',
+        terminalPaneKey:
+          '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+        terminalHandle: 'term-1'
+      })
+      const dispatcher = captured.options.headlessDispatcher!
+      const result = await dispatcher({
+        automation: state.automations[0],
+        run,
+        target: { ok: true, cwd: '/fixture', repo: state.repos[0] }
+      })
+      expect(result.completion).toBeUndefined()
+      expect(captured.launch).toHaveBeenCalledOnce()
+      expect(
+        captured.options.terminalObserver!.resolveRunTerminal({
+          ...run,
+          status: 'dispatched',
+          terminalPaneKey:
+            '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+        })
+      ).toBe('term-1')
+    }
+  )
+  it.each(['fresh-launch', 'reuse-send'] as const)(
+    'recovers a %s accepted chat before the automation run identity was saved',
+    async (purpose) => {
+      const { rows } = fixture(false)
+      rows.set(automationRunOperationId(run, purpose), {
+        outcome: {
+          status: 'succeeded',
+          sessionId: 'claude_chat',
+          ...(purpose === 'fresh-launch'
+            ? {
+                launch: {
+                  worktreeId: 'wt-1',
+                  outcome: { kind: 'structured', sessionId: 'claude_chat', handle: 'chat-tab' },
+                  receipt: {
+                    mode: 'structured',
+                    preferred: 'structured',
+                    reason: 'requested',
+                    detail: 'Chat'
+                  },
+                  prompt: { delivery: 'submit', outcome: 'journaled', messageId: 'opening' }
+                }
+              }
+            : {})
+        }
+      })
+      const observer = captured.options.terminalObserver!
+      const handle = observer.resolveRunTerminal(run)!
+      expect(
+        await observer.observeCompletion(handle, { run, signal: new AbortController().signal })
+      ).toEqual({ status: 'completed' })
+      expect(captured.markDispatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionKind: 'chat',
+          chatSessionId: 'claude_chat',
+          terminalPaneKey: null,
+          terminalSessionId: null,
+          terminalPtyId: null
+        })
+      )
+      expect(captured.observeChat).toHaveBeenCalledOnce()
+      expect(captured.launch).not.toHaveBeenCalled()
+    }
+  )
+  it('recovers a terminal reuse receipt without a pane key and never launches again', async () => {
+    const { rows, runtime } = fixture(false)
+    rows.set(automationRunOperationId(run, 'reuse-terminal-launch'), {
+      outcome: {
+        status: 'succeeded',
+        launch: {
+          worktreeId: 'wt-1',
+          outcome: { kind: 'terminal', handle: 'term-reused' },
+          receipt: {
+            mode: 'terminal',
+            preferred: 'terminal',
+            reason: 'requested',
+            detail: 'Terminal'
+          },
+          prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+        }
+      }
     })
-
-    expect(launch.completion).toBeUndefined()
-    expect(launch.terminalPaneKey).toBe('tab-1:pane-1')
-    expect(runtime.launchAgentTerminal).toHaveBeenCalledWith('id:wt-1', {
-      agent: 'goose',
-      prompt: '',
-      title: 'Nightly',
-      suppressStartupUpdatePrompt: true
-    })
-    expect(runtime.waitForTerminal).not.toHaveBeenCalled()
-    const observer = capturedOption('terminalObserver')
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolution reads only the pane key.
-    expect(observer.resolveRunTerminal({ terminalPaneKey: 'tab-1:pane-1' } as never)).toBe(
-      'terminal-1'
+    runtime.waitForTerminal.mockRejectedValueOnce(new Error('test-stop'))
+    const observer = captured.options.terminalObserver!
+    await expect(
+      observer.observeCompletion(observer.resolveRunTerminal(run)!, {
+        run,
+        signal: new AbortController().signal
+      })
+    ).rejects.toThrow('test-stop')
+    expect(captured.markDispatchResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKind: 'terminal',
+        terminalPaneKey:
+          '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+        terminalSessionId: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+        terminalPtyId: 'pty-1'
+      })
     )
+    expect(captured.launch).not.toHaveBeenCalled()
+  })
+  it('refuses an ambiguous crash without resending or marking success', async () => {
+    const { rows } = fixture(false)
+    rows.set(automationRunOperationId(run, 'fresh-launch'), { outcome: { status: 'unknown' } })
+    const observer = captured.options.terminalObserver!
+    expect(
+      await observer.observeCompletion(observer.resolveRunTerminal(run)!, {
+        run,
+        signal: new AbortController().signal
+      })
+    ).toMatchObject({ status: 'dispatch_failed', error: expect.stringContaining('Claude') })
+    expect(captured.launch).not.toHaveBeenCalled()
   })
 })

@@ -63,6 +63,8 @@ export async function runHeadlessAutomationDispatch(
     })
   }
   const launchRunTarget = {
+    sessionKind: launch.sessionKind ?? 'terminal',
+    chatSessionId: launch.chatSessionId ?? null,
     workspaceId: launch.workspaceId,
     workspaceDisplayName: launch.workspaceDisplayName ?? null,
     terminalSessionId: launch.terminalSessionId,

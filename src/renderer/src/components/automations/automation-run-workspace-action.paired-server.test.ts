@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => {
   const state: Record<string, unknown> = {}
   return {
     state,
+    openChat: vi.fn(),
+    readChat: vi.fn(async () => ({})),
     toastError: vi.fn(),
     toastMessage: vi.fn(),
     activateAndRevealWorktree: vi.fn(() => true),
@@ -16,6 +18,12 @@ const mocks = vi.hoisted(() => {
   }
 })
 
+vi.mock('@/runtime/structured-agent-session-client', () => ({
+  callStructuredAgentSession: mocks.readChat
+}))
+vi.mock('@/lib/structured-agent-session-launch-surface', () => ({
+  openStructuredAgentSessionProvisionalTab: mocks.openChat
+}))
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: mocks.toastMessage } }))
 vi.mock('@/store', () => ({ useAppStore: { getState: () => mocks.state } }))
 vi.mock('@/lib/worktree-activation', () => ({
@@ -151,4 +159,57 @@ describe('opening a paired-server automation run', () => {
     )
     expect(mocks.toastMessage).not.toHaveBeenCalled()
   })
+})
+
+it('opens the recorded Chat on its owning paired server without creating a session or terminal', async () => {
+  Object.assign(mocks.state, storeState(false))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Chat opening reads only the selected row and workspace resolvers supplied here.
+  const action = createAutomationRunWorkspaceAction({
+    store: { repoForRow: () => ({ id: 'repo-a' }), worktreeForRow: () => worktree },
+    list: { selectedRow: {} }
+  } as never)
+  action({
+    ...run,
+    sessionKind: 'chat',
+    chatSessionId: 'codex_recorded_chat',
+    terminalSessionId: null,
+    terminalPaneKey: null,
+    terminalPtyId: null
+  })
+  await vi.waitFor(() =>
+    expect(mocks.openChat).toHaveBeenCalledWith({
+      worktreeId: WT,
+      executionHostId: `runtime:${ENV}`,
+      sessionId: 'codex_recorded_chat',
+      agent: 'codex'
+    })
+  )
+  expect(mocks.readChat).toHaveBeenCalledWith(
+    { kind: 'environment', environmentId: ENV },
+    'agentSession.history',
+    { sessionId: 'codex_recorded_chat', direction: 'tail', limit: 1 }
+  )
+})
+
+it('keeps Run Details output and opens the workspace when the recorded chat is gone', async () => {
+  mocks.openChat.mockClear()
+  Object.assign(mocks.state, storeState(false))
+  mocks.readChat.mockRejectedValueOnce(new Error('gone'))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Chat opening reads only the selected row and workspace resolvers supplied here.
+  const action = createAutomationRunWorkspaceAction({
+    store: { repoForRow: () => ({ id: 'repo-a' }), worktreeForRow: () => worktree },
+    list: { selectedRow: {} }
+  } as never)
+  action({
+    ...run,
+    sessionKind: 'chat',
+    chatSessionId: 'claude_missing',
+    terminalSessionId: null,
+    terminalPaneKey: null,
+    terminalPtyId: null
+  })
+  await vi.waitFor(() =>
+    expect(mocks.toastMessage).toHaveBeenCalledWith(expect.stringContaining('saved output remains'))
+  )
+  expect(mocks.openChat).not.toHaveBeenCalled()
 })

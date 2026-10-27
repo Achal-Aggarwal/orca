@@ -34,6 +34,12 @@ import {
   type AgentLaunchView
 } from './agent-launch-tab-publication'
 
+export type AgentLaunchHostPolicy = {
+  terminalTitle?: string
+  suppressStartupUpdatePrompt?: true
+  unprovableHost?: 'write-unless-shell'
+}
+
 /** Replay-safe launches keep the nested attach in the same stable caller namespace as the launch. */
 export function agentLaunchSurfaceFactory(
   context: RpcContext,
@@ -43,7 +49,8 @@ export function agentLaunchSurfaceFactory(
   callerPresentsSurface = false,
   terminalSpawn: TerminalSpawnDispatch = trackTerminalSpawnDispatch(),
   // Read the early pane at spawn: publication and user close can finish after admission.
-  view: AgentLaunchView = { early: null, presentation: undefined }
+  view: AgentLaunchView = { early: null, presentation: undefined },
+  policy: AgentLaunchHostPolicy = {}
 ): AgentLaunchSurfaceFactory {
   const movesHostWindow = agentLaunchMovesHostWindow(context)
   const { early: earlyTab, presentation } = view
@@ -142,6 +149,8 @@ export function agentLaunchSurfaceFactory(
       const created = context.runtime.createTerminal(`id:${worktreeId}`, {
         // Let the runtime build the configured launcher: agent ids are not commands (cursor uses cursor-agent).
         startupAgent: agent,
+        ...(policy.terminalTitle ? { title: policy.terminalTitle } : {}),
+        ...(policy.suppressStartupUpdatePrompt ? { suppressStartupUpdatePrompt: true } : {}),
         terminalImageViewerSupported: terminalImageViewerSupported(context),
         // The runtime reports typed-line prompt carry; paste only when the command did not carry it.
         ...(startupPrompt
@@ -208,6 +217,7 @@ export function agentLaunchSurfaceFactory(
         handle,
         agent,
         freshLaunch,
+        ...(policy.unprovableHost ? { unprovableHost: policy.unprovableHost } : {}),
         text: prompt.text,
         ...(signal ? { signal } : {})
       })
