@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as choiceArgs from './agent-choice-args'
 import { normalizeAgentModelOptionChoices } from './agent-launch-choices'
 import { reconcileAgentChoiceArgs } from './agent-choice-reconciliation'
 import { resolveAgentChoiceLayers } from './agent-choice-layers'
@@ -10,6 +11,95 @@ const load = (agent: 'claude' | 'codex', userArgs: string) =>
   reconcileAgentChoiceArgs({ agent, userArgs, choices: {}, mode: 'load', keys })
 
 describe('dedicated agent choices', () => {
+  it('bounds range comparisons and copied bytes on repeated-flag choice edits', () => {
+    const analyze = choiceArgs.analyzeAgentChoiceArgs
+    const slice = String.prototype.slice
+    const join = Array.prototype.join
+    let cutting = false
+    let work = { rangeEndpointReads: 0, copiedBytes: 0 }
+    const sliceSpy = vi.spyOn(String.prototype, 'slice').mockImplementation(function (
+      this: string,
+      start,
+      end
+    ) {
+      const result = slice.call(this, start, end)
+      if (cutting) {
+        work.copiedBytes += result.length
+      }
+      return result
+    })
+    const joinSpy = vi.spyOn(Array.prototype, 'join').mockImplementation(function (
+      this: unknown[],
+      separator
+    ) {
+      const result = join.call(this, separator)
+      if (cutting) {
+        work.copiedBytes += result.length
+      }
+      return result
+    })
+    const analyzeSpy = vi
+      .spyOn(choiceArgs, 'analyzeAgentChoiceArgs')
+      .mockImplementation((...args) => {
+        const analysis = analyze(...args)
+        return {
+          ...analysis,
+          cut: (selected) => {
+            const measured = selected.map((entry) => ({
+              ...entry,
+              get start() {
+                work.rangeEndpointReads++
+                return entry.start
+              },
+              get end() {
+                work.rangeEndpointReads++
+                return entry.end
+              }
+            }))
+            cutting = true
+            try {
+              return analysis.cut(measured)
+            } finally {
+              cutting = false
+            }
+          }
+        }
+      })
+    const measure = (count: number) => {
+      const userArgs = `--append-system-prompt before ${'--model opus --append-system-prompt keep '.repeat(count)}--append-system-prompt after`
+      work = { rangeEndpointReads: 0, copiedBytes: 0 }
+      expect(
+        reconcileAgentChoiceArgs({
+          agent: 'claude',
+          userArgs,
+          choices: { model: 'opus' },
+          mode: 'choice-edit',
+          keys,
+          patch: { model: 'sonnet' }
+        })
+      ).toEqual({
+        userArgs: `--append-system-prompt before ${' --append-system-prompt keep '.repeat(count)}--append-system-prompt after`,
+        choices: { model: 'sonnet' }
+      })
+      return { count, inputBytes: userArgs.length, ...work }
+    }
+    try {
+      const small = measure(128)
+      const large = measure(1280)
+      console.info('choice-edit cut work', { small, large })
+      expect(small.rangeEndpointReads).toBeGreaterThan(small.count)
+      expect(small.copiedBytes).toBeGreaterThan(0)
+      expect(large.rangeEndpointReads).toBeLessThanOrEqual(small.rangeEndpointReads * 12)
+      expect(large.copiedBytes).toBeLessThanOrEqual(small.copiedBytes * 12)
+      expect(large.rangeEndpointReads).toBeLessThan(large.count * 64)
+      expect(large.copiedBytes).toBeLessThan(large.inputBytes * 20)
+    } finally {
+      analyzeSpy.mockRestore()
+      joinSpy.mockRestore()
+      sliceSpy.mockRestore()
+    }
+  })
+
   it('retains independent options and bounded opaque model ids without discovery', () => {
     expect(normalizeAgentModelOptionChoices({ options: { effort: 'high' } })).toEqual({
       options: { effort: 'high' }

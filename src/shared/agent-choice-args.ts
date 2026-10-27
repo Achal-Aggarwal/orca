@@ -128,18 +128,26 @@ export function analyzeAgentChoiceArgs(agent: TuiAgent, text: string) {
     if (ranges.some((range, index) => index > 0 && range.start < ranges[index - 1].end)) {
       return null
     }
-    let args = text
-    for (const { start, end } of ranges.toReversed()) {
-      args = args.slice(0, start) + args.slice(end)
+    const chunks: string[] = []
+    let cursor = 0
+    for (const { start, end } of ranges) {
+      chunks.push(text.slice(cursor, start))
+      cursor = end
     }
-    args = args.trim()
+    chunks.push(text.slice(cursor))
+    const args = chunks.join('').trim()
     const proven = originals.every((original, grammarIndex) => {
       if (!original) {
         return false
       }
-      const removed = original.parsed.spans.map((span) =>
-        ranges.some((range) => span.start >= range.start && span.end <= range.end)
-      )
+      let rangeIndex = 0
+      const removed = original.parsed.spans.map((span) => {
+        while (rangeIndex < ranges.length && ranges[rangeIndex].end <= span.start) {
+          rangeIndex++
+        }
+        const range = ranges[rangeIndex]
+        return !!range && span.start >= range.start && span.end <= range.end
+      })
       const kept = original.parsed.tokens.filter((_, index) => !removed[index])
       const parsed = tokenizeStartupCommand(args, PERMISSION_LAUNCH_GRAMMARS[grammarIndex])
       if (
