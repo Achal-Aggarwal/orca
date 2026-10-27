@@ -73,19 +73,20 @@ export function enrichPort(
   urlWatcher: Pick<AdvertisedUrlWatcher, 'lookup'>
 ): WorkspacePort {
   const owner = attributePortToNormalizedWorkspaces(port, worktrees)
+  const pid = listenerPid(port)
   const base = {
-    id: `${port.host}:${port.port}:${port.pid ?? 'unknown'}`,
+    id: `${port.host}:${port.port}:${pid ?? 'unknown'}`,
     bindHost: port.host,
     connectHost: connectHostForBindHost(port.host),
     port: port.port,
-    pid: port.pid,
+    pid,
     processName: port.processName,
     protocol: inferProtocol(port.port)
   }
 
   if (owner) {
     // Limit URL enrichment to workspace-owned ports so unrelated terminals cannot label external/container ports.
-    const advertised = urlWatcher.lookup(owner.worktreeId, port.port, port.pid)
+    const advertised = urlWatcher.lookup(owner.worktreeId, port.port, pid)
     return {
       ...base,
       protocol: advertised?.protocol ?? base.protocol,
@@ -114,7 +115,7 @@ export function reconcileAdvertisedUrls(
     if (!owner) {
       continue
     }
-    observationsByWorktree.get(owner.worktreeId)?.push({ port: port.port, pid: port.pid })
+    observationsByWorktree.get(owner.worktreeId)?.push({ port: port.port, pid: listenerPid(port) })
   }
   for (const [worktreeId, observations] of observationsByWorktree) {
     // Invalidate disappeared/changed listeners before lazy lookup can pin a stale banner.
@@ -126,6 +127,11 @@ export function compareWorkspacePorts(a: WorkspacePort, b: WorkspacePort): numbe
   const aRank = a.kind === 'workspace' ? 0 : a.kind === 'container' ? 1 : 2
   const bRank = b.kind === 'workspace' ? 0 : b.kind === 'container' ? 1 : 2
   return aRank - bRank || a.port - b.port || a.connectHost.localeCompare(b.connectHost)
+}
+
+/** Guest PIDs are not Windows PIDs, and stopping the relay would cut every forwarded port. */
+function listenerPid(port: RawListeningPort): number | undefined {
+  return port.wslForwarded ? undefined : port.pid
 }
 
 function inferProtocol(port: number): 'http' | 'https' | 'unknown' {
@@ -197,7 +203,7 @@ function normalizeComparablePath(input: string): string {
   // \\wsl$ and \\wsl.localhost name the same distro share.
   const wslShare = process.platform === 'win32' ? foldWslUncPathCaseInsensitiveParts(input) : null
   if (wslShare) {
-    return normalizeComparableText(wslShare)
+    return normalizeComparableText(path.posix.resolve(wslShare))
   }
   if (input.startsWith('/')) {
     // Windows may evaluate remote POSIX paths; native resolve would reinterpret /repo as G:/repo.

@@ -175,13 +175,14 @@ async function scanWindowsNetstatPorts(
   const metadata = await loadWindowsProcessMetadata(
     new Set(ports.flatMap((p) => (p.pid ? [p.pid] : [])))
   )
-  return {
-    ports: await attributeWslRelayListeners(
-      ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port })),
-      options.wslDistros ?? []
-    ),
-    metadataAvailable: true
-  }
+  const attributed = await attributeWslRelayListeners(
+    ports.map((port) => ({ ...metadata.get(port.pid ?? -1), ...port })),
+    options.wslDistros ?? []
+  )
+  // An unread guest cannot prove its listeners gone; treat it like a skipped metadata pass.
+  return attributed
+    ? { ports: attributed, metadataAvailable: true }
+    : { ports, metadataAvailable: false }
 }
 
 async function scanLinuxProcPorts(): Promise<PlatformListeningPortScan> {

@@ -4,7 +4,7 @@ import { resetWorkspacePortScanTimeoutBackoffForTests } from './local-workspace-
 
 const mocks = vi.hoisted(() => ({
   runWslProcess: vi.fn(),
-  isWslDistroRunning: vi.fn()
+  readWslDistroRunningState: vi.fn()
 }))
 
 vi.mock('./port-scan-command-client', () => ({
@@ -30,7 +30,9 @@ vi.mock('../windows/windows-process-table', () => ({
     ])
 }))
 vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: mocks.runWslProcess }))
-vi.mock('../wsl-background-distro-gate', () => ({ isWslDistroRunning: mocks.isWslDistroRunning }))
+vi.mock('../wsl-background-distro-gate', () => ({
+  readWslDistroRunningState: mocks.readWslDistroRunningState
+}))
 
 // Captured from the guest scan script; 9000 belongs to another distro's PID namespace.
 const GUEST_SCAN_OUTPUT = [
@@ -43,20 +45,28 @@ const GUEST_SCAN_OUTPUT = [
 ].join('\n')
 
 const urlWatcher = { lookup: () => undefined, reconcileScan: vi.fn() }
+const wslWorkspace = [
+  {
+    id: 'wt',
+    repoId: 'repo',
+    displayName: 'repo',
+    path: '\\\\wsl.localhost\\Ubuntu\\home\\u\\repo'
+  }
+]
 
 describe('WSL listeners forwarded through wslrelay.exe', () => {
   afterEach(() => {
     resetWorkspacePortScanTimeoutBackoffForTests()
     vi.restoreAllMocks()
     mocks.runWslProcess.mockReset()
-    mocks.isWslDistroRunning.mockReset()
+    mocks.readWslDistroRunningState.mockReset()
   })
 
   it.each(['\\\\wsl.localhost\\Ubuntu\\home\\u\\repo', '\\\\wsl$\\ubuntu\\home\\u\\repo'])(
     'attributes the guest listener to the WSL workspace at %s',
     async (worktreePath) => {
       vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-      mocks.isWslDistroRunning.mockResolvedValue(true)
+      mocks.readWslDistroRunningState.mockResolvedValue('running')
       mocks.runWslProcess.mockResolvedValue({
         code: 0,
         stdout: GUEST_SCAN_OUTPUT,
@@ -86,7 +96,7 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
 
   it('does not boot a stopped distro to scan it', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    mocks.isWslDistroRunning.mockResolvedValue(false)
+    mocks.readWslDistroRunningState.mockResolvedValue('stopped')
 
     const scan = await scanWorkspacePorts(
       [{ id: 'wt', repoId: 'repo', displayName: 'repo', path: '\\\\wsl.localhost\\Ubuntu\\r' }],
@@ -95,5 +105,32 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
 
     expect(mocks.runWslProcess).not.toHaveBeenCalled()
     expect(scan.ports.every((port) => port.kind === 'external')).toBe(true)
+  })
+
+  it('keeps the attribution, and the advertised URL, when one guest read fails', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('running')
+    mocks.runWslProcess.mockResolvedValueOnce({
+      code: 0,
+      stdout: GUEST_SCAN_OUTPUT,
+      stderr: '',
+      timedOut: false
+    })
+    await scanWorkspacePorts(wslWorkspace, urlWatcher)
+    urlWatcher.reconcileScan.mockClear()
+    mocks.runWslProcess.mockResolvedValueOnce({
+      code: null,
+      stdout: '',
+      stderr: '',
+      timedOut: true
+    })
+
+    const scan = await scanWorkspacePorts(wslWorkspace, urlWatcher)
+
+    // A timeout cannot prove the listener gone, so reconciliation must not evict its URL.
+    expect(urlWatcher.reconcileScan).not.toHaveBeenCalled()
+    const forwarded = scan.ports.find((port) => port.port === 8123)
+    expect(forwarded).toMatchObject({ kind: 'workspace', owner: { worktreeId: 'wt' } })
+    expect(forwarded?.pid).toBeUndefined()
   })
 })

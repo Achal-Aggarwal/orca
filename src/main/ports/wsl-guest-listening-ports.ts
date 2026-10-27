@@ -1,6 +1,6 @@
-import { parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
+import { parseWslUncPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
 import type { WorkspacePortProbe } from '../../shared/workspace-ports'
-import { isWslDistroRunning } from '../wsl-background-distro-gate'
+import { readWslDistroRunningState } from '../wsl-background-distro-gate'
 import { runWslProcess } from '../wsl/wsl-runner'
 import { parseProcAddress } from './local-workspace-port-address'
 import type { ProcessMetadata, RawListeningPort } from './local-workspace-port-scan-state'
@@ -86,7 +86,7 @@ export function parseWslGuestPortScan(output: string, distro: string): GuestList
         pidByInode.set(inode, pid)
       }
     } else if (tag === 'C' && value.startsWith('/')) {
-      metadataOf(pid).cwd = toWindowsWslPath(value, distro)
+      metadataOf(pid).cwd = toWindowsWslUncPath(value, distro)
     } else if (tag === 'N' && value) {
       metadataOf(pid).processName = value
     } else if (tag === 'A' && value) {
@@ -99,10 +99,12 @@ export function parseWslGuestPortScan(output: string, distro: string): GuestList
   })
 }
 
-async function scanWslGuestListeners(distro: string): Promise<GuestListener[]> {
+/** Null when the guest could not be read, which says nothing about its listeners. */
+async function scanWslGuestListeners(distro: string): Promise<GuestListener[] | null> {
+  const state = await readWslDistroRunningState(distro).catch(() => 'unverifiable' as const)
   // Background scans must not boot a stopped distro.
-  if (!(await isWslDistroRunning(distro).catch(() => false))) {
-    return []
+  if (state !== 'running') {
+    return state === 'stopped' ? [] : null
   }
   const result = await runWslProcess({
     distro,
@@ -113,20 +115,24 @@ async function scanWslGuestListeners(distro: string): Promise<GuestListener[]> {
   }).catch(() => null)
   return result && result.code === 0 && !result.timedOut
     ? parseWslGuestPortScan(result.stdout, distro)
-    : []
+    : null
 }
 
-/** Replace wslrelay.exe owners with the guest process behind each forwarded port. */
+/** Replace wslrelay.exe owners with the guest process behind each forwarded port; null when a guest could not be read. */
 export async function attributeWslRelayListeners(
   ports: RawListeningPort[],
   distros: readonly string[],
-  scanGuest: (distro: string) => Promise<GuestListener[]> = scanWslGuestListeners
-): Promise<RawListeningPort[]> {
+  scanGuest: (distro: string) => Promise<GuestListener[] | null> = scanWslGuestListeners
+): Promise<RawListeningPort[] | null> {
   if (distros.length === 0 || !ports.some(isWslRelayListener)) {
     return ports
   }
+  const scans = await Promise.all(distros.map(scanGuest))
   const guestByPort = new Map<number, ProcessMetadata>()
-  for (const listeners of await Promise.all(distros.map(scanGuest))) {
+  for (const listeners of scans) {
+    if (!listeners) {
+      return null
+    }
     for (const { port, metadata } of listeners) {
       if (!guestByPort.has(port)) {
         guestByPort.set(port, metadata)
@@ -135,10 +141,8 @@ export async function attributeWslRelayListeners(
   }
   return ports.map((port) => {
     const guest = isWslRelayListener(port) ? guestByPort.get(port.port) : undefined
-    if (!guest) {
-      return port
-    }
-    // Guest PIDs are not Windows PIDs, and signaling the relay would cut every forwarded port.
-    return { host: port.host, port: port.port, ...guest }
+    return guest
+      ? { host: port.host, port: port.port, pid: port.pid, ...guest, wslForwarded: true }
+      : port
   })
 }

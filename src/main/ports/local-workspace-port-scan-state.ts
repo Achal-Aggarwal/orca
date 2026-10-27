@@ -31,12 +31,15 @@ export type RawListeningPort = {
   socketId?: string
   commandLine?: string
   cwd?: string
+  /** Owned by a WSL guest process behind wslrelay.exe; `pid` is the relay's. */
+  wslForwarded?: true
 }
 
 export type ProcessMetadata = {
   processName?: string
   commandLine?: string
   cwd?: string
+  wslForwarded?: true
 }
 
 type RememberedListenerMetadata = ProcessMetadata & {
@@ -106,6 +109,7 @@ export function rememberListenerMetadata(ports: readonly RawListeningPort[]): vo
       socketId: port.socketId,
       commandLine: port.commandLine,
       cwd: port.cwd,
+      ...(port.wslForwarded ? { wslForwarded: true as const } : {}),
       probedAtScan
     })
   }
@@ -176,7 +180,8 @@ export function recallListenerMetadata(port: RawListeningPort): RawListeningPort
     ...port,
     processName: port.processName ?? remembered.processName,
     commandLine: port.commandLine ?? remembered.commandLine,
-    cwd: port.cwd ?? remembered.cwd
+    cwd: port.cwd ?? remembered.cwd,
+    ...(port.wslForwarded || remembered.wslForwarded ? { wslForwarded: true as const } : {})
   }
 }
 
