@@ -199,4 +199,60 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
 
     expect(urlWatcher.reconcileScan).not.toHaveBeenCalled()
   })
+
+  it('keeps a command-line-only attribution through a failed guest read', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('running')
+    mocks.runWslProcess.mockResolvedValueOnce({
+      code: 0,
+      stdout: [
+        'L 0100007F:1FBB 1',
+        'S 7 1',
+        'C 7 /tmp',
+        'N 7 node',
+        'A 7 node /home/u/repo/server.js'
+      ].join('\n'),
+      stderr: '',
+      timedOut: false
+    })
+    await scanWorkspacePorts(wslWorkspace, urlWatcher)
+    mocks.runWslProcess.mockResolvedValueOnce({
+      code: null,
+      stdout: '',
+      stderr: '',
+      timedOut: true
+    })
+
+    const scan = await scanWorkspacePorts(wslWorkspace, urlWatcher)
+
+    expect(scan.ports.find((port) => port.port === 8123)).toMatchObject({
+      kind: 'workspace',
+      processName: 'node'
+    })
+  })
+
+  it('keeps one port in two distros apart even when their PIDs match', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('running')
+    mocks.runWslProcess.mockImplementation(async ({ distro }: { distro: string }) => ({
+      code: 0,
+      stdout: [
+        'L 0100007F:1FBB 1',
+        'S 7 1',
+        `C 7 ${distro === 'Ubuntu' ? '/home/u/repo' : '/srv/x'}`
+      ].join('\n'),
+      stderr: '',
+      timedOut: false
+    }))
+
+    const scan = await scanWorkspacePorts(
+      [
+        ...wslWorkspace,
+        { id: 'deb', repoId: 'r2', displayName: 'd', path: '\\\\wsl.localhost\\Debian\\srv\\x' }
+      ],
+      urlWatcher
+    )
+
+    expect(scan.ports.find((port) => port.port === 8123)?.kind).toBe('external')
+  })
 })

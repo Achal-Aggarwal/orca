@@ -101,6 +101,11 @@ export function parseWslGuestPortScan(output: string, distro: string): GuestList
   })
 }
 
+// PIDs are per distro, so equal numbers from two distros are different processes.
+function sameGuestProcess(a: GuestListener, b: GuestListener): boolean {
+  return a.pid === b.pid && a.metadata.wslGuest?.distro === b.metadata.wslGuest?.distro
+}
+
 /** Absolute guest paths in UNC form, so command-line attribution compares like with like. */
 function toUncCommandLine(commandLine: string, distro: string): string {
   return commandLine.replace(
@@ -149,7 +154,7 @@ export async function attributeWslRelayListeners(
       const seen = guestByPort.get(listener.port)
       guestByPort.set(
         listener.port,
-        seen === undefined || seen?.pid === listener.pid ? listener : null
+        seen === undefined || (seen !== null && sameGuestProcess(seen, listener)) ? listener : null
       )
     }
   }

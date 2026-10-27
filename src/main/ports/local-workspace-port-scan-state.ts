@@ -178,14 +178,24 @@ export function recallListenerMetadata(port: RawListeningPort): RawListeningPort
   if (!remembered) {
     return port
   }
+  if (remembered.wslGuest) {
+    // Mixing fresh relay fields with a cached guest owner would attribute neither coherently.
+    const { processName, commandLine, cwd, wslGuest } = remembered
+    return {
+      host: port.host,
+      port: port.port,
+      pid: port.pid,
+      processName,
+      commandLine,
+      cwd,
+      wslGuest
+    }
+  }
   return {
     ...port,
     processName: port.processName ?? remembered.processName,
     commandLine: port.commandLine ?? remembered.commandLine,
-    cwd: port.cwd ?? remembered.cwd,
-    ...((port.wslGuest ?? remembered.wslGuest)
-      ? { wslGuest: port.wslGuest ?? remembered.wslGuest }
-      : {})
+    cwd: port.cwd ?? remembered.cwd
   }
 }
 
