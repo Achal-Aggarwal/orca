@@ -4,7 +4,7 @@ import type { StructuredAgentSessionTransportOverrides } from './structured-agen
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { StructuredAttentionMobileDelivery } from './structured-agent-session-mobile-attention'
 import type { StructuredAgentCommandSettings } from '../native-chat/structured-agent-command-resolution'
-import type { NativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
+import type { NativeChatShellEnvironmentPolicy } from '../../shared/native-chat/native-chat-shell-environment'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import type { RuntimeAgentAccountHomeResolver } from './structured-agent-model-catalog-wiring'
 import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
