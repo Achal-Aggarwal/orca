@@ -33,7 +33,20 @@ export declare function setDaclSddl(path: string, sddl: string): void
 export declare function setDaclSddlAsync(path: string, sddl: string): Promise<void>
 
 /** Creates a NEW file already carrying the DACL in `sddl`, then writes `data` into it. */
-export declare function createFileWithDacl(path: string, sddl: string, data: Uint8Array): void
+export declare function createFileWithDacl(
+  path: string,
+  sddl: string,
+  data: Uint8Array,
+  strict?: boolean
+): void
+
+/** Read bounded regular-file bytes and their DACL through one handle, excluding writers/replacement. */
+export declare function readFileWithDacl(
+  path: string,
+  maxBytes: number
+): { data: Buffer; dacl: WindowsDacl | null } | null
+export declare function readGenericCredential(target: string): Buffer | null
+export declare function writeGenericCredential(target: string, user: string, data: Uint8Array): void
 
 /**
  * Adds an allow rule for `sid` to the existing DACL, keeping its protection state; Windows orders

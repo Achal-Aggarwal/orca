@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { runProcessSync } from '@orca/process-host'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   ACCESS_ALLOWED_ACE_TYPE,
@@ -59,6 +61,46 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
       [ACCESS_ALLOWED_ACE_TYPE, 'S-1-5-18', 0, WINDOWS_FILE_ALL_ACCESS],
       [ACCESS_ALLOWED_ACE_TYPE, sid, 0, WINDOWS_FILE_ALL_ACCESS]
     ])
+  })
+
+  it('verifies strict creation and reads bounded bytes and DACL through the same handle', () => {
+    const path = join(root, 'strict-token')
+    addon.createFileWithDacl(
+      path,
+      `D:P(A;;FA;;;SY)(A;;FA;;;${sid})`,
+      Buffer.from('fixture-only'),
+      true
+    )
+    const read = addon.readFileWithDacl(path, 100)
+    expect(read?.data.toString()).toBe('fixture-only')
+    expect(read?.dacl?.protected).toBe(true)
+    expect(() => addon.readFileWithDacl(path, 2)).toThrow('ReadFileWithDacl')
+    expect(addon.readFileWithDacl(join(root, 'absent-token'), 100)).toBeNull()
+    expect(() => addon.readFileWithDacl(root, 100)).toThrow()
+  })
+
+  it('round-trips a disposable generic credential as counted UTF-8 and enforces the native cap', () => {
+    const target = `orca-sta11846-test:${randomUUID()}`
+    expect(target).not.toBe('gemini:antigravity')
+    expect(addon.readGenericCredential(target)).toBeNull()
+    try {
+      const bytes = Buffer.from('{"access_token":"fixture-only-テスト"}')
+      addon.writeGenericCredential(target, 'antigravity', bytes)
+      expect(addon.readGenericCredential(target)).toEqual(bytes)
+      addon.writeGenericCredential(target, 'antigravity', Buffer.from('replacement-fixture'))
+      expect(addon.readGenericCredential(target)?.toString()).toBe('replacement-fixture')
+      expect(() =>
+        addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2561))
+      ).toThrow()
+    } finally {
+      const result = runProcessSync({
+        program: 'cmdkey.exe',
+        args: [`/delete:${target}`],
+        timeoutMs: 5000
+      })
+      expect(result.code).toBe(0)
+      expect(addon.readGenericCredential(target)).toBeNull()
+    }
   })
 
   it('refuses to adopt an existing file, whose own DACL would survive', () => {

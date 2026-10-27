@@ -7,6 +7,11 @@ import {
   writeAntigravityMacOSCredential
 } from './native-macos-credentials'
 import type { AntigravityCredentialBackend } from './native-account-service'
+import {
+  createAntigravityWindowsCredentialBackend,
+  getAntigravityWindowsHome
+} from './native-windows-credentials'
+import { readPrivateWindowsFile } from '../../shared/secure-path-windows-acl'
 
 const CONFLICT =
   'The native Antigravity credential changed during selection; refresh before retrying.'
@@ -33,7 +38,13 @@ export function createAntigravityFileCredentialBackend(path: string): Antigravit
       ) {
         throw new Error('unsafe credential file')
       }
-      return parseAntigravityNativeCredential(readFileSync(path, 'utf8'))
+      if (process.platform !== 'win32') {
+        return parseAntigravityNativeCredential(readFileSync(path, 'utf8'))
+      }
+      const raw = readPrivateWindowsFile(path, 64 * 1024)
+      return raw
+        ? parseAntigravityNativeCredential(new TextDecoder('utf-8', { fatal: true }).decode(raw))
+        : null
     } catch {
       throw new Error('The Antigravity execution-host credential file could not be read safely.')
     }
@@ -46,7 +57,7 @@ export function createAntigravityFileCredentialBackend(path: string): Antigravit
         throw new Error(CONFLICT)
       }
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-      writeCredentialFileAtomic(path, Buffer.from(contents, 'utf8'))
+      writeCredentialFileAtomic(path, Buffer.from(contents, 'utf8'), undefined, true)
       if ((await read())?.contents !== contents) {
         throw new Error(CONFLICT)
       }
@@ -56,9 +67,7 @@ export function createAntigravityFileCredentialBackend(path: string): Antigravit
 
 export function createAntigravityHostCredentialBackend(home: string): AntigravityCredentialBackend {
   if (process.platform === 'win32') {
-    throw new Error(
-      'Native Antigravity account switching is not supported on this host yet. Windows credential storage and private file permissions need a verified adapter.'
-    )
+    return createAntigravityWindowsCredentialBackend(getAntigravityWindowsHome(process.env))
   }
   const root = join(home, '.gemini', 'antigravity-cli')
   const file = createAntigravityFileCredentialBackend(join(root, 'antigravity-oauth-token'))

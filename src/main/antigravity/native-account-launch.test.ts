@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { prepareAntigravityAccountForLaunch } from './native-account-launch'
 import { createEncryptedAntigravityAccountStore } from './native-account-store'
 import { getAntigravityAccountService } from './native-account-host'
 
 const { prepareForLaunch } = vi.hoisted(() => ({ prepareForLaunch: vi.fn() }))
-vi.mock('node:fs', () => ({ existsSync: vi.fn() }))
+vi.mock('node:fs', () => ({ existsSync: vi.fn(), readFileSync: vi.fn(() => '') }))
 vi.mock('../../shared/app-environment', () => ({
   getAppEnvironment: () => ({ getPath: () => '/task/home' })
 }))
@@ -74,5 +74,53 @@ describe('native account verification before agy launch', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
+
+describe('Windows native credential authority before launch', () => {
+  beforeEach(() => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    vi.stubEnv('USERPROFILE', 'C:\\Users\\fixture')
+    vi.stubEnv('HOME', 'C:\\irrelevant')
+    for (const key of [
+      'SSH_TTY',
+      'SSH_CLIENT',
+      'SSH_CONNECTION',
+      'WSL_DISTRO_NAME',
+      'WSL_INTEROP'
+    ]) {
+      vi.stubEnv(key, '')
+    }
+  })
+  it('accepts case-insensitive equivalent USERPROFILE and removal of irrelevant HOME', async () => {
+    await prepareAntigravityAccountForLaunch({
+      launchAgent: 'antigravity',
+      env: { userprofile: 'c:/USERS/fixture/.' },
+      envToDelete: ['home']
+    })
+    expect(prepareForLaunch).toHaveBeenCalledOnce()
+  })
+  it.each([
+    { env: { userprofile: 'C:/other' } },
+    { envToDelete: ['userprofile'] },
+    { env: { HOME: 'C:/Users/fixture' }, envIsComplete: true },
+    { command: 'agy --gemini_dir other' },
+    { command: 'agy --app_data_dir=other' }
+  ])('rejects a different actual Windows authority (%#)', async (overrides) => {
+    await expect(
+      prepareAntigravityAccountForLaunch({ launchAgent: 'antigravity', ...overrides })
+    ).rejects.toThrow(/credential authority|requires USERPROFILE/)
+    expect(prepareForLaunch).not.toHaveBeenCalled()
+  })
+  it('accepts explicit default root flags without rewriting the command', async () => {
+    await prepareAntigravityAccountForLaunch({
+      command: 'agy --gemini_dir=.gemini --app_data_dir antigravity-cli'
+    })
+    expect(prepareForLaunch).toHaveBeenCalledOnce()
   })
 })
