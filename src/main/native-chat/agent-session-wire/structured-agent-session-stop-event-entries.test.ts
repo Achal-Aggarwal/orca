@@ -225,6 +225,7 @@ describe('every Stop entry writes its event, with its reason, before it ends the
         async (...args: Parameters<typeof append>) => {
           if (!held && args[1].kind === 'turn' && args[1].state === 'running') {
             held = true
+            // ast-grep-ignore: test-no-real-time-wait -- closePastSlowDrain drives this sink delay with fake timers.
             const delay = new Promise((resolve) => setTimeout(resolve, 1_500))
             heldSink.resolve()
             await delay
@@ -310,6 +311,7 @@ describe('every Stop entry writes its event, with its reason, before it ends the
       const atClose = await closePastSlowDrain('evict', () => {
         vi.spyOn(sink, 'drained')
           .mockImplementationOnce(
+            // ast-grep-ignore: test-no-real-time-wait -- closePastSlowDrain drives this drain delay with fake timers.
             () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 1_500))
           )
           .mockImplementation(drained)

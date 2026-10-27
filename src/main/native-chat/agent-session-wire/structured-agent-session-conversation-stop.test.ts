@@ -280,8 +280,6 @@ describe('a Stop that names no turn', () => {
     codex.routes['turn/interrupt'] = () => {
       if (end === 'before') {
         ended()
-      } else if (end === 'after') {
-        setTimeout(ended)
       }
       return {}
     }
@@ -299,7 +297,9 @@ describe('a Stop that names no turn', () => {
     await eventually(async () => expect((await submission(first.id))?.handedOverAt).toBeDefined())
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    if (end === 'after') {
+      ended()
+    }
     await host.flushStreamedEvents(SESSION)
 
     expect(await submission(first.id)).toMatchObject({
