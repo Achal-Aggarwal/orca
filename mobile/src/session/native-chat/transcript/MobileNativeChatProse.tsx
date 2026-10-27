@@ -26,6 +26,7 @@ import {
   TEXT_SIZE
 } from './mobile-native-chat-message-styles'
 import type { MobileNativeChatVisualRender } from '../visual/mobile-native-chat-visual-context'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 
 export function Prose({
   block,
@@ -51,6 +52,7 @@ export function Prose({
   /** Android only: routes a long press on a link span to the row's actions sheet. */
   onLongPress?: () => void
 }): React.JSX.Element | null {
+  useMobileColorScheme()
   if (isTextBlock(block)) {
     if (isAgentSessionHostStatusPresentation(block.presentation)) {
       return (
@@ -106,6 +108,7 @@ function ImageAttachment({
   fontScale: number
   onLongPress?: () => void
 }): React.JSX.Element {
+  useMobileColorScheme()
   const { openImage, imageClient } = useContext(MobileNativeChatRowOverlaysContext)
   const direct = block.url ?? block.path
   const renderable = isRenderableImageUri(direct) ? direct : null
