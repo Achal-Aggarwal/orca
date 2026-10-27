@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { ClaudeAtRestCommandCatalog } from './claude-at-rest-commands'
 import {
+  bindAtRestCommandContexts,
+  retireAtRestCommandSettings
+} from '../native-chat/agent-session-wire/at-rest-command-context'
+import {
   adapterFor,
   fakeClaude,
   identityFor,
@@ -128,4 +132,25 @@ it("answers a resting chat's `/` menu only for chats this host runs", async () =
   // Same workspace and account on another host: only that host can read its folders.
   const remote = { ...local, location: { ...local.location, executionHostId: 'ssh:box' as const } }
   expect(catalog.read(remote)).toBeUndefined()
+})
+
+it("lists a resting chat's `/` menu from the account it would start on, following a switch", async () => {
+  let selected = '/accounts/b'
+  const catalog = new ClaudeAtRestCommandCatalog({
+    resolveWorkspacePath: async () => '/work',
+    resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: selected }),
+    probe: async ({ accountHomePath }) => [{ name: accountHomePath, kind: 'skill' }]
+  })
+  const release = bindAtRestCommandContexts([catalog])
+  try {
+    // Created on /home/user/.claude, but its next start uses the selected account.
+    const chat = agentSessionRecordFixture()
+    expect(await catalog.settled(chat, 1000)).toEqual([{ name: '/accounts/b', kind: 'skill' }])
+
+    selected = '/accounts/a'
+    retireAtRestCommandSettings(['activeClaudeManagedAccountId'])
+    expect(await catalog.settled(chat, 1000)).toEqual([{ name: '/accounts/a', kind: 'skill' }])
+  } finally {
+    release()
+  }
 })

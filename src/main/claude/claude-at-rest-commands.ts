@@ -2,7 +2,8 @@ import { PrioritySemaphore } from '../../shared/priority-semaphore'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import {
   isLegacyAgentSessionAccountHome,
-  requireLegacyAgentSessionAccountHome
+  requireLegacyAgentSessionAccountHome,
+  type AgentSessionAccountHome
 } from '../../shared/agent-session-account-home'
 import type { AgentSessionSlashCommand } from '../../shared/agent-session-wire'
 import { structuredSlashCommands } from '../../shared/structured-agent-session-composer'
@@ -23,6 +24,8 @@ const MAX_PROBES_RUNNING = 2
 
 export type ClaudeAtRestCommandsDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
+  /** The account a Claude start uses now; absent keeps the chat's saved account. */
+  resolveAccountHome?: () => Promise<AgentSessionAccountHome>
   probe?: ClaudeCommandCatalogProbe
   now?: () => number
   discover?: typeof discoverSkills
@@ -52,7 +55,10 @@ async function scanClaudeAtRest(
   cwd: string,
   isCurrent: () => boolean
 ): Promise<AtRestCommandScan> {
-  const account = requireLegacyAgentSessionAccountHome(record.accountHome).path
+  // A resting chat's next start follows the selected account, not the one it was created on.
+  const account = requireLegacyAgentSessionAccountHome(
+    (await deps.resolveAccountHome?.()) ?? record.accountHome
+  ).path
   if (deps.probe) {
     const release = await probes.acquire(0)
     try {
