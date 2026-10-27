@@ -124,9 +124,10 @@ export async function admitRuntimePane(
   hostId: string | undefined,
   check?: () => void
 ): Promise<TerminalPaneAdmissionOutcome | undefined> {
-  return check
-    ? store?.admitTerminalPane?.(admission, hostId, check)
-    : store?.admitTerminalPane?.(admission, hostId)
+  const args: Parameters<NonNullable<RuntimeStore['admitTerminalPane']>> = check
+    ? [admission, hostId, check]
+    : [admission, hostId]
+  return store?.admitTerminalPane?.(...args)
 }
 
 /** Admit before starting (design 4.1); withdraw failed newly admitted panes unless keepOnFailure retains the error surface. */
