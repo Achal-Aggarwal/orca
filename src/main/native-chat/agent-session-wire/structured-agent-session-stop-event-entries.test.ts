@@ -40,7 +40,7 @@ async function queuedDraft(text: string) {
   return queued.value.queued.messageId
 }
 
-it('keeps Stop pause behind an idle-evicted unknown send until exact Delete and Resume', async () => {
+it('keeps Resume visible beside an idle-evicted unknown send recovery', async () => {
   rig = await createQueuedMessageTestRig({ restartable: true, idleSweep: MANUAL_IDLE_SWEEP })
   const working = await rig.workingSend()
   const held = await queuedDraft('queued behind the turn')
@@ -69,7 +69,14 @@ it('keeps Stop pause behind an idle-evicted unknown send until exact Delete and 
   await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
 
   expect(stopEvents()).toEqual(before)
-  expect(await rig.queuePause()).toBeNull()
+  expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  expect(journal().submissionBody(id)).toEqual(fields.body)
+  expect(journal().queuedMessages.get(`recovery:${id}`)).toMatchObject({
+    recovers: id,
+    body: fields.body,
+    options: {},
+    state: 'returned'
+  })
   expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toContain('stopped')
   expect(await rig.drafts()).toEqual([
     { messageId: `recovery:${id}`, state: 'returned' },
@@ -82,6 +89,8 @@ it('keeps Stop pause behind an idle-evicted unknown send until exact Delete and 
   expect(await rig.handoff(held)).toBeUndefined()
   expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
   await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
+  expect(await rig.submission(id)).toMatchObject({ dispatchState: 'unknown' })
+  expect(rig.dispatch.mock.calls.filter(([send]) => send.clientMessageId === id)).toHaveLength(1)
 })
 
 it('a later failed-start Stop returns only its own card and holds older waiting input until exact Delete', async () => {

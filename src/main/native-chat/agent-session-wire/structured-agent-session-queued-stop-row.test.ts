@@ -167,7 +167,7 @@ describe("Stop's event", () => {
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
   })
 
-  it('a stopped unconfirmed hand-off blocks the waiting cards until its recovery is deleted', async () => {
+  it('a stopped unconfirmed hand-off keeps its recovery independent of the waiting cards pause', async () => {
     const working = await rig.workingSend()
     await openRigTurnFor(rig, working)
     const steered = await queuedDraft('sent now into the turn')
@@ -190,12 +190,19 @@ describe("Stop's event", () => {
     })
     await rig.settleAccepted(working, 'stopped')
     await openRigTurnFor(rig, working, 'interrupted')
-    await expectHeld(null, opening, last)
+    await expectHeld('stopped', opening, last)
     expect(await rig.drafts()).toEqual([
       { messageId: `recovery:${steer}`, state: 'returned' },
       { messageId: opening, state: 'waiting' },
       { messageId: last, state: 'waiting' }
     ])
+    expect(journal().submissionBody(steer)).toEqual(hostTestMessage('sent now into the turn'))
+    expect(journal().queuedMessages.get(`recovery:${steer}`)).toMatchObject({
+      recovers: steer,
+      body: hostTestMessage('sent now into the turn'),
+      options: {},
+      state: 'returned'
+    })
     // The turn's message, unconfirmed, as an old client's projection draws it too.
     expect(await send(steer)).toMatchObject({ dispatchState: 'unknown', recovered: true })
     expect(await drawn(steer)).toEqual({ stoppedBeforeStart: undefined })
