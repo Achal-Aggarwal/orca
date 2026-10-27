@@ -43,10 +43,12 @@ export function useMobileQueuedMessageComposerActions(args: {
         return false
       }
       remaining.splice(at + ('afterId' in move ? 1 : 0), 0, source)
+      // Cards sort by position, so the preview hands the moved order the queue's own positions.
+      const positions = messages.map((message) => message.position).sort((a, b) => a - b)
       setPreview({
         scope: sessionKey,
         source: messages,
-        messages: remaining
+        messages: remaining.map((message, index) => ({ ...message, position: positions[index]! }))
       })
       const result = await mutate<AgentSessionQueuedMessageMoveResult>(
         'agentSession.queuedMessageMove',
