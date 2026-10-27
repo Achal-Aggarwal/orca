@@ -31,7 +31,7 @@ export function mobileWebAppBundleMaxAssets(routeCount, imageCount) {
  * refused asset on a phone. Splitting barely moves it — the same code is emitted in more files —
  * so shrinking this still means cutting code.
  *
- * This head reads 8,666,848 bytes of the 9,437,184 here, 91.8%, leaving 770,336. A reading and
+ * This measurement reads 8,800,909 bytes of the 9,437,184 here, leaving 636,275. A reading and
  * not a pin: nothing asserts it, because the number moves with every build. It is here so the
  * generation that spends the rest can see it was already this close.
  */
@@ -71,16 +71,16 @@ export function mobileWebAppBundleBudgetBytes(manifest) {
  * Scripts emitted at every prefix of the sorted route key list, and the route each prefix added.
  *
  * A chunk is emitted per distinct set of importers, not per route, so a route's marginal cost is
- * what it fails to share rather than what it weighs. Re-measured on this head by building
+ * what it fails to share rather than what it weighs. Re-measured on tree 1e5d28e516da49d13650ca05dd84edbd05a0a14c by building
  * `routes.slice(0, n)` for every n, which is what the fence below is derived from rather than
- * fitted to. The spread it shows is 1 to 14: `pr` adds one script, `tasks` adds fourteen.
+ * fitted to. The spread it shows is 1 to 14: `pr` adds one script, `review` adds fourteen.
  * The root `./_layout.tsx` (the page's web sibling of the native root) sorts first; with it the
- * swept tree reads 98 scripts at 16 routes, including the automation route.
+ * swept tree reads 111 scripts at 17 routes, including automations and new-workspace.
  *
  * This table is the fence's only input, so a route added to the tree stales it and the pins beside
  * the fence fail until it is re-measured. That is the point: the bound is re-derived, never bumped.
  */
-// Historical 09a36857 baseline; the merged 17-route tree requires an owner-run sweep.
+// Measured on admitted Windows high with LF checkout and esbuild 0.28.2.
 export const MOBILE_WEB_APP_BUNDLE_SCRIPT_SWEEP = [
   ['./_layout.tsx', 3],
   ['./h/[hostId]/[...page].tsx', 6],
@@ -91,13 +91,14 @@ export const MOBILE_WEB_APP_BUNDLE_SCRIPT_SWEEP = [
   ['./h/[hostId]/files/[worktreeId].tsx', 31],
   ['./h/[hostId]/files/preview/[worktreeId].tsx', 39],
   ['./h/[hostId]/history/[worktreeId].tsx', 42],
-  ['./h/[hostId]/index.tsx', 51],
-  ['./h/[hostId]/pr/[worktreeId].tsx', 52],
-  ['./h/[hostId]/review/[worktreeId].tsx', 62],
-  ['./h/[hostId]/session/[worktreeId].tsx', 75],
-  ['./h/[hostId]/source-control/[worktreeId].tsx', 81],
-  ['./h/[hostId]/tasks.tsx', 95],
-  ['./h/_layout.tsx', 98]
+  ['./h/[hostId]/index.tsx', 50],
+  ['./h/[hostId]/new-workspace.tsx', 60],
+  ['./h/[hostId]/pr/[worktreeId].tsx', 61],
+  ['./h/[hostId]/review/[worktreeId].tsx', 75],
+  ['./h/[hostId]/session/[worktreeId].tsx', 88],
+  ['./h/[hostId]/source-control/[worktreeId].tsx', 95],
+  ['./h/[hostId]/tasks.tsx', 107],
+  ['./h/_layout.tsx', 111]
 ]
 
 const sweptScripts = MOBILE_WEB_APP_BUNDLE_SCRIPT_SWEEP.map(([, scripts]) => scripts)
@@ -135,7 +136,7 @@ export function mobileWebAppBundleMaxChunks(routeCount) {
 /**
  * What the browser must parse before the first route can paint: the entry plus every chunk it
  * reaches by static import. This is the budget splitting exists to hold — it was 8.16 MB as one
- * chunk and measures 1,364,159 bytes split on this head, 1.30 of the 3 MiB — so a route
+ * chunk and measures 1,365,847 bytes split on this tree — so a route
  * re-imported statically, or `splitting` dropped, fails the build here instead of arriving as a
  * slow first open on a phone.
  *

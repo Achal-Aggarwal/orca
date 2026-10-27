@@ -448,13 +448,13 @@ describe('the Phase C budget', () => {
     const CHUNKED_ALONG_THE_ENGINE = 172
     expect(WITH_ONE_ARTIFACT).toBeLessThanOrEqual(mobileWebAppBundleMaxChunks(ROUTES))
     expect(CHUNKED_ALONG_THE_ENGINE).toBeGreaterThan(mobileWebAppBundleMaxChunks(ROUTES))
-    // And the assets that came with it: 215 against the 145 this head's envelope allows, of the
+    // And the assets that came with it: 215 against the 158 this tree's envelope allows, of the
     // 256 the shell will load.
     expect(mobileWebAppBundleMaxAssets(ROUTES, 42)).toBeLessThan(CHUNKED_ALONG_THE_ENGINE + 42 + 1)
   })
 
   it('derives the asset ceiling so the chunk ceiling is always the one that trips first', () => {
-    // Asset ceiling must derive from chunks+images+document or a flat limit fails first and misattributes chunk growth (141 assets at 18 routes/42 images).
+    // Asset ceiling must derive from chunks+images+document or a flat limit fails first and misattributes chunk growth (172 assets at 18 routes/42 images).
     for (const routeCount of [14, 18, 24, 40]) {
       for (const imageCount of [0, 42, 120]) {
         const chunks = mobileWebAppBundleMaxChunks(routeCount)
@@ -480,17 +480,17 @@ describe('the Phase C budget', () => {
   it('fails the build when the derived ceiling passes what the phone will accept', async () => {
     // The shell hands back null for a manifest over its own ceiling, so a derived ceiling above
     // that ships a green build no device can open. With the historical 42-image fixture, the envelope
-    // plus 42 plus the document crosses 256 at 24 routes, which Phase C reaches. The crossing came
+    // plus 42 plus the document crosses 256 at 25 routes, which Phase C reaches. The crossing came
     // in from 50 with the envelope: it grants the worst swept route to each one past the sweep,
     // where `4r + 16` granted four, so re-measuring a tree whose routes share more moves it out.
     expect(await readMobileWebBundleMaxAssets()).toBe(MOBILE_WEB_BUNDLE_MAX_ASSETS)
-    expect(assertAssetCeilingFitsShell(23, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toBe(243)
-    expect(() => assertAssetCeilingFitsShell(24, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toThrow(
-      /257 .*256/
+    expect(assertAssetCeilingFitsShell(24, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toBe(256)
+    expect(() => assertAssetCeilingFitsShell(25, 42, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toThrow(
+      /270 .*256/
     )
-    expect(assertAssetCeilingFitsShell(23, 50, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toBe(251)
+    expect(assertAssetCeilingFitsShell(23, 50, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toBe(250)
     expect(() => assertAssetCeilingFitsShell(24, 50, MOBILE_WEB_BUNDLE_MAX_ASSETS)).toThrow(
-      /265 .*256/
+      /264 .*256/
     )
   })
 })
