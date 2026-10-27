@@ -1,3 +1,4 @@
+import type { JournalMailCut } from './journal-mail-boundary'
 import { mailLineageGraph, type MailLineageScope } from './journal-mail-lineage'
 export { mailLineageGraph, mailLineageValue, type MailLineageScope } from './journal-mail-lineage'
 import { createHash } from 'node:crypto'
@@ -7,15 +8,19 @@ import {
   type AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import { decodePersistedAgentSessionRecord } from '../../../shared/agent-session-record-stored-form'
-import type { JournalOperationReceipt } from './journal-row-writer'
 
 export type MailHoldFacts = {
+  held?: boolean
   scope?: MailLineageScope
   members: ReadonlySet<string>
   ambiguous: boolean
   key: string
 }
-export type MailStopCapture = { members?: readonly string[]; finished?: () => void }
+export type MailStopCapture = {
+  members?: readonly string[]
+  cut?: JournalMailCut
+  finished?: () => void
+}
 export type CaptureSessionMail = (
   sessionId: string,
   records: readonly AgentSessionRecord[],
@@ -34,22 +39,6 @@ const caches = new WeakMap<
   }
 >()
 
-export function ambiguousMailAfterStopPolicy(): boolean {
-  return false // Pending product decision: ambiguous mail waits for actual person Send/Resume.
-}
-export function mailAdmissionPermission(
-  facts: MailHoldFacts | undefined,
-  members: readonly string[]
-): boolean {
-  if (!facts) {
-    return ambiguousMailAfterStopPolicy()
-  }
-  return Boolean(
-    facts &&
-    (!facts.ambiguous || ambiguousMailAfterStopPolicy()) &&
-    !members.some((id) => facts.members.has(id))
-  )
-}
 export function mailHoldAliases(
   sessionId: string,
   records: readonly AgentSessionRecord[]
@@ -227,55 +216,5 @@ export function mailHoldsCommitted(db: Database.Database, sessionId?: string): v
     cache?.facts.delete(scope)
   } else {
     cache?.facts.clear()
-  }
-}
-export function mailReleaseReceipt(sessionId: string): JournalOperationReceipt {
-  let database: Database.Database | undefined
-  return {
-    write: (db) => {
-      database = db
-      writeMailHold(db, sessionId, { version: 1, status: 'released' })
-    },
-    committed: () => {
-      if (database) {
-        mailHoldsCommitted(database, sessionId)
-      }
-    }
-  }
-}
-export function mailStopReceipt(
-  sessionId: string,
-  capture?: CaptureSessionMail
-): JournalOperationReceipt {
-  let database: Database.Database | undefined
-  let finished: (() => void) | undefined
-  return {
-    write: (db) => {
-      database = db
-      let prior = { release: 0, members: new Set<string>(), ambiguous: true }
-      let result: MailStopCapture = {}
-      try {
-        const records = readMailHoldRecords(db)
-        const scope = mailLineageGraph(records).get(sessionId) ?? null
-        prior = fold(db, scope?.aliases ?? null)
-        result = capture?.(sessionId, records, scope) ?? {}
-        finished = result.finished
-      } catch {
-        /* Capture failure cannot refuse personal Stop. */
-      }
-      writeMailHold(db, sessionId, {
-        version: 1,
-        status: 'held',
-        members: [...new Set([...prior.members, ...(result.members ?? [])])],
-        ambiguous: prior.ambiguous || !result.members,
-        releasedThrough: prior.release
-      })
-    },
-    committed: () => {
-      if (database) {
-        mailHoldsCommitted(database, sessionId)
-      }
-    },
-    finished: () => finished?.()
   }
 }

@@ -1,3 +1,4 @@
+import { mailSourceIncarnation } from './db/messages/mail-source-order'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
   MailStopCapture,
@@ -53,38 +54,20 @@ export function captureSessionMailAtStop(
     db.db.exec('BEGIN IMMEDIATE')
     acquired = true
     const recipient = sessionMailRecipient(db, sessionId, records, scope)
-    const members = db.db
-      .prepare(
-        `SELECT id, run_id, to_handle FROM messages WHERE read = 0 AND delivery_contract = 'current_delivery'`
-      )
-      .all()
-      .filter((row) => {
-        const address = String(row.to_handle)
-        const runId = String(row.run_id)
-        if (address.startsWith('run:')) {
-          return recipient.runs.has(address.slice(4))
-        }
-        if (address.startsWith('dispatch:')) {
-          return recipient.dispatches.has(address.slice(9))
-        }
-        const dispatch = db.findActiveDispatchForDirectMessageOwner(
-          runId,
-          address,
-          recipient.direct.has(address) ? recipient.paneKey : undefined
-        )
-        if (dispatch) {
-          return recipient.dispatches.has(dispatch.id)
-        }
-        const routed = db.db
-          .prepare('SELECT 1 FROM run_coordinator_handles WHERE run_id = ? AND terminal_handle = ?')
-          .get(runId, address)
-        if (routed) {
-          return recipient.runs.has(runId)
-        }
-        return recipient.direct.has(address)
-      })
-      .map((row) => String(row.id))
-    return { members, finished }
+    const throughSequence = Number(
+      db.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS n FROM messages').get()?.n
+    )
+    const incarnation = mailSourceIncarnation(db.db)
+    return {
+      cut: {
+        incarnation,
+        throughSequence,
+        direct: [...recipient.direct],
+        runs: [...recipient.runs],
+        dispatches: [...recipient.dispatches]
+      },
+      finished
+    }
   } catch {
     finished()
     return {}

@@ -42,6 +42,14 @@ export function readNow(
     )
     const notice = body?.kind === 'message' ? body.from?.orchestration : null
     return {
+      reconciliationKey: JSON.stringify([
+        journal.handleId,
+        journal.epoch,
+        journal.queuedMessages.revision(),
+        journal.mailHandoffs().revision,
+        host.deps.store.getRecord(sessionId)?.lease.runtimeFence,
+        boundary?.operationId
+      ]),
       legacyNotice: notice?.message === 'mail-notice' ? notice : null,
       epoch: journal.cursor().epoch,
       frontier: JSON.stringify([

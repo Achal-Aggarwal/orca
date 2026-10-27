@@ -1,6 +1,6 @@
-import { mailReleaseReceipt, readMailHoldFacts, readMailHoldRecords } from './journal-mail-holds'
+import { initializeJournalMailBoundary, restorePersonalQueuedSends } from './journal-mail-bootstrap'
+import { journalMailHoldFacts } from './journal-mail-boundary'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { composeJournalOperationReceipts } from './journal-row-writer'
 // Each session owns its fold and queue; all statements use the host's shared database connection.
 
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
@@ -74,6 +74,7 @@ import { journalThreadGoalSource, type JournalThreadGoalSource } from './journal
 export { AgentSessionJournalError } from './journal-write-guards'
 
 export class AgentSessionJournal {
+  readonly handleId = randomUUID()
   private readonly identity: AgentSessionJournalIdentity
   private readonly database: JournalHostDatabase
   private readonly now: () => number
@@ -116,12 +117,14 @@ export class AgentSessionJournal {
       cursor: this.cursor,
       adopt: (loaded) => {
         this.state = loaded.state
+        restorePersonalQueuedSends(this.database.db, this.state)
         this.onCommitted?.()
       },
       commit: (rows, savedAt) => {
         for (const row of rows) {
           applyJournalRow(this.state, row, savedAt)
         }
+        restorePersonalQueuedSends(this.database.db, this.state, rows)
         this.onCommitted?.(rows)
       },
       notifyCommitted: () => this.onCommitted?.([]),
@@ -165,6 +168,7 @@ export class AgentSessionJournal {
 
   async open(): Promise<void> {
     await this.restore()
+    await initializeJournalMailBoundary(this.database.db, () => this.state, this.rowWriter)
     this.openedThrough = this.cursor()
   }
 
@@ -298,19 +302,18 @@ export class AgentSessionJournal {
     return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
   }
 
-  mailHoldFacts(
-    records: () => readonly AgentSessionRecord[] = () => readMailHoldRecords(this.database.db),
-    revision = -1
-  ) {
-    return readMailHoldFacts(this.database.db, this.identity.sessionId, records, revision)
+  personalQueuedSend(clientMessageId: string): boolean {
+    return this.state.personalQueuedSends.has(clientMessageId)
   }
-  mailReleaseReceipt = () => mailReleaseReceipt(this.identity.sessionId)
+
+  mailHoldFacts(_records?: () => readonly AgentSessionRecord[], _revision = -1) {
+    return journalMailHoldFacts(this.state.mailBoundary)
+  }
 
   appendQueueResume(fence: number, receipt?: JournalOperationReceipt): Promise<AgentJournalCursor> {
-    const build = journalQueueResumeRowBuilder(() => this.state, fence)
     return this.rowWriter.append(
-      build,
-      composeJournalOperationReceipts(...(receipt ? [receipt] : []), this.mailReleaseReceipt())
+      journalQueueResumeRowBuilder(() => this.state, fence),
+      receipt
     )
   }
 

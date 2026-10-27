@@ -14,6 +14,7 @@ import {
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import {
   nextStructuredQueuedMessage,
+  structuredQueueHold,
   type StructuredQueueGateInput
 } from './structured-agent-session-queued-messages'
 import {
@@ -52,7 +53,11 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
     if (row.state !== 'waiting' && row.state !== 'returned') {
       continue
     }
-    const held = row.state === 'waiting' && row.holdReason !== null
+    const held =
+      row.state === 'waiting' &&
+      (row.holdReason !== null ||
+        (row.body.from?.orchestration?.message === 'mail-notice' &&
+          !journal.queuedMessages.mailEligible(row)))
     published.push({
       messageId: row.messageId,
       position: row.position,
@@ -81,9 +86,10 @@ type ListMemo = { key: string; serialized: string; list: AgentSessionQueuedMessa
 /** Stable identity avoids repeated serialization on token frames. */
 const listMemos = new WeakMap<AgentSessionJournal, ListMemo>()
 const publications = new WeakMap<AgentSessionJournal, QueuePublication>()
+const publicationKeys = new WeakMap<AgentSessionJournal, string>()
 
 function readPublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
-  const key = String(journal.queuedMessages.revision())
+  const key = JSON.stringify([journal.queuedMessages.revision(), journal.mailHoldFacts().key])
   const memo = listMemos.get(journal)
   if (memo && memo.key === key) {
     return memo.list
@@ -111,6 +117,18 @@ export function readQueuePublication(
   journal: AgentSessionJournal,
   gate: QueueSendGate
 ): QueuePublication {
+  const input = gate(journal)
+  const hold = input.work.working() ? 'working' : structuredQueueHold(input)
+  const key = JSON.stringify([
+    journal.queuedMessages.selectionRevision(),
+    journal.mailHoldFacts().key,
+    hold
+  ])
+  const cached = publications.get(journal)
+  if (cached && publicationKeys.get(journal) === key) {
+    return cached
+  }
+  publicationKeys.set(journal, key)
   const queuedMessages = readPublishedQueuedMessages(journal)
   // Show personal Stop only when Resume can send a card; hide old pauses after clear/reopen.
   // Re-derive per emit because submission acceptance can lift a pause.
@@ -128,10 +146,14 @@ export function readQueuePublication(
   const resumable = silent ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
   // Avoid scanning submissions when no pause can show.
   const pause =
-    resumable && !queuePauseLiftOnItsWay(resumable, journal.submissions()) ? resumable : null
+    resumable &&
+    !queuePauseLiftOnItsWay(resumable, journal.submissions(), (id) =>
+      journal.personalQueuedSend(id)
+    )
+      ? resumable
+      : null
   const queuePause = pause?.reason === 'stopped' ? { reason: pause.reason } : null
-  const nextQueuedMessageId =
-    nextStructuredQueuedMessage({ journal, ...gate(journal) })?.messageId ?? null
+  const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...input })?.messageId ?? null
   const previous = publications.get(journal)
   if (
     previous &&

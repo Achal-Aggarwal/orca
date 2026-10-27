@@ -35,8 +35,10 @@ export class JournalMailHandoffs {
   private readonly identities = new Map<string, { provider?: string | null; queued?: string }>()
   private readonly openers = new Map<string, Set<string>>()
   personSequence = 0
+  revision = 0
 
   submission(id: string, next?: AgentJournalSubmission): void {
+    this.revision++
     const before = this.identities.get(id)
     replaceIndex(this.providers, id, before?.provider, next?.providerItemId)
     replaceIndex(this.queued, id, before?.queued, next?.queuedMessageId)
@@ -57,6 +59,15 @@ export class JournalMailHandoffs {
   item(id: string, before?: AgentJournalRenderItem, after?: AgentJournalRenderItem): void {
     const opener = (item?: AgentJournalRenderItem) =>
       item && isRootAgentJournalItem(item) ? readAgentJournalTurn(item.body)?.userItemId : undefined
+    const previousTurn = before && readAgentJournalTurn(before.body)
+    const nextTurn = after && readAgentJournalTurn(after.body)
+    if (
+      previousTurn?.state !== nextTurn?.state ||
+      previousTurn?.completedAt !== nextTurn?.completedAt ||
+      opener(before) !== opener(after)
+    ) {
+      this.revision++
+    }
     replaceIndex(this.openers, id, opener(before), opener(after))
   }
 

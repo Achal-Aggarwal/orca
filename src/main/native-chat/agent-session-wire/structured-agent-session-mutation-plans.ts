@@ -1,3 +1,4 @@
+import type { JournalMailSource } from '../agent-session-journal/journal-mail-boundary'
 // Command receipts prove acceptance; other plans use ledger rows and journal replay.
 
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
@@ -130,6 +131,8 @@ export function sendPlan(
     /** Host-sent personal text; userSend always implies this. */
     personsMessage?: true
     beforeRun?: () => void
+    queueAlways?: true
+    mailSource?: JournalMailSource
   }
 ): MutationPlan<AgentSessionSendResult> {
   // Match operation ID to optimistic client message ID for durable reconciliation.

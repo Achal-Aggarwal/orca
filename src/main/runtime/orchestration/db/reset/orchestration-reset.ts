@@ -1,10 +1,18 @@
+import { rotateMailSourceIncarnation } from '../messages/mail-source-order'
 import { LEGACY_RUN_ID } from '../contract-constants'
 import type { OrchestrationDb } from '../orchestration-db'
 
-export function runResetTransaction(this: OrchestrationDb, statements: string): void {
+export function runResetTransaction(
+  this: OrchestrationDb,
+  statements: string,
+  resetsMail = false
+): void {
   this.db.exec('BEGIN IMMEDIATE')
   try {
     this.db.exec(statements)
+    if (resetsMail) {
+      rotateMailSourceIncarnation(this.db)
+    }
     this.db.exec('COMMIT')
   } catch (error) {
     try {
@@ -18,7 +26,8 @@ export function runResetTransaction(this: OrchestrationDb, statements: string): 
 
 export function resetAll(this: OrchestrationDb): void {
   // Keep receipts so a lost reset reply cannot replay the mutation.
-  this.runResetTransaction(`
+  this.runResetTransaction(
+    `
     DELETE FROM coordinator_runs;
     DELETE FROM decision_gates;
     DELETE FROM remote_questions;
@@ -43,7 +52,9 @@ export function resetAll(this: OrchestrationDb): void {
     DELETE FROM runs;
     INSERT INTO runs (id, objective, home_database, consumer_generation, legacy)
       VALUES ('${LEGACY_RUN_ID}', 'Legacy orchestration state (inspect only)', 'this_database', 0, 1);
-  `)
+  `,
+    true
+  )
   this.hasAnyDispatchContextsCache = undefined
 }
 
@@ -76,13 +87,16 @@ export function resetTasks(this: OrchestrationDb): void {
 
 export function resetMessages(this: OrchestrationDb): void {
   // Keep relay rows for contiguous cross-server cursors; drop pointer operations whose deleted message batch no longer exists.
-  this.runResetTransaction(`
+  this.runResetTransaction(
+    `
     DELETE FROM legacy_mail_receipts;
     DELETE FROM question_threads;
     DELETE FROM deliveries;
     DELETE FROM messages;
     DELETE FROM structured_pointer_operations;
-  `)
+  `,
+    true
+  )
 }
 
 export type OrchestrationResetMethods = {

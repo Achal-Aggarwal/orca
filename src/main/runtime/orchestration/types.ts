@@ -257,6 +257,7 @@ export type MessageRow = {
   pointer_pty_id?: string | null
   handoff?: string | null
   recovery_used?: number
+  ordering_origin?: 'local' | 'imported' | null
   pointer_process_incarnation?: string | null
 }
 

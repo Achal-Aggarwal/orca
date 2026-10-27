@@ -1,4 +1,3 @@
-import { composeJournalOperationReceipts } from '../agent-session-journal/journal-row-writer'
 // Admission already passed; journal before adapter effects so a crash leaves recoverable unknown work.
 // Calling the adapter first could lose a turn it accepted.
 
@@ -119,12 +118,7 @@ export async function performSend(
     await ctx.journal.appendSubmission(
       { ...input, options: captured.options, fence: ctx.fence, handoverRecorded: true },
       undefined,
-      input.source?.kind === 'user' || (input.origin === 'client' && !input.source)
-        ? composeJournalOperationReceipts(
-            ...(ctx.operationReceipt ? [ctx.operationReceipt] : []),
-            ctx.journal.mailReleaseReceipt()
-          )
-        : ctx.operationReceipt
+      ctx.operationReceipt
     )
   } catch (error) {
     if (error instanceof CommandReceiptExistsError) {

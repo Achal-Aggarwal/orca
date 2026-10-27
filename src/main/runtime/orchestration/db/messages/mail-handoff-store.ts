@@ -33,6 +33,7 @@ const readMessages = z
     pointer_pty_id: z.string().nullable().optional(),
     handoff: z.string().nullable().optional(),
     recovery_used: z.number().optional(),
+    ordering_origin: z.enum(['local', 'imported']).nullable().optional(),
     pointer_process_incarnation: z.string().nullable().optional()
   })
   .array().parse

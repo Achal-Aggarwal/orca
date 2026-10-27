@@ -1,3 +1,4 @@
+import type { JournalMailSource } from './journal-mail-boundary'
 // Queue facts share the chat journal/reducer; no second stored copy may drift behind dispatch state.
 
 import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -24,6 +25,7 @@ export type JournalQueueChange =
       queuedAt: AgentJournalCursor | null
       holdReason?: string
       options?: AgentSessionExecutionOptions
+      mailSource?: JournalMailSource
       attempt?: string
       /** Retain refusal facts only when their original handoff rows are gone. */
       returned?: { reason: string | null; rejection?: UnreadAgentSessionFailureFact }

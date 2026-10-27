@@ -126,7 +126,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     stops: new JournalStopAcceptor({
       writer: rowWriter,
       state: host.state,
-      sessionId: host.identity.sessionId
+      sessionId: host.identity.sessionId,
+      database: host.database
     }),
     // Import legacy cards once per open without failing the open.
     restore: () =>

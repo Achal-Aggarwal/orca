@@ -77,8 +77,12 @@ export function freshAgentSessionMailReceipt(
     write: (db, row) => {
       receipt.write(db, row)
       if (created()) {
-        writeMailHold(db, sessionId, { version: 1, status: 'released' }, true)
-        database = db
+        try {
+          writeMailHold(db, sessionId, { version: 1, status: 'released' }, true)
+          database = db
+        } catch {
+          // Optional positive witness: missing evidence holds mail, never refuses founding.
+        }
       }
     },
     committed: () => {

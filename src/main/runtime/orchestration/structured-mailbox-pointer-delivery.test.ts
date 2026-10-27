@@ -28,7 +28,7 @@ function harness(path = ':memory:') {
   }
   const send = vi.fn<StructuredMailboxPointerHost['send']>(async (input) =>
     input.beforeRun()
-      ? { kind: 'sent', state: 'accepted', clientMessageId: 'actual-submission' }
+      ? { kind: 'queued', clientMessageId: 'actual-submission' }
       : { kind: 'superseded' }
   )
   const host: StructuredMailboxPointerHost = {
@@ -39,6 +39,7 @@ function harness(path = ':memory:') {
     hasActionablePromptNow: () => false,
     currentFence: () => 1,
     currentContextClearOperationId: () => undefined,
+    reconciliationKey: () => JSON.stringify(evidence),
     send
   }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
@@ -190,11 +191,7 @@ it.each([10, 100].flatMap((count) => ['busy', 'idle', 'cohort'].map((mode) => ({
       Object.keys(costs).forEach((key) => Reflect.set(costs, key, 0))
       inventory.mockClear()
       candidates.mockClear()
-      if (edge === 'repeat' && mode === 'busy') {
-        delivery.onJournalActivity('session')
-      } else {
-        delivery.deliverForHandle('consumer')
-      }
+      delivery.deliverForHandle('consumer')
       await new Promise<void>((done) => setImmediate(done))
       console.log({ count, mode, edge, ...costs })
       expect(inventory.mock.calls.length).toBeLessThanOrEqual(mode === 'busy' ? 2 : 3)
@@ -203,7 +200,7 @@ it.each([10, 100].flatMap((count) => ['busy', 'idle', 'cohort'].map((mode) => ({
       expect(costs.receipts).toBeLessThanOrEqual(3 * count)
       expect(costs.ordered).toBe(sources.size)
       expect(costs.storeRows).toBeGreaterThanOrEqual(sources.size)
-      expect(candidates.mock.calls.length).toBeLessThanOrEqual(mode === 'busy' ? 0 : 3 * count + 3)
+      expect(candidates.mock.calls.length).toBeLessThanOrEqual(3 * count + 3)
       expect(
         candidates.mock.results.reduce((n, r) => n + (r.type === 'return' ? r.value.length : 0), 0)
       ).toBeLessThanOrEqual(6 * count)
@@ -286,7 +283,7 @@ it.each(['failed', 'disappeared', 'changed'] as const)(
     }
     host.takesMailNow = () => false
     host.readReceipt = () => queuedReceipt(issuedReference, 'actual')
-    delivery.onJournalActivity('session')
+    delivery.deliverForHandle('consumer')
     await vi.waitFor(() =>
       expect(readMailHandoff(db.getMessageById(message.id)?.handoff)).toMatchObject({
         phase: 'offered',
@@ -356,7 +353,7 @@ it.each(['failed', 'disappeared', 'changed'] as const)(
     host.readHandoffEvidenceNow = (source) =>
       source.sessionId === 'source' && failure !== 'changed' ? null : evidence
     delivery.deliverForHandle('consumer')
-    await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(failure === 'changed' ? 5 : 2))
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(failure === 'changed' ? 7 : 2))
     await new Promise<void>((done) => setImmediate(done))
     expect(db.getMessageById(message.id)?.read).toBe(Number(failure !== 'disappeared'))
     expect(db.getMessageById(other.id)).toMatchObject({
@@ -399,7 +396,7 @@ it('a late accepted receipt cannot overwrite a newer read or acknowledgement', a
     db.recordUnknownMailRead([message])
     expect(db.getMessageById(message.id)!.handoff).not.toBe(firstRead)
     db.markAsRead([message.id])
-    return { kind: 'sent', state: 'accepted', clientMessageId: 'actual-submission' }
+    return { kind: 'queued', clientMessageId: 'actual-submission' }
   })
   delivery.deliverForHandle('consumer')
   await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
@@ -539,7 +536,13 @@ it('redrives second-connection arrivals across preparation and commits before ef
   send.mockImplementation(async (input) => {
     expect(db.db.isTransaction).toBe(false)
     expect(claim.mock.results.at(-1)?.value).toMatchObject({ address: 'consumer' })
-    const selected = db.getUnreadMessages('consumer')[0]!
+    const selected = db.getUnreadMessages('consumer').find((row) => {
+      const reference = readMailHandoff(row.handoff)
+      return reference?.kind === 'structured' && reference.operationId === input.operationId
+    })
+    if (!selected) {
+      throw new Error('committed source missing')
+    }
     expect(readMailHandoff(selected.handoff)).toMatchObject({
       operationId: input.operationId,
       phase: 'reserved'
@@ -547,13 +550,13 @@ it('redrives second-connection arrivals across preparation and commits before ef
     expect(readMailHandoff(selected.handoff)).not.toHaveProperty('nonAdmission')
     expect(input.beforeRun()).toBe(true)
     host.takesMailNow = () => false
-    return { kind: 'sent', state: 'accepted' }
+    return { kind: 'queued' }
   })
   unblock()
-  await vi.waitFor(() => expect(send).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2))
   expect(
     claim.mock.results.filter((result) => result.type === 'return' && result.value !== null)
-  ).toHaveLength(1)
+  ).toHaveLength(2)
   await vi.waitFor(() =>
     expect(readMailHandoff(db.getMessageById(message.id)?.handoff)).toMatchObject({
       phase: 'offered',
@@ -566,5 +569,5 @@ it('redrives second-connection arrivals across preparation and commits before ef
   delivery.onJournalActivity('session')
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(scan).toHaveBeenCalledTimes(settled)
-  expect(send).toHaveBeenCalledOnce()
+  expect(send).toHaveBeenCalledTimes(2)
 })

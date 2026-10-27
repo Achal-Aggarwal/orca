@@ -153,9 +153,13 @@ export function acceptSubmissionFromProviderItem(
 /** Automatic input cannot resume the person's paused messages. */
 export function noteTurnAccepted(
   state: JournalReducerState,
-  submission: Pick<AgentJournalSubmission, 'acceptedSequence' | 'source'>
+  submission: Pick<AgentJournalSubmission, 'acceptedSequence' | 'source' | 'clientMessageId'>
 ): void {
-  if (submission.acceptedSequence !== undefined && submission.source?.kind !== 'agent') {
+  if (
+    submission.acceptedSequence !== undefined &&
+    (submission.source?.kind !== 'agent' ||
+      state.personalQueuedSends.has(submission.clientMessageId))
+  ) {
     state.latestAcceptedTurnSequence = Math.max(
       state.latestAcceptedTurnSequence,
       submission.acceptedSequence

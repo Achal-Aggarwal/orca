@@ -1,8 +1,5 @@
 import { readMailHandoffCohort } from './mailbox-handoff-cohort'
-import {
-  mailAdmissionPermission,
-  type MailHoldFacts
-} from '../../native-chat/agent-session-journal/journal-mail-holds'
+import type { MailHoldFacts } from '../../native-chat/agent-session-journal/journal-mail-holds'
 import { isDeepStrictEqual } from 'node:util'
 import type { OrchestrationMailNotice } from '../../../shared/agent-session/agent-session-message-source'
 import type {
@@ -53,6 +50,7 @@ export function selectStructuredMailHandoff(input: {
   waiters: ReadonlySet<OrchestrationMessageWaiter> | undefined
   reservedTypes: ReadonlySet<string> | undefined
   readEvidence: (reference: StructuredMailHandoff) => StructuredMailEvidence | null
+  afterSequence?: number
   limit?: number
   skipOperations?: ReadonlySet<string>
   accept?: (batch: { messages: MessageRow[]; reference: StructuredMailHandoff }) => boolean
@@ -90,7 +88,7 @@ export function selectStructuredMailHandoff(input: {
     input.limit ?? ORCHESTRATION_DELIVERY_BATCH_LIMIT,
     ORCHESTRATION_DELIVERY_BATCH_LIMIT
   )
-  let afterSequence = 0
+  let afterSequence = input.afterSequence ?? 0
   for (;;) {
     const candidates =
       input.candidates ??
@@ -120,10 +118,7 @@ export function selectStructuredMailHandoff(input: {
         authority
       }
       if (!prior) {
-        if (
-          input.settlementOnly ||
-          !mailAdmissionPermission(read({ ...fresh, clientMessageId: '' })?.mailHold, [message.id])
-        ) {
+        if (input.settlementOnly) {
           continue
         }
         selected.push({ message, reference: fresh, recovery: false })
@@ -156,7 +151,7 @@ export function selectStructuredMailHandoff(input: {
           write(() => input.db.markAsReadAndDelivered([message.id]))
           continue
         }
-        if (input.settlementOnly || !mailAdmissionPermission(evidence.mailHold, [message.id])) {
+        if (input.settlementOnly) {
           continue
         }
         if (original) {

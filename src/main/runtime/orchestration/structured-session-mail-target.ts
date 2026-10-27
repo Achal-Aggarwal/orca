@@ -138,11 +138,10 @@ export async function selectSessionMail(input: {
   resolveStructuredTarget: (mailbox: string) => StructuredPointerTarget | null
   getCliCommand: () => OrchestrationCliCommand
   senderName: SenderNameResolver
-  park: (address: string) => void
   ownWrite: <T>(write: () => T) => T
   current: () => boolean
   settle: (read: StructuredMailboxPointerHost['readHandoffEvidenceNow']) => ReadonlySet<string>
-  settlementOnly: boolean
+  afterSequence?: number
 }) {
   const { db, mailbox, target, host } = input
   const prepared = new Map<string, boolean>()
@@ -186,13 +185,6 @@ export async function selectSessionMail(input: {
               throw retiredPreparation
             }
             const skipped = new Set([...input.reconciled, ...input.settle(read)])
-            if (
-              input.settlementOnly ||
-              host.takesMailNow?.(target.sessionId) === false ||
-              host.hasActionablePromptNow(target.sessionId) === true
-            ) {
-              return null
-            }
             const session = read({ sessionId: target.sessionId, clientMessageId: '' })
             const fence = host.currentFence(target.sessionId)
             if (!session || fence === null) {
@@ -211,7 +203,6 @@ export async function selectSessionMail(input: {
               if (addressTarget?.sessionId !== target.sessionId) {
                 continue
               }
-              input.park(address)
               const legacy = db.getStructuredPointerOperation(address)
               if (legacy?.session_id === target.sessionId) {
                 const evidence = read({
@@ -234,6 +225,7 @@ export async function selectSessionMail(input: {
                   'heartbeat'
                 ]),
                 limit: 1,
+                afterSequence: input.afterSequence,
                 readEvidence: read,
                 skipOperations: skipped,
                 accept: (batch) =>

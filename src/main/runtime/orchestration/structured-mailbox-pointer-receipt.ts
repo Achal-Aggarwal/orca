@@ -63,8 +63,6 @@ export function currentSessionMail(
     manifest &&
     next?.sessionId === choice.target.sessionId &&
     next.dispatchId === choice.target.dispatchId &&
-    input.host.takesMailNow?.(next.sessionId) !== false &&
-    input.host.hasActionablePromptNow(next.sessionId) !== true &&
     input.host.currentFence(next.sessionId) === manifest.runtimeFence &&
     input.host.currentContextClearOperationId(next.sessionId) === manifest.context &&
     manifest.members.length === messages.length &&

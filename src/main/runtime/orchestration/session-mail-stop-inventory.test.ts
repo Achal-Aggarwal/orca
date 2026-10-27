@@ -81,18 +81,27 @@ it('captures worker Dispatch and foreign direct ownership from durable reminted-
     runId: run.id
   })
   const before = capture()
-  expect(new Set(before.members)).toEqual(new Set([pending.id, assigned.id]))
+  expect(before.cut).toMatchObject({
+    throughSequence: assigned.sequence,
+    direct: expect.arrayContaining([address, handle]),
+    dispatches: [started.dispatch.id]
+  })
   before.finished?.()
   db.db
     .prepare('UPDATE dispatch_contexts SET assignee_handle = ? WHERE id = ?')
     .run('reminted', started.dispatch.id)
   const reminted = capture()
-  expect(new Set(reminted.members)).toEqual(new Set([pending.id, assigned.id]))
+  expect(reminted.cut).toMatchObject({
+    throughSequence: assigned.sequence,
+    direct: expect.arrayContaining([address, handle]),
+    dispatches: [started.dispatch.id]
+  })
+  expect(db.getMessageById(pending.id)?.read).toBe(0)
   reminted.finished?.()
 })
 
 it.each([100, 1000])(
-  'captures all owed IDs with indexed direct routing and releases its exact writer at U=%i',
+  'captures complete recipient scope and one high-water cut without an N=%i unread scan, releasing its exact writer',
   (count) => {
     const { db, peer, capture, coordinator } = harness()
     const run = db.createRun({ objective: 'owned', ...coordinator, coordinatorOrcaSessionId: id })
@@ -121,13 +130,17 @@ it.each([100, 1000])(
     const queries = vi.spyOn(db.db, 'prepare')
     const probe = vi.spyOn(db, 'findActiveDispatchForDirectMessageOwner')
     const captured = capture()
-    expect(new Set(captured.members)).toEqual(new Set(owed))
-    expect(probe).toHaveBeenCalledTimes(count + 1)
+    expect(captured.cut).toMatchObject({
+      throughSequence: 2 * count + 1,
+      direct: [address],
+      runs: [run.id]
+    })
+    expect(probe).not.toHaveBeenCalled()
     expect(
       queries.mock.calls.filter(([sql]) =>
         sql.includes('SELECT id, run_id, to_handle FROM messages')
       )
-    ).toHaveLength(1)
+    ).toHaveLength(0)
     expect(() => peer.exec('BEGIN IMMEDIATE')).toThrow()
     captured.finished?.()
     expect(db.db.isTransaction).toBe(false)
@@ -136,13 +149,13 @@ it.each([100, 1000])(
     peer.prepare('UPDATE messages SET read = 1 WHERE id = ?').run(owed[1])
     peer.exec('COMMIT')
     const next = capture()
-    expect(next.members).toHaveLength(count)
+    expect(next.cut).toEqual(captured.cut)
     next.finished?.()
     db.db
       .prepare('UPDATE runs SET consumer_generation = consumer_generation + 1 WHERE id = ?')
       .run(run.id)
     const stale = capture()
-    expect(stale.members).not.toContain(deferred.id)
+    expect(stale.cut?.runs).not.toContain(run.id)
     stale.finished?.()
     expect(db.getMessageById(deferred.id)?.to_handle).toBe('old-coordinator')
     db.bindRun({
@@ -152,7 +165,7 @@ it.each([100, 1000])(
       coordinatorOrcaSessionId: id
     })
     const acquired = capture()
-    expect(acquired.members).toContain(deferred.id)
+    expect(acquired.cut?.runs).toContain(run.id)
     acquired.finished?.()
   }
 )

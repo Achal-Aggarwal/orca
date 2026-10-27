@@ -94,13 +94,17 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
         read.receipt.sessionId === reference.sessionId &&
         read.receipt.method === 'agentSession.send' &&
         read.receipt.callerKey === caller &&
-        read.receipt.fingerprint ===
-          structuredAgentSessionMessageSendMutation({
-            sessionId: reference.sessionId,
-            clientOperationId: reference.operationId,
-            expectedRuntimeFence: manifest.runtimeFence,
-            body
-          }).envelope.payloadFingerprint
+        [undefined, 'queue-if-active' as const].some(
+          (delivery) =>
+            read.receipt.fingerprint ===
+            structuredAgentSessionMessageSendMutation({
+              sessionId: reference.sessionId,
+              clientOperationId: reference.operationId,
+              expectedRuntimeFence: manifest.runtimeFence,
+              body,
+              ...(delivery ? { delivery } : {})
+            }).envelope.payloadFingerprint
+        )
       ) {
         return read
       }
@@ -136,6 +140,13 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       return getStructuredAgentSessionHost()?.currentWork(sessionId)?.hasActionablePrompt() ?? null
     },
 
+    reconciliationKey(sessionId) {
+      return (
+        getStructuredAgentSessionHost()?.readMailHandoffEvidenceNow(sessionId, '')
+          ?.reconciliationKey ?? null
+      )
+    },
+
     currentFence(sessionId) {
       return (
         getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? null
@@ -164,20 +175,14 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           turn: {
             body: input.body,
             // A person's plain send: every agent takes it the way it takes their own mid-turn message.
-            delivery: 'now',
+            delivery: 'queue',
+            queueAlways: true,
+            ...(input.mailSource ? { mailSource: input.mailSource } : {}),
             operationId: input.operationId,
             expectedRuntimeFence: input.expectedRuntimeFence,
             beforeRun: () => {
               if (!input.beforeRun()) {
                 throw new StructuredMailSupersededError()
-              }
-              const work = host.currentWork(input.sessionId)
-              if (
-                input.body.from?.orchestration?.message === 'mail-notice' &&
-                work &&
-                holdsMail(work)
-              ) {
-                throw new StructuredMailHeldError()
               }
             }
           }
@@ -185,9 +190,6 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       } catch (error) {
         if (error instanceof StructuredMailSupersededError) {
           return { kind: 'superseded', noEffect: true }
-        }
-        if (error instanceof StructuredMailHeldError) {
-          return { kind: 'held' }
         }
         throw error
       }
@@ -223,8 +225,6 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
     }
   }
 }
-
-class StructuredMailHeldError extends Error {}
 
 class StructuredMailSupersededError extends Error {}
 

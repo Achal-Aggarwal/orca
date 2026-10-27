@@ -1,27 +1,26 @@
-import {
-  clearedMailRecord as clearedRecord,
-  mailTestResources
-} from '../../runtime/orchestration/mail-handoff.test-fixture'
 import { expect, it, vi } from 'vitest'
 import { join } from 'node:path'
+import {
+  mailTestResources,
+  clearedMailRecord
+} from '../../runtime/orchestration/mail-handoff.test-fixture'
 import { agentSessionRecordFixture } from '../agent-session-record-test-fixture'
 import { encodeAgentSessionRecord } from '../../../shared/agent-session-record-stored-form'
-import { OrchestrationDb } from '../../runtime/orchestration/db'
-import { captureSessionMailAtStop } from '../../runtime/orchestration/session-mail-stop-inventory'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { JournalHostDatabase } from './journal-host-database'
-import { JournalRowWriter, composeJournalOperationReceipts } from './journal-row-writer'
-import { createJournalReducerState } from './journal-reducer'
-import { journalStopEventRowBuilder } from './journal-stop-and-resume-rows'
-import {
-  mailAdmissionPermission,
-  mailReleaseReceipt,
-  mailStopReceipt,
-  readMailHoldFacts
-} from './journal-mail-holds'
+import { AgentSessionJournal } from './journal-store'
+import { writeMailHold } from './journal-mail-holds'
+import { bootstrapJournalMailBoundary } from './journal-mail-bootstrap'
+import { journalMailSourceEligible, type JournalMailSource } from './journal-mail-boundary'
+import { nextSendableQueuedCard } from './queued-message-pause'
+import { resumeStructuredQueue } from '../agent-session-wire/structured-agent-session-queued-pause'
+import { OrchestrationDb, type MessageRow } from '../../runtime/orchestration/db'
+import { captureSessionMailAtStop } from '../../runtime/orchestration/session-mail-stop-inventory'
+import { mailSourceIncarnation } from '../../runtime/orchestration/db/messages/mail-source-order'
+import { structuredMailBody } from '../../runtime/orchestration/structured-mail-source'
 
-const resources = mailTestResources('pr28567-mail-holds-')
-function harness() {
+const resources = mailTestResources('pr28567-mail-boundary-')
+async function harness(fresh = true) {
   const root = resources.directory()
   const database = resources.track(JournalHostDatabase.open(root))
   const record = agentSessionRecordFixture({
@@ -30,158 +29,318 @@ function harness() {
   database.db
     .prepare('INSERT INTO agent_session_records VALUES (?, ?)')
     .run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
-  let sequence = 0
-  const state = createJournalReducerState(record.sessionId, 'epoch')
-  const writer = new JournalRowWriter({
-    sessionId: record.sessionId,
-    now: () => 100,
-    serialize: async (run) => run(),
-    database: () => database,
-    readOnly: () => false,
-    highestFence: () => 1,
-    nextSequence: () => sequence + 1,
-    commit: (rows) => {
-      sequence = rows.at(-1)!.seq
-    }
-  })
-  const facts = (db = database.db) => readMailHoldFacts(db, record.sessionId, () => [record], 0)
-  const apply = (receipt: ReturnType<typeof mailReleaseReceipt>, target = database) => {
-    target.transaction((db) => receipt.write(db))
-    receipt.committed()
+  if (fresh) {
+    writeMailHold(database.db, record.sessionId, { version: 1, status: 'released' }, true)
   }
-  const stop = (
-    capture: Parameters<typeof mailStopReceipt>[1] = () => ({}),
-    extra = { write: () => {}, committed: () => {} }
-  ) =>
-    writer.append(
-      journalStopEventRowBuilder(() => state, { reason: 'user-stop' }, 1),
-      composeJournalOperationReceipts(mailStopReceipt(record.sessionId, capture), extra)
+  const identity = {
+    sessionId: record.sessionId,
+    workspaceId: 'workspace',
+    hostId: 'host',
+    agent: 'codex' as const,
+    providerHandle: null
+  }
+  const open = async () => {
+    const journal = resources.track(new AgentSessionJournal({ database, identity }))
+    await journal.open()
+    return journal
+  }
+  const journal = await open()
+  const path = join(root, 'mail.db')
+  const db = resources.track(new OrchestrationDb(path))
+  const mailbox = `orca_session_id:${record.sessionId}`
+  const message = (subject: string, imported = false) =>
+    db.insertMessage({
+      from: 'worker',
+      to: mailbox,
+      subject,
+      ...(imported ? { orderingOrigin: 'imported' as const } : {})
+    })
+  const source = (row: MessageRow): JournalMailSource => ({
+    incarnation: mailSourceIncarnation(db.db),
+    mailbox,
+    members: [{ id: row.id, sequence: row.sequence, origin: row.ordering_origin ?? null }]
+  })
+  const enqueue = (row: MessageRow, target = journal) =>
+    target.queuedMessages.insert({
+      messageId: row.id,
+      body: structuredMailBody({
+        db,
+        mailboxHandle: mailbox,
+        dispatchId: null,
+        message: row,
+        senderName: () => null,
+        cliCommand: 'orca'
+      }),
+      mailSource: source(row)
+    })
+  const stop = (capture = true, receipt?: Parameters<typeof journal.stops.accept>[1]) =>
+    journal.stops.accept(
+      {
+        event: { reason: 'user-stop' },
+        fence: 0,
+        liveTurnId: () => null,
+        ...(capture
+          ? {
+              captureMail: (id, records, scope) =>
+                captureSessionMailAtStop(db, id, records, () => {}, scope)
+            }
+          : {})
+      },
+      receipt
     )
-  return { root, database, record, facts, apply, stop, writer, state }
+  const eligible = (id: string, target = journal) => {
+    const card = target.queuedMessages.get(id)
+    if (!card) {
+      throw new Error('missing queued report')
+    }
+    return target.queuedMessages.mailEligible(card)
+  }
+  const pick = (target = journal) =>
+    nextSendableQueuedCard(
+      target.queuedMessages.pauses(),
+      target.queuedMessages.list(),
+      new Set(),
+      (card) => target.queuedMessages.mailEligible(card)
+    )?.messageId
+  return {
+    root,
+    database,
+    record,
+    identity,
+    journal,
+    open,
+    db,
+    path,
+    mailbox,
+    message,
+    source,
+    enqueue,
+    stop,
+    pick,
+    eligible
+  }
 }
 
-it('persists exact unreserved obligations across restatement/reopen and repeated same-tuple Stops, releasing only on personal intent', async () => {
-  const h = harness()
-  expect(mailAdmissionPermission(h.facts(), ['fresh'])).toBe(false)
-  h.apply(mailReleaseReceipt(h.record.sessionId))
+it('holds admitted and missed old reports, lets fresh local mail pass personal FIFO, and preserves that boundary through epoch/reopen', async () => {
+  const h = await harness()
+  await h.journal.queuedMessages.insert({
+    messageId: 'personal',
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'personal' }] }
+  })
+  const admitted = h.message('admitted')
+  const missed = h.message('missed')
+  await h.enqueue(admitted)
   await h.stop()
-  await h.stop(() => ({ members: ['A'] }))
-  expect(mailAdmissionPermission(h.facts(), ['C'])).toBe(false)
-  h.apply(mailReleaseReceipt(h.record.sessionId))
-  await h.stop(() => ({ members: ['A', 'B'] }))
-  expect(mailAdmissionPermission(h.facts(), ['A'])).toBe(false)
-  expect(mailAdmissionPermission(h.facts(), ['C'])).toBe(true)
-  await h.writer.append(journalStopEventRowBuilder(() => h.state, { reason: 'user-stop' }, 1))
-  await h.writer.append(journalStopEventRowBuilder(() => h.state, { reason: 'host-stop' }, 1))
-  expect([...h.facts().members]).toEqual(['A', 'B'])
-  await h.stop(() => ({ members: ['C'] }))
-  expect([...h.facts().members]).toEqual(['A', 'B', 'C'])
-  h.database.close()
-  const reopened = resources.track(JournalHostDatabase.open(h.root))
-  expect(h.facts(reopened.db).members).toEqual(new Set(['A', 'B', 'C']))
-  h.apply(mailReleaseReceipt(h.record.sessionId), reopened)
-  expect(mailAdmissionPermission(h.facts(reopened.db), ['A', 'B'])).toBe(true)
+  await h.enqueue(missed)
+  const imported = h.message('delayed imported', true)
+  await h.enqueue(imported)
+  const fresh = h.message('fresh')
+  await h.enqueue(fresh)
+  expect(h.pick()).toBe(fresh.id)
+  expect(h.journal.queuedMessages.pauses().map((pause) => pause.reason)).toContain('stopped')
+  const original = h.journal.mailHoldFacts().key
+  await h.journal.appendStopEvent({ reason: 'host-stop' }, 0)
+  expect(h.journal.mailHoldFacts().key).toBe(original)
+  await h.journal.replaceEpochItems('unreconcilable_prefix', 0, [])
+  expect(h.journal.mailHoldFacts().key).toBe(original)
+  const reopened = await h.open()
+  expect(reopened.mailHoldFacts().key).toBe(original)
+  // Context clear keeps ordinary text holds; it never releases source holds.
+  expect(h.eligible(missed.id, reopened)).toBe(false)
+  expect(h.eligible(fresh.id, reopened)).toBe(true)
+  h.database.db
+    .prepare(`UPDATE journal_rows SET row_json = json_set(row_json, '$.mailBoundary',
+      json('{"status":"malformed"}')) WHERE session_id = ? AND
+      json_type(row_json, '$.mailBoundary') IS NOT NULL`)
+    .run(h.record.sessionId)
+  const salvaged = await h.open()
+  expect(salvaged.mailHoldFacts()).toMatchObject({ held: true, ambiguous: true })
+  await salvaged.appendQueueResume(0)
+  expect(h.eligible(imported.id, salvaged)).toBe(true)
 })
 
-it('rolls back Stop, hold and receipt together, cleaning up before any fold/publication even on failed COMMIT', async () => {
-  const h = harness()
-  h.apply(mailReleaseReceipt(h.record.sessionId))
-  const mail = resources.track(new OrchestrationDb(join(h.root, 'mail.db')))
-  const row = mail.insertMessage({
-    from: 'worker',
-    to: `orca_session_id:${h.record.sessionId}`,
-    subject: 'owed'
+it('failed capture and repeated Stops HOLD; personal Stop/Resume never write the compatibility holds relation', async () => {
+  const h = await harness()
+  h.database.db.exec(
+    `CREATE TRIGGER refuse_legacy_hold BEFORE UPDATE ON agent_session_mail_holds BEGIN SELECT RAISE(ABORT, 'obsolete writer'); END`
+  )
+  await h.stop(false)
+  const ambiguous = h.message('ambiguous')
+  await h.enqueue(ambiguous)
+  expect(h.pick()).toBeUndefined()
+  await h.stop()
+  const fresh = h.message('after a complete capture')
+  await h.enqueue(fresh)
+  expect(h.pick()).toBe(fresh.id)
+  await h.stop(false)
+  expect(h.pick()).toBeUndefined()
+  await h.journal.appendQueueResume(0)
+  expect(h.pick()).toBe(ambiguous.id)
+  await h.journal.stops.accept({
+    event: { reason: 'user-stop' },
+    fence: 0,
+    liveTurnId: () => null,
+    captureMailIntent: false
   })
-  const retire = vi.fn()
-  const finished = vi.fn(() => {
-    expect(h.database.db.isTransaction).toBe(false)
-    expect(mail.db.isTransaction).toBe(false)
-    expect(mail.db.pragma('busy_timeout', { simple: true })).toBe(5000)
-  })
+  expect(h.eligible(ambiguous.id)).toBe(true)
+  expect(
+    h.database.db.prepare('SELECT state_json FROM agent_session_mail_holds').get()?.state_json
+  ).toContain('released')
+})
+
+it('holds the zero-wait source reservation through host COMMIT, rolls back a failed Stop and releases before publication', async () => {
+  const h = await harness()
+  h.message('owed')
+  const peer = resources.track(new OrchestrationDb(h.path))
+  peer.db.pragma('busy_timeout = 0')
+  const before = h.journal.cursor()
   const committed = vi.fn()
-  const stop = () =>
-    h.stop(
-      (id, records, scope) => {
-        const captured = captureSessionMailAtStop(mail, id, records, retire, scope)
-        expect(captured.members).toEqual([row.id])
-        return {
-          ...captured,
-          finished: () => {
-            captured.finished?.()
-            finished()
-          }
-        }
+  await expect(
+    h.stop(true, {
+      write: () => {
+        expect(h.db.db.isTransaction).toBe(true)
+        expect(() =>
+          peer.insertMessage({ from: 'peer', to: h.mailbox, subject: 'racing' })
+        ).toThrow()
+        h.database.db.exec('PRAGMA defer_foreign_keys = ON')
+        h.database.db.exec(
+          'CREATE TABLE bad_fk (parent INTEGER REFERENCES agent_session_mail_holds(intent_order))'
+        )
+        h.database.db.prepare('INSERT INTO bad_fk VALUES (?)').run(9999)
       },
-      {
-        write: () => {
-          h.database.db.exec('PRAGMA defer_foreign_keys = ON')
-          h.database.db.exec(
-            'CREATE TABLE IF NOT EXISTS bad_fk (parent INTEGER REFERENCES agent_session_mail_holds(intent_order))'
-          )
-          h.database.db.prepare('INSERT INTO bad_fk VALUES (?)').run(9999)
-        },
-        committed
-      }
-    )
-  await expect(stop()).rejects.toThrow()
-  expect(finished).toHaveBeenCalledOnce()
+      committed
+    })
+  ).rejects.toThrow('FOREIGN KEY constraint failed')
   expect(committed).not.toHaveBeenCalled()
-  expect(retire).not.toHaveBeenCalled()
-  mail.db.exec('BEGIN IMMEDIATE; ROLLBACK')
-  expect(h.facts()).toMatchObject({ ambiguous: false, members: new Set() })
-  expect(h.database.db.prepare('SELECT count(*) AS n FROM journal_rows').get()?.n).toBe(0)
+  expect(h.journal.cursor()).toEqual(before)
+  expect(h.db.db.isTransaction).toBe(false)
+  expect(h.db.db.pragma('busy_timeout', { simple: true })).toBe(5000)
+  expect(h.journal.mailHoldFacts().ambiguous).toBe(false)
+  peer.insertMessage({ from: 'peer', to: h.mailbox, subject: 'after rollback' })
+  h.journal.observeCommits(() => expect(h.db.db.isTransaction).toBe(false))
+  await h.stop()
+  expect(h.journal.mailHoldFacts()).toMatchObject({ held: true, ambiguous: false })
+  await h.journal.appendStopEvent({ reason: 'host-stop' }, 0)
+  expect(h.journal.queuedMessages.list()).toHaveLength(0)
+  expect(await resumeStructuredQueue(h.journal, 0)).toBe(true)
+  expect(h.journal.mailHoldFacts().held).toBe(false)
 })
 
 it.each([100, 1000])(
-  'shares one linear lineage fold across %i aliases and preserves unrelated component permission tokens',
-  (count) => {
-    const h = harness()
-    let visits = 0
-    const records = Array.from({ length: count }, (_, index) => ({
-      ...agentSessionRecordFixture({ sessionId: `lineage-${index}` }),
-      get conversationCommand() {
-        visits++
-        return index + 1 < count
-          ? clearedRecord(h.record, `lineage-${index + 1}`).conversationCommand
-          : undefined
-      }
-    }))
-    const all = [h.record, ...records]
-    h.apply(mailReleaseReceipt(h.record.sessionId))
-    h.apply(mailReleaseReceipt(records[0].sessionId))
-    const read = vi.fn(() => all)
-    const facts = readMailHoldFacts(h.database.db, records.at(-1)!.sessionId, read, 1)
-    expect(facts.scope?.aliases).toHaveLength(count)
-    expect(facts.scope?.root).toBe(records[0].sessionId)
-    expect(visits).toBeLessThanOrEqual(4 * count)
-    const unrelated = readMailHoldFacts(h.database.db, h.record.sessionId, read, 1)
-    h.apply(mailReleaseReceipt(records[0].sessionId))
-    expect(readMailHoldFacts(h.database.db, h.record.sessionId, read, 1)).toBe(unrelated)
-    const changed = readMailHoldFacts(h.database.db, records[0].sessionId, read, 1)
-    expect(changed.key).not.toBe(facts.key)
-    expect(read).toHaveBeenCalledOnce()
-    expect(readMailHoldFacts(h.database.db, h.record.sessionId, read, 2).key).toBe(unrelated.key)
-    for (const record of records) {
-      h.database.db
-        .prepare('INSERT INTO agent_session_records VALUES (?, ?)')
-        .run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
-    }
-    const successor = records.at(-1)!.sessionId
-    h.apply(mailStopReceipt(records[0].sessionId))
-    h.apply(mailReleaseReceipt(successor))
-    expect(
-      mailAdmissionPermission(readMailHoldFacts(h.database.db, successor, read, 2), ['A'])
-    ).toBe(true)
-    h.apply(mailStopReceipt(successor, () => ({ members: ['C'] })))
-    expect(readMailHoldFacts(h.database.db, successor, read, 2)).toMatchObject({
-      members: new Set(['C']),
-      ambiguous: false
-    })
-    const missing = clearedRecord(records[0], 'absent')
-    expect(readMailHoldFacts(h.database.db, missing.sessionId, () => [missing], 3).ambiguous).toBe(
-      true
+  'captures one indexed high-water cut without reading an unrelated N=%i inventory, with stable reopen and reset identity',
+  async (count) => {
+    const h = await harness()
+    h.db.insertMessages(
+      Array.from({ length: count }, (_, index) => ({
+        from: 'worker',
+        to: 'unrelated',
+        subject: String(index)
+      }))
     )
-    const cycle = clearedRecord(missing, missing.sessionId)
-    expect(readMailHoldFacts(h.database.db, cycle.sessionId, () => [cycle], 4).ambiguous).toBe(true)
+    const old = h.message('old')
+    const prepare = vi.spyOn(h.db.db, 'prepare')
+    await h.stop()
+    expect(
+      prepare.mock.calls.some(([sql]) => /SELECT id, run_id, to_handle FROM messages/.test(sql))
+    ).toBe(false)
+    expect(prepare.mock.calls.filter(([sql]) => sql.includes('MAX(sequence)'))).toHaveLength(1)
+    prepare.mockRestore()
+    const identity = mailSourceIncarnation(h.db.db)
+    const peer = resources.track(new OrchestrationDb(h.path))
+    expect(mailSourceIncarnation(peer.db)).toBe(identity)
+    expect(
+      journalMailSourceEligible(h.journal.queuedMessages.displayState().mailBoundary, h.source(old))
+    ).toBe(false)
+    h.db.resetMessages()
+    expect(mailSourceIncarnation(h.db.db)).not.toBe(identity)
+    const replacement = h.message('replacement source')
+    await h.enqueue(replacement)
+    expect(h.pick()).toBeUndefined()
+  }
+)
+
+it.each([100, 1000])(
+  'bootstraps actual encoded legacy lineage N=%i once, conservatively preserving missing/cyclic evidence',
+  async (count) => {
+    const h = await harness(false)
+    const records = Array.from({ length: count }, (_, index) =>
+      agentSessionRecordFixture({
+        sessionId: testOrcaSessionId(
+          `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
+        )
+      })
+    )
+    const insert = h.database.db.prepare(
+      'INSERT OR REPLACE INTO agent_session_records VALUES (?, ?)'
+    )
+    insert.run(records[0].sessionId, JSON.stringify(encodeAgentSessionRecord(records[0])))
+    writeMailHold(h.database.db, records[0].sessionId, { version: 1, status: 'released' }, true)
+    const root = resources.track(
+      new AgentSessionJournal({
+        database: h.database,
+        identity: { ...h.identity, sessionId: records[0].sessionId }
+      })
+    )
+    await root.open()
+    expect(root.mailHoldFacts().scope?.aliases).toHaveLength(1)
+    for (let index = 0; index < count; index++) {
+      const record =
+        index + 1 < count
+          ? clearedMailRecord(records[index], records[index + 1].sessionId)
+          : records[index]
+      insert.run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
+    }
+    writeMailHold(h.database.db, records[0].sessionId, { version: 1, status: 'released' }, true)
+    expect(bootstrapJournalMailBoundary(h.database.db, records[count - 1].sessionId).status).toBe(
+      'released'
+    )
+    await root.appendStopEvent({ reason: 'user-stop' }, 0)
+    const successorId = records[count - 1].sessionId
+    const successor = resources.track(
+      new AgentSessionJournal({
+        database: h.database,
+        identity: { ...h.identity, sessionId: successorId }
+      })
+    )
+    await successor.open()
+    expect(successor.mailHoldFacts().ambiguous).toBe(true)
+    expect(successor.mailHoldFacts().scope?.aliases).toHaveLength(count)
+    await successor.appendQueueResume(0)
+    expect(bootstrapJournalMailBoundary(h.database.db, successorId).status).toBe('released')
+    const current = h.message('later exact C')
+    await successor.stops.accept({
+      event: { reason: 'user-stop' },
+      fence: 0,
+      liveTurnId: () => null,
+      captureMail: (id, records, scope) =>
+        captureSessionMailAtStop(h.db, id, records, () => {}, scope)
+    })
+    const boundary = bootstrapJournalMailBoundary(h.database.db, successorId)
+    expect(boundary).toMatchObject({
+      status: 'held',
+      ambiguous: false,
+      members: [],
+      cuts: [{ throughSequence: current.sequence }]
+    })
+    expect(successor.mailHoldFacts().members.size).toBe(0)
+    const broken = clearedMailRecord(
+      h.record,
+      testOrcaSessionId('99999999-0000-4000-8000-000000000000')
+    )
+    h.database.db
+      .prepare('UPDATE agent_session_records SET record_json = ? WHERE session_id = ?')
+      .run(JSON.stringify(encodeAgentSessionRecord(broken)), h.record.sessionId)
+    expect(bootstrapJournalMailBoundary(h.database.db, h.record.sessionId)).toMatchObject({
+      status: 'held',
+      ambiguous: true
+    })
+    const cycle = clearedMailRecord(h.record, h.record.sessionId)
+    h.database.db
+      .prepare('UPDATE agent_session_records SET record_json = ? WHERE session_id = ?')
+      .run(JSON.stringify(encodeAgentSessionRecord(cycle)), h.record.sessionId)
+    expect(bootstrapJournalMailBoundary(h.database.db, h.record.sessionId)).toMatchObject({
+      status: 'held',
+      ambiguous: true
+    })
   }
 )

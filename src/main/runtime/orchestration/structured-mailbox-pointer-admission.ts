@@ -1,3 +1,4 @@
+import type { JournalMailSource } from '../../native-chat/agent-session-journal/journal-mail-boundary'
 import type { MailLineageScope } from '../../native-chat/agent-session-journal/journal-mail-holds'
 import { sessionMailRecipient } from './session-mail-recipient'
 import { isOrcaSessionId, ORCA_SESSION_ADDRESS_PREFIX } from '../../../shared/orca-session-address'
@@ -95,7 +96,9 @@ export type StructuredMailboxPointerHost = {
     expectedRuntimeFence: number
     body: AgentJournalMessageItem
     beforeRun: () => boolean
+    mailSource?: JournalMailSource
   }) => Promise<StructuredPointerSendOutcome>
+  reconciliationKey?: (sessionId: string) => string | null
   currentFence: (sessionId: string) => number | null
   currentContextClearOperationId: (sessionId: string) => string | undefined
 }
@@ -103,8 +106,9 @@ export type StructuredMailboxPointerHost = {
 export type SessionMailInterest = {
   db: OrchestrationDb
   inFlight: boolean
-  parked: Map<string, { key?: string }>
-  pending: Map<string, boolean>
+  addresses: Set<string>
+  pending: boolean
+  journalKey?: string | null
 }
 type StructuredPointerDeliveryDependencies<TWaiter extends OrchestrationMessageWaiter> = {
   getDb: () => OrchestrationDb | null
@@ -121,9 +125,8 @@ type StructuredPointerDeliveryDependencies<TWaiter extends OrchestrationMessageW
   }) => void
 }
 
-export abstract class StructuredMailboxPointerAdmission<
-  TWaiter extends OrchestrationMessageWaiter
-> {
+/** Coalesces source discovery/reconciliation only; executable waiting input belongs to journal cards. */
+export abstract class StructuredMailboxSourceBridge<TWaiter extends OrchestrationMessageWaiter> {
   protected readonly interests = new Map<string, SessionMailInterest>()
   constructor(protected readonly deps: StructuredPointerDeliveryDependencies<TWaiter>) {}
 
@@ -133,20 +136,10 @@ export abstract class StructuredMailboxPointerAdmission<
   forgetSession(sessionId: string): void {
     this.interests.delete(sessionId)
   }
-
   protected currentInterest(sessionId: string, interest: SessionMailInterest): boolean {
     return this.interests.get(sessionId) === interest && this.deps.getDb() === interest.db
   }
-
   deliverForHandle(mailboxHandle: string, reservedTypes?: ReadonlySet<string>): boolean {
-    return this.offer(mailboxHandle, reservedTypes, true)
-  }
-
-  protected offer(
-    mailboxHandle: string,
-    reservedTypes: ReadonlySet<string> | undefined,
-    explicit: boolean
-  ): boolean {
     const target = this.deps.resolveStructuredTarget(mailboxHandle)
     const db = this.deps.getDb()
     if (!target || !db) {
@@ -154,60 +147,36 @@ export abstract class StructuredMailboxPointerAdmission<
     }
     let interest = this.interests.get(target.sessionId)
     if (!interest || interest.db !== db) {
-      interest = { db, inFlight: false, parked: new Map(), pending: new Map() }
+      interest = { db, inFlight: false, addresses: new Set(), pending: false }
       this.interests.set(target.sessionId, interest)
     }
+    interest.addresses.add(mailboxHandle)
     if (interest.inFlight) {
-      interest.pending.set(mailboxHandle, explicit || interest.pending.get(mailboxHandle) === true)
+      interest.pending = true
       return true
     }
-    const unchanged =
-      !explicit &&
-      interest.parked.get(mailboxHandle)?.key ===
-        this.admissionKey(db, mailboxHandle, target.sessionId)
     interest.inFlight = true
-    void this.deliver(mailboxHandle, target, interest, reservedTypes, unchanged).catch(
-      () => undefined
-    )
+    void this.deliver(mailboxHandle, target, interest, reservedTypes).catch(() => undefined)
     return true
   }
-
   onJournalActivity(sessionId: string): void {
     const interest = this.interests.get(sessionId)
-    const address = interest?.parked.keys().next().value
-    if (!interest || !address || !this.currentInterest(sessionId, interest)) {
+    if (!interest || interest.inFlight || !this.currentInterest(sessionId, interest)) {
       return
     }
-    if (interest.inFlight) {
-      interest.pending.set(address, interest.pending.get(address) === true)
+    const key = this.deps.host.reconciliationKey?.(sessionId)
+    if (key !== undefined && key === interest.journalKey) {
       return
     }
-    this.offer(address, undefined, false)
-    if (!interest.inFlight) {
-      interest.parked.delete(address)
+    for (const address of interest.addresses) {
+      if (this.deps.resolveStructuredTarget(address)?.sessionId !== sessionId) {
+        interest.addresses.delete(address)
+        continue
+      }
+      this.deliverForHandle(address)
+      return
     }
-  }
-
-  protected admissionKey(db: OrchestrationDb, mailbox: string, sessionId: string): string {
-    const evidence = this.deps.host.readHandoffEvidenceNow({ sessionId, clientMessageId: '' })
-    const waiters = this.deps.getMessageWaiters(mailbox)
-    return JSON.stringify([
-      db.db.pragma('data_version', { simple: true }),
-      this.changes(db),
-      evidence?.epoch,
-      evidence?.frontier,
-      evidence?.mailHold?.key,
-      this.deps.host.takesMailNow?.(sessionId),
-      this.deps.host.hasActionablePromptNow(sessionId),
-      this.deps.host.currentFence(sessionId),
-      this.deps.host.currentContextClearOperationId(sessionId),
-      this.deps.getWaiterRevision?.(mailbox),
-      [...(waiters ?? [])].map((waiter) => waiter.typeFilter)
-    ])
-  }
-
-  protected changes(db: OrchestrationDb): number {
-    return Number(db.db.prepare('SELECT total_changes() AS n').get()?.n)
+    this.interests.delete(sessionId)
   }
 
   protected reconcileIssued(
@@ -262,7 +231,6 @@ export abstract class StructuredMailboxPointerAdmission<
     mailbox: string,
     target: StructuredPointerTarget,
     interest: SessionMailInterest,
-    reservedTypes?: ReadonlySet<string>,
-    settlementOnly?: boolean
+    reservedTypes?: ReadonlySet<string>
   ): Promise<void>
 }

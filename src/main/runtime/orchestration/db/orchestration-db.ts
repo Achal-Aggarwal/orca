@@ -1,4 +1,5 @@
 import Database from '../../../sqlite/sync-database'
+import { ensureMailSourceOrder } from './messages/mail-source-order'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
 import type { MailHandBack } from './messages/helper-mailbox-hand-back'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
@@ -32,6 +33,7 @@ class OrchestrationDbCore {
     this.db.pragma('busy_timeout = 5000')
     createTables.call(this as unknown as OrchestrationDb)
     migrate.call(this as unknown as OrchestrationDb)
+    ensureMailSourceOrder(this.db)
     createRunCoordinatorAddressTriggers(this.db)
     backfillFederatedStubHomeRuns(this.db)
     backfillStructuredWorkerOrcaSessionIds(this.db)

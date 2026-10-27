@@ -1,4 +1,3 @@
-import { mailAdmissionPermission } from '../../native-chat/agent-session-journal/journal-mail-holds'
 import { agentTurnVerdict } from '../../../shared/agent-turn-outcome'
 import { readAgentJournalTurnOutcome } from '../../../shared/agent-session-turn-record'
 import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
@@ -36,7 +35,7 @@ export function mailTransportWasRefused(evidence: StructuredMailEvidence): boole
 export function structuredMailMaySubmit(
   reference: StructuredMailHandoff,
   read: (reference: StructuredMailHandoff) => StructuredMailEvidence | null,
-  members: readonly string[] = reference.manifest?.members ?? []
+  _members: readonly string[] = reference.manifest?.members ?? []
 ): boolean {
   const destination = read(reference)
   const original = structuredRecoverySource(reference)
@@ -44,7 +43,6 @@ export function structuredMailMaySubmit(
   return Boolean(
     destination &&
     destination.epoch === reference.epoch &&
-    mailAdmissionPermission(destination.mailHold, members) &&
     (!original || (evidence && mailHandoffWasCut(original, evidence)))
   )
 }

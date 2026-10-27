@@ -1,3 +1,4 @@
+import { foldJournalMailBoundary, type JournalMailBoundary } from './journal-mail-boundary'
 import { JournalMailHandoffs } from './journal-submission-handoff'
 import { journalItemDeclaresEcho } from './journal-item-echo'
 // Live append and replay share this fold. Revisions change content, preserving creation position
@@ -82,6 +83,8 @@ export type JournalReducerState = {
   /** Historical display corrections, rebuilt by the hand-off fold on replay. */
   normalizedHandOffs: Set<string>
   /** The queued messages, folded from their own rows and their hand-offs (`journal-queue-fold.ts`). */
+  mailBoundary?: JournalMailBoundary
+  personalQueuedSends: Set<string>
   queue: JournalQueueState
   historyOrigin: JournalHistoryOrigin | null
 }
@@ -114,6 +117,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     queuedHandOffPlaces: new Map(),
     normalizedHandOffs: new Set(),
     queue: createJournalQueueState(),
+    personalQueuedSends: new Set(),
     historyOrigin: null
   }
 }
@@ -123,6 +127,7 @@ export function applyJournalRow(
   row: JournalRow,
   savedAt = row.ts
 ): void {
+  state.mailBoundary = foldJournalMailBoundary(state.mailBoundary, row)
   applyJournalRowFacts(state, row, savedAt)
   foldJournalQueueRow(state, row)
 }
