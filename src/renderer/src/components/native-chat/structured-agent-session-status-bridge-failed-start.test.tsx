@@ -270,7 +270,7 @@ describe('a chat whose start failed', () => {
     expect(row && agentVerdictDisplayMark(row)).toBe('failed')
     expect(tabStatus()).toBe('failed')
     expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasFailed).toBe(true)
-    const closed = vi.spyOn(store().getState(), 'closeUnifiedTab').mockReturnValue(true)
+    const closed = vi.spyOn(store().getState(), 'closeUnifiedTab')
     await closeChat()
     expect(useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm).toBeNull()
     expect(closed).toHaveBeenCalledExactlyOnceWith(structuredTab.id)

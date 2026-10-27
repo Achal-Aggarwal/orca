@@ -78,6 +78,7 @@ export function resumeAiVaultSessionHere(args: {
   } else {
     return false
   }
+  const agent = here.agent
   const chat = findChatTab(here)
   if (!chat) {
     return replace()
@@ -88,7 +89,7 @@ export function resumeAiVaultSessionHere(args: {
       description: translate(
         'components.native-chat.resumeCommand.replaceDescription',
         'Resuming “{{title}}” here will stop what {{agent}} is doing in this chat.',
-        { title: session.title, agent: agentLabel(here.agent) }
+        { title: session.title, agent: agentLabel(agent) }
       ),
       confirmLabel: translate('components.native-chat.resumeCommand.replace', 'Replace'),
       confirmVariant: 'destructive',
