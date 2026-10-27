@@ -35,17 +35,18 @@ export function registerWslHookFsHandlers(
     }
     return posix.resolve(rawPath)
   }
-  const contains = (root: string, path: string): boolean =>
-    path === root || path.startsWith(`${root}/`)
-  const ancestor = (root: string, path: string): boolean => path === '/' || contains(path, root)
+  const contains = (root: string, path: string): boolean => {
+    const suffix = posix.relative(root, path)
+    return suffix !== '..' && !suffix.startsWith('../') && !posix.isAbsolute(suffix)
+  }
   const scoped = async (rawPath: unknown, allowAncestors = false): Promise<string> => {
     const resolved = resolveRaw(rawPath)
-    if (contains(homeRoot, resolved) || (allowAncestors && ancestor(homeRoot, resolved))) {
+    if (contains(homeRoot, resolved) || (allowAncestors && contains(resolved, homeRoot))) {
       return resolved
     }
     const target = await resolveSystemClaudeHookTarget()
     const root = posix.resolve(target.configDir)
-    if (contains(root, resolved) || (allowAncestors && ancestor(root, resolved))) {
+    if (contains(root, resolved) || (allowAncestors && contains(resolved, root))) {
       return resolved
     }
     throw Object.assign(new Error(`path outside hook roots: ${resolved}`), { code: 'EACCES' })

@@ -2,7 +2,7 @@
 // `posix.resolve` against a POSIX guest home. On win32 `posix.resolve` of a
 // Windows tmpdir yields an invalid path, so the whole suite is skipped there
 // (the bridge only ever runs inside a Linux WSL guest).
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, promises as fs, rmSync, statSync } from 'node:fs'
 import { posix } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +14,10 @@ vi.mock('../main/claude/claude-hook-target', () => ({
 
 import { registerWslHookFsHandlers } from './wsl-hook-fs-bridge'
 import { createWslHookSftpAdapter } from '../main/agent-hooks/wsl-hook-fs-adapter'
-import { writeHooksJsonRemote } from '../main/agent-hooks/installer-utils-remote'
+import {
+  readHooksJsonRemote,
+  writeHooksJsonRemote
+} from '../main/agent-hooks/installer-utils-remote'
 import type { SshChannelMultiplexer } from '../main/ssh/ssh-channel-multiplexer'
 import type { MethodHandler, RelayDispatcher, RequestContext } from './dispatcher'
 import { WSL_HOOK_FS_METHODS, type WslFsResult } from '../shared/wsl-hook-relay-contract'
@@ -35,12 +38,7 @@ describe.skipIf(process.platform === 'win32')('registerWslHookFsHandlers (WSL fs
     return (await handler(params, context)) as WslFsResult<T>
   }
 
-  beforeEach(() => {
-    home = mkdtempSync(posix.join(tmpdir(), 'wsl-fs-home-'))
-    rootCapture.resolve.mockResolvedValue({
-      kind: 'system-default',
-      configDir: posix.join(home, '.claude')
-    })
+  const register = (guestHome: string): void => {
     handlers = new Map<string, MethodHandler>()
     // Capture handlers from a minimal fake dispatcher — registration only ever
     // calls onRequest, so a real RelayDispatcher is unnecessary.
@@ -49,10 +47,20 @@ describe.skipIf(process.platform === 'win32')('registerWslHookFsHandlers (WSL fs
         handlers.set(method, handler)
       }
     } as unknown as RelayDispatcher
-    registerWslHookFsHandlers(dispatcher, home, () => ({ fallbackPort: 4321 }))
+    registerWslHookFsHandlers(dispatcher, guestHome, () => ({ fallbackPort: 4321 }))
+  }
+
+  beforeEach(() => {
+    home = mkdtempSync(posix.join(tmpdir(), 'wsl-fs-home-'))
+    rootCapture.resolve.mockResolvedValue({
+      kind: 'system-default',
+      configDir: posix.join(home, '.claude')
+    })
+    register(home)
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     rmSync(home, { recursive: true, force: true })
   })
 
@@ -77,6 +85,124 @@ describe.skipIf(process.platform === 'win32')('registerWslHookFsHandlers (WSL fs
       ).toMatchObject({ ok: false, errno: 'EACCES' })
     } finally {
       rmSync(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('atomically installs and reads settings outside HOME when the guest root is /', async () => {
+    const parent = mkdtempSync(posix.join(tmpdir(), 'wsl-fs-root-'))
+    const custom = posix.join(parent, 'missing')
+    const path = posix.join(custom, 'settings.json')
+    rootCapture.resolve.mockResolvedValue({ kind: 'system-default', configDir: '/' })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only request is used, forwarded to the production guest handlers.
+    const mux = { request: call } as unknown as SshChannelMultiplexer
+    const sftp = createWslHookSftpAdapter(mux)
+    const write = vi.spyOn(fs, 'writeFile')
+    const rename = vi.spyOn(fs, 'rename')
+    const unlink = vi.spyOn(fs, 'unlink')
+    const chmod = vi.spyOn(fs, 'chmod')
+    const stat = vi.spyOn(fs, 'stat')
+    const mkdir = vi.spyOn(fs, 'mkdir')
+    try {
+      expect(await readHooksJsonRemote(sftp, path)).toEqual({})
+      const settings = { model: 'opus', permissions: { allow: ['Read'] } }
+      await writeHooksJsonRemote(sftp, path, settings)
+      expect(await readHooksJsonRemote(sftp, path)).toEqual(settings)
+      expect(mkdir).toHaveBeenCalledWith(custom)
+      expect(statSync(path).mode & 0o777).toBe(0o600)
+      const temporary = write.mock.calls[0]?.[0]
+      expect(typeof temporary).toBe('string')
+      expect(temporary).toEqual(expect.stringMatching(/\/missing\/\.[^/]+\.tmp$/))
+      expect(stat).toHaveBeenCalledWith(path)
+      expect(chmod).toHaveBeenCalledWith(temporary, 0o600)
+      expect(rename).toHaveBeenCalledExactlyOnceWith(temporary, path)
+      expect(unlink).toHaveBeenCalledExactlyOnceWith(temporary)
+      await writeHooksJsonRemote(sftp, path, settings)
+      expect(write).toHaveBeenCalledTimes(1)
+      expect(rename).toHaveBeenCalledTimes(1)
+      expect(unlink).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.restoreAllMocks()
+      rmSync(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('normalizes every filesystem operand and limits ancestor access to directories', async () => {
+    const denied = Object.assign(new Error('synthetic filesystem permission denied'), {
+      code: 'EACCES'
+    })
+    const operations = [
+      [WSL_HOOK_FS_METHODS.readFile, vi.spyOn(fs, 'readFile'), ['utf8'], false],
+      [
+        WSL_HOOK_FS_METHODS.writeFile,
+        vi.spyOn(fs, 'writeFile'),
+        ['{}', { encoding: 'utf8', mode: 0o600 }],
+        false
+      ],
+      [WSL_HOOK_FS_METHODS.stat, vi.spyOn(fs, 'stat'), [], false],
+      [WSL_HOOK_FS_METHODS.unlink, vi.spyOn(fs, 'unlink'), [], false],
+      [WSL_HOOK_FS_METHODS.chmod, vi.spyOn(fs, 'chmod'), [0o600], false],
+      [WSL_HOOK_FS_METHODS.readdir, vi.spyOn(fs, 'readdir'), [], true],
+      [WSL_HOOK_FS_METHODS.mkdir, vi.spyOn(fs, 'mkdir'), [], true]
+    ] as const
+    for (const [, spy] of operations) {
+      spy.mockRejectedValue(denied)
+    }
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValue(denied)
+    const cases = [
+      ['///', '/home/synthetic', '/', '/', true, true],
+      ['/', '/home/synthetic', '//settings.json', '/settings.json', true, true],
+      ['/', '/home/synthetic', '//.publish.tmp', '/.publish.tmp', true, true],
+      ['/opt/./claude///', '/home/synthetic', '/opt/claude//./', '/opt/claude', true, true],
+      [
+        '/opt/claude',
+        '/home/synthetic',
+        '/opt//claude/a/../settings.json',
+        '/opt/claude/settings.json',
+        true,
+        true
+      ],
+      ['/opt/claude', '///', '/elsewhere/./file', '/elsewhere/file', true, true],
+      [
+        '/opt/claude',
+        '/home/synthetic',
+        '/opt/claude-other/file',
+        '/opt/claude-other/file',
+        false,
+        false
+      ],
+      ['/opt/claude', '/home/synthetic', '/opt/claude/../outside', '/opt/outside', false, false],
+      ['/opt/claude', '/home/synthetic', '/opt/./', '/opt', false, true],
+      ['/opt/claude', '/home/synthetic', '/', '/', false, true]
+    ] as const
+    for (const [root, guestHome, path, normalized, strict, directory] of cases) {
+      rootCapture.resolve.mockResolvedValue({ kind: 'system-default', configDir: root })
+      register(guestHome)
+      for (const [method, spy, args, allowAncestors] of operations) {
+        spy.mockClear()
+        const result = await call(method, { path, content: '{}', mode: 0o600 })
+        expect(result).toMatchObject({ ok: false, errno: 'EACCES' })
+        if (allowAncestors ? directory : strict) {
+          expect(spy).toHaveBeenCalledExactlyOnceWith(normalized, ...args)
+          expect(result).toMatchObject({ message: denied.message })
+        } else {
+          expect(spy).not.toHaveBeenCalled()
+        }
+      }
+      for (const [src, dst] of [
+        [path, '/home/synthetic/next'],
+        ['/home/synthetic/next', path]
+      ]) {
+        rename.mockClear()
+        expect(await call(WSL_HOOK_FS_METHODS.rename, { src, dst })).toMatchObject({
+          ok: false,
+          errno: 'EACCES'
+        })
+        if (strict) {
+          expect(rename).toHaveBeenCalledExactlyOnceWith(posix.resolve(src), posix.resolve(dst))
+        } else {
+          expect(rename).not.toHaveBeenCalled()
+        }
+      }
     }
   })
 
