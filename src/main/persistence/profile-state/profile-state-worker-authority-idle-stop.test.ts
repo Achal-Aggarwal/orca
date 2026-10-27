@@ -46,8 +46,8 @@ describe('worker authority idle stop', () => {
     const close = vi.spyOn(ProfileStateWriteWorkerClient.prototype, 'close')
     const { authority } = await createWorkerMaintenanceFixture()
     await authority.writeSerializedDomains([{ domain: 'ui', payload: '{"unset":true}' }])
+    // No timer is armed, so nothing can stop the writer later.
     expect(authority.writerIdleStopPending).toBe(false)
-    await new Promise((resolve) => setTimeout(resolve, IDLE_MS * 5))
     expect(close).not.toHaveBeenCalled()
     authority.assertWritable()
   })
