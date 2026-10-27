@@ -2,7 +2,11 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { PipedChildProcess } from '@orca/process-host/process-spec'
-import { WSL_CHANNEL_CLOSE_GRACE_MS, wrapWslCommandProcess } from './wsl-command-channel'
+import {
+  killWslChannelsInCloseGrace,
+  WSL_CHANNEL_CLOSE_GRACE_MS,
+  wrapWslCommandProcess
+} from './wsl-command-channel'
 
 const nullCode: number | null = null
 const nullSignal: NodeJS.Signals | null = null
@@ -57,4 +61,17 @@ it('does nothing once wsl.exe already exited', () => {
   channel.close()
   vi.advanceTimersByTime(WSL_CHANNEL_CLOSE_GRACE_MS)
   expect(fake.kill).not.toHaveBeenCalled()
+})
+
+it('kills a channel still in its grace at app quit, and only once', () => {
+  const closing = fakeChild()
+  const open = fakeChild()
+  wrapWslCommandProcess(closing.child).close()
+  wrapWslCommandProcess(open.child)
+  killWslChannelsInCloseGrace()
+  expect(closing.fake.kill).toHaveBeenCalledOnce()
+  // An open channel is not ours to end at quit through this path.
+  expect(open.fake.kill).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(WSL_CHANNEL_CLOSE_GRACE_MS)
+  expect(closing.fake.kill).toHaveBeenCalledOnce()
 })
