@@ -12,7 +12,12 @@ export function guardUpdateWorktreeMetaHostStatus(
     const hostId =
       options?.executionHostId ??
       findKnownWorktreeById(get(), worktreeId, options?.executionHostId)?.hostId
-    return update(worktreeId, withoutForeignHostStatus(get(), hostId, updates), options)
+    const allowed = withoutForeignHostStatus(get(), hostId, updates)
+    // Why: a write that was only the dropped status has nothing left to persist.
+    if (allowed !== updates && Object.keys(allowed).length === 0) {
+      return Promise.resolve({ ok: true as const })
+    }
+    return update(worktreeId, allowed, options)
   }
 }
 
@@ -23,14 +28,16 @@ export function guardUpdateWorktreesMetaHostStatus(
   return (entries) => {
     const state = get()
     return update(
-      entries.map((entry) => ({
-        ...entry,
-        updates: withoutForeignHostStatus(
+      entries.flatMap((entry) => {
+        const allowed = withoutForeignHostStatus(
           state,
           entry.executionHostId ?? findKnownWorktreeById(state, entry.worktreeId)?.hostId,
           entry.updates
         )
-      }))
+        return allowed !== entry.updates && Object.keys(allowed).length === 0
+          ? []
+          : [{ ...entry, updates: allowed }]
+      })
     )
   }
 }

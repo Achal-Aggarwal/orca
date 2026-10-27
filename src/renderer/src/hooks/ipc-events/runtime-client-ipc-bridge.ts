@@ -64,6 +64,7 @@ export function registerRuntimeClientIpcBridge(
     refresh: async (environmentId) => {
       // Why: project events can reveal target CRUD, but known target states already arrive by push.
       void refreshRuntimeEnvironmentSshTargetMetadata(environmentId).catch(() => {})
+      // Why: hosts without workspaceViewChanged still refresh their columns here.
       void useAppStore.getState().fetchHostWorkspaceStatuses(environmentId)
       const repos = await useAppStore.getState().fetchRuntimeEnvironmentRepos(environmentId)
       // Group/folder edits share reposChanged; refresh groups before folders to resolve their owners.

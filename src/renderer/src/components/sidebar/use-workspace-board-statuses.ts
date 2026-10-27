@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useAppStore } from '@/store'
 import {
+  selectAllOfferedWorkspaceStatuses,
   selectWorkspaceBoardStatuses,
   selectWorkspaceStatusesForHost
 } from '@/store/host-workspace-status-columns'
@@ -47,5 +48,21 @@ export function useWorkspaceStatusesForHost(
         hostId
       ),
     [workspaceStatuses, hostWorkspaceStatuses, removedRuntimeEnvironmentIds, hostId]
+  )
+}
+
+/** Every column a menu can offer, so task sync finds a host column no card uses yet. */
+export function useAllOfferedWorkspaceStatuses(): readonly WorkspaceStatusDefinition[] {
+  const workspaceStatuses = useAppStore((s) => s.workspaceStatuses)
+  const hostWorkspaceStatuses = useAppStore((s) => s.hostWorkspaceStatuses)
+  const removedRuntimeEnvironmentIds = useAppStore((s) => s.removedRuntimeEnvironmentIds)
+  return useMemo(
+    () =>
+      selectAllOfferedWorkspaceStatuses({
+        workspaceStatuses,
+        hostWorkspaceStatuses,
+        removedRuntimeEnvironmentIds
+      }),
+    [workspaceStatuses, hostWorkspaceStatuses, removedRuntimeEnvironmentIds]
   )
 }

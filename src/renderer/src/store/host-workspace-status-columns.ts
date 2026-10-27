@@ -50,6 +50,20 @@ export function selectWorkspaceStatusesForHost(
   return extra.length > 0 ? [...state.workspaceStatuses, ...extra] : state.workspaceStatuses
 }
 
+/** Every column a card can be offered: local ones plus each paired host's own, as menus offer them. */
+export function selectAllOfferedWorkspaceStatuses(
+  state: HostStatusColumnInputs
+): readonly WorkspaceStatusDefinition[] {
+  const environmentIds = Object.keys(state.hostWorkspaceStatuses ?? {}).sort()
+  return mergeHostWorkspaceStatuses(
+    state.workspaceStatuses,
+    environmentIds.map((environmentId) => {
+      const hostStatuses = liveHostStatuses(state, toRuntimeExecutionHostId(environmentId))
+      return hostStatuses ? hostOnlyColumns(state, hostStatuses) : []
+    })
+  )
+}
+
 /** Every column id in use locally or on any paired host, so a new local column gets a fresh id. */
 export function selectAllKnownWorkspaceStatuses(
   state: HostStatusColumnInputs

@@ -22,7 +22,10 @@ import { useWorkspaceKanbanRenderLifecycle } from './use-workspace-kanban-render
 import { useWorkspaceKanbanDrawerLingering } from './use-workspace-kanban-drawer-lingering'
 import { buildWorktreeManualOrderCatalog } from './worktree-manual-order-catalog'
 import { selectFolderWorkspaces } from '@/store/workspace-record-selectors'
-import { useWorkspaceBoardStatuses } from './use-workspace-board-statuses'
+import {
+  useAllOfferedWorkspaceStatuses,
+  useWorkspaceBoardStatuses
+} from './use-workspace-board-statuses'
 
 type WorkspaceKanbanDrawerProps = {
   leftSidebarStyle?: React.CSSProperties
@@ -63,6 +66,7 @@ function WorkspaceKanbanDrawerContent({
   const updateWorktreesMeta = useAppStore((s) => s.updateWorktreesMeta)
   const localWorkspaceStatuses = useAppStore((s) => s.workspaceStatuses)
   const boardStatuses = useWorkspaceBoardStatuses()
+  const offeredStatuses = useAllOfferedWorkspaceStatuses()
   const setWorkspaceStatuses = useAppStore((s) => s.setWorkspaceStatuses)
   const syncTaskStatusFromWorkspaceBoard = useAppStore((s) => s.syncTaskStatusFromWorkspaceBoard)
   const setSyncTaskStatusFromWorkspaceBoard = useAppStore(
@@ -122,7 +126,7 @@ function WorkspaceKanbanDrawerContent({
   const maybeSyncWorkspaceBoardTaskStatuses = useWorkspaceBoardTaskStatusSync({
     enabled: syncTaskStatusFromWorkspaceBoard,
     worktreesById: worktreeById,
-    workspaceStatuses: boardStatuses
+    workspaceStatuses: offeredStatuses
   })
   const {
     dropPointerDraggedWorktreesInStatus,
