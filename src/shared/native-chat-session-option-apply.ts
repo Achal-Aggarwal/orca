@@ -25,7 +25,7 @@ import type {
 import {
   resolveEffectiveNativeChatModelId,
   type NativeChatSessionOptionMode
-} from '../../../../shared/native-chat/input/native-chat-session-option-snapshot'
+} from './native-chat/input/native-chat-session-option-snapshot'
 
 type SessionOptionApplyContext = {
   mode: NativeChatSessionOptionMode
