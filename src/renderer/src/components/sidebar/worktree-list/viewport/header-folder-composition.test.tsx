@@ -180,15 +180,38 @@ it('composes real dispatched headers, current repo gates and folder cache refres
       onWorkspacePinDragLeave: vi.fn(),
       onWorkspaceStatusDrop: vi.fn()
     }
-    // SAFETY: this fixture dispatches only header rows; other branch contexts cannot be read.
-    const ctx = {
+    const ctx: WorktreeVirtualRowContext = {
       renderRows: rows,
       firstHeaderIndex: 0,
       activeStickyHeaderIndexRef: { current: 0 },
       activeStickyHostIndexRef: { current: null },
       measureVirtualRowElement: measure,
-      header
-    } as WorktreeVirtualRowContext
+      header,
+      groupBy: header.groupBy,
+      workspaceStatuses: header.workspaceStatuses,
+      activeWorktreeId: null,
+      orderedHostIds: header.headerDrag.orderedHostIds,
+      hostDrag: header.headerDrag.hostDrag,
+      toggleGroupWithScrollAnchor: toggle,
+      importedWorktreeCardActionState: new Map(),
+      newExternalWorktreeInboxActionState: new Map(),
+      onShowImportedWorktrees: vi.fn(),
+      onKeepImportedWorktreesHidden: vi.fn(),
+      onOpenWorktreeVisibility: header.projectActions.onOpenWorktreeVisibility,
+      onOpenSuppressExternalWorktreeInbox: vi.fn(),
+      onWorkspaceStatusDragOver: header.onWorkspaceStatusDragOver,
+      onWorkspaceStatusDragLeave: header.onWorkspaceStatusDragLeave,
+      onWorkspaceStatusDrop: header.onWorkspaceStatusDrop,
+      get worktreeDragState(): WorktreeVirtualRowContext['worktreeDragState'] {
+        throw new Error('Header fixture cannot read worktree drag state')
+      },
+      get item(): WorktreeVirtualRowContext['item'] {
+        throw new Error('Header fixture cannot render worktree items')
+      },
+      get folderWorkspace(): WorktreeVirtualRowContext['folderWorkspace'] {
+        throw new Error('Header fixture cannot render folder workspace rows')
+      }
+    }
     return (
       <TooltipProvider>
         {rows.map((row, index) =>
