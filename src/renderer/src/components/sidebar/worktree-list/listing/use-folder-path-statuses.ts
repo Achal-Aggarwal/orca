@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { getFolderWorkspaceStatusRequestDependencies } from '@/store/folder-workspaces/folder-path-status'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
+import { selectFolderWorkspaces } from '@/store/workspace-record-selectors'
 import { useFolderWorkspacePathStatusCacheExpiryTick } from '@/lib/folder-workspace-path-status-cache-expiry'
 import type { FolderWorkspace } from '../../../../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../../../../shared/project-group-types'
@@ -29,19 +30,16 @@ function createFolderPathStatusDependenciesSelector(requests: ReadonlyMap<string
     if (requests.size === 0) {
       return EMPTY_DEPENDENCIES
     }
+    const nextFolders = selectFolderWorkspaces(state)
     if (
       repos === state.repos &&
       groups === state.projectGroups &&
-      folders === state.folderWorkspaces &&
+      folders === nextFolders &&
       ssh === state.sshConnectionStates
     ) {
       return result
     }
-    if (
-      repos !== state.repos ||
-      groups !== state.projectGroups ||
-      folders !== state.folderWorkspaces
-    ) {
+    if (repos !== state.repos || groups !== state.projectGroups || folders !== nextFolders) {
       const dependencies = [...requests.values()].map(({ request, options }) =>
         getFolderWorkspaceStatusRequestDependencies(state, request, options)
       )
@@ -54,7 +52,7 @@ function createFolderPathStatusDependenciesSelector(requests: ReadonlyMap<string
     }
     repos = state.repos
     groups = state.projectGroups
-    folders = state.folderWorkspaces
+    folders = nextFolders
     ssh = state.sshConnectionStates
     let next: string[] | undefined
     if (result[0] !== membership || result.length !== connectionIds.length + 1) {
