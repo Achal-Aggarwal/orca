@@ -22,6 +22,8 @@ import type {
 } from '../../../../shared/native-chat/input/native-chat-slash-commands'
 import {
   applyMentionSuggestion,
+  applyPickerSuggestion,
+  classifyNativeChatSend,
   deriveComposerAutocomplete,
   editReplacesTriggerToken,
   isSkillPickerTriggered,
