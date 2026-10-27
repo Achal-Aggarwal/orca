@@ -204,7 +204,10 @@ describe('Pi RPC session ownership and delivery', () => {
       state: 'admitted',
       ranOptions: { model: 'anthropic/model-2', effort: 'low' }
     })
-    expect(h.connection.requests.slice(-2)).toEqual(['set_model', 'set_thinking_level'])
+    expect(h.connection.requests.filter((command) => command.startsWith('set_'))).toEqual([
+      'set_model',
+      'set_thinking_level'
+    ])
     expect(h.connection.sent).toMatchObject([{ type: 'prompt', message: 'chosen' }])
   })
 
