@@ -1,4 +1,5 @@
 import type { Automation, AutomationExecutionTargetType } from './automations-types'
+import type { Repo } from './repo-types'
 import { getRepoSshConnectionId } from './execution-host'
 import type { AutomationWorkspaceSshPin } from './automation-workspace-pin'
 
@@ -10,10 +11,7 @@ export type AutomationExecutionTargetSelection = {
   executionTargetGeneration?: number
 }
 
-export type AutomationExecutionTargetRepo = {
-  connectionId?: string | null
-  executionHostId?: string | null
-}
+export type AutomationExecutionTargetRepo = Pick<Repo, 'connectionId' | 'executionHostId'>
 
 export type AutomationStoredExecutionTarget = Pick<
   Automation,

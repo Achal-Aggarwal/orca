@@ -72,6 +72,26 @@ describe('original automation pane evidence', () => {
       {
         ...complete,
         terminals: [],
+        hostScope: { hostIds: ['local', 'newkind:x'], omittedHostIds: ['runtime:peer'] }
+      },
+      'unavailable'
+    ],
+    [
+      { ...complete, terminals: [], hostScope: { hostIds: ['newkind:x'], omittedHostIds: [] } },
+      'unverifiable'
+    ],
+    [
+      {
+        ...complete,
+        terminals: [],
+        hostScope: { hostIds: ['local'], omittedHostIds: ['newkind:x'] }
+      },
+      'unverifiable'
+    ],
+    [
+      {
+        ...complete,
+        terminals: [],
         hostScope: { hostIds: ['local'], omittedHostIds: ['ssh:missing'] }
       },
       'unverifiable'

@@ -168,6 +168,8 @@ export function resolveFolderWorkspaceRowHost<R extends FolderHostRepo>(
       }
     case 'local':
       return { kind: 'local' }
+    case undefined:
+      break
   }
   if (!normalizeHostPart(workspace.connectionId) && groupHosts.size > 1) {
     return { kind: 'ambiguous' }

@@ -1,5 +1,4 @@
 import type { TerminalState } from './terminal-state'
-import type { TerminalCreationExecutionFacts } from './terminal-contracts'
 import type { Tab } from '../../../../shared/tab-types'
 import type { TabSplitTarget } from '../slices/tabs/tabs-slice-contract'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
@@ -26,6 +25,7 @@ import type {
 } from '../slices/terminal-tab-retirement'
 import type {
   AccountRestartAgent,
+  TerminalCreationExecutionFacts,
   AutomaticAgentResumeClaim,
   CodexRestartNotice,
   HydrateWorkspaceSessionOptions

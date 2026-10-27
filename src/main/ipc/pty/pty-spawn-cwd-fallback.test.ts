@@ -2,7 +2,10 @@ import {
   MIXED_FOLDER,
   MIXED_GROUP
 } from '../../../shared/folder-workspace-host-routing.test-fixture'
-import { getDefaultWorkspaceSession } from '../../../shared/constants'
+import {
+  getDefaultWorkspaceSession,
+  FLOATING_TERMINAL_WORKTREE_ID
+} from '../../../shared/constants'
 import { describe, expect, it, vi } from 'vitest'
 import {
   statSyncMock,
@@ -11,7 +14,6 @@ import {
   existsSyncMock
 } from './pty-ipc-mock-registry'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { _setWslCachesForTests } from '../../wsl'
 import { acquireWatcherRemovalGate } from '../watcher-removal-gate'
 import { registerPtyHandlers } from './register-handlers'

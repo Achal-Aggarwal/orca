@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import {
+  normalizeVisibleExecutionHostIds,
+  parseExecutionHostId,
+  type ExecutionHostId
+} from '../../../src/shared/execution-host'
 import { parsePaneKey } from '../../../src/shared/stable-pane-id'
 import { hostScopeCensusIsComplete } from '../../../src/shared/runtime-listing-host-scope'
 import { bindDeferredRpcOperation, defineRpcOperation } from '../transport/rpc-operation'
@@ -33,7 +38,14 @@ const terminalList = bindDeferredRpcOperation(
     )
   })
 )
-const coverage = z.object({ hostIds: z.array(z.string()), omittedHostIds: z.array(z.string()) })
+const coverage = z.object({
+  hostIds: z.array(z.string()).transform((ids) => normalizeVisibleExecutionHostIds(ids) ?? []),
+  omittedHostIds: z.array(
+    z.custom<ExecutionHostId>(
+      (value) => typeof value === 'string' && Boolean(parseExecutionHostId(value))
+    )
+  )
+})
 export async function canOpenAutomationRunAgent(
   client: RpcClient,
   run: MobileAutomationRun

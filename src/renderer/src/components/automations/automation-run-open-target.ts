@@ -1,6 +1,9 @@
 import type { AutomationRun } from '../../../../shared/automations-types'
 import { makePaneKey, parsePaneKey } from '../../../../shared/stable-pane-id'
-import { parseRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
+import {
+  parseRemoteRuntimePtyId,
+  isRemoteRuntimePtyId
+} from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import {
   isWebTerminalSurfaceTabId,
   toWebTerminalSurfaceTabId
@@ -18,7 +21,6 @@ import type { AppState } from '@/store/types'
 import { selectFolderWorkspaces, selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 import { getFolderWorkspaceWorktree } from '@/store/slices/worktrees/listing/detected-worktree-meta'
 import { resolveExactWorktreeRoute } from '@/lib/worktree-owner-route'
-import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import { getAutomationRunViewState } from './automation-run-view-state'
 import { resolveOwner } from '@/lib/resolve-owner'
