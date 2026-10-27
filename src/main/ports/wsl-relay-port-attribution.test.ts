@@ -156,4 +156,47 @@ describe('WSL listeners forwarded through wslrelay.exe', () => {
     })
     expect(mocks.runWslProcess).not.toHaveBeenCalled()
   })
+
+  it.each([
+    [
+      'a command line naming the workspace from outside it',
+      ['L 0100007F:1FBB 1', 'S 7 1', 'C 7 /tmp', 'A 7 node /home/u/repo/server.js'],
+      'workspace'
+    ],
+    [
+      'one port held by two guest processes',
+      ['L 0100007F:1FBB 1', 'L 0101A8C0:1FBB 2', 'S 7 1', 'S 8 2', 'C 7 /home/u/repo', 'C 8 /tmp'],
+      'external'
+    ]
+  ])('classifies %s', async (_label, lines, kind) => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('running')
+    mocks.runWslProcess.mockResolvedValue({
+      code: 0,
+      stdout: lines.join('\n'),
+      stderr: '',
+      timedOut: false
+    })
+
+    const scan = await scanWorkspacePorts(wslWorkspace, urlWatcher)
+
+    expect(scan.ports.find((port) => port.port === 8123)?.kind).toBe(kind)
+  })
+
+  it('treats a clipped guest scan as unread', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mocks.readWslDistroRunningState.mockResolvedValue('running')
+    mocks.runWslProcess.mockResolvedValue({
+      code: 0,
+      stdout: 'L 0100007F:1FBB 72172\nS 218149 72172',
+      stderr: '',
+      timedOut: false,
+      outputTruncated: true
+    })
+    urlWatcher.reconcileScan.mockClear()
+
+    await scanWorkspacePorts(wslWorkspace, urlWatcher)
+
+    expect(urlWatcher.reconcileScan).not.toHaveBeenCalled()
+  })
 })

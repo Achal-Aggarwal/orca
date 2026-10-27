@@ -73,7 +73,8 @@ export function enrichPort(
   urlWatcher: Pick<AdvertisedUrlWatcher, 'lookup'>
 ): WorkspacePort {
   const owner = attributePortToNormalizedWorkspaces(port, worktrees)
-  const pid = listenerPid(port)
+  // Guest PIDs are not Windows PIDs, and stopping the relay would cut every forwarded port.
+  const pid = port.wslGuest ? undefined : port.pid
   const base = {
     id: `${port.host}:${port.port}:${pid ?? 'unknown'}`,
     bindHost: port.host,
@@ -86,7 +87,7 @@ export function enrichPort(
 
   if (owner) {
     // Limit URL enrichment to workspace-owned ports so unrelated terminals cannot label external/container ports.
-    const advertised = urlWatcher.lookup(owner.worktreeId, port.port, pid)
+    const advertised = urlWatcher.lookup(owner.worktreeId, port.port, listenerIdentityPid(port))
     return {
       ...base,
       protocol: advertised?.protocol ?? base.protocol,
@@ -115,7 +116,9 @@ export function reconcileAdvertisedUrls(
     if (!owner) {
       continue
     }
-    observationsByWorktree.get(owner.worktreeId)?.push({ port: port.port, pid: listenerPid(port) })
+    observationsByWorktree
+      .get(owner.worktreeId)
+      ?.push({ port: port.port, pid: listenerIdentityPid(port) })
   }
   for (const [worktreeId, observations] of observationsByWorktree) {
     // Invalidate disappeared/changed listeners before lazy lookup can pin a stale banner.
@@ -129,9 +132,9 @@ export function compareWorkspacePorts(a: WorkspacePort, b: WorkspacePort): numbe
   return aRank - bRank || a.port - b.port || a.connectHost.localeCompare(b.connectHost)
 }
 
-/** Guest PIDs are not Windows PIDs, and stopping the relay would cut every forwarded port. */
-function listenerPid(port: RawListeningPort): number | undefined {
-  return port.wslForwarded ? undefined : port.pid
+/** The relay PID stays constant across guest restarts; only the guest PID tells listeners apart. */
+function listenerIdentityPid(port: RawListeningPort): number | undefined {
+  return port.wslGuest?.pid ?? port.pid
 }
 
 function inferProtocol(port: number): 'http' | 'https' | 'unknown' {

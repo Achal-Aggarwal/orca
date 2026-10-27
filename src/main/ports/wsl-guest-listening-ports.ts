@@ -29,7 +29,7 @@ for pid in $(printf '%s\n' "$sockets" | awk '{print $2}' | sort -u); do
 done
 `
 
-type GuestListener = { port: number; metadata: ProcessMetadata }
+type GuestListener = { port: number; pid: number; metadata: ProcessMetadata }
 
 /** WSL2 NAT forwards every guest listener through one wslrelay.exe, which carries no workspace cwd. */
 export function isWslRelayListener(port: Pick<RawListeningPort, 'processName'>): boolean {
@@ -90,13 +90,23 @@ export function parseWslGuestPortScan(output: string, distro: string): GuestList
     } else if (tag === 'N' && value) {
       metadataOf(pid).processName = value
     } else if (tag === 'A' && value) {
-      metadataOf(pid).commandLine = value
+      metadataOf(pid).commandLine = toUncCommandLine(value, distro)
     }
   }
   return listeners.flatMap(({ port, inode }) => {
     const pid = pidByInode.get(inode)
-    return pid === undefined ? [] : [{ port, metadata: metadata.get(pid) ?? {} }]
+    return pid === undefined
+      ? []
+      : [{ port, pid, metadata: { ...metadata.get(pid), wslGuest: { distro, pid } } }]
   })
+}
+
+/** Absolute guest paths in UNC form, so command-line attribution compares like with like. */
+function toUncCommandLine(commandLine: string, distro: string): string {
+  return commandLine.replace(
+    /(^|[\s="'])(\/[^\s"']*)/g,
+    (_match, lead: string, guestPath: string) => `${lead}${toWindowsWslUncPath(guestPath, distro)}`
+  )
 }
 
 /** Null when the guest could not be read, which says nothing about its listeners. */
@@ -113,7 +123,8 @@ async function scanWslGuestListeners(distro: string): Promise<GuestListener[] | 
     timeoutMs: WSL_GUEST_PORT_SCAN_TIMEOUT_MS,
     maxOutputBytes: 4 * 1024 * 1024
   }).catch(() => null)
-  return result && result.code === 0 && !result.timedOut
+  // Clipped output can drop the metadata that follows the socket records.
+  return result && result.code === 0 && !result.timedOut && !result.outputTruncated
     ? parseWslGuestPortScan(result.stdout, distro)
     : null
 }
@@ -128,21 +139,22 @@ export async function attributeWslRelayListeners(
     return ports
   }
   const scans = await Promise.all(distros.map(scanGuest))
-  const guestByPort = new Map<number, ProcessMetadata>()
+  // null marks a port held by more than one guest process: the relay row cannot say which.
+  const guestByPort = new Map<number, GuestListener | null>()
   for (const listeners of scans) {
     if (!listeners) {
       return null
     }
-    for (const { port, metadata } of listeners) {
-      if (!guestByPort.has(port)) {
-        guestByPort.set(port, metadata)
-      }
+    for (const listener of listeners) {
+      const seen = guestByPort.get(listener.port)
+      guestByPort.set(
+        listener.port,
+        seen === undefined || seen?.pid === listener.pid ? listener : null
+      )
     }
   }
   return ports.map((port) => {
     const guest = isWslRelayListener(port) ? guestByPort.get(port.port) : undefined
-    return guest
-      ? { host: port.host, port: port.port, pid: port.pid, ...guest, wslForwarded: true }
-      : port
+    return guest ? { host: port.host, port: port.port, pid: port.pid, ...guest.metadata } : port
   })
 }
