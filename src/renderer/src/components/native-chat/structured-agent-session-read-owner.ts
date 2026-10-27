@@ -64,7 +64,8 @@ function createReadOwner(
   let disposed = false
   const activity = createStructuredAgentSessionReadActivity(
     () => !disposed,
-    () => deleteIfUnused()
+    () => deleteIfUnused(),
+    () => snapshot.state
   )
   const observePRLinks = target
     ? createStructuredAgentSessionPRLinkObserver(sessionId, target)
@@ -84,7 +85,12 @@ function createReadOwner(
   }
   const apply = (action: StructuredAgentSessionAction): void => {
     const state = reduceStructuredAgentSession(snapshot.state, action, Date.now())
-    activity.observe(state)
+    if (
+      state.submissions !== snapshot.state.submissions ||
+      state.queuedMessages !== snapshot.state.queuedMessages
+    ) {
+      activity.observe(state)
+    }
     // Published even when the frame changed nothing: a caught-up resume is an empty batch.
     const current =
       snapshot.current ||

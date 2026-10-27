@@ -6,7 +6,8 @@ import type { StructuredAgentSessionReadOwner } from './structured-agent-session
 /** Transient work and consent holders belong to the existing read owner, independently of its view transport. */
 export function createStructuredAgentSessionReadActivity(
   alive: () => boolean,
-  release: () => void
+  release: () => void,
+  readState: () => StructuredAgentSessionState
 ) {
   const operations = new Map<string, boolean>()
   let revision = 0
@@ -19,12 +20,28 @@ export function createStructuredAgentSessionReadActivity(
   const settle = (id: string): void => {
     if (operations.delete(id)) {
       revision += 1
+      release()
     }
-    release()
+  }
+  const observe = (state: StructuredAgentSessionState): void => {
+    if (operations.size) {
+      const { cards, recorded } = structuredAgentSessionSettledSends(
+        state.submissions.filter(
+          (row) => row.reason !== STRUCTURED_AGENT_SESSION_SUBMISSION_MISSING
+        ),
+        state.queuedMessages?.map((card) => card.messageId) ?? []
+      )
+      for (const id of operations.keys()) {
+        if (cards.has(id) || recorded.has(id)) {
+          settle(id)
+        }
+      }
+    }
   }
   const trackSend: StructuredAgentSessionReadOwner['trackSend'] = (id) => {
     if (alive()) {
       operations.set(id, false)
+      observe(readState())
     }
     return {
       issue: () => {
@@ -47,7 +64,7 @@ export function createStructuredAgentSessionReadActivity(
     if (admission?.intent === intent && admission.current()) {
       return admission.promise
     }
-    admission?.cancel()
+    const previous = admission
     const { promise, resolve } = Promise.withResolvers<void>()
     const abort = new AbortController()
     const capturedRevision = revision
@@ -58,15 +75,16 @@ export function createStructuredAgentSessionReadActivity(
       busy: (): boolean => revision !== capturedRevision || [...operations.values()].some(Boolean),
       signal: abort.signal,
       cancel: () => {
+        abort.abort()
+        resolve()
         if (admission === active) {
           admission = null
-          abort.abort()
-          resolve()
           release()
         }
       }
     }
     admission = active
+    previous?.cancel()
     try {
       void Promise.resolve(effect(active)).then(active.cancel, active.cancel)
     } catch {
@@ -75,19 +93,7 @@ export function createStructuredAgentSessionReadActivity(
     return promise
   }
   return {
-    observe: (state: StructuredAgentSessionState) => {
-      if (operations.size) {
-        const { cards, recorded } = structuredAgentSessionSettledSends(
-          state.submissions.filter(
-            (row) => row.reason !== STRUCTURED_AGENT_SESSION_SUBMISSION_MISSING
-          ),
-          state.queuedMessages?.map((card) => card.messageId) ?? []
-        )
-        for (const id of [...cards, ...recorded.keys()]) {
-          settle(id)
-        }
-      }
-    },
+    observe,
     trackSend,
     admit,
     settle,

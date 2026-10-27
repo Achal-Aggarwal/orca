@@ -5,7 +5,12 @@
 import type * as LaunchErrors from '@/lib/structured-agent-session-launch-errors'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import type { AgentSessionStatusEvent } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionHistoryResult,
+  AgentSessionMutationResult,
+  AgentSessionSendResult,
+  AgentSessionStatusEvent
+} from '../../../../shared/agent-session-wire'
 import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
 import { AGENT_STATUS_STALE_AFTER_MS } from '../../../../shared/agent-status-freshness'
 import { structuredAgentSessionAgentStatus } from '../../../../shared/structured-agent-session-agent-status'
@@ -23,6 +28,8 @@ type TestStore = {
 const mocks = vi.hoisted(() => {
   const hoisted: {
     store: TestStore | null
+    call: Mock
+    history: Mock
     subscribeStatus: Mock
     unsubscribe: Mock
     createIntent: Mock
@@ -31,6 +38,8 @@ const mocks = vi.hoisted(() => {
     launch: Mock
   } = {
     store: null,
+    call: vi.fn(),
+    history: vi.fn(),
     subscribeStatus: vi.fn(),
     unsubscribe: vi.fn(),
     createIntent: vi.fn(),
@@ -51,9 +60,14 @@ vi.mock('@/lib/worktree-runtime-owner', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: vi.fn(),
+  callStructuredAgentSession: mocks.call,
   subscribeStructuredAgentSession: vi.fn(),
   subscribeStructuredAgentSessionStatus: mocks.subscribeStatus
+}))
+
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: mocks.history,
+  ensureRuntimeEnvironmentCompatible: async () => {}
 }))
 
 vi.mock('@/runtime/local-structured-session-tabs-sync/inventory-refresh', () => ({
@@ -103,13 +117,21 @@ import {
 import { selectWorktreeAgentActivitySummary } from '../sidebar/worktree-agent-activity-summary'
 import { countActivityUnread } from '../activity/useActivityUnreadCount'
 
-async function closeChat(): Promise<void> {
+import { getDefaultSettings } from '../../../../shared/constants'
+import {
+  sendStructuredAgentSessionMessage,
+  resetStructuredAgentSessionSendsForTests
+} from './structured-agent-session-message-sender'
+import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+
+async function closeChat(skipRunningProcessConfirm = false): Promise<void> {
   const { createWorkspaceTabCloseCommands } =
     await import('../tab-group/workspace-tab-close-commands')
   createWorkspaceTabCloseCommands({
     worktreeId: WORKTREE_ID,
     groupTabs: [structuredTab]
-  }).closeItem(structuredTab.id)
+  }).closeItem(structuredTab.id, { skipRunningProcessConfirm })
 }
 
 const WORKTREE_ID = 'wt-1'
@@ -227,6 +249,52 @@ async function failStart(): Promise<void> {
   await flush()
 }
 
+const completeIdle: AgentSessionHistoryResult = {
+  ok: true,
+  page: {
+    sessionId: SESSION_ID,
+    epoch: 'e',
+    direction: 'tail',
+    items: [],
+    removedItemIds: [],
+    submissions: [],
+    window: { oldest: null, newest: null, nextCursor: { epoch: 'e', sequence: 1 } },
+    hasOlder: false,
+    hasNewer: false,
+    latestTurn: null,
+    working: false,
+    actionablePromptIds: [],
+    backgroundTasks: null,
+    nextQueuedMessageId: null
+  }
+}
+const pendingClose = () =>
+  useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+async function ready(mode = 'idle'): Promise<void> {
+  const emit = await connect()
+  emit({
+    type: 'status',
+    session: {
+      sessionId: SESSION_ID,
+      workspaceId: WORKTREE_ID,
+      agent: 'claude',
+      status: mode === 'idle' ? 'idle' : 'working',
+      latestPrompt: '',
+      updatedAt: 1
+    }
+  })
+  store().setState({
+    settings:
+      mode === 'null settings'
+        ? null
+        : {
+            ...getDefaultSettings('/tmp/pr-34236'),
+            skipCloseTerminalWithRunningProcessConfirm: mode === 'opt-out'
+          }
+  })
+  mocks.history.mockReset().mockResolvedValue(completeIdle)
+}
+
 describe('a chat whose start failed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -248,6 +316,8 @@ describe('a chat whose start failed', () => {
 
   afterEach(() => {
     cleanup()
+    resetStructuredAgentSessionSendsForTests()
+    vi.useRealTimers()
     useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
     resetStructuredAgentSessionStatusFeedsForTests()
     vi.restoreAllMocks()
@@ -458,4 +528,141 @@ describe('a chat whose start failed', () => {
       expect.objectContaining({ updatedAt: FAILED_AT, stateStartedAt: FAILED_AT })
     ])
   })
+  it('warns during real issued send and accepted handoff before status arrives', async () => {
+    await ready()
+    noteStructuredAgentSessionFence(SESSION_ID, 4)
+    const answer = Promise.withResolvers<AgentSessionMutationResult<AgentSessionSendResult>>()
+    mocks.call.mockReturnValue(answer.promise)
+    const sent = sendStructuredAgentSessionMessage({
+      sessionId: SESSION_ID,
+      target: { kind: 'local' },
+      text: 'continue'
+    })
+    expect(sent).not.toBeNull()
+    await flush()
+    await closeChat()
+    expect(pendingClose()).not.toBeNull()
+    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+    answer.resolve({
+      ok: true,
+      replayed: false,
+      fence: 4,
+      cursor: { epoch: 'e', sequence: 2 },
+      value: {
+        clientMessageId: sent!.clientMessageId,
+        submission: {
+          clientMessageId: sent!.clientMessageId,
+          fence: 4,
+          payloadFingerprint: 'send',
+          dispatchState: 'accepted',
+          providerItemId: null,
+          reason: null,
+          submittedAt: 1,
+          resolvedAt: 2
+        }
+      }
+    })
+    expect(await sent!.outcome).toBe('recorded')
+    mocks.history.mockResolvedValue({
+      ...completeIdle,
+      page: { ...completeIdle.page, working: true }
+    })
+    await flush()
+    await closeChat()
+    await flush()
+    expect(pendingClose()).not.toBeNull()
+    expect(store().getState().unifiedTabsByWorktree[WORKTREE_ID]).toContainEqual(structuredTab)
+  })
+  it.each(['active', 'idle', 'HTTP', 'null settings', 'opt-out', 'bulk'])(
+    '%s preserves close policy',
+    async (mode) => {
+      await ready(mode)
+      if (mode === 'HTTP') {
+        vi.stubGlobal('crypto', undefined)
+      }
+      const before = store().getState()
+      const closed = vi.spyOn(before, 'closeUnifiedTab')
+      await closeChat(mode === 'bulk')
+      await flush()
+      if (['active', 'HTTP', 'null settings'].includes(mode)) {
+        expect(pendingClose()).toMatchObject({ copyKind: 'chat-agent', tabLabel: 'Claude Chat' })
+        useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
+        expect(store().getState()).toBe(before)
+        expect(closed).not.toHaveBeenCalled()
+        await flush()
+        await closeChat()
+        useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
+      } else {
+        expect(pendingClose()).toBeNull()
+      }
+      expect(closed).toHaveBeenCalledExactlyOnceWith(structuredTab.id)
+      expect(
+        mocks.history.mock.calls.filter((call) => call[1] === 'agentSession.history')
+      ).toHaveLength(mode === 'idle' ? 1 : 0)
+      vi.unstubAllGlobals()
+    }
+  )
+  // Reduced replies from executed legacy producers; completed tail does not prove whole-work absence.
+  it.each(['idle', 'prompt', 'unanswered', 'eligible queue', 'unlisted child'])(
+    'legacy %s asks without refreshing status',
+    async (kind) => {
+      await ready()
+      mocks.history.mockResolvedValue({
+        ok: true,
+        page: {
+          ...completeIdle.page,
+          latestTurn: {
+            itemId: 'claude:turn-1',
+            observedAt: 1_000,
+            turn: { turnId: 'turn-1', state: 'completed' }
+          },
+          working: undefined,
+          actionablePromptIds: undefined,
+          nextQueuedMessageId: kind === 'eligible queue' ? 'card' : null,
+          backgroundTasks:
+            kind === 'unlisted child'
+              ? { state: 'monitoring', supportsStopAll: false, children: [], incomplete: true }
+              : null
+        }
+      })
+      await closeChat()
+      await flush()
+      expect(pendingClose()).not.toBeNull()
+      expect(mocks.history).toHaveBeenCalledOnce()
+      expect(mocks.subscribeStatus).toHaveBeenCalledOnce()
+    }
+  )
+  it.each(['read error', 'unsupported old host', 'deadline'])(
+    '%s asks within the total deadline',
+    async (kind) => {
+      await ready()
+      vi.useFakeTimers()
+      mocks.history.mockReset()
+      if (kind === 'deadline') {
+        mocks.history.mockReturnValue(new Promise(() => {}))
+      } else {
+        mocks.history.mockRejectedValue(
+          new RuntimeRpcCallError({
+            id: 'history',
+            ok: false,
+            error: {
+              code: kind === 'unsupported old host' ? 'method_not_found' : 'internal',
+              message: kind
+            }
+          })
+        )
+      }
+      const closed = vi.spyOn(store().getState(), 'closeUnifiedTab')
+      await closeChat()
+      if (kind === 'deadline') {
+        await vi.advanceTimersByTimeAsync(1_999)
+        expect(pendingClose()).toBeNull()
+        expect(closed).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1)
+      }
+      await flush()
+      expect(pendingClose()).not.toBeNull()
+      expect(closed).not.toHaveBeenCalled()
+    }
+  )
 })
