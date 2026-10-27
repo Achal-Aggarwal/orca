@@ -10,6 +10,7 @@ export function claudePlanApprovalMode(
   switch (mode) {
     case 'default':
     case 'acceptEdits':
+    case 'dontAsk':
     case 'auto':
     case 'bypassPermissions':
       return mode
@@ -32,11 +33,11 @@ export function leaveClaudePlanModeOnApproval(
   session: Pick<ClaudeSession, 'launchIntent' | 'firstRootInit' | 'reportedOptions'> & {
     connection: Pick<ClaudeSession['connection'], 'setPermissionMode'>
   },
-  prompt: Pick<ClaudePendingPrompt, 'subject'>,
+  prompt: Pick<ClaudePendingPrompt, 'toolName'>,
   reply: PermissionResult
 ): void {
   if (
-    prompt.subject?.kind !== 'plan' ||
+    prompt.toolName !== 'ExitPlanMode' ||
     reply.behavior !== 'allow' ||
     session.reportedOptions.reportedPermissionMode !== 'plan'
   ) {
