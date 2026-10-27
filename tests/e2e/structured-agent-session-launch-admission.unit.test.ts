@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultPersistedState } from '../../src/shared/constants'
 import type { PersistedState } from '../../src/shared/persisted-state-types'
@@ -126,6 +126,14 @@ function expectNoChatCommitted(): void {
 }
 
 let main: TabsDrawnFromMain
+let launchAgentInNewTab: typeof LaunchAgentInNewTabModule.launchAgentInNewTab
+
+beforeAll(async () => {
+  const actual = await vi.importActual<typeof LaunchAgentInNewTabModule>(
+    '@/lib/launch-agent-in-new-tab'
+  )
+  launchAgentInNewTab = actual.launchAgentInNewTab
+})
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -157,10 +165,6 @@ describe('a structured chat launch on a paired server', () => {
       activeWorkspaceExecutionHostId: 'runtime:server-1',
       runtimeStatusByEnvironmentId: new Map()
     })
-    const { launchAgentInNewTab } = await vi.importActual<typeof LaunchAgentInNewTabModule>(
-      '@/lib/launch-agent-in-new-tab'
-    )
-
     const launch = launchAgentInNewTab({
       requestId: 'before-host-status',
       agent: 'claude',
