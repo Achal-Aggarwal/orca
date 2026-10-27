@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { ClaudeControlRequestTimeoutError } from './claude-agent-sdk-control-requests'
-import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+import type { ClaudeStructuredSessionEvent } from './structured/claude-structured-session-state'
 import {
   acquired,
   claudeFrame,

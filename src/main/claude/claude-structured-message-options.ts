@@ -10,7 +10,7 @@ import {
   type StructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { setClaudeStructuredOption } from './claude-structured-options'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudeSession } from './structured/claude-structured-session-state'
 import {
   isAbortSignalReason,
   throwIfSignalAborted,

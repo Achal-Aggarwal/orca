@@ -1,5 +1,6 @@
+import { claudeOpened } from '../../claude/claude-structured-startup-settled-test-support'
 import { agentSessionRecordFixture } from '../agent-session-record-test-fixture'
-import type { ClaudeStructuredSessionEvent } from '../../claude/claude-structured-session-adapter'
+import type { ClaudeStructuredSessionEvent } from '../../claude/structured/claude-structured-session-state'
 import { startCodexTurn } from '../../codex/codex-structured-turn-start'
 import { readLiveCodexSessionOptions } from '../../codex/codex-structured-session-options'
 import { optionSession } from '../../codex/codex-structured-option-session.test-fixture'
@@ -10,7 +11,6 @@ import { claudeFallbackModelOptions } from '../../claude/claude-structured-sessi
 import {
   acquired,
   fakeClaude,
-  claudeOpened,
   claudeFrame,
   USER_MESSAGE
 } from '../../claude/claude-structured-session-test-support'
