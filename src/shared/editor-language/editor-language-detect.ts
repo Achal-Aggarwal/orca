@@ -23,6 +23,7 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.jsonc': 'json',
   // Dedicated jsonl coloring avoids whole-document JSON diagnostics flagging every record after the first.
   '.jsonl': 'jsonl',
+  '.env': 'dotenv',
   '.ipynb': 'notebook',
   '.md': 'markdown',
   '.mdx': 'markdown',
@@ -124,10 +125,12 @@ const FILENAME_TO_LANGUAGE: Record<string, string> = {
   '.gitignore': 'ini',
   '.gitattributes': 'ini',
   '.editorconfig': 'ini',
-  '.env': 'ini',
-  '.env.local': 'ini',
-  '.env.development': 'ini',
-  '.env.production': 'ini',
+  '.env': 'dotenv',
+  '.env.local': 'dotenv',
+  '.env.development': 'dotenv',
+  '.env.production': 'dotenv',
+  // .envrc is sourced as a shell script.
+  '.envrc': 'shell',
   '.bashrc': 'shell',
   '.bash_profile': 'shell',
   '.bash_login': 'shell',
@@ -158,10 +161,10 @@ export function detectLanguage(filePath: string): string {
 
   const ext = extname(filename).toLowerCase()
   const lowerName = filename.toLowerCase()
-  // Scoped dotenv names fall back to INI only when no specific extension matches.
+  // Scoped dotenv names fall back to dotenv only when no specific extension matches.
   return (
     EXT_TO_LANGUAGE[ext] ??
     detectMonacoFilenameLanguage(filename) ??
-    (lowerName === '.env' || lowerName.startsWith('.env.') ? 'ini' : 'plaintext')
+    (lowerName === '.env' || lowerName.startsWith('.env.') ? 'dotenv' : 'plaintext')
   )
 }
