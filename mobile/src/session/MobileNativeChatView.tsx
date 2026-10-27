@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { nativeChatTaskListPredecessors } from '../../../src/shared/native-chat-task-list-history'
+import { nativeChatTaskListPredecessors } from '../../../src/shared/native-chat/input/native-chat-task-list-history'
 import {
   MobileNativeChatDisclosureContext,
   useMobileNativeChatDisclosures
@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import type { AskAnswerSelection } from '../../../src/shared/native-chat-ask-answer'
-import type { AskPrompt } from '../../../src/shared/native-chat-ask-types'
+import type { AskPrompt } from '../../../src/shared/native-chat/input/native-chat-ask-types'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type {
   NativeChatLiveTurnIndicator,
@@ -126,7 +126,7 @@ type Props = ComposerTrayProps & {
   onCollapsePrompt?: () => void
   collapsedPrompt?: { title: string; expand: () => void } | null
   question?: MobileChatQuestion | null
-  onAnswerQuestion?: (text: string) => Promise<boolean>
+  onAnswerQuestion?: (text: string, prompt?: MobileChatQuestion['prompt']) => Promise<boolean>
   permission?: MobileChatPermission | null
   promptKey?: string | null
   onRespondPermission?: (send: string) => Promise<boolean>
