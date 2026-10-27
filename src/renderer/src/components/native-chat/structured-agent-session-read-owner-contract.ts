@@ -14,10 +14,25 @@ export type StructuredAgentSessionReadSnapshot = {
 }
 
 export type StructuredAgentSessionReadOwner = {
+  trackSend: (id: string) => {
+    issue: () => void
+    settle: (uncertain: boolean) => void
+  }
+  admit: (
+    intent: string,
+    valid: () => boolean,
+    effect: (attempt: StructuredAgentSessionAdmission) => void | Promise<void>
+  ) => Promise<void>
   publishCreated: (page: AgentSessionHistoryPage) => void
   activate: () => () => void
   dispose: () => void
   getSnapshot: () => StructuredAgentSessionReadSnapshot
   loadOlder: () => Promise<NativeChatOlderPageResult>
   subscribe: (listener: () => void) => () => void
+}
+
+export type StructuredAgentSessionAdmission = {
+  current: () => boolean
+  busy: () => boolean
+  signal: AbortSignal
 }

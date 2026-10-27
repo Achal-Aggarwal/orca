@@ -13,8 +13,10 @@ vi.mock('@/lib/app-keyboard-router', () => ({
     window.removeEventListener(type, handler, { capture: true })
 }))
 
-vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
-  isStructuredAgentSessionBusy: vi.fn(() => false)
+vi.mock('@/lib/agent-session/structured-agent-session-busy', async () => ({
+  admitStructuredAgentSession: (
+    await import('@/store/slices/store-session-test-harness')
+  ).admissionFromBusy(() => false)
 }))
 
 vi.mock('zustand/react/shallow', () => ({

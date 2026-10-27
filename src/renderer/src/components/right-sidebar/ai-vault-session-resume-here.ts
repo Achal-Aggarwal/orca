@@ -1,4 +1,4 @@
-import { isStructuredAgentSessionBusy } from '@/lib/agent-session/structured-agent-session-busy'
+import { admitStructuredAgentSession } from '@/lib/agent-session/structured-agent-session-busy'
 import { useAppStore } from '@/store'
 import { activateAiVaultStructuredSession } from '@/lib/activate-ai-vault-structured-session'
 import { insertUnifiedTabAfterAnchor } from '@/lib/unified-tab-anchor-insertion'
@@ -35,6 +35,8 @@ export type AiVaultResumeHere = {
   confirm: ConfirmationDialogContextValue
 }
 
+type AiVaultReplacement = AiVaultResumeHere & { current: () => boolean }
+
 /** Replace this chat only after the picked chat opens; confirm busy chats first. False means the row cannot replace it. */
 export function resumeAiVaultSessionHere(args: {
   session: AiVaultSession
@@ -45,7 +47,9 @@ export function resumeAiVaultSessionHere(args: {
   >
   jump: (session: AiVaultSession) => void
 }): false | Promise<void> {
-  const { session, here, actions } = args
+  const { session, actions } = args
+  let current = (): boolean => true
+  const here = { ...args.here, current: () => current() }
   const structured = session.structuredSession
   if (structured && structured.sessionId === findChatTab(here)?.entityId) {
     here.dismiss()
@@ -75,13 +79,11 @@ export function resumeAiVaultSessionHere(args: {
     return false
   }
   const chat = findChatTab(here)
-  if (!chat || !isStructuredAgentSessionBusy(here.workspaceId, chat)) {
+  if (!chat) {
     return replace()
   }
-  // Replacing stops the chat's agent, so a busy one asks first; the picker closes so prompts never stack.
-  here.dismiss()
-  return here
-    .confirm({
+  const confirmReplace = (signal: AbortSignal) =>
+    here.confirm({
       title: translate('components.native-chat.resumeCommand.replaceTitle', 'Replace this chat?'),
       description: translate(
         'components.native-chat.resumeCommand.replaceDescription',
@@ -92,13 +94,34 @@ export function resumeAiVaultSessionHere(args: {
       confirmVariant: 'destructive',
       initialFocus: 'confirm',
       compact: true,
-      ignoresOpeningGesture: true
+      ignoresOpeningGesture: true,
+      signal
     })
-    .then((confirmed) => (confirmed ? replace() : requestNativeChatComposerFocus(chat.id)))
+  return admitStructuredAgentSession(
+    here.workspaceId,
+    chat,
+    `replace:${session.id}`,
+    (busy, attempt) => {
+      current = attempt.current
+      const perform = (): Promise<void> | void => (current() ? replace() : undefined)
+      if (!busy) {
+        return perform()
+      }
+      here.dismiss()
+      return confirmReplace(attempt.signal).then((confirmed) => {
+        if (confirmed) {
+          return perform()
+        }
+        if (current()) {
+          requestNativeChatComposerFocus(chat.id)
+        }
+      })
+    }
+  )
 }
 
 function resumeInPlaceOf(
-  here: AiVaultResumeHere,
+  here: AiVaultReplacement,
   session: AiVaultSession,
   rowAgent: CliConversationRowAgent
 ): Promise<void> {
@@ -141,7 +164,11 @@ function resumeInPlaceOf(
             ? activateAiVaultStructuredSession({ structuredSession: owner })
             : revealInPlaceOf(here, owner)
         }
-        if (settlement?.kind === 'structured') {
+        if (
+          settlement?.kind === 'structured' &&
+          openedTabId &&
+          findChatTabWhere(here.workspaceId, (tab) => tab.id === openedTabId)
+        ) {
           closeReplacedChat(here)
         } else if (settlement?.kind === 'failed' && openedTabId) {
           // Remove toasted refusal tabs; unknown outcomes retain their own badge and Retry alongside the old chat.
@@ -157,7 +184,7 @@ function resumeInPlaceOf(
 
 /** Reopens a closed chat in place of this one, which closes only once the reopened tab exists. */
 function revealInPlaceOf(
-  here: AiVaultResumeHere,
+  here: AiVaultReplacement,
   structured: NonNullable<AiVaultSession['structuredSession']>
 ): Promise<void> {
   return activateAiVaultStructuredSession({ structuredSession: structured }).then(() => {
@@ -186,9 +213,9 @@ function findChatTab(here: AiVaultResumeHere): Tab | undefined {
   return findChatTabWhere(here.workspaceId, (tab) => tab.id === here.tabId)
 }
 
-function closeReplacedChat(here: AiVaultResumeHere): void {
+function closeReplacedChat(here: AiVaultReplacement): void {
   const tab = findChatTab(here)
-  if (tab) {
+  if (tab && here.current()) {
     // Direct close: the pin prompt belongs to the close commands, and this replacement was chosen.
     useAppStore.getState().closeUnifiedTab(tab.id)
   }

@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isStructuredAgentSessionBusy } from '@/lib/agent-session/structured-agent-session-busy'
-import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { Tab } from '../../../../shared/tab-types'
 import {
@@ -27,8 +25,6 @@ describe('FloatingTerminalPanel close behavior', () => {
   beforeEach(setupFloatingTerminalPanelTest)
 
   afterEach(() => {
-    vi.mocked(isStructuredAgentSessionBusy).mockReturnValue(false)
-    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
     vi.unstubAllGlobals()
   })
   it('creates new floating terminal tabs with workspace-owned activation', async () => {
@@ -197,8 +193,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.id)
   })
 
-  it.each([false, true])('closes a structured chat with busy=%s through consent', async (busy) => {
-    vi.mocked(isStructuredAgentSessionBusy).mockReturnValue(busy)
+  it('closes a structured chat through the shared workspace command', async () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: beforeEach installs the typed floating panel store fixture.
     const state = storeBox.state as FloatingPanelStoreState
     const baseTab = setFloatingSimulatorTab()
@@ -209,20 +204,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     const tabBar = findByTypeName(element, 'TabBar')
     ;(tabBar.props.onCloseFile as (tabId: string) => void)(tab.id)
 
-    if (busy) {
-      expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
-      expect(
-        useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
-      ).toMatchObject({
-        terminalTabId: tab.id,
-        copyKind: 'chat-agent'
-      })
-      useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
-      expect(mocks.closeUnifiedTab).not.toHaveBeenCalled()
-      ;(tabBar.props.onCloseFile as (tabId: string) => void)(tab.id)
-      useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
-    }
-    expect(mocks.closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(tab.id)
+    expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(tab.id)
     expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.entityId)
   })
 

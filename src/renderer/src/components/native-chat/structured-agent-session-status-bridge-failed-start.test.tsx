@@ -41,12 +41,8 @@ const mocks = vi.hoisted(() => {
   return hoisted
 })
 
-vi.mock('@/store', async () => {
-  const { createTestStore } = await import('@/store/slices/store-test-helpers')
-  const useAppStore = createTestStore()
-  mocks.store = useAppStore
-  return { useAppStore }
-})
+import { useAppStore } from '@/store'
+mocks.store = useAppStore
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), message: vi.fn() } }))
 
@@ -90,6 +86,7 @@ vi.mock('@/lib/launch-structured-agent-session', () => {
   }
 })
 
+import { useRunningTerminalCloseConfirmStore } from '@/store/running-terminal-close-confirm'
 import { StructuredAgentSessionStatusBridge } from './StructuredAgentSessionStatusBridge'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/launch-structured-agent-session'
 import {
@@ -105,6 +102,15 @@ import {
 } from '../tab-bar/terminal-tab-activity-status'
 import { selectWorktreeAgentActivitySummary } from '../sidebar/worktree-agent-activity-summary'
 import { countActivityUnread } from '../activity/useActivityUnreadCount'
+
+async function closeChat(): Promise<void> {
+  const { createWorkspaceTabCloseCommands } =
+    await import('../tab-group/workspace-tab-close-commands')
+  createWorkspaceTabCloseCommands({
+    worktreeId: WORKTREE_ID,
+    groupTabs: [structuredTab]
+  }).closeItem(structuredTab.id)
+}
 
 const WORKTREE_ID = 'wt-1'
 const SESSION_ID = 'session-1'
@@ -124,7 +130,8 @@ const structuredTab = {
   sortOrder: 0,
   createdAt: TAB_CREATED_AT,
   isPinned: false,
-  agentSessionAgent: 'claude'
+  agentSessionAgent: 'claude',
+  executionHostId: 'local'
 } satisfies Tab
 
 const intent: StructuredAgentSessionLaunchIntent = {
@@ -241,6 +248,7 @@ describe('a chat whose start failed', () => {
 
   afterEach(() => {
     cleanup()
+    useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
     resetStructuredAgentSessionStatusFeedsForTests()
     vi.restoreAllMocks()
   })
@@ -262,6 +270,35 @@ describe('a chat whose start failed', () => {
     expect(row && agentVerdictDisplayMark(row)).toBe('failed')
     expect(tabStatus()).toBe('failed')
     expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasFailed).toBe(true)
+    const closed = vi.spyOn(store().getState(), 'closeUnifiedTab').mockReturnValue(true)
+    await closeChat()
+    expect(useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm).toBeNull()
+    expect(closed).toHaveBeenCalledExactlyOnceWith(structuredTab.id)
+  })
+
+  it('keeps monitoring-only child work active through the real status writer and close', async () => {
+    const emit = await connect()
+    emit({
+      type: 'status',
+      session: {
+        sessionId: SESSION_ID,
+        workspaceId: WORKTREE_ID,
+        agent: 'claude',
+        status: 'idle',
+        latestPrompt: '',
+        updatedAt: 1,
+        backgroundTasks: [{ id: 'monitor', kind: 'command', state: 'monitoring' }]
+      }
+    })
+    expect(rows()).toMatchObject([
+      { state: 'working', workingMode: 'monitoring', mainAgent: { state: 'done' } }
+    ])
+    const closed = vi.spyOn(store().getState(), 'closeUnifiedTab')
+    await closeChat()
+    expect(
+      useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
+    ).not.toBeNull()
+    expect(closed).not.toHaveBeenCalled()
   })
 
   it('drops the mark while a retry starts it, and leaves the started chat to the host', async () => {

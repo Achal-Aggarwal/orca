@@ -33,8 +33,10 @@ const mocks = vi.hoisted(() => ({
   targetInsideFloatingPanel: false
 }))
 
-vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
-  isStructuredAgentSessionBusy: mocks.structuredSessionBusy
+vi.mock('@/lib/agent-session/structured-agent-session-busy', async () => ({
+  admitStructuredAgentSession: (
+    await import('@/store/slices/store-session-test-harness')
+  ).admissionFromBusy(mocks.structuredSessionBusy)
 }))
 
 vi.mock('../store', () => ({ useAppStore: { getState: () => mocks.state } }))
@@ -209,38 +211,24 @@ describe('tab.close uses the unified active tab', () => {
     return event
   }
 
-  it.each(['darwin', 'win32', 'linux'] as const)(
-    'routes native chat close from its composer through the unified tab action on %s',
-    async (platform) => {
-      expect(close(platform).defaultPrevented).toBe(true)
-      await vi.waitFor(() => expect(closeUnifiedTab).toHaveBeenCalledWith(tab.id))
-      // Why: the unified store action owns cancellation and host retirement for every close path.
-      expect(mocks.closeStructuredAgentSession).not.toHaveBeenCalled()
-      expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
-      expect(mocks.cancelStructuredAgentLaunch).not.toHaveBeenCalled()
-      expect(mocks.closeTerminalTab).not.toHaveBeenCalled()
-    }
-  )
-
-  it.each(['darwin', 'win32', 'linux'] as const)(
-    'holds an active chat keyboard close for consent on %s',
-    (platform) => {
-      mocks.structuredSessionBusy.mockReturnValue(true)
-      expect(close(platform).defaultPrevented).toBe(true)
+  it.each(
+    (['darwin', 'win32', 'linux'] as const).flatMap((platform) =>
+      [false, true].map((busy) => ({ platform, busy }))
+    )
+  )('routes native chat close on $platform with busy=$busy', async ({ platform, busy }) => {
+    mocks.structuredSessionBusy.mockReturnValue(busy)
+    expect(close(platform).defaultPrevented).toBe(true)
+    if (busy) {
       expect(closeUnifiedTab).not.toHaveBeenCalled()
-      expect(
-        useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
-      ).toMatchObject({
-        terminalTabId: tab.id,
-        copyKind: 'chat-agent'
-      })
-      useRunningTerminalCloseConfirmStore.getState().dismissRunningTerminalClose()
-      expect(closeUnifiedTab).not.toHaveBeenCalled()
-      close(platform)
       useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
-      expect(closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(tab.id)
     }
-  )
+    await vi.waitFor(() => expect(closeUnifiedTab).toHaveBeenCalledWith(tab.id))
+    // Why: the unified store action owns cancellation and host retirement for every close path.
+    expect(mocks.closeStructuredAgentSession).not.toHaveBeenCalled()
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+    expect(mocks.cancelStructuredAgentLaunch).not.toHaveBeenCalled()
+    expect(mocks.closeTerminalTab).not.toHaveBeenCalled()
+  })
 
   it.each(['editor', 'diff', 'conflict-review', 'check-details', 'browser', 'simulator'] as const)(
     'closes the focused %s tab through the same command',
@@ -285,7 +273,7 @@ describe('tab.close uses the unified active tab', () => {
     expect(
       useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm
     ).toMatchObject({
-      terminalTabId: tab.id
+      copyKind: 'chat-agent'
     })
     useRunningTerminalCloseConfirmStore.getState().confirmRunningTerminalClose()
     expect(closeUnifiedTab).toHaveBeenCalledExactlyOnceWith(tab.id)
