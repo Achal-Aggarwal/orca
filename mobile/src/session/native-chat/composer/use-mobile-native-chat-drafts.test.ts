@@ -3,9 +3,12 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../../src/shared/native-chat-types'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
-import { resetMobileNativeChatDraftStoreForTests } from './mobile-native-chat-draft-store'
+import {
+  resetMobileNativeChatDraftStoreForTests,
+  useMobileNativeChatDraft
+} from './mobile-native-chat-draft-store'
 
-type DraftState = ReturnType<typeof useMobileNativeChatDrafts>
+type DraftState = ReturnType<typeof useMobileNativeChatDrafts> & { composerText: string }
 
 function userTextMessage(id: string, text: string): NativeChatMessage {
   return {
@@ -55,7 +58,7 @@ describe('useMobileNativeChatDrafts', () => {
     transcriptLoading?: boolean
     transcriptSettled?: boolean
   }): null {
-    state = useMobileNativeChatDrafts({
+    const drafts = useMobileNativeChatDrafts({
       hostId: 'host',
       worktreeId: 'worktree',
       tabId,
@@ -66,6 +69,7 @@ describe('useMobileNativeChatDrafts', () => {
       transcriptLoading,
       transcriptSettled
     })
+    state = { ...drafts, composerText: useMobileNativeChatDraft(drafts.draftKey) }
     return null
   }
 
@@ -78,6 +82,38 @@ describe('useMobileNativeChatDrafts', () => {
   async function switchTo(tabId: string): Promise<void> {
     await act(async () => renderer?.update(createElement(Harness, { tabId })))
   }
+
+  it('redraws only the draft subscriber per keystroke, not the screen that owns the drafts', async () => {
+    let screenRenders = 0
+    let shown = ''
+    let owner: ReturnType<typeof useMobileNativeChatDrafts> | null = null
+    function Composer({ draftKey }: { draftKey: string | null }): null {
+      shown = useMobileNativeChatDraft(draftKey)
+      return null
+    }
+    const messages: NativeChatMessage[] = []
+    function Screen(): ReturnType<typeof createElement> {
+      screenRenders += 1
+      owner = useMobileNativeChatDrafts({
+        hostId: 'host',
+        worktreeId: 'worktree',
+        tabId: 'a',
+        sessionId: 'session-a',
+        messages,
+        transcriptSettled: true
+      })
+      return createElement(Composer, { draftKey: owner.draftKey })
+    }
+    await act(async () => {
+      renderer = create(createElement(Screen))
+    })
+    const rendersBeforeTyping = screenRenders
+
+    act(() => owner?.setComposerText('typed'))
+
+    expect(shown).toBe('typed')
+    expect(screenRenders).toBe(rendersBeforeTyping)
+  })
 
   it('keeps drafts and accepted pending messages on their originating tabs', async () => {
     await mount('a')

@@ -2,9 +2,12 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
-import { resetMobileNativeChatDraftStoreForTests } from './mobile-native-chat-draft-store'
+import {
+  resetMobileNativeChatDraftStoreForTests,
+  useMobileNativeChatDraft
+} from './mobile-native-chat-draft-store'
 
-type DraftState = ReturnType<typeof useMobileNativeChatDrafts>
+type DraftState = ReturnType<typeof useMobileNativeChatDrafts> & { composerText: string }
 
 describe('mobile native-chat draft store', () => {
   let renderer: ReactTestRenderer | null = null
@@ -18,7 +21,7 @@ describe('mobile native-chat draft store', () => {
   })
 
   function Harness({ tabId }: { tabId: string }): null {
-    state = useMobileNativeChatDrafts({
+    const drafts = useMobileNativeChatDrafts({
       hostId: 'host',
       worktreeId: 'worktree',
       tabId,
@@ -26,6 +29,7 @@ describe('mobile native-chat draft store', () => {
       messages: [],
       transcriptSettled: true
     })
+    state = { ...drafts, composerText: useMobileNativeChatDraft(drafts.draftKey) }
     return null
   }
 
