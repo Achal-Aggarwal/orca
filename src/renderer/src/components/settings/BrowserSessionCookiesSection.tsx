@@ -1,3 +1,6 @@
+import { useGoogleCookieClear } from '../use-google-cookie-clear'
+import { useAppStore } from '@/store'
+import { getDefaultBrowserProfileForHost } from '@/store/slices/browser/browser-host-state'
 import { Plus } from 'lucide-react'
 import type { BrowserSessionProfile } from '../../../../shared/browser-workspace-types'
 import { Button } from '../ui/button'
@@ -19,7 +22,6 @@ type BrowserSessionCookiesSectionProps = {
   nonDefaultProfiles: BrowserSessionProfile[]
   detectedBrowsers: BrowserProfileRowProps['detectedBrowsers']
   importState: BrowserProfileRowProps['importState']
-  defaultBrowserSessionProfileId: string | null
   hostOptions: readonly BrowserSessionHostOption[]
   selectedHostId: ExecutionHostId
   onAddProfile: () => void
@@ -33,7 +35,6 @@ export function BrowserSessionCookiesSection({
   nonDefaultProfiles,
   detectedBrowsers,
   importState,
-  defaultBrowserSessionProfileId,
   hostOptions,
   selectedHostId,
   onAddProfile,
@@ -41,6 +42,16 @@ export function BrowserSessionCookiesSection({
   onSelectDefaultProfile,
   onSelectProfile
 }: BrowserSessionCookiesSectionProps): React.JSX.Element {
+  const activeProfileId =
+    useAppStore((state) => getDefaultBrowserProfileForHost(state, selectedHostId)) ?? 'default'
+  const activeProfile = [defaultProfile, ...nonDefaultProfiles].find(
+    (profile) => profile?.id === activeProfileId
+  )
+  const googleCookieClear = useGoogleCookieClear(
+    selectedHostId,
+    activeProfileId,
+    activeProfile?.label
+  )
   const selectedHost = hostOptions.find((host) => host.id === selectedHostId) ?? hostOptions[0]
   return (
     <SearchableSetting
@@ -117,7 +128,6 @@ export function BrowserSessionCookiesSection({
 
       <div className="space-y-2">
         <BrowserProfileRow
-          hostId={selectedHostId}
           profile={
             defaultProfile ?? {
               id: 'default',
@@ -129,21 +139,39 @@ export function BrowserSessionCookiesSection({
           }
           detectedBrowsers={detectedBrowsers}
           importState={importState}
-          isActive={(defaultBrowserSessionProfileId ?? 'default') === 'default'}
+          isActive={activeProfileId === 'default'}
           onSelect={onSelectDefaultProfile}
           isDefault
         />
         {nonDefaultProfiles.map((profile) => (
           <BrowserProfileRow
-            hostId={selectedHostId}
             key={profile.id}
             profile={profile}
             detectedBrowsers={detectedBrowsers}
             importState={importState}
-            isActive={(defaultBrowserSessionProfileId ?? 'default') === profile.id}
+            isActive={activeProfileId === profile.id}
             onSelect={() => onSelectProfile(profile.id)}
           />
         ))}
+      </div>
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <Label>{translate('browser.googleCookieClear.heading', 'Google sign-in')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {translate(
+              'browser.googleCookieClear.explanation',
+              'Google ties sign-in to the original browser, so Google cookies aren’t imported. Sign in to Google directly in Orca. If sign-in is stuck or using the wrong account, clear Google cookies for the active profile. This signs you out of Google only; other sites stay signed in.'
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={!googleCookieClear.available || googleCookieClear.busy}
+          onClick={() => void googleCookieClear.onClick()}
+        >
+          {translate('browser.googleCookieClear.action', 'Clear Google cookies…')}
+        </Button>
       </div>
     </SearchableSetting>
   )

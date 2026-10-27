@@ -1,5 +1,3 @@
-import { useGoogleCookieClear } from '@/components/use-google-cookie-clear'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { Import, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { emitBrowserCookieImportToast } from '@/lib/browser-cookie-import-toast'
@@ -33,7 +31,6 @@ type DetectedBrowser = {
 }
 
 export type BrowserProfileRowProps = {
-  hostId: ExecutionHostId
   profile: BrowserSessionProfile
   detectedBrowsers: DetectedBrowser[]
   importState: {
@@ -48,7 +45,6 @@ export type BrowserProfileRowProps = {
 }
 
 export function BrowserProfileRow({
-  hostId,
   profile,
   detectedBrowsers,
   importState,
@@ -58,7 +54,6 @@ export function BrowserProfileRow({
 }: BrowserProfileRowProps): React.JSX.Element {
   const isImporting = importState?.profileId === profile.id && importState.status === 'importing'
   const fetchDetectedBrowsers = useAppStore((s) => s.fetchDetectedBrowsers)
-  const googleCookieClear = useGoogleCookieClear(hostId, profile.id, profile.label)
 
   const handleImportFromBrowser = async (
     browserFamily: string,
@@ -91,8 +86,7 @@ export function BrowserProfileRow({
                 value2: profile.label
               }
             ),
-        result,
-        googleCookieClear.fromImport(result)
+        result
       )
     } else {
       toast.error(result.reason)
@@ -109,8 +103,7 @@ export function BrowserProfileRow({
           'Imported {{value0}} cookies from file into {{value1}}.',
           { value0: result.summary.importedCookies, value1: profile.label }
         ),
-        result,
-        googleCookieClear.fromImport(result)
+        result
       )
     } else if (result.reason !== 'canceled') {
       toast.error(result.reason)
@@ -153,7 +146,6 @@ export function BrowserProfileRow({
       <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu
           onOpenChange={(open) => {
-            googleCookieClear.setOpen(open)
             if (open) {
               // Probe profile folders only when import opens; macOS treats them as protected app data.
               void fetchDetectedBrowsers()
@@ -219,11 +211,7 @@ export function BrowserProfileRow({
             <DropdownMenuItem onSelect={() => void handleImportFromFile()}>
               {translate('auto.components.settings.BrowserProfileRow.ebb78dfd6f', 'From File…')}
             </DropdownMenuItem>
-            <BrowserCookieImportDisclosure
-              onClearGoogleCookies={googleCookieClear.menuAction}
-              clearing={googleCookieClear.busy}
-              pending={googleCookieClear.pending}
-            />
+            <BrowserCookieImportDisclosure />
           </DropdownMenuContent>
         </DropdownMenu>
         {isDefault ? (

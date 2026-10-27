@@ -1,4 +1,3 @@
-import type { GoogleCookieClearRemoteReceipt } from '../../../../../shared/browser-google-cookie-clear'
 import type { StateCreator } from 'zustand'
 import type { ManagedBrowserProfileOwner } from '../../../../../shared/browser-profile-scope'
 
@@ -109,7 +108,6 @@ export type RemovedBrowserHistory = {
 }
 
 export type BrowserCookieImportExecutionResult = BrowserCookieImportResult & {
-  googleCookieClearRemoteTarget?: GoogleCookieClearRemoteReceipt
   executionHostId: ExecutionHostId
   executionHostLabel: string
   // Why: for a remote environment the import silently runs on either machine; toasts must say which.

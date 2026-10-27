@@ -1,4 +1,3 @@
-import { useGoogleCookieClearRunner } from '@/components/use-google-cookie-clear'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Import } from 'lucide-react'
 import { toast } from 'sonner'
@@ -49,7 +48,6 @@ export function BrowserImportHintButton({
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
 
   const effectiveProfileId = profileId ?? 'default'
-  const googleCookieClear = useGoogleCookieClearRunner()
   const shouldShow = shouldShowBrowserImportHint({
     persistedUIReady,
     browserImportHintHidden
@@ -106,14 +104,13 @@ export function BrowserImportHintButton({
               value2: browserProfile ? ` (${browserProfile})` : ''
             }
           ),
-          result,
-          googleCookieClear.fromImport(result)
+          result
         )
         return
       }
       toast.error(result.reason)
     },
-    [detectedBrowsers, effectiveProfileId, importCookiesFromBrowser, googleCookieClear]
+    [detectedBrowsers, effectiveProfileId, importCookiesFromBrowser]
   )
 
   const handleImportFromFile = useCallback(async (): Promise<void> => {
@@ -128,15 +125,14 @@ export function BrowserImportHintButton({
           'Imported {{value0}} cookies from file.',
           { value0: result.summary.importedCookies }
         ),
-        result,
-        googleCookieClear.fromImport(result)
+        result
       )
       return
     }
     if (result.reason !== 'canceled') {
       toast.error(result.reason)
     }
-  }, [effectiveProfileId, importCookiesToProfile, googleCookieClear])
+  }, [effectiveProfileId, importCookiesToProfile])
 
   const handleOpenBrowserSettings = useCallback((): void => {
     openSettingsTarget({ pane: 'browser', repoId: null })

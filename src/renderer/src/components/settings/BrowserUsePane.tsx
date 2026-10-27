@@ -18,19 +18,16 @@ import { BrowserUseEnableSwitch } from './BrowserUseEnableSwitch'
 import { BrowserUseSkillStep } from './BrowserUseSkillStep'
 import { BrowserUseCookieImportStep } from './BrowserUseCookieImportStep'
 import { translate } from '@/i18n/i18n'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
 
 type BrowserUseSetupProps = {
-  hostId: ExecutionHostId
   onConfigureMoreBrowsers?: () => void
   onOpenComputerUse?: () => void
 }
 
 export function BrowserUseSetup({
-  hostId,
   onConfigureMoreBrowsers,
   onOpenComputerUse
-}: BrowserUseSetupProps): React.JSX.Element {
+}: BrowserUseSetupProps = {}): React.JSX.Element {
   const searchQuery = useAppStore((s) => s.settingsSearchQuery)
   const browserSessionProfiles = useAppStore((s) => s.browserSessionProfiles)
   const fetchBrowserSessionProfiles = useAppStore((s) => s.fetchBrowserSessionProfiles)
@@ -175,7 +172,6 @@ export function BrowserUseSetup({
 
       {showCookieImportStep ? (
         <BrowserUseCookieImportStep
-          hostId={hostId}
           cookiesImported={cookiesImported}
           isImportingDefault={isImportingDefault}
           sourceLabel={sourceLabel}

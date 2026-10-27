@@ -9,10 +9,8 @@ import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
-import type { BrowserCookieImportExecutionResult } from '@/store/slices/browser/browser-slice-contract'
 
 export type GoogleCookieClearOffer = {
-  executionMachine: 'client' | 'remote'
   onClick: () => void
 }
 
@@ -80,21 +78,6 @@ export async function captureGoogleCookieClearTarget(
   }
 }
 
-export function googleCookieClearImportTarget(
-  result: BrowserCookieImportExecutionResult
-): GoogleCookieClearTarget | undefined {
-  if (!result.ok) {
-    return undefined
-  }
-  if (result.executionMachine === 'client') {
-    return result.googleCookieClearTarget
-  }
-  const target = result.googleCookieClearRemoteTarget
-  return target && remoteGoogleCookieClearAvailable(target.environmentId, target.pairingRevision)
-    ? target
-    : undefined
-}
-
 export function offerGoogleCookieClear(
   target: GoogleCookieClearTarget | undefined,
   confirm: ConfirmationDialogContextValue,
@@ -108,7 +91,6 @@ export function offerGoogleCookieClear(
     profile: target.label || (profileId === 'default' ? 'Default' : 'Browser profile')
   }
   return {
-    executionMachine: 'local' in target ? 'client' : 'remote',
     onClick: () =>
       run(async () => {
         if (

@@ -74,7 +74,6 @@ export function BrowserPane({
   const setBrowserSessionHostId = useAppStore((s) => s.setBrowserSessionHostId)
   const detectedBrowsers = useAppStore((s) => s.detectedBrowsers)
   const browserSessionImportState = useAppStore((s) => s.browserSessionImportState)
-  const defaultBrowserSessionProfileId = useAppStore((s) => s.defaultBrowserSessionProfileId)
   const setDefaultBrowserSessionProfileId = useAppStore((s) => s.setDefaultBrowserSessionProfileId)
   const defaultProfile = browserSessionProfiles.find((p) => p.id === 'default')
   const nonDefaultProfiles = browserSessionProfiles.filter((p) => p.scope !== 'default')
@@ -220,7 +219,6 @@ export function BrowserPane({
     <div ref={setBrowserPaneRootNode} className="space-y-6">
       {showBrowserUse ? (
         <BrowserUseSetup
-          hostId={selectedBrowserSessionHostId}
           onConfigureMoreBrowsers={scrollToSessionCookies}
           onOpenComputerUse={onOpenComputerUse}
         />
@@ -322,7 +320,6 @@ export function BrowserPane({
           nonDefaultProfiles={nonDefaultProfiles}
           detectedBrowsers={detectedBrowsers}
           importState={browserSessionImportState}
-          defaultBrowserSessionProfileId={defaultBrowserSessionProfileId}
           hostOptions={browserSessionHostOptions}
           selectedHostId={selectedBrowserSessionHostId}
           onAddProfile={() => setNewProfileDialogOpen(true)}

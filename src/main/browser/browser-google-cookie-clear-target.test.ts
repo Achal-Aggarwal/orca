@@ -20,7 +20,7 @@ type ImportExecution = BrowserCookieImportResult & {
   executionMachine: 'client' | 'remote'
   executionRemoteEnvironment: boolean
 }
-type ClearOffer = { executionMachine: 'client' | 'remote'; onClick(): void }
+type ClearOffer = { onClick(): void }
 type BrowserTestStore = {
   setState(state: Record<string, unknown>): void
   getState(): {
@@ -88,8 +88,13 @@ const runtime = await vi.importActual<typeof ClientHostRuntime>(
 const { createTestStore } = await vi.importActual<{
   createTestStore(): BrowserTestStore
 }>('../../renderer/src/store/slices/browser-slice-test-harness')
-const { googleCookieClearImportTarget, offerGoogleCookieClear } = await vi.importActual<{
-  googleCookieClearImportTarget(result: ImportExecution): GoogleCookieClearTarget | undefined
+const { captureGoogleCookieClearTarget, offerGoogleCookieClear } = await vi.importActual<{
+  captureGoogleCookieClearTarget(
+    hostId: string,
+    profileId: string,
+    label: undefined,
+    remote: boolean
+  ): Promise<{ target?: GoogleCookieClearTarget }>
   offerGoogleCookieClear(
     target: GoogleCookieClearTarget | undefined,
     confirm: () => Promise<boolean>,
@@ -100,8 +105,7 @@ const { emitBrowserCookieImportToast } = await vi.importActual<{
   emitBrowserCookieImportToast(
     summary: BrowserCookieImportSummary,
     message: string,
-    execution: ImportExecution,
-    offer?: ClearOffer
+    execution: ImportExecution
   ): void
 }>('../../renderer/src/lib/browser-cookie-import-toast')
 
@@ -417,6 +421,7 @@ it('retains actual local/file/client import destinations, source-only replacemen
       browser: {
         sessionImportFromBrowserForClientHost: (args: unknown) =>
           call('importFromBrowserForClientHost', args),
+        sessionGoogleCookieClearTarget: (args: unknown) => call('googleCookieClearTarget', args),
         sessionClearGoogleCookies: localClear
       },
       runtimeEnvironments: { call: remoteCall }
@@ -454,20 +459,25 @@ it('retains actual local/file/client import destinations, source-only replacemen
     })
   })
   expect(target).toMatchObject({ environmentId: 'server', routeIdentity: expect.any(String) })
-  const captured = googleCookieClearImportTarget(result)
-  expect(captured).toEqual(result.ok ? result.googleCookieClearTarget : undefined)
+  const captured = await captureGoogleCookieClearTarget(
+    'runtime:server',
+    'default',
+    undefined,
+    true
+  )
+  expect(captured.target).toEqual(result.ok ? result.googleCookieClearTarget : undefined)
   const confirm = vi.fn(async () => true)
   let execution: Promise<void> | undefined
-  const offer = offerGoogleCookieClear(captured, confirm, (action) => {
+  const offer = offerGoogleCookieClear(captured.target, confirm, (action) => {
     execution = action()
   })
   if (!result.ok) {
     throw new Error('client import failed')
   }
-  emitBrowserCookieImportToast(result.summary, 'Imported', result, offer)
+  emitBrowserCookieImportToast(result.summary, 'Imported', result)
   const warning = mocks.warning.mock.calls.at(-1)?.[1]
-  expect(warning?.action.label).toBe('Clear Google cookies…')
-  warning.action.onClick()
+  expect(warning?.action).toBeUndefined()
+  offer?.onClick()
   await execution
   expect(confirm).toHaveBeenCalledTimes(1)
   expect(localClear).toHaveBeenCalledWith(target)

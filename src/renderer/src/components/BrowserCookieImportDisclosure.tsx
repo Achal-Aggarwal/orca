@@ -1,20 +1,8 @@
 import { Info } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
-import {
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
-export function BrowserCookieImportDisclosure({
-  onClearGoogleCookies,
-  clearing = false,
-  pending = false
-}: {
-  onClearGoogleCookies?: () => void
-  clearing?: boolean
-  pending?: boolean
-}): React.JSX.Element {
+export function BrowserCookieImportDisclosure(): React.JSX.Element {
   return (
     <>
       <DropdownMenuSeparator />
@@ -35,11 +23,6 @@ export function BrowserCookieImportDisclosure({
           </span>
         </span>
       </DropdownMenuLabel>
-      {onClearGoogleCookies || pending ? (
-        <DropdownMenuItem disabled={clearing || pending} onSelect={onClearGoogleCookies}>
-          {translate('browser.googleCookieClear.action', 'Clear Google cookies…')}
-        </DropdownMenuItem>
-      ) : null}
     </>
   )
 }

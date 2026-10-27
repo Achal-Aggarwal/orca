@@ -1,4 +1,3 @@
-import { useGoogleCookieClearRunner } from '@/components/use-google-cookie-clear'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { emitBrowserCookieImportToast } from '@/lib/browser-cookie-import-toast'
@@ -133,7 +132,6 @@ export function BrowserToolbarMenu({
   }
 
   const effectiveProfileId = currentProfileId ?? 'default'
-  const googleCookieClear = useGoogleCookieClearRunner()
 
   const defaultProfile = browserSessionProfiles.find((p) => p.id === 'default')
   const allProfiles = defaultProfile
@@ -239,8 +237,7 @@ export function BrowserToolbarMenu({
                 value1: browser?.label ?? browserFamily
               }
             ),
-        result,
-        googleCookieClear.fromImport(result)
+        result
       )
     } else {
       toast.error(result.reason)
@@ -257,8 +254,7 @@ export function BrowserToolbarMenu({
           'Imported {{value0}} cookies from file.',
           { value0: result.summary.importedCookies }
         ),
-        result,
-        googleCookieClear.fromImport(result)
+        result
       )
     } else if (result.reason !== 'canceled') {
       toast.error(result.reason)

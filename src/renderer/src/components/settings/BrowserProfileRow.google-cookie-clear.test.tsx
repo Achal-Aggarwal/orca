@@ -2,17 +2,19 @@ import { publicRuntimeEnvironment } from '@/runtime/paired-runtime-environment-t
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createRef, type ReactNode } from 'react'
+import { createRef, Profiler, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import { ConfirmationDialogContext } from '../confirmation-dialog-context'
 import { createTestStore, createBrowserMockApi } from '@/store/slices/browser-slice-test-harness'
 import type { AppState } from '@/store/types'
 import { createCompatibleRuntimeStatusResponse } from '@/runtime/runtime-compatibility-test-fixture'
+import type { GoogleCookieClearLocalTarget } from '../../../../shared/browser-google-cookie-clear'
 import type { BrowserCookieImportResult } from '../../../../shared/browser-workspace-types'
 
 let store: ReturnType<typeof createTestStore>
 const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
+  error: vi.fn(),
   confirm: vi.fn(),
   target: vi.fn(),
   clear: vi.fn(),
@@ -27,7 +29,9 @@ vi.mock('@/store', async () => {
     )
   }
 })
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: mocks.warning } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: mocks.error, warning: mocks.warning }
+}))
 vi.mock('../BrowserCookieImportMachineNotice', () => ({
   BrowserCookieImportMachineNotice: () => null
 }))
@@ -63,6 +67,9 @@ const { browserProfileRpcFixture } = await vi.importActual<{
 }>('../../../../main/runtime/browser/browser-profile-rpc-test-fixture')
 
 import { BrowserProfileRow } from './BrowserProfileRow'
+import { BrowserSessionCookiesSection } from './BrowserSessionCookiesSection'
+import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
+import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
 import { BrowserUseCookieImportStep } from './BrowserUseCookieImportStep'
 import { BrowserImportHintButton } from '../browser-pane/assemble-chrome/BrowserImportHintButton'
 import { BrowserToolbarMenu } from '../browser-pane/assemble-chrome/BrowserToolbarMenu'
@@ -87,7 +94,7 @@ const summary = {
   googleCookiesSkipped: 1,
   domains: []
 }
-const local = {
+const local: GoogleCookieClearLocalTarget = {
   profileId: 'default',
   partition: 'persist:B',
   environmentId: null,
@@ -96,8 +103,7 @@ const local = {
 const success: BrowserCookieImportResult = {
   ok: true,
   profileId: 'default',
-  summary,
-  googleCookieClearTarget: { local, label: '' }
+  summary
 }
 const environment = publicRuntimeEnvironment({
   id: 'server',
@@ -108,11 +114,9 @@ const environment = publicRuntimeEnvironment({
 
 let api: ReturnType<typeof createBrowserMockApi>
 function Surface({ name }: { name: string }) {
-  const hostId = useStore(store, (s) => s.browserSessionHostIdOverride ?? 'local')
   if (name === 'row') {
     return (
       <BrowserProfileRow
-        hostId={hostId}
         profile={profile}
         detectedBrowsers={[browser]}
         importState={null}
@@ -124,12 +128,14 @@ function Surface({ name }: { name: string }) {
   if (name === 'setup') {
     return (
       <BrowserUseCookieImportStep
-        hostId={hostId}
         cookiesImported={false}
         isImportingDefault={false}
         sourceLabel={null}
       />
     )
+  }
+  if (name === 'section') {
+    return <SessionSection />
   }
   if (name === 'hint') {
     return <BrowserImportHintButton profileId="default" />
@@ -148,6 +154,27 @@ function Surface({ name }: { name: string }) {
         deferUntilClose: vi.fn(),
         onMenuCloseAutoFocus: vi.fn()
       }}
+    />
+  )
+}
+function SessionSection() {
+  const hostId = useStore(store, (s) => s.browserSessionHostIdOverride ?? 'local')
+  const profiles = useStore(store, (s) => s.browserSessionProfiles)
+  return (
+    <BrowserSessionCookiesSection
+      selectedHostId={hostId}
+      defaultProfile={profiles.find((p) => p.id === 'default')}
+      nonDefaultProfiles={profiles.filter((p) => p.id !== 'default')}
+      detectedBrowsers={[browser]}
+      importState={null}
+      hostOptions={[
+        { id: 'local', label: 'This computer', detail: 'Local profiles' },
+        { id: 'runtime:server', label: 'Server', detail: 'Remote profiles' }
+      ]}
+      onAddProfile={() => {}}
+      onSelectHost={(host) => void store.getState().setBrowserSessionHostId(host)}
+      onSelectDefaultProfile={() => store.getState().setDefaultBrowserSessionProfileId(null)}
+      onSelectProfile={store.getState().setDefaultBrowserSessionProfileId}
     />
   )
 }
@@ -179,16 +206,16 @@ async function openImport(name: string) {
   }
   await screen.findByRole('menuitem', { name: 'From File…' })
 }
-function warningAction() {
-  const options = mocks.warning.mock.calls.findLast((call) => call[1]?.action)?.[1]
-  expect(options?.action.label).toBe('Clear Google cookies…')
-  return options.action.onClick
-}
 beforeEach(() => {
   vi.clearAllMocks()
   store = createTestStore()
   api = createBrowserMockApi(vi.fn())
-  mocks.target.mockResolvedValue({ ...local, partition: 'persist:A' })
+  mocks.target.mockImplementation(async ({ profileId, environmentId }) => ({
+    ...local,
+    profileId,
+    environmentId,
+    partition: `persist:${profileId}`
+  }))
   mocks.clear.mockResolvedValue('cleared')
   mocks.confirm.mockResolvedValue(true)
   api.browser.sessionListProfiles.mockResolvedValue([])
@@ -202,7 +229,10 @@ beforeEach(() => {
     settingsSearchQuery: '',
     runtimeEnvironments: [],
     runtimeStatusByEnvironmentId: new Map(),
-    browserSessionProfiles: [],
+    browserSessionProfiles: [
+      profile,
+      { ...profile, id: 'private', scope: 'isolated', label: 'Private' }
+    ],
     persistedUIReady: true,
     browserImportHintHidden: false,
     detectedBrowsers: [browser],
@@ -220,49 +250,24 @@ it.each(
   ['row', 'setup', 'hint', 'toolbar'].flatMap((name) =>
     ['browser', 'file'].map((source) => [name, source])
   )
-)(
-  '%s %s callback uses the successful B receipt, not pre-import A or later Settings',
-  async (name, source) => {
-    const imported = Promise.withResolvers<BrowserCookieImportResult>()
-    api.browser.sessionImportFromBrowser.mockReturnValue(imported.promise)
-    api.browser.sessionImportCookies.mockReturnValue(imported.promise)
-    mount(<Surface name={name} />)
-    await openImport(name)
-    expect(screen.getByText("Google logins aren't imported")).toBeTruthy()
-    expect(screen.getByText('Sign in to Google directly in Orca.')).toBeTruthy()
-    if (name === 'hint' || name === 'toolbar') {
-      expect(screen.queryByText('Clear Google cookies…')).toBeNull()
-    }
-    fireEvent.click(
-      screen.getByRole('menuitem', {
-        name: source === 'file' ? 'From File…' : 'From Google Chrome'
-      })
-    )
-    await act(async () => {
-      store.setState({ browserSessionHostIdOverride: 'runtime:other' })
-      imported.resolve(success)
+)('%s %s keeps imports and disclosure without a Google action', async (name, source) => {
+  api.browser.sessionImportFromBrowser.mockResolvedValue(success)
+  api.browser.sessionImportCookies.mockResolvedValue(success)
+  mount(<Surface name={name} />)
+  await openImport(name)
+  expect(screen.getByText("Google logins aren't imported")).toBeTruthy()
+  expect(screen.getByText('Sign in to Google directly in Orca.')).toBeTruthy()
+  expect(screen.queryByText('Clear Google cookies…')).toBeNull()
+  fireEvent.click(
+    screen.getByRole('menuitem', {
+      name: source === 'file' ? 'From File…' : 'From Google Chrome'
     })
-    act(() => store.setState({ browserSessionHostIdOverride: 'runtime:third' }))
-    mocks.confirm.mockResolvedValueOnce(false)
-    await act(async () => warningAction()())
-    expect(mocks.clear).not.toHaveBeenCalled()
-    const confirm = Promise.withResolvers<boolean>()
-    mocks.confirm.mockReturnValueOnce(confirm.promise)
-    act(() => {
-      warningAction()()
-      warningAction()()
-    })
-    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(2))
-    expect(mocks.clear).not.toHaveBeenCalled()
-    await act(async () => {
-      store.setState({ browserSessionHostIdOverride: 'local' })
-      confirm.resolve(true)
-    })
-    await waitFor(() => expect(mocks.clear).toHaveBeenCalledWith(local))
-    const calls = mocks.target.mock.calls.length
-    expect(name === 'hint' || name === 'toolbar' ? calls : 0).toBe(0)
-  }
-)
+  )
+  await waitFor(() => expect(mocks.warning).toHaveBeenCalled())
+  expect(mocks.warning.mock.calls.at(-1)?.[1]?.action).toBeUndefined()
+  expect(mocks.target).not.toHaveBeenCalled()
+  expect(mocks.confirm).not.toHaveBeenCalled()
+})
 
 it('canceled file import produces no warning', async () => {
   mount(<Surface name="row" />)
@@ -273,213 +278,219 @@ it('canceled file import produces no warning', async () => {
   expect(mocks.warning).not.toHaveBeenCalled()
 })
 
-it.each([10, 100])(
-  'real Zustand updates cause no irrelevant resolution at N=%i and panes have no eager work',
-  async (count) => {
-    replaceRuntimeEnvironmentRevisions([environment])
-    mocks.target.mockResolvedValue(null)
-    const status = createCompatibleRuntimeStatusResponse().result
-    store.setState({
-      browserSessionHostIdOverride: 'runtime:server',
-      runtimeEnvironments: [environment],
-      runtimeStatusByEnvironmentId: new Map([['server', { checkedAt: 1, status }]])
+it('places one Google section after the rows and clears the current Active profile', async () => {
+  mount(<SessionSection />)
+  const button = screen.getByRole('button', { name: 'Clear Google cookies…' })
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  expect(screen.getAllByText('Google sign-in')).toHaveLength(1)
+  expect(
+    screen.getByText('Google sign-in').compareDocumentPosition(screen.getByText('Private')) & 2
+  ).toBe(2)
+  await act(async () => fireEvent.click(button))
+  expect(mocks.clear).toHaveBeenLastCalledWith(
+    expect.objectContaining({ profileId: 'default', environmentId: null })
+  )
+  fireEvent.click(screen.getByRole('button', { name: /Private No cookies imported/ }))
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  await act(async () => fireEvent.click(button))
+  expect(mocks.clear).toHaveBeenLastCalledWith(
+    expect.objectContaining({ profileId: 'private', environmentId: null })
+  )
+  expect(mocks.confirm).toHaveBeenLastCalledWith(
+    expect.objectContaining({ title: 'Clear Google cookies from Private?' })
+  )
+})
+
+it('captures the selected Host and Active profile at press through delayed capture/confirmation, cancel and repeat', async () => {
+  store.setState({
+    browserSessionHostIdOverride: 'runtime:server',
+    defaultBrowserSessionProfileIdByHostId: { 'runtime:server': 'private' }
+  })
+  mount(<SessionSection />)
+  const button = screen.getByRole('button', { name: 'Clear Google cookies…' })
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  const captured = Promise.withResolvers<typeof local>()
+  mocks.target.mockReturnValueOnce(captured.promise)
+  const confirmation = Promise.withResolvers<boolean>()
+  mocks.confirm.mockReturnValueOnce(confirmation.promise)
+  fireEvent.click(button)
+  fireEvent.click(button)
+  expect(mocks.target).toHaveBeenLastCalledWith({ profileId: 'private', environmentId: 'server' })
+  await act(async () => {
+    store.setState({ browserSessionHostIdOverride: 'local', defaultBrowserSessionProfileId: null })
+    captured.resolve({
+      ...local,
+      profileId: 'private',
+      environmentId: 'server',
+      partition: 'persist:private'
     })
-    const dispatcher = browserProfileRpcFixture('B').dispatcher
-    api.runtimeEnvironments.call.mockImplementation(async (request: { method: string }) =>
-      request.method === 'status.get'
-        ? createCompatibleRuntimeStatusResponse()
-        : dispatcher.dispatch({ ...request, id: 'rpc', authToken: 'fixture' })
-    )
+  })
+  await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1))
+  expect(mocks.clear).not.toHaveBeenCalled()
+  await act(async () => confirmation.resolve(true))
+  expect(mocks.clear).toHaveBeenLastCalledWith(
+    expect.objectContaining({ profileId: 'private', environmentId: 'server' })
+  )
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  mocks.confirm.mockResolvedValueOnce(false)
+  await act(async () => fireEvent.click(button))
+  expect(mocks.clear).toHaveBeenCalledTimes(1)
+  await act(async () => fireEvent.click(button))
+  expect(mocks.clear).toHaveBeenLastCalledWith(
+    expect.objectContaining({ profileId: 'default', environmentId: null })
+  )
+  await act(async () => fireEvent.click(button))
+  expect(mocks.clear).toHaveBeenCalledTimes(3)
+})
+
+it.each([10, 100])(
+  'real Zustand updates cause no irrelevant section renders or IPC at N=%i',
+  async (count) => {
+    let renders = 0
     mount(
       <>
         {Array.from({ length: count }, (_, i) => (
-          <div key={i}>
-            <Surface name="row" />
-            <Surface name="hint" />
-            <Surface name="toolbar" />
-          </div>
+          <Profiler
+            key={i}
+            id={String(i)}
+            onRender={() => {
+              renders++
+            }}
+          >
+            <SessionSection />
+          </Profiler>
         ))}
       </>
     )
     await waitFor(() => expect(mocks.target).toHaveBeenCalledTimes(count))
+    await act(async () => {})
     mocks.target.mockClear()
-    expect(api.runtimeEnvironments.call).not.toHaveBeenCalled()
-    await act(async () => {
+    renders = 0
+    const status = createCompatibleRuntimeStatusResponse().result
+    await act(async () =>
       store.setState({
-        runtimeStatusByEnvironmentId: new Map(store.getState().runtimeStatusByEnvironmentId)
-          .set('unrelated', { checkedAt: 2, status })
-          .set('server', { checkedAt: 2, status: { ...status, liveTabCount: 99 } })
+        runtimeStatusByEnvironmentId: new Map([['unrelated', { checkedAt: 2, status }]])
       })
-    })
+    )
+    expect(renders).toBe(0)
     expect(mocks.target).not.toHaveBeenCalled()
     expect(api.runtimeEnvironments.call).not.toHaveBeenCalled()
-    await openImport('row')
-    await waitFor(() => expect(mocks.target).toHaveBeenCalledTimes(1))
-    await waitFor(() =>
-      expect(
-        api.runtimeEnvironments.call.mock.calls.filter(
-          ([request]) => request.method === 'browser.profileList'
-        )
-      ).toHaveLength(1)
-    )
+    await act(async () => store.getState().setDefaultBrowserSessionProfileId('private'))
+    expect(renders).toBeGreaterThan(0)
+    await waitFor(() => expect(mocks.target).toHaveBeenCalledTimes(count))
   }
 )
 
-import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
-import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
-it.each(['warning', 'menu', 'confirmation'])(
-  'retains %s authority across actual executor replacement and captures fresh provenance',
-  async (held) => {
-    replaceRuntimeEnvironmentRevisions([environment])
-    let executor = browserProfileRpcFixture('B').dispatcher
-    let rows = [{ name: 'SID', domain: '.google.com', path: '/', secure: true }]
-    const cookies = {
-      get: vi.fn(async () =>
-        rows.map((row) => ({ ...row, value: 'live', sameSite: 'unspecified' as const }))
-      ),
-      remove: vi.fn(async () => {
-        rows = []
-      })
-    }
-    mocks.fromPartition.mockReturnValue({ cookies })
-    let stamped = true
-    let repaired = false
-    const status = createCompatibleRuntimeStatusResponse('cached-A').result
-    store.setState({
-      browserSessionHostIdOverride: 'runtime:server',
-      runtimeEnvironments: [environment],
-      runtimeStatusByEnvironmentId: new Map([['server', { status, checkedAt: 1 }]])
+it('freezes actual executor provenance through confirmation, refuses replacement and captures fresh authority', async () => {
+  replaceRuntimeEnvironmentRevisions([environment])
+  let executor = browserProfileRpcFixture('B').dispatcher
+  let stamped = true
+  let changedPairing = false
+  let rows = [{ name: 'SID', domain: '.google.com', path: '/', secure: true }]
+  const cookies = {
+    get: vi.fn(async () =>
+      rows.map((row) => ({ ...row, value: 'live', sameSite: 'unspecified' as const }))
+    ),
+    remove: vi.fn(async () => {
+      rows = []
     })
-    mocks.target.mockResolvedValue(null)
-    api.runtimeEnvironments.call.mockImplementation(
-      async (request: { method: string; params?: Record<string, unknown> }) => {
-        if (repaired && request.method === 'browser.profileImportFromBrowser') {
-          store.setState({ runtimeEnvironments: [{ ...environment, pairingRevision: 8 }] })
-        }
-        if (request.method === 'status.get') {
-          return { id: 'status', ok: true, result: status }
-        }
-        const response = await executor.dispatch({ ...request, id: 'rpc', authToken: 'fixture' })
-        if (response.ok) {
-          expect(response._meta?.runtimeId).toBe('D')
-        }
-        if (response.ok && !stamped && response.result && typeof response.result === 'object') {
+  }
+  mocks.fromPartition.mockReturnValue({ cookies })
+  const status = createCompatibleRuntimeStatusResponse('cached-A').result
+  store.setState({
+    browserSessionHostIdOverride: 'runtime:server',
+    runtimeEnvironments: [environment],
+    runtimeStatusByEnvironmentId: new Map([['server', { status, checkedAt: 1 }]])
+  })
+  mocks.target.mockResolvedValue(null)
+  api.runtimeEnvironments.call.mockImplementation(
+    async (request: { method: string; params?: Record<string, unknown> }) => {
+      if (request.method === 'status.get') {
+        return { id: 'status', ok: true, result: status }
+      }
+      const response = await executor.dispatch({ ...request, id: 'rpc', authToken: 'fixture' })
+      if (response.ok) {
+        expect(response._meta?.runtimeId).toBe('D')
+      }
+      if (response.ok && request.method === 'browser.profileList') {
+        if (!stamped && response.result && typeof response.result === 'object') {
           Reflect.deleteProperty(response.result, 'executorRuntimeId')
         }
-        return response
+        if (changedPairing) {
+          replaceRuntimeEnvironmentRevisions([{ ...environment, pairingRevision: 8 }])
+          store.setState({ runtimeEnvironments: [{ ...environment, pairingRevision: 8 }] })
+        }
       }
-    )
-    mount(<Surface name="row" />)
-    await openImport('row')
-    fireEvent.click(screen.getByText('From Google Chrome'))
-    await waitFor(() => expect(mocks.warning).toHaveBeenCalled())
+      return response
+    }
+  )
+  mount(<SessionSection />)
+  const button = screen.getByRole('button', { name: 'Clear Google cookies…' })
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  const confirmation = Promise.withResolvers<boolean>()
+  mocks.confirm.mockReturnValueOnce(confirmation.promise)
+  fireEvent.click(button)
+  await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1))
+  executor = browserProfileRpcFixture('C').dispatcher
+  await act(async () => confirmation.resolve(true))
+  await waitFor(() =>
     expect(api.runtimeEnvironments.call).toHaveBeenCalledWith(
       expect.objectContaining({
-        method: 'browser.profileImportFromBrowser',
-        params: {
-          profileId: 'default',
-          browserFamily: 'chrome',
-          browserProfile: undefined,
-          supportsPartitionSkippedCookies: true
-        },
+        method: 'browser.profileClearGoogleCookies',
+        params: { profileId: 'default', executorRuntimeId: 'B' },
         expectedEnvironmentPairingRevision: 7
       })
     )
-    const oldWarning = warningAction()
-    if (held === 'warning') {
-      act(() => oldWarning())
-      await waitFor(() => expect(cookies.get).toHaveBeenCalledTimes(2))
-      expect(cookies.remove).toHaveBeenCalledTimes(1)
-      rows = [{ name: 'SID', domain: '.google.com', path: '/', secure: true }]
-      cookies.remove.mockClear()
-      api.runtimeEnvironments.call.mockClear()
-    }
-    const confirmation = Promise.withResolvers<boolean>()
-    if (held === 'menu') {
-      await openImport('row')
-      await waitFor(() =>
-        expect(screen.getByText('Clear Google cookies…').hasAttribute('data-disabled')).toBe(false)
-      )
-    }
-    if (held === 'confirmation') {
-      mocks.confirm.mockReturnValueOnce(confirmation.promise)
-      act(() => oldWarning())
-      await waitFor(() => expect(mocks.confirm).toHaveBeenCalled())
-    }
-    executor = browserProfileRpcFixture('C').dispatcher
-    cookies.get.mockClear()
-    if (held === 'menu') {
-      fireEvent.click(screen.getByText('Clear Google cookies…'))
-    } else if (held === 'warning') {
-      act(() => oldWarning())
-    } else {
-      await act(async () => confirmation.resolve(true))
-    }
-    await waitFor(() =>
-      expect(api.runtimeEnvironments.call).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'browser.profileClearGoogleCookies',
-          params: { profileId: 'default', executorRuntimeId: 'B' },
-          expectedEnvironmentPairingRevision: 7,
-          expectedEnvironmentRuntimeId: undefined
-        })
-      )
-    )
-    expect(cookies.get).not.toHaveBeenCalled()
-    expect(mocks.clear).not.toHaveBeenCalled()
-    await openImport('row')
-    const menu = await screen.findByRole('menuitem', { name: 'Clear Google cookies…' })
-    await waitFor(() => expect(menu.hasAttribute('data-disabled')).toBe(false))
-    fireEvent.click(menu)
-    await waitFor(() =>
-      expect(api.runtimeEnvironments.call).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'browser.profileClearGoogleCookies',
-          params: { profileId: 'default', executorRuntimeId: 'C' }
-        })
-      )
-    )
-    await waitFor(() => expect(cookies.get).toHaveBeenCalledTimes(2))
-    await openImport('row')
-    const repeat = await screen.findByRole('menuitem', { name: 'Clear Google cookies…' })
-    await waitFor(() => expect(repeat.hasAttribute('data-disabled')).toBe(false))
-    fireEvent.click(repeat)
-    await waitFor(() => expect(cookies.get).toHaveBeenCalledTimes(3))
-    for (const mode of ['missing stamp', 'old daemon', 'unknown R', 'changed R']) {
-      stamped = mode !== 'missing stamp'
-      repaired = mode === 'changed R'
-      replaceRuntimeEnvironmentRevisions(mode === 'unknown R' ? [] : [environment])
-      act(() =>
-        store.setState({
-          runtimeEnvironments: [environment],
-          runtimeStatusByEnvironmentId: new Map([
-            [
-              'server',
-              {
-                checkedAt: 1,
-                status: {
-                  ...status,
-                  capabilities: mode === 'old daemon' ? [] : status.capabilities
-                }
+  )
+  expect(cookies.get).not.toHaveBeenCalled()
+  expect(mocks.clear).not.toHaveBeenCalled()
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  fireEvent.click(button)
+  await waitFor(() => expect(cookies.remove).toHaveBeenCalledTimes(1))
+  expect(api.runtimeEnvironments.call).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      method: 'browser.profileClearGoogleCookies',
+      params: { profileId: 'default', executorRuntimeId: 'C' }
+    })
+  )
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+  fireEvent.click(button)
+  await waitFor(() => expect(cookies.get).toHaveBeenCalledTimes(3))
+  for (const mode of ['missing stamp', 'old daemon', 'unknown R', 'changed R']) {
+    stamped = mode !== 'missing stamp'
+    changedPairing = mode === 'changed R'
+    replaceRuntimeEnvironmentRevisions(mode === 'unknown R' ? [] : [environment])
+    act(() =>
+      store.setState({
+        runtimeEnvironments: [environment],
+        runtimeStatusByEnvironmentId: new Map([
+          [
+            'server',
+            {
+              checkedAt: 2,
+              status: {
+                ...status,
+                capabilities: mode === 'old daemon' ? [] : status.capabilities
               }
-            ]
-          ])
-        })
-      )
-      mocks.warning.mockClear()
-      await openImport('row')
-      if (mode === 'missing stamp') {
-        await waitFor(() => expect(screen.queryByText('Clear Google cookies…')).toBeNull())
-      }
-      fireEvent.click(screen.getByText('From Google Chrome'))
-      await waitFor(() => expect(mocks.warning).toHaveBeenCalled())
-      expect(mocks.warning.mock.calls.at(-1)?.[1].action).toBeUndefined()
+            }
+          ]
+        ])
+      })
+    )
+    await waitFor(() => expect(button.hasAttribute('disabled')).toBe(mode === 'old daemon'))
+    const confirms = mocks.confirm.mock.calls.length
+    if (mode !== 'old daemon') {
+      fireEvent.click(button)
+      await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
     }
+    expect(mocks.confirm).toHaveBeenCalledTimes(confirms)
+    expect(cookies.get).toHaveBeenCalledTimes(3)
+    expect(cookies.remove).toHaveBeenCalledTimes(1)
   }
-)
+})
 
 it.each(['same host', 'changed host', 'changed pairing'])(
-  'keeps operation provenance through overlapping overlay: %s',
+  'keeps pressed-target provenance through overlapping list overlay: %s',
   async (change) => {
     replaceRuntimeEnvironmentRevisions([environment])
     const status = createCompatibleRuntimeStatusResponse().result
@@ -504,51 +515,43 @@ it.each(['same host', 'changed host', 'changed pairing'])(
     const overlay = Promise.withResolvers<Record<string, never>>()
     const overlayReader = vi.fn().mockReturnValueOnce(overlay.promise).mockResolvedValue({})
     Object.assign(api.browser, { sessionClientRouteImportSources: overlayReader })
-    mount(<Surface name="row" />)
-    await openImport('row')
+    mount(<SessionSection />)
+    const button = screen.getByRole('button', { name: 'Clear Google cookies…' })
+    await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false))
+    fireEvent.click(button)
     await waitFor(() => expect(overlayReader).toHaveBeenCalledTimes(1))
     await act(async () => {
       await store.getState().fetchBrowserSessionProfiles('runtime:server')
     })
     if (change === 'changed pairing') {
       replaceRuntimeEnvironmentRevisions([{ ...environment, pairingRevision: 8 }])
+      act(() => store.setState({ runtimeEnvironments: [{ ...environment, pairingRevision: 8 }] }))
+    } else if (change === 'changed host') {
+      act(() => store.setState({ browserSessionHostIdOverride: 'local' }))
     }
-    if (change !== 'same host') {
-      act(() =>
-        store.setState(
-          change === 'changed host'
-            ? { browserSessionHostIdOverride: 'local' }
-            : { runtimeEnvironments: [{ ...environment, pairingRevision: 8 }] }
-        )
-      )
-    }
-    await act(async () => {
-      overlay.resolve({})
-    })
+    await act(async () => overlay.resolve({}))
     expect(store.getState().browserSessionProfilesByHostId['runtime:server']).toHaveLength(2)
-    if (change !== 'changed host') {
-      const menu = await screen.findByRole('menuitem', { name: 'Clear Google cookies…' })
-      await waitFor(() => expect(menu.hasAttribute('data-disabled')).toBe(false))
-      fireEvent.click(menu)
-      await waitFor(() =>
-        expect(api.runtimeEnvironments.call).toHaveBeenCalledWith(
-          expect.objectContaining({
-            method: 'browser.profileClearGoogleCookies',
-            params: {
-              profileId: 'default',
-              executorRuntimeId: change === 'same host' ? 'S1' : 'S2'
-            },
-            expectedEnvironmentPairingRevision: change === 'same host' ? 7 : 8
-          })
-        )
-      )
+    const clears = api.runtimeEnvironments.call.mock.calls.filter(
+      ([request]) => request.method === 'browser.profileClearGoogleCookies'
+    )
+    if (change === 'changed pairing') {
+      expect(clears).toHaveLength(0)
+      expect(mocks.confirm).not.toHaveBeenCalled()
     } else {
-      await waitFor(() => expect(screen.queryByText('Clear Google cookies…')).toBeNull())
+      await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1))
+      expect(clears).toEqual([
+        [
+          expect.objectContaining({
+            params: { profileId: 'default', executorRuntimeId: 'S1' },
+            expectedEnvironmentPairingRevision: 7
+          })
+        ]
+      ])
     }
     expect(
       api.runtimeEnvironments.call.mock.calls.filter(
         ([request]) => request.method === 'browser.profileList'
       )
-    ).toHaveLength(change === 'changed pairing' ? 3 : 2)
+    ).toHaveLength(2)
   }
 )

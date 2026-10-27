@@ -53,31 +53,6 @@ export function createBrowserCookieImportActions(
               { profileId, browserFamily, browserProfile, supportsPartitionSkippedCookies: true },
               { timeoutMs: 30_000, expectedEnvironmentPairingRevision: pairingRevision }
             ))
-          const retained = retainCookieImportExecutionHost(
-            ranOnClient || !result.ok
-              ? result
-              : {
-                  ok: true,
-                  profileId: result.profileId,
-                  summary: result.summary
-                },
-            hostId,
-            executionHostLabel,
-            ranOnClient ? 'client' : 'remote'
-          )
-          if (
-            !ranOnClient &&
-            result.ok &&
-            result.executorRuntimeId &&
-            typeof pairingRevision === 'number'
-          ) {
-            retained.googleCookieClearRemoteTarget = {
-              environmentId: runtimeEnvironmentId,
-              pairingRevision,
-              executorRuntimeId: result.executorRuntimeId,
-              profileId: result.profileId
-            }
-          }
           if (result.ok) {
             set((state) =>
               browserImportStateForHostUpdate(state, hostId, {
@@ -102,7 +77,12 @@ export function createBrowserCookieImportActions(
               })
             )
           }
-          return retained
+          return retainCookieImportExecutionHost(
+            result,
+            hostId,
+            executionHostLabel,
+            ranOnClient ? 'client' : 'remote'
+          )
         } catch (err) {
           const reason = String((err as Error)?.message ?? err)
           set((state) =>
