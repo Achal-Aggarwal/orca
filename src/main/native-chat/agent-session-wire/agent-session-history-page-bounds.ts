@@ -1,4 +1,3 @@
-import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionHistoryDirection,
   AgentSessionSubagentRosterEntry
@@ -12,6 +11,7 @@ import {
   boundJournalKeyComponent
 } from '../../../shared/agent-session-journal-item-key'
 import type {
+  AgentJournalCursor,
   AgentJournalRenderItem,
   AgentJournalSnapshot,
   AgentJournalSubmission
