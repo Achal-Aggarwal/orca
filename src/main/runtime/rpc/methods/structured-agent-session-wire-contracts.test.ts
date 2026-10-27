@@ -42,6 +42,7 @@ import {
   hostTestOperationId
 } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { holdDelivery } from '../../../native-chat/agent-session-wire/structured-agent-session-delivery-hold.test-fixture'
+import { queuedImageHistoryReader } from './structured-agent-session-queued-image-capability'
 
 beforeEach(installStructuredHostStub)
 afterEach(clearStructuredHostStub)
@@ -86,7 +87,12 @@ it.each([
   const request = { sessionId: SESSION, direction: 'after', cursor: { epoch: 'e', sequence: 1 } }
   await call('agentSession.history', request, client)
   const replaceHistory = snapshot && input?.readsCurrentRequests === true
-  expect(hostCalls.history).toHaveBeenCalledWith(request, undefined, replaceHistory)
+  expect(hostCalls.history).toHaveBeenCalledWith(
+    request,
+    undefined,
+    queuedImageHistoryReader(client ?? {}),
+    replaceHistory
+  )
 })
 
 it('allows the local desktop renderer to replace a missed gap with a snapshot', async () => {
@@ -464,7 +470,7 @@ describe('agentSession.send reply timing', () => {
       { envelope: rig.envelope({ body }, 'agentSession.send', id), body },
       {
         ...STRUCTURED_CLIENT,
-        clientCapabilities: STRUCTURED_CLIENT.clientCapabilities.filter(
+        clientCapabilities: Array.from<string>(STRUCTURED_CLIENT.clientCapabilities).filter(
           (capability) =>
             capability !== AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY &&
             capability !== AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY

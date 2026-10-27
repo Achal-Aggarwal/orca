@@ -177,7 +177,7 @@ describe('readAgentSessionHistory', () => {
     const appended = await journal.appendItem(
       item(5),
       body('after boundary'),
-      { fence: 1 },
+      { fence: 1, turnScope: { kind: 'thread' } },
       {
         write: (_db, row) => {
           appendedReceipt = { epoch: row!.epoch, sequence: row!.seq }

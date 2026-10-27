@@ -150,12 +150,12 @@ describe('Codex chat catch-up', () => {
       await c.journal.appendItem(
         { provider: 'codex', threadId: THREAD, turnId: `turn-${n}`, ordinal: 0 },
         { kind: 'turn', turnId: `turn-${n}`, state: 'completed' },
-        { fence: 1 }
+        { fence: 1, turnScope: { kind: 'thread' } }
       )
       await c.journal.appendItem(
         { provider: 'codex', threadId: THREAD, turnId: `turn-${n}`, ordinal: 1 },
         { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `answer ${n}` }] },
-        { fence: 1 }
+        { fence: 1, turnScope: { kind: 'thread' } }
       )
     }
     const proof = (id: string) => ({
@@ -188,7 +188,10 @@ describe('Codex chat catch-up', () => {
     const settled: string[] = []
     const onReceipt = async (
       clientMessageId: string,
-      providerIdentity: Parameters<typeof c.journal.resolveDispatch>[0]['providerIdentity']
+      providerIdentity: Extract<
+        Parameters<typeof c.journal.resolveDispatch>[0],
+        { state: 'accepted' }
+      >['providerIdentity']
     ) => {
       settled.push(clientMessageId)
       await c.journal.resolveDispatch({
@@ -434,7 +437,7 @@ describe('Codex chat catch-up', () => {
       await c.journal.appendItem(
         { provider: 'codex', threadId: THREAD, turnId: 'turn-0', ordinal: 0 },
         { kind: 'turn', turnId: 'turn-0', state: 'completed' },
-        { fence: 1 }
+        { fence: 1, turnScope: { kind: 'thread' } }
       )
       await c.open([known], {
         connection: {

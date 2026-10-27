@@ -60,7 +60,7 @@ export function registerCodexCatchUpEchoTests(input: {
         await c.journal.appendItem(
           { provider: 'codex', threadId: THREAD, turnId: `turn-${i}`, ordinal: 0 },
           { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'saved' }] },
-          { fence: 1 }
+          { fence: 1, turnScope: { kind: 'thread' } }
         )
         turns.push({ ...turn(i), items: [] })
       }
@@ -74,6 +74,7 @@ export function registerCodexCatchUpEchoTests(input: {
           }
           yield value
         }
+        return undefined
       }
       try {
         await c.open([], { returnedTurns: turns, paginate: false })
@@ -321,7 +322,7 @@ export function registerCodexCatchUpEchoTests(input: {
     await c.journal.appendItem(
       detailIdentity,
       { kind: 'tool-call', name: 'terminal', input: { command: 'pwd' }, state: 'running' },
-      { fence: 1 }
+      { fence: 1, turnScope: { kind: 'thread' } }
     )
     current.items.push({
       type: 'commandExecution',

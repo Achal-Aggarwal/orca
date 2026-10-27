@@ -489,7 +489,10 @@ export function registerJournalStoreTests(): void {
       })
       await earlier.appendSubmission(submission('earlier'))
       for (let i = 0; i < 10; i++) {
-        await earlier.appendItem(item(1), body(String(i)), { fence: 1 })
+        await earlier.appendItem(item(1), body(String(i)), {
+          fence: 1,
+          turnScope: { kind: 'thread' }
+        })
       }
       await earlier.close()
 

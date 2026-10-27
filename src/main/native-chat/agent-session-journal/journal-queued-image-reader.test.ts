@@ -329,7 +329,7 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
       await journal.appendItem(
         { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId },
         { kind: 'status', text: recordId },
-        { fence: 7 }
+        { fence: 7, turnScope: { kind: 'thread' } }
       )
     }
     for (let i = 0; i < n; i++) {
@@ -470,7 +470,7 @@ it('projects a still-active cut source before stateless and middle-page catch-up
     await journal.appendItem(
       { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId: `later-${i}` },
       { kind: 'status', text: `later-${i}` },
-      { fence: 7 }
+      { fence: 7, turnScope: { kind: 'thread' } }
     )
   }
   const reader = queuedImageHistoryReader({ clientKind: 'mobile' })!
@@ -582,7 +582,7 @@ it('keeps proven unwritten input waiting after both old-process hold writes fail
     getConversation: () => agentSessionConversationView(agentSessionRecordFixture(lease)),
     replacedRuntime: () => undefined
   }
-  const session = { journal }
+  const session = { journal, child: null }
   bindStructuredAgentSessionRecoveryWork(store, identity.sessionId, session)
   const current = () =>
     heldStructuredAgentSessionCurrentWork(store, identity.sessionId, journal, session)

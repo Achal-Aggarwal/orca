@@ -248,7 +248,7 @@ export async function applyStructuredRewindRecovery(
           completed.providerFork.sessionId,
           completed.providerFork.resumeCursor ?? null
         )
-      : agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle
+      : (agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle ?? null)
     await journal.replaceEpochItems(
       'handle_forked',
       fence,

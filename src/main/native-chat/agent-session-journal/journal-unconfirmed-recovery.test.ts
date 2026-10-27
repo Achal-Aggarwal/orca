@@ -8,7 +8,10 @@ import {
   type AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import * as records from '../../../shared/agent-session-record.test-fixture'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import {
+  agentSessionJournalProviderHandle,
+  codexProviderHandle
+} from '../../../shared/agent-session-provider-handle-encoding'
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { nextSendableQueuedCard } from './queued-message-pause'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
@@ -216,7 +219,7 @@ it('keeps one actionable copy, adopts only a person’s action, and never duplic
   await journal.appendItem(
     { provider: 'codex', threadId: 'thread', turnId: 'implicit', ordinal: 0 },
     body('carrier'),
-    { fence: 7 }
+    { fence: 7, turnScope: { kind: 'thread' } }
   )
   expect(journal.submission('carrier')?.dispatchState).toBe('accepted')
   await journal.replaceEpochItems('handle_forked', 7, [])
@@ -514,7 +517,7 @@ it('does not end observation from warnings, retry errors or another attempt’s 
           payload: { head: payload, byteLength: payload.length, digest: '', truncated: false }
         }
       },
-      { fence: 7 }
+      { fence: 7, turnScope: { kind: 'thread' } }
     )
   }
   await journal.appendItem(
@@ -525,7 +528,7 @@ it('does not end observation from warnings, retry errors or another attempt’s 
       state: 'completed',
       userItemId: agentJournalSubmissionKey('other-input')
     },
-    { fence: 7 }
+    { fence: 7, turnScope: { kind: 'thread' } }
   )
   expect(journal.queuedMessages.attemptEnded('U')).toBe(false)
   expect(journal.queuedMessages.get(cardId('U'))).toBeNull()
@@ -561,7 +564,7 @@ it('keeps U actions and barrier through later V and a starting child; only first
   await journal.appendItem(
     { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId: 'turn-lifecycle:V' },
     { kind: 'turn', turnId: 'V', state: 'running' },
-    { fence: 7 }
+    { fence: 7, turnScope: { kind: 'thread' } }
   )
   deferFirstRecoveryPresentation(journal, child)
   expect(readQueuePublication(journal, gate).queuedMessages.map((c) => c.messageId)).toContain(
@@ -588,7 +591,7 @@ it.each([100, 1000])(
         kind: 'submission',
         clientMessageId: `old-${i}`,
         payloadFingerprint: 'old',
-        providerHandle: codexProviderHandle('thread'),
+        providerHandle: agentSessionJournalProviderHandle(identity),
         body: body('old'),
         ...base()
       })
@@ -618,24 +621,21 @@ it.each([100, 1000])(
     let visits = 0
     const sends = state.submissions.values.bind(state.submissions)
     const cards = state.queue.cards.values.bind(state.queue.cards)
-    vi.spyOn(state.submissions, 'values').mockImplementation(function* () {
-      for (const v of sends()) {
+    function* counted<T>(values: Iterable<T>) {
+      for (const value of values) {
         visits++
-        yield v
+        yield value
       }
-    })
-    vi.spyOn(state.queue.cards, 'values').mockImplementation(function* () {
-      for (const v of cards()) {
-        visits++
-        yield v
-      }
-    })
+      return undefined
+    }
+    vi.spyOn(state.submissions, 'values').mockImplementation(() => counted(sends()))
+    vi.spyOn(state.queue.cards, 'values').mockImplementation(() => counted(cards()))
     const key = journal.queuedMessages.revision()
     for (let i = 0; i < 10; i++) {
       await journal.appendItem(
         { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId: 'stream' },
         { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: String(i) }] },
-        { fence: 7 }
+        { fence: 7, turnScope: { kind: 'thread' } }
       )
       readQueuePublication(journal, gate)
     }
@@ -670,7 +670,7 @@ it.each([100, 1000])(
     await journal.appendItem(
       structuredAgentSessionCommandTurnIdentity('command-send'),
       { kind: 'turn', turnId: 'compact:command-send', state: 'completed' },
-      { fence: 7 }
+      { fence: 7, turnScope: { kind: 'thread' } }
     )
     expect(state.queue.cards.get('command')?.state).toBe('withdrawn')
   }

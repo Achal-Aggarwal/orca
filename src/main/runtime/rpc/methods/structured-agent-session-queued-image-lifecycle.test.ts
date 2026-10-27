@@ -3,12 +3,9 @@ import {
   EMPTY_STRUCTURED_AGENT_SESSION
 } from '../../../../shared/structured-agent-session-reducer'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
-import { mobileQueuedMessageCards } from '../../../../../mobile/src/session/mobile-structured-queued-message-cards'
-import { buildMobileNativeChatTransientData } from '../../../../../mobile/src/session/mobile-native-chat-render-data'
-import { isRenderableImageUri } from '../../../../../mobile/src/session/mobile-native-chat-image-preview'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -30,12 +27,39 @@ import {
   queuedImageHistoryReader,
   projectQueuedImageCardHistory
 } from './structured-agent-session-queued-image-capability'
-import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
 import type {
+  AgentJournalSubmission,
+  AgentJournalMessageItem
+} from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentSessionQueuedMessage,
   AgentSessionHistoryRequest,
   AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+
+// Load the real phone readers at runtime; their RN ambient types belong to the mobile compiler.
+const { mobileQueuedMessageCards } = await vi.importActual<{
+  mobileQueuedMessageCards: (
+    cards: readonly AgentSessionQueuedMessage[] | null,
+    submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
+    facts?: { agentWorking?: boolean }
+  ) => unknown[]
+}>('../../../../../mobile/src/session/mobile-structured-queued-message-cards')
+const { buildMobileNativeChatTransientData } = await vi.importActual<{
+  buildMobileNativeChatTransientData: (input: {
+    messages: NativeChatMessage[]
+    folded: NativeChatMessage[]
+    streaming: string | null
+    pending: []
+    imagePreviewsByMessageId: Record<string, string[]>
+  }) => { data: NativeChatMessage[] }
+}>('../../../../../mobile/src/session/mobile-native-chat-render-data')
+const { isRenderableImageUri } = await vi.importActual<{
+  isRenderableImageUri: (uri: string | undefined) => boolean
+}>('../../../../../mobile/src/session/mobile-native-chat-image-preview')
 
 const OLD = { ...STRUCTURED_MOBILE_CLIENT, clientId: 'old-phone', connectionId: 'old-phone' }
 const MODERN = {
@@ -246,7 +270,7 @@ it('keeps a hidden original pageable beyond1024 rows and preserves edited recove
     await j.appendItem(
       { provider: 'legacy', agent: 'codex', sessionId: 'history', recordId: `row-${i}` },
       { kind: 'status', text: `${i}` },
-      { fence }
+      { fence, turnScope: { kind: 'thread' } }
     )
   }
   const tail = await history()
@@ -478,7 +502,7 @@ it.each([false, true])(
         (item) => item.id === agentJournalSubmissionKey(presentedId)
       )
     ).toBe(false)
-    expect(mobileQueuedMessageCards(live.queuedMessages, live.submissions)).toMatchObject([
+    expect(mobileQueuedMessageCards(live.queuedMessages ?? null, live.submissions)).toMatchObject([
       { messageId: card.messageId, command: true, text: expect.stringContaining('edited original') }
     ])
     expect(journal().submissionBody(presentedId)).toEqual(body)

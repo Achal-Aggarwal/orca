@@ -38,6 +38,7 @@ import {
   type StructuredAgentSessionStartupAttempt
 } from './structured-agent-session-startup-attempt-contract'
 import {
+  type AgentSessionCreatePhaseRecorder,
   addAgentSessionCreatePhaseAttributes,
   withAgentSessionCreatePhase,
   withAgentSessionSpan

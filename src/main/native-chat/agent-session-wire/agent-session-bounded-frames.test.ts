@@ -153,8 +153,14 @@ describe('frames to a bounded-frame subscriber', () => {
   it('uses one reader source before paging, hydration, replay and reset without changing other readers', async () => {
     const first = identity()
     const secret = identity()
-    await journal.appendItem(first, message('visible source'), { fence: 1 })
-    await journal.appendItem(secret, message('hidden source'), { fence: 1 })
+    await journal.appendItem(first, message('visible source'), {
+      fence: 1,
+      turnScope: { kind: 'thread' }
+    })
+    await journal.appendItem(secret, message('hidden source'), {
+      fence: 1,
+      turnScope: { kind: 'thread' }
+    })
     const hidden = agentJournalItemKey(secret)
     const reader: HistoryReader = {
       ...CLIENT_HISTORY_READER,
@@ -206,7 +212,10 @@ describe('frames to a bounded-frame subscriber', () => {
     expect(initial?.type === 'snapshot' && initial.page.items.map((row) => row.itemId)).toEqual([
       agentJournalItemKey(first)
     ])
-    await journal.appendItem(secret, message('changed hidden source'), { fence: 1 })
+    await journal.appendItem(secret, message('changed hidden source'), {
+      fence: 1,
+      turnScope: { kind: 'thread' }
+    })
     subscribers.publish(SESSION, journal)
     const update = projected.at(-1)
     expect(update?.type === 'batch' && update.batch.removedItemIds).toContain(hidden)
