@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../shared/worktree/types'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import WorktreeContextMenu from './WorktreeContextMenu'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
+import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -63,7 +65,10 @@ type StatusMenuCapture = {
   contextWorkspaceStatus: string
   workspaceStatuses: readonly WorkspaceStatusDefinition[]
 }
-const statusMenu = vi.hoisted(() => ({ current: null as StatusMenuCapture | null }))
+const statusMenu = vi.hoisted(() => {
+  const capture: { current: StatusMenuCapture | null } = { current: null }
+  return capture
+})
 vi.mock('./WorktreeStatusMenuItems', () => ({
   WorktreeStatusMenuItems: (props: StatusMenuCapture) => {
     statusMenu.current = props
@@ -107,17 +112,17 @@ function openMenu(worktree: Worktree): void {
 
 describe('WorktreeContextMenu Move to Status for a paired host card', () => {
   it("offers the host's own column and marks it current instead of the default", () => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the menu reads only the fields set here.
-    openMenu({
-      id: 'repo::wt-1',
-      repoId: 'repo',
-      hostId: 'runtime:env-1',
-      displayName: 'Today',
-      branch: 'refs/heads/today',
-      path: '/today',
-      isMainWorktree: false,
-      workspaceStatus: 'status-6'
-    } as unknown as Worktree)
+    openMenu(
+      makeWorktree({
+        id: 'repo::wt-1',
+        repoId: 'repo',
+        hostId: toRuntimeExecutionHostId('env-1'),
+        displayName: 'Today',
+        branch: 'refs/heads/today',
+        path: '/today',
+        workspaceStatus: 'status-6'
+      })
+    )
 
     expect(statusMenu.current?.workspaceStatuses.map((status) => status.id)).toEqual([
       'in-progress',

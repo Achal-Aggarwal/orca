@@ -101,6 +101,7 @@ export type UISlicePreferences = {
   /** Each paired runtime host's own columns, keyed by environment id; never persisted locally. */
   hostWorkspaceStatuses: Readonly<Record<string, readonly WorkspaceStatusDefinition[]>>
   fetchHostWorkspaceStatuses: (environmentId: string) => Promise<void>
+  clearHostWorkspaceStatuses: (environmentIds: readonly string[]) => void
   workspaceBoardOpacity: number
   setWorkspaceBoardOpacity: (opacity: number) => void
   workspaceBoardColumnWidth: number

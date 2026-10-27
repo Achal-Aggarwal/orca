@@ -11,6 +11,7 @@ import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
 import WorkspaceKanbanDrawer from './WorkspaceKanbanDrawer'
 import type { WorkspaceKanbanLaneView } from './workspace-kanban-search'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 
 type GridCapture = {
   statuses: readonly WorkspaceStatusDefinition[]
@@ -22,12 +23,13 @@ type HeaderCapture = {
   onRemoveStatus: (statusId: string) => void
 }
 
-const { gridState, headerState } = vi.hoisted(() => ({
-  gridState: { current: null as GridCapture | null },
-  headerState: { current: null as HeaderCapture | null }
-}))
+const { gridState, headerState } = vi.hoisted(() => {
+  const grid: { current: GridCapture | null } = { current: null }
+  const header: { current: HeaderCapture | null } = { current: null }
+  return { gridState: grid, headerState: header }
+})
 
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), warning: vi.fn() } }))
 vi.mock('@/components/ui/sheet', () => ({
@@ -69,28 +71,31 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', () => ({
 }))
 vi.mock('./use-workspace-status-drop', () => ({ useWorkspaceStatusDocumentDrop: vi.fn() }))
 
-const hostCard = {
+const hostCard = makeWorktree({
   id: 'repo-r::/today',
   repoId: 'repo-r',
   hostId: toRuntimeExecutionHostId('env-1'),
   displayName: 'Today',
   path: '/today',
   branch: 'feature/today',
-  isPinned: false,
   sortOrder: 1,
   manualOrder: 1,
   lastActivityAt: 1,
   workspaceStatus: 'status-6'
-} as unknown as Worktree
+})
 
-const localCard = {
+const localCard = makeWorktree({
   ...hostCard,
   id: 'repo-l::/local',
   repoId: 'repo-l',
   hostId: undefined,
   path: '/local',
   workspaceStatus: 'in-progress'
-} as unknown as Worktree
+})
+
+function makeRepo(id: string): Repo {
+  return { id, path: `/${id}`, displayName: id, badgeColor: '#999999', addedAt: 1 }
+}
 
 let container: HTMLDivElement
 let root: Root
@@ -106,10 +111,7 @@ beforeEach(() => {
   updateWorktreeMeta = vi.fn<AppState['updateWorktreeMeta']>(() => Promise.resolve({ ok: true }))
   setWorkspaceStatuses = vi.fn<(statuses: WorkspaceStatusDefinition[]) => void>()
   useAppStore.setState({
-    repos: [
-      { id: 'repo-r', path: '/repo-r', name: 'repo-r' } as unknown as Repo,
-      { id: 'repo-l', path: '/repo-l', name: 'repo-l' } as unknown as Repo
-    ],
+    repos: [makeRepo('repo-r'), makeRepo('repo-l')],
     worktreesByRepo: { 'repo-r': [hostCard], 'repo-l': [localCard] },
     updateWorktreeMeta,
     setWorkspaceStatuses,
@@ -199,7 +201,7 @@ describe('WorkspaceKanbanDrawer paired host columns', () => {
 
     act(() => headerState.current?.onAddStatus())
 
-    const added = setWorkspaceStatuses.mock.calls[0]?.[0] as WorkspaceStatusDefinition[]
+    const added = setWorkspaceStatuses.mock.calls[0]?.[0] ?? []
     expect(added.map((status) => status.id)).toEqual(['in-progress', expect.any(String)])
     expect(added[1]?.id).not.toBe('status-2')
   })
