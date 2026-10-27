@@ -5,7 +5,8 @@ import {
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { loadFrozen57, expectFrozenSource } from './structured-agent-session-frozen57.test-fixture'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -15,6 +16,7 @@ import { setStructuredAgentSessionHost } from '../../../native-chat/agent-sessio
 import { agentSessionAttachmentStoreRoot } from '../../../native-chat/agent-session-attachments/agent-session-attachment-references'
 import {
   HOST_TEST_SESSION as SESSION,
+  HOST_TEST_THREAD as THREAD,
   hostTestOperationId
 } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import {
@@ -36,7 +38,10 @@ import type {
   AgentSessionHistoryRequest,
   AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
-import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../../../shared/agent-session-journal-item-key'
 
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 
@@ -60,6 +65,27 @@ const { buildMobileNativeChatTransientData } = await vi.importActual<{
 const { isRenderableImageUri } = await vi.importActual<{
   isRenderableImageUri: (uri: string | undefined) => boolean
 }>('../../../../../mobile/src/session/native-chat/visual/mobile-native-chat-image-preview')
+
+let frozen: Awaited<ReturnType<typeof loadFrozen57>>
+beforeAll(async () => {
+  frozen = await loadFrozen57()
+})
+
+function streamState(frames: Awaited<ReturnType<typeof openStream>>) {
+  return frames.reduce((state, frame) => {
+    if (!frame.ok) {
+      throw new Error('subscription failed')
+    }
+    if (!frame.result) {
+      return state
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only the installed subscribe dispatcher writes these serialized events.
+    return reduceStructuredAgentSession(state, {
+      type: 'event',
+      event: frame.result as AgentSessionSubscribeEvent
+    })
+  }, EMPTY_STRUCTURED_AGENT_SESSION)
+}
 
 const OLD = { ...STRUCTURED_MOBILE_CLIENT, clientId: 'old-phone', connectionId: 'old-phone' }
 const MODERN = {
@@ -175,6 +201,8 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
     'independentRecovery'
   )
   const reopened = await history()
+  expectFrozenSource(frozen, reopened.page, id, body)
+  expectFrozenSource(frozen, (await history({ direction: 'tail' }, false)).page, id, body, false)
   expect(reopened.page.items).toContainEqual(
     expect.objectContaining({ itemId: agentJournalSubmissionKey(id), body })
   )
@@ -183,6 +211,9 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   )
   const frames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
   const modernFrames = await openStream('agentSession.subscribe', { sessionId: SESSION }, MODERN)
+  expectFrozenSource(frozen, streamState(frames), id, body)
+  const immutable = journal().submission(id)
+  const receipt = journal().receiptFor(id)
   const sendFields = { messageId: card.messageId }
   const sendParams = {
     envelope: rig.envelope(sendFields, 'agentSession.queuedMessageSend', hostTestOperationId()),
@@ -200,6 +231,11 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   expect(rig.dispatch.mock.calls.at(-1)?.[0]).toMatchObject({ body })
   expect((await rig.handoff(card.messageId))?.options).toEqual({ model: 'default' })
   expect((await history()).page.queuedMessages).toEqual([])
+  expectFrozenSource(frozen, (await history()).page, id, body, false)
+  expectFrozenSource(frozen, streamState(frames), id, body, false)
+  expect(journal().submission(id)).toEqual(immutable)
+  expect(journal().receiptFor(id)).toEqual(receipt)
+  expect(journal().submissionBody(id)).toEqual(body)
   expect(
     frames.some(
       (frame) =>
@@ -231,6 +267,8 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   const exact = journal()
     .queuedMessages.list()
     .find((row) => row.messageId === deleted || row.recovers === deleted)!
+  expectFrozenSource(frozen, (await history()).page, deleted, body)
+  const deleteFrames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
   const fields = { messageId: exact.messageId }
   expect(
     await call(
@@ -243,6 +281,8 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
     )
   ).toMatchObject({ result: { ok: true } })
   const deletedPage = (await history()).page
+  expectFrozenSource(frozen, deletedPage, deleted, body, false)
+  expectFrozenSource(frozen, streamState(deleteFrames), deleted, body, false)
   expect(
     projectStructuredAgentSessionMessages(deletedPage.items, [], deletedPage.submissions).some(
       (item) => item.id === agentJournalSubmissionKey(deleted)
@@ -250,6 +290,7 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   ).toBe(false)
   await rig.quitRestartHostProcess()
   const reopenedDeleted = (await history()).page
+  expectFrozenSource(frozen, reopenedDeleted, deleted, body, false)
   expect(
     projectStructuredAgentSessionMessages(
       reopenedDeleted.items,
@@ -290,6 +331,7 @@ it('keeps a hidden original pageable beyond1024 rows and preserves edited recove
     before = older.page.window.nextCursor
     older = await history({ direction: 'before', cursor: before, limit: 200 })
   }
+  expectFrozenSource(frozen, older.page, id, body)
   expect(older.page.items).toContainEqual(
     expect.objectContaining({ itemId: agentJournalSubmissionKey(id), body })
   )
@@ -354,6 +396,7 @@ it('keeps a hidden original pageable beyond1024 rows and preserves edited recove
     body: { blocks: [{ type: 'text', text: 'changed' }, body.blocks[1]] },
     options: { model: 'default' }
   })
+  expectFrozenSource(frozen, selected.page, id, body, false)
   const pub = rig.host.collaboratorsForTests().subscribers.readQueuePublication(SESSION)!
   const { projectQueuedImageCardPublication } =
     await import('./structured-agent-session-queued-image-capability')
@@ -417,6 +460,9 @@ it.each([false, true])(
       expect(journal().submission(presentedId)).not.toHaveProperty('keptAsQueuedMessageId')
     }
     const before = await history()
+    expectFrozenSource(frozen, before.page, presentedId, body)
+    const immutable = journal().submission(presentedId)
+    const receipt = journal().receiptFor(presentedId)
     expect(
       projectStructuredAgentSessionMessages(before.page.items, [], before.page.submissions)
     ).toContainEqual(expect.objectContaining({ id: agentJournalSubmissionKey(presentedId) }))
@@ -452,6 +498,9 @@ it.each([false, true])(
       )
     ).toMatchObject({ result: { ok: true, value: { status: 'updated' } } })
     const changed = await history()
+    expectFrozenSource(frozen, changed.page, presentedId, body, false)
+    expect(journal().submission(presentedId)).toEqual(immutable)
+    expect(journal().receiptFor(presentedId)).toEqual(receipt)
     expect(
       projectStructuredAgentSessionMessages(changed.page.items, [], changed.page.submissions).some(
         (item) => item.id === agentJournalSubmissionKey(presentedId)
@@ -500,6 +549,7 @@ it.each([false, true])(
       const event = frame.result as AgentSessionSubscribeEvent
       return reduceStructuredAgentSession(state, { type: 'event', event })
     }, EMPTY_STRUCTURED_AGENT_SESSION)
+    expectFrozenSource(frozen, live, presentedId, body, false)
     expect(
       projectStructuredAgentSessionMessages(live.items, [], live.submissions).some(
         (item) => item.id === agentJournalSubmissionKey(presentedId)
@@ -546,6 +596,7 @@ it.each([false, true])(
     expect((await history()).page.queuedMessages).toEqual([])
     await rig.quitRestartHostProcess()
     const reopened = (await history()).page
+    expectFrozenSource(frozen, reopened, presentedId, body, false)
     expect(reopened.queuedMessages).toMatchObject([{ messageId: card.messageId, state: 'waiting' }])
     expect(reopened.queuedMessages).toHaveLength(1)
     expect(journal().submission(id)?.dispatchState).toBe('rejected')
@@ -622,3 +673,132 @@ it('keeps an image-only waiting queue and pause visible through Resume and a fai
   expect((await history()).page.queuedMessages).toEqual([])
   expect(journal().submissionBody(handoff.clientMessageId)).toEqual(body)
 })
+
+it.each([
+  { image: false, edit: false },
+  { image: true, edit: false },
+  { image: true, edit: true }
+])(
+  'keeps the pinned original through unknown/cold and retires only its recovery on late proof ($image/$edit)',
+  async ({ image, edit }) => {
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    setStructuredAgentSessionHost(rig.host)
+    const full = await imageBody('Original first paragraph.\n\nKeep the complete final paragraph.')
+    const body = {
+      ...full,
+      blocks: image
+        ? [
+            ...full.blocks,
+            { type: 'text' as const, text: 'Final prose after the image.' },
+            full.blocks[1]
+          ]
+        : full.blocks.filter((block) => block.type !== 'image-ref')
+    }
+    const id = await sendImage(body)
+    await eventually(() => expect(rig!.dispatch).toHaveBeenCalledTimes(1))
+    await eventually(() => expect(journal().submission(id)?.handedOverAt).toBeDefined())
+    await rig.stop()
+    await eventually(() => expect(journal().queuedMessages.get(`recovery:${id}`)).not.toBeNull())
+    const card = journal().queuedMessages.get(`recovery:${id}`)!
+    expect(card).toMatchObject({
+      state: 'returned',
+      recovers: id,
+      body,
+      options: { model: 'default' }
+    })
+    const original = journal().submission(id)!
+    const receipt = journal().receiptFor(id)
+    expect(original).toMatchObject({ dispatchState: 'unknown', providerItemId: null })
+    expectFrozenSource(frozen, (await history()).page, id, body)
+    // Exercise the existing missing-source restoration path, not removal of accepted conversation history.
+    if (image) {
+      await journal().rollEpoch('unreconcilable_prefix', original.fence)
+    }
+    const frames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
+    expectFrozenSource(frozen, streamState(frames), id, body)
+    await rig.quitRestartHostProcess()
+    setStructuredAgentSessionHost(rig.host)
+    expectFrozenSource(frozen, (await history()).page, id, body)
+    const settledFrames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
+    if (edit) {
+      const fields = {
+        messageId: card.messageId,
+        expectedBodyFingerprint: card.fingerprint,
+        text: 'Independent changed prose.'
+      }
+      const params = {
+        envelope: rig.envelope(fields, 'agentSession.queuedMessageUpdate', hostTestOperationId()),
+        ...fields
+      }
+      expect(await call('agentSession.queuedMessageUpdate', params, MODERN)).toMatchObject({
+        result: { ok: true, value: { status: 'updated' } }
+      })
+      const edited = journal().queuedMessages.get(card.messageId)!
+      expect(edited.body).toEqual({
+        ...body,
+        blocks: [
+          { type: 'text', text: fields.text },
+          ...body.blocks.filter((block) => block.type !== 'text')
+        ]
+      })
+      expect(edited.options).toEqual(card.options)
+      expect(edited.state).toBe('waiting')
+      expectFrozenSource(frozen, (await history()).page, id, body, false)
+      expect(await call('agentSession.queuedMessageUpdate', params, MODERN)).toMatchObject({
+        result: { ok: true }
+      })
+      expect(journal().queuedMessages.get(card.messageId)).toEqual(edited)
+    }
+    const input = structuredClone(journal().queuedMessages.displayState().inputs.sources.get(id))
+    expect(input).toMatchObject({ body, options: original.options, fence: original.fence })
+    const beforeProof = journal().queuedMessages.get(card.messageId)
+    expect(journal().submission(id)).toEqual(original)
+    expect(journal().receiptFor(id)).toEqual(receipt)
+    expect(journal().submissionBody(id)).toEqual(body)
+    // The existing rig delivers a Codex identity through host.settleLateDispatch, never a journal receipt edit.
+    await rig.settleAccepted(id, 'pinned-original-late-echo')
+    expect(journal().submission(id)).toMatchObject({
+      dispatchState: 'accepted',
+      options: original.options,
+      payloadFingerprint: original.payloadFingerprint,
+      fence: rig.store.getRecord(SESSION)!.lease.runtimeFence
+    })
+    const acceptedReceipt = journal().receiptFor(id)
+    expect(acceptedReceipt).toMatchObject({
+      clientMessageId: id,
+      providerItemId: agentJournalItemKey({
+        provider: 'codex',
+        threadId: THREAD,
+        turnId: 'turn-pinned-original-late-echo',
+        ordinal: 0
+      })
+    })
+    expect(acceptedReceipt).not.toEqual(receipt)
+    await rig.settleAccepted(id, 'pinned-original-late-echo')
+    expect(journal().receiptFor(id)).toEqual(acceptedReceipt)
+    expect(journal().queuedMessages.displayState().inputs.sources.get(id)).toEqual(input)
+    expect(journal().submissionBody(id)).toEqual(body)
+    expect(rig.dispatch).toHaveBeenCalledTimes(1)
+    if (edit) {
+      expect(journal().queuedMessages.get(card.messageId)).toEqual(beforeProof)
+      const old = (await history()).page
+      expect(
+        frozen.mobileQueuedMessageCards(old.queuedMessages ?? [], old.submissions)
+      ).toMatchObject([
+        {
+          messageId: card.messageId,
+          state: 'waiting',
+          command: true,
+          text: expect.stringContaining('Independent changed prose.')
+        }
+      ])
+    } else {
+      expect(journal().queuedMessages.get(card.messageId)).toBeNull()
+    }
+    expectFrozenSource(frozen, (await history()).page, id, body, !image)
+    expectFrozenSource(frozen, streamState(settledFrames), id, body, !image)
+    await rig.quitRestartHostProcess()
+    expectFrozenSource(frozen, (await history()).page, id, body, !image)
+    expect(journal().queuedMessages.get(card.messageId)).toEqual(edit ? beforeProof : null)
+  }
+)
