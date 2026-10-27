@@ -2,14 +2,21 @@
 
 `pnpm --silent audit:perf > performance-audit.json` scans production `src/` with
 the existing app-store and buffer-concatenation rules. Warnings are advisory in this full inventory; tool/parser failures fail.
-New warning findings on changed lines fail `pnpm check:code-quality:changed`.
-The `app-store-performance/no-whole-hot-map-selector` warning catches selectors
-returning the whole `runtimeStatusByEnvironmentId` map, which is replaced on
-meaningful host observations. Select a stable derived answer inside the selector
-(see `paired-runtime-parking-capabilities.ts`). Fleet consumers that need every
-host can use `// oxlint-disable-next-line app-store-performance/no-whole-hot-map-selector -- <why every host is needed>`.
+New findings from rules enabled in the changed-code configuration fail
+`pnpm check:code-quality:changed`.
+
+The `app-store-performance/no-whole-hot-map-selector` warning is advisory only:
+it appears in this inventory and the performance-contracts artifact, and its
+findings cannot fail the changed-code gate or other required checks. It catches
+selectors returning the whole `runtimeStatusByEnvironmentId` map, which is
+replaced on meaningful host observations. Select a stable derived answer inside
+the selector (see `paired-runtime-parking-capabilities.ts`). Fleet consumers can
+optionally silence the inventory warning with
+`// oxlint-disable-next-line app-store-performance/no-whole-hot-map-selector -- <why every host is needed>`.
 It resolves direct returns, module-scope named selectors and selector-local const
-aliases/destructuring; it does not infer consumer lifetime or follow imported helpers.
+aliases/destructuring; it does not infer consumer lifetime or follow imported
+helpers. Legitimate fleet consumers also match, so behavior-level render-isolation
+assertions remain the safeguard against actual fanout regressions.
 
 Tests, generated files, `mobile/` and `cloud/` are outside this source audit.
 
