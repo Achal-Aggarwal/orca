@@ -143,6 +143,7 @@ export function supportsBrowserPageFlag(commandPath: string[]): boolean {
       'account',
       'artifacts',
       'automations',
+      'profile',
       'project',
       'repo',
       'reference',
