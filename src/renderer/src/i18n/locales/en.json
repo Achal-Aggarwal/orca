@@ -1049,6 +1049,9 @@
       "pluginAutoUpdates": {
         "one": "{{value0}} updated to {{value1}}",
         "many": "{{value0}} plugins updated"
+      },
+      "pluginInstallLink": {
+        "invalid": "That plugin link isn’t valid."
       }
     },
     "lib": {
@@ -17835,6 +17838,15 @@
         "cancelled": "This plain SSH terminal was closed before it started.",
         "terminalUnavailable": "Orca couldn’t open a terminal here.",
         "openHint": "Keeps you working on the host while Orca can’t set up there."
+      },
+      "plugins": {
+        "PluginCatalogLinkDialog": {
+          "failed": "Couldn’t add this catalog.",
+          "title": "Add catalog {{value0}}?",
+          "description": "A link asked to show {{value0}} from {{value1}}. Add catalogs only from people you trust.",
+          "cancel": "Cancel",
+          "add": "Add catalog"
+        }
       }
     },
     "i18n": {
