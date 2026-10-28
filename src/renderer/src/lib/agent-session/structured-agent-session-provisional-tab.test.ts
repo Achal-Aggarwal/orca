@@ -65,7 +65,6 @@ import {
   setNativeChatComposerDraftStorageForTests
 } from '@/components/native-chat/native-chat-composer-draft-storage'
 import { restorePersistedStructuredLaunchState } from './launch/structured-agent-session-launch-reload'
-import { markStructuredLaunchDraftPresented } from '@/components/native-chat/use-structured-launch-draft-presentation'
 import { promptTextContent } from '@/components/native-chat/native-chat-prompt-document-text'
 import { useNativeChatDraft } from '@/components/native-chat/use-native-chat-draft'
 import { wasStructuredAgentLaunchClosedByLocalCancel } from '../structured-agent-session-local-launch-cancel'
@@ -271,7 +270,6 @@ describe('a provisional structured chat tab', () => {
             })
           : undefined
       expect(joined?.joined ?? true).toBe(true)
-      markStructuredLaunchDraftPresented(chat.entityId)
       expect(readNativeChatComposerDraft(scope).text).toBe('hand-off context')
 
       useAppStore.getState().closeUnifiedTab(chat.id)
@@ -354,7 +352,7 @@ describe('a provisional structured chat tab', () => {
   })
 
   it.each(['cancel', 'abort', 'close', 'reloaded-close', 'silent'] as const)(
-    'retires only owned initializer text during %s',
+    'retains ordinary draft content during %s',
     async (action) => {
       const controller = new AbortController()
       const { launch, chat } = openChat('chat', controller.signal)
@@ -377,9 +375,7 @@ describe('a provisional structured chat tab', () => {
         setNativeChatComposerDraftStorageForTests(draftStorage)
         await hydrateNativeChatComposerDrafts()
         resetStructuredAgentLaunchRegistryForTests()
-        expect(
-          restorePersistedStructuredLaunchState('wt-1', chat.entityId)?.draftReceipt
-        ).toBeUndefined()
+        expect(restorePersistedStructuredLaunchState('wt-1', chat.entityId)).toBeDefined()
       }
       if (action === 'cancel') {
         launch.cancel()
@@ -392,14 +388,11 @@ describe('a provisional structured chat tab', () => {
       }
       await main.settle()
       expect(readNativeChatComposerDraft(scope)).toMatchObject({
-        text: action === 'abort' ? '' : text,
+        text,
         images: [{ id: 'image' }]
       })
-      expect(readNativeChatComposerDraft(scope).document).toEqual(
-        action === 'abort' ? undefined : document
-      )
+      expect(readNativeChatComposerDraft(scope).document).toEqual(document)
       expect(nativeChatPendingAttachmentSnapshot(scope)).toHaveLength(1)
-      expect(getStructuredLaunchStateBySessionId(chat.entityId)?.draftReceipt).toBeUndefined()
       refuse()
       await launch.settlement
     }
@@ -408,7 +401,7 @@ describe('a provisional structured chat tab', () => {
   it
     .skipIf(!ORCA_LAYOUT_OWNER_IS_MAIN)
     .each([
-      'presented',
+      'initializer',
       'published',
       'text',
       'document',
@@ -422,7 +415,11 @@ describe('a provisional structured chat tab', () => {
       'unplaced'
     ])('revalidates terminal takeover after main placement: %s', async (change) => {
     const controller = new AbortController()
-    const { launch, chat, fallback, complete } = openChat(undefined, controller.signal)
+    const { launch, chat, fallback, complete } = openChat(
+      undefined,
+      controller.signal,
+      change === 'initializer' ? 'hand-off context' : ''
+    )
     await main.settle()
     const scope = structuredAgentSessionDraftScopeKey(chat.entityId)
     if (change === 'pre-removed') {
@@ -442,19 +439,19 @@ describe('a provisional structured chat tab', () => {
     )
     complete({ outcome: { status: 'created' }, tabId: terminal.id })
     await vi.waitFor(() => expect(layoutApplyTestTransport.pendingCount).toBe(1))
-    if (change === 'presented') {
-      markStructuredLaunchDraftPresented(chat.entityId)
-    }
     if (change === 'published') {
       markStructuredAgentSessionLaunchPublished('wt-1', chat.entityId, 'local')
     }
-    if (change === 'text' || change === 'abort' || change === 'source-closed') {
+    if (change === 'text') {
       updateNativeChatComposerDraft(scope, { text: 'keep after', document: undefined }, 'immediate')
     }
     if (change === 'document') {
       updateNativeChatComposerDraft(
         scope,
-        { document: { ...promptTextContent('hand-off context'), attrs: { edited: true } } },
+        {
+          text: 'hand-off context',
+          document: { ...promptTextContent('hand-off context'), attrs: { edited: true } }
+        },
         'immediate'
       )
     }
@@ -493,9 +490,11 @@ describe('a provisional structured chat tab', () => {
     expect(readNativeChatComposerDraft(scope).text).toBe(
       change === 'pre-removed'
         ? ''
-        : ['text', 'abort', 'source-closed'].includes(change)
+        : change === 'text'
           ? 'keep after'
-          : 'hand-off context'
+          : ['initializer', 'document'].includes(change)
+            ? 'hand-off context'
+            : ''
     )
     if (change !== 'source-closed' && change !== 'abort') {
       expect(useAppStore.getState().getTab(chat.id)).not.toBeNull()
@@ -506,8 +505,7 @@ describe('a provisional structured chat tab', () => {
     'empty',
     'typed-before',
     'typed-during',
-    'presented-before',
-    'presented-during',
+    'initializer',
     'published-during',
     'image-during',
     'pending-chip',
@@ -520,14 +518,13 @@ describe('a provisional structured chat tab', () => {
     'closed-during'
   ])('owns the destination through terminal completion: %s', async (scenario) => {
     const { launch, chat, fallback, complete } = openChat(
-      scenario === 'explicit' ? 'chat' : undefined
+      scenario === 'explicit' ? 'chat' : undefined,
+      undefined,
+      scenario === 'initializer' || scenario === 'explicit' ? 'hand-off context' : ''
     )
     const scope = structuredAgentSessionDraftScopeKey(chat.entityId)
     if (scenario === 'typed-before') {
       updateNativeChatComposerDraft(scope, { text: 'keep this', document: undefined }, 'immediate')
-    }
-    if (scenario === 'presented-before') {
-      markStructuredLaunchDraftPresented(chat.entityId)
     }
     await main.settle()
     expect(mocks.focus).toHaveBeenCalledWith(chat.id)
@@ -576,7 +573,7 @@ describe('a provisional structured chat tab', () => {
       ORCA_LAYOUT_OWNER_IS_MAIN ? [terminalRecord(sibling.entityId)] : []
     useAppStore.setState({ tabsByWorktree: { 'wt-1': siblingRecords() } })
     await mainLoadsStoreLayout()
-    const pinnedSource = scenario === 'empty' || scenario === 'typed-during'
+    const pinnedSource = ['empty', 'typed-during', 'initializer'].includes(scenario)
     if (pinnedSource) {
       pinAsUser(chat.id)
       pinAsUser(sibling.id)
@@ -590,9 +587,6 @@ describe('a provisional structured chat tab', () => {
         { text: 'new thought', document: undefined },
         'immediate'
       )
-    }
-    if (scenario === 'presented-during') {
-      markStructuredLaunchDraftPresented(chat.entityId)
     }
     if (scenario === 'published-during') {
       markStructuredAgentSessionLaunchPublished('wt-1', chat.entityId, 'local')
@@ -658,7 +652,9 @@ describe('a provisional structured chat tab', () => {
             ? 'keep this'
             : scenario === 'typed-during'
               ? 'new thought'
-              : 'hand-off context'
+              : scenario === 'initializer'
+                ? 'hand-off context'
+                : ''
       )
     }
     expect(interaction).not.toHaveBeenCalled()
@@ -727,7 +723,7 @@ describe('a provisional structured chat tab', () => {
 
   // Hidden launch slots exist only in window order; count terminal position among tabs both window and main draw.
   it("places a declined chat's terminal right after the chat past a hidden launch slot", async () => {
-    const { launch, chat, fallback, complete } = openChat()
+    const { launch, chat, fallback, complete } = openChat(undefined, undefined, '')
     await main.settle()
     refuse()
     await vi.waitFor(() => expect(fallback).toHaveBeenCalled())

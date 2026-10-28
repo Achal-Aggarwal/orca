@@ -4,7 +4,6 @@ import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../../../sh
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../shared/layout-owner-switch'
 import { markStructuredAgentLaunchCancellation } from '../../launch-cancel-tombstones-compat/structured-agent-session-launch-cancellation'
 import { cancelStructuredAgentLaunchOnLocalHost } from '../../structured-agent-session-local-launch-cancel'
-import { readStructuredLaunchDraft } from '../../structured-agent-session-launch-draft'
 import { hasStructuredAgentLaunchCancellationTombstonePersisted } from './structured-agent-session-launch-persistence'
 import {
   removeStructuredLaunchSlot,
@@ -29,11 +28,6 @@ function markStructuredAgentSessionLaunchCancelledInternal(
   const surfaceAddress = state?.intent.surfaceAddress ?? record?.surfaceAddress
   const matchingState = state?.intent.worktreeId === worktreeId ? state : undefined
   const host = matchingState?.intent.executionHostId ?? record?.executionHostId ?? executionHostId
-  const draft = readStructuredLaunchDraft(matchingState, {
-    worktreeId,
-    sessionId,
-    executionHostId: host
-  })
   const target = matchingState?.intent.target ?? structuredAgentSessionTargetForHost(host)
   if (state?.intent.worktreeId === worktreeId) {
     // The launch's own owner outranks the caller's: it is the host the create was sent to.
@@ -62,9 +56,6 @@ function markStructuredAgentSessionLaunchCancelledInternal(
   }
   if ((!state || matchingState) && (!surfaceAddress || surfaceAddress.worktreeId === worktreeId)) {
     retireStructuredAgentSessionReadOwner(sessionId, target, host)
-  }
-  if (owner) {
-    draft.clear()
   }
   if (owner && surfaceAddress) {
     removeStructuredLaunchSlot(owner, worktreeId, sessionId)

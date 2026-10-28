@@ -71,7 +71,6 @@ export const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, Nativ
     )
     const [caret, setCaret] = useState(draft.length)
     useNativeChatLaunchDraftAdoption({
-      structuredSessionId: structuredTransport?.sessionId,
       terminalTabId,
       agent,
       launchDraft: launchSeed?.launchDraft,

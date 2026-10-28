@@ -1,4 +1,3 @@
-import type { StructuredLaunchDraftReceipt } from '../../structured-agent-session-launch-draft'
 import { useSyncExternalStore } from 'react'
 import type { TuiAgent } from '../../../../../shared/tui-agent'
 import type { StructuredLaunchFailure } from '../../structured-agent-session-launch-failure'
@@ -27,7 +26,6 @@ import { resetStructuredAgentLocalLaunchCancelsForTests } from '../../structured
 
 export type StructuredLaunchState = StructuredLaunchRecoveryState & {
   identity: string
-  draftReceipt?: StructuredLaunchDraftReceipt
   /** Fixed by the caller that opened this launch so coalesced prompts use one delivery mode. */
   promptDelivery: StructuredAgentLaunchOptions['promptDelivery']
   callers: StructuredLaunchCallerGroup
@@ -99,7 +97,6 @@ export function deleteStructuredLaunchStateIfCurrent(state: StructuredLaunchStat
   if (structuredLaunchesBySessionId.get(state.intent.sessionId) !== state) {
     return false
   }
-  delete state.draftReceipt
   structuredLaunchesBySessionId.delete(state.intent.sessionId)
   deleteStructuredAgentLaunchRecord(state.intent.sessionId)
   return true

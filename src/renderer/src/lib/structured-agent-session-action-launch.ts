@@ -22,7 +22,8 @@ import {
 } from '@/lib/structured-agent-session-launch-admission'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
-import { readStructuredLaunchDraft } from './structured-agent-session-launch-draft'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
+import { nativeChatComposerHasUserContent } from '@/components/native-chat/native-chat-pending-attachment-cache'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 
 export function openDeclinedTerminal(
@@ -84,8 +85,8 @@ export async function openTerminalForDeclinedChat(
   if (!source() || launchState?.cancelled || args.hooks.signal?.aborted) {
     return settlement
   }
-  const draftOwner = { worktreeId, sessionId: tab.entityId, executionHostId }
-  const typed = readStructuredLaunchDraft(launchState, draftOwner).hasUserContent
+  const scopeKey = structuredAgentSessionDraftScopeKey(tab.entityId)
+  const typed = nativeChatComposerHasUserContent(scopeKey)
   const attempt = launchState?.callers
   const terminal = await openDeclinedTerminal(args, worktreeId, target, false)
   const completed = terminal.completion
@@ -148,7 +149,6 @@ export async function openTerminalForDeclinedChat(
   replacement = (placed.unifiedTabsByWorktree[worktreeId] ?? []).find(
     (candidate) => candidate.id === completed.tabId && candidate.entityId === replacementEntityId
   )
-  const draft = readStructuredLaunchDraft(launchState, draftOwner)
   const group = (placed.groupsByWorktree[worktreeId] ?? []).find((g) => g.id === current?.groupId)
   if (
     !current ||
@@ -159,7 +159,7 @@ export async function openTerminalForDeclinedChat(
     !group.tabOrder.includes(current.id) ||
     group.tabOrder.indexOf(replacement.id) !== group.tabOrder.indexOf(current.id) + 1 ||
     typed ||
-    draft.hasUserContent
+    nativeChatComposerHasUserContent(scopeKey)
   ) {
     notifyHostDeclined(args.plan.agent, false)
     return settlement
@@ -186,7 +186,6 @@ export async function openTerminalForDeclinedChat(
   if (showsFirst) {
     showReplacement()
   }
-  draft.clear()
   placed.closeUnifiedTab(tab.id, { recordInteraction: false })
   if (foreground && !showsFirst) {
     showReplacement()
