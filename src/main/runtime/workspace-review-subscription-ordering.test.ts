@@ -86,7 +86,7 @@ describe('workspace review asynchronous ownership', () => {
     )
     const subscription = h.open()
     const started = subscription.renew()
-    h.registry.cleanupForConnection('mobile-socket')
+    h.registry.releaseByRequest('mobile-socket', 'mobile-1')
     finish(target)
     expect(await started).toBe(false)
     await vi.advanceTimersByTimeAsync(300_000)

@@ -41,7 +41,12 @@ export async function harness() {
         cache = next
       }
     }),
-    registerSubscriptionCleanup: (id: string, cleanup: () => void, connectionId?: string) => {
+    registerSubscriptionCleanup: (
+      id: string,
+      cleanup: () => void,
+      connectionId?: string,
+      requestId?: string
+    ) => {
       cleanups.set(id, cleanup)
       registry.register(
         id,
@@ -49,7 +54,8 @@ export async function harness() {
           cleanups.delete(id)
           cleanup()
         },
-        connectionId
+        connectionId,
+        requestId
       )
     },
     cleanupSubscription: registry.cleanup.bind(registry)
@@ -61,15 +67,15 @@ export async function harness() {
       frames.push(frame)
     }
   ) => {
-    return new WorkspaceReviewSubscription(
-      runtime,
-      id,
-      'id:wt-1',
-      'mobile-socket',
+    return new WorkspaceReviewSubscription(runtime, {
+      subscriptionId: id,
+      selector: 'id:wt-1',
+      connectionId: 'mobile-socket',
+      requestId: id,
       emit,
-      () => {},
+      onClose: () => {},
       signal
-    )
+    })
   }
 
   return {

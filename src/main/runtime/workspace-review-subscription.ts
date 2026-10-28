@@ -33,14 +33,23 @@ export class WorkspaceReviewSubscription {
       OrcaRuntimeService,
       'prepareWorkspaceReviewRefresh' | 'cleanupSubscription' | 'registerSubscriptionCleanup'
     > & { requireStore(): Pick<RuntimeStore, 'getGitHubCache' | 'setGitHubCache'> },
-    readonly subscriptionId: string,
-    private readonly selector: string,
-    readonly connectionId: string | undefined,
-    private readonly emit: (frame: unknown) => void,
-    private readonly onClose: () => void,
-    private readonly signal?: AbortSignal
+    private readonly options: {
+      subscriptionId: string
+      selector: string
+      connectionId?: string
+      requestId?: string
+      emit: (frame: unknown) => void
+      onClose: () => void
+      signal?: AbortSignal
+    }
   ) {
-    runtime.registerSubscriptionCleanup(subscriptionId, () => this.dispose(), connectionId)
+    const { subscriptionId, connectionId, requestId, signal } = options
+    runtime.registerSubscriptionCleanup(
+      subscriptionId,
+      () => this.dispose(),
+      connectionId,
+      requestId
+    )
     this.stopListening = subscribePRRefreshEvents((event) => {
       void this.apply(event).catch(() => {
         this.lastError = 'Review status unavailable'
@@ -53,6 +62,13 @@ export class WorkspaceReviewSubscription {
       signal?.addEventListener('abort', this.close, { once: true })
     }
     this.armExpiry()
+  }
+
+  get subscriptionId(): string {
+    return this.options.subscriptionId
+  }
+  get connectionId(): string | undefined {
+    return this.options.connectionId
   }
 
   readonly close = (): void => {
@@ -72,7 +88,7 @@ export class WorkspaceReviewSubscription {
 
   private send(frame: unknown): void {
     try {
-      this.emit(frame)
+      this.options.emit(frame)
     } catch {
       this.close()
     }
@@ -87,10 +103,10 @@ export class WorkspaceReviewSubscription {
     if (this.timer) {
       clearTimeout(this.timer)
     }
-    this.signal?.removeEventListener('abort', this.close)
+    this.options.signal?.removeEventListener('abort', this.close)
     this.stopListening()
     clearVisiblePRRefreshWindow(this.subscriptionId)
-    this.onClose()
+    this.options.onClose()
     this.send({ type: 'end', subscriptionId: this.subscriptionId })
   }
 
@@ -100,7 +116,7 @@ export class WorkspaceReviewSubscription {
     }
     const version = ++this.generation
     try {
-      const next = await this.runtime.prepareWorkspaceReviewRefresh(this.selector)
+      const next = await this.runtime.prepareWorkspaceReviewRefresh(this.options.selector)
       if (this.released || version !== this.generation) {
         return false
       }
@@ -216,7 +232,7 @@ export class WorkspaceReviewSubscription {
       return
     }
     const version = this.generation
-    const current = await this.runtime.prepareWorkspaceReviewRefresh(this.selector)
+    const current = await this.runtime.prepareWorkspaceReviewRefresh(this.options.selector)
     if (
       this.released ||
       event.sequence < this.sequence ||

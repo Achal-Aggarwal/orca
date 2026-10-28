@@ -14,7 +14,18 @@ vi.mock('../wsl/wsl-unc-access-gate', () => ({ blockedWslDistroForPath: boundary
 
 function target() {
   let cache: PersistedState['githubCache'] = { pr: {}, issue: {} }
-  let meta: WorktreeMeta = { linkedPR: 12 }
+  let meta: WorktreeMeta = {
+    displayName: '',
+    comment: '',
+    linkedIssue: null,
+    linkedPR: 12,
+    linkedLinearIssue: null,
+    isArchived: false,
+    isUnread: false,
+    isPinned: false,
+    sortOrder: 0,
+    lastActivityAt: 0
+  }
   const repo = { id: 'repo-1', path: '/repo', displayName: 'repo', badgeColor: '', addedAt: 1 }
   const worktree = {
     id: 'wt-1',
@@ -43,6 +54,7 @@ function target() {
       getWorktreeMetaForHost: () => meta,
       setWorktreeMeta: (_target: unknown, updates: Partial<WorktreeMeta>) => {
         meta = { ...meta, ...updates }
+        return meta
       }
     }
   }

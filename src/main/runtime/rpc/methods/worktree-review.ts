@@ -14,7 +14,7 @@ export const WORKTREE_REVIEW_METHODS = [
     name: 'worktree.review.subscribe',
     permission: 'workspace',
     params: WorktreeReviewSubscribe,
-    handler: async (params, { runtime, connectionId, signal }, emit) => {
+    handler: async (params, { runtime, connectionId, requestId, signal }, emit) => {
       let registry = subscriptions.get(runtime)
       if (!registry) {
         registry = new Map()
@@ -31,15 +31,15 @@ export const WORKTREE_REVIEW_METHODS = [
         throw new Error('review_subscription_capacity')
       }
       const id = `worktree-review:${randomUUID()}`
-      const subscription = new WorkspaceReviewSubscription(
-        runtime,
-        id,
-        params.worktree,
+      const subscription = new WorkspaceReviewSubscription(runtime, {
+        subscriptionId: id,
+        selector: params.worktree,
         connectionId,
+        requestId,
         emit,
-        () => registry.delete(id),
+        onClose: () => registry.delete(id),
         signal
-      )
+      })
       if (signal?.aborted) {
         return
       }
