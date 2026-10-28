@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
+import { projectNativeChatTranscriptMessages } from './native-chat-transcript-projection'
+import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 import {
   EMPTY_STRUCTURED_AGENT_SESSION,
   reduceStructuredAgentSession,
@@ -273,12 +275,24 @@ describe('coalesced history removals', () => {
     ({ withRoster, replace }) => {
       vi.useFakeTimers()
       const h = history()
+      const visibleBlocks = () =>
+        projectNativeChatTranscriptMessages(
+          projectStructuredAgentSessionMessages(h.state().items, [], h.state().submissions)
+        ).map((message) => message.blocks)
       try {
         const original = item(withRoster)
         h.push(1, [original])
         h.push(2, [{ ...original, revision: 2 }])
         expect(h.events).toHaveLength(0)
-        const replacement = { ...item(), revision: 3 }
+        const replacement: AgentJournalRenderItem = {
+          ...item(),
+          revision: 3,
+          body: {
+            kind: 'message',
+            role: 'assistant',
+            blocks: [{ type: 'text', text: 'replacement' }]
+          }
+        }
         const removal = h.push(3, replace ? [replacement] : [], ['answer'])
         const immediateCursor = h.state().cursor
         vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
@@ -289,13 +303,16 @@ describe('coalesced history removals', () => {
         expect(h.events[1]).toBe(removal)
         expect(h.state().items).toEqual(replace ? [replacement] : [])
         expect(h.state().subagentRoster?.size).toBe(0)
+        expect(h.state().subagentRoster?.has('helper')).toBe(false)
         expect(h.state().cursor).toEqual(removal.batch.cursor)
         vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
         expect(h.state().items).toEqual(replace ? [replacement] : [])
+        expect(visibleBlocks()).toEqual(replace ? [[{ type: 'text', text: 'replacement' }]] : [])
         const reintroduced = { ...item(), revision: 4, sequence: 4 }
         h.push(4, [reintroduced])
         vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
         expect(h.state().items).toEqual([reintroduced])
+        expect(visibleBlocks()).toEqual([[{ type: 'text', text: 'answer' }]])
       } finally {
         h.coalescer.dispose()
         vi.useRealTimers()
