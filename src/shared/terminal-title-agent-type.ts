@@ -1,3 +1,4 @@
+import { collectExplicitAgentTitleEvidence } from './agent-title-evidence'
 import { isQoderTerminalTitle } from './qoder-terminal-title'
 import {
   AGY_AGENT_NAME_RE,
@@ -261,25 +262,7 @@ const TITLE_LABEL_TO_AGENT: Partial<Record<string, TerminalAgent>> = {
   OMP: 'omp'
 }
 
-function hasGenericClaudeStatusPrefix(title: string): boolean {
-  return (
-    containsAgentSpinnerGlyph(title) ||
-    title.startsWith('✳ ') ||
-    title === '✳' ||
-    title.startsWith('. ') ||
-    title.startsWith('* ')
-  )
-}
-
 export { isClaudeIdentityFrameTitle } from './agent-title-core'
-
-function isGenericClaudeStatusClaim(title: string, titleAgent: TerminalAgent | null): boolean {
-  return (
-    titleAgent === 'claude' &&
-    hasGenericClaudeStatusPrefix(title) &&
-    !titleHasAgentName(title, 'claude')
-  )
-}
 
 export function resolveTerminalTitleAgentType(title: string): TerminalAgent | null {
   const label = getAgentLabel(title)
@@ -291,13 +274,10 @@ export function resolveTerminalTitleAgentType(title: string): TerminalAgent | nu
   }).agent
 }
 
-/** Treat bare Claude-style prefixes as activity only; explicit identity requires a Claude Code name, not a task/workspace spinner. */
+/** Activity and task mentions cannot establish identity for display or input routing. */
 function computeExplicitTerminalTitleAgentType(title: string): TerminalAgent | null {
-  const titleAgent = resolveTerminalTitleAgentType(title)
-  if (isGenericClaudeStatusClaim(title, titleAgent)) {
-    return null
-  }
-  return titleAgent
+  const candidate = resolveTerminalTitleAgentType(title)
+  return collectExplicitAgentTitleEvidence(title).agent === candidate ? candidate : null
 }
 
 /** Pure in `title` — memoized so repeated selector reads skip the canonical/title parse. */

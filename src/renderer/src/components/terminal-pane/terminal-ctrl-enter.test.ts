@@ -4,6 +4,12 @@ import { hasCtrlEnterCsiUAuthorityForPane } from './terminal-ctrl-enter'
 const PANE_KEY = 'tab:pane'
 
 describe('hasCtrlEnterCsiUAuthorityForPane', () => {
+  it('does not route input using an agent mentioned only in task text', () => {
+    const state = { paneForegroundAgentByPaneKey: {} }
+    expect(hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, '⠋ fix the grok launcher')).toBe(false)
+    expect(hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, '⠋ Grok')).toBe(true)
+  })
+
   it.each([
     { agent: 'dsb' as const, routingTrusted: true, shellForeground: false },
     { agent: 'dsb' as const, routingConfirmationPending: true, shellForeground: false }

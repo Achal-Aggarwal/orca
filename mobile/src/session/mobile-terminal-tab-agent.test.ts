@@ -47,6 +47,18 @@ function terminalTab(
 }
 
 describe('resolveMobileTerminalTabAgentId', () => {
+  it('keeps completed Claude ownership when task text names another agent', () => {
+    expect(
+      resolveMobileTerminalTabAgentId(
+        terminalTab('⠋ fix the grok launcher', {
+          agentType: 'claude',
+          state: 'done',
+          launchAgent: 'claude'
+        })
+      )
+    ).toBe('claude')
+  })
+
   it('uses hook-reported agent identity before title fallback', () => {
     expect(resolveMobileTerminalTabAgentId(terminalTab('Terminal', { agentType: 'codex' }))).toBe(
       'codex'

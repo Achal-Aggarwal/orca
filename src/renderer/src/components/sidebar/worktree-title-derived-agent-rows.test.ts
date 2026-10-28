@@ -4,7 +4,10 @@ import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/ter
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
-import type { TitleDerivedPaneForeground } from './title-derived-pane-agent-identity'
+import {
+  resolveTitleDerivedAgentType,
+  type TitleDerivedPaneForeground
+} from './title-derived-pane-agent-identity'
 
 const LEAF_ID_1 = '77777777-7777-4777-8777-777777777777'
 const LEAF_ID_2 = '88888888-8888-4888-8888-888888888888'
@@ -415,8 +418,8 @@ describe('buildTitleDerivedAgentRows', () => {
     expect(
       rowsFor('✳ Claude Code', 'opencode', processRead('claude')).map((row) => row.agentType)
     ).toEqual(['claude'])
-    // No owner to defend the pane: naming Claude stays the only available identity.
-    expect(rowsFor('⠋ use Claude Sonnet').map((row) => row.agentType)).toEqual(['claude'])
+    // Task mentions cannot establish identity even when the pane has no owner.
+    expect(rowsFor('⠋ use Claude Sonnet')).toHaveLength(0)
     expect(rowsFor('zsh', 'opencode')).toHaveLength(0)
   })
 
@@ -723,5 +726,29 @@ describe('split-pane runtime title attribution', () => {
       [makePaneKey('tab-1', LEAF_ID_2), 'codex', 'idle'],
       [makePaneKey('tab-1', LEAF_ID_3), 'gemini', 'working']
     ])
+  })
+})
+
+describe('owner identity with foreign task names', () => {
+  it('preserves the unknown-label fallback for an admitted identity', () => {
+    expect(resolveTitleDerivedAgentType('MiMo Code', 'MiMo Code')).toBe('unknown')
+  })
+
+  it.each([
+    '⠋ Fix the codex plugin launcher',
+    '⠋ fix the grok launcher',
+    '⠋ port the gemini status parser',
+    '⠋ fix the mimo launcher'
+  ])('keeps the existing Claude row for %j', (title) => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'claude' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: { 'tab-1': { 1: title } },
+      ptyIdsByTabId: { 'tab-1': ['pty-claude'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+    expect(rows.map((row) => [row.agentType, row.entry.prompt])).toEqual([['claude', 'Claude']])
   })
 })

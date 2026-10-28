@@ -5,6 +5,14 @@ import {
 } from './terminal-windows-shift-enter'
 
 describe('resolveWindowsShiftEnterEncoding', () => {
+  it('does not select a keyboard mode from a task mentioning another agent', () => {
+    const state = { paneForegroundAgentByPaneKey: {}, agentLaunchConfigByPaneKey: {} }
+    expect(
+      resolveWindowsShiftEnterEncodingForPane(state, 'tab:pane', '⠋ fix the droid launcher')
+    ).toBe('alt-enter')
+    expect(resolveWindowsShiftEnterEncodingForPane(state, 'tab:pane', '⠋ Droid')).toBe('csi-u')
+  })
+
   it.each(['dsb', 'codex'] as const)(
     'keeps pending %s input encoding when a stale title names another agent',
     (agent) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getAgentLabel as getSharedAgentLabel } from './agent-title-identity'
+import { resolveTabAgentFromSignals } from './tab-agent-from-signals'
 import { isOpenCodeNativeTitle } from './opencode-terminal-title'
 import {
   isClaudeIdentityFrameTitle,
@@ -117,5 +118,80 @@ describe('resolveTerminalTitleAgentType', () => {
       'claude'
     )
     expect(resolveTerminalTitleAgentType('⠋ Codex: fix cursor offsets')).toBe('codex')
+  })
+})
+
+describe('explicit identity admission shared by display and input readers', () => {
+  it.each([
+    'codex',
+    'grok',
+    'gemini',
+    'copilot',
+    'devin',
+    'aider',
+    'openclaude',
+    'claude',
+    'jcode',
+    'antigravity',
+    'droid',
+    'hermes',
+    'mimo'
+  ])('does not identify a task mentioning %s', (name) => {
+    expect(resolveExplicitTerminalTitleAgentType(`⠋ fix the ${name} launcher`)).toBeNull()
+  })
+
+  // Native/synthetic spellings already recognized by the title parser and its producer fixtures.
+  it.each([
+    ['Claude Code', 'claude'],
+    ['claude.bat working', 'claude'],
+    ['⠋ OpenClaude', 'openclaude'],
+    ['openclaude.cmd', 'openclaude'],
+    ['⠋ Codex: fix cursor offsets', 'codex'],
+    ['codex.exe', 'codex'],
+    ['✦ Analyzing the repository', 'gemini'],
+    ['◇ Gemini CLI', 'gemini'],
+    ['GitHub Copilot', 'copilot'],
+    ['copilot.exe - action required', 'copilot'],
+    ['devin thinking', 'devin'],
+    ['aider.ps1 ready', 'aider'],
+    ['⠋ - Waiting for response… - grok', 'grok'],
+    ['grok done', 'grok'],
+    ['Jcode', 'jcode'],
+    ['Antigravity', 'antigravity'],
+    ['agy — Gemini 3.1 Pro', 'antigravity'],
+    ['OC | Compare Codex and Claude', 'opencode'],
+    ['ssh host | opencode ready', 'opencode'],
+    ['opencode2', 'opencode2'],
+    ['MiMo Code', 'mimo-code'],
+    ['Cursor Agent', 'cursor'],
+    ['⠋ Droid', 'droid'],
+    ['hermes ready', 'hermes'],
+    ['DeepSeek Build', 'dsb'],
+    ['🐋 DeepSeek Harness', 'dsh'],
+    ['π > session - ~/orca', 'pi'],
+    ['OMP ready', 'omp'],
+    ['Qoder CLI', 'qoder'],
+    ['Qoder CLI CN', 'qoder-cn'],
+    ['Compare Antigravity with Gemini… - grok', 'grok']
+  ])('preserves the identity frame %j', (title, agent) => {
+    expect(resolveExplicitTerminalTitleAgentType(title)).toBe(agent)
+    expect(
+      resolveTabAgentFromSignals({
+        title,
+        hookAgent: null,
+        hasObservedAgentSignal: true,
+        isRemote: true,
+        launchAgent: agent === 'claude' ? 'codex' : 'claude'
+      })
+    ).toBe(agent)
+  })
+
+  it.each([
+    'claude | zsh',
+    'codex | main | fix the parser',
+    '⠋ grok > next steps',
+    'OC | session - grok'
+  ])('rejects wrapper prefixes, breadcrumbs and competing identities in %j', (title) => {
+    expect(resolveExplicitTerminalTitleAgentType(title)).toBeNull()
   })
 })
