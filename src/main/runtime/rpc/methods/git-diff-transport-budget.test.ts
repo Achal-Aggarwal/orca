@@ -24,46 +24,60 @@ const OVERSIZED_DIFF: GitDiffResult = {
   modifiedIsBinary: true
 }
 
-const CASES: readonly { method: string; runtimeMethod: string; params: Record<string, unknown> }[] =
-  [
-    {
-      method: 'git.diff',
-      runtimeMethod: 'getRuntimeGitDiff',
-      params: { worktree: 'id:wt-1', filePath: 'assets/logo.png', staged: false }
-    },
-    {
-      method: 'git.branchDiff',
-      runtimeMethod: 'getRuntimeGitBranchDiff',
-      params: {
-        worktree: 'id:wt-1',
-        compare: { mergeBase: 'a'.repeat(40), headOid: 'b'.repeat(40) },
-        filePath: 'assets/logo.png'
-      }
-    },
-    {
-      method: 'git.commitDiff',
-      runtimeMethod: 'getRuntimeGitCommitDiff',
-      params: { worktree: 'id:wt-1', commitOid: 'c'.repeat(40), filePath: 'assets/logo.png' }
+type DiffRuntimeMethod = 'getRuntimeGitDiff' | 'getRuntimeGitBranchDiff' | 'getRuntimeGitCommitDiff'
+
+const CASES: readonly {
+  method: string
+  runtimeMethod: DiffRuntimeMethod
+  params: Record<string, unknown>
+}[] = [
+  {
+    method: 'git.diff',
+    runtimeMethod: 'getRuntimeGitDiff',
+    params: { worktree: 'id:wt-1', filePath: 'assets/logo.png', staged: false }
+  },
+  {
+    method: 'git.branchDiff',
+    runtimeMethod: 'getRuntimeGitBranchDiff',
+    params: {
+      worktree: 'id:wt-1',
+      compare: { mergeBase: 'a'.repeat(40), headOid: 'b'.repeat(40) },
+      filePath: 'assets/logo.png'
     }
-  ]
+  },
+  {
+    method: 'git.commitDiff',
+    runtimeMethod: 'getRuntimeGitCommitDiff',
+    params: { worktree: 'id:wt-1', commitOid: 'c'.repeat(40), filePath: 'assets/logo.png' }
+  }
+]
 
-/** Stands in for orca-runtime-git.ts, which enforces the budget it is handed as its last argument. */
-function stubRuntime(runtimeMethod: string): OrcaRuntimeService {
-  return {
+function stubRuntime(runtimeMethod: DiffRuntimeMethod) {
+  const enforceBudget = vi.fn((maxContentBytes?: number) =>
+    assertGitDiffWithinTransportBudget(OVERSIZED_DIFF, maxContentBytes)
+  )
+  const methods = {
+    getRuntimeGitDiff: vi.fn<OrcaRuntimeService['getRuntimeGitDiff']>(
+      async (_worktree, _filePath, _staged, _compareAgainstHead, maxContentBytes) =>
+        enforceBudget(maxContentBytes)
+    ),
+    getRuntimeGitBranchDiff: vi.fn<OrcaRuntimeService['getRuntimeGitBranchDiff']>(
+      async (_worktree, _compare, _filePath, _oldPath, maxContentBytes) =>
+        enforceBudget(maxContentBytes)
+    ),
+    getRuntimeGitCommitDiff: vi.fn<OrcaRuntimeService['getRuntimeGitCommitDiff']>(
+      async (_worktree, _args, maxContentBytes) => enforceBudget(maxContentBytes)
+    )
+  }
+  const runtime = {
     getRuntimeId: () => 'test-runtime',
-    [runtimeMethod]: vi.fn(async (...args: unknown[]) => {
-      const maxContentBytes = args.at(-1)
-      return assertGitDiffWithinTransportBudget(
-        OVERSIZED_DIFF,
-        typeof maxContentBytes === 'number' ? maxContentBytes : undefined
-      )
-    })
-  } as unknown as OrcaRuntimeService
-}
-
-function budgetArgument(runtime: OrcaRuntimeService, runtimeMethod: string): unknown {
-  const spy = (runtime as unknown as Record<string, ReturnType<typeof vi.fn>>)[runtimeMethod]!
-  return spy.mock.calls[0]!.at(-1)
+    [runtimeMethod]: methods[runtimeMethod]
+  }
+  return {
+    // SAFETY: each dispatch reaches only the selected, signature-checked diff method and runtime id.
+    runtime: runtime as unknown as OrcaRuntimeService,
+    enforceBudget
+  }
 }
 
 function makeRequest(method: string, params: Record<string, unknown>): RpcRequest {
@@ -86,11 +100,11 @@ async function dispatchRemote(
 
 describe('remote git diff transport budget', () => {
   it.each(CASES)('caps $method for a mobile client', async ({ method, runtimeMethod, params }) => {
-    const runtime = stubRuntime(runtimeMethod)
+    const { runtime, enforceBudget } = stubRuntime(runtimeMethod)
 
     const response = await dispatchRemote(runtime, method, params, 'mobile')
 
-    expect(budgetArgument(runtime, runtimeMethod)).toBe(remoteRpcContentBudget('req-1'))
+    expect(enforceBudget).toHaveBeenCalledWith(remoteRpcContentBudget('req-1'))
     expect(response).toMatchObject({
       ok: false,
       error: { code: 'diff_too_large', data: { maxBytes: remoteRpcContentBudget('req-1') } }
@@ -100,17 +114,51 @@ describe('remote git diff transport budget', () => {
   it.each(CASES)(
     'caps $method for a remote desktop client',
     async ({ method, runtimeMethod, params }) => {
-      const runtime = stubRuntime(runtimeMethod)
+      const { runtime, enforceBudget } = stubRuntime(runtimeMethod)
 
       const response = await dispatchRemote(runtime, method, params, 'runtime')
 
-      expect(budgetArgument(runtime, runtimeMethod)).toBe(remoteRpcContentBudget('req-1'))
+      expect(enforceBudget).toHaveBeenCalledWith(remoteRpcContentBudget('req-1'))
       expect(response).toMatchObject({ ok: false, error: { code: 'diff_too_large' } })
     }
   )
 
+  it.each(['mobile', 'runtime'] as const)(
+    'caps a staged rename without losing its source for a %s client',
+    async (clientKind) => {
+      const { runtime, enforceBudget } = stubRuntime('getRuntimeGitDiff')
+      const maxContentBytes = remoteRpcContentBudget('req-1')
+
+      const response = await dispatchRemote(
+        runtime,
+        'git.diff',
+        {
+          worktree: 'id:wt-1',
+          filePath: 'assets/logo.png',
+          staged: true,
+          oldPath: 'assets/old-logo.png'
+        },
+        clientKind
+      )
+
+      expect(runtime.getRuntimeGitDiff).toHaveBeenCalledWith(
+        'id:wt-1',
+        'assets/logo.png',
+        true,
+        undefined,
+        maxContentBytes,
+        'assets/old-logo.png'
+      )
+      expect(enforceBudget).toHaveBeenCalledWith(maxContentBytes)
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: 'diff_too_large', data: { maxBytes: maxContentBytes } }
+      })
+    }
+  )
+
   it('charges a long request id against the remote content budget', async () => {
-    const runtime = stubRuntime('getRuntimeGitDiff')
+    const { runtime, enforceBudget } = stubRuntime('getRuntimeGitDiff')
     const dispatcher = new RpcDispatcher({ runtime, methods: GIT_METHODS })
     const requestId = '\u0001'.repeat(8_192)
     const replies: string[] = []
@@ -121,7 +169,7 @@ describe('remote git diff transport budget', () => {
       { clientKind: 'mobile' }
     )
 
-    expect(budgetArgument(runtime, 'getRuntimeGitDiff')).toBe(remoteRpcContentBudget(requestId))
+    expect(enforceBudget).toHaveBeenCalledWith(remoteRpcContentBudget(requestId))
     expect(Buffer.byteLength(replies[0]!, 'utf8')).toBeLessThanOrEqual(
       REMOTE_RPC_MAX_CONTENT_BYTES + 8 * 1024
     )
@@ -131,12 +179,12 @@ describe('remote git diff transport budget', () => {
   it.each(CASES)(
     'leaves $method uncapped for a local caller',
     async ({ method, runtimeMethod, params }) => {
-      const runtime = stubRuntime(runtimeMethod)
+      const { runtime, enforceBudget } = stubRuntime(runtimeMethod)
       const dispatcher = new RpcDispatcher({ runtime, methods: GIT_METHODS })
 
       const response = await dispatcher.dispatch(makeRequest(method, params))
 
-      expect(budgetArgument(runtime, runtimeMethod)).toBeUndefined()
+      expect(enforceBudget).toHaveBeenCalledWith(undefined)
       expect(response).toMatchObject({
         ok: true,
         result: { kind: 'binary', modifiedContent: OVERSIZED_BASE64 }

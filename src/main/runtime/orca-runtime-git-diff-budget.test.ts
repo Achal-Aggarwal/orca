@@ -81,6 +81,23 @@ describe('runtime git diff transport budget', () => {
     ).resolves.toMatchObject({ modifiedContent: OVERSIZED_BASE64 })
   })
 
+  it('caps a staged rename after forwarding its source to the owning host', async () => {
+    await expect(
+      commands().getRuntimeGitDiff(
+        'id:wt-1',
+        'assets/logo.png',
+        true,
+        undefined,
+        REMOTE_RPC_MAX_CONTENT_BYTES,
+        'assets/old-logo.png'
+      )
+    ).rejects.toMatchObject(TOO_LARGE)
+    expect(mocks.getDiff).toHaveBeenCalledWith('/remote/repo', 'assets/logo.png', true, undefined, {
+      admissionTier: 'interactive',
+      oldPath: 'assets/old-logo.png'
+    })
+  })
+
   it('retains and validates the source path of a staged rename on the owning host', async () => {
     await commands({ wslDistro: 'Ubuntu' }).getRuntimeGitDiff(
       'id:wt-1',
