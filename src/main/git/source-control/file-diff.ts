@@ -99,6 +99,7 @@ async function loadDiff(
       // Validate .gitmodules paths so crafted entries cannot escape the worktree.
       const submoduleWorktreePath = resolveSubmoduleWorktreePath(worktreePath, matchedSubmodule)
       const normalizedFilePath = filePath.replace(/\\/g, '/').replace(/\/+$/, '')
+      const normalizedOldPath = staged ? options.oldPath?.replace(/\\/g, '/') : undefined
       if (normalizedFilePath === matchedSubmodule) {
         return notReusable(
           await buildSubmodulePointerDiff(
@@ -108,12 +109,11 @@ async function loadDiff(
             compareAgainstHead,
             options,
             submoduleWorktreePath,
-            staged ? options.oldPath : undefined
+            normalizedOldPath
           )
         )
       }
       const innerPath = normalizedFilePath.slice(matchedSubmodule.length + 1)
-      const normalizedOldPath = staged ? options.oldPath?.replace(/\\/g, '/') : undefined
       const innerOldPath = normalizedOldPath?.startsWith(`${matchedSubmodule}/`)
         ? normalizedOldPath.slice(matchedSubmodule.length + 1)
         : undefined

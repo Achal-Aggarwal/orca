@@ -104,21 +104,27 @@ describe('submodule diff routing', () => {
     expect(result.modifiedContent).toBe(`Subproject commit ${NEW_OID}\n`)
   })
 
-  it('keeps the old gitlink path when a staged submodule was renamed', async () => {
-    const ordinary = gitExecFileAsyncMock.getMockImplementation()
-    gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
-      if (args[0] === 'ls-tree') {
-        return Promise.resolve({
-          stdout: args.at(-1) === 'old_module' ? `160000 commit ${OLD_OID}\told_module\n` : ''
-        })
-      }
-      return ordinary?.(args, options)
-    })
+  it.each(['old_module', 'old_parent\\old_module'])(
+    'keeps the old gitlink path when a staged submodule was renamed from %s',
+    async (oldPath) => {
+      const ordinary = gitExecFileAsyncMock.getMockImplementation()
+      gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
+        if (args[0] === 'ls-tree') {
+          return Promise.resolve({
+            stdout:
+              args.at(-1) === oldPath.replace(/\\/g, '/')
+                ? `160000 commit ${OLD_OID}\told_module\n`
+                : ''
+          })
+        }
+        return ordinary?.(args, options)
+      })
 
-    const result = await getDiff(PARENT, 'flutter_mine', true, false, { oldPath: 'old_module' })
-    expect(result.originalContent).toBe(`Subproject commit ${OLD_OID}\n`)
-    expect(result.modifiedContent).toBe(`Subproject commit ${OLD_OID}\n`)
-  })
+      const result = await getDiff(PARENT, 'flutter_mine', true, false, { oldPath })
+      expect(result.originalContent).toBe(`Subproject commit ${OLD_OID}\n`)
+      expect(result.modifiedContent).toBe(`Subproject commit ${OLD_OID}\n`)
+    }
+  )
 
   it('diffs inner files across the two commits when the gitlink moved', async () => {
     gitExecFileAsyncBufferMock.mockImplementation((args: string[]) => {
