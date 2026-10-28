@@ -9,6 +9,7 @@ import { connect, getClient, testConnection } from '../main/linear/client'
 import { updateIssueForAgent } from '../main/linear/linear-issue-mutations'
 import { writeIssueRelation } from '../main/linear/issue-relation-write'
 import { sendLinearData, serveLinearHttp } from '../main/linear/linear-sdk-http.test-fixture'
+import { LinearAgentAccessError } from '../main/linear/issue-context/errors'
 import { RuntimeRpcFailureError } from './runtime/types'
 import { main } from './index'
 
@@ -74,6 +75,7 @@ const relatedIssue = {
   url: 'https://linear.app/proof/issue/ENG-2'
 }
 const nativeFetch = globalThis.fetch
+let runtime: RuntimeLinearCommands
 let server: Awaited<ReturnType<typeof serveLinearHttp>>
 let counts: Map<string, number>
 let signals: (AbortSignal | null | undefined)[]
@@ -170,7 +172,7 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  const runtime = Object.assign(
+  runtime = Object.assign(
     new RuntimeLinearCommands({
       runtimeAvailable: () => true,
       showTerminal: async () => {
@@ -265,21 +267,57 @@ it('parses and dispatches issue, search, list and project commands through real 
   ])
 })
 
-it('keeps the existing CLI failure envelope after exhausted real socket resets', async () => {
-  persistent = true
-  await main(['linear', 'issue', 'ENG-1', '--workspace', boundary.workspace.id, '--json'])
-  const output = [...vi.mocked(console.log).mock.calls, ...vi.mocked(console.error).mock.calls]
-    .map(([value]) => String(value))
-    .join('\n')
-  expect(JSON.parse(output)).toMatchObject({
-    ok: false,
-    error: { code: 'linear_network_error', message: 'fetch failed' }
-  })
-  expect(output).not.toContain('UND_ERR_SOCKET')
-  expect(output).not.toContain('local-proof-token')
-  expect(server.receipts).toHaveLength(3)
-  expect(process.exitCode).toBe(1)
-})
+it.each([
+  ['issue', 'ENG-1'],
+  ['project', 'list']
+] as const)(
+  'keeps the existing %s CLI/RPC failure envelope and host-only diagnostics after real resets',
+  async (command, target) => {
+    persistent = true
+    const projectRead = runtime.linearProjectListForAgents.bind(runtime)
+    let hostFailure: unknown
+    vi.spyOn(runtime, 'linearProjectListForAgents').mockImplementation(async (params) => {
+      try {
+        return await projectRead(params)
+      } catch (error) {
+        hostFailure = error
+        throw error
+      }
+    })
+    await main(['linear', command, target, '--workspace', boundary.workspace.id, '--json'])
+    const output = [...vi.mocked(console.log).mock.calls, ...vi.mocked(console.error).mock.calls]
+      .map(([value]) => String(value))
+      .join('\n')
+    expect(JSON.parse(output)).toMatchObject({
+      ok: false,
+      error: { code: 'linear_network_error', message: 'fetch failed' }
+    })
+    const outwardError = { code: 'linear_network_error', message: 'fetch failed' }
+    expect(JSON.parse(output).error).toEqual(outwardError)
+    const rpcFailure: unknown = await boundary.callMock.mock.results[0].value.catch(
+      (error: unknown) => error
+    )
+    assert(rpcFailure instanceof RuntimeRpcFailureError)
+    expect(rpcFailure.response.error).toEqual(outwardError)
+    expect(JSON.stringify(rpcFailure.response)).not.toMatch(
+      /UND_ERR_SOCKET|ECONNRESET|local-proof-token|Linear transport failure/
+    )
+    if (command === 'project') {
+      assert(hostFailure instanceof LinearAgentAccessError)
+      expect(hostFailure).toMatchObject(outwardError)
+      expect(hostFailure.data).toBeUndefined()
+      assert(hostFailure.cause instanceof Error)
+      expect(hostFailure.cause.message).toMatch(
+        /^Linear transport failure: (UND_ERR_SOCKET|ECONNRESET)$/
+      )
+      expect(hostFailure.cause.cause).toBeUndefined()
+      expect(counts.get('OrcaLinearProjects')).toBe(3)
+    }
+    expect(output).not.toMatch(/UND_ERR_SOCKET|ECONNRESET|local-proof-token/)
+    expect(server.receipts).toHaveLength(3)
+    expect(process.exitCode).toBe(1)
+  }
+)
 
 it('applies recovery at connect, connection-test and legacy getClient constructor sites', async () => {
   const client = getClient(boundary.workspace.id)

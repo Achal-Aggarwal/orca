@@ -130,6 +130,7 @@ it('recovers generated and raw SDK reads, retaining headers, options and raw met
     headers: { 'x-constructor': 'retained' }
   })
   expect(client.options).toMatchObject({ signal, cache: 'no-store', apiUrl: server.apiUrl })
+  client.client.setHeader('x-constructor', 'mutated')
   backoff.started.mockImplementationOnce(() => {
     reset = false
   })
@@ -139,6 +140,16 @@ it('recovers generated and raw SDK reads, retaining headers, options and raw met
     'AUTH_SENTINEL',
     'AUTH_SENTINEL'
   ])
+  expect(server.receipts.slice(2).map((receipt) => receipt.headers['x-constructor'])).toEqual([
+    'mutated',
+    'mutated'
+  ])
+  client.client.setHeaders({
+    authorization: 'AUTH_SENTINEL',
+    'x-constructor': 'replaced',
+    'x-set-headers': 'retained'
+  })
+  client.client.setHeader('x-set-header', 'retained')
   reset = true
   backoff.started.mockImplementationOnce(() => {
     reset = false
@@ -158,7 +169,9 @@ it('recovers generated and raw SDK reads, retaining headers, options and raw met
       method: 'POST',
       variables: { id: 'variable-proof' },
       headers: {
-        'x-constructor': 'retained',
+        'x-constructor': 'replaced',
+        'x-set-headers': 'retained',
+        'x-set-header': 'retained',
         'x-per-request': 'retained',
         authorization: 'AUTH_SENTINEL'
       }
@@ -182,7 +195,10 @@ it('stops persistent real resets at three, sanitizes diagnostics and later reuse
       Object.assign(error, {
         query: 'QUERY_SENTINEL',
         variables: { body: 'VARIABLE_SENTINEL' },
-        auth: 'AUTH_SENTINEL'
+        auth: 'AUTH_SENTINEL',
+        url: 'https://URL_SENTINEL.invalid/graphql',
+        headers: { authorization: 'HEADER_SENTINEL' },
+        stack: 'Error: STACK_SENTINEL\n    at https://STACK_URL_SENTINEL.invalid/request'
       })
       throw error
     }
@@ -214,7 +230,11 @@ it('stops persistent real resets at three, sanitizes diagnostics and later reuse
     'QUERY_SENTINEL',
     'VARIABLE_SENTINEL',
     'AUTH_SENTINEL',
-    'RAW_ERROR_SENTINEL'
+    'RAW_ERROR_SENTINEL',
+    'URL_SENTINEL',
+    'HEADER_SENTINEL',
+    'STACK_SENTINEL',
+    'STACK_URL_SENTINEL'
   ]) {
     expect(finalDiagnostic).not.toContain(sentinel)
   }
@@ -295,7 +315,15 @@ it('leaves HTTP authentication, permission, rate limit and GraphQL failures at o
 it('aborts an active backoff with the original deadline reason and no new request', async () => {
   const fetch = vi.spyOn(globalThis, 'fetch')
   const controller = new AbortController()
-  const reason = new DOMException('Original caller deadline', 'TimeoutError')
+  const reason = Object.assign(
+    new DOMException('Original caller deadline ABORT_REASON_SENTINEL', 'TimeoutError'),
+    {
+      cause: Object.assign(new Error('ABORT_CAUSE_SENTINEL'), { code: 'ECONNRESET' }),
+      stack: 'ABORT_STACK_SENTINEL',
+      url: 'https://ABORT_URL_SENTINEL.invalid',
+      headers: { authorization: 'ABORT_HEADER_SENTINEL' }
+    }
+  )
   const client = createLinearClient({
     apiKey: 'proof',
     apiUrl: server.apiUrl,
@@ -316,6 +344,10 @@ it('aborts an active backoff with the original deadline reason and no new reques
   const codes = linearTransportErrorCodes(failure)
   expect(codes.some((code) => code === 'UND_ERR_SOCKET' || code === 'ECONNRESET')).toBe(true)
   expectRecord(spans[0], 'query', 1, codes, 'Failure')
+  const converted = toLinearAccessError(reason)
+  expect(converted.message).toBe(reason.message)
+  expect(converted.cause).toEqual(new Error('Linear transport failure: ECONNRESET'))
+  expect(inspect(converted.cause) + readFileSync(sink.filePath, 'utf8')).not.toContain('SENTINEL')
 })
 
 it('persists the failed first attempt while the real HTTP retry is still pending', async () => {
@@ -432,6 +464,10 @@ it('vetoes permanent, unknown, named abort/timeout and bounded-graph failures wi
     ...['AbortError', 'TimeoutError'].map((name) => Object.assign(resetError(), { name })),
     new Error('ECONNRESET is only a message'),
     new AggregateError([resetError(), new Error('UNKNOWN_SECRET')], 'AGGREGATE_SECRET'),
+    new AggregateError(
+      [resetError(), Object.assign(new Error('TLS_SECRET'), { code: 'CERT_HAS_EXPIRED' })],
+      'AGGREGATE_SECRET'
+    ),
     new AggregateError(Array.from({ length: 17 }, resetError), 'AGGREGATE_SECRET'),
     new Error('unknown child', { cause: false }),
     Object.assign(resetError(), { raw: 'RAW_SECRET' }),
@@ -464,6 +500,37 @@ it('vetoes permanent, unknown, named abort/timeout and bounded-graph failures wi
   }
   expect(readFileSync(sink.filePath, 'utf8')).not.toMatch(/SECRET|PRIVATE_DOCUMENT|privateField/)
   expect(backoff.started).not.toHaveBeenCalled()
+})
+
+it('admits transient SDK raw aggregates only within the distinct-node budget', async () => {
+  const resetError = () => Object.assign(new Error('NODE_SECRET'), { code: 'ECONNRESET' })
+  for (const [failure, retryable] of [
+    [
+      Object.assign(new Error('SDK_SECRET'), {
+        raw: new AggregateError([resetError(), resetError()], 'AGGREGATE_SECRET')
+      }),
+      true
+    ],
+    [new AggregateError(Array.from({ length: 15 }, resetError), 'SIXTEEN_NODE_SECRET'), true],
+    [new AggregateError(Array.from({ length: 16 }, resetError), 'SEVENTEEN_NODE_SECRET'), false]
+  ] as const) {
+    const before = records().length
+    const request = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue('recovered')
+    const pending = recoverLinearQuery('query Nodes { viewer { id } }', request, {})
+    await (retryable
+      ? expect(pending).resolves.toBe('recovered')
+      : expect(pending).rejects.toBe(failure))
+    expect(request).toHaveBeenCalledTimes(retryable ? 2 : 1)
+    const spans = records().slice(before)
+    expect(spans).toHaveLength(retryable ? 2 : 1)
+    expectRecord(spans[0], 'query', 1, ['ECONNRESET'], 'Failure')
+    if (retryable) {
+      expectRecord(spans[1], 'query', 2, [], 'Success')
+    }
+    expect(inspect(toLinearAccessError(failure).cause)).not.toContain('SECRET')
+  }
+  expect(backoff.started.mock.calls.map(([ms]) => ms)).toEqual([100, 100])
+  expect(readFileSync(sink.filePath, 'utf8')).not.toContain('SECRET')
 })
 
 it('delegates non-string documents and own undefined overrides once', async () => {
