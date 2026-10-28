@@ -9,6 +9,7 @@ import {
 } from '../../shared/secret-store'
 import { createEncryptedAntigravityAccountStore } from './native-account-store'
 import { AntigravityAccountService } from './native-account-service'
+import type { AntigravityCredentialIdentity } from './native-credential-codec'
 import { credential, harness, refreshedWithoutIdToken } from './native-account-test-fixtures'
 import { createAntigravityWindowsCredentialBackend } from './native-windows-credentials'
 import { parseAntigravityWindowsSnapshot } from './native-windows-token-decode'
@@ -78,11 +79,13 @@ describe('protected Antigravity account snapshots', () => {
       const backend = createAntigravityWindowsCredentialBackend(dir)
       const path = join(dir, 'typed-vault')
       const store = () => createEncryptedAntigravityAccountStore(path, backend.parse)
-      const lookup = vi.fn(async () => ({
-        issuer: 'https://accounts.google.com',
-        subject: 'typed',
-        email: null
-      }))
+      const lookup = vi.fn<(accessToken: string) => Promise<AntigravityCredentialIdentity>>(
+        async () => ({
+          issuer: 'https://accounts.google.com',
+          subject: 'typed',
+          email: null
+        })
+      )
       const reopen = () => new AntigravityAccountService(store(), backend, Date.now, lookup)
       const native = (contents: string) =>
         fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(contents))
