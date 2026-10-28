@@ -103,7 +103,7 @@ describe("a Stop's queue pause", () => {
     ]
     const catalog = createAgentModelCatalogService({
       store: catalogStore,
-      getRecord: (id) => rig.store.getRecord(id),
+      getRecord: (id) => rig.store.getRecord(id) ?? undefined,
       getConversation: (id) => rig.store.getConversation(id) ?? undefined,
       drivesRecord: () => true,
       resolveAccountHome: async () => record.accountHome
