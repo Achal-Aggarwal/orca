@@ -78,7 +78,11 @@ describe('OrcaRuntimeService', () => {
 
   it('advertises headless browser capability when an offscreen backend backs a windowless host', () => {
     const runtime = createRuntime()
-    runtime.setOffscreenBrowserBackend({ createTab: vi.fn(), closeTab: vi.fn() })
+    runtime.setOffscreenBrowserBackend({
+      createTab: vi.fn(),
+      closeTab: vi.fn(),
+      ownsTab: () => true
+    })
 
     const capabilities = runtime.getStatus().capabilities
     expect(capabilities).toContain('browser.screencast.v1')
@@ -117,7 +121,11 @@ describe('OrcaRuntimeService', () => {
   })
   it('surfaces live offscreen load failures in headless browser snapshots', () => {
     const runtime = createRuntime()
-    runtime.setOffscreenBrowserBackend({ createTab: vi.fn(), closeTab: vi.fn() })
+    runtime.setOffscreenBrowserBackend({
+      createTab: vi.fn(),
+      closeTab: vi.fn(),
+      ownsTab: () => true
+    })
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({
         tabs: [
@@ -392,7 +400,11 @@ describe('OrcaRuntimeService', () => {
     const runtime = createRuntime()
     electronMocks.BrowserWindow.fromId.mockReturnValue({ isDestroyed: () => false } as never)
     runtime.attachWindow(TEST_WINDOW_ID)
-    runtime.setOffscreenBrowserBackend({ createTab: vi.fn(), closeTab: vi.fn() })
+    runtime.setOffscreenBrowserBackend({
+      createTab: vi.fn(),
+      closeTab: vi.fn(),
+      ownsTab: () => true
+    })
 
     expect(runtime.getStatus().capabilities).not.toContain('browser.headless.v1')
     // Remote certificate proceed also applies to desktop webviews.
@@ -528,7 +540,7 @@ describe('OrcaRuntimeService', () => {
   it('closes a worktree’s offscreen browser pages when its metadata is removed (leak fix)', () => {
     const runtime = createRuntime()
     const closeTab = vi.fn().mockResolvedValue(undefined)
-    runtime.setOffscreenBrowserBackend({ createTab: vi.fn(), closeTab })
+    runtime.setOffscreenBrowserBackend({ createTab: vi.fn(), closeTab, ownsTab: () => true })
     runtime.setAgentBrowserBridge({
       tabList: vi.fn((worktreeId: string) =>
         worktreeId === TEST_WORKTREE_ID
