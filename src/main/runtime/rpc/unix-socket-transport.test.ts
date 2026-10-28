@@ -110,6 +110,36 @@ describe('UnixSocketTransport', () => {
     expect(received).toEqual([large, 'partial', large])
   })
 
+  it('releases consumed input while preserving partial requests on open connections', () => {
+    const gc = globalThis.gc
+    if (!gc) {
+      throw new Error('Retention checks require --expose-gc')
+    }
+    const collectHeap = (): number => {
+      void /reset/.test('reset')
+      gc()
+      gc()
+      return process.memoryUsage().heapUsed
+    }
+    const before = collectHeap()
+    const receivers = Array.from({ length: 32 }, (_, index) => {
+      const receiver = createReceiver()
+      receiver.socket.emit('data', `${' '.repeat(512 * 1024)}\npartial-request-${index}-`)
+      return receiver
+    })
+    const retainedBytes = collectHeap() - before
+    try {
+      expect(retainedBytes).toBeLessThan(4 * 1024 * 1024)
+      for (const [index, receiver] of receivers.entries()) {
+        receiver.socket.emit('data', 'completed\r\n')
+        expect(receiver.received).toEqual([`partial-request-${index}-completed`])
+        expect(receiver.socket.writes).toEqual(['ok\n'])
+      }
+    } finally {
+      receivers.forEach(({ socket }) => socket.destroy())
+    }
+  })
+
   it('checks the combined incoming buffer before dispatching any complete messages', () => {
     const { socket, received } = createReceiver()
     socket.emit('data', `${'a'.repeat(700000)}\n${'b'.repeat(700000)}\n`)

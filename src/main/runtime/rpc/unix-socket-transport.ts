@@ -2,6 +2,7 @@
 // Own per-connection cancellation and opt-in long-poll keepalives (design §3.1).
 import { createServer, type Server, type Socket } from 'node:net'
 import { chmodSync, existsSync, rmSync } from 'node:fs'
+import { ownRetainedString } from '../../../shared/own-retained-string'
 import type { RpcMessageContext, RpcTransport } from './transport'
 
 const MAX_RUNTIME_RPC_MESSAGE_BYTES = 1024 * 1024
@@ -142,6 +143,7 @@ export class UnixSocketTransport implements RpcTransport {
       if (!chunk.includes('\n')) {
         return
       }
+      const receivedLength = buffer.length
       let newlineIndex = buffer.indexOf('\n')
       while (newlineIndex !== -1) {
         const rawMessage = buffer.slice(0, newlineIndex).trim()
@@ -150,6 +152,9 @@ export class UnixSocketTransport implements RpcTransport {
           this.dispatchMessage(socket, rawMessage, inflight, rearmIdleTimer)
         }
         newlineIndex = buffer.indexOf('\n')
+      }
+      if (buffer.length > 0 && buffer.length * 2 < receivedLength) {
+        buffer = ownRetainedString(buffer)
       }
       retainedBytes = Buffer.byteLength(buffer, 'utf8')
     })
