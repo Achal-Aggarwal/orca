@@ -1,10 +1,9 @@
 import '../main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { OrcaRuntimeService } from '../main/runtime/orca-runtime'
+import { OrcaRuntimeService } from '../main/runtime/orca-runtime'
 import { RpcDispatcher } from '../main/runtime/rpc/dispatcher'
 import { LINEAR_AGENT_ACCESS_METHODS } from '../main/runtime/rpc/methods/linear-agent-access'
-import { RuntimeLinearCommands } from '../main/runtime/runtime-linear-connection-commands'
 import { connect, getClient, testConnection } from '../main/linear/client'
 import { updateIssueForAgent } from '../main/linear/linear-issue-mutations'
 import { writeIssueRelation } from '../main/linear/issue-relation-write'
@@ -75,7 +74,7 @@ const relatedIssue = {
   url: 'https://linear.app/proof/issue/ENG-2'
 }
 const nativeFetch = globalThis.fetch
-let runtime: RuntimeLinearCommands
+let runtime: OrcaRuntimeService
 let server: Awaited<ReturnType<typeof serveLinearHttp>>
 let counts: Map<string, number>
 let signals: (AbortSignal | null | undefined)[]
@@ -172,30 +171,9 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  runtime = Object.assign(
-    new RuntimeLinearCommands({
-      runtimeAvailable: () => true,
-      showTerminal: async () => {
-        throw new Error('Unexpected terminal')
-      },
-      resolveWorktreeSelector: async () => {
-        throw new Error('Unexpected workspace lookup')
-      },
-      listResolvedWorktrees: async () => [],
-      setWorktreeMeta: () => {
-        throw new Error('Unexpected metadata write')
-      },
-      emitClientEvent: () => {
-        throw new Error('Unexpected event')
-      }
-    }),
-    { getRuntimeId: () => 'runtime-proof' }
-  )
-  // SAFETY: the explicit Linear registry uses only this real Linear command surface and runtime ID.
-  const dispatcher = new RpcDispatcher({
-    runtime: runtime as unknown as OrcaRuntimeService,
-    methods: LINEAR_AGENT_ACCESS_METHODS
-  })
+  runtime = new OrcaRuntimeService(null)
+  vi.spyOn(runtime, 'getRuntimeId').mockReturnValue('runtime-proof')
+  const dispatcher = new RpcDispatcher({ runtime, methods: LINEAR_AGENT_ACCESS_METHODS })
   boundary.callMock.mockImplementation(async (method: string, params: unknown) => {
     const response = await dispatcher.dispatch({
       id: 'request-proof',
