@@ -134,7 +134,8 @@ A consuming `check` names its caller with `--terminal <handle>`, never `--from`;
 omit it inside the coordinator's own Orca terminal. It returns the bound Run's
 oldest FIFO Delivery and replays that batch until acknowledged. Process every
 message: reply to questions, validate each `worker_done` against the expected
-active Dispatch, and decide each settled terminal's next owner before the ack:
+active Dispatch, and decide each settled terminal's next owner before the ack
+(see Completion accounting):
 
 ```text
 ORCA orchestration reply --id <message_id> --body "<answer>" --json
@@ -176,11 +177,16 @@ Every Task spec must be self-contained and name:
 
 ## Completion accounting
 
-After an accepted success or failure report, immediately do exactly one:
+Terminal workers are released about 2 minutes after an accepted success or
+failure report, keeping their output for `worker-read`; `worker-show` and
+`worker-list` report the deadline as `autoReleaseAt`. Before it passes:
 
-1. Reuse the same proven agent terminal for an immediate follow-up Dispatch.
-2. Record user-requested retention with `worker-retain`.
-3. Run `worker-release`.
+1. Reuse the same proven agent terminal for an immediate follow-up Dispatch, or
+2. run `worker-retain` first to keep it longer for later reuse or inspection.
+
+Explicit `worker-release` still works at any time after settlement. It is
+required for chat workers, which are never released automatically, and for any
+settled worker that shows no `autoReleaseAt`.
 
 Release is post-settlement cleanup, not cancellation. Only an accepted
 settlement authorizes it; no other observation does. If release is uncertain,
@@ -189,7 +195,7 @@ follow its exact recovery receipt and never substitute `terminal close`.
 A valid `worker_done` settles the Task and Dispatch automatically; do not follow
 it with `task-update --status completed`. Enumerate the terminals still owing a
 decision with `worker-list --run <run_id> --terminal-state reclaimable --json`,
-and do not end the coordinator turn until it returns none.
+and do not end the coordinator turn until every row left has an `autoReleaseAt`.
 
 ## Conditional references
 
