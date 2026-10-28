@@ -15,6 +15,7 @@ import {
   defaultSchedule,
   ensureHolderQuietly,
   probeOrcadPort,
+  scheduleSupervisedHeartbeat,
   subscribeWake
 } from './wsl-orcad-liveness-monitor'
 import {
@@ -174,14 +175,9 @@ export class WslOrcadLivenessSupervisor {
   }
 
   private scheduleHeartbeat(entry: Supervised): void {
-    entry.timer?.cancel()
-    entry.lastBeatMs = this.now()
-    entry.timer = this.schedule(this.heartbeatMs, () => {
-      entry.timer = null
-      // Long-overdue ticks imply process/VM suspension; reverify all evidence.
-      const late = this.now() - entry.lastBeatMs > this.heartbeatMs * 2
-      this.trigger(entry, late ? { source: 'verify' } : 'heartbeat')
-    })
+    scheduleSupervisedHeartbeat(entry, this.schedule, this.now, this.heartbeatMs, (trigger) =>
+      this.trigger(entry, trigger)
+    )
   }
 
   private scheduleVerify(entry: Supervised): void {

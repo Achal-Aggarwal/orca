@@ -7,6 +7,7 @@ import type { WslOrcadConnection } from './wsl-orcad-connection'
 import type { WslOrcadConnectionStatus } from './wsl-orcad-connection-status'
 import { EXIT_SETTLE_MS } from './wsl-orcad-liveness-evidence'
 import { WSL_ORCAD_HEARTBEAT_MS } from './wsl-orcad-liveness-state'
+import { WSL_ORCAD_IDLE_VERIFY_MS } from './wsl-orcad-liveness-monitor'
 import { WslDistroNotRunningError } from './wsl-orcad-connection-errors'
 import { WslOrcadLivenessSupervisor } from './wsl-orcad-liveness-supervisor'
 import { WSL_ORCAD_RECONNECT_DELAYS_MS } from './wsl-orcad-reconnect-backoff'
@@ -478,6 +479,23 @@ describe('WslOrcadLivenessSupervisor', () => {
     expect(h.readIdentity).toHaveBeenCalledTimes(2)
     // Same orcad: still ready, no verdict change.
     expect(h.statuses.filter((status) => status.state !== 'ready')).toEqual([])
+  })
+
+  it('bounds detection to the idle verify period while no desktop socket is open', async () => {
+    const h = harness()
+    h.state.watchProves = false
+    await h.supervisor.connect('Ubuntu')
+    const reads = h.readIdentity.mock.calls.length
+    await h.advance(WSL_ORCAD_IDLE_VERIFY_MS - 1)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads)
+    await h.advance(1)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads + 1)
+    await h.advance(WSL_ORCAD_IDLE_VERIFY_MS)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads + 2)
+    // With a socket open again, ticks go back to the heartbeat's cheap running-list read.
+    h.state.watchProves = true
+    await h.advance(WSL_ORCAD_IDLE_VERIFY_MS + WSL_ORCAD_HEARTBEAT_MS)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads + 2)
   })
 
   it('treats a socket orcad closed for another reason as a verify, not a verdict', async () => {

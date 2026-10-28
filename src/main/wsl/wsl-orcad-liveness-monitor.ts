@@ -1,6 +1,7 @@
 import type { WslOrcadConnection } from './wsl-orcad-connection'
 import type {
   Supervised,
+  Trigger,
   WslOrcadLivenessDependencies,
   WslOrcadTimer
 } from './wsl-orcad-liveness-state'
@@ -66,6 +67,30 @@ export async function probeOrcadPort(
     return 'refused'
   }
   return entry.watch?.proving() ? 'ready' : attach(connection)
+}
+
+/** While no watch proves orcad (no desktop socket open), a full verify runs this often instead. */
+export const WSL_ORCAD_IDLE_VERIFY_MS = 30_000
+
+/** The next liveness tick: the heartbeat while a watch proves orcad, a sooner full verify while none does. */
+export function scheduleSupervisedHeartbeat(
+  entry: Supervised,
+  schedule: (delayMs: number, task: () => void) => WslOrcadTimer,
+  now: () => number,
+  heartbeatMs: number,
+  trigger: (trigger: Trigger) => void
+): void {
+  entry.timer?.cancel()
+  entry.lastBeatMs = now()
+  const delayMs = entry.watch?.proving()
+    ? heartbeatMs
+    : Math.min(heartbeatMs, WSL_ORCAD_IDLE_VERIFY_MS)
+  entry.timer = schedule(delayMs, () => {
+    entry.timer = null
+    // Long-overdue ticks imply process/VM suspension; reverify all evidence.
+    const late = now() - entry.lastBeatMs > delayMs * 2
+    trigger(late ? { source: 'verify' } : 'heartbeat')
+  })
 }
 
 /** Holds a new watch unless a later connect superseded this one or already holds one. */
