@@ -93,6 +93,9 @@ it.each(['claude', 'omp'] as const)(
                       await cleanup
                       return prove()
                     }
+                    if (child.launch.cwd === undefined) {
+                      throw new Error('command discovery must launch in its workspace')
+                    }
                     const entering = enter({
                       cwd: child.launch.cwd,
                       account: child.launch.env!.PI_CODING_AGENT_DIR!
@@ -300,7 +303,7 @@ it.each(['claude', 'omp'] as const)(
               setCatalogAccount(saved)
               await host.readCommands(pinned, true)
               expect(launches.at(-1)?.account).toBe(selected)
-              await catalog.closeAll?.()
+              await omp.catalog.closeAll()
               expect(omp.children.every((child) => child.exited)).toBe(true)
             }
           } finally {

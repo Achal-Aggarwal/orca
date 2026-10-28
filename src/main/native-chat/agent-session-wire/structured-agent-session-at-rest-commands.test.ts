@@ -12,11 +12,10 @@ import {
   namesOf,
   attachContext,
   runtime,
+  renderer,
   advanceCatalogClock
 } from './structured-agent-session-at-rest-command-rig.test-fixture'
-import { act, renderHook } from '@testing-library/react'
-import { useStructuredAgentSessionCommandMenu } from '../../../renderer/src/components/native-chat/structured-agent-session-command-refresh'
-import { useStructuredAgentSessionRead } from '../../../renderer/src/components/native-chat/use-structured-agent-session-read'
+import { act } from '@testing-library/react'
 
 import {
   commandDiscoveryRig,
@@ -469,16 +468,12 @@ it.each(['claude', 'omp'] as const)(
         }
       })
     }))
-    const target = { kind: 'local' } as const
-    const menu = renderHook(() => ({
-      read: useStructuredAgentSessionRead({ sessionId: id, target, isViewed: false }),
-      menu: useStructuredAgentSessionCommandMenu(target, id, true)
-    }))
+    const menu = renderer.renderCommandMenu(id)
     try {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(50)
       })
-      await act(async () => menu.result.current.menu.setOpen(true))
+      await act(async () => menu.setOpen(true))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(330_000)
       })
@@ -497,7 +492,7 @@ it.each(['claude', 'omp'] as const)(
       await act(async () => {
         await vi.advanceTimersByTimeAsync(50)
       })
-      expect(menu.result.current.read.state.commands?.some((row) => row.name === 'fast')).toBe(true)
+      expect(menu.commands()?.some((row) => row.name === 'fast')).toBe(true)
       expect(calls).toBe(4)
       await vi.advanceTimersByTimeAsync(600_000)
       expect(calls).toBe(4)
@@ -509,7 +504,7 @@ it.each(['claude', 'omp'] as const)(
       await refreshAtRestCommandContext(async () => {})
       await vi.advanceTimersByTimeAsync(50)
       await vi.waitFor(() => expect(calls).toBe(5), { interval: 0 })
-      act(() => menu.result.current.menu.setOpen(false))
+      act(() => menu.setOpen(false))
       retireAtRestCommandSettings(['agentCmdOverrides'])
       await vi.advanceTimersByTimeAsync(50)
       expect(calls).toBe(5)
@@ -759,16 +754,12 @@ it('wakes the same demanded desktop after a real pending episode reaches its dea
       emit
     })
   }))
-  const target = { kind: 'local' } as const
-  const hook = renderHook(() => ({
-    read: useStructuredAgentSessionRead({ sessionId: SESSION, target, isViewed: false }),
-    menu: useStructuredAgentSessionCommandMenu(target, SESSION, true)
-  }))
+  const hook = renderer.renderCommandMenu(SESSION)
   try {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(50)
     })
-    await act(async () => hook.result.current.menu.setOpen(true))
+    await act(async () => hook.setOpen(true))
     await vi.waitFor(
       () => expect(catalog.snapshot(store.getRecord(SESSION)!).commandsPending).toBe(true),
       { interval: 0 }
@@ -795,7 +786,7 @@ it('wakes the same demanded desktop after a real pending episode reaches its dea
       await vi.advanceTimersByTimeAsync(50)
     })
     expect(calls).toBe(parked + 1)
-    expect(hook.result.current.read.state.commands?.[0]?.name).toBe('fast')
+    expect(hook.commands()?.[0]?.name).toBe('fast')
   } finally {
     held.resolve()
     hook.unmount()

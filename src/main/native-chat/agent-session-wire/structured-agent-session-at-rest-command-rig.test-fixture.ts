@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup } from '@testing-library/react'
 
-import { resetStructuredAgentSessionReadOwnersForTests } from '../../../renderer/src/components/native-chat/structured-agent-session-read-owner'
+import type { CommandMenuRendererFixtureModule } from '../../../shared/agent-session-command-menu.test-fixture-contract'
 
 import { OMP } from '../../acp/acp-command-discovery.test-fixture'
 import { acpStructuredAgentDefinition } from '../../acp/acp-structured-agent-definitions'
@@ -42,6 +42,9 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSession: runtimeMocks.subscribe
 }))
 export const runtime = runtimeMocks
+export const renderer = await vi.importActual<CommandMenuRendererFixtureModule>(
+  '../../../renderer/src/components/native-chat/agent-session-command-menu.test-fixture'
+)
 export const caller = { callerKey: 'desktop' }
 export const CLAUDE_SESSION = '819cf9f8-e43c-4ad7-b50f-54aa158a726a'
 
@@ -174,7 +177,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup()
-  resetStructuredAgentSessionReadOwnersForTests()
+  renderer.resetReadOwners()
   await host.flushAllStreamedEvents()
   await rm(directory, { recursive: true, force: true })
 })

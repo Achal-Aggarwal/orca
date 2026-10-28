@@ -77,7 +77,7 @@ export function buildSubscriberFrame(
           index === 0 &&
           frame.type !== 'end' &&
           subscriber.commandsOnRequest &&
-          (event.commandsChanged || event.type !== 'batch' || commands !== subscriber.commands)
+          (event.type !== 'batch' || event.commandsChanged || commands !== subscriber.commands)
             ? { ...frame, commandsChanged: true }
             : frame
         )
