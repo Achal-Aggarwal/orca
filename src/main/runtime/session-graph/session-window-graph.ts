@@ -9,6 +9,7 @@ import { HEADLESS_RUNTIME_WINDOW_ID } from '../../../shared/runtime-types'
 import type { RuntimeLeafRecord } from '../runtime-terminal-state-records'
 
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
+import { isMailboxLeafTakingInput } from '../orchestration/mailbox-owner'
 
 type Graph = RuntimeSyncWindowGraph
 
@@ -302,15 +303,13 @@ export abstract class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAtta
       const previousLeaf = previousLeaves.get(this.getLeafKey(leaf.tabId, leaf.leafId))
       if (
         this._orchestrationDb &&
-        leaf.lastAgentStatus === 'idle' &&
-        leaf.lastAgentStatusObservedLive &&
+        isMailboxLeafTakingInput(leaf) &&
         this.checkDeliverySettledAndArmRecheck(leaf) &&
         leaf.writable &&
         (!graphWasReady ||
           previousLeaf?.ptyId !== leaf.ptyId ||
           !previousLeaf.writable ||
-          previousLeaf.lastAgentStatus !== 'idle' ||
-          !previousLeaf.lastAgentStatusObservedLive)
+          !isMailboxLeafTakingInput(previousLeaf))
       ) {
         this.deliverPendingMessagesForLeaf(leaf)
       }

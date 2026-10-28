@@ -4,7 +4,7 @@ import {
   selectOrchestrationPointerBatch,
   type OrchestrationMessageWaiter
 } from './mailbox-pointer-eligibility'
-import type { OrchestrationMailboxLeaf } from './mailbox-owner'
+import { isMailboxLeafTakingInput, type OrchestrationMailboxLeaf } from './mailbox-owner'
 import {
   OrchestrationMailboxPointerState,
   type OrchestrationMailboxDeliveryFlight
@@ -39,7 +39,8 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     }
     try {
       const leaf = this.deps.getLiveLeafForHandle(terminalHandle)
-      if (leaf.lastAgentStatus !== 'idle' || !leaf.lastAgentStatusObservedLive) {
+      // Skip ownership resolution, and the reconciliation it schedules, for a pane deliver() would refuse.
+      if (!isMailboxLeafTakingInput(leaf)) {
         return
       }
       const mailboxHandle = this.deps.mailboxOwner.resolve(leaf, handle)
@@ -67,13 +68,17 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     if (!this.deps.getTerminalHandleForLeafKey(this.leafKey(leaf))) {
       return
     }
-    // Gate settled-agent input at this shared commit point; refusal parks for recheck instead of dropping mail.
-    if (!this.deps.isAgentSettledForDelivery(leaf)) {
+    // Gate live, settled input at this shared commit point; refusal parks for recheck instead of dropping mail.
+    if (!isMailboxLeafTakingInput(leaf) || !this.deps.isAgentSettledForDelivery(leaf)) {
       this.parkRedelivery(mailboxHandle, options.reservedTypes)
       return
     }
     if (leaf.ptyId) {
-      const deferredEnter = this.state.takeDeferredEnter(leaf.ptyId)
+      // As in observeAgentWorking: a cold-parked pane's deferred Enter waits for rest.
+      const deferredEnter =
+        this.coldParkedPtys.has(leaf.ptyId) && leaf.lastAgentStatus !== 'idle'
+          ? null
+          : this.state.takeDeferredEnter(leaf.ptyId)
       if (deferredEnter) {
         this.state.parkDelivery(leaf.ptyId, mailboxHandle, leaf, options.reservedTypes)
         deferredEnter()
@@ -224,11 +229,7 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     mailboxHandle: string
   ): void {
     const currentLeaf = this.deps.getLeaf(this.leafKey(leaf))
-    if (
-      currentLeaf?.ptyId === ptyId &&
-      currentLeaf.lastAgentStatus === 'idle' &&
-      currentLeaf.lastAgentStatusObservedLive
-    ) {
+    if (currentLeaf?.ptyId === ptyId) {
       this.deliver(currentLeaf, { mailboxHandle, skipAbsenceProbe: true })
     }
   }

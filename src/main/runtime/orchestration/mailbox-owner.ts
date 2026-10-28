@@ -12,6 +12,17 @@ export type OrchestrationMailboxLeaf = {
   paneTitle?: string | null
 }
 
+/** An agent at rest or mid-turn takes typed mail: agents queue or steer text sent during a turn. */
+export function agentStatusTakesTypedInput(status: AgentStatus | null): boolean {
+  return status === 'idle' || status === 'working'
+}
+
+export function isMailboxLeafTakingInput(
+  leaf: Pick<OrchestrationMailboxLeaf, 'lastAgentStatus' | 'lastAgentStatusObservedLive'>
+): boolean {
+  return leaf.lastAgentStatusObservedLive && agentStatusTakesTypedInput(leaf.lastAgentStatus)
+}
+
 export type RoutedOrchestrationMailbox = {
   mailboxHandle: string
   types: string[]

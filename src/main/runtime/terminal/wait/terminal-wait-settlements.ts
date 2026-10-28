@@ -187,7 +187,9 @@ export abstract class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithB
     this.deliveryRecheckTimersByLeafKey.set(leafKey, timer)
   }
 
-  /** Pointer plus Enter requires the same readiness ranking as waits; name-only titles can occur mid-turn (#6011). Callers separately require live status evidence. */
+  /** Pointer plus Enter takes the waits' readiness ranking, plus a working verdict: agents queue or
+   *  steer text sent mid-turn, so only dialogs, drafts and unsettled panes hold mail. Callers
+   *  separately require live status evidence. */
   protected isAgentSettledForDelivery(leaf: { tabId: string; leafId: string }): boolean {
     const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId)
     const live = this.leaves.get(leafKey)
@@ -208,9 +210,11 @@ export abstract class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithB
     }
     // Why no blocked reader: a refusal here re-arms a recheck that a lingering tail prompt
     // would spin, so delivery keeps its own, blocked-blind, reading of the same ranking.
-    return isTuiIdleReadyVerdict(
-      evaluateTuiIdle({ ...evidence, readTailBlockedReason: () => null })
-    )
+    const verdict = evaluateTuiIdle({ ...evidence, readTailBlockedReason: () => null })
+    // The ranking vetoes overlays only on ready verdicts; an overlay refuses input mid-turn too.
+    return verdict.kind === 'working'
+      ? evidence.readScreenInputVeto() !== true
+      : isTuiIdleReadyVerdict(verdict)
   }
 
   /** An unsent draft would be submitted with the injected text; the cap bounds an abandoned or misread one. */

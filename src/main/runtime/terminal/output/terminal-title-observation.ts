@@ -10,6 +10,7 @@ import { terminalTitleBlocksExplicitAgentStatus } from '../../runtime-worktree-s
 import type { ClaudeTerminalEvidence } from '../../../../shared/claude-terminal-interrupt'
 import type { OrchestrationMailboxLeaf } from '../../orchestration/mailbox-owner'
 import type { PtyLaneMailboxTarget } from '../query/pty-terminal-summary'
+import { agentStatusTakesTypedInput } from '../../orchestration/mailbox-owner'
 
 export abstract class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnpersistedTrackedTitleForPty {
   protected abstract collectPaneKeysForPty(ptyId: string): Set<string>
@@ -122,17 +123,17 @@ export abstract class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWit
     // Why before retiring the clear: the lifecycle counts a turn from the status the clear showed.
     this.recordAgentPromptLifecycleState(ptyId, agentStatus)
     let ptyRecordChanged = false
-    let ptyIdleEdge = false
+    let ptyInputEdge = false
     const pty = this.ptysById.get(ptyId)
     if (pty) {
       const prevStatus = pty.lastAgentStatus
       const prevTitle = pty.lastOscTitle
-      // Same delivery edge as the leaf branch below: live idle, or an idle title that changed.
-      ptyIdleEdge =
-        agentStatus === 'idle' &&
-        (prevStatus !== 'idle' ||
+      // Same delivery edge as the leaf branch below: live input-taking status, or an idle title that changed.
+      ptyInputEdge =
+        agentStatusTakesTypedInput(agentStatus) &&
+        (prevStatus !== agentStatus ||
           !pty.lastAgentStatusObservedLive ||
-          (!statusOnly && prevTitle !== recordedTitle))
+          (agentStatus === 'idle' && !statusOnly && prevTitle !== recordedTitle))
       const observedAt = this.nextTitleObservationSequence()
       const observedAtEpochMs = identityOnlyTitle ? null : Date.now()
       if (!statusOnly) {
@@ -213,17 +214,20 @@ export abstract class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWit
       ) {
         this.resolveTuiIdleWaiters(leaf)
       }
-      // First live idle after seed/respawn authorizes delivery; later explicit-ready titles must also re-offer idle-to-idle upgrades (#12536).
+      // Mail goes to a pane taking input, at rest or mid-turn, so offer it when the pane starts taking
+      // input (first live status after seed/respawn included); idle titles re-offer upgrades (#12536).
       if (
-        agentStatus === 'idle' &&
-        (prevStatus !== 'idle' || !prevObservedLive || leafTitleChanged) &&
+        agentStatusTakesTypedInput(agentStatus) &&
+        (prevStatus !== agentStatus ||
+          !prevObservedLive ||
+          (agentStatus === 'idle' && leafTitleChanged)) &&
         this.checkDeliverySettledAndArmRecheck(leaf)
       ) {
         this.deliverPendingMessagesForLeaf(leaf)
       }
     }
     // A pane no window publishes (headless serve) has no leaf above; its PTY is the mailbox target.
-    const lane = ptyIdleEdge ? this.getPtyLaneMailboxTargetForPty(pty) : null
+    const lane = ptyInputEdge ? this.getPtyLaneMailboxTargetForPty(pty) : null
     if (lane && this.checkDeliverySettledAndArmRecheck(lane.leaf)) {
       this.deliverPendingMessagesForLeaf(lane.leaf)
     }

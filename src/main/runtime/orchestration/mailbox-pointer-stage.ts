@@ -165,7 +165,6 @@ function finishPointerWriteAndStageEnter<TWaiter extends OrchestrationMessageWai
           leaf: args.leaf,
           mailboxHandle: args.mailboxHandle,
           messages: args.messages,
-          heldDeliveryId: args.heldDeliveryId,
           newestSequence: args.newestSequence,
           ptyId,
           flight,

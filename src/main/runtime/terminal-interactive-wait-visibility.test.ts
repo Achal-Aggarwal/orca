@@ -551,7 +551,11 @@ describe('terminal wait ownership', () => {
   })
 
   it('rechecks current leaf evidence before delivery and coalesces repeated refusals', async () => {
-    let leaf = makeTuiIdleLeaf({ lastOutputAt: Date.now(), lastAgentStatus: 'working' })
+    let leaf = makeTuiIdleLeaf({
+      lastOutputAt: Date.now(),
+      lastAgentStatus: 'idle',
+      lastOscTitle: 'Codex'
+    })
     const deliver = vi.fn()
     const runtime = new OrcaRuntimeService()
     const key = runtime['getLeafKey'](leaf.tabId, leaf.leafId)
@@ -569,7 +573,11 @@ describe('terminal wait ownership', () => {
   })
 
   it('cancels only the delivery recheck belonging to its runtime', async () => {
-    const leaf = makeTuiIdleLeaf({ lastOutputAt: Date.now(), lastAgentStatus: 'working' })
+    const leaf = makeTuiIdleLeaf({
+      lastOutputAt: Date.now(),
+      lastAgentStatus: 'idle',
+      lastOscTitle: 'Codex'
+    })
     const first = new OrcaRuntimeService()
     const second = new OrcaRuntimeService()
     const key = first['getLeafKey'](leaf.tabId, leaf.leafId)
