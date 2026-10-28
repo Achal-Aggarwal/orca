@@ -1,6 +1,7 @@
 import type { editor } from 'monaco-editor'
 import { yieldToEventLoop } from '../../../../shared/event-loop-yield'
 import { getUtf8ChunkEndIndex } from '../../../../shared/utf8-byte-limits'
+import { beginMonacoLargePasteLifecycle } from './monaco-large-paste-lifecycle'
 import {
   measureTextControlPasteByteLength,
   measureTextControlPasteByteLengthWithYield
@@ -180,6 +181,28 @@ async function insertMonacoTextInChunks(
 
 // Share size rejection and chunking across DOM and context-menu paste paths.
 export async function executeMonacoLargeTextPaste(
+  monacoEditor: MonacoPasteEditor,
+  text: string,
+  options: MonacoLargeTextPasteOptions
+): Promise<Exclude<MonacoLargeTextPasteResult, { status: 'ignored' | 'handled' }>> {
+  const finish = beginMonacoLargePasteLifecycle(monacoEditor)
+  let result: Exclude<MonacoLargeTextPasteResult, { status: 'ignored' | 'handled' }>
+  try {
+    result = await performMonacoLargeTextPaste(monacoEditor, text, options)
+  } catch (error) {
+    finish?.({
+      status: 'cancelled',
+      reason: 'target-unavailable',
+      byteLength: 0,
+      chunksWritten: 0
+    })
+    throw error
+  }
+  finish?.(result)
+  return result
+}
+
+async function performMonacoLargeTextPaste(
   monacoEditor: MonacoPasteEditor,
   text: string,
   options: MonacoLargeTextPasteOptions
