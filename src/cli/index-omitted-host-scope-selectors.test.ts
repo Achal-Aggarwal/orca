@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type * as ChildProcess from 'node:child_process'
 
 const {
@@ -43,18 +43,30 @@ vi.mock('child_process', async (importOriginal) => {
 })
 
 import { main } from './index'
-import {
-  publicLineageFixture,
-  canonicalChatRow,
-  LINEAGE_PARENT,
-  LINEAGE_CHILD
-} from '../main/runtime/runtime-agent-lineage.test-fixture'
-import type { OrcaRuntimeService } from '../main/runtime/orca-runtime'
-import { RpcDispatcher } from '../main/runtime/rpc/dispatcher'
-import { WORKTREE_CATALOG_METHODS } from '../main/runtime/rpc/methods/worktree-catalog-methods'
+import type {
+  RuntimeAgentLineageTestModule,
+  RuntimeAgentLineageCatalogTestModule
+} from '../shared/runtime-agent-lineage-consumer.test-fixture'
 import { COMMAND_SPECS } from './specs'
 import { okFixture, queueFixtures } from './test-fixtures'
 import { pairRuntimeEnvironment, useWorktreeAwarenessEnvironment } from './index-test-harness'
+
+let lineage: RuntimeAgentLineageTestModule
+let catalog: RuntimeAgentLineageCatalogTestModule
+
+// The CLI's Node16 program needs a hook; each test still creates its own DB and runtime.
+beforeAll(async () => {
+  lineage = (
+    await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+      '../main/runtime/runtime-agent-lineage.test-fixture'
+    )
+  ).default
+  catalog = (
+    await vi.importActual<{ default: RuntimeAgentLineageCatalogTestModule }>(
+      '../main/runtime/runtime-agent-lineage-catalog.test-fixture'
+    )
+  ).default
+})
 
 const TERMINAL_ROW = {
   handle: 'term_1',
@@ -85,14 +97,10 @@ describe('omittedHostIds selector annotation', () => {
   it.each(['repo::/workspace', 'folder:lineage'])(
     'prints canonical production-built lineage through actual CLI and worktree RPC for %s',
     async (worktreeId) => {
+      const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } = lineage
       const f = publicLineageFixture(worktreeId)
       try {
-        // SAFETY: these catalog methods use only this read-only runtime seam; rows come from production projection/attachment.
-        const runtime = {
-          getRuntimeId: () => 'lineage-test',
-          getWorktreePs: async () => ({ worktrees: [f.build()], totalCount: 1, truncated: false })
-        } as unknown as OrcaRuntimeService
-        const dispatcher = new RpcDispatcher({ runtime, methods: WORKTREE_CATALOG_METHODS })
+        const dispatcher = catalog.createLineageCatalogDispatcher(f.build)
         const resultOf = (response: unknown) => JSON.parse(JSON.stringify(response)).result
         const request = (params = {}) =>
           dispatcher.dispatch({
