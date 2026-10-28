@@ -23,6 +23,8 @@ vi.mock('../../store', () => ({
 }))
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
 
+const actual = await vi.importActual<typeof RuntimeSend>('./native-chat-runtime-send')
+
 function send(
   agent: AgentType,
   classification: NativeChatSendClassification,
@@ -228,7 +230,6 @@ it('publishes a real file before the existing PTY clear/body/Enter queue and ret
   const { join } = await import('node:path')
   const { NativeChatTerminalTextInputs } =
     await import('../../../../main/window/native-chat-terminal-text-inputs')
-  const actual = await vi.importActual<typeof RuntimeSend>('./native-chat-runtime-send')
   const { sendRuntimePtyInput } = await import('@/runtime/runtime-terminal-inspection')
   const { buildNativeChatPasteBytes, NATIVE_CHAT_SUBMIT } =
     await import('../../../../shared/native-chat-paste-bytes')
@@ -309,7 +310,6 @@ it.each([
   'cancels staged preparation when a %s option is %s, preserves source and allows explicit retry',
   async (agent, schedule) => {
     vi.useFakeTimers()
-    const actual = await vi.importActual<typeof RuntimeSend>('./native-chat-runtime-send')
     actual.resetNativeChatPtySendQueuesForTests()
     vi.mocked(sendRuntimePtyInput).mockClear().mockReturnValue(true)
     vi.mocked(sendRuntimePtyInputVerified).mockClear()
@@ -443,7 +443,6 @@ it.each(['inline', 'completed'] as const)(
   'preserves existing %s cancellation and option rejection without deferred Enter or automatic retry',
   async (format) => {
     vi.useFakeTimers()
-    const actual = await vi.importActual<typeof RuntimeSend>('./native-chat-runtime-send')
     actual.resetNativeChatPtySendQueuesForTests()
     vi.mocked(sendNativeChatMessage).mockImplementation(actual.sendNativeChatMessage)
     vi.mocked(sendRuntimePtyInput).mockClear().mockReturnValue(true)
@@ -518,7 +517,6 @@ it.each([1, 10])(
   'bounds real staged-send cancellation at %i preparations without waiting for disk or touching another PTY',
   async (count) => {
     vi.useFakeTimers()
-    const actual = await vi.importActual<typeof RuntimeSend>('./native-chat-runtime-send')
     actual.resetNativeChatPtySendQueuesForTests()
     vi.mocked(sendRuntimePtyInputVerified).mockResolvedValue(true)
     const pending = Promise.withResolvers<Record<string, string>>()

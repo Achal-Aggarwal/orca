@@ -5,7 +5,7 @@ import {
 } from '../agent-session-attachments/agent-session-attachment-sweep'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -392,10 +392,13 @@ it.each([1, 10])(
     const store = new AgentSessionAttachmentStore(agentSessionAttachmentStoreRoot(root ?? ''), {
       hasSession: () => true
     })
+    const uploadModifiedAt = await Promise.all(
+      files.map(async ({ path }) => (await stat(dirname(path))).mtimeMs)
+    )
     const swept = await sweepAgentSessionAttachments(
       store,
       { database: () => reopened, recordedSessionIds: () => new Set([IDENTITY.sessionId]) },
-      Date.now() + UNCLAIMED_ATTACHMENT_MAX_AGE_MS + 1000
+      Math.max(...uploadModifiedAt) + UNCLAIMED_ATTACHMENT_MAX_AGE_MS + 1000
     )
     expect(swept.removed).toHaveLength(count - 1)
     expect(await readFile(files[0]!.path, 'utf8')).toHaveLength(100 * 1024)
