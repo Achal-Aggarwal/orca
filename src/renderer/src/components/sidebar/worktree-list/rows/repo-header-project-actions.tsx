@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import React from 'react'
 import { useRepoSshGate } from '@/hooks/use-repo-ssh-gate'
 import {
@@ -90,6 +91,8 @@ export const RepoHeaderProjectActionsMenu = React.memo(function RepoHeaderProjec
   projectGroups: readonly ProjectGroup[]
   actions: RepoHeaderProjectActions
 }): React.JSX.Element {
+  // Memoized: subscribe so a language change still repaints its labels.
+  useTranslation()
   return (
     <DropdownMenu modal={false}>
       <Tooltip>
@@ -196,6 +199,8 @@ export const RepoHeaderCreateWorkspaceButton = React.memo(function RepoHeaderCre
   label: string
   onCreateForRepo: (projectId: string) => void
 }): React.JSX.Element {
+  // Memoized: subscribe so a language change still repaints its labels.
+  useTranslation()
   const sshGate = useRepoSshGate(repo)
   const createState = getRepoHeaderCreateState({ repo, label, sshGate })
   const fallbackLabel = translate(
