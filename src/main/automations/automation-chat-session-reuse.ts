@@ -17,44 +17,29 @@ export async function reuseAutomationChat(
   runtime: OrcaRuntimeService,
   { automation, run, runs }: AutomationAgentLaunchRequest
 ): Promise<HeadlessAutomationAgentLaunch | null> {
-  await runtime.ensureStructuredAgentSessionHost()
-  const host = getStructuredAgentSessionHost()
-  if (!host) {
+  let preparationError: { error: unknown } | undefined
+  const store = await runtime.openAgentSessionRecordStore().catch((error: unknown) => {
+    preparationError = { error }
     return null
+  })
+  try {
+    await runtime.ensureStructuredAgentSessionHost()
+  } catch (error) {
+    preparationError = { error }
   }
-  const store = await runtime.openAgentSessionRecordStore()
+  const host = getStructuredAgentSessionHost()
   const seen = new Set<string>()
   for (const previous of runs
     .filter((entry) => entry.automationId === automation.id && entry.id !== run.id)
     .toSorted((a, b) => automationRunRecency(b) - automationRunRecency(a))) {
     const id = previous.chatSessionId
-    if (!id || seen.has(id)) {
+    if (previous.sessionKind !== 'chat' || !id || seen.has(id)) {
       continue
     }
     seen.add(id)
-    if (
-      previous.sessionKind !== 'chat' ||
-      previous.status !== 'completed' ||
-      previous.workspaceId !== automation.workspaceId
-    ) {
-      continue
-    }
-    const record = store.getConversation(id)
-    if (
-      !record ||
-      record.provider !== automation.agentId ||
-      record.location.workspaceId !== automation.workspaceId
-    ) {
-      continue
-    }
-    await host.journalSnapshot(id)
-    const current = store.getConversation(id)
-    const work = host.currentWork(id)
-    if (!current || !work || work.working()) {
-      continue
-    }
     const target: HeadlessAutomationAgentLaunch = {
-      workspaceId: record.location.workspaceId,
+      // The caller only attempts Chat reuse for a stable workspace.
+      workspaceId: automation.workspaceId!,
       workspaceDisplayName: null,
       sessionKind: 'chat',
       chatSessionId: id,
@@ -64,11 +49,37 @@ export async function reuseAutomationChat(
       terminalPtyId: null
     }
     try {
+      if (!store) {
+        throw preparationError?.error
+      }
+      const selected = store.selectWritableRecord(id)
+      if (selected.kind === 'missing' && !store.readOnly) {
+        continue
+      }
+      if (selected.kind !== 'writable' || store.isSessionUnreadable(id)) {
+        throw new Error('Chat record is unavailable')
+      }
+      const current = store.getConversation(id)
+      if (!current) {
+        throw new Error('Chat record is unavailable')
+      }
+      if (
+        current.provider !== automation.agentId ||
+        current.location.workspaceId !== automation.workspaceId
+      ) {
+        continue
+      }
+      target.workspaceId = current.location.workspaceId
+      if (preparationError || !host) {
+        throw preparationError?.error ?? new Error('Chat host is unavailable')
+      }
+      const operationId = automationRunOperationId(run, 'reuse-send')
+      const callerKey = rpcCallerOperationKey(AUTOMATION_AGENT_CALLER)
       const sent = await host.send(
-        { callerKey: rpcCallerOperationKey(AUTOMATION_AGENT_CALLER) },
+        { callerKey },
         structuredAgentSessionMessageSendMutation({
           sessionId: id,
-          clientOperationId: automationRunOperationId(run, 'reuse-send'),
+          clientOperationId: operationId,
           expectedRuntimeFence: current.currentFence,
           delivery: 'queue-if-active',
           body: structuredAgentSessionSendBody(automation.prompt, [])
@@ -77,11 +88,15 @@ export async function reuseAutomationChat(
       if (sent.ok) {
         return target
       }
-      const row = store.getOperationRow(
-        rpcCallerOperationKey(AUTOMATION_AGENT_CALLER),
-        automationRunOperationId(run, 'reuse-send')
-      )
-      if (sent.refusal.code === 'agent_session_conflict' || row?.outcome.status === 'failed') {
+      if (
+        sent.refusal.code === 'agent_session_ownership_unknown' &&
+        sent.refusal.details?.reason === 'sessionNotAttached' &&
+        !store.readOnly &&
+        store.selectWritableRecord(id).kind === 'missing' &&
+        !store.isSessionUnreadable(id) &&
+        !store.getOperationRow(callerKey, operationId) &&
+        store.readCommandReceipt({ kind: 'global' }, operationId).verdict === 'absent'
+      ) {
         return null
       }
       return automationRunAcceptedTarget(

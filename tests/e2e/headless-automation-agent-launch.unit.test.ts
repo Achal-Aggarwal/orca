@@ -1,45 +1,40 @@
-import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
-import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { exerciseBusyChatReuse } from './helpers/automation-chat-reuse-test-harness'
+import { readAutomationRunReceipt } from '../../src/main/automations/automation-run-receipt'
+import { AUTOMATION_AGENT_CALLER } from '../../src/main/automations/automation-run-operation'
+import { rpcCallerOperationKey } from '../../src/main/runtime/rpc/rpc-caller-identity'
 import {
-  createQueuedMessageTestRig,
-  eventually
-} from '../native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
-import { hostTestAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
-import { runHeadlessAutomationDispatch } from './headless-dispatch-runner'
-import { observeAutomationChatRun } from './runtime-chat-run-observer'
-import { createAutomationRunWriter } from './automation-run-writer'
-import {
-  createStore,
-  closeTestStores,
-  testState,
-  readPersistedStateJson
-} from '../persistence/persistence-test-harness'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { createAutomationRunWorkspaceAction } from '../../renderer/src/components/automations/automation-run-workspace-action'
-import type { AutomationsPageActionContext } from '../../renderer/src/components/automations/automations-page-action-context'
+  HOST_TEST_NOW,
+  HOST_TEST_SESSION,
+  HOST_TEST_LOCATION
+} from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import type { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import type { StructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host'
+import { createQueuedMessageTestRig } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OrcaRuntimeService } from '../runtime/orca-runtime'
-import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
-import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cutover-fixture'
-import { automationRunOperationId } from './automation-run-operation'
-import { tokenizeStartupCommand } from '../../shared/tui-agent-startup-shell'
-import { launchHeadlessAutomationAgent } from './headless-automation-agent-launch'
+import type { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
+import type { AgentLaunchResult } from '../../src/shared/agent-launch-intent'
+import { buildProfileStateCutoverFixture } from '../../src/main/persistence/profile-state-cutover-fixture'
+import { automationRunOperationId } from '../../src/main/automations/automation-run-operation'
+import { tokenizeStartupCommand } from '../../src/shared/tui-agent-startup-shell'
+import { launchHeadlessAutomationAgent } from '../../src/main/automations/headless-automation-agent-launch'
 
 const mocks = vi.hoisted(() => ({
   actualHost: null as StructuredAgentSessionHost | null,
+  hostAvailable: true,
   openChat: vi.fn(),
-  readChat: vi.fn(async () => ({})),
+  readChat: vi.fn<typeof callStructuredAgentSession>().mockResolvedValue({}),
   launch: vi.fn(),
   host: { journalSnapshot: vi.fn(), currentWork: vi.fn(), send: vi.fn() }
 }))
-vi.mock('../runtime/rpc/methods/agent-launch', () => ({ launchAgentOnHost: mocks.launch }))
-vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
-  getStructuredAgentSessionHost: () => mocks.actualHost ?? mocks.host
+vi.mock('../../src/main/runtime/rpc/methods/agent-launch', () => ({
+  launchAgentOnHost: mocks.launch
+}))
+vi.mock('../../src/main/native-chat/agent-session-wire/structured-agent-session-registry', () => ({
+  getStructuredAgentSessionHost: () => mocks.actualHost ?? (mocks.hostAvailable ? mocks.host : null)
 }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: (...args: unknown[]) => mocks.readChat(...args)
+  callStructuredAgentSession: (...args: Parameters<typeof callStructuredAgentSession>) =>
+    mocks.readChat(...args)
 }))
 vi.mock('@/lib/structured-agent-session-launch-surface', () => ({
   openStructuredAgentSessionProvisionalTab: (...args: unknown[]) => mocks.openChat(...args)
@@ -82,14 +77,21 @@ const chat: AgentLaunchResult = {
   prompt: { delivery: 'submit', outcome: 'journaled', messageId: 'first-message' }
 }
 function fixture() {
+  const conversation = (id: string) => ({
+    sessionId: id,
+    provider: 'claude',
+    location: { workspaceId: 'wt-1' },
+    currentFence: 2
+  })
   const records = {
+    readOnly: false,
+    selectWritableRecord: vi.fn((_id: string): { kind: 'writable' | 'missing' | 'unreadable' } => ({
+      kind: 'writable'
+    })),
+    isSessionUnreadable: vi.fn(() => false),
+    readCommandReceipt: vi.fn(() => ({ verdict: 'absent' })),
     getOperationRow: vi.fn(),
-    getConversation: vi.fn(() => ({
-      sessionId: 'claude_prev',
-      provider: 'claude',
-      location: { workspaceId: 'wt-1' },
-      currentFence: 2
-    }))
+    getConversation: vi.fn<(id: string) => ReturnType<typeof conversation> | null>(conversation)
   }
   const runtime = {
     requireStore: () => ({
@@ -120,6 +122,7 @@ function fixture() {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.actualHost = null
+  mocks.hostAvailable = true
   mocks.launch.mockResolvedValue(terminal)
   mocks.host.currentWork.mockReturnValue({ working: () => false })
   mocks.host.send.mockResolvedValue({ ok: true })
@@ -307,13 +310,15 @@ describe('automations through agent.launch', () => {
     ).rejects.toMatchObject({ target: { workspaceId: 'wt-1', sessionKind: 'terminal' } })
     expect(mocks.launch).toHaveBeenCalledTimes(1)
   })
-  it('reuses only a completed compatible idle chat and derives a separate send identity', async () => {
-    const { runtime } = fixture()
+  it('chooses the newest compatible Chat despite busy work and stale nonfinal history', async () => {
+    const { runtime, records } = fixture()
+    mocks.host.currentWork.mockReturnValue({ working: () => true })
     const previous = {
       ...run,
-      id: 'old',
-      status: 'completed' as const,
-      workspaceId: 'wt-1',
+      id: 'newest',
+      createdAt: run.createdAt + 10,
+      status: 'dispatched' as const,
+      workspaceId: 'stale-workspace',
       sessionKind: 'chat' as const,
       chatSessionId: 'claude_prev'
     }
@@ -321,12 +326,32 @@ describe('automations through agent.launch', () => {
       automation: { ...automation, surface: 'chat', reuseSession: true },
       run,
       target,
-      runs: [previous]
+      runs: [
+        { ...previous, id: 'non-chat', createdAt: previous.createdAt + 1, sessionKind: 'terminal' },
+        {
+          ...previous,
+          id: 'other-automation',
+          automationId: 'other',
+          createdAt: previous.createdAt + 2
+        },
+        { ...previous, id: run.id, createdAt: previous.createdAt + 3 },
+        previous,
+        { ...previous, id: 'duplicate', createdAt: run.createdAt },
+        {
+          ...previous,
+          id: 'older-idle',
+          chatSessionId: 'claude_idle',
+          createdAt: run.createdAt - 1,
+          status: 'completed'
+        }
+      ]
     })
-    expect(mocks.launch).not.toHaveBeenCalled()
-    expect(mocks.host.send).toHaveBeenCalledWith(
+    expect(result).toMatchObject({ chatSessionId: 'claude_prev', workspaceId: 'wt-1' })
+    expect(records.getConversation).toHaveBeenCalledExactlyOnceWith('claude_prev')
+    expect(mocks.host.send).toHaveBeenCalledExactlyOnceWith(
       expect.anything(),
       expect.objectContaining({
+        delivery: 'queue-if-active',
         envelope: expect.objectContaining({
           sessionId: 'claude_prev',
           clientOperationId: automationRunOperationId(run, 'reuse-send'),
@@ -334,29 +359,48 @@ describe('automations through agent.launch', () => {
         })
       })
     )
-    expect(result.chatSessionId).toBe('claude_prev')
+    expect(mocks.host.currentWork).not.toHaveBeenCalled()
+    expect(mocks.host.journalSnapshot).not.toHaveBeenCalled()
+    expect(mocks.launch).not.toHaveBeenCalled()
   })
-  it('does not reuse a chat whose newest run or current human turn is unfinished', async () => {
-    const { runtime } = fixture()
-    mocks.launch.mockResolvedValue(chat)
-    mocks.host.currentWork.mockReturnValue({ working: () => true })
-    await launchHeadlessAutomationAgent(runtime, {
-      automation: { ...automation, surface: 'chat', reuseSession: true },
+  it('skips genuinely missing/incompatible records and never needs a current work projection', async () => {
+    const { runtime, records } = fixture()
+    mocks.host.currentWork.mockReturnValue(null)
+    records.selectWritableRecord.mockImplementation((id) => ({
+      kind: id === 'missing' ? 'missing' : 'writable'
+    }))
+    records.getConversation.mockImplementation((id) => ({
+      sessionId: id,
+      provider: 'claude',
+      location: { workspaceId: id === 'moved' ? 'elsewhere' : 'wt-1' },
+      currentFence: 2
+    }))
+    const runs = ['missing', 'moved', 'claude_prev'].map((id, n) => ({
+      ...run,
+      id,
+      createdAt: run.createdAt - n - 1,
+      status: 'dispatch_failed' as const,
+      sessionKind: 'chat' as const,
+      chatSessionId: id
+    }))
+    const request = {
+      automation: { ...automation, surface: 'chat' as const, reuseSession: true },
       run,
       target,
-      runs: [
-        {
-          ...run,
-          id: 'old',
-          status: 'completed',
-          workspaceId: 'wt-1',
-          sessionKind: 'chat',
-          chatSessionId: 'claude_prev'
-        }
-      ]
-    })
+      runs
+    }
+    expect((await launchHeadlessAutomationAgent(runtime, request)).chatSessionId).toBe(
+      'claude_prev'
+    )
+    expect(mocks.launch).not.toHaveBeenCalled()
+    mocks.host.send.mockClear()
+    mocks.launch.mockResolvedValue(chat)
+    await launchHeadlessAutomationAgent(runtime, { ...request, runs: runs.slice(0, 2) })
     expect(mocks.host.send).not.toHaveBeenCalled()
-    expect(mocks.launch).toHaveBeenCalledTimes(1)
+    expect(mocks.launch).toHaveBeenCalledOnce()
+    expect(mocks.launch.mock.calls[0][0].operationId).toBe(
+      automationRunOperationId(run, 'fresh-launch')
+    )
   })
 })
 
@@ -431,162 +475,149 @@ it.each(['terminal', 'chat', 'reuse-terminal'] as const)(
   }
 )
 
-it('keeps accepted reused Chat through throwing metadata/reply, real runner persistence, observation and normal Details', async () => {
-  vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
-  const rig = await createQueuedMessageTestRig({ restartable: true })
-  mocks.actualHost = rig.host
-  const root = mkdtempSync(join(tmpdir(), 'orca-34332-accepted-'))
-  testState.dir = root
-  const disk = createStore()
-  const id = 'codex_reused'
-  const initial = hostTestAttachParams(null)
-  const controller = new AbortController()
-  try {
-    expect(
-      await rig.host.create(
-        { callerKey: 'initial' },
-        hostTestAttachParams(null, {
-          envelope: { ...initial.envelope, sessionId: id },
-          location: { ...initial.location, workspaceId: 'wt-1' }
-        })
-      )
-    ).toMatchObject({ ok: true })
-    disk.addRepo(state.repos[0])
-    const saved = disk.createAutomation({
-      ...automation,
-      agentId: 'codex',
-      surface: 'chat',
-      reuseSession: true,
-      projectId: state.repos[0].id
+it.each(['normal', 'lost-reply', 'restart'] as const)(
+  'keeps busy Chat Q→S through %s, exact persisted output and normal Details',
+  (mode) =>
+    exerciseBusyChatReuse(mode, automation, target, {
+      setHost: (host) => {
+        mocks.actualHost = host
+      },
+      openChat: mocks.openChat,
+      launch: mocks.launch
     })
-    const writer = createAutomationRunWriter(disk, null)
-    const sent = rig.host.send.bind(rig.host)
-    for (const lostReply of [false, true]) {
-      const current = await writer.createRun(saved, Date.now(), 'manual')
-      const previous = {
-        ...current,
-        id: 'previous',
-        status: 'completed' as const,
-        workspaceId: 'wt-1',
-        sessionKind: 'chat' as const,
-        chatSessionId: id
-      }
-      const send = vi.spyOn(rig.host, 'send').mockImplementationOnce(async (...args) => {
-        const answer = await sent(...args)
-        expect(answer.ok).toBe(true)
-        if (lostReply) {
-          throw new Error('accepted reply lost')
-        }
-        return answer
-      })
-      // SAFETY: runtime transport/metadata only; send, receipt, result, runner, writer and observer use their actual owners.
-      const runtime = {
-        ensureStructuredAgentSessionHost: async () => {},
-        openAgentSessionRecordStore: async () => rig.store,
-        showManagedWorktree: async () => {
-          throw new Error('optional display unavailable')
-        }
-      } as unknown as OrcaRuntimeService
-      const dispatched = await runHeadlessAutomationDispatch({
-        automation: saved,
-        run: current,
-        target,
-        runs: writer,
-        dispatcher: () =>
-          launchHeadlessAutomationAgent(runtime, {
-            automation: saved,
-            run: current,
-            target,
-            runs: [previous]
-          }),
-        runPrecheck: async () => null,
-        markDispatchResult: writer.updateRun,
-        watchRun: () => {}
-      })
-      expect(send).toHaveBeenCalledOnce()
-      expect(dispatched).toMatchObject({
-        status: 'dispatched',
-        sessionKind: 'chat',
-        chatSessionId: id
-      })
-      const pending = observeAutomationChatRun(runtime, dispatched, controller.signal)
-      const journal = rig.host.collaboratorsForTests().sessions.get(id)!.journal
-      const message = automationRunOperationId(current, 'reuse-send')
-      await eventually(() => expect(journal.submission(message)).toBeDefined())
-      const item = await journal.appendItem(
-        { provider: 'orca', clientMessageId: `turn-${current.id}` },
-        {
-          kind: 'turn',
-          turnId: current.id,
-          userItemId: agentJournalSubmissionKey(message),
-          state: 'running'
-        },
-        { fence: 1, turnScope: { kind: 'thread' } }
-      )
-      await journal.resolveDispatch({
-        clientMessageId: message,
-        state: 'accepted',
-        providerIdentity: { provider: 'orca', clientMessageId: message },
-        fence: 1
-      })
-      await journal.appendItem(
-        { provider: 'orca', clientMessageId: `answer-${current.id}` },
-        {
-          kind: 'message',
-          role: 'assistant',
-          blocks: [{ type: 'text', text: 'Exact automation output' }]
-        },
-        { fence: 1, turnScope: { kind: 'turn', turnItemId: item.itemId } }
-      )
-      await journal.appendItem(
-        { provider: 'orca', clientMessageId: `turn-${current.id}` },
-        {
-          kind: 'turn',
-          turnId: current.id,
-          userItemId: agentJournalSubmissionKey(message),
-          state: 'completed',
-          outcome: 'success'
-        },
-        { fence: 1, turnScope: { kind: 'thread' } }
-      )
-      const observation = await pending
-      const completed = await writer.updateRun({ runId: current.id, ...observation })
-      expect(completed).toMatchObject({
-        status: 'completed',
-        chatSessionId: id,
-        outputSnapshot: { content: 'Exact automation output' }
-      })
-      const persisted = JSON.parse(readPersistedStateJson(join(root, 'orca-data.json')))
-      expect(
-        persisted.automationRuns.find((row: { id: string }) => row.id === current.id)
-      ).toMatchObject({ chatSessionId: id, status: 'completed' })
-      // SAFETY: normal action's surrounding page context is scripted; actual Details action executes.
-      const context = {
-        store: {
-          repoForRow: () => undefined,
-          worktreeForRow: () => ({ id: 'wt-1', hostId: 'local' })
-        },
-        list: { selectedRow: { key: 'row' } }
-      } as unknown as AutomationsPageActionContext
-      createAutomationRunWorkspaceAction(context)(completed)
-      await eventually(() =>
-        expect(mocks.openChat).toHaveBeenCalledWith(
-          expect.objectContaining({ sessionId: id, agent: 'codex' })
-        )
-      )
-      send.mockRestore()
-      mocks.openChat.mockClear()
+)
+
+it('retains a known identity when record/host preparation cannot prove availability', async () => {
+  for (const failure of [
+    'unreadable',
+    'null-view',
+    'read-failed',
+    'read-only-missing',
+    'host-absent',
+    'host-failed'
+  ] as const) {
+    const { runtime, records } = fixture()
+    mocks.host.send.mockClear()
+    mocks.hostAvailable = failure !== 'host-absent'
+    if (failure === 'unreadable') {
+      records.selectWritableRecord.mockReturnValue({ kind: 'unreadable' })
     }
-  } finally {
-    controller.abort()
-    mocks.actualHost = null
-    await rig.dispose()
-    await closeTestStores()
-    rmSync(root, { recursive: true, force: true })
+    if (failure === 'null-view') {
+      records.getConversation.mockReturnValue(null)
+    }
+    if (failure === 'read-failed') {
+      records.getConversation.mockImplementation(() => {
+        throw new Error('unreadable disk')
+      })
+    }
+    if (failure === 'read-only-missing') {
+      records.readOnly = true
+      records.selectWritableRecord.mockReturnValue({ kind: 'missing' })
+    }
+    if (failure === 'host-failed') {
+      vi.spyOn(runtime, 'ensureStructuredAgentSessionHost').mockRejectedValueOnce(
+        new Error('host failed')
+      )
+    }
+    await expect(
+      launchHeadlessAutomationAgent(runtime, {
+        automation: { ...automation, surface: 'chat', reuseSession: true },
+        run,
+        target,
+        runs: [{ ...run, id: 'old', sessionKind: 'chat', chatSessionId: 'claude_prev' }]
+      })
+    ).rejects.toMatchObject({ target: { sessionKind: 'chat', chatSessionId: 'claude_prev' } })
+    expect(mocks.host.send).not.toHaveBeenCalled()
+    expect(mocks.launch).not.toHaveBeenCalled()
   }
 })
 
-it.each(['unknown', 'refused'] as const)(
+it.each(['before-admission', 'accepted-reply', 'accepted-lost-reply'] as const)(
+  'permits fresh only for authoritative deletion %s',
+  async (when) => {
+    vi.spyOn(Date, 'now').mockReturnValue(HOST_TEST_NOW)
+    const current = { ...run, createdAt: HOST_TEST_NOW }
+    const rig = await createQueuedMessageTestRig({ restartable: true })
+    mocks.actualHost = rig.host
+    let removedRecord = rig.store.getRecord(HOST_TEST_SESSION)!
+    const removeRecord = () =>
+      rig.store['transact']((draft) => {
+        removedRecord = draft.records.get(HOST_TEST_SESSION)!
+        draft.records.delete(HOST_TEST_SESSION)
+      })
+    try {
+      const { runtime } = fixture()
+      vi.spyOn(runtime, 'openAgentSessionRecordStore').mockResolvedValue(rig.store)
+      const sent = rig.host.send.bind(rig.host)
+      const send = vi.spyOn(rig.host, 'send').mockImplementationOnce(async (...args) => {
+        if (when === 'before-admission') {
+          await removeRecord()
+        }
+        const reply = await sent(...args)
+        if (when === 'before-admission') {
+          expect(reply).toMatchObject({
+            ok: false,
+            refusal: {
+              code: 'agent_session_ownership_unknown',
+              details: { reason: 'sessionNotAttached' }
+            }
+          })
+        } else {
+          expect(reply.ok).toBe(true)
+          await removeRecord()
+          if (when === 'accepted-lost-reply') {
+            throw new Error('accepted reply lost after deletion')
+          }
+        }
+        return reply
+      })
+      mocks.launch.mockResolvedValue(chat)
+      const attempt = launchHeadlessAutomationAgent(runtime, {
+        automation: {
+          ...automation,
+          agentId: 'codex',
+          workspaceId: HOST_TEST_LOCATION.workspaceId,
+          surface: 'chat',
+          reuseSession: true
+        },
+        run: current,
+        target,
+        runs: [{ ...run, id: 'old', sessionKind: 'chat', chatSessionId: HOST_TEST_SESSION }]
+      })
+      if (when === 'accepted-lost-reply') {
+        await expect(attempt).rejects.toMatchObject({
+          target: { chatSessionId: HOST_TEST_SESSION }
+        })
+      } else {
+        expect((await attempt).chatSessionId).toBe(
+          when === 'before-admission' ? 'claude_chat' : HOST_TEST_SESSION
+        )
+      }
+      const q = automationRunOperationId(current, 'reuse-send')
+      expect(rig.store.readCommandReceipt({ kind: 'global' }, q).verdict).toBe('absent')
+      expect(readAutomationRunReceipt(rig.store, current)).toBeNull()
+      expect(
+        rig.store.getOperationRow(rpcCallerOperationKey(AUTOMATION_AGENT_CALLER), q)?.outcome.status
+      ).toBe(when === 'before-admission' ? undefined : 'succeeded')
+      expect(send).toHaveBeenCalledOnce()
+      expect(mocks.launch).toHaveBeenCalledTimes(when === 'before-admission' ? 1 : 0)
+      if (when === 'before-admission') {
+        expect(mocks.launch.mock.calls[0][0].operationId).toBe(
+          automationRunOperationId(current, 'fresh-launch')
+        )
+      }
+    } finally {
+      mocks.actualHost = null
+      // Restore the injected deletion only after assertions so ordinary host teardown can run.
+      await rig.store['transact']((draft) => {
+        draft.records.set(HOST_TEST_SESSION, removedRecord)
+      })
+      await rig.dispose()
+    }
+  }
+)
+
+it.each(['unknown', 'refused', 'conflict', 'failed-row'] as const)(
   'retains known reused Chat on %s acceptance without resending',
   async (acceptance) => {
     const { runtime, records } = fixture()
@@ -594,9 +625,17 @@ it.each(['unknown', 'refused'] as const)(
       if (acceptance === 'unknown') {
         throw new Error('transport lost')
       }
-      return { ok: false, refusal: { code: 'agent_session_operation_unknown' } }
+      return {
+        ok: false,
+        refusal: {
+          code:
+            acceptance === 'conflict' ? 'agent_session_conflict' : 'agent_session_operation_unknown'
+        }
+      }
     })
-    records.getOperationRow.mockReturnValue(undefined)
+    records.getOperationRow.mockReturnValue(
+      acceptance === 'failed-row' ? { outcome: { status: 'failed' } } : undefined
+    )
     await expect(
       launchHeadlessAutomationAgent(runtime, {
         automation: { ...automation, surface: 'chat', reuseSession: true },

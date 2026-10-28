@@ -1,4 +1,4 @@
-import { cancelDesktopTerminalRetirement } from '../../../automations/desktop-run-terminal-lifecycle'
+import { cancelDesktopTerminalRetirement } from '../../../automations/desktop-run-terminal-stop'
 import type { IPtyProvider } from '../../../providers/pty-provider-contract'
 import { ptyIncarnationById } from './ownership-state'
 

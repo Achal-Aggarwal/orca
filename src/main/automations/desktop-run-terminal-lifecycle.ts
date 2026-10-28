@@ -24,8 +24,6 @@ import { requestAutomationTerminalLifecycle } from '../window/terminal-tab-close
 import { terminalPresentationRequest } from '../window/runtime-window-lifecycle'
 import type { AgentLaunchHostPolicy } from '../runtime/rpc/methods/agent-launch-surfaces'
 
-export { cancelDesktopTerminalRetirement } from './desktop-run-terminal-stop'
-
 export function createDesktopRunTerminalLifecycle(
   runtime: OrcaRuntimeService,
   store: Store,
@@ -48,7 +46,7 @@ export function createDesktopRunTerminalLifecycle(
     let epoch: string | null = null
     let target: AutomationTerminalTarget | null = null
     let ptyId: string | null = null
-    let incarnationId: string | undefined
+    let incarnationId: string | null | undefined
     let finalizing = false
     let enrollment = Promise.resolve()
     const listeners: (() => void)[] = []
@@ -85,7 +83,10 @@ export function createDesktopRunTerminalLifecycle(
         (reply) => {
           if (
             !valid() ||
-            Object.entries(correlation).some(([key, value]) => Reflect.get(reply, key) !== value) ||
+            reply.registrationId !== correlation.registrationId ||
+            reply.runId !== correlation.runId ||
+            reply.operationId !== correlation.operationId ||
+            reply.serviceGeneration !== correlation.serviceGeneration ||
             (epoch !== null && reply.documentEpoch !== epoch)
           ) {
             throw new Error('terminal_lifecycle_owner_lost')

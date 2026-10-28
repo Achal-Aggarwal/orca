@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type * as pty from 'node-pty'
 import { expect, vi } from 'vitest'
-import { buildProfileStateCutoverFixture } from '../../../main/persistence/profile-state-cutover-fixture'
+import { buildProfileStateCutoverFixture } from '../../../src/main/persistence/profile-state-cutover-fixture'
 import {
   createTestStore,
   makeTab,
@@ -9,23 +9,23 @@ import {
   seedStore
 } from '@/store/slices/store-test-helpers'
 import { createStoreSessionMockApi } from '@/store/slices/store-session-test-harness'
-import type { OrcaRuntimeService } from '../../../main/runtime/orca-runtime'
-import type { Store } from '../../../main/persistence'
-import type { PtyShutdownOptions } from '../../../main/providers/pty-provider-contract'
-import { OrcaRuntimeWithStopExactTerminalsForWorktree } from '../../../main/runtime/terminal/stop/worktree-terminal-stop-targets'
+import type { OrcaRuntimeService } from '../../../src/main/runtime/orca-runtime'
+import type { Store } from '../../../src/main/persistence'
+import type { PtyShutdownOptions } from '../../../src/main/providers/pty-provider-contract'
+import { OrcaRuntimeWithStopExactTerminalsForWorktree } from '../../../src/main/runtime/terminal/stop/worktree-terminal-stop-targets'
 import { registerTerminalPresentationIpcBridge } from '@/hooks/ipc-events/terminal-presentation-ipc-bridge'
 import { registerAgentLaunchTabIpcBridge } from '@/hooks/ipc-events/agent-launch-tab-ipc-bridge'
-import { createDesktopRunTerminalLifecycle } from '../../../main/automations/desktop-run-terminal-lifecycle'
+import { createDesktopRunTerminalLifecycle } from '../../../src/main/automations/desktop-run-terminal-lifecycle'
 import {
   shutdownLocalPty,
   createPtyPhysicalExit
-} from '../../../main/providers/local-pty-termination'
+} from '../../../src/main/providers/local-pty-termination'
 import {
   ptyProcesses,
   ptyIncarnations,
   ptyPhysicalExits,
   clearPtyState
-} from '../../../main/providers/local-pty-provider-state'
+} from '../../../src/main/providers/local-pty-provider-state'
 
 export const OWNERSHIP_WORKSPACE_ID = 'repo1::/repo1/main'
 const WT = OWNERSHIP_WORKSPACE_ID

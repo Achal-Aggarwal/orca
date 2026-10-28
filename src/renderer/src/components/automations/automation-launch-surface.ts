@@ -24,8 +24,8 @@ export function automationLaunchWorkspace(
     ...(ready
       ? {
           executionHostId:
-            ready.entry.owner.selector.kind === 'ssh'
-              ? `ssh:${ready.entry.owner.selector.targetId}`
+            ready.destination.selector.kind === 'ssh'
+              ? `ssh:${ready.destination.selector.targetId}`
               : ready.authority.kind === 'runtime'
                 ? `runtime:${ready.authority.environmentId}`
                 : 'local'

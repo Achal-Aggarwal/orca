@@ -1,52 +1,52 @@
 import {
   measureTerminalInventory,
   assertTerminalInventorySelection
-} from './automation-terminal-inventory-test-harness'
-import * as desktopLifecycle from '../../../main/automations/desktop-run-terminal-lifecycle'
+} from './helpers/automation-terminal-inventory-test-harness'
+import * as desktopLifecycle from '../../src/main/automations/desktop-run-terminal-lifecycle'
 import { randomUUID } from 'node:crypto'
-import { createRuntimeAutomationService } from '../../../main/automations/runtime-automation-service'
-import { runtimeStub } from '../../../main/runtime/rpc/methods/agent-launch.test-fixture'
-import { createQueuedMessageTestRig } from '../../../main/native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
-import { hostTestAttachParams } from '../../../main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
-import { setStructuredAgentSessionHost } from '../../../main/native-chat/agent-session-wire/structured-agent-session-registry'
-import { readAutomationRunReceipt } from '../../../main/automations/automation-run-receipt'
-import { hostWorktreeTarget } from '../../../shared/worktree/host-qualified-identity'
-import { revealCreatedTerminal } from '../../../main/runtime/terminal/launch/terminal-create-reveal'
-import { OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal } from '../../../main/runtime/session-tabs/pty-backed-session-publication'
-import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../../../main/runtime/session-tabs/structured-session-tab-restoration'
-import type { RuntimeMobileSessionTabsSnapshot } from '../../../shared/runtime-types'
-import { stopRevokers } from '../../../main/automations/desktop-run-terminal-stop'
+import { createRuntimeAutomationService } from '../../src/main/automations/runtime-automation-service'
+import { runtimeStub } from '../../src/main/runtime/rpc/methods/agent-launch.test-fixture'
+import { createQueuedMessageTestRig } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
+import { hostTestAttachParams } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { readAutomationRunReceipt } from '../../src/main/automations/automation-run-receipt'
+import { hostWorktreeTarget } from '../../src/shared/worktree/host-qualified-identity'
+import { revealCreatedTerminal } from '../../src/main/runtime/terminal/launch/terminal-create-reveal'
+import { OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal } from '../../src/main/runtime/session-tabs/pty-backed-session-publication'
+import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../../src/main/runtime/session-tabs/structured-session-tab-restoration'
+import type { RuntimeMobileSessionTabsSnapshot } from '../../src/shared/runtime-types'
+import { stopRevokers } from '../../src/main/automations/desktop-run-terminal-stop'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AutomationService } from '../../../main/automations/service'
+import { AutomationService } from '../../src/main/automations/service'
 import {
   createStore,
   closeTestStores,
   testState,
   readPersistedStateJson,
   writeDataFile
-} from '../../../main/persistence/persistence-test-harness'
+} from '../../src/main/persistence/persistence-test-harness'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { EventEmitter } from 'node:events'
-import type { OrcaRuntimeService } from '../../../main/runtime/orca-runtime'
+import type { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
 import type { ConnectPanePtySession } from '@/components/terminal-pane/pty-connection/connect-pane-pty-session'
-import { buildProfileStateCutoverFixture } from '../../../main/persistence/profile-state-cutover-fixture'
+import { buildProfileStateCutoverFixture } from '../../src/main/persistence/profile-state-cutover-fixture'
 import type { createTestStore } from '@/store/slices/store-test-helpers'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import {
   recordTerminalInputActivity,
   flushTerminalInputActivity
-} from './terminal-input-activity-coalescing'
-import { createAutomationTerminalOwnership } from './automation-terminal-ownership'
-import { cancelDesktopTerminalRetirement } from '../../../main/automations/desktop-run-terminal-lifecycle'
+} from '../../src/renderer/src/lib/terminal-input-activity-coalescing'
+import { createAutomationTerminalOwnership } from '../../src/renderer/src/lib/automation-terminal-ownership'
+import { cancelDesktopTerminalRetirement } from '../../src/main/automations/desktop-run-terminal-stop'
 import {
   ptyProcesses,
   ptyIncarnations,
   ptyShutdownOperations,
   clearPtyState
-} from '../../../main/providers/local-pty-provider-state'
+} from '../../src/main/providers/local-pty-provider-state'
 import { isPtyDataHandlerShutdownPending } from '@/components/terminal-pane/pty-shutdown-data-suspension'
 import { installPtyExitHibernate } from '@/components/terminal-pane/pty-connection/pty-exit-hibernate'
 import { installSleepingRecordAccess } from '@/components/terminal-pane/pty-connection/sleeping-record-access'
@@ -99,7 +99,7 @@ const state = buildProfileStateCutoverFixture('/fixture')
 import {
   createAutomationTerminalOwnershipFixture,
   OWNERSHIP_WORKSPACE_ID as WT
-} from './automation-terminal-ownership-test-harness'
+} from './helpers/automation-terminal-ownership-test-harness'
 const noop = () => {}
 const cleanups: (() => void)[] = []
 beforeEach(() => {
@@ -422,7 +422,7 @@ describe('desktop completion through local publication and process owner', () =>
       const respond = window.api.automations.respondTerminalLifecycle
       let late: Parameters<typeof respond>[0] | undefined
       window.api.automations.respondTerminalLifecycle = (reply) => {
-        if (reply.operation !== 'arm') {
+        if (reply.disposition !== 'armed') {
           return respond(reply)
         }
         late = reply
@@ -618,13 +618,14 @@ it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', asy
         projectId: 'repo1',
         workspaceMode: reuseSession ? 'existing' : 'new_per_run',
         workspaceId: reuseSession ? WT : null,
-        surface: reuseSession ? 'terminal' : 'chat',
+        launchSetupPatch: { surface: reuseSession ? 'terminal' : 'chat' },
         reuseSession,
         timezone: 'UTC',
         rrule: 'FREQ=DAILY',
         dtstart: Date.now() + 86400000,
         setupDecision: 'skip'
       })
+      expect(automation.surface).toBe(reuseSession ? 'terminal' : 'chat')
       const start = f.events.length
       const run = await service.runNow(automation.id)
       expect(run.status).toBe('dispatched')
@@ -683,8 +684,8 @@ it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', asy
       })
     }
     const sessions = rig.host.collaboratorsForTests().sessions
-    expect(Reflect.get(sessions, 'observers').size).toBe(0)
-    expect(Reflect.get(sessions, 'attachments').size).toBe(chats + 1)
+    expect(sessions['observers'].size).toBe(0)
+    expect(sessions['attachments'].size).toBe(chats + 1)
     const protocol = timers.mock.calls.flatMap((args, i) =>
       args[1] === 20_000 ? [timers.mock.results[i].value] : []
     )
@@ -695,7 +696,7 @@ it.each([5, 50])('bounds actual desktop fallback/Chat/Reuse owners at N=%i', asy
     expect(sleepers).toBe(eligible)
     expect(f.store.getState().tabsByWorktree[WT]).toHaveLength(1 + eligible)
     process.stdout.write(
-      `${JSON.stringify({ desktopRuns: count, canonicalSources: Reflect.get(sessions, 'attachments').size, logicalObservers: Reflect.get(sessions, 'observers').size, eligible, retainedReuse: retained, chats, ptys: ptyProcesses.size, desktopTabs: f.store.getState().tabsByWorktree[WT].length, runtimeTabs: tabs.get(WT)!.tabs.length, sleepers, registrations: stopRevokers.size, subscribers: f.activeSubscribers(), timersCreated: protocol.length, timersCleared: protocol.filter((timer) => cleared.mock.calls.some(([clearedTimer]) => timer === clearedTimer)).length })}\n`
+      `${JSON.stringify({ desktopRuns: count, canonicalSources: sessions['attachments'].size, logicalObservers: sessions['observers'].size, eligible, retainedReuse: retained, chats, ptys: ptyProcesses.size, desktopTabs: f.store.getState().tabsByWorktree[WT].length, runtimeTabs: tabs.get(WT)!.tabs.length, sleepers, registrations: stopRevokers.size, subscribers: f.activeSubscribers(), timersCreated: protocol.length, timersCleared: protocol.filter((timer) => cleared.mock.calls.some(([clearedTimer]) => timer === clearedTimer)).length })}\n`
     )
   } finally {
     service?.stop()

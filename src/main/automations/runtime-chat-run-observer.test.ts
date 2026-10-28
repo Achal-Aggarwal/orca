@@ -124,6 +124,7 @@ describe('exact automation chat turn', () => {
         outputRows++
         yield item
       }
+      return undefined
     })
     const result = chatAutomationRunObservation(view, 'prompt', 'Codex')
     expect(outputRows).toBe(4)
@@ -542,11 +543,11 @@ describe('real host queue publication and operation bounds', () => {
             (history + 30) * 4000
           )
           const sessions = rig.host.collaboratorsForTests().sessions
-          expect(Reflect.get(sessions, 'observers').size).toBe(0)
-          expect(Reflect.get(sessions, 'attachments').size).toBe(1)
+          expect(sessions['observers'].size).toBe(0)
+          expect(sessions['attachments'].size).toBe(1)
           totals.push(measure())
           process.stdout.write(
-            `${JSON.stringify({ history, mode, sourceAttachments: Reflect.get(sessions, 'attachments').size, logicalObservers: Reflect.get(sessions, 'observers').size, baselineWork, observerWork, keyedAdded, totals: measure(), ...metrics.details(), reconciliations: observerReads.mock.calls.length, registrations: registration.mock.calls.length, releases: releases.filter((r) => r.mock.calls.length === 1).length })}\n`
+            `${JSON.stringify({ history, mode, sourceAttachments: sessions['attachments'].size, logicalObservers: sessions['observers'].size, baselineWork, observerWork, keyedAdded, totals: measure(), ...metrics.details(), reconciliations: observerReads.mock.calls.length, registrations: registration.mock.calls.length, releases: releases.filter((r) => r.mock.calls.length === 1).length })}\n`
           )
         } finally {
           controller.abort()
@@ -672,7 +673,7 @@ describe('real host queue publication and operation bounds', () => {
             rig.host.stopDelivery()
           }
           expect(await liveResult).toBeInstanceOf(Error)
-          expect(Reflect.get(sessions, 'observers').size).toBe(0)
+          expect(sessions['observers'].size).toBe(0)
           return
         }
         if (outcome === 'withdraw') {

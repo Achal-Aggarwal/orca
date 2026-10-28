@@ -244,7 +244,7 @@ describe('internal publication lifetime, independently of presentation', () => {
     expect(reentrant.mock.lastCall![0].kind).toBe('end')
     releaseC()
     reentrantRelease()
-    expect(Reflect.get(conversations, 'observers').size).toBe(0)
+    expect(conversations['observers'].size).toBe(0)
     const listener = vi.fn()
     const before = old.observeCommits(listener)
     const after = old.observeCommits(listener)

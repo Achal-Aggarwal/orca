@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import type { Repo } from '../../shared/repo-types'
 import { toRuntimeExecutionHostId } from '../../shared/execution-host'
 import { AutomationService } from './service'
+import type { HeadlessAutomationDispatcher } from './headless-dispatch'
 
 vi.mock('electron', () => ({
   app: {
@@ -70,7 +71,10 @@ describe('AutomationService', () => {
     })
 
     vi.setSystemTime(new Date('2026-05-13T09:01:00'))
-    const send = vi.fn(async () => ({ workspaceId: 'wt1', terminalSessionId: 'tab-1' }))
+    const send = vi.fn<HeadlessAutomationDispatcher>(async (_request) => ({
+      workspaceId: 'wt1',
+      terminalSessionId: 'tab-1'
+    }))
     const service = new AutomationService(store, { headlessDispatcher: send, tickMs: 60_000 })
     service.setWebContents({
       isDestroyed: () => false,
@@ -682,9 +686,12 @@ describe('AutomationService', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     vi.setSystemTime(new Date('2026-05-13T09:01:00'))
-    const send = vi.fn(async () => ({ workspaceId: 'wt1', terminalSessionId: 'tab-1' }))
+    const send = vi.fn<HeadlessAutomationDispatcher>(async (_request) => ({
+      workspaceId: 'wt1',
+      terminalSessionId: 'tab-1'
+    }))
     const service = new AutomationService(reloaded, { headlessDispatcher: send, tickMs: 60_000 })
-    service.setWebContents({ isDestroyed: () => false, send })
+    service.setWebContents({ isDestroyed: () => false, send: vi.fn() })
 
     service.start()
     service.setRendererReady()
@@ -742,9 +749,12 @@ describe('AutomationService', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     vi.setSystemTime(new Date('2026-05-13T09:01:00'))
-    const send = vi.fn(async () => ({ workspaceId: 'wt1', terminalSessionId: 'tab-1' }))
+    const send = vi.fn<HeadlessAutomationDispatcher>(async (_request) => ({
+      workspaceId: 'wt1',
+      terminalSessionId: 'tab-1'
+    }))
     const service = new AutomationService(reloaded, { headlessDispatcher: send, tickMs: 60_000 })
-    service.setWebContents({ isDestroyed: () => false, send })
+    service.setWebContents({ isDestroyed: () => false, send: vi.fn() })
 
     service.start()
     service.setRendererReady()

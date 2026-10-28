@@ -1,8 +1,5 @@
 import { vi } from 'vitest'
-import type {
-  AgentJournalSnapshot,
-  AgentJournalRenderItem
-} from '../../shared/agent-session-journal-types'
+import type { AgentJournalSnapshot } from '../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 
@@ -58,6 +55,7 @@ export function measureAutomationChatRun(
               }
             }
           }
+          // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy get trap: only Reflect.get forwards a raw string|symbol key with the proxy receiver.
           return Reflect.get(target, key, receiver)
         }
       })
@@ -127,13 +125,14 @@ export function measureAutomationChatRun(
     return rows
   })
   // Count actual folded history iterators, without replacing their algorithms.
-  const folded: { items: Map<string, AgentJournalRenderItem> } = Reflect.get(journal, 'state')
+  const folded = journal['state']
   const values = folded.items.values.bind(folded.items)
   vi.spyOn(folded.items, 'values').mockImplementation(function* () {
     for (const item of values()) {
       iteratorYields++
       yield item
     }
+    return undefined
   })
   const fullApis = [
     'pendingSubmissions',

@@ -188,22 +188,23 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionLiveness {
         opts.authorizeStop &&
         (await this.probePtyLiveness(id)) === true &&
         this.sessionIncarnations.get(id) === original &&
-        endpoint &&
-        this.client.getDaemonIdentity() &&
-        sameEndpointIdentity(this.client.getDaemonIdentity(), endpoint)
+        endpoint
       ) {
-        if (installedRestore && this.coldRestoreCache.get(id) === installedRestore) {
-          if (previousRestore) {
-            this.coldRestoreCache.set(id, previousRestore)
-          } else {
-            this.coldRestoreCache.delete(id)
+        const currentEndpoint = this.client.getDaemonIdentity()
+        if (currentEndpoint && sameEndpointIdentity(currentEndpoint, endpoint)) {
+          if (installedRestore && this.coldRestoreCache.get(id) === installedRestore) {
+            if (previousRestore) {
+              this.coldRestoreCache.set(id, previousRestore)
+            } else {
+              this.coldRestoreCache.delete(id)
+            }
+            if (!previouslySlept) {
+              this.sleepRestoreSessionIds.delete(id)
+            }
           }
-          if (!previouslySlept) {
-            this.sleepRestoreSessionIds.delete(id)
+          if (hadWriter) {
+            this.historyManager?.registerWriter(id)
           }
-        }
-        if (hadWriter) {
-          this.historyManager?.registerWriter(id)
         }
       }
       // Gone is known for a session this adapter lost, or (after a relaunch forgot that) one whose

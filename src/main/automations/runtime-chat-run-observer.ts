@@ -164,13 +164,15 @@ export async function observeAutomationChatRun(
         currentJournal = hint.journal
         const semantic = interest()
         const rows = hint.rows
+        const currentCursor = cursor
         const contiguous =
-          cursor &&
-          hint.cursor?.epoch === cursor.epoch &&
+          currentCursor &&
+          hint.cursor?.epoch === currentCursor.epoch &&
           rows?.every(
-            (row, i) => row.epoch === cursor.epoch && row.seq === cursor.sequence + i + 1
+            (row, i) =>
+              row.epoch === currentCursor.epoch && row.seq === currentCursor.sequence + i + 1
           ) &&
-          hint.cursor.sequence === cursor.sequence + rows.length
+          hint.cursor.sequence === currentCursor.sequence + rows.length
         const linked = rows?.some((row) => {
           if (row.kind === 'submission') {
             return row.queuedMessageId === messageId && row.clientMessageId !== submissionId

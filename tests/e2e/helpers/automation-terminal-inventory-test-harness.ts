@@ -1,10 +1,10 @@
-import type { AutomationRun } from '../../../shared/automations-types'
-import { reconcileDesktopRunTerminals } from '../../../main/automations/desktop-run-terminal-reconciliation'
+import type { AutomationRun } from '../../../src/shared/automations-types'
+import { reconcileDesktopRunTerminals } from '../../../src/main/automations/desktop-run-terminal-reconciliation'
 import { expect, vi } from 'vitest'
-import type { Store } from '../../../main/persistence'
-import type { createDesktopRunTerminalLifecycle } from '../../../main/automations/desktop-run-terminal-lifecycle'
-import * as runNormalization from '../../../main/persistence/scheduling-automations/automation-context-migration'
-import { compareAutomationRunsNewestFirst } from '../../../shared/automation-run-cursor'
+import type { Store } from '../../../src/main/persistence'
+import type { createDesktopRunTerminalLifecycle } from '../../../src/main/automations/desktop-run-terminal-lifecycle'
+import * as runNormalization from '../../../src/main/persistence/scheduling-automations/automation-context-migration'
+import { compareAutomationRunsNewestFirst } from '../../../src/shared/automation-run-cursor'
 
 export function measureTerminalInventory(
   disk: Store,
@@ -26,6 +26,7 @@ export function measureTerminalInventory(
         if (key === 'find') {
           linearFinds++
         }
+        // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy get trap: only Reflect.get forwards a raw string|symbol key with the proxy receiver.
         const value = Reflect.get(target, key, receiver)
         if (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/.test(key)) {
           return value
@@ -36,6 +37,7 @@ export function measureTerminalInventory(
             if (field === 'status') {
               statusVisits++
             }
+            // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy get trap: only Reflect.get forwards a raw string|symbol key with the proxy receiver.
             return Reflect.get(run, field, rowReceiver)
           }
         })

@@ -71,9 +71,10 @@ export function createRuntimeAutomationService(
           if (!run.chatSessionId) {
             const records = await runtime.openAgentSessionRecordStore()
             const receipt = readAutomationRunReceipt(records, run)
+            const automationId = run.automationId
             const agent =
               tuiAgentDisplayName(
-                store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId ??
+                store.listAutomations().find((entry) => entry.id === automationId)?.agentId ??
                   'Agent'
               ) ?? 'Agent'
             if (!receipt) {
@@ -129,10 +130,10 @@ export function createRuntimeAutomationService(
                 throw error
               }
               console.error('[automations] chat run observation failed:', error)
+              const automationId = run.automationId
               const agent =
                 tuiAgentDisplayName(
-                  store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId ??
-                    ''
+                  store.listAutomations().find((entry) => entry.id === automationId)?.agentId ?? ''
                 ) ?? 'The agent'
               return {
                 status: 'dispatch_failed',
