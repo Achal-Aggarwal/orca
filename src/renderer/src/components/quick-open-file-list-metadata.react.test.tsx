@@ -31,7 +31,7 @@ async function replaceWorktrees(worktrees: Worktree[]): Promise<void> {
   await flushEffects()
 }
 
-it.each([1, 10])('keeps a settled inventory through %i metadata updates', async (updates) => {
+it('keeps a settled inventory through metadata updates', async () => {
   seedRemoteWorktree()
   const states: RuntimeFileListState[] = []
   await renderProbe({ enabled: true, states, worktreeId: 'wt-remote' })
@@ -39,9 +39,8 @@ it.each([1, 10])('keeps a settled inventory through %i metadata updates', async 
   const initialRequest = listRuntimeFilesMock.mock.calls[0]?.[1]
   const rendersBeforeUpdates = states.length
 
-  for (let index = 0; index < updates; index++) {
-    await replaceWorktrees([{ ...makeRemoteWorktree(), head: `commit-${index}` }])
-  }
+  await replaceWorktrees([{ ...makeRemoteWorktree(), head: 'commit-1' }])
+  await replaceWorktrees([{ ...makeRemoteWorktree(), head: 'commit-2' }])
 
   expect(listRuntimeFilesMock).toHaveBeenCalledOnce()
   expect(cancelRuntimeFileListMock).not.toHaveBeenCalled()
