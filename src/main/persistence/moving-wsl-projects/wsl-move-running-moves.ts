@@ -8,7 +8,12 @@ import {
 } from '../../../shared/wsl-move/wsl-move-cutover'
 import { scanWslMoveCutovers } from './wsl-move-cutover-journal'
 
-export type RunningWslMove = { controller: AbortController; commitRequested: boolean }
+export type RunningWslMove = {
+  controller: AbortController
+  commitRequested: boolean
+  /** The cutover this run journals; unset for a run that only settles an earlier one. */
+  migrationId?: string
+}
 
 const runningMoves = new Map<string, RunningWslMove>()
 
@@ -41,15 +46,16 @@ export function isAnyWslMoveRunning(): boolean {
 }
 
 /**
- * True while this process runs a move of the distro that has journaled its cutover: from then on
- * the host holds the move's state, so its server must not be replaced under it.
+ * True while this process runs a move of the distro that has journaled its own cutover: from then
+ * on the host holds the move's state, so its server must not be replaced under it. An earlier
+ * move's record does not count, or settling it could never update an outdated server.
  */
 export function isWslMoveUnderwayOnHost(userDataPath: string, distro: string): boolean {
-  const key = wslMoveJournalKey(distro)
+  const migrationId = runningMoves.get(wslMoveJournalKey(distro))?.migrationId
   return (
-    runningMoves.has(key) &&
+    migrationId !== undefined &&
     scanWslMoveCutovers(userDataPath).some(
-      (cutover) => cutover.journalKey === key && !isWslMoveCutoverFinished(cutover)
+      (cutover) => cutover.migrationId === migrationId && !isWslMoveCutoverFinished(cutover)
     )
   )
 }

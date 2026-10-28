@@ -65,6 +65,7 @@ export async function moveProjectsToWslHost(
     return refusal('wsl_move_already_running')
   }
   const migrationId = deps.newMigrationId()
+  running.migrationId = migrationId
   // Anything unforeseen: back to zero without the host, which never resets a possible commit.
   return reportWslMoveRunEnd(deps, request.distro, (tracked) =>
     runMove(tracked, request, migrationId, running)
@@ -87,7 +88,7 @@ async function runMove(
   const { distro } = request
   deps.progress({ distro, step: 'preparing' })
   const startedAt = deps.now()
-  const prepared = await prepareWslMove(deps, request, migrationId, startedAt, true)
+  const prepared = await prepareWslMove(deps, request, migrationId, startedAt, 'finish-now')
   if ('outcome' in prepared) {
     return prepared
   }

@@ -32,7 +32,13 @@ async function previewPrepared(
   settleInterrupted: boolean
 ): Promise<WslMovePreview> {
   const migrationId = deps.newMigrationId()
-  const prepared = await prepareWslMove(deps, request, migrationId, deps.now(), settleInterrupted)
+  const prepared = await prepareWslMove(
+    deps,
+    request,
+    migrationId,
+    deps.now(),
+    settleInterrupted && 'finish-at-restart'
+  )
   if ('outcome' in prepared) {
     return prepared
   }

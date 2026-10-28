@@ -17,7 +17,12 @@ import {
 } from './wsl-move-desktop-rewrite-stores'
 import { previewWslMove } from './wsl-move-driver'
 import { claimWslMoveRun, isWslMoveRunning, releaseWslMoveRun } from './wsl-move-running-moves'
-import { resetWslMoveWindowWriteHoldForTests } from './wsl-move-window-write-hold'
+import { runWslMoveDesktopRewritePass } from './wsl-move-desktop-rewrite'
+import {
+  isWslMoveWindowWriteHeld,
+  resetWslMoveWindowWriteHoldForTests,
+  setWslMoveReloadableWindow
+} from './wsl-move-window-write-hold'
 
 let userDataPath: string
 let world: WslMoveWorld
@@ -75,12 +80,30 @@ describe('the automatic mover previewing after an interrupted commit', () => {
     expect(isWslMoveRunning('Ubuntu')).toBe(false)
   })
 
-  it('finishes a commit the host made, and waits for the window before the next move', async () => {
+  it('records a commit the host made, but leaves the window and its reload to the next start', async () => {
+    const window = {
+      isDestroyed: () => false,
+      reload: vi.fn(),
+      allowUnload: vi.fn(() => () => {}),
+      onLoadedOrGone: vi.fn(() => () => {})
+    }
+    setWslMoveReloadableWindow(() => window)
     world.catalog.set(seedInterruptedCommit(), 'committed')
     expect(await previewWslMove(world.deps, request, AUTOMATIC)).toEqual({
       outcome: 'refused',
       code: 'wsl_move_finished_earlier_move'
     })
+    expect(journal().find((cutover) => cutover.migrationId === 'stuck')?.phase).toBe(
+      'destination-committed'
+    )
+    // An automatic step never reloads the window past its unload veto, nor drops its saves.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(window.allowUnload).not.toHaveBeenCalled()
+    expect(window.reload).not.toHaveBeenCalled()
+    expect(isWslMoveWindowWriteHeld()).toBe(false)
+    // The next start's pass, before any window opens, finishes it forward.
+    setWslMoveReloadableWindow(() => null)
+    await runWslMoveDesktopRewritePass({ userDataPath, warn: () => {} })
     expect(journal().find((cutover) => cutover.migrationId === 'stuck')?.phase).toBe(
       'client-rewritten'
     )

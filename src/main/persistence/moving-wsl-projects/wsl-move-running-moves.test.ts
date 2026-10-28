@@ -21,12 +21,13 @@ afterEach(() => {
 })
 
 describe('isWslMoveUnderwayOnHost', () => {
-  it('is false while a run only connects, true once it journals, false again when it ends', () => {
+  it('is true only between the run journaling its own cutover and the run ending', () => {
     const running = claimWslMoveRun('Ubuntu')
     if (!running) {
       throw new Error('expected to claim the run')
     }
     try {
+      running.migrationId = 'm1'
       // The move's own first connect may still update an outdated server.
       expect(isWslMoveUnderwayOnHost(userDataPath, 'Ubuntu')).toBe(false)
       seedWslMoveCutover(userDataPath, wslMoveCutoverFixture('m1', 'destination-staged'))
@@ -37,5 +38,18 @@ describe('isWslMoveUnderwayOnHost', () => {
     }
     // A record a crash left, with no run here, does not hold the server.
     expect(isWslMoveUnderwayOnHost(userDataPath, 'Ubuntu')).toBe(false)
+  })
+
+  it("never counts an earlier move's record for a run that only settles it", () => {
+    // Else an outdated server stays held, the settle refuses for an update, and retries forever.
+    seedWslMoveCutover(userDataPath, wslMoveCutoverFixture('earlier', 'blobs-transferred'))
+    const settling = claimWslMoveRun('Ubuntu')
+    try {
+      expect(isWslMoveUnderwayOnHost(userDataPath, 'Ubuntu')).toBe(false)
+    } finally {
+      if (settling) {
+        releaseWslMoveRun('Ubuntu', settling)
+      }
+    }
   })
 })
