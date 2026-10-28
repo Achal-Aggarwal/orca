@@ -305,25 +305,25 @@ describe('editor draft projection on the typing path', () => {
     const markdown = { ...state, openFiles: [makeOpenFile(0, { language: 'markdown' })] }
     const markdownKey = getRuntimeMobileSessionSyncKey(markdown, state, sourceKey, false)
     expect(markdownKey.editorDraftsProjection).not.toBe(sourceKey.editorDraftsProjection)
-    expect(draftHashCounter.calls).toBe(1)
+    expect(draftHashCounter.calls).toBe(0)
     state = { ...markdown, editorDrafts: { 'file-0': 'edited draft' } }
     const editedKey = getRuntimeMobileSessionSyncKey(state, markdown, markdownKey, false)
     expect(editedKey.editorDraftsProjection).not.toBe(markdownKey.editorDraftsProjection)
-    expect(draftHashCounter.calls).toBe(2)
+    expect(draftHashCounter.calls).toBe(0)
     const clean = { ...state, editorDrafts: {} }
     const cleanKey = getRuntimeMobileSessionSyncKey(clean, state, editedKey, false)
-    expect(cleanKey.editorDraftsProjection).toBe('{}')
+    expect(cleanKey.editorDraftsProjection.size).toBe(0)
     expect(
       buildMobileSessionTabSnapshots(clean, false).flatMap((snapshot) => snapshot.tabs)
     ).toContainEqual(expect.objectContaining({ id: 'file-0', documentVersion: 'file:file-0' }))
     const closed = { ...state, openFiles: [] }
     const closedKey = getRuntimeMobileSessionSyncKey(closed, state, editedKey, false)
-    expect(closedKey.editorDraftsProjection).toBe('{}')
+    expect(closedKey.editorDraftsProjection.size).toBe(0)
     expect(getEditorDraftVersionByFileId(closed.editorDrafts, closed.openFiles).size).toBe(0)
-    expect(draftHashCounter.calls).toBe(2)
+    expect(draftHashCounter.calls).toBe(0)
   })
 
-  it('hashes only the edited file per keystroke, not every open dirty file', () => {
+  it('hashes the final edited draft at snapshot capture after hash-free typing', () => {
     const typedCharacters = 100
     const totalDraftChars = DRAFT_FILE_COUNT * DRAFT_CHARS_PER_FILE
 
@@ -343,7 +343,7 @@ describe('editor draft projection on the typing path', () => {
     const openFiles = Array.from({ length: DRAFT_FILE_COUNT }, (_, index) =>
       makeOpenFile(index, { language: 'markdown' })
     )
-    buildRuntimeMobileEditorDraftsProjection(memoDrafts, openFiles)
+    getEditorDraftVersionByFileId(memoDrafts, openFiles)
     draftHashCounter.calls = 0
     draftHashCounter.chars = 0
     for (let keystroke = 0; keystroke < typedCharacters; keystroke += 1) {
@@ -358,11 +358,9 @@ describe('editor draft projection on the typing path', () => {
       calls: typedCharacters * DRAFT_FILE_COUNT,
       chars: typedCharacters * totalDraftChars + growth
     })
-    expect(after).toEqual({
-      calls: typedCharacters,
-      chars: typedCharacters * DRAFT_CHARS_PER_FILE + growth
-    })
-    expect(before.chars / after.chars).toBeGreaterThan(DRAFT_FILE_COUNT - 0.1)
+    expect(after).toEqual({ calls: 0, chars: 0 })
+    getEditorDraftVersionByFileId(memoDrafts, openFiles)
+    expect(draftHashCounter).toEqual({ calls: 1, chars: DRAFT_CHARS_PER_FILE + typedCharacters })
   })
 })
 
