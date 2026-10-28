@@ -51,6 +51,32 @@ function mountBridge(model: editor.ITextModel, onContentChange = vi.fn()) {
 }
 
 describe('Monaco content event admission', () => {
+  it.each([1_000, 10_000].flatMap((lines) => [1, 10].map((paneCount) => ({ lines, paneCount }))))(
+    'shares external reconciliation snapshots across $paneCount panes of $lines lines',
+    async ({ lines, paneCount }) => {
+      const initial = 'ordinary source line\n'.repeat(lines)
+      const model = monaco.editor.createModel(initial)
+      const panes = Array.from({ length: paneCount }, () => mountBridge(model))
+      const reads = vi.spyOn(model, 'getValue')
+      try {
+        for (let update = 0; update < 3; update += 1) {
+          const content = `${initial}update ${update}`
+          for (const pane of panes) {
+            pane.rerender({ content, publish: pane.onContentChange })
+          }
+          await Promise.resolve()
+        }
+        expect(reads).toHaveBeenCalledTimes(paneCount === 1 ? 3 : 6)
+        for (const pane of panes) {
+          expect(pane.onContentChange).not.toHaveBeenCalled()
+        }
+      } finally {
+        reads.mockRestore()
+      }
+      expect(model.getValue()).toBe(`${initial}update 2`)
+    }
+  )
+
   it.each([1, 10])('materializes each model version once for %i pane publishers', (paneCount) => {
     const model = monaco.editor.createModel('line\n'.repeat(10_000))
     const panes = Array.from({ length: paneCount }, () => mountBridge(model))

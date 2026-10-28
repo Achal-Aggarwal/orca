@@ -76,13 +76,14 @@ export function syncContentOnMount(
 export function syncContentUpdate(
   editorInstance: editor.IStandaloneCodeEditor,
   content: string,
-  mode: MonacoContentSyncMode = 'undoable'
+  mode: MonacoContentSyncMode = 'undoable',
+  currentContentSnapshot?: string
 ): void {
   const model = editorInstance.getModel()
   if (!model) {
     return
   }
-  const currentContent = model.getValue()
+  const currentContent = currentContentSnapshot ?? model.getValue()
   const normalizedContent = normalizeToModelEol(content, model, currentContent)
   if (currentContent.length === normalizedContent.length) {
     replaceModelContent(editorInstance, model, currentContent, normalizedContent, mode, true)

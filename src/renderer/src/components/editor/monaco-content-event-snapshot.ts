@@ -4,20 +4,20 @@ const contentEventSnapshots = new WeakMap<editor.ITextModel, { version: number; 
 
 export function readContentEventSnapshot(
   model: editor.ITextModel,
-  mountedEditor: editor.IStandaloneCodeEditor
+  reader: { getValue: () => string }
 ): string {
   const version = model.getVersionId()
   const previous = contentEventSnapshots.get(model)
   if (previous) {
     if (previous.version !== version) {
       previous.version = version
-      previous.value = mountedEditor.getValue()
+      previous.value = reader.getValue()
     }
     return previous.value
   }
-  const snapshot = { version, value: mountedEditor.getValue() }
+  const snapshot = { version, value: reader.getValue() }
   contentEventSnapshots.set(model, snapshot)
-  // Share synchronous pane delivery, then release the full text even while the model stays mounted.
+  // Share synchronous delivery/reconciliation, then release the full text while the model stays mounted.
   queueMicrotask(() => {
     if (contentEventSnapshots.get(model) === snapshot) {
       contentEventSnapshots.delete(model)
