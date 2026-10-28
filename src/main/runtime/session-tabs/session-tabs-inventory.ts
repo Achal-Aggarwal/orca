@@ -1,3 +1,4 @@
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
 import { visibleGraphChangedWorktrees } from '../session-graph/visible-graph-changed-worktrees'
 import type { RuntimeSessionTabsInventoryPublication as SessionTabsInventoryPublicationMethods } from './session-tabs-inventory-publication'
 import type { OrcaRuntimeWithScheduleMobileSessionTabsChanged as ScheduleMobileSessionTabsChangedMethods } from './session-tabs-change-publication'
@@ -22,7 +23,12 @@ import type { RuntimeLeafRecord } from '../runtime-terminal-state-records'
 import type { PtyControllerInventory } from '../runtime-pty-controller-contract'
 import { parseExecutionHostId } from '../../../shared/execution-host'
 import type { PaneStartStatuses } from '../pane-start-statuses'
-import { paneOfPty, type PtyPane, type PtyPaneSource } from '../terminal/surface/pty-pane-query'
+import {
+  paneOfPty,
+  type PtyPane,
+  type PtyPaneSource,
+  type PtyPaneOf
+} from '../terminal/surface/pty-pane-query'
 
 export abstract class OrcaRuntimeWithCollectMobileVisibleGraphChangedWorktrees extends OrcaRuntimeWithSyncWindowGraph {
   abstract get workspaceLayoutReads(): WorkspaceLayoutReads
@@ -39,6 +45,14 @@ export abstract class OrcaRuntimeWithCollectMobileVisibleGraphChangedWorktrees e
   // Main's index answers with or without a window's graph: each layout write is a new partition.
   protected paneOfPty(pty: PtyPaneSource | null | undefined): PtyPane {
     return paneOfPty(pty, (ptyId) => this.mainSurfaces().findPaneForPty(ptyId))
+  }
+
+  protected captureTerminalPaneReader(): PtyPaneOf {
+    if (!ORCA_LAYOUT_OWNER_IS_MAIN) {
+      return (pty) => paneOfPty(pty, () => null)
+    }
+    const mainPane = this.mainSurfaces().capturePaneLookup()
+    return (pty) => paneOfPty(pty, mainPane)
   }
 
   private mainSurfaces(): ReturnType<typeof mainTerminalSurfaces> {

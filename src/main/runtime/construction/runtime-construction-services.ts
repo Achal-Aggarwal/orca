@@ -1,3 +1,4 @@
+import type { TerminalIdentityReadContext } from '../terminal/query/terminal-identity-read-context'
 import type * as Calls from './runtime-host-service-calls'
 import type { IPtyProvider } from '../../providers/pty-provider-contract'
 import type {
@@ -115,8 +116,12 @@ export abstract class RuntimeConstructionServices {
   ): Promise<RuntimeVisibleTerminalState | null>
   protected abstract getLeafKey(tabId: string, leafId: string): string
   /** L80: sole reader of a PTY record's tab/pane copies. */
+  protected abstract captureTerminalPaneReader(): (pty: PtyPaneSource) => PtyPane
   protected abstract paneOfPty(pty: PtyPaneSource | null | undefined): PtyPane
-  protected abstract getLivePtyForHandle(handle: string): {
+  protected abstract getLivePtyForHandle(
+    handle: string,
+    context?: TerminalIdentityReadContext
+  ): {
     record: TerminalHandleRecord
     pty: RuntimePtyWorktreeRecord
   } | null
@@ -147,14 +152,26 @@ export abstract class RuntimeConstructionServices {
   protected abstract getOrchestrationDbIfAvailable(): OrchestrationDb | null
   protected abstract listResolvedWorktrees(): Promise<ResolvedWorktree[]>
   abstract showTerminal(handle: string): Promise<RuntimeTerminalShow>
-  protected abstract issueHandle(leaf: RuntimeLeafRecord): string
-  protected abstract issuePtyHandle(pty: RuntimePtyWorktreeRecord): string
+  protected abstract issueHandle(
+    leaf: RuntimeLeafRecord,
+    context?: TerminalIdentityReadContext
+  ): string
+  protected abstract issuePtyHandle(
+    pty: RuntimePtyWorktreeRecord,
+    context?: TerminalIdentityReadContext
+  ): string
   protected abstract makeRuntimePaneKey(
     leaf: Pick<RuntimeSyncedLeaf, 'tabId' | 'leafId' | 'paneRuntimeId'>
   ): string
   abstract getTerminalWorktreeIdForHandle(handle: string): string | null
-  abstract getTerminalHandleForPaneKey(paneKey: string): string | null
-  protected abstract getPaneKeyForTerminalHandle(handle: string): string | null
+  abstract getTerminalHandleForPaneKey(
+    paneKey: string,
+    context?: TerminalIdentityReadContext
+  ): string | null
+  protected abstract getPaneKeyForTerminalHandle(
+    handle: string,
+    context?: TerminalIdentityReadContext
+  ): string | null
   abstract getOrchestrationDispatchAuthority(
     terminalHandle: string
   ): OrchestrationCompatibilityTerminalAuthority | null

@@ -1,3 +1,4 @@
+import { TerminalIdentityReadContext } from './terminal-identity-read-context'
 import { OrcaRuntimeWithGetPtyRecordForPaneKey } from '../../orchestration/terminal-pane-mail-routing'
 import type {
   RuntimeLeafRecord,
@@ -17,7 +18,6 @@ import type { PtyIncarnationHandleRecord } from '../../orca-runtime-core'
 import type { TerminalHandleRecord } from '../../runtime-terminal-contracts'
 import { readTerminalTail } from '../../terminal-tail-read'
 import { structuredWorkerTerminalRefusal } from '../../structured-worker-terminal-refusal'
-import { randomUUID } from 'node:crypto'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import type { OrchestrationMailboxLeaf } from '../../orchestration/mailbox-owner'
 import { ptyMailboxLeaf } from '../../orchestration/pty-mailbox-leaf'
@@ -34,6 +34,17 @@ export abstract class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntime
     retained: PtyIncarnationHandleRecord,
     leaf: RuntimeLeafRecord
   ): void
+
+  createTerminalIdentityReadContext(): TerminalIdentityReadContext {
+    return new TerminalIdentityReadContext({
+      handles: this.handles,
+      sshTerminals: this.orchestrationCompatibilitySshTerminals,
+      reverse: this.handleByPtyId,
+      leaves: this.leaves,
+      ptys: this.ptysById,
+      capturePaneOf: () => this.captureTerminalPaneReader()
+    })
+  }
 
   protected ptySurfaceTopology(): PtySurfaceTopology {
     return {
@@ -200,26 +211,29 @@ export abstract class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntime
     return this.authoritativeWindowId === HEADLESS_RUNTIME_WINDOW_ID && this.graphStatus === 'ready'
   }
 
-  protected getLivePtyForHandle(handle: string): {
+  protected getLivePtyForHandle(
+    handle: string,
+    context?: TerminalIdentityReadContext
+  ): {
     record: TerminalHandleRecord
     pty: RuntimePtyWorktreeRecord
   } | null {
     let record = this.handles.get(handle)
     if (!record) {
-      const ptyId = [...this.handleByPtyId.entries()].find(
-        ([, mappedHandle]) => mappedHandle === handle
-      )?.[0]
+      const ptyId = context
+        ? context.reversePtyIds(handle)[0]
+        : [...this.handleByPtyId.entries()].find(([, mappedHandle]) => mappedHandle === handle)?.[0]
       const pty = ptyId ? this.ptysById.get(ptyId) : null
       if (pty) {
         // Why: graph reload clears renderer handle records, but runtime-owned PTY handles remain the caller's control identity.
-        this.issuePtyHandle(pty)
+        this.issuePtyHandle(pty, context)
         record = this.handles.get(handle)
       }
     }
     if (
       !record ||
       record.runtimeId !== this.runtimeId ||
-      !(record.tabId.startsWith('pty:') || this.mainPaneOwnHandle(handle, record))
+      !(record.tabId.startsWith('pty:') || this.mainPaneOwnHandle(handle, record, context))
     ) {
       return null
     }
@@ -232,11 +246,16 @@ export abstract class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntime
     }
     // Why: renderer adoption can race with CLI reads; keep ptyId → handle populated so summaries don't mint a second handle for the same terminal.
     this.handleByPtyId.set(record.ptyId, handle)
+    context?.changedReverseBinding(record.ptyId)
     return { record, pty }
   }
 
   /** Main-owned panes adopt the terminal's original handle; own-handle checks fence epochs because replacement incarnations drop that handle. */
-  private mainPaneOwnHandle(handle: string, record: TerminalHandleRecord): boolean {
+  private mainPaneOwnHandle(
+    handle: string,
+    record: TerminalHandleRecord,
+    context?: TerminalIdentityReadContext
+  ): boolean {
     if (
       !ORCA_LAYOUT_OWNER_IS_MAIN ||
       !record.ptyId ||
@@ -246,8 +265,9 @@ export abstract class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntime
     ) {
       return false
     }
+    const pty = this.ptysById.get(record.ptyId)
     return (
-      this.paneOfPty(this.ptysById.get(record.ptyId)).paneKey ===
+      (context && pty ? context.paneOf(pty) : this.paneOfPty(pty)).paneKey ===
       makePaneKey(record.tabId, record.leafId)
     )
   }
@@ -283,50 +303,22 @@ export abstract class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntime
       limit: opts.limit
     })
   }
-
-  protected issueHandle(leaf: RuntimeLeafRecord): string {
-    const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId)
-    const existingHandle = this.handleByLeafKey.get(leafKey)
-    if (existingHandle) {
-      const existingRecord = this.handles.get(existingHandle)
-      if (
-        existingRecord &&
-        existingRecord.rendererGraphEpoch === this.rendererGraphEpoch &&
-        existingRecord.ptyId === leaf.ptyId &&
-        existingRecord.ptyGeneration === leaf.ptyGeneration
-      ) {
-        return existingHandle
-      }
+  getTerminalHandleForPaneKey(
+    paneKey: string,
+    context?: TerminalIdentityReadContext
+  ): string | null {
+    const parsed = parsePaneKey(paneKey)
+    const leaf = parsed ? this.leaves.get(this.getLeafKey(parsed.tabId, parsed.leafId)) : undefined
+    if (leaf?.ptyId && leaf.connected) {
+      return this.issueHandle(leaf, context)
     }
-
-    const preAllocatedHandle = this.adoptPreAllocatedHandle(leaf)
-    if (preAllocatedHandle) {
-      return preAllocatedHandle
+    const panePty = this.getPtyRecordForPaneKey(paneKey, context)
+    if (panePty?.connected) {
+      return this.issuePtyHandle(panePty, context)
     }
-    const incarnationId = leaf.ptyId ? (this.ptysById.get(leaf.ptyId)?.incarnationId ?? null) : null
-    const retained = leaf.ptyId ? this.handleByPtyIncarnation.get(leaf.ptyId) : undefined
-    if (retained && leaf.ptyId && retained.incarnationId !== incarnationId) {
-      this.invalidatePtyIncarnationHandle(leaf.ptyId)
-    } else if (retained) {
-      this.bindPtyIncarnationHandle(retained, leaf)
-      return retained.handle
+    if (leaf?.ptyId) {
+      return this.issueHandle(leaf, context)
     }
-    const handle = `term_${randomUUID()}`
-    this.syntheticTerminalHandles.add(handle)
-    this.handles.set(handle, {
-      handle,
-      runtimeId: this.runtimeId,
-      rendererGraphEpoch: this.rendererGraphEpoch,
-      worktreeId: leaf.worktreeId,
-      tabId: leaf.tabId,
-      leafId: leaf.leafId,
-      ptyId: leaf.ptyId,
-      ptyGeneration: leaf.ptyGeneration
-    })
-    this.handleByLeafKey.set(leafKey, handle)
-    if (leaf.ptyId) {
-      this.handleByPtyIncarnation.set(leaf.ptyId, { handle, incarnationId, leafKey })
-    }
-    return handle
+    return panePty ? this.issuePtyHandle(panePty, context) : null
   }
 }

@@ -75,12 +75,12 @@ export class CrewReadModel {
       this.host = undefined
       const deps = this.readDependencies()
       if (dirty.has('status')) {
-        const statuses = deps.statuses
+        const { statuses, ...sources } = deps
         const identities = (rows: typeof statuses) =>
           new Map(rows.map((row) => [row.activity.paneKey, row.binding]))
         this.host = isDeepStrictEqual(identities(previous.deps.statuses), identities(statuses))
           ? refreshCrewStatuses(previous, statuses)
-          : createCrewHostDerivation({ ...deps, statuses }, now)
+          : createCrewHostDerivation({ ...sources, statuses }, now)
       } else {
         this.host = previous
       }
