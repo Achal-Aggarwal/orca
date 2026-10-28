@@ -7,6 +7,7 @@ import {
   parseFileLinkLocation
 } from '../../../../shared/file-link-location'
 import {
+  extractTerminalFileLinkReadings,
   extractTerminalFileLinks,
   type ParsedTerminalFileLink
 } from '../../../../shared/terminal-links'
@@ -110,8 +111,9 @@ function createFileLinkNode(link: ParsedTerminalFileLink, child: MarkdownNode): 
 }
 
 function splitTextSegment(value: string, exists: FileLinkExists): MarkdownNode[] {
+  const { links: textLinks, guesses } = extractTerminalFileLinkReadings(value)
   const links = selectExistingLinks(
-    extractTerminalFileLinks(value)
+    [...textLinks, ...guesses]
       .filter((link) => !hasPartialPathBoundary(value, link))
       .filter((link) => isLinkifiableFile(link, true)),
     exists

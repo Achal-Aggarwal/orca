@@ -2,7 +2,6 @@ import { normalizeAbsolutePath } from './terminal-path-normalization'
 import { resolveExplicitFileLinkTarget } from './explicit-file-link-target'
 import { detectBareFilenameLinks } from './terminal-bare-file-link-detection'
 import {
-  ROOTED_PATH_START_PATTERN,
   hasPathSeparator,
   mergeTerminalFileLinkRanges,
   toParsedTerminalFileLink,
@@ -92,21 +91,35 @@ function detectLocalPathLinks(lineText: string): {
   return { paths, spacedPaths }
 }
 
-/** Every plausible reading, overlaps included; callers keep exact matches or the longest that exists. */
-export function extractTerminalFileLinks(lineText: string): ParsedTerminalFileLink[] {
+export type TerminalFileLinkReadings = {
+  /** Paths as written: markdown destinations, file URIs, unspaced paths, bare filenames. */
+  links: ParsedTerminalFileLink[]
+  /** A path continued across the following words; act on one only after the host finds it exists. */
+  guesses: ParsedTerminalFileLink[]
+}
+
+export function extractTerminalFileLinkReadings(lineText: string): TerminalFileLinkReadings {
   const markdown = detectTerminalMarkdownFileLinks(lineText)
   const uriLinks = detectTerminalFileUriLinks(markdown.remainingText)
   const { paths, spacedPaths } = detectLocalPathLinks(markdown.remainingText)
   const claimingLinks = [...markdown.links, ...uriLinks, ...paths]
-  // Why not spaced paths: a spaced guess must not hide a bare filename inside the prose it spans.
   const claimed = mergeTerminalFileLinkRanges(
     claimingLinks.map(({ startIndex, endIndex }): [number, number] => [startIndex, endIndex])
   )
-  return [
-    ...claimingLinks,
-    ...spacedPaths,
-    ...detectBareFilenameLinks(markdown.remainingText, claimed)
-  ].sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex)
+  return {
+    links: [...claimingLinks, ...detectBareFilenameLinks(markdown.remainingText, claimed)].sort(
+      byStart
+    ),
+    guesses: spacedPaths
+  }
+}
+
+export function extractTerminalFileLinks(lineText: string): ParsedTerminalFileLink[] {
+  return extractTerminalFileLinkReadings(lineText).links
+}
+
+function byStart(a: ParsedTerminalFileLink, b: ParsedTerminalFileLink): number {
+  return a.startIndex - b.startIndex || b.endIndex - a.endIndex
 }
 
 export function resolveTerminalFileLink(
@@ -115,19 +128,6 @@ export function resolveTerminalFileLink(
   homePath?: string | null
 ): ResolvedTerminalFileLink | null {
   return resolveExplicitFileLinkTarget(parsed, cwd, homePath)
-}
-
-/** The file link spanning all of `linkText`, as an OSC 8 target or other whole-text link names it. */
-export function findExactTerminalFileLink(linkText: string): ParsedTerminalFileLink | null {
-  // Why: hyperlink text names its whole target, so a rooted path needs no detection (double spaces, long names).
-  if (ROOTED_PATH_START_PATTERN.test(linkText)) {
-    return toParsedTerminalFileLink({ text: linkText, startIndex: 0, endIndex: linkText.length })
-  }
-  return (
-    extractTerminalFileLinks(linkText).find(
-      (link) => link.startIndex === 0 && link.endIndex === linkText.length
-    ) ?? null
-  )
 }
 
 export function isPathInsideWorktree(filePath: string, worktreePath: string): boolean {

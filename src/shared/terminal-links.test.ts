@@ -3,22 +3,29 @@ import {
   TERMINAL_FILE_LINK_TAP_CONFORMANCE_CASES,
   columnForTerminalFileLinkTap
 } from './terminal-file-link-conformance'
+import { classifyTerminalOscLinkTarget } from './terminal-osc-link-target'
 import {
+  extractTerminalFileLinkReadings,
   extractTerminalFileLinks,
-  findExactTerminalFileLink,
   isPathInsideWorktree,
   resolveTerminalFileLink,
   toWorktreeRelativePath
 } from './terminal-links'
 
+// Every reading a host that checks files is offered.
+function allReadings(lineText: string) {
+  const { links, guesses } = extractTerminalFileLinkReadings(lineText)
+  return [...links, ...guesses]
+}
+
 function readingsAt(lineText: string, column: number) {
-  return extractTerminalFileLinks(lineText)
+  return allReadings(lineText)
     .filter((link) => column >= link.startIndex && column < link.endIndex)
     .map(({ pathText, line, column }) => ({ pathText, line, column }))
 }
 
 function pathTexts(lineText: string): string[] {
-  return extractTerminalFileLinks(lineText).map((link) => link.pathText)
+  return allReadings(lineText).map((link) => link.pathText)
 }
 
 describe('terminal path helpers', () => {
@@ -182,24 +189,32 @@ describe('terminal path helpers', () => {
     })
   })
 
-  it('keeps line and column suffixes from exact OSC hyperlink text', () => {
-    expect(findExactTerminalFileLink('docs/README.md:12:3')).toMatchObject({
-      pathText: 'docs/README.md',
-      line: 12,
-      column: 3
-    })
+  it('keeps a path spanning prose apart from the paths written in it', () => {
+    const { links, guesses } = extractTerminalFileLinkReadings(
+      '● Wrote ~/x/notes.md. It covers setup and/or teardown.'
+    )
+    expect(links.map((link) => link.pathText)).toEqual(['~/x/notes.md', 'and/or'])
+    expect(guesses.map((link) => link.pathText)).toContain('~/x/notes.md. It covers setup')
   })
 
-  it('takes rooted OSC hyperlink text that detection would split', () => {
-    expect(findExactTerminalFileLink('/Users/a/My  Folder/file.ts:3')).toMatchObject({
-      pathText: '/Users/a/My  Folder/file.ts',
-      line: 3,
-      column: null
+  it.each([
+    ['docs/README.md:12:3', 'docs/README.md', 12],
+    ['/Users/a/My  Folder/file.ts:3', '/Users/a/My  Folder/file.ts', 3],
+    ['docs/My  Folder/file.ts', 'docs/My  Folder/file.ts', null]
+  ])('takes OSC hyperlink target %s as written', (target, pathText, line) => {
+    const osc = classifyTerminalOscLinkTarget(target, {
+      windowsPathsFirst: false,
+      allowUncHost: false
     })
+    expect(osc).toMatchObject({ kind: 'path', link: { pathText, line } })
   })
 
-  it('does not take partial text as an OSC hyperlink target', () => {
-    expect(findExactTerminalFileLink('open docs/README.md')).toBeNull()
+  it('does not read a malformed URL OSC hyperlink target as a path', () => {
+    const osc = classifyTerminalOscLinkTarget('https://exa mple.com', {
+      windowsPathsFirst: false,
+      allowUncHost: false
+    })
+    expect(osc).toBeNull()
   })
 
   describe('plain-text file:// URIs', () => {

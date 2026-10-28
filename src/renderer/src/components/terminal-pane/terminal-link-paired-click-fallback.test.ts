@@ -341,6 +341,34 @@ describe('a modifier-click on a paired-server path followed by more paths', () =
     expect(asked).toEqual(['//server/share/other/report.txt'])
   })
 
+  it.each([
+    ['report', ['//server/share/report.md']],
+    ['details', []]
+  ])('never opens an unchecked guess past a share path when clicking %s', async (word, opened) => {
+    setPlatform('Windows')
+    runtimeEnvironmentCallMock.mockResolvedValue({
+      id: 'rpc-1',
+      ok: true,
+      result: { worktree: 'wt-1', relativePath: null, absolutePath: null, exists: false },
+      _meta: { runtimeId: 'remote-runtime' }
+    })
+    const line = 'See //server/share/report.md for details'
+    const buffer = makeBuffer([makeBufferLine(line)])
+
+    openFilePathLinkAtBufferPosition(buffer, { x: line.indexOf(word) + 1, y: 1 }, 80, {
+      startupCwd: '/srv/repo',
+      worktreeId: 'wt-1',
+      worktreePath: '/srv/repo',
+      runtimeEnvironmentId: 'env-1',
+      terminalHandle: 'term-1',
+      pathExistsCache: new Map()
+    })
+    await flushDoubleRaf()
+
+    const asked = runtimeEnvironmentCallMock.mock.calls.map(([args]) => args.params?.pathText)
+    expect(asked).toEqual(opened)
+  })
+
   it('opens a wrapped share path whole even when its prefix is a known file', async () => {
     setPlatform('Windows')
     runtimeEnvironmentCallMock.mockResolvedValue({

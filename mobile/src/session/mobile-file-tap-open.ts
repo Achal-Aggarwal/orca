@@ -14,7 +14,7 @@ import type { RpcOperationSender } from '../transport/rpc-operation-sender'
 import type { RpcResponse } from '../transport/types'
 
 // Hard-wrap guesses can number in the hundreds; stay far below the page bridge's 64 pending requests.
-const FILE_TAP_RESOLVE_CONCURRENCY = 16
+const FILE_TAP_RESOLVE_CONCURRENCY = 8
 
 export type FileTapSessionTab = {
   id: string

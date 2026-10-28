@@ -279,6 +279,20 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((m) => m.type === 'terminal-tap')).toBeDefined()
   })
 
+  it('opens a markdown link whose destination has spaces', async () => {
+    const line = 'see [PDF](</tmp/folder with spaces/report.pdf>)'
+    const { posted } = boot(line)
+    await settle()
+
+    fireTouch('touchstart', [{ x: screenXForCol(line.indexOf('with') + 1), y: tapY }])
+    fireTouch('touchend', [])
+
+    expect(posted.find((m) => m.type === 'terminal-file-tap')).toEqual({
+      type: 'terminal-file-tap',
+      candidates: [{ pathText: '/tmp/folder with spaces/report.pdf', line: null, column: null }]
+    })
+  })
+
   it('opens plain file URLs through terminal file taps', async () => {
     const line = 'open file:///tmp/result.json#L12C3 now'
     const { posted } = boot(line)

@@ -1,7 +1,7 @@
 import type { TerminalPathExistsCache } from './terminal-path-exists-cache'
 import { createTerminalPathExistenceBatch } from './terminal-path-existence-batch'
 import type { IDisposable, ILink, ILinkProvider, Terminal } from '@xterm/xterm'
-import { extractTerminalFileLinks } from '../../../../shared/terminal-links'
+import { extractTerminalFileLinkReadings } from '../../../../shared/terminal-links'
 import { preferLongestNonOverlappingMatches } from '@/lib/longest-non-overlapping-matches'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { buildCandidateLogicalLinesForBufferPosition } from '../../../../shared/terminal-link-buffer-hit-testing'
@@ -93,14 +93,16 @@ export function createFilePathLinkProvider(
       const rowLinks = buildCandidateLogicalLinesForBufferPosition(
         buffer,
         bufferLineNumber
-      ).flatMap((logicalLine) =>
-        extractTerminalFileLinks(logicalLine.text).flatMap((parsed) => {
+      ).flatMap((logicalLine) => {
+        const { links, guesses } = extractTerminalFileLinkReadings(logicalLine.text)
+        // Why guesses too: every reading below is shown only once the host finds its file.
+        return [...links, ...guesses].flatMap((parsed) => {
           const range = rangeForParsedFileLink(logicalLine, parsed.startIndex, parsed.endIndex)
           return range && range.start.y <= bufferLineNumber && range.end.y >= bufferLineNumber
             ? [{ logicalLine, parsed, range }]
             : []
         })
-      )
+      })
       if (rowLinks.length === 0) {
         callback(undefined)
         return
