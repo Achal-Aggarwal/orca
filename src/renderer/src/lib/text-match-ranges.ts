@@ -138,10 +138,17 @@ function buildLocaleLowercaseIndex(text: string): {
   let originalEndByNormalizedOffset: number[] | null = null
   let originalOffset = 0
 
-  for (const char of text) {
+  // Fold ASCII runs together while preserving character-wise Unicode casing.
+  for (const match of text.matchAll(/\p{ASCII}+|\P{ASCII}/gu)) {
+    const char = match[0]
+    const asciiRun = char.charCodeAt(0) <= 0x7f
     const normalizedChar = char.toLocaleLowerCase()
     const originalEnd = originalOffset + char.length
-    if (!originalStartByNormalizedOffset && (char.length !== 1 || normalizedChar.length !== 1)) {
+    if (
+      !originalStartByNormalizedOffset &&
+      !asciiRun &&
+      (char.length !== 1 || normalizedChar.length !== 1)
+    ) {
       originalStartByNormalizedOffset = Array.from({ length: originalOffset }, (_, index) => index)
       originalEndByNormalizedOffset = Array.from(
         { length: originalOffset },
@@ -150,8 +157,8 @@ function buildLocaleLowercaseIndex(text: string): {
     }
     // Locale folding can expand UTF-16 (İ → i + combining dot); map normalized matches back to original DOM offsets.
     for (let i = 0; i < normalizedChar.length; i += 1) {
-      originalStartByNormalizedOffset?.push(originalOffset)
-      originalEndByNormalizedOffset?.push(originalEnd)
+      originalStartByNormalizedOffset?.push(asciiRun ? originalOffset + i : originalOffset)
+      originalEndByNormalizedOffset?.push(asciiRun ? originalOffset + i + 1 : originalEnd)
     }
     normalized += normalizedChar
     originalOffset = originalEnd
