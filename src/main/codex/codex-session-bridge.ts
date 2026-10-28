@@ -63,10 +63,15 @@ function readLegacyCopiedSessionMarker(relativePath: string): LegacyCopiedSessio
     }
     const marker = parsed
     if (
+      !('sourcePath' in marker) ||
       typeof marker.sourcePath !== 'string' ||
+      !('sourceSize' in marker) ||
       typeof marker.sourceSize !== 'number' ||
+      !('sourceMtimeMs' in marker) ||
       typeof marker.sourceMtimeMs !== 'number' ||
+      !('targetSize' in marker) ||
       typeof marker.targetSize !== 'number' ||
+      !('targetMtimeMs' in marker) ||
       typeof marker.targetMtimeMs !== 'number'
     ) {
       return null

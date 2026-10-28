@@ -29,7 +29,7 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
   /** Prepare the launch home without waiting for background history bridging. */
   prepareForCodexLaunch(
     target?: CodexAccountSelectionTarget,
-    launchEnv?: NodeJS.ProcessEnv,
+    _launchEnv?: NodeJS.ProcessEnv,
     options?: { unavailableManagedHomePath?: string; conversationHome?: string }
   ): string | null {
     if (target?.runtime === 'wsl') {
