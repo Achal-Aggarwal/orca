@@ -4,6 +4,7 @@ import {
   type MarkdownRichModeEligibility,
   type MarkdownRichModeEligibilityDecision
 } from './markdown-rich-mode'
+import { exceedsMarkdownRenderOverrideSizeLimit } from './markdown-rich-size-limit'
 
 type EligibilityCacheEntry = {
   content: string
@@ -46,6 +47,10 @@ function getCachedMarkdownRichModeEligibilityDecision(params: {
   }
 
   const decision = getMarkdownRichModeEligibilityDecision({ content, sizeOverridden })
+  // Hard-size fallbacks need no content inspection or retained document key.
+  if (decision.exceedsSizeLimit && exceedsMarkdownRenderOverrideSizeLimit(content)) {
+    return decision
+  }
   entries.unshift({ content, sizeOverridden, decision })
   if (entries.length > MAX_ENTRIES) {
     entries.length = MAX_ENTRIES

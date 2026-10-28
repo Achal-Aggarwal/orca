@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as roundTrip from './markdown-round-trip'
+import * as frontMatter from './markdown-frontmatter'
+import { MARKDOWN_RENDER_OVERRIDE_MAX_SIZE_BYTES } from './markdown-rich-size-limit'
 import { RICH_MARKDOWN_MAX_SIZE_BYTES } from '../../../../shared/constants'
 import {
   getMarkdownRichModeEligibility,
@@ -207,6 +209,27 @@ describe('getMarkdownRichModeUnsupportedMessage', () => {
       unsupportedMessage: expect.any(String)
     })
   })
+
+  it.each([false, true])(
+    'skips document inspection beyond the hard render cap, override=%s',
+    (sizeOverridden) => {
+      const inspect = vi.spyOn(frontMatter, 'extractFrontMatter')
+      const content = `${'a'.repeat(MARKDOWN_RENDER_OVERRIDE_MAX_SIZE_BYTES)}\n[ref]: /docs\n`
+
+      const result = getMarkdownRichModeEligibility({ content, sizeOverridden })
+      expect(inspect).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        exceedsSizeLimit: true,
+        unsupportedMessage: null
+      })
+
+      expect(
+        getMarkdownRichModeEligibility({ content: '[ref]: /docs', sizeOverridden })
+          .unsupportedMessage
+      ).not.toBeNull()
+      expect(inspect).toHaveBeenCalledOnce()
+    }
+  )
 })
 
 const decide = (content: string) =>
