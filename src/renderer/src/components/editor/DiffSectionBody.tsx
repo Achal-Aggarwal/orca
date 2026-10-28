@@ -23,6 +23,7 @@ const ImageDiffViewer = lazy(() => import('./ImageDiffViewer'))
 
 type DiffSectionBodyProps = {
   section: DiffSection
+  modifiedContent?: string
   index: number
   sectionBodyHeight: number | undefined
   useIntrinsicImageHeight: boolean
@@ -44,6 +45,7 @@ type DiffSectionBodyProps = {
 
 export function DiffSectionBody({
   section,
+  modifiedContent = section.modifiedContent,
   index,
   sectionBodyHeight,
   useIntrinsicImageHeight,
@@ -206,7 +208,7 @@ export function DiffSectionBody({
           height="100%"
           language={language}
           original={section.originalContent}
-          modified={section.modifiedContent}
+          modified={modifiedContent}
           theme={isDark ? 'vs-dark' : 'vs'}
           onMount={handleEditorMount}
           // The React wrapper may dispose models before widgets; retain them through teardown and dispose unattached models next tick.

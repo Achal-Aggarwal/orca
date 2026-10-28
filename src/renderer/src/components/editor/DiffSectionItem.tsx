@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DiffOnMount } from '@monaco-editor/react'
 import type { editor as monacoEditor } from 'monaco-editor'
 import { detectLanguage } from '@/lib/language-detect'
@@ -20,6 +20,7 @@ import type { DiffSectionItemProps } from './diff-section-item-props'
 import { useDiffSectionModelLifecycle } from './use-diff-section-model-lifecycle'
 import { hasLayoutBox } from '@/hooks/virtualized-hidden-row-measurement'
 import { DiffSectionSaveConflictBar } from './DiffSectionSaveConflictBar'
+import { syncContentUpdate } from './monaco-content-sync'
 
 export function DiffSectionItem({
   section,
@@ -77,6 +78,43 @@ export function DiffSectionItem({
   const [modifiedEditor, setModifiedEditor] = useState<monacoEditor.ICodeEditor | null>(null)
   const diffEditorRef = useRef<monacoEditor.IStandaloneDiffEditor | null>(null)
   const lineNumberOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
+  const publishedModifiedRef = useRef<{
+    model: monacoEditor.ITextModel
+    version: number
+    content: string
+  } | null>(null)
+  const previousModifiedContentRef = useRef(section.modifiedContent)
+  const modifiedPropRef = useRef({ path: modelPathBase, content: section.modifiedContent })
+  const publishedModified = publishedModifiedRef.current
+  const isPublishedModifiedEcho =
+    publishedModified &&
+    publishedModified.model === modifiedEditor?.getModel() &&
+    !publishedModified.model.isDisposed() &&
+    publishedModified.version === publishedModified.model.getVersionId() &&
+    publishedModified.content === section.modifiedContent
+  const modifiedPropContent =
+    modifiedPropRef.current.path === modelPathBase && isPublishedModifiedEcho
+      ? modifiedPropRef.current.content
+      : section.modifiedContent
+
+  useLayoutEffect(() => {
+    const previousProp = modifiedPropRef.current
+    const contentChanged = previousModifiedContentRef.current !== section.modifiedContent
+    previousModifiedContentRef.current = section.modifiedContent
+    modifiedPropRef.current = { path: modelPathBase, content: modifiedPropContent }
+    // An external reset can equal the wrapper's held prop after suppressing an edit echo.
+    if (
+      contentChanged &&
+      !isPublishedModifiedEcho &&
+      previousProp.path === modelPathBase &&
+      previousProp.content === modifiedPropContent
+    ) {
+      const modified = diffEditorRef.current?.getModifiedEditor()
+      if (modified) {
+        syncContentUpdate(modified, section.modifiedContent)
+      }
+    }
+  }, [isPublishedModifiedEcho, modelPathBase, modifiedPropContent, section.modifiedContent])
   const hasLineCommentAction = Boolean(worktreeId || onAddLineComment)
 
   const { disposeDiffModels, setSectionRootNode } = useDiffSectionModelLifecycle({
@@ -219,6 +257,7 @@ export function DiffSectionItem({
       }
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = null
+      publishedModifiedRef.current = null
       diffEditorRef.current = null
       if (modifiedEditorsRef.current.get(index) === modified) {
         modifiedEditorsRef.current.delete(index)
@@ -238,7 +277,12 @@ export function DiffSectionItem({
     const cleanupOriginalFindShortcut = installMonacoEditorFindShortcut(original)
     const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modified)
     const modelContentSub = modified.onDidChangeModelContent(() => {
+      const model = modified.getModel()
+      if (!model) {
+        return
+      }
       const current = modified.getValue()
+      publishedModifiedRef.current = { model, version: model.getVersionId(), content: current }
       setSections((prev) => {
         let changed = false
         const next = prev.map((s, i) => {
@@ -315,6 +359,7 @@ export function DiffSectionItem({
       {!section.collapsed && (
         <DiffSectionBody
           section={section}
+          modifiedContent={modifiedPropContent}
           index={index}
           sectionBodyHeight={sectionBodyHeight}
           useIntrinsicImageHeight={useIntrinsicImageHeight}
