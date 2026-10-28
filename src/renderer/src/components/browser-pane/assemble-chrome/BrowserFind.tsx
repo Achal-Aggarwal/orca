@@ -204,7 +204,8 @@ export default function BrowserFind({
         className="min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
       />
 
-      {query ? (
+      {/* Why: a pending request has no count yet; blank avoids flashing "No matches". */}
+      {query && (currentResult !== null || !requestQuery) ? (
         <span className="shrink-0 text-xs text-zinc-400">
           {totalMatches > 0
             ? translate(

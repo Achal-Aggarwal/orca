@@ -172,6 +172,7 @@ describe('BrowserFind result ownership', () => {
 
     expect(screen.getByPlaceholderText('Find in page...').getAttribute('value')).toBe('needle')
     expect(screen.queryByText('2 of 7')).toBeNull()
+    expect(screen.queryByText('No matches')).toBeNull()
     act(() => vi.advanceTimersByTime(250))
     expect(second.findInPage).toHaveBeenCalledExactlyOnceWith('needle', { findNext: true })
     act(() => first.found(1, 6, 7))
@@ -190,6 +191,7 @@ describe('BrowserFind result ownership', () => {
       target: { value: 'replacement' }
     })
     expect(screen.queryByText('1 of 2')).toBeNull()
+    expect(screen.queryByText('No matches')).toBeNull()
     act(() => vi.advanceTimersByTime(250))
     act(() => webview.found(2, 1, 4))
     expect(screen.getByText('1 of 4')).not.toBeNull()
