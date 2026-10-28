@@ -1,4 +1,4 @@
-import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import { isRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import type { BrowserScreencastFrameMetadata } from '../transport/browser-screencast-protocol'
@@ -76,9 +76,21 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
   const dialogAnswerTokenRef = useRef(0)
 
   const wheelCommandInFlightRef = useRef(false)
+  const commandGenerationRef = useRef(0)
+  const commandsMountedRef = useRef(false)
+
+  useLayoutEffect(() => {
+    commandsMountedRef.current = true
+    return () => {
+      commandsMountedRef.current = false
+      commandGenerationRef.current += 1
+      pendingWheelCommandRef.current = null
+      wheelCommandInFlightRef.current = false
+    }
+  }, [client, pageParams])
 
   const flushPendingWheelCommand = useCallback(() => {
-    if (wheelCommandInFlightRef.current) {
+    if (!commandsMountedRef.current || wheelCommandInFlightRef.current) {
       return
     }
     const pending = pendingWheelCommandRef.current
@@ -87,6 +99,7 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
     }
     pendingWheelCommandRef.current = null
     wheelCommandInFlightRef.current = true
+    const generation = commandGenerationRef.current
     void (async () => {
       try {
         const moveReply = await browserPointerMove.request(client, {
@@ -95,18 +108,25 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
           y: pending.point.y
         })
         browserPointerMove.interpret(moveReply)
+        if (generation !== commandGenerationRef.current) {
+          return
+        }
         const wheelReply = await browserPointerWheel.request(client, {
           ...pending.base,
           dx: pending.dx,
           dy: pending.dy
         })
         browserPointerWheel.interpret(wheelReply)
-        setError(null)
+        if (generation === commandGenerationRef.current) {
+          setError(null)
+        }
       } catch {
         // Scroll bursts race navigation; keep usable stream instead of replacing it with transient selector errors.
       } finally {
-        wheelCommandInFlightRef.current = false
-        flushPendingWheelCommand()
+        if (generation === commandGenerationRef.current) {
+          wheelCommandInFlightRef.current = false
+          flushPendingWheelCommand()
+        }
       }
     })()
   }, [client])
@@ -114,9 +134,10 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
   const sendPointerClick = useCallback(
     async (point: BrowserPoint, button: 'left' | 'right') => {
       const base = pageParams()
-      if (!client || !base) {
+      if (!commandsMountedRef.current || !client || !base) {
         return
       }
+      const generation = commandGenerationRef.current
       try {
         browserPointerClick.interpret(
           await browserPointerClick.request(
@@ -141,11 +162,17 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
             { timeoutMs: 5_000 }
           )
         )
-        setError(null)
+        if (generation === commandGenerationRef.current) {
+          setError(null)
+        }
         return
       } catch (error) {
         // Why: a timed-out click may still run on the host, and the move/down/up replay drops modifiers.
-        if (isRpcDeliveryUnknown(error) || pointerModifiers.length > 0) {
+        if (
+          generation !== commandGenerationRef.current ||
+          isRpcDeliveryUnknown(error) ||
+          pointerModifiers.length > 0
+        ) {
           return
         }
       }
@@ -156,11 +183,17 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
           y: point.y
         })
         browserPointerMove.interpret(moveReply)
+        if (generation !== commandGenerationRef.current) {
+          return
+        }
         const downReply = await browserPointerDown.request(client, { ...base, button })
         browserPointerDown.interpret(downReply)
+        // Release an admitted press even when its pane retired while mouseDown was pending.
         const upReply = await browserPointerUp.request(client, { ...base, button })
         browserPointerUp.interpret(upReply)
-        setError(null)
+        if (generation === commandGenerationRef.current) {
+          setError(null)
+        }
       } catch {
         // Pointer sends race navigation; keep stream and surface actionable failures through navigation/stream paths.
       }
@@ -179,7 +212,7 @@ export function useMobileBrowserCommands(args: MobileBrowserCommandArgs) {
   const sendWheel = useCallback(
     (point: BrowserPoint, screenDx: number, screenDy: number, gestureId: number) => {
       const base = pageParams()
-      if (!client || !base) {
+      if (!commandsMountedRef.current || !client || !base) {
         return
       }
       const geometry = computeBrowserFrameGeometry(layoutRef.current, frameMetadataRef.current)
