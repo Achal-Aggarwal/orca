@@ -72,7 +72,13 @@ export function blockMarkdown(node: Node): string {
       return ''
     }
     const cellsFor = (row: Element) =>
-      Array.from(row.children).map((cell) => escapeTableCell(inlineChildren(cell).trim()))
+      Array.from(row.children).map((cell) =>
+        escapeTableCell(
+          inlineChildren(cell, '<br />')
+            .trim()
+            .replace(/\r\n?|\n/g, ' ')
+        )
+      )
     const headers = cellsFor(rows[0]!)
     const bodyRows = rows.slice(1).map(cellsFor)
     const separator = headers.map(() => '---').join(' | ')
