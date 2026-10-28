@@ -200,14 +200,11 @@ describe('PR detail context requests', () => {
     expect(exec).toHaveBeenCalledTimes(3)
   })
 
-  it('retains legacy reads when a host rejects the combined query', async () => {
+  it('recovers metadata and participants after a failed query without retrying file state', async () => {
     exec.mockImplementation(async (args: string[]) => {
       const query = args.find((arg) => arg.startsWith('query=')) ?? ''
       if (query.includes('headRefOid')) {
-        throw new Error('unsupported field')
-      }
-      if (query.includes('viewerViewedState')) {
-        return response({ id: 'PR_42', files })
+        throw new Error('GraphQL request failed')
       }
       if (query.includes('participants')) {
         return response({ participants: { nodes: [participant] } })
@@ -219,8 +216,8 @@ describe('PR detail context requests', () => {
 
     expect(result.metadata).toEqual({ body: 'REST body', headSha: 'rest-head' })
     expect(result.participants).toEqual([participant])
-    expect(result.viewedStates?.pullRequestId).toBe('PR_42')
-    expect(exec).toHaveBeenCalledTimes(4)
+    expect(result.viewedStates).toBeNull()
+    expect(exec).toHaveBeenCalledTimes(3)
   })
 
   it('can load all context with no remaining REST quota', async () => {

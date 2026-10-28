@@ -98,8 +98,7 @@ async function readPRDetailContext(
   prNumber: number,
   repository: GitHubApiRepository | null,
   connectionId: string | null | undefined,
-  localGitOptions: LocalGitExecOptions,
-  includeContext: boolean
+  localGitOptions: LocalGitExecOptions
 ): Promise<Partial<PRDetailContext>> {
   if (!repository) {
     return {}
@@ -121,7 +120,7 @@ async function readPRDetailContext(
         'api',
         'graphql',
         '-f',
-        `query=${detailContextQuery(includeContext && firstPage)}`,
+        `query=${detailContextQuery(firstPage)}`,
         '-f',
         `owner=${repository.owner}`,
         '-f',
@@ -145,7 +144,7 @@ async function readPRDetailContext(
       }
       const envelope = envelopeSchema.parse(JSON.parse(stdout))
       const pr = envelope.data?.repository?.pullRequest
-      if (includeContext && firstPage) {
+      if (firstPage) {
         const metadata = metadataSchema.safeParse(pr)
         if (
           metadata.success &&
@@ -201,10 +200,9 @@ export async function getPRDetailContext(
     prNumber,
     repository,
     connectionId,
-    localGitOptions,
-    true
+    localGitOptions
   )
-  const [metadata, participants, viewed] = await Promise.all([
+  const [metadata, participants] = await Promise.all([
     context.metadata ??
       getPRMetadata(repoPath, prNumber, repository, connectionId, localGitOptions),
     context.participants ??
@@ -214,17 +212,7 @@ export async function getPRDetailContext(
         repository,
         connectionId,
         localGitOptions
-      ),
-    context.viewedStates !== undefined || context.metadata || context.participants
-      ? context.viewedStates
-      : readPRDetailContext(
-          repoPath,
-          prNumber,
-          repository,
-          connectionId,
-          localGitOptions,
-          false
-        ).then((fallback) => fallback.viewedStates)
+      )
   ])
-  return { metadata, participants, viewedStates: viewed ?? null }
+  return { metadata, participants, viewedStates: context.viewedStates ?? null }
 }
