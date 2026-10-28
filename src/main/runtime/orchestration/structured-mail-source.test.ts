@@ -234,11 +234,12 @@ it.each([
       partyDepth = 0
     const calls = { sender: 0, recipient: 0, comparison: 0 }
     const scanned = new Proxy(records, {
-      get(target, key, receiver) {
+      get(target, key) {
         if (typeof key === 'string' && /^\d+$/.test(key)) {
           scanVisits++
         }
-        return Reflect.get(target, key, receiver)
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+        return target[key as keyof typeof target]
       }
     })
     const listRecords = vi.fn(() => scanned)
@@ -246,7 +247,7 @@ it.each([
       const record = bySession.get(id)
       return record
         ? new Proxy(record, {
-            get(target, key, receiver) {
+            get(target, key) {
               if (key === 'conversationCommand') {
                 const command = target.conversationCommand
                 forwardClears++
@@ -258,7 +259,8 @@ it.each([
                     : 0
                 return command
               }
-              return Reflect.get(target, key, receiver)
+              // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+              return target[key as keyof typeof target]
             }
           })
         : null
@@ -372,11 +374,12 @@ it.each([
           payload: JSON.stringify({ dispatchId: dispatches[distinct ? i : 0].id })
         })),
         {
-          get(target, key, receiver) {
+          get(target, key) {
             if (typeof key === 'string' && /^\d+$/.test(key)) {
               batchVisits++
             }
-            return Reflect.get(target, key, receiver)
+            // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+            return target[key as keyof typeof target]
           }
         }
       )

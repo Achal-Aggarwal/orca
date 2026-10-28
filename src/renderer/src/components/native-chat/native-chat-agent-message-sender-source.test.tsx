@@ -2,6 +2,7 @@
 import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import type { AppState } from '@/store/types'
 import { readStoreListenerCount } from '@/store/store-listener-census'
 import { makeTab, makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
@@ -21,6 +22,11 @@ import * as senderLocation from './native-chat-agent-message-sender-label'
 import * as inputs from '@/components/sidebar/worktree-card-status-inputs'
 import { runtimeEnvironmentStatusFromSnapshot } from '../../../../shared/runtime-host-status'
 
+type SenderPopulation = AppState[
+  | 'agentStatusByPaneKey'
+  | 'retainedAgentsByPaneKey'
+  | 'migrationUnsupportedByPtyId'
+  | 'runtimeAgentOrchestrationByPaneKey']
 const initial = useAppStore.getState()
 const LEAF = '11111111-1111-4111-8111-111111111111'
 const renders = new Map<number, number>()
@@ -294,17 +300,19 @@ it.each([100, 1000])(
       })
     const locate = vi.spyOn(senderLocation, 'agentMessageSenderOwner')
     const values = Object.values
-    vi.spyOn(Object, 'values').mockImplementation((object: object) => {
-      const result = values(object)
-      const state = useAppStore.getState()
-      if (
-        !projecting &&
-        (object === state.agentStatusByPaneKey || object === state.retainedAgentsByPaneKey)
-      ) {
-        handleEntries += result.length
+    vi.spyOn(Object, 'values').mockImplementation(
+      (object: AppState['agentStatusByPaneKey'] | AppState['retainedAgentsByPaneKey']) => {
+        const result = values(object)
+        const state = useAppStore.getState()
+        if (
+          !projecting &&
+          (object === state.agentStatusByPaneKey || object === state.retainedAgentsByPaneKey)
+        ) {
+          handleEntries += result.length
+        }
+        return result
       }
-      return result
-    })
+    )
     let fresh = false
     const originalFreshness = freshness.createWorktreeAgentFreshnessSelector
     vi.spyOn(freshness, 'createWorktreeAgentFreshnessSelector').mockImplementation((...args) => {
@@ -356,11 +364,12 @@ it.each([100, 1000])(
       return {
         source(record: T): T {
           return new Proxy(record, {
-            get(target, key, receiver) {
+            get(target, key) {
               if (typeof key === 'string') {
                 metric.source++
               }
-              return Reflect.get(target, key, receiver)
+              // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+              return target[key as keyof typeof target]
             }
           })
         },
@@ -373,11 +382,12 @@ it.each([100, 1000])(
                 metric.keys += Reflect.ownKeys(target).length
                 return Reflect.ownKeys(target)
               },
-              get(target, key, receiver) {
+              get(target, key) {
                 if (typeof key === 'string') {
                   metric.reads++
                 }
-                return Reflect.get(target, key, receiver)
+                // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+                return target[key as keyof typeof target]
               }
             })
             proxies.set(record, proxy)
@@ -437,11 +447,12 @@ it.each([100, 1000])(
         let proxy = arrays.get(result)
         if (!proxy) {
           proxy = new Proxy(result, {
-            get(target, key, receiver) {
+            get(target, key) {
               if (fresh && typeof key === 'string' && /^\d+$/.test(key)) {
                 freshnessVisits++
               }
-              return Reflect.get(target, key, receiver)
+              // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+              return target[key as keyof typeof target]
             }
           })
           arrays.set(result, proxy)
@@ -696,11 +707,11 @@ it.each([100, 1000])(
         { taskId: `task-${i}`, dispatchId: `dispatch-${i}`, orchestrationRunId: `run-${i}` }
       ])
     )
-    const population = new Map<object, { calls: number; entries: number }>()
+    const population = new Map<SenderPopulation, { calls: number; entries: number }>()
     for (const source of [live, retained, migration, orchestration]) {
       population.set(source, { calls: 0, entries: 0 })
     }
-    const enumerated = (source: object, length: number) => {
+    const enumerated = (source: SenderPopulation, length: number) => {
       const metric = population.get(source)
       if (metric) {
         metric.calls++
@@ -709,12 +720,12 @@ it.each([100, 1000])(
     }
     const objectEntries = Object.entries,
       objectValues = Object.values
-    vi.spyOn(Object, 'entries').mockImplementation((source: object) => {
+    vi.spyOn(Object, 'entries').mockImplementation((source: SenderPopulation) => {
       const result = objectEntries(source)
       enumerated(source, result.length)
       return result
     })
-    vi.spyOn(Object, 'values').mockImplementation((source: object) => {
+    vi.spyOn(Object, 'values').mockImplementation((source: SenderPopulation) => {
       const result = objectValues(source)
       enumerated(source, result.length)
       return result

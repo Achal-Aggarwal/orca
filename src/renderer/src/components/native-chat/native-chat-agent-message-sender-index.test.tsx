@@ -38,11 +38,12 @@ it.each([100, 1000])(
     const bucket = new Proxy(
       Array.from({ length: n }, (_, i) => [tab(i, 'local'), tab(i, 'runtime:remote')]).flat(),
       {
-        get(target, key, receiver) {
+        get(target, key) {
           if (typeof key === 'string' && /^\d+$/.test(key)) {
             tabVisits++
           }
-          return Reflect.get(target, key, receiver)
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+          return target[key as keyof typeof target]
         }
       }
     )
@@ -59,11 +60,12 @@ it.each([100, 1000])(
     vi.spyOn(chatIndex, 'structuredChatWorkspacesBySessionId').mockImplementation(
       (...args) =>
         new Proxy(workspaces(...args), {
-          get(target, key, receiver) {
+          get(target, key) {
             if (typeof key === 'string' && /^\d+$/.test(key)) {
               candidates++
             }
-            return Reflect.get(target, key, receiver)
+            // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: plain fixture data has no accessor overrides; methods retain the caller's proxy receiver and indexed reads remain counted.
+            return target[key as keyof typeof target]
           }
         })
     )

@@ -68,7 +68,8 @@ beforeEach(() => {
         if (key === 'lineHeight') {
           return '24px'
         }
-        const value = Reflect.get(target, key, target)
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the style facade delegates native properties to the real style receiver, including binding its methods below.
+        const value = target[key as keyof CSSStyleDeclaration]
         return typeof value === 'function' ? value.bind(target) : value
       }
     })
