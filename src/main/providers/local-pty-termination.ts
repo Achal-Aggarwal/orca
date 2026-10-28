@@ -2,7 +2,10 @@ import type * as pty from 'node-pty'
 import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import { killWithDescendantSweep } from '../pty-descendant-termination'
 import { terminateShutdownDescendants } from '../daemon/terminal-descendant-shutdown'
-import { forceKillPosixPtyProcessGroupsSync } from '../pty/posix-pty-process-groups'
+import {
+  forceKillPosixPtyProcessGroups,
+  forceKillPosixPtyProcessGroupsSync
+} from '../pty/posix-pty-process-groups'
 import { terminatePtyJob } from '../windows/windows-pty-job'
 import {
   clearLocalPtyForceKillTimer,
@@ -69,9 +72,10 @@ function armLocalPtyForceKill(
       return
     }
     ptyTerminationMode.set(id, 'force')
-    try {
-      killLocalPtyProcess(proc, true)
-    } catch (error) {
+    // Graceful mode is POSIX-only, so this deadline never reaches the ConPTY kill path.
+    forceKillPosixPtyProcessGroups(proc.pid, () => proc.kill('SIGKILL'), {
+      ownsRoot: () => ptyProcesses.get(id) === proc
+    }).catch((error: unknown) => {
       ptyTerminationMode.set(id, 'graceful')
       console.error('[pty] failed to force-kill PTY after graceful deadline', { id, error })
       // Why: a transient native rejection must not consume the only SIGKILL owner while shutdown still awaits physical exit.
@@ -81,7 +85,7 @@ function armLocalPtyForceKill(
           attemptsRemaining: attemptsRemaining - 1
         })
       }
-    }
+    })
   }, options.delayMs ?? LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
   timer.unref?.()
   ptyForceKillTimers.set(id, timer)

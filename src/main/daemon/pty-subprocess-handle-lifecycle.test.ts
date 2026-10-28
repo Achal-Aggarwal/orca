@@ -1,14 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as LocalPtyUtils from '../providers/local-pty-utils'
+import type * as PosixPtyProcessTable from '../pty/posix-pty-process-table'
 
 const {
   spawnMock,
   isPwshAvailableMock,
   validateWorkingDirectoryMock,
   resolveUnixShellPathMock,
-  resolveAgentForegroundProcessMock
+  resolveAgentForegroundProcessMock,
+  readProcessTableMock
 } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
+  readProcessTableMock: vi.fn<(rootPid: number) => Promise<string>>(),
   isPwshAvailableMock: vi.fn(),
   resolveUnixShellPathMock: vi.fn((shellPath: string) => shellPath),
   resolveAgentForegroundProcessMock: vi.fn(),
@@ -23,6 +26,12 @@ const {
 
 vi.mock('node-pty', () => ({
   spawn: spawnMock
+}))
+
+// Fixture pids must never be looked up in, or signalled through, the real host process table.
+vi.mock('../pty/posix-pty-process-table', async (importOriginal) => ({
+  ...(await importOriginal<typeof PosixPtyProcessTable>()),
+  readPosixPtyProcessTable: readProcessTableMock
 }))
 
 vi.mock('../pwsh', () => ({
@@ -77,6 +86,11 @@ import {
 import { __setConptyJobNativeForTests } from '../windows/windows-pty-job'
 
 describe('createPtySubprocess', () => {
+  beforeEach(() => {
+    readProcessTableMock.mockReset()
+    readProcessTableMock.mockResolvedValue('')
+  })
+
   useDaemonPtySubprocessEnv({
     spawnMock,
     isPwshAvailableMock,
@@ -496,10 +510,13 @@ describe('createPtySubprocess', () => {
         const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
         try {
           const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
+          const table = Promise.withResolvers<string>()
+          readProcessTableMock.mockReturnValueOnce(table.promise)
           const pending = handle.forceKill()
           proc._simulateExit(0)
+          table.resolve('')
           await pending
-          expect(killSpy).not.toHaveBeenCalledWith(55, 'SIGKILL')
+          expect(killSpy).not.toHaveBeenCalled()
         } finally {
           killSpy.mockRestore()
         }
@@ -514,12 +531,15 @@ describe('createPtySubprocess', () => {
         const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
         try {
           const handle = await createPtySubprocess({ sessionId: 'test', cols: 80, rows: 24 })
+          const table = Promise.withResolvers<string>()
+          readProcessTableMock.mockReturnValueOnce(table.promise)
           const pending = handle.forceKill()
           handle.dispose()
           expect(proc.destroy).not.toHaveBeenCalled()
+          table.resolve('')
           await pending
-          await vi.waitFor(() => expect(proc.destroy).toHaveBeenCalledOnce())
           expect(killSpy).toHaveBeenCalledWith(56, 'SIGKILL')
+          await vi.waitFor(() => expect(proc.destroy).toHaveBeenCalledOnce())
         } finally {
           killSpy.mockRestore()
         }

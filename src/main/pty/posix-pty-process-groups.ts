@@ -162,12 +162,10 @@ async function readSessionIds(
 ): Promise<(pid: number) => number | null> {
   const rows = parseProcessRows(table)
   const rootTty = rows.find((row) => row.pid === rootPid)?.tty
-  const pids = new Set([
-    rootPid,
-    ...rows.filter((row) => row.tty === rootTty).map((row) => row.pid)
-  ])
+  // The root's own row carries rootTty, so an absent root reads nothing.
+  const pids = rows.filter((row) => rootTty !== undefined && row.tty === rootTty)
   const sessions = new Map(
-    await Promise.all([...pids].map(async (pid) => [pid, await readSessionId(pid)] as const))
+    await Promise.all(pids.map(async ({ pid }) => [pid, await readSessionId(pid)] as const))
   )
   return (pid) => sessions.get(pid) ?? null
 }

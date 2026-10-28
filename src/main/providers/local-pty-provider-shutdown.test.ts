@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
+import type * as PosixPtyProcessTable from '../pty/posix-pty-process-table'
 
 const {
   existsSyncMock,
@@ -51,6 +52,12 @@ vi.mock('electron', () => ({
 
 vi.mock('node-pty', () => ({
   spawn: spawnMock
+}))
+
+// Fixture pids must never be looked up in the real host process table.
+vi.mock('../pty/posix-pty-process-table', async (importOriginal) => ({
+  ...(await importOriginal<typeof PosixPtyProcessTable>()),
+  readPosixPtyProcessTable: async () => ''
 }))
 
 vi.mock('./macos-tcc-login-shell', async (importOriginal) => ({

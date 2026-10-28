@@ -168,6 +168,27 @@ describe('ps selection compatibility', () => {
     ])
   })
 
+  it('releases every waiter after a failed probe instead of chaining another probe per caller', async () => {
+    // A wedged ps would otherwise stack one timeout per concurrent force-kill.
+    const probe = Promise.withResolvers<ProcessResult>()
+    const queries: ((result: ProcessResult) => void)[] = []
+    runProcessMock
+      .mockImplementationOnce(() => probe.promise)
+      .mockImplementation(() => new Promise((resolve) => queries.push(resolve)))
+    const first = readPosixPtyProcessTable(100)
+    const second = readPosixPtyProcessTable(200)
+    const third = readPosixPtyProcessTable(300)
+
+    probe.resolve({ code: null, signal: 'SIGTERM', stdout: '', stderr: '', timedOut: true })
+    await expect(first).rejects.toThrow('unavailable')
+    await vi.waitFor(() => expect(runProcessMock).toHaveBeenCalledTimes(3))
+
+    for (const resolve of queries) {
+      resolve({ code: 0, signal: null, stdout: '', stderr: '', timedOut: false })
+    }
+    await expect(Promise.all([second, third])).resolves.toEqual(['', ''])
+  })
+
   it('uses the cached async dialect for synchronous teardown with fresh membership', async () => {
     runProcessMock
       .mockResolvedValueOnce(unsupportedSelection())
