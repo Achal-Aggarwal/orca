@@ -34,6 +34,7 @@ async function openNewTerminal(page: Page): Promise<void> {
 test('a stopped WSL distro boots only for Start or New Terminal, never for a terminal retrying', async ({
   orcaPage: hub
 }, testInfo) => {
+  // Two Electron apps, a host add, two distro stops and their boots.
   test.setTimeout(300_000)
   await waitForSessionReady(hub)
   const offer = await createRuntimeDesktopPairingOffer(hub)
@@ -90,6 +91,7 @@ test('a stopped WSL distro boots only for Start or New Terminal, never for a ter
     await expect(stoppedCard.first()).toBeVisible({ timeout: 60_000 })
     await expect(stoppedCard.first()).toContainText('Ubuntu is stopped')
     // Whatever the pane retries in the background must not boot the distro.
+    // ast-grep-ignore: test-no-real-time-wait -- the claim is that nothing boots over a window of real retries
     await page.waitForTimeout(10_000)
     expect(fakeWslConnects(connectLogFile)).toHaveLength(connectsBeforeStart)
     expect(readDistroState(distrosFile)).toBe('stopped')
