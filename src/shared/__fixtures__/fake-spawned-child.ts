@@ -13,7 +13,7 @@ class FakeSpawnedChild extends NodeChildProcess {
   override stderr = new PassThrough()
   override stdio: PipedChildProcess['stdio'] = [this.stdin, this.stdout, this.stderr, null, null]
   override kill = vi.fn((_signal?: NodeJS.Signals | number) => true)
-  override unref = vi.fn()
+  override unref = vi.fn<() => void>()
 
   constructor(pid: number) {
     super()
