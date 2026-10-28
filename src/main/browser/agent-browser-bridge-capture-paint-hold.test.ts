@@ -148,9 +148,7 @@ describe('AgentBrowserBridge', () => {
   it('drops queued commands without acquiring the guest and holds running work until it settles', async () => {
     const release = vi.fn()
     const holdGuestActive = vi.fn(() => release)
-    const b = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdGuestActive })
-    )
+    const b = new AgentBrowserBridge(mockBrowserManager(undefined, undefined, { holdGuestActive }))
     b.setActiveTab(100)
     const guest = mockWebContents(100)
     let finish = (_value: unknown): void => {}
@@ -175,9 +173,7 @@ describe('AgentBrowserBridge', () => {
   it('releases the background hold when session setup fails', async () => {
     const release = vi.fn()
     const holdGuestActive = vi.fn(() => release)
-    const b = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdGuestActive })
-    )
+    const b = new AgentBrowserBridge(mockBrowserManager(undefined, undefined, { holdGuestActive }))
     b.setActiveTab(100)
     CdpWsProxyMock.mockImplementationOnce(function (this: Record<string, unknown>) {
       this.start = vi.fn(async () => {
