@@ -17,6 +17,7 @@ import { projectStatus } from '../native-chat/structured-agent-session-status-pr
 import type { StructuredTab } from '../native-chat/structured-agent-session-tabs'
 import type { AgentSessionStatusSummary } from '../../../../shared/agent-session-wire'
 import type { DashboardSnapshot } from '../../../../shared/dashboard-snapshot'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 
 vi.mock('@/store', async () => {
   const { createTestStore } = await import('@/store/slices/store-test-helpers')
@@ -377,7 +378,12 @@ describe('native status publication to a mounted popout', () => {
       vi.useFakeTimers()
       vi.setSystemTime(NOW)
       useAppStore.setState(initialStoreState, true)
-      const nativeTab = (id: string, worktreeId: string, agent: 'claude' | 'codex') =>
+      const nativeTab = (
+        id: string,
+        worktreeId: string,
+        agent: 'claude' | 'codex',
+        host: ExecutionHostId = executionHostId
+      ) =>
         ({
           id,
           worktreeId,
@@ -391,13 +397,10 @@ describe('native status publication to a mounted popout', () => {
           createdAt: NOW,
           isPinned: false,
           agentSessionAgent: agent,
-          executionHostId
+          executionHostId: host
         }) satisfies StructuredTab
       const target = nativeTab('tab1', 'w1', 'claude')
-      const other = {
-        ...nativeTab('tab2', 'w2', 'codex'),
-        executionHostId: 'runtime:other' as const
-      }
+      const other = nativeTab('tab2', 'w2', 'codex', 'runtime:other')
       useAppStore.setState({
         ...baseState(),
         tabsByWorktree: {},
@@ -682,7 +685,10 @@ describe('native status publication to a mounted popout', () => {
       expect(publish).not.toHaveBeenCalled()
       const publisherBuilds = build.mock.calls.length
       const snapshotStarted = performance.now()
-      const snapshot = buildDashboardSnapshot(useAppStore.getState(), NOW)
+      const snapshot = buildDashboardSnapshot(
+        { ...useAppStore.getState(), chatNames: new Map() },
+        NOW
+      )
       const snapshotMs = performance.now() - snapshotStarted
       expect(snapshot.cards).toHaveLength(count)
       console.info('accepted status production trigger benchmark', {
