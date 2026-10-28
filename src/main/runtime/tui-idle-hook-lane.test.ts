@@ -189,6 +189,20 @@ describe('readTuiIdleHookTurn', () => {
         programWorkingSince
       })
     expect(read(receivedAt - 1000)).toEqual({ ...DONE, endedUnderProgramWork: true })
+    // A child's hook restamps the row, but the lead's turn still ended before the program's report.
+    const childChurn = row({
+      agentType: 'claude',
+      state: 'working',
+      mainAgent: { state: 'done', stateStartedAt: receivedAt - 2000 }
+    })
+    expect(
+      readTuiIdleHookTurn({
+        ...base,
+        agent: 'claude',
+        hookRows: [childChurn],
+        programWorkingSince: receivedAt - 1000
+      })
+    ).toEqual(DONE)
     // Work the program reported after the turn end, or no working report at all, is not outlasted.
     expect(read(receivedAt + 1)).toEqual(DONE)
     expect(read(null)).toEqual(DONE)

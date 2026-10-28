@@ -30,6 +30,13 @@ function hookReportingAgent(agent: TuiAgent | null | undefined): TuiAgent | null
   return agent === 'claude-agent-teams' ? 'claude' : agent
 }
 
+/** When the lead's own turn ended, on this runtime's clock: child events restamp `receivedAt`, and
+ *  a remote host stamps the turn on its own clock. */
+function leadTurnEndedAt(row: AgentStatusIpcPayload): number {
+  const ended = row.turnEndedAt ?? row.mainAgent?.stateStartedAt ?? row.stateStartedAt
+  return ended + row.receivedAt - (row.evidenceObservedAt ?? row.receivedAt)
+}
+
 /** Scans newest-first so the common hit (this turn's plan) returns early. */
 export function retainedTailIncludes(
   lines: readonly string[],
@@ -131,7 +138,7 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
     !finalFramePending &&
     blockedReason === null &&
     typeof read.programWorkingSince === 'number' &&
-    row.receivedAt > read.programWorkingSince
+    leadTurnEndedAt(row) > Math.max(read.programWorkingSince, read.lastInputAt ?? -1)
   return {
     state,
     ...(taskWakeupPending ? { taskWakeupPending: true as const } : {}),
