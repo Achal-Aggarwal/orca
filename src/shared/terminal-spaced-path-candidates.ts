@@ -13,7 +13,7 @@ const PATH_WORD_CONTINUATION_REGEX = /[^\s()[\]{}'",;<>|`]*/y
 const SPACED_PATH_WORD_REGEX = / ([^\s()[\]{}'",;<>|`]+)/y
 const FILENAME_PATTERN = /\.[\p{L}\p{N}][\p{L}\p{N}\p{M}_+-]*(?::\d+)?(?::\d+)?[.,;:!?]*$/u
 
-/** One reading per following word, up to ten; `wordEndIndex` ends the path's own word. */
+/** Rooted: one reading per following word, up to ten; relative: its first filename. `wordEndIndex` ends the path's own word. */
 export function growSpacedPathRanges(
   lineText: string,
   path: DetectedTerminalFileLinkRange,
