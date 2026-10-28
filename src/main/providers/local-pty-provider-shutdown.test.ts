@@ -59,7 +59,8 @@ vi.mock('node-pty', () => ({
 // Fixture pids must never be looked up in the real host process table.
 vi.mock('../pty/posix-pty-process-table', async (importOriginal) => ({
   ...(await importOriginal<typeof PosixPtyProcessTable>()),
-  readPosixPtyProcessTable: readProcessTableMock
+  readPosixPtyProcessTable: readProcessTableMock,
+  readPosixPtyProcessTableSync: () => ''
 }))
 
 vi.mock('./macos-tcc-login-shell', async (importOriginal) => ({
@@ -325,6 +326,39 @@ describe('LocalPtyProvider', () => {
         expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
         exitCb?.({ exitCode: 137 })
         await graceful
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('escalates through orphan cleanup when the graceful-deadline sweep it joined is refused', async () => {
+      vi.useFakeTimers()
+      try {
+        let forceAttempts = 0
+        const destroySpy = vi.fn()
+        const killSpy = vi.fn((signal: string) => {
+          if (signal === 'SIGKILL' && forceAttempts++ === 0) {
+            throw new Error('transient force-kill failure')
+          }
+          if (destroySpy.mock.calls.length > 0) {
+            throw new Error('killed through a released handle')
+          }
+        })
+        spawnMock.mockReturnValue({ ...mockProc, kill: killSpy, destroy: destroySpy })
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+        const table = Promise.withResolvers<string>()
+        readProcessTableMock.mockReturnValueOnce(table.promise)
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        provider.killOrphanedPtys(1)
+        table.resolve('')
+
+        await vi.waitFor(() => expect(destroySpy).toHaveBeenCalledOnce())
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
+        expect(vi.getTimerCount()).toBe(0)
       } finally {
         vi.useRealTimers()
       }

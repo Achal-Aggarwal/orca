@@ -757,6 +757,23 @@ describe('Session', () => {
       expect(forceKillAttempts).toBe(1)
     })
 
+    it('lets dispose join an in-flight force kill instead of starting a second sweep', async () => {
+      const signalsSent = Promise.withResolvers<void>()
+      let forceKillAttempts = 0
+      subprocess.forceKill = () => {
+        forceKillAttempts++
+        return signalsSent.promise
+      }
+      createSession()
+
+      // Dispose ends the session without a physical exit, so this waiter is not the subject here.
+      void session.forceKillAndWaitForExit().catch(() => {})
+      session.dispose()
+      signalsSent.resolve()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(forceKillAttempts).toBe(1)
+    })
+
     it('retries a rejected graceful-deadline force kill', async () => {
       subprocess.kill = () => {}
       let forceKillAttempts = 0

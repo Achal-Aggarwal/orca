@@ -125,6 +125,16 @@ export function destroyPtyProcess(proc: pty.IPty, options: { alreadyKilled?: boo
 function requestPtyTermination(id: string, proc: pty.IPty): void {
   runPtyCleanup(id)
   disposePtyListeners(id)
+  // A pending deadline sweep owns escalation until it settles; a rejected one hands it back here.
+  groupSweepFor(proc).afterSettled(() => finishPtyTermination(id, proc))
+}
+
+function finishPtyTermination(id: string, proc: pty.IPty): void {
+  if (ptyProcesses.get(id) !== proc) {
+    // Exited while the sweep ran: its pid may be reused, so only release the handle.
+    destroyPtyProcess(proc, { alreadyKilled: true })
+    return
+  }
   const previousMode = ptyTerminationMode.get(id)
   // Escalate outstanding graceful shutdown before cleanup neutralizes kill and disables its deadline.
   if (previousMode !== 'force') {
@@ -147,7 +157,7 @@ function requestPtyTermination(id: string, proc: pty.IPty): void {
     }
   }
   // Shutdown/orphan cleanup can overlap; retain onExit and tracking until physical exit.
-  groupSweepFor(proc).afterSettled(() => destroyPtyProcess(proc, { alreadyKilled: true }))
+  destroyPtyProcess(proc, { alreadyKilled: true })
 }
 
 function requestTrackedPtyShutdown(id: string, proc: pty.IPty, immediate: boolean): void {

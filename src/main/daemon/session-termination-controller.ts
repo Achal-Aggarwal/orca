@@ -98,9 +98,9 @@ export class SessionTerminationController {
     this.deps.subprocess.signal(sig)
   }
 
-  /** Folds a synchronous throw into the rejection; disposal leaves no owner to retry a refused signal. */
-  async forceKillDuringDispose(): Promise<void> {
-    await this.deps.subprocess.forceKill()
+  /** Joins any in-flight request so disposal never starts a second process-group sweep. */
+  forceKillDuringDispose(): Promise<void> {
+    return this.requestForceKill()
   }
 
   disposeSubprocessHandle(): void {
