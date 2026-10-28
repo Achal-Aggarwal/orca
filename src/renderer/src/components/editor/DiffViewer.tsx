@@ -30,6 +30,7 @@ import { useDiffEditorRegistration } from './diff-navigation-context'
 import { preserveDiffViewStateAcrossModelSwaps } from './diff-model-swap-view-state'
 import { monacoFindOptions } from './monaco-find-options'
 import { useDocumentDarkTheme } from '@/hooks/use-document-dark-theme'
+import { syncContentUpdate } from './monaco-content-sync'
 
 export default function DiffViewer({
   modelKey,
@@ -200,6 +201,54 @@ export default function DiffViewer({
     diffEditorRef,
     onEnterFallback: handleEnterLargeDiffFallback
   })
+  const publishedModifiedRef = useRef<{
+    model: editor.ITextModel
+    version: number
+    content: string
+  } | null>(null)
+  const previousModifiedContentRef = useRef(modifiedContent)
+  const modifiedPropRef = useRef({
+    path: currentDiffModelPaths.modifiedModelPath,
+    content: modifiedContent
+  })
+  const publishedModified = publishedModifiedRef.current
+  const isPublishedModifiedEcho =
+    publishedModified &&
+    publishedModified.model === modifiedEditor?.getModel() &&
+    !publishedModified.model.isDisposed() &&
+    publishedModified.version === publishedModified.model.getVersionId() &&
+    publishedModified.content === modifiedContent
+  const modifiedPropContent =
+    modifiedPropRef.current.path === currentDiffModelPaths.modifiedModelPath &&
+    isPublishedModifiedEcho
+      ? modifiedPropRef.current.content
+      : modifiedContent
+  useLayoutEffect(() => {
+    const previousProp = modifiedPropRef.current
+    const contentChanged = previousModifiedContentRef.current !== modifiedContent
+    previousModifiedContentRef.current = modifiedContent
+    modifiedPropRef.current = {
+      path: currentDiffModelPaths.modifiedModelPath,
+      content: modifiedPropContent
+    }
+    // An external reset can equal the wrapper's stale prop after suppressing an edit echo.
+    if (
+      contentChanged &&
+      !isPublishedModifiedEcho &&
+      previousProp.path === currentDiffModelPaths.modifiedModelPath &&
+      previousProp.content === modifiedPropContent
+    ) {
+      const modified = diffEditorRef.current?.getModifiedEditor()
+      if (modified) {
+        syncContentUpdate(modified, modifiedContent)
+      }
+    }
+  }, [
+    currentDiffModelPaths.modifiedModelPath,
+    isPublishedModifiedEcho,
+    modifiedContent,
+    modifiedPropContent
+  ])
 
   const handleMount: DiffOnMount = useCallback(
     (diffEditor, monaco) => {
@@ -258,7 +307,14 @@ export default function DiffViewer({
         const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modifiedEditor)
 
         const modelContentSub = modifiedEditor.onDidChangeModelContent(() => {
-          onContentChangeRef.current?.(modifiedEditor.getValue())
+          const publish = onContentChangeRef.current
+          const model = modifiedEditor.getModel()
+          if (!publish || !model) {
+            return
+          }
+          const content = modifiedEditor.getValue()
+          publishedModifiedRef.current = { model, version: model.getVersionId(), content }
+          publish(content)
         })
         modifiedEditor.onDidDispose(() => {
           // Shortcut bridges and model subscriptions belong to this diff instance.
@@ -329,7 +385,7 @@ export default function DiffViewer({
             height="100%"
             language={language}
             original={originalContent}
-            modified={modifiedContent}
+            modified={modifiedPropContent}
             theme={isDark ? 'vs-dark' : 'vs'}
             onMount={handleMount}
             // Tab-owned models preserve modified undo across Changes-mode HEAD rotations.
