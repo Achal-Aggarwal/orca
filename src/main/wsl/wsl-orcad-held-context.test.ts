@@ -71,6 +71,45 @@ beforeEach(() => {
 })
 
 describe('holdWslDistroWithContext', () => {
+  it('probes the context while the hold is pending, and resolves only once the distro is held', async () => {
+    let finishHold: () => void = () => {}
+    const holdDone = new Promise<void>((resolve) => {
+      finishHold = resolve
+    })
+    const hold: WslDistroHolder = {
+      ...holderRejectingOn(holdDone),
+      ensureHeld: vi.fn(async (distro: string) => {
+        await holdDone
+        return {
+          outcome: 'spawned' as const,
+          record: { version: 1 as const, distro, pid: 9, creationTimeMs: 1, startedAtMs: 1 }
+        }
+      })
+    }
+    let settled = false
+    const held = holdWslDistroWithContext('U', target, conn, hold, undefined).finally(() => {
+      settled = true
+    })
+    for (let step = 0; step < 3; step++) {
+      await vi.waitFor(() => expect(mocks.probeStep).not.toBeNull())
+      const next = mocks.probeStep
+      mocks.probeStep = null
+      next?.()
+    }
+    await vi.waitFor(() =>
+      expect(mocks.spawned).toEqual(['uname -r', 'uname -sm', 'echo $HOME', 'ldd --version'])
+    )
+    // The deploy awaits this before recovery, which may launch orcad.
+    expect(settled).toBe(false)
+
+    finishHold()
+
+    await expect(held).resolves.toMatchObject({
+      held: { outcome: 'spawned' },
+      context: { remoteHome: '/home/u' }
+    })
+  })
+
   it('stops the context probes once the hold fails, so nothing can boot the distro again', async () => {
     let failHold: () => void = () => {}
     const holdFails = new Promise<void>((resolve) => {
