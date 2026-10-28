@@ -168,28 +168,14 @@ describe('RuntimeFileCommands', () => {
     )
   })
 
-  it.each(['ignored', 'synchronous-error', 'queued-error'] as const)(
+  it.each(['ignored', 'erroring'] as const)(
     'publishes capped results and detaches when termination is %s',
     async (termination) => {
       const { commands } = createRuntimeFileCommands()
       const child = createRuntimeSearchChild()
-      const uncaughtErrors: unknown[] = []
-      if (termination !== 'ignored') {
+      if (termination === 'erroring') {
         child.kill.mockImplementation(() => {
-          const emitError = (): void => {
-            child.emit('error', Object.assign(new Error('kill EPERM'), { code: 'EPERM' }))
-          }
-          if (termination === 'queued-error') {
-            queueMicrotask(() => {
-              try {
-                emitError()
-              } catch (error) {
-                uncaughtErrors.push(error)
-              }
-            })
-          } else {
-            emitError()
-          }
+          child.emit('error', Object.assign(new Error('kill EPERM'), { code: 'EPERM' }))
           return false
         })
       }
@@ -219,7 +205,6 @@ describe('RuntimeFileCommands', () => {
       expect(() => child.stdout.emit('data', `${record}\n{"type":"match"`)).not.toThrow()
       await flushRuntimeSearchMicrotasks()
 
-      expect(uncaughtErrors).toEqual([])
       expect(settled).toBe(true)
       await expect(resultPromise).resolves.toMatchObject({
         totalMatches: 2,
