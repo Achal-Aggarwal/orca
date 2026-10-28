@@ -54,7 +54,9 @@ export async function detectRepositoryMergeMetadata(
         () => ownsKey() && ownsCache()
       )
     } finally {
-      if (ownsCache()) repositoryMergeMetadataWriters.delete(cacheKey)
+      if (ownsCache()) {
+        repositoryMergeMetadataWriters.delete(cacheKey)
+      }
     }
   })
 }
