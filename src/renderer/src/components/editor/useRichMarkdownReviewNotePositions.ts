@@ -72,7 +72,15 @@ export function useRichMarkdownReviewNotePositions({
     })
   }, [notePositionsFrameRef, reviewRailVisible, setNotePositions, syncNotePositions])
 
-  useEffect(() => requestSyncNotePositions(), [content, markdownComments, requestSyncNotePositions])
+  useEffect(() => {
+    requestSyncNotePositions()
+    return () => {
+      if (notePositionsFrameRef.current !== null) {
+        window.cancelAnimationFrame(notePositionsFrameRef.current)
+        notePositionsFrameRef.current = null
+      }
+    }
+  }, [content, markdownComments, notePositionsFrameRef, requestSyncNotePositions])
 
   useEffect(() => {
     if (!reviewRailVisible) {
