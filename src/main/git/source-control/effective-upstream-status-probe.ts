@@ -83,9 +83,7 @@ async function probeOrRevalidateEffectiveUpstreamStatus(
 ): Promise<{ status: GitUpstreamStatus; probedSameNameOriginRef: boolean }> {
   const now = Date.now()
   const cached = resolvedUpstreamNameCache.get(cacheKey)
-  if (cached && (bypassCache || cached.expiresAt <= now)) {
-    resolvedUpstreamNameCache.delete(cacheKey)
-  } else if (cached) {
+  if (cached?.upstreamName && !bypassCache && cached.expiresAt > now) {
     try {
       const status = await getGitUpstreamStatusForUpstreamName(
         (args) => gitExecFileAsync(args, gitReadOptionsForWorktree(worktreePath, options)),
@@ -97,25 +95,39 @@ async function probeOrRevalidateEffectiveUpstreamStatus(
       if (options.signal?.aborted) {
         throw error
       }
-      // Re-resolve after an inconclusive cached-ref probe.
+      if (resolvedUpstreamNameCache.get(cacheKey) !== cached) {
+        return probeEffectiveUpstreamStatus(worktreePath, branchName, options)
+      }
+    }
+  }
+  // Clear, replacement and eviction retire this probe's permission to publish.
+  const pending = { upstreamName: null, expiresAt: now }
+  resolvedUpstreamNameCache.set(cacheKey, pending)
+  while (resolvedUpstreamNameCache.size > MAX_EFFECTIVE_UPSTREAM_NEGATIVE_CACHE_ENTRIES) {
+    const oldest = resolvedUpstreamNameCache.keys().next()
+    if (oldest.done) {
+      break
+    }
+    resolvedUpstreamNameCache.delete(oldest.value)
+  }
+  try {
+    const result = await probeEffectiveUpstreamStatus(worktreePath, branchName, options)
+    if (
+      resolvedUpstreamNameCache.get(cacheKey) === pending &&
+      result.status.hasUpstream &&
+      result.status.upstreamName
+    ) {
+      resolvedUpstreamNameCache.set(cacheKey, {
+        upstreamName: result.status.upstreamName,
+        expiresAt: Date.now() + RESOLVED_UPSTREAM_NAME_CACHE_TTL_MS
+      })
+    }
+    return result
+  } finally {
+    if (resolvedUpstreamNameCache.get(cacheKey) === pending) {
       resolvedUpstreamNameCache.delete(cacheKey)
     }
   }
-  const result = await probeEffectiveUpstreamStatus(worktreePath, branchName, options)
-  if (result.status.hasUpstream && result.status.upstreamName) {
-    resolvedUpstreamNameCache.set(cacheKey, {
-      upstreamName: result.status.upstreamName,
-      expiresAt: Date.now() + RESOLVED_UPSTREAM_NAME_CACHE_TTL_MS
-    })
-    while (resolvedUpstreamNameCache.size > MAX_EFFECTIVE_UPSTREAM_NEGATIVE_CACHE_ENTRIES) {
-      const oldest = resolvedUpstreamNameCache.keys().next()
-      if (oldest.done) {
-        break
-      }
-      resolvedUpstreamNameCache.delete(oldest.value)
-    }
-  }
-  return result
 }
 
 async function probeEffectiveUpstreamStatus(

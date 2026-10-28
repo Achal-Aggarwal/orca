@@ -2,7 +2,7 @@
 export const RESOLVED_UPSTREAM_NAME_CACHE_TTL_MS = 60_000
 
 type ResolvedUpstreamNameCacheEntry = {
-  upstreamName: string
+  upstreamName: string | null
   expiresAt: number
 }
 
