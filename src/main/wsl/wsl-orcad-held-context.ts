@@ -26,9 +26,27 @@ export async function holdWslDistroWithContext(
   if (isWsl1KernelRelease(kernel)) {
     throw new WslDistroVersion1Error(name)
   }
-  const [held, context] = await Promise.all([
-    holder.ensureHeld(name),
-    resolveOrcadRemoteContext(target, conn, signal)
-  ])
-  return { held, context }
+  // Once the hold fails, stop the probes: after dispose they fall back to fresh wsl.exe execs,
+  // which would boot a distro that just went away (E9).
+  const probes = new AbortController()
+  if (signal?.aborted) {
+    probes.abort(signal.reason)
+  }
+  const stopProbes = (): void => probes.abort(signal?.reason)
+  signal?.addEventListener('abort', stopProbes, { once: true })
+  try {
+    const [held, context] = await Promise.all([
+      holder.ensureHeld(name).catch((error: unknown) => {
+        probes.abort(error)
+        throw error
+      }),
+      resolveOrcadRemoteContext(target, conn, probes.signal)
+    ])
+    return { held, context }
+  } catch (error) {
+    probes.abort(error)
+    throw error
+  } finally {
+    signal?.removeEventListener('abort', stopProbes)
+  }
 }
