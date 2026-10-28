@@ -198,7 +198,6 @@ export function HostRemoveDialog({
               'This removes the saved SSH host and its credentials from this computer. Remote files are not deleted.'
             )
 
-  // Connected hosts delete remote files; offline/ghost hosts only forget local records.
   const deleteOptionLabel = translate(
     'auto.components.sidebar.HostRemoveDialog.alsoForgetLocal',
     'Also remove these {{value0}} from Orca',
