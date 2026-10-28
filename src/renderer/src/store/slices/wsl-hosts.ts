@@ -10,7 +10,7 @@ export type WslHostsSlice = {
   /** Whether this build ships the server files WSL hosts deploy from; unknown until main answers. */
   wslHostServerFiles: 'unknown' | 'present' | 'missing'
   setWslHostServerFiles: (present: boolean) => void
-  /** False in serve-only: no host is added and no project moved. True until main says otherwise. */
+  /** False in serve-only: no host is added and no project moved. False until main answers, so Add and Move never flash. */
   wslHostsAcceptNewWork: boolean
   setWslHostsAcceptNewWork: (accepts: boolean) => void
 }
@@ -19,7 +19,7 @@ export const createWslHostsSlice: StateCreator<AppState, [], [], WslHostsSlice> 
   wslHostStatuses: {},
   wslHostServerFiles: 'unknown',
   setWslHostServerFiles: (present) => set({ wslHostServerFiles: present ? 'present' : 'missing' }),
-  wslHostsAcceptNewWork: true,
+  wslHostsAcceptNewWork: false,
   setWslHostsAcceptNewWork: (accepts) => set({ wslHostsAcceptNewWork: accepts }),
   applyWslHostStatus: (status) =>
     set((state) => {

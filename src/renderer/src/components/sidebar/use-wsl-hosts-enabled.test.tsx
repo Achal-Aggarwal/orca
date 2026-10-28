@@ -22,6 +22,10 @@ describe('WSL host entry points in serve-only', () => {
     vi.unstubAllGlobals()
   })
 
+  it('offers nothing new until main answers the capability, so Add and Move never flash', () => {
+    expect(useAppStore.getInitialState().wslHostsAcceptNewWork).toBe(false)
+  })
+
   it('offers adding hosts and moving projects with the gate open', () => {
     const accepts = renderHook(() => useWslHostsAcceptNewWork())
     expect(accepts.result.current).toBe(true)
