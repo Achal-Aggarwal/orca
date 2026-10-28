@@ -115,11 +115,11 @@ describe('getDiff', () => {
     })
   })
 
-  it('normalizes Windows separators before reading git blobs', async () => {
+  it('normalizes host separators before reading index blobs', async () => {
     gitExecFileAsyncBufferMock.mockResolvedValueOnce({ stdout: Buffer.from('index-content\n') })
     readFileMock.mockResolvedValue(Buffer.from('working-tree-content'))
 
-    await getDiff('/repo', 'src\\file.ts', false)
+    await getDiff('/repo', path.join('src', 'file.ts'), false)
 
     expect(gitExecFileAsyncBufferMock).toHaveBeenCalledWith(['show', ':src/file.ts'], {
       cwd: '/repo',

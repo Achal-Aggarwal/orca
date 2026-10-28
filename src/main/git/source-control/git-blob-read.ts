@@ -44,8 +44,7 @@ export async function readGitBlobAtIndexPath(
   filePath: string,
   options: GitRuntimeOptions = {}
 ): Promise<GitBlobReadResult> {
-  // Git blob syntax requires forward slashes, including on Windows.
-  const gitPath = filePath.replace(/\\/g, '/')
+  const gitPath = filePath.split(path.sep).join('/')
   try {
     const { stdout } = await gitExecFileAsyncBuffer(['show', `:${gitPath}`], {
       ...gitReadOptionsForWorktree(worktreePath, options),
