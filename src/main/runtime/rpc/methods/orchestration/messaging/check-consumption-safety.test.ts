@@ -36,9 +36,12 @@ describe('consuming checks', () => {
     vi.restoreAllMocks()
   })
 
-  async function check(params: Record<string, unknown> = {}): Promise<CheckResult> {
+  async function check(
+    params: Record<string, unknown> = {},
+    ctx = state.ctx
+  ): Promise<CheckResult> {
     return checkResult.parse(
-      await h.call('orchestration.check', { terminal: 'term_lead', ...params }, state.ctx)
+      await h.call('orchestration.check', { terminal: 'term_lead', ...params }, ctx)
     )
   }
   async function mailbox(kind: 'dispatch' | 'run') {
@@ -63,13 +66,13 @@ describe('consuming checks', () => {
   }
 
   describe.each(['dispatch', 'run'] as const)('on a %s mailbox', (kind) => {
-    it('gives waiters woken by one notification the same whole batch', async () => {
+    it('gives waiters woken by one notification the same whole batch and receipt', async () => {
       const box = await mailbox(kind)
       const waits = vi.spyOn(state.runtime, 'waitForMessage')
-      const waiting = [
-        check({ wait: true, timeoutMs: 5_000 }),
-        check({ wait: true, timeoutMs: 5_000 })
-      ]
+      const receipts = [vi.fn(), vi.fn()]
+      const waiting = receipts.map((recordMutationReceipt) =>
+        check({ wait: true, timeoutMs: 5_000 }, { ...state.ctx, recordMutationReceipt })
+      )
       await vi.waitFor(() => expect(waits).toHaveBeenCalledTimes(2))
       for (let index = 0; index <= ORCHESTRATION_DELIVERY_BATCH_LIMIT; index += 1) {
         insert(box, `report ${index}`)
@@ -79,6 +82,11 @@ describe('consuming checks', () => {
       const [first, second] = await Promise.all(waiting)
       expect(first.count).toBe(ORCHESTRATION_DELIVERY_BATCH_LIMIT)
       expect(second).toMatchObject({ deliveryId: first.deliveryId, count: first.count })
+      for (const receipt of receipts) {
+        expect(receipt).toHaveBeenLastCalledWith(
+          expect.objectContaining({ deliveryId: first.deliveryId })
+        )
+      }
       expect(state.db.getUnreadMessages(box.address)).toHaveLength(1)
     })
 
@@ -142,6 +150,28 @@ describe('consuming checks', () => {
       expect(state.db.getMessageById(residual.id)?.read).toBe(1)
     }
   )
+
+  it('reports the Run ack it applied alongside residual mail it takes', async () => {
+    const run = await mailbox('run')
+    insert(run, 'run report')
+    const handled = await check()
+    insert({ address: `dispatch:${dispatch.id}`, runId: dispatch.run_id }, 'residual')
+    const record = vi.fn()
+    state.ctx.recordMutationReceipt = record
+
+    const result = await h.call(
+      'orchestration.check',
+      { terminal: 'term_lead', ack: handled.deliveryId },
+      state.ctx
+    )
+    expect(result).toMatchObject({
+      acknowledged: handled.deliveryId,
+      messages: [{ subject: 'residual' }]
+    })
+    expect(record).toHaveBeenLastCalledWith(
+      expect.objectContaining({ acknowledged: handled.deliveryId })
+    )
+  })
 
   it('keeps the receipt of residual mail taken alongside an explicit ack', async () => {
     const box = { address: `dispatch:${dispatch.id}`, runId: dispatch.run_id }

@@ -31,6 +31,8 @@ export async function checkWorkerMailbox(args: {
   revalidateConsumer?: () => void
   deferDelivery?: () => boolean
   recordMutationReceipt?: (receipt: unknown) => void
+  /** An ack the enclosing Run check already applied, reported when this check applied none. */
+  runAcknowledged?: string
 }) {
   const {
     params,
@@ -202,7 +204,7 @@ export async function checkWorkerMailbox(args: {
     deliveryReceipt({
       mailbox: mailboxIdentity,
       batch,
-      acknowledged: acknowledged?.delivery.id,
+      acknowledged: acknowledged?.delivery.id ?? args.runAcknowledged,
       format: params.format === true || params.inject === true
     })
   // The receipt commits with the take, so --retry-request can always replay a handed-over batch.
@@ -282,5 +284,8 @@ export async function checkWorkerMailbox(args: {
     }
   }
   const key = `${address}:${workerMailbox.generation}`
-  return result(waitResult.share(key, () => takeDelivery(typeFilter)))
+  const batch = waitResult.share(key, () => takeDelivery(typeFilter))
+  // A waiter that shares another's take has no take transaction, so it receipts the batch on arrival.
+  args.recordMutationReceipt?.(result(batch))
+  return result(batch)
 }

@@ -102,7 +102,8 @@ export async function checkRunPendingMail(args: {
           throw dispatchFenced()
         }
       },
-      recordMutationReceipt
+      recordMutationReceipt,
+      runAcknowledged: acknowledged?.delivery.id
     })
     if (handsOverBatch(result)) {
       return { acknowledged: result?.acknowledged ?? undefined, result }

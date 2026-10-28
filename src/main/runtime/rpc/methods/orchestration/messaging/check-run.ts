@@ -197,5 +197,8 @@ export async function checkRunMailbox(args: {
   if (params.peek) {
     return { ...peekResult(readPeek()), timedOut: false, cancelled: false, connectionLost: false }
   }
-  return result(waitResult.share(`${address}:${generation}`, () => takeDelivery(typeFilter)))
+  const batch = waitResult.share(`${address}:${generation}`, () => takeDelivery(typeFilter))
+  // A waiter that shares another's take has no take transaction, so it receipts the batch on arrival.
+  args.recordMutationReceipt?.(result(batch))
+  return result(batch)
 }
