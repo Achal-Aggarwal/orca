@@ -1,13 +1,15 @@
 import { EventEmitter } from 'node:events'
 import type * as pty from 'node-pty'
 import { expect, vi } from 'vitest'
+import type { StoreApi, UseBoundStore } from 'zustand'
+import type { AppState } from '../../../src/renderer/src/store/types'
 import { buildProfileStateCutoverFixture } from '../../../src/main/persistence/profile-state-cutover-fixture'
 import {
   createTestStore,
   makeTab,
   makeWorktree,
   seedStore
-} from '@/store/slices/store-test-helpers'
+} from '../../../src/renderer/src/store/slices/store-test-helpers'
 import { createStoreSessionMockApi } from '@/store/slices/store-session-test-harness'
 import type { OrcaRuntimeService } from '../../../src/main/runtime/orca-runtime'
 import type { Store } from '../../../src/main/persistence'
@@ -27,19 +29,21 @@ import {
   clearPtyState
 } from '../../../src/main/providers/local-pty-provider-state'
 
+export type OwnershipTestStore = UseBoundStore<StoreApi<AppState>>
+
 export const OWNERSHIP_WORKSPACE_ID = 'repo1::/repo1/main'
 const WT = OWNERSHIP_WORKSPACE_ID
 const state = buildProfileStateCutoverFixture('/fixture')
 const noop = () => {}
 export function createAutomationTerminalOwnershipFixture(
   mocks: {
-    store: ReturnType<typeof createTestStore> | null
+    store: OwnershipTestStore | null
     ipc: EventEmitter | null
     prepare: () => Promise<void>
   },
   cleanups: (() => void)[]
 ) {
-  const store = createTestStore()
+  const store: OwnershipTestStore = createTestStore()
   let subscribers = 0
   const subscribe = store.subscribe
   vi.spyOn(store, 'subscribe').mockImplementation((listener) => {
@@ -58,14 +62,22 @@ export function createAutomationTerminalOwnershipFixture(
     mainFrame: {},
     isDestroyed: () => false,
     send: (channel: string, payload: unknown) => {
-      events.push(
-        channel === 'automations:terminalLifecycleRequest' &&
-          typeof payload === 'object' &&
-          payload !== null &&
-          'operation' in payload
-          ? `${payload.operation}:${'phase' in payload ? payload.phase : ''}`
-          : channel
-      )
+      let label = channel
+      if (channel === 'automations:terminalLifecycleRequest') {
+        if (
+          typeof payload !== 'object' ||
+          payload === null ||
+          !('operation' in payload) ||
+          typeof payload.operation !== 'string'
+        ) {
+          throw new Error('Lifecycle test transport requires a string operation')
+        }
+        if ('phase' in payload && typeof payload.phase !== 'string') {
+          throw new Error('Lifecycle test transport requires a string phase when present')
+        }
+        label = `${payload.operation}:${'phase' in payload ? payload.phase : ''}`
+      }
+      events.push(label)
       listeners.emit(channel, payload)
     }
   })

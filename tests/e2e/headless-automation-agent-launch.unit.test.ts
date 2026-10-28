@@ -1,6 +1,9 @@
 import { exerciseBusyChatReuse } from './helpers/automation-chat-reuse-test-harness'
 import { readAutomationRunReceipt } from '../../src/main/automations/automation-run-receipt'
-import { AUTOMATION_AGENT_CALLER } from '../../src/main/automations/automation-run-operation'
+import {
+  AUTOMATION_AGENT_CALLER,
+  automationRunOperationId
+} from '../../src/main/automations/automation-run-operation'
 import { rpcCallerOperationKey } from '../../src/main/runtime/rpc/rpc-caller-identity'
 import {
   HOST_TEST_NOW,
@@ -14,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
 import type { AgentLaunchResult } from '../../src/shared/agent-launch-intent'
 import { buildProfileStateCutoverFixture } from '../../src/main/persistence/profile-state-cutover-fixture'
-import { automationRunOperationId } from '../../src/main/automations/automation-run-operation'
 import { tokenizeStartupCommand } from '../../src/shared/tui-agent-startup-shell'
 import { launchHeadlessAutomationAgent } from '../../src/main/automations/headless-automation-agent-launch'
 

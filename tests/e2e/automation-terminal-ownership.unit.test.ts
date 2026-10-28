@@ -15,9 +15,12 @@ import { revealCreatedTerminal } from '../../src/main/runtime/terminal/launch/te
 import { OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal } from '../../src/main/runtime/session-tabs/pty-backed-session-publication'
 import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../../src/main/runtime/session-tabs/structured-session-tab-restoration'
 import type { RuntimeMobileSessionTabsSnapshot } from '../../src/shared/runtime-types'
-import { stopRevokers } from '../../src/main/automations/desktop-run-terminal-stop'
+import {
+  stopRevokers,
+  cancelDesktopTerminalRetirement
+} from '../../src/main/automations/desktop-run-terminal-stop'
 import type * as ChildProcess from 'node:child_process'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { AutomationService } from '../../src/main/automations/service'
 import {
   createStore,
@@ -33,14 +36,13 @@ import type { EventEmitter } from 'node:events'
 import type { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
 import type { ConnectPanePtySession } from '@/components/terminal-pane/pty-connection/connect-pane-pty-session'
 import { buildProfileStateCutoverFixture } from '../../src/main/persistence/profile-state-cutover-fixture'
-import type { createTestStore } from '@/store/slices/store-test-helpers'
+import type { OwnershipTestStore } from './helpers/automation-terminal-ownership-test-harness'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import {
   recordTerminalInputActivity,
   flushTerminalInputActivity
 } from '../../src/renderer/src/lib/terminal-input-activity-coalescing'
 import { createAutomationTerminalOwnership } from '../../src/renderer/src/lib/automation-terminal-ownership'
-import { cancelDesktopTerminalRetirement } from '../../src/main/automations/desktop-run-terminal-stop'
 import {
   ptyProcesses,
   ptyIncarnations,
@@ -51,12 +53,19 @@ import { isPtyDataHandlerShutdownPending } from '@/components/terminal-pane/pty-
 import { installPtyExitHibernate } from '@/components/terminal-pane/pty-connection/pty-exit-hibernate'
 import { installSleepingRecordAccess } from '@/components/terminal-pane/pty-connection/sleeping-record-access'
 
-const mocks = vi.hoisted(() => ({
-  store: null as ReturnType<typeof createTestStore> | null,
-  ipc: null as EventEmitter | null,
-  capture: vi.fn(),
-  prepare: async () => {}
-}))
+const mocks = vi.hoisted(
+  (): {
+    store: OwnershipTestStore | null
+    ipc: EventEmitter | null
+    capture: Mock
+    prepare: () => Promise<void>
+  } => ({
+    store: null,
+    ipc: null,
+    capture: vi.fn(),
+    prepare: async () => {}
+  })
+)
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   mocks.ipc = new EventEmitter()
@@ -73,9 +82,9 @@ vi.mock('electron', async () => {
 vi.mock('@/store', () => ({
   useAppStore: {
     getState: () => mocks.store!.getState(),
-    setState: (...args: Parameters<ReturnType<typeof createTestStore>['setState']>) =>
+    setState: (...args: Parameters<OwnershipTestStore['setState']>) =>
       mocks.store!.setState(...args),
-    subscribe: (...args: Parameters<ReturnType<typeof createTestStore>['subscribe']>) =>
+    subscribe: (...args: Parameters<OwnershipTestStore['subscribe']>) =>
       mocks.store!.subscribe(...args)
   }
 }))

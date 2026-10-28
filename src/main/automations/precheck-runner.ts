@@ -1,9 +1,12 @@
 import type { Store } from '../persistence'
-import type { Automation } from '../../shared/automations-types'
+import type {
+  Automation,
+  AutomationPrecheck,
+  AutomationPrecheckResult
+} from '../../shared/automations-types'
 import type { AutomationRunTargetResult } from './run-target-resolution'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { ClientChannel } from 'ssh2'
-import type { AutomationPrecheck, AutomationPrecheckResult } from '../../shared/automations-types'
 import { MAX_AUTOMATION_PRECHECK_OUTPUT_CHARS } from '../../shared/automation-precheck'
 import { getSshConnectionManager } from '../ssh/targets/ssh-target-registry'
 import { quotePosixShell } from '../../shared/shell-argument-quoting'
