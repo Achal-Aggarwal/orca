@@ -220,3 +220,501 @@ describe('mounted worktree agent row subscriptions', () => {
     }
   })
 })
+
+it.each([20, 200])(
+  'shares canonical receiving/alias work and preserves unaffected mounted rows at %i worktrees',
+  async (n) => {
+    const { structuredAgentSessionPaneKey: pane, structuredAgentSessionTabId: tabId } =
+      await import('../../../../shared/structured-agent-session-projection')
+    const { makeUnifiedTab } = await import('@/store/slices/store-test-helpers')
+    const { visibleOrchestrationWorkForTest } =
+      await import('@/runtime/visible-agent-orchestration')
+    const { _getWorktreeAgentOrchestrationIndexBuildCountForTest: indexBuilds } =
+      await import('./worktree-agent-orchestration-index')
+    const live: AppState['agentStatusByPaneKey'] = {}
+    const tabs: AppState['unifiedTabsByWorktree'] = {}
+    const raw: AppState['runtimeAgentOrchestrationByPaneKey'] = {}
+    const observed = new Map<number, DashboardAgentRow[]>()
+    const counts = new Map<number, number>()
+    for (let i = 0; i < n; i++) {
+      const worktreeId = `lineage-${i}`
+      tabs[worktreeId] = ['parent', 'child'].map((role) =>
+        makeUnifiedTab({
+          id: `${role}-actual-${i}`,
+          entityId: `${role}-${i}`,
+          groupId: 'group',
+          worktreeId,
+          contentType: 'agent-session',
+          agentSessionAgent: 'codex',
+          executionHostId: i === n - 1 ? 'runtime:other' : 'local'
+        })
+      )
+      for (const tab of tabs[worktreeId]) {
+        live[pane(tab.id, tab.entityId)] = {
+          ...entry(pane(tab.id, tab.entityId), worktreeId),
+          tabId: tab.id
+        }
+      }
+      raw[pane(tabId(`child-${i}`), `child-${i}`)] = {
+        taskId: `task-${i}`,
+        dispatchId: `dispatch-${i}`,
+        dispatchStatus: 'dispatched',
+        parentPaneKey: pane(tabId(`parent-${i}`), `parent-${i}`)
+      }
+    }
+    patch({
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: tabs,
+      agentStatusByPaneKey: live,
+      runtimeAgentOrchestrationByPaneKey: {},
+      retainedAgentsByPaneKey: {}
+    })
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey(raw))
+    function ManyProbe({ index }: { index: number }) {
+      observed.set(index, useWorktreeAgentRows(`lineage-${index}`))
+      counts.set(index, (counts.get(index) ?? 0) + 1)
+      return null
+    }
+    act(() =>
+      root.render(Array.from({ length: n }, (_, index) => <ManyProbe key={index} index={index} />))
+    )
+    const initial = new Map(observed)
+    counts.clear()
+    const beforeEqual = visibleOrchestrationWorkForTest()
+    const canonicalBefore = useAppStore.getState().runtimeAgentOrchestrationByPaneKey
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey(structuredClone(raw)))
+    expect(useAppStore.getState().runtimeAgentOrchestrationByPaneKey).toBe(canonicalBefore)
+    expect(counts.size).toBe(0)
+    expect(visibleOrchestrationWorkForTest()).toEqual(beforeEqual)
+    const changedKey = pane(tabId('child-0'), 'child-0')
+    for (const change of [
+      { taskTitle: 'A real new title' },
+      { dispatchStatus: 'completed' as const },
+      { attention: { categories: ['input' as const], requiresAction: true } },
+      { parentPaneKey: 'missing-parent' }
+    ]) {
+      const before = visibleOrchestrationWorkForTest()
+      const beforeIndex = indexBuilds()
+      counts.clear()
+      act(() =>
+        useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey({
+          ...useAppStore.getState().runtimeAgentOrchestrationByPaneKey,
+          [changedKey]: { ...raw[changedKey], ...change }
+        })
+      )
+      expect(counts.get(0)).toBe(1)
+      expect(
+        observed.get(0)?.find((row) => row.paneKey === pane('child-actual-0', 'child-0'))?.entry
+          .orchestration
+      ).toMatchObject(change)
+      for (let i = 1; i < n; i++) {
+        expect(counts.has(i)).toBe(false)
+        expect(observed.get(i)).toBe(initial.get(i))
+      }
+      const after = visibleOrchestrationWorkForTest()
+      expect(after.builds - before.builds).toBeLessThanOrEqual(1)
+      expect(after.aliasBuilds).toBe(before.aliasBuilds)
+      expect(indexBuilds() - beforeIndex).toBeLessThanOrEqual(1)
+      expect(after.visits - before.visits).toBeLessThanOrEqual(n * 14)
+    }
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey(raw))
+    // Releasing one relationship preserves unrelated arrays even while its embedded completion remains.
+    counts.clear()
+    const remaining = { ...useAppStore.getState().runtimeAgentOrchestrationByPaneKey }
+    delete remaining[changedKey]
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey(remaining))
+    for (let i = 1; i < n; i++) {
+      expect(observed.get(i)).toBe(initial.get(i))
+    }
+    const epoch = useAppStore.getState().agentStatusEpoch
+    const beforeAlias = visibleOrchestrationWorkForTest()
+    patch({
+      unifiedTabsByWorktree: {
+        ...tabs,
+        'lineage-0': tabs['lineage-0'].map((tab) =>
+          tab.entityId === 'parent-0' ? { ...tab, id: 'remapped-parent' } : tab
+        )
+      }
+    })
+    expect(
+      observed.get(0)?.find((row) => row.paneKey === pane('child-actual-0', 'child-0'))?.entry
+        .orchestration?.parentPaneKey
+    ).toBe(pane('remapped-parent', 'parent-0'))
+    expect(useAppStore.getState().agentStatusEpoch).toBe(epoch)
+    for (let i = 1; i < n; i++) {
+      expect(observed.get(i)).toBe(initial.get(i))
+    }
+    expect(visibleOrchestrationWorkForTest().builds - beforeAlias.builds).toBe(1)
+    // A host change cannot attach a local worker to an identically named foreign parent.
+    patch({
+      unifiedTabsByWorktree: {
+        ...tabs,
+        'lineage-0': tabs['lineage-0'].map((tab) =>
+          tab.entityId === 'parent-0' ? { ...tab, executionHostId: 'runtime:other' } : tab
+        )
+      }
+    })
+    expect(
+      observed.get(0)?.find((row) => row.paneKey === pane('child-actual-0', 'child-0'))
+        ?.parentPaneKey
+    ).not.toBe(pane('parent-actual-0', 'parent-0'))
+    for (let i = 1; i < n; i++) {
+      expect(observed.get(i)).toBe(initial.get(i))
+    }
+    counts.clear()
+    const foreignRow = pane(`child-actual-${n - 1}`, `child-${n - 1}`)
+    act(() =>
+      useAppStore
+        .getState()
+        .setAgentStatus(
+          foreignRow,
+          { state: 'working', agentType: 'codex', prompt: 'Another host update' },
+          undefined,
+          { updatedAt: Date.now() + 1 },
+          { tabId: `child-actual-${n - 1}`, worktreeId: `lineage-${n - 1}` }
+        )
+    )
+    for (let i = 0; i < n - 1; i++) {
+      expect(counts.has(i)).toBe(false)
+    }
+  }
+)
+
+it('joins production mirrored custom/collision rows locally and keeps canonical initial, graph, retained and consumer contexts', async () => {
+  const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =
+    await import('../../../../main/runtime/runtime-agent-lineage.test-fixture')
+  const { makeUnifiedTab, makeWorktree, TEST_REPO } =
+    await import('@/store/slices/store-test-helpers')
+  const { buildMirroredAgentTabs } =
+    await import('@/runtime/web-session-tabs-sync/terminal-surfaces')
+  const { projectStatus } =
+    await import('@/components/native-chat/structured-agent-session-status-projection')
+  const { getStructuredAgentSessionTabs } =
+    await import('@/components/native-chat/structured-agent-session-tabs')
+  const { selectVisibleAgentOrchestration } = await import('@/runtime/visible-agent-orchestration')
+  const { structuredAgentSessionPaneKey: pane, structuredAgentSessionTabId: tabId } =
+    await import('../../../../shared/structured-agent-session-projection')
+  const { selectWorktreeAgentActivitySummary } = await import('./worktree-agent-activity-summary')
+  const { selectDashboardOrchestration } =
+    await import('@/components/dashboard/dashboard-orchestration-selection')
+  const { selectWorktreeAgentRowsCached } =
+    await import('@/components/dashboard/worktree-agent-rows-cache')
+  const { buildActivityEvents } = await import('@/components/activity/activity-event-builder')
+  const f = publicLineageFixture('folder-a')
+  try {
+    const predecessor = makeUnifiedTab({
+      id: 'reserved-parent',
+      entityId: 'old-parent',
+      groupId: 'g',
+      worktreeId: 'folder-a',
+      contentType: 'agent-session',
+      agentSessionAgent: 'codex',
+      executionHostId: 'local'
+    })
+    const occupied = makeUnifiedTab({
+      id: tabId(LINEAGE_CHILD),
+      entityId: 'unrelated',
+      groupId: 'g',
+      worktreeId: 'folder-a'
+    })
+    const mirrored = buildMirroredAgentTabs(
+      {
+        worktree: 'folder-a',
+        publicationEpoch: 'test',
+        snapshotVersion: 1,
+        activeGroupId: 'g',
+        activeTabId: null,
+        activeTabType: 'agent-session',
+        tabs: [
+          {
+            type: 'agent-session',
+            id: 'host-parent',
+            title: 'Parent',
+            sessionId: LINEAGE_PARENT,
+            replacesSessionId: 'old-parent',
+            agent: 'codex',
+            isActive: false
+          },
+          {
+            type: 'agent-session',
+            id: 'host-child',
+            title: 'Child',
+            sessionId: LINEAGE_CHILD,
+            agent: 'codex',
+            isActive: false
+          }
+        ]
+      },
+      'local',
+      new Map(),
+      'g',
+      0,
+      [predecessor, occupied],
+      Date.now()
+    ).map((item) => item.unifiedTab)
+    expect(mirrored[0].id).toBe('reserved-parent')
+    expect(mirrored[1].id).toContain(':history-1')
+    const raw = f.projection.buildByPaneKey() ?? {}
+    patch({
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {},
+      agentStatusByPaneKey: {},
+      retainedAgentsByPaneKey: {},
+      runtimeAgentOrchestrationByPaneKey: {}
+    })
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey(raw))
+    const canonical = useAppStore.getState().runtimeAgentOrchestrationByPaneKey
+    patch({ unifiedTabsByWorktree: { 'folder-a': mirrored } })
+    const actualParent = pane(mirrored[0].id, LINEAGE_PARENT)
+    const actualChild = pane(mirrored[1].id, LINEAGE_CHILD)
+    expect(selectVisibleAgentOrchestration(useAppStore.getState())[actualChild].parentPaneKey).toBe(
+      actualParent
+    )
+    const emitStatuses = () =>
+      act(() =>
+        useAppStore.getState().transactAgentStatuses((transaction) => {
+          for (const tab of getStructuredAgentSessionTabs(
+            useAppStore.getState().unifiedTabsByWorktree
+          )) {
+            projectStatus(
+              transaction,
+              tab,
+              {
+                sessionId: tab.entityId,
+                workspaceId: tab.worktreeId,
+                agent: 'codex',
+                status: 'working',
+                latestPrompt: tab.label,
+                updatedAt: Date.now(),
+                hostExecutionOwned: true
+              },
+              'live',
+              null
+            )
+          }
+        })
+      )
+    emitStatuses()
+    expect(
+      useAppStore.getState().agentStatusByPaneKey[actualChild].orchestration?.parentPaneKey
+    ).toBe(canonicalChatRow(LINEAGE_PARENT))
+    expect(useAppStore.getState().runtimeAgentOrchestrationByPaneKey).toBe(canonical)
+    act(() => root.render(<Probe />))
+    expect(rows.map((row) => row.paneKey)).toEqual([actualParent, actualChild])
+    expect(rows[1].entry.orchestration?.parentPaneKey).toBe(actualParent)
+    const worktree = makeWorktree({ id: 'folder-a', repoId: TEST_REPO.id })
+    patch({ repos: [TEST_REPO], worktreesByRepo: { [TEST_REPO.id]: [worktree] } })
+    const state = useAppStore.getState()
+    const singleton = selectDashboardOrchestration(state, [{ worktree }]).singletonOrchestration
+    const batch = selectDashboardOrchestration(state, [
+      { worktree },
+      { worktree: { ...worktree, id: 'other' } }
+    ]).orchestrationByWorktree?.get('folder-a')
+    expect(batch).toBe(singleton)
+    const dashboard = selectWorktreeAgentRowsCached({
+      state,
+      worktreeId: 'folder-a',
+      orchestration: singleton ?? {},
+      now: Date.now(),
+      generation: 1
+    })
+    expect(dashboard.map((row) => row.lineage.depth)).toEqual([0, 1])
+    expect(selectWorktreeAgentActivitySummary(state, 'folder-a').hasLiveWorking).toBe(true)
+    const activity = buildActivityEvents({
+      ...state,
+      chatNames: new Map(),
+      tabsByWorktree: state.tabsByWorktree,
+      unifiedTabsByWorktree: state.unifiedTabsByWorktree,
+      worktreeMap: new Map([[worktree.id, worktree]]),
+      repoMap: new Map([[TEST_REPO.id, TEST_REPO]]),
+      runtimeAgentOrchestrationByPaneKey: selectVisibleAgentOrchestration(state),
+      now: Date.now()
+    })
+    expect(activity.paneEntryByPaneKey[actualChild]?.orchestration?.parentPaneKey).toBe(
+      actualParent
+    )
+    expect(activity.paneEntryByPaneKey[actualParent]).toBeDefined()
+    const { getWorkspaceCleanupAgentEvidence } =
+      await import('@/store/slices/workspace-cleanup-agent-evidence')
+    const { makeCandidate } = await import('@/store/slices/workspace-cleanup-slice-test-harness')
+    expect([
+      ...getWorkspaceCleanupAgentEvidence(state, [
+        makeCandidate({ worktreeId: 'folder-a', executionHostId: 'local' })
+      ]).values()
+    ]).toEqual(['live'])
+    const { buildDashboardSnapshot } =
+      await import('@/components/dashboard/build-dashboard-snapshot')
+    const snapshot = buildDashboardSnapshot({ ...state, chatNames: new Map() }, Date.now())
+    expect(JSON.stringify(snapshot)).toContain(actualChild)
+    expect(JSON.stringify(snapshot)).toContain(actualParent)
+
+    // Payload-before-graph and a retained terminal child's embedded parent use that same read-side join.
+    act(() => useAppStore.getState().setRuntimeAgentOrchestrationByPaneKey({}))
+    expect(selectVisibleAgentOrchestration(useAppStore.getState())[actualChild].parentPaneKey).toBe(
+      actualParent
+    )
+    const terminal = {
+      ...entry(KEY_B, 'folder-a'),
+      state: 'done' as const,
+      orchestration: raw[canonicalChatRow(LINEAGE_CHILD)]
+    }
+    act(() =>
+      useAppStore.getState().retainAgents([
+        {
+          entry: terminal,
+          worktreeId: 'folder-a',
+          tab: makeTab({ id: 'tab-b', worktreeId: 'folder-a' }),
+          agentType: 'codex',
+          startedAt: Date.now()
+        }
+      ])
+    )
+    expect(selectVisibleAgentOrchestration(useAppStore.getState())[KEY_B].parentPaneKey).toBe(
+      actualParent
+    )
+    // Alias rederivation is immediate and writes neither canonical storage nor an epoch.
+    const epoch = useAppStore.getState().agentStatusEpoch
+    patch({
+      unifiedTabsByWorktree: {
+        'folder-a': mirrored.map((tab, index) => (index === 0 ? { ...tab, id: 'new-parent' } : tab))
+      }
+    })
+    expect(selectVisibleAgentOrchestration(useAppStore.getState())[actualChild].parentPaneKey).toBe(
+      pane('new-parent', LINEAGE_PARENT)
+    )
+    expect(useAppStore.getState().agentStatusEpoch).toBe(epoch)
+    patch({
+      unifiedTabsByWorktree: {
+        'folder-a': mirrored.map((tab, index) =>
+          index === 0 ? { ...tab, executionHostId: 'runtime:foreign' } : tab
+        )
+      }
+    })
+    expect(
+      selectVisibleAgentOrchestration(useAppStore.getState())[actualChild]?.parentPaneKey
+    ).not.toBe(actualParent)
+  } finally {
+    f.db.close()
+  }
+})
+
+it('settles the production graph subscription/scheduler/publication/receiver loop with at most one feedback flight', async () => {
+  const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =
+    await import('../../../../main/runtime/runtime-agent-lineage.test-fixture')
+  const { useRuntimeGraphSync } = await import('@/app-shell/use-runtime-graph-sync')
+  const { setRuntimeGraphSyncEnabled, setRuntimeGraphStoreStateGetter } =
+    await import('@/runtime/sync-runtime-graph')
+  const { graphState } = await import('@/runtime/sync-runtime-graph/graph-state')
+  const { makeUnifiedTab } = await import('@/store/slices/store-test-helpers')
+  const { selectVisibleAgentOrchestration } = await import('@/runtime/visible-agent-orchestration')
+  const { structuredAgentSessionPaneKey: pane } =
+    await import('../../../../shared/structured-agent-session-projection')
+  const f = publicLineageFixture('folder-a')
+  const response = {
+    runtimeId: 'lineage',
+    rendererGraphEpoch: 1,
+    graphStatus: 'ready' as const,
+    authoritativeWindowId: null,
+    liveTabCount: 0,
+    liveLeafCount: 0,
+    agentOrchestrationByPaneKey: f.projection.buildByPaneKey()
+  }
+  let release: (() => void) | undefined
+  let fail = false
+  let hold = true
+  const previousApi = window.api
+  const sync = vi.fn(async () => {
+    if (hold) {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+    }
+    if (fail) {
+      throw new Error('expected transport failure')
+    }
+    return structuredClone(response)
+  })
+  Reflect.set(window, 'api', {
+    ...previousApi,
+    runtime: { ...previousApi?.runtime, syncWindowGraph: sync }
+  })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  function SyncProbe() {
+    useRuntimeGraphSync()
+    return null
+  }
+  const flush = () =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+  try {
+    patch({
+      workspaceSessionReady: true,
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {},
+      retainedAgentsByPaneKey: {},
+      runtimeAgentOrchestrationByPaneKey: {},
+      agentStatusByPaneKey: {
+        [canonicalChatRow(LINEAGE_CHILD)]: entry(canonicalChatRow(LINEAGE_CHILD), 'folder-a')
+      }
+    })
+    act(() => root.render(<SyncProbe />))
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(1)
+    const parent = makeUnifiedTab({
+      id: 'late-parent',
+      entityId: LINEAGE_PARENT,
+      groupId: 'g',
+      worktreeId: 'folder-a',
+      contentType: 'agent-session',
+      agentSessionAgent: 'codex',
+      executionHostId: 'local'
+    })
+    patch({ unifiedTabsByWorktree: { 'folder-a': [parent] } })
+    hold = false
+    await act(async () => {
+      release?.()
+      await Promise.resolve()
+    })
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(2)
+    const stable = useAppStore.getState()
+    expect(
+      selectVisibleAgentOrchestration(stable)[canonicalChatRow(LINEAGE_CHILD)].parentPaneKey
+    ).toBe(pane(parent.id, LINEAGE_PARENT))
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(2)
+    expect(useAppStore.getState().runtimeAgentOrchestrationByPaneKey).toBe(
+      stable.runtimeAgentOrchestrationByPaneKey
+    )
+    expect(useAppStore.getState().agentStatusByPaneKey).toBe(stable.agentStatusByPaneKey)
+    expect(useAppStore.getState().agentStatusEpoch).toBe(stable.agentStatusEpoch)
+    fail = true
+    patch({ unifiedTabsByWorktree: { 'folder-a': [{ ...parent, label: 'legitimate wake' }] } })
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(3)
+    expect(graphState.syncInFlight).toBe(false)
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(3)
+    setRuntimeGraphSyncEnabled(false)
+    patch({ unifiedTabsByWorktree: { 'folder-a': [{ ...parent, id: 'disabled-local-alias' }] } })
+    expect(
+      selectVisibleAgentOrchestration(useAppStore.getState())[canonicalChatRow(LINEAGE_CHILD)]
+        .parentPaneKey
+    ).toBe(pane('disabled-local-alias', LINEAGE_PARENT))
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(3)
+    fail = false
+    setRuntimeGraphSyncEnabled(true)
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(4)
+    await flush()
+    expect(sync).toHaveBeenCalledTimes(4)
+  } finally {
+    setRuntimeGraphSyncEnabled(false)
+    setRuntimeGraphStoreStateGetter(null)
+    Reflect.set(window, 'api', previousApi)
+    error.mockRestore()
+    f.db.close()
+  }
+})

@@ -1,3 +1,4 @@
+import type { WorktreeRuntimeOwnerState } from '@/lib/worktree-runtime-owner-state'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { Worktree } from '../../../shared/worktree/types'
@@ -15,22 +16,22 @@ import {
 export type WorkspaceRecordState = Pick<AppState, 'worktreesByRepo' | 'folderWorkspaces'>
 
 /** Git worktrees per repo id, in listing order. */
-export function selectWorktreesByRepo(
-  state: Pick<AppState, 'worktreesByRepo'>
-): AppState['worktreesByRepo'] {
+export function selectWorktreesByRepo<
+  State extends Pick<WorktreeRuntimeOwnerState, 'worktreesByRepo'>
+>(state: State): State['worktreesByRepo'] {
   return state.worktreesByRepo
 }
 
-export function selectFolderWorkspaces(
-  state: Pick<AppState, 'folderWorkspaces'>
-): AppState['folderWorkspaces'] {
+export function selectFolderWorkspaces<
+  State extends Pick<WorktreeRuntimeOwnerState, 'folderWorkspaces'>
+>(state: State): State['folderWorkspaces'] {
   return state.folderWorkspaces
 }
 
 /** Checkouts git reports that Orca does not track, per repo id. */
-export function selectDetectedWorktreesByRepo(
-  state: Pick<AppState, 'detectedWorktreesByRepo'>
-): AppState['detectedWorktreesByRepo'] {
+export function selectDetectedWorktreesByRepo<
+  State extends Pick<WorktreeRuntimeOwnerState, 'detectedWorktreesByRepo'>
+>(state: State): State['detectedWorktreesByRepo'] {
   return state.detectedWorktreesByRepo
 }
 
