@@ -176,10 +176,10 @@ async function mount(provider: Provider, repoCount = 30, counted = false) {
     async render() {
       await act(async () => renderer.update(createElement(Harness)))
     },
-    async load() {
+    async load(options?: { silent?: boolean }) {
       let request: Promise<void> | undefined
       await act(async () => {
-        request = current!.loadTasks()
+        request = current!.loadTasks(options)
       })
       return { request: request! }
     },
@@ -298,6 +298,17 @@ describe('task repository request ownership', () => {
       await old.request
       expect(starts(fixture.client.requests, 'github.listWorkItems')).toHaveLength(3)
       expect(fixture.model().items).toEqual([])
+      expect(fixture.model().setLoading).toHaveBeenLastCalledWith(false)
     })
   }
+
+  it('releases the refresh spinner when a silent reload is abandoned by disconnect', async () => {
+    const fixture = await mount('github')
+    const old = await fixture.load({ silent: true })
+    fixture.scope.connState = 'disconnected'
+    await fixture.render()
+    await fixture.drain()
+    await old.request
+    expect(fixture.model().setRefreshing).toHaveBeenLastCalledWith(false)
+  })
 })

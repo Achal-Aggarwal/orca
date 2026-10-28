@@ -290,11 +290,14 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
       tasksSupported
     ]
   )
+  // Abandoning a load must also release its spinners; a successor load in the same commit re-sets them.
   useEffect(
     () => () => {
       loadGenerationRef.current += 1
+      setLoading(false)
+      setRefreshing(false)
     },
-    [loadTasks, loadGenerationRef]
+    [loadTasks, loadGenerationRef, setLoading, setRefreshing]
   )
   // Server-repo changes quietly reload unfiltered lists; a changed loadTasks already owns filter reloads, while Jira/Linear read independently.
   const listedServerReposRef = useRef({ serverRepoList, loadTasks })
