@@ -216,20 +216,43 @@ function EditorPanelInner({
     }
   }, [activeFile, clearCopiedPathToastResetTimer])
 
-  if (!activeFile) {
+  const model = activeFile
+    ? getEditorPanelRenderModel({
+        activeFile,
+        fileContents,
+        editorDrafts,
+        gitStatusEntries,
+        gitBranchEntries,
+        markdownViewMode,
+        markdownRichModeSizeOverridden,
+        isChangesMode,
+        canOpenWorkspaceFileBrowser
+      })
+    : null
+  let activeDocumentContent: string | null = null
+  if (activeFile?.mode === 'markdown-preview') {
+    activeDocumentContent =
+      editorDrafts[activeFile.markdownPreviewSourceFileId ?? activeFile.filePath] ??
+      fileContents[activeFile.id]?.content ??
+      null
+  } else if (activeFile?.mode === 'edit') {
+    activeDocumentContent =
+      editorDrafts[activeFile.id] ?? fileContents[activeFile.id]?.content ?? null
+  }
+  const frontmatterModeEnabled = Boolean(
+    model?.isMarkdown && (activeFile?.mode === 'markdown-preview' || model.mdViewMode !== 'source')
+  )
+  const canShowMarkdownFrontmatterToggle = useMemo(
+    () =>
+      Boolean(
+        frontmatterModeEnabled && activeDocumentContent && extractFrontMatter(activeDocumentContent)
+      ),
+    [frontmatterModeEnabled, activeDocumentContent]
+  )
+
+  if (!activeFile || !model) {
     return null
   }
-  const model = getEditorPanelRenderModel({
-    activeFile,
-    fileContents,
-    editorDrafts,
-    gitStatusEntries,
-    gitBranchEntries,
-    markdownViewMode,
-    markdownRichModeSizeOverridden,
-    isChangesMode,
-    canOpenWorkspaceFileBrowser
-  })
 
   const handleOpenPreviewToSide = (): void => {
     const state = useAppStore.getState()
@@ -297,20 +320,6 @@ function EditorPanelInner({
     activeFile.mode === 'markdown-preview'
       ? (activeFile.markdownPreviewSourceFileId ?? activeFile.filePath)
       : activeFile.id
-  let activeDocumentContent: string | null = null
-  if (activeFile.mode === 'markdown-preview') {
-    activeDocumentContent =
-      editorDrafts[markdownDocumentStateFileId] ?? fileContents[activeFile.id]?.content ?? null
-  } else if (activeFile.mode === 'edit') {
-    activeDocumentContent =
-      editorDrafts[activeFile.id] ?? fileContents[activeFile.id]?.content ?? null
-  }
-  const canShowMarkdownFrontmatterToggle = Boolean(
-    model.isMarkdown &&
-    (activeFile.mode === 'markdown-preview' || model.mdViewMode !== 'source') &&
-    activeDocumentContent &&
-    extractFrontMatter(activeDocumentContent)
-  )
   // The map stores only per-file hide overrides; frontmatter is visible by default.
   const isMarkdownFrontmatterVisible =
     markdownFrontmatterVisible[markdownDocumentStateFileId] ?? true
