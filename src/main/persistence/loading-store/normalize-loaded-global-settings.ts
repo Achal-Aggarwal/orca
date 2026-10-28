@@ -42,6 +42,7 @@ export function normalizeLoadedGlobalSettings(
     migratedPortugueseUiLanguage,
     migratedExperimentalActivity,
     migratedAutoRenameBranchFromWork,
+    migratedPluginSystemEnabled,
     migratedTerminalCursorStyle,
     migratedTerminalLineHeight,
     terminalRightClickToPasteDefaultedForPlatform,
@@ -88,6 +89,7 @@ export function normalizeLoadedGlobalSettings(
     primarySelectionMiddleClickPasteDefaultedForTerminalDefaults:
       primarySelectionDefaultedForTerminalDefaults || stampPrimarySelectionTerminalDefaults,
     ...migratedAutoRenameBranchFromWork,
+    ...migratedPluginSystemEnabled,
     ...migratedTerminalCursorStyle,
     terminalLineHeight: migratedTerminalLineHeight,
     // False was always explicit; the old true default may be reset once.

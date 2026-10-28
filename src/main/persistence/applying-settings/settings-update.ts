@@ -1,4 +1,5 @@
 import { legacyChatPermissionWrite } from './legacy-chat-permission-write'
+import { stampDefaultOnMigrationGuards } from './default-on-migration-guards'
 import { normalizeNativeChatAppearanceSettings } from '../../../shared/native-chat/native-chat-appearance-settings'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import { retireAtRestCommandSettings } from '../../native-chat/agent-session-wire/at-rest-command-context'
@@ -152,12 +153,6 @@ export function updateSettings(
       updates.terminalMinimumContrastRatio
     )
   }
-  if (
-    'terminalTuiScrollSensitivity' in updates ||
-    'terminalTuiScrollSensitivityDefaultedToOne' in updates
-  ) {
-    sanitizedUpdates.terminalTuiScrollSensitivityDefaultedToOne = true
-  }
   if ('visibleTaskProviders' in updates || 'defaultTaskSource' in updates) {
     const taskProviderSettings = normalizeTaskProviderSettings({
       visibleTaskProviders:
@@ -175,9 +170,7 @@ export function updateSettings(
       sanitizedUpdates.visibleTaskProvidersDefaultedForJira = true
     }
   }
-  if ('autoRenameBranchFromWork' in updates || 'autoRenameBranchFromWorkDefaultedOn' in updates) {
-    sanitizedUpdates.autoRenameBranchFromWorkDefaultedOn = true
-  }
+  stampDefaultOnMigrationGuards(updates, sanitizedUpdates)
   if ('openInApplications' in updates) {
     sanitizedUpdates.openInApplications = normalizeOpenInApplications(updates.openInApplications)
   }
