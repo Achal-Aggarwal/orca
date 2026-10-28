@@ -84,7 +84,8 @@ test('context-menu paste keeps CRLF together at the chunk boundary', async ({
   await electronApp.evaluate(({ clipboard }, text) => clipboard.writeText(text), text)
   await orcaPage.keyboard.press('Shift+F10')
   await expect(orcaPage.getByRole('menuitem', { name: /^Paste/ })).toBeVisible()
-  await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click()
+  // Monaco enables menu mouse-up 100 ms after opening.
+  await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click({ delay: 150 })
   await expect
     .poll(() =>
       editor.evaluate((editor) => editor.getModel()?.getValue().includes('CRLF_PASTE_END'))
