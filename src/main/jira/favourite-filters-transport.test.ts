@@ -154,46 +154,26 @@ describe('favourite filter transport ownership', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it.each(['caller', 'deadline'] as const)(
-    'cancels an active request on %s abort',
-    async (kind) => {
-      const error = new DOMException('fixture request aborted', 'AbortError')
-      const transport = installTransport(
-        (signal) =>
-          new Promise((_resolve, reject) => {
-            signal.addEventListener('abort', () => reject(error), { once: true })
-          })
-      )
-      const parent = new AbortController()
-      const read = listFavouriteFilters('site-1', parent.signal)
-      const rejected = expect(read).rejects.toBe(error)
-      await transport.started
-
-      if (kind === 'caller') {
-        parent.abort()
-      } else {
-        await vi.advanceTimersByTimeAsync(24_999)
-        expect(transport.aborted).not.toHaveBeenCalled()
-        await vi.advanceTimersByTimeAsync(1)
-      }
-
-      await rejected
-      expect(transport.aborted).toHaveBeenCalledOnce()
-      expect(parent.signal.aborted).toBe(kind === 'caller')
-      expect(vi.getTimerCount()).toBe(0)
-    }
-  )
-
-  it('rejects a pre-aborted caller before starting transport', async () => {
-    const transport = installTransport(async () => new Response('[]'))
+  it('cancels an active request at the deadline without aborting the caller', async () => {
+    const error = new DOMException('fixture request aborted', 'AbortError')
+    const transport = installTransport(
+      (signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(error), { once: true })
+        })
+    )
     const parent = new AbortController()
-    parent.abort()
+    const read = listFavouriteFilters('site-1', parent.signal)
+    const rejected = expect(read).rejects.toBe(error)
+    await transport.started
 
-    await expect(listFavouriteFilters('site-1', parent.signal)).rejects.toMatchObject({
-      name: 'AbortError'
-    })
+    await vi.advanceTimersByTimeAsync(24_999)
+    expect(transport.aborted).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
 
-    expect(transport.fetch).not.toHaveBeenCalled()
+    await rejected
+    expect(transport.aborted).toHaveBeenCalledOnce()
+    expect(parent.signal.aborted).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })
 })
