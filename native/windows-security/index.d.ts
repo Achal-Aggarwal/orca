@@ -1,3 +1,5 @@
+import type { Buffer } from 'node:buffer'
+
 /** Every call throws an Error whose message names the Win32 call and its error code. */
 
 export type GrantAccessOptions = {
