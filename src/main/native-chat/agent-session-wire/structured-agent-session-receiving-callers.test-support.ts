@@ -285,14 +285,17 @@ export async function createReceivingCallerFixture(options: { reportsRecipe?: bo
         expect(rig.store.requireWritableRecord(PARENT).acquiredAccount).toBeDefined()
       }
     },
-    dispose: async () => {
+    dispose: async (
+      stopHost = () => rig.host.flushAllStreamedEvents(),
+      disposeRig = () => rig.dispose()
+    ) => {
       service.stopOrchestrationFederationRelay()
       setStructuredAgentSessionHost(null)
       structuredWorkerIdentities.clear()
-      await rig.host.flushAllStreamedEvents()
+      await stopHost()
       service.getOrchestrationDbIfAvailable()?.close()
       await runtimeStore.freezeWritesAsync()
-      await rig.dispose()
+      await disposeRig()
       setAppEnvironment(previousEnvironment)
       vi.restoreAllMocks()
     }

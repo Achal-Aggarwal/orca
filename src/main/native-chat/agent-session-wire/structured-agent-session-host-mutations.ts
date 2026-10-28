@@ -236,6 +236,7 @@ export async function setStructuredAgentSessionOption(
       conversationWrite: true,
       run: (ctx) =>
         recordStructuredAgentSessionOptionIntent(context.deps, ctx, params, {
+          savedCatalog: context.savedCatalog,
           readsWithoutModel: caller.readsOptionsWithoutModel !== false
         }),
       ...(noChoice

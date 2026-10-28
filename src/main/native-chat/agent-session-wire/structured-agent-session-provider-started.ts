@@ -31,6 +31,9 @@ import {
 
 export type StructuredAgentSessionProviderStartedContext = {
   deps: StructuredAgentSessionHostDeps
+  ownedSavedCatalog?: Parameters<
+    typeof noteStructuredAgentSessionReportedOptions
+  >[0]['savedCatalog']
   sessions: Map<string, StructuredAgentSessionHostSession>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
@@ -106,7 +109,7 @@ export async function settleStructuredAgentSessionProviderStarted(
     noteStructuredAgentSessionRuntimePermission(session.child, event.reportedOptions, true)
     context.publishStatus?.(event.sessionId)
     await noteStructuredAgentSessionReportedOptions(
-      context,
+      { ...context, savedCatalog: context.ownedSavedCatalog },
       event.sessionId,
       child.fence,
       event.reportedOptions

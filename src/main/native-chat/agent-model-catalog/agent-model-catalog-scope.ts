@@ -3,7 +3,7 @@ import type { AgentSessionAccountHome } from '../../../shared/agent-session-reco
 import { isNativeLocalLocation } from '../../../shared/execution-host'
 import type {
   AgentModelCatalogService,
-  AgentModelCatalogServiceDeps
+  AgentModelCatalogLookupDeps
 } from './agent-model-catalog-service-contract'
 import { agentModelCatalogScopeFingerprint } from './agent-model-catalog-fingerprint'
 import {
@@ -15,7 +15,7 @@ import { sessionWorkspacePath, type AgentModelCatalogRecord } from './agent-mode
 
 /** Discovery follows launch configuration, never session picks. */
 export async function resolveAgentModelCatalogScope(
-  deps: AgentModelCatalogServiceDeps,
+  deps: AgentModelCatalogLookupDeps,
   params: Parameters<AgentModelCatalogService['read']>[0],
   record: AgentModelCatalogRecord | undefined,
   base: string,

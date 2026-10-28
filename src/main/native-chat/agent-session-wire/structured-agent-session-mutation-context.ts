@@ -1,3 +1,4 @@
+import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type {
   AgentSessionMutationEnvelope,
@@ -26,6 +27,7 @@ import type {
 
 export type StructuredAgentSessionMutationContext = {
   deps: StructuredAgentSessionHostDeps
+  savedCatalog?: Pick<AgentModelCatalogService, 'read'>
   sessions: Map<string, StructuredAgentSessionHostSession>
   publish: (sessionId: string, journal: StructuredAgentSessionHostSession['journal']) => void
   publishConversationName?: (sessionId: string) => void

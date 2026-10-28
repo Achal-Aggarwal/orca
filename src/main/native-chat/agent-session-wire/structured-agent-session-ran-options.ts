@@ -13,6 +13,7 @@ import { recordAgentSessionRanOptions } from '../../runtime/agent-session-record
 
 type RanOptionsContext = {
   deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'logger' | 'agents' | 'modelCatalog'>
+  savedCatalog?: Parameters<typeof savedAgentSessionCatalogModels>[0]['modelCatalog']
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
   now: () => number
 }
@@ -168,7 +169,11 @@ export async function recordStructuredAgentSessionRanOptions(
   if (!ran.model) {
     return
   }
-  const models = await savedAgentSessionCatalogModels(context.deps, record.provider, sessionId)
+  const models = await savedAgentSessionCatalogModels(
+    { modelCatalog: context.savedCatalog ?? context.deps.modelCatalog },
+    record.provider,
+    sessionId
+  )
   await store
     .reviseSessionOptions(recordAgentSessionRanOptions, {
       sessionId,

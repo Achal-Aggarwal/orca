@@ -60,7 +60,9 @@ export async function recordStructuredAgentSessionOptionIntent(
   } & Parameters<typeof savedAgentSessionCatalogModels>[0],
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'fence' | 'publish' | 'now'>,
   input: { key: string; value: string },
-  reader: StructuredAgentSessionOptionsReader = IN_PROCESS_OPTIONS_READER
+  reader: StructuredAgentSessionOptionsReader & {
+    savedCatalog?: Parameters<typeof savedAgentSessionCatalogModels>[0]['modelCatalog']
+  } = IN_PROCESS_OPTIONS_READER
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const { sessionId, fence } = ctx
   const record = deps.store.getRecord(sessionId)
@@ -77,7 +79,8 @@ export async function recordStructuredAgentSessionOptionIntent(
   if (!reader.readsWithoutModel && input.key === 'model' && input.value === '') {
     return { ok: true, value: { key: input.key, value: input.value, options: {} } }
   }
-  const models = await savedAgentSessionCatalogModels(deps, record.provider, sessionId)
+  const catalog = { modelCatalog: reader.savedCatalog ?? deps.modelCatalog }
+  const models = await savedAgentSessionCatalogModels(catalog, record.provider, sessionId)
   let options: Readonly<Record<string, string>>
   if (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID) {
     const permissionMode = input.value
@@ -98,7 +101,7 @@ export async function recordStructuredAgentSessionOptionIntent(
   }
   const displayModels =
     models ??
-    (await savedAgentSessionCatalogModels(deps, record.provider, sessionId, undefined, false))
+    (await savedAgentSessionCatalogModels(catalog, record.provider, sessionId, undefined, false))
   ctx.publish()
   return {
     ok: true,

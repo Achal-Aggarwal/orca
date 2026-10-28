@@ -99,6 +99,7 @@ export class StructuredAgentSessionHost {
     })
     this.conversationDelivery = conversation.createStructuredAgentSessionConversationDelivery({
       deps,
+      savedCatalog: this.reads.ownedSavedCatalog,
       acquireAborts: this.runtimeState.acquireAborts,
       sessions: this.sessions,
       serialize: (sessionId, task) => this.serialize(sessionId, task),
@@ -116,6 +117,7 @@ export class StructuredAgentSessionHost {
     this.restore = this.reads.createRestore(this.reconcileLeases, this.runtimeState, this.tabs)
     this.eventRecovery = new StructuredAgentSessionEventRecovery({
       deps,
+      ownedSavedCatalog: this.reads.ownedSavedCatalog,
       store: deps.store,
       sessions: this.sessions,
       flushLifecycle: (sessionId) => this.runtimeState.lifecycleBarrier(sessionId),
@@ -266,6 +268,7 @@ export class StructuredAgentSessionHost {
   private mutationContext = () =>
     createStructuredAgentSessionHostMutationContext({
       deps: this.deps,
+      savedCatalog: this.reads.ownedSavedCatalog,
       sessions: this.sessions,
       subscribers: this.subscribers,
       lifetime: this.lifetime,

@@ -88,6 +88,8 @@ describe('a live Grok listing', () => {
     const modelCatalog: AgentModelCatalogService = {
       peek: () => null,
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
+      readResolved: vi.fn(async () => ({ origin: 'unknown' as const })),
+      resolveReadRecords: vi.fn(async () => null),
       retainedLiveModelIds: vi.fn(async () => []),
       recordLiveListing: vi.fn().mockImplementationOnce(() => {
         throw new Error('catalog unavailable')

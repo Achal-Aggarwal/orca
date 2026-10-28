@@ -7,7 +7,8 @@ export function observeReceivingSql(db: OrchestrationDb) {
   const prepare = db.db.prepare.bind(db.db)
   const instrumented = new WeakSet<object>()
   const restores: (() => void)[] = []
-  const measurements = { prepares: 0, executions: 0, rows: 0, allRows: 0, plans: [] as string[] }
+  const plans: string[] = []
+  const measurements = { prepares: 0, executions: 0, rows: 0, allRows: 0, plans }
   const explain = (sql: string, args: SqliteBindings) => {
     if (!/^\s*(SELECT|WITH)\b/i.test(sql)) {
       return

@@ -36,3 +36,31 @@ export async function onRunningAccount(
   const accountHome = writable ? await deps.launchAccountHome?.(writable) : undefined
   return accountHome ? { ...record, accountHome } : record
 }
+
+export type AgentModelCatalogReadRecords = {
+  record: AgentSessionConversationView | undefined
+  scoped: AgentSessionConversationView | undefined
+  savedOnly: boolean
+}
+
+/** A failed account read is distinct from a recordless new-chat read. */
+export async function resolveAgentModelCatalogReadRecords(
+  deps: AgentModelCatalogRunningAccountDeps & {
+    getConversation: (id: string) => AgentSessionConversationView | undefined
+    getRecord: (id: string) => AgentSessionRecord | undefined
+    drivesRecord: (record: AgentModelCatalogRecord) => boolean
+  },
+  params: { agent: string; sessionId?: string; savedOnly?: boolean }
+): Promise<AgentModelCatalogReadRecords | null> {
+  const record = params.sessionId ? deps.getConversation(params.sessionId) : undefined
+  const savedOnly = params.savedOnly || !!(record && !deps.getRecord(record.sessionId))
+  let scoped: typeof record
+  if (record && record.provider === params.agent && deps.drivesRecord(record)) {
+    try {
+      scoped = await onRunningAccount(deps, record)
+    } catch {
+      return null
+    }
+  }
+  return { record, scoped, savedOnly }
+}

@@ -9,7 +9,10 @@ import type {
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
-import { settleStructuredAgentSessionOptionsReported } from './structured-agent-session-provider-started'
+import {
+  type StructuredAgentSessionProviderStartedContext,
+  settleStructuredAgentSessionOptionsReported
+} from './structured-agent-session-provider-started'
 import {
   endExitedStructuredAgentSessionChildUnderSerialize,
   settleStructuredAgentSessionChildExit,
@@ -26,6 +29,7 @@ export class StructuredAgentSessionEventRecovery {
   constructor(
     private readonly context: {
       deps: StructuredAgentSessionHostDeps
+      ownedSavedCatalog: StructuredAgentSessionProviderStartedContext['ownedSavedCatalog']
       store: StructuredAgentSessionHostDeps['store']
       sessions: Map<string, StructuredAgentSessionHostSession>
       flushLifecycle: (sessionId: string) => Promise<StructuredAgentSessionSinkBarrier>

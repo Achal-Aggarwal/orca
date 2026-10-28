@@ -8,7 +8,10 @@ import type {
   AgentModelCatalogLiveListing,
   AgentModelCatalogProbe
 } from './agent-model-catalog-store'
-import type { AgentModelCatalogRunningAccountDeps } from './agent-model-catalog-running-account'
+import type {
+  AgentModelCatalogReadRecords,
+  AgentModelCatalogRunningAccountDeps
+} from './agent-model-catalog-running-account'
 import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import type {
   AgentModelCatalogWorkspaceDeps,
@@ -31,21 +34,17 @@ export type AgentModelCatalogServiceDeps = AgentModelCatalogWorkspaceDeps &
 
 export type AgentModelCatalogService = {
   peek: (sessionId: string, verifiedOnly?: boolean) => AgentModelCatalogEntry | null
-  read: (params: {
-    agent: string
-    sessionId?: string
-    /** null means the requested workspace is not a local directory. */
-    workspacePath?: string | null
-    inSessionWorkspace?: true
-    /** Await missing-catalog discovery or reprobe of expired unavailability. */
-    waitForListing?: boolean
-    /** Return saved facts only; do not start, join or recheck discovery. */
-    savedOnly?: boolean
-    verifiedOnly?: boolean
-    legacy?: boolean
-    /** Display compatibility only, never launch/admission proof. */
-    legacyOptionsDisplay?: true
-  }) => Promise<AgentSessionModelCatalogResult>
+  read: (params: AgentModelCatalogReadParams) => Promise<AgentSessionModelCatalogResult>
+  /** Internal scoping uses this service's record/host policy and an owner's account read. */
+  resolveReadRecords: (
+    params: AgentModelCatalogReadParams,
+    account: Required<AgentModelCatalogRunningAccountDeps>
+  ) => Promise<AgentModelCatalogReadRecords | null>
+  /** Internal lookup after the caller has resolved its current conversation/account scope. */
+  readResolved: (
+    params: AgentModelCatalogReadParams,
+    records: AgentModelCatalogReadRecords
+  ) => Promise<AgentSessionModelCatalogResult>
   /** Validate only launch-injected rows against pinned account membership. */
   retainedLiveModelIds: (
     sessionId: string,
@@ -58,3 +57,29 @@ export type AgentModelCatalogService = {
   /** Successful chat startup makes held unavailability due for recheck. */
   providerStarted: (record: AgentSessionRecord) => void
 }
+
+export type AgentModelCatalogReadParams = {
+  agent: string
+  sessionId?: string
+  /** null means the requested workspace is not a local directory. */
+  workspacePath?: string | null
+  inSessionWorkspace?: true
+  /** Await missing-catalog discovery or reprobe of expired unavailability. */
+  waitForListing?: boolean
+  /** Return saved facts only; do not start, join or recheck discovery. */
+  savedOnly?: boolean
+  verifiedOnly?: boolean
+  legacy?: boolean
+  /** Display compatibility only, never launch/admission proof. */
+  legacyOptionsDisplay?: true
+}
+
+export type AgentModelCatalogLookupDeps = AgentModelCatalogWorkspaceDeps &
+  Pick<
+    AgentModelCatalogServiceDeps,
+    | 'getRecord'
+    | 'resolveAccountHome'
+    | 'probes'
+    | 'listingNamesConfiguredModel'
+    | 'agentReadsProjectModelConfig'
+  >

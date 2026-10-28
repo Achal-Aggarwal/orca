@@ -1,3 +1,4 @@
+import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import {
@@ -27,7 +28,40 @@ type ReadContext = {
 
 /** Readers share the conversation owner; inventory never founds a journal or prepares a provider. */
 export function createStructuredAgentSessionConversationReads(context: () => ReadContext) {
+  const prospectiveAccountHomeOwned = async (id: string) => {
+    const { deps, sessions, adoptOpened } = context()
+    const record = deps.store.requireWritableRecord(id)
+    let session = sessions.get(id)
+    if (!session) {
+      const opened = await restoreStructuredAgentSessionRead(deps, id)
+      if (opened) {
+        await adoptOpened(id, opened)
+        session = opened.session
+      }
+    }
+    return (await structuredAgentSessionReceivingAccount(deps, record, session)).home
+  }
+  const ownedSavedCatalog: Pick<AgentModelCatalogService, 'read'> = {
+    read: async (params) => {
+      const { deps, sessions } = context()
+      const catalog = deps.modelCatalog
+      if (!catalog) {
+        return { origin: 'unknown' }
+      }
+      const records = await catalog.resolveReadRecords(
+        { ...params, savedOnly: true },
+        {
+          liveAccountHome: (id) => sessions.get(id)?.child?.accountHome,
+          launchAccountHome: (record) => prospectiveAccountHomeOwned(record.sessionId)
+        }
+      )
+      return records
+        ? catalog.readResolved({ ...params, savedOnly: true }, records)
+        : { origin: 'unknown' }
+    }
+  }
   return {
+    ownedSavedCatalog,
     createRestore: (
       reconcileLeases: ReturnType<typeof createRestartReconciler>,
       runtimeState: StructuredAgentSessionHostRuntimeState,
@@ -62,19 +96,7 @@ export function createStructuredAgentSessionConversationReads(context: () => Rea
     holdsSessions: () => context().deps.store.holdsRecords(),
     onSessionsHeld: (listener: () => void) => context().deps.store.onFirstRecord(listener),
     prospectiveAccountHome: (id: string) => {
-      const { serialize, deps, sessions, adoptOpened } = context()
-      return serialize(id, async () => {
-        const record = deps.store.requireWritableRecord(id)
-        let session = sessions.get(id)
-        if (!session) {
-          const opened = await restoreStructuredAgentSessionRead(deps, id)
-          if (opened) {
-            await adoptOpened(id, opened)
-            session = opened.session
-          }
-        }
-        return (await structuredAgentSessionReceivingAccount(deps, record, session)).home
-      })
+      return context().serialize(id, () => prospectiveAccountHomeOwned(id))
     }
   }
 }

@@ -1,4 +1,12 @@
+import { rm } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { REST_TEST_CALLER } from './structured-agent-session-rest-test-rig'
+import { hostTestOperationId } from './structured-agent-session-host-test-data'
+import {
+  catalogMutationDeadline as settled,
+  disposeCatalogMutationHost
+} from './structured-agent-session-catalog-mutation.test-support'
 import { createAgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import { AgentModelCatalogStore } from '../agent-model-catalog/agent-model-catalog-store'
 import {
@@ -150,4 +158,65 @@ describe('catalog consumes the constructed host receiving account', () => {
       await f.dispose()
     }
   })
+
+  it('owned permission settlement reads actual A until exact native disposition, then eligible B', async () => {
+    const f = await createReceivingCallerFixture()
+    let service: ReturnType<typeof createAgentModelCatalogService> | undefined
+    try {
+      await f.found()
+      const { started } = await f.coldNative()
+      f.selectB()
+      setStructuredAgentSessionHost(null)
+      const c = catalog(f)
+      service = c.service
+      f.rig.adapter.acquire.mockClear()
+      const all = vi.spyOn(f.rig.store, 'listRecords').mockImplementation(() => {
+        throw new Error('global history scan')
+      })
+      const pick = async () => {
+        const key = 'permissionMode'
+        const value = 'own'
+        expect(
+          await settled(
+            f.rig.host.setOption(REST_TEST_CALLER, {
+              key,
+              value,
+              envelope: {
+                sessionId: PARENT,
+                clientOperationId: hostTestOperationId(),
+                expectedRuntimeFence: f.rig.store.requireWritableRecord(PARENT).lease.runtimeFence,
+                payloadFingerprint: computeAgentSessionPayloadFingerprint({
+                  method: 'agentSession.setOption',
+                  sessionId: PARENT,
+                  fields: { key, value }
+                })
+              }
+            }),
+            'receiving-account permission mutation'
+          )
+        ).toMatchObject({
+          ok: true,
+          value: { key, value, options: { permissionMode: 'own' } }
+        })
+        expect(f.rig.store.requireWritableRecord(PARENT).permissionMode).toBe('own')
+        return c.service.peek(PARENT, true)?.models.map((model) => model.id)
+      }
+      expect(await pick()).toEqual(['claude-sonnet-5'])
+      f.runtime
+        .getOrchestrationDb()
+        .failWorkerStart(started.dispatch.id, 'agent_readiness', 'never constructed a worker')
+      expect(await pick()).toEqual(['claude-opus-5-5[1m]'])
+      expect(c.probe).not.toHaveBeenCalled()
+      expect(f.rig.adapter.acquire).not.toHaveBeenCalled()
+      expect(f.rig.adapter.dispatch).not.toHaveBeenCalled()
+      expect(f.rig.adapter.readOptions).not.toHaveBeenCalled()
+      expect(all).not.toHaveBeenCalled()
+    } finally {
+      service?.stop()
+      await f.dispose(
+        () => disposeCatalogMutationHost(f.rig),
+        () => rm(f.rig.root, { recursive: true, force: true })
+      )
+    }
+  }, 10_000)
 })
