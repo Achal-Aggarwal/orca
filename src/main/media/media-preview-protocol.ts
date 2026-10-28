@@ -1,4 +1,3 @@
-import type { FileHandle } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { protocol, type WebContents } from 'electron'
 import type { Store } from '../persistence'
@@ -10,7 +9,7 @@ import {
   streamsPreviewByRange,
   type FilePreview
 } from '../../shared/file-preview-kind'
-import { assertPreviewableRasterHeader } from './preview-raster-header-check'
+import { assertPreviewableRasterHeader, localPrefixReader } from './preview-raster-header-check'
 import type { RemoteFilePreviewAddress } from '../../shared/remote-file-preview-address'
 import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
 import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
@@ -150,14 +149,23 @@ export async function readLocalFilePreview(
   if (!options.documents || target.connectionId) {
     return null
   }
-  const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
-  const { handle, stats } = await openLocalRegularFile(filePath)
+  const lifetime = abortWhenRendererGone(event.sender)
+  let size: number
   try {
-    await assertPreviewableRasterHeader(preview, localPrefixReader(handle, stats.size))
+    const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
+    const { handle, stats } = await openLocalRegularFile(filePath)
+    try {
+      await assertPreviewableRasterHeader(preview, localPrefixReader(handle, stats.size))
+    } finally {
+      await handle.close()
+    }
+    size = stats.size
+    // A renderer gone mid-mint would leave a grant no teardown ever drops.
+    lifetime.signal.throwIfAborted()
   } finally {
-    await handle.close()
+    lifetime.dispose()
   }
-  return mintPreviewUrl(event.sender, target, store, preview, undefined, stats.size)
+  return mintPreviewUrl(event.sender, target, store, preview, undefined, size)
 }
 
 /** A paired runtime's file as an `orca-media://` URL, streamed by range over files.stat/readChunk. */
@@ -313,14 +321,6 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
     })
   } catch {
     return new Response(null, { status: 404 })
-  }
-}
-
-function localPrefixReader(handle: FileHandle, size: number) {
-  return async (bytes: number): Promise<Uint8Array> => {
-    const buffer = Buffer.alloc(Math.min(bytes, size))
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
-    return buffer.subarray(0, bytesRead)
   }
 }
 

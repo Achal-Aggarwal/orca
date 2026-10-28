@@ -155,6 +155,20 @@ describe('media preview protocol', () => {
     ).rejects.toThrow('Image dimensions exceed the preview safety limit')
   })
 
+  it('mints nothing for a renderer torn down while the image was being checked', async () => {
+    const filePath = join(directory, 'late.png')
+    await writeFile(filePath, png(4, 3))
+    let release: () => void = () => {}
+    authorize.mockImplementationOnce(
+      (path) => new Promise((resolve) => (release = () => resolve(path)))
+    )
+    const pending = readLocalFilePreview(event, { filePath }, store, { documents: true })
+    await vi.waitFor(() => expect(authorize).toHaveBeenCalled())
+    emitter.emit('destroyed')
+    release()
+    await expect(pending).rejects.toThrow()
+  })
+
   it('checks the image it serves, not just the one it minted', async () => {
     const filePath = join(directory, 'swapped.png')
     await writeFile(filePath, png(4, 3))
