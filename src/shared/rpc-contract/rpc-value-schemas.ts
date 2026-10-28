@@ -1,27 +1,25 @@
-import { z } from 'zod'
-
-export const RpcString = z.string()
-export const RpcNumber = z.number()
-export const RpcBoolean = z.boolean()
-export const RpcUnknown = z.unknown()
-export const RpcUndefined = z.undefined()
-export const RpcNull = z.null()
-
-export const RpcNullableNumber = RpcNumber.nullable()
-export const RpcNullableString = RpcString.nullable()
-export const RpcNullishString = RpcString.nullish()
-export const RpcOptionalBoolean = RpcBoolean.optional()
-export const RpcOptionalNullableString = RpcString.nullable().optional()
-export const RpcOptionalNumber = RpcNumber.optional()
-export const RpcOptionalString = RpcString.optional()
-export const RpcOptionalUnknown = RpcUnknown.optional()
-
-export const RpcNonemptyString = RpcString.min(1)
-export const RpcOptionalNonemptyString = RpcNonemptyString.optional()
-export const RpcPositiveInteger = RpcNumber.int().positive()
-export const RpcOptionalPositiveInteger = RpcPositiveInteger.optional()
-export const RpcOptionalNullablePositiveInteger = RpcPositiveInteger.nullable().optional()
-export const RpcNonnegativeInteger = RpcNumber.int().nonnegative()
-export const RpcOptionalNonnegativeInteger = RpcNonnegativeInteger.optional()
-export const RpcFiniteNumber = RpcNumber.finite()
-export const RpcOptionalFiniteNumber = RpcFiniteNumber.optional()
+export {
+  ScalarString as RpcString,
+  ScalarNumber as RpcNumber,
+  ScalarBoolean as RpcBoolean,
+  ScalarUnknown as RpcUnknown,
+  ScalarUndefined as RpcUndefined,
+  ScalarNull as RpcNull,
+  ScalarNullableNumber as RpcNullableNumber,
+  ScalarNullableString as RpcNullableString,
+  ScalarNullishString as RpcNullishString,
+  ScalarOptionalBoolean as RpcOptionalBoolean,
+  ScalarOptionalNullableString as RpcOptionalNullableString,
+  ScalarOptionalNumber as RpcOptionalNumber,
+  ScalarOptionalString as RpcOptionalString,
+  ScalarOptionalUnknown as RpcOptionalUnknown,
+  ScalarNonemptyString as RpcNonemptyString,
+  ScalarOptionalNonemptyString as RpcOptionalNonemptyString,
+  ScalarPositiveInteger as RpcPositiveInteger,
+  ScalarOptionalPositiveInteger as RpcOptionalPositiveInteger,
+  ScalarOptionalNullablePositiveInteger as RpcOptionalNullablePositiveInteger,
+  ScalarNonnegativeInteger as RpcNonnegativeInteger,
+  ScalarOptionalNonnegativeInteger as RpcOptionalNonnegativeInteger,
+  ScalarFiniteNumber as RpcFiniteNumber,
+  ScalarOptionalFiniteNumber as RpcOptionalFiniteNumber
+} from '../scalar-value-schemas'
