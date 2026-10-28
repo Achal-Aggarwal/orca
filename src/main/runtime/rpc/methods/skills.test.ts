@@ -338,7 +338,7 @@ describe('skills.share RPC', () => {
     expect(discoverSkillsOnTarget).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'native-host', cwd: '/repo' }),
       [],
-      { providerRootOverrides: {}, refresh: true }
+      { providerRootOverrides: {}, refresh: true, gateStoppedWslDistros: false }
     )
     expect(publishDiscoveredSkillsFromAgent).toHaveBeenCalledWith(request, discoveredSkills, signal)
   })

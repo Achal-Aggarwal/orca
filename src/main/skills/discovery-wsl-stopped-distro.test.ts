@@ -132,6 +132,21 @@ describe('skill discovery for a stopped WSL distro (E9)', () => {
     )
   })
 
+  it('lets a user act (Share) read a stopped distro’s repo folders and find its skill', async () => {
+    const result = await discoverSkills({
+      homeDir: join(root, 'home'),
+      repos: [repo('wsl', mocks.wslRepoRoot), repo('host', hostRepo)],
+      includeCwd: false,
+      sourceKinds: ['repo'],
+      gateStoppedWslDistros: false
+    })
+    expect(mocks.blockedWslDistroForPath).not.toHaveBeenCalled()
+    expect(result.skills.map((skill) => skill.name).sort()).toEqual([
+      'Skill in host',
+      'Skill in wsl'
+    ])
+  })
+
   it('scans a running distro’s repo folders, so the next scan after a wake picks them up', async () => {
     await discover()
     mocks.gate.state = 'running'

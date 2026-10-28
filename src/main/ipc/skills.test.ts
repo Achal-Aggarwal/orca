@@ -230,6 +230,25 @@ describe('registerSkillsHandlers', () => {
     expect(discoverSkillObservationInWslMock).toHaveBeenCalled()
   })
 
+  it('lets the Share dialog, which sends no target, read a stopped distro’s repo skills', async () => {
+    registerSkillsHandlers(store as never, bundledRuntime() as never) // oxlint-disable-line typescript/consistent-type-assertions -- SAFETY: registration reads only getRepos and the runtime's provider roots.
+    const shareDiscover = registerSkillCloudIpcHandlersMock.mock.lastCall?.[1]
+
+    await shareDiscover(undefined)
+
+    expect(discoverSkillsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ repos, gateStoppedWslDistros: false })
+    )
+  })
+
+  it('keeps passive discovery gated', async () => {
+    const handler = getDiscoverHandler()
+    await handler(null, undefined)
+    expect(discoverSkillsMock).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ gateStoppedWslDistros: false })
+    )
+  })
+
   it('never asks the WSL gate for a host target', async () => {
     const handler = getDiscoverHandler()
     await handler(null, { runtime: 'host' })

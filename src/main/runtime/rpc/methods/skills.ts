@@ -165,7 +165,8 @@ export const SKILL_METHODS = [
         async () =>
           discoverSkillsOnTarget(resolvedTarget, runtime.listRepos(), {
             providerRootOverrides: await runtime.resolveSkillDiscoveryProviderRoots(resolvedTarget),
-            refresh: true
+            refresh: true,
+            gateStoppedWslDistros: false
           })
       )
       return runtime.publishDiscoveredSkillsFromAgent(params, discovered.skills, signal)

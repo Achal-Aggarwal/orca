@@ -153,12 +153,19 @@ function scanKey(
 export async function discoverSkillsOnTarget(
   target: ResolvedSkillDiscoveryTarget,
   repos: readonly Repo[],
-  options: { refresh?: boolean; providerRootOverrides?: SkillProviderRootOverrides } = {}
+  options: {
+    refresh?: boolean
+    providerRootOverrides?: SkillProviderRootOverrides
+    /** False for a user act (Share), which may read a stopped distro's folders. */
+    gateStoppedWslDistros?: boolean
+  } = {}
 ): Promise<SkillDiscoveryResult> {
   const refresh = options.refresh === true
+  const gate = options.gateStoppedWslDistros === false ? { gateStoppedWslDistros: false } : {}
   try {
     const outcome = await targetScans.run(
-      scanKey(target, repos, options.providerRootOverrides),
+      // A gated and an ungated scan of one target must not answer for each other.
+      `${scanKey(target, repos, options.providerRootOverrides)}${options.gateStoppedWslDistros === false ? ':user-act' : ''}`,
       { ttlMs: target.kind === 'wsl' ? WSL_RESULT_TTL_MS : 0, refresh },
       async (): Promise<TargetScanObservation> => {
         if (target.kind === 'wsl') {
@@ -180,14 +187,16 @@ export async function discoverSkillsOnTarget(
               refresh,
               ...(target.names ? { names: target.names } : {}),
               ...(target.sourceKinds ? { sourceKinds: target.sourceKinds } : {}),
-              providerRootOverrides: options.providerRootOverrides
+              providerRootOverrides: options.providerRootOverrides,
+              ...gate
             })
           : discoverSkills({
               repos: [...repos],
               refresh,
               ...(target.names ? { names: target.names } : {}),
               ...(target.sourceKinds ? { sourceKinds: target.sourceKinds } : {}),
-              providerRootOverrides: options.providerRootOverrides
+              providerRootOverrides: options.providerRootOverrides,
+              ...gate
             }))
         return { kind: 'native', result }
       }

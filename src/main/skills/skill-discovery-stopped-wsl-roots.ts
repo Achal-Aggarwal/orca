@@ -9,7 +9,7 @@ import {
   WslDistroStoppedError,
   WslDistroUnverifiableError
 } from '../wsl/wsl-unc-access-gate'
-import type { SkillScanRoot } from './skill-discovery-sources'
+import { stablePathId, type SkillScanRoot } from './skill-discovery-sources'
 
 const ALL_SOURCE_KINDS: readonly SkillSourceKind[] = ['home', 'repo', 'bundled', 'plugin']
 
@@ -81,5 +81,17 @@ export async function unavailableWhileWslDistroStopped(
       ),
       scannedAt: Date.now()
     }
+  }
+}
+
+// Plugin roots are listed from the workspace itself; on a stopped distro only their kind is known.
+export function stoppedPluginRoot(cwd: string): SkillScanRoot {
+  return {
+    id: `plugin-unavailable-${stablePathId(cwd)}`,
+    label: 'Claude plugins',
+    path: cwd,
+    sourceKind: 'plugin',
+    providers: ['claude'],
+    owner: 'claude'
   }
 }

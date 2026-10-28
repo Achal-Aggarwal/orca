@@ -23,11 +23,13 @@ import { handleMainWindowSkillIpc } from './skill-ipc-main-window'
 export function registerSkillsHandlers(store: Store, runtime?: OrcaRuntimeService): void {
   const discoverResolved = async (
     resolvedTarget: Awaited<ReturnType<typeof resolveSkillDiscoveryTarget>>,
-    refresh: boolean
+    refresh: boolean,
+    userAct = false
   ): Promise<SkillDiscoveryResult> =>
     discoverSkillsOnTarget(resolvedTarget, store.getRepos(), {
       providerRootOverrides: await runtime?.resolveSkillDiscoveryProviderRoots(resolvedTarget),
-      refresh
+      refresh,
+      ...(userAct ? { gateStoppedWslDistros: false } : {})
     })
   // Passive UI mounts discovery, so it must not start a stopped WSL distro.
   const discover = async (target?: SkillDiscoveryTarget): Promise<SkillDiscoveryResult> => {
@@ -54,7 +56,7 @@ export function registerSkillsHandlers(store: Store, runtime?: OrcaRuntimeServic
           ? wslDistroForPath(resolvedTarget.cwd)
           : null
     return runAsWslUserAct(distro, () =>
-      discoverResolved(resolvedTarget, parsedTarget?.refresh === true)
+      discoverResolved(resolvedTarget, parsedTarget?.refresh === true, true)
     )
   }
 

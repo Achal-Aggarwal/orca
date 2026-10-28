@@ -23,6 +23,7 @@ import { rootMayContainSourceKind } from './skill-discovery-source-filter'
 import {
   isOnStoppedWslDistro,
   splitStoppedWslDistroRoots,
+  stoppedPluginRoot,
   unavailableSkillSource
 } from './skill-discovery-stopped-wsl-roots'
 import { wslDistroForPath } from '../wsl/wsl-unc-access-gate'
@@ -223,18 +224,6 @@ function mergeScannedSkill(seen: Map<string, DiscoveredSkill>, skill: ScannedSki
   existing.providers = mergedProviders
 }
 
-// Plugin roots are listed from the workspace itself; on a stopped distro only their kind is known.
-function stoppedPluginRoot(cwd: string): SkillScanRoot {
-  return {
-    id: `plugin-unavailable-${stablePathId(cwd)}`,
-    label: 'Claude plugins',
-    path: cwd,
-    sourceKind: 'plugin',
-    providers: ['claude'],
-    owner: 'claude'
-  }
-}
-
 export async function discoverSkills(args: {
   signal?: AbortSignal
   repos?: Repo[]
@@ -245,6 +234,8 @@ export async function discoverSkills(args: {
   refresh?: boolean
   names?: string[]
   sourceKinds?: SkillSourceKind[]
+  /** False for a user act (Share): read stopped WSL distros' folders instead of reporting them unavailable. */
+  gateStoppedWslDistros?: boolean
 }): Promise<SkillDiscoveryResult> {
   args.signal?.throwIfAborted()
   const startedAt = Date.now()
@@ -257,7 +248,9 @@ export async function discoverSkills(args: {
     (!args.sourceKinds?.length || args.sourceKinds.includes('plugin'))
       ? args.cwd
       : undefined
+  const gateStopped = args.gateStoppedWslDistros !== false
   const pluginCwdStopped =
+    gateStopped &&
     pluginCwd !== undefined &&
     wslDistroForPath(pluginCwd) !== null &&
     (await isOnStoppedWslDistro(pluginCwd))
@@ -271,9 +264,10 @@ export async function discoverSkills(args: {
       : [])
   ]
   // Host-only root sets never await the WSL gate.
-  const { readable, unavailable } = candidateRoots.some((root) => wslDistroForPath(root.path))
-    ? await splitStoppedWslDistroRoots(candidateRoots)
-    : { readable: candidateRoots, unavailable: [] }
+  const { readable, unavailable } =
+    gateStopped && candidateRoots.some((root) => wslDistroForPath(root.path))
+      ? await splitStoppedWslDistroRoots(candidateRoots)
+      : { readable: candidateRoots, unavailable: [] }
   const roots = readable.filter((root) => rootMayContainSourceKind(root, args.sourceKinds))
   args.signal?.throwIfAborted()
   const scans = await waitForPromiseWithSignal(
