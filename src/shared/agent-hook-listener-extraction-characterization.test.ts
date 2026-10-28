@@ -13,6 +13,7 @@ import { warnOnHookEnvOrVersionMismatch } from './agent-hook-listener/listener-l
 import { resolveHookSource } from './agent-hook-listener/source-routing'
 import { bindOpenCodeSession } from './agent-hook-listener/opencode-session-registry'
 import { makePaneKey } from './stable-pane-id'
+import { hasAgentTurnStartHook, isNewTurnEvent } from './agent-hook-listener/provider-turn-start'
 
 const PANE = makePaneKey('tab-hooks', '11111111-1111-4111-8112-111111111111')
 const MOVED_PANE = makePaneKey('tab-hooks', '22222222-2222-4222-8222-222222222222')
@@ -36,6 +37,19 @@ function normalizeProviderState(
 }
 afterEach(() => vi.restoreAllMocks())
 describe('agent hook extraction boundaries', () => {
+  it('distinguishes prompt hooks from session-only sources and preserves event aliases', () => {
+    for (const source of ['opencode', 'opencode2', 'mimo-code', 'command-code', 'unknown']) {
+      expect(hasAgentTurnStartHook(source)).toBe(false)
+    }
+    for (const source of ['claude', 'codex', 'copilot', 'grok']) {
+      expect(hasAgentTurnStartHook(source)).toBe(true)
+    }
+    expect(isNewTurnEvent('copilot', 'userPromptSubmitted')).toBe(true)
+    expect(isNewTurnEvent('copilot', 'sessionStart')).toBe(true)
+    expect(isNewTurnEvent('grok', 'UserPromptSubmit')).toBe(true)
+    expect(isNewTurnEvent('opencode', 'SessionStart')).toBe(true)
+    expect(isNewTurnEvent('opencode', 'UserPromptSubmit')).toBe(false)
+  })
   it.each([
     ['qoder', 'UserPromptSubmit'],
     ['qoder-cn', 'UserPromptSubmit'],

@@ -22,75 +22,8 @@ import { extractHermesToolFields } from './providers/hermes-tool-fields'
 import { extractJcodeToolFields } from './providers/jcode-tool-fields'
 import { extractKiroToolFields } from './providers/kiro-tool-fields'
 
-/** Share provider boundaries with observation stamping; avoid a second event-name list. */
-export function isNewTurnEvent(source: AgentHookSource, eventName: unknown): boolean {
-  // Why: exhaustive switch so a new AgentHookSource fails typecheck here instead of falling through to false.
-  switch (source) {
-    case 'qoder-cn':
-    case 'qwen-code':
-    case 'qoder':
-    case 'claude':
-      // SessionStart is idle but must clear previous-session tool/prompt caches (STA-3386).
-      return eventName === 'SessionStart' || eventName === 'UserPromptSubmit'
-    case 'codebuddy':
-    case 'kimi':
-      // Why: Kimi Code emits Claude-compatible hook events, so UserPromptSubmit is its new-turn boundary too.
-      return eventName === 'UserPromptSubmit'
-    case 'muse':
-      // Muse uses Claude-compatible lifecycle events.
-      return eventName === 'UserPromptSubmit'
-    case 'dsh':
-      // DSH SessionStart clears reused-pane caches before its first turn.
-      return eventName === 'SessionStart' || eventName === 'UserPromptSubmit'
-    case 'zcode':
-      // SessionStart clears idle-boundary caches; UserPromptSubmit opens the actual turn.
-      return eventName === 'SessionStart' || eventName === 'UserPromptSubmit'
-    case 'codex':
-      return eventName === 'SessionStart' || eventName === 'UserPromptSubmit'
-    case 'gemini':
-      return eventName === 'BeforeAgent'
-    case 'antigravity':
-      return eventName === 'PreInvocation'
-    case 'amp':
-      return eventName === 'agent.start'
-    case 'opencode':
-    case 'opencode2':
-      return eventName === 'SessionStart'
-    case 'mimo-code':
-      return false
-    case 'cursor':
-      return eventName === 'beforeSubmitPrompt' || eventName === 'sessionStart'
-    case 'pi':
-    case 'omp':
-    case 'prime-agent':
-      return eventName === 'before_agent_start'
-    case 'droid':
-      return eventName === 'UserPromptSubmit'
-    case 'command-code':
-      return false
-    case 'grok':
-      return isGrokEvent(eventName, 'user_prompt_submit')
-    case 'copilot': {
-      const normalizedEventName = normalizeCopilotEventName(eventName)
-      return normalizedEventName === 'SessionStart' || normalizedEventName === 'UserPromptSubmit'
-    }
-    case 'hermes':
-      return eventName === 'pre_llm_call' || eventName === 'on_session_start'
-    case 'devin':
-      // Devin handles SessionStart early; UserPromptSubmit is its turn boundary.
-      return eventName === 'UserPromptSubmit'
-    case 'jcode':
-      // jcode turn_start precedes generation; session_start clears caches on its separate early path.
-      return eventName === 'turn_start'
-    case 'kiro':
-      // Why: agentSpawn opens a fresh session in the pane, so stale tool/prompt caches go too.
-      return (
-        eventName === 'agentSpawn' ||
-        eventName === 'userPromptSubmit' ||
-        eventName === 'UserPromptSubmit'
-      )
-  }
-}
+import { isNewTurnEvent } from './provider-turn-start'
+export { isNewTurnEvent } from './provider-turn-start'
 
 /** Only main-agent turn-end events count; reminders/session events/enrichment merely restate them. */
 export function isTurnEndEvent(source: AgentHookSource, eventName: unknown): boolean {

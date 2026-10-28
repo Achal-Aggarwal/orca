@@ -7,6 +7,8 @@ import {
   useNativeChatPendingDelivery
 } from './use-native-chat-pending-delivery'
 import { clearPendingSendCacheForTests } from './native-chat-pending'
+import { useAppStore } from '../../store'
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 
 const boundary: NativeChatMessage = {
   id: 'boundary',
@@ -18,6 +20,23 @@ const boundary: NativeChatMessage = {
 const args = { paneKey: 'pane', agent: 'claude' as const }
 function userRow(text: string): NativeChatMessage {
   return { ...boundary, id: `user:${text}`, role: 'user', blocks: [{ type: 'text', text }] }
+}
+function hookRow(state: AgentStatusEntry['state'], turnStartedAt?: number) {
+  act(() =>
+    useAppStore.setState({
+      agentStatusByPaneKey: {
+        pane: {
+          paneKey: 'pane',
+          agentType: 'claude',
+          state,
+          turnStartedAt,
+          prompt: '',
+          updatedAt: Date.now(),
+          stateStartedAt: Date.now()
+        }
+      }
+    })
+  )
 }
 function render() {
   return renderHook(
@@ -35,6 +54,7 @@ async function tick(ms: number) {
 beforeEach(() => {
   vi.useFakeTimers()
   clearPendingSendCacheForTests()
+  useAppStore.setState({ agentStatusByPaneKey: {} })
 })
 afterEach(() => {
   cleanup()
@@ -86,12 +106,97 @@ describe('terminal Chat pending delivery', () => {
     expect(result.current.pending.map((entry) => entry.text)).toEqual(['run tests'])
     expect(result.current.notices.size).toBe(1)
   })
-  it('never flags an ordinary send, such as one Claude queues mid-turn', async () => {
+  it('holds an acknowledged idle send until 20 s with no agent or transcript evidence', async () => {
+    hookRow('waiting', 10)
     const { result } = render()
-    act(() => result.current.record('queued follow up'))
-    await tick(10 * 60_000)
+    act(() => result.current.confirmWrite(result.current.record('swallowed')))
+    await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS - 1)
     expect(result.current.notices.size).toBe(0)
-    expect(result.current.pending[0]?.delivery).toBeUndefined()
+    await tick(1)
+    expect([...result.current.notices.values()][0]?.text).toMatch(/Delivery unconfirmed/)
+  })
+  it.each([1_000, 21_000])(
+    'clears uncertainty on a turn start at %s ms, across remount',
+    async (elapsed) => {
+      hookRow('waiting', 10)
+      const first = render()
+      act(() => first.result.current.confirmWrite(first.result.current.record('rewritten prompt')))
+      await tick(elapsed)
+      expect(first.result.current.notices.size).toBe(elapsed > 20_000 ? 1 : 0)
+      first.unmount()
+      hookRow('working', 5)
+      const next = render()
+      await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+      expect(next.result.current.notices.size).toBe(0)
+      expect(next.result.current.pending[0]?.writeUnconfirmedAt).toBeUndefined()
+    }
+  )
+  it('does not treat a session boundary or restated turn as acceptance', async () => {
+    hookRow('waiting', 10)
+    const { result } = render()
+    act(() => result.current.confirmWrite(result.current.record('swallowed')))
+    hookRow('waiting')
+    hookRow('working', 10)
+    await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+    expect(result.current.pending[0]?.delivery).toBe('unconfirmed')
+  })
+  it('accepts only the oldest send per turn, even after that send retires and chat remounts', async () => {
+    hookRow('waiting', 10)
+    const first = render()
+    act(() => {
+      first.result.current.confirmWrite(first.result.current.record('first'))
+      first.result.current.confirmWrite(first.result.current.record('second'))
+    })
+    hookRow('working', 20)
+    first.rerender({ messages: [boundary, userRow('first'), { ...boundary, id: 'answer' }] })
+    first.unmount()
+    const next = render()
+    await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+    expect(next.result.current.pending.map((entry) => [entry.text, entry.delivery])).toEqual([
+      ['second', 'unconfirmed']
+    ])
+    hookRow('working', 30)
+    expect(next.result.current.notices.size).toBe(0)
+  })
+  it('recognizes an older host idle-to-working transition without a turn clock', async () => {
+    hookRow('waiting')
+    const { result } = render()
+    act(() => result.current.confirmWrite(result.current.record('accepted')))
+    hookRow('working')
+    await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+    expect(result.current.notices.size).toBe(0)
+    expect(result.current.pending[0]?.writeUnconfirmedAt).toBeUndefined()
+  })
+  it('keeps an agent turn observed before the Enter acknowledgment', async () => {
+    hookRow('waiting', 10)
+    const { result } = render()
+    let id = ''
+    act(() => {
+      id = result.current.record('accepted')
+    })
+    hookRow('working', 20)
+    act(() => result.current.confirmWrite(id))
+    await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+    expect(result.current.notices.size).toBe(0)
+    expect(result.current.pending[0]?.writeUnconfirmedAt).toBeUndefined()
+  })
+  it('does not arm an acceptance hold for a working baseline or an agent without a turn hook', async () => {
+    hookRow('working', 10)
+    const working = render()
+    act(() => working.result.current.confirmWrite(working.result.current.record('queued')))
+    const unsupported = renderHook(() =>
+      useNativeChatPendingDelivery({
+        paneKey: 'other',
+        agent: 'opencode',
+        session: { messages: [boundary] }
+      })
+    )
+    act(() => unsupported.result.current.confirmWrite(unsupported.result.current.record('no hook')))
+    await tick(10 * 60_000)
+    for (const current of [working.result.current, unsupported.result.current]) {
+      expect(current.notices.size).toBe(0)
+      expect(current.pending[0]?.writeUnconfirmedAt).toBeUndefined()
+    }
   })
   it('marks a refused write as not sent, keeps its text, and dismisses it', () => {
     const { result } = render()

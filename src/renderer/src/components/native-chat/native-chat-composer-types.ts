@@ -76,6 +76,8 @@ export type NativeChatStructuredComposerTransport = {
 export type NativeChatOptimisticSendOutcome = {
   /** The host refused the write: mark the echo "Message not sent". */
   reject: (pendingId: string) => void
+  /** Body and Enter were acknowledged; wait for agent acceptance or a transcript row. */
+  confirmWrite: (pendingId: string) => void
   /** The write acknowledgment was lost: hold the echo, then flag it unconfirmed. */
   holdUnconfirmed: (pendingId: string) => void
 }

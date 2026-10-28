@@ -1,4 +1,5 @@
 import { nativeChatContinuationSendText } from './native-chat-continuation-send'
+import type { AgentStatusState } from './agent-status-types'
 import type { NativeChatMessage } from './native-chat-types'
 import {
   advancedNativeChatUserContentCounts,
@@ -21,8 +22,15 @@ export type NativeChatPendingSend = {
   id: string
   /** Definite send outcome; absent while the send is simply awaiting its transcript row. */
   delivery?: 'unconfirmed' | 'rejected'
-  /** When a write's acknowledgment was lost, so a remount keeps the original hold deadline. */
+  /** Start of the evidence hold; a remount keeps the original deadline. */
   writeUnconfirmedAt?: number
+  /** In-memory hook evidence survives remounts; each observed turn can accept only one echo. */
+  agentAcceptance?: {
+    baselineState?: AgentStatusState
+    turnStartedAt?: number
+    observedWorking: boolean
+    accepted?: true
+  }
   text: string
   imagePaths?: string[]
   /** Epoch ms when the send was issued, so the queued bubble sorts to the end. */

@@ -27,7 +27,12 @@ function send(
   draft: string,
   imagePaths: string[] = []
 ) {
-  const callbacks = { rejected: vi.fn(), unconfirmed: vi.fn(), submitted: vi.fn() }
+  const callbacks = {
+    rejected: vi.fn(),
+    unconfirmed: vi.fn(),
+    submitted: vi.fn(),
+    confirmed: vi.fn()
+  }
   const { result } = renderHook(() =>
     useNativeChatPtyComposerSend({
       agent,
@@ -40,7 +45,11 @@ function send(
       resolveTarget: () => ({ ptyId: 'pty', settings: null }),
       classifySend: () => classification,
       onOptimisticSend: () => 'pending-1',
-      optimisticSendOutcome: { reject: callbacks.rejected, holdUnconfirmed: callbacks.unconfirmed },
+      optimisticSendOutcome: {
+        reject: callbacks.rejected,
+        holdUnconfirmed: callbacks.unconfirmed,
+        confirmWrite: callbacks.confirmed
+      },
       onSubmitted: callbacks.submitted,
       sessionOptionsSurface: null,
       terminalTabId: 'tab',
@@ -61,28 +70,32 @@ beforeEach(() => {
   vi.mocked(sendNativeChatMessageWithImageAttachments).mockClear()
 })
 
-it('routes a Claude chat send outcome to its own pending echo', () => {
-  const callbacks = send('claude', 'chat', 'hello')
+it.each(['claude', 'codex'])('routes a %s chat send outcome to its own pending echo', (agent) => {
+  const callbacks = send(agent, 'chat', 'hello')
   const options = vi.mocked(sendNativeChatMessage).mock.calls[0]?.[2]
   options?.onWriteRejected?.()
   options?.onWriteUnconfirmed?.()
   expect(callbacks.rejected).toHaveBeenCalledWith('pending-1')
   expect(callbacks.unconfirmed).toHaveBeenCalledWith('pending-1')
+  options?.onDeliverySettled?.(false)
+  expect(callbacks.confirmed).not.toHaveBeenCalled()
+  options?.onDeliverySettled?.(true)
+  expect(callbacks.confirmed).toHaveBeenCalledWith('pending-1')
 })
 
-it('routes a Claude image send outcome to its own pending echo', () => {
-  const callbacks = send('claude', 'chat', 'look', ['/tmp/shot.png'])
+it.each(['claude', 'codex'])('routes a %s image send outcome to its own pending echo', (agent) => {
+  const callbacks = send(agent, 'chat', 'look', ['/tmp/shot.png'])
   vi.mocked(sendNativeChatMessageWithImageAttachments).mock.calls[0]?.[4]?.onWriteRejected?.()
   expect(callbacks.rejected).toHaveBeenCalledWith('pending-1')
 })
 
-it.each([
-  ['codex', 'chat', 'hello'],
-  ['claude', 'command', '/compact']
-] as const)('leaves a %s %s send on the unobserved write path', (agent, classification, draft) => {
-  send(agent, classification, draft)
-  expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[2]?.onWriteRejected).toBeUndefined()
-})
+it.each([['claude', 'command', '/compact']] as const)(
+  'leaves a %s %s send on the unobserved write path',
+  (agent, classification, draft) => {
+    send(agent, classification, draft)
+    expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[2]?.onWriteRejected).toBeUndefined()
+  }
+)
 
 it.each([
   ['chat', 'hello'],

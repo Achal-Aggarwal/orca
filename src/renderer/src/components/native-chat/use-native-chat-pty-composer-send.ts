@@ -13,6 +13,7 @@ import {
   submitNativeChatPrompt
 } from './native-chat-runtime-send'
 import type { NativeChatSendHandle } from './native-chat-runtime-send'
+import type { NativeChatSendOptions } from './native-chat-input-clear'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 import { resolveNativeChatLaunchDraftSend } from './native-chat-launch-draft-send'
 import { nativeChatComposerTargetIsRemote } from './native-chat-composer-target'
@@ -82,22 +83,12 @@ export function useNativeChatPtyComposerSend(args: {
       readScreen: () => args.readTerminalScreen?.()
     })
     let pendingId: string | undefined
-    const sendOptions =
-      args.agent === 'claude' && classification === 'chat'
-        ? {
-            ...launchSendOptions,
-            onWriteRejected: () => {
-              if (pendingId) {
-                args.optimisticSendOutcome?.reject(pendingId)
-              }
-            },
-            onWriteUnconfirmed: () => {
-              if (pendingId) {
-                args.optimisticSendOutcome?.holdUnconfirmed(pendingId)
-              }
-            }
-          }
-        : launchSendOptions
+    const sendOptions = chatSendOptions(
+      launchSendOptions,
+      args.optimisticSendOutcome,
+      () => pendingId,
+      classification === 'chat'
+    )
     let pendingHandle: NativeChatSendHandle | null = null
     // Slash-like drafts with images must retain their attachments.
     if (classification !== 'chat' && imagePaths.length === 0) {
@@ -144,4 +135,31 @@ export function useNativeChatPtyComposerSend(args: {
     args.setNotice(null)
     useAppStore.getState().clearNativeChatLaunchDraft(args.terminalTabId)
   }, [args])
+}
+
+function chatSendOptions(
+  launchOptions: NativeChatSendOptions | undefined,
+  outcome: NativeChatOptimisticSendOutcome | undefined,
+  pendingId: () => string | undefined,
+  isChat: boolean
+): NativeChatSendOptions | undefined {
+  if (!isChat) {
+    return launchOptions
+  }
+  const report = (callback: ((id: string) => void) | undefined): void => {
+    const id = pendingId()
+    if (id) {
+      callback?.(id)
+    }
+  }
+  return {
+    ...launchOptions,
+    onWriteRejected: () => report(outcome?.reject),
+    onWriteUnconfirmed: () => report(outcome?.holdUnconfirmed),
+    onDeliverySettled: (acknowledged) => {
+      if (acknowledged) {
+        report(outcome?.confirmWrite)
+      }
+    }
+  }
 }

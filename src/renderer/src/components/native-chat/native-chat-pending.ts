@@ -1,3 +1,4 @@
+import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { setBoundedScopeCacheEntry } from '../../../../shared/native-chat/native-chat-scope-cache'
 import {
@@ -107,4 +108,46 @@ export function nextNativeChatPendingSendId(now = Date.now()): string {
 
 export function isLaunchPromptMessageId(id: string): boolean {
   return id.startsWith('launch-pending:')
+}
+
+export function reconcilePendingAgentAcceptance(
+  entries: NativeChatPendingSend[],
+  state: AgentStatusState | undefined,
+  turnStartedAt: number | undefined
+): NativeChatPendingSend[] {
+  if (!state) {
+    return entries
+  }
+  let claimed = false
+  const working = state === 'working'
+  const next = entries.map((entry) => {
+    const evidence = entry.agentAcceptance
+    if (!evidence || evidence.accepted || entry.delivery === 'rejected') {
+      return entry
+    }
+    const newTurn =
+      working &&
+      (turnStartedAt !== undefined
+        ? turnStartedAt !== evidence.turnStartedAt
+        : !evidence.observedWorking)
+    const accepted = newTurn && !claimed && evidence.baselineState !== 'working'
+    if (accepted) {
+      claimed = true
+    }
+    if (!newTurn && working === evidence.observedWorking) {
+      return entry
+    }
+    return {
+      ...entry,
+      ...(accepted ? { delivery: undefined, writeUnconfirmedAt: undefined } : {}),
+      agentAcceptance: {
+        ...evidence,
+        observedWorking: working,
+        ...(newTurn && turnStartedAt !== undefined ? { turnStartedAt } : {}),
+        ...(accepted ? { accepted: true as const } : {})
+      }
+    }
+  })
+  // Advance every remaining cursor so remounting cannot give one turn to another send.
+  return next.some((entry, index) => entry !== entries[index]) ? next : entries
 }

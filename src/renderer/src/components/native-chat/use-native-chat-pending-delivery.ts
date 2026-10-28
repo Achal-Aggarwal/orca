@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { translate } from '@/i18n/i18n'
+import { useAppStore } from '../../store'
+import { hasAgentTurnStartHook } from '../../../../shared/agent-hook-listener/provider-turn-start'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   pendingSendsAsMessages,
@@ -11,6 +13,7 @@ import {
   appendPendingSendCache,
   nextNativeChatPendingSendId,
   readPendingSendCache,
+  reconcilePendingAgentAcceptance,
   writePendingSendCache
 } from './native-chat-pending'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
@@ -33,6 +36,11 @@ export function useNativeChatPendingDelivery(args: {
   }
 }) {
   const { paneKey, agent } = args
+  const hookState = useAppStore((store) => {
+    const row = store.agentStatusByPaneKey[paneKey]
+    return !row?.agentType || row.agentType === agent ? row?.state : undefined
+  })
+  const turnStartedAt = useAppStore((store) => store.agentStatusByPaneKey[paneKey]?.turnStartedAt)
   const { messages } = args.session
   const sessionId = args.session.sessionId ?? null
   // Without a sessionId, ready is an unread placeholder.
@@ -57,16 +65,30 @@ export function useNativeChatPendingDelivery(args: {
     [scope]
   )
   useEffect(() => {
+    save((entries) => reconcilePendingAgentAcceptance(entries, hookState, turnStartedAt))
+  }, [hookState, turnStartedAt, save])
+  useEffect(() => {
     save((entries) => prunePendingSends(releaseEmptyTranscriptClaims(entries, sessionId), messages))
   }, [messages, save, sessionId])
   const record = useCallback(
     (text: string, imagePaths?: string[]) => {
       const sentAt = Date.now()
       const boundary = messages.at(-1)
+      const candidate = useAppStore.getState().agentStatusByPaneKey[paneKey]
+      const row = !candidate?.agentType || candidate.agentType === agent ? candidate : undefined
       const entry: NativeChatPendingSend = {
         id: nextNativeChatPendingSendId(sentAt),
         text,
         sentAt,
+        ...(hasAgentTurnStartHook(agent)
+          ? {
+              agentAcceptance: {
+                baselineState: row?.state,
+                turnStartedAt: row?.turnStartedAt,
+                observedWorking: row?.state === 'working'
+              }
+            }
+          : {}),
         afterMessageId: boundary?.id ?? null,
         afterMessageTimestamp: boundary?.timestamp ?? null,
         ...(readEmptySessionId ? { afterEmptyTranscriptSessionId: readEmptySessionId } : {}),
@@ -75,7 +97,7 @@ export function useNativeChatPendingDelivery(args: {
       setPending(appendPendingSendCache(scope, entry))
       return entry.id
     },
-    [messages, readEmptySessionId, scope]
+    [messages, readEmptySessionId, scope, paneKey, agent]
   )
   const cancel = useCallback(
     (id: string) => save((entries) => entries.filter((entry) => entry.id !== id)),
@@ -92,12 +114,24 @@ export function useNativeChatPendingDelivery(args: {
     (id: string) =>
       save((entries) =>
         entries.map((entry) =>
-          entry.id === id && !entry.delivery && entry.writeUnconfirmedAt === undefined
+          entry.id === id &&
+          !entry.delivery &&
+          !entry.agentAcceptance?.accepted &&
+          entry.writeUnconfirmedAt === undefined
             ? { ...entry, writeUnconfirmedAt: Date.now() }
             : entry
         )
       ),
     [save]
+  )
+  const confirmWrite = useCallback(
+    (id: string) => {
+      const entry = readPendingSendCache(scope).find((entry) => entry.id === id)
+      if (entry?.agentAcceptance && entry.agentAcceptance.baselineState !== 'working') {
+        holdUnconfirmed(id)
+      }
+    },
+    [scope, holdUnconfirmed]
   )
   // Stop cannot cancel a settled failure; its bubble holds the only message copy.
   const clear = useCallback(
@@ -105,7 +139,7 @@ export function useNativeChatPendingDelivery(args: {
     [save]
   )
 
-  // Only lost acknowledgments trigger uncertainty; acknowledged/queued sends wait for their transcript row.
+  // Accepted turns cancel the hold; working-baseline sends can be queued without a new turn.
   const nextHoldDeadline = useMemo(() => {
     const deadlines = pending.flatMap((entry) =>
       entry.writeUnconfirmedAt !== undefined && !entry.delivery
@@ -173,5 +207,5 @@ export function useNativeChatPendingDelivery(args: {
     }
     return result
   }, [pending, cancel])
-  return { pending, record, cancel, reject, holdUnconfirmed, clear, notices }
+  return { pending, record, cancel, reject, holdUnconfirmed, confirmWrite, clear, notices }
 }
