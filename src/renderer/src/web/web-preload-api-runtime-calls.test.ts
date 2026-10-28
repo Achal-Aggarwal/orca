@@ -1,3 +1,4 @@
+import { PreparedRemoteRuntimeCallPayload } from '../../../shared/remote-runtime/remote-runtime-memory-limits'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { WebRuntimeSubscriptionCallbacks } from './web-runtime-subscription-contract'
@@ -272,6 +273,10 @@ describe('web preload runtime calls', () => {
     release()
     await Promise.all(blockers)
     await expect(queued).resolves.toMatchObject({ ok: true, result: 'done' })
-    expect(call).toHaveBeenLastCalledWith('runtime.queued-timeout', undefined, { timeoutMs: 25 })
+    expect(call).toHaveBeenLastCalledWith(
+      'runtime.queued-timeout',
+      new PreparedRemoteRuntimeCallPayload(undefined),
+      { timeoutMs: 25 }
+    )
   })
 })

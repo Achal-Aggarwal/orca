@@ -1,4 +1,5 @@
 import { resetRuntimeEnvironmentStatusOwners } from './runtime-environment-request-connections'
+import { PreparedRemoteRuntimeCallPayload } from '../../../shared/remote-runtime/remote-runtime-memory-limits'
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }))
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -101,9 +102,12 @@ describe('federated read RPC transport routing', () => {
       environmentId,
       expect.any(Object),
       'orchestration.federationPull',
-      { dispatchId: 'dispatch-1', afterSequence: 0, limit: 50 },
+      new PreparedRemoteRuntimeCallPayload(
+        { dispatchId: 'dispatch-1', afterSequence: 0, limit: 50 },
+        envelope
+      ),
       15_000,
-      envelope
+      {}
     )
   })
 
@@ -129,9 +133,12 @@ describe('federated read RPC transport routing', () => {
     expect(sendRemoteRuntimeRequestMock).toHaveBeenCalledWith(
       expect.any(Object),
       'orchestration.federationAck',
-      { dispatchId: 'dispatch-1', throughSequence: 4 },
+      new PreparedRemoteRuntimeCallPayload(
+        { dispatchId: 'dispatch-1', throughSequence: 4 },
+        envelope
+      ),
       15_000,
-      envelope,
+      {},
       undefined,
       ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
     )
@@ -173,9 +180,12 @@ describe('federated read RPC transport routing', () => {
     expect(sendRemoteRuntimeRequestMock).toHaveBeenLastCalledWith(
       expect.any(Object),
       'orchestration.federationPull',
-      { dispatchId: 'dispatch-1', afterSequence: 0, limit: 50 },
+      new PreparedRemoteRuntimeCallPayload(
+        { dispatchId: 'dispatch-1', afterSequence: 0, limit: 50 },
+        envelope
+      ),
       15_000,
-      envelope,
+      {},
       undefined,
       ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
     )

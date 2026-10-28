@@ -30,14 +30,18 @@ export const REMOTE_RUNTIME_MAX_READY_WAITERS =
 export const REMOTE_RUNTIME_MAX_OUTBOUND_BINARY_FRAME_BYTES = 8 * 1024 * 1024
 
 export function serializeRemoteRuntimePayload(value: unknown): string {
+  return serializeRemoteRuntimePayloadWithBytes(value).serialized
+}
+
+function serializeRemoteRuntimePayloadWithBytes(value: unknown): {
+  serialized: string
+  byteLength: number
+} {
   try {
-    return stringifyJsonWithinByteLimit(value, REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES).serialized
+    return stringifyJsonWithinByteLimit(value, REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES)
   } catch (error) {
     if (error instanceof JsonStringifyByteLimitError) {
-      throw new RemoteRuntimeClientError(
-        'invalid_argument',
-        `Remote runtime JSON payload exceeds ${REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES} bytes.`
-      )
+      throw remoteRuntimePayloadLimitError()
     }
     const message = error instanceof Error ? error.message : String(error)
     throw new RemoteRuntimeClientError(
@@ -45,6 +49,71 @@ export function serializeRemoteRuntimePayload(value: unknown): string {
       `Remote runtime JSON payload could not be serialized: ${message}`
     )
   }
+}
+
+function remoteRuntimePayloadLimitError(): RemoteRuntimeClientError {
+  return new RemoteRuntimeClientError(
+    'invalid_argument',
+    `Remote runtime JSON payload exceeds ${REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES} bytes.`
+  )
+}
+
+export class PreparedRemoteRuntimeCallPayload {
+  readonly retainedBytes: number
+  private readonly serialized: string
+  private readonly byteLength: number
+
+  constructor(params: unknown, envelope?: RuntimeOrchestrationEnvelope) {
+    const payload = serializeRemoteRuntimePayloadWithBytes({
+      params,
+      orchestrationCapability: envelope?.orchestrationCapability,
+      orchestrationContractVersion: envelope?.orchestrationContractVersion,
+      orchestrationRequestId: envelope?.orchestrationRequestId,
+      compatibilityInvocationId: envelope?.compatibilityInvocationId,
+      orchestrationCompatibilityEvidence: envelope?.orchestrationCompatibilityEvidence
+    })
+    this.serialized = payload.serialized
+    this.byteLength = payload.byteLength
+    this.retainedBytes = retainedRemoteRuntimeJsonStringBytes(this.serialized)
+  }
+
+  readParams(): unknown {
+    const payload: unknown = JSON.parse(this.serialized)
+    return typeof payload === 'object' && payload !== null && 'params' in payload
+      ? payload.params
+      : undefined
+  }
+
+  serializeRequest(header: Record<string, unknown>): string {
+    const preparedHeader = serializeRemoteRuntimePayloadWithBytes(header)
+    if (preparedHeader.serialized === '{}') {
+      return this.serialized
+    }
+    if (this.serialized === '{}') {
+      return preparedHeader.serialized
+    }
+    if (preparedHeader.byteLength + this.byteLength - 1 > REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES) {
+      throw remoteRuntimePayloadLimitError()
+    }
+    return `${preparedHeader.serialized.slice(0, -1)},${this.serialized.slice(1)}`
+  }
+
+  toJSON(): never {
+    throw new Error('Prepared runtime calls must use the request serializer.')
+  }
+}
+
+export function serializePreparedRemoteRuntimeRequest(message: unknown): string | undefined {
+  if (
+    typeof message !== 'object' ||
+    message === null ||
+    !('params' in message) ||
+    !(message.params instanceof PreparedRemoteRuntimeCallPayload)
+  ) {
+    return undefined
+  }
+  const header = Object.fromEntries(Object.entries(message).filter(([key]) => key !== 'params'))
+  return message.params.serializeRequest(header)
 }
 
 export function measureRemoteRuntimeSubscriptionParams(params: unknown): number {
@@ -76,6 +145,13 @@ export function serializeRemoteRuntimeRpcRequest(args: {
   params: unknown
   envelope?: RuntimeOrchestrationEnvelope
 }): string {
+  if (args.params instanceof PreparedRemoteRuntimeCallPayload) {
+    return args.params.serializeRequest({
+      id: args.requestId,
+      deviceToken: args.deviceToken,
+      method: args.method
+    })
+  }
   return serializeRemoteRuntimePayload({
     id: args.requestId,
     deviceToken: args.deviceToken,

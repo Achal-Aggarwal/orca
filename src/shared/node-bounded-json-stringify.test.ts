@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   JsonStringifyByteLimitError,
   stringifyJsonWithinByteLimit
@@ -105,5 +105,33 @@ describe('stringifyJsonWithinByteLimit', () => {
   it('rejects invalid limits and unserializable roots like native JSON', () => {
     expect(() => stringifyJsonWithinByteLimit('value', -1)).toThrow(RangeError)
     expect(() => stringifyJsonWithinByteLimit(undefined, 100)).toThrow(TypeError)
+  })
+  it('counts native-encoded strings across UTF-16 and without the Node Buffer global', () => {
+    const text = Array.from({ length: 65_536 }, (_, code) => String.fromCharCode(code)).join('')
+    const value = { text }
+    const serialized = JSON.stringify(value)
+    const expected = { serialized, byteLength: Buffer.byteLength(serialized, 'utf8') }
+    expect(stringifyJsonWithinByteLimit(value, 1024 * 1024)).toEqual(expected)
+    let browserResult: ReturnType<typeof stringifyJsonWithinByteLimit> | undefined
+    try {
+      vi.stubGlobal('Buffer', undefined)
+      browserResult = stringifyJsonWithinByteLimit(value, 1024 * 1024)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(browserResult).toEqual(expected)
+  })
+
+  it('stops before later getters when a bounded native string crosses the remaining budget', () => {
+    let visited = false
+    const value = {
+      text: '\0'.repeat(10),
+      get later() {
+        visited = true
+        return true
+      }
+    }
+    expect(() => stringifyJsonWithinByteLimit(value, 64)).toThrow(JsonStringifyByteLimitError)
+    expect(visited).toBe(false)
   })
 })

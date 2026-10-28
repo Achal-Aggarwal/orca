@@ -1,3 +1,4 @@
+import { PreparedRemoteRuntimeCallPayload } from '../../../shared/remote-runtime/remote-runtime-memory-limits'
 import { resetRuntimeEnvironmentStatusOwners } from './runtime-environment-request-connections'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -198,7 +199,7 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     expect(sendRemoteRuntimeRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({ endpoint: 'ws://127.0.0.1:6768' }),
       'repo.list',
-      undefined,
+      new PreparedRemoteRuntimeCallPayload(undefined),
       75,
       undefined,
       undefined,
@@ -282,7 +283,7 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       expect.any(String),
       expect.objectContaining({ endpoint: 'ws://127.0.0.1:6768' }),
       'terminal.send',
-      { terminal: 't1', text: 'a' },
+      new PreparedRemoteRuntimeCallPayload({ terminal: 't1', text: 'a' }),
       75
     )
     expect(sendRemoteRuntimeRequestMock).not.toHaveBeenCalled()
@@ -337,14 +338,14 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       expect.any(String),
       expect.objectContaining({ endpoint: 'ws://127.0.0.1:6768' }),
       'terminal.send',
-      { terminal: 't1', text: 'a' },
+      new PreparedRemoteRuntimeCallPayload({ terminal: 't1', text: 'a' }),
       75
     )
     expect(sendRemoteRuntimeConnectionRequestMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ endpoint: 'ws://127.0.0.1:6768' }),
       'terminal.updateViewport',
-      { terminal: 't1', cols: 120, rows: 40 },
+      new PreparedRemoteRuntimeCallPayload({ terminal: 't1', cols: 120, rows: 40 }),
       75
     )
     expect(sendRemoteRuntimeRequestMock).not.toHaveBeenCalled()
@@ -401,7 +402,7 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       expect.any(String),
       expect.any(Object),
       'worktree.ps',
-      undefined,
+      new PreparedRemoteRuntimeCallPayload(undefined),
       15_000
     )
     expect(sendRemoteRuntimeSharedControlRequestMock).toHaveBeenCalledTimes(2)
@@ -593,7 +594,7 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       expect.any(String),
       expect.any(Object),
       'repo.list',
-      undefined,
+      new PreparedRemoteRuntimeCallPayload(undefined),
       15_000
     )
   })
@@ -748,7 +749,7 @@ describe('registerRuntimeEnvironmentHandlers', () => {
         expect.any(String),
         expect.any(Object),
         'terminal.send',
-        { terminal: 'term-1', text: 'a' },
+        new PreparedRemoteRuntimeCallPayload({ terminal: 'term-1', text: 'a' }),
         15_000
       )
     )

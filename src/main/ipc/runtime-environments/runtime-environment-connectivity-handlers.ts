@@ -242,7 +242,7 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
         args.params
       )
       // Every renderer request to a paired host passes this account environment boundary.
-      const accounts = await withWslOrcadAccountEnv({
+      const accountPreparation = withWslOrcadAccountEnv({
         environmentId: environment.id,
         method: args.method,
         params: args.params,
@@ -251,6 +251,8 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
             callRuntimeEnvironment(getUserDataPath(), environment.id, 'status.get', undefined)
           )
       })
+      args.params = undefined
+      const accounts = await accountPreparation
       if (!accounts.ok) {
         return {
           id: args.method,
@@ -261,7 +263,7 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
       }
       let response: RuntimeRpcResponse<unknown>
       try {
-        response = await callRuntimeEnvironment(
+        const pending = callRuntimeEnvironment(
           getUserDataPath(),
           environment.id,
           args.method,
@@ -271,6 +273,8 @@ function registerPassiveCallHandler(getUserDataPath: () => string): void {
           undefined,
           { expectedEnvironmentRuntimeId: args.expectedEnvironmentRuntimeId }
         )
+        accounts.params = undefined
+        response = await pending
       } catch (error) {
         const failure = runtimeEnvironmentCallFailure(environment, args.method, error)
         if (failure) {

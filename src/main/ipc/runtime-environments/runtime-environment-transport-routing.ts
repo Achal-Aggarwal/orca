@@ -1,3 +1,5 @@
+import { PreparedRemoteRuntimeCallPayload } from '../../../shared/remote-runtime/remote-runtime-memory-limits'
+import { throwIfSignalAborted } from '../../../shared/abort-signal-reason'
 import { getRuntimeEnvironmentStatus } from './runtime-environment-status-probe'
 import { getPreferredPairedRuntimeConnection } from '../../../shared/runtime-environments'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../../shared/electron-remote-runtime-client-capabilities'
@@ -62,6 +64,11 @@ export async function callRuntimeEnvironment(
   // Connect failures reject; retain the dispatched endpoint for hints because queued re-pairing can change it.
   let endpoint = getPreferredPairedRuntimeConnection(environment).endpoint
   try {
+    throwIfSignalAborted(options?.signal)
+    const preparedParams = new PreparedRemoteRuntimeCallPayload(params, envelope)
+    const requestEnvelope = envelope ? {} : undefined
+    params = undefined
+    envelope = undefined
     return await enqueueRuntimeCall(
       environment.id,
       method,
@@ -82,14 +89,17 @@ export async function callRuntimeEnvironment(
         const pairedConnection = getPreferredPairedRuntimeConnection(currentEnvironment)
         endpoint = pairedConnection.endpoint
         const effectiveTimeoutMs = timeoutMs ?? DEFAULT_REMOTE_RUNTIME_TIMEOUT_MS
-        const sharedControlEnvelope = shouldUseSharedControlEnvelope(method, params, envelope)
-        if (envelope && !sharedControlEnvelope) {
+        const sharedControlEnvelope =
+          requestEnvelope && method.startsWith('orchestration.')
+            ? shouldUseSharedControlEnvelope(method, preparedParams.readParams(), requestEnvelope)
+            : undefined
+        if (requestEnvelope && !sharedControlEnvelope) {
           const response = await sendRemoteRuntimeRequestAbortable(
             pairedConnection,
             method,
-            params,
+            preparedParams,
             effectiveTimeoutMs,
-            envelope,
+            requestEnvelope,
             options?.signal,
             ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
           )
@@ -101,7 +111,7 @@ export async function callRuntimeEnvironment(
             currentEnvironment.id,
             pairedConnection,
             method,
-            params,
+            preparedParams,
             effectiveTimeoutMs,
             options?.signal
           )
@@ -113,7 +123,7 @@ export async function callRuntimeEnvironment(
             userDataPath,
             environment: currentEnvironment,
             method,
-            params,
+            params: preparedParams,
             timeoutMs: effectiveTimeoutMs,
             expectedPairingRevision: expectedEnvironmentPairingRevision,
             expectedRuntimeId: options?.expectedEnvironmentRuntimeId,
@@ -125,7 +135,7 @@ export async function callRuntimeEnvironment(
         const response = await sendRemoteRuntimeRequestAbortable(
           pairedConnection,
           method,
-          params,
+          preparedParams,
           effectiveTimeoutMs,
           sharedControlEnvelope,
           options?.signal,
@@ -134,7 +144,8 @@ export async function callRuntimeEnvironment(
         markEnvironmentUsedFromResponse(userDataPath, currentEnvironment.id, response)
         return response
       },
-      options?.signal
+      options?.signal,
+      preparedParams.retainedBytes
     )
   } catch (error) {
     if (error instanceof Error && error.name !== 'AbortError') {

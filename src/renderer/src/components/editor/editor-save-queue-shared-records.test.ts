@@ -3,6 +3,7 @@ import type { OpenFile } from '@/store/slices/editor'
 import type { EditorFileOperationProvenance } from '@/lib/editor-file-operation-owner'
 import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import { getDiskBaselineSignature } from '../../../../shared/disk-baseline-signature'
+import { RuntimeRpcCallQueueOverloadError } from '../../../../shared/runtime-rpc-call-queue'
 import { createEditorSaveQueue, type EditorSaveQueue } from './editor-save-queue'
 import { createEditorRestartSaveHandlers } from './editor-restart-save-handlers'
 import { __clearSelfWriteRegistryForTests } from './editor-self-write-registry'
@@ -205,6 +206,30 @@ describe('editor save queue: shared records', () => {
 
       expect(await restart()).toEqual({ resolved: true })
       expect(writes()).toEqual(['edits'])
+    })
+
+    it('keeps overloaded saves dirty and refuses restart until a retry saves the draft', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      store.setState({ openFiles: [tab('w1')] })
+      type('w1', 'unsaved edits')
+      disk.fs.writeFile
+        .mockRejectedValueOnce(new RuntimeRpcCallQueueOverloadError('memory'))
+        .mockRejectedValueOnce(new RuntimeRpcCallQueueOverloadError('memory'))
+
+      await expect(queue.queueSave(view('w1'), 'unsaved edits')).rejects.toMatchObject({
+        code: 'runtime_rpc_queue_overloaded'
+      })
+      expect(await restart()).toEqual({
+        resolved: false,
+        rejected: 'Remote runtime call queue is full; retry after current calls finish.'
+      })
+      expect(view('w1').isDirty).toBe(true)
+      expect(store.getState().editorDrafts.w1).toBe('unsaved edits')
+      expect(disk.files.get(PATH)).toBe('disk')
+
+      expect(await restart()).toEqual({ resolved: true })
+      expect(view('w1').isDirty).toBe(false)
+      expect(disk.files.get(PATH)).toBe('unsaved edits')
     })
   })
 

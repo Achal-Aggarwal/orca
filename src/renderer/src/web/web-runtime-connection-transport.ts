@@ -1,3 +1,4 @@
+import { serializePreparedRemoteRuntimeRequest } from '../../../shared/remote-runtime/remote-runtime-memory-limits'
 import type { PairedRuntimeConnection } from '../../../shared/paired-runtime-connection'
 import { withReconnectJitter } from '../../../shared/reconnect-jitter'
 import { WebRuntimeConnectionHeartbeat } from './web-runtime-connection-heartbeat'
@@ -256,7 +257,9 @@ export class WebRuntimeConnectionTransport {
     if (!socket || socket.readyState !== WebSocket.OPEN || !this.handshake) {
       return false
     }
-    socket.send(this.handshake.channel.sealText(JSON.stringify(this.auth.outbound(message))))
+    const outbound = this.auth.outbound(message)
+    const serialized = serializePreparedRemoteRuntimeRequest(outbound) ?? JSON.stringify(outbound)
+    socket.send(this.handshake.channel.sealText(serialized))
     return true
   }
 

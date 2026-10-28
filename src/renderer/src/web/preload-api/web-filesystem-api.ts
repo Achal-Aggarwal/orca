@@ -1,3 +1,4 @@
+import { PreparedRemoteRuntimeCallPayload } from '../../../../shared/remote-runtime/remote-runtime-memory-limits'
 import { callAbortableRuntimeEnvironment } from '../../runtime/abortable-runtime-environment-call'
 import { unwrapRuntimeRpcResult } from '../../runtime/runtime-rpc-result'
 import type { PreloadApi } from '../../../../preload/api-types'
@@ -200,10 +201,20 @@ export function captureWebFileMutationSession(): {
     timeoutMs?: number
   ): Promise<RuntimeRpcResponse<TResult>> => {
     assertCurrent()
-    const response = await runtimeCallQueuePool.enqueue(environment.id, method, () => {
-      assertCurrent()
-      return client.call(method, params, { timeoutMs, expectedConnectionEpoch: probedEpoch })
-    })
+    const preparedParams = new PreparedRemoteRuntimeCallPayload(params)
+    params = undefined
+    const response = await runtimeCallQueuePool.enqueue(
+      environment.id,
+      method,
+      () => {
+        assertCurrent()
+        return client.call(method, preparedParams, {
+          timeoutMs,
+          expectedConnectionEpoch: probedEpoch
+        })
+      },
+      preparedParams.retainedBytes
+    )
     assertCurrent()
     updateEnvironmentFromResponse(environment, response)
     return response as RuntimeRpcResponse<TResult>
@@ -213,7 +224,9 @@ export function captureWebFileMutationSession(): {
     params?: unknown,
     timeoutMs?: number
   ): Promise<TResult> => {
-    const response = await callBoundRuntimeEnvelope<TResult>(method, params, timeoutMs)
+    const pending = callBoundRuntimeEnvelope<TResult>(method, params, timeoutMs)
+    params = undefined
+    const response = await pending
     if (!response.ok) {
       throw new Error(response.error.message)
     }

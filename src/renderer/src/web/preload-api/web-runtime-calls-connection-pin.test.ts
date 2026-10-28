@@ -1,3 +1,4 @@
+import { PreparedRemoteRuntimeCallPayload } from '../../../../shared/remote-runtime/remote-runtime-memory-limits'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const session = vi.hoisted(() => {
@@ -43,7 +44,7 @@ describe('web runtime call pinned to the probed runtime', () => {
     expect(session.client.call).toHaveBeenCalledTimes(2)
     expect(session.client.call).toHaveBeenLastCalledWith(
       'files.write',
-      {},
+      new PreparedRemoteRuntimeCallPayload({}),
       { timeoutMs: 15_000, expectedConnectionEpoch: 1 }
     )
   })
@@ -73,7 +74,7 @@ describe('web runtime call pinned to the probed runtime', () => {
 
     expect(session.client.call).toHaveBeenLastCalledWith(
       'files.write',
-      {},
+      new PreparedRemoteRuntimeCallPayload({}),
       { timeoutMs: 15_000, expectedConnectionEpoch: 2 }
     )
   })
