@@ -36,7 +36,9 @@ function chatStop(event: AgentSessionTurnCompletionEvent): ChatStop | null {
 export function chatWorkerTurnStopReporter(deps: WorkerTurnStopReportDeps) {
   return (
     event: AgentSessionTurnCompletionEvent,
-    readStatus: (sessionId: string) => AgentSessionStatusSummary | undefined
+    readStatus: (
+      sessionId: string
+    ) => Pick<AgentSessionStatusSummary, 'status' | 'lastAssistantMessage'> | undefined
   ): void => {
     try {
       const stop = chatStop(event)

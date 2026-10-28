@@ -20,7 +20,7 @@ export type WorkerTurnStop = {
 
 export type WorkerTurnStopDispatch =
   | { kind: 'local'; dispatch: DispatchContextRow }
-  | { kind: 'remote'; attachment: RemoteDispatchAttachmentRow }
+  | { kind: 'remote'; attachment: Pick<RemoteDispatchAttachmentRow, 'dispatch_id' | 'task_id'> }
 
 export type WorkerTurnStopReportDeps = {
   getDb: () => OrchestrationDb | null

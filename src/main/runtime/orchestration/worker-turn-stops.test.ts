@@ -3,13 +3,13 @@ import type { AgentPaneChange } from '../../agent-hooks/agent-transition-detecto
 import type { AgentStatusIpcPayload } from '../../../shared/agent-status-ipc-payload'
 import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
 import { makePaneKey } from '../../../shared/stable-pane-id'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { chatWorkerTurnStopReporter } from './chat-worker-turn-stops'
 import { OrchestrationDb } from './db'
 import { createRootDispatch } from './db/root-dispatch-test-fixture'
 import { TerminalWorkerTurnStops } from './terminal-worker-turn-stops'
-import type { RemoteDispatchAttachmentRow } from './types'
 import { reportWorkerTurnStop } from './worker-turn-stop-report'
 
 const PANE = makePaneKey('tab-worker', '11111111-1111-4111-8111-111111111111')
@@ -80,7 +80,9 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
 describe('terminal worker turn stops', () => {
   it('tells the Run once, with the last output, when a worker turn ends without worker_done', async () => {
     const ctx = setup()
-    const current = { row: hookRow({ mainAgent: { state: 'done', outcome: 'failure' } }) }
+    const current = {
+      row: hookRow({ mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: 200 } })
+    }
     const stops = terminal(ctx, current)
     stops.observe(moved('working', 'done'))
     await settle()
@@ -140,7 +142,12 @@ describe('chat worker turn stops', () => {
   const completion = (outcome: 'success' | 'failure'): AgentSessionTurnCompletionEvent => ({
     type: 'completion',
     completion: {
-      scope: { kind: 'local' } as never,
+      scope: {
+        executionHostId: LOCAL_EXECUTION_HOST_ID,
+        wslDistro: null,
+        workspaceId: 'repo::/tmp/wt',
+        workspaceKind: 'git-worktree'
+      },
       sessionId: CHAT_SESSION,
       turnId: 'turn-1',
       outcome,
@@ -151,7 +158,7 @@ describe('chat worker turn stops', () => {
   it('reports a finished turn and leaves failures to the chat error escalation', () => {
     const ctx = setup(formatOrcaSessionAddress(CHAT_SESSION))
     const report = chatWorkerTurnStopReporter(ctx.deps)
-    const status = () => ({ status: 'idle', lastAssistantMessage: 'Read the files.' }) as never
+    const status = () => ({ status: 'idle' as const, lastAssistantMessage: 'Read the files.' })
     report(completion('failure'), status)
     expect(ctx.mail()).toHaveLength(0)
     report(completion('success'), status)
@@ -163,15 +170,12 @@ describe('chat worker turn stops', () => {
 
 describe('remote worker turn stops', () => {
   it('relays the report to the Run home under a stable id', () => {
-    const enqueueFederationRelay = vi.fn()
-    const db = { enqueueFederationRelay } as unknown as OrchestrationDb
+    const db = new OrchestrationDb(':memory:')
+    const enqueueFederationRelay = vi.spyOn(db, 'enqueueFederationRelay')
     const attachment = { dispatch_id: 'dsp_remote', task_id: 'task_remote' }
     const stop = { from: HANDLE, stopKey: 'k', reason: 'finished' as const, lastOutput: 'bye' }
     const deps = { getDb: () => db, isWaitingForMail: () => false, notify: vi.fn() }
-    const target = {
-      kind: 'remote' as const,
-      attachment: attachment as RemoteDispatchAttachmentRow
-    }
+    const target = { kind: 'remote' as const, attachment }
     reportWorkerTurnStop(db, target, stop, deps)
     reportWorkerTurnStop(db, target, stop, deps)
     const [first, second] = enqueueFederationRelay.mock.calls.map(([params]) => params)
