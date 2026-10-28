@@ -11964,10 +11964,10 @@
           "noUpdates": "No updates available",
           "updateOne": "Update server",
           "downloadProgress": "{{value0}} download progress",
-          "liveTabOne": "1 live tab",
-          "liveTabs": "{{value0}} live tabs",
-          "livePaneOne": "1 live pane",
-          "livePanes": "{{value0}} live panes"
+          "liveTabOne": "1 pestaña activa",
+          "liveTabs": "{{value0}} pestañas activas",
+          "livePaneOne": "1 panel activo",
+          "livePanes": "{{value0}} paneles activos"
         },
         "RemoteServerUpdateStatus": {
           "checking": "Checking…",
