@@ -5,7 +5,9 @@ import {
 } from '../../../../../shared/terminal-reply-query-scan'
 import type { RuntimeTerminalDataMeta } from '../../../orca-runtime'
 import type { TerminalMultiplexConnection } from './terminal-multiplex-connection'
-import type { TerminalMultiplexStream } from './terminal-stream-types'
+import type { TerminalMultiplexStream, TerminalOutputChunk } from './terminal-stream-types'
+import { encodeTerminalStreamText } from '../../../../../shared/terminal-stream-protocol'
+import { getOutputAfterSnapshotSeq } from './terminal-stream-replay'
 
 // Why: half of fish's 10s DA1 wait (fish-shell src/input/decode.rs LONG_READ_TIMEOUT); older replies risk landing at a prompt as junk.
 const YIELDED_QUERY_MAX_AGE_MS = 5_000
@@ -53,6 +55,64 @@ export function settleDeliveredYieldedQueries(
 ): void {
   if (typeof deliveredSeq === 'number' && stream.yieldedQueries.length > 0) {
     stream.yieldedQueries = stream.yieldedQueries.filter((query) => query.seq > deliveredSeq)
+  }
+}
+
+/** Snapshots preserve cells, not queries; replay covered stateless queries through the viewer's ordered parser. */
+export function replaySnapshotCoveredStatelessQueries(
+  connection: TerminalMultiplexConnection,
+  stream: TerminalMultiplexStream,
+  chunks: readonly TerminalOutputChunk[],
+  snapshotSeq: number | undefined,
+  pendingEscapeTailAnsi?: string
+): void {
+  if (typeof snapshotSeq !== 'number' || stream.yieldedQueries.length === 0) {
+    return
+  }
+  const remainingQueries = [...stream.yieldedQueries]
+  let scanState = EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+  let replayed = false
+  for (const chunk of chunks) {
+    const uncovered = getOutputAfterSnapshotSeq(chunk, snapshotSeq)
+    const seq = chunk.meta?.seq
+    if (typeof seq !== 'number' || uncovered === chunk) {
+      scanState = EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+      continue
+    }
+    const rawLength = chunk.meta?.rawLength ?? chunk.data.length
+    const startSeq = seq - rawLength
+    const coveredLength = chunk.data.length - (uncovered?.data.length ?? 0)
+    const mapsToSeq = rawLength === chunk.data.length && !chunk.meta?.transformed
+    const scan = scanTerminalReplyQuerySequences(
+      chunk.data.slice(0, coveredLength),
+      startSeq,
+      mapsToSeq ? scanState : EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+    )
+    scanState = mapsToSeq ? scan.state : EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+    for (const query of scan.queries) {
+      const querySeq = mapsToSeq ? query.endSeq : seq
+      const owedIndex = remainingQueries.findIndex(
+        (owed) => owed.seq === querySeq && owed.data === query.data
+      )
+      if (isStatelessRendererReplyCsiQuery(query.data) && owedIndex !== -1) {
+        remainingQueries.splice(owedIndex, 1)
+        const data = !replayed && pendingEscapeTailAnsi ? `\x18${query.data}` : query.data
+        replayed = true
+        // Seq-less output survives the viewer's snapshot cutoff; retain host-only settlement until actually sent.
+        connection.queueOrSendOutput(stream, {
+          bytes: encodeTerminalStreamText(data),
+          displayLength: data.length,
+          replayedQuery: { seq: querySeq, data: query.data }
+        })
+      }
+    }
+  }
+  if (replayed && pendingEscapeTailAnsi) {
+    // Cancel only the snapshot's partial parser command around queries, then restore it for the untouched live suffix.
+    connection.queueOrSendOutput(stream, {
+      bytes: encodeTerminalStreamText(pendingEscapeTailAnsi),
+      displayLength: pendingEscapeTailAnsi.length
+    })
   }
 }
 

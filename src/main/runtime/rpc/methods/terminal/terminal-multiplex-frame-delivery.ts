@@ -113,7 +113,17 @@ export function installMultiplexFrameDelivery(state: TerminalMultiplexConnection
     if (!sent) {
       return false
     }
-    settleDeliveredYieldedQueries(stream, chunk.seq)
+    const replayedQuery = chunk.replayedQuery
+    if (replayedQuery) {
+      const index = stream.yieldedQueries.findIndex(
+        (query) => query.seq === replayedQuery.seq && query.data === replayedQuery.data
+      )
+      if (index !== -1) {
+        stream.yieldedQueries.splice(index, 1)
+      }
+    } else {
+      settleDeliveredYieldedQueries(stream, chunk.seq)
+    }
     if (stream.ackOutput) {
       stream.ackInFlightBytes += chunk.bytes.byteLength
       state.ackTotalInFlightBytes += chunk.bytes.byteLength

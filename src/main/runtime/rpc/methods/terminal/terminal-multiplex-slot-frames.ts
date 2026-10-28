@@ -19,7 +19,10 @@ import {
 } from './terminal-snapshot-publication'
 import { updateViewportForClient } from './terminal-viewport-update'
 import { notePausedOutputDropped } from './terminal-multiplex-paused-output-drop'
-import { answerUndeliveredYieldedQueries } from './terminal-multiplex-yielded-queries'
+import {
+  answerUndeliveredYieldedQueries,
+  replaySnapshotCoveredStatelessQueries
+} from './terminal-multiplex-yielded-queries'
 import {
   isMultiplexStreamAttached,
   type MultiplexSnapshotRequest,
@@ -159,6 +162,7 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
     stream.buffering = true
     const requestId = request.requestId
     let sentSnapshotOutputSeq: number | undefined
+    let sentSnapshotEscapeTail: string | undefined
     try {
       const scrollbackRows = normalizeMultiplexSnapshotScrollbackRows(request.scrollbackRows)
       let serialized = await serializeBudgetedRequestedSnapshot(
@@ -201,6 +205,7 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
         }
       }
       sentSnapshotOutputSeq = serialized?.seq
+      sentSnapshotEscapeTail = serialized?.pendingEscapeTailAnsi
       sendSnapshotFrames((opcode, payload) => state.sendFrame(stream.streamId, opcode, payload), {
         kind: 'scrollback',
         cols: serialized?.cols ?? size?.cols ?? 80,
@@ -233,6 +238,15 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
         stream.buffering = false
         const pendingOutput = stream.pendingOutput.splice(0)
         if (shouldFlushPendingOutput) {
+          if (typeof requestId !== 'number') {
+            replaySnapshotCoveredStatelessQueries(
+              state,
+              stream,
+              pendingOutput,
+              sentSnapshotOutputSeq,
+              sentSnapshotEscapeTail
+            )
+          }
           for (const chunk of pendingOutput) {
             // Untagged snapshots reset live high-water, so suppress covered bytes; tagged side-consumer snapshots still owe live every chunk.
             const uncovered =

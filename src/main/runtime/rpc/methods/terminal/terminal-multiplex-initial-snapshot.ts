@@ -11,6 +11,7 @@ import {
   type TerminalMultiplexConnection
 } from './terminal-multiplex-connection'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
+import { replaySnapshotCoveredStatelessQueries } from './terminal-multiplex-yielded-queries'
 
 export type MultiplexPublishedInitialState = {
   isMobile: boolean
@@ -121,6 +122,13 @@ export async function publishMultiplexInitialSnapshot(
   stream.buffering = false
   const pendingOutput = stream.pendingOutput.splice(0)
   if (!initialOutputOverflowed) {
+    replaySnapshotCoveredStatelessQueries(
+      state,
+      stream,
+      pendingOutput,
+      snapshotOutputSeq,
+      serialized?.pendingEscapeTailAnsi
+    )
     for (const chunk of pendingOutput) {
       const uncovered = getOutputAfterSnapshotSeq(chunk, snapshotOutputSeq)
       if (uncovered) {
