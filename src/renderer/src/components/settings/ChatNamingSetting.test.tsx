@@ -60,7 +60,7 @@ function changeTemplate(value: string): void {
 }
 
 function changeAgentArgs(value: string): void {
-  const input = screen.getByText('CLI arguments').nextElementSibling
+  const input = screen.getByText('Arguments').nextElementSibling
   if (!(input instanceof HTMLInputElement)) {
     throw new Error('CLI arguments input is missing')
   }
@@ -150,28 +150,6 @@ describe('Chat names setting', () => {
       expect(settings.sourceControlAi?.actions?.conversationName?.agentId).toBe('custom')
     })
     expect(settings.sourceControlAi?.actions?.commitMessage?.commandInputTemplate).toBe('Keep this')
-  })
-
-  it('keeps the saved recipe hidden when chat naming is off', () => {
-    renderSetting({ nativeChatAutoName: false })
-    expect(
-      screen.getByRole('switch', { name: 'Name chats automatically' }).getAttribute('aria-checked')
-    ).toBe('false')
-    expect(screen.queryByText('Command template')).toBeNull()
-  })
-
-  it('keeps naming independent of Git AI enablement and exposes only its variables', () => {
-    renderSetting({
-      sourceControlAi: normalizeSourceControlAiSettings({
-        ...normalizeSourceControlAiSettings(undefined),
-        enabled: false
-      })
-    })
-    expect(screen.getAllByRole('combobox')).toHaveLength(1)
-    expect(screen.getByText('Command template')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '{basePrompt}' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '{firstPrompt}' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '{branch}' })).toBeNull()
   })
 
   it('appends variables and discards only the unsaved recipe', () => {

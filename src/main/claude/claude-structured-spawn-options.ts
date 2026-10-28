@@ -4,7 +4,7 @@ import type {
   ClaudeStructuredLaunch,
   ClaudeStructuredSdkOptions
 } from './claude-structured-launch-resolution'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudeSession } from './structured/claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
 
 const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
@@ -80,25 +80,19 @@ export function claudeStructuredSpawnOptions(input: {
 export function adoptClaudeStructuredSpawnOptions(
   session: Pick<
     ClaudeSession,
-    | 'translator'
-    | 'launchedModel'
-    | 'launchPermissionMode'
-    | 'fastModeAtStart'
-    | 'appliedInputOptions'
+    'translator' | 'launchedModel' | 'launchIntent' | 'fastModeAtStart' | 'appliedInputOptions'
   >,
   spawn: ClaudeStructuredSpawnOptions
 ): void {
   session.launchedModel = spawn.options.get('model') ?? null
-  const configuredModel = spawn.sdkOptions.extraArgs?.model
-  const modelInput = typeof configuredModel === 'string' ? configuredModel : spawn.sdkOptions.model
-  session.launchPermissionMode = Object.hasOwn(
-    spawn.sdkOptions.extraArgs ?? {},
-    'dangerously-skip-permissions'
-  )
-    ? 'bypassPermissions'
-    : spawn.sdkOptions.permissionMode
-  if (modelInput !== undefined) {
-    session.appliedInputOptions.set('model', modelInput)
+  const { extraArgs, permissionMode } = spawn.sdkOptions
+  // A configured `--model` in the agent's arguments survives when the chat saved none.
+  const configuredModel = typeof extraArgs?.model === 'string' ? extraArgs.model : undefined
+  session.launchIntent = {
+    model: spawn.sdkOptions.model ?? configuredModel,
+    permissionMode: Object.hasOwn(extraArgs ?? {}, 'dangerously-skip-permissions')
+      ? 'bypassPermissions'
+      : permissionMode
   }
   session.fastModeAtStart = spawn.fastModeAtStart
   const fastMode = spawn.options.get('fastMode')

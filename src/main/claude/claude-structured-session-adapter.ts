@@ -7,8 +7,8 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopCurrentClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { claudeHeldSends, claudeHoldsDispatch } from './claude-command-lifecycle'
-import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
-import { acquireClaudeSession } from './claude-structured-session-acquisition'
+import { releaseClaudeAcquisition } from './structured/claude-structured-acquisition-release'
+import { acquireClaudeSession } from './structured/claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
 import * as claudeOptions from './claude-structured-options'
 import { dispatchClaudeMessage } from './claude-structured-message-options'
@@ -20,7 +20,7 @@ import {
   type ClaudeSessionExit,
   type ClaudeStructuredSessionAdapterDeps,
   type ClaudeStructuredSessionEvent
-} from './claude-structured-session-state'
+} from './structured/claude-structured-session-state'
 import {
   closeAllClaudeSessions,
   closeClaudeSession,
@@ -44,14 +44,9 @@ import {
 } from './claude-structured-prompt-ownership'
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
 import { claudeForkForRewind } from './claude-rewind-fork'
-import { openClaudeStructuredSession } from './claude-structured-session-open'
+import { openClaudeStructuredSession } from './structured/claude-structured-session-open'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
-export type {
-  ClaudeAuthDiagnostic,
-  ClaudeStructuredSessionAdapterDeps,
-  ClaudeStructuredSessionEvent
-} from './claude-structured-session-state'
 
 export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   private readonly sessions = new Map<string, ClaudeSession>()
@@ -190,12 +185,14 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     this.sessions.get(sessionId)?.commands.commands
   readonly atRestCommands: ClaudeStructuredSessionAdapterDeps['atRestCommands']
   holdsDispatch = (sessionId: string): boolean => claudeHoldsDispatch(this.sessions.get(sessionId))
+  requiresModelTransitionRestart = claudeOptions.claudeModelTransitionRestart(this.sessions)
+  liveTurnId = (sessionId: string): string | null | undefined =>
+    this.sessions.get(sessionId)?.translator?.currentTurnId
   heldSends = (sessionId: string): ReadonlySet<string> | undefined => {
     const session = this.sessions.get(sessionId) ?? this.exits.get(sessionId)?.session
     const held = session && claudeHeldSends(session)
     return held ?? (this.settledExitErrors.has(sessionId) ? new Set() : undefined)
   }
-  requiresModelTransitionRestart = claudeOptions.claudeModelTransitionRestart(this.sessions)
   holdsLiveProviderProcess = (sessionId: string, acquisitionGeneration: string): boolean => {
     const session = this.sessions.get(sessionId)
     return (

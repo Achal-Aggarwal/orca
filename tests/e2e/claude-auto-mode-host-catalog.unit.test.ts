@@ -26,8 +26,9 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
   getStructuredAgentSessionLaunchSelection: () => null
 }))
 
+import { agentSessionConversationView } from '../../src/shared/agent-session-conversation-view'
 import { agentSessionRecordFixture } from '../../src/main/native-chat/agent-session-record-test-fixture'
-import type { SessionOptionDescriptor } from '../../src/shared/native-chat-session-options'
+import type { SessionOptionDescriptor } from '../../src/shared/native-chat/input/native-chat-session-options'
 import { createClaudeModelCatalogProbe } from '../../src/main/claude/claude-model-catalog-probe'
 import { createAgentModelCatalogFilePersistence } from '../../src/main/native-chat/agent-model-catalog/agent-model-catalog-persistence'
 import { createAgentModelCatalogService } from '../../src/main/native-chat/agent-model-catalog/agent-model-catalog-service'
@@ -112,6 +113,7 @@ async function hostCatalog(listingLands: Promise<void>) {
   const modelCatalog = createAgentModelCatalogService({
     store,
     getRecord: () => record,
+    getConversation: () => agentSessionConversationView(record),
     drivesRecord: () => true,
     resolveAccountHome: async () => record.accountHome,
     recordWorkspacePath: async () => join(dir, 'project'),
@@ -148,7 +150,10 @@ async function hostCatalog(listingLands: Promise<void>) {
     deps: {
       adapter: {},
       agents: claudeAndCodexDeclared(),
-      store: { getRecord: () => record },
+      store: {
+        getRecord: () => record,
+        getConversation: () => agentSessionConversationView(record)
+      },
       modelCatalog
     },
     serialize: (_sessionId: string, task: () => Promise<unknown>) => task(),

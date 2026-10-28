@@ -167,7 +167,7 @@ describe('durable execution-host launch settings', () => {
     const calls: CodexAppServerInvocation[] = []
     const obsolete = deferred<void>()
     const catalog = createCodexAtRestSkillCatalog({
-      resolveWorkspacePath: async () => '/fixture/work',
+      resolveWorkspacePath: async () => process.cwd(),
       resolveCommand: () => '/fixture/codex',
       resolveLaunchArgs: () => structuredAgentConfiguredArgs('codex', store.getSettings()),
       resolveEnvironment: async () => ({ PATH: '/fixture/bin' }),
@@ -518,3 +518,7 @@ describe('durable execution-host launch settings', () => {
     expect(readState().settings.agentDefaultArgs.claude).toBe('--newer-write')
   })
 })
+
+vi.mock('../claude/agent-view-service', () => ({
+  getClaudeAgentViewService: () => ({ reconcile: async () => {} })
+}))

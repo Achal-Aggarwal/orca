@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ClaudeProfileRouter } from '../claude-accounts/claude-profile-router'
 import { installClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
+import { submission as journalSubmission } from '../native-chat/agent-session-wire/structured-agent-session-restart-resume-test-harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../shared/constants'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
@@ -10,6 +11,11 @@ import { toSshExecutionHostId } from '../../shared/execution-host'
 import { normalizeSourceControlAiSettings } from '../../shared/source-control-ai-settings'
 import { structuredChatNamingDeps } from './structured-chat-naming-runtime'
 import { STRUCTURED_AGENT_RUNTIME_CATALOG } from './structured-agent-runtime-metadata'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission,
+  AgentJournalSnapshot
+} from '../../shared/agent-session-journal-types'
 import type * as TextGeneration from '../text-generation/commit-message-text-generation'
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +26,8 @@ const mocks = vi.hoisted(() => ({
   native: vi.fn(async () => 'Native title'),
   generate: vi.fn(async () => ({ success: true as const, name: 'Login repair' })),
   target: vi.fn(async (cwd: string) => ({ kind: 'local' as const, cwd })),
-  publishConversationName: vi.fn<(sessionId: string) => void>()
+  publishConversationName: vi.fn<(sessionId: string) => void>(),
+  journalSnapshot: vi.fn<(sessionId: string) => Promise<AgentJournalSnapshot>>()
 }))
 
 vi.mock('../text-generation/commit-message-text-generation', async (importOriginal) => {
@@ -33,7 +40,8 @@ vi.mock('../agent-hooks/first-work-generation-target', () => ({
 vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
   getStructuredAgentSessionHost: () => ({
     deps: { adapter: { generateText: mocks.native } },
-    publishConversationName: mocks.publishConversationName
+    publishConversationName: mocks.publishConversationName,
+    journalSnapshot: mocks.journalSnapshot
   })
 }))
 
@@ -76,6 +84,73 @@ function rig() {
 }
 
 describe('structured chat naming runtime', () => {
+  it.each([10, 100])(
+    'scopes naming prompts with linear visits over %i retained items',
+    async (count) => {
+      let visits = 0
+      const message: AgentJournalRenderItem = {
+        itemId: 'fresh',
+        sequence: count + 2,
+        revision: 1,
+        observedAt: 200,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'New task' }] }
+      }
+      const items: AgentJournalRenderItem[] = Array.from({ length: count }, (_, index) => ({
+        ...message,
+        itemId: `old-${index}`,
+        get sequence() {
+          visits++
+          return index + 1
+        },
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Old task' }] }
+      }))
+      items.push(
+        {
+          ...message,
+          itemId: 'clear',
+          sequence: count + 1,
+          body: {
+            kind: 'status',
+            text: 'Context cleared',
+            contextClear: { operationId: 'clear', afterFence: 1, clearedAt: 200 }
+          }
+        },
+        message
+      )
+      let submissionVisits = 0
+      const submission: AgentJournalSubmission = {
+        ...journalSubmission('fresh', 'accepted', 'fresh'),
+        acceptedSequence: count + 2,
+        submittedAt: 200
+      }
+      const oldSubmissions: AgentJournalSubmission[] = Array.from(
+        { length: count },
+        (_, index) => ({
+          ...submission,
+          clientMessageId: `old-${index}`,
+          providerItemId: `old-${index}`,
+          get acceptedSequence() {
+            submissionVisits++
+            return index + 1
+          }
+        })
+      )
+      mocks.journalSnapshot.mockResolvedValue({
+        sessionId: 'chat',
+        cursor: { epoch: 'epoch', sequence: count + 2 },
+        items,
+        submissions: [...oldSubmissions, submission]
+      })
+      const { deps } = rig()
+      expect(await deps.readFirstPrompt('chat', 100)).toBe('New task')
+      expect(visits).toBe(2 * count)
+      expect(submissionVisits).toBe(count)
+      visits = 0
+      expect(await deps.readJournalFirstPrompt('chat')).toBe('New task')
+      expect(visits).toBe(2 * count)
+    }
+  )
+
   it('defers the settings store lookup until naming needs it', () => {
     const state = rig()
     const unavailableStore = vi.fn(() => {
@@ -92,7 +167,8 @@ describe('structured chat naming runtime', () => {
     expect(mocks.generate).toHaveBeenLastCalledWith(
       { firstPrompt: 'Repair login' },
       expect.objectContaining({ agentId: 'claude' }),
-      expect.objectContaining({ kind: 'local', cwd: '/workspace/folder' })
+      expect.objectContaining({ kind: 'local', cwd: '/workspace/folder' }),
+      undefined
     )
     state.settings.sourceControlAi = {
       ...normalizeSourceControlAiSettings(state.settings.sourceControlAi),
@@ -112,7 +188,8 @@ describe('structured chat naming runtime', () => {
         commandInputTemplate: 'Short name for {firstPrompt}',
         agentArgs: '--model haiku'
       }),
-      expect.anything()
+      expect.anything(),
+      undefined
     )
   })
 
@@ -142,10 +219,11 @@ describe('structured chat naming runtime', () => {
                         : 'PI_CODING_AGENT_DIR',
               path: '/pinned-account'
             }
-      await state.deps.generate(record, 'Repair login')
+      const shouldExecute = () => true
+      await state.deps.generate(record, 'Repair login', shouldExecute)
       if (provider === 'grok' || provider === 'antigravity') {
         expect(mocks.native).toHaveBeenCalledWith(
-          expect.objectContaining({ accountHome: record.accountHome })
+          expect.objectContaining({ accountHome: record.accountHome, shouldExecute })
         )
         expect(mocks.generate).not.toHaveBeenCalled()
       } else {
@@ -158,7 +236,8 @@ describe('structured chat naming runtime', () => {
                 ? { [record.accountHome.variable]: record.accountHome.path }
                 : {}
             )
-          })
+          }),
+          shouldExecute
         )
       }
       expect(state.settings.sourceControlAi?.actions?.conversationName?.agentId).toBeUndefined()
@@ -190,7 +269,8 @@ describe('structured chat naming runtime', () => {
     expect(mocks.generate).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: home }) })
+      expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: home }) }),
+      undefined
     )
     record.provider = 'opencode'
     record.accountHome = {
@@ -212,7 +292,8 @@ describe('structured chat naming runtime', () => {
           XDG_DATA_HOME: '/profiles/recorded/data',
           OPENCODE_AUTH_CONTENT: undefined
         })
-      })
+      }),
+      undefined
     )
   })
 
@@ -249,7 +330,8 @@ describe('structured chat naming runtime', () => {
           env: expect.objectContaining({
             CLAUDE_CONFIG_DIR: configuredDir ?? router.systemDefaultHome()
           })
-        })
+        }),
+        undefined
       )
     }
   )
@@ -279,7 +361,8 @@ describe('structured chat naming runtime', () => {
           agentId: explicitNull ? 'claude' : 'codex',
           agentArgs: '--model custom'
         }),
-        expect.anything()
+        expect.anything(),
+        undefined
       )
       expect(mocks.native).not.toHaveBeenCalled()
     }

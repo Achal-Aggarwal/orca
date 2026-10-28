@@ -2,6 +2,7 @@ import type {
   AcpLaunchInvocationDeps,
   AcpStructuredLaunch
 } from './acp-structured-launch-resolution'
+import type { StructuredAgentSessionAtRestCommands } from '../native-chat/agent-session-wire/structured-agent-session-at-rest-commands'
 import type { StructuredAgentSessionChildWorkProducer } from '../native-chat/agent-session-wire/structured-agent-session-subagent-rows'
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -22,6 +23,7 @@ export const ACP_OPTION_WRITE_TIMEOUT_MS = 30_000
 export type AcpStructuredSessionAdapterDeps = {
   spec: AcpLaunchSpec
   textTaskLaunch?: AcpLaunchInvocationDeps
+  atRestCommands?: StructuredAgentSessionAtRestCommands
   /** Sealed with the reservation's spawn token. */
   resolveLaunch: (input: {
     identity: AgentSessionJournalIdentity

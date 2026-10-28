@@ -26,6 +26,21 @@ const projectDir = resolve(import.meta.dirname, '../..')
 const prWorkflow = parse(readFileSync(join(projectDir, '.github/workflows/pr.yml'), 'utf8'))
 const e2eWorkflow = parse(readFileSync(join(projectDir, '.github/workflows/e2e.yml'), 'utf8'))
 
+describe('browser native focus routing', () => {
+  it('selects the general E2E lane for focus adapter and image fixture changes', () => {
+    const spec = 'tests/e2e/browser-image-link-focus.spec.ts'
+    for (const file of [
+      'src/renderer/src/components/browser-pane/assemble-chrome/browser-page-guest-focus.ts',
+      'tests/e2e/helpers/browser-link-server.ts'
+    ]) {
+      const specs = selectPrE2eSpecs([file])
+      expect(specs, file).toContain(spec)
+      expect(selectGeneralE2eSpecs(specs), file).toContain(spec)
+      expect(classifyE2eJobs(JSON.stringify(specs)).e2e_run_changed, file).toBe(true)
+    }
+  })
+})
+
 describe('pr-e2e-native-only-routing', () => {
   const workflow = prWorkflow
   const filterStep = workflow.jobs.code_paths.steps.find((step) => step.id === 'e2e_filter')
@@ -482,6 +497,22 @@ describe('orcad-e2e-routing', () => {
 function selectsManagedSshLane(file) {
   return selectPrE2eSpecs([file]).some((spec) => spec.startsWith(MANAGED_SSH_E2E_SPEC_PREFIX))
 }
+
+describe('wsl-host fake connector routing', () => {
+  it('runs both WSL host specs for a fake connector change', () => {
+    const specs = selectPrE2eSpecs(['src/main/wsl/wsl-host-e2e-fake-connector.ts'])
+    for (const spec of [
+      'tests/e2e/wsl-host-chat.spec.ts',
+      'tests/e2e/wsl-host-fake-transport.spec.ts'
+    ]) {
+      expect(specs, spec).toContain(spec)
+      expect(existsSync(join(projectDir, spec)), spec).toBe(true)
+    }
+    expect(selectPrE2eSpecs(['src/main/wsl/wsl-host-e2e-fake-connector.test.ts'])).not.toContain(
+      'tests/e2e/wsl-host-chat.spec.ts'
+    )
+  })
+})
 
 describe('managed-SSH remote sources routing', () => {
   it('gives every managed-SSH spec a source route', () => {

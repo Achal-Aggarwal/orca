@@ -6,7 +6,7 @@ import {
   type AgentChatPermissionMode
 } from './agent-chat-permission-mode'
 import type { StructuredAgentSessionOptionRecord } from './structured-agent-session-option-state'
-import type { SessionOptionDescriptor } from './native-chat-session-options'
+import type { SessionOptionDescriptor } from './native-chat/input/native-chat-session-options'
 
 /** English names and descriptions for surfaces without a translation catalog. */
 const MODE_COPY: Readonly<Record<AgentChatPermissionMode, { label: string; description: string }>> =
@@ -26,14 +26,14 @@ const MODE_COPY: Readonly<Record<AgentChatPermissionMode, { label: string; descr
     }
   }
 
-const CODEX_DESCRIPTIONS: Partial<Record<AgentChatPermissionMode, string>> = {
-  ask: 'Edits files and runs commands in this workspace; asks before anything else',
-  'full-access': 'Never asks; can edit any file and use the network'
-}
-
 // Claude's copy names the person's own settings; other agents decide what they already allow.
 const OTHER_AGENT_DESCRIPTIONS: Partial<Record<AgentChatPermissionMode, string>> = {
   ask: "Asks before edits or commands it isn't already allowed to make"
+}
+
+const CODEX_DESCRIPTIONS: Partial<Record<AgentChatPermissionMode, string>> = {
+  ...OTHER_AGENT_DESCRIPTIONS,
+  'full-access': 'Never asks; can edit any file and use the network'
 }
 
 const ANTIGRAVITY_DESCRIPTIONS: Partial<Record<AgentChatPermissionMode, string>> = {

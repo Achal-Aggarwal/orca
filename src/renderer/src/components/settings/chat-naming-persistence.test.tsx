@@ -64,7 +64,7 @@ it('keeps the Chat draft and guard after actual persistence fails, then saves it
   }
   fireEvent.click(within(naming).getByRole('button', { name: 'Advanced' }))
   const template = screen.getByText('Command template').nextElementSibling
-  const args = screen.getByText('CLI arguments').nextElementSibling
+  const args = screen.getByText('Arguments').nextElementSibling
   if (!(template instanceof HTMLTextAreaElement) || !(args instanceof HTMLInputElement)) {
     throw new Error('Chat recipe controls are missing')
   }
