@@ -7,11 +7,15 @@ export function getSystemLanguageDetection(
   browserPreferences?: readonly string[]
 ): UiLanguageDetection | null {
   if (snapshot === undefined) {
-    if (!app.isReady()) {
-      // Pre-ready startup-failure dialogs still need a language; cache only the post-ready read.
-      return readNativeLanguageDetection()
+    try {
+      if (!app.isReady()) {
+        // Pre-ready startup-failure dialogs still need a language; cache only the post-ready read.
+        return readNativeLanguageDetection()
+      }
+      snapshot = readNativeLanguageDetection()
+    } catch {
+      snapshot = null
     }
-    snapshot = readNativeLanguageDetection()
   }
   if (snapshot === null && browserPreferences) {
     snapshot = detectUiLanguage(browserPreferences, 'browser-fallback')
