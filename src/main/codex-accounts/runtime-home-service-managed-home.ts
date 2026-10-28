@@ -259,13 +259,26 @@ export abstract class CodexRuntimeHomeManagedHome extends CodexRuntimeHomeSync {
     const systemCodexHomePath =
       resolveWslCodexSessionSourceHome(this.store.getSettings(), distro) ??
       this.getWslSystemCodexHomePath({ runtime: 'wsl', wslDistro: distro })
-    if (systemCodexHomePath && systemCodexHomePath !== runtimeHomePath) {
-      // Create history links inside the distro so Codex can see them in /resume.
-      void startWslCodexSessionBridgeInBackground({
-        distro,
-        systemCodexHomePath,
-        managedCodexHomePath: runtimeHomePath
-      })
-    }
+    const targetLinuxPath = parseWslUncPath(runtimeHomePath)?.linuxPath ?? runtimeHomePath
+    // Sibling account homes are sources too, or a switch hides the previous account's sessions (#18486).
+    const sourceHomes = [
+      systemCodexHomePath,
+      ...this.store
+        .getSettings()
+        .codexManagedAccounts.map((account) => this.getWslLaunchCodexHomePath(account, distro))
+    ].filter(
+      (home): home is string =>
+        !!home && (parseWslUncPath(home)?.linuxPath ?? home) !== targetLinuxPath
+    )
+    // Create history links inside the distro so Codex can see them in /resume; one wsl.exe at a time.
+    void (async () => {
+      for (const sourceHome of new Set(sourceHomes)) {
+        await startWslCodexSessionBridgeInBackground({
+          distro,
+          systemCodexHomePath: sourceHome,
+          managedCodexHomePath: runtimeHomePath
+        })
+      }
+    })()
   }
 }
