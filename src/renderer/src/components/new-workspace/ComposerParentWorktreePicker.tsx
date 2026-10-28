@@ -29,7 +29,6 @@ import {
   getLineageChildrenByParentId,
   getLineageChildWorktree
 } from '@/components/right-sidebar/folder-workspace-attached-worktrees'
-import { COMBOBOX_POPOVER_SURFACE } from './type-ahead-combobox-styles'
 import {
   sharesWorktreeLineageBoundary,
   type WorktreeLineageBoundary
@@ -132,11 +131,9 @@ function ComposerParentWorktreePickerImpl({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className={cn(
-            'flex w-[var(--radix-popover-trigger-width)] min-w-[17rem] flex-col p-0',
-            COMBOBOX_POPOVER_SURFACE
-          )}
-          // Focus search instead of Radix’s content wrapper.
+          surface="opaque"
+          className="flex w-[var(--radix-popover-trigger-width)] min-w-[17rem] flex-col"
+          // Why: Radix would focus the content wrapper; the search box is the real target.
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             const content = event.currentTarget

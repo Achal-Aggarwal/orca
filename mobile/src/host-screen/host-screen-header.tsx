@@ -5,6 +5,7 @@ import {
 } from '../worktree/workspace-options-copy'
 import { WorkspaceOptionsCountBadge } from './workspace-options-count-badge'
 import {
+  Box,
   ChevronLeft,
   List,
   PanelLeftClose,
@@ -23,6 +24,10 @@ import { HostRailActions, hostListActions } from './host-rail-actions'
 import { useSideRailClaim, useSideRailEdge } from '../layout/side-rail'
 import type { HostScreenController } from './use-host-screen-controller'
 
+function machinesPath(hostId: string): string {
+  return `/h/${encodeURIComponent(hostId)}/machines`
+}
+
 function isErrorVerdict(v: ConnectionVerdict): boolean {
   return isConnectionOutage(v) || v.kind === 'auth-failed'
 }
@@ -39,6 +44,7 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
     hostId,
     hostDisplay,
     lastConnectedAt,
+    machinesAvailable,
     onHideSidebar,
     state
   } = controller
@@ -92,6 +98,24 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
             hitSlop={8}
           >
             <Text style={styles.reconnectButtonText}>Reconnect</Text>
+          </Pressable>
+        ) : null}
+        {!embedded && machinesAvailable ? (
+          <Pressable
+            style={[
+              styles.floatingWorkspaceHeaderButton,
+              connState !== 'connected' && styles.toolbarIconDisabled
+            ]}
+            onPress={() => actions.navigateFromHostList(machinesPath(hostId))}
+            disabled={connState !== 'connected'}
+            accessibilityRole="button"
+            accessibilityLabel="Machines"
+            hitSlop={8}
+          >
+            <Box
+              size={18}
+              color={connState === 'connected' ? colors.textPrimary : colors.textMuted}
+            />
           </Pressable>
         ) : null}
         {!embedded && floatingWorkspaceEnabled && !railActions ? (

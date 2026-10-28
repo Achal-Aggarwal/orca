@@ -1,4 +1,6 @@
 import { createPortal } from 'react-dom'
+import { useTerminalMachineBanner } from '@/components/machines/use-worktree-machine'
+import { StoppedMachineBanner } from '@/components/machines/StoppedMachineBanner'
 import { TerminalPaneFileDropOwner } from './TerminalPaneFileDropOwner'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import TerminalSearch from '@/components/TerminalSearch'
@@ -123,6 +125,7 @@ export function TerminalPaneSurface({
     worktreeId
   } = controller
   // Why: an SSH, runtime, or not-yet-known host must not be described with this client's OS/shell.
+  const machineBanner = useTerminalMachineBanner(worktreeId, visibleTerminalError)
   const paneOnClient = useAppStore(
     (state) => getKnownExecutionHostIdForWorktree(state, worktreeId) === LOCAL_EXECUTION_HOST_ID
   )
@@ -195,8 +198,12 @@ export function TerminalPaneSurface({
         pane={activePane}
         tabId={tabId}
       />
+      {/* Why: on a stopped or deleted machine the transport error is expected; say why instead. */}
+      {machineBanner && isActive && activePane
+        ? createPortal(<StoppedMachineBanner {...machineBanner} />, activePane.container)
+        : null}
       {/* Let SSH recovery own its strip instead of covering it with the raw connection-error toast. */}
-      {visibleTerminalError && isActive && !showSshReconnectOverlay && activePane
+      {visibleTerminalError && !machineBanner && isActive && !showSshReconnectOverlay && activePane
         ? createPortal(
             <TerminalErrorToast
               error={visibleTerminalError}

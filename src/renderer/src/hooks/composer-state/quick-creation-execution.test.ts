@@ -56,6 +56,7 @@ it('carries the accepted route across preparation and retains CLI startup/prompt
       ephemeralVmRecipes: [],
       ephemeralVmsEnabled: false,
       isSubmissionCancelled: () => false,
+      machineSelection: null,
       linkedGitLabIssue: null,
       linkedGitLabMR: null,
       normalizedSparseDirectories: [],

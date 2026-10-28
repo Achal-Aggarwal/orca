@@ -19,9 +19,21 @@ import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import type { TaskSourceContext, WorkspaceRunContext } from '../../../shared/task-source-context'
 import type { AgentLaunchRoute } from '@/lib/agent-launch-routing'
 import { translate } from '@/i18n/i18n'
+import type { MachineProviderKey } from '../../../shared/machine-inventory'
+import type { MachineLifetime } from '../../../shared/machine-provider-protocol'
 
-/** Creation phases include renderer preflight, base fetch and worktree add; remote/runtime can skip git phases, while VM recipes provision before runtime creation. */
-export type WorktreeCreationPhase = 'preparing' | 'provisioning-vm' | 'fetching' | 'creating'
+/** Two-phase status reported by the main process while a worktree is created.
+ *  `preparing` covers renderer-side preflight before `createWorktree` starts;
+ *  `fetching` covers the base-ref git fetch; `creating` covers `git worktree
+ *  add`. Remote/runtime creates may skip git phases; VM recipes add a
+ *  provider-provisioning phase before the runtime worktree exists. */
+export type WorktreeCreationPhase =
+  | 'preparing'
+  | 'provisioning-vm'
+  | 'starting-machine'
+  | 'setting-up-project'
+  | 'fetching'
+  | 'creating'
 
 export type WorktreeCreationProgressMode = 'stepped' | 'indeterminate'
 
@@ -53,7 +65,30 @@ export type WorktreeCreationRequest = {
     projectId: string
     checkoutMode?: 'orca-worktree' | 'provisioned-root'
   }
-  // Capture local/runtime progress routing at submit so focus changes cannot alter Retry behavior.
+  /** Machine to wake (when stopped), connect and set the project up on before the worktree is
+   *  created. Serializable so Retry reruns the same steps. */
+  machine?: {
+    sourceRepoId: string
+    projectId: string
+    providerKey: MachineProviderKey
+    /** Set once the machine exists; a create fills it in before setup starts. */
+    machineId?: string
+    /** Shown while the machine starts, before any host row knows it. */
+    machineName: string
+    /** A paired server's machine: woken through that server, then used at the selected location. */
+    environmentId?: string
+    create?: {
+      operationId: string
+      name: string
+      lifetime: MachineLifetime
+      ttlSeconds?: number
+      image?: string
+      /** Set once the create has been sent, so a Retry looks for its machine before re-sending. */
+      attempted?: boolean
+    }
+  }
+  /** Captured from the repo/run owner at submit time so Retry keeps the same
+   *  local-vs-runtime progress behavior even if the focused runtime changes. */
   worktreeCreateProgressMode?: WorktreeCreationProgressMode
   name: string
   /** True only when `name` came from the creature-name generator; gates host-side retirement. */
@@ -130,7 +165,17 @@ export type PendingWorktreeCreation = {
   loaderVisible: boolean
   error?: string
   provisioningLog?: string
-  // Local git checkout meter; absent when git emits none or creation runs over SSH/runtime.
+  /** Machine-backed creates only: what the first stage is doing, and how long it took once done. */
+  machineProgress?: {
+    activity: 'creating' | 'waking' | 'connecting'
+    readyAfterMs?: number
+    /** Set by Cancel; the pane then offers a check for a leftover machine. */
+    canceled?: boolean
+    /** The leftover machine a canceled create made was deleted from its pane. */
+    leftoverDeleted?: boolean
+  }
+  /** Git's checkout meter during a local `git worktree add`; absent when git
+   *  printed none (fast or sparse checkouts, SSH and runtime creates). */
   checkoutProgress?: WorktreeCheckoutProgress
   request: WorktreeCreationRequest
 }
@@ -201,6 +246,12 @@ export function getCreationProgressLabel(
   }
   if (entry.phase === 'provisioning-vm') {
     return translate('auto.lib.pendingWorktreeCreation.provisioningVm', 'Provisioning VM…')
+  }
+  if (entry.phase === 'starting-machine') {
+    return translate('auto.lib.pendingWorktreeCreation.startingMachine', 'Starting machine…')
+  }
+  if (entry.phase === 'setting-up-project') {
+    return translate('auto.lib.pendingWorktreeCreation.settingUpRepo', 'Setting up repo…')
   }
   if (entry.indeterminate) {
     return translate(

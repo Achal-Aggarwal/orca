@@ -50,5 +50,8 @@ export function getInitialWorktreeCreationPhase(
   if (request.hookPreparation) {
     return 'preparing'
   }
+  if (request.machine) {
+    return 'starting-machine'
+  }
   return request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId ? 'provisioning-vm' : 'fetching'
 }

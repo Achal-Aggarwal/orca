@@ -1,4 +1,5 @@
 import type { NodeDistMirrorAttempt } from '../../shared/node-dist-mirror'
+import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
 import type { SshManagedServerStatus } from '../../shared/ssh-types'
 import type { HostServerOnConnectResult } from './ssh-host-server-on-connect'
 
@@ -47,13 +48,24 @@ const NODE_DOWNLOAD_BLOCKED_MESSAGES: Record<NodeDistMirrorAttempt, string> = {
     'Neither this computer nor this host could download Node.js, which Orca’s server needs. Check the network or proxy on both machines, then connect again.'
 }
 
-/** Reuse untranslated status wording for logs/clients without the catalog. */
+// Dev builds ship no server template; say how to get one instead of blaming the host.
+const DEV_TEMPLATE_MISSING_MESSAGE =
+  'This development build has no managed server template, which SSH hosts need. Run `pnpm build:orcad-template`, or set ORCA_ORCAD_TEMPLATE_PATH to an orcad-template folder (a packaged Orca app has one in its Resources).'
+
+function isUnpackagedBuild(): boolean {
+  return hasAppEnvironment() && !getAppEnvironment().isPackaged()
+}
+
+/** Untranslated twin of the renderer's status line, for logs and callers without the catalog. */
 export function unservedHostServerMessage(decision: UnservedDecision): string {
   if (decision.held && (decision.reason === 'failed' || decision.reason === 'deferred')) {
     return HELD_MOVE_MESSAGE
   }
   switch (decision.reason) {
     case 'orcad_unavailable':
+      if (decision.detail === 'artifacts_unavailable' && isUnpackagedBuild()) {
+        return DEV_TEMPLATE_MISSING_MESSAGE
+      }
       return (
         (decision.detail && UNAVAILABLE_MESSAGES[decision.detail]) ||
         'This SSH host isn’t supported by this version of Orca. To keep using it, install an older version of Orca.'

@@ -111,6 +111,12 @@
         "moreHosts_one": "{{count}} more host. Search by name to find it.",
         "moreHosts_other": "{{count}} more hosts. Search by name to find one."
       },
+      "machines": {
+        "MachineDeleteDialog": {
+          "unpushed": "{{count}} unpushed commits on these worktrees will be lost.",
+          "unpushedOne": "1 unpushed commit on these worktrees will be lost."
+        }
+      },
       "right": {
         "sidebar": {
           "AiVaultScanProgressStrip": {
@@ -568,6 +574,20 @@
         "permissionDenied": "Permission denied.",
         "symlink": "Symbolic links cannot be attached.",
         "unsupported": "Unsupported file type."
+      },
+      "machines": {
+        "machineDeleteWork": {
+          "uncommitted_one": "1 uncommitted",
+          "uncommitted_other": "{{count}} uncommitted",
+          "unpushed_one": "1 unpushed",
+          "unpushed_other": "{{count}} unpushed"
+        },
+        "machineExpiryWarning": {
+          "uncommitted": "{{count}} uncommitted changes",
+          "uncommittedOne": "1 uncommitted change",
+          "unpushed": "{{count}} unpushed commits",
+          "unpushedOne": "1 unpushed commit"
+        }
       }
     },
     "runtime": {
@@ -995,6 +1015,16 @@
     "card": {
       "subagents_one": "{{count}} subagent",
       "subagents_other": "{{count}} subagents"
+    }
+  },
+  "machines": {
+    "workAtRisk": {
+      "neverPushed_one": "{{count}} branch never pushed",
+      "neverPushed_other": "{{count}} branches never pushed",
+      "uncommitted_one": "{{count}} uncommitted change",
+      "uncommitted_other": "{{count}} uncommitted changes",
+      "unpushed_one": "{{count}} unpushed commit",
+      "unpushed_other": "{{count}} unpushed commits"
     }
   },
   "localBuild": {

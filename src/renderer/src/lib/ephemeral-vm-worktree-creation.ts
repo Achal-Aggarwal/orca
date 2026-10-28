@@ -10,11 +10,16 @@ import {
   appendProvisioningLog,
   appendProvisioningWarnings
 } from '@/lib/pending-creation-provisioning-log'
+import { prepareMachineRequest } from '@/lib/machines/machine-worktree-creation'
+import { getPortableBaseSelection } from '@/lib/portable-base-selection'
 
 export async function prepareRequestForCreate(
   creationId: string,
   request: WorktreeCreationRequest
 ): Promise<WorktreeCreationRequest | null> {
+  if (request.machine) {
+    return prepareMachineRequest(creationId, request, request.machine)
+  }
   if (request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId) {
     return prepareEphemeralVmRecipeRequest(creationId, request, request.ephemeralVmRecipe)
   }
@@ -91,7 +96,7 @@ async function prepareEphemeralVmRecipeRequest(
     repoId: preparedTarget.setup.repo.id,
     ...(preparedTarget.checkoutMode === 'provisioned-root'
       ? { baseBranch: request.baseBranch, compareBaseRef: request.compareBaseRef }
-      : getEphemeralVmPortableBaseSelection(request)),
+      : getPortableBaseSelection(request)),
     ephemeralVmRuntimeId: preparedTarget.runtimeId,
     ephemeralVmCheckoutMode: preparedTarget.checkoutMode,
     ...(preparedTarget.expectedRefHead
@@ -118,28 +123,6 @@ async function prepareEphemeralVmRecipeRequest(
     request: preparedRequest
   })
   return preparedRequest
-}
-
-function getEphemeralVmPortableBaseSelection(
-  request: WorktreeCreationRequest
-): Pick<WorktreeCreationRequest, 'baseBranch' | 'compareBaseRef'> {
-  const keepBaseBranch =
-    request.linkedPR !== undefined ||
-    request.linkedGitLabMR !== undefined ||
-    request.linkedBitbucketPR !== undefined ||
-    request.linkedAzureDevOpsPR !== undefined ||
-    request.linkedGiteaPR !== undefined ||
-    Boolean(request.compareBaseRef) ||
-    Boolean(request.pushTarget) ||
-    Boolean(request.branchNameOverride)
-  if (keepBaseBranch) {
-    return {
-      ...(request.baseBranch ? { baseBranch: request.baseBranch } : {}),
-      ...(request.compareBaseRef ? { compareBaseRef: request.compareBaseRef } : {})
-    }
-  }
-  // A fresh VM checkout may lack source local/pinned branches; use its default unless the user chose a provider-backed start point.
-  return { baseBranch: undefined, compareBaseRef: undefined }
 }
 
 export async function attachEphemeralVmRuntimeToWorkspace(

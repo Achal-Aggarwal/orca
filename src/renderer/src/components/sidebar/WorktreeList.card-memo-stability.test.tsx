@@ -177,6 +177,8 @@ function setFlatWorktreeState(): void {
     makeWorktree({ id: 'wt-b', displayName: 'beta', sortOrder: 10 })
   ]
   mockStore.state = {
+    machineProviders: {},
+    machineEnvironmentProviders: {},
     ...makeFolderWorkspacePathStatusState(),
     activeModal: '',
     activeView: 'terminal',

@@ -1,7 +1,8 @@
 /** Keep host-key policy independent of handshake wiring and inject trust evidence for deterministic decisions. */
 import { isEphemeralRuntimeSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTargetOwner } from '../../shared/ssh-types'
-import type { KnownHostsOutcome } from './config/ssh-known-hosts'
+import { createHash } from 'node:crypto'
+import { formatHostKeyFingerprint, type KnownHostsOutcome } from './config/ssh-known-hosts'
 
 /** Prompt is reserved for future UI; current decisions never produce it. */
 type HostKeyAction = 'accept' | 'accept-and-remember' | 'reject' | 'prompt'
@@ -18,12 +19,30 @@ export type HostKeyPolicy =
   | { kind: 'standard' }
   /** Ephemeral VMs rotate keys each launch; accept first contact without accumulating stale trust. */
   | { kind: 'ephemeral' }
+  /**
+   * A machine provider read these fingerprints from the machine over an already-authenticated
+   * channel, so they outrank first contact and known_hosts. Nothing else is accepted.
+   */
+  | { kind: 'provider-pinned'; fingerprints: readonly string[]; hostKeys: readonly string[] }
 
 export function hostKeyPolicyForOwner(owner: SshTargetOwner | undefined): HostKeyPolicy {
+  if (owner?.type === 'machine') {
+    const hostKeys = owner.hostKeys ?? []
+    const fingerprints = [
+      ...(owner.hostKeyFingerprints ?? []),
+      ...hostKeys.map(publicKeyFingerprint)
+    ]
+    if (fingerprints.length > 0) {
+      return { kind: 'provider-pinned', fingerprints, hostKeys }
+    }
+  }
   return isEphemeralRuntimeSshOwner(owner) ? { kind: 'ephemeral' } : { kind: 'standard' }
 }
 
 export type HostKeyDecisionInput = {
+  /** "SHA256:…" of the presented key. */
+  fingerprint: string
+  /** From the user's known_hosts files, unioned. */
   knownHostsOutcome: KnownHostsOutcome
   storeOutcome: 'match' | 'mismatch' | 'unknown-type-known-host' | 'unknown'
   /** Effective `StrictHostKeyChecking`; anything unrecognised is treated as `ask`. */
@@ -99,6 +118,9 @@ export function decideHostKey(input: HostKeyDecisionInput): HostKeyDecision {
       disagreeingSource: 'known-hosts',
       reason: rejection(displayHost, 'This host key has been revoked.')
     }
+  }
+  if (policy.kind === 'provider-pinned') {
+    return decidePinnedHostKey(input.fingerprint, policy.fingerprints, displayHost)
   }
 
   // Prefer known_hosts mismatch guidance because its remedy also unblocks SSH/git.
@@ -193,4 +215,34 @@ export function decideHostKey(input: HostKeyDecisionInput): HostKeyDecision {
     return { action: 'accept', outcome: unknownOutcome }
   }
   return { action: 'accept-and-remember', outcome: unknownOutcome }
+}
+
+function decidePinnedHostKey(
+  fingerprint: string,
+  expected: readonly string[],
+  displayHost: string
+): HostKeyDecision {
+  const presented = stripFingerprintPadding(fingerprint)
+  if (expected.some((candidate) => stripFingerprintPadding(candidate) === presented)) {
+    // Remembered so a later connect without provider fingerprints still pins this key.
+    return { action: 'accept-and-remember', outcome: 'match' }
+  }
+  return {
+    action: 'reject',
+    outcome: 'mismatch',
+    reason: rejection(
+      displayHost,
+      'The key does not match the fingerprints its machine provider reported. Refresh the machine and try again.'
+    )
+  }
+}
+
+/** "<type> <base64>" → "SHA256:…", the form ssh-keygen -l prints. */
+function publicKeyFingerprint(publicKey: string): string {
+  const blob = Buffer.from(publicKey.split(' ')[1] ?? '', 'base64')
+  return formatHostKeyFingerprint(createHash('sha256').update(blob).digest('base64'))
+}
+
+function stripFingerprintPadding(fingerprint: string): string {
+  return fingerprint.replace(/=+$/, '')
 }

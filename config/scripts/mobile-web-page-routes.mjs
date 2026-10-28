@@ -28,8 +28,25 @@ export const MOBILE_WEB_PAGE_ROUTES = [
     pathname: '/h/[hostId]/new-workspace',
     grants: ['navigate', 'storage', 'externalLink', 'haptics']
   },
-  // Explorer grants cover preview too so push stays in document under opening session’s grants; uncovered target hands off and reopens under its own.
-  // externalLink serves layout wall/in-document Markdown preview; clipboard.write serves preview Source Copy. Census checks relation.
+  // The paired desktop's machines, read-only with Wake and Sleep; grants as for accounts.
+  {
+    pathname: '/h/[hostId]/machines',
+    grants: ['navigate', 'storage', 'externalLink', 'haptics']
+  },
+  // The file explorer. `navigate` because its Back pops the native stack. `storage` for the shared
+  // components the host layout renders above it.
+  //
+  // `externalLink` is the layout wall's here, the single opener the census finds in this closure:
+  // nothing the explorer itself renders opens a URL. It is also inherited, and that is what makes
+  // the hop below cheap: a row opens the preview, and because that is a page route and this list
+  // covers what it declares, the handoff keeps that push inside this document.
+  // Grants are resolved once, from the route the shell opened (`grantsForRoute` on
+  // `session.routePathname`), so a preview reached that way runs under *this* route's grants for
+  // the life of the session. Covering the preview is therefore what buys the cheap in-document hop,
+  // not what makes it correct: a target this list did not cover would be handed to the shell and
+  // reopened under its own grants instead. The census beside it reads that relation off this list.
+  //
+  // `native.clipboard.write` covers source Copy in a preview opened inside this document.
   {
     pathname: '/h/[hostId]/files/[worktreeId]',
     grants: ['navigate', 'storage', 'externalLink', 'haptics', 'native.clipboard.write'],

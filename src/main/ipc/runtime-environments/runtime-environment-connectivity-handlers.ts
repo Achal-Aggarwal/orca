@@ -34,6 +34,7 @@ import {
   clearRuntimeEnvironmentManualDisconnect,
   isRuntimeEnvironmentManuallyDisconnected
 } from './runtime-environment-manual-disconnect'
+import { liftRuntimeEnvironmentRetirement } from './runtime-environment-retirement-gate'
 import { callRuntimeEnvironment } from './runtime-environment-transport-routing'
 import { getRuntimeEnvironmentStatus } from './runtime-environment-status-probe'
 import { noteRuntimeEnvironmentConnectRequested } from './runtime-environment-pairing-refusal-registry'
@@ -166,6 +167,7 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
     ): Promise<RuntimeRpcResponse<RuntimeStatus>> => {
       const environment = resolveEnvironment(getUserDataPath(), args.selector)
       assertWslHostReachable(environment)
+      liftRuntimeEnvironmentRetirement(getUserDataPath(), environment.id)
       clearRuntimeEnvironmentManualDisconnect(environment.id)
       noteRuntimeEnvironmentConnectRequested(environment.id)
       clearSshCredentialDeclinedForEnvironment(environment)

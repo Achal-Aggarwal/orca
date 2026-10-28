@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Loader2, Server, ServerOff } from 'lucide-react'
+import { Box, Loader2, Server, ServerOff } from 'lucide-react'
 import { toastSshConnectFailure } from '@/ssh/ssh-connect-failure-toast'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -31,6 +31,8 @@ type WorktreeCardSshHostControlProps = {
   sshOwnerEnvironmentId: string | null
   /** Use only the accessible label when dense rows cannot fit visible text. */
   iconOnly: boolean
+  /** The host is a provider's machine, so its connected glyph is the machine's. */
+  onMachine?: boolean
   onPointerDown: React.PointerEventHandler<HTMLButtonElement>
 }
 
@@ -75,6 +77,7 @@ export function WorktreeCardSshHostControl({
   targetRemoved,
   sshOwnerEnvironmentId,
   iconOnly,
+  onMachine = false,
   onPointerDown
 }: WorktreeCardSshHostControlProps): React.JSX.Element | null {
   const setSshConnectionState = useAppStore((store) => store.setSshConnectionState)
@@ -126,12 +129,21 @@ export function WorktreeCardSshHostControl({
     }
   }, [setSshConnectionState, sshOwnerEnvironmentId, status, targetId])
 
-  // Live connection outranks stale removal; runtime-owned null status stays passive without claiming disconnection.
-  if (status === null || status === 'connected') {
+  // A live connection outranks a stale removal tombstone. A null status is a runtime-owned
+  // target: no renderer-reachable connect, and the card has always shown the plain host glyph
+  // there rather than a false disconnected state.
+  // A machine's host is woken and reconnected through the machine, so it never offers Connect.
+  if (onMachine || status === null || status === 'connected') {
     return (
       <PassiveGlyph
         targetLabel={targetLabel}
-        icon={<Server className="size-3 text-muted-foreground" />}
+        icon={
+          onMachine ? (
+            <Box className="size-3 text-muted-foreground" />
+          ) : (
+            <Server className="size-3 text-muted-foreground" />
+          )
+        }
         tooltip={translate(
           'auto.components.sidebar.WorktreeCardSshHostControl.connectedTooltip',
           'Project on SSH host'

@@ -1,8 +1,24 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useWheelScrollable } from './use-wheel-scrollable'
 
-/** Track selection by row key and query so late host lists cannot retarget a keypress; clear queries on close to restore the committed display. */
-export function useTypeAheadCombobox(deriveRowKeys: (query: string) => readonly string[]): {
+/**
+ * The machinery shared by the composer's type-ahead pickers (Project, Run on):
+ * the field is the search box, exactly one row is armed at a time, and Enter
+ * takes it.
+ *
+ * Two subtleties worth keeping:
+ * - Armed is tracked by row *key*, not index, so a list arriving late over SSH
+ *   cannot slide a different row under a keypress the user already aimed. The
+ *   query it was aimed at rides along, so a newer query drops a stale arm
+ *   during render rather than needing a reset effect.
+ * - Closing without committing clears the query, or the field is left showing
+ *   text that matches nothing while hiding the committed selection.
+ */
+export function useTypeAheadCombobox(
+  deriveRowKeys: (query: string) => readonly string[],
+  /** Armed before the user moves, while nothing is typed: the current choice. */
+  currentKey: string | null = null
+): {
   query: string
   setQuery: (value: string) => void
   open: boolean
@@ -30,9 +46,10 @@ export function useTypeAheadCombobox(deriveRowKeys: (query: string) => readonly 
   const { ref: listRef, setNode: setListNode } = useWheelScrollable<HTMLDivElement>()
   const listId = React.useId()
 
-  // A stale arm (aimed at an earlier query) falls back to the first row.
+  // A stale arm (aimed at an earlier query) falls back to the current row, else the first.
   const armedKey = armed !== null && armed.query === query ? armed.key : null
-  const armedIndex = Math.max(armedKey === null ? -1 : rowKeys.indexOf(armedKey), 0)
+  const fallbackKey = query === '' ? currentKey : null
+  const armedIndex = Math.max(rowKeys.indexOf(armedKey ?? fallbackKey ?? ''), 0)
   const resolvedKey = rowKeys[armedIndex] ?? null
 
   React.useEffect(() => {

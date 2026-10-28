@@ -15,6 +15,8 @@ import {
 import { RemoteServerOutageNotice } from './RemoteServerOutageNotice'
 import { useCalmStatusReveal } from '@/hooks/use-calm-status-reveal'
 import type { TerminalPaneController } from './use-terminal-pane-controller'
+import { useAppStore } from '@/store'
+import { useWorktreeStoppedMachine } from '@/components/machines/use-worktree-machine'
 
 /** Reconnect pairs refused servers, signs in SSH hosts awaiting credentials, or otherwise retries the pane. */
 export function createPaneRecoveryReconnect(
@@ -62,6 +64,13 @@ export function TerminalPaneRecoveryPortals({
   const pairingRefusedEnvironmentId = useManagedPairingRefusedEnvironmentId(controller.worktreeId)
   const ownerEnvironmentId = useWorkspaceRuntimeEnvironmentId(controller.worktreeId)
   const retryingOutageEnvironmentId = useRetryingOutageEnvironmentId(controller.worktreeId)
+  const wakingMachineName = useAppStore((state) => {
+    const wake = state.machineWakeByWorktreeId[controller.worktreeId]
+    return wake && !wake.failure ? wake.machineName : null
+  })
+  const stoppedMachine = useWorktreeStoppedMachine(controller.worktreeId)
+  // Why: a sleeping or waking machine is the precise reason; a generic server notice would hide it.
+  const machineExplains = wakingMachineName !== null || stoppedMachine !== null
   const isolated = controller.isolatedPaneKey !== null
   // Why: a pane waiting for SSH sign-in says so itself; "reconnecting" over it would be false.
   const awaitingSignInHere = managedPanes.some(
@@ -74,6 +83,7 @@ export function TerminalPaneRecoveryPortals({
     !showSshReconnectOverlay &&
     !awaitingSignInHere &&
     !wslHostUnavailable &&
+    !machineExplains &&
     pairingRefusedEnvironmentId === null
   const serverDown = retryingOutageEnvironmentId !== null
   const notice = useRemoteServerNoticeClaim(ownerEnvironmentId, serverDown, canSpeak)
@@ -126,6 +136,7 @@ export function TerminalPaneRecoveryPortals({
               !isolated &&
               !awaitingSignIn &&
               !wslHostUnavailable &&
+              !machineExplains &&
               pairingRefusedEnvironmentId === null &&
               notice.quiet &&
               paneEnvironmentId === ownerEnvironmentId
@@ -138,6 +149,9 @@ export function TerminalPaneRecoveryPortals({
             wslHostUnavailable={wslHostUnavailable}
             pairingRefused={pairingRefusedEnvironmentId !== null}
             awaitingSignIn={awaitingSignIn}
+            wakingMachineName={wakingMachineName}
+            stoppedMachine={stoppedMachine}
+            machineWorktreeId={controller.worktreeId}
           />,
           pane.container,
           `remote-runtime-reconnect-${pane.id}`

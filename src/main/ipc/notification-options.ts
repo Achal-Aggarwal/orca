@@ -28,6 +28,10 @@ export function buildNotificationOptions(
     }
   }
 
+  if (args.source === 'machine-expiry' && args.machineExpiry) {
+    return { title: args.machineExpiry.title, body: args.machineExpiry.body }
+  }
+
   if (args.source === 'test') {
     return {
       title: translate('notifications.test.title', 'Orca notifications are on'),

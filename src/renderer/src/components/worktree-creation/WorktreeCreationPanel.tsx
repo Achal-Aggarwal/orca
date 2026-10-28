@@ -10,6 +10,9 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { translate } from '@/i18n/i18n'
 import WorktreeCreationTabStrip from './WorktreeCreationTabStrip'
+import { useTerminalSurfaceBackground } from '@/components/terminal-pane/use-terminal-surface-background'
+import CreationOutputLog from './CreationOutputLog'
+import MachineCreationStatus from './MachineCreationStatus'
 
 /** Debounced in-frame creation placeholder: tab strip names the workspace while body shows status, enabling same-frame handoff without duplicating labels. */
 export default function WorktreeCreationPanel({
@@ -22,7 +25,10 @@ export default function WorktreeCreationPanel({
   const entry = useAppStore((s) => s.pendingWorktreeCreations[creationId])
   const [now, setNow] = React.useState(() => Date.now())
   const progressLabelId = React.useId()
-  // Depend on primitive status so stderr’s fresh entry objects cannot continuously reset the interval.
+  const terminalBackground = useTerminalSurfaceBackground()
+  // Why: depend on the primitive status only — provisioning appends a log to the
+  // entry on every stderr chunk, giving a fresh `entry` reference each tick that
+  // would otherwise tear down and recreate this interval before it can fire.
   const entryStatus = entry?.status
   React.useEffect(() => {
     if (entryStatus !== 'creating') {
@@ -47,13 +53,38 @@ export default function WorktreeCreationPanel({
     <div className="absolute inset-0 flex flex-col bg-background">
       <WorktreeCreationTabStrip
         title={title}
-        isError={isError}
+        // Why: a canceled machine start is the user's choice, not a failure.
+        isError={isError && !entry.machineProgress?.canceled}
         reserveCollapsedSidebarHeaderSpace={reserveCollapsedSidebarHeaderSpace}
         onCancel={dismiss}
+        machineLabel={
+          entry.request.machine && !entry.machineProgress?.leftoverDeleted
+            ? entry.request.machine.create && !entry.request.machine.machineId
+              ? translate(
+                  'auto.components.worktree.creation.WorktreeCreationPanel.newMachine',
+                  'New machine'
+                )
+              : entry.request.machine.machineName
+            : null
+        }
       />
 
-      <div className="min-h-0 flex-1 p-3">
-        {isVmCreation ? (
+      {/* Why: a machine's setup hands off to its terminal, so it sits on the terminal's colour. */}
+      <div
+        className="min-h-0 flex-1 p-3"
+        style={
+          entry.request.machine && terminalBackground
+            ? { backgroundColor: terminalBackground }
+            : undefined
+        }
+      >
+        {entry.request.machine ? (
+          <MachineCreationStatus
+            entry={entry}
+            onRetry={() => retryBackgroundWorktreeCreation(creationId)}
+            onRemove={dismiss}
+          />
+        ) : isVmCreation ? (
           // Keep the log fixed across provisioning/failure; swap only header and actions.
           <VmProvisioningStatus
             elapsedLabel={elapsedLabel}
@@ -212,7 +243,7 @@ function VmProvisioningStatus({
             </>
           )}
         </div>
-        <RecipeOutputLog
+        <CreationOutputLog
           log={log}
           emptyLabel={translate(
             'auto.components.worktree.creation.WorktreeCreationPanel.vmProvisioningLogEmpty',
@@ -221,41 +252,6 @@ function VmProvisioningStatus({
         />
       </div>
     </div>
-  )
-}
-
-// Recipe stderr explains both slow progress and failures; retain the same fixed log surface.
-function RecipeOutputLog({
-  log,
-  emptyLabel
-}: {
-  log: string
-  emptyLabel: string
-}): React.JSX.Element {
-  const ref = React.useRef<HTMLPreElement>(null)
-  // Follow output until user scrolls up; resume only when they return to bottom.
-  const pinnedToBottomRef = React.useRef(true)
-  const handleScroll = React.useCallback((): void => {
-    const el = ref.current
-    if (!el) {
-      return
-    }
-    pinnedToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8
-  }, [])
-  React.useEffect(() => {
-    const el = ref.current
-    if (el && pinnedToBottomRef.current) {
-      el.scrollTop = el.scrollHeight
-    }
-  }, [log])
-  return (
-    <pre
-      ref={ref}
-      onScroll={handleScroll}
-      className="scrollbar-sleek h-72 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 font-mono text-[11px] leading-4 text-muted-foreground"
-    >
-      {log || <span className="text-muted-foreground/60">{emptyLabel}</span>}
-    </pre>
   )
 }
 

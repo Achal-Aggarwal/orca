@@ -14,7 +14,7 @@ import {
 import { ProjectOptionMark, ProjectOptionRow } from './ProjectComboboxRow'
 import { useRecentProjectIds } from './use-recent-project-ids'
 import { isWithinComboboxRoot, useTypeAheadCombobox } from './use-type-ahead-combobox'
-import { COMBOBOX_FIELD_SHELL, COMBOBOX_POPOVER_SURFACE } from './type-ahead-combobox-styles'
+import { COMBOBOX_FIELD_SHELL } from './type-ahead-combobox-styles'
 
 type ProjectComboboxProps = {
   options: readonly NewWorkspaceProjectOption[]
@@ -221,12 +221,17 @@ export default function ProjectCombobox({
         <PopoverContent
           align="start"
           sideOffset={4}
-          // Use an opaque nonfading surface so dialog fields cannot show through during animation; match the primitive’s arbitrary background specificity.
-          className={cn(
-            'flex w-[var(--radix-popover-trigger-width)] min-w-[17rem] flex-col p-0',
-            COMBOBOX_POPOVER_SURFACE
-          )}
-          // Keep focus in the search anchor; automatic open/close focus would move it away.
+          // Why opaque + no fade: this popover lands directly on the composer
+          // dialog, not the app canvas. The shared surface is translucent and
+          // fades 0→1, so mid-animation the Name field underneath reads straight
+          // through the list — two layers at once, which is the "double flash".
+          // An opaque surface that zooms without fading resolves it. (`bg-popover`
+          // alone loses to the primitive's arbitrary-value background, hence the
+          // matching arbitrary form.) Every other caller keeps the blur and fade.
+          surface="opaque"
+          className="flex w-[var(--radix-popover-trigger-width)] min-w-[17rem] flex-col"
+          // Focus stays in the field — it's the search box — so the popover must
+          // not steal it on open, nor yank it back on close after a pick.
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
           // The search anchor sits outside Radix content; preserve interactions inside this control instead of dismissing them as outside events.

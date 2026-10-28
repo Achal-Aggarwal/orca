@@ -89,7 +89,8 @@ export function createNotificationDeliveryService(
       if (
         !request.mobileDeliveredByHost &&
         deps.dispatchMobileNotification &&
-        request.source !== 'test'
+        request.source !== 'test' &&
+        request.source !== 'machine-expiry'
       ) {
         if (
           reserveNotificationCooldown(

@@ -129,6 +129,7 @@ export function retryBackgroundWorktreeCreation(creationId: string): void {
     phase: getInitialWorktreeCreationPhase(entry.request),
     error: undefined,
     provisioningLog: undefined,
+    machineProgress: undefined,
     checkoutProgress: undefined,
     worktreeId: undefined
   })

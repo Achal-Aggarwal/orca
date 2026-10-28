@@ -20,6 +20,7 @@ import { getRepoOwnerWorktreeVisibilityDefaults } from '../../../../store/worktr
 import type { ProjectHeaderHostContext } from '../rows/project-header-host-context'
 
 type BuildArgs = {
+  archivedMachineHostIds: ReadonlySet<string>
   props: VirtualizedWorktreeViewportProps
   projectGroups: readonly ProjectGroup[]
   renderRows: RenderRow[]
@@ -52,6 +53,7 @@ type BuildArgs = {
 export function buildWorktreeVirtualRowContext(args: BuildArgs): WorktreeVirtualRowContext {
   const { props, runtime, session, statusDrag, headerDrag, primaryActive, reveal } = args
   return {
+    archivedMachineHostIds: args.archivedMachineHostIds,
     renderRows: args.renderRows,
     firstHeaderIndex: args.firstHeaderIndex,
     activeStickyHeaderIndexRef: args.virtualization.activeStickyHeaderIndexRef,

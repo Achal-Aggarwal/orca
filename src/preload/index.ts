@@ -55,6 +55,7 @@ import { browserApi } from './api/browser-bridge'
 import { emulatorApi } from './api/emulator-bridge'
 import { hooksApi } from './api/hooks-bridge'
 import { ephemeralVmApi } from './api/ephemeral-vm-bridge'
+import { machinesApi } from './api/machines-bridge'
 import { cacheApi } from './api/cache-bridge'
 import { sessionApi } from './api/session-bridge'
 import { updaterApi } from './api/updater-bridge'
@@ -156,6 +157,7 @@ const api = {
   emulator: emulatorApi,
   hooks: hooksApi,
   ephemeralVm: ephemeralVmApi,
+  machines: machinesApi,
   cache: cacheApi,
   session: sessionApi,
   updater: updaterApi,

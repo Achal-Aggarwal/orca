@@ -23,6 +23,8 @@ import { LocalGitToolchainScanBanner } from './LocalGitToolchainScanBanner'
 import { SeveredTerminalDaemonBanner } from './SeveredTerminalDaemonBanner'
 import { StalledTerminalDaemonBanner } from './StalledTerminalDaemonBanner'
 import { StartupWorktreeRefreshStatus } from './StartupWorktreeRefreshStatus'
+import { useMachineInventory } from '@/store/machines'
+import { MachineDeleteDialog } from '@/components/machines/MachineDeleteDialog'
 
 // Keep the Agents activity pipeline out of the workspace view’s initial bundle.
 const SidebarAgentsList = lazyWithRetry(() => import('./SidebarAgentsList'))
@@ -60,6 +62,8 @@ function Sidebar({
   const settings = useAppStore((s) => s.settings)
   const sidebarBody = useAppStore((s) => s.sidebarBody ?? 'workspaces')
   const showAgentDashboard = settings?.experimentalAgentDashboardPopout === true
+  // Why: wake-on-open and machine host headers read the cached inventory, never a provider.
+  useMachineInventory(settings?.experimentalEphemeralVms === true)
   const agentDashboardDrawerOpen = useAppStore((s) => s.agentDashboardDrawerOpen)
   const setAgentDashboardDrawerOpen = useAppStore((s) => s.setAgentDashboardDrawerOpen)
   const agentReadFilter = useAppStore((s) => s.agentsReadFilter)
@@ -275,6 +279,7 @@ function Sidebar({
           onMenuOpenChange={setWorkspaceBoardMenuOpen}
         />
       ) : null}
+      {settings?.experimentalEphemeralVms ? <MachineDeleteDialog /> : null}
       {showAgentDashboard ? (
         <React.Suspense fallback={null}>
           <AgentDashboardSidebarHost
