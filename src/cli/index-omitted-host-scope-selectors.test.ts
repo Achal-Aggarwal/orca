@@ -49,7 +49,7 @@ import {
   LINEAGE_PARENT,
   LINEAGE_CHILD
 } from '../main/runtime/runtime-agent-lineage.test-fixture'
-import type { OrcaRuntimeService } from '../main/runtime/orca-runtime'
+import { OrcaRuntimeService } from '../main/runtime/orca-runtime'
 import { RpcDispatcher } from '../main/runtime/rpc/dispatcher'
 import { WORKTREE_CATALOG_METHODS } from '../main/runtime/rpc/methods/worktree-catalog-methods'
 import { COMMAND_SPECS } from './specs'
@@ -87,11 +87,13 @@ describe('omittedHostIds selector annotation', () => {
     async (worktreeId) => {
       const f = publicLineageFixture(worktreeId)
       try {
-        // SAFETY: these catalog methods use only this read-only runtime seam; rows come from production projection/attachment.
-        const runtime = {
-          getRuntimeId: () => 'lineage-test',
-          getWorktreePs: async () => ({ worktrees: [f.build()], totalCount: 1, truncated: false })
-        } as unknown as OrcaRuntimeService
+        const runtime = new OrcaRuntimeService()
+        vi.spyOn(runtime, 'getRuntimeId').mockReturnValue('lineage-test')
+        vi.spyOn(runtime, 'getWorktreePs').mockImplementation(async () => ({
+          worktrees: [f.build()],
+          totalCount: 1,
+          truncated: false
+        }))
         const dispatcher = new RpcDispatcher({ runtime, methods: WORKTREE_CATALOG_METHODS })
         const resultOf = (response: unknown) => JSON.parse(JSON.stringify(response)).result
         const request = (params = {}) =>

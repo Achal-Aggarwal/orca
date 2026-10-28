@@ -42,6 +42,7 @@ import {
   traceDispatchPredicateVisits
 } from './dispatch-predicate-visits.test-fixture'
 import { benchmarkPresentationCorpus } from './runtime-agent-orchestration-benchmark.test-fixture'
+import { MIRROR_LEAVES_STEP_1 } from './runtime-leaf-record-projection.test-fixture'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import { OrchestrationDb } from './orchestration/db'
 import {
@@ -99,7 +100,7 @@ describe('RuntimeAgentOrchestrationProjection chat lineage', () => {
       creator,
       maxDepth: Number.MAX_SAFE_INTEGER
     })
-    const leaf = { ptyId: 'pty_w' } as unknown as RuntimeLeafRecord
+    const leaf: RuntimeLeafRecord = { ...MIRROR_LEAVES_STEP_1[0], ptyId: 'pty_w' }
     const projection = new RuntimeAgentOrchestrationProjection({
       getDb: () => db,
       getLeaves: () => [leaf],
