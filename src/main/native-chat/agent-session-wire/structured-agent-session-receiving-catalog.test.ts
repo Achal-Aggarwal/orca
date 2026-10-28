@@ -159,6 +159,7 @@ describe('catalog consumes the constructed host receiving account', () => {
     }
   })
 
+  // Real journal/native DB setup, two 2s mutations and bounded host cleanup share this budget.
   it('owned permission settlement reads actual A until exact native disposition, then eligible B', async () => {
     const f = await createReceivingCallerFixture()
     let service: ReturnType<typeof createAgentModelCatalogService> | undefined

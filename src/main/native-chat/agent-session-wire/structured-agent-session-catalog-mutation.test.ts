@@ -80,6 +80,7 @@ describe('installed catalog inside ordinary serialized mutations', () => {
 })
 
 describe('installed catalog through Codex delivery and report settlement', () => {
+  // Real host setup, repeated 2s boundary deadlines and bounded resource drains share this budget.
   it('finishes admitted ran-options bookkeeping, parks, and releases a later ordinary action', async () => {
     const f = await createCatalogMutationFixture(stateDirectory, 'codex')
     try {
@@ -134,6 +135,7 @@ describe('installed catalog through Codex delivery and report settlement', () =>
     }
   }, 10_000)
 
+  // Real host setup, delayed report settlement and bounded resource drains share this budget.
   it('fulfills owed model evidence from a matching delayed lifecycle report outside the delivery lock', async () => {
     const f = await createCatalogMutationFixture(stateDirectory, 'codex')
     try {

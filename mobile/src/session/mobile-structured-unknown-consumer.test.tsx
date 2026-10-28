@@ -107,6 +107,7 @@ it('shows an unknown model without sending or remembering a guess, then applies 
       sessionId: 'unknown-mobile',
       enabled: true,
       fence: 1,
+      turnId: null,
       mutate,
       hostSupport: { permissionModes: false, coherentModelCatalog: true, statusFeed: false }
     })
@@ -157,7 +158,7 @@ it('shows an unknown model without sending or remembering a guess, then applies 
     expect(row.props.accessibilityState.checked).toBe(false)
     await act(async () => row.props.onPress())
     expect(options.sendSelection()).toEqual({ model: 'sonnet' })
-    expect(pill().props.accessibilityLabel).toBe('Model, Sonnet Effort')
+    expect(pill().props.accessibilityLabel).toBe('Model, Sonnet')
     await vi.waitFor(() =>
       expect(writes).toEqual([
         {
