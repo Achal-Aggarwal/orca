@@ -58,28 +58,32 @@ describe('invalidated local image URL ownership', () => {
     }
   )
 
-  it('releases an unleased prewarm while preserving the grace period for a displayed image', () => {
+  it('releases an unleased prewarm while preserving the grace period for a displayed image', async () => {
     const visible = cacheImage('visible')
     const prewarm = cacheImage('prewarm')
     pinLocalImageCache('visible')
     invalidateLocalImageCache()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(prewarm)
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(visible)
+    await Promise.resolve()
     vi.advanceTimersByTime(29_999)
     expect(liveUrls.has(visible)).toBe(true)
     vi.advanceTimersByTime(1)
+    await Promise.resolve()
     expect(liveUrls.has(visible)).toBe(false)
   })
 
-  it('keeps a lease shared by two displays until both close', () => {
+  it('keeps a lease shared by two displays until both close', async () => {
     const visible = cacheImage('shared')
     pinLocalImageCache('shared')
     pinLocalImageCache('shared')
     unpinLocalImageCache('shared')
     invalidateLocalImageCache()
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(visible)
+    await Promise.resolve()
     unpinLocalImageCache('shared')
     vi.advanceTimersByTime(30_000)
+    await Promise.resolve()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(visible)
   })
 })

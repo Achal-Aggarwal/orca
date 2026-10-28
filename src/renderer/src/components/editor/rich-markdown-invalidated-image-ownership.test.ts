@@ -470,7 +470,7 @@ describe('invalidated rich image display ownership', () => {
         }, [source])
         return createElement('img', { src: source })
       }
-      function Parent() {
+      const Parent = () => {
         useLayoutEffect(() => {
           if (action === 'invalidate') {
             invalidateLocalImageSrcCacheForTests()
