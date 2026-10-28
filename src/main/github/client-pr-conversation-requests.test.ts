@@ -87,6 +87,44 @@ describe('PR conversation request reuse', () => {
     expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps valid inline comments when another comment has no numeric database ID', async () => {
+    ghExecFileAsyncMock.mockResolvedValue(
+      response({
+        comments: { nodes: [comment] },
+        reviews: { nodes: [] },
+        reviewThreads: {
+          nodes: [
+            {
+              id: 'PRRT_1',
+              isResolved: true,
+              line: null,
+              startLine: null,
+              originalLine: 8,
+              originalStartLine: 6,
+              comments: {
+                nodes: [
+                  { ...comment, databaseId: null, path: 'src/app.ts' },
+                  {
+                    ...comment,
+                    id: 'PRRC_11',
+                    databaseId: 11,
+                    body: 'Valid inline',
+                    path: 'src/app.ts'
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      })
+    )
+    await expect(getPRComments('/repo', 7, options)).resolves.toMatchObject([
+      { id: 10, body: 'Conversation' },
+      { id: 11, body: 'Valid inline', line: 8, startLine: 6, isOutdated: true, isResolved: true }
+    ])
+    expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(1)
+  })
+
   it('recovers only the failed GraphQL source from nonzero-exit partial data', async () => {
     const partial = response(
       { comments: { nodes: [comment] }, reviews: null, reviewThreads: { nodes: [] } },

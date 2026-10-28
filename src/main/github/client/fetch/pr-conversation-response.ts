@@ -4,7 +4,7 @@ import { mapGraphQLReactionGroups } from '../../comment-reactions'
 
 const commentSchema = z.object({
   id: z.string(),
-  databaseId: z.number(),
+  databaseId: z.number().nullable(),
   author: z
     .object({ __typename: z.string().optional(), login: z.string(), avatarUrl: z.string() })
     .nullable(),
@@ -60,7 +60,15 @@ const envelopeSchema = z.object({
     .optional()
 })
 
-function mapGraphQLComment(comment: z.infer<typeof commentSchema>): PRComment {
+function hasDatabaseId<T extends { databaseId: number | null }>(
+  comment: T | null
+): comment is T & { databaseId: number } {
+  return typeof comment?.databaseId === 'number'
+}
+
+function mapGraphQLComment(
+  comment: z.infer<typeof commentSchema> & { databaseId: number }
+): PRComment {
   return {
     id: comment.databaseId,
     author: comment.author?.login ?? 'ghost',
@@ -94,30 +102,27 @@ export function parsePRConversationResponse(stdout: string): {
   return {
     issueComments:
       comments.success && !failed('comments')
-        ? comments.data.nodes.flatMap((c) => (c ? [mapGraphQLComment(c)] : []))
+        ? comments.data.nodes.filter(hasDatabaseId).map(mapGraphQLComment)
         : undefined,
     reviewSummaries:
       reviews.success && !failed('reviews')
-        ? reviews.data.nodes.flatMap((c) => (c?.body?.trim() ? [mapGraphQLComment(c)] : []))
+        ? reviews.data.nodes
+            .filter(hasDatabaseId)
+            .filter((c) => c.body?.trim())
+            .map(mapGraphQLComment)
         : undefined,
     reviewComments: threads.success
       ? threads.data.nodes.flatMap((thread) =>
           thread
-            ? thread.comments.nodes.flatMap((c) =>
-                c
-                  ? [
-                      {
-                        ...mapGraphQLComment(c),
-                        path: c.path,
-                        threadId: thread.id,
-                        isResolved: thread.isResolved,
-                        isOutdated: thread.line == null,
-                        line: thread.line ?? thread.originalLine ?? undefined,
-                        startLine: thread.startLine ?? thread.originalStartLine ?? undefined
-                      }
-                    ]
-                  : []
-              )
+            ? thread.comments.nodes.filter(hasDatabaseId).map((c) => ({
+                ...mapGraphQLComment(c),
+                path: c.path,
+                threadId: thread.id,
+                isResolved: thread.isResolved,
+                isOutdated: thread.line == null,
+                line: thread.line ?? thread.originalLine ?? undefined,
+                startLine: thread.startLine ?? thread.originalStartLine ?? undefined
+              }))
             : []
         )
       : []
