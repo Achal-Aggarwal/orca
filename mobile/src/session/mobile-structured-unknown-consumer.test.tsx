@@ -10,7 +10,7 @@ import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-o
 import {
   MobileNativeChatSessionOptionPickers,
   type MobileNativeChatPickerPresentation
-} from './MobileNativeChatSessionOptionPickers'
+} from './native-chat/input/MobileNativeChatSessionOptionPickers'
 import { findAllByHostType } from '../test-support/react-test-renderer-host-nodes'
 
 vi.mock('react-native', () => ({

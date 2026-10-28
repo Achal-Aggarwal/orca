@@ -1,3 +1,5 @@
+import type * as fileOperations from 'node:fs/promises'
+import * as contextSnapshots from '../../../native-chat/agent-session-context-snapshots'
 import '../unused-default-rpc-methods.test-fixture'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../../shared/agent-session-journal-types'
 // Exercise real chat RPC: reads at rest start nothing; the first message starts the agent.
@@ -6,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { AGENT_SESSION_OPTIONAL_MODEL_CLIENT_CAPABILITY } from '../../../../shared/agent-session-optional-model-capability'
-import { editPersistedTestAgentSessionStore } from '../../agent-session-record-store-test-harness'
 import { agentSessionOperationKey } from '../../../../shared/agent-session-operation-ledger'
 import { CODEX_SESSION_OPTION_CATALOG } from '../../../../shared/agent-session-option-catalog-claude-codex'
 import {
@@ -30,6 +31,7 @@ import {
   restTestSend,
   type RestTestRig
 } from '../../../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
+import { editPersistedTestAgentSessionStore } from '../../agent-session-record-store-test-harness'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
@@ -43,6 +45,9 @@ import {
   updateTestJournalRowJson
 } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
 import { claudeAndCodexDeclared } from '../../../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
+
+vi.mock('node:fs/promises', { spy: true })
+const actualFiles = await vi.importActual<typeof fileOperations>('node:fs/promises')
 
 const CLIENT = {
   clientId: 'device-1',
@@ -120,6 +125,10 @@ afterEach(async () => {
   vi.restoreAllMocks()
   setStructuredAgentSessionHost(null)
   await rig.dispose()
+  await actualFiles.rm(contextSnapshots.agentSessionContextSnapshotRoot(rig.root), {
+    recursive: true,
+    force: true
+  })
 })
 
 describe('opening a chat at rest (P2-01)', () => {
