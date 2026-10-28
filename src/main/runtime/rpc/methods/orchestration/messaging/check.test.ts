@@ -241,6 +241,18 @@ describe('orchestration RPC methods', () => {
       expect(await check({ ack: deliveryId })).not.toHaveProperty('next')
     })
 
+    it('withholds the stop for a structured worker while chat failure mail is off', async () => {
+      setup()
+      createDispatchedTask('structworker_review')
+      const mail = vi.spyOn(runtime, 'isChatWorkerErrorEscalationEnabled').mockReturnValue(false)
+
+      expect(await call('orchestration.check', { terminal: 'term_coord' })).not.toHaveProperty(
+        'next'
+      )
+      mail.mockReturnValue(true)
+      expect(await call('orchestration.check', { terminal: 'term_coord' })).toHaveProperty('next')
+    })
+
     it('lets a forgotten Run wait coexist with a new one that receives the same Delivery', async () => {
       setup()
       const waitSpy = vi.spyOn(runtime, 'waitForMessage')

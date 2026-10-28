@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { OrcaRuntimeService } from '../../../orca-runtime'
 import { projectWorkerListFleet } from './worker/worker-list-projection'
+import { chatAssigneeSessionId } from '../../../orchestration/chat-assignee'
+import { isStructuredWorkerHandle } from '../../../../../shared/structured-worker-handle'
 
 // A receipt carries `next` only where stopping is the right move; without it, act on the receipt.
 const AWAIT_WORKER_REPORTS =
@@ -41,21 +43,41 @@ export async function withRunCheckNext(
     : result
 }
 
-/** A worker still runs, worker-list owes no action, and every running worker's exit wakes the coordinator. */
+/** A worker still runs, worker-list owes no action, and every running worker's failure wakes the coordinator. */
 async function awaitsWorkerReports(runtime: OrcaRuntimeService, runId: string): Promise<boolean> {
-  const db = runtime.getOrchestrationDb()
-  const rows = db.listWorkerTerminalResources({ runId })
+  const rows = runtime.getOrchestrationDb().listWorkerTerminalResources({ runId })
   const { workers } = await projectWorkerListFleet(runtime, rows, {
     limit: rows.length,
     completeProjection: true
   })
-  const running = workers
-    .filter((worker) => worker.outcome === 'in_progress')
-    .map((worker) => worker.dispatchId)
+  const running = new Set(
+    workers.filter((worker) => worker.outcome === 'in_progress').map((worker) => worker.dispatchId)
+  )
   return (
-    running.length > 0 &&
+    running.size > 0 &&
     workers.every((worker) => worker.nextAction.kind === 'none') &&
-    // A remote worker that exits without reporting sends no mail, so nothing would wake the coordinator.
-    db.listFederatedDispatchesByIds(running).length === 0
+    failuresSendMail(
+      runtime,
+      rows.filter((row) => running.has(row.dispatchId))
+    )
+  )
+}
+
+/** A remote exit sends no mail, and a chat failure sends it only while the user allows that. */
+function failuresSendMail(
+  runtime: OrcaRuntimeService,
+  rows: { dispatchId: string; agentTerminalHandle: string | null }[]
+): boolean {
+  const ids = rows.map((row) => row.dispatchId)
+  if (runtime.getOrchestrationDb().listFederatedDispatchesByIds(ids).length > 0) {
+    return false
+  }
+  return (
+    runtime.isChatWorkerErrorEscalationEnabled() ||
+    !rows.some(
+      (row) =>
+        chatAssigneeSessionId(row.agentTerminalHandle) ||
+        isStructuredWorkerHandle(row.agentTerminalHandle)
+    )
   )
 }
