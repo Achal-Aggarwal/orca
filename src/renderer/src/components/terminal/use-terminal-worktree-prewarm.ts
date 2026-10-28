@@ -1,10 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
-import type { AppState } from '@/store/types'
 import { hasRegisteredRuntimeTerminalTab } from '../../runtime/mounted-terminal-tab-registry'
 import { canWatcherCoverParkedTerminalTab } from '../terminal-pane/terminal-parked-tab-watchers'
-import { getSleepingRecordTabId } from '@/lib/sleeping-agent-wake-requests'
 import { canAdmitTerminalTabsForStartup } from './background-terminal-worktree-mount'
 import {
   type TerminalPrewarmStage,
@@ -13,49 +11,22 @@ import {
   planTerminalPrewarmTabMount,
   subscribeTerminalPrewarmWorktrees,
   undoTerminalPrewarmNarrowing,
+  areTabSessionsConfirmed,
+  createDeferredNarrowingUndo,
   type TerminalPrewarmNarrowing
 } from './terminal-worktree-prewarm'
+import { TERMINAL_TAB_COLD_PARK_DELAY_MS } from '../terminal-pane/terminal-hidden-view-parking'
 import type { TerminalColdActivationController } from '../terminal-cold-activation'
 import { hasRetainedWorkspaceTerminalFrames } from './terminal-worktree-retained-frames'
+import {
+  resolveReattachPtyIds,
+  scheduleTerminalPrewarmStage,
+  selectRevealTerminalTabIds,
+  selectSleepingTabIds
+} from './terminal-worktree-prewarm-targets'
 
-function selectRevealTerminalTabIds(state: AppState, worktreeId: string): Set<string> {
-  const revealTabIds = new Set<string>()
-  const unifiedTabById = new Map(
-    (state.unifiedTabsByWorktree[worktreeId] ?? []).map((tab) => [tab.id, tab])
-  )
-  for (const group of state.groupsByWorktree[worktreeId] ?? []) {
-    const tab = group.activeTabId ? unifiedTabById.get(group.activeTabId) : undefined
-    if (tab?.contentType === 'terminal') {
-      revealTabIds.add(tab.entityId)
-    }
-  }
-  const rememberedTabId = state.activeTabIdByWorktree[worktreeId]
-  if (revealTabIds.size === 0 && rememberedTabId) {
-    revealTabIds.add(rememberedTabId)
-  }
-  return revealTabIds
-}
-
-function selectSleepingTabIds(state: AppState, worktreeId: string): Set<string> {
-  const tabIds = new Set<string>()
-  for (const record of Object.values(state.sleepingAgentSessionsByPaneKey)) {
-    const tabId = record.worktreeId === worktreeId ? getSleepingRecordTabId(record) : null
-    if (tabId) {
-      tabIds.add(tabId)
-    }
-  }
-  return tabIds
-}
-
-// Each stage waits for an idle slot after the previous commit; the timeout keeps it ready before a typical press.
-function scheduleTerminalPrewarmStage(callback: () => void): () => void {
-  if (typeof requestIdleCallback !== 'function') {
-    const timer = setTimeout(callback, 16)
-    return () => clearTimeout(timer)
-  }
-  const handle = requestIdleCallback(callback, { timeout: 60 })
-  return () => cancelIdleCallback(handle)
-}
+// Lets the parking pass re-park siblings once the cool-down ends, before the narrowing lifts.
+const NARROWING_UNDO_MARGIN_MS = 1000
 
 type PrewarmLease = {
   cancelNextStage: (() => void) | null
@@ -77,6 +48,23 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
 
   useEffect(() => {
     const leases = new Map<string, PrewarmLease>()
+    const narrowingUndo = createDeferredNarrowingUndo({
+      // Outlast the tab cold-park cool-down that ending this lease's measurement starts.
+      delayMs: TERMINAL_TAB_COLD_PARK_DELAY_MS + NARROWING_UNDO_MARGIN_MS,
+      undo: (worktreeId, narrowing) => {
+        const c = controllerRef.current
+        undoTerminalPrewarmNarrowing({
+          restrictions: c.backgroundMountTabIdsByWorktreeRef.current,
+          deferredMountTabIdsByWorktree: c.activationDeferredMountTabIdsByWorktreeRef.current,
+          worktreeId,
+          narrowing,
+          isActivated:
+            c.renderedActiveWorktreeId === worktreeId ||
+            c.lastActivationWorktreeIdRef.current === worktreeId
+        })
+        bumpRevision()
+      }
+    })
     const bumpRevision = (): void =>
       controllerRef.current.setBackgroundMountRevision((revision) => revision + 1)
 
@@ -126,16 +114,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
       lease.cancelNextStage?.()
       leases.delete(worktreeId)
       if (lease.narrowedLiveMount) {
-        const c = controllerRef.current
-        undoTerminalPrewarmNarrowing({
-          restrictions: c.backgroundMountTabIdsByWorktreeRef.current,
-          deferredMountTabIdsByWorktree: c.activationDeferredMountTabIdsByWorktreeRef.current,
-          worktreeId,
-          narrowing: lease.narrowedLiveMount,
-          isActivated:
-            c.renderedActiveWorktreeId === worktreeId ||
-            c.lastActivationWorktreeIdRef.current === worktreeId
-        })
+        narrowingUndo.schedule(worktreeId, lease.narrowedLiveMount)
       }
       stopMeasuring(worktreeId)
     }
@@ -147,7 +126,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     const lease = (
       worktreeId: string,
       hovered: boolean,
-      confirmedTabIds?: ReadonlySet<string>
+      confirmedPtyIdsByTabId?: ReadonlyMap<string, ReadonlySet<string>>
     ): void => {
       const c = controllerRef.current
       if (
@@ -160,6 +139,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
       ) {
         return
       }
+      narrowingUndo.flush(worktreeId)
       const state = useAppStore.getState()
       // Restricting the surface drops its emulator overlay and loses the simulator's local state.
       if (
@@ -188,7 +168,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
           hasRegisteredRuntimeTerminalTab(tabId, worktreeId)
         const isTabRestorable = (tab: TerminalTab): boolean =>
           canWatcherCoverParkedTerminalTab(worktreeId, tab)
-        if (confirmedTabIds === undefined) {
+        if (confirmedPtyIdsByTabId === undefined) {
           const reattachTabs = tabs.filter(
             (tab) =>
               revealTabIds.has(tab.id) &&
@@ -208,7 +188,11 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
           isTabLive,
           isTabRestorable,
           isTabSleeping: (tabId) => sleepingTabIds.has(tabId),
-          isSessionConfirmedLive: (tab) => confirmedTabIds?.has(tab.id) === true
+          isSessionConfirmedLive: (tab) =>
+            areTabSessionsConfirmed(
+              resolveReattachPtyIds(tab, state),
+              confirmedPtyIdsByTabId?.get(tab.id)
+            )
         })
         if (!plan) {
           return
@@ -248,14 +232,19 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     const confirmSessionsThenLease = (worktreeId: string, tabs: readonly TerminalTab[]): void => {
       const token = Symbol(worktreeId)
       livenessChecks.set(worktreeId, token)
+      const state = useAppStore.getState()
       void Promise.all(
-        tabs.map(async (tab) =>
+        tabs.map(async (tab) => {
+          // Mounting reconnects every leaf, so each leaf's session must be live, not just the tab's.
+          const ptyIds = resolveReattachPtyIds(tab, state)
+          const answers = await Promise.all(
+            ptyIds.map((ptyId) => window.api.pty.hasPty(ptyId).catch(() => null))
+          )
           // Only an authoritative true counts: null (unknown, remote runtime) must not authorize a reattach.
-          tab.ptyId && (await window.api.pty.hasPty(tab.ptyId).catch(() => null)) === true
-            ? tab.id
-            : null
-        )
-      ).then((confirmed) => {
+          const confirmed = new Set(ptyIds.filter((_ptyId, index) => answers[index] === true))
+          return [tab.id, confirmed] as const
+        })
+      ).then((confirmedByTab) => {
         if (livenessChecks.get(worktreeId) !== token) {
           return
         }
@@ -264,11 +253,8 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
         if (!clients || leases.has(worktreeId)) {
           return
         }
-        lease(
-          worktreeId,
-          clients.has('hover'),
-          new Set(confirmed.filter((tabId): tabId is string => tabId !== null))
-        )
+        // The second pass re-resolves each tab's leaves; any change since the check fails confirmation.
+        lease(worktreeId, clients.has('hover'), new Map(confirmedByTab))
         setHeldTerminalPrewarmWorktrees(leases.keys())
         controllerRef.current.setTerminalParkingRevision((revision) => revision + 1)
       })
@@ -308,6 +294,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     return () => {
       unsubscribe()
       livenessChecks.clear()
+      narrowingUndo.cancelAll()
       for (const [worktreeId, existing] of Array.from(leases)) {
         release(worktreeId, existing)
       }

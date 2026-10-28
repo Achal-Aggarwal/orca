@@ -121,3 +121,57 @@ export function undoTerminalPrewarmNarrowing(args: {
     deferredMountTabIdsByWorktree.delete(worktreeId)
   }
 }
+
+/** A reattach reconnects every leaf of a tab; it is safe only when exactly these sessions were each confirmed live. */
+export function areTabSessionsConfirmed(
+  candidatePtyIds: readonly string[],
+  confirmedPtyIds: ReadonlySet<string> | undefined
+): boolean {
+  return (
+    confirmedPtyIds !== undefined &&
+    candidatePtyIds.length > 0 &&
+    new Set(candidatePtyIds).size === confirmedPtyIds.size &&
+    candidatePtyIds.every((ptyId) => confirmedPtyIds.has(ptyId))
+  )
+}
+
+/**
+ * Ending a lease's measurement starts tab cold parking's cool-down, during which individually
+ * parked siblings would remount; keep the narrowing until that cool-down has passed.
+ */
+export function createDeferredNarrowingUndo(args: {
+  delayMs: number
+  undo: (worktreeId: string, narrowing: TerminalPrewarmNarrowing) => void
+}) {
+  const pending = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; narrowing: TerminalPrewarmNarrowing }
+  >()
+  const flush = (worktreeId: string): void => {
+    const entry = pending.get(worktreeId)
+    if (!entry) {
+      return
+    }
+    clearTimeout(entry.timer)
+    pending.delete(worktreeId)
+    args.undo(worktreeId, entry.narrowing)
+  }
+  return {
+    schedule(worktreeId: string, narrowing: TerminalPrewarmNarrowing): void {
+      flush(worktreeId)
+      const timer = setTimeout(() => {
+        pending.delete(worktreeId)
+        args.undo(worktreeId, narrowing)
+      }, args.delayMs)
+      pending.set(worktreeId, { timer, narrowing })
+    },
+    /** A new lease on the same worktree replaces the pending narrowing with its own. */
+    flush,
+    cancelAll(): void {
+      for (const entry of pending.values()) {
+        clearTimeout(entry.timer)
+      }
+      pending.clear()
+    }
+  }
+}

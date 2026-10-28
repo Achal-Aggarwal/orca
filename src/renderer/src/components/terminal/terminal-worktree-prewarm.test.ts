@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { revealActivationDeferredTabs } from './background-terminal-worktree-mount'
 import {
+  areTabSessionsConfirmed,
+  createDeferredNarrowingUndo,
   planTerminalPrewarmTabMount,
   undoTerminalPrewarmNarrowing
 } from './terminal-worktree-prewarm'
@@ -101,5 +103,54 @@ describe('undoTerminalPrewarmNarrowing', () => {
 
     expect(restrictions.has('wt')).toBe(false)
     expect(deferred.get('wt')).toEqual(new Set(['earlier']))
+  })
+})
+
+describe('areTabSessionsConfirmed', () => {
+  it('rejects a split tab whose sibling leaf session was not confirmed live', () => {
+    expect(areTabSessionsConfirmed(['pty-a', 'pty-b'], new Set(['pty-a']))).toBe(false)
+  })
+
+  it('rejects confirmation for a leaf set that changed while the check was pending', () => {
+    expect(areTabSessionsConfirmed(['pty-a', 'pty-c'], new Set(['pty-a', 'pty-b']))).toBe(false)
+  })
+
+  it('admits a tab only when every leaf session was confirmed', () => {
+    expect(areTabSessionsConfirmed(['pty-a', 'pty-b'], new Set(['pty-a', 'pty-b']))).toBe(true)
+    expect(areTabSessionsConfirmed([], new Set())).toBe(false)
+  })
+})
+
+describe('createDeferredNarrowingUndo', () => {
+  const narrowing = { allowedTabIds: new Set(['live']), deferredTabIds: new Set(['p1']) }
+
+  it('keeps a released narrowing until the tab cold-park cool-down has passed', () => {
+    vi.useFakeTimers()
+    try {
+      const undo = vi.fn()
+      const undos = createDeferredNarrowingUndo({ delayMs: 31_000, undo })
+      undos.schedule('wt', narrowing)
+      vi.advanceTimersByTime(30_000)
+      expect(undo).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1_000)
+      expect(undo).toHaveBeenCalledWith('wt', narrowing)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('applies a pending undo at once when a new lease takes the worktree', () => {
+    vi.useFakeTimers()
+    try {
+      const undo = vi.fn()
+      const undos = createDeferredNarrowingUndo({ delayMs: 31_000, undo })
+      undos.schedule('wt', narrowing)
+      undos.flush('wt')
+      expect(undo).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(31_000)
+      expect(undo).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
