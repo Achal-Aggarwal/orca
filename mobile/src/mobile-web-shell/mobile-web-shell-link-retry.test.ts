@@ -44,6 +44,7 @@ describe('a download the link cut off, with nothing on disk', () => {
     })
     const back = run(fetching.session, { type: 'app-foregrounded' })
     expect(back.effects).toEqual([])
+    expect(run(back.session, { type: 'app-foregrounded' }).effects).toEqual([])
     expect(
       run(back.session, { type: 'gates-changed', gates: gates({ reachability: 'connecting' }) })
         .effects

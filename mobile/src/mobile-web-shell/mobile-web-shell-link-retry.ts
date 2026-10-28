@@ -59,7 +59,12 @@ function reduceAppForegrounded(
   session: MobileWebShellSession,
   restart: RestartFlow
 ): MobileWebShellStep {
-  if (session.gates !== null && retriesNow(session, session.gates)) {
+  // Only a failed flow: restarting a running one would leave its reads holding the host's slots.
+  if (
+    session.state.kind === 'failed' &&
+    session.gates !== null &&
+    retriesNow(session, session.gates)
+  ) {
     return restart(session, session.gates)
   }
   return session.state.kind === 'fetching'
