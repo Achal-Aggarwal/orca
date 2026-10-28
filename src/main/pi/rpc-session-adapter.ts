@@ -22,8 +22,7 @@ import { supportsSupervisedProviderChildLocation } from '../provider-process/sup
 
 export type PiRpcSessionAdapterDeps = PiRpcSessionDeps & {
   resolveLaunch: (input: {
-    identity: StructuredAgentSessionAcquireInput['identity']
-    spawnToken: string
+    [K in 'identity' | 'spawnToken']: StructuredAgentSessionAcquireInput[K]
   }) => Promise<PiRpcResolvedLaunch>
   readProcessStartTime?: (pid: number) => Promise<number | null>
 }
