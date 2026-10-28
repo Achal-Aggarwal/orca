@@ -16,6 +16,8 @@ import {
   type RuntimeEnvironmentCallRequest
 } from '@/runtime/runtime-compatibility-test-fixture'
 import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
+import { getDefaultSettings } from '../../../../shared/constants'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { emptyTabLayoutState } from '../../store/slices/editor-slice-test-harness'
 import { withLoadedBaselines } from './editor-autosave-controller-test-fixture'
@@ -236,13 +238,13 @@ describe('attachEditorAutosaveController', () => {
       projectGroups: [{ ...makeProjectGroup(), executionHostId: 'ssh:ssh-1' }],
       worktreesByRepo: {
         'folder-workspace-1': [
-          {
+          makeWorktree({
             id: workspaceKey,
             repoId: 'folder-workspace-1',
             path: '/home/neil/platform',
             hostId: 'ssh:ssh-1'
-          }
-        ] as never
+          })
+        ]
       },
       sshConnectionStates: new Map([
         [
@@ -404,21 +406,26 @@ describe('attachEditorAutosaveController', () => {
       } satisfies WindowStub)
 
       const store = createEditorStore()
-      const worktrees = [{ id: 'wt-1', repoId: 'repo-1', path: '/remote/repo' }]
+      const worktrees = [
+        makeWorktree({ id: 'wt-1', repoId: 'repo-1', path: '/remote/repo', hostId: undefined })
+      ]
       if (variant !== 'unique') {
-        worktrees.push({ id: 'wt-1', repoId: 'repo-1', path: '/different/repo' })
+        worktrees.push(
+          makeWorktree({ id: 'wt-1', repoId: 'repo-1', path: '/different/repo', hostId: undefined })
+        )
         if (variant === 'conflict-first') {
           worktrees.reverse()
         }
       }
       store.setState({
         settings: {
+          ...getDefaultSettings('/tmp'),
           editorAutoSave: true,
           editorAutoSaveDelayMs: 1000,
           activeRuntimeEnvironmentId: 'env-2'
-        } as never,
+        },
         worktreesByRepo: {
-          'repo-1': worktrees as never
+          'repo-1': worktrees
         }
       })
       const fileId = store.getState().openFile({

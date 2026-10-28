@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import type { RpcClient } from '../transport/rpc-client'
 import { hostStatusProbe } from '../transport/host-status-probe-operations'
@@ -17,7 +17,9 @@ export function useAutomationCatalog(client: RpcClient | null, server: boolean) 
   const [connected, setConnected] = useState(client?.getState() === 'connected')
   const [revision, setRevision] = useState(0)
   const latestClient = useRef(client)
-  latestClient.current = client
+  useLayoutEffect(() => {
+    latestClient.current = client
+  }, [client])
   const snapshotCurrent = useRef<() => boolean>(() => false)
   const epoch = useRef(0)
   const readId = useRef(0)

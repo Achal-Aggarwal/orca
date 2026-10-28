@@ -40,7 +40,7 @@ import {
 } from '../local-worktree-scan-generation'
 import type { HostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 
-const settings = {
+const settings: ReturnType<RuntimeStore['getSettings']> = {
   workspaceDir: '/worktrees',
   nestWorkspaces: true,
   refreshLocalBaseRefOnWorktreeCreate: false,
@@ -283,13 +283,18 @@ describe('RuntimeManagedWorktreeQueries.list host scope', () => {
         }
       })
     )
-    // SAFETY: the real listing reads only this store surface; metadata is deliberately absent.
-    const store = {
+    const store: RuntimeStore = {
+      getRepo: vi.fn<RuntimeStore['getRepo']>(),
+      addRepo: vi.fn<RuntimeStore['addRepo']>(),
+      updateRepo: vi.fn<RuntimeStore['updateRepo']>(),
+      setWorktreeMeta: vi.fn<RuntimeStore['setWorktreeMeta']>(),
+      removeWorktreeMeta: vi.fn<RuntimeStore['removeWorktreeMeta']>(),
+      getGitHubCache: vi.fn<RuntimeStore['getGitHubCache']>(),
       getRepos,
       getAllWorktreeMeta: () => ({}),
       getWorktreeMeta: () => undefined,
       getSettings: () => settings
-    } as unknown as RuntimeStore
+    }
     const listing = queries(store, {
       listResolved: async () => rows,
       listKnownHostIds: () => ['local', 'ssh:builder']

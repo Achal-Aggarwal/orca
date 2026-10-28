@@ -125,7 +125,11 @@ describe('editor file operation owner', () => {
   )
   it('retains published hints and owner-only capture without inventing physical-local evidence', () => {
     useAppStore.setState({
-      worktreesByRepo: { repo: [{ id: worktreeId, repoId: 'repo', path: '/remote/repo' } as never] }
+      worktreesByRepo: {
+        repo: [
+          makeWorktree({ id: worktreeId, repoId: 'repo', path: '/remote/repo', hostId: undefined })
+        ]
+      }
     })
     const hinted = captureEditorFileOperationProvenance(
       useAppStore.getState(),

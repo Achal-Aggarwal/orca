@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useEffect, useRef, useState } from 'react'
 import { useAutomationTargetDrafts } from './use-automation-target-drafts'
 import { Text, View } from 'react-native'
@@ -40,6 +41,7 @@ export function AutomationEditor(props: {
   onCancel: () => void
   onSave: (draft: AutomationDraft, original: AutomationDraft, targets: AutomationTargets) => void
 }) {
+  useMobileColorScheme()
   const [draft, setDraft] = useState(() => props.initialDraft ?? newAutomationDraft(props.current))
   const original = useRef(newAutomationDraft(props.current))
   const selectTargetDraft = useAutomationTargetDrafts()

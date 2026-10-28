@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useState } from 'react'
 import { Text, View } from 'react-native'
 import {
@@ -27,6 +28,7 @@ export function AutomationScheduleFields({
   change: (patch: Partial<AutomationDraft>) => void
   disabled: boolean
 }) {
+  useMobileColorScheme()
   const descriptor = describeAutomationSchedule(draft.rrule)
   const [cadence, setCadence] = useState<Cadence>(
     descriptor.kind === 'invalid' ? 'custom' : descriptor.kind

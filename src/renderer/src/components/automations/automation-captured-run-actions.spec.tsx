@@ -8,6 +8,7 @@ import type { ProjectHostSetup } from '../../../../shared/project-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import type { AutomationListRow } from './automation-list-row-identity'
+import { getDefaultSettings } from '../../../../shared/constants'
 import type { AppState } from '@/store/types'
 import {
   adoptEndpointRepo,
@@ -33,7 +34,7 @@ export function registerCapturedAutomationRunActionTests({
     rpc: ReturnType<typeof vi.fn>
     interaction: ReturnType<typeof vi.fn>
     error: ReturnType<typeof vi.fn>
-    state: AppState
+    state: Partial<AppState>
   }
   makeAutomation: (overrides?: Partial<Automation>) => Automation
   makeRepo: (overrides?: Partial<Repo>) => Repo
@@ -138,7 +139,18 @@ export function registerCapturedAutomationRunActionTests({
         repos,
         worktreesByRepo: { 'repo-1': worktrees },
         folderWorkspaces: [],
-        projectHostSetups: [
+        projectGroups: [],
+        endpointProjects: [
+          {
+            id: 'project-1',
+            displayName: 'Repo',
+            badgeColor: 'blue',
+            sourceRepoIds: ['repo-1'],
+            createdAt: 1,
+            updatedAt: 1
+          }
+        ],
+        endpointProjectHostSetups: [
           makeProjectHostSetup({ hostId: 'local' }),
           makeProjectHostSetup({ hostId: 'ssh:box' }),
           ...(['local', 'ssh:box'] as const).map((hostId) =>
@@ -178,9 +190,9 @@ export function registerCapturedAutomationRunActionTests({
         sshTargetLabels: new Map(),
         runtimeEnvironments: [],
         runtimeStatusByEnvironmentId: new Map(),
-        settings: { disabledTuiAgents: ['claude'] },
+        settings: { ...getDefaultSettings('/tmp'), disabledTuiAgents: ['claude'] },
         recordFeatureInteraction: actionMocks.interaction
-      } as unknown as AppState
+      } satisfies Partial<AppState>
       let store!: ReturnType<typeof useAutomationsPageStoreState>
       let runNow!: () => Promise<void>
       const hostTargetFor = () =>
@@ -243,7 +255,10 @@ export function registerCapturedAutomationRunActionTests({
       // SAFETY: runNow reads these page members; editor and fallback transport are not installed.
       const actions = createAutomationRunActions({
         store,
-        local: {},
+        local: {
+          rerunRunIdsInFlightRef: { current: new Set<string>() },
+          setRerunRunIdsInFlight: vi.fn()
+        },
         destination: {
           automationHostTargetFor: () =>
             isRuntime ? { kind: 'environment', environmentId: 'gpu' } : { kind: 'local' },
@@ -256,7 +271,7 @@ export function registerCapturedAutomationRunActionTests({
         },
         sourceAvailability: { automationSourceHostAvailabilityByRowKey: new Map() },
         pageRefresh: { hydratePersistedUIState: refresh, refresh }
-      } as unknown as Parameters<typeof createAutomationRunActions>[0])
+      } satisfies Parameters<typeof createAutomationRunActions>[0])
       runNow = () => actions.runNow(row)
       const detailButton = screen.getByRole('button', { name: 'Run Now' })
       expect(detailButton.hasAttribute('disabled')).toBe(blocked)

@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useAutomationRuns, type AutomationRunScope } from './use-automation-runs'
 import { useState } from 'react'
 import { useAutomationCreateAttempt } from './use-automation-create-attempt'
@@ -37,6 +38,7 @@ export function AutomationManager(props: {
   hostId: string
   executionHost?: ExecutionHostId
 }) {
+  useMobileColorScheme()
   const catalog = useAutomationCatalog(props.client, !!props.executionHost)
   const [view, setView] = useState<AutomationView>({ kind: 'list' })
   const [tab, setTab] = useState<'automations' | 'runs'>('automations')

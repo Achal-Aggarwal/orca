@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import { subscribeEditorRuntimeFileWatch } from './editor-runtime-file-watch'
 import type { AppState } from '@/store/types'
 import { makeFolderWorkspace, makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
+import { makeProjectGroup } from '@/components/sidebar/folder-workspace-composer-submit-fixtures'
 import { getDefaultSettings } from '../../../shared/constants'
 import {
   selectEditorExternalWatchTargets,
@@ -23,7 +24,12 @@ it('retains the inherited folder root through subscription, events and reconnect
       activeWorkspaceExecutionHostId: 'runtime:owner-a',
       folderWorkspaces: reverse ? rows.toReversed() : rows,
       projectGroups: [
-        { id: 'inherited', executionHostId: 'runtime:owner-a', connectionId: 'box' } as never
+        {
+          ...makeProjectGroup(),
+          id: 'inherited',
+          executionHostId: 'runtime:owner-a',
+          connectionId: 'box'
+        }
       ]
     }
     const callbacks: { onResponse: (response: unknown) => void }[] = []
@@ -79,7 +85,7 @@ it('retains the inherited folder root through subscription, events and reconnect
       })
       useAppStore.setState({
         runtimeStatusByEnvironmentId: new Map([
-          ['owner-a', { hostContactEpoch: 1, connectionGeneration: 1 } as never]
+          ['owner-a', { status: null, checkedAt: 0, hostContactEpoch: 1, connectionGeneration: 1 }]
         ])
       })
       await vi.waitFor(() => expect(payload).toHaveBeenCalledTimes(2))

@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { Switch, Text, View } from 'react-native'
 import { AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY } from '../../../src/shared/automation-runtime-capabilities'
 import { AutomationChoice, AutomationField } from './AutomationControls'
@@ -15,6 +16,7 @@ export function AutomationAdvancedFields({
   disabled: boolean
   capabilities: readonly string[]
 }) {
+  useMobileColorScheme()
   return (
     <View style={styles.stack}>
       {draft.workspaceMode === 'new_per_run' ? (

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Text, View } from 'react-native'
 import type { ExecutionHostId } from '../../../src/shared/execution-host'
 import { getAutomationRunContent } from '../../../src/shared/automation-run-content'
@@ -22,6 +23,7 @@ export function AutomationRunDetails(props: {
   history: AutomationRunObservation
   onBack: () => void
 }) {
+  useMobileColorScheme()
   const history = props.history
   const run = history.selected ?? props.run
   const [opening, setOpening] = useState(false)
@@ -30,7 +32,9 @@ export function AutomationRunDetails(props: {
   const mounted = useRef(false)
   const epoch = useRef(0)
   const latest = useRef(props)
-  latest.current = props
+  useLayoutEffect(() => {
+    latest.current = props
+  }, [props])
   useEffect(() => {
     mounted.current = true
     const changed = () => {

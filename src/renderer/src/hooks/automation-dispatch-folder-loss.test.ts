@@ -1,22 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AutomationDispatchRequest } from '../../../shared/automations-types'
 
-const { state, markDispatchResult, launch } = vi.hoisted(() => ({
-  state: {
-    activeWorktreeId: null,
-    activeWorkspaceHostId: null,
-    repos: [{ id: 'repo', path: '/project', executionHostId: 'local' }],
-    projectGroups: [],
-    folderWorkspaces: [] as {
-      id: string
-      projectGroupId: string
-      folderPath: string
-      executionHostId: string
-    }[]
-  },
-  markDispatchResult: vi.fn(async () => {}),
-  launch: vi.fn()
-}))
+const { state, markDispatchResult, launch } = vi.hoisted(() => {
+  const folderWorkspaces: {
+    id: string
+    projectGroupId: string
+    folderPath: string
+    executionHostId: string
+  }[] = []
+  return {
+    state: {
+      activeWorktreeId: null,
+      activeWorkspaceHostId: null,
+      repos: [{ id: 'repo', path: '/project', executionHostId: 'local' }],
+      projectGroups: [],
+      folderWorkspaces
+    },
+    markDispatchResult: vi.fn(async () => {}),
+    launch: vi.fn()
+  }
+})
 vi.mock('@/store', () => ({ useAppStore: { getState: () => state } }))
 vi.mock('@/lib/launch-agent-background-session', () => ({ launchAgentBackgroundSession: launch }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))

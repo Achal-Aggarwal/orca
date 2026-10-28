@@ -16,7 +16,36 @@ export function createAutomationRunActions({
   destination,
   sourceAvailability,
   pageRefresh
-}: AutomationsPageActionContext) {
+}: {
+  store: Pick<
+    AutomationsPageActionContext['store'],
+    | 'projectHostSetups'
+    | 'sshConnectionStates'
+    | 'sshStateByEnvironment'
+    | 'runtimeStatusByEnvironmentId'
+    | 'repoForRow'
+    | 'worktreeForRow'
+  >
+  local: Pick<
+    AutomationsPageActionContext['local'],
+    'rerunRunIdsInFlightRef' | 'setRerunRunIdsInFlight'
+  >
+  destination: Pick<
+    AutomationsPageActionContext['destination'],
+    | 'automationHostTargetFor'
+    | 'automationDispatchContext'
+    | 'reportOwnerAction'
+    | 'invalidateRowHost'
+  >
+  sourceAvailability: Pick<
+    AutomationsPageActionContext['sourceAvailability'],
+    'automationSourceHostAvailabilityByRowKey'
+  >
+  pageRefresh: Pick<
+    AutomationsPageActionContext['pageRefresh'],
+    'hydratePersistedUIState' | 'refresh'
+  >
+}) {
   const {
     projectHostSetups,
     sshConnectionStates,

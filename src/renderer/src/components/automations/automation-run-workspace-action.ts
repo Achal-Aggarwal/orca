@@ -17,7 +17,11 @@ import type { AutomationsPageActionContext } from './automations-page-action-con
 let cancelPendingReveal: (() => void) | undefined
 
 /** Opens the original run terminal when its host-qualified workspace is alive. */
-export function createAutomationRunWorkspaceAction({ list }: AutomationsPageActionContext) {
+export function createAutomationRunWorkspaceAction({
+  list
+}: {
+  list: Pick<AutomationsPageActionContext['list'], 'runTargetFor'>
+}) {
   function revealRunWorkspace(run: AutomationRun, ownerOpened = false): void {
     const appStore = useAppStore.getState()
     const {

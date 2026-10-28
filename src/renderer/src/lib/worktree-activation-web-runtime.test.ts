@@ -174,7 +174,7 @@ describe('activateAndRevealWorktree', () => {
         // SAFETY: this action uses only the list's historical target function.
         const open = createAutomationRunWorkspaceAction({
           list: { runTargetFor }
-        } as unknown as Parameters<typeof createAutomationRunWorkspaceAction>[0])
+        })
         open(run)
         const after = useAppStore.getState()
         expect(after.activeWorktreeId).toBe(workspaceId)
@@ -214,9 +214,7 @@ describe('activateAndRevealWorktree', () => {
         resolveAutomationRunTarget(useAppStore.getState(), run, { kind: 'desktop' })
       expect(runTargetFor().viewState.canOpen).toBe(true)
       // SAFETY: only the historical resolver is consumed by this action.
-      createAutomationRunWorkspaceAction({ list: { runTargetFor } } as unknown as Parameters<
-        typeof createAutomationRunWorkspaceAction
-      >[0])(run)
+      createAutomationRunWorkspaceAction({ list: { runTargetFor } })(run)
       expect(useAppStore.getState().activeWorktreeId).toBe(workspaceId)
       expect(useAppStore.getState().activeWorkspaceExecutionHostId).toBe('ssh:box')
     } finally {

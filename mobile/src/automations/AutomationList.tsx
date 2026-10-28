@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { CalendarClock, ChevronRight } from 'lucide-react-native'
 import { Pressable, Switch, Text, View } from 'react-native'
 import { formatAutomationSchedule } from '../../../src/shared/automation-schedules'
@@ -16,6 +17,7 @@ export function AutomationList(props: {
   onOpen: (row: MobileAutomationRow) => void
   onToggle: (row: MobileAutomationRow, enabled: boolean) => void
 }) {
+  useMobileColorScheme()
   return (
     <View style={styles.stack}>
       <AutomationButton

@@ -1,4 +1,5 @@
 import { findKnownWorktreeById } from '@/store/slices/worktrees/listing/detected-worktree-meta'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -146,8 +147,8 @@ describe('fresh spawn leaves a local pane unbound', () => {
     async (reverse) => {
       const { connectPanePty } = await import('./pty-connection')
       const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
-      const local = { id: 'wt-1', repoId: 'repo1', path: '/local', hostId: 'local' }
-      const remote = { ...local, path: '/remote', hostId: 'runtime:server' }
+      const local = makeWorktree({ id: 'wt-1', repoId: 'repo1', path: '/local', hostId: 'local' })
+      const remote = { ...local, path: '/remote', hostId: 'runtime:server' as const }
       mockStoreState.activeWorktreeId = 'unrelated'
       mockStoreState.worktreesByRepo = reverse
         ? { first: [remote], second: [local] }
@@ -172,20 +173,25 @@ describe('fresh spawn leaves a local pane unbound', () => {
             }
           ]
         },
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: lookup reads the supplied worktree/repo/host catalogs.
         getKnownWorktreeById: (id: string, host?: ExecutionHostId) =>
-          findKnownWorktreeById(mockStoreState as never, id, host)
+          findKnownWorktreeById(
+            {
+              worktreesByRepo: reverse
+                ? { first: [remote], second: [local] }
+                : { first: [local], second: [remote] },
+              detectedWorktreesByRepo: {},
+              folderWorkspaces: [],
+              floatingWorkspacePath: null
+            },
+            id,
+            host
+          )
       })
       for (let mount = 0; mount < 2; mount++) {
         const pane = createPane(1)
         const transport = createMockTransport('remote:server@@pty-1')
         transportFactoryQueue.push(transport)
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies connector pane/manager/dependency members.
-        const binding = connectPanePty(
-          pane as never,
-          createManager(1) as never,
-          createDeps() as never
-        )
+        const binding = connectPanePty(...mockPanePtyArgs(pane, createManager(1), createDeps()))
         await flushAsyncTicks(40)
         expect(createRemoteRuntimePtyTransport).toHaveBeenLastCalledWith(
           'server',
@@ -230,11 +236,8 @@ describe('fresh spawn leaves a local pane unbound', () => {
         )
         transportFactoryQueue.push(transport)
         const pane = createPane(1)
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the connector members exercised by attachment and input.
         const binding = connectPanePty(
-          pane as never,
-          createManager(1) as never,
-          createDeps({ worktreeId }) as never
+          ...mockPanePtyArgs(pane, createManager(1), createDeps({ worktreeId }))
         )
         await flushAsyncTicks(40)
         if (host === 'local') {

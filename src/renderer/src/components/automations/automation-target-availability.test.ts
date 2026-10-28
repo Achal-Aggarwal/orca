@@ -20,12 +20,15 @@ import { mergeFetchedReposForHost } from '@/store/repos/repo-catalog-identity'
 import { mergeProjectHostSetupsByOwner } from '../../../../shared/project-compatibility-merge'
 import { resolveOwner } from '@/lib/resolve-owner'
 
-const actionMocks = vi.hoisted(() => ({
-  rpc: vi.fn(),
-  interaction: vi.fn(),
-  error: vi.fn(),
-  state: {} as AppState
-}))
+const actionMocks = vi.hoisted(() => {
+  const state: Partial<AppState> = {}
+  return {
+    rpc: vi.fn(),
+    interaction: vi.fn(),
+    error: vi.fn(),
+    state
+  }
+})
 vi.mock('@/runtime/runtime-rpc-client', () => ({
   callRuntimeRpc: actionMocks.rpc,
   getRuntimeEnvironmentStatus: vi.fn(async () => ({
@@ -34,17 +37,17 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 vi.mock('@/store', () => ({
   useAppStore: Object.assign(
-    (selector: (state: AppState) => unknown) => selector(actionMocks.state),
+    (selector: (state: Partial<AppState>) => unknown) => selector(actionMocks.state),
     {
       getState: () => actionMocks.state
     }
   )
 }))
 vi.mock('@/store/selectors', () => ({
-  useRepoMap: () => new Map(actionMocks.state.repos.map((repo) => [repo.id, repo])),
+  useRepoMap: () => new Map((actionMocks.state.repos ?? []).map((repo) => [repo.id, repo])),
   useWorktreeMap: () =>
     new Map(
-      Object.values(actionMocks.state.worktreesByRepo)
+      Object.values(actionMocks.state.worktreesByRepo ?? {})
         .flat()
         .map((row) => [row.id, row])
     )

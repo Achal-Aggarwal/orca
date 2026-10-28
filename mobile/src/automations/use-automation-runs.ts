@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import type { AutomationOwnerPrecondition } from '../../../src/shared/automation-owner-precondition'
 import { compareAutomationRunsNewestFirst } from '../../../src/shared/automation-run-cursor'
@@ -31,16 +31,18 @@ export function useAutomationRuns(
   const pending = useRef(false)
   const key = query ? JSON.stringify(query) : GLOBAL_SCOPE
   const observation = useRef(observing)
-  observation.current = observing
   const scope = useRef(query)
-  scope.current = query
   const selection = useRef(selected)
-  selection.current = selected
   const history: History = histories.current.get(key) ?? { ids: [], cursor: null, loaded: false }
-  histories.current.set(key, history)
-  if (selected && !records.current.has(selected.id)) {
-    records.current.set(selected.id, selected)
-  }
+  useLayoutEffect(() => {
+    observation.current = observing
+    scope.current = query
+    selection.current = selected
+    histories.current.set(key, history)
+    if (selected && !records.current.has(selected.id)) {
+      records.current.set(selected.id, selected)
+    }
+  })
 
   const load = useCallback(
     async function read(next?: string): Promise<void> {

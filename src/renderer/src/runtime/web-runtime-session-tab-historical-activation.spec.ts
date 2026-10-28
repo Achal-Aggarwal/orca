@@ -1,3 +1,4 @@
+import { makeWorktree } from '../components/automations/automations-page-fixtures'
 import { expect, it, vi } from 'vitest'
 import { activateWebRuntimeSessionTab } from './web-runtime-session-tab-lifecycle'
 import {
@@ -145,18 +146,19 @@ export function registerHistoricalSessionTabActivationTests(mocks: {
       const context = {
         list: {
           runTargetFor: () => ({
-            worktree: mirrored ? { hostId: `runtime:${ENVIRONMENT_ID}` } : null,
+            worktree: mirrored ? makeWorktree({ hostId: `runtime:${ENVIRONMENT_ID}` }) : null,
             ownerEnvironmentId: ENVIRONMENT_ID,
             expectedPairingRevision: 4,
             terminalTarget: null,
             viewState: {
               canOpen: getRuntimeEnvironmentRevision(ENVIRONMENT_ID) === 4,
-              availability: 'terminal',
+              availability: 'terminal' as const,
+              actionLabel: 'Open',
               statusLabel: 'Open'
             }
           })
         }
-      } as unknown as Parameters<typeof createAutomationRunWorkspaceAction>[0]
+      }
       createAutomationRunWorkspaceAction(context)(
         makeRun({
           workspaceId: WORKTREE_ID,

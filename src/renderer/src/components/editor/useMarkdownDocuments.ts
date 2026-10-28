@@ -214,10 +214,7 @@ export function useMarkdownDocuments(
       })
     },
     [
-      activeFile.mode,
       activeFile,
-      activeFile.runtimeEnvironmentId,
-      connectionId,
       openFile,
       openMarkdownPreview,
       refreshMarkdownDocuments,

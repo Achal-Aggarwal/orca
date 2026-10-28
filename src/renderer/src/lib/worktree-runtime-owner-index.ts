@@ -287,6 +287,7 @@ const qualifiedFolderOwnerCache = new WeakMap<
     groups: QualifiedFolderHostState['projectGroups']
     repos: QualifiedFolderHostState['repos']
     rows: ReadonlyMap<string, readonly FolderHostWorkspace[]>
+    positions: ReadonlyMap<FolderHostWorkspace, number>
     results: Map<string, ReturnType<typeof resolveQualifiedFolderWorkspaceResult>>
   }
 >()
@@ -303,25 +304,33 @@ export function resolveQualifiedIndexedFolderWorkspace<W extends FolderHostWorks
   let cache = qualifiedFolderOwnerCache.get(folders)
   if (!cache || cache.groups !== state.projectGroups || cache.repos !== state.repos) {
     const rows = new Map<string, FolderHostWorkspace[]>()
-    for (const folder of folders) {
+    const positions = new Map<FolderHostWorkspace, number>()
+    for (const [index, folder] of folders.entries()) {
+      positions.set(folder, index)
       const id = folder.id
       const copies = rows.get(id) ?? []
       copies.push(folder)
       rows.set(id, copies)
     }
-    cache = { groups: state.projectGroups, repos: state.repos, rows, results: new Map() }
+    cache = { groups: state.projectGroups, repos: state.repos, rows, positions, results: new Map() }
     qualifiedFolderOwnerCache.set(folders, cache)
   }
-  const key = catalogOwnerKey(folderWorkspaceId, executionHostId)
-  let result = cache.results.get(key)
+  let result = cache.results.get(catalogOwnerKey(folderWorkspaceId, executionHostId))
   if (!result) {
     result = resolveQualifiedFolderWorkspaceResult(
       { ...state, folderWorkspaces: cache.rows.get(folderWorkspaceId) ?? [] },
       folderWorkspaceId,
       executionHostId
     )
-    cache.results.set(key, result)
+    cache.results.set(catalogOwnerKey(folderWorkspaceId, executionHostId), result)
   }
-  // SAFETY: the cache uses this exact folder array and catalog slices; its selected row retains W.
-  return result as ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>>
+  const positions = cache.positions
+  const isCallerResult = (
+    value: ReturnType<typeof resolveQualifiedFolderWorkspaceResult>
+  ): value is ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>> =>
+    value.kind !== 'selected' ||
+    folders[positions.get(value.value.workspace) ?? -1] === value.value.workspace
+  return isCallerResult(result)
+    ? result
+    : resolveQualifiedFolderWorkspaceResult(state, folderWorkspaceId, executionHostId)
 }

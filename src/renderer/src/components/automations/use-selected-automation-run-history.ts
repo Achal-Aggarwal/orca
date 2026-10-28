@@ -90,6 +90,7 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
   } | null>(null)
   const selected = input.selected
   const previous = acquired.current
+  let request = previous
   if (
     selected &&
     (!previous ||
@@ -115,7 +116,7 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
             )
           }
         : { kind: 'desktop' })
-    acquired.current = {
+    request = {
       selected,
       captured,
       target,
@@ -128,11 +129,11 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
     (input.selection?.automationId !== acquired.current?.selected.automation.id ||
       input.selection?.rowKey !== acquired.current?.selected.key)
   ) {
-    acquired.current = null
+    request = null
   }
-  const request = acquired.current
   const inputRef = useRef(input)
   useLayoutEffect(() => {
+    acquired.current = request
     inputRef.current = input
   })
   const reloadToken = input.reloadToken

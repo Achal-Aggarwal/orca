@@ -3,7 +3,8 @@
 /** Settle refused history reads explicitly so previous selection cannot masquerade as zero runs and waiters always complete. */
 
 import type * as AutomationRowActionDispatch from './automation-row-action-dispatch'
-import { act } from 'react'
+import { runtimeEnvironment } from '@/lib/editor-file-operation-owner-interpretation.spec'
+import { act, startTransition, Suspense } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AutomationRun } from '../../../../shared/automations-types'
@@ -104,14 +105,66 @@ afterEach(async () => {
 })
 
 describe('useSelectedAutomationRunHistory', () => {
+  it('keeps the committed owner when a replacement acquisition render is discarded', async () => {
+    const owner: AutomationOwnerRef = {
+      authority: { kind: 'desktop' },
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 7 }
+    }
+    const replacement: AutomationOwnerRef = {
+      ...owner,
+      selector: { kind: 'ssh', targetId: 'box', targetGeneration: 8 }
+    }
+    const contextFor = (value: AutomationOwnerRef) => ({
+      authority: value.authority,
+      capturedOwners: new Map([[DESKTOP_ROW.key, { owner: value, selector: value.selector }]])
+    })
+    const input = makeInput({ acquisitionToken: 0, context: contextFor(owner) })
+    const pending = Promise.withResolvers<void>()
+    const attempted = vi.fn()
+    mocks.dispatch.mockResolvedValue({ ok: true, value: [makeRun({ id: 'saved-run' })] })
+    function InterruptedHarness(props: {
+      input: SelectedAutomationRunHistoryInput
+      suspend?: boolean
+    }) {
+      useSelectedAutomationRunHistory(props.input)
+      if (props.suspend) {
+        attempted()
+        throw pending.promise
+      }
+      return null
+    }
+    const root = createRoot(document.createElement('div'))
+    roots.push(root)
+    const content = (next: SelectedAutomationRunHistoryInput, suspend = false) => (
+      <Suspense fallback={null}>
+        <InterruptedHarness input={next} suspend={suspend} />
+      </Suspense>
+    )
+    await act(async () => root.render(content(input)))
+    await act(async () => {
+      startTransition(() =>
+        root.render(
+          content({ ...input, context: contextFor(replacement), acquisitionToken: 1 }, true)
+        )
+      )
+    })
+    expect(attempted).toHaveBeenCalled()
+    expect(mocks.dispatch).toHaveBeenCalledTimes(1)
+    await act(async () =>
+      root.render(content({ ...input, context: contextFor(replacement), reloadToken: 1 }))
+    )
+    expect(mocks.dispatch).toHaveBeenCalledTimes(2)
+    expect(
+      mocks.dispatch.mock.calls.at(-1)?.[0].capturedOwners.get(DESKTOP_ROW.key)?.owner
+    ).toEqual(owner)
+    expect(settled(input).at(-1)?.ownerKey).toBe(ownerKey(owner))
+  })
   it('retains a legacy acquisition origin when the current fallback host changes', async () => {
     mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
-    const environments = ['gpu', 'other'].map((id) => ({ id, createdAt: 1, pairingRevision: 4 }))
+    const environments = ['gpu', 'other'].map((id) => runtimeEnvironment(id, 4))
     // SAFETY: the hook and transport only read these environment identity fields.
     useAppStore.setState({
-      runtimeEnvironments: environments as ReturnType<
-        typeof useAppStore.getState
-      >['runtimeEnvironments']
+      runtimeEnvironments: environments
     })
     replaceRuntimeEnvironmentRevisions(environments)
     environments.forEach(({ id }) => markRuntimeEnvironmentCompatible(id))
@@ -136,12 +189,10 @@ describe('useSelectedAutomationRunHistory', () => {
   })
   it('pins a legacy history retry to its acquired runtime pairing through the actual RPC path', async () => {
     mocks.dispatch.mockImplementation(actual.dispatchAutomationRunHistory)
-    const environments = [{ id: 'gpu', createdAt: 1, pairingRevision: 4 }]
+    const environments = [runtimeEnvironment('gpu', 4)]
     // SAFETY: this test supplies the only runtime identity fields read by the acquisition hook.
     useAppStore.setState({
-      runtimeEnvironments: environments as ReturnType<
-        typeof useAppStore.getState
-      >['runtimeEnvironments']
+      runtimeEnvironments: environments
     })
     replaceRuntimeEnvironmentRevisions(environments)
     markRuntimeEnvironmentCompatible('gpu')
@@ -469,9 +520,7 @@ describe('useSelectedAutomationRunHistory', () => {
   it('keeps the requested overview host for a row without a captured owner', async () => {
     // SAFETY: this acquisition reads only the runtime's identity and pairing revision.
     useAppStore.setState({
-      runtimeEnvironments: [{ id: 'gpu', createdAt: 1, pairingRevision: 7 }] as ReturnType<
-        typeof useAppStore.getState
-      >['runtimeEnvironments']
+      runtimeEnvironments: [runtimeEnvironment('gpu', 7)]
     })
     const runs = [makeRun()]
     const listRuns = vi

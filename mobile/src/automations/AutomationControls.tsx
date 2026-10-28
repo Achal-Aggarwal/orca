@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import { PickerModal, type PickerOption } from '../components/PickerModal'
@@ -11,6 +12,7 @@ export function AutomationButton(props: {
   primary?: boolean
   destructive?: boolean
 }) {
+  useMobileColorScheme()
   return (
     <Pressable
       accessibilityRole="button"
@@ -44,6 +46,7 @@ export function AutomationField(props: {
   literal?: boolean
   disabled?: boolean
 }) {
+  useMobileColorScheme()
   const literal = props.literal || props.numeric
   return (
     <View style={styles.field}>
@@ -73,6 +76,7 @@ export function AutomationChoice<Value extends string>(props: {
   onSelect: (value: Value) => void
   disabled?: boolean
 }) {
+  useMobileColorScheme()
   const [open, setOpen] = useState(false)
   return (
     <View style={styles.field}>
@@ -95,6 +99,7 @@ export function AutomationChoice<Value extends string>(props: {
   )
 }
 export function AutomationMetadata({ label, value }: { label: string; value: string }) {
+  useMobileColorScheme()
   return (
     <View style={styles.stack}>
       <Text style={styles.meta}>{label}</Text>

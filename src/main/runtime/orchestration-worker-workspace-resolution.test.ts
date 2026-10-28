@@ -34,6 +34,7 @@ import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
 import type { Repo } from '../../shared/repo-types'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+import type { RuntimeStore } from './runtime-store-contract'
 import { OrcaRuntimeService } from './orca-runtime'
 import type { HostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 
@@ -79,6 +80,9 @@ function makeStore(
   ]
   const meta = options.meta ?? { [WORKTREE_ID]: makeMeta('Feature') }
   const store = {
+    addRepo: vi.fn<RuntimeStore['addRepo']>(),
+    updateRepo: vi.fn<RuntimeStore['updateRepo']>(),
+    removeWorktreeMeta: vi.fn<RuntimeStore['removeWorktreeMeta']>(),
     getRepo: (id: string) => repos.find((repo) => repo.id === id),
     getRepos: () => repos,
     getAllWorktreeMeta: () => meta,
@@ -96,14 +100,14 @@ function makeStore(
       workspaceDir: '/tmp/workspaces',
       nestWorkspaces: false,
       refreshLocalBaseRefOnWorktreeCreate: false,
-      branchPrefix: 'none',
+      branchPrefix: 'none' as const,
       branchPrefixCustom: ''
     }),
     getProjects: () => [],
     getFolderWorkspaces: () => options.folderWorkspaces ?? [],
     getProjectGroups: () => options.projectGroups ?? []
   }
-  return store
+  return store satisfies RuntimeStore
 }
 
 class FolderConsumerRuntime extends OrcaRuntimeService {
@@ -420,7 +424,7 @@ describe('orchestration worker workspace resolution', () => {
         makeStore({
           repos: reversed ? repos.toReversed() : repos,
           folderWorkspaces: folders
-        }) as never
+        })
       )
       const selector = 'id:folder:folder-1'
       await expect(runtime.resolveRuntimeFileTarget(selector)).rejects.toThrow('selector_ambiguous')

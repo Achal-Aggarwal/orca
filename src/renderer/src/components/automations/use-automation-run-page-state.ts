@@ -21,10 +21,35 @@ export function useAutomationRunPageState({
   list,
   setup
 }: {
-  store: AutomationsPageStoreState
-  local: AutomationsPageLocalState
+  store: Pick<
+    AutomationsPageStoreState,
+    | 'pendingAutomationRunNavigation'
+    | 'setPendingAutomationRunNavigation'
+    | 'runtimeEnvironments'
+    | 'selectedId'
+    | 'setSelectedId'
+  >
+  local: Pick<
+    AutomationsPageLocalState,
+    | 'isLoading'
+    | 'automationHostTargetKey'
+    | 'automations'
+    | 'setSelectedAutomationRunPageId'
+    | 'setActivePaneTab'
+    | 'rerunRunIdsInFlight'
+    | 'selectedExternalKey'
+    | 'selectExternalKey'
+    | 'pageView'
+    | 'setPageView'
+    | 'setRunPageOrigin'
+    | 'isDetailOpen'
+    | 'setIsDetailOpen'
+  >
   list: AutomationsPageListState
-  setup: AutomationsPageSetupState
+  setup: Pick<
+    AutomationsPageSetupState,
+    'selectedRuns' | 'selectedRunsReady' | 'selectedRunsNotice' | 'selectedAutomationRunPage'
+  >
 }) {
   const {
     pendingAutomationRunNavigation,

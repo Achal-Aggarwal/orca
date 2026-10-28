@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { Pressable, Text, View } from 'react-native'
 import { ChevronRight } from 'lucide-react-native'
 import { colors } from '../theme/mobile-theme'
@@ -18,6 +19,7 @@ export function AutomationRunList(props: {
   recent?: boolean
   onSelect: (run: MobileAutomationRun) => void
 }) {
+  useMobileColorScheme()
   const history = props.history
   const matches = history.runs.filter((run) => runMatchesOutcome(run, props.outcome ?? 'all'))
   const visible = props.recent ? matches.slice(0, 3) : matches

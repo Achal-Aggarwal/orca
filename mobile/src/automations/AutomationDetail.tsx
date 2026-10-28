@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useEffect, useState } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import {
@@ -25,6 +26,7 @@ export function AutomationDetail(props: {
   onDelete: () => void
   onRuns: () => void
 }) {
+  useMobileColorScheme()
   const { automation, item } = props.row
   const orphan = item.selector.kind === 'orphan'
   const client = props.client

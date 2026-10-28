@@ -1,3 +1,4 @@
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useState } from 'react'
 import { useLocalSearchParams } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
@@ -15,6 +16,7 @@ import { AutomationManager } from './AutomationManager'
 import { automationStyles as styles } from './automation-styles'
 
 export function MobileAutomationsScreen() {
+  useMobileColorScheme()
   const params = useLocalSearchParams<{ hostId?: string | string[] }>()
   const hostId = firstParam(params.hostId)
   const { client } = useHostClient(hostId)

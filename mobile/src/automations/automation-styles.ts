@@ -1,8 +1,8 @@
-import { StyleSheet } from 'react-native'
+import { themedStyleSheet } from '../theme/themed-styles'
 import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 
-export const automationStyles = StyleSheet.create({
+export const automationStyles = themedStyleSheet(() => ({
   screen: { flex: 1, backgroundColor: colors.bgBase },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl },
   header: {
@@ -67,4 +67,4 @@ export const automationStyles = StyleSheet.create({
   },
   empty: { paddingVertical: spacing.xl, gap: spacing.md, alignItems: 'center' },
   separator: { height: 1, backgroundColor: colors.borderSubtle }
-})
+}))

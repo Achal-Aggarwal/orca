@@ -10,7 +10,12 @@ import type {
 import type { Worktree } from '../../../../shared/worktree/types'
 import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { toWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
-import { makeAutomation, makeAutomationListRow, makeRun } from './automations-page-fixtures'
+import {
+  makeAutomation,
+  makeAutomationListRow,
+  makeRun,
+  makeWorktree
+} from './automations-page-fixtures'
 import {
   makeFolderWorkspace,
   makeProjectGroup
@@ -24,15 +29,19 @@ import { useAutomationsPageListState } from './use-automations-page-list-state'
 import { useAutomationRunPageState } from './use-automation-run-page-state'
 import { EMPTY_AUTOMATION_LIST_FILTER } from './automation-list-view'
 
-const mocks = vi.hoisted(() => ({
-  state: {} as Record<string, unknown>,
-  listeners: new Set<() => void>(),
-  catalog: {} as Record<string, unknown>,
-  toastError: vi.fn(),
-  toastMessage: vi.fn(),
-  activate: vi.fn(() => true),
-  ownerActivate: vi.fn(async () => true)
-}))
+const mocks = vi.hoisted(() => {
+  const state: Record<string, unknown> = {}
+  const catalog: Record<string, unknown> = {}
+  return {
+    state,
+    listeners: new Set<() => void>(),
+    catalog,
+    toastError: vi.fn(),
+    toastMessage: vi.fn(),
+    activate: vi.fn(() => true),
+    ownerActivate: vi.fn(async () => true)
+  }
+})
 vi.mock('@/store', () => ({
   useAppStore: Object.assign(
     (selector: (state: Record<string, unknown>) => unknown) => selector(mocks.state),
@@ -97,14 +106,14 @@ let current: {
 
 function worktree(hostId: Worktree['hostId'], overrides: Partial<Worktree> = {}): Worktree {
   // SAFETY: the historical consumers read only identity, path, display and owner fields.
-  return {
+  return makeWorktree({
     id: WT,
     repoId: 'repo-a',
     path: '/srv/app',
     displayName: `Live ${hostId}`,
     hostId,
     ...overrides
-  } as Worktree
+  })
 }
 function seed(rows: Worktree[], authority: AutomationAuthorityRef = desktop) {
   const selected = makeAutomationListRow({
@@ -154,17 +163,27 @@ function seed(rows: Worktree[], authority: AutomationAuthorityRef = desktop) {
       authority,
       capturedOwner: captured,
       runs: [run],
+      navigation: null,
+      reloadToken: -1,
       notice: null
     },
     setSelectedAutomationRunPageId: vi.fn(),
     setSelectedRowKey: vi.fn(),
+    setRunHistoryAcquisitionToken: vi.fn(),
     selectExternalKey: vi.fn(),
+    isLoading: false,
+    automationHostTargetKey: null,
+    pageView: 'automations' as const,
+    setPageView: vi.fn(),
+    setRunPageOrigin: vi.fn(),
     isDetailOpen: false,
     rerunRunIdsInFlight: new Set(),
     setIsDetailOpen: vi.fn(),
     setActivePaneTab: vi.fn()
   }
   const store = {
+    runtimeEnvironments: [],
+    pendingAutomationRunNavigation: null,
     selectedId: selected.automation.id,
     setSelectedId: vi.fn(),
     repoMap: new Map(),
@@ -205,7 +224,7 @@ function pane(
 async function mount(input: ReturnType<typeof seed>, selectedRun = run) {
   function Harness() {
     // SAFETY: omitted page editing and catalog-search members are not used by this historical path.
-    const args = { ...input, store: { ...input.store } } as unknown as Parameters<
+    const args = { ...input, store: { ...input.store } } satisfies Parameters<
       typeof useAutomationsPageListState
     >[0]
     const list = useAutomationsPageListState(args)
@@ -213,12 +232,15 @@ async function mount(input: ReturnType<typeof seed>, selectedRun = run) {
       ...args,
       list,
       // SAFETY: only selected historical records are read by this hook's detail projection.
-      setup: { selectedRuns: [selectedRun], selectedAutomationRunPage: selectedRun } as Parameters<
-        typeof useAutomationRunPageState
-      >[0]['setup']
+      setup: {
+        selectedRuns: [selectedRun],
+        selectedAutomationRunPage: selectedRun,
+        selectedRunsReady: false,
+        selectedRunsNotice: null
+      }
     })
     // SAFETY: the action consumes the list's actual historical resolver only.
-    const context = { list } as Parameters<typeof createAutomationRunWorkspaceAction>[0]
+    const context = { list } satisfies Parameters<typeof createAutomationRunWorkspaceAction>[0]
     current = { list, detail, open: createAutomationRunWorkspaceAction(context) }
     return null
   }
@@ -647,14 +669,19 @@ describe('historical affordance, physical owner, exact pane and serving authorit
   })
 
   it('asks the server to open a run whose pane it slept, PTY id dropped', async () => {
-    mocks.state = storeState(false)
+    const input = seed([worktree('runtime:env-a', { runtimeOwnerEnvironmentId: ENV })], runtime)
+    const sleepingRun = { ...run, terminalPtyId: null }
+    input.local.selectedAutomationRuns.runs = [sleepingRun]
+    await mount(input, sleepingRun)
+    current.open(sleepingRun)
+    await vi.waitFor(() => expect(mocks.ownerActivate).toHaveBeenCalled())
 
-    openRun({ ...run, terminalPtyId: null })
-    await vi.waitFor(() => expect(mocks.activateWebRuntimeSessionTab).toHaveBeenCalled())
-
-    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith(WT)
-    expect(mocks.activateWebRuntimeSessionTab).toHaveBeenCalledWith(
-      expect.objectContaining({ worktreeId: WT, tabId: HOST_TAB, environmentId: ENV, leafId: LEAF })
+    expect(mocks.activate).toHaveBeenCalledWith(
+      WT,
+      expect.objectContaining({ executionHostId: 'runtime:env-a', providesInitialSurface: true })
+    )
+    expect(mocks.ownerActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeId: WT, tabId: TAB, environmentId: ENV, leafId: LEAF })
     )
     expect(mocks.toastMessage).not.toHaveBeenCalled()
   })

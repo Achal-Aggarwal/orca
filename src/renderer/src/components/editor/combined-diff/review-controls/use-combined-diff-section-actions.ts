@@ -269,15 +269,7 @@ export function useCombinedDiffSectionActions({
         console.error('Save failed:', err)
       }
     },
-    [
-      file.filePath,
-      file.operationProvenance,
-      file.runtimeEnvironmentId,
-      file.worktreeId,
-      sectionsRef,
-      setSectionHeights,
-      setSections
-    ]
+    [file.filePath, sectionsRef, setSectionHeights, setSections]
   )
 
   // Build each precondition after that section’s prior save settles.
@@ -303,7 +295,7 @@ export function useCombinedDiffSectionActions({
       chains.set(key, tracked)
       return tracked
     },
-    [file, runSectionSave, sectionsRef]
+    [runSectionSave, sectionsRef]
   )
 
   const handleSectionSaveRef = useRef(handleSectionSave)

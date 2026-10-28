@@ -31,8 +31,23 @@ export function useAutomationsPageListState({
   store,
   local
 }: {
-  store: AutomationsPageStoreState
-  local: AutomationsPageLocalState
+  store: Pick<AutomationsPageStoreState, 'repoMap' | 'worktreeMap' | 'selectedId' | 'setSelectedId'>
+  local: Pick<
+    AutomationsPageLocalState,
+    | 'automations'
+    | 'failedAuthorityKeys'
+    | 'listSearchQuery'
+    | 'listFilter'
+    | 'listSort'
+    | 'selectedRowKey'
+    | 'selectedExternalKey'
+    | 'selectedAutomationRuns'
+    | 'workspaceNameCacheRef'
+    | 'selectExternalKey'
+    | 'setSelectedAutomationRunPageId'
+    | 'setSelectedRowKey'
+    | 'setRunHistoryAcquisitionToken'
+  >
 }) {
   const { repoMap, worktreeMap, selectedId, setSelectedId } = store
   const {
