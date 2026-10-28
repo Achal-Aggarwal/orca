@@ -2,11 +2,26 @@
 
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { OnboardingFeatureSetupDeps } from '@/components/onboarding/onboarding-feature-setup'
-import type { languages } from 'monaco-editor'
+import type { editor, languages } from 'monaco-editor'
 import type { MonacoE2EProbe } from './components/editor/monaco-e2e-probe'
 import type { TerminalWorktreeParkingDebugVerdict } from './components/terminal-pane/terminal-parking-e2e-overrides'
 import type { TerminalPtyPreSpawnE2EBarrier } from './components/terminal-pane/terminal-pty-pre-spawn-e2e-barrier'
 import type { LocalLayoutStreamE2EEnd } from './runtime/local-layout-stream-e2e-end'
+
+declare module 'monaco-editor/esm/vs/language/typescript/languageFeatures.js' {
+  export class LibFiles {
+    _hasFetchedLibFiles?: boolean
+    getOrCreateModel(fileName: string): editor.ITextModel | null
+  }
+}
+
+declare module 'monaco-editor/esm/vs/language/typescript/lib/lib.index.js' {
+  export const libFileSet: Record<string, boolean>
+}
+
+declare module 'monaco-editor/esm/vs/editor/common/services/resolverService.js' {
+  export const ITextModelService: unknown
+}
 
 declare module 'monaco-editor/esm/vs/basic-languages/python/python.js' {
   export const conf: languages.LanguageConfiguration

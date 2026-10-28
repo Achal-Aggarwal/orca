@@ -25,6 +25,7 @@ import { installMonacoPeekReferencesPreviewOptions } from './monaco-peek-preview
 import { installMonacoContextMenuPaste } from '@/components/editor/install-monaco-context-menu-paste'
 import { runMonacoSetupSteps } from './monaco-setup-steps'
 import { installMonacoTsWorkerIdleStop } from './monaco-ts-worker-idle-stop'
+import { installMonacoBuiltinLibraryLifetime } from './monaco-builtin-library-lifetime'
 
 globalThis.MonacoEnvironment = {
   getWorker(_workerId, label) {
@@ -67,6 +68,7 @@ monacoTS.javascriptDefaults.setCompilerOptions({
   jsx: monacoTS.JsxEmit.Preserve
 })
 
+let disposeBuiltinLibraries: (() => void) | undefined
 runMonacoSetupSteps([
   ['Vue language registration', () => registerVueLanguage(monaco)],
   ['Svelte language registration', () => registerSvelteLanguage(monaco)],
@@ -84,13 +86,22 @@ runMonacoSetupSteps([
   ['peek references preview options', installMonacoPeekReferencesPreviewOptions],
   // Sandboxed navigator.clipboard blocks Monaco Paste; use trusted IPC as native Cmd+V does.
   ['context-menu paste', () => installMonacoContextMenuPaste(monaco)],
-  ['TS worker idle stop', () => installMonacoTsWorkerIdleStop(monaco)]
+  ['TS worker idle stop', () => installMonacoTsWorkerIdleStop(monaco)],
+  [
+    'builtin library lifetime',
+    () => {
+      disposeBuiltinLibraries = installMonacoBuiltinLibraryLifetime(monaco)
+    }
+  ]
 ])
 
 loader.config({ monaco })
 
 const unregisterEditorModelRegistry = editorModelRegistry.register(monaco)
 if (import.meta.hot) {
-  import.meta.hot.dispose(unregisterEditorModelRegistry)
+  import.meta.hot.dispose(() => {
+    disposeBuiltinLibraries?.()
+    unregisterEditorModelRegistry()
+  })
 }
 export { monaco }
