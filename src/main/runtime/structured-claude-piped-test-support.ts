@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, vi } from 'vitest'
+import { expect, vi, type Mock } from 'vitest'
 import { createFakePipedChild } from '../../shared/__fixtures__/fake-spawned-child'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-connection'
@@ -26,7 +26,10 @@ export async function claudePipedFixture() {
   const heldSpawn = new Map<number, Promise<void>>()
   const permitKill = new Set<number>()
   const omitInit = new Set<number>()
-  const logs = { warn: vi.fn(), error: vi.fn() }
+  const logs: Record<'warn' | 'error', Mock<(...args: unknown[]) => void>> = {
+    warn: vi.fn(),
+    error: vi.fn()
+  }
   let operation = 0
   let processless = false
   const emit = (index: number, frame: unknown) =>
