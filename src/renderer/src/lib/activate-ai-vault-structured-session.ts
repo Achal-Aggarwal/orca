@@ -79,7 +79,8 @@ const defaultDeps: StructuredSessionActivationDeps = {
 export async function activateAiVaultStructuredSession(
   session: Pick<AiVaultSession, 'structuredSession'>,
   deps: StructuredSessionActivationDeps = defaultDeps,
-  target?: RuntimeClientTarget
+  target?: RuntimeClientTarget,
+  feedback?: Pick<StructuredSessionActivationDeps, 'unavailable' | 'gone' | 'hostCannotOpen'>
 ): Promise<boolean> {
   const structured = session.structuredSession
   if (!structured) {
@@ -97,7 +98,11 @@ export async function activateAiVaultStructuredSession(
   if (inFlight) {
     return inFlight
   }
-  const activation = activateStructuredSession(structured, deps, target)
+  const activation = activateStructuredSession(
+    structured,
+    feedback ? { ...deps, ...feedback } : deps,
+    target
+  )
   activationsInFlight.set(key, activation)
   try {
     return await activation
