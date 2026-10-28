@@ -597,11 +597,9 @@ describe('committed agent status changes', () => {
     write(store)
     const observed = vi.fn()
     store.getState().subscribeAgentStatusChanges(observed)
-    store
-      .getState()
-      .setAgentStatus(FIRST_PANE, { state: 'done', prompt: 'fixed' }, undefined, {
-        updatedAt: BASE_TIME - 1
-      })
+    store.getState().setAgentStatus(FIRST_PANE, { state: 'done', prompt: 'fixed' }, undefined, {
+      updatedAt: BASE_TIME - 1
+    })
     store.getState().removeAgentStatus('missing')
     store.getState().setAgentProgramStatus(FIRST_PANE, null)
     store.getState().transactAgentStatuses(() => {
