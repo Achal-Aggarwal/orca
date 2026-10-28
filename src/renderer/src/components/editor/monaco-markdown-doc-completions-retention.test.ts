@@ -1,4 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render } from '@testing-library/react'
+import { createElement, useRef } from 'react'
+import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
+import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
+
+afterEach(cleanup)
 import type { editor, languages, Position } from 'monaco-editor'
 import type { OnMount } from '@monaco-editor/react'
 import {
@@ -68,22 +75,93 @@ describe('live Markdown completion ownership', () => {
   it('preserves every mounted model when many other scopes are supplied', async () => {
     const complete = register()
     const active = model('active')
-    setMarkdownDocCompletionDocuments(active, documents('Target'))
+    const owner = Symbol()
+    setMarkdownDocCompletionDocuments(active, documents('Target'), owner)
     for (let scope = 0; scope < 300; scope++) {
-      setMarkdownDocCompletionDocuments(model(`scope-${scope}`), documents(`Target-${scope}`))
+      const other = model(`scope-${scope}`)
+      setMarkdownDocCompletionDocuments(other, documents(`Target-${scope}`), Symbol())
     }
     expect((await complete(active)).map((item) => item.label)).toEqual(['Target'])
-    clearMarkdownDocCompletionDocuments(active)
+    clearMarkdownDocCompletionDocuments(active, owner)
     expect(await complete(active)).toEqual([])
   })
 
   it('keeps different model incarnations separate even when their URI is identical', async () => {
     const complete = register()
     const old = model('same-uri')
+    const owner = Symbol()
     const current = model('same-uri')
-    setMarkdownDocCompletionDocuments(old, documents('Target old'))
-    setMarkdownDocCompletionDocuments(current, documents('Target current'))
-    clearMarkdownDocCompletionDocuments(old)
+    setMarkdownDocCompletionDocuments(old, documents('Target old'), owner)
+    setMarkdownDocCompletionDocuments(current, documents('Target current'), owner)
+    clearMarkdownDocCompletionDocuments(old, owner)
     expect((await complete(current)).map((item) => item.label)).toEqual(['Target current'])
+  })
+})
+
+function Pane({
+  textModel,
+  catalog,
+  language = 'markdown'
+}: {
+  textModel: editor.ITextModel
+  catalog: MarkdownDocument[]
+  language?: string
+}): null {
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: completion registration only reads the editor's model in this hook fixture.
+  editorRef.current = { getModel: () => textModel } as editor.IStandaloneCodeEditor
+  useMonacoEditorDecorations({
+    editorRef,
+    mountedEditor: null,
+    content: '[[Ta',
+    language,
+    markdownDocuments: catalog,
+    conflictDecorationsEnabled: false
+  })
+  return null
+}
+
+describe('pane-owned Markdown completion catalogs', () => {
+  it('preserves a shared-model survivor and releases repeated catalog replacements on last close', async () => {
+    const complete = register()
+    const shared = model('shared')
+    const catalog = documents('Target')
+    const first = render(createElement(Pane, { textModel: shared, catalog }))
+    const second = render(createElement(Pane, { textModel: shared, catalog }))
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target'])
+
+    first.unmount()
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target'])
+    for (let update = 0; update < 20; update++) {
+      second.rerender(
+        createElement(Pane, { textModel: shared, catalog: documents(`Target-${update}`) })
+      )
+    }
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target-19'])
+    second.unmount()
+    expect(await complete(shared)).toEqual([])
+  })
+
+  it('restores surviving catalogs on language changes and isolates replacement models', async () => {
+    const complete = register()
+    const shared = model('same-uri')
+    const replacement = model('same-uri')
+    const first = render(
+      createElement(Pane, { textModel: shared, catalog: documents('Target first') })
+    )
+    const catalog = documents('Target second')
+    const second = render(createElement(Pane, { textModel: shared, catalog }))
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target second'])
+
+    second.rerender(createElement(Pane, { textModel: shared, catalog, language: 'plaintext' }))
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target first'])
+    second.rerender(createElement(Pane, { textModel: replacement, catalog }))
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target first'])
+    expect((await complete(replacement)).map((item) => item.label)).toEqual(['Target second'])
+    second.unmount()
+    expect(await complete(replacement)).toEqual([])
+    expect((await complete(shared)).map((item) => item.label)).toEqual(['Target first'])
+    first.unmount()
+    expect(await complete(shared)).toEqual([])
   })
 })
