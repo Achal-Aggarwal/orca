@@ -1,4 +1,5 @@
 import { createElement, Fragment } from 'react'
+import type * as React from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
@@ -16,7 +17,7 @@ import type { MobileNativeChatSendOutcome } from './native-chat/mobile-native-ch
 
 const subscriptionWork = vi.hoisted(() => ({ active: 0, wakes: 0, snapshots: 0 }))
 vi.mock('react', async (importOriginal) => {
-  const react = await importOriginal<typeof import('react')>()
+  const react = await importOriginal<typeof React>()
   type Subscribe = (listener: () => void) => () => void
   const observed = new WeakMap<Subscribe, Subscribe>()
   return {

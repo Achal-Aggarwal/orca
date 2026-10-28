@@ -84,10 +84,8 @@ function streamState(frames: Awaited<ReturnType<typeof openStream>>) {
       return state
     }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only the installed subscribe dispatcher writes these serialized events.
-    return reduceStructuredAgentSession(state, {
-      type: 'event',
-      event: frame.result as AgentSessionSubscribeEvent
-    })
+    const event = frame.result as AgentSessionSubscribeEvent
+    return reduceStructuredAgentSession(state, { type: 'event', event })
   }, EMPTY_STRUCTURED_AGENT_SESSION)
 }
 
