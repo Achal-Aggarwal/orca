@@ -24,13 +24,7 @@ vi.mock('@/store', () => {
     fetchIssue,
     fetchLinearIssue,
     gitConflictOperationByWorktree: {},
-    hostedReviewCache: {
-      'local::repo-1::feature/branch': {
-        data: null,
-        fetchedAt: Date.now(),
-        linkedReviewHintKey: ''
-      }
-    },
+    hostedReviewCache: {},
     issueCache: {},
     linearIssueCache: {},
     openModal,
