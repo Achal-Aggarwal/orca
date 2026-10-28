@@ -2,9 +2,11 @@ import type { MarkdownToken } from '@tiptap/core'
 import {
   createMarkdownFenceRangeCursor,
   getMarkdownFenceRanges,
-  isInsideMarkdownFenceRange,
   type MarkdownFenceRanges
 } from './markdown-fence-scanner'
+import { scanDetailsHtmlBlock, type DetailsHtmlBlock } from './details-html-block-scanner'
+
+export type { DetailsHtmlBlock } from './details-html-block-scanner'
 
 // Match the slash menu and toolbar’s heading scales.
 export type ToggleHeadingVariant =
@@ -33,12 +35,6 @@ export type DetailsHtmlToken = MarkdownToken & {
   attributes?: Record<string, unknown>
   bodyTokens?: MarkdownToken[]
   summaryTokens?: MarkdownToken[]
-}
-
-export type DetailsHtmlBlock = {
-  raw: string
-  openingAttributes: string
-  inner: string
 }
 
 export type DetailsSummaryHtml = {
@@ -95,19 +91,42 @@ export function createDetailsMatcher(content: string): (start: number) => Detail
   let fenceRanges: MarkdownFenceRanges | undefined
   let unclosedStarts: Set<number> | undefined
   let isInsideFence: ((index: number) => boolean) | undefined
+  let openingSearchFrom = content.length + 1
+  let nextOpeningEnd = -1
+  let unclosedOpeningEnd = -1
   return (start) => {
-    if (unclosedStarts?.has(start) || !/^<details\b[^>]*>/i.test(content.slice(start))) {
+    if (unclosedStarts?.has(start) || !/^<details\b/i.test(content.slice(start))) {
       return null
     }
+
+    const hasSourceOffset = Number.isInteger(start) && start >= 0
+    if (hasSourceOffset) {
+      const from = start + '<details'.length
+      if (from < openingSearchFrom || (nextOpeningEnd !== -1 && from > nextOpeningEnd)) {
+        openingSearchFrom = from
+        nextOpeningEnd = content.indexOf('>', from)
+      }
+      if (nextOpeningEnd === -1 || nextOpeningEnd === unclosedOpeningEnd) {
+        return null
+      }
+    } else if (!/^<details\b[^>]*>/i.test(content.slice(start))) {
+      return null
+    }
+
     const ranges = (fenceRanges ??= getMarkdownFenceRanges(content))
     isInsideFence ??= createMarkdownFenceRangeCursor(ranges)
-    return scanDetailsHtmlBlock(
+    const block = scanDetailsHtmlBlock(
       content,
       start,
       ranges,
       (unclosedStarts ??= new Set<number>()),
-      isInsideFence
+      isInsideFence,
+      hasSourceOffset ? nextOpeningEnd : undefined
     )
+    if (!block && hasSourceOffset) {
+      unclosedOpeningEnd = nextOpeningEnd
+    }
+    return block
   }
 }
 
@@ -117,63 +136,6 @@ export function matchDetailsHtmlBlock(
   precomputedFenceRanges?: MarkdownFenceRanges
 ): DetailsHtmlBlock | null {
   return scanDetailsHtmlBlock(content, start, precomputedFenceRanges)
-}
-
-function scanDetailsHtmlBlock(
-  content: string,
-  start: number,
-  precomputedFenceRanges?: MarkdownFenceRanges,
-  unclosedStarts?: Set<number>,
-  isInsideFence?: (index: number) => boolean
-): DetailsHtmlBlock | null {
-  const openingMatch = content.slice(start).match(/^<details\b[^>]*>/i)
-  if (!openingMatch) {
-    return null
-  }
-
-  const detailsTagPattern = /<\/?details\b[^>]*>/gi
-  detailsTagPattern.lastIndex = start
-  const fenceRanges = precomputedFenceRanges ?? getMarkdownFenceRanges(content)
-  const containsFence =
-    isInsideFence ?? ((index: number) => isInsideMarkdownFenceRange(index, fenceRanges))
-
-  let depth = 0
-  const openingStarts: number[] | undefined = unclosedStarts ? [] : undefined
-
-  for (;;) {
-    const tagMatch = detailsTagPattern.exec(content)
-    if (!tagMatch) {
-      if (openingStarts && unclosedStarts) {
-        for (const openingStart of openingStarts) {
-          unclosedStarts.add(openingStart)
-        }
-      }
-      return null
-    }
-
-    const tag = tagMatch[0]
-    if (tagMatch.index !== start && containsFence(tagMatch.index)) {
-      continue
-    }
-
-    const isClosingTag = /^<\/details\b/i.test(tag)
-
-    if (isClosingTag) {
-      openingStarts?.pop()
-      depth -= 1
-      if (depth === 0) {
-        const closingEnd = tagMatch.index + tag.length
-        return {
-          raw: content.slice(start, closingEnd),
-          openingAttributes: openingMatch[0].replace(/^<details\b/i, '').replace(/>$/u, ''),
-          inner: content.slice(start + openingMatch[0].length, tagMatch.index)
-        }
-      }
-    } else {
-      openingStarts?.push(tagMatch.index)
-      depth += 1
-    }
-  }
 }
 
 function hasOnlySupportedDetailsAttributes(rawAttributes: string): boolean {

@@ -139,3 +139,50 @@ it('preserves standalone details matching with unordered supplied fence ranges',
     ])
   ).toBeNull()
 })
+
+it.each(['no-terminator', 'fenced-close', 'unclosed-tail'] as const)(
+  'does not rescan overlapping malformed details openings: %s',
+  (shape) => {
+    const codec = createRichMarkdownEditorCodec(key)
+    const count = 40_000
+    const openings = '<details\n'.repeat(count)
+    const tail =
+      shape === 'no-terminator'
+        ? ''
+        : shape === 'fenced-close'
+          ? '>\n```html\n</details>\n```\n'
+          : `>\n${'<details>\n'.repeat(count)}`
+    const expected =
+      shape === 'no-terminator'
+        ? openings
+        : '<details\n'.repeat(count - 1) +
+          codec.transport.create('inline-html', '<details\n>') +
+          (shape === 'fenced-close'
+            ? '\n```html\n</details>\n```\n'
+            : `\n${`${codec.transport.create('block-html', '<details>')}\n`.repeat(count)}`)
+    const encoded = runInNewContext(
+      'encode(content, codec)',
+      { encode: encodeRawMarkdownHtmlForRichEditor, content: openings + tail, codec },
+      { timeout: 1500 }
+    )
+    expect(encoded).toBe(expected)
+  }
+)
+
+it('preserves multiline details openings containing other opening prefixes', () => {
+  const codec = createRichMarkdownEditorCodec(key)
+  const content = '<details\n<details\n>\n</details>'
+  expect(encodeRawMarkdownHtmlForRichEditor(content, codec)).toBe(
+    codec.transport.create('block-html', content)
+  )
+})
+
+it('restarts opening-end lookup when an earlier block follows an unterminated query', () => {
+  const block = '<details><summary>First</summary>Body</details>'
+  const content = `${block}\n\n<details\n`
+  const match = createDetailsMatcher(content)
+  expect(match(content.lastIndexOf('<details'))).toBeNull()
+  expect(match(0)?.raw).toBe(block)
+  expect(match(content.lastIndexOf('<details'))).toBeNull()
+  expect(match(0)?.raw).toBe(block)
+})
