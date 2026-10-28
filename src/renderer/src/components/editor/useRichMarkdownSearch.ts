@@ -13,6 +13,7 @@ import {
   richMarkdownSearchPluginKey
 } from './rich-markdown-search'
 import { createRichMarkdownSearchMatchesCache } from './rich-markdown-search-matches-cache'
+import { replaceRichMarkdownSearchMatches } from './rich-markdown-search-replace'
 import { useRichMarkdownSearchHighlights } from './useRichMarkdownSearchHighlights'
 import { addAppKeyListener, removeAppKeyListener } from '@/lib/app-keyboard-router'
 
@@ -184,17 +185,7 @@ export function useRichMarkdownSearch({
     ) {
       return
     }
-    const tr = editor.state.tr
-    // Replace from the end to preserve remaining offsets and keep all edits in one undo step.
-    for (let index = liveMatches.length - 1; index >= 0; index -= 1) {
-      const match = liveMatches[index]
-      if (replaceQuery) {
-        tr.insertText(replaceQuery, match.from, match.to)
-      } else {
-        tr.delete(match.from, match.to)
-      }
-    }
-    editor.view.dispatch(tr)
+    editor.view.dispatch(replaceRichMarkdownSearchMatches(editor.state, liveMatches, replaceQuery))
     setDebouncedQuery(searchQuery)
     setNavigationRequest((request) => ({ revision: request.revision + 1, selectMatch: false }))
   }, [editor, getLiveMatches, replaceQuery, searchQuery])
