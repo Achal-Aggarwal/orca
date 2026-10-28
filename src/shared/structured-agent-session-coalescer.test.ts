@@ -320,4 +320,81 @@ describe('coalesced history removals', () => {
       h.coalescer.dispose()
     }
   })
+
+  it('bounds destructive burst work at N and 10N while ordinary updates still aggregate', () => {
+    const population = 1_000
+    const retained = Array.from({ length: population }, (_, index) => ({
+      ...item(),
+      itemId: `retained-${index}`,
+      sequence: index + 1
+    }))
+    function run(count: number, remove: boolean) {
+      let state: StructuredAgentSessionState = {
+        ...EMPTY_STRUCTURED_AGENT_SESSION,
+        epoch: 'epoch-1',
+        status: 'ready',
+        items: retained,
+        retainedOwnItemLimit: population + 1,
+        retainedItemCap: population + 1
+      }
+      let reductions = 0
+      let inputVisits = 0
+      const coalescer = createStructuredAgentSessionEventCoalescer((event) => {
+        reductions++
+        // Count retained input reads, including head lookup, without instrumenting production.
+        const items = new Proxy(state.items, {
+          get(target, property, receiver) {
+            if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
+              inputVisits++
+              return target[Number(property)]
+            }
+            return Reflect.get(target, property, receiver)
+          }
+        })
+        state = reduceStructuredAgentSession({ ...state, items }, { type: 'event', event }, 0)
+      })
+      try {
+        for (let index = 0; index < count; index++) {
+          const update = batch(population + index * 2 + 1)
+          const row: AgentJournalRenderItem = {
+            ...item(),
+            itemId: remove ? `answer-${index}` : 'answer',
+            sequence: remove ? update.batch.cursor.sequence : population + 1,
+            revision: index + 1
+          }
+          coalescer.push({ ...update, batch: { ...update.batch, items: [row] } })
+          if (remove) {
+            const removal = batch(update.batch.cursor.sequence + 1)
+            coalescer.push({
+              ...removal,
+              batch: { ...removal.batch, removedItemIds: [row.itemId] }
+            })
+          }
+        }
+        expect(reductions).toBe(remove ? 2 * count : 0)
+        vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
+        expect(reductions).toBe(remove ? 2 * count : 1)
+        expect(inputVisits).toBeGreaterThan(0)
+        expect(inputVisits).toBeLessThanOrEqual(reductions * (population + 2))
+        expect(state.items.slice(0, population)).toEqual(retained)
+        expect(state.items.slice(population)).toEqual(
+          remove ? [] : [expect.objectContaining({ itemId: 'answer', revision: count })]
+        )
+        return { reductions, inputVisits }
+      } finally {
+        coalescer.dispose()
+      }
+    }
+    vi.useFakeTimers()
+    try {
+      const small = run(10, true)
+      const large = run(100, true)
+      expect(large.reductions).toBe(10 * small.reductions)
+      expect(large.inputVisits).toBeLessThanOrEqual(10 * small.inputVisits)
+      run(10, false)
+      run(100, false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
