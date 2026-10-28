@@ -41,6 +41,7 @@ it('retains the terminal but disables interaction on tab hiding, app backgroundi
     onSelectionMode: vi.fn(),
     onSelectionCopy: vi.fn(),
     onSelectionEvicted: vi.fn(),
+    onClipboardWrite: vi.fn(),
     onModesChanged: vi.fn(),
     onKeyboardAvoidanceMetrics: vi.fn(),
     onHaptic: vi.fn(),

@@ -72,7 +72,10 @@ it('rejects bridge-delayed gestures while keeping query replies and readiness av
   }
   controller.receive({ type: 'terminal-input', bytes: '\x1b[A' })
   controller.receive({ type: 'terminal-tap' })
-  controller.receive({ type: 'terminal-file-tap', pathText: '/tmp/file' })
+  controller.receive({
+    type: 'terminal-file-tap',
+    candidates: [{ pathText: '/tmp/file', line: null, column: null }]
+  })
   controller.receive({ type: 'open-url', url: 'https://example.com' })
   controller.receive({ type: 'terminal-data', bytes: '\x1b[0n' })
   act(() => controller?.receive({ type: 'web-ready' }))
