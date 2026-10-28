@@ -104,7 +104,7 @@ describe('terminal preview document lifetime', () => {
     runtime.serializeTerminalBuffer.mockImplementationOnce(() => snapshot.promise)
     const retired = call('terminalPreview:connect', { ptyId: 'pane' })
     sender.emit('render-process-gone')
-    await call('terminalPreview:connect', { ptyId: 'pane' })
+    await call('terminalPreview:connect', { ptyId: 'pane-b' })
 
     snapshot.resolve({ data: 'old screen', cols: 80, rows: 24, seq: 0 })
     await expect(retired).resolves.toEqual({ snapshot: null, replay: [] })
