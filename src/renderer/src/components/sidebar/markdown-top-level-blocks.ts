@@ -146,7 +146,9 @@ export function splitMarkdownTopLevelBlocks(
 function shiftMarkdownPositions(node: Nodes, offset: number, lines: number): void {
   if (node.position) {
     for (const point of [node.position.start, node.position.end]) {
-      if (point.offset !== undefined) point.offset -= offset
+      if (point.offset !== undefined) {
+        point.offset -= offset
+      }
       point.line -= lines
     }
   }
@@ -156,9 +158,13 @@ function shiftMarkdownPositions(node: Nodes, offset: number, lines: number): voi
 }
 
 function isClosedFence(node: Nodes, source: string, offset: number): boolean {
-  if (node.type !== 'code') return false
+  if (node.type !== 'code') {
+    return false
+  }
   const opening = /^ {0,3}(`{3,}|~{3,})[^\r\n]*\r?\n/.exec(source)?.[1]
-  if (!opening || !node.position) return false
+  if (!opening || !node.position) {
+    return false
+  }
   const end = (node.position.end.offset ?? offset + source.length) - offset
   const authored = source.slice(0, end)
   const lastLine = authored.slice(authored.lastIndexOf('\n') + 1).replace(/\r$/, '')

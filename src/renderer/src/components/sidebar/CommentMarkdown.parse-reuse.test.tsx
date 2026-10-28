@@ -4,6 +4,8 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { Processor } from 'unified'
 import type remarkParsePlugin from 'remark-parse'
+import type * as ReactMarkdownModule from 'react-markdown'
+import type * as MarkdownBlocksModule from './markdown-top-level-blocks'
 import CommentMarkdown from './CommentMarkdown'
 import {
   advanceNativeChatText,
@@ -25,7 +27,7 @@ vi.mock('remark-parse', async (original) => {
   }
 })
 vi.mock('react-markdown', async (original) => {
-  const real = await original<typeof import('react-markdown')>()
+  const real = await original<typeof ReactMarkdownModule>()
   function measureRenderParser(this: Processor): void {
     const parse = this.parser!
     this.parser = (source, file) => {
@@ -43,7 +45,7 @@ vi.mock('react-markdown', async (original) => {
   }
 })
 vi.mock('./markdown-top-level-blocks', async (original) => {
-  const current = await original<typeof import('./markdown-top-level-blocks')>()
+  const current = await original<typeof MarkdownBlocksModule>()
   const legacy = await import('./markdown-top-level-blocks-legacy.test-fixture')
   return {
     ...current,
@@ -87,9 +89,13 @@ function sequence(full: string, start: number): string[] {
     }
     state = advanceNativeChatText(state, now)
     const text = state.source.slice(0, state.shown)
-    if (text !== result.at(-1)) result.push(text)
+    if (text !== result.at(-1)) {
+      result.push(text)
+    }
   }
-  if (result.at(-1) !== full) result.push(full)
+  if (result.at(-1) !== full) {
+    result.push(full)
+  }
   return result
 }
 
@@ -97,7 +103,7 @@ const prose =
   'The implementation reads **stable values** and keeps the same behavior for every user. '.repeat(
     650
   )
-const fence = '```text\n' + 'const result = readCurrentValue(input);\n'.repeat(1400) + '```'
+const fence = `\`\`\`text\n${'const result = readCurrentValue(input);\n'.repeat(1400)}\`\`\``
 const list = Array.from(
   { length: 650 },
   (_, i) => `- Item ${i}: preserve **current behavior** and report the measured result.\n`
@@ -112,7 +118,7 @@ it.each([
   ['paragraph', prose.slice(0, 50000), 40000],
   ['fence', fence, 40000],
   ['list', list, 35000],
-  ['settled fence and tail', fence + '\n\n' + prose.slice(0, 800), fence.length + 2],
+  ['settled fence and tail', `${fence}\n\n${prose.slice(0, 800)}`, fence.length + 2],
   [
     'backward boundaries',
     'Title\n===\n\n- first\n\n- second\n\n  continued\n\n| a | b |\n| - | - |\n| 1 | 2 |\n',
@@ -175,12 +181,12 @@ it.each([
 )
 
 it('uses one actual parse for discovery and rendering, then skips a completed fence', () => {
-  const source = fence + '\n\nNext'
+  const source = `${fence}\n\nNext`
   meter.sources = []
   const view = render(<CommentMarkdown content={source} math growing renderCodeBlock={code} />)
   expect(meter.sources).toEqual([source])
   meter.sources = []
-  view.rerender(<CommentMarkdown content={source + ' words'} math growing renderCodeBlock={code} />)
+  view.rerender(<CommentMarkdown content={`${source} words`} math growing renderCodeBlock={code} />)
   expect(meter.sources).toEqual(['Next words'])
   view.unmount()
 
