@@ -49,8 +49,7 @@ function reduceGatesChanged(
   restart: RestartFlow
 ): MobileWebShellStep {
   const changed = session.gates === null || gateKey(session.gates) !== gateKey(gates)
-  const waiting =
-    awaitsGates(session.state) || (session.state.kind === 'failed' && retriesNow(session, gates))
+  const waiting = awaitsGates(session.state) || retriesFailedDownload(session, gates)
   return changed && waiting ? restart(session, gates) : step(session, { gates })
 }
 
@@ -59,17 +58,25 @@ function reduceAppForegrounded(
   session: MobileWebShellSession,
   restart: RestartFlow
 ): MobileWebShellStep {
-  // Only a failed flow: restarting a running one would leave its reads holding the host's slots.
-  if (
-    session.state.kind === 'failed' &&
-    session.gates !== null &&
-    retriesNow(session, session.gates)
-  ) {
+  if (session.gates !== null && retriesFailedDownload(session, session.gates)) {
     return restart(session, session.gates)
   }
-  return session.state.kind === 'fetching'
+  // Arm only a download with nothing cached: a cached fallback never reaches the uncached failure that consumes the flag.
+  return session.state.kind === 'fetching' && session.cached === null
     ? step(session, { retryOnReconnect: true })
     : step(session, {})
+}
+
+// Only the link-lost download failure: other failed states keep their own retry latches, and restarting a running flow would leave its reads holding the host's slots.
+function retriesFailedDownload(
+  session: MobileWebShellSession,
+  gates: MobileWebShellGates
+): boolean {
+  return (
+    session.state.kind === 'failed' &&
+    session.state.reason === 'download-failed' &&
+    retriesNow(session, gates)
+  )
 }
 
 function retriesNow(session: MobileWebShellSession, gates: MobileWebShellGates): boolean {

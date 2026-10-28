@@ -72,4 +72,29 @@ describe('a download the link cut off, with nothing on disk', () => {
     })
     expect(run(away.session, { type: 'gates-changed', gates: gates() }).effects).toEqual([])
   })
+
+  it('leaves a later terminal failure to its own latches after a return armed the download', () => {
+    const fetching = run(afterCacheRead(null).session, {
+      type: 'manifest-read',
+      manifest: MANIFEST
+    })
+    const armed = run(fetching.session, { type: 'app-foregrounded' }).session
+    const ready = run(armed, {
+      type: 'activated',
+      generationDirectory: '/cache/mobile-web/host/generations/b',
+      sessionId: 'session-one',
+      buildId: MANIFEST.buildId,
+      totalBytes: MANIFEST.totalBytes,
+      elapsedMs: 1
+    })
+    const failed = run(ready.session, { type: 'shell-failed', reason: 'isolation-unavailable' })
+    expect(failed.session.state).toMatchObject({ kind: 'failed', reason: 'isolation-unavailable' })
+
+    expect(run(failed.session, { type: 'app-foregrounded' }).effects).toEqual([])
+    const away = run(failed.session, {
+      type: 'gates-changed',
+      gates: gates({ reachability: 'connecting' })
+    })
+    expect(run(away.session, { type: 'gates-changed', gates: gates() }).effects).toEqual([])
+  })
 })
