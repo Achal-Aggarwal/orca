@@ -114,7 +114,7 @@ type UnlistedInput = Exclude<
   keyof FileLinkContextInputState,
   (typeof FILE_LINK_CONTEXT_INPUT_KEYS)[number] | 'unifiedTabsByWorktree'
 >
-// Fails to compile when a resolver input is added without listing it above.
+// Fails to compile when either state type gains a key not listed above; deeper resolver types are not checked.
 const allInputsListed: [UnlistedInput] extends [never] ? true : UnlistedInput = true
 void allInputsListed
 
