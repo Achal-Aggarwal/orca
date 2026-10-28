@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const engine = vi.hoisted(() => ({
   listeners: new Map<string, (event: { data: unknown }) => void>(),
   calls: new Array<string>(),
-  throwOn: new Set<string>(),
+  tearDownFails: false,
   openFails: false,
   // Record queued screen-lock calls separately; their microtask order relative to synchronous engine calls is not a contract.
   screen: new Array<string>(),
@@ -30,7 +30,7 @@ vi.mock('@orca/expo-two-way-audio', () => ({
   },
   tearDown: () => {
     engine.calls.push('tearDown')
-    if (engine.throwOn.has('tearDown')) {
+    if (engine.tearDownFails) {
       throw new Error('the audio session would not tear down')
     }
   },
@@ -60,7 +60,7 @@ beforeEach(async () => {
   await flushScreen()
   engine.listeners.clear()
   engine.calls.length = 0
-  engine.throwOn.clear()
+  engine.tearDownFails = false
   engine.openFails = false
   engine.screen.length = 0
   engine.screenTags.clear()
@@ -157,17 +157,9 @@ describe('the screen the native microphone holds awake', () => {
 describe('a device whose audio session will not shut down', () => {
   it('resolves `end` rather than rejecting it, which the contract promises', async () => {
     // Synchronous try cannot catch void end() rejection; swallow/log binding failures inside cleanup to prevent unhandled rejections.
-    engine.throwOn.add('tearDown')
+    engine.tearDownFails = true
     const capture = useDictationCapture()
     await expect(capture.end()).resolves.toBeUndefined()
-    expect(engine.calls).toEqual(['tearDown'])
-  })
-
-  it('does not throw out of `release`, which runs bare in the unmount path', async () => {
-    engine.throwOn.add('tearDown')
-    const capture = useDictationCapture()
-    expect(() => capture.release()).not.toThrow()
-    await Promise.resolve()
     expect(engine.calls).toEqual(['tearDown'])
   })
 })

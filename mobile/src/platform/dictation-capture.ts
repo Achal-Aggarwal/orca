@@ -11,7 +11,7 @@ import type { DictationCapture } from './dictation-capture-contract'
 
 const screen = nativeMicrophoneScreenLock
 
-// Unmount calls this bare; catch failures so wake-tag release and desktop cancel can still run.
+// Never throw: unmount calls this bare and `end` must not reject, so wake-tag release and desktop cancel still run.
 function releaseMicrophone(): void {
   screen.release()
   try {
@@ -35,7 +35,7 @@ const nativeDictationCapture: DictationCapture = {
     return { ok: true }
   },
   begin: () => toggleRecording(true),
-  // Native events already delivered the tail. Tear down, not just mute, so other apps' audio resumes after a stop; the next open re-initializes.
+  // Native events already delivered the tail. Tear down, not just mute, so other apps' audio resumes; the next open re-initializes.
   end: async () => releaseMicrophone(),
   release: releaseMicrophone,
   onChunk: (handler) =>
