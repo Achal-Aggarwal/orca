@@ -1,13 +1,15 @@
+import { captureCrewIdentityInputs } from './crew-identity-inputs'
 import type { FleetDurableWorker } from '../../../../shared/orchestration-fleet-projection'
 import { createFleetStatusIndex } from '../../../../shared/orchestration-fleet-status-index'
 import { AGENT_STATUS_STALE_AFTER_MS } from '../../../../shared/agent-status-freshness'
 import { creatorFirstParent } from './crew-rules'
 import { createCrewPartyRegistry, type Party } from './crew-parties'
 import { readCrewAssignments, type CrewAssignmentRow } from './crew-query'
+import { createCrewSourceInputs } from './crew-source-inputs'
 import type { CrewReadDependencies } from './crew-read-model'
 
 export function createCrewHostDerivation(deps: CrewReadDependencies, now: number) {
-  const { statuses, ...sources } = deps
+  const { statuses, ...sources } = captureCrewIdentityInputs(deps)
   const registry = createCrewPartyRegistry({ ...sources, statuses })
   const { party, alias } = registry
   const selected = (rows: CrewAssignmentRow[]) =>
@@ -24,7 +26,8 @@ export function createCrewHostDerivation(deps: CrewReadDependencies, now: number
       row.assignee_orca_session_id,
       row.assignee_handle,
       row.assignee_pane_key,
-      `dispatch:${row.id}`
+      `dispatch:${row.id}`,
+      row.assignee_process
     )!
     assignmentParty.set(row.id, worker)
     alias(`dispatch:${row.id}`, worker.address)
@@ -141,6 +144,7 @@ export function createCrewHostDerivation(deps: CrewReadDependencies, now: number
   return refreshCrewStatuses(
     {
       registry,
+      sourceInputs: createCrewSourceInputs(deps.db),
       deps: { ...sources, statuses, records: registry.records },
       now,
       expiresAt,
@@ -157,6 +161,7 @@ export function refreshCrewStatuses<
     workersById: Map<string, FleetDurableWorker>
   }
 >(host: T, statuses: CrewReadDependencies['statuses']) {
+  statuses = structuredClone(statuses)
   const statusIndex = createFleetStatusIndex(statuses, [...host.workersById.values()])
   const statusesByPane = new Map<string, (typeof statuses)[number]>()
   for (const status of statuses) {

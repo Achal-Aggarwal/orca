@@ -61,6 +61,7 @@ export function readCrewRuntimeInputs(
   runtime: Pick<
     OrcaRuntimeService,
     | 'getTerminalWorktreeIdForHandle'
+    | 'getTerminalProcessIncarnation'
     | 'getTerminalHandleForPaneKey'
     | 'getPaneKeyForTerminalHandle'
     | 'getOrchestrationFleetAgentStatusSnapshot'
@@ -76,11 +77,11 @@ export function readCrewRuntimeInputs(
     retainedDbExists,
     hostKey,
     records: store ? conversationRecordReader(store) : null,
+    processForHandle: (handle) => runtime.getTerminalProcessIncarnation(handle),
     liveHandle: (handle) => runtime.getTerminalWorktreeIdForHandle(handle) !== null,
     handleForPane: (pane) => runtime.getTerminalHandleForPaneKey(pane),
     paneForHandle: (handle) => runtime.getPaneKeyForTerminalHandle(handle),
-    name: (identity, taskName, records) =>
-      runtime.orchestrationSenderNames.nameOf(identity, undefined, taskName, records),
+    name: runtime.orchestrationSenderNames.captureCrewInputs(),
     get statuses() {
       return runtime.getOrchestrationFleetAgentStatusSnapshot()
     }

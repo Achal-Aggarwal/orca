@@ -15,15 +15,14 @@ import {
 } from '../structured-session-lineage'
 import { crewDisplayName, crewTaskDisplay } from './crew-rules'
 import {
-  readCrewProvenance,
   readCrewOwnedRunAddresses,
   readCrewQuestions,
-  readCrewRuns,
   readCrewTraffic,
   type CrewAssignmentRow
 } from './crew-query'
 
 import type { Party } from './crew-parties'
+import { crewParentRelations } from './crew-parent-relations'
 import { createCrewHostDerivation } from './crew-host-derivation'
 import { statusForFleetWorker } from '../../../../shared/orchestration-fleet-status-index'
 import { projectLiveness } from '../../../../shared/orchestration-fleet-worker-projection'
@@ -40,6 +39,7 @@ export type CrewReadDependencies = {
     taskName: string | null,
     records: AgentSessionRecordReader | null
   ) => string | null
+  processForHandle?: (handle: string) => string | null
   statuses: readonly FleetAgentStatusEvidence[]
   now?: number
 }
@@ -59,6 +59,7 @@ export function buildCrewSnapshot(
   deps: CrewReadDependencies,
   host = createCrewHostDerivation(deps, deps.now ?? Date.now())
 ): OrchestrationCrewSnapshot {
+  deps = { ...host.deps, now: deps.now }
   const db = deps.db
   if (!db) {
     return emptyCrew(deps.retainedDbExists ? 'unknown' : 'ok')
@@ -69,10 +70,10 @@ export function buildCrewSnapshot(
   const { party, alias, addressOf, getParty, aliasesFor } = registry
   const records = host.deps.records
   const hydrate = (addresses: string[], panes: string[] = []) => {
-    const provenance = readCrewProvenance(db, addresses, panes)
+    const provenance = host.sourceInputs.provenance(addresses, panes)
     for (const family of [provenance.local, provenance.remote]) {
       for (const row of family) {
-        const worker = party(row.session, row.handle, row.pane, `dispatch:${row.id}`)
+        const worker = party(row.session, row.handle, row.pane, `dispatch:${row.id}`, row.process)
         if (worker) {
           alias(`dispatch:${row.id}`, worker.address)
         }
@@ -92,7 +93,7 @@ export function buildCrewSnapshot(
   hydrate(aliasesFor(self.address), self.paneKey ? [self.paneKey] : [])
   self = getParty(addressOf(self.address) ?? self.address) ?? self
   const ownedRunAddresses = readCrewOwnedRunAddresses(db, self)
-  for (const current of readCrewRuns(db, ownedRunAddresses)) {
+  for (const current of host.sourceInputs.runInputs(ownedRunAddresses)) {
     const coordinator = party(current.session, current.handle, current.pane, `run:${current.id}`)
     if (coordinator) {
       alias(`run:${current.id}`, coordinator.address)
@@ -101,10 +102,7 @@ export function buildCrewSnapshot(
   const selfAliases = () => aliasesFor(self.address)
   const traffic = readCrewTraffic(db, selfAliases(), cutoff)
   hydrate(traffic.map((message) => message.peer))
-  for (const run of readCrewRuns(
-    db,
-    traffic.map((message) => message.peer)
-  )) {
+  for (const run of host.sourceInputs.runInputs(traffic.map((message) => message.peer))) {
     const coordinator = party(run.session, run.handle, run.pane, `run:${run.id}`)
     if (coordinator) {
       alias(`run:${run.id}`, coordinator.address)
@@ -182,16 +180,18 @@ export function buildCrewSnapshot(
     return row
   }
   const snapshot = emptyCrew('ok')
-  for (const { assignment, worker, parent, parentAssignment, parentAddress } of host.relations.get(
-    self.address
-  ) ?? []) {
+  for (const { assignment, worker, parent } of host.relations.get(self.address) ?? []) {
     if (parent.address === self.address) {
       snapshot.sections.managing.push(
         decorate(worker, 'worker', assignment, `dispatch:${assignment.id}`)
       )
-    } else if (!rows.has(parent.address)) {
-      snapshot.sections.managedBy.push(decorate(parent, 'manager', parentAssignment, parentAddress))
     }
+  }
+  const parents = host.sourceInputs.parentInputs(selfAliases(), self.paneKey ? [self.paneKey] : [])
+  for (const relation of crewParentRelations(parents, self, registry, deps)) {
+    const row = decorate(relation.parent, 'manager', relation.assignment, relation.address)
+    row.partyKey = relation.key
+    snapshot.sections.managedBy.push(row)
   }
   for (const message of traffic) {
     let targetAddress = addressOf(message.peer)

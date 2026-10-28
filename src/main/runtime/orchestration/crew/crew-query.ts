@@ -28,6 +28,7 @@ export const CrewAssignment = z.object({
   stage: nullable,
   agent: nullable,
   host_label: nullable,
+  assignee_process: nullable,
   resource_incarnation: nullable,
   resource_host_scope: nullable
 })
@@ -39,7 +40,7 @@ const assignmentColumns = `d.rowid AS ordinal, d.id, d.run_id, d.task_id,
   d.status, d.completed_at, t.spec, t.task_title, t.display_name, t.status AS task_status,
   r.coordinator_handle, r.coordinator_pane_key,
   ${currentRunCoordinatorOrcaSessionIdSql('r')} AS coordinator_session,
-  w.stage, json_extract(w.start_options, '$.agent') AS agent, f.environment_name AS host_label, resource.process_incarnation AS resource_incarnation,
+  d.process_incarnation AS assignee_process, w.stage, json_extract(w.start_options, '$.agent') AS agent, f.environment_name AS host_label, resource.process_incarnation AS resource_incarnation,
   resource.host_scope AS resource_host_scope`
 const assignmentJoins = `JOIN tasks t ON t.id = d.task_id JOIN runs r ON r.id = d.run_id
   LEFT JOIN worker_dispatches w ON w.dispatch_id = d.id
@@ -69,50 +70,17 @@ export function readCrewAssignments(db: OrchestrationDb, now: number): CrewAssig
   )
 }
 
-const Provenance = z.object({
-  id: z.string(),
-  handle: nullable,
-  pane: nullable,
-  session: nullable
-})
-
-/** Retained aliases are narrow provenance, never eligible relationship membership. */
-export function readCrewProvenance(db: OrchestrationDb, addresses: string[], panes: string[] = []) {
-  const handles = JSON.stringify(addresses.filter((address) => address.startsWith('term_')))
-  const sessions = JSON.stringify(
-    addresses
-      .filter((address) => address.startsWith('orca_session_id:'))
-      .map((address) => address.slice('orca_session_id:'.length))
-  )
-  const ids = JSON.stringify(
-    addresses
-      .filter((address) => address.startsWith('dispatch:'))
-      .map((address) => address.slice(9))
-  )
-  const local = Provenance.array().parse(
+export function readCrewAssignmentIds(db: OrchestrationDb, ids: string[]): CrewAssignmentRow[] {
+  if (!ids.length) {
+    return []
+  }
+  return CrewAssignment.array().parse(
     db.db
-      .prepare(`SELECT d.id, d.assignee_handle AS handle,
-    d.assignee_pane_key AS pane, d.assignee_orca_session_id AS session
-    FROM dispatch_contexts d WHERE d.rowid IN (
-      SELECT rowid FROM dispatch_contexts WHERE assignee_handle IN (SELECT value FROM json_each(?))
-      UNION SELECT rowid FROM dispatch_contexts WHERE assignee_orca_session_id IN (SELECT value FROM json_each(?))
-      UNION SELECT rowid FROM dispatch_contexts WHERE assignee_pane_key IN (SELECT value FROM json_each(?))
-      UNION SELECT rowid FROM dispatch_contexts WHERE id IN (SELECT value FROM json_each(?)))
-    ORDER BY d.rowid DESC`)
-      .all(handles, sessions, JSON.stringify(panes), ids)
+      .prepare(`SELECT ${assignmentColumns}
+    FROM dispatch_contexts d ${assignmentJoins}
+    WHERE d.id IN (SELECT value FROM json_each(?))`)
+      .all(JSON.stringify(ids))
   )
-  const remote = Provenance.array().parse(
-    db.db
-      .prepare(`SELECT dispatch_id AS id,
-    terminal_handle AS handle, pane_key AS pane, NULL AS session
-    FROM remote_dispatch_attachments WHERE rowid IN (
-      SELECT rowid FROM remote_dispatch_attachments WHERE terminal_handle IN (SELECT value FROM json_each(?))
-      UNION SELECT rowid FROM remote_dispatch_attachments WHERE pane_key IN (SELECT value FROM json_each(?))
-      UNION SELECT rowid FROM remote_dispatch_attachments WHERE dispatch_id IN (SELECT value FROM json_each(?)))
-    ORDER BY rowid DESC`)
-      .all(handles, JSON.stringify(panes), ids)
-  )
-  return { local, remote }
 }
 
 const Traffic = z.object({
