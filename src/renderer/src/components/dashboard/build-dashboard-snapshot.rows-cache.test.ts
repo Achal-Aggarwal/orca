@@ -619,6 +619,7 @@ describe('native status publication to a mounted popout', () => {
                 if (typeof key === 'string') {
                   reads++
                 }
+                // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy `get` trap: only Reflect.get forwards a raw string|symbol key with the proxy receiver.
                 return Reflect.get(target, key, receiver)
               },
               ownKeys(target) {
