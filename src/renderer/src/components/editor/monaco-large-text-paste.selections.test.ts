@@ -33,7 +33,14 @@ function makeEditor(value: string, initialSelections: Selection[]) {
       return true
     }
   }
-  return { editor, model, batchCodeUnits }
+  return {
+    editor,
+    model,
+    batchCodeUnits,
+    setSelections: (next: Selection[]) => {
+      selections = next
+    }
+  }
 }
 
 afterEach(() => {
@@ -132,5 +139,88 @@ describe('chunked Monaco paste selections', () => {
     expect(model.getValue()).toBe('AB\n'.repeat(count))
     expect(editor.getSelections()).toHaveLength(count)
     expect(editor.getSelections()?.at(-1)?.positionColumn).toBe(3)
+  })
+})
+
+describe('chunked Monaco paste interruption', () => {
+  it('does not redirect remaining chunks after the user moves the caret', async () => {
+    const { editor, model, setSelections } = makeEditor('left\nright', [new Selection(1, 5, 1, 5)])
+    let yielded = false
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      yieldToEventLoop: async () => {
+        if (!yielded) {
+          yielded = true
+          setSelections([new Selection(2, 1, 2, 1)])
+        }
+      }
+    })
+    expect(result).toMatchObject({ status: 'cancelled', chunksWritten: 1 })
+    expect(model.getValue()).toBe('leftAB\nright')
+    await model.undo()
+    expect(model.getValue()).toBe('left\nright')
+  })
+
+  it('rejects a selection changed during yielding byte measurement', async () => {
+    const { editor, model, setSelections } = makeEditor('left\nright', [new Selection(1, 5, 1, 5)])
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      measureYieldAfterCodeUnits: 2,
+      yieldToEventLoop: async () => setSelections([new Selection(2, 1, 2, 1)])
+    })
+    expect(result).toMatchObject({ status: 'rejected', chunksWritten: 0 })
+    expect(model.getValue()).toBe('left\nright')
+  })
+
+  it('stops when a foreign model edit arrives between chunks', async () => {
+    const { editor, model } = makeEditor('left\nright', [new Selection(1, 5, 1, 5)])
+    let yielded = false
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      yieldToEventLoop: async () => {
+        if (!yielded) {
+          yielded = true
+          model.applyEdits([{ range: new Selection(2, 1, 2, 1), text: 'EXTERNAL' }])
+        }
+      }
+    })
+    expect(result).toMatchObject({ status: 'cancelled', chunksWritten: 1 })
+    expect(model.getValue()).toBe('leftAB\nEXTERNALright')
+  })
+
+  it('rejects a model edited during yielding byte measurement', async () => {
+    const { editor, model } = makeEditor('left\nright', [new Selection(1, 5, 1, 5)])
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      measureYieldAfterCodeUnits: 2,
+      yieldToEventLoop: async () => {
+        model.applyEdits([{ range: new Selection(2, 1, 2, 1), text: 'EXTERNAL' }])
+      }
+    })
+    expect(result).toMatchObject({ status: 'rejected', chunksWritten: 0 })
+    expect(model.getValue().startsWith('left\nEXTERNAL')).toBe(true)
+    expect(model.getValue()).not.toContain('AB')
+  })
+
+  it('does not interleave a second paste started between chunks', async () => {
+    const { editor, model } = makeEditor('left', [new Selection(1, 5, 1, 5)])
+    let successor: ReturnType<typeof executeMonacoLargeTextPaste> | undefined
+    const first = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      yieldToEventLoop: async () => {
+        successor ??= executeMonacoLargeTextPaste(editor, '1234', {
+          chunkMaxBytes: 2,
+          yieldToEventLoop: async () => {}
+        })
+        await successor
+      }
+    })
+    expect(first).toMatchObject({ status: 'cancelled', chunksWritten: 1 })
+    expect(await successor).toMatchObject({ status: 'pasted', chunksWritten: 2 })
+    expect(model.getValue()).toBe('leftAB1234')
+    await model.undo()
+    expect(model.getValue()).toBe('leftAB')
+    await model.undo()
+    expect(model.getValue()).toBe('left')
   })
 })

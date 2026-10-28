@@ -63,6 +63,8 @@ export type MonacoPasteEditor = Pick<
 type MonacoPasteSnapshot = {
   container: HTMLElement
   model: editor.ITextModel
+  versionId: number
+  selections: Selection[]
 }
 
 function getPlainTextFromPasteEvent(event: ClipboardEvent): string {
@@ -75,7 +77,12 @@ function snapshotMonacoPasteTarget(monacoEditor: MonacoPasteEditor): MonacoPaste
   if (!model || !container.isConnected || !monacoEditor.hasTextFocus()) {
     return null
   }
-  return { container, model }
+  return {
+    container,
+    model,
+    versionId: model.getVersionId(),
+    selections: monacoEditor.getSelections() ?? []
+  }
 }
 
 function isMonacoPasteTargetCurrent(
@@ -86,7 +93,9 @@ function isMonacoPasteTargetCurrent(
     monacoEditor.getModel() === snapshot.model &&
     monacoEditor.getContainerDomNode() === snapshot.container &&
     snapshot.container.isConnected &&
-    monacoEditor.hasTextFocus()
+    monacoEditor.hasTextFocus() &&
+    snapshot.model.getVersionId() === snapshot.versionId &&
+    Selection.selectionsArrEqual(monacoEditor.getSelections() ?? [], snapshot.selections)
   )
 }
 
@@ -94,10 +103,10 @@ async function insertMonacoTextInChunks(
   monacoEditor: MonacoPasteEditor,
   text: string,
   byteLength: number,
-  options: MonacoLargeTextPasteOptions
+  options: MonacoLargeTextPasteOptions,
+  snapshot: MonacoPasteSnapshot | null
 ): Promise<Exclude<MonacoLargeTextPasteResult, { status: 'ignored' | 'handled' }>> {
-  const snapshot = snapshotMonacoPasteTarget(monacoEditor)
-  if (!snapshot) {
+  if (!snapshot || !isMonacoPasteTargetCurrent(monacoEditor, snapshot)) {
     return { status: 'rejected', reason: 'target-unavailable', byteLength, chunksWritten: 0 }
   }
 
@@ -216,6 +225,8 @@ async function insertMonacoTextInChunks(
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
+    snapshot.versionId = snapshot.model.getVersionId()
+    snapshot.selections = monacoEditor.getSelections() ?? []
     textIndices = nextIndices
     firstChunk = false
     chunksWritten += 1
@@ -235,21 +246,22 @@ export async function executeMonacoLargeTextPaste(
   text: string,
   options: MonacoLargeTextPasteOptions
 ): Promise<Exclude<MonacoLargeTextPasteResult, { status: 'ignored' | 'handled' }>> {
+  const snapshot = snapshotMonacoPasteTarget(monacoEditor)
   const maxBytes = options.maxBytes ?? MONACO_PASTE_MAX_BYTES
-  const byteLengthMeasurement = await measureTextControlPasteByteLengthWithYield(text, {
+  const { byteLength, exceededLimit } = await measureTextControlPasteByteLengthWithYield(text, {
     stopAfterBytes: maxBytes,
     yieldAfterCodeUnits: options.measureYieldAfterCodeUnits,
     yieldToEventLoop: options.yieldToEventLoop
   })
-  if (byteLengthMeasurement.exceededLimit) {
+  if (exceededLimit) {
     return {
       status: 'rejected',
       reason: 'too-large',
-      byteLength: byteLengthMeasurement.byteLength,
+      byteLength,
       chunksWritten: 0
     }
   }
-  return insertMonacoTextInChunks(monacoEditor, text, byteLengthMeasurement.byteLength, options)
+  return insertMonacoTextInChunks(monacoEditor, text, byteLength, options, snapshot)
 }
 
 export function handleMonacoLargeTextPaste(
