@@ -1,4 +1,6 @@
 import React from 'react'
+import { unified, type Processor } from 'unified'
+import remarkParse from 'remark-parse'
 import {
   CommentMarkdownMermaidContext,
   CommentMarkdownMermaidSourceContext
@@ -274,8 +276,13 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
 const MemoizedMarkdown = React.memo(function DeferredMarkdown({
   math,
   fadeWords,
+  block,
   ...props
-}: React.ComponentProps<typeof Markdown> & { math: boolean; fadeWords: boolean }) {
+}: React.ComponentProps<typeof Markdown> & {
+  math: boolean
+  fadeWords: boolean
+  block?: MarkdownBlock
+}) {
   const renderMath = useChatMathRendering(math)
   const plugins = React.useMemo(
     () => [
@@ -285,7 +292,19 @@ const MemoizedMarkdown = React.memo(function DeferredMarkdown({
     ],
     [props.rehypePlugins, math, renderMath, fadeWords]
   )
-  return <Markdown {...props} rehypePlugins={plugins} />
+  const parsedPlugins = React.useMemo<RemarkPlugins>(() => {
+    if (!block?.tree) return props.remarkPlugins ?? []
+    const tree = block.tree
+    const source = markdownBlockContent(block)
+    // Transforms mutate mdast; each render owns a fresh copy of the pristine parse.
+    function reuseParsedBlock(this: Processor): void {
+      const parse = this.parser
+      if (!parse) return
+      this.parser = (value, file) => (value === source ? structuredClone(tree) : parse(value, file))
+    }
+    return [...(props.remarkPlugins ?? []), reuseParsedBlock]
+  }, [block, props.remarkPlugins])
+  return <Markdown {...props} remarkPlugins={parsedPlugins} rehypePlugins={plugins} />
 })
 
 /** The content as the blocks to render. Cut into blocks from the first time it is growing, and
@@ -293,17 +312,35 @@ const MemoizedMarkdown = React.memo(function DeferredMarkdown({
 function useMarkdownBlocks(
   content: string,
   growing: boolean,
-  math: boolean
+  math: boolean,
+  plugins: RemarkPlugins
 ): readonly MarkdownBlock[] {
-  const [previous, setPrevious] = React.useState<MarkdownBlockSplit | null>(null)
-  if (!growing && previous === null) {
+  const parser = React.useMemo(() => unified().use(remarkParse).use(plugins), [plugins])
+  const [state, setState] = React.useState<{
+    parser: typeof parser
+    split: MarkdownBlockSplit
+  } | null>(null)
+  if (state && state.parser !== parser) {
+    const split = {
+      ...state.split,
+      blocks: state.split.blocks.map(
+        ({ tree: _tree, closedFence: _closedFence, ...block }) => block
+      )
+    }
+    setState({ parser, split })
+    return split.blocks
+  }
+  const previous = state?.split ?? null
+  if (!growing && state === null) {
     return [{ start: 0, line: 1, text: content }]
   }
   if (previous?.source === content) {
     return previous.blocks
   }
-  const next = splitMarkdownTopLevelBlocks(content, previous, math)
-  setPrevious(next)
+  const next = splitMarkdownTopLevelBlocks(content, previous, math, (source) =>
+    parser.parse(source)
+  )
+  setState({ parser, split: next })
   return next.blocks
 }
 
@@ -371,7 +408,7 @@ const CommentMarkdown = React.memo(
       const withExtension = extension ? [...withMath, ...extension.remarkPlugins] : withMath
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
     }, [extension, fileLinkExists, githubRepo, math, unknownHtmlAsText])
-    const blocks = useMarkdownBlocks(content, growing, math)
+    const blocks = useMarkdownBlocks(content, growing, math, activeRemarkPlugins)
     const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
     if (fadeWords && !hadWordFade) {
       setHadWordFade(true)
@@ -400,6 +437,7 @@ const CommentMarkdown = React.memo(
             {blocks.map((block, index) => (
               <CommentMarkdownBlockLineContext.Provider key={block.start} value={block.line}>
                 <MemoizedMarkdown
+                  block={block.tree ? block : undefined}
                   remarkPlugins={activeRemarkPlugins}
                   rehypePlugins={activeRehypePlugins}
                   math={math}
