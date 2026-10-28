@@ -53,7 +53,8 @@ export function handleMainProcessPreflightFailure(error: unknown, exitCode = 1):
       app.exit(exitCode)
     }
   } else if (shouldShowDialog) {
-    void prepareEarlyMainUiLanguage().then(showDialogAndExit)
+    // Why: pre-ready exit must stay synchronous, so this can't await the lazily loaded catalog.
+    showDialogAndExit()
   } else {
     app.exit(exitCode)
   }
