@@ -6,8 +6,10 @@ import { inFlightWindowsTreeKill } from './windows-tree-kill'
 import { hasSpawnObserver, notifySpawnObserver } from './spawn-observer'
 import { createOutputSink } from './bounded-output-sink'
 import { createChildTerminationReporter } from './child-termination-reporter'
+import { runProcessSync as runSynchronousProcess } from './run-process-sync'
 
-export { runProcessSync } from './run-process-sync'
+// Keep the CommonJS export writable for process instrumentation.
+export const runProcessSync = runSynchronousProcess
 export { WindowsCmdLineBreakError } from './windows-command-line'
 
 import type {
