@@ -1,17 +1,17 @@
-import { launchAgentInWebHostTab } from '../lib/launch-agent-web-host-tab'
+import { launchAgentInWebHostTab } from '../../src/renderer/src/lib/launch-agent-web-host-tab'
 import {
   independentActionEffortPlan,
   consumeOldHostPreparedCommand
 } from './prepared-action-launch.test-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as TrackingDecisions from './web-session-tabs-sync/tracking-decisions'
+import type * as TrackingDecisions from '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-decisions'
 import {
   createWebRuntimeAgentSessionTerminal,
   createWebRuntimeAgentSessionTerminalWithLaunchDraft,
   createWebRuntimeSessionTerminal
-} from './web-runtime-terminal-creation'
-import { peekWebSessionFocusIntent } from './web-session-focus-intent'
-import { resetWebSessionCloseIntentForTests } from './web-session-close-intent'
+} from '../../src/renderer/src/runtime/web-runtime-terminal-creation'
+import { peekWebSessionFocusIntent } from '../../src/renderer/src/runtime/web-session-focus-intent'
+import { resetWebSessionCloseIntentForTests } from '../../src/renderer/src/runtime/web-session-close-intent'
 import {
   ENVIRONMENT_ID,
   FOCUS_LEAF_ID,
@@ -20,8 +20,8 @@ import {
   makeSnapshot,
   resetTerminalCreateEnvironment,
   stubTerminalCreateEnvironment
-} from './web-runtime-session-test-harness'
-import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
+} from '../../src/renderer/src/runtime/web-runtime-session-test-harness'
+import { stubRuntimeEnvironmentBridge } from '../../src/renderer/src/runtime/runtime-environment-bridge-fixture'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => ({
   hasMaterializedWebRuntimeBrowserPage: vi.fn()
 }))
 
-vi.mock('../store', () => ({
+vi.mock('../../src/renderer/src/store', () => ({
   useAppStore: {
     getState: mocks.getState,
     setState: mocks.setState,
@@ -52,24 +52,27 @@ vi.mock('../store', () => ({
   }
 }))
 
-vi.mock('./web-session-tabs-sync/tracking-lifecycle', () => ({
+vi.mock('../../src/renderer/src/runtime/web-session-tabs-sync/tracking-lifecycle', () => ({
   acceptReplayedWebSessionTabsSnapshot: mocks.acceptReplayedWebSessionTabsSnapshot,
   getWebSessionTabsTrackingGeneration: mocks.getWebSessionTabsTrackingGeneration
 }))
-vi.mock('./web-session-tabs-sync/snapshot-api', () => ({
+vi.mock('../../src/renderer/src/runtime/web-session-tabs-sync/snapshot-api', () => ({
   applyWebSessionTabsSnapshot: mocks.applyWebSessionTabsSnapshot
 }))
-vi.mock('./web-session-tabs-sync/tracking-decisions', async (importOriginal) => ({
-  ...(await importOriginal<typeof TrackingDecisions>()),
-  decideWebSessionTabsSnapshot: mocks.decideWebSessionTabsSnapshot
-}))
-vi.mock('./web-session-tabs-sync/store-patch', () => ({
+vi.mock(
+  '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-decisions',
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof TrackingDecisions>()),
+    decideWebSessionTabsSnapshot: mocks.decideWebSessionTabsSnapshot
+  })
+)
+vi.mock('../../src/renderer/src/runtime/web-session-tabs-sync/store-patch', () => ({
   applyWebSessionTabsStorePatch: (buildPatch: (state: unknown) => unknown) => {
     mocks.setState(buildPatch)
     return () => {}
   }
 }))
-vi.mock('./web-session-tabs-sync/tracking-mappings', () => ({
+vi.mock('../../src/renderer/src/runtime/web-session-tabs-sync/tracking-mappings', () => ({
   resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab
 }))
 
@@ -82,7 +85,7 @@ vi.mock('@/lib/agent-launch-prompt-delivery', () => ({
   seedNativeChatLaunchDraftForAgentTab: mocks.seedNativeChatLaunchDraftForAgentTab
 }))
 
-vi.mock('./web-runtime-browser-materialization', () => ({
+vi.mock('../../src/renderer/src/runtime/web-runtime-browser-materialization', () => ({
   hasMaterializedWebRuntimeBrowserPage: mocks.hasMaterializedWebRuntimeBrowserPage
 }))
 

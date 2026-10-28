@@ -18,7 +18,10 @@ import {
 } from '@/runtime/host-structured-agents'
 import { TooltipProvider } from '../ui/tooltip'
 import type { RepoSourceControlAiOverrides } from '../../../../shared/source-control-ai-types'
-import { normalizeSourceControlAiSettings } from '../../../../shared/source-control-ai'
+import {
+  getDefaultSourceControlAiSettings,
+  normalizeSourceControlAiSettings
+} from '../../../../shared/source-control-ai'
 import { RepositorySourceControlAiActionRows } from './repository/source-control/RepositorySourceControlAiActionRows'
 import { SourceControlActionRecipeRow } from './SourceControlActionRecipeRow'
 
@@ -155,6 +158,7 @@ it.each(['', null, '--verbose', undefined])(
       repos: [{ id: 'repo', path: '/repo', displayName: 'repo', badgeColor: '', addedAt: 0 }]
     })
     const source = normalizeSourceControlAiSettings({
+      ...getDefaultSourceControlAiSettings(),
       actions: {
         fixChecks: {
           agentId: 'claude',

@@ -21,6 +21,10 @@ import type {
   SourceControlAiSettings
 } from '../../../../shared/source-control-ai-types'
 import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
+import {
+  normalizeSourceControlActionRecipe,
+  type SourceControlActionRecipe
+} from '../../../../shared/source-control-ai-actions'
 import { agentPermissionArgsForLaunch } from '../../../../shared/tui-agent-launch-defaults'
 import { SourceControlActionArguments } from './SourceControlActionArguments'
 import { useRepositorySourceControlAiGlobalUx } from './repository/source-control/repository-source-control-ai-global-ux'
@@ -146,7 +150,7 @@ it.each(['global', 'repo'] as const)(
     const input = screen.getByRole('textbox', { name: 'Arguments' })
     fireEvent.change(input, { target: { value: '--model fable --verbose' } })
     await userEvent.click(screen.getByRole('combobox', { name: 'Sonnet' }))
-    await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+    await userEvent.click(screen.getByRole('option', { name: 'Haiku' }))
     expect(edit).toHaveBeenCalledExactlyOnceWith(
       {
         agentId: 'claude',
@@ -162,7 +166,7 @@ it.each(['global', 'repo'] as const)(
     edit.mockClear()
     fireEvent.change(input, { target: { value: '--model fable --effort low --verbose' } })
     await userEvent.click(screen.getByRole('combobox', { name: 'High' }))
-    await userEvent.click(screen.getByRole('option', { name: 'Medium', exact: true }))
+    await userEvent.click(screen.getByRole('option', { name: 'Medium' }))
     expect(edit).toHaveBeenCalledTimes(1)
     expect(edit).toHaveBeenLastCalledWith(
       {
@@ -192,7 +196,12 @@ it.each(['global', 'repo'] as const)(
       syntaxAgent: 'claude',
       nodes: [{ at: 0, text: '--model fable' }]
     })
-    expect(sourceControlActionSelectedPreferences(saved() ?? {}, 'claude')?.model).toBe('fable')
+    expect(
+      sourceControlActionSelectedPreferences(
+        normalizeSourceControlActionRecipe(saved()) ?? {},
+        'claude'
+      )?.model
+    ).toBe('fable')
     const reopened = screen.getByRole('textbox', { name: 'Arguments' })
     fireEvent.change(reopened, { target: { value: '--model fable --effort medium --verbose' } })
     edit.mockClear()
@@ -442,11 +451,11 @@ it('edits and saves a sparse repository model without authoring the inherited pe
   expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
   expect(screen.getByRole('combobox', { name: 'Default' })).toBeDefined()
   await userEvent.click(screen.getByRole('combobox', { name: 'Agent default' }))
-  await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+  await userEvent.click(screen.getByRole('option', { name: 'Haiku' }))
   fireEvent.click(screen.getByText('Discard'))
   expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
   await userEvent.click(screen.getByRole('combobox', { name: 'Agent default' }))
-  await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
+  await userEvent.click(screen.getByRole('option', { name: 'Haiku' }))
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
   expect(saved.value.actionOverrides.fixChecks).toEqual({
@@ -481,7 +490,7 @@ it.each(['global', 'repo'] as const)(
   '%s live residual edits preserve nodes, permission changes and permanent reset',
   async (scope) => {
     write.mockClear()
-    const recipe = liftActionPermissionArgs({
+    const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
       agentId: 'claude' as const,
       agentArgs: '--model opus --effort high --append-system-prompt keep'
     })
@@ -515,7 +524,7 @@ it.each(['global', 'repo'] as const)(
 )
 
 it('keeps the global document retryable and preserves a newer document across a pending Save', async () => {
-  const recipe = liftActionPermissionArgs({
+  const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
     agentId: 'claude' as const,
     agentArgs: '--model opus --effort high'
   })

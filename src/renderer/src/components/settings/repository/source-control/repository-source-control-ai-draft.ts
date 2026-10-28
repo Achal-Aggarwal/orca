@@ -158,7 +158,7 @@ export function withRepoAiActionMode(
 
 export function withRepoAiActionRecipeText(
   base: RepoSourceControlAiOverrides,
-  settings: GlobalSettings | null,
+  _settings: GlobalSettings | null,
   actionId: SourceControlActionId,
   text: ActionRecipeTextDraft
 ): RepoSourceControlAiOverrides {

@@ -645,6 +645,7 @@
         "off": "Off",
         "invalidArgs": "The CLI arguments for {{value0}} are invalid. Fix them in Settings → Source Control AI.",
         "model": "Model",
+        "effort": "Effort",
         "agentDefault": "Agent default",
         "effortDefault": "Default",
         "savedModel": "Model from Settings: {{value0}}",

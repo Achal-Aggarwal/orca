@@ -1,18 +1,18 @@
-import { eraseRpcMethods, type RpcContext } from '../../../main/runtime/rpc/core'
-import { TERMINAL_LIFECYCLE_METHODS } from '../../../main/runtime/rpc/methods/terminal/terminal-lifecycle-methods'
+import { eraseRpcMethods, type RpcContext } from '../../src/main/runtime/rpc/core'
+import { TERMINAL_LIFECYCLE_METHODS } from '../../src/main/runtime/rpc/methods/terminal/terminal-lifecycle-methods'
 import { expect, vi } from 'vitest'
-import { normalizeSourceControlAiActionDefaults } from '../../../shared/source-control-ai-actions'
-import { sourceControlActionLaunchOptions } from '../../../shared/source-control-action-launch-preferences'
-import { agentLaunchNeedsPreparedCommand } from '../../../shared/agent-launch-preferences'
-import { resolveAgentStartupPlanInputs } from '../../../shared/agent-startup-plan-inputs'
-import { buildAgentStartupPlan } from '../../../shared/tui-agent-startup'
-import { resolveAgentSessionOptionLaunch } from '../../../shared/agent-session-option-launch-legacy.test-fixture'
+import { normalizeSourceControlAiActionDefaults } from '../../src/shared/source-control-ai-actions'
+import { sourceControlActionLaunchOptions } from '../../src/shared/source-control-action-launch-preferences'
+import { agentLaunchNeedsPreparedCommand } from '../../src/shared/agent-launch-preferences'
+import { resolveAgentStartupPlanInputs } from '../../src/shared/agent-startup-plan-inputs'
+import { buildAgentStartupPlan } from '../../src/shared/tui-agent-startup'
+import { resolveAgentSessionOptionLaunch } from '../../src/shared/agent-session-option-launch-legacy.test-fixture'
 import {
   OrcaRuntimeWithResolveMobileSessionTerminalCommand,
   type MobileTerminalCommandOptions
-} from '../../../main/runtime/terminal/launch/mobile-terminal-startup'
+} from '../../src/main/runtime/terminal/launch/mobile-terminal-startup'
 
-vi.mock('../../../main/runtime/terminal/launch/mobile-terminal-renderer-create', () => ({
+vi.mock('../../src/main/runtime/terminal/launch/mobile-terminal-renderer-create', () => ({
   OrcaRuntimeWithRunCreateMobileSessionTerminal: class {}
 }))
 
@@ -91,7 +91,7 @@ export async function consumeOldHostPreparedCommand(params: MobileTerminalComman
 // The prepared handler matches the pinned host when resumeOrigin is absent.
 export async function consumePreparedBackgroundCommand(
   params: unknown,
-  createTerminal: ReturnType<typeof vi.fn>
+  createTerminal: PreparedTerminalCreateContext['runtime']['createTerminal']
 ) {
   const method = eraseRpcMethods(TERMINAL_LIFECYCLE_METHODS).find(
     (method) => method.name === 'terminal.create'

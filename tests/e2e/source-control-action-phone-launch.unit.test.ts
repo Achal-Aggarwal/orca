@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto'
 import type { RpcClient } from '../../mobile/src/transport/rpc-client'
 import type { RpcResponse } from '../../mobile/src/transport/types'
 import { launchAgentWithPrompt } from '../../mobile/src/session/pr-ai-triage-launch'
-import type { SourceControlActionRecipe } from './source-control-ai-actions'
-import type { RepoSourceControlAiOverrides } from './source-control-ai-types'
-import type { TuiAgent } from './tui-agent'
-import { liftActionPermissionArgs } from './source-control-action-permission-lift'
-import { AgentLaunchReplay } from './rpc-contract/agent-launch-params'
-import { resolveAgentStartupPlanInputs } from './agent-startup-plan-inputs'
-import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
+import type { SourceControlActionRecipe } from '../../src/shared/source-control-ai-actions'
+import type { RepoSourceControlAiOverrides } from '../../src/shared/source-control-ai-types'
+import type { TuiAgent } from '../../src/shared/tui-agent'
+import { liftActionPermissionArgs } from '../../src/shared/source-control-action-permission-lift'
+import { AgentLaunchReplay } from '../../src/shared/rpc-contract/agent-launch-params'
+import { resolveAgentStartupPlanInputs } from '../../src/shared/agent-startup-plan-inputs'
+import { resolveAgentLaunchCommand } from '../../src/shared/tui-agent-launch-command'
 
 vi.mock('../../mobile/src/platform/random-v4-uuid', () => ({
   randomV4Uuid: () => randomUUID()
@@ -44,7 +44,7 @@ it('carries the selected raw group and typed choices through the phone request t
     '--effort low --dangerously-skip-permissions'
   ].map((agentArgs) => {
     const ownChoice = agentArgs?.includes('--effort')
-    const options =
+    const options: Record<string, string> =
       agentArgs === undefined
         ? { model: 'opus', effort: 'high', permissionMode: 'ask' }
         : ownChoice
@@ -261,8 +261,8 @@ it('carries the selected raw group and typed choices through the phone request t
       expect(params.agentArgs).toBe(row.raw)
     }
     expect(params.chatOptions).toEqual(row.options)
-    const launch = resolveAgentLaunchCommand(
-      resolveAgentStartupPlanInputs({
+    const launch = resolveAgentLaunchCommand({
+      ...resolveAgentStartupPlanInputs({
         agent: params.agent,
         settings: { ...settings, agentDefaultArgs: { claude: '--debug' } },
         platform: 'linux',
@@ -270,8 +270,9 @@ it('carries the selected raw group and typed choices through the phone request t
         shell: 'posix',
         agentArgs: params.agentArgs,
         sessionOptions: params.chatOptions
-      })
-    )
+      }),
+      shell: 'posix'
+    })
     expect(launch.ok).toBe(true)
     if (!launch.ok) {
       throw new Error(launch.error)

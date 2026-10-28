@@ -432,7 +432,7 @@ it.each([
 )
 
 it('moves an anchor out of a replaced token and rejects malformed document atoms', () => {
-  const recipe = liftActionPermissionArgs({
+  const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
     agentId: 'claude' as const,
     agentArgs: '--add-dir /tmp --model opus -- tail'
   })
@@ -447,7 +447,7 @@ it('moves an anchor out of a replaced token and rejects malformed document atoms
     ok: true,
     tokens: ['--add-dir', '/tmpX', '--model', 'opus', '--', 'tail']
   })
-  const trailing = liftActionPermissionArgs({
+  const trailing = liftActionPermissionArgs<SourceControlActionRecipe>({
     agentId: 'codex' as const,
     agentArgs: '--search -m o3 --search -c model_reasoning_effort=high'
   })
@@ -495,7 +495,7 @@ it('moves an anchor out of a replaced token and rejects malformed document atoms
 })
 
 it('retires model-dependent live effort when raw Model changes, while preserving permission and independent removal', () => {
-  const recipe = liftActionPermissionArgs({
+  const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
     agentId: 'claude' as const,
     agentArgs: '--model opus --effort high',
     launchPreferences: { agentId: 'claude' as const, permissionMode: 'ask' as const }
@@ -574,16 +574,16 @@ it('bounds real raw-edit transport across invalid, divergent, exhausted and two-
     return work
   }
   try {
-    const invalid = []
-    const valid = []
-    const short = liftActionPermissionArgs({
+    const invalid: ReturnType<typeof measure>[] = []
+    const valid: ReturnType<typeof measure>[] = []
+    const short = liftActionPermissionArgs<SourceControlActionRecipe>({
       agentId: 'codex' as const,
       agentArgs: '--search -m o3'
     })
     expect(short.agentArgs).toBe('--search')
     expect(short.argumentChoices?.nodes).toEqual([{ at: 8, text: '-m o3' }])
     for (const n of [128, 1280]) {
-      const recipe = liftActionPermissionArgs({
+      const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
         agentId: 'codex' as const,
         agentArgs: `--search -m o3 --search ${'--search '.repeat(n)}`
       })

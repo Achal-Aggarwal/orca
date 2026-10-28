@@ -644,6 +644,7 @@ it('saves a foreign resolved literal as current raw and starts from the canonica
     }
   }
   const repo = {
+    id: 'repo-1',
     sourceControlAi: { actionOverrides: { fixChecks: { agentId: 'claude' as const } } }
   }
   const recipe = resolveSourceControlActionRecipe({ settings, repo, actionId: 'fixChecks' })

@@ -33,7 +33,7 @@ describe('RuntimeClientSettingsController source control launch recipes', () => 
     const source = { ...getDefaultSourceControlAiSettings(), actions: { fixChecks: recipe } }
     expect(SourceControlAiSettings.parse(source).actions?.fixChecks).toEqual(recipe)
     const projected = projectionOf(hostSettings(source))
-    expect(projected.sourceControlAi.actions.fixChecks.launchPreferences).toEqual(
+    expect(projected.sourceControlAi.actions.fixChecks?.launchPreferences).toEqual(
       recipe.launchPreferences
     )
     expect(projected.sourceControlAi.actions.fixChecks).toMatchObject({

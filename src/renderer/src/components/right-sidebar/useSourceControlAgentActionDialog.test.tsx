@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 
-import React from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import {
   SourceControlAgentActionDialog,
@@ -8,6 +7,7 @@ import {
 } from './SourceControlAgentActionDialog'
 import { resolveSourceControlActionRecipe } from '../../../../shared/source-control-ai-operation-policy'
 import { normalizeSourceControlActionRecipe } from '../../../../shared/source-control-ai-actions'
+import { normalizeRepoSourceControlAiOverrides } from '../../../../shared/source-control-ai'
 import { projectSourceControlActionLaunch } from '../../../../shared/source-control-action-launch-preferences'
 import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
 import { saveSourceControlAiActionRecipeForTarget } from './source-control/ai/recipe-persistence'
@@ -304,7 +304,14 @@ function mountSourceDialog(
           },
           updateRepo: async (id, patch) => {
             useAppStore.setState((state) => ({
-              repos: state.repos.map((row) => (row.id === id ? { ...row, ...patch } : row))
+              repos: state.repos.map((row) =>
+                row.id === id
+                  ? {
+                      ...row,
+                      sourceControlAi: normalizeRepoSourceControlAiOverrides(patch.sourceControlAi)
+                    }
+                  : row
+              )
             }))
             return true
           }
@@ -523,7 +530,7 @@ it('distinguishes masked eligibility from owning reset and uses the captured par
 })
 
 it('retains newly eligible literal syntax, demotes obsolete syntax once and does not restore it after switching back', async () => {
-  const global = liftActionPermissionArgs({
+  const global = liftActionPermissionArgs<SourceControlActionRecipe>({
     agentId: 'claude' as const,
     agentArgs: '--model opus --effort high --verbose'
   })

@@ -103,7 +103,7 @@ export function commandTemplateStateLabel(args: {
 export function agentArgsStateLabel(args: {
   recipe: SourceControlActionRecipe
   agent: TuiAgent | null
-  override: SourceControlActionRecipe | undefined
+  override: NonNullable<RepoSourceControlAiOverrides['actionOverrides']>[SourceControlActionId]
 }): string {
   const choices = args.agent
     ? sourceControlActionSelectedPreferences(args.recipe, args.agent)

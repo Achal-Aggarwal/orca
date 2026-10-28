@@ -641,7 +641,7 @@ it('keeps scoped defaults, complete legacy ownership, independent bindings and l
   }
   const reopened = resolveSourceControlActionRecipe({
     settings: typedBase,
-    repo: { sourceControlAi: saved.update.sourceControlAi },
+    repo: { sourceControlAi: saved.update.sourceControlAi ?? undefined },
     actionId: 'fixChecks'
   })
   expect(projectSourceControlActionLaunch(reopened, 'claude', { basePrompt: 'fix' })).toEqual(

@@ -333,8 +333,8 @@ describe('load-time normalization durability', () => {
         const projection = projectSourceControlActionLaunch(recipe, recipe.agentId, {
           basePrompt: 'Fix checks'
         })
-        const launch = resolveAgentLaunchCommand(
-          resolveAgentStartupPlanInputs({
+        const launch = resolveAgentLaunchCommand({
+          ...resolveAgentStartupPlanInputs({
             agent: recipe.agentId,
             settings: reopened.getSettings(),
             platform: 'linux',
@@ -342,8 +342,9 @@ describe('load-time normalization durability', () => {
             shell: 'posix',
             agentArgs: projection.agentArgs,
             sessionOptions: projection.sessionOptions
-          })
-        )
+          }),
+          shell: 'posix'
+        })
         expect(launch.ok).toBe(true)
         if (!launch.ok) {
           throw new Error(launch.error)

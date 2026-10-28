@@ -1,10 +1,10 @@
 import {
   independentActionEffortPlan,
   consumePreparedBackgroundCommand
-} from '../runtime/prepared-action-launch.test-fixture'
-import { createRuntimeAgentBackgroundTerminal } from './runtime-agent-background-create'
+} from './prepared-action-launch.test-fixture'
+import { createRuntimeAgentBackgroundTerminal } from '../../src/renderer/src/lib/runtime-agent-background-create'
 import { createCompatibleRuntimeStatusResponseIfNeeded } from '@/runtime/runtime-compatibility-test-fixture'
-import { AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import { AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY } from '../../src/shared/protocol-version'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_BACKGROUND_SESSION_UUID_RE as UUID_RE,
@@ -186,7 +186,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       }
       return Promise.resolve({ ok: true, result: {} })
     })
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     const launch = launchAgentBackgroundSession({
       agent: 'claude',
@@ -219,7 +220,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
 
   it('forwards Hermes startup queries through SSH command transport', async () => {
     state.repos = [{ id: 'repo-1', connectionId: 'ssh-1', path: '/repo' }]
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await launchAgentBackgroundSession({
       agent: 'hermes',
@@ -242,7 +244,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       vi.useFakeTimers()
       try {
         state.repos = [{ id: 'repo-1', connectionId: 'ssh-1', path: '/repo' }]
-        const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+        const { launchAgentBackgroundSession } =
+          await import('../../src/renderer/src/lib/launch-agent-background-session')
 
         await launchAgentBackgroundSession({
           agent,
@@ -270,7 +273,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
 
   it('has the relay type a promptless SSH background launch too', async () => {
     state.repos = [{ id: 'repo-1', connectionId: 'ssh-1', path: '/repo' }]
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await launchAgentBackgroundSession({ agent: 'codex', worktreeId: 'wt-1' })
 
@@ -302,7 +306,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
         }
         return mockRuntimeEnvironmentCall(request)
       })
-      const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+      const { launchAgentBackgroundSession } =
+        await import('../../src/renderer/src/lib/launch-agent-background-session')
 
       const result = await launchAgentBackgroundSession({
         agent: 'claude',
@@ -380,7 +385,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
 
   it('advertises keyboard support for a background OMP launch', async () => {
     useRemoteAgentBackgroundRuntime(state)
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
     await launchAgentBackgroundSession({ agent: 'omp', worktreeId: 'wt-1', prompt: 'review' })
     expect(mockRuntimeEnvironmentCall).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -408,7 +414,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       }
       throw new Error(`Unexpected runtime subscription: ${request.method}`)
     })
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     const result = await launchAgentBackgroundSession({
       agent: 'claude',
@@ -453,7 +460,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
         result: { terminal: { handle: 'legacy-terminal-1' } }
       })
     })
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await expect(
       launchAgentBackgroundSession({
@@ -480,7 +488,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
   it('closes a created runtime terminal when its data subscription fails', async () => {
     useRemoteAgentBackgroundRuntime(state)
     mockRuntimeEnvironmentSubscribe.mockRejectedValueOnce(new Error('subscription failed'))
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await expect(
       launchAgentBackgroundSession({
@@ -531,7 +540,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
     ]
     state.getKnownWorktreeById = (worktreeId: string) =>
       worktreeId === 'folder:fw-1' ? { id: 'folder:fw-1', path: '/srv/proj' } : undefined
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await launchAgentBackgroundSession({
       agent: 'codex',
@@ -554,7 +564,8 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
     ]
     state.getKnownWorktreeById = (worktreeId: string) =>
       worktreeId === 'folder:fw-1' ? { id: 'folder:fw-1', path: '/home/me/proj' } : undefined
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    const { launchAgentBackgroundSession } =
+      await import('../../src/renderer/src/lib/launch-agent-background-session')
 
     await launchAgentBackgroundSession({
       agent: 'claude',

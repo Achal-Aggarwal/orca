@@ -717,7 +717,7 @@ it.each([false, true])('bounds actual startup/raw resume (%s)', (resume) => {
 it('skips unused full-input projection work but keeps genuine replacement and shell validation', () => {
   const tokenize = vi.spyOn(startupShell, 'tokenizeStartupCommand')
   const remove = vi.spyOn(launchCompiler, 'removeOverriddenAgentSessionArgs')
-  const rows = []
+  const rows: { n: number; tokenizer: number; remover: number }[] = []
   try {
     for (const n of [128, 1280]) {
       const raw = `  ${'--verbose  '.repeat(n)} `
