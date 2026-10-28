@@ -9,6 +9,7 @@ import {
   linearMessage
 } from '../linear/issue-context/errors'
 import { runLinearWriteAction } from './runtime-linear-write-action'
+import type { LinearWriteFailure } from '../linear/linear-issue-write-support'
 import { RuntimeLinearWriteResultCommands } from './runtime-linear-write-result-commands'
 
 export class RuntimeLinearCommentLookupCommands extends RuntimeLinearWriteResultCommands {
@@ -46,14 +47,23 @@ export class RuntimeLinearCommentLookupCommands extends RuntimeLinearWriteResult
       options: { signal: AbortSignal; beforeInvoke: () => void }
     ) => Promise<Result>,
     unconfirmed: (owner: Owner, cause?: string) => LinearAgentAccessError,
-    cancellation?: AbortSignal
+    cancellation?: AbortSignal,
+    mapWriteFailure?: (error: LinearWriteFailure) => LinearAgentAccessError
   ): Promise<{ owner: Owner; result: Result }> {
     return runLinearWriteAction(
       prepare,
       write,
       unconfirmed,
       (error) => this.mapLinearReadFailure(error),
-      cancellation
+      cancellation,
+      mapWriteFailure
+    )
+  }
+
+  public mapLinearCommentWriteFailure(error: LinearWriteFailure): LinearAgentAccessError {
+    return linearError(
+      error.kind === 'network' ? 'linear_network_error' : 'linear_write_failed',
+      'Linear could not complete the comment change. Retry after checking the comment.'
     )
   }
 

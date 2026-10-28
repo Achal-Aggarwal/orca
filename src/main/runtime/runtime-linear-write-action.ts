@@ -14,7 +14,8 @@ export async function runLinearWriteAction<Owner, Result>(
   ) => Promise<Result>,
   unconfirmed: (owner: Owner, cause?: string) => LinearAgentAccessError,
   mapFailure: (error: unknown) => LinearAgentAccessError,
-  cancellation?: AbortSignal
+  cancellation?: AbortSignal,
+  mapWriteFailure?: (error: LinearWriteFailure) => LinearAgentAccessError
 ): Promise<{ owner: Owner; result: Result }> {
   const deadline = Date.now() + 55_000
   const discoveryDeadline = Date.now() + 30_000
@@ -73,10 +74,13 @@ export async function runLinearWriteAction<Owner, Result>(
     if (signal.aborted || discoveryExpired) {
       throw timeout()
     }
-    if (error instanceof LinearWriteFailure && error.kind === 'duplicate_id') {
-      throw error
-    }
     if (error instanceof LinearWriteFailure) {
+      if (mapWriteFailure) {
+        throw mapWriteFailure(error)
+      }
+      if (error.kind === 'duplicate_id') {
+        throw error
+      }
       throw linearError(
         error.kind === 'network' ? 'linear_network_error' : 'linear_write_failed',
         sanitizeLinearErrorMessage(error.message)

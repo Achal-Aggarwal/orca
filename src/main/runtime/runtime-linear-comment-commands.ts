@@ -9,8 +9,7 @@ import {
   updateLinearIssueCommentForAgent,
   LinearWriteFailure
 } from './runtime-linear-command-dependencies'
-import { linearError } from '../linear/issue-context/errors'
-import type { LinearAgentAccessError } from '../linear/issue-context/errors'
+import { linearError, type LinearAgentAccessError } from '../linear/issue-context/errors'
 import type {
   LinearCommentAddRequest,
   LinearAttachRequest,
@@ -201,7 +200,8 @@ export class RuntimeLinearCommentCommands extends RuntimeLinearCreateCommands {
       (owner, options) =>
         updateLinearIssueCommentForAgent(owner.comment.id, params.body, owner.workspaceId, options),
       (owner) => this.linearCommentChangeUnconfirmed('edit', owner.comment, owner.workspaceId),
-      signal
+      signal,
+      (error) => this.mapLinearCommentWriteFailure(error)
     )
     void this.notifyLinearLinkedIssueUpdated(workspaceId, comment.issue.identifier)
     return {
@@ -222,7 +222,8 @@ export class RuntimeLinearCommentCommands extends RuntimeLinearCreateCommands {
       (owner, options) =>
         deleteLinearIssueCommentForAgent(owner.comment.id, owner.workspaceId, options),
       (owner) => this.linearCommentChangeUnconfirmed('delete', owner.comment, owner.workspaceId),
-      signal
+      signal,
+      (error) => this.mapLinearCommentWriteFailure(error)
     )
     void this.notifyLinearLinkedIssueUpdated(workspaceId, comment.issue.identifier)
     return {

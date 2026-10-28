@@ -43,6 +43,7 @@ const comment = {
 let runtime: OrcaRuntimeService
 let server: OrcaRuntimeRpcServer
 let userDataPath: string
+let failure: LinearWriteFailure
 
 beforeEach(async () => {
   userDataPath = mkdtempSync(join(tmpdir(), 'linear-write-cli-'))
@@ -77,13 +78,15 @@ beforeEach(async () => {
   vi.spyOn(runtime, 'getLinearTeamLabelsForWrite').mockResolvedValue([
     { id: 'bug', name: 'Bug', color: '#888888' }
   ])
+  vi.spyOn(runtime, 'getLinearViewerForWrite').mockResolvedValue({ id: 'user-1' })
   vi.spyOn(runtime, 'resolveLinearAgentComment').mockResolvedValue({ comment, workspaceId: 'w1' })
   vi.spyOn(runtime, 'getMatchingLinearCommentWrite').mockResolvedValue(null)
   vi.spyOn(runtime, 'getMatchingLinearAttachmentWrite').mockResolvedValue(null)
   vi.spyOn(runtime, 'getMatchingLinearCreatedIssue').mockResolvedValue(null)
   vi.spyOn(runtime, 'notifyLinearLinkedIssueUpdated').mockReturnValue(undefined)
+  failure = new LinearWriteFailure('unconfirmed', 'Confirmation lost')
   const lost = () => {
-    throw new LinearWriteFailure('unconfirmed', 'Confirmation lost')
+    throw failure
   }
   vi.spyOn(mutations, 'updateIssueForAgent').mockImplementation(
     async (_id, _fields, _workspace, options) => {
@@ -141,10 +144,17 @@ afterEach(async () => {
 const verbs = [
   ['status', 'set', 'ENG-1', '--to', 'Done'],
   ['priority', 'set', 'ENG-1', '--to', 'high'],
+  ['priority', 'clear', 'ENG-1'],
   ['assignee', 'set', 'ENG-1', '--to-id', writeId],
+  ['assignee', 'set', 'ENG-1', '--me'],
+  ['assignee', 'clear', 'ENG-1'],
   ['label', 'add', 'ENG-1', '--label', 'Bug'],
+  ['label', 'remove', 'ENG-1', '--label', 'Bug'],
+  ['label', 'set', 'ENG-1', '--label', 'Bug'],
   ['estimate', 'set', 'ENG-1', '--to', '3'],
+  ['estimate', 'clear', 'ENG-1'],
   ['due-date', 'set', 'ENG-1', '--to', '2026-11-01'],
+  ['due-date', 'clear', 'ENG-1'],
   ['relation', 'add', 'ENG-1', '--related', 'ENG-2', '--type', 'blocks'],
   ['relation', 'remove', 'ENG-1', '--related', 'ENG-2', '--type', 'blocks'],
   ['comment', 'add', 'ENG-1', '--body', 'new', '--write-id', writeId],
@@ -154,11 +164,22 @@ const verbs = [
   ['create', '--title', 'New', '--team', 'ENG', '--write-id', writeId],
   ['save-issue', 'ENG-1', '--title', 'New'],
   ['save-issue', '--title', 'New', '--team', 'ENG', '--write-id', writeId]
-].map((argv) => ({ name: argv.slice(0, 2).join(' '), argv }))
+].map((argv) => ({ name: argv.join(' '), argv }))
 
 it.each(verbs)(
   'preserves $name recovery through CLI, socket, admission and dispatch',
   async ({ argv }) => {
+    if (argv[1] === 'clear' || argv[1] === 'remove') {
+      vi.mocked(runtime.readLinearAgentIssueWriteRecord).mockResolvedValue({
+        ...issue,
+        priority: 2,
+        assignee: { id: 'user-2', displayName: 'Other' },
+        estimate: 3,
+        dueDate: '2026-11-01',
+        labelIds: ['bug'],
+        labels: [{ id: 'bug', name: 'Bug' }]
+      })
+    }
     await main(['linear', ...argv, '--json'], '/tmp')
     const envelope = JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))
     expect(envelope).toMatchObject({
@@ -180,6 +201,54 @@ it.each(verbs)(
       .join('\n')
     for (const step of nextSteps) {
       expect(stderr).toContain(step)
+    }
+    expect(process.exitCode).toBe(1)
+  }
+)
+
+const classifiedFailures = [
+  {
+    kind: 'failed',
+    diagnostic: 'GraphQL validation error: Unknown argument body (BAD_USER_INPUT)'
+  },
+  { kind: 'network', diagnostic: 'getaddrinfo ENOTFOUND api.linear.app' },
+  { kind: 'duplicate_id', diagnostic: 'Duplicate id on comment mutation (BAD_USER_INPUT)' }
+] as const
+const failureCases = verbs
+  .filter(({ argv }) => argv[0] === 'comment' && ['edit', 'delete'].includes(argv[1]))
+  .flatMap((command) => classifiedFailures.map((input) => ({ ...command, ...input })))
+const diagnosticControls = classifiedFailures
+  .filter(({ kind }) => kind !== 'duplicate_id')
+  .map((input) => ({ name: 'status set', argv: verbs[0].argv, ...input }))
+
+it.each([...failureCases, ...diagnosticControls])(
+  'preserves the prior $name $kind failure contract through the real CLI',
+  async ({ argv, kind, diagnostic }) => {
+    failure = new LinearWriteFailure(kind, diagnostic)
+    const expectedMessage =
+      argv[0] === 'comment'
+        ? 'Linear could not complete the comment change. Retry after checking the comment.'
+        : diagnostic
+    await main(['linear', ...argv, '--json'], '/tmp')
+    const envelope = JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))
+    expect(envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: kind === 'network' ? 'linear_network_error' : 'linear_write_failed',
+        message: expectedMessage
+      }
+    })
+    expect(process.exitCode).toBe(1)
+    vi.mocked(console.error).mockClear()
+    process.exitCode = undefined
+    await main(['linear', ...argv], '/tmp')
+    const stderr = vi
+      .mocked(console.error)
+      .mock.calls.map((call) => String(call[0]))
+      .join('\n')
+    expect(stderr).toContain(expectedMessage)
+    if (argv[0] === 'comment') {
+      expect(stderr).not.toContain(diagnostic)
     }
     expect(process.exitCode).toBe(1)
   }
