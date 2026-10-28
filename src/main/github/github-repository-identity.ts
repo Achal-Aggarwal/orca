@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { runCoalescedProbe, type CoalescedProbes } from '../git/coalesced-probe'
 import { readRemoteUrl } from '../git/remote-url-probe'
 import type { GhAccountBinding } from '../../shared/github/account-binding'
@@ -13,6 +14,7 @@ import { isStableMissingGitRemoteError } from '../git/stable-missing-git-remote-
 import type { GitAdmissionTier } from '../git/command-runner/git-exec-options'
 import { requireReachableGitRoute } from '../providers/execution-host-provider-dispatch'
 import { getConnectionExecutionHostId } from '../../shared/execution-host'
+import { resolveGitHubProjectAccount } from './github-project-account'
 
 export type OwnerRepo = GitHubOwnerRepo
 
@@ -38,18 +40,47 @@ export type GitHubRemoteIdentityProbeOptions = {
   requireVerifiedSshProbe?: boolean
 }
 
+const operations = new AsyncLocalStorage<{ context: GitHubRepoContext; active: boolean }>()
+
+export async function withGitHubRepoExecution<T>(
+  repoPath: string,
+  connectionId: string | null | undefined,
+  options: LocalGitExecOptions,
+  operation: () => Promise<T>
+): Promise<T> {
+  const scope = { context: githubRepoContext(repoPath, connectionId, options), active: true }
+  return operations.run(scope, async () => {
+    try {
+      return await operation()
+    } finally {
+      scope.active = false
+    }
+  })
+}
+
 export function githubRepoContext(
   repoPath: string,
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): GitHubRepoContext {
-  return {
+  const context = {
     repoPath,
     connectionId: connectionId ?? null,
     ...(localGitOptions.wslDistro ? { wslDistro: localGitOptions.wslDistro } : {}),
     ...(localGitOptions.admissionTier ? { admissionTier: localGitOptions.admissionTier } : {}),
     ...(localGitOptions.ghAccount ? { ghAccount: localGitOptions.ghAccount } : {})
   }
+  const scope = operations.getStore()
+  const pinned =
+    scope?.active &&
+    scope.context.repoPath === repoPath &&
+    scope.context.connectionId === context.connectionId &&
+    scope.context.wslDistro === context.wslDistro
+      ? scope.context
+      : null
+  const account = pinned ?? resolveGitHubProjectAccount(context) ?? context
+  const binding = account.ghAccount ? Object.freeze({ ...account.ghAccount }) : undefined
+  return Object.freeze({ ...context, ghAccount: binding })
 }
 
 export function ghRepoExecOptions(context: GitHubRepoContext): {
