@@ -23,6 +23,7 @@ export type UiWindowApi = {
     text: string
     runtimeEnvironmentId?: string | null
     agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
+    forStructuredChat?: boolean
   }) => Promise<string>
   clipboardHasImage: () => Promise<boolean | null>
   /** Empty if no files were copied or the host cannot list them. */

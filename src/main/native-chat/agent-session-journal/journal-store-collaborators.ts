@@ -137,7 +137,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     }),
     itemAppender: new JournalItemAppender({
       state: host.state,
-      enqueue: host.enqueue
+      enqueue: host.enqueue,
+      claimAttachments
     }),
     lifecycleBatchAppender,
     stepWriter: new JournalStepWriter({

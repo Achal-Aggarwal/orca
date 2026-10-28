@@ -19,7 +19,12 @@ import type {
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import {
+  agentSessionAttachmentExpiredRefusal,
+  type AgentSessionTurnContext,
+  type TurnOutcome
+} from './structured-agent-session-turns'
+import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
 import { captureStructuredExecutionOptions } from './structured-agent-session-execution-options'
 import { throwIfSignalAborted } from '../../../shared/abort-signal-reason'
 import { contextStructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
@@ -83,16 +88,24 @@ export async function performThreadGoalChange(
   // Journal first: active goals start work immediately, which must follow the objective in the transcript.
   throwIfSignalAborted(input.signal)
   if (change.kind === 'set') {
-    await ctx.journal.appendItem(
-      identity,
-      {
-        kind: 'message',
-        role: 'user',
-        blocks: [{ type: 'text', text: change.objective }],
-        sentAs: 'goal'
-      },
-      { fence: ctx.fence, turnScope: contextStructuredAgentSessionCurrentWork(ctx).turnScope() }
-    )
+    try {
+      // An objective naming a pasted file keeps it for the chat, as a sent message does.
+      await ctx.journal.appendClaimingAttachments(
+        identity,
+        {
+          kind: 'message',
+          role: 'user',
+          blocks: [{ type: 'text', text: change.objective }],
+          sentAs: 'goal'
+        },
+        { fence: ctx.fence, turnScope: contextStructuredAgentSessionCurrentWork(ctx).turnScope() }
+      )
+    } catch (error) {
+      if (isAgentSessionAttachmentExpiredError(error)) {
+        return agentSessionAttachmentExpiredRefusal()
+      }
+      throw error
+    }
   }
   const withdrawObjective = async (): Promise<void> => {
     if (change.kind === 'set') {

@@ -278,6 +278,9 @@ export class AgentSessionJournal {
     return this.itemAppender.append(identity, body, options, receipt)
   }
 
+  appendClaimingAttachments: JournalItemAppender['appendClaimingAttachments'] = (...args) =>
+    this.itemAppender.appendClaimingAttachments(...args)
+
   /** Resolve on the write lane; null appends nothing. */
   appendResolvedItem: JournalItemAppender['appendResolved'] = (resolve, options) =>
     this.itemAppender.appendResolved(resolve, options)

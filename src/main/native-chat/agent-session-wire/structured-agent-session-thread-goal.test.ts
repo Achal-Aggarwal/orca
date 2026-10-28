@@ -1,14 +1,20 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalThreadGoal,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
+import { agentSessionAttachmentStoreRoot } from '../agent-session-attachments/agent-session-attachment-references'
+import { markUnclaimedUploadForSweep } from '../agent-session-attachments/agent-session-attachment-claims'
+import { formatNativeChatFileReference } from '../../../shared/agent-image-paste'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { performThreadGoalChange, threadGoalPlan } from './structured-agent-session-thread-goal'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
@@ -156,6 +162,35 @@ describe('performThreadGoalChange', () => {
     expect(journal.snapshot().items.map((item) => item.body)).toEqual([
       expect.objectContaining({ sentAs: 'goal' })
     ])
+  })
+
+  it('keeps a pasted file its objective names for the chat, and refuses one already swept', async () => {
+    const journal = await openJournal()
+    const storeRoot = agentSessionAttachmentStoreRoot(root ?? '')
+    const kept = join(storeRoot, '0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01', 'orca-paste-1-a.txt')
+    await mkdir(dirname(kept), { recursive: true })
+    await writeFile(kept, 'the spec')
+    const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
+    const ctx = context(journal, { changeThreadGoal })
+
+    await performThreadGoalChange(ctx, {
+      clientOperationId: 'op-6',
+      change: { kind: 'set', objective: `Do ${formatNativeChatFileReference(kept)}` }
+    })
+    const db = openTestJournalHostDatabase(root ?? '').db
+    expect(markUnclaimedUploadForSweep(db, '0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01', 1)).toBe(false)
+
+    const gone = join(storeRoot, '7c2d9e10-3f4a-4b5c-8d6e-2f1a0b9c8d02', 'orca-paste-2-b.txt')
+    const result = await performThreadGoalChange(ctx, {
+      clientOperationId: 'op-7',
+      change: { kind: 'set', objective: `Do ${formatNativeChatFileReference(gone)}` }
+    })
+    expect(result).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'attachmentExpired' } }
+    })
+    expect(changeThreadGoal).toHaveBeenCalledTimes(1)
+    expect(journal.snapshot().items).toHaveLength(1)
   })
 
   it('journals nothing for a status change or clear', async () => {

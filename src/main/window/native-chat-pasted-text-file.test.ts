@@ -12,6 +12,7 @@ vi.mock('../ipc/agent-session-attachment-upload', () => ({
 }))
 
 import { savePastedTextAsFile } from './native-chat-pasted-text-file'
+import { nativeChatPasteFolder } from './native-chat-paste-files'
 import { AgentSessionAttachmentStore } from '../native-chat/agent-session-attachments/agent-session-attachment-store'
 
 describe('a long paste saved as a file', () => {
@@ -25,13 +26,24 @@ describe('a long paste saved as a file', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('writes UTF-8 through the ordinary unclaimed store', async () => {
+  it("writes a structured chat's paste through the ordinary unclaimed store", async () => {
     const store = new AgentSessionAttachmentStore(path.join(root, 'agent-session-attachments'), {
       hasSession: () => true
     })
-    const saved = await savePastedTextAsFile({ text: 'log line ✓\n' }, async () => store)
+    const saved = await savePastedTextAsFile(
+      { text: 'log line ✓\n', forStructuredChat: true },
+      async () => store
+    )
     expect(path.dirname(path.dirname(saved))).toBe(store.rootDir)
     expect(readFileSync(saved, 'utf8')).toBe('log line ✓\n')
+  })
+
+  it("keeps a terminal-backed chat's paste in the paste folder, which is never swept", async () => {
+    const store = vi.fn()
+    const saved = await savePastedTextAsFile({ text: 'log line ✓\n' }, store)
+    expect(path.dirname(saved)).toBe(nativeChatPasteFolder())
+    expect(readFileSync(saved, 'utf8')).toBe('log line ✓\n')
+    expect(store).not.toHaveBeenCalled()
   })
 
   it("goes to the chat's store on its paired server, under a text paste's name", async () => {

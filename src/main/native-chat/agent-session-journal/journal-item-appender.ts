@@ -1,13 +1,15 @@
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalItemBody,
-  AgentJournalItemIdentity
+  AgentJournalItemIdentity,
+  AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import { journalItemRowBuilder } from './journal-row-builders'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalAppendResult, JournalItemAppendOptions } from './journal-store-contracts'
 import type { JournalRow } from './journal-row-schema'
 import type { JournalOperationReceipt } from './journal-row-writer'
+import type { JournalAttachmentClaim } from './journal-submission-hook'
 
 // Module-level Error stacks retain startup code and buffers; construct them only when needed.
 class NothingResolvedError extends Error {}
@@ -22,6 +24,7 @@ export class JournalItemAppender {
         build: (seq: number, ts: number) => JournalRow,
         receipt?: JournalOperationReceipt
       ) => Promise<JournalRow>
+      claimAttachments: JournalAttachmentClaim
     }
   ) {}
 
@@ -35,6 +38,18 @@ export class JournalItemAppender {
     return this.deps
       .enqueue(journalItemRowBuilder(this.deps.state, identity, body, options), receipt)
       .then((row) => appendResult(row, itemId))
+  }
+
+  /** A client-authored message claims the uploads it names with its row; a swept one refuses both. */
+  appendClaimingAttachments(
+    identity: AgentJournalItemIdentity,
+    body: AgentJournalMessageItem,
+    options: JournalItemAppendOptions
+  ): Promise<JournalAppendResult> {
+    return this.append(identity, body, options, {
+      write: (db) => this.deps.claimAttachments(db, body, true),
+      committed: () => {}
+    })
   }
 
   /** Resolve against preceding queued writes; null appends nothing. */
