@@ -9,6 +9,7 @@ import { readWorktreeDiffStamp } from './worktree-diff-stamp'
 import { buildDiffResult } from './diff-result'
 import {
   type GitBlobReadResult,
+  assertReadableGitBlobs,
   readGitBlobAtIndexPath,
   readGitBlobAtOidPath,
   readUnstagedLeftBlob,
@@ -140,45 +141,40 @@ async function loadDiff(
   let originalIsBinary = false
   let modifiedIsBinary = false
   let modifiedDeleted = false
-  let readFailed = false
   let tooLarge = false
 
-  try {
-    if (staged) {
-      // HEAD and index blobs are independent; read them concurrently.
-      const [leftBlob, rightBlob] = await Promise.all([
-        readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options),
-        readGitBlobAtIndexPath(worktreePath, filePath, options)
-      ])
-      originalContent = leftBlob.content
-      originalIsBinary = leftBlob.isBinary
-      modifiedContent = rightBlob.content
-      modifiedIsBinary = rightBlob.isBinary
-      modifiedDeleted = !rightBlob.exists && !rightBlob.failed
-      readFailed = leftBlob.failed === true || rightBlob.failed === true
-      tooLarge = leftBlob.tooLarge === true || rightBlob.tooLarge === true
-    } else {
-      // The index-to-HEAD fallback is sequential internally, but independent of the working-tree read.
-      // WSL Git can use a Linux cwd while Node needs its Win32 spelling.
-      const hostWorktreePath = resolveWorktreeHostPath(worktreePath, options)
-      const [leftBlob, workingTreeBlob] = await Promise.all([
-        compareAgainstHead
-          ? readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options)
-          : readUnstagedLeftBlob(worktreePath, filePath, options),
-        hostWorktreePath
-          ? readWorkingTreeFile(path.join(hostWorktreePath, filePath))
-          : Promise.resolve(UNSPELLABLE_WORKING_TREE_READ)
-      ])
-      originalContent = leftBlob.content
-      originalIsBinary = leftBlob.isBinary
-      modifiedContent = workingTreeBlob.content
-      modifiedIsBinary = workingTreeBlob.isBinary
-      modifiedDeleted = !workingTreeBlob.exists
-      readFailed = leftBlob.failed === true || workingTreeBlob.failed === true
-      tooLarge = leftBlob.tooLarge === true || workingTreeBlob.tooLarge === true
-    }
-  } catch {
-    readFailed = true
+  if (staged) {
+    // HEAD and index blobs are independent; read them concurrently.
+    const [leftBlob, rightBlob] = await Promise.all([
+      readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options),
+      readGitBlobAtIndexPath(worktreePath, filePath, options)
+    ])
+    originalContent = leftBlob.content
+    originalIsBinary = leftBlob.isBinary
+    modifiedContent = rightBlob.content
+    modifiedIsBinary = rightBlob.isBinary
+    modifiedDeleted = !rightBlob.exists && !rightBlob.failed
+    assertReadableGitBlobs(filePath, leftBlob, rightBlob)
+    tooLarge = leftBlob.tooLarge === true || rightBlob.tooLarge === true
+  } else {
+    // The index-to-HEAD fallback is sequential internally, but independent of the working-tree read.
+    // WSL Git can use a Linux cwd while Node needs its Win32 spelling.
+    const hostWorktreePath = resolveWorktreeHostPath(worktreePath, options)
+    const [leftBlob, workingTreeBlob] = await Promise.all([
+      compareAgainstHead
+        ? readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options)
+        : readUnstagedLeftBlob(worktreePath, filePath, options),
+      hostWorktreePath
+        ? readWorkingTreeFile(path.join(hostWorktreePath, filePath))
+        : Promise.resolve(UNSPELLABLE_WORKING_TREE_READ)
+    ])
+    originalContent = leftBlob.content
+    originalIsBinary = leftBlob.isBinary
+    modifiedContent = workingTreeBlob.content
+    modifiedIsBinary = workingTreeBlob.isBinary
+    modifiedDeleted = !workingTreeBlob.exists
+    assertReadableGitBlobs(filePath, leftBlob, workingTreeBlob)
+    tooLarge = leftBlob.tooLarge === true || workingTreeBlob.tooLarge === true
   }
 
   const result = buildDiffResult(
@@ -191,9 +187,9 @@ async function loadDiff(
   )
   // Mark proven deletions so previewers can distinguish them from failed empty reads.
   if (result.kind === 'binary' && modifiedDeleted) {
-    return { result: { ...result, modifiedDeleted: true }, reusable: !readFailed }
+    return { result: { ...result, modifiedDeleted: true }, reusable: true }
   }
-  return { result, reusable: !readFailed }
+  return { result, reusable: true }
 }
 
 /** A worktree path with no host spelling is a read failure, never a proven deletion. */

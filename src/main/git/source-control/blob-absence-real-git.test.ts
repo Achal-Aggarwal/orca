@@ -1,4 +1,4 @@
-import { readFile, rm, unlink, utimes, writeFile } from 'node:fs/promises'
+import { chmod, readFile, rm, unlink, utimes, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,6 +8,9 @@ import { runProcess } from '@orca/process-host'
 import { isMissingGitBlobPath } from '../../../shared/git-blob-absence'
 import { readGitBlobAtIndexPath } from './git-blob-read'
 import { getDiff } from './file-diff'
+import { getBranchDiff } from './branch-diff'
+import { getCommitDiff } from './commit-diff'
+import { buildSubmoduleInnerCommitRangeDiff } from './submodule-diff'
 import { invalidateGitReadCaches, settledDiffCache } from './git-read-cache-invalidation'
 import { readWorktreeDiffStamp } from './worktree-diff-stamp'
 
@@ -64,7 +67,7 @@ describe('real Git missing paths and failed blob reads', () => {
       failed: true
     })
 
-    expect(await diff()).toMatchObject({ originalContent: '', modifiedContent: 'working\n' })
+    await expect(diff()).rejects.toThrow('Could not read the complete diff')
     expect(settledDiffCache.stats().entries).toBe(0)
     await git(['hash-object', '-w', '--stdin'], 'staged\n')
     const after = await readWorktreeDiffStamp(repo, 'file.txt', true)
@@ -95,6 +98,77 @@ describe('real Git missing paths and failed blob reads', () => {
       originalContent: '',
       modifiedContent: 'new file\n'
     })
+  })
+
+  it.each(['staged', 'commit', 'branch', 'submodule-range'] as const)(
+    'rejects corrupt %s blobs and recovers without a stale empty result',
+    async (kind) => {
+      await writeFile(path.join(repo, 'file.txt'), 'before\n')
+      gitCommit(repo, 'initial')
+      const parentOid = (await git(['rev-parse', 'HEAD'])).trim()
+      await writeFile(path.join(repo, 'file.txt'), 'after\n')
+      gitCommit(repo, 'changed')
+      const commitOid = (await git(['rev-parse', 'HEAD'])).trim()
+      const blobOid = (await git(['rev-parse', 'HEAD:file.txt'])).trim()
+      await unlink(path.join(repo, '.git', 'objects', blobOid.slice(0, 2), blobOid.slice(2)))
+      const load = {
+        staged: () => getDiff(repo, 'file.txt', true),
+        commit: () => getCommitDiff(repo, { parentOid, commitOid, filePath: 'file.txt' }),
+        branch: () =>
+          getBranchDiff(repo, { mergeBase: parentOid, headOid: commitOid, filePath: 'file.txt' }),
+        'submodule-range': () =>
+          buildSubmoduleInnerCommitRangeDiff(repo, 'file.txt', parentOid, commitOid, {})
+      }
+      await expect(load[kind]()).rejects.toThrow('Could not read the complete diff')
+
+      await git(['hash-object', '-w', '--stdin'], 'after\n')
+      expect(await load[kind]()).toMatchObject({
+        originalContent: kind === 'staged' ? 'after\n' : 'before\n',
+        modifiedContent: 'after\n'
+      })
+    }
+  )
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'rejects an unreadable working file and preserves its contents',
+    async () => {
+      const filePath = path.join(repo, 'file.txt')
+      await writeFile(filePath, 'protected\n')
+      gitCommit(repo, 'initial')
+      await chmod(filePath, 0)
+      try {
+        await expect(diff()).rejects.toThrow('Could not read the complete diff')
+      } finally {
+        await chmod(filePath, 0o600)
+      }
+      expect(await readFile(filePath, 'utf8')).toBe('protected\n')
+      expect(await diff()).toMatchObject({
+        originalContent: 'protected\n',
+        modifiedContent: 'protected\n'
+      })
+    }
+  )
+
+  it('does not mistake a missing HEAD object for an unborn branch', async () => {
+    await writeFile(path.join(repo, 'file.txt'), 'protected\n')
+    gitCommit(repo, 'initial')
+    const commitOid = (await git(['rev-parse', 'HEAD'])).trim()
+    await unlink(path.join(repo, '.git', 'objects', commitOid.slice(0, 2), commitOid.slice(2)))
+    await expect(diff(true)).rejects.toThrow('Could not read the complete diff')
+  })
+
+  it('preserves known deletions and root-commit additions', async () => {
+    await writeFile(path.join(repo, 'file.txt'), 'first\n')
+    gitCommit(repo, 'initial')
+    const commitOid = (await git(['rev-parse', 'HEAD'])).trim()
+    expect(await getCommitDiff(repo, { commitOid, filePath: 'file.txt' })).toMatchObject({
+      originalContent: '',
+      modifiedContent: 'first\n'
+    })
+    await unlink(path.join(repo, 'file.txt'))
+    expect(await diff()).toMatchObject({ originalContent: 'first\n', modifiedContent: '' })
+    await git(['add', 'file.txt'])
+    expect(await diff(true)).toMatchObject({ originalContent: 'first\n', modifiedContent: '' })
   })
 
   it('recognizes actual index and tree absence without accepting corrupt objects', async () => {

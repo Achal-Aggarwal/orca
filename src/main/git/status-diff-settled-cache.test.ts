@@ -210,7 +210,7 @@ describe('settled diff cache', () => {
 
   // Empty worktrees must not turn filesystem reads into paths relative to Orca's own checkout.
   it('reads nothing relative to the cwd when the worktree path has no host spelling', async () => {
-    await getDiff('', FILE, false)
+    await expect(getDiff('', FILE, false)).rejects.toThrow('Could not read the complete diff')
 
     expect(statMock).not.toHaveBeenCalledWith(FILE)
     expect(readFileMock).not.toHaveBeenCalledWith('.git', 'utf-8')
@@ -326,9 +326,9 @@ describe('settled diff cache', () => {
       Object.assign(new Error('wsl.exe failed'), { code: 1 })
     )
 
-    await getDiff(REPO, FILE, false)
+    await expect(getDiff(REPO, FILE, false)).rejects.toThrow('Could not read the complete diff')
     const spawnsAfterFirst = blobReadCount()
-    await getDiff(REPO, FILE, false)
+    await expect(getDiff(REPO, FILE, false)).rejects.toThrow('Could not read the complete diff')
 
     expect(blobReadCount()).toBeGreaterThan(spawnsAfterFirst)
     expect(settledDiffCache.stats().entries).toBe(0)
@@ -336,6 +336,9 @@ describe('settled diff cache', () => {
 
   it('caches a new file whose absence from the index git actually reported', async () => {
     gitExecFileAsyncBufferMock.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'ls-tree') {
+        return { stdout: Buffer.alloc(0) }
+      }
       const stderr = args.some((arg) => arg.startsWith(':'))
         ? "fatal: path 'src/file.ts' exists on disk, but not in the index"
         : "fatal: path 'src/file.ts' exists on disk, but not in 'HEAD'"

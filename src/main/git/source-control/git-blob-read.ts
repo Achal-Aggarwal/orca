@@ -2,12 +2,15 @@ import { readFile, stat } from 'node:fs/promises'
 import * as path from 'node:path'
 import { isBinaryBuffer } from '../../../shared/binary-buffer'
 import { isMissingGitBlobPath } from '../../../shared/git-blob-absence'
+import { isShowRefNoMatchError } from '../../../shared/git-show-ref-no-match'
+import { isSafeGitRefName } from '../../../shared/git-status-upstream-ref'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { gitReadOptionsForWorktree } from '../git-runtime-options'
 import { gitExecFileAsyncBuffer } from '../runner'
 import { isMaxBufferOverflowError } from '../max-buffer-overflow'
 import { MAX_GIT_SHOW_BYTES } from './git-show-max-bytes'
 import { PREVIEWABLE_BINARY_MIME_TYPES } from './previewable-binary-mime-types'
+import { literalPathspec } from './git-pathspec'
 
 export type GitBlobReadResult = {
   content: string
@@ -92,9 +95,59 @@ export async function readGitBlobAtOidPath(
       content: '',
       isBinary: false,
       exists: false,
-      failed: !isMissingGitBlobPath(error, gitPath, oid)
+      failed: isMissingGitBlobPath(error, gitPath, oid)
+        ? !(await isTreePathAbsent(worktreePath, oid, gitPath, options))
+        : !(oid === 'HEAD' && (await isUnbornHead(worktreePath, options)))
     }
   }
+}
+
+export function assertReadableGitBlobs(filePath: string, ...blobs: GitBlobReadResult[]): void {
+  if (blobs.some((blob) => blob.failed)) {
+    throw new Error(`Could not read the complete diff for "${filePath}".`)
+  }
+}
+
+async function isTreePathAbsent(
+  worktreePath: string,
+  oid: string,
+  gitPath: string,
+  options: GitRuntimeOptions
+): Promise<boolean> {
+  if (oid.startsWith('-')) {
+    return false
+  }
+  try {
+    // Git can report a missing path when the containing commit or tree is unreadable.
+    const { stdout } = await gitExecFileAsyncBuffer(
+      ['ls-tree', '-z', oid, '--', literalPathspec(gitPath, worktreePath, options)],
+      gitReadOptionsForWorktree(worktreePath, options)
+    )
+    return stdout.byteLength === 0
+  } catch {
+    return false
+  }
+}
+
+async function isUnbornHead(worktreePath: string, options: GitRuntimeOptions): Promise<boolean> {
+  try {
+    const { stdout } = await gitExecFileAsyncBuffer(['symbolic-ref', '--quiet', 'HEAD'], {
+      ...gitReadOptionsForWorktree(worktreePath, options)
+    })
+    const ref = stdout.toString('utf8').trim()
+    if (!ref.startsWith('refs/heads/') || !isSafeGitRefName(ref)) {
+      return false
+    }
+    try {
+      // A raw ref still resolves when its object is missing; only an absent ref is unborn.
+      await gitExecFileAsyncBuffer(['rev-parse', '--verify', '--quiet', ref], {
+        ...gitReadOptionsForWorktree(worktreePath, options)
+      })
+    } catch (error) {
+      return isShowRefNoMatchError(error)
+    }
+  } catch {}
+  return false
 }
 
 export async function readWorkingTreeFile(filePath: string): Promise<GitBlobReadResult> {

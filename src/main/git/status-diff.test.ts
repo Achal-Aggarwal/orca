@@ -302,13 +302,9 @@ describe('getDiff', () => {
       return Buffer.from('')
     })
 
-    const result = await getDiff('/repo', 'assets/unreadable.png', false)
-
-    expect(result.kind).toBe('binary')
-    if (result.kind !== 'binary') {
-      throw new Error('expected binary diff result')
-    }
-    expect(result.modifiedDeleted).toBeUndefined()
+    await expect(getDiff('/repo', 'assets/unreadable.png', false)).rejects.toThrow(
+      'Could not read the complete diff'
+    )
   })
 
   it('coalesces concurrent identical staged diff reads while in flight', async () => {
