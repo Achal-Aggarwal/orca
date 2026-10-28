@@ -1,4 +1,4 @@
-import { shallow } from 'zustand/shallow'
+import { structuralValuesEqualIgnoringUndefined } from '../../../../../shared/structural-value-equality'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../../types'
 import type {
@@ -88,7 +88,7 @@ export function createAgentStatusRuntime(
     for (const paneKey of paneKeys) {
       const previous = before.agentStatusByPaneKey[paneKey]
       const current = rows[paneKey]
-      if (!shallow(previous, current)) {
+      if (!structuralValuesEqualIgnoringUndefined(previous, current)) {
         changes.push({ paneKey, previous, current })
       }
     }

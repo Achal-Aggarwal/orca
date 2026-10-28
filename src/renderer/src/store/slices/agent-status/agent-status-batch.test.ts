@@ -634,6 +634,23 @@ describe('committed agent status changes', () => {
     store.getState().removeAgentStatus(FIRST_PANE)
     expect(observed).toHaveBeenCalledOnce()
   })
+  it('suppresses an equal accepted row rebuilt by remove and re-add in one transaction', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(BASE_TIME)
+    const store = seedBatchStore()
+    write(store, SECOND_PANE)
+    const previous = store.getState().agentStatusByPaneKey[SECOND_PANE]
+    const observed = vi.fn()
+    store.getState().subscribeAgentStatusChanges(observed)
+    store.getState().transactAgentStatuses(() => {
+      store.getState().removeAgentStatus(SECOND_PANE)
+      write(store, SECOND_PANE)
+    })
+    const current = store.getState().agentStatusByPaneKey[SECOND_PANE]
+    expect(current).toEqual(previous)
+    expect(current.stateHistory).not.toBe(previous.stateHistory)
+    expect(observed).not.toHaveBeenCalled()
+  })
   it('isolates stores, disposes listeners, orders reentry and contains observer failures', () => {
     vi.useFakeTimers()
     vi.setSystemTime(BASE_TIME)
