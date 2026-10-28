@@ -21,8 +21,14 @@ export async function runLinearWriteAction<Owner, Result>(
   const discoveryDeadline = Date.now() + 30_000
   const action = new AbortController()
   const signal = cancellation ? AbortSignal.any([action.signal, cancellation]) : action.signal
+  let invoked = false
   const timeout = (): LinearAgentAccessError =>
-    linearError('linear_timeout', 'The Linear action stopped before a change was attempted.')
+    linearError(
+      'linear_timeout',
+      invoked
+        ? 'Linear write deadline elapsed before confirmation.'
+        : 'The Linear action stopped before a change was attempted.'
+    )
   const totalTimer = setTimeout(() => action.abort(timeout()), 55_000)
   const discovery = new AbortController()
   let discoveryExpired = false
@@ -32,7 +38,6 @@ export async function runLinearWriteAction<Owner, Result>(
   }, 30_000)
   let writeTimer: ReturnType<typeof setTimeout> | undefined
   let owner: Owner | undefined
-  let invoked = false
   try {
     const discoverySignal = AbortSignal.any([signal, discovery.signal])
     try {

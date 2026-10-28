@@ -2,6 +2,7 @@ import '../../src/main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { clearTimeout as clearRealTimeout, setTimeout as setRealTimeout } from 'node:timers'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { main } from '../../src/cli/index'
 import { RuntimeClient } from '../../src/cli/runtime-client'
@@ -44,6 +45,20 @@ let runtime: OrcaRuntimeService
 let server: OrcaRuntimeRpcServer
 let userDataPath: string
 let failure: LinearWriteFailure
+
+async function observe<T>(pending: Promise<T>, phase: string): Promise<T> {
+  let timer: ReturnType<typeof setRealTimeout> | undefined
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_resolve, reject) => {
+        timer = setRealTimeout(() => reject(new Error(`Timed out observing ${phase}`)), 2_000)
+      })
+    ])
+  } finally {
+    clearRealTimeout(timer)
+  }
+}
 
 beforeEach(async () => {
   userDataPath = mkdtempSync(join(tmpdir(), 'linear-write-cli-'))
@@ -285,43 +300,149 @@ it('ends a stalled CLI preparation before its client timeout without a late writ
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   const pending = main(['linear', 'status', 'set', 'ENG-1', '--to', 'Done', '--json'], '/tmp')
   try {
-    await started
+    await observe(started, 'preparation admission')
     await vi.advanceTimersByTimeAsync(30_000)
-    await pending
+    await observe(pending, 'CLI preparation timeout')
     expect(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))).toMatchObject({
-      error: { code: 'linear_timeout' }
+      error: {
+        code: 'linear_timeout',
+        message: 'The Linear action stopped before a change was attempted.'
+      }
     })
     release()
     await vi.advanceTimersByTimeAsync(0)
     expect(mutations.updateIssueForAgent).not.toHaveBeenCalled()
   } finally {
     release()
-    await pending
+    await observe(pending, 'CLI settlement')
   }
 })
 
+it.each(['status', 'duplicate comment'] as const)(
+  'exposes truthful invoked deadline cause and recovery in %s CLI JSON',
+  async (verb) => {
+    let release = () => {}
+    let entered = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    vi.mocked(mutations.updateIssueForAgent).mockImplementation(
+      async (_id, _fields, _workspace, options) => {
+        options?.beforeInvoke?.()
+        entered()
+        await held
+        return { ...issue, state: { id: 'done', name: 'Done' } }
+      }
+    )
+    vi.mocked(comments.addIssueCommentForAgent).mockImplementation(
+      async (_id, _body, _workspace, options) => {
+        options.beforeInvoke?.()
+        throw new LinearWriteFailure('duplicate_id', 'Already exists')
+      }
+    )
+    vi.mocked(runtime.getMatchingLinearCommentWrite)
+      .mockResolvedValueOnce(null)
+      .mockImplementation(async () => {
+        entered()
+        await held
+        return comment
+      })
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const argv =
+      verb === 'status'
+        ? ['status', 'set', 'ENG-1', '--to', 'Done']
+        : ['comment', 'add', 'ENG-1', '--body', 'new', '--write-id', writeId]
+    const pending = main(['linear', ...argv, '--json'], '/tmp')
+    pending.catch(() => {})
+    try {
+      await observe(started, 'invocation or duplicate recovery admission')
+      await vi.advanceTimersByTimeAsync(25_000)
+      await observe(pending, 'CLI confirmation deadline')
+      const envelope = JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))
+      expect(envelope).toMatchObject({
+        ok: false,
+        error: {
+          code: 'linear_write_unconfirmed',
+          data: { cause: 'Linear write deadline elapsed before confirmation.' }
+        }
+      })
+      if (verb === 'status') {
+        expect(envelope.error.data.nextSteps).toEqual([
+          expect.stringContaining('orca linear issue ENG-1')
+        ])
+      } else {
+        expect(envelope.error.data).toMatchObject({
+          writeId,
+          nextSteps: [expect.stringContaining(`--write-id=${writeId}`)]
+        })
+        expect(runtime.getMatchingLinearCommentWrite).toHaveBeenCalledTimes(2)
+      }
+      expect(process.exitCode).toBe(1)
+    } finally {
+      release()
+      await vi.advanceTimersByTimeAsync(0)
+      await observe(pending, 'CLI settlement after late confirmation')
+    }
+    expect(
+      verb === 'status' ? mutations.updateIssueForAgent : comments.addIssueCommentForAgent
+    ).toHaveBeenCalledTimes(1)
+    expect(console.log).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  }
+)
+
 it('propagates real client socket timeout into preparation cancellation', async () => {
   let release = () => {}
+  let entered = () => {}
   let cancelled = () => {}
+  const held = new Promise<typeof target>((resolve) => {
+    release = () => resolve(target)
+  })
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
   const aborted = new Promise<void>((resolve) => {
     cancelled = resolve
   })
   vi.mocked(runtime.resolveLinearAgentWriteTarget).mockImplementation((_params, signal) => {
     signal?.addEventListener('abort', () => cancelled(), { once: true })
-    return new Promise((resolve) => {
-      release = () => resolve(target)
-    })
+    entered()
+    return held
   })
+  const dispatch = vi.spyOn(runtime, 'linearIssueSetState')
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   const client = new RuntimeClient(userDataPath, 30, null, null)
+  const pending = client.call('linear.issueSetState', { input: 'ENG-1', to: 'Done' }).then(
+    (value) => ({ value }),
+    (error) => ({ error })
+  )
   try {
-    await expect(
-      client.call('linear.issueSetState', { input: 'ENG-1', to: 'Done' })
-    ).rejects.toMatchObject({ code: 'runtime_timeout' })
-    await aborted
+    await observe(started, 'preparation admission before client timeout')
+    expect(mutations.updateIssueForAgent).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(30)
+    expect(await observe(pending, 'client timeout')).toMatchObject({
+      error: { code: 'runtime_timeout' }
+    })
+    await observe(aborted, 'socket-close cancellation at preparation')
+    expect(mutations.updateIssueForAgent).not.toHaveBeenCalled()
     release()
     await new Promise((resolve) => setImmediate(resolve))
     expect(mutations.updateIssueForAgent).not.toHaveBeenCalled()
   } finally {
     release()
+    await vi.advanceTimersByTimeAsync(30)
+    await observe(pending, 'client settlement')
+    const request = dispatch.mock.results[0]
+    if (request?.type === 'return') {
+      await observe(
+        Promise.resolve(request.value).catch(() => {}),
+        'dispatch settlement'
+      )
+    }
   }
+  expect(mutations.updateIssueForAgent).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
 })

@@ -131,7 +131,10 @@ it.each(actions)('bounds $name preparation and never invokes after it expires', 
   })
   try {
     await vi.advanceTimersByTimeAsync(30_000)
-    expect(outcome).toMatchObject({ code: 'linear_timeout' })
+    expect(outcome).toMatchObject({
+      code: 'linear_timeout',
+      message: 'The Linear action stopped before a change was attempted.'
+    })
     release()
     await pending
     await vi.advanceTimersByTimeAsync(0)
@@ -297,6 +300,12 @@ it.each(['comment', 'attach', 'create'] as const)(
           outcome = error
         }
       )
+      const provider =
+        verb === 'comment'
+          ? comments.addIssueCommentForAgent
+          : verb === 'attach'
+            ? comments.createIssueAttachment
+            : mutations.createIssueForAgent
       try {
         await vi.advanceTimersByTimeAsync(20_000)
         releaseMutation()
@@ -305,27 +314,80 @@ it.each(['comment', 'attach', 'create'] as const)(
           await vi.advanceTimersByTimeAsync(5_000)
           expect(outcome).toMatchObject({
             code: 'linear_write_unconfirmed',
-            data: { writeId, nextSteps: [expect.stringContaining(`--write-id=${writeId}`)] }
+            data: {
+              writeId,
+              cause: 'Linear write deadline elapsed before confirmation.',
+              nextSteps: [expect.stringContaining(`--write-id=${writeId}`)]
+            }
           })
         } else {
           releaseRecovery()
           await pending
           expect(outcome).toMatchObject({ meta: { writeId, deduplicated: true } })
         }
-        const provider =
-          verb === 'comment'
-            ? comments.addIssueCommentForAgent
-            : verb === 'attach'
-              ? comments.createIssueAttachment
-              : mutations.createIssueForAgent
         expect(provider).toHaveBeenCalledTimes(1)
-        vi.mocked(provider).mockClear()
       } finally {
         releaseMutation()
         releaseRecovery()
         await pending
+        await vi.advanceTimersByTimeAsync(0)
       }
+      expect(provider).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+      vi.mocked(provider).mockClear()
     }
+  }
+)
+
+it.each(['write', 'total'] as const)(
+  'reports a truthful cause when the %s deadline ends an invoked write',
+  async (deadline) => {
+    const c = commands()
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    let release = () => {}
+    const confirmation = new Promise<typeof issue>((resolve) => {
+      release = () => resolve({ ...issue, state: { id: 'done', name: 'Done' } })
+    })
+    vi.mocked(mutations.updateIssueForAgent).mockImplementation(
+      (_id, _fields, _workspace, options) => {
+        options?.beforeInvoke?.()
+        return confirmation
+      }
+    )
+    let outcome: unknown
+    const pending = c.linearIssueSetState({ input: 'ENG-1', to: 'Done' }).catch((error) => {
+      outcome = error
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(mutations.updateIssueForAgent).toHaveBeenCalledTimes(1)
+      if (deadline === 'write') {
+        await vi.advanceTimersByTimeAsync(25_000)
+      } else {
+        const totalTimeout = timers.mock.calls.find(([, delay]) => delay === 55_000)?.[0]
+        if (typeof totalTimeout !== 'function') {
+          throw new Error('Total deadline not scheduled')
+        }
+        vi.setSystemTime(Date.now() + 55_000)
+        // Deliver the real total callback independently of the earlier write timer.
+        totalTimeout()
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      await pending
+      expect(outcome).toMatchObject({
+        code: 'linear_write_unconfirmed',
+        data: {
+          cause: 'Linear write deadline elapsed before confirmation.',
+          nextSteps: [expect.stringContaining('orca linear issue ENG-1')]
+        }
+      })
+    } finally {
+      release()
+      await pending
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    expect(mutations.updateIssueForAgent).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
   }
 )
 
