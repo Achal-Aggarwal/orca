@@ -141,6 +141,9 @@ export function installHostModelCatalogSnapshotsSync(): () => void {
       if (state.removedRuntimeEnvironmentIds.has(environmentId)) {
         stop()
         contactStops.delete(environmentId)
+        // A same-id re-add is a new host: its first status must not inherit these lists.
+        forgetHostModelCatalogSnapshots({ kind: 'environment', environmentId })
+        preloadedFrom.delete(toRuntimeExecutionHostId(environmentId))
       }
     }
     for (const environmentId of state.runtimeStatusByEnvironmentId.keys()) {
