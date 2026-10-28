@@ -9,7 +9,12 @@ vi.mock('electron', () => ({ protocol: { handle: vi.fn() } }))
 vi.mock('../ipc/local-file-access-resolution', () => ({
   resolveLocalFileRequestPath: vi.fn(async (filePath: string) => filePath)
 }))
+vi.mock('../wsl/wsl-unc-access-gate', () => ({
+  guardWslUncPathAccess: vi.fn((_path: string, access: () => Promise<unknown>) => access())
+}))
 
+import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
+import { guardWslUncPathAccess } from '../wsl/wsl-unc-access-gate'
 import { readLocalFilePreview } from './media-preview-protocol'
 import { readPreviewGrantRange } from './preview-grant-range-read'
 
@@ -47,6 +52,14 @@ describe('readPreviewGrantRange', () => {
     await expect(
       readPreviewGrantRange({ ...sender, id: sender.id + 1 }, url, 0, 4)
     ).rejects.toThrow('Preview is no longer available')
+  })
+
+  it('never wakes a stopped WSL distro to read a range', async () => {
+    const url = await mint('doc.pdf', '%PDF-1.4 body')
+    vi.mocked(resolveLocalFileRequestPath).mockClear()
+    vi.mocked(guardWslUncPathAccess).mockRejectedValueOnce(new Error('Ubuntu is stopped'))
+    await expect(readPreviewGrantRange(sender, url, 0, 4)).rejects.toThrow('Ubuntu is stopped')
+    expect(resolveLocalFileRequestPath).not.toHaveBeenCalled()
   })
 
   it('serves PDF grants only, within bounds, and nothing after teardown', async () => {

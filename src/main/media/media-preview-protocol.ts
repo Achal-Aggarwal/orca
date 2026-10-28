@@ -4,12 +4,20 @@ import { MEDIA_PREVIEW_SCHEME } from '../../shared/media-file-extensions'
 import {
   filePreviewForPath,
   isDocumentPreview,
-  streamsPreviewByRange
+  streamsPreviewByRange,
+  type FilePreview
 } from '../../shared/file-preview-kind'
 import {
   assertLocalPreviewRasterHeader,
-  assertRemotePreviewRasterHeader
+  assertPreviewableRasterHeader,
+  assertRemotePreviewRasterHeader,
+  incrementalPrefixReader
 } from './preview-raster-header-check'
+import {
+  DOCUMENT_SIGNATURE_PROBE_BYTES,
+  prefixFitsDocumentPreview
+} from './preview-document-signature'
+import { openLocalPreviewGrantFile } from './local-preview-grant-file'
 import type { RemoteFilePreviewAddress } from '../../shared/remote-file-preview-address'
 import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
 import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
@@ -20,6 +28,7 @@ import {
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
+  readRemotePreviewRange,
   statRemotePreviewFile,
   type RemotePreviewFileSnapshot
 } from './remote-file-preview-reader'
@@ -53,20 +62,27 @@ export async function readLocalFilePreview(
   store: Store,
   options: { documents: boolean }
 ): Promise<PreviewUrl | null> {
-  const preview = filePreviewForPath(target.filePath)
-  if (!preview) {
+  const named = filePreviewForPath(target.filePath)
+  if (!named) {
     return null
   }
-  if (streamsPreviewByRange(preview)) {
-    return mintPreviewUrl(event.sender, target, store, preview)
+  if (streamsPreviewByRange(named)) {
+    return mintPreviewUrl(event.sender, target, store, named)
   }
   if (!options.documents || target.connectionId) {
     return null
   }
   const lifetime = abortWhenRendererGone(event.sender)
+  let preview: FilePreview
   let size: number
   try {
     const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
+    // Classify the target, not the link: `shot.png -> drawing.svg` is an SVG, and base64 says so.
+    const resolved = filePreviewForPath(filePath)
+    if (!resolved || !isDocumentPreview(resolved)) {
+      return null
+    }
+    preview = resolved
     const { handle, stats } = await openLocalRegularFile(filePath)
     try {
       await assertLocalPreviewRasterHeader(preview, handle, stats.size)
@@ -120,7 +136,17 @@ export async function grantRemoteFilePreview(
     throw error
   }
   try {
-    await assertRemotePreviewRasterHeader(preview, pinned, snapshot.size, lifetime.signal)
+    const readPrefix = incrementalPrefixReader((offset, length) =>
+      readRemotePreviewRange(pinned, offset, length, snapshot.size, lifetime.signal)
+    )
+    // files.stat names no link target, but the host's readPreview classifies it; defer on a mislabel.
+    if (
+      isDocumentPreview(preview) &&
+      !prefixFitsDocumentPreview(preview, await readPrefix(DOCUMENT_SIGNATURE_PROBE_BYTES))
+    ) {
+      return null
+    }
+    await assertPreviewableRasterHeader(preview, readPrefix, snapshot.size)
     // A renderer gone mid-mint would leave a grant no teardown ever drops.
     lifetime.signal.throwIfAborted()
   } finally {
@@ -186,8 +212,7 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
     if (target.connectionId) {
       return new Response(null, { status: 404 })
     }
-    const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
-    const { handle, stats } = await openLocalRegularFile(filePath)
+    const { handle, stats } = await openLocalPreviewGrantFile(grant, target, store)
     try {
       // The file can change after mint; check the handle this response serves.
       await assertLocalPreviewRasterHeader(grant.preview, handle, stats.size)

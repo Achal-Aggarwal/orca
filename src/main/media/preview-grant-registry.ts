@@ -68,7 +68,8 @@ export function mintPreviewUrl(
       { once: true }
     )
   }
-  const key = JSON.stringify(target)
+  // A retargeted link re-mints as its new kind, never as the old grant's type.
+  const key = JSON.stringify([target, mimeType])
   let token = owned.get(key)
   if (!token || !grants.has(token)) {
     token = randomUUID()

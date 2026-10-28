@@ -148,6 +148,22 @@ describe('media preview protocol', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(png(4, 3))
   })
 
+  it('classifies a linked image or PDF by its target, then and on every read', async () => {
+    const filePath = join(directory, 'shot.png')
+    const drawing = join(directory, 'drawing.svg')
+    await writeFile(filePath, png(4, 3))
+    await writeFile(drawing, '<svg/>')
+    authorize.mockResolvedValueOnce(drawing)
+    await expect(
+      readLocalFilePreview(event, { filePath }, store, { documents: true })
+    ).resolves.toMatchObject({ mimeType: 'image/svg+xml' })
+    authorize.mockResolvedValueOnce(join(directory, 'notes.txt'))
+    expect(await readLocalFilePreview(event, { filePath }, store, { documents: true })).toBeNull()
+    const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
+    authorize.mockResolvedValueOnce(drawing)
+    expect((await handleMediaPreviewRequest(new Request(result?.mediaUrl ?? ''))).status).toBe(404)
+  })
+
   it('refuses an image whose header proves it too large to decode safely', async () => {
     const filePath = join(directory, 'bomb.png')
     await writeFile(filePath, png(100_000, 100_000))
@@ -263,7 +279,9 @@ describe('media preview protocol', () => {
     })
 
     it('streams a remote image or PDF to its viewer, refusing a proven-oversized image', async () => {
-      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(4, 3))
+      vi.mocked(readRemotePreviewRange).mockImplementation(async (address) =>
+        address.relativePath.endsWith('.pdf') ? new TextEncoder().encode('%PDF-1.7') : png(4, 3)
+      )
       await expect(
         grantRemoteFilePreview(event, addr('docs/shot.png'), store)
       ).resolves.toMatchObject({
@@ -281,7 +299,9 @@ describe('media preview protocol', () => {
       await expect(grantRemoteFilePreview(event, addr('docs/bomb.png'), store)).rejects.toThrow(
         'Image dimensions exceed the preview safety limit'
       )
-      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(4, 3))
+      vi.mocked(readRemotePreviewRange).mockImplementation(async (address) =>
+        address.relativePath.endsWith('.pdf') ? new TextEncoder().encode('%PDF-1.7') : png(4, 3)
+      )
       vi.mocked(statRemotePreviewFile).mockResolvedValueOnce({ size: 60 * 1024 * 1024, mtime: 1 })
       // An <img> decodes the whole file, so images keep the 50 MB cap; PDFs read by range don't.
       await expect(grantRemoteFilePreview(event, addr('docs/huge.png'), store)).rejects.toThrow(
@@ -305,6 +325,19 @@ describe('media preview protocol', () => {
       const minted = await grantRemoteFilePreview(event, addr('docs/shot.png'), store)
       vi.mocked(readRemotePreviewRange).mockResolvedValueOnce(png(100_000, 100_000))
       expect((await range(minted?.mediaUrl ?? '')).status).not.toBe(206)
+    })
+
+    it('leaves a remote image or PDF whose bytes are another kind to files.readPreview', async () => {
+      vi.mocked(readRemotePreviewRange).mockResolvedValue(new TextEncoder().encode('<svg/>'))
+      await expect(grantRemoteFilePreview(event, addr('docs/shot.png'), store)).resolves.toBeNull()
+      await expect(grantRemoteFilePreview(event, addr('docs/spec.pdf'), store)).resolves.toBeNull()
+      await expect(
+        grantRemoteFilePreview(event, addr('docs/drawing.svg'), store)
+      ).resolves.toMatchObject({ mimeType: 'image/svg+xml' })
+      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(4, 3))
+      await expect(
+        grantRemoteFilePreview(event, addr('docs/drawing.svg'), store)
+      ).resolves.toBeNull()
     })
 
     it('fails the mint, not the player, when the host cannot serve chunk reads', async () => {

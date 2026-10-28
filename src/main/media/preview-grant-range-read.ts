@@ -1,5 +1,4 @@
-import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
-import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
+import { openLocalPreviewGrantFile } from './local-preview-grant-file'
 import {
   previewGrantForSender,
   remoteSnapshot,
@@ -59,12 +58,7 @@ export async function readPreviewGrantRange(
   if (grant.target.connectionId) {
     throw new Error('Preview is no longer available')
   }
-  const filePath = await resolveLocalFileRequestPath(
-    grant.target.filePath,
-    grant.target.access,
-    grant.store
-  )
-  const { handle, stats } = await openLocalRegularFile(filePath)
+  const { handle, stats } = await openLocalPreviewGrantFile(grant, grant.target, grant.store)
   try {
     const buffer = Buffer.alloc(Math.max(0, Math.min(length, stats.size - offset)))
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset)
