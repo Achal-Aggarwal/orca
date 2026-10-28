@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const restart = vi.hoisted(() => ({ intentional: false }))
 vi.mock('@/lib/updater-beforeunload', () => ({
@@ -39,5 +39,23 @@ describe('quitting during a WSL move', () => {
     expect(await confirmQuitDuringWslMove(async () => true, confirm)).toBe(true)
     expect(confirm).not.toHaveBeenCalled()
     restart.intentional = false
+  })
+
+  describe('when main does not answer', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('quits without asking after 2 s rather than wait forever', async () => {
+      vi.useFakeTimers()
+      const confirm = vi.fn(async () => false)
+      const settled = vi.fn()
+      void confirmQuitDuringWslMove(() => new Promise<boolean>(() => {}), confirm).then(settled)
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(settled).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(settled).toHaveBeenCalledWith(true)
+      expect(confirm).not.toHaveBeenCalled()
+    })
   })
 })
