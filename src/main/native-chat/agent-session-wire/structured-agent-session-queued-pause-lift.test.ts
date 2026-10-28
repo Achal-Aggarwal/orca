@@ -19,6 +19,9 @@ import {
 import { openRigTurnFor } from './structured-agent-session-queued-rig-turn.test-fixture'
 import { sameQueuePause } from './structured-agent-session-queued-publication'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
+import { createAgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
+import { AgentModelCatalogStore } from '../agent-model-catalog/agent-model-catalog-store'
+import { agentModelCatalogFingerprintForRecord } from '../agent-model-catalog/agent-model-catalog-fingerprint'
 
 import { createStructuredSessionObservationClock } from './structured-agent-session-observation-clock.test-fixture'
 
@@ -86,8 +89,38 @@ async function handedOverUserSend(text: string): Promise<string> {
 describe("a Stop's queue pause", () => {
   installRigLifecycleHooks()
 
-  it('keeps accepted execution and fingerprint exact through restart, later picks and replay', async () => {
+  it('keeps accepted execution and fingerprint exact through catalog refresh, restart, later picks and replay', async () => {
     const working = await rig.workingSend()
+    const record = rig.store.getRecord(HOST_TEST_SESSION)!
+    const catalogStore = new AgentModelCatalogStore()
+    const models = (efforts: string[]) => [
+      {
+        id: 'openai/gpt-5',
+        label: 'GPT-5',
+        isDefault: false,
+        efforts: efforts.map((value) => ({ value, label: value }))
+      }
+    ]
+    const catalog = createAgentModelCatalogService({
+      store: catalogStore,
+      getRecord: (id) => rig.store.getRecord(id),
+      getConversation: (id) => rig.store.getConversation(id) ?? undefined,
+      drivesRecord: () => true,
+      resolveAccountHome: async () => record.accountHome
+    })
+    rig.host.deps.modelCatalog = catalog
+    rig.host.deps.adapter.readOptions = async () => ({ models: [], current: {} })
+    const key = agentModelCatalogFingerprintForRecord(record)
+    catalogStore.recordSuccess(
+      key,
+      record.provider,
+      {
+        models: models(['medium', 'high']),
+        origin: 'probe',
+        complete: true
+      },
+      'discovery'
+    )
     const body = hostTestMessage('frozen medium')
     const fields = {
       body,
@@ -105,6 +138,20 @@ describe("a Stop's queue pause", () => {
     const id = queued.value.queued.messageId
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
     const frozen = { ...journal.queuedMessages.get(id) }
+    const refresh = vi.fn(async () => ({
+      models: models(['off', 'minimal', 'low', 'xhigh']),
+      origin: 'probe' as const,
+      complete: true
+    }))
+    await catalogStore.refresh(key, record.provider, refresh, refresh)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    const refreshed = await rig.host.readOptions(HOST_TEST_SESSION)
+    expect(
+      refreshed.models
+        .find((row) => row.id === fields.options.model)
+        ?.efforts.map((choice) => choice.value)
+    ).toEqual(['off', 'minimal', 'low', 'xhigh'])
+    expect(journal.queuedMessages.get(id)?.options).toEqual(fields.options)
     const pick = { key: 'effort', value: 'high' }
     expect(
       await rig.host.setOption(QUEUED_RIG_CALLER, {
@@ -113,6 +160,7 @@ describe("a Stop's queue pause", () => {
       })
     ).toMatchObject({ ok: true })
     await rig.restartHostProcess()
+    rig.host.deps.modelCatalog = catalog
     expect(await rig.host.send(QUEUED_RIG_CALLER, params)).toMatchObject({
       ok: true,
       replayed: true
@@ -133,6 +181,7 @@ describe("a Stop's queue pause", () => {
       .journal.queuedMessages.get(id)
     expect(restored?.fingerprint).toBe(frozen.fingerprint)
     expect(restored?.options).toEqual(fields.options)
+    catalog.stop()
   })
 
   it('outlives a user send the provider accepts and then refuses; a later send that starts lifts it', async () => {

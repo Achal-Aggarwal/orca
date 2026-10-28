@@ -1,4 +1,4 @@
-import { agentSessionRecordFixture } from '../agent-session-record-test-fixture'
+import { restingJournal, restingRecord } from './structured-agent-session-options-read.test-fixture'
 import { agentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { structuredAgentSessionCapabilityView } from './structured-agent-session-option-models'
 import { claudeFallbackModelOptions } from '../../claude/claude-structured-session-options'
@@ -11,7 +11,6 @@ import {
 } from '../../../shared/structured-agent-session-options'
 import { structuredAgentSessionSendSelection } from '../../../shared/structured-agent-session-option-view'
 import type { StructuredAgentSessionLiveOptions } from './structured-agent-session-adapter'
-
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
@@ -20,7 +19,10 @@ import {
   codexProviderHandle
 } from '../../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionModelOption } from '../../../shared/agent-session-wire'
-import { createAgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
+import {
+  createAgentModelCatalogService,
+  type AgentModelCatalogService
+} from '../agent-model-catalog/agent-model-catalog-service'
 import {
   AgentModelCatalogStore,
   type AgentModelCatalogSuccess
@@ -47,29 +49,6 @@ type RestingFacts = Pick<
   Partial<AgentSessionRecord>,
   'options' | 'provider' | 'providerHandleChain' | 'rewind'
 >
-
-function restingJournal(items: AgentJournalItemBody[] = [], wroteBeforeOpen = false) {
-  return {
-    threadGoal: () => null,
-    visitItems: (visit: (itemId: string, sequence: number, body: AgentJournalItemBody) => void) =>
-      items.forEach((body, index) => visit(`item-${index}`, index + 1, body)),
-    wroteBeforeOpen: () => wroteBeforeOpen,
-    submissions: () => [],
-    contextUsage: () => null,
-    context: { floor: () => null }
-  }
-}
-
-function restingRecord(): AgentSessionRecord {
-  return agentSessionRecordFixture({
-    sessionId: SESSION,
-    provider: 'codex',
-    accountHome: { variable: 'CODEX_HOME', path: '/homes/a' },
-    providerHandleChain: [],
-    location: { executionHostId: 'local', wslDistro: null },
-    options: {}
-  })
-}
 
 describe('options at rest', () => {
   it('keeps the account model for an older client when the starting child has no folder default', async () => {
@@ -277,7 +256,8 @@ describe('a chat at rest, read by the host', () => {
     wroteBeforeOpen = false,
     models: AgentSessionModelOption[] | null = listed,
     verified = true,
-    liveOptions?: StructuredAgentSessionLiveOptions
+    liveOptions?: StructuredAgentSessionLiveOptions,
+    modelCatalog: Pick<AgentModelCatalogService, 'read'> = catalog(models, verified)
   ) {
     const record = { ...restingRecord(), ...facts }
     const resting = {
@@ -295,7 +275,7 @@ describe('a chat at rest, read by the host', () => {
           getConversation: () => (record ? agentSessionConversationView(record) : null),
           requireWritableRecord: () => record
         },
-        modelCatalog: catalog(models, verified)
+        modelCatalog
       },
       serialize: (_sessionId: string, task: () => Promise<unknown>) => task(),
       openConversation: async () => resting,
@@ -303,6 +283,88 @@ describe('a chat at rest, read by the host', () => {
     } as unknown as StructuredAgentSessionMutationContext
     return readStructuredAgentSessionOptions(context, SESSION, { readsWithoutModel: true })
   }
+
+  it('bounds resting and live host row reads without per-chat discovery at 61 and 610 models', async () => {
+    const counts: number[][] = []
+    for (const size of [61, 610]) {
+      const record = {
+        ...restingRecord(),
+        provider: 'pi',
+        options: { model: `model-${size - 1}`, effort: 'off' }
+      }
+      const models = Array.from({ length: size }, (_, index) => ({
+        id: `model-${index}`,
+        label: 'Model',
+        isDefault: false,
+        efforts: [{ value: 'minimal', label: 'Minimal' }]
+      }))
+      const probe = vi.fn(async () => ({ models, origin: 'probe' as const, complete: true }))
+      const service = createAgentModelCatalogService({
+        store: new AgentModelCatalogStore(),
+        getRecord: () => record,
+        getConversation: () => agentSessionConversationView(record),
+        drivesRecord: () => true,
+        resolveAccountHome: async () => record.accountHome,
+        recordWorkspacePath: async () => '/workspace',
+        probes: { pi: probe }
+      })
+      await service.read({
+        agent: 'pi',
+        sessionId: SESSION,
+        inSessionWorkspace: true,
+        waitForListing: true
+      })
+      let rowReads = 0
+      const countRows = (rows: AgentSessionModelOption[]) =>
+        rows.map(({ id, ...row }) => ({
+          ...row,
+          get id() {
+            rowReads++
+            return id
+          }
+        }))
+      const read = service.read.bind(service)
+      const reads = vi.spyOn(service, 'read').mockImplementation(async (params) => {
+        const answer = await read(params)
+        return answer.origin === 'unknown'
+          ? answer
+          : {
+              ...answer,
+              models: countRows(answer.models)
+            }
+      })
+      const measured: number[] = []
+      for (const live of [false, true]) {
+        rowReads = 0
+        const answer = await readAtRest(
+          record,
+          [],
+          false,
+          models,
+          true,
+          live
+            ? {
+                models: countRows(models),
+                current: { model: record.options.model, effort: 'minimal' }
+              }
+            : undefined,
+          service
+        )
+        expect(answer.current.effort).toBe('minimal')
+        expect(rowReads).toBeGreaterThanOrEqual(size)
+        expect(rowReads).toBeLessThanOrEqual(12 * size)
+        measured.push(rowReads)
+      }
+      counts.push(measured)
+      expect(reads).toHaveBeenCalledTimes(2)
+      expect(reads.mock.calls.every(([params]) => params.savedOnly === true)).toBe(true)
+      expect(probe).toHaveBeenCalledTimes(1)
+      service.stop()
+    }
+    for (const index of [0, 1]) {
+      expect(counts[1]![index]).toBeLessThanOrEqual(10 * counts[0]![index]!)
+    }
+  })
 
   it.each<[string, RestingFacts, AgentJournalItemBody[], boolean, string[]]>([
     ['started here names its default as its own', {}, [], false, []],

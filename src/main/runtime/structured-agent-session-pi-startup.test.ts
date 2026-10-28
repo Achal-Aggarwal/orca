@@ -6,6 +6,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import {
   hostTestAttachParams,
   hostTestMessage,
+  HOST_TEST_NOW,
   HOST_TEST_SESSION
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -299,7 +300,7 @@ it('restores blank raw intent through start/capture and preserves an accepted hi
     sessionId: HOST_TEST_SESSION,
     fence: h.fence,
     options: { model: 'openai/gpt-5', effort: 'off' },
-    now: Date.now()
+    now: HOST_TEST_NOW
   })
   expect((await h.host.readOptions(HOST_TEST_SESSION)).current.effort).toBe('minimal')
   expect(store.getRecord(HOST_TEST_SESSION)?.options?.effort).toBe('off')
@@ -368,7 +369,7 @@ it('separates gapped seed nearest from opaque/frozen native application at the a
     sessionId: HOST_TEST_SESSION,
     fence: store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence,
     options: { model: 'openai/gpt-5', effort: 'medium' },
-    now: Date.now()
+    now: HOST_TEST_NOW
   })
   expect((await h.host.readOptions(HOST_TEST_SESSION)).current.effort).toBe('xhigh')
   expect((await sendText(h.host, h.caller, 'opaque medium')).ok).toBe(true)
