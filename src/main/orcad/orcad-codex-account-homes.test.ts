@@ -2,19 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { getDefaultSettings } from '../../shared/constants'
 
-const { prepareHooks, resolveHome, listHomes } = vi.hoisted(() => ({
+const { prepareHooks, resolveHome, listHomes, launchHome } = vi.hoisted(() => ({
   prepareHooks: vi.fn(
     async (_home: string, _isHooksEnabled: () => boolean, _launchesCodex: boolean) => {}
   ),
   resolveHome: vi.fn((candidate: string | undefined): string | null =>
     candidate === '/home/u/.local/share/orca/codex-accounts/a1/home' ? candidate : null
   ),
-  listHomes: vi.fn(() => ['/home/u/.local/share/orca/codex-accounts/a1/home'])
+  listHomes: vi.fn(() => ['/home/u/.local/share/orca/codex-accounts/a1/home']),
+  launchHome: vi.fn(
+    ({ selectedAccount }: { selectedAccount: { homePath: string } }) =>
+      `${selectedAccount.homePath}/overlay`
+  )
 }))
 
 vi.mock('../codex/codex-launch-home', () => ({
-  resolveCodexLaunchHome: ({ selectedAccount }: { selectedAccount: { homePath: string } }) =>
-    `${selectedAccount.homePath}/overlay`
+  resolveCodexLaunchHome: launchHome
 }))
 
 vi.mock('../codex/codex-account-home-hook', () => ({
@@ -44,6 +47,7 @@ function settings(overrides: Partial<GlobalSettings>): GlobalSettings {
 describe('orcadCodexAccountHomes', () => {
   beforeEach(() => {
     prepareHooks.mockClear()
+    launchHome.mockClear()
   })
 
   it('puts the hook into a client-sent account home and launches on it', async () => {
@@ -67,6 +71,29 @@ describe('orcadCodexAccountHomes', () => {
     current = settings({ agentStatusHooksEnabled: false })
     expect(isEnabled?.()).toBe(false)
     expect(prepareHooks.mock.calls[0]?.[2]).toBe(false)
+  })
+
+  it('preserves an existing overlay store across guest reads and launches', async () => {
+    const overlay = `/home/u/.local/share/orca/codex-accounts/a1/overlays/${'a'.repeat(32)}`
+    const homes = orcadCodexAccountHomes(() => settings({}), noCleanup)
+    resolveHome.mockReturnValueOnce(overlay)
+    homes.readLaunchHome({ CODEX_HOME: overlay })
+    expect(launchHome).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selectedAccount: { homePath: ACCOUNT_HOME },
+        conversationHome: overlay,
+        readOnly: true
+      })
+    )
+    resolveHome.mockReturnValueOnce(overlay)
+    await homes.selectLaunchHome(undefined, { CODEX_HOME: overlay })
+    expect(launchHome).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selectedAccount: { homePath: ACCOUNT_HOME },
+        conversationHome: overlay,
+        readOnly: false
+      })
+    )
   })
 
   it('leaves a launch without an Orca account home alone', async () => {

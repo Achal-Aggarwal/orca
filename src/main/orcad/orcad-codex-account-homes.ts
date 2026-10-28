@@ -27,12 +27,12 @@ export function orcadCodexAccountHomes(
     if (!home) {
       return null
     }
-    const loginHome =
-      basename(dirname(home)) === 'overlays' ? join(dirname(dirname(home)), 'home') : home
+    const isOverlay = basename(dirname(home)) === 'overlays'
+    const loginHome = isOverlay ? join(dirname(dirname(home)), 'home') : home
     return (
       resolveCodexLaunchHome({
         selectedAccount: { homePath: loginHome },
-        conversationHome,
+        conversationHome: conversationHome ?? (isOverlay ? home : undefined),
         storeHome: resolveHostCodexSessionSourceHome(getSettings()),
         readOnly
       }) ?? null
