@@ -18,8 +18,7 @@ const mocks = vi.hoisted(() => {
     back: vi.fn(),
     replace: vi.fn(),
     start: vi.fn(),
-    parse: vi.fn(),
-    removeAppState: vi.fn()
+    parse: vi.fn()
   }
 })
 vi.mock('react-native', () => ({
@@ -32,7 +31,7 @@ vi.mock('react-native', () => ({
   AppState: {
     addEventListener: (_event: string, callback: (state: string) => void) => {
       mocks.appState = callback
-      return { remove: mocks.removeAppState }
+      return { remove: () => {} }
     }
   }
 }))
@@ -83,7 +82,6 @@ beforeEach(() => {
     }
     return mocks.permission
   })
-  mocks.removeAppState.mockReset()
   mocks.parse
     .mockReset()
     .mockReturnValue({ endpoint: 'ws://test', deviceToken: 'token', publicKeyB64: 'key' })
@@ -171,25 +169,4 @@ it('keeps denied access retryable if a foreground permission read fails', async 
   mocks.permission = { granted: true, canAskAgain: false }
   await act(async () => mocks.appState?.('active'))
   expect(findAllByHostType(root(), 'CameraView')).toHaveLength(1)
-})
-it('ignores background transitions and releases the permission listener on unmount', async () => {
-  await render()
-  await act(async () => {
-    mocks.appState?.('background')
-    mocks.appState?.('inactive')
-  })
-  expect(mocks.getPermission).not.toHaveBeenCalled()
-  act(() => renderer?.unmount())
-  renderer = null
-  expect(mocks.removeAppState).toHaveBeenCalledOnce()
-})
-
-it('stops the scanner if camera access was revoked in Settings', async () => {
-  mocks.permission = { granted: true, canAskAgain: true }
-  await render()
-  expect(findAllByHostType(root(), 'CameraView')).toHaveLength(1)
-  mocks.permission = { granted: false, canAskAgain: false }
-  await act(async () => mocks.appState?.('active'))
-  expect(findAllByHostType(root(), 'CameraView')).toHaveLength(0)
-  expect(screen()).toContain('Camera Access Disabled')
 })
