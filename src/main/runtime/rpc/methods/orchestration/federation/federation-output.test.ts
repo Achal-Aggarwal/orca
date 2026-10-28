@@ -495,26 +495,22 @@ describe('orchestration federated worker output', () => {
     })
   })
 
-  it('stops saying to end the turn once the remote host proves the worker exited', async () => {
-    await startRemoteWorker()
-    const check = (id: string) =>
-      homeDispatcher.dispatch({
-        id,
-        authToken: 'coordinator-token',
-        orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
-        orchestrationRequestId: id,
-        method: 'orchestration.check',
-        params: { terminal: 'term_coord' }
-      })
-
-    expect(await check('rpc_check_live')).toMatchObject({
-      ok: true,
-      result: { count: 0, next: expect.stringContaining('end your turn') }
+  it('never says to end the turn while a remote worker runs, since its silent exit sends no mail', async () => {
+    const taskId = createHomeTask().id
+    const started = await homeDispatcher.dispatch(startRequest(taskId))
+    const checked = await homeDispatcher.dispatch({
+      id: 'rpc_check_remote',
+      authToken: 'coordinator-token',
+      orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
+      orchestrationRequestId: 'rpc_check_remote',
+      method: 'orchestration.check',
+      params: { terminal: 'term_coord' }
     })
-    vi.spyOn(workerRuntime, 'checkTerminalAgentPresence').mockResolvedValue('exited')
-    const exited = await check('rpc_check_exited')
-    expect(exited).toMatchObject({ ok: true, result: { count: 0 } })
-    expect(exited.ok && exited.result).not.toHaveProperty('next')
+
+    expect(started).toMatchObject({ ok: true, result: { state: 'ready' } })
+    expect(checked).toMatchObject({ ok: true, result: { count: 0 } })
+    expect(started.ok && started.result).not.toHaveProperty('next')
+    expect(checked.ok && checked.result).not.toHaveProperty('next')
   })
 
   it('negotiates release on the execution host and never treats relay loss as exit', async () => {

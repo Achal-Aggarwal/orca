@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RpcContext } from '../../../core'
 import { createOrchestrationRpcHarness } from '../rpc-test-harness'
@@ -232,11 +233,12 @@ describe('orchestration RPC methods', () => {
       })
       expect(await check({ peek: true })).not.toHaveProperty('next')
       insertWorkerDone({ taskId: task.id, dispatchId: dispatch.id })
-      const delivered = (await check()) as { count: number; deliveryId: string }
-      expect(delivered.count).toBe(1)
+      const delivered = await check()
+      expect(delivered).toMatchObject({ count: 1 })
       expect(delivered).not.toHaveProperty('next')
+      const { deliveryId } = z.object({ deliveryId: z.string() }).parse(delivered)
       // The only worker settled, so nothing is left to wait for.
-      expect(await check({ ack: delivered.deliveryId })).not.toHaveProperty('next')
+      expect(await check({ ack: deliveryId })).not.toHaveProperty('next')
     })
 
     it('lets a forgotten Run wait coexist with a new one that receives the same Delivery', async () => {

@@ -20,28 +20,42 @@ const EmptyRunCheck = z.looseObject({
 })
 
 /** A worker that already reported left mail to act on, so only an unreported start says to stop. */
-export function withWorkerStartNext(receipt: unknown): unknown {
+export async function withWorkerStartNext(
+  runtime: OrcaRuntimeService,
+  runId: string,
+  receipt: unknown
+): Promise<unknown> {
   const ready = ReadyWorkerStart.safeParse(receipt)
-  return ready.success ? { ...ready.data, next: AWAIT_WORKER_REPORTS } : receipt
+  return ready.success && (await awaitsWorkerReports(runtime, runId))
+    ? { ...ready.data, next: AWAIT_WORKER_REPORTS }
+    : receipt
 }
 
-/** Stop only while a worker still runs and worker-list owes no action for any of them. */
 export async function withRunCheckNext(
   runtime: OrcaRuntimeService,
   result: unknown
 ): Promise<unknown> {
   const empty = EmptyRunCheck.safeParse(result)
-  if (!empty.success) {
-    return result
-  }
-  const rows = runtime.getOrchestrationDb().listWorkerTerminalResources({ runId: empty.data.runId })
+  return empty.success && (await awaitsWorkerReports(runtime, empty.data.runId))
+    ? { ...empty.data, next: AWAIT_WORKER_REPORTS }
+    : result
+}
+
+/** A worker still runs, worker-list owes no action, and every running worker's exit wakes the coordinator. */
+async function awaitsWorkerReports(runtime: OrcaRuntimeService, runId: string): Promise<boolean> {
+  const db = runtime.getOrchestrationDb()
+  const rows = db.listWorkerTerminalResources({ runId })
   const { workers } = await projectWorkerListFleet(runtime, rows, {
     limit: rows.length,
-    completeProjection: true,
-    includeRemote: true
+    completeProjection: true
   })
-  const awaiting =
-    workers.some((worker) => worker.outcome === 'in_progress') &&
-    workers.every((worker) => worker.nextAction.kind === 'none')
-  return awaiting ? { ...empty.data, next: AWAIT_WORKER_REPORTS } : result
+  const running = workers
+    .filter((worker) => worker.outcome === 'in_progress')
+    .map((worker) => worker.dispatchId)
+  return (
+    running.length > 0 &&
+    workers.every((worker) => worker.nextAction.kind === 'none') &&
+    // A remote worker that exits without reporting sends no mail, so nothing would wake the coordinator.
+    db.listFederatedDispatchesByIds(running).length === 0
+  )
 }
