@@ -126,7 +126,9 @@ export async function connect(
     })
     return { ok: true, viewer }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Connection failed.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.connectionFailed', 'Connection failed.')
   } finally {
     release()
   }
@@ -167,7 +169,9 @@ export async function testConnection(
   try {
     client = getClients(siteId)[0]
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Connection failed.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.connectionFailed', 'Connection failed.')
   }
   if (!client) {
     return taskProviderFailure('jira.notConnected', 'Not connected to Jira.')
@@ -180,7 +184,9 @@ export async function testConnection(
     )
     return { ok: true, viewer }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Connection failed.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.connectionFailed', 'Connection failed.')
   } finally {
     release()
   }

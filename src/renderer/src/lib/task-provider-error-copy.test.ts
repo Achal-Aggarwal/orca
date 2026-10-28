@@ -21,6 +21,16 @@ describe('task provider error copy', () => {
     expect(taskProviderErrorMessage(result)).toBe('Not connected to Linear')
   })
 
+  it('keeps missing remote error text usable and still honors a known code', async () => {
+    i18n.addResourceBundle('es', 'translation', es)
+    await i18n.changeLanguage('es')
+    expect(taskProviderErrorMessage({})).toBe('')
+    expect(taskProviderErrorMessage({ error: null })).toBe('')
+    expect(taskProviderErrorMessage({ errorCode: 'linear.updateFailed' })).toBe(
+      es.taskProviders.errors.linear.updateFailed
+    )
+  })
+
   it('recognizes old hosts and Electron wrappers without rewriting provider errors', async () => {
     i18n.addResourceBundle('es', 'translation', es)
     await i18n.changeLanguage('es')

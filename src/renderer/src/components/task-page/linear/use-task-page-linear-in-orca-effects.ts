@@ -114,7 +114,7 @@ export function useTaskPageLinearInOrcaEffects(model: TaskPageLinearListEffectsM
         setLinearError(
           err instanceof Error
             ? taskProviderErrorText(err.message)
-            : 'Failed to load Linear issues.'
+            : taskProviderErrorText('Failed to load Linear issues.')
         )
         setLinearLoading(false)
       })

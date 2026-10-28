@@ -1,7 +1,8 @@
+import type { TaskProviderErrorCode } from '../../../shared/task-provider-failure'
 import { translate } from '@/i18n/i18n'
 import { displayIpcErrorMessage } from './ipc-error'
 
-const COPY: Record<string, () => string> = {
+const COPY: Record<TaskProviderErrorCode, () => string> = {
   'linear.issuesLoadFailed': () =>
     translate('taskProviders.linear.issuesLoadFailed', 'Failed to load Linear issues.'),
   'linear.notConnected': () =>
@@ -132,7 +133,7 @@ const COPY: Record<string, () => string> = {
     )
 }
 
-const LEGACY_CODES: Record<string, string> = {
+const LEGACY_CODES: Record<string, TaskProviderErrorCode> = {
   'Failed to load Linear issues.': 'linear.issuesLoadFailed',
   'Not connected to Linear': 'linear.notConnected',
   'Linear create failed': 'linear.createFailed',
@@ -179,17 +180,21 @@ const LEGACY_CODES: Record<string, string> = {
   'The site did not report a valid Atlassian cloud ID.': 'jira.invalidCloudId'
 }
 
-export function taskProviderErrorText(error: string, errorCode?: unknown): string {
-  const message = displayIpcErrorMessage(error) ?? error
-  const code =
-    typeof errorCode === 'string' && Object.hasOwn(COPY, errorCode)
-      ? errorCode
-      : Object.hasOwn(LEGACY_CODES, message)
-        ? LEGACY_CODES[message]
-        : undefined
-  return code === undefined ? error : COPY[code]()
+function isTaskProviderErrorCode(code: unknown): code is TaskProviderErrorCode {
+  return typeof code === 'string' && Object.hasOwn(COPY, code)
 }
 
-export function taskProviderErrorMessage(result: { error: string; errorCode?: unknown }): string {
+export function taskProviderErrorText(error: unknown, errorCode?: unknown): string {
+  const raw = typeof error === 'string' ? error : ''
+  const message = displayIpcErrorMessage(raw) ?? raw
+  const code = isTaskProviderErrorCode(errorCode)
+    ? errorCode
+    : Object.hasOwn(LEGACY_CODES, message)
+      ? LEGACY_CODES[message]
+      : undefined
+  return code === undefined ? raw : COPY[code]()
+}
+
+export function taskProviderErrorMessage(result: { error?: unknown; errorCode?: unknown }): string {
   return taskProviderErrorText(result.error, result.errorCode)
 }

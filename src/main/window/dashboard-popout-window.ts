@@ -1,4 +1,4 @@
-import { translateMain } from '../i18n/main-i18n'
+import { mainI18n, translateMain } from '../i18n/main-i18n'
 import { app, BrowserWindow, nativeTheme, type WebContents, type Event } from 'electron'
 import { join } from 'node:path'
 import type { Store } from '../persistence'
@@ -249,7 +249,18 @@ export function createOrFocusDashboardPopout(
   window.on('close', freezeBounds)
   app.on('before-quit', freezeBounds)
 
+  window.on('page-title-updated', (event) => {
+    event.preventDefault()
+  })
+  const updateTitle = (): void => {
+    if (!window.isDestroyed()) {
+      window.setTitle(translateMain('native.dialog.dashboardTitle', 'Orca Agent Dashboard'))
+    }
+  }
+  mainI18n.on('languageChanged', updateTitle)
+
   window.on('closed', () => {
+    mainI18n.off('languageChanged', updateTitle)
     app.removeListener('before-quit', freezeBounds)
     unsubscribeUIChanged?.()
     if (dashboardPopoutWindow === window) {

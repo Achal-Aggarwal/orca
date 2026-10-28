@@ -411,8 +411,8 @@
       "httpServer": "HTTP サーバー",
       "stdioServer": "stdio サーバー",
       "invalidServer": "無効なサーバー",
-      "serverCountOne": "サーバー {{count}} 台",
-      "serverCountMany": "サーバー {{count}} 台",
+      "serverCountOne": "サーバー {{count}} 件",
+      "serverCountMany": "サーバー {{count}} 件",
       "claudeWorkspace": "Claude ワークスペース"
     },
     "shortcuts": {
@@ -21164,7 +21164,7 @@
       "medium": "中",
       "high": "高",
       "max": "最大",
-      "xhigh": "非常に高い"
+      "xhigh": "最高"
     },
     "variables": {
       "basePrompt": "Orca が安全に収集できるコンテキストを含む、この操作用の組み込みプロンプトです。",
@@ -21179,7 +21179,7 @@
       "patch": "PR の詳細の生成に使う、このブランチとベースブランチの差分です。",
       "firstPrompt": "このワークスペースまたはチャットでの最初のユーザーの依頼です。",
       "assistantMessage": "Orca が取得できる場合の、Agent の最初の応答です。",
-      "linkedIssue": "このワークスペースにリンクされた GitHub issue の番号です。GitHub issue がリンクされていない場合は空です（GitLab にリンクされたワークスペースを含む）。指示を含むテンプレートを使ってください。リンクがない場合、単独の「Fixes #{linkedIssue}」は「Fixes #」になります。"
+      "linkedIssue": "このワークスペースにリンクされた GitHub Issue の番号です。GitHub Issue がリンクされていない場合は空です（GitLab にリンクされたワークスペースを含む）。指示を含むテンプレートを使ってください。リンクがない場合、単独の「Fixes #{linkedIssue}」は「Fixes #」になります。"
     }
   },
   "rendererRecovery": {
@@ -22470,7 +22470,7 @@
   },
   "taskProviders": {
     "linear": {
-      "updateAccess": "更新アクセス",
+      "updateAccess": "アクセスを更新",
       "addAccess": "Linear アクセスを追加",
       "fetchMore": "さらに読み込む",
       "connectionFailed": "接続に失敗しました",
@@ -22478,10 +22478,10 @@
       "projectsLoadFailed": "プロジェクトを読み込めませんでした。",
       "projectNotFound": "プロジェクトが見つかりませんでした。",
       "projectLoadFailed": "プロジェクトを読み込めませんでした。",
-      "projectIssuesLoadFailed": "プロジェクトの issue を読み込めませんでした。",
+      "projectIssuesLoadFailed": "プロジェクトの Issue を読み込めませんでした。",
       "viewsLoadFailed": "ビューを読み込めませんでした。",
       "viewContentsLoadFailed": "ビューの内容を読み込めませんでした。",
-      "issuesLoadFailed": "Linear の issue を読み込めませんでした。",
+      "issuesLoadFailed": "Linear の Issue を読み込めませんでした。",
       "apiKeyHint": "Orca で使う Linear ワークスペースの個人 API キーを貼り付けてください。すでに接続済みの場合、保存されたキーを置き換えます。",
       "remoteKeyStorage": "このキーは現在のリモートランタイムに保存されます。",
       "localKeyStorage": "ローカルランタイムのキーはこのデバイスに保存され、利用可能な場合は Electron の暗号化ストレージを使います。",
@@ -22501,11 +22501,11 @@
         "notConnected": "Jira に接続されていません。",
         "titleRequired": "タイトルが必要です。",
         "labelsConflict": "labels または labelOperations のどちらか一方を指定してください。",
-        "updateFailed": "issue を更新できませんでした。",
+        "updateFailed": "Issue を更新できませんでした。",
         "credentialsRequired": "サイト URL、メールアドレス、API トークンが必要です。",
         "projectRequired": "プロジェクトが必要です。",
-        "issueTypeRequired": "issue の種類が必要です。",
-        "issueKeyRequired": "issue キーが必要です。",
+        "issueTypeRequired": "Issue の種類が必要です。",
+        "issueKeyRequired": "Issue キーが必要です。",
         "updatesRequired": "更新オブジェクトが必要です。",
         "commentBodyRequired": "コメント本文が必要です。",
         "invalidSiteUrl": "有効な Jira サイト URL を入力してください。",
@@ -22515,10 +22515,10 @@
         "connectionFailed": "接続に失敗しました。",
         "invalidSiteIdentity": "認証情報を含まない HTTP または HTTPS の Jira サイト URL を入力してください。",
         "missingProjectIdentity": "Jira が ID またはキーのないプロジェクトを返しました。",
-        "invalidIssuePage": "Jira が無効な issue ページを返しました。",
-        "incompleteIssuePage": "Jira が不完全な issue ページを返しました。",
-        "repeatedIssueToken": "Jira が無効または重複した issue ページトークンを返しました。",
-        "issueSearchLimit": "Jira の issue 検索がページ数の上限を超えました。代わりに JQL でプロジェクトを選択してください。",
+        "invalidIssuePage": "Jira が無効な Issue ページを返しました。",
+        "incompleteIssuePage": "Jira が不完全な Issue ページを返しました。",
+        "repeatedIssueToken": "Jira が無効または重複した Issue ページトークンを返しました。",
+        "issueSearchLimit": "Jira の Issue 検索がページ数の上限を超えました。代わりに JQL でプロジェクトを選択してください。",
         "invalidProjectPage": "Jira が無効なプロジェクトページを返しました。",
         "incompleteProjectPage": "Jira が不完全なプロジェクトページを返しました。",
         "projectListLimit": "Jira のプロジェクト一覧がページ数の上限を超えました。代わりに JQL でプロジェクトを選択してください。",
@@ -22527,7 +22527,7 @@
       "linear": {
         "notConnected": "Linear に接続されていません",
         "createFailed": "Linear での作成に失敗しました",
-        "createdButUnavailable": "issue は作成されましたが、取得できませんでした",
+        "createdButUnavailable": "Issue は作成されましたが、取得できませんでした",
         "updateFailed": "Linear での更新に失敗しました",
         "commentFailed": "コメントを作成できませんでした",
         "projectCreateFailed": "Linear プロジェクトを作成できませんでした",
@@ -22537,7 +22537,7 @@
         "projectIdRequired": "プロジェクト ID が必要です",
         "projectNotFound": "プロジェクトが見つかりませんでした",
         "viewIdRequired": "カスタムビュー ID が必要です",
-        "viewHasNoIssues": "カスタムビューに issue が含まれていません",
+        "viewHasNoIssues": "カスタムビューに Issue が含まれていません",
         "viewHasNoProjects": "カスタムビューにプロジェクトが含まれていません"
       }
     }

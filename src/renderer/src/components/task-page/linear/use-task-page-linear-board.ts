@@ -175,7 +175,7 @@ export function useTaskPageLinearBoard(model: TaskPageLinearListProjectionModel)
           })
           applyFallbackState(previousState)
           toast.error(
-            taskProviderErrorMessage(result) ??
+            taskProviderErrorMessage(result) ||
               translate('auto.components.TaskPage.6775c05483', 'Failed to update Linear state')
           )
           return

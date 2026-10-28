@@ -1,4 +1,4 @@
-import { translateMain } from '../i18n/main-i18n'
+import { mainI18n, translateMain } from '../i18n/main-i18n'
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
 import { join } from 'node:path'
 import { isBackgroundLaunch, showWindowWithoutStealingFocus } from './foreground-activation-policy'
@@ -77,7 +77,18 @@ export function createOrFocusWorkspaceSpaceWindow(store: Store): BrowserWindow {
     }
   })
   window.once('ready-to-show', () => showWindowWithoutStealingFocus(window))
+  window.on('page-title-updated', (event) => {
+    event.preventDefault()
+  })
+  const updateTitle = (): void => {
+    if (!window.isDestroyed()) {
+      window.setTitle(translateMain('native.dialog.spaceTitle', 'Orca Space Beta'))
+    }
+  }
+  mainI18n.on('languageChanged', updateTitle)
+
   window.on('closed', () => {
+    mainI18n.off('languageChanged', updateTitle)
     offUIChanged()
     if (spaceWindow === window) {
       spaceWindow = null

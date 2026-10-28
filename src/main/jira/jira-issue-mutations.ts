@@ -70,7 +70,9 @@ export async function createIssue(args: JiraCreateIssueArgs): Promise<JiraCreate
       clearToken(entry.site.id)
       throw error
     }
-    return { ok: false, error: error instanceof Error ? error.message : 'Failed to create issue.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.createFailed', 'Failed to create issue.')
   } finally {
     release()
   }
@@ -142,7 +144,9 @@ export async function updateIssue(
       clearToken(entry.site.id)
       throw error
     }
-    return { ok: false, error: error instanceof Error ? error.message : 'Failed to update issue.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.updateFailed', 'Failed to update issue.')
   } finally {
     release()
   }
@@ -173,7 +177,9 @@ export async function addIssueComment(
       clearToken(entry.site.id)
       throw error
     }
-    return { ok: false, error: error instanceof Error ? error.message : 'Failed to add comment.' }
+    return error instanceof Error
+      ? { ok: false, error: error.message }
+      : taskProviderFailure('jira.commentFailed', 'Failed to add comment.')
   } finally {
     release()
   }
