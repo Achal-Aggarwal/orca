@@ -19,6 +19,7 @@ import type {
 } from '../../shared/local-log-tail-types'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
 import type { LocalFileAccess } from '../../shared/local-file-access'
+import type { FileBytesWritePrecondition } from '../../shared/file-bytes-write'
 import type {
   FileWriteDiskPrecondition,
   FileWriteResult
@@ -124,6 +125,16 @@ export type FilesystemApi = {
         connectionId?: string
         access?: LocalFileAccess
         diskPrecondition?: FileWriteDiskPrecondition
+      } & SshMutationExpectation
+    ) => Promise<FileWriteResult>
+    /** Atomic replacement of a binary file; absent where only text saves are served. */
+    writeFileBytes?: (
+      args: {
+        filePath: string
+        bytes: Uint8Array
+        connectionId?: string
+        access?: LocalFileAccess
+        diskPrecondition: FileBytesWritePrecondition
       } & SshMutationExpectation
     ) => Promise<FileWriteResult>
     createFile: (

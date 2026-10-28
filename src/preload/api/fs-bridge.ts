@@ -6,6 +6,7 @@ import type {
 } from '../../shared/native-file-drop-preparation'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
 import type { LocalFileAccess } from '../../shared/local-file-access'
+import type { FileBytesWritePrecondition } from '../../shared/file-bytes-write'
 import type {
   FileWriteDiskPrecondition,
   FileWriteResult
@@ -123,6 +124,15 @@ export const fsApi = {
       diskPrecondition?: FileWriteDiskPrecondition
     } & SshMutationExpectation
   ): Promise<FileWriteResult> => ipcRenderer.invoke('fs:writeFile', args),
+  writeFileBytes: (
+    args: {
+      filePath: string
+      bytes: Uint8Array
+      connectionId?: string
+      access?: LocalFileAccess
+      diskPrecondition: FileBytesWritePrecondition
+    } & SshMutationExpectation
+  ): Promise<FileWriteResult> => ipcRenderer.invoke('fs:writeFileBytes', args),
   createFile: (
     args: { filePath: string; connectionId?: string } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:createFile', args),

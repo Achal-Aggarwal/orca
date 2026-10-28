@@ -171,6 +171,14 @@ export async function writeLocalTextFileWithDiskPrecondition(
     await writeFile(filePath, content, 'utf-8')
     return FILE_WRITE_OK
   }
+  return runLocalEditorWrite(filePath, compareAndWrite)
+}
+
+/** Runs one compare-and-write under the path and inode locks every editor save of the file shares. */
+export async function runLocalEditorWrite(
+  filePath: string,
+  compareAndWrite: () => Promise<FileWriteResult>
+): Promise<FileWriteResult> {
   const pathKey = await editorWritePathKey(filePath)
   if (pathKey === null) {
     // Refuse symlink loops whose baseline and shared lock cannot be proven.
