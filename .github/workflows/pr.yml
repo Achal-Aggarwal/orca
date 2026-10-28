@@ -1042,11 +1042,18 @@ jobs:
         with:
           persist-credentials: false
 
+      # Electron and builder releases fix what this downloads; the lockfile churns far more often.
+      - name: Resolve electron-builder download versions
+        id: eb-versions
+        shell: bash
+        run: node -p "const d = require('./package.json').devDependencies; 'versions=electron' + d.electron + '-builder' + d['electron-builder']" >> "$GITHUB_OUTPUT"
+
+      # The platform warmup seeds this on main.
       - name: Cache electron-builder downloads
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/electron-builder
-          key: electron-builder-linux-${{ hashFiles('pnpm-lock.yaml') }}
+          key: electron-builder-linux-${{ steps.eb-versions.outputs.versions }}
           restore-keys: |
             electron-builder-linux-
 
@@ -1438,6 +1445,8 @@ jobs:
       # Why the merge commit, unlike `e2e`: a gate must test what lands on main, not a stale head.
       ref: ${{ github.sha }}
       test_files: '["tests/e2e/workspace-layout-oracle-headless.spec.ts","tests/e2e/workspace-layout-oracle.spec.ts"]'
+      # Two ~3.6 min halves of the 21 window scenarios keep this gate off the PR's critical path.
+      changed_e2e_test_shards: '["1/2","2/2"]'
       run_changed_e2e: true
       needs_build: true
       artifact_suffix: -layout-oracle
