@@ -118,6 +118,15 @@ export function AutomationEditorDialog({
 }: AutomationEditorDialogProps): React.JSX.Element {
   const [templateOpen, setTemplateOpen] = React.useState(false)
   const dialogContentRef = React.useRef<HTMLDivElement>(null)
+  const promptFlushRef = React.useRef<(() => void) | null>(null)
+  const registerPromptFlush = React.useCallback((flush: () => void) => {
+    promptFlushRef.current = flush
+    return () => {
+      if (promptFlushRef.current === flush) {
+        promptFlushRef.current = null
+      }
+    }
+  }, [])
   const isCreateMode = !isEditing
   const destination = isCreateMode ? createDestination : editDestination
   const visibleAgents = React.useMemo(() => {
@@ -175,6 +184,7 @@ export function AutomationEditorDialog({
             draft={draft}
             onDraftChange={onDraftChange}
             onDismiss={() => onOpenChange(false)}
+            registerPromptFlush={registerPromptFlush}
           />
           <AutomationEditorSettingsSidebar
             destination={destination}
@@ -211,7 +221,10 @@ export function AutomationEditorDialog({
           canSave={canSave}
           hasProjects={repos.length > 0}
           onOpenChange={onOpenChange}
-          onSave={onSave}
+          onSave={() => {
+            promptFlushRef.current?.()
+            onSave()
+          }}
         />
       </DialogContent>
     </Dialog>

@@ -51,6 +51,14 @@ type AutomationEditorPromptEditorProps = {
   ariaLabel: string
   onChange: (value: string) => void
   onDismiss?: () => void
+  registerPromptFlush?: (flush: () => void) => () => void
+}
+
+type PendingPromptPaste = {
+  model: editor.ITextModel | null
+  publish: (content: string) => void
+  count: number
+  changed: boolean
 }
 
 export function AutomationEditorPromptEditor({
@@ -58,7 +66,8 @@ export function AutomationEditorPromptEditor({
   placeholder,
   ariaLabel,
   onChange,
-  onDismiss
+  onDismiss,
+  registerPromptFlush
 }: AutomationEditorPromptEditorProps): React.JSX.Element {
   const settings = useAppStore((state) => state.settings)
   const editorFontZoomLevel = useAppStore((state) => state.editorFontZoomLevel)
@@ -68,11 +77,13 @@ export function AutomationEditorPromptEditor({
   const isApplyingProgrammaticContentRef = useRef(false)
   const onChangeRef = useRef(onChange)
   const onDismissRef = useRef(onDismiss)
+  const registerPromptFlushRef = useRef(registerPromptFlush)
 
   useLayoutEffect(() => {
     onChangeRef.current = onChange
     onDismissRef.current = onDismiss
-  }, [onChange, onDismiss])
+    registerPromptFlushRef.current = registerPromptFlush
+  }, [onChange, onDismiss, registerPromptFlush])
 
   const fontSize = computeEditorFontSize(settings?.terminalFontSize ?? 13, editorFontZoomLevel)
   const fontFamily = resolveEditorFontFamily(settings)
@@ -93,12 +104,24 @@ export function AutomationEditorPromptEditor({
     const editorDomNode = editorInstance.getContainerDomNode()
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
     const cleanupEscapeDismiss = installPromptEditorEscapeDismiss(editorDomNode, onDismissRef)
-    let pendingPaste: {
-      model: editor.ITextModel | null
-      publish: (content: string) => void
-      count: number
-      changed: boolean
-    } | null = null
+    let pendingPaste: PendingPromptPaste | null = null
+    const flushPendingPaste = (pending: PendingPromptPaste): void => {
+      const { model } = pending
+      if (!pending.changed || !model || model.isDisposed()) {
+        return
+      }
+      pending.changed = false
+      const next = model.getValue()
+      if (editorRef.current === editorInstance && editorInstance.getModel() === model) {
+        lastSyncedContentRef.current = next
+      }
+      pending.publish(next)
+    }
+    const unregisterPromptFlush = registerPromptFlushRef.current?.(() => {
+      if (pendingPaste) {
+        flushPendingPaste(pendingPaste)
+      }
+    })
     const unregisterPasteLifecycle = registerMonacoLargePasteLifecycle(editorInstance, () => {
       const model = editorInstance.getModel()
       const pending =
@@ -125,13 +148,7 @@ export function AutomationEditorPromptEditor({
         if (pendingPaste === pending) {
           pendingPaste = null
         }
-        if (pending.changed && model && !model.isDisposed()) {
-          const next = model.getValue()
-          if (editorRef.current === editorInstance && editorInstance.getModel() === model) {
-            lastSyncedContentRef.current = next
-          }
-          pending.publish(next)
-        }
+        flushPendingPaste(pending)
       }
     })
     const contentListener = editorInstance.onDidChangeModelContent(() => {
@@ -158,6 +175,7 @@ export function AutomationEditorPromptEditor({
       cleanupFindShortcut()
       cleanupEscapeDismiss()
       unregisterPasteLifecycle()
+      unregisterPromptFlush?.()
       contentListener.dispose()
       if (editorRef.current === editorInstance) {
         editorRef.current = null

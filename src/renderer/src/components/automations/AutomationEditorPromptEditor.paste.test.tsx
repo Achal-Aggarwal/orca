@@ -124,6 +124,39 @@ function append(model: editor.ITextModel, text: string): void {
 afterEach(cleanup)
 
 describe('automation prompt large paste publication', () => {
+  it('drains the accepted prefix for Save and keeps subsequent chunks pending', () => {
+    const onChange = vi.fn()
+    let flush: (() => void) | undefined
+    const unregister = vi.fn()
+    const { unmount } = render(
+      <AutomationEditorPromptEditor
+        value="base"
+        placeholder=""
+        ariaLabel="Prompt"
+        onChange={onChange}
+        registerPromptFlush={(callback) => {
+          flush = callback
+          return unregister
+        }}
+      />
+    )
+    const { instance, model } = currentEditor()
+    const reads = vi.spyOn(model, 'getValue')
+    const finish = beginMonacoLargePasteLifecycle(instance)
+    act(() => append(model, '-first'))
+    expect(reads).not.toHaveBeenCalled()
+    act(() => flush?.())
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('base-first')
+    expect(reads).toHaveBeenCalledTimes(1)
+    act(() => append(model, '-second'))
+    expect(onChange).toHaveBeenCalledTimes(1)
+    act(() => finish?.({ status: 'pasted', mode: 'chunked', byteLength: 100000, chunksWritten: 2 }))
+    expect(onChange).toHaveBeenLastCalledWith('base-first-second')
+    expect(reads).toHaveBeenCalledTimes(2)
+    unmount()
+    expect(unregister).toHaveBeenCalledOnce()
+  })
+
   it('keeps overlapping pastes deferred until both original operations settle', () => {
     const onChange = vi.fn()
     render(

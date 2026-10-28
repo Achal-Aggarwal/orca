@@ -11,12 +11,14 @@ type AutomationEditorPromptSectionProps = {
   draft: AutomationDraft
   onDraftChange: (updater: (current: AutomationDraft) => AutomationDraft) => void
   onDismiss: () => void
+  registerPromptFlush: (flush: () => void) => () => void
 }
 
 export function AutomationEditorPromptSection({
   draft,
   onDraftChange,
-  onDismiss
+  onDismiss,
+  registerPromptFlush
 }: AutomationEditorPromptSectionProps): React.JSX.Element {
   const titleRef = React.useRef<HTMLTextAreaElement>(null)
   const namePlaceholder = translate(
@@ -89,6 +91,7 @@ export function AutomationEditorPromptSection({
         )}
         onChange={(prompt) => onDraftChange((current) => ({ ...current, prompt }))}
         onDismiss={onDismiss}
+        registerPromptFlush={registerPromptFlush}
       />
       <p className="mt-2 text-xs text-muted-foreground">
         {translate(

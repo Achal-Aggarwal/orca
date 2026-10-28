@@ -14,7 +14,12 @@ import type { AutomationSaveContext } from './automation-save-context'
 /** Validates editor input then runs the Orca save transaction. */
 export function createAutomationSaveAction(context: AutomationSaveContext) {
   return async function saveAutomation(now = Date.now()): Promise<void> {
-    const { store, local, destinationForm, destination } = context
+    const prompt = context.local.draftRef.current.prompt
+    const saveContext =
+      prompt === context.local.draft.prompt
+        ? context
+        : { ...context, local: { ...context.local, draft: { ...context.local.draft, prompt } } }
+    const { store, local, destinationForm, destination } = saveContext
     const { settings } = store
     const { draft, editingAutomationId, setIsSaving, setEditorNotice } = local
     const { hour, minute } = parseDraftTime(draft.time)
@@ -99,7 +104,7 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
           return
         }
       }
-      await saveOrcaAutomation(context, { hour, minute, now })
+      await saveOrcaAutomation(saveContext, { hour, minute, now })
     } catch (error) {
       toast.error(
         error instanceof Error
