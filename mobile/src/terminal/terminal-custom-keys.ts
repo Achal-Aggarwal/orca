@@ -36,8 +36,8 @@ async function readStoredCustomKeys(): Promise<CustomKey[]> {
   }
 }
 
-export function loadCustomKeys(): Promise<CustomKey[]> {
-  return readStoredCustomKeys().catch(() => [])
+export function loadCustomKeys(fallback: CustomKey[] = []): Promise<CustomKey[]> {
+  return readStoredCustomKeys().catch(() => fallback)
 }
 
 function writeCustomKeys(keys: CustomKey[]): Promise<void> {
