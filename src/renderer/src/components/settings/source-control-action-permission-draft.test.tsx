@@ -1,4 +1,7 @@
-import { sourceControlActionSelectedPreferences } from '../../../../shared/source-control-action-launch-preferences'
+import {
+  sourceControlActionSelectedPreferences,
+  sourceControlActionAgentArgs
+} from '../../../../shared/source-control-action-launch-preferences'
 // @vitest-environment happy-dom
 import { useState } from 'react'
 import { getDefaultSettings } from '../../../../shared/constants'
@@ -18,7 +21,6 @@ import type {
   SourceControlAiSettings
 } from '../../../../shared/source-control-ai-types'
 import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
-import { sourceControlActionAgentArgs } from '../../../../shared/source-control-action-launch-preferences'
 import { agentPermissionArgsForLaunch } from '../../../../shared/tui-agent-launch-defaults'
 import { SourceControlActionArguments } from './SourceControlActionArguments'
 import { useRepositorySourceControlAiGlobalUx } from './repository/source-control/repository-source-control-ai-global-ux'

@@ -1,7 +1,10 @@
 import { normalizeSourceControlActionRecipe } from './source-control-ai-actions'
 import { liftActionPermissionArgs } from './source-control-action-permission-lift'
 import { editActionArgumentChoices } from './source-control-action-argument-choices'
-import { projectSourceControlActionLaunch } from './source-control-action-launch-preferences'
+import {
+  projectSourceControlActionLaunch,
+  sourceControlActionLaunchOptions
+} from './source-control-action-launch-preferences'
 import { saveSourceControlActionRecipe } from './source-control-ai-recipe-save'
 import { describe, expect, it } from 'vitest'
 import { getDefaultSettings } from './constants'
@@ -14,7 +17,6 @@ import {
 import type { GlobalSettings } from './global-settings-types'
 import type { SourceControlActionRecipe } from './source-control-ai-actions'
 import type { RepoSourceControlAiOverrides } from './source-control-ai-types'
-import { sourceControlActionLaunchOptions } from './source-control-action-launch-preferences'
 
 type RepoActionOverride = NonNullable<
   NonNullable<RepoSourceControlAiOverrides['actionOverrides']>['fixChecks']
