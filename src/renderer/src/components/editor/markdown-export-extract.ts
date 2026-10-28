@@ -57,6 +57,9 @@ export async function getActiveMarkdownExportPayload({
   }
 
   const clone = subtree.cloneNode(true) as Element
+  for (const image of clone.querySelectorAll('img')) {
+    image.loading = 'eager'
+  }
   for (const selector of UI_ONLY_SELECTORS) {
     for (const node of clone.querySelectorAll(selector)) {
       node.remove()

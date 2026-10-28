@@ -231,6 +231,9 @@ export function createDocumentImageDisplay(
         source.runtimeContext !== null &&
         (!source.filePath || /^(?:https?|data|blob):/i.test(source.src))
       ) {
+        if (!image.hasAttribute('loading')) {
+          image.loading = 'lazy'
+        }
         image.src = source.resolvedSrc ?? source.src
       }
     }
