@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { DirEntryCursor } from '../../../../shared/file-dir-page'
 
 export type FileExplorerOperationOwner =
   | { kind: 'local' }
@@ -20,8 +21,8 @@ export type TreeNode = {
 }
 
 /** Keep loading outside dirCache to avoid rebuilding the tree; see file-explorer-dir-load-state.ts. */
-/** Where the next page of a partly listed folder starts on its host, and how many entries it has. */
-export type FileExplorerDirMore = { nextOffset: number; total: number }
+/** The host's last listed entry of a partly listed folder; the next page starts after it. */
+export type FileExplorerDirMore = { after: DirEntryCursor }
 
 export type DirCache = {
   error?: string

@@ -26,6 +26,7 @@ const REMOTE = {
   worktreePath: '/srv/repo'
 }
 const entry = (name: string) => ({ name, isDirectory: false, isSymlink: false })
+const AFTER_A = { name: 'a', isDirectory: false }
 
 function hostWithCapabilities(capabilities: string[]): void {
   statuses = new Map([['env-1', { status: { capabilities } }]])
@@ -38,17 +39,18 @@ describe('readRuntimeDirectoryPage', () => {
     statuses = new Map()
   })
 
-  it('asks a host that pages for one page and returns its total', async () => {
+  it('asks a host that pages for the page after a cursor', async () => {
     hostWithCapabilities([FILE_READ_DIR_PAGED_RUNTIME_CAPABILITY])
-    callRuntimeRpc.mockResolvedValueOnce({ entries: [entry('b')], total: 3 })
+    const page = { entries: [entry('b')], total: 3, hasMore: true }
+    callRuntimeRpc.mockResolvedValueOnce(page)
 
     await expect(
-      readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { offset: 1, limit: 1 })
-    ).resolves.toEqual({ entries: [entry('b')], total: 3 })
+      readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { after: AFTER_A, limit: 1 })
+    ).resolves.toEqual(page)
     expect(callRuntimeRpc).toHaveBeenCalledWith(
       REMOTE.target,
       'files.readDir',
-      { worktree: 'id:wt-1', relativePath: 'big', offset: 1, limit: 1 },
+      { worktree: 'id:wt-1', relativePath: 'big', after: AFTER_A, limit: 1 },
       { timeoutMs: 15_000 }
     )
     expect(readRuntimeDirectory).not.toHaveBeenCalled()
@@ -58,20 +60,22 @@ describe('readRuntimeDirectoryPage', () => {
     hostWithCapabilities([])
     readRuntimeDirectory.mockResolvedValueOnce([entry('a'), entry('b')])
 
-    await expect(
-      readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { offset: 0, limit: 1 })
-    ).resolves.toEqual({ entries: [entry('a'), entry('b')], total: 2 })
+    await expect(readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { limit: 1 })).resolves.toEqual({
+      entries: [entry('a'), entry('b')],
+      total: 2,
+      hasMore: false
+    })
     expect(readRuntimeDirectory).toHaveBeenCalledWith(REMOTE, '/srv/repo/big', {})
     expect(callRuntimeRpc).not.toHaveBeenCalled()
   })
 
   it('takes the whole folder from a host that ignored the page fields', async () => {
     hostWithCapabilities([FILE_READ_DIR_PAGED_RUNTIME_CAPABILITY])
-    callRuntimeRpc.mockResolvedValueOnce([entry('a'), entry('b'), entry('c')])
+    callRuntimeRpc.mockResolvedValueOnce([entry('c'), entry('a'), entry('b')])
 
     await expect(
-      readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { offset: 1, limit: 1 })
-    ).resolves.toEqual({ entries: [entry('b'), entry('c')], total: 3 })
+      readRuntimeDirectoryPage(REMOTE, '/srv/repo/big', { after: AFTER_A, limit: 1 })
+    ).resolves.toEqual({ entries: [entry('b'), entry('c')], total: 3, hasMore: false })
   })
 
   it('never pages a local folder', async () => {
@@ -79,8 +83,8 @@ describe('readRuntimeDirectoryPage', () => {
     const local = { target: { kind: 'local' as const }, worktreeId: 'wt-1', worktreePath: '/w' }
 
     await expect(
-      readRuntimeDirectoryPage(local, '/w', { offset: 0, limit: 1 }, { wakeWslDistro: true })
-    ).resolves.toEqual({ entries: [entry('a')], total: 1 })
+      readRuntimeDirectoryPage(local, '/w', { limit: 1 }, { wakeWslDistro: true })
+    ).resolves.toEqual({ entries: [entry('a')], total: 1, hasMore: false })
     expect(readRuntimeDirectory).toHaveBeenCalledWith(local, '/w', { wakeWslDistro: true })
   })
 

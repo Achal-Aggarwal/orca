@@ -164,7 +164,7 @@ export const FILE_METHODS = [
               followSymlinks: params.followSymlinks
             })
       const budget = remoteFileContentBudget(clientKind, requestId)
-      if (params.offset === undefined && params.limit === undefined) {
+      if (params.after === undefined && params.limit === undefined) {
         return assertDirListingWithinRemoteBudget(await list(), budget)
       }
       const page = await dirListingPageCache.readPage(connectionId, params, list)

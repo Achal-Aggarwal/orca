@@ -112,7 +112,7 @@ export async function loadMoreFileExplorerDir({
   try {
     const page = await readFileExplorerDirectory(activeWorktreeId, worktreePath, dirPath, {
       paged: true,
-      offset: more.nextOffset
+      after: more.after
     })
     if (!dirLoadTracker.isCurrent(loadToken)) {
       return

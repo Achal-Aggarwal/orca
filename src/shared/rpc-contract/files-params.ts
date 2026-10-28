@@ -77,9 +77,9 @@ export const FileTreePath = WorktreeSelector.extend({
     .pipe(z.string())
 })
 
-/** With `offset` or `limit` the reply is a `DirEntryPage`; without both it stays the bare entry array. */
+/** With `after` or `limit` the reply is a `DirEntryPage`; without both it stays the bare entry array. */
 export const FileDirRead = FileTreePath.extend({
-  offset: z.number().int().nonnegative().optional(),
+  after: z.object({ name: z.string().min(1), isDirectory: z.boolean() }).optional(),
   limit: z.number().int().positive().max(FILE_READ_DIR_MAX_PAGE_ENTRIES).optional()
 })
 

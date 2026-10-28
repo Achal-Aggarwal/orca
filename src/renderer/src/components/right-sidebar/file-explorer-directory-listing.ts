@@ -9,7 +9,8 @@ import {
 import { readRuntimeDirectory } from '@/runtime/runtime-file-mutation-client'
 import {
   FILE_READ_DIR_MAX_PAGE_ENTRIES,
-  isDirListingTooLargeForRemoteError
+  isDirListingTooLargeForRemoteError,
+  type DirEntryCursor
 } from '../../../../shared/file-dir-page'
 import type {
   DirCache,
@@ -113,13 +114,18 @@ export function clearFailedOpenedDirectoryLink(
 
 /**
  * Lists `dirPath` whole, as always. Only a remote folder too big for one reply is listed in pages:
- * from `offset` until at least `minEntries` are read, so a refresh does not shrink the tree.
+ * from just after `after` until at least `minEntries` are read, so a refresh does not shrink the tree.
  */
 export async function readFileExplorerDirectory(
   activeWorktreeId: string | null | undefined,
   worktreePath: string | null,
   dirPath: string,
-  options: { wakeWslDistro?: boolean; paged?: boolean; offset?: number; minEntries?: number } = {}
+  options: {
+    wakeWslDistro?: boolean
+    paged?: boolean
+    after?: DirEntryCursor
+    minEntries?: number
+  } = {}
 ): Promise<FileExplorerDirectoryListing> {
   const operationOwner = getFileExplorerOperationOwner(activeWorktreeId)
   const route = getFileExplorerOperationRoute(operationOwner)
@@ -138,8 +144,7 @@ export async function readFileExplorerDirectory(
       : {}),
     ...(options.wakeWslDistro === undefined ? {} : { wakeWslDistro: options.wakeWslDistro })
   }
-  const offset = options.offset ?? 0
-  if (!options.paged && offset === 0) {
+  if (!options.paged && !options.after) {
     try {
       // Older remote hosts may return lexical order; adaptive sorting keeps already-sorted local listings cheap.
       const whole = await readRuntimeDirectory(context, dirPath, readOptions)
@@ -155,25 +160,24 @@ export async function readFileExplorerDirectory(
   }
   const wanted = Math.max(options.minEntries ?? 0, FILE_EXPLORER_DIR_PAGE_ENTRIES)
   let entries: DirEntry[] = []
-  let total = 0
+  let after = options.after
+  let hasMore: boolean
   do {
     const page = await readRuntimeDirectoryPage(
       context,
       dirPath,
-      { offset: offset + entries.length, limit: FILE_EXPLORER_DIR_PAGE_ENTRIES },
+      { ...(after ? { after } : {}), limit: FILE_EXPLORER_DIR_PAGE_ENTRIES },
       readOptions
     )
     entries = entries.length === 0 ? page.entries : entries.concat(page.entries)
-    total = page.total
-    if (page.entries.length === 0) {
-      break
-    }
-  } while (entries.length < wanted && offset + entries.length < total)
-  const nextOffset = offset + entries.length
+    const last = page.entries.at(-1)
+    hasMore = page.hasMore && last !== undefined
+    after = last ? { name: last.name, isDirectory: last.isDirectory } : after
+  } while (hasMore && entries.length < wanted)
   return {
     entries: sortDirEntries(entries),
     operationOwner,
     paged: true,
-    ...(nextOffset < total ? { more: { nextOffset, total } } : {})
+    ...(hasMore && after ? { more: { after } } : {})
   }
 }

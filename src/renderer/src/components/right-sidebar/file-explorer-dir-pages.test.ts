@@ -30,7 +30,11 @@ import {
 import { fileExplorerDirsDueForMore } from './use-file-explorer-load-more'
 import { createFileExplorerDirLoadTracker } from './file-explorer-dir-load-tracker'
 import type { DirCache } from './file-explorer-types'
-import { dirListingTooLargeForRemoteMessage } from '../../../../shared/file-dir-page'
+import {
+  dirEntryPageAfter,
+  dirListingTooLargeForRemoteMessage,
+  type DirEntryCursor
+} from '../../../../shared/file-dir-page'
 
 const file = (name: string): DirEntry => ({ name, isDirectory: false, isSymlink: false })
 const names = (count: number, from = 0): DirEntry[] =>
@@ -44,11 +48,10 @@ function serveFolder(total: number, wholeLimit = 50_000): void {
     }
     return names(total)
   })
+  const listing = names(total)
   readRuntimeDirectoryPage.mockImplementation(
-    async (_context, _dirPath, page: { offset: number; limit: number }) => ({
-      entries: names(Math.max(0, Math.min(page.limit, total - page.offset)), page.offset),
-      total
-    })
+    async (_context, _dirPath, page: { after?: DirEntryCursor; limit: number }) =>
+      dirEntryPageAfter(listing, page.after, page.limit)
   )
 }
 
@@ -74,7 +77,7 @@ describe('paged folder listing', () => {
     const listing = await readFileExplorerDirectory('wt-1', '/w', '/w')
     expect(listing.entries).toHaveLength(FILE_EXPLORER_DIR_PAGE_ENTRIES)
     expect(listing.paged).toBe(true)
-    expect(listing.more).toEqual({ nextOffset: 5_000, total: 60_000 })
+    expect(listing.more).toEqual({ after: { name: 'f04999', isDirectory: false } })
   })
 
   it('keeps the refusal from a host that cannot page', async () => {
@@ -94,7 +97,7 @@ describe('paged folder listing', () => {
     })
     expect(readRuntimeDirectory).not.toHaveBeenCalled()
     expect(listing.entries).toHaveLength(15_000)
-    expect(listing.more).toEqual({ nextOffset: 15_000, total: 60_000 })
+    expect(listing.more).toEqual({ after: { name: 'f14999', isDirectory: false } })
 
     const whole = await readFileExplorerDirectory('wt-1', '/w', '/w', {
       paged: true,
@@ -112,7 +115,7 @@ describe('paged folder listing', () => {
         { name: 'f00003', path: '/w/f00003', relativePath: 'f00003', isDirectory: false, depth: 0 }
       ],
       operationOwner: owner,
-      more: { nextOffset: 1, total: 4 }
+      more: { after: { name: 'f00000', isDirectory: false } }
     }
     const appended = appendFileExplorerDirPage(
       cache,
@@ -134,7 +137,7 @@ describe('paged folder listing', () => {
     const cache: DirCache = {
       children: [],
       operationOwner: { kind: 'local' },
-      more: { nextOffset: 0, total: 1 }
+      more: { after: { name: 'f00000', isDirectory: false } }
     }
     const appended = appendFileExplorerDirPage(
       cache,
@@ -152,7 +155,7 @@ describe('loading more on scroll', () => {
     children: [
       { name: 'last', path: lastPath, relativePath: 'last', isDirectory: false, depth: 0 }
     ],
-    more: { nextOffset: 1, total: 9 }
+    more: { after: { name: 'f00000', isDirectory: false } }
   })
   const projection = (indexes: Record<string, number>) => ({
     getIndexByPath: (path: string) => indexes[path] ?? null
@@ -185,7 +188,7 @@ describe('loading more on scroll', () => {
       '/w': {
         children: [],
         operationOwner: { kind: 'local' },
-        more: { nextOffset: 57_000, total: 60_000 }
+        more: { after: { name: 'f56999', isDirectory: false } }
       }
     }
     const setDirCache = (update: SetStateAction<Record<string, DirCache>>): void => {
@@ -210,7 +213,13 @@ describe('loading more on scroll', () => {
     expect(dirCache['/w'].more).toBeUndefined()
     expect(loading.size).toBe(0)
 
-    dirCache = { '/w': { ...dirCache['/w'], children: [], more: { nextOffset: 0, total: 60_000 } } }
+    dirCache = {
+      '/w': {
+        ...dirCache['/w'],
+        children: [],
+        more: { after: { name: 'f00000', isDirectory: false } }
+      }
+    }
     const pending = loadMoreFileExplorerDir({ ...params, dirCache, loadingDirPaths: loading })
     tracker.begin('/w')
     await pending
@@ -243,7 +252,7 @@ describe('loading more on scroll', () => {
 
 describe('revealing a path in a partly listed folder', () => {
   it('reads on in the folder whose next path on the way is not listed yet', () => {
-    const more = { nextOffset: 1_000, total: 5_000 }
+    const more = { after: { name: 'f00999', isDirectory: false } }
     const listed = new Set(['/w/src'])
     const rows = { hasPath: (path: string) => listed.has(path) }
     const dirCache: Record<string, DirCache> = {

@@ -15,9 +15,10 @@ vi.mock('./file-explorer-operation-owner', async (importOriginal) => ({
   getFileExplorerOperationOwner: () => ({ kind: 'local' as const })
 }))
 
+const AFTER_B = { name: 'b', isDirectory: false }
 const file = (name: string): DirEntry => ({ name, isDirectory: false, isSymlink: false })
 
-function page(names: string[], more?: { nextOffset: number; total: number }) {
+function page(names: string[], more?: { after: { name: string; isDirectory: boolean } }) {
   return { entries: names.map(file), operationOwner: { kind: 'local' as const }, more, paged: true }
 }
 
@@ -29,11 +30,11 @@ describe('useFileExplorerTree paged folders', () => {
 
   it('lists a big folder a page at a time and keeps every listed row on refresh', async () => {
     const { result } = renderHook(() => useFileExplorerTree('/repo', new Set(), 'wt-1'))
-    readDirectoryMock.mockResolvedValueOnce(page(['a', 'b'], { nextOffset: 2, total: 4 }))
+    readDirectoryMock.mockResolvedValueOnce(page(['a', 'b'], { after: AFTER_B }))
     await act(async () => {
       await result.current.loadDir('/repo', -1, { force: true })
     })
-    expect(result.current.dirCache['/repo'].more).toEqual({ nextOffset: 2, total: 4 })
+    expect(result.current.dirCache['/repo'].more).toEqual({ after: AFTER_B })
 
     readDirectoryMock.mockResolvedValueOnce(page(['c', 'd']))
     await act(async () => {
@@ -41,7 +42,7 @@ describe('useFileExplorerTree paged folders', () => {
     })
     expect(readDirectoryMock).toHaveBeenLastCalledWith('wt-1', '/repo', '/repo', {
       paged: true,
-      offset: 2
+      after: AFTER_B
     })
     expect(result.current.dirCache['/repo'].children.map((child) => child.name)).toEqual([
       'a',

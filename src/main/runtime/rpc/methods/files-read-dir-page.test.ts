@@ -3,84 +3,160 @@ import { describe, expect, it, vi } from 'vitest'
 import { RpcDispatcher } from '../dispatcher'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { DirEntry } from '../../../../shared/filesystem-entry-types'
+import type { DirEntryCursor } from '../../../../shared/file-dir-page'
 import { FILE_METHODS } from './files'
 import { DIR_LISTING_PAGE_CACHE_TTL_MS, DirListingPageCache } from './files-read-dir-page'
 
+const fileNamed = (name: string): DirEntry => ({ name, isDirectory: false, isSymlink: false })
 const folder = (count: number, prefix = 'file'): DirEntry[] =>
-  Array.from({ length: count }, (_, index) => ({
-    name: `${prefix}-${String(index).padStart(6, '0')}.txt`,
-    isDirectory: false,
-    isSymlink: false
-  }))
+  Array.from({ length: count }, (_, index) =>
+    fileNamed(`${prefix}-${String(index).padStart(6, '0')}.txt`)
+  )
+const cursorOf = (entry: DirEntry): DirEntryCursor => ({
+  name: entry.name,
+  isDirectory: entry.isDirectory
+})
+const names = (entries: DirEntry[]): string[] => entries.map((entry) => entry.name)
 
 const REQUEST = { worktree: 'id:wt-1', relativePath: 'big' }
 
+/** Reads a folder to its end the way the explorer does: each page starts after the last. */
+async function readAll(
+  cache: DirListingPageCache,
+  list: () => Promise<DirEntry[]>,
+  limit: number,
+  betweenPages: (pageIndex: number) => void = () => {}
+): Promise<string[]> {
+  const read: string[] = []
+  let after: DirEntryCursor | undefined
+  for (let pageIndex = 0; pageIndex < 100; pageIndex++) {
+    const page = await cache.readPage('socket-1', { ...REQUEST, after, limit }, list)
+    read.push(...names(page.entries))
+    const last = page.entries.at(-1)
+    if (!page.hasMore || !last) {
+      return read
+    }
+    after = cursorOf(last)
+    betweenPages(pageIndex)
+  }
+  throw new Error('never reached the end of the folder')
+}
+
 describe('DirListingPageCache', () => {
-  it('lists once for page one and slices that listing for later pages', async () => {
+  it('lists once for page one and serves later pages after the cursor from that listing', async () => {
     const cache = new DirListingPageCache(() => 0)
     const list = vi.fn(async () => folder(5))
 
-    const first = await cache.readPage('socket-1', { ...REQUEST, offset: 0, limit: 2 }, list)
-    const second = await cache.readPage('socket-1', { ...REQUEST, offset: 2, limit: 2 }, list)
-    const last = await cache.readPage('socket-1', { ...REQUEST, offset: 4, limit: 2 }, list)
-
+    expect(await readAll(cache, list, 2)).toEqual(names(folder(5)))
     expect(list).toHaveBeenCalledTimes(1)
-    expect([first, second, last].map((page) => page.entries.map((e) => e.name))).toEqual([
-      ['file-000000.txt', 'file-000001.txt'],
-      ['file-000002.txt', 'file-000003.txt'],
-      ['file-000004.txt']
-    ])
-    expect(first.total).toBe(5)
-    // The last page released the listing, so a later read lists again.
-    await cache.readPage('socket-1', { ...REQUEST, offset: 2, limit: 2 }, list)
+    // The last page released the listing, so a later cursor read lists again.
+    await cache.readPage('socket-1', { ...REQUEST, after: cursorOf(folder(5)[1]), limit: 2 }, list)
     expect(list).toHaveBeenCalledTimes(2)
   })
 
-  it('re-lists for page one, after the time limit, and for another connection or none', async () => {
+  it('neither skips nor repeats an entry when one is deleted between pages', async () => {
+    let entries = folder(6)
+    const cache = new DirListingPageCache(() => 0)
+    const list = vi.fn(async () => entries)
+    const read = await readAll(cache, list, 2, (pageIndex) => {
+      if (pageIndex === 0) {
+        // file-000001 was already shown; the watcher drops the listing, so page two re-lists.
+        entries = entries.filter((entry) => entry.name !== 'file-000001.txt')
+        cache.forgetWorkspace(REQUEST.worktree)
+      }
+    })
+    expect(read).toEqual(names(folder(6)))
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('stays in order when the listing expires mid-scroll and a file arrives before the cursor', async () => {
     let now = 0
+    let entries = folder(6)
     const cache = new DirListingPageCache(() => now)
+    const list = vi.fn(async () => entries)
+    const read = await readAll(cache, list, 2, (pageIndex) => {
+      if (pageIndex === 0) {
+        entries = [fileNamed('file-000000-a.txt'), ...entries]
+        now = DIR_LISTING_PAGE_CACHE_TTL_MS
+      }
+    })
+    // The new file sorts before the cursor, so it waits for a refresh rather than shifting pages.
+    expect(read).toEqual(names(folder(6)))
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not serve a file deleted after the cursor once the watcher reports the change', async () => {
+    let entries = folder(6)
+    const cache = new DirListingPageCache(() => 0)
+    const list = vi.fn(async () => entries)
+    const read = await readAll(cache, list, 2, (pageIndex) => {
+      if (pageIndex === 0) {
+        entries = entries.filter((entry) => entry.name !== 'file-000004.txt')
+        cache.forgetWorkspace(REQUEST.worktree)
+      }
+    })
+    expect(read).not.toContain('file-000004.txt')
+    expect(read).toHaveLength(5)
+  })
+
+  it('places a cursor whose entry was since deleted, folders before files', async () => {
+    const cache = new DirListingPageCache(() => 0)
+    const entries = [{ name: 'src', isDirectory: true, isSymlink: false }, ...folder(3)]
+    const page = await cache.readPage(
+      'socket-1',
+      { ...REQUEST, after: { name: 'zzz-gone', isDirectory: true }, limit: 10 },
+      async () => entries
+    )
+    expect(names(page.entries)).toEqual(names(folder(3)))
+  })
+
+  it('re-lists for page one, and for another connection or none', async () => {
+    const cache = new DirListingPageCache(() => 0)
     const list = vi.fn(async () => folder(5))
-    await cache.readPage('socket-1', { ...REQUEST, offset: 0, limit: 2 }, list)
+    const after = cursorOf(folder(5)[1])
+    await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, list)
 
-    await cache.readPage('socket-1', { ...REQUEST, offset: 0, limit: 2 }, list)
-    await cache.readPage('socket-2', { ...REQUEST, offset: 2, limit: 2 }, list)
-    await cache.readPage(undefined, { ...REQUEST, offset: 2, limit: 2 }, list)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, list)
+    await cache.readPage('socket-2', { ...REQUEST, after, limit: 2 }, list)
+    await cache.readPage(undefined, { ...REQUEST, after, limit: 2 }, list)
     expect(list).toHaveBeenCalledTimes(4)
-
-    now = DIR_LISTING_PAGE_CACHE_TTL_MS
-    await cache.readPage('socket-1', { ...REQUEST, offset: 2, limit: 2 }, list)
-    expect(list).toHaveBeenCalledTimes(5)
   })
 
   it('keys the listing by folder and symlink mode', async () => {
     const cache = new DirListingPageCache(() => 0)
     const list = vi.fn(async () => folder(5))
-    await cache.readPage('socket-1', { ...REQUEST, offset: 0, limit: 2 }, list)
+    const after = cursorOf(folder(5)[1])
+    await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, list)
 
-    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'other', offset: 2 }, list)
-    await cache.readPage('socket-1', { ...REQUEST, followSymlinks: true, offset: 2 }, list)
+    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'other', after }, list)
+    await cache.readPage('socket-1', { ...REQUEST, followSymlinks: true, after }, list)
     expect(list).toHaveBeenCalledTimes(3)
   })
 
   it('holds a bounded number of listings, dropping the oldest', async () => {
     const cache = new DirListingPageCache(() => 0)
     const list = vi.fn(async () => folder(3))
+    const after = cursorOf(folder(3)[0])
     for (let index = 0; index < 9; index++) {
       await cache.readPage('socket-1', { ...REQUEST, relativePath: `d${index}`, limit: 1 }, list)
     }
     expect(list).toHaveBeenCalledTimes(9)
 
-    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'd8', offset: 1, limit: 1 }, list)
+    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'd8', after, limit: 1 }, list)
     expect(list).toHaveBeenCalledTimes(9)
-    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'd0', offset: 1, limit: 1 }, list)
+    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'd0', after, limit: 1 }, list)
     expect(list).toHaveBeenCalledTimes(10)
   })
 
   it('does not hold a folder too large to keep, and re-lists it per page', async () => {
     const cache = new DirListingPageCache(() => 0)
     const list = vi.fn(async () => folder(200_001))
-    await cache.readPage('socket-1', { ...REQUEST, offset: 0, limit: 10 }, list)
-    await cache.readPage('socket-1', { ...REQUEST, offset: 10, limit: 10 }, list)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 10 }, list)
+    await cache.readPage(
+      'socket-1',
+      { ...REQUEST, after: cursorOf(folder(10)[9]), limit: 10 },
+      list
+    )
     expect(list).toHaveBeenCalledTimes(2)
   })
 })
@@ -119,13 +195,21 @@ describe('files.readDir pages', () => {
   it('pages a folder too large for one remote reply', async () => {
     const { dispatcher, readFileExplorerDir } = dispatcherWithListing(folder(80_000, 'paged'))
 
-    const first = await readDir(dispatcher, { ...REQUEST, offset: 0, limit: 1_000 })
-    const next = await readDir(dispatcher, { ...REQUEST, offset: 1_000, limit: 1_000 })
+    const first = await readDir(dispatcher, { ...REQUEST, limit: 1_000 })
+    const next = await readDir(dispatcher, {
+      ...REQUEST,
+      after: cursorOf(folder(80_000, 'paged')[999]),
+      limit: 1_000
+    })
 
-    expect(first).toMatchObject({ ok: true, result: { total: 80_000 } })
+    expect(first).toMatchObject({ ok: true, result: { total: 80_000, hasMore: true } })
     expect(next).toMatchObject({
       ok: true,
-      result: { total: 80_000, entries: expect.arrayContaining([folder(80_000, 'paged')[1_000]]) }
+      result: {
+        total: 80_000,
+        hasMore: true,
+        entries: expect.arrayContaining([folder(80_000, 'paged')[1_000]])
+      }
     })
     expect(readFileExplorerDir).toHaveBeenCalledTimes(1)
   })
@@ -138,8 +222,43 @@ describe('files.readDir pages', () => {
     })
   })
 
-  it('refuses a page larger than a host serves', async () => {
+  it('refuses a page larger than a host serves, and a cursor without its kind', async () => {
     const { dispatcher } = dispatcherWithListing(folder(3))
     expect(await readDir(dispatcher, { ...REQUEST, limit: 5_001 })).toMatchObject({ ok: false })
+    expect(await readDir(dispatcher, { ...REQUEST, after: { name: 'a' } })).toMatchObject({
+      ok: false
+    })
+  })
+
+  it("drops a cached listing when the host's watcher reports a change in that workspace", async () => {
+    let entries = folder(6)
+    let emitChange: ((events: { kind: 'delete'; absolutePath: string }[]) => void) | undefined
+    const readFileExplorerDir = vi.fn(async () => entries)
+    const fakeRuntime = {
+      getRuntimeId: () => 'test-runtime',
+      readFileExplorerDir,
+      watchFileExplorer: vi.fn(async (_worktree: string, callback: typeof emitChange) => {
+        emitChange = callback
+        return vi.fn()
+      }),
+      registerSubscriptionCleanup: vi.fn()
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: files.readDir and files.watch only touch these runtime members.
+    const runtime = fakeRuntime as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
+    void dispatcher.dispatchStreaming(
+      { id: 'watch', authToken: 'tok', method: 'files.watch', params: { worktree: 'id:wt-1' } },
+      () => {},
+      { connectionId: 'socket-2' }
+    )
+    await vi.waitFor(() => expect(emitChange).toBeDefined())
+
+    await readDir(dispatcher, { ...REQUEST, limit: 2 })
+    entries = entries.filter((entry) => entry.name !== 'file-000004.txt')
+    emitChange?.([{ kind: 'delete', absolutePath: '/repo/big/file-000004.txt' }])
+    const next = await readDir(dispatcher, { ...REQUEST, after: cursorOf(folder(6)[1]), limit: 5 })
+
+    expect(readFileExplorerDir).toHaveBeenCalledTimes(2)
+    expect(next).toMatchObject({ ok: true, result: { total: 5, hasMore: false } })
   })
 })
