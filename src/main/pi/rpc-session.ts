@@ -39,6 +39,7 @@ export type PiRpcConnection = Pick<
   | 'rootVerdict'
   | 'processless'
   | 'lastCloseResult'
+  | 'onExit'
 >
 export type PiRpcSessionDeps = PiHistoryCaptureDeps & {
   openConnection?: (
@@ -161,8 +162,7 @@ export class PiRpcSession {
     this.heldSends.add(clientMessageId)
     let outcome: AgentSessionDispatchOutcome | undefined
     try {
-      outcome = await this.turns.submit(...args)
-      return outcome
+      return (outcome = await this.turns.submit(...args))
     } finally {
       if (outcome?.state !== 'admitted') {
         this.heldSends.delete(clientMessageId)
