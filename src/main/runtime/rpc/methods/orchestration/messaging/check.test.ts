@@ -415,11 +415,9 @@ describe('orchestration RPC methods', () => {
 
       const completedAt = db.getTask(task.id)?.completed_at
       const taskResult = db.getTask(task.id)?.result
-      const repeated = (await call('orchestration.check', {
-        terminal: 'term_coord',
-        types: 'worker_done'
-      })) as { count: number }
-      expect(repeated.count).toBe(0)
+      expect(
+        await call('orchestration.check', { terminal: 'term_coord', types: 'worker_done' })
+      ).toMatchObject({ count: 0 })
       const acknowledged = (await call('orchestration.check', {
         terminal: 'term_coord',
         ack: result.deliveryId,

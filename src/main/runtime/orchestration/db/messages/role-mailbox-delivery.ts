@@ -191,10 +191,8 @@ export function takeMailboxDelivery(
 
 // Global rather than per-mailbox so reading it is a rowid lookup, not a table scan.
 export function getDeliveryCursor(this: OrchestrationDb): number {
-  const row = this.db.prepare('SELECT MAX(rowid) AS cursor FROM deliveries').get() as {
-    cursor: number | null
-  }
-  return row.cursor ?? 0
+  const row = this.db.prepare('SELECT MAX(rowid) AS cursor FROM deliveries').get()
+  return typeof row?.cursor === 'number' ? row.cursor : 0
 }
 
 // Waiters woken by the same arrival share its batch, so a forgotten waiter cannot swallow it.
@@ -204,14 +202,15 @@ export function getMailboxDeliveryTakenAfter(
   consumerGeneration: number,
   cursor: number
 ): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
-  const delivery = this.db
+  const row = this.db
     .prepare(
-      `SELECT * FROM deliveries
+      `SELECT id FROM deliveries
        WHERE rowid > ? AND mailbox_handle = ? AND consumer_generation = ?
          AND status = 'acknowledged'
        ORDER BY rowid ASC LIMIT 1`
     )
-    .get(cursor, mailboxHandle, consumerGeneration) as DeliveryRow | undefined
+    .get(cursor, mailboxHandle, consumerGeneration)
+  const delivery = typeof row?.id === 'string' ? this.getDeliveryRaw(row.id) : undefined
   return delivery
     ? {
         delivery: exposeDeliveryTimestamps(delivery),
