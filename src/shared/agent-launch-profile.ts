@@ -47,6 +47,20 @@ export function projectAgentLaunchProfile(
     ...(choices.model ? { model: choices.model } : {})
   }
   const shell = input.shell ?? 'posix'
+  if (!Object.keys(values).length) {
+    if (
+      input.target !== 'terminal' ||
+      !choices.permissionMode ||
+      choices.permissionMode === 'own'
+    ) {
+      return { args: userArgs, choices }
+    }
+    if (!tokenizeStartupCommand(userArgs, shell).ok) {
+      return { args: userArgs, choices }
+    }
+    const permission = agentPermissionArgsForLaunch(agent, choices.permissionMode, userArgs)
+    return { args: [permission, userArgs].filter(Boolean).join(' '), choices }
+  }
   const parsed = tokenizeStartupCommand(userArgs, shell)
   if (!parsed.ok) {
     return { args: userArgs, choices }

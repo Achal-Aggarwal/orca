@@ -169,10 +169,7 @@ export function withRepoAiActionRecipeText(
     readActionRecipeTextDraft(base, actionId)
   )
   const own = base.actionOverrides?.[actionId]
-  const currentRecipe =
-    !preferencesEdited && own?.agentArgs !== undefined
-      ? own
-      : readCompleteRecipeForDraft(base, settings, actionId)
+  const currentRecipe = own ?? {}
   return normalizeRepoAiDraft(
     setActionOverride(base, actionId, {
       ...currentRecipe,
@@ -180,6 +177,7 @@ export function withRepoAiActionRecipeText(
         ? { commandInputTemplate: text.commandInputTemplate }
         : {}),
       ...(text.agentArgs !== undefined ? { agentArgs: text.agentArgs } : {}),
+      argumentChoices: text.argumentChoices,
       ...(preferencesEdited ? { launchPreferences: text.launchPreferences } : {})
     })
   )
@@ -189,7 +187,7 @@ export function withRepoAiActionRecipeText(
  *  show it as empty. */
 export type ActionRecipeTextDraft = Pick<
   RepoActionRecipe,
-  'commandInputTemplate' | 'agentArgs' | 'launchPreferences'
+  'commandInputTemplate' | 'agentArgs' | 'launchPreferences' | 'argumentChoices'
 >
 
 // An own undefined is a deliberate clear; an absent preference leaves inheritance untouched.
@@ -204,6 +202,7 @@ function sameActionRecipeText(a: ActionRecipeTextDraft, b: ActionRecipeTextDraft
   return (
     a.commandInputTemplate === b.commandInputTemplate &&
     a.agentArgs === b.agentArgs &&
+    JSON.stringify(a.argumentChoices) === JSON.stringify(b.argumentChoices) &&
     sameDraftLaunchPreferences(a, b)
   )
 }
@@ -216,6 +215,7 @@ export function readActionRecipeTextDraft(
   return {
     commandInputTemplate: recipe?.commandInputTemplate,
     agentArgs: recipe?.agentArgs,
+    argumentChoices: recipe?.argumentChoices,
     ...(recipe?.launchPreferences ? { launchPreferences: recipe.launchPreferences } : {})
   }
 }
@@ -224,7 +224,7 @@ export function composeDisplayRepoAi(
   immediate: RepoSourceControlAiOverrides,
   customCommandDraft: string | null,
   actionTextDrafts: Partial<Record<SourceControlActionId, ActionRecipeTextDraft>>,
-  settings: GlobalSettings | null = null
+  _settings: GlobalSettings | null = null
 ): RepoSourceControlAiOverrides {
   let next =
     customCommandDraft === null ? immediate : withRepoAiCustomCommand(immediate, customCommandDraft)
@@ -234,9 +234,6 @@ export function composeDisplayRepoAi(
     if (!draft || !hasOwnActionOverride(next.actionOverrides, actionId) || !currentRecipe) {
       continue
     }
-    if (!sameDraftLaunchPreferences(draft, readActionRecipeTextDraft(next, actionId))) {
-      currentRecipe = readCompleteRecipeForDraft(next, settings, actionId)
-    }
     next = {
       ...next,
       actionOverrides: {
@@ -245,6 +242,7 @@ export function composeDisplayRepoAi(
           ...currentRecipe,
           commandInputTemplate: draft.commandInputTemplate,
           agentArgs: draft.agentArgs,
+          argumentChoices: draft.argumentChoices,
           launchPreferences: draft.launchPreferences
         }
       }

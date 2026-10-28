@@ -1,3 +1,8 @@
+import { launchAgentInWebHostTab } from '../lib/launch-agent-web-host-tab'
+import {
+  independentActionEffortPlan,
+  consumeOldHostPreparedCommand
+} from './prepared-action-launch.test-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as TrackingDecisions from './web-session-tabs-sync/tracking-decisions'
 import {
@@ -91,6 +96,72 @@ describe('createWebRuntimeSessionTerminal', () => {
   afterEach(() => {
     resetTerminalCreateEnvironment()
   })
+
+  it.each(['claude', 'codex'] as const)(
+    'delivers independent %s effort through the real prepared web callback',
+    async (agent) => {
+      const plan = independentActionEffortPlan(agent)
+      const spawn = vi.fn(consumeOldHostPreparedCommand)
+      const runtimeCall = vi.fn(async (request) => {
+        if (request.method === 'status.get') {
+          return {
+            ok: true,
+            result: {
+              runtimeProtocolVersion: 3,
+              minCompatibleRuntimeClientVersion: 2,
+              capabilities: ['agent-session.host-authority.v1']
+            }
+          }
+        }
+        if (request.method === 'session.tabs.createTerminal') {
+          await spawn(request.params)
+          return { ok: true, result: { tab: { id: 'host-prepared', leafId: 'leaf-1' } } }
+        }
+        if (request.method !== 'session.tabs.list') {
+          throw new Error(`Unexpected create route ${request.method}`)
+        }
+        return { ok: true, result: makeSnapshot() }
+      })
+      stubRuntimeEnvironmentBridge({ call: runtimeCall })
+      await expect(
+        launchAgentInWebHostTab({
+          agent,
+          worktreeId: WORKTREE_ID,
+          environmentId: ENVIRONMENT_ID,
+          startupPlan: plan,
+          prompt: 'Fix checks',
+          promptDelivery: 'auto-submit',
+          pastePromptAfterReady: null,
+          submitPastedPrompt: false,
+          activate: false
+        })
+      ).resolves.toEqual({
+        delivered: true,
+        failureNotified: false,
+        outcome: { status: 'created' },
+        tabId: 'web-terminal-host-prepared'
+      })
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(await spawn.mock.results[0].value).toEqual({
+        command: plan.launchCommand,
+        env: { ACTION_PROFILE: 'captured' },
+        envToDelete: undefined,
+        launchConfig: plan.launchConfig,
+        launchAgent: agent,
+        startupCommandDelivery: agent === 'codex' ? 'shell-ready' : undefined
+      })
+      expect(
+        runtimeCall.mock.calls.filter(
+          ([request]) => request.method === 'session.tabs.createTerminal'
+        )
+      ).toHaveLength(1)
+      expect(
+        runtimeCall.mock.calls.filter(
+          ([request]) => request.method === 'terminal.createAgentSession'
+        )
+      ).toHaveLength(0)
+    }
+  )
 
   it('keeps same-ID local and runtime worktrees on the selected runtime owner', async () => {
     const selectedHosts: (string | undefined)[] = []
@@ -456,61 +527,77 @@ describe('createWebRuntimeSessionTerminal', () => {
           ([request]) => request.method === 'terminal.createAgentSession'
         )
       ).toHaveLength(1)
+      expect(
+        runtimeCall.mock.calls.filter(
+          ([request]) => request.method === 'session.tabs.createTerminal'
+        )
+      ).toHaveLength(0)
     }
   )
 
-  it('replays an ambiguous fresh-create failure with the same operation ID', async () => {
-    const operationIds: string[] = []
-    let createAttempts = 0
-    const runtimeCall = vi.fn(async (request: { method: string; params?: unknown }) => {
-      if (request.method === 'status.get') {
-        return {
-          id: 'status',
-          ok: true,
-          result: {
-            runtimeId: 'runtime-1',
-            graphStatus: 'ready',
-            runtimeProtocolVersion: 3,
-            minCompatibleRuntimeClientVersion: 2,
-            capabilities: ['agent-session.host-authority.v1']
+  it.each([false, true])(
+    'bounds ambiguous authority replay with exhaustion=%s and the same operation ID',
+    async (exhausted) => {
+      const operationIds: string[] = []
+      let createAttempts = 0
+      const runtimeCall = vi.fn(async (request: { method: string; params?: unknown }) => {
+        if (request.method === 'status.get') {
+          return {
+            id: 'status',
+            ok: true,
+            result: {
+              runtimeId: 'runtime-1',
+              graphStatus: 'ready',
+              runtimeProtocolVersion: 3,
+              minCompatibleRuntimeClientVersion: 2,
+              capabilities: ['agent-session.host-authority.v1']
+            }
           }
         }
-      }
-      if (request.method === 'terminal.createAgentSession') {
-        operationIds.push((request.params as { clientOperationId: string }).clientOperationId)
-        createAttempts += 1
-        if (createAttempts === 1) {
-          throw new Error('connection closed before response')
-        }
-        return {
-          id: 'create',
-          ok: true,
-          result: {
-            terminal: {
-              handle: 'term_replayed',
-              worktreeId: WORKTREE_ID,
-              tabId: 'host-tab-replayed',
-              paneKey: `host-tab-replayed:${FOCUS_LEAF_ID}`
-            },
-            disposition: 'replayed'
+        if (request.method === 'terminal.createAgentSession') {
+          operationIds.push((request.params as { clientOperationId: string }).clientOperationId)
+          createAttempts += 1
+          if (createAttempts === 1 || exhausted) {
+            throw new Error('connection closed before response')
+          }
+          return {
+            id: 'create',
+            ok: true,
+            result: {
+              terminal: {
+                handle: 'term_replayed',
+                worktreeId: WORKTREE_ID,
+                tabId: 'host-tab-replayed',
+                paneKey: `host-tab-replayed:${FOCUS_LEAF_ID}`
+              },
+              disposition: 'replayed'
+            }
           }
         }
-      }
-      return { id: 'list', ok: true, result: makeSnapshot() }
-    })
-    stubRuntimeEnvironmentBridge({ call: runtimeCall })
+        return { id: 'list', ok: true, result: makeSnapshot() }
+      })
+      stubRuntimeEnvironmentBridge({ call: runtimeCall })
 
-    await expect(
-      createWebRuntimeSessionTerminal({
+      const result = await createWebRuntimeSessionTerminal({
         worktreeId: WORKTREE_ID,
         launchAgent: 'codex',
         targetGroupId: 'group-left'
       })
-    ).resolves.toEqual({ status: 'created' })
+      expect(result).toEqual(
+        exhausted
+          ? { status: 'failed', message: 'connection closed before response' }
+          : { status: 'created' }
+      )
 
-    expect(operationIds).toHaveLength(2)
-    expect(operationIds[0]).toBe(operationIds[1])
-  })
+      expect(operationIds).toHaveLength(2)
+      expect(operationIds[0]).toBe(operationIds[1])
+      expect(
+        runtimeCall.mock.calls.filter(
+          ([request]) => request.method === 'session.tabs.createTerminal'
+        )
+      ).toHaveLength(0)
+    }
+  )
 
   it('delivers generated continuation context after host-authoritative creation', async () => {
     const runtimeCall = vi.fn(async (request: { method: string; params?: unknown }) => {

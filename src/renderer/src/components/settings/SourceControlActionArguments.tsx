@@ -1,11 +1,17 @@
-import type { SourceControlActionLaunchPreferences } from '../../../../shared/source-control-ai-actions'
+import type {
+  SourceControlActionLaunchPreferences,
+  SourceControlActionRecipe
+} from '../../../../shared/source-control-ai-actions'
 import {
   agentPermissionChoices,
   agentPermissionArgs,
   resolveAgentPermission
 } from '../../../../shared/tui-agent-permission-choice'
 import { agentArgsSetPermission } from '../../../../shared/tui-agent-permission-lift'
-import { reconcileAgentChoiceArgs } from '../../../../shared/agent-choice-reconciliation'
+import {
+  editActionArgumentChoices,
+  type ActionArgumentChoices
+} from '../../../../shared/source-control-action-argument-choices'
 import type { AgentChoicePatch } from '../../../../shared/agent-launch-choices'
 import { composeAgentLaunchModel } from '../../../../shared/agent-session-option-launch'
 import { projectAgentLaunchProfile } from '../../../../shared/agent-launch-profile'
@@ -23,6 +29,10 @@ export function SourceControlActionArguments({
   value,
   preferences,
   authoredPreferences,
+  authoredAgent,
+  modelSelectionBase = 'default',
+  argumentChoices,
+  placeholder,
   disabled,
   showArguments = true,
   onArgsChange,
@@ -32,12 +42,17 @@ export function SourceControlActionArguments({
   value: string | null | undefined
   preferences?: SourceControlActionLaunchPreferences
   authoredPreferences?: SourceControlActionLaunchPreferences | null
+  authoredAgent?: SourceControlActionRecipe['agentId']
+  modelSelectionBase?: 'inherit' | 'default'
+  argumentChoices?: ActionArgumentChoices
+  placeholder?: string
   disabled?: boolean
   showArguments?: boolean
   onArgsChange: (value: string, commit?: boolean) => void
   onPreferencesChange: (
     value: SourceControlActionLaunchPreferences | undefined,
-    userArgs?: string
+    userArgs?: string,
+    argumentChoices?: ActionArgumentChoices | null
   ) => void
 }): React.JSX.Element {
   const settings = useAppStore((state) => state.settings)
@@ -51,29 +66,37 @@ export function SourceControlActionArguments({
     if (!agent || disabled) {
       return text
     }
-    const result = reconcileAgentChoiceArgs({
-      agent,
-      userArgs: text,
-      choices: {
-        ...selected,
-        ...(authoredPreferences !== undefined
-          ? {
-              permissionMode:
-                authoredPreferences?.agentId === agent
-                  ? authoredPreferences.permissionMode
-                  : undefined
-            }
-          : {})
+    const changed =
+      (patch.model !== undefined && (patch.model ?? undefined) !== selected?.model) ||
+      Object.entries(patch.options ?? {}).some(
+        ([key, next]) => (next ?? undefined) !== selected?.options?.[key]
+      ) ||
+      (patch.permissionMode !== undefined &&
+        (patch.permissionMode === 'default' ? undefined : patch.permissionMode) !==
+          selected?.permissionMode)
+    if (!changed) {
+      return text
+    }
+    const result = editActionArgumentChoices(
+      {
+        agentId: authoredAgent ?? argumentChoices?.syntaxAgent,
+        agentArgs: value ?? undefined,
+        argumentChoices,
+        launchPreferences:
+          authoredPreferences === undefined ? preferences : (authoredPreferences ?? undefined)
       },
-      mode: 'choice-edit',
-      keys: new Set(['model', 'effort', 'permissionMode']),
-      patch
-    })
-    onPreferencesChange(
-      Object.keys(result.choices).length ? { agentId: agent, ...result.choices } : undefined,
-      result.userArgs !== (value ?? '') ? result.userArgs : undefined
+      agent,
+      selected ?? {},
+      patch,
+      text,
+      value === undefined ? modelSelectionBase : 'default'
     )
-    return result.userArgs
+    onPreferencesChange(
+      result.launchPreferences,
+      result.agentArgs !== (value ?? '') ? result.agentArgs : undefined,
+      result.argumentChoices ?? null
+    )
+    return result.agentArgs ?? text
   }
   const select = (permissionMode: typeof choice | 'default'): void => {
     commit({ permissionMode })
@@ -177,6 +200,19 @@ export function SourceControlActionArguments({
         <div className="w-full min-w-0">
           <AgentDefaultArgsInput
             defaultArgs=""
+            placeholder={placeholder}
+            onResetArgs={
+              argumentChoices
+                ? () =>
+                    onPreferencesChange(
+                      authoredPreferences === undefined
+                        ? preferences
+                        : (authoredPreferences ?? undefined),
+                      '',
+                      null
+                    )
+                : undefined
+            }
             argsOverride={value ?? ''}
             disabled={disabled}
             onDraftChange={(text) => onArgsChange(text)}

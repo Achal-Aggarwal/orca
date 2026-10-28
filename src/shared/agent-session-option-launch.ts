@@ -1,6 +1,8 @@
 import type { AgentType } from './agent-status-types'
-import { findCatalogModel } from './agent-session-option-catalog'
-import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
+import {
+  findCatalogModel,
+  getAgentSessionOptionLaunchCatalog
+} from './agent-session-option-catalog'
 export { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
 import type {
   AgentSessionOptionCatalog,

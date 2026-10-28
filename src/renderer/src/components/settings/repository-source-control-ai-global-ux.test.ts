@@ -16,6 +16,8 @@ import {
 import { toSourceControlAiRepoUpdate } from '../../../../shared/source-control-ai-recipe-save'
 import type { SourceControlActionId } from '../../../../shared/source-control-ai-actions'
 import { getDefaultSettings } from '../../../../shared/constants'
+import { sourceControlActionSelectedPreferences } from '../../../../shared/source-control-action-launch-preferences'
+import { liftActionPermissionArgs } from '../../../../shared/source-control-action-permission-lift'
 import { resolveSourceControlActionRecipe } from '../../../../shared/source-control-ai-operation-policy'
 
 const source = normalizeSourceControlAiSettings(undefined, undefined)
@@ -46,8 +48,17 @@ const withRecipe = (commandInputTemplate: string): RepoSourceControlAiOverrides 
 
 describe('useRepositorySourceControlAiGlobalUx', () => {
   it('keeps dirty preferences after failed or same-agent saves and clears the old namespace after a successful switch', async () => {
-    const preferences = { agentId: 'claude', model: 'sonnet', permissionMode: 'ask' } as const
-    const dirty = { ...preferences, model: 'opus', permissionMode: 'full-access' } as const
+    const preferences = {
+      agentId: 'codex',
+      modelSelection: { base: 'inherit', model: { agentId: 'claude', value: null } },
+      permissionMode: 'ask'
+    } as const
+    const dirty = {
+      ...preferences,
+      modelSelection: { base: 'inherit', model: { agentId: 'claude', value: 'opus' } },
+      permissionMode: 'full-access'
+    } as const
+    const nodes = { syntaxAgent: 'claude' as const, nodes: [{ at: 0, text: '--effort high' }] }
     const updateRepo = vi.fn().mockResolvedValue(true)
     const { result } = setup(
       {
@@ -56,7 +67,8 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
             agentId: 'claude',
             agentArgs: '',
             commandInputTemplate: 'original',
-            launchPreferences: preferences
+            launchPreferences: preferences,
+            argumentChoices: nodes
           }
         }
       },
@@ -72,6 +84,7 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
     expect(result.current.displayRepoAi.actionOverrides?.fixChecks?.launchPreferences).toEqual(
       dirty
     )
+    expect(result.current.displayRepoAi.actionOverrides?.fixChecks?.argumentChoices).toEqual(nodes)
     await act(async () => result.current.updateActionAgent('fixChecks', 'claude'))
     expect(result.current.displayRepoAi.actionOverrides?.fixChecks?.launchPreferences).toEqual(
       dirty
@@ -89,16 +102,21 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
     })
     expect(reopened).toMatchObject({
       agentId: 'codex',
-      agentArgs: '--verbose',
+      agentArgs: '--effort high --verbose',
       commandInputTemplate: 'edited'
     })
     expect(reopened.launchPreferences).toBeUndefined()
+    expect(reopened.argumentChoices).toBeUndefined()
   })
 
   it.each(['grok', 'claude', 'identical', 'clear'] as const)(
     'two queued switches preserve a newly authored %s value and unrelated text',
     async (edit) => {
-      const old = { agentId: 'claude', model: 'sonnet', permissionMode: 'ask' } as const
+      const old = {
+        agentId: 'claude',
+        modelSelection: { base: 'inherit', model: { agentId: 'claude', value: null } },
+        permissionMode: 'ask'
+      } as const
       const finishes: ((ok: boolean) => void)[] = []
       const updateRepo = vi.fn<
         (repoId: string, updates: SourceControlAiRepoUpdate) => Promise<boolean>
@@ -118,7 +136,17 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
       const authored =
         edit === 'clear'
           ? undefined
-          : { ...old, agentId: edit === 'grok' ? ('grok' as const) : ('claude' as const) }
+          : {
+              ...old,
+              agentId: edit === 'grok' ? ('grok' as const) : ('claude' as const),
+              modelSelection: {
+                base: 'inherit' as const,
+                model: {
+                  agentId: edit === 'grok' ? ('grok' as const) : ('claude' as const),
+                  value: null
+                }
+              }
+            }
       act(() => {
         result.current.updateActionLaunchPreferences('fixChecks', authored)
         result.current.updateActionAgentArgs('fixChecks', '--verbose')
@@ -247,7 +275,18 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
 
   it('leaves an action recipe row dirty and retryable when its save fails', async () => {
     const updateRepo = vi.fn().mockResolvedValue(false)
-    const { result } = setup(withRecipe('orig'), updateRepo)
+    const { result } = setup(
+      {
+        actionOverrides: {
+          fixCommitFailure: liftActionPermissionArgs({
+            agentId: 'claude' as const,
+            agentArgs: '--model opus --verbose',
+            commandInputTemplate: 'orig'
+          })
+        }
+      },
+      updateRepo
+    )
     act(() => {
       result.current.updateActionTemplate('fixCommitFailure', 'edited')
     })
@@ -257,6 +296,16 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
     })
     expect(result.current.actionDirtyById.fixCommitFailure).toBe(true)
     expect(result.current.saveError).toBe('Failed to save Source Control AI settings.')
+    expect(
+      result.current.displayRepoAi.actionOverrides?.fixCommitFailure?.argumentChoices?.nodes
+    ).toEqual([{ at: 0, text: '--model opus' }])
+    updateRepo.mockResolvedValue(true)
+    await act(async () => result.current.saveActionRecipeText('fixCommitFailure'))
+    expect(result.current.actionDirtyById.fixCommitFailure).toBe(false)
+    expect(
+      updateRepo.mock.lastCall?.[1].sourceControlAi?.actionOverrides?.fixCommitFailure
+        ?.argumentChoices?.nodes
+    ).toEqual([{ at: 0, text: '--model opus' }])
   })
 
   it('preserves keystrokes typed while an action save is in flight', async () => {
@@ -266,7 +315,18 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
         resolveUpdate = resolve
       })
     )
-    const { result } = setup(withRecipe('orig'), updateRepo)
+    const { result } = setup(
+      {
+        actionOverrides: {
+          fixCommitFailure: liftActionPermissionArgs({
+            agentId: 'claude' as const,
+            agentArgs: '--model opus --verbose',
+            commandInputTemplate: 'orig'
+          })
+        }
+      },
+      updateRepo
+    )
     act(() => {
       result.current.updateActionTemplate('fixCommitFailure', 'first')
     })
@@ -280,6 +340,7 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
     expect(updateRepo).toHaveBeenCalledTimes(1)
     act(() => {
       result.current.updateActionTemplate('fixCommitFailure', 'first-and-more')
+      result.current.updateActionAgentArgs('fixCommitFailure', '--effort low --verbose', true)
     })
     await act(async () => {
       resolveUpdate(true)
@@ -289,6 +350,11 @@ describe('useRepositorySourceControlAiGlobalUx', () => {
       result.current.displayRepoAi.actionOverrides?.fixCommitFailure?.commandInputTemplate
     ).toBe('first-and-more')
     expect(result.current.actionDirtyById.fixCommitFailure).toBe(true)
+    expect(
+      result.current.displayRepoAi.actionOverrides?.fixCommitFailure?.argumentChoices?.nodes.map(
+        (node) => node.text
+      )
+    ).toEqual(['--model opus', '--effort low'])
   })
 
   it('resets drafts and saving state when the selected repo changes', async () => {
@@ -414,7 +480,10 @@ describe('editing one repository action', () => {
     rerender({ ...legacy, enabled: true })
     expect(result.current.actionDirtyById.fixCommitFailure).toBe(true)
     act(() => result.current.discardActionRecipeText('fixCommitFailure'))
-    expect(effective().launchPreferences).toEqual({ agentId: 'codex', permissionMode: 'ask' })
+    expect(sourceControlActionSelectedPreferences(effective(), 'codex')).toEqual({
+      agentId: 'codex',
+      permissionMode: 'ask'
+    })
     act(() => result.current.updateActionLaunchPreferences('fixCommitFailure', undefined))
     await act(async () => result.current.saveActionRecipeText('fixCommitFailure'))
     const saved = updateRepo.mock.lastCall?.[1].sourceControlAi
@@ -440,7 +509,14 @@ describe('editing one repository action', () => {
         'fixCommitFailure'
       )
     const luna = { ...terra, model: 'gpt-5.6-luna' }
-    expect(set(luna)).toMatchObject({ agentId: 'codex', agentArgs: '', launchPreferences: luna })
+    expect(set(luna)).toMatchObject({
+      agentId: 'codex',
+      agentArgs: '',
+      launchPreferences: {
+        agentId: 'codex',
+        modelSelection: { base: 'default', model: { agentId: 'codex', value: 'gpt-5.6-luna' } }
+      }
+    })
     expect(set()).toMatchObject({ agentId: 'codex', agentArgs: '' })
     expect(set().launchPreferences).toBeUndefined()
   })
@@ -477,11 +553,14 @@ describe('editing one repository action', () => {
     expect(promptOnly.actionOverrides?.fixCommitFailure?.launchPreferences).toBeUndefined()
     expect(promptOnly.actionOverrides?.fixCommitFailure?.agentId).toBeUndefined()
     expect(
-      resolveSourceControlActionRecipe({
-        settings: permissionSettings,
-        repo: { sourceControlAi: promptOnly },
-        actionId: 'fixCommitFailure'
-      }).launchPreferences
+      sourceControlActionSelectedPreferences(
+        resolveSourceControlActionRecipe({
+          settings: permissionSettings,
+          repo: { sourceControlAi: promptOnly },
+          actionId: 'fixCommitFailure'
+        }),
+        'codex'
+      )
     ).toEqual({ agentId: 'codex', permissionMode: 'ask' })
   })
 

@@ -1,7 +1,9 @@
 import { composeAgentLaunchModel } from './agent-session-option-launch'
 import { analyzeAgentChoiceArgs } from './agent-choice-args'
-import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
-import { findCatalogModel } from './agent-session-option-catalog'
+import {
+  findCatalogModel,
+  getAgentSessionOptionLaunchCatalog
+} from './agent-session-option-catalog'
 import {
   normalizeAgentModelOptionChoices,
   type AgentChoicePatch,
@@ -23,6 +25,11 @@ export function reconcileAgentChoiceArgs(input: AgentChoiceArgsInput): {
   userArgs: string
   choices: AgentDedicatedChoices
 } {
+  const { userArgs, choices } = reconcileAgentChoiceArgsDetailed(input)
+  return { userArgs, choices }
+}
+
+export function reconcileAgentChoiceArgsDetailed(input: AgentChoiceArgsInput) {
   const { agent, userArgs, keys, mode, patch } = input
   const analysis = analyzeAgentChoiceArgs(agent, userArgs)
   const catalog = getAgentSessionOptionLaunchCatalog(agent)
@@ -142,5 +149,5 @@ export function reconcileAgentChoiceArgs(input: AgentChoiceArgsInput): {
     ...normalizeAgentModelOptionChoices(choices),
     ...(choices.permissionMode ? { permissionMode: choices.permissionMode } : {})
   }
-  return { userArgs: cut ?? userArgs, choices: normalized }
+  return { userArgs: cut ?? userArgs, choices: normalized, selected: cut === null ? [] : selected }
 }

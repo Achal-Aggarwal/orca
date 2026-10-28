@@ -90,9 +90,13 @@ export function AgentDefaultArgsInput({
   choiceChips,
   note,
   disabled = false,
-  onDraftChange
+  onDraftChange,
+  placeholder,
+  onResetArgs
 }: {
   defaultArgs: string
+  placeholder?: string
+  onResetArgs?: () => void | Promise<void>
   argsOverride: string
   onSaveArgs: (value: string) => void | Promise<void>
   choiceChips?: readonly AgentArgsChoice[]
@@ -218,7 +222,8 @@ export function AgentDefaultArgsInput({
             placeholder={
               choiceChips?.length
                 ? undefined
-                : defaultArgs ||
+                : placeholder ||
+                  defaultArgs ||
                   translate(
                     'auto.components.settings.AgentsPane.6f99bf5dd0',
                     'No default arguments'
@@ -228,7 +233,9 @@ export function AgentDefaultArgsInput({
             className="block min-h-5 [field-sizing:content]"
           />
         </div>
-        {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (
+        {(argsOverride !== defaultArgs ||
+          argsDraft !== defaultArgs ||
+          Boolean(onResetArgs && choiceChips?.length)) && (
           <Button
             type="button"
             variant="ghost"
@@ -240,7 +247,7 @@ export function AgentDefaultArgsInput({
               }
               write(
                 defaultArgs,
-                () => onSaveArgs(defaultArgs),
+                () => (onResetArgs ? onResetArgs() : onSaveArgs(defaultArgs)),
                 () => setDraft((current) => (current === argsDraft ? null : current))
               )
             }}

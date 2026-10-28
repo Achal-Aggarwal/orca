@@ -1,3 +1,5 @@
+import * as startupShell from './tui-agent-startup-shell'
+import * as launchCompiler from './agent-session-option-launch'
 import * as reconciliation from './agent-choice-reconciliation'
 import { projectAgentLaunchProfile } from './agent-launch-profile'
 import { getDefaultSettings } from './constants'
@@ -765,5 +767,66 @@ it.each([false, true])('bounds actual startup/raw resume (%s)', (resume) => {
     expect(plan?.launchCommand).toBe(`claude ${resume ? "'--model' 'opus' '--resume' 's'" : raw}`)
     expect(work.visits).toBeLessThanOrEqual(40 * (2 * n + 1))
     expectSettingsWorkScale(`startup-${resume}`, n, [work.visits])
+  }
+})
+
+it('skips unused full-input projection work but keeps genuine replacement and shell validation', () => {
+  const tokenize = vi.spyOn(startupShell, 'tokenizeStartupCommand')
+  const remove = vi.spyOn(launchCompiler, 'removeOverriddenAgentSessionArgs')
+  const rows = []
+  try {
+    for (const n of [128, 1280]) {
+      const raw = `  ${'--verbose  '.repeat(n)} `
+      tokenize.mockClear()
+      remove.mockClear()
+      expect(
+        resolveTuiAgentLaunchArgs('claude', {
+          agentPermissionDefault: 'own',
+          agentDefaultArgs: { claude: raw }
+        })
+      ).toBe(raw)
+      for (const target of ['terminal', 'structured', 'legacy-permission'] as const) {
+        expect(
+          projectAgentLaunchProfile(
+            'claude',
+            { agentPermissionDefault: 'own' },
+            { target, userArgs: raw }
+          ).args
+        ).toBe(raw)
+      }
+      expect(tokenize).not.toHaveBeenCalled()
+      expect(remove).not.toHaveBeenCalled()
+      rows.push({ n, tokenizer: tokenize.mock.calls.length, remover: remove.mock.calls.length })
+    }
+    expect(
+      projectAgentLaunchProfile(
+        'claude',
+        { agentPermissionDefault: 'own' },
+        {
+          target: 'terminal',
+          userArgs: '--model haiku --verbose',
+          choices: { model: 'opus' }
+        }
+      ).args
+    ).toBe("--model opus '--verbose'")
+    expect(tokenize).toHaveBeenCalled()
+    expect(remove).toHaveBeenCalled()
+    const invalid = "--verbose '"
+    expect(
+      projectAgentLaunchProfile(
+        'claude',
+        {},
+        {
+          target: 'terminal',
+          userArgs: invalid,
+          shell: 'posix',
+          choices: { permissionMode: 'ask' }
+        }
+      ).args
+    ).toBe(invalid)
+    process.stdout.write(`${JSON.stringify({ metric: 'empty-projection', rows })}\n`)
+  } finally {
+    tokenize.mockRestore()
+    remove.mockRestore()
   }
 })

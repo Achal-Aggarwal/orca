@@ -1,8 +1,9 @@
+import { sourceControlActionSelectedPreferences } from '../../../../shared/source-control-action-launch-preferences'
 // @vitest-environment happy-dom
 import { useState } from 'react'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { resolveSourceControlActionRecipe } from '../../../../shared/source-control-ai-operation-policy'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as lifts from '../../../../shared/source-control-action-permission-lift'
 import * as shell from '../../../../shared/tui-agent-startup-shell'
@@ -25,6 +26,14 @@ import { useSourceControlActionRecipeDraftState } from './source-control-action-
 import { TooltipProvider } from '../ui/tooltip'
 
 const model = { agentId: 'claude', model: 'sonnet', options: { effort: 'high' } } as const
+const completeModel = {
+  agentId: 'claude',
+  modelSelection: {
+    base: 'default',
+    model: { agentId: 'claude', value: 'sonnet' },
+    options: { effort: { agentId: 'claude', value: 'high' } }
+  }
+} as const
 const initial = normalizeSourceControlAiSettings({
   ...getDefaultSourceControlAiSettings(),
   enabled: true,
@@ -59,18 +68,22 @@ function RepoHarness({
       <SourceControlActionArguments
         agent="claude"
         value={value?.agentArgs}
-        preferences={
+        preferences={sourceControlActionSelectedPreferences(
           resolveSourceControlActionRecipe({
             settings: { sourceControlAi: source },
             repo: { sourceControlAi: draft.displayRepoAi },
             actionId: 'fixChecks'
-          }).launchPreferences
-        }
+          }),
+          'claude'
+        )}
+        modelSelectionBase="inherit"
+        authoredAgent={value?.agentId}
         authoredPreferences={value?.launchPreferences ?? null}
+        argumentChoices={value?.argumentChoices}
         onArgsChange={(text, commit) => draft.updateActionAgentArgs('fixChecks', text, commit)}
-        onPreferencesChange={(preferences, userArgs) => {
+        onPreferencesChange={(preferences, userArgs, nodes) => {
           edit(preferences, userArgs)
-          draft.updateActionLaunchPreferences('fixChecks', preferences, userArgs)
+          draft.updateActionLaunchPreferences('fixChecks', preferences, userArgs, nodes)
         }}
       />
       <button onClick={() => void draft.saveActionRecipeText('fixChecks')}>Save</button>
@@ -98,11 +111,14 @@ function GlobalHarness({ saved }: { saved: { value: SourceControlAiSettings } })
       <SourceControlActionArguments
         agent="claude"
         value={value.agentArgs}
-        preferences={value.launchPreferences}
+        preferences={sourceControlActionSelectedPreferences(value, 'claude')}
+        authoredAgent={config.actions?.fixChecks?.agentId}
+        authoredPreferences={value.launchPreferences ?? null}
+        argumentChoices={value.argumentChoices}
         onArgsChange={(text, commit) => draft.onActionAgentArgsChange('fixChecks', text, commit)}
-        onPreferencesChange={(preferences, userArgs) => {
+        onPreferencesChange={(preferences, userArgs, nodes) => {
           edit(preferences, userArgs)
-          draft.onActionLaunchPreferencesChange('fixChecks', preferences, userArgs)
+          draft.onActionLaunchPreferencesChange('fixChecks', preferences, userArgs, nodes)
         }}
       />
       <button onClick={() => void draft.saveActionTemplateDraft('fixChecks')}>Save</button>
@@ -129,7 +145,17 @@ it.each(['global', 'repo'] as const)(
     fireEvent.change(input, { target: { value: '--model fable --verbose' } })
     await userEvent.click(screen.getByRole('combobox', { name: 'Sonnet' }))
     await userEvent.click(screen.getByRole('option', { name: 'Haiku', exact: true }))
-    expect(edit).toHaveBeenCalledExactlyOnceWith({ agentId: 'claude', model: 'haiku' }, '--verbose')
+    expect(edit).toHaveBeenCalledExactlyOnceWith(
+      {
+        agentId: 'claude',
+        modelSelection: {
+          base: 'default',
+          model: { agentId: 'claude', value: 'haiku' },
+          options: { effort: { agentId: 'claude', value: null } }
+        }
+      },
+      '--verbose'
+    )
     fireEvent.click(screen.getByText('Discard'))
     edit.mockClear()
     fireEvent.change(input, { target: { value: '--model fable --effort low --verbose' } })
@@ -137,7 +163,13 @@ it.each(['global', 'repo'] as const)(
     await userEvent.click(screen.getByRole('option', { name: 'Medium', exact: true }))
     expect(edit).toHaveBeenCalledTimes(1)
     expect(edit).toHaveBeenLastCalledWith(
-      { agentId: 'claude', model: 'fable', options: { effort: 'medium' } },
+      {
+        agentId: 'claude',
+        modelSelection: {
+          base: 'default',
+          options: { effort: { agentId: 'claude', value: 'medium' } }
+        }
+      },
       '--verbose'
     )
     expect(input).toHaveProperty('value', '--verbose')
@@ -147,17 +179,30 @@ it.each(['global', 'repo'] as const)(
     expect(saved()?.agentArgs).toBe('--verbose')
     expect(saved()?.launchPreferences).toEqual({
       agentId: 'claude',
-      model: 'fable',
-      options: { effort: 'medium' }
+      modelSelection: {
+        base: 'default',
+        options: { effort: { agentId: 'claude', value: 'medium' } }
+      }
     })
     rendered.unmount()
     render(view())
+    expect(saved()?.argumentChoices).toEqual({
+      syntaxAgent: 'claude',
+      nodes: [{ at: 0, text: '--model fable' }]
+    })
+    expect(sourceControlActionSelectedPreferences(saved() ?? {}, 'claude')?.model).toBe('fable')
     const reopened = screen.getByRole('textbox', { name: 'Arguments' })
     fireEvent.change(reopened, { target: { value: '--model fable --effort medium --verbose' } })
     edit.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Remove --model fable' }))
     expect(edit).toHaveBeenCalledExactlyOnceWith(
-      { agentId: 'claude', options: { effort: 'medium' } },
+      {
+        agentId: 'claude',
+        modelSelection: {
+          base: 'default',
+          model: { agentId: 'claude', value: null }
+        }
+      },
       '--verbose'
     )
     expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
@@ -175,11 +220,30 @@ it.each(['global', 'repo'] as const)(
     expect(document.activeElement).toBe(effort)
     expect(edit).not.toHaveBeenCalled()
     fireEvent.keyDown(effort, { key: 'Backspace' })
-    expect(edit).toHaveBeenCalledExactlyOnceWith({ agentId: 'claude', model: 'fable' }, undefined)
+    expect(edit).toHaveBeenCalledExactlyOnceWith(
+      {
+        agentId: 'claude',
+        modelSelection: {
+          base: 'default',
+          options: { effort: { agentId: 'claude', value: null } }
+        }
+      },
+      undefined
+    )
     expect(screen.getByRole('combobox', { name: 'Default' })).toBeDefined()
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(write).toHaveBeenCalledTimes(2))
-    expect(saved()?.launchPreferences).toEqual({ agentId: 'claude', model: 'fable' })
+    expect(saved()?.launchPreferences).toEqual({
+      agentId: 'claude',
+      modelSelection: {
+        base: 'default',
+        options: { effort: { agentId: 'claude', value: null } }
+      }
+    })
+    expect(saved()?.argumentChoices).toEqual({
+      syntaxAgent: 'claude',
+      nodes: [{ at: 0, text: '--model fable' }]
+    })
     expect(saved()?.agentArgs).toBe('--verbose')
   }
 )
@@ -231,7 +295,10 @@ it('repo: commits typed permission, drafts own removal and saves/discards args a
   fireEvent.change(input, { target: { value: '--dangerously-skip-permissions --verbose' } })
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(savedRecipe()?.launchPreferences?.permissionMode).toBe('full-access'))
-  expect(savedRecipe()?.launchPreferences).toEqual({ ...model, permissionMode: 'full-access' })
+  expect(savedRecipe()?.launchPreferences).toEqual({
+    ...completeModel,
+    permissionMode: 'full-access'
+  })
   expect(savedRecipe()?.agentArgs).toBe('--verbose')
   expect(write).toHaveBeenCalledTimes(1)
   rendered.unmount()
@@ -252,7 +319,7 @@ it('repo: commits typed permission, drafts own removal and saves/discards args a
   fireEvent.keyDown(document.activeElement ?? args, { key: 'Backspace' })
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(savedRecipe()?.launchPreferences?.permissionMode).toBe('own'))
-  expect(savedRecipe()?.launchPreferences).toEqual({ ...model, permissionMode: 'own' })
+  expect(savedRecipe()?.launchPreferences).toEqual({ ...completeModel, permissionMode: 'own' })
   expect(savedRecipe()?.agentArgs).toBe('--verbose')
   reopened.unmount()
   render(view())
@@ -292,7 +359,11 @@ it('disables the menu, input, reset and chip keyboard path while preserving geom
   await userEvent.click(screen.getByRole('button', { name: 'Claude permissions' }))
   expect(screen.getByRole('menuitemradio', { name: /Same as Claude ·/ })).toBeDefined()
   await userEvent.click(screen.getByRole('menuitemradio', { name: /Use Claude's own settings/ }))
-  expect(preferences).toHaveBeenLastCalledWith({ ...model, permissionMode: 'own' }, undefined)
+  expect(preferences).toHaveBeenLastCalledWith(
+    { ...completeModel, permissionMode: 'own' },
+    undefined,
+    null
+  )
 })
 
 it.each([undefined, null])('keeps untouched %s arguments unowned until the user edits', (value) => {
@@ -377,13 +448,170 @@ it('edits and saves a sparse repository model without authoring the inherited pe
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
   expect(saved.value.actionOverrides.fixChecks).toEqual({
-    agentId: 'claude',
     agentArgs: '--verbose',
-    commandInputTemplate: '{basePrompt}',
-    launchPreferences: { agentId: 'claude', model: 'haiku' }
+    launchPreferences: {
+      agentId: 'claude',
+      modelSelection: { base: 'default', model: { agentId: 'claude', value: 'haiku' } }
+    }
   })
   rendered.unmount()
   render(view())
   expect(screen.getByRole('combobox', { name: 'Haiku' })).toBeDefined()
   expect(screen.queryByRole('button', { name: /Remove --permission-mode/ })).toBeNull()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Arguments' }), {
+    target: { value: '--model fable --verbose' }
+  })
+  await userEvent.click(screen.getByRole('button', { name: 'Claude permissions' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: /^Full access/ }))
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(2))
+  expect(saved.value.actionOverrides.fixChecks).toEqual({
+    agentArgs: '--model fable --verbose',
+    launchPreferences: {
+      agentId: 'claude',
+      permissionMode: 'full-access',
+      modelSelection: { base: 'default' }
+    }
+  })
+})
+
+it.each(['global', 'repo'] as const)(
+  '%s live residual edits preserve nodes, permission changes and permanent reset',
+  async (scope) => {
+    write.mockClear()
+    const recipe = liftActionPermissionArgs({
+      agentId: 'claude' as const,
+      agentArgs: '--model opus --effort high --append-system-prompt keep'
+    })
+    const global = { value: { ...initial, actions: { fixChecks: recipe } } }
+    const repo = { value: { actionOverrides: { fixChecks: recipe } } }
+    const saved = () =>
+      scope === 'global' ? global.value.actions.fixChecks : repo.value.actionOverrides.fixChecks
+    render(scope === 'global' ? <GlobalHarness saved={global} /> : <RepoHarness saved={repo} />)
+    const input = screen.getByRole('textbox', { name: 'Arguments' })
+    fireEvent.change(input, { target: { value: '--append-system-prompt changed' } })
+    fireEvent.blur(input)
+    expect(screen.getByRole('combobox', { name: 'Opus' })).toBeDefined()
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+    expect(saved().argumentChoices?.nodes.map((node) => node.text)).toEqual([
+      '--model opus',
+      '--effort high'
+    ])
+    fireEvent.change(input, { target: { value: '--effort low --append-system-prompt changed' } })
+    fireEvent.blur(input)
+    expect(screen.getByRole('combobox', { name: 'Low' })).toBeDefined()
+    fireEvent.click(screen.getByText('Discard'))
+    expect(screen.getByRole('combobox', { name: 'High' })).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2))
+    expect(saved().agentArgs).toBe('')
+    expect(saved().argumentChoices).toBeUndefined()
+  }
+)
+
+it('keeps the global document retryable and preserves a newer document across a pending Save', async () => {
+  const recipe = liftActionPermissionArgs({
+    agentId: 'claude' as const,
+    agentArgs: '--model opus --effort high'
+  })
+  const config = { ...initial, actions: { fixChecks: recipe } }
+  const writeConfig = vi.fn().mockRejectedValueOnce(new Error('disk refused'))
+  const { result } = renderHook(() =>
+    useSourceControlActionRecipeDraftState({ config, writeConfig })
+  )
+  act(() => result.current.onActionTemplateChange('fixChecks', 'mine'))
+  await act(async () => {
+    await expect(result.current.saveActionTemplateDraft('fixChecks')).rejects.toThrow(
+      'disk refused'
+    )
+  })
+  expect(result.current.actionRecipeDraftState.values.fixChecks.argumentChoices).toEqual(
+    recipe.argumentChoices
+  )
+  let finish = () => {}
+  writeConfig.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  let save: Promise<void> = Promise.resolve()
+  act(() => {
+    save = result.current.saveActionTemplateDraft('fixChecks')
+  })
+  act(() => result.current.onActionAgentArgsChange('fixChecks', '--effort low', true))
+  await act(async () => {
+    finish()
+    await save
+  })
+  expect(
+    result.current.actionRecipeDraftState.values.fixChecks.argumentChoices?.nodes.map(
+      (node) => node.text
+    )
+  ).toEqual(['--model opus', '--effort low'])
+  expect(result.current.actionRecipeDraftState.baseValues.fixChecks.argumentChoices).toEqual(
+    recipe.argumentChoices
+  )
+  writeConfig.mockResolvedValue(undefined)
+  await act(async () => result.current.saveActionTemplateDraft('fixChecks'))
+  expect(result.current.actionRecipeDraftState.values.fixChecks).toEqual(
+    result.current.actionRecipeDraftState.baseValues.fixChecks
+  )
+})
+
+it('removes inherited keys without pinning untouched choices across Save, reopen and later global edits', async () => {
+  write.mockClear()
+  const saved: { value: RepoSourceControlAiOverrides } = {
+    value: { actionOverrides: { fixChecks: { commandInputTemplate: 'mine' } } }
+  }
+  const view = render(<RepoHarness saved={saved} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Remove --model sonnet' }))
+  expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+  expect(screen.getByRole('button', { name: 'Remove --effort high' })).toBeDefined()
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+  expect(saved.value.actionOverrides?.fixChecks).toEqual({
+    commandInputTemplate: 'mine',
+    launchPreferences: {
+      agentId: 'claude',
+      modelSelection: {
+        base: 'inherit',
+        model: { agentId: 'claude', value: null }
+      }
+    }
+  })
+  view.unmount()
+  const reopened = render(<RepoHarness saved={saved} />)
+  expect(screen.getByRole('combobox', { name: 'Agent default' })).toBeDefined()
+  const source = normalizeSourceControlAiSettings({
+    ...initial,
+    actions: {
+      fixChecks: {
+        agentId: 'claude',
+        agentArgs: '',
+        launchPreferences: {
+          agentId: 'claude',
+          model: 'opus',
+          options: { effort: 'medium' }
+        }
+      }
+    }
+  })
+  reopened.rerender(<RepoHarness saved={saved} source={source} />)
+  expect(screen.getByRole('button', { name: 'Remove --effort medium' })).toBeDefined()
+  fireEvent.click(screen.getByRole('button', { name: 'Remove --effort medium' }))
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(2))
+  expect(saved.value.actionOverrides?.fixChecks?.launchPreferences?.modelSelection).toEqual({
+    base: 'inherit',
+    model: { agentId: 'claude', value: null },
+    options: { effort: { agentId: 'claude', value: null } }
+  })
+  reopened.rerender(<RepoHarness saved={saved} />)
+  expect(screen.queryByRole('button', { name: /Remove --(model|effort)/ })).toBeNull()
+  fireEvent.click(screen.getByText('Save'))
+  expect(write).toHaveBeenCalledTimes(2)
 })

@@ -1,3 +1,8 @@
+import {
+  independentActionEffortPlan,
+  consumePreparedBackgroundCommand
+} from '../runtime/prepared-action-launch.test-fixture'
+import { createRuntimeAgentBackgroundTerminal } from './runtime-agent-background-create'
 import { createCompatibleRuntimeStatusResponseIfNeeded } from '@/runtime/runtime-compatibility-test-fixture'
 import { AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -96,6 +101,72 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       write: mockWrite
     })
   })
+
+  it.each(['claude', 'codex'] as const)(
+    'delivers independent %s effort through the real prepared background callback',
+    async (agent) => {
+      useRemoteAgentBackgroundRuntime(state)
+      const plan = independentActionEffortPlan(agent)
+      const spawn = vi.fn(async () => ({
+        handle: 'prepared-background',
+        savedStartupCwd: 'private'
+      }))
+      mockRuntimeEnvironmentCall.mockImplementation(async (request) => {
+        if (request.method !== 'terminal.create') {
+          throw new Error(`Unexpected create route ${request.method}`)
+        }
+        return { ok: true, result: await consumePreparedBackgroundCommand(request.params, spawn) }
+      })
+      await expect(
+        createRuntimeAgentBackgroundTerminal({
+          environmentId: 'env-1',
+          worktreeId: 'wt-1',
+          tabId: 'reserved-tab',
+          leafId: 'reserved-leaf',
+          agent,
+          prompt: 'Fix checks',
+          sessionOptions: plan.sessionOptions,
+          legacy: {
+            command: plan.launchCommand,
+            env: plan.env ?? {},
+            launchConfig: plan.launchConfig,
+            startupCommandDelivery: plan.startupCommandDelivery,
+            launchToken: 'reserved-token'
+          }
+        })
+      ).resolves.toEqual({ terminal: { handle: 'prepared-background' } })
+      expect(spawn).toHaveBeenCalledExactlyOnceWith('id:wt-1', {
+        command: plan.launchCommand,
+        env: { ACTION_PROFILE: 'captured' },
+        envToDelete: undefined,
+        launchConfig: plan.launchConfig,
+        launchAgent: agent,
+        startupCommandDelivery: agent === 'codex' ? 'shell-ready' : undefined,
+        terminalImageViewerSupported: false,
+        terminalKittyKeyboardProtocol: true,
+        title: undefined,
+        focus: false,
+        activate: false,
+        presentation: 'background',
+        tabId: 'reserved-tab',
+        leafId: 'reserved-leaf',
+        launchToken: 'reserved-token',
+        preAllocatedHandle: 'reserved-handle'
+      })
+      expect(mockSpawn).not.toHaveBeenCalled()
+      expect(mockRuntimeEnvironmentCall).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: 'terminal.create',
+          params: expect.objectContaining({
+            tabId: 'reserved-tab',
+            leafId: 'reserved-leaf',
+            launchToken: 'reserved-token',
+            presentation: 'background'
+          })
+        })
+      )
+    }
+  )
 
   it('closes a runtime terminal when its worktree disappears before creation resolves', async () => {
     useRemoteAgentBackgroundRuntime(state)
@@ -419,6 +490,17 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
       })
     ).rejects.toThrow('subscription failed')
 
+    expect(
+      mockRuntimeEnvironmentCall.mock.calls.filter(
+        ([request]) => request.method === 'terminal.createAgentSession'
+      )
+    ).toHaveLength(1)
+    expect(
+      mockRuntimeEnvironmentCall.mock.calls.filter(
+        ([request]) => request.method === 'terminal.create'
+      )
+    ).toHaveLength(0)
+    expect(mockSpawn).not.toHaveBeenCalled()
     expect(mockRuntimeEnvironmentCall).toHaveBeenCalledWith({
       selector: 'env-1',
       method: 'terminal.close',

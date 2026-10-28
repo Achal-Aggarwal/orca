@@ -1,4 +1,13 @@
+import {
+  lowerActionArgumentChoices,
+  demoteActionArgumentChoices
+} from '../../../../shared/source-control-action-argument-choices'
+import {
+  sourceControlActionSelectedPreferences,
+  sourceControlActionExecutionArgs
+} from '../../../../shared/source-control-action-launch-preferences'
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import { readActionModelSelection } from '../../../../shared/source-control-action-model-selection'
 import {
   DEFAULT_SOURCE_CONTROL_ACTION_COMMAND_TEMPLATES,
   resolveSourceControlActionCommandTemplate,
@@ -29,7 +38,7 @@ export function readInheritedAgentArgs(
   source: SourceControlAiSettings,
   actionId: SourceControlActionId
 ): string {
-  return source.actions?.[actionId]?.agentArgs?.trim() ?? ''
+  return lowerActionArgumentChoices(source.actions?.[actionId] ?? {}) ?? ''
 }
 
 export function actionAgentSelectValue(
@@ -57,6 +66,9 @@ export function completeRepoActionRecipe(
 ): NonNullable<
   NonNullable<RepoSourceControlAiOverrides['actionOverrides']>[SourceControlActionId]
 > {
+  if (recipe.argumentChoices && recipe.argumentChoices.syntaxAgent !== recipe.agentId) {
+    recipe = demoteActionArgumentChoices(recipe)
+  }
   const commandInputTemplate =
     typeof recipe.commandInputTemplate === 'string'
       ? recipe.commandInputTemplate
@@ -65,6 +77,7 @@ export function completeRepoActionRecipe(
     agentId: recipe.agentId ?? null,
     commandInputTemplate,
     ...(typeof recipe.agentArgs === 'string' ? { agentArgs: recipe.agentArgs } : {}),
+    ...(recipe.argumentChoices ? { argumentChoices: recipe.argumentChoices } : {}),
     ...(recipe.launchPreferences ? { launchPreferences: recipe.launchPreferences } : {}),
     ...(recipe.surface ? { surface: recipe.surface } : {})
   }
@@ -92,17 +105,22 @@ export function agentArgsStateLabel(args: {
   agent: TuiAgent | null
   override: SourceControlActionRecipe | undefined
 }): string {
-  const choices = args.recipe.launchPreferences
+  const choices = args.agent
+    ? sourceControlActionSelectedPreferences(args.recipe, args.agent)
+    : undefined
   const hasChoices =
     choices?.agentId === args.agent &&
     Boolean(choices?.model || Object.keys(choices?.options ?? {}).length)
-  if (!args.recipe.agentArgs?.trim() && !hasChoices) {
+  if (
+    !(
+      args.agent ? sourceControlActionExecutionArgs(args.recipe, args.agent) : args.recipe.agentArgs
+    )?.trim() &&
+    !hasChoices
+  ) {
     return 'No args'
   }
   const ownChoices = args.override?.launchPreferences
-  const ownsChoices =
-    ownChoices?.agentId === args.agent &&
-    Boolean(ownChoices?.model || Object.keys(ownChoices?.options ?? {}).length)
+  const ownsChoices = Boolean(readActionModelSelection(ownChoices))
   return args.override?.agentArgs !== undefined || ownsChoices
     ? 'Repository custom args'
     : 'Global custom args'

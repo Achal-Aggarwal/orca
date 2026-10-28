@@ -93,7 +93,18 @@ describe('source-control AI recipe saves', () => {
       update: {
         sourceControlAi: {
           actionOverrides: {
-            fixChecks: { agentId: 'codex', commandInputTemplate: '{basePrompt}', launchPreferences }
+            fixChecks: {
+              agentId: 'codex',
+              commandInputTemplate: '{basePrompt}',
+              launchPreferences: {
+                agentId: 'codex',
+                modelSelection: {
+                  base: 'default',
+                  model: { agentId: 'codex', value: 'gpt-5.6-terra' },
+                  options: { effort: { agentId: 'codex', value: 'high' } }
+                }
+              }
+            }
           }
         }
       }

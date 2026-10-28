@@ -133,15 +133,20 @@ describe('load-time normalization durability', () => {
         }
       ]
       writeDataFile(settled)
-      const expected = { agentId: agent, model, options: { effort: 'high' } }
+      const expected = {
+        agentId: agent,
+        modelSelection: { base: 'default', options: { effort: { agentId: agent, value: 'high' } } }
+      }
       const assertChoices = (store: ReturnType<typeof createStore>) => {
         expect(store.getSettings().sourceControlAi?.actions?.fixChecks).toMatchObject({
           agentArgs: rawEffort,
-          launchPreferences: expected
+          launchPreferences: expected,
+          argumentChoices: { syntaxAgent: agent, nodes: [{ at: 0, text: rawModel }] }
         })
         expect(store.getRepos()[0]?.sourceControlAi?.actionOverrides?.fixChecks).toMatchObject({
           agentArgs: '',
-          launchPreferences: expected
+          launchPreferences: expected,
+          argumentChoices: { syntaxAgent: agent, nodes: [{ at: 0, text: rawModel }] }
         })
       }
       const store = createStore()
@@ -182,7 +187,15 @@ describe('load-time normalization durability', () => {
               '--model retired-unlisted-id --effort high --dangerously-skip-permissions --verbose'
           },
           resolveComments: { agentId: 'codex', agentArgs: literal },
-          resolveConflicts: { agentId: 'claude', agentArgs: '--effort high' },
+          resolveConflicts: {
+            agentId: 'claude',
+            agentArgs: '--effort high',
+            launchPreferences: {
+              agentId: 'codex',
+              permissionMode: 'ask',
+              modelSelection: { base: 'inherit', model: { agentId: 'claude', value: null } }
+            }
+          },
           fixPushFailure: { agentArgs: ' --dangerously-skip-permissions ' },
           fixCommitFailure: conflict,
           commitMessage: { agentId: 'claude', agentArgs: '--dangerously-skip-permissions' }
@@ -209,7 +222,7 @@ describe('load-time normalization durability', () => {
           }
         }
       }))
-      const lift = vi.spyOn(reconciliation, 'reconcileAgentChoiceArgs')
+      const lift = vi.spyOn(reconciliation, 'reconcileAgentChoiceArgsDetailed')
       const cut = vi.spyOn(choiceArgs, 'analyzeAgentChoiceArgs')
       const tokenize = vi.spyOn(shell, 'tokenizeStartupCommand')
       const prepare = terminalPreparation.prepareLoadedTerminalSettings
@@ -223,7 +236,8 @@ describe('load-time normalization durability', () => {
       )
       writeDataFile(settled)
       const store = createStore()
-      expect(lift).toHaveBeenCalledTimes(n + 4)
+      // Four global raw recipes plus validation of their six newly canonical terms.
+      expect(lift).toHaveBeenCalledTimes(n + 10)
       const work = [
         cut.mock.calls.length,
         tokenize.mock.calls.length,
@@ -252,13 +266,28 @@ describe('load-time normalization durability', () => {
 
       expect(store.getSettings().sourceControlAi?.actions?.fixChecks).toMatchObject({
         agentArgs: '--verbose',
+        argumentChoices: {
+          syntaxAgent: 'claude',
+          nodes: [
+            { at: 0, text: '--model retired-unlisted-id' },
+            { at: 0, text: '--effort high' }
+          ]
+        },
         launchPreferences: {
           agentId: 'claude',
-          model: 'retired-unlisted-id',
-          options: { effort: 'high' },
           permissionMode: 'full-access'
         }
       })
+      if (n === 32) {
+        const failure = vi
+          .spyOn(domainWrites, 'writeProfileStateDomains')
+          .mockImplementationOnce(() => {
+            throw new Error('disk refused')
+          })
+        expect(() => store.flushOrThrow()).toThrow('disk refused')
+        expect(readDataFile()).toEqual(settled)
+        failure.mockRestore()
+      }
       store.flush()
       await closeTestStores()
       marks.mockClear()
@@ -267,10 +296,27 @@ describe('load-time normalization durability', () => {
       for (const row of reopened.getRepos()) {
         expect(row.sourceControlAi?.actionOverrides?.fixChecks).toMatchObject({
           agentArgs: '',
+          argumentChoices: {
+            syntaxAgent: row.sourceControlAi?.actionOverrides?.fixChecks?.agentId,
+            nodes: [
+              {
+                at: 0,
+                text:
+                  row.sourceControlAi?.actionOverrides?.fixChecks?.agentId === 'claude'
+                    ? '--model retired-unlisted-id'
+                    : '-c model=retired-unlisted-id'
+              },
+              {
+                at: 0,
+                text:
+                  row.sourceControlAi?.actionOverrides?.fixChecks?.agentId === 'claude'
+                    ? '--effort high'
+                    : '-c model_reasoning_effort=high'
+              }
+            ]
+          },
           launchPreferences: {
             agentId: row.sourceControlAi?.actionOverrides?.fixChecks?.agentId,
-            model: 'retired-unlisted-id',
-            options: { effort: 'high' },
             permissionMode: 'full-access'
           }
         })
@@ -318,7 +364,15 @@ describe('load-time normalization durability', () => {
       expect(actions?.fixChecks?.launchPreferences?.permissionMode).toBe('full-access')
       expect(actions?.resolveConflicts).toMatchObject({
         agentArgs: '',
-        launchPreferences: { agentId: 'claude', options: { effort: 'high' } }
+        launchPreferences: {
+          agentId: 'codex',
+          permissionMode: 'ask',
+          modelSelection: {
+            base: 'inherit',
+            model: { agentId: 'claude', value: null }
+          }
+        },
+        argumentChoices: { syntaxAgent: 'claude', nodes: [{ at: 0, text: '--effort high' }] }
       })
       expect(actions?.resolveComments?.agentArgs).toBe(literal)
       expect(actions?.fixPushFailure?.agentArgs).toBe(' --dangerously-skip-permissions ')
@@ -345,6 +399,90 @@ describe('load-time normalization durability', () => {
       write.mockClear()
       reopened.flush()
       expect(write).not.toHaveBeenCalled()
+    }
+  )
+
+  it('durably demotes a well-shaped current term whose effort is no longer supported', async () => {
+    const settled = await settledProfile()
+    await closeTestStores()
+    settled.settings.sourceControlAi!.actions!.fixChecks = {
+      agentId: 'codex',
+      agentArgs: '--search',
+      argumentChoices: {
+        syntaxAgent: 'codex',
+        nodes: [{ at: 0, text: '-c model_reasoning_effort=retired' }]
+      }
+    }
+    settled.repos = [
+      {
+        id: 'retired-effort',
+        displayName: 'recipe',
+        badgeColor: '',
+        addedAt: 0,
+        path: '/tmp/recipe',
+        sourceControlAi: {
+          actionOverrides: { fixChecks: settled.settings.sourceControlAi!.actions!.fixChecks }
+        }
+      }
+    ]
+    const mark = vi.fn()
+    terminalPreparation.prepareLoadedTerminalSettings(settled, mark)
+    expect(mark).toHaveBeenCalled()
+    writeDataFile(settled)
+    const persisted = await reloadAndSettleWrites()
+    expect(persisted.settings.sourceControlAi?.actions?.fixChecks).toMatchObject({
+      agentArgs: ' -c model_reasoning_effort=retired --search'
+    })
+    expect(persisted.settings.sourceControlAi?.actions?.fixChecks?.argumentChoices).toBeUndefined()
+    expect(persisted.repos[0].sourceControlAi?.actionOverrides?.fixChecks).toEqual(
+      persisted.settings.sourceControlAi?.actions?.fixChecks
+    )
+    await closeTestStores()
+    expect(createStore().getSettings().sourceControlAi?.actions?.fixChecks).toEqual(
+      persisted.settings.sourceControlAi?.actions?.fixChecks
+    )
+  })
+
+  it.each(['document', 'selection'] as const)(
+    'rejects malformed %s writes and preserves stored data at the load error owner',
+    async (kind) => {
+      const settled = await settledProfile()
+      const invalid =
+        kind === 'document'
+          ? {
+              agentId: 'claude' as const,
+              agentArgs: '',
+              argumentChoices: {
+                syntaxAgent: 'claude' as const,
+                nodes: [{ at: 99, text: '--model opus' }]
+              }
+            }
+          : {
+              agentId: 'claude' as const,
+              launchPreferences: {
+                agentId: 'claude' as const,
+                modelSelection: {
+                  base: 'inherit' as const,
+                  model: { agentId: 'claude' as const, value: 'x'.repeat(513) }
+                }
+              }
+            }
+      const store = createStore()
+      const source = store.getSettings().sourceControlAi!
+      expect(() =>
+        store.updateSettings({ sourceControlAi: { ...source, actions: { fixChecks: invalid } } })
+      ).toThrow(
+        kind === 'document'
+          ? 'Invalid action argument choice position'
+          : 'Invalid action model choice'
+      )
+      expect(store.getSettings().sourceControlAi).toEqual(source)
+      await closeTestStores()
+      settled.settings.sourceControlAi = { ...source, actions: { fixChecks: invalid } }
+      writeDataFile(settled)
+      const raw = readDataFile()
+      expect(() => createStore()).toThrow('Failed to load imported profile state')
+      expect(readDataFile()).toEqual(raw)
     }
   )
 
