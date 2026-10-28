@@ -67,7 +67,9 @@ Then tell the user what you started and **end your turn**, unless you need to
 wait inside this turn (below).
 
 - Do not poll: no sleep loops, watch scripts, scheduled wakeups, or repeated
-  `check --peek` or `worker-list` calls.
+  `check --peek` or `worker-list` calls. A script that runs `check` takes your
+  mail, so Orca has nothing to wake you with, and Orca never wakes you while a
+  `check --wait` is open.
 - To steer a running worker, use
   `ORCA orchestration send --to dispatch:<dispatch_id>`; never type into its
   terminal.
