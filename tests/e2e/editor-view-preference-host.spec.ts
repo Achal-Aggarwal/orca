@@ -59,19 +59,17 @@ test('keeps PDF zoom independent when the same folder/path is reopened on anothe
           throw new Error('Missing fixture store')
         }
         store.getState().setActiveFolderWorkspace(id, host)
-        const fileId = store
-          .getState()
-          .openFile(
-            {
-              worktreeId: `folder:${id}`,
-              filePath,
-              relativePath: 'report.pdf',
-              language: 'plaintext',
-              mode: 'edit',
-              runtimeEnvironmentId: null
-            },
-            { preview: false }
-          )
+        const fileId = store.getState().openFile(
+          {
+            worktreeId: `folder:${id}`,
+            filePath,
+            relativePath: 'report.pdf',
+            language: 'plaintext',
+            mode: 'edit',
+            runtimeEnvironmentId: null
+          },
+          { preview: false }
+        )
         const file = store.getState().openFiles.find((file) => file.id === fileId)
         return { id: fileId, host: file?.operationProvenance?.generation.route.executionHostId }
       },
