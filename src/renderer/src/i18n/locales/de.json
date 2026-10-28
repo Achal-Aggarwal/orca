@@ -2158,8 +2158,6 @@
         "startNewWorkspace": "Neuen Arbeitsbereich starten"
       },
       "NewWorkspaceComposerCard": {
-        "reuseExistingBranch": "Branch wiederverwenden",
-        "reuseExistingBranchHint": "Den vorhandenen Branch auschecken, statt daraus einen neuen zu erstellen.",
         "createMultiple": "Weitere erstellen",
         "cbb47ee0dc": "Nur für lokale Git-Projekte verfügbar.",
         "d861de981b": "Partieller Checkout",
