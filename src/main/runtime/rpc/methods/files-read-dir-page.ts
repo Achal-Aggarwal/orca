@@ -11,6 +11,8 @@ export const DIR_LISTING_PAGE_CACHE_TTL_MS = 30_000
 const MAX_CACHED_LISTINGS = 8
 /** Past this, a folder's listing is held alone, evicting every other. */
 const MAX_CACHED_ENTRIES = 200_000
+/** Past this, a folder is never held: each page lists it again, deduped while in flight. */
+const MAX_HELD_LISTING_ENTRIES = 1_000_000
 
 type DirPageRequest = {
   worktree: string
@@ -20,13 +22,24 @@ type DirPageRequest = {
   limit?: number
 }
 
-type CachedListing = { worktree: string; entries: DirEntry[]; listedAt: number }
+type CachedListing = {
+  workspace: string
+  entries: DirEntry[]
+  listedAt: number
+  expiry?: ReturnType<typeof setTimeout>
+}
+
+/** `id:X` and `X` name one workspace; the desktop's watch and reads both send `id:`. */
+function workspaceKey(worktree: string): string {
+  const trimmed = worktree.trim()
+  return trimmed.startsWith('id:') ? trimmed.slice(3) : trimmed
+}
 
 /**
  * Host-wide, keyed per (connection, folder): 8 listings and 200k entries across all clients, so
- * later pages skip re-listing. Pages start after a
- * cursor, not at an offset: a listing that expired, was evicted or changed between pages never
- * skips or repeats an entry, so this cache only saves work.
+ * later pages skip re-listing. Pages start after a cursor, not at an offset: a listing that
+ * expired, was evicted or changed between pages never skips or repeats an entry, so this cache
+ * only saves work.
  */
 export class DirListingPageCache {
   private readonly listings = new Map<string, CachedListing>()
@@ -58,7 +71,7 @@ export class DirListingPageCache {
           ])
     const cached = key !== null && request.after ? this.take(key) : null
     const listing = cached ?? {
-      worktree: request.worktree,
+      workspace: workspaceKey(request.worktree),
       entries: await this.listOnce(key, list),
       listedAt: this.now()
     }
@@ -75,8 +88,9 @@ export class DirListingPageCache {
 
   /** The host's watcher saw a change in this workspace: drop its listings so none outlives it. */
   forgetWorkspace(worktree: string): void {
+    const workspace = workspaceKey(worktree)
     for (const [key, listing] of this.listings) {
-      if (listing.worktree === worktree) {
+      if (listing.workspace === workspace) {
         this.forget(key)
       }
     }
@@ -114,10 +128,14 @@ export class DirListingPageCache {
   private remember(key: string, listing: CachedListing, morePages: boolean): void {
     this.forget(key)
     this.sweepExpired()
-    if (!morePages) {
+    if (!morePages || listing.entries.length > MAX_HELD_LISTING_ENTRIES) {
       return
     }
-    this.listings.set(key, listing)
+    const remaining = DIR_LISTING_PAGE_CACHE_TTL_MS - (this.now() - listing.listedAt)
+    // Why a timer: with no further reads, nothing else would release the listing.
+    const expiry = setTimeout(() => this.forget(key), Math.max(0, remaining))
+    expiry.unref?.()
+    this.listings.set(key, { ...listing, expiry })
     this.cachedEntries += listing.entries.length
     // An oversized listing stays as the only one, so its pages and refresh cost one listing.
     for (const oldest of this.listings.keys()) {
@@ -134,6 +152,7 @@ export class DirListingPageCache {
   private forget(key: string): void {
     const listing = this.listings.get(key)
     if (listing) {
+      clearTimeout(listing.expiry)
       this.listings.delete(key)
       this.cachedEntries -= listing.entries.length
     }

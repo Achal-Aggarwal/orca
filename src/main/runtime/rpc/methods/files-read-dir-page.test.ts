@@ -176,6 +176,42 @@ describe('DirListingPageCache', () => {
     expect(small).toHaveBeenCalledTimes(2)
   })
 
+  it('never holds a folder over a million entries; its pages list again', async () => {
+    const cache = new DirListingPageCache(() => 0)
+    const huge = folder(1_000_001)
+    const list = vi.fn(async () => huge)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 5_000 }, list)
+    expect(cache.heldEntryCount).toBe(0)
+    await cache.readPage(
+      'socket-1',
+      { ...REQUEST, after: cursorOf(huge[4_999]), limit: 5_000 },
+      list
+    )
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases a listing once its time is up, with no further reads', async () => {
+    vi.useFakeTimers()
+    try {
+      const cache = new DirListingPageCache(() => Date.now())
+      await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, async () => folder(5))
+      expect(cache.heldEntryCount).toBe(5)
+      await vi.advanceTimersByTimeAsync(DIR_LISTING_PAGE_CACHE_TTL_MS - 1)
+      expect(cache.heldEntryCount).toBe(5)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(cache.heldEntryCount).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('matches a workspace however its id selector is spelled', async () => {
+    const cache = new DirListingPageCache(() => 0)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, async () => folder(5))
+    cache.forgetWorkspace('wt-1')
+    expect(cache.heldEntryCount).toBe(0)
+  })
+
   it('shares one in-flight listing between concurrent reads of a folder', async () => {
     const cache = new DirListingPageCache(() => 0)
     let finish!: (entries: DirEntry[]) => void
@@ -270,12 +306,18 @@ describe('files.readDir pages', () => {
     })
   })
 
-  it('refuses a page larger than a host serves, and a cursor without its kind', async () => {
+  it('refuses a page larger than a host serves, and a cursor without its kind or too long', async () => {
     const { dispatcher } = dispatcherWithListing(folder(3))
     expect(await readDir(dispatcher, { ...REQUEST, limit: 5_001 })).toMatchObject({ ok: false })
     expect(await readDir(dispatcher, { ...REQUEST, after: { name: 'a' } })).toMatchObject({
       ok: false
     })
+    expect(
+      await readDir(dispatcher, {
+        ...REQUEST,
+        after: { name: 'a'.repeat(4097), isDirectory: false }
+      })
+    ).toMatchObject({ ok: false })
   })
 
   it("drops a cached listing when the host's watcher reports a change in that workspace", async () => {
