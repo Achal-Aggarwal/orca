@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/react'
 import type { DiffComment } from '../../../../shared/diff-comment-types'
 import { getRichMarkdownCommentAnchorTop } from './rich-markdown-review-annotations'
 import { getRichMarkdownCommentBlocks } from './rich-markdown-comment-blocks'
+import { getRichMarkdownLineBlockAtLine } from './rich-markdown-range-bounds'
 import {
   stackRichMarkdownReviewNotePositions,
   type RichMarkdownReviewNotePosition
@@ -25,9 +26,7 @@ export function measureRichMarkdownReviewNotePositions({
   const nextPositions = markdownComments
     .map((comment): RichMarkdownReviewNotePosition | null => {
       const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
-      const block = blocks.find(
-        (candidate) => candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
-      )
+      const block = getRichMarkdownLineBlockAtLine(blocks, bodyLineNumber)
       if (!block) {
         return null
       }

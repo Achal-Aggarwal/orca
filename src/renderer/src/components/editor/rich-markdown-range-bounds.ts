@@ -10,6 +10,24 @@ export type RichMarkdownLineRange = {
   startLine?: number
 }
 
+export function getRichMarkdownLineBlockAtLine<Block extends RichMarkdownLineBlock>(
+  blocks: readonly Block[],
+  lineNumber: number
+): Block | undefined {
+  let low = 0
+  let high = blocks.length - 1
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    if (blocks[middle]!.startLine <= lineNumber) {
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  const block = blocks[high]
+  return block && lineNumber <= block.endLine ? block : undefined
+}
+
 export function getRichMarkdownLineRangeFromBlocks(
   blocks: readonly RichMarkdownLineBlock[]
 ): RichMarkdownLineRange | null {

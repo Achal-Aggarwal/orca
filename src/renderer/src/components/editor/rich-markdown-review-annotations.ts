@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import type { DiffComment } from '../../../../shared/diff-comment-types'
 import type { RichMarkdownAnnotationHighlightRange } from './rich-markdown-annotation-highlight'
 import {
+  getRichMarkdownLineBlockAtLine,
   getRichMarkdownLineRangeFromBlocks,
   getRichMarkdownRangeStart
 } from './rich-markdown-range-bounds'
@@ -83,33 +84,68 @@ export function getRichMarkdownAnnotationHighlightRanges(
   )
 }
 
+type CachedCommentRanges = {
+  lineNumber: number
+  selectedText: string
+  markdownSourceLineOffset: number
+  ranges: RichMarkdownAnnotationHighlightRange[]
+}
+
+type CommentRangesSnapshot = {
+  doc: Editor['state']['doc']
+  blocks: readonly RichMarkdownCommentBlock[]
+  comments: WeakMap<DiffComment, CachedCommentRanges>
+}
+
+const commentRangesByEditor = new WeakMap<Editor, CommentRangesSnapshot>()
+
 export function getRichMarkdownAnnotationHighlightRangesForComment(
   editor: Editor,
   comment: DiffComment,
   markdownSourceLineOffset: number,
   prebuiltBlocks?: readonly RichMarkdownCommentBlock[]
 ): RichMarkdownAnnotationHighlightRange[] {
-  const blocks = prebuiltBlocks ?? getRichMarkdownCommentBlocks(editor)
   const selectedText = comment.selectedText?.trim()
   if (!selectedText) {
+    commentRangesByEditor.get(editor)?.comments.delete(comment)
     return []
   }
-  const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
-  const block = blocks.find(
-    (candidate) => candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
-  )
-  if (block) {
-    const blockRanges = findRichMarkdownSelectedTextRanges({
-      editor,
-      selectedText,
-      from: block.from,
-      to: block.to
-    })
-    if (blockRanges.length > 0) {
-      return blockRanges
-    }
+  const doc = editor.state.doc
+  const blocks = prebuiltBlocks ?? getRichMarkdownCommentBlocks(editor)
+  let snapshot = commentRangesByEditor.get(editor)
+  if (snapshot?.doc !== doc || snapshot.blocks !== blocks) {
+    snapshot = { doc, blocks, comments: new WeakMap() }
+    commentRangesByEditor.set(editor, snapshot)
   }
-  return findRichMarkdownSelectedTextRanges({ editor, selectedText })
+  const cached = snapshot.comments.get(comment)
+  if (
+    cached?.lineNumber === comment.lineNumber &&
+    cached.selectedText === selectedText &&
+    cached.markdownSourceLineOffset === markdownSourceLineOffset
+  ) {
+    return cached.ranges
+  }
+
+  const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
+  const block = getRichMarkdownLineBlockAtLine(blocks, bodyLineNumber)
+  let ranges = block
+    ? findRichMarkdownSelectedTextRanges({
+        editor,
+        selectedText,
+        from: block.from,
+        to: block.to
+      })
+    : []
+  if (ranges.length === 0) {
+    ranges = findRichMarkdownSelectedTextRanges({ editor, selectedText })
+  }
+  snapshot.comments.set(comment, {
+    lineNumber: comment.lineNumber,
+    selectedText,
+    markdownSourceLineOffset,
+    ranges
+  })
+  return ranges
 }
 
 export function getRichMarkdownCommentAtPos(
