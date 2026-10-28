@@ -9,7 +9,8 @@ import type * as MarkdownBlocksModule from './markdown-top-level-blocks'
 import CommentMarkdown from './CommentMarkdown'
 import {
   advanceNativeChatText,
-  receiveNativeChatText
+  receiveNativeChatText,
+  type NativeChatTextReveal
 } from '../../../../shared/native-chat/transcript/native-chat-text-reveal'
 
 const meter = vi.hoisted((): { legacy: boolean; sources: string[] } => ({
@@ -77,7 +78,7 @@ afterEach(() => {
 
 // The production reveal cadence supplies exactly the same prefixes to both renderers.
 function sequence(full: string, start: number): string[] {
-  let state = { source: full.slice(0, start), shown: start, arrivals: [] }
+  let state: NativeChatTextReveal = { source: full.slice(0, start), shown: start, arrivals: [] }
   let nextArrival = 0
   const result = [state.source]
   for (let frame = 0; frame <= 84; frame++) {
