@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { DiffSection } from '../../diff-section-types'
 import {
   claimCombinedDiffView,
@@ -41,6 +41,34 @@ function rememberView(index: number, section: Partial<DiffSection> = {}) {
 }
 
 afterEach(clearCombinedDiffViewMemory)
+
+it.each([21, 210])('does not rescan %i draft owners for scroll-only writes', (count) => {
+  for (let index = 0; index < count; index++) {
+    releaseCombinedDiffView(rememberView(index, { dirty: true }))
+  }
+  const lease = claimCombinedDiffView('view-0', 'workspace')
+  const original = Map.prototype[Symbol.iterator]
+  let entriesVisited = 0
+  const scan = vi.spyOn(Map.prototype, Symbol.iterator).mockImplementation(function (
+    this: Map<unknown, unknown>
+  ) {
+    const iterator = original.call(this)
+    const next = iterator.next.bind(iterator)
+    iterator.next = () => {
+      entriesVisited += 1
+      return next()
+    }
+    return iterator
+  })
+  try {
+    rememberCombinedDiffView(lease, { scrollTop: 300 })
+    rememberCombinedDiffView(lease, { scrollAnchor: { key: 'file.ts', offset: 8 } })
+  } finally {
+    scan.mockRestore()
+  }
+  expect(entriesVisited).toBe(0)
+  expect(readCombinedDiffViewMemory('view-0')?.scrollTop).toBe(300)
+})
 
 it.each([{ dirty: true }, { saveConflict: true as const }])(
   'retains every inactive draft owner beyond twenty views: %j',
@@ -104,4 +132,10 @@ it('keeps only twenty reloadable clean views in LRU order', () => {
   expect(readCombinedDiffViewMemory('view-1')).toBeUndefined()
   expect(readCombinedDiffViewMemory('view-2')).toBeDefined()
   expect(readCombinedDiffViewMemory('view-21')).toBeDefined()
+  const recent = claimCombinedDiffView('view-2', 'workspace')
+  rememberCombinedDiffView(recent, { scrollTop: 100 })
+  releaseCombinedDiffView(recent)
+  releaseCombinedDiffView(rememberView(22))
+  expect(readCombinedDiffViewMemory('view-2')?.scrollTop).toBe(100)
+  expect(readCombinedDiffViewMemory('view-3')).toBeUndefined()
 })

@@ -160,14 +160,20 @@ export function rememberCombinedDiffView(
   }
   const memory = memoryByViewKey.get(lease.viewKey)
   const owned = memory?.worktreeId === lease.worktreeId ? memory : { worktreeId: lease.worktreeId }
+  const nextMemory = {
+    ...owned,
+    ...patch,
+    ...(lease.succession ? { succession: lease.succession } : {})
+  }
+  if (memory?.worktreeId === lease.worktreeId && memory.view === nextMemory.view) {
+    // Metadata-only writes change recency without changing cache admission.
+    setWithLRU(memoryByViewKey, lease.viewKey, nextMemory, Infinity)
+    return
+  }
   setWithLRU(
     memoryByViewKey,
     lease.viewKey,
-    {
-      ...owned,
-      ...patch,
-      ...(lease.succession ? { succession: lease.succession } : {})
-    },
+    nextMemory,
     MAX_CACHED_COMBINED_DIFF_VIEWS,
     canEvictCombinedDiffView
   )
