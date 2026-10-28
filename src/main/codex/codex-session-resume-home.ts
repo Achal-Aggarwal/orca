@@ -1,3 +1,4 @@
+import { readCodexSelectedRollout } from './codex-state-db'
 import { lstatSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -262,6 +263,7 @@ export async function findTrustedCodexSessionResume(args: {
           }
         }
       ))
+  const matches: { homePath: string; transcriptPath: string; selectedRollout: string }[] = []
   const expectedSuffix = `-${args.sessionId}.jsonl`.toLowerCase()
   const seenHomes = new Set<string>()
   for (const homePath of rankTrustedCodexHomesForRescan(args, selectedAccountHome)) {
@@ -293,9 +295,19 @@ export async function findTrustedCodexSessionResume(args: {
         isCodexRolloutInsideSessionsRoot(sessionsRoot, preferredFilePath) &&
         plainFileName.endsWith(expectedSuffix)
       ) {
-        return { homePath, transcriptPath: preferredFilePath }
+        matches.push({
+          homePath,
+          transcriptPath: preferredFilePath,
+          selectedRollout: readCodexSelectedRollout(homePath, args.sessionId) ?? preferredFilePath
+        })
       }
     }
   }
-  return null
+  matches.sort((left, right) =>
+    getRuntimePathBasename(right.selectedRollout).localeCompare(
+      getRuntimePathBasename(left.selectedRollout)
+    )
+  )
+  const best = matches[0]
+  return best ? { homePath: best.homePath, transcriptPath: best.transcriptPath } : null
 }

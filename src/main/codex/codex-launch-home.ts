@@ -50,6 +50,11 @@ export function codexConversationStore(home: string): string {
   return dirname(realpathSync(join(home, 'sessions')))
 }
 
+/** The login remains in its original account folder even when CODEX_HOME is an overlay. */
+export function codexLoginHome(home: string): string {
+  return basename(dirname(home)) === 'overlays' ? join(dirname(dirname(home)), 'home') : home
+}
+
 export function codexAccountOverlayHomes(accountDirectory: string): string[] {
   try {
     return readdirSync(join(accountDirectory, 'overlays'), { withFileTypes: true })
@@ -265,4 +270,23 @@ function materializeCodexOverlay(
   linkLogin(overlay, loginHome)
   syncSystemCodexResourcesIntoManagedHome(overlay)
   syncSystemConfigIntoManagedCodexHome({ runtimeHomePath: overlay, systemHomePath: systemHome })
+}
+
+/** A probe may precede the first launch; materialize the same derived route before it spawns. */
+export function prepareCodexCatalogHome(
+  homePath: string,
+  options: CodexLaunchHomeOptions,
+  knownHomes: readonly string[]
+): void {
+  for (const store of [options.storeHome ?? getSystemCodexHomePath(), ...knownHomes]) {
+    if (
+      resolveCodexLaunchHome({ ...options, conversationHome: store, readOnly: true }) === homePath
+    ) {
+      resolveCodexLaunchHome({
+        ...options,
+        conversationHome: existsSync(homePath) ? homePath : store
+      })
+      return
+    }
+  }
 }

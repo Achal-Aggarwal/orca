@@ -1,4 +1,8 @@
-import { discoverCodexStoreHomes } from '../codex/codex-launch-home'
+import {
+  codexLoginHome,
+  prepareCodexCatalogHome,
+  discoverCodexStoreHomes
+} from '../codex/codex-launch-home'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { posix as pathPosix } from 'node:path'
 import { parseWslUncPath, toLinuxPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
@@ -284,6 +288,20 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
 
   /** Sync shared-mirror credentials for catalog probes; per-account homes already own their auth. */
   prepareHostCodexHomeForReadOnlyAppServer(homePath: string, launchEnv?: NodeJS.ProcessEnv): void {
+    const account = this.store
+      .getSettings()
+      .codexManagedAccounts.find(
+        (candidate) =>
+          normalizeRuntimePathForComparison(candidate.managedHomePath) ===
+          normalizeRuntimePathForComparison(codexLoginHome(homePath))
+      )
+    const loginHome = account ? this.getTrustedSelfContainedManagedHomePath(account) : null
+    const options = {
+      selectedAccount: loginHome ? { homePath: loginHome } : null,
+      accountsRoot: this.getManagedAccountsRoot(),
+      storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings())
+    }
+    prepareCodexCatalogHome(homePath, options, this.getHostCodexHomePathsForSessionDiscovery())
     if (
       this.getSelfContainedManagedHostAccount() ||
       normalizeRuntimePathForComparison(homePath) !==

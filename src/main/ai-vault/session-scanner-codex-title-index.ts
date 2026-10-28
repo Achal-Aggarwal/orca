@@ -1,3 +1,5 @@
+import { parseWslUncPath } from '../../shared/wsl-paths'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { codexConversationStore, discoverCodexStoreHomes } from '../codex/codex-launch-home'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -63,27 +65,49 @@ export async function readCodexSessionIndexTitle(
   if (!resolvedCodexHome) {
     return null
   }
-  // Overlays keep private indexes; choose the most recently written index for this store.
+  if (parseWslUncPath(resolvedCodexHome)) {
+    return (await readCodexSessionIndexTitles(resolvedCodexHome)).get(sessionId) ?? null
+  }
+  const scope = storeTitleReads.getStore()
   const store = codexConversationStore(resolvedCodexHome)
-  const homes = discoverCodexStoreHomes().filter((home) => codexConversationStore(home) === store)
+  let titles = scope?.get(store)
+  if (!titles) {
+    titles = readStoreTitles(resolvedCodexHome, store)
+    scope?.set(store, titles)
+  }
+  return (await titles).get(sessionId) ?? null
+}
+
+const storeTitleReads = new AsyncLocalStorage<Map<string, Promise<Map<string, string>>>>()
+export function withCodexSessionIndexHomes<T>(run: () => Promise<T>): Promise<T> {
+  return storeTitleReads.run(new Map(), run)
+}
+
+async function readStoreTitles(home: string, store: string): Promise<Map<string, string>> {
+  const aliases = discoverCodexStoreHomes().filter(
+    (candidate) => codexConversationStore(candidate) === store
+  )
   const indexes = await Promise.all(
-    [...new Set([resolvedCodexHome, ...homes])].map(async (home) => {
-      const titles = await readCodexSessionIndexTitles(home)
-      const title = titles.get(sessionId)
-      if (!title) {
-        return null
-      }
+    [...new Set([home, ...aliases])].map(async (candidate) => {
+      const titles = await readCodexSessionIndexTitles(candidate)
       try {
         return {
-          title,
-          time: (await wslGatedStat(join(home, CODEX_SESSION_INDEX_FILE), 'scan')).mtimeMs
+          titles,
+          time: (await wslGatedStat(join(candidate, CODEX_SESSION_INDEX_FILE), 'scan')).mtimeMs
         }
       } catch {
-        return null
+        return { titles, time: 0 }
       }
     })
   )
-  return indexes.filter((index) => index !== null).sort((a, b) => b.time - a.time)[0]?.title ?? null
+  // Read each alias once per scan; later-written indexes take precedence for titles they contain.
+  const titles = new Map<string, string>()
+  for (const index of indexes.sort((a, b) => a.time - b.time)) {
+    for (const [id, title] of index.titles) {
+      titles.set(id, title)
+    }
+  }
+  return titles
 }
 
 function codexHomeFromSessionFilePath(sessionFilePath: string): string | null {

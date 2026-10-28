@@ -1,3 +1,5 @@
+import { codexLoginHome, resolveCodexLaunchHome } from './codex-launch-home'
+import { getSystemCodexHomePath } from './codex-home-paths'
 import { delimiter, isAbsolute, resolve } from 'node:path'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
@@ -84,6 +86,12 @@ export function codexStructuredLaunchPart(
   return async (basis) => {
     const { record } = basis
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
+    const loginHome = codexLoginHome(accountHome.path)
+    const codexHome =
+      resolveCodexLaunchHome({
+        selectedAccount: loginHome === getSystemCodexHomePath() ? null : { homePath: loginHome },
+        conversationHome: accountHome.path
+      }) ?? getSystemCodexHomePath()
     const { command } = await resolveCodexStructuredInvocation({
       ...(deps.resolveCommand ? { resolveCommand: deps.resolveCommand } : {}),
       refreshEnvironmentAfterMiss: basis.refreshAfterMissingProgram,
@@ -102,7 +110,7 @@ export function codexStructuredLaunchPart(
       launch: {
         command,
         args: [...args, 'app-server'],
-        codexHome: accountHome.path,
+        codexHome,
         resumeThreadId,
         // Only created threads may be unsaved; resumed, forked and adopted threads were persisted.
         ...(resumeThreadId && head?.origin === 'created' ? { supersedeIfUnsaved: true } : {}),
@@ -113,10 +121,7 @@ export function codexStructuredLaunchPart(
         ...(model ? { model } : {}),
         ...(visuals ? { visuals } : {})
       },
-      env: withNativeChatVisualsEnv(
-        { ...environment, ...(accountHome.path ? { CODEX_HOME: accountHome.path } : {}) },
-        visuals
-      ),
+      env: withNativeChatVisualsEnv({ ...environment, CODEX_HOME: codexHome }, visuals),
       // Clear inherited scratch paths that may belong to another chat.
       inheritedEnvToDelete: [
         ...(visuals ? [] : [NATIVE_CHAT_SCRATCH_DIR_ENV]),

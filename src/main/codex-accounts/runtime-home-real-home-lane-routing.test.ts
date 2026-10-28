@@ -133,7 +133,7 @@ describe('CodexRuntimeHomeService', () => {
     const service = new CodexRuntimeHomeService(store as never)
     const customHome = join(testState.fakeHomeDir, 'pane-custom-codex-home')
 
-    expect(service.prepareForCodexLaunch(undefined, { CODEX_HOME: customHome })).toBeNull()
+    service.syncForCurrentSelection(undefined, { CODEX_HOME: customHome })
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(systemAuth)
   })
 

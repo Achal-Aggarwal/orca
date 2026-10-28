@@ -184,7 +184,7 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     // Prove the spies detect actual launch side effects.
     expect(service.prepareForCodexLaunch()).toBe(readOnlyHome)
     expect(sideEffects.syncResources).toHaveBeenCalled()
-    expect(sideEffects.accountBridge).toHaveBeenCalled()
+    expect(sideEffects.accountBridge).not.toHaveBeenCalled()
   })
 
   it('system-default real home: answers null (real ~/.codex) with zero side effects, matching launch prep', async () => {
@@ -209,8 +209,8 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     expectNoSideEffects(sideEffects, store)
 
     expect(service.prepareForCodexLaunch()).toBe(readOnlyHome)
-    expect(sideEffects.syncResources).toHaveBeenCalled()
-    expect(sideEffects.systemBridge).toHaveBeenCalled()
+    expect(sideEffects.syncResources).not.toHaveBeenCalled()
+    expect(sideEffects.systemBridge).not.toHaveBeenCalled()
   })
 
   it('untrusted managed home: predicts the launch-prep fall-through route but keeps the selection set', async () => {
