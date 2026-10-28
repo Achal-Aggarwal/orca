@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PipedProcessSpawner } from '@orca/process-host/process-spec'
@@ -36,7 +39,7 @@ function fakeChild(pid: number | null = 9_999_999) {
 
 function launch(fixture: ReturnType<typeof fakeChild>, platform: NodeJS.Platform = 'win32') {
   return spawnManagedProviderProcess(
-    { command: 'fixture-provider', args: ['serve'], cwd: '/workspace' },
+    { command: 'fixture-provider', args: ['serve'], cwd: tmpdir() },
     {
       spawnImpl: fixture.spawn,
       platform,
@@ -193,7 +196,7 @@ describe('managed provider process', () => {
 
     const supervisedLaunch = (fixture: ReturnType<typeof fakeChild>) =>
       spawnManagedProviderProcess(
-        { command: 'fixture-provider', args: ['serve'], cwd: '/workspace' },
+        { command: 'fixture-provider', args: ['serve'], cwd: tmpdir() },
         {
           spawnImpl: fixture.spawn,
           platform: 'linux',
@@ -218,6 +221,31 @@ describe('managed provider process', () => {
     denied.child.emit('exit', 127, null)
     expect(deniedManaged.executableMissing).toBe(false)
   })
+
+  // Direct (Windows) and supervised (POSIX) spawns: Node names what it spawned, never the folder.
+  it.each(['win32', 'linux'] as const)(
+    'names a deleted working folder, not the CLI, when a real %s spawn fails there',
+    async (platform) => {
+      const parent = mkdtempSync(join(tmpdir(), 'orca-provider-cwd-'))
+      try {
+        // Found on PATH, so only the missing folder can fail the spawn.
+        const managed = spawnManagedProviderProcess(
+          { command: basename(process.execPath), args: ['-e', ''], cwd: join(parent, 'deleted') },
+          {
+            platform,
+            policy: () => ({ gracefulExitMs: PROVIDER_SUPERVISOR_MAX_STOP_MS, forcedExitMs: 50 }),
+            inheritedEnv: { PATH: dirname(process.execPath) },
+            site: 'fixture-provider-missing-cwd'
+          }
+        )
+        await managed.exitPromise
+        expect(managed.executableMissing).toBe(false)
+        expect(managed.spawnAbsence).toBe('launchFolder')
+      } finally {
+        rmSync(parent, { recursive: true, force: true })
+      }
+    }
+  )
 
   it('does not turn a transport close with an existing pid into Claude exit proof', () => {
     const fixture = fakeChild()
