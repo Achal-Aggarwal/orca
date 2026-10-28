@@ -28,6 +28,7 @@ export type OrcaContextMenuPasteDeps = {
   getClipboardMetadata: (text: string) => ClipboardPasteMetadata
   emptySelectionClipboardOptionId: editor.EditorOption
   readOnlyOptionId: editor.EditorOption
+  multiCursorPasteOptionId?: editor.EditorOption
   onTooLarge?: () => void
   onReadError?: (error: unknown) => void
 }
@@ -87,12 +88,28 @@ async function performOrcaContextMenuPaste(
     return { status: 'noop', reason: 'empty' }
   }
 
+  const metadata = deps.getClipboardMetadata(text)
+  const { pasteOnNewLine, multicursorText, mode } = resolvePasteMetadata(
+    editorInstance,
+    metadata,
+    deps.emptySelectionClipboardOptionId
+  )
+
   // Share native paste size limits and chunking so context-menu paste cannot freeze the renderer or bypass the cap.
   const directMeasurement = measureTextControlPasteByteLength(text, {
     stopAfterBytes: MONACO_PASTE_DIRECT_MAX_BYTES
   })
   if (directMeasurement.exceededLimit) {
-    const result = await executeMonacoLargeTextPaste(editorInstance, text, { readOnly: false })
+    const result = await executeMonacoLargeTextPaste(editorInstance, text, {
+      readOnly: false,
+      pasteOnNewLine,
+      multicursorText,
+      multiCursorPaste:
+        deps.multiCursorPasteOptionId !== undefined &&
+        editorInstance.getOption(deps.multiCursorPasteOptionId) === 'spread'
+          ? 'spread'
+          : 'full'
+    })
     if (result.status === 'rejected' && result.reason === 'too-large') {
       deps.onTooLarge?.()
       return { status: 'noop', reason: 'too-large' }
@@ -108,12 +125,6 @@ async function performOrcaContextMenuPaste(
     return { status: 'noop', reason: 'target-lost' }
   }
 
-  const metadata = deps.getClipboardMetadata(text)
-  const { pasteOnNewLine, multicursorText, mode } = resolvePasteMetadata(
-    editorInstance,
-    metadata,
-    deps.emptySelectionClipboardOptionId
-  )
   // Use Monaco’s paste command to preserve selection, multicursor, indentation and undo behavior.
   editorInstance.trigger('keyboard', 'paste', { text, pasteOnNewLine, multicursorText, mode })
   return { status: 'pasted', mode: 'native' }

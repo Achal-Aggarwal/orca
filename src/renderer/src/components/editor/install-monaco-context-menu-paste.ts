@@ -31,6 +31,7 @@ export function installMonacoContextMenuPaste(monaco: typeof Monaco): void {
         getClipboardMetadata: (text) => InMemoryClipboardMetadataManager.INSTANCE.get(text),
         emptySelectionClipboardOptionId: monaco.editor.EditorOption.emptySelectionClipboard,
         readOnlyOptionId: monaco.editor.EditorOption.readOnly,
+        multiCursorPasteOptionId: monaco.editor.EditorOption.multiCursorPaste,
         onTooLarge: () => {
           toast.error(
             translate(

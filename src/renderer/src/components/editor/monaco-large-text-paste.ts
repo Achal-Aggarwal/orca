@@ -39,6 +39,9 @@ export type MonacoLargeTextPasteOptions = {
   maxBytes?: number
   measureYieldAfterCodeUnits?: number
   readOnly?: boolean
+  pasteOnNewLine?: boolean
+  multicursorText?: readonly string[] | null
+  multiCursorPaste?: 'spread' | 'full'
   yieldToEventLoop?: () => Promise<void>
   onPasteStart?: () => void
   onPasteResult?: (
@@ -99,26 +102,92 @@ async function insertMonacoTextInChunks(
   }
 
   const chunkMaxBytes = Math.max(1, options.chunkMaxBytes ?? MONACO_PASTE_CHUNK_MAX_BYTES)
-  let textIndex = 0
   let chunksWritten = 0
   monacoEditor.pushUndoStop()
+  const initialSelections = monacoEditor.getSelections()
+  if (!initialSelections?.length) {
+    monacoEditor.pushUndoStop()
+    return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
+  }
 
-  while (textIndex < text.length) {
+  const texts = initialSelections.map(() => text)
+  let distributedText = options.multicursorText
+  if (
+    !options.pasteOnNewLine &&
+    initialSelections.length > 1 &&
+    distributedText?.length !== initialSelections.length &&
+    options.multiCursorPaste === 'spread'
+  ) {
+    let lineText = text
+    if (lineText.charCodeAt(lineText.length - 1) === 10) {
+      lineText = lineText.slice(0, -1)
+    }
+    if (lineText.charCodeAt(lineText.length - 1) === 13) {
+      lineText = lineText.slice(0, -1)
+    }
+    // Stop after one excess line; only exact cursor-count matches can be distributed.
+    distributedText = lineText.split(/\r\n|\r|\n/, initialSelections.length + 1)
+  }
+  if (
+    !options.pasteOnNewLine &&
+    initialSelections.length > 1 &&
+    distributedText?.length === initialSelections.length
+  ) {
+    const orderedSelections = initialSelections
+      .map((selection, index) => ({ selection, index }))
+      .sort(
+        (left, right) =>
+          left.selection.startLineNumber - right.selection.startLineNumber ||
+          left.selection.startColumn - right.selection.startColumn
+      )
+    orderedSelections.forEach(({ index }, order) => {
+      texts[index] = distributedText?.[order] ?? text
+    })
+  }
+  let pasteOnNewLine = options.pasteOnNewLine === true && text.indexOf('\n') === text.length - 1
+  const wholeLineColumnOffsets = initialSelections.map(() => 0)
+  const startSelections = initialSelections.map((selection, index) => {
+    if (!selection.isEmpty()) {
+      pasteOnNewLine = false
+    }
+    if (!pasteOnNewLine) {
+      return selection
+    }
+    wholeLineColumnOffsets[index] = selection.positionColumn - 1
+    return new Selection(selection.positionLineNumber, 1, selection.positionLineNumber, 1)
+  })
+  let textIndices = texts.map(() => 0)
+  let firstChunk = true
+  let finished = false
+
+  while (!finished) {
     if (!isMonacoPasteTargetCurrent(monacoEditor, snapshot)) {
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
 
-    const selections = monacoEditor.getSelections()
-    if (!selections?.length) {
+    const selections = firstChunk ? startSelections : monacoEditor.getSelections()
+    if (!selections?.length || selections.length !== texts.length) {
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
 
-    const selectionChunkMaxBytes = Math.max(1, Math.floor(chunkMaxBytes / selections.length))
-    const nextIndex = getUtf8ChunkEndIndex(text, textIndex, selectionChunkMaxBytes)
-    const chunk = text.slice(textIndex, nextIndex)
-    const chunkLength = chunk.replace(/\r\n|\r|\n/g, snapshot.model.getEOL()).length
+    const activeCount = texts.filter((value, index) => textIndices[index] < value.length).length
+    const selectionChunkMaxBytes = Math.max(1, Math.floor(chunkMaxBytes / Math.max(1, activeCount)))
+    const nextIndices = texts.map((value, index) => {
+      const textIndex = textIndices[index]
+      let nextIndex = getUtf8ChunkEndIndex(value, textIndex, selectionChunkMaxBytes)
+      // Monaco normalizes chunks separately, so a CRLF pair must stay in one edit.
+      if (value.charCodeAt(nextIndex - 1) === 13 && value.charCodeAt(nextIndex) === 10) {
+        nextIndex += nextIndex - textIndex === 1 ? 1 : -1
+      }
+      return nextIndex
+    })
+    const chunks = texts.map((value, index) => value.slice(textIndices[index], nextIndices[index]))
+    const chunkLengths = chunks.map(
+      (chunk) => chunk.replace(/\r\n|\r|\n/g, snapshot.model.getEOL()).length
+    )
+    finished = texts.every((value, index) => nextIndices[index] >= value.length)
     const orderedRanges = selections
       .map((selection, index) => ({
         index,
@@ -130,12 +199,16 @@ async function insertMonacoTextInChunks(
     const endOffsets = selections.map(() => 0)
     let offsetDelta = 0
     for (const { start, end, index } of orderedRanges) {
+      const chunkLength = chunkLengths[index]
       endOffsets[index] = start + offsetDelta + chunkLength
+      if (finished) {
+        endOffsets[index] += wholeLineColumnOffsets[index]
+      }
       offsetDelta += chunkLength - (end - start)
     }
     const accepted = monacoEditor.executeEdits(
       'orca-large-paste',
-      selections.map((range) => ({ range, text: chunk, forceMoveMarkers: true })),
+      selections.map((range, index) => ({ range, text: chunks[index], forceMoveMarkers: true })),
       () =>
         endOffsets.map((offset) => Selection.fromPositions(snapshot.model.getPositionAt(offset)))
     )
@@ -143,10 +216,11 @@ async function insertMonacoTextInChunks(
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
-    textIndex = nextIndex
+    textIndices = nextIndices
+    firstChunk = false
     chunksWritten += 1
 
-    if (textIndex < text.length) {
+    if (!finished) {
       await (options.yieldToEventLoop ?? yieldToEventLoop)()
     }
   }
