@@ -9,11 +9,15 @@ import { requireReachableGitRoute } from '../../providers/execution-host-provide
 import { getConnectionExecutionHostId } from '../../../shared/execution-host'
 
 export function registerFilesystemGitDiffHandlers(context: FilesystemHandlerContext): void {
-  const { store } = context
+  const { store, gitReadCancellations } = context
+  ipcMain.handle('git:cancelDiff', (event, args: { requestToken: string }): void => {
+    gitReadCancellations.cancel(event, args.requestToken)
+  })
+
   ipcMain.handle(
     'git:branchDiff',
     async (
-      _event,
+      event,
       args: {
         worktreePath: string
         compare: {
@@ -25,36 +29,46 @@ export function registerFilesystemGitDiffHandlers(context: FilesystemHandlerCont
         filePath: string
         oldPath?: string
         connectionId?: string
+        requestToken?: string
       }
     ): Promise<GitDiffResult> => {
-      requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
-      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
-      const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
-      const oldPath = args.oldPath
-        ? validateGitRelativeFilePath(worktreePath, args.oldPath)
-        : undefined
-      const gitOptions = getLocalGitOptionsForRegisteredWorktree(
-        store,
-        args.worktreePath,
-        worktreePath
-      )
-      return getBranchDiff(
-        worktreePath,
-        {
-          mergeBase: args.compare.mergeBase,
-          headOid: args.compare.headOid,
-          filePath,
-          oldPath
-        },
-        { ...gitOptions, admissionTier: 'interactive' }
-      )
+      const controller = gitReadCancellations.begin(event, args.requestToken)
+      try {
+        requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
+        const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+        const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
+        const oldPath = args.oldPath
+          ? validateGitRelativeFilePath(worktreePath, args.oldPath)
+          : undefined
+        const gitOptions = getLocalGitOptionsForRegisteredWorktree(
+          store,
+          args.worktreePath,
+          worktreePath
+        )
+        return await getBranchDiff(
+          worktreePath,
+          {
+            mergeBase: args.compare.mergeBase,
+            headOid: args.compare.headOid,
+            filePath,
+            oldPath
+          },
+          {
+            ...gitOptions,
+            admissionTier: 'interactive',
+            ...(controller ? { signal: controller.signal } : {})
+          }
+        )
+      } finally {
+        gitReadCancellations.finish(event, args.requestToken, controller)
+      }
     }
   )
 
   ipcMain.handle(
     'git:commitDiff',
     async (
-      _event,
+      event,
       args: {
         worktreePath: string
         commitOid: string
@@ -62,31 +76,43 @@ export function registerFilesystemGitDiffHandlers(context: FilesystemHandlerCont
         filePath: string
         oldPath?: string
         connectionId?: string
+        requestToken?: string
       }
     ): Promise<GitDiffResult> => {
-      const commitOid = validateFullGitObjectId(args.commitOid, 'commitOid')
-      const parentOid = args.parentOid ? validateFullGitObjectId(args.parentOid, 'parentOid') : null
-      requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
-      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
-      const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
-      const oldPath = args.oldPath
-        ? validateGitRelativeFilePath(worktreePath, args.oldPath)
-        : undefined
-      const gitOptions = getLocalGitOptionsForRegisteredWorktree(
-        store,
-        args.worktreePath,
-        worktreePath
-      )
-      return getCommitDiff(
-        worktreePath,
-        {
-          commitOid,
-          parentOid,
-          filePath,
-          oldPath
-        },
-        { ...gitOptions, admissionTier: 'interactive' }
-      )
+      const controller = gitReadCancellations.begin(event, args.requestToken)
+      try {
+        const commitOid = validateFullGitObjectId(args.commitOid, 'commitOid')
+        const parentOid = args.parentOid
+          ? validateFullGitObjectId(args.parentOid, 'parentOid')
+          : null
+        requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
+        const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+        const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
+        const oldPath = args.oldPath
+          ? validateGitRelativeFilePath(worktreePath, args.oldPath)
+          : undefined
+        const gitOptions = getLocalGitOptionsForRegisteredWorktree(
+          store,
+          args.worktreePath,
+          worktreePath
+        )
+        return await getCommitDiff(
+          worktreePath,
+          {
+            commitOid,
+            parentOid,
+            filePath,
+            oldPath
+          },
+          {
+            ...gitOptions,
+            admissionTier: 'interactive',
+            ...(controller ? { signal: controller.signal } : {})
+          }
+        )
+      } finally {
+        gitReadCancellations.finish(event, args.requestToken, controller)
+      }
     }
   )
 }

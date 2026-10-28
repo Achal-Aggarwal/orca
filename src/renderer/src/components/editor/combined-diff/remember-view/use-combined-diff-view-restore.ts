@@ -14,7 +14,10 @@ import {
 } from '../../combined-diff-on-demand-load'
 import type { CombinedDiffEntrySet } from '../resolve-changes/use-combined-diff-entry-set'
 import type { CombinedDiffSectionLoadRegistry } from '../load-sections/combined-diff-section-load-registry'
-import { clearPendingSectionReloadTimers } from '../load-sections/combined-diff-section-load-registry'
+import {
+  abortPendingSectionLoads,
+  clearPendingSectionReloadTimers
+} from '../load-sections/combined-diff-section-load-registry'
 import { combinedDiffViewPreferences } from './combined-diff-view-memory'
 import {
   claimCombinedDiffView,
@@ -66,6 +69,7 @@ export function useCombinedDiffViewRestore({
   } = entrySet
   const {
     generationRef,
+    sectionLoadControllersRef,
     deferredLoadRequestsRef,
     loadSchedulerRef,
     loadedIndicesRef,
@@ -130,6 +134,15 @@ export function useCombinedDiffViewRestore({
       hasUncommittedEntriesSnapshot
     }
     deferredLoadRequestsRef.current.clear()
+    abortPendingSectionLoads(sectionLoadControllersRef.current)
+    loadedIndicesRef.current.clear()
+    loadingIndicesRef.current.clear()
+    sectionLoadTokensRef.current.clear()
+    supersededLoadIndicesRef.current.clear()
+    clearPendingSectionReloadTimers(reloadTimersRef.current)
+    loadSchedulerRef.current.reset()
+    generationRef.current += 1
+    setGeneration((prev) => prev + 1)
     const memory = readCombinedDiffViewMemory(viewStateKey)
     const cached = memory?.view
     const canRestoreSnapshotSectionsByKey =
@@ -208,18 +221,11 @@ export function useCombinedDiffViewRestore({
       })
     )
     setSectionHeights({})
-    loadedIndicesRef.current.clear()
-    loadingIndicesRef.current.clear()
-    sectionLoadTokensRef.current.clear()
-    supersededLoadIndicesRef.current.clear()
-    clearPendingSectionReloadTimers(reloadTimersRef.current)
-    loadSchedulerRef.current.reset()
-    generationRef.current += 1
-    setGeneration((prev) => prev + 1)
   }, [
     entries,
     entrySignature,
     generationRef,
+    sectionLoadControllersRef,
     deferredLoadRequestsRef,
     gitStatusEntries,
     hasUncommittedEntriesSnapshot,

@@ -15,8 +15,16 @@ export function clearPendingSectionReloadTimers(timers: Map<number, number>): vo
   timers.clear()
 }
 
+export function abortPendingSectionLoads(controllers: Map<number, AbortController>): void {
+  for (const controller of controllers.values()) {
+    controller.abort()
+  }
+  controllers.clear()
+}
+
 // Share loader/retry/revalidation bookkeeping and callback refs that break the loader–retry cycle.
 export type CombinedDiffSectionLoadRegistry = {
+  sectionLoadControllersRef: React.RefObject<Map<number, AbortController>>
   generationRef: React.RefObject<number>
   deferredLoadRequestsRef: React.RefObject<Set<number>>
   loadSchedulerRef: React.RefObject<CombinedDiffLoadScheduler>
@@ -40,6 +48,7 @@ export function useCombinedDiffSectionLoadRegistry(
   const deferredLoadRequestsRef = useRef<Set<number>>(new Set())
   const sectionsRef = useRef<DiffSection[]>([])
   const generationRef = useRef(0)
+  const sectionLoadControllersRef = useRef(new Map<number, AbortController>())
   // Per-section tokens keep sibling reloads from discarding unrelated in-flight loads.
   const sectionLoadTokensRef = useRef<Map<number, number>>(new Map())
   const renderedIndicesRef = useRef<Set<number>>(new Set())
@@ -59,14 +68,20 @@ export function useCombinedDiffSectionLoadRegistry(
     // Reset revives the scheduler after Strict Mode’s cleanup replay.
     const scheduler = loadSchedulerRef.current
     const reloadTimers = reloadTimersRef.current
+    const loadingIndices = loadingIndicesRef.current
+    const sectionLoadControllers = sectionLoadControllersRef.current
     scheduler.reset()
     return () => {
+      generationRef.current += 1
+      loadingIndices.clear()
+      abortPendingSectionLoads(sectionLoadControllers)
       clearPendingSectionReloadTimers(reloadTimers)
       scheduler.dispose()
     }
   }, [])
 
   return {
+    sectionLoadControllersRef,
     generationRef,
     deferredLoadRequestsRef,
     loadSchedulerRef,

@@ -20,7 +20,7 @@ export type FilesystemHandlerContext = {
   activeTextSearches: Map<string, ChildProcess>
   downloadSessions: Map<string, DownloadSession>
   listFilesCancellations: SenderScopedRequestCancellations
-  gitStatusCancellations: SenderScopedRequestCancellations
+  gitReadCancellations: SenderScopedRequestCancellations
   closeDownloadSession: (
     transferId: string,
     cleanupTemp: boolean
@@ -31,7 +31,7 @@ export function createFilesystemHandlerContext(
   store: Store,
   commitMessageAgentEnv: CommitMessageAgentEnvironmentResolvers | undefined,
   listFilesCancellations: SenderScopedRequestCancellations,
-  gitStatusCancellations: SenderScopedRequestCancellations
+  gitReadCancellations: SenderScopedRequestCancellations
 ): FilesystemHandlerContext {
   const activeTextSearches = new Map<string, ChildProcess>()
   const downloadSessions = new Map<string, DownloadSession>()
@@ -60,7 +60,7 @@ export function createFilesystemHandlerContext(
     activeTextSearches,
     downloadSessions,
     listFilesCancellations,
-    gitStatusCancellations,
+    gitReadCancellations,
     closeDownloadSession
   }
 }

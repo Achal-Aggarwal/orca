@@ -64,12 +64,14 @@ export type GitInspectionApi = {
     worktreePath: string
     connectionId?: string
   }) => Promise<GitMutationInFlight>
+  cancelDiff: (args: { requestToken: string }) => Promise<void>
   diff: (args: {
     worktreePath: string
     filePath: string
     staged: boolean
     compareAgainstHead?: boolean
     connectionId?: string
+    requestToken?: string
   }) => Promise<GitDiffResult>
   branchCompare: (args: {
     worktreePath: string
@@ -98,6 +100,7 @@ export type GitInspectionApi = {
     filePath: string
     oldPath?: string
     connectionId?: string
+    requestToken?: string
   }) => Promise<GitDiffResult>
   commitDiff: (args: {
     worktreePath: string
@@ -106,6 +109,7 @@ export type GitInspectionApi = {
     filePath: string
     oldPath?: string
     connectionId?: string
+    requestToken?: string
   }) => Promise<GitDiffResult>
   discoverCommitMessageModels: (args: {
     agentId: string

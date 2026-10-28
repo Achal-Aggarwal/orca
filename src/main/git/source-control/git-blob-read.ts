@@ -54,6 +54,7 @@ export async function readGitBlobAtIndexPath(
 
     return { ...bufferToBlob(stdout, filePath), exists: true }
   } catch (error) {
+    options.signal?.throwIfAborted()
     if (isMaxBufferOverflowError(error)) {
       return TOO_LARGE_BLOB
     }
@@ -85,6 +86,7 @@ export async function readGitBlobAtOidPath(
 
     return { ...bufferToBlob(stdout, filePath), exists: true }
   } catch (error) {
+    options.signal?.throwIfAborted()
     if (isMaxBufferOverflowError(error)) {
       return TOO_LARGE_BLOB
     }
@@ -97,7 +99,11 @@ export async function readGitBlobAtOidPath(
   }
 }
 
-export async function readWorkingTreeFile(filePath: string): Promise<GitBlobReadResult> {
+export async function readWorkingTreeFile(
+  filePath: string,
+  signal?: AbortSignal
+): Promise<GitBlobReadResult> {
+  signal?.throwIfAborted()
   let fileStat
   try {
     fileStat = await stat(filePath)
@@ -114,9 +120,10 @@ export async function readWorkingTreeFile(filePath: string): Promise<GitBlobRead
     return TOO_LARGE_BLOB
   }
   try {
-    const buffer = await readFile(filePath)
+    const buffer = await readFile(filePath, { signal })
     return bufferToBlob(buffer, filePath)
   } catch {
+    signal?.throwIfAborted()
     return { content: '', isBinary: false, exists: true, failed: true }
   }
 }

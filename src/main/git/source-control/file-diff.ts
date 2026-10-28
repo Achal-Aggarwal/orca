@@ -4,7 +4,7 @@ import { resolveWorktreeHostPath } from '../../../shared/git-metadata-path'
 import { stableInFlightKey } from '../../../shared/in-flight-promise-dedupe'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { gitRuntimeOptionsKey } from './git-runtime-options-cache-key'
-import { gitDiffReadDedupe, settledDiffCache } from './git-read-cache-invalidation'
+import { gitDiffReadLeaseOwner, settledDiffCache } from './git-read-cache-invalidation'
 import { readWorktreeDiffStamp } from './worktree-diff-stamp'
 import { buildDiffResult } from './diff-result'
 import {
@@ -42,15 +42,11 @@ export async function getDiff(
     ...gitRuntimeOptionsKey(options)
   ])
   // Register before any await so concurrent reads also coalesce settled-cache lookup I/O.
-  return gitDiffReadDedupe.run(readKey, () =>
-    loadDiffThroughSettledCache(
-      readKey,
-      worktreePath,
-      filePath,
-      staged,
-      compareAgainstHead,
-      options
-    )
+  return gitDiffReadLeaseOwner.lease(readKey, options.signal, (signal) =>
+    loadDiffThroughSettledCache(readKey, worktreePath, filePath, staged, compareAgainstHead, {
+      ...options,
+      signal
+    })
   )
 }
 
@@ -166,7 +162,7 @@ async function loadDiff(
           ? readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options)
           : readUnstagedLeftBlob(worktreePath, filePath, options),
         hostWorktreePath
-          ? readWorkingTreeFile(path.join(hostWorktreePath, filePath))
+          ? readWorkingTreeFile(path.join(hostWorktreePath, filePath), options.signal)
           : Promise.resolve(UNSPELLABLE_WORKING_TREE_READ)
       ])
       originalContent = leftBlob.content
@@ -178,6 +174,7 @@ async function loadDiff(
       tooLarge = leftBlob.tooLarge === true || workingTreeBlob.tooLarge === true
     }
   } catch {
+    options.signal?.throwIfAborted()
     readFailed = true
   }
 

@@ -1,45 +1,14 @@
 import type { PreloadApi } from '../../../../preload/api-types'
-import { callAbortableRuntimeEnvironment } from '../../runtime/abortable-runtime-environment-call'
 import { toRuntimeWorktreeSelector } from '../../runtime/runtime-worktree-selector'
 import { translate } from '@/i18n/i18n'
 import { callRuntimeResult } from './web-runtime-calls'
 import { mutateGitPath, mutateGitPaths } from './web-git-mutations'
 import { requireGitStageWorktreeScopeReceipt } from '../../../../shared/git-stage-worktree-scope'
-import { requireActiveEnvironment, updateEnvironmentFromResponse } from './web-runtime-session'
+import { callRuntimeGitRead, webGitReadAbortControllers } from './web-git-read-requests'
 import {
   resolveRuntimeFilePath,
   resolveRuntimeWorktreeByPath
 } from './web-runtime-worktree-catalog'
-
-export const webGitStatusAbortControllers = new Map<string, AbortController>()
-
-export async function callAbortableRuntimeStatus<TResult>(
-  requestToken: string,
-  params: unknown
-): Promise<TResult> {
-  const environment = requireActiveEnvironment()
-  webGitStatusAbortControllers.get(requestToken)?.abort()
-  const controller = new AbortController()
-  webGitStatusAbortControllers.set(requestToken, controller)
-  try {
-    const response = await callAbortableRuntimeEnvironment(
-      environment.id,
-      'git.status',
-      params,
-      undefined,
-      controller.signal
-    )
-    updateEnvironmentFromResponse(environment, response)
-    if (!response.ok) {
-      throw new Error(response.error.message)
-    }
-    return response.result as TResult
-  } finally {
-    if (webGitStatusAbortControllers.get(requestToken) === controller) {
-      webGitStatusAbortControllers.delete(requestToken)
-    }
-  }
-}
 
 export function createGitApi(): NonNullable<Partial<PreloadApi>['git']> {
   return {
@@ -65,10 +34,13 @@ export function createGitApi(): NonNullable<Partial<PreloadApi>['git']> {
       if (!requestToken) {
         return callRuntimeResult('git.status', params)
       }
-      return callAbortableRuntimeStatus(requestToken, params)
+      return callRuntimeGitRead('git.status', async () => params, requestToken)
     },
     cancelStatus: async ({ requestToken }) => {
-      webGitStatusAbortControllers.get(requestToken)?.abort()
+      webGitReadAbortControllers.get(requestToken)?.abort()
+    },
+    cancelDiff: async ({ requestToken }) => {
+      webGitReadAbortControllers.get(requestToken)?.abort()
     },
     setStatusUpstreamRefWatch: async () => {},
     submoduleStatus: async ({ worktreePath, submodulePath, area }) => {
@@ -121,14 +93,20 @@ export function createGitApi(): NonNullable<Partial<PreloadApi>['git']> {
         worktree: toRuntimeWorktreeSelector(worktree.id)
       })
     },
-    diff: async ({ worktreePath, filePath, staged, compareAgainstHead }) => {
-      const file = await resolveRuntimeFilePath(filePath, worktreePath)
-      return callRuntimeResult('git.diff', {
-        worktree: toRuntimeWorktreeSelector(file.worktree.id),
-        filePath: file.relativePath,
-        staged,
-        compareAgainstHead
-      })
+    diff: async ({ worktreePath, filePath, staged, compareAgainstHead, requestToken }) => {
+      return callRuntimeGitRead(
+        'git.diff',
+        async () => {
+          const file = await resolveRuntimeFilePath(filePath, worktreePath)
+          return {
+            worktree: toRuntimeWorktreeSelector(file.worktree.id),
+            filePath: file.relativePath,
+            staged,
+            compareAgainstHead
+          }
+        },
+        requestToken
+      )
     },
     branchCompare: async ({ worktreePath, baseRef, admissionTier }) => {
       const worktree = await resolveRuntimeWorktreeByPath(worktreePath)
@@ -199,24 +177,36 @@ export function createGitApi(): NonNullable<Partial<PreloadApi>['git']> {
         baseRef
       })
     },
-    branchDiff: async ({ worktreePath, filePath, compare, oldPath }) => {
-      const file = await resolveRuntimeFilePath(filePath, worktreePath)
-      return callRuntimeResult('git.branchDiff', {
-        worktree: toRuntimeWorktreeSelector(file.worktree.id),
-        filePath: file.relativePath,
-        compare,
-        oldPath
-      })
+    branchDiff: async ({ worktreePath, filePath, compare, oldPath, requestToken }) => {
+      return callRuntimeGitRead(
+        'git.branchDiff',
+        async () => {
+          const file = await resolveRuntimeFilePath(filePath, worktreePath)
+          return {
+            worktree: toRuntimeWorktreeSelector(file.worktree.id),
+            filePath: file.relativePath,
+            compare,
+            oldPath
+          }
+        },
+        requestToken
+      )
     },
-    commitDiff: async ({ worktreePath, filePath, commitOid, parentOid, oldPath }) => {
-      const file = await resolveRuntimeFilePath(filePath, worktreePath)
-      return callRuntimeResult('git.commitDiff', {
-        worktree: toRuntimeWorktreeSelector(file.worktree.id),
-        filePath: file.relativePath,
-        commitOid,
-        parentOid,
-        oldPath
-      })
+    commitDiff: async ({ worktreePath, filePath, commitOid, parentOid, oldPath, requestToken }) => {
+      return callRuntimeGitRead(
+        'git.commitDiff',
+        async () => {
+          const file = await resolveRuntimeFilePath(filePath, worktreePath)
+          return {
+            worktree: toRuntimeWorktreeSelector(file.worktree.id),
+            filePath: file.relativePath,
+            commitOid,
+            parentOid,
+            oldPath
+          }
+        },
+        requestToken
+      )
     },
     commit: async ({ worktreePath, message }) => {
       const worktree = await resolveRuntimeWorktreeByPath(worktreePath)

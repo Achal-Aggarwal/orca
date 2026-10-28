@@ -30,13 +30,15 @@ const { readFileMock, statMock, accessMock } = vi.hoisted(() => {
   const missing = (target: string): NodeJS.ErrnoException =>
     Object.assign(new Error(`ENOENT: ${target}`), { code: 'ENOENT' })
   return {
-    readFileMock: vi.fn(async (target: string, encoding?: BufferEncoding) => {
-      const file = files.get(target)
-      if (!file) {
-        throw missing(target)
+    readFileMock: vi.fn(
+      async (target: string, encoding?: BufferEncoding | { signal?: AbortSignal }) => {
+        const file = files.get(target)
+        if (!file) {
+          throw missing(target)
+        }
+        return typeof encoding === 'string' ? file.content.toString(encoding) : file.content
       }
-      return encoding ? file.content.toString(encoding) : file.content
-    }),
+    ),
     statMock: vi.fn(async (target: string) => {
       const file = files.get(target)
       if (!file) {
@@ -168,7 +170,9 @@ describe('settled diff cache', () => {
       const result = await getDiff(WSL_WORKTREE, FILE, false, false, WSL_OPTIONS)
 
       expect(result.modifiedContent).toBe('working-tree-content')
-      expect(readFileMock).toHaveBeenCalledWith(path.join(HOST_WORKTREE, FILE))
+      expect(readFileMock).toHaveBeenCalledWith(path.join(HOST_WORKTREE, FILE), {
+        signal: expect.any(AbortSignal)
+      })
       expect(readFileMock).not.toHaveBeenCalledWith(path.join(WSL_WORKTREE, FILE))
     })
 

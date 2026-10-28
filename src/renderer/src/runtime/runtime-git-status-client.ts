@@ -8,6 +8,7 @@ import type {
 import { resolveLocalWorktreePath, type RuntimeGitContext } from './runtime-git-client-context'
 import { callRuntimeRpc } from './runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
+import { callLocalGitRead } from './runtime-local-git-read'
 
 export async function getRuntimeGitStatus(
   context: RuntimeGitContext,
@@ -89,39 +90,15 @@ export async function setRuntimeGitStatusUpstreamRefWatch(
   })
 }
 
-let nextGitStatusRequestToken = 0
-
-function createGitStatusAbortError(): Error {
-  const error = new Error('Git status request aborted')
-  error.name = 'AbortError'
-  return error
-}
-
-async function callLocalGitStatus(
+function callLocalGitStatus(
   args: Parameters<Window['api']['git']['status']>[0],
   signal?: AbortSignal
 ): Promise<GitStatusResult> {
-  if (!signal) {
-    return window.api.git.status(args)
-  }
-  if (signal.aborted) {
-    throw createGitStatusAbortError()
-  }
-  const requestToken = `git-status-${Date.now()}-${++nextGitStatusRequestToken}`
-  const cancel = (): void => {
-    void window.api.git.cancelStatus({ requestToken }).catch(() => {})
-  }
-  signal.addEventListener('abort', cancel, { once: true })
-  try {
-    const status = await window.api.git.status({ ...args, requestToken })
-    // Why: best-effort cancellation must not publish a late result as fresh.
-    if (signal.aborted) {
-      throw createGitStatusAbortError()
-    }
-    return status
-  } finally {
-    signal.removeEventListener('abort', cancel)
-  }
+  return callLocalGitRead(
+    (requestToken) => window.api.git.status({ ...args, ...(requestToken ? { requestToken } : {}) }),
+    (requestToken) => window.api.git.cancelStatus({ requestToken }),
+    signal
+  )
 }
 
 export async function getRuntimeGitSubmoduleStatus(

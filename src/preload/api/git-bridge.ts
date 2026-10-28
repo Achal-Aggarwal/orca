@@ -53,12 +53,15 @@ export const gitApi = {
     ipcRenderer.invoke('git:abortMerge', args),
   abortRebase: (args: { worktreePath: string; connectionId?: string }): Promise<void> =>
     ipcRenderer.invoke('git:abortRebase', args),
+  cancelDiff: (args: { requestToken: string }): Promise<void> =>
+    ipcRenderer.invoke('git:cancelDiff', args),
   diff: (args: {
     worktreePath: string
     filePath: string
     staged: boolean
     compareAgainstHead?: boolean
     connectionId?: string
+    requestToken?: string
   }) => ipcRenderer.invoke('git:diff', args),
   branchCompare: (args: { worktreePath: string; baseRef: string; connectionId?: string }) =>
     ipcRenderer.invoke('git:branchCompare', args),
@@ -111,6 +114,7 @@ export const gitApi = {
     filePath: string
     oldPath?: string
     connectionId?: string
+    requestToken?: string
   }) => ipcRenderer.invoke('git:branchDiff', args),
   commitDiff: (args: {
     worktreePath: string
@@ -119,6 +123,7 @@ export const gitApi = {
     filePath: string
     oldPath?: string
     connectionId?: string
+    requestToken?: string
   }) => ipcRenderer.invoke('git:commitDiff', args),
   commit: (args: {
     worktreePath: string

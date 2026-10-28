@@ -8,12 +8,16 @@ class CombinedDiffSectionLoadTimeoutError extends Error {
   }
 }
 
-export function withDiffSectionLoadTimeout<T>(promise: Promise<T>): Promise<T> {
+export function withDiffSectionLoadTimeout<T>(
+  promise: Promise<T>,
+  onTimeout?: () => void
+): Promise<T> {
   let timeoutId: number | null = null
 
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = window.setTimeout(() => {
       reject(new CombinedDiffSectionLoadTimeoutError())
+      onTimeout?.()
     }, COMBINED_DIFF_SECTION_LOAD_TIMEOUT_MS)
   })
 

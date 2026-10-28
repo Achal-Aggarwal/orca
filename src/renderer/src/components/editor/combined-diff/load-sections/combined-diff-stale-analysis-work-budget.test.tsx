@@ -12,7 +12,12 @@ import { getLargeDiffRenderLimit } from '../../../../../../shared/large-diff-ren
 import type { DiffSection } from '../../diff-section-types'
 import type { CombinedDiffEntrySet } from '../resolve-changes/use-combined-diff-entry-set'
 import { useCombinedDiffViewRestore } from '../remember-view/use-combined-diff-view-restore'
-import { clearCombinedDiffViewMemory } from '../remember-view/combined-diff-view-cache'
+import {
+  claimCombinedDiffView,
+  clearCombinedDiffViewMemory,
+  releaseCombinedDiffView,
+  rememberCombinedDiffView
+} from '../remember-view/combined-diff-view-cache'
 import { useCombinedDiffSectionLoadRegistry } from './combined-diff-section-load-registry'
 import { useCombinedDiffSectionRetry } from './use-combined-diff-section-retry'
 import { withDiffSectionLoadTimeout } from './combined-diff-section-load-timeout'
@@ -153,15 +158,17 @@ async function startViewer(props = viewer) {
   const hook = renderHook(useViewer, { initialProps: props })
   await flushLoads()
   expect(mocks.fetch).toHaveBeenCalledOnce()
-  expect(mocks.fetch).toHaveBeenLastCalledWith({
-    branchCompare: props.entrySet.branchCompare,
-    commitCompare: props.entrySet.commitCompare,
-    entry: props.entrySet.entries[0],
-    file: props.file,
-    isAllMode: props.entrySet.isAllMode,
-    isBranchMode: props.entrySet.isBranchMode,
-    isCommitMode: props.entrySet.isCommitMode
-  })
+  expect(mocks.fetch).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      branchCompare: props.entrySet.branchCompare,
+      commitCompare: props.entrySet.commitCompare,
+      entry: props.entrySet.entries[0],
+      file: props.file,
+      isAllMode: props.entrySet.isAllMode,
+      isBranchMode: props.entrySet.isBranchMode,
+      isCommitMode: props.entrySet.isCommitMode
+    })
+  )
   return hook
 }
 
@@ -199,6 +206,83 @@ afterEach(() => {
   vi.useRealTimers()
   mocks.fetch.mockReset()
   clearCombinedDiffViewMemory()
+})
+
+describe('combined diff read ownership', () => {
+  function abortableRead({ signal }: { signal?: AbortSignal }): Promise<GitDiffResult> {
+    return new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  }
+
+  it('retires the issued read and its deadline when the viewer unmounts', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    mocks.fetch.mockImplementation(abortableRead)
+    const hook = await startViewer()
+    const request = mocks.fetch.mock.calls[0]?.[0]
+    hook.unmount()
+    await flushLoads()
+    expect(request.signal.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels a replaced generation while its live successor finishes normally', async () => {
+    const fresh = deferredResult()
+    mocks.fetch.mockImplementationOnce(abortableRead).mockReturnValueOnce(fresh.promise)
+    const hook = await startViewer()
+    const request = mocks.fetch.mock.calls[0]?.[0]
+    hook.rerender(replacementViewer('replacement-with-cancellation'))
+    await flushLoads()
+    expect(request.signal.aborted).toBe(true)
+    const initial = hook.result.current.sections[0]!
+    await settle(fresh, textResult('current content'))
+    expect(hook.result.current.sections).toEqual([
+      expectedSection(initial, textResult('current content'))
+    ])
+  })
+
+  it('cancels physical work when the existing row deadline expires', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    mocks.fetch.mockImplementation(abortableRead)
+    const hook = await startViewer()
+    const request = mocks.fetch.mock.calls[0]?.[0]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(request.signal.aborted).toBe(true)
+    expect(hook.result.current.sections[0]?.error).toBe('Diff did not finish loading.')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retires a pending generation before restoring a cached successor', async () => {
+    const fresh = deferredResult()
+    mocks.fetch.mockImplementationOnce(abortableRead).mockReturnValueOnce(fresh.promise)
+    const hook = await startViewer()
+    const request = mocks.fetch.mock.calls[0]?.[0]
+    const next = replacementViewer('cached-successor')
+    const cachedSection = {
+      ...expectedSection(hook.result.current.sections[0]!, textResult('cached content')),
+      path: 'next.ts'
+    }
+    const lease = claimCombinedDiffView(next.viewStateKey, next.file.worktreeId)
+    rememberCombinedDiffView(lease, {
+      view: {
+        entrySignature: next.entrySet.entrySignature,
+        gitStatusSignature: '',
+        sections: [cachedSection],
+        sectionHeights: {},
+        loadedIndices: [0],
+        sideBySide: false
+      }
+    })
+    releaseCombinedDiffView(lease)
+    hook.rerender(next)
+    await flushLoads()
+    expect(request.signal.aborted).toBe(true)
+    expect(hook.result.current.sections).toEqual([cachedSection])
+    await settle(fresh, textResult('cached content'))
+    expect(hook.result.current.sections).toEqual([cachedSection])
+  })
 })
 
 describe('combined diff discarded-result analysis budget', () => {

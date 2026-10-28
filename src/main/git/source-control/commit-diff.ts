@@ -2,7 +2,7 @@ import type { GitDiffResult } from '../../../shared/git-diff-compare-types'
 import { stableInFlightKey } from '../../../shared/in-flight-promise-dedupe'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { gitRuntimeOptionsKey } from './git-runtime-options-cache-key'
-import { gitDiffReadDedupe } from './git-read-cache-invalidation'
+import { gitDiffReadLeaseOwner } from './git-read-cache-invalidation'
 import { buildDiffResult } from './diff-result'
 import { readGitBlobAtOidPath, type GitBlobReadResult } from './git-blob-read'
 
@@ -16,7 +16,7 @@ export async function getCommitDiff(
   },
   options: GitRuntimeOptions = {}
 ): Promise<GitDiffResult> {
-  return gitDiffReadDedupe.run(
+  return gitDiffReadLeaseOwner.lease(
     stableInFlightKey([
       'commitDiff',
       worktreePath,
@@ -26,7 +26,8 @@ export async function getCommitDiff(
       args.oldPath ?? null,
       ...gitRuntimeOptionsKey(options)
     ]),
-    () => loadCommitDiff(worktreePath, args, options)
+    options.signal,
+    (signal) => loadCommitDiff(worktreePath, args, { ...options, signal })
   )
 }
 
@@ -59,6 +60,7 @@ async function loadCommitDiff(
       leftBlob.tooLarge === true || rightBlob.tooLarge === true
     )
   } catch {
+    options.signal?.throwIfAborted()
     return {
       kind: 'text',
       originalContent: '',

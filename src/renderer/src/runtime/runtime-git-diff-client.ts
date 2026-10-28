@@ -6,26 +6,34 @@ import type {
 import { resolveLocalWorktreePath, type RuntimeGitContext } from './runtime-git-client-context'
 import { callRuntimeRpc } from './runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
+import { callLocalGitRead } from './runtime-local-git-read'
 
 export async function getRuntimeGitDiff(
   context: RuntimeGitContext,
-  args: { filePath: string; staged: boolean; compareAgainstHead?: boolean }
+  args: { filePath: string; staged: boolean; compareAgainstHead?: boolean },
+  signal?: AbortSignal
 ): Promise<GitDiffResult> {
   const target = context.target
   if (target.kind === 'local' || !context.worktreeId) {
-    return window.api.git.diff({
-      worktreePath: resolveLocalWorktreePath(context),
-      filePath: args.filePath,
-      staged: args.staged,
-      compareAgainstHead: args.compareAgainstHead,
-      connectionId: context.connectionId
-    })
+    return callLocalGitRead(
+      (requestToken) =>
+        window.api.git.diff({
+          worktreePath: resolveLocalWorktreePath(context),
+          filePath: args.filePath,
+          staged: args.staged,
+          compareAgainstHead: args.compareAgainstHead,
+          connectionId: context.connectionId,
+          ...(requestToken ? { requestToken } : {})
+        }),
+      (requestToken) => window.api.git.cancelDiff?.({ requestToken }) ?? Promise.resolve(),
+      signal
+    )
   }
   return callRuntimeRpc<GitDiffResult>(
     target,
     'git.diff',
     { worktree: toRuntimeWorktreeSelector(context.worktreeId), ...args },
-    { timeoutMs: 15_000 }
+    { timeoutMs: 15_000, signal }
   )
 }
 
@@ -81,23 +89,30 @@ export async function getRuntimeGitBranchDiff(
     compare: { baseRef: string; baseOid: string; headOid: string; mergeBase: string }
     filePath: string
     oldPath?: string
-  }
+  },
+  signal?: AbortSignal
 ): Promise<GitDiffResult> {
   const target = context.target
   if (target.kind === 'local' || !context.worktreeId) {
-    return window.api.git.branchDiff({
-      worktreePath: resolveLocalWorktreePath(context),
-      compare: args.compare,
-      filePath: args.filePath,
-      oldPath: args.oldPath,
-      connectionId: context.connectionId
-    })
+    return callLocalGitRead(
+      (requestToken) =>
+        window.api.git.branchDiff({
+          worktreePath: resolveLocalWorktreePath(context),
+          compare: args.compare,
+          filePath: args.filePath,
+          oldPath: args.oldPath,
+          connectionId: context.connectionId,
+          ...(requestToken ? { requestToken } : {})
+        }),
+      (requestToken) => window.api.git.cancelDiff?.({ requestToken }) ?? Promise.resolve(),
+      signal
+    )
   }
   return callRuntimeRpc<GitDiffResult>(
     target,
     'git.branchDiff',
     { worktree: toRuntimeWorktreeSelector(context.worktreeId), ...args },
-    { timeoutMs: 15_000 }
+    { timeoutMs: 15_000, signal }
   )
 }
 
@@ -108,23 +123,30 @@ export async function getRuntimeGitCommitDiff(
     parentOid?: string | null
     filePath: string
     oldPath?: string
-  }
+  },
+  signal?: AbortSignal
 ): Promise<GitDiffResult> {
   const target = context.target
   if (target.kind === 'local' || !context.worktreeId) {
-    return window.api.git.commitDiff({
-      worktreePath: resolveLocalWorktreePath(context),
-      commitOid: args.commitOid,
-      parentOid: args.parentOid,
-      filePath: args.filePath,
-      oldPath: args.oldPath,
-      connectionId: context.connectionId
-    })
+    return callLocalGitRead(
+      (requestToken) =>
+        window.api.git.commitDiff({
+          worktreePath: resolveLocalWorktreePath(context),
+          commitOid: args.commitOid,
+          parentOid: args.parentOid,
+          filePath: args.filePath,
+          oldPath: args.oldPath,
+          connectionId: context.connectionId,
+          ...(requestToken ? { requestToken } : {})
+        }),
+      (requestToken) => window.api.git.cancelDiff?.({ requestToken }) ?? Promise.resolve(),
+      signal
+    )
   }
   return callRuntimeRpc<GitDiffResult>(
     target,
     'git.commitDiff',
     { worktree: toRuntimeWorktreeSelector(context.worktreeId), ...args },
-    { timeoutMs: 15_000 }
+    { timeoutMs: 15_000, signal }
   )
 }

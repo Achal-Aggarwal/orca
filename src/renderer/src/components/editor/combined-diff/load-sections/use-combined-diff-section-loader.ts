@@ -12,7 +12,10 @@ import { getStoredTextDiffContent, getStoredTextDiffResult } from '../../large-d
 import { removeDiffSectionMeasuredHeight } from '../../diff-section-height-cache'
 import type { CombinedDiffEntrySet } from '../resolve-changes/use-combined-diff-entry-set'
 import { fetchCombinedDiffSection } from './fetch-combined-diff-section'
-import { getDiffSectionLoadErrorMessage } from './combined-diff-section-load-timeout'
+import {
+  getDiffSectionLoadErrorMessage,
+  withDiffSectionLoadTimeout
+} from './combined-diff-section-load-timeout'
 import { getInitialCombinedDiffSectionLoadIndices } from './combined-diff-initial-section-load'
 import { isUnchangedDiffSectionReload } from './combined-diff-section-load-state'
 import type { CombinedDiffSectionLoadRegistry } from './combined-diff-section-load-registry'
@@ -50,6 +53,7 @@ export function useCombinedDiffSectionLoader({
   const {
     deferredLoadRequestsRef,
     generationRef,
+    sectionLoadControllersRef,
     loadSchedulerRef,
     loadSectionRef,
     loadedIndicesRef,
@@ -86,18 +90,24 @@ export function useCombinedDiffSectionLoader({
         return
       }
 
+      const controller = new AbortController()
+      sectionLoadControllersRef.current.set(index, controller)
       let result: GitDiffResult
       let error: string | undefined
       try {
-        result = await fetchCombinedDiffSection({
-          branchCompare,
-          commitCompare,
-          entry,
-          file,
-          isAllMode,
-          isBranchMode,
-          isCommitMode
-        })
+        result = await withDiffSectionLoadTimeout(
+          fetchCombinedDiffSection({
+            branchCompare,
+            commitCompare,
+            entry,
+            file,
+            isAllMode,
+            isBranchMode,
+            isCommitMode,
+            signal: controller.signal
+          }),
+          () => controller.abort()
+        )
       } catch (err) {
         error = getDiffSectionLoadErrorMessage(err)
         result = {
@@ -106,7 +116,11 @@ export function useCombinedDiffSectionLoader({
           modifiedContent: '',
           originalIsBinary: false,
           modifiedIsBinary: false
-        } as GitDiffResult
+        }
+      } finally {
+        if (sectionLoadControllersRef.current.get(index) === controller) {
+          sectionLoadControllersRef.current.delete(index)
+        }
       }
 
       if (generationRef.current !== gen) {

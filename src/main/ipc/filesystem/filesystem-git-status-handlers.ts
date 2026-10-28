@@ -44,7 +44,7 @@ import {
 } from '../../wsl/wsl-unc-access-gate'
 
 export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerContext): void {
-  const { store, gitStatusCancellations } = context
+  const { store, gitReadCancellations } = context
   ipcMain.handle(
     'git:status',
     async (
@@ -63,7 +63,7 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
         wakeWslDistro?: boolean
       }
     ): Promise<GitStatusResult> => {
-      const controller = gitStatusCancellations.begin(event, args.requestToken)
+      const controller = gitReadCancellations.begin(event, args.requestToken)
       const options = {
         includeIgnored: args.includeIgnored ?? false,
         admissionTier: args.admissionTier ?? ('status' as const),
@@ -107,13 +107,13 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
         }
         return status
       } finally {
-        gitStatusCancellations.finish(event, args.requestToken, controller)
+        gitReadCancellations.finish(event, args.requestToken, controller)
       }
     }
   )
 
   ipcMain.handle('git:cancelStatus', (event, args: { requestToken: string }): void => {
-    gitStatusCancellations.cancel(event, args.requestToken)
+    gitReadCancellations.cancel(event, args.requestToken)
   })
 
   ipcMain.handle(
@@ -273,27 +273,34 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
   ipcMain.handle(
     'git:diff',
     async (
-      _event,
+      event,
       args: {
         worktreePath: string
         filePath: string
         staged: boolean
         compareAgainstHead?: boolean
         connectionId?: string
+        requestToken?: string
       }
     ): Promise<GitDiffResult> => {
-      requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
-      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
-      const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
-      const gitOptions = getLocalGitOptionsForRegisteredWorktree(
-        store,
-        args.worktreePath,
-        worktreePath
-      )
-      return getDiff(worktreePath, filePath, args.staged, args.compareAgainstHead, {
-        ...gitOptions,
-        admissionTier: 'interactive'
-      })
+      const controller = gitReadCancellations.begin(event, args.requestToken)
+      try {
+        requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
+        const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+        const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
+        const gitOptions = getLocalGitOptionsForRegisteredWorktree(
+          store,
+          args.worktreePath,
+          worktreePath
+        )
+        return await getDiff(worktreePath, filePath, args.staged, args.compareAgainstHead, {
+          ...gitOptions,
+          admissionTier: 'interactive',
+          ...(controller ? { signal: controller.signal } : {})
+        })
+      } finally {
+        gitReadCancellations.finish(event, args.requestToken, controller)
+      }
     }
   )
 }

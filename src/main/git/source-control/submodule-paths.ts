@@ -113,6 +113,7 @@ export async function listSubmodulePaths(
       })
       .filter((value) => value.length > 0)
   } catch {
+    options.signal?.throwIfAborted()
     paths = []
   }
   if (cacheGeneration === submodulePathsCacheGeneration) {

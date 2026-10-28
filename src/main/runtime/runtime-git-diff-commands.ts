@@ -24,7 +24,8 @@ export class RuntimeGitDiffCommands {
     filePath: string,
     staged: boolean,
     compareAgainstHead?: boolean,
-    maxContentBytes?: number
+    maxContentBytes?: number,
+    signal?: AbortSignal
   ): Promise<GitDiffResult> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePath = normalizeRuntimeGitRelativePath(filePath)
@@ -33,7 +34,8 @@ export class RuntimeGitDiffCommands {
         target.worktree.path,
         relativePath,
         staged,
-        compareAgainstHead
+        compareAgainstHead,
+        ...(signal ? ([{ signal }] as const) : ([] as const))
       ),
       maxContentBytes
     )
@@ -63,7 +65,8 @@ export class RuntimeGitDiffCommands {
     compare: { mergeBase: string; headOid: string },
     filePath: string,
     oldPath?: string,
-    maxContentBytes?: number
+    maxContentBytes?: number,
+    signal?: AbortSignal
   ): Promise<GitDiffResult> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePath = normalizeRuntimeGitRelativePath(filePath)
@@ -80,7 +83,8 @@ export class RuntimeGitDiffCommands {
         },
         {
           ...localGitOptionsForTarget(target),
-          admissionTier: 'interactive'
+          admissionTier: 'interactive',
+          ...(signal ? { signal } : {})
         }
       ),
       maxContentBytes
@@ -90,18 +94,23 @@ export class RuntimeGitDiffCommands {
   async getRuntimeGitCommitDiff(
     worktreeSelector: string,
     args: { commitOid: string; parentOid?: string | null; filePath: string; oldPath?: string },
-    maxContentBytes?: number
+    maxContentBytes?: number,
+    signal?: AbortSignal
   ): Promise<GitDiffResult> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePath = normalizeRuntimeRelativePath(args.filePath)
     const oldRelativePath = args.oldPath ? normalizeRuntimeRelativePath(args.oldPath) : undefined
     return assertGitDiffWithinTransportBudget(
-      await requireRuntimeGitProvider(target).getCommitDiff(target.worktree.path, {
-        commitOid: args.commitOid,
-        parentOid: args.parentOid,
-        filePath: relativePath,
-        oldPath: oldRelativePath
-      }),
+      await requireRuntimeGitProvider(target).getCommitDiff(
+        target.worktree.path,
+        {
+          commitOid: args.commitOid,
+          parentOid: args.parentOid,
+          filePath: relativePath,
+          oldPath: oldRelativePath
+        },
+        ...(signal ? ([{ signal }] as const) : ([] as const))
+      ),
       maxContentBytes
     )
   }
