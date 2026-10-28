@@ -1,20 +1,26 @@
 import { inlineChildren } from './html-inline-markdown'
 
-// Remove checkbox label/nested lists on clone only: live checkbox must remain, nested lists serialize at own indentation.
 export function listItemText(item: Element): string {
-  const clone = item.cloneNode(true)
-  // `cloneNode` is typed as returning a `Node`; an element's deep copy is an element.
-  if (!(clone instanceof Element)) {
-    return ''
-  }
-  clone.querySelectorAll('label').forEach((label) => label.remove())
-  clone.querySelectorAll('ul, ol').forEach((list) => list.remove())
-  return inlineChildren(clone).trim()
+  return inlineChildren(item, true).trim()
 }
 
 /** The lists directly inside an item, rather than every list anywhere beneath it. */
 export function directNestedLists(item: Element): Element[] {
-  return Array.from(item.querySelectorAll('ul, ol')).filter((list) => list.closest('li') === item)
+  const lists: Element[] = []
+  const visit = (element: Element): void => {
+    for (const child of element.children) {
+      const tag = child.tagName.toLowerCase()
+      if (tag === 'li') {
+        continue
+      }
+      if (tag === 'ul' || tag === 'ol') {
+        lists.push(child)
+      }
+      visit(child)
+    }
+  }
+  visit(item)
+  return lists
 }
 
 // Non-li-owned lists are standalone blocks wherever engine placed them, including inside p; li-owned nested lists serialize at own indentation.
