@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createStore } from 'zustand/vanilla'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Repo } from '../../../shared/repo-types'
@@ -711,6 +712,83 @@ describe('getConnectionIdFromState', () => {
 
     expect(worktreeIdReads).toBe(10_000)
     expect(repoIdReads).toBe(100)
+  })
+
+  it.each([100, 1_000])(
+    'reuses folder owner inference across unrelated publications with %i repos',
+    (repoCount) => {
+      let repoClassifications = 0
+      const repos = Array.from({ length: repoCount }, (_, index) =>
+        makeRepo({
+          id: `repo-${index}`,
+          path: `/home/neil/platform/repo-${index}`,
+          connectionId: 'ssh-target'
+        })
+      )
+      for (const repo of repos) {
+        Object.defineProperty(repo, 'projectGroupId', {
+          enumerable: true,
+          get: () => {
+            repoClassifications += 1
+            return 'group-1'
+          }
+        })
+      }
+      const store = createStore<ConnectionContextState & { unrelatedWrite: number }>(() => ({
+        folderWorkspaces: [makeFolderWorkspace(), makeFolderWorkspace({ id: 'folder-2' })],
+        projectGroups: [makeProjectGroup()],
+        repos,
+        worktreesByRepo: {},
+        unrelatedWrite: 0
+      }))
+      const keys = [folderWorkspaceKey('folder-workspace-1'), folderWorkspaceKey('folder-2')]
+      const readOwners = (state: ConnectionContextState): void => {
+        for (const key of keys) {
+          expect(getConnectionIdFromState(state, key)).toBe('ssh-target')
+        }
+      }
+      readOwners(store.getState())
+      repoClassifications = 0
+      const unsubscribe = store.subscribe(readOwners)
+      for (let index = 1; index <= 50; index += 1) {
+        store.setState({ unrelatedWrite: index })
+      }
+      unsubscribe()
+      expect(repoClassifications).toBe(0)
+    }
+  )
+
+  it('invalidates folder connection inference for each catalog slice and preserves tri-state answers', () => {
+    const key = folderWorkspaceKey('folder-workspace-1')
+    const state: ConnectionContextState = {
+      folderWorkspaces: [makeFolderWorkspace()],
+      projectGroups: [makeProjectGroup()],
+      repos: [makeRepo({ id: 'repo-1', projectGroupId: 'group-1', connectionId: 'ssh-1' })],
+      worktreesByRepo: {}
+    }
+    expect(getConnectionIdFromState(state, key)).toBe('ssh-1')
+    const local = {
+      ...state,
+      repos: [makeRepo({ id: 'repo-1', projectGroupId: 'group-1' })]
+    }
+    expect(getConnectionIdFromState(local, key)).toBeNull()
+    const contested = {
+      ...local,
+      projectGroups: [makeProjectGroup({ connectionId: 'ssh-2' })]
+    }
+    expect(getConnectionIdFromState(contested, key)).toBeUndefined()
+    expect(getConnectionIdFromState(contested, key)).toBeUndefined()
+    const pinned = {
+      ...contested,
+      folderWorkspaces: [
+        makeFolderWorkspace({ executionHostId: 'runtime:host-a', connectionId: 'nested-ssh' })
+      ]
+    }
+    expect(getConnectionIdFromState(pinned, key)).toBe('nested-ssh')
+    expect(getConnectionIdFromState({ ...pinned, folderWorkspaces: [] }, key)).toBeUndefined()
+    // Retained snapshots remain independent when React reads them between current publications.
+    expect(getConnectionIdFromState(state, key)).toBe('ssh-1')
+    expect(getConnectionIdFromState(local, key)).toBeNull()
   })
 
   it('returns null for a null worktreeId', () => {
