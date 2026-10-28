@@ -26,6 +26,7 @@ export async function getRemoteFileTarget(
       const { stdout } = await waitForPromiseWithSignal(
         gitExecFileAsync(argv, {
           ...gitExecOptions(repoPath, options),
+          captureWslLoginShellOutput: true,
           signal: controller.signal,
           timeout: Math.max(1, deadline - Date.now()),
           maxBuffer: 1024 * 1024

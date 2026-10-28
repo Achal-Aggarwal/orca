@@ -25,6 +25,7 @@ export async function readRemoteUrl(
   const { stdout } = await gitExecFileAsync(['remote', 'get-url', remoteName], {
     cwd: context.repoPath,
     timeout: REMOTE_URL_PROBE_TIMEOUT_MS,
+    captureWslLoginShellOutput: true,
     ...(context.wslDistro ? { wslDistro: context.wslDistro } : {}),
     ...(context.admissionTier ? { admissionTier: context.admissionTier } : {})
   })

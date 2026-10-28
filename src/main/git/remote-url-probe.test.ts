@@ -29,6 +29,7 @@ describe('remote URL probe', () => {
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['remote', 'get-url', 'upstream'], {
       cwd: '/repo',
       timeout: REMOTE_URL_PROBE_TIMEOUT_MS,
+      captureWslLoginShellOutput: true,
       wslDistro: 'Ubuntu'
     })
 
@@ -36,7 +37,8 @@ describe('remote URL probe', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenLastCalledWith(['remote', 'get-url', 'origin'], {
       cwd: '/repo',
-      timeout: REMOTE_URL_PROBE_TIMEOUT_MS
+      timeout: REMOTE_URL_PROBE_TIMEOUT_MS,
+      captureWslLoginShellOutput: true
     })
   })
 
