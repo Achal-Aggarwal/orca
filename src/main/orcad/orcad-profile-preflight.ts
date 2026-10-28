@@ -19,6 +19,8 @@ import { preflightOrcadNativeRuntime } from './orcad-runtime-native-preflight'
 import { orcadCompileCacheEnv } from './orcad-compile-cache'
 import {
   consumeOrcadStartupQualification,
+  discardOrcadStartupQualification,
+  isQualifiableOrcadSlot,
   orcadStartupQualificationKey,
   recordOrcadStartupQualification
 } from './orcad-startup-qualification'
@@ -39,13 +41,25 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
   const identity = await readInstalledVersion(directory)
   // Windows' child also proves the process identity table, which depends on host services.
   const key =
-    process.platform === 'win32'
+    process.platform === 'win32' || !isQualifiableOrcadSlot(directory)
       ? null
       : await orcadStartupQualificationKey(directory, identity).catch(() => null)
   if (key && (await consumeOrcadStartupQualification(directory, key))) {
     pendingQualification = { directory, key }
     return
   }
+  try {
+    await runStartupPreflightChild(directory, identity)
+  } catch (error) {
+    if (key) {
+      await discardOrcadStartupQualification(directory)
+    }
+    throw error
+  }
+  pendingQualification = key ? { directory, key } : null
+}
+
+async function runStartupPreflightChild(directory: string, identity: string): Promise<void> {
   const nonce = randomUUID()
   // Keep disposable SQLite ownership and native state out of the serving process.
   const result = await runProcess({
@@ -68,7 +82,6 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
       cause
     })
   }
-  pendingQualification = key ? { directory, key } : null
 }
 
 /** Call once readiness is published: only a launch that got there lets the next one skip. */

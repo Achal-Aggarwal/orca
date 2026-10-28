@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ORCAD_MANAGED_ACTIVATION_ROOT_ENV } from '../../shared/orcad-managed-launch-env'
 
 const artifacts = vi.hoisted(() => ({ files: ['orcad-server.js', 'daemon-entry.js'] }))
 vi.mock('./orcad-artifact-identity', () => ({
@@ -10,6 +11,8 @@ vi.mock('./orcad-artifact-identity', () => ({
 
 import {
   consumeOrcadStartupQualification,
+  discardOrcadStartupQualification,
+  isQualifiableOrcadSlot,
   ORCAD_STARTUP_QUALIFIED_FILENAME,
   orcadStartupQualificationKey,
   recordOrcadStartupQualification
@@ -48,6 +51,28 @@ describe('orcad startup qualification', () => {
     expect(key.abi).toHaveProperty('glibcVersion')
   })
 
+  it.each(['NODE_OPTIONS', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'TMPDIR'])(
+    're-qualifies when the launch environment changes %s',
+    async (name) => {
+      const env = { NODE_OPTIONS: '', LD_PRELOAD: '', LD_LIBRARY_PATH: '', TMPDIR: '/tmp' }
+      const key = await orcadStartupQualificationKey(slot, '0.1.0+aaaaaaaaaaaa', env)
+
+      expect(await orcadStartupQualificationKey(slot, '0.1.0+aaaaaaaaaaaa', { ...env })).toBe(key)
+      expect(
+        await orcadStartupQualificationKey(slot, '0.1.0+aaaaaaaaaaaa', {
+          ...env,
+          [name]: 'changed'
+        })
+      ).not.toBe(key)
+      expect(
+        await orcadStartupQualificationKey(slot, '0.1.0+aaaaaaaaaaaa', {
+          ...env,
+          [name]: undefined
+        })
+      ).not.toBe(key)
+    }
+  )
+
   it('fails the key closed when an installed file is missing', async () => {
     rmSync(join(slot, 'daemon-entry.js'))
 
@@ -74,6 +99,26 @@ describe('orcad startup qualification', () => {
 
     expect(readFileSync(join(slot, ORCAD_STARTUP_QUALIFIED_FILENAME), 'utf8')).toBe('key-1')
     expect(readdirSync(slot).filter((name) => name.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('voids a marker on demand, and is silent when there is none', async () => {
+    await recordOrcadStartupQualification(slot, 'key-1')
+
+    await discardOrcadStartupQualification(slot)
+    await discardOrcadStartupQualification(slot)
+
+    expect(await consumeOrcadStartupQualification(slot, 'key-1')).toBe(false)
+  })
+
+  it('qualifies only managed slots outside the app resources', () => {
+    const managed = { [ORCAD_MANAGED_ACTIVATION_ROOT_ENV]: '/home/u/.orca-remote' }
+    const resources = join(slot, 'Orca.app', 'Contents', 'Resources')
+
+    expect(isQualifiableOrcadSlot(join(slot, 'orcad-0.1.0+a'), managed, resources)).toBe(true)
+    expect(isQualifiableOrcadSlot(join(slot, 'orcad-0.1.0+a'), managed, undefined)).toBe(true)
+    expect(isQualifiableOrcadSlot(join(slot, 'orcad-0.1.0+a'), {}, undefined)).toBe(false)
+    expect(isQualifiableOrcadSlot(join(resources, 'orcad'), managed, resources)).toBe(false)
+    expect(isQualifiableOrcadSlot(resources, managed, resources)).toBe(false)
   })
 
   it('fails open when the slot cannot be written', async () => {
