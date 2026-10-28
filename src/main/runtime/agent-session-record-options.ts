@@ -6,7 +6,7 @@ import type {
   AgentSessionRecord
 } from '../../shared/agent-session-record'
 import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
-import { nearestAgentEffort } from './session-tabs/structured-launch-seed-listing'
+import { nearestAgentEffort } from '../../shared/structured-agent-session-effective-effort'
 
 export function replaceAgentSessionRecordOptions(
   record: AgentSessionRecord,

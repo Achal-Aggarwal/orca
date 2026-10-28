@@ -18,6 +18,81 @@ import { agentSessionLaunchFolderMissing } from '../runtime/agent-session-launch
 afterEach(closePiRpcAdapterFixtures)
 
 describe('Pi RPC session ownership and delivery', () => {
+  it('projects safe applied effort separately from a newer accepted request and rejects read/write/model races', async () => {
+    const h = await setup({}, undefined, { thinkingLevel: 'medium' })
+    const model = {
+      provider: 'anthropic',
+      id: 'model-1',
+      reasoning: true,
+      thinkingLevelMap: { off: null }
+    }
+    h.connection.requestOverride = (command) => {
+      if (command === 'set_thinking_level') {
+        return Promise.resolve({})
+      }
+      if (command === 'get_available_models') {
+        return Promise.resolve({ models: [model] })
+      }
+      if (command === 'get_state') {
+        return Promise.resolve({
+          sessionFile: file,
+          model,
+          thinkingLevel: 'minimal',
+          isStreaming: false,
+          isCompacting: false
+        })
+      }
+      return undefined
+    }
+    await h.adapter.setOption({ sessionId, fence: 7, key: 'effort', value: 'off' })
+    const applied = await h.adapter.readOptions({ sessionId, fence: 7 })
+    expect(applied.projectCurrent?.({ model: 'anthropic/model-1', effort: 'off' })).toMatchObject({
+      effort: 'minimal',
+      confirmed: expect.arrayContaining(['effort'])
+    })
+    expect(applied.projectCurrent?.({ model: 'anthropic/model-1', effort: 'high' })?.effort).toBe(
+      'high'
+    )
+    const pending = Promise.withResolvers<unknown>()
+    const requested = Promise.withResolvers<void>()
+    const ordinary = h.connection.requestOverride
+    h.connection.requestOverride = (command) => {
+      if (command === 'get_state') {
+        requested.resolve()
+        return pending.promise
+      }
+      return ordinary(command)
+    }
+    const reading = h.adapter.readOptions({ sessionId, fence: 7 })
+    await requested.promise
+    await h.adapter.setOption({ sessionId, fence: 7, key: 'effort', value: 'high' })
+    pending.resolve({
+      sessionFile: file,
+      model,
+      thinkingLevel: 'minimal',
+      isStreaming: false,
+      isCompacting: false
+    })
+    const stale = await reading
+    expect(stale.projectCurrent?.({ model: 'anthropic/model-1', effort: 'high' })).toMatchObject({
+      effort: 'high',
+      confirmed: []
+    })
+    await h.adapter.setOption({
+      sessionId,
+      fence: 7,
+      key: 'model',
+      value: 'anthropic/workspace-model'
+    })
+    expect(
+      applied.projectCurrent?.({ model: 'anthropic/workspace-model', effort: 'off' })
+    ).toMatchObject({ effort: 'off', confirmed: [] })
+    await h.adapter.closeSession(sessionId)
+    expect(
+      applied.projectCurrent?.({ model: 'anthropic/model-1', effort: 'off' })?.confirmed
+    ).toEqual([])
+  })
+
   it('refuses a floating chat whose folder is gone with the reason the person reads', async () => {
     const h = await setup()
     await h.adapter.closeSession(sessionId)

@@ -3,25 +3,7 @@
 import { finishedListingIds } from '../../../shared/structured-agent-session-options'
 import type { AgentModelCatalogService } from '../../native-chat/agent-model-catalog/agent-model-catalog-service'
 
-const EFFORT_RANK = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-
-/** `previous` if `supported` offers it, else the nearest offered level (the higher on a tie). */
-export function nearestAgentEffort(
-  previous: string,
-  supported: readonly string[]
-): string | undefined {
-  const rank = (level: string): number => EFFORT_RANK.indexOf(level === 'off' ? 'none' : level)
-  const distance = (level: string): number => Math.abs(rank(level) - rank(previous))
-  if (supported.includes(previous)) {
-    return previous
-  }
-  if (rank(previous) === -1) {
-    return undefined
-  }
-  return supported
-    .filter((level) => rank(level) !== -1)
-    .sort((a, b) => distance(a) - distance(b) || rank(b) - rank(a))[0]
-}
+import { nearestAgentEffort } from '../../../shared/structured-agent-session-effective-effort'
 
 /** Read saved catalogs only for Claude seeds naming a model; unreadable/unfinished catalogs preserve the seed. */
 export async function structuredLaunchSeedOnSavedListing(

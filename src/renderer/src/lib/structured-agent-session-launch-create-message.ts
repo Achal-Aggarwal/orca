@@ -104,10 +104,10 @@ function structuredLaunchCreateOptions(
   // Create has always carried options, so any host takes what the chat shows.
   const view = structuredAgentSessionOptionView(firstFrame, intent.seedOptions, selection.held)
   const drawn = structuredAgentSessionDrawnValues(view)
-  // Each held value as the picker draws it; the held picks themselves stay as the user made them.
+  // Effort remains the action input for strict admission; tier retains its existing display projection.
   const held = Object.fromEntries(
     Object.entries(selection.held).map(([id, encoded]) => {
-      const value = id === 'model' ? undefined : drawn[id]?.value
+      const value = id === 'model' || id === 'effort' ? undefined : drawn[id]?.value
       const shown = value === undefined ? null : encodeStructuredAgentSessionOptionValue(id, value)
       return [id, shown ?? encoded]
     })

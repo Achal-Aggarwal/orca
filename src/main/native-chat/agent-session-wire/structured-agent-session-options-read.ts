@@ -1,5 +1,4 @@
 import { structuredAgentSessionThreadGoalReport } from './structured-agent-session-thread-goal'
-// Saved choices, catalog defaults and actual execution reports remain separate facts.
 
 import type {
   AgentSessionModelCatalogResult,
@@ -15,6 +14,8 @@ import { saveStructuredAgentSessionListing } from './structured-agent-session-st
 import { independentAgentModelCatalog } from '../agent-model-catalog/agent-model-catalog-discovery'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
+  effectiveRecordEffort,
+  confirmedCurrentOptions,
   structuredAgentSessionCapabilityView,
   structuredAgentSessionOptionModels,
   type StructuredAgentSessionRestingOptions as RestingOptions
@@ -32,9 +33,7 @@ export {
 export type StructuredAgentSessionOptionsReader = { readsWithoutModel: boolean }
 
 /** Match same-build RPC support for model-less answers. */
-export const IN_PROCESS_OPTIONS_READER: StructuredAgentSessionOptionsReader = {
-  readsWithoutModel: true
-}
+export const IN_PROCESS_OPTIONS_READER = { readsWithoutModel: true }
 
 async function readStructuredAgentSessionOptionsAtRest(
   deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'agents' | 'modelCatalog'>,
@@ -104,7 +103,7 @@ async function readStructuredAgentSessionOptionsAtRest(
     (catalog.origin === 'unknown' ? undefined : models.find((entry) => entry.isDefault)?.id)
   // Prefer saved effort, then live execution or the folder’s matching model default.
   const effort =
-    saved.effort ??
+    effectiveRecordEffort(record.provider, saved.effort, models, model) ??
     (rules?.effortDefaultsToModel || (saved.model === undefined && folderDefault)
       ? defaultModels.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
@@ -178,7 +177,7 @@ export async function readStructuredAgentSessionOptions(
     (rested ??= await readStructuredAgentSessionOptionsAtRest(context.deps, sessionId, reader))
   let options: Omit<AgentSessionOptionsResult, 'rewind'>
   if (live) {
-    const { catalogListing, ...answer } = live
+    const { catalogListing, projectCurrent: _project, ...answer } = live
     options = answer
     // Fill missing live listings from saved catalog state; absent records keep the child’s answer.
     if (!catalogListing && !answer.listedModelIds && store.getConversation(sessionId)) {
@@ -228,11 +227,15 @@ export async function readStructuredAgentSessionOptions(
   const model = refusedModel
     ? (options.current.model ?? displayDefault)
     : (saved.model ?? (options.current.model || selected.current.model || displayDefault))
+  const projected = live?.projectCurrent?.({ ...saved, ...(model ? { model } : {}) })
   const current = {
     ...(refusedModel ? selectedWithoutModel : selected.current),
     ...options.current,
     ...(model !== undefined ? { model } : {}),
-    effort: saved.effort ?? options.current.effort,
+    effort:
+      projected?.effort ??
+      effectiveRecordEffort(agent, saved.effort, options.models, model) ??
+      options.current.effort,
     fastMode:
       saved.fastMode !== undefined
         ? selected.current.fastMode
@@ -250,11 +253,7 @@ export async function readStructuredAgentSessionOptions(
   const defaulted = structuredAgentSessionNeverSent(record, session.journal)
     ? []
     : (['model', 'effort'] as const).filter((key) => saved[key] === undefined && defaultedBy(key))
-  const confirmed = options.current.confirmed?.filter((key) =>
-    key === 'model' || key === 'effort' || key === 'fastMode' || key === 'serviceTier'
-      ? current[key] === options.current[key]
-      : false
-  )
+  const confirmed = confirmedCurrentOptions(current, options.current, projected?.confirmed)
   if (independent) {
     const { inventory, fallback, listedModelIds } = await atRest()
     if (saved.model === undefined && current.model && inventory.origin !== 'unknown') {

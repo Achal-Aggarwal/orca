@@ -19,8 +19,7 @@ import type { ProviderProcessLaunch } from '../provider-process/provider-process
 import { JsonlRpcResponseError } from '../jsonl-rpc/peer'
 import { PiRpcTurns } from './rpc-turns'
 import { PiRpcDialogCallbacks } from './rpc-dialog-callbacks'
-import { readPiRpcSessionOptions } from './rpc-options'
-import { withLiveCatalogListing } from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
+import { readPiRpcSessionLiveOptions } from './rpc-options'
 import type { PiRpcResolvedLaunch } from './rpc-launch-resolution'
 import type { StructuredAgentSessionProviderOpenResult } from '../native-chat/agent-session-wire/structured-agent-session-provider-open-contract'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
@@ -194,7 +193,7 @@ export class PiRpcSession {
 
   /** Current choices cannot establish the configured default; only startup can. */
   async readOptions() {
-    return withLiveCatalogListing(await readPiRpcSessionOptions(this.connection))
+    return readPiRpcSessionLiveOptions(this.connection, this.optionProof)
   }
 
   async close(requested = true): ReturnType<PiRpcConnection['close']> {

@@ -86,6 +86,55 @@ async function handedOverUserSend(text: string): Promise<string> {
 describe("a Stop's queue pause", () => {
   installRigLifecycleHooks()
 
+  it('keeps accepted execution and fingerprint exact through restart, later picks and replay', async () => {
+    const working = await rig.workingSend()
+    const body = hostTestMessage('frozen medium')
+    const fields = {
+      body,
+      delivery: 'queue-if-active' as const,
+      options: { model: 'openai/gpt-5', effort: 'medium' }
+    }
+    const params = {
+      ...fields,
+      envelope: rig.envelope(fields, 'agentSession.send', hostTestOperationId())
+    }
+    const queued = await rig.host.send(QUEUED_RIG_CALLER, params)
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected queued receipt')
+    }
+    const id = queued.value.queued.messageId
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+    const frozen = { ...journal.queuedMessages.get(id) }
+    const pick = { key: 'effort', value: 'high' }
+    expect(
+      await rig.host.setOption(QUEUED_RIG_CALLER, {
+        ...pick,
+        envelope: rig.envelope(pick, 'agentSession.setOption', hostTestOperationId())
+      })
+    ).toMatchObject({ ok: true })
+    await rig.restartHostProcess()
+    expect(await rig.host.send(QUEUED_RIG_CALLER, params)).toMatchObject({
+      ok: true,
+      replayed: true
+    })
+    await rig.settleAccepted(working, 'before-restart')
+    expect(await rig.sendNow(id)).toMatchObject({ ok: true })
+    await eventually(async () => {
+      const submitted = await rig.handoff(id)
+      expect(submitted?.options).toEqual(fields.options)
+      const dispatched = rig.dispatch.mock.calls.find(
+        ([input]) => input.clientMessageId === submitted?.clientMessageId
+      )
+      expect(dispatched?.[0].executionOptions).toEqual(fields.options)
+    })
+    const restored = rig.host
+      .collaboratorsForTests()
+      .sessions.get(HOST_TEST_SESSION)!
+      .journal.queuedMessages.get(id)
+    expect(restored?.fingerprint).toBe(frozen.fingerprint)
+    expect(restored?.options).toEqual(fields.options)
+  })
+
   it('outlives a user send the provider accepts and then refuses; a later send that starts lifts it', async () => {
     const draftId = await stoppedDraft()
     const refused = await handedOverUserSend('the start fails')

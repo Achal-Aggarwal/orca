@@ -1,3 +1,5 @@
+import { effectiveAgentEffort } from '../../../shared/structured-agent-session-effective-effort'
+import { agentSessionEffortLevels } from '../../../shared/agent-session-effort-levels'
 // Include unlisted current models without inferred capabilities, for both live and resting reads.
 
 import type {
@@ -13,6 +15,8 @@ export type StructuredAgentSessionOptionProjection = {
 }
 
 export type StructuredAgentSessionLiveOptions = AgentSessionOptionsResult & {
+  /** Operation-local projection after native readback; never serialized to clients. */
+  projectCurrent?: (saved: Readonly<Record<string, string>>) => AgentSessionOptionsResult['current']
   catalogListing?: AgentModelCatalogLiveListing
 }
 
@@ -64,4 +68,29 @@ export function structuredAgentSessionCapabilityView(
       (row) => row.serviceTiers?.map((tier) => tier.value) ?? []
     )
   }
+}
+
+/** Known Pi records keep native higher-first policy; other agents retain their saved selection. */
+export function effectiveRecordEffort(
+  agent: string,
+  effort: string | undefined,
+  models: readonly AgentSessionModelOption[],
+  model: string | undefined
+): string | undefined {
+  const levels = agentSessionEffortLevels(models.find((row) => row.id === model))
+  return agent === 'pi'
+    ? effectiveAgentEffort(effort, levels ? [...levels] : undefined, 'higher-first')
+    : effort
+}
+
+export function confirmedCurrentOptions(
+  current: AgentSessionOptionsResult['current'],
+  reported: AgentSessionOptionsResult['current'],
+  confirmed = reported.confirmed
+): AgentSessionOptionsResult['current']['confirmed'] {
+  return confirmed?.filter((key) =>
+    key === 'model' || key === 'effort' || key === 'fastMode' || key === 'serviceTier'
+      ? current[key] === reported[key]
+      : false
+  )
 }
