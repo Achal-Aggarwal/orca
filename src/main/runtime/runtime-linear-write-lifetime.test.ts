@@ -42,12 +42,12 @@ function commands(listResolvedWorktrees: () => Promise<[]> = async () => []) {
   vi.spyOn(result, 'resolveLinearAgentWriteTarget').mockResolvedValue(target)
   vi.spyOn(result, 'resolveLinearCreateTeam').mockResolvedValue(team)
   vi.spyOn(result, 'getLinearTeamStatesForWrite').mockResolvedValue([
-    { id: 'done', name: 'Done', type: 'completed' }
+    { id: 'done', name: 'Done', type: 'completed', color: '#888888', position: 1 }
   ])
   vi.spyOn(result, 'readLinearAgentIssueWriteRecord').mockResolvedValue(issue)
   vi.spyOn(result, 'getLinearViewerForWrite').mockResolvedValue({ id: 'user-1' })
   vi.spyOn(result, 'getLinearTeamLabelsForWrite').mockResolvedValue([
-    { id: 'label-1', name: 'Bug' }
+    { id: 'label-1', name: 'Bug', color: '#888888' }
   ])
   return result
 }

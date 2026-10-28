@@ -1,17 +1,17 @@
-import './rpc/unused-default-rpc-methods.test-fixture'
+import '../main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { main } from '../../cli/index'
-import { RuntimeClient } from '../../cli/runtime-client'
-import * as mutations from '../linear/linear-issue-mutations'
-import * as comments from '../linear/linear-issue-comments'
-import * as relations from '../linear/issue-relation-write'
-import { LinearWriteFailure } from '../linear/linear-issue-write-support'
-import { OrcaRuntimeService } from './orca-runtime'
-import { OrcaRuntimeRpcServer } from './runtime-rpc'
-import { LINEAR_AGENT_ACCESS_METHODS } from './rpc/methods/linear-agent-access'
+import { main } from './index'
+import { RuntimeClient } from './runtime-client'
+import * as mutations from '../main/linear/linear-issue-mutations'
+import * as comments from '../main/linear/linear-issue-comments'
+import * as relations from '../main/linear/issue-relation-write'
+import { LinearWriteFailure } from '../main/linear/linear-issue-write-support'
+import { OrcaRuntimeService } from '../main/runtime/orca-runtime'
+import { OrcaRuntimeRpcServer } from '../main/runtime/runtime-rpc'
+import { LINEAR_AGENT_ACCESS_METHODS } from '../main/runtime/rpc/methods/linear-agent-access'
 
 const writeId = '11111111-1111-4111-8111-111111111111'
 const issue = {
@@ -71,10 +71,12 @@ beforeEach(async () => {
     workspaceId: 'w1'
   })
   vi.spyOn(runtime, 'getLinearTeamStatesForWrite').mockResolvedValue([
-    { id: 'done', name: 'Done', type: 'completed' }
+    { id: 'done', name: 'Done', type: 'completed', color: '#888888', position: 1 }
   ])
   vi.spyOn(runtime, 'readLinearAgentIssueWriteRecord').mockResolvedValue(issue)
-  vi.spyOn(runtime, 'getLinearTeamLabelsForWrite').mockResolvedValue([{ id: 'bug', name: 'Bug' }])
+  vi.spyOn(runtime, 'getLinearTeamLabelsForWrite').mockResolvedValue([
+    { id: 'bug', name: 'Bug', color: '#888888' }
+  ])
   vi.spyOn(runtime, 'resolveLinearAgentComment').mockResolvedValue({ comment, workspaceId: 'w1' })
   vi.spyOn(runtime, 'getMatchingLinearCommentWrite').mockResolvedValue(null)
   vi.spyOn(runtime, 'getMatchingLinearAttachmentWrite').mockResolvedValue(null)
