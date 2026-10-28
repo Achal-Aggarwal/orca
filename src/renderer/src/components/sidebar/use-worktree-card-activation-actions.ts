@@ -4,6 +4,7 @@ import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-diagnostics'
 import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
 import { isEditableTarget } from '@/lib/editable-target'
+import { hasVisibleOverlay } from '@/lib/visible-overlay'
 import {
   afterPointerGestureEnds,
   isEventTargetInsideCurrentTarget,
@@ -141,6 +142,8 @@ export function useWorktreeCardActivationActions({
         isSelectableTextTarget(event.target) ||
         // The press prevents mousedown's focus move, so an open edit would keep the keystrokes.
         isEditableTarget(document.activeElement) ||
+        // A closing menu or dialog restores focus after the press and would take it from the new workspace.
+        hasVisibleOverlay() ||
         !canActivateWorktreeOnPress({
           worktreeId: worktree.id,
           rowHostId: worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined)
