@@ -45,7 +45,10 @@ function requireProtection(): void {
   }
 }
 
-export function createEncryptedAntigravityAccountStore(path: string): AntigravityAccountStore {
+export function createEncryptedAntigravityAccountStore(
+  path: string,
+  parseCredential = parseAntigravityNativeCredential
+): AntigravityAccountStore {
   return {
     read() {
       if (!existsSync(path)) {
@@ -85,7 +88,7 @@ export function createEncryptedAntigravityAccountStore(path: string): Antigravit
           throw new Error('invalid selection')
         }
         for (const account of value.accounts) {
-          const credential = parseAntigravityNativeCredential(account.credentials)
+          const credential = parseCredential(account.credentials)
           // agy refreshes drop the id_token, so a saved account may hold a credential without one.
           if (
             credential.authMethod !== account.authMethod ||

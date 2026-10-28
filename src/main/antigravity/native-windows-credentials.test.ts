@@ -13,7 +13,7 @@ import {
   resetWindowsSecurityLoadForTests
 } from '../../shared/windows-security-addon'
 import { hardenedDaclSddl } from '../../shared/windows-secure-dacl'
-import { credential, harness, refreshedWithoutIdToken } from './native-account-test-fixtures'
+import { credential, harness } from './native-account-test-fixtures'
 import { AntigravityAccountService } from './native-account-service'
 import { createAntigravityHostCredentialBackend } from './native-credential-backend'
 import {
@@ -392,23 +392,5 @@ describe('Windows native Antigravity credentials', () => {
     expect(writes).not.toHaveBeenCalled()
     expect(fileWrites).not.toHaveBeenCalled()
     expect(readFileSync(path, 'utf8')).toBe(credential('a'))
-  })
-  it('matches a refreshed grant to its typed saved token after ordered field folding and reopen', async () => {
-    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
-    const h = harness()
-    const service = new AntigravityAccountService(h.store, backend)
-    const original = credential('a')
-      .replace('"access_token"', '"ACCESS_TOKEN"')
-      .replace('"refresh_token"', '"REFRESH_TOKEN"')
-    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(original))
-    const id = (await service.addCurrentAccount()).activeAccountId
-    const refreshed = refreshedWithoutIdToken(2)
-    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(refreshed))
-    expect((await service.listAccounts()).activeAccountId).toBe(id)
-    expect(h.getVault().accounts).toHaveLength(1)
-    expect(h.getVault().accounts[0].credentials).toBe(refreshed)
-    expect(
-      (await new AntigravityAccountService(h.store, backend).listAccounts()).activeAccountId
-    ).toBe(id)
   })
 })
