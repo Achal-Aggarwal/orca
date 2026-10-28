@@ -50,6 +50,13 @@ export function isQuickOpenRemoteQueryTooLarge(query: string): boolean {
   return query.length > QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS || isQuickOpenQueryTooLarge(query)
 }
 
+// Typing extends a query, and every term match is a greedy prefix walk, so a longer term can only
+// match a subset of a shorter term's files. Rescore just those instead of the whole listing.
+const lastMatches = new WeakMap<
+  readonly QuickOpenIndexedFile[],
+  { terms: readonly QuickOpenQueryTerm[]; matches: readonly QuickOpenIndexedFile[] }
+>()
+
 export function rankQuickOpenFiles(
   query: string,
   files: readonly QuickOpenIndexedFile[],
@@ -60,14 +67,28 @@ export function rankQuickOpenFiles(
   }
 
   const normalizedQuery = normalizeQuickOpenQuery(query)
+  const previous = lastMatches.get(files)
+  const candidates =
+    previous && narrowsQuickOpenQuery(previous.terms, normalizedQuery) ? previous.matches : files
   const results: QuickOpenRankedResult[] = []
-  for (const file of files) {
+  const matches: QuickOpenIndexedFile[] = []
+  for (const file of candidates) {
     const score = scoreQuickOpenTerms(normalizedQuery, file)
     if (score !== null) {
+      matches.push(file)
       retainTopResult(results, { path: file.path, score, inputIndex: file.inputIndex }, limit)
     }
   }
+  lastMatches.set(files, { terms: normalizedQuery, matches })
   return finalizeResults(results)
+}
+
+/** True when every earlier term is a prefix of some new term, so new matches are a subset. */
+function narrowsQuickOpenQuery(
+  previous: readonly QuickOpenQueryTerm[],
+  next: readonly QuickOpenQueryTerm[]
+): boolean {
+  return previous.every(({ text }) => next.some((term) => term.text.startsWith(text)))
 }
 
 export class QuickOpenPathRanker {
