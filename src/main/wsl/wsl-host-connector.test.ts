@@ -10,13 +10,15 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   ready: vi.fn(() => false),
   managerGet: vi.fn((): unknown => null),
-  managerEnsure: vi.fn()
+  managerEnsure: vi.fn(),
+  managerIsConnecting: vi.fn(() => false)
 }))
 vi.mock('./wsl-orcad-connection', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   WslOrcadConnectionManager: class {
     get = mocks.managerGet
     ensure = mocks.managerEnsure
+    isConnecting = mocks.managerIsConnecting
   }
 }))
 vi.mock('../wsl-background-distro-gate', () => ({
@@ -72,6 +74,7 @@ function joinFixture() {
   mocks.connect.mockReset()
   mocks.managerGet.mockReset().mockReturnValue(null)
   mocks.managerEnsure.mockReset()
+  mocks.managerIsConnecting.mockReset().mockReturnValue(false)
   const bridge = { distro: 'Ubuntu', localPort: 41000 }
   mocks.managerEnsure.mockResolvedValue(bridge)
   let finish: (connection: unknown) => void = () => {}
@@ -133,4 +136,35 @@ it('a connect that may boot never rides a no-boot one, and intents never join (E
   expect(mocks.managerEnsure).not.toHaveBeenCalled()
   finish()
   await first
+})
+
+it('never hands a joined call the server an in-flight connect is replacing', async () => {
+  const { connector, bridge, finish } = joinFixture()
+  const incumbent = { distro: 'Ubuntu', localPort: 40000 }
+  mocks.managerGet.mockReturnValue(incumbent)
+  mocks.managerIsConnecting.mockReturnValue(true)
+
+  // A plain connect redeploying: a call waits for the new bridge, not the outgoing one.
+  const first = connector.connect('Ubuntu')
+  await expect(connector.connect('Ubuntu')).resolves.toBe(bridge)
+  expect(mocks.managerEnsure).toHaveBeenCalledOnce()
+  finish()
+  await first
+
+  // An Update in flight is never joined: the call goes through liveness, as before.
+  const replacement = { distro: 'Ubuntu', localPort: 42000 }
+  let finishUpdate: (connection: unknown) => void = () => {}
+  mocks.connect.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishUpdate = resolve
+    })
+  )
+  const update = connector.connect('Ubuntu', { intent: 'update' })
+  mocks.connect.mockResolvedValueOnce(replacement)
+  const call = connector.connect('Ubuntu')
+  await expect(call).resolves.toBe(replacement)
+  expect(mocks.connect).toHaveBeenCalledTimes(3)
+  expect(mocks.managerEnsure).toHaveBeenCalledOnce()
+  finishUpdate(replacement)
+  await update
 })
