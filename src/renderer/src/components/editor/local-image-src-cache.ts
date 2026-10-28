@@ -158,7 +158,14 @@ function scheduleBlobUrlRevocation(urls: string[]): void {
 }
 
 export function invalidateLocalImageCache(): void {
-  const staleUrls = Array.from(blobUrlCache.values())
+  const staleUrls: string[] = []
+  for (const [key, url] of blobUrlCache) {
+    if (isLocalImageCacheKeyPinned(key)) {
+      staleUrls.push(url)
+    } else {
+      URL.revokeObjectURL(url)
+    }
+  }
   blobUrlCache.clear()
   blobUrlCacheBytes.clear()
   inFlightBlobUrlLoads.clear()
