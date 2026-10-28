@@ -51,6 +51,9 @@ export function queuedMessageCardCaption(
   switch (card.hold) {
     case 'returned': {
       const notice = queuedMessageReturnedNotice(card, agentName, statedFailures)
+      if (notice === null) {
+        return null
+      }
       return notice === 'withdrawn'
         ? translate(
             'components.native-chat.queuedMessages.withdrawnHold',

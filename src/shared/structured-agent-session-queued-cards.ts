@@ -192,10 +192,14 @@ export function queuedMessageReturnedNotice(
   card: Pick<QueuedMessageCard, 'returnedReason' | 'returnedRejection'>,
   agentName: string | undefined,
   statedFailures: readonly AgentSessionFailureFact[]
-): 'withdrawn' | AgentSessionWriteNoticePart[] {
+): 'withdrawn' | AgentSessionWriteNoticePart[] | null {
   // Read exactly as a rejected submission: the typed fact decides, the reason is the fallback.
   const reason = card.returnedReason ?? null
   const rejection = card.returnedRejection
+  // Saved uncertainty keeps its card and actions without a delivery warning.
+  if (rejection?.kind === 'unconfirmed') {
+    return null
+  }
   if (agentSessionFailureStatedByRow(rejection, statedFailures)) {
     return agentSessionWriteNotDoneParts('send')
   }
