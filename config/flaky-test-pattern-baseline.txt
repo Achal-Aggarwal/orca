@@ -823,7 +823,6 @@
 6 test-no-wall-clock:src/main/cli/packaged-cli-assets.test.ts
 1 test-no-wall-clock:src/main/cli/wsl-cli-registration-registry.test.ts
 1 test-no-wall-clock:src/main/codex-accounts/legacy-wsl-runtime-auth-drain-rollback-script.test.ts
-1 test-no-wall-clock:src/main/codex-accounts/service.test.ts
 6 test-no-wall-clock:src/main/codex/codex-app-server-client.test.ts
 2 test-no-wall-clock:src/main/codex/codex-hook-trust-derivation.test.ts
 1 test-no-wall-clock:src/main/codex/codex-session-backfill-marker.test.ts
