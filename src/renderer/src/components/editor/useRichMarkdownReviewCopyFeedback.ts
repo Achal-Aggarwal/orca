@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import type { MutableRefObject } from 'react'
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { copyMarkdownReviewNotesForAgent } from '@/lib/markdown-review-note-copy'
 import type { MarkdownReviewNote } from '@/lib/markdown-review-notes'
 
@@ -16,13 +16,8 @@ export function useRichMarkdownReviewCopyFeedback({
 }: UseRichMarkdownReviewCopyFeedbackOptions) {
   const [reviewNotesCopied, setReviewNotesCopied] = useState(false)
   const [copiedReviewNoteId, setCopiedReviewNoteId] = useState<string | null>(null)
-  const reviewNotesCopiedResetTimerRef = useRef<number | null>(null)
-  const copiedReviewNoteResetTimerRef = useRef<number | null>(null)
-
-  const clearReviewCopyTimers = useCallback((): void => {
-    clearWindowTimer(reviewNotesCopiedResetTimerRef)
-    clearWindowTimer(copiedReviewNoteResetTimerRef)
-  }, [])
+  const { reviewNotesCopiedResetTimerRef, copiedReviewNoteResetTimerRef, clearReviewCopyTimers } =
+    useRichMarkdownReviewCopyTimers()
 
   const handleCopyMarkdownReviewNotes = useCallback(async (): Promise<void> => {
     const copied = await copyReviewNotes(markdownReviewNotes, markdownReviewContent)
@@ -35,9 +30,52 @@ export function useRichMarkdownReviewCopyFeedback({
         setReviewNotesCopied(false)
       }, 1600)
     }
-  }, [clearReviewCopyTimers, markdownReviewContent, markdownReviewNotes, rootRef])
+  }, [
+    clearReviewCopyTimers,
+    markdownReviewContent,
+    markdownReviewNotes,
+    reviewNotesCopiedResetTimerRef,
+    rootRef
+  ])
 
-  const handleCopyMarkdownReviewNote = useCallback(
+  const handleCopyMarkdownReviewNote = useRichMarkdownReviewNoteCopy({
+    markdownReviewContent,
+    rootRef,
+    copiedReviewNoteResetTimerRef,
+    setCopiedReviewNoteId
+  })
+
+  return {
+    clearReviewCopyTimers,
+    copiedReviewNoteId,
+    handleCopyMarkdownReviewNote,
+    handleCopyMarkdownReviewNotes,
+    reviewNotesCopied
+  }
+}
+
+function useRichMarkdownReviewCopyTimers() {
+  const reviewNotesCopiedResetTimerRef = useRef<number | null>(null)
+  const copiedReviewNoteResetTimerRef = useRef<number | null>(null)
+  const clearReviewCopyTimers = useCallback((): void => {
+    clearWindowTimer(reviewNotesCopiedResetTimerRef)
+    clearWindowTimer(copiedReviewNoteResetTimerRef)
+  }, [])
+  return { reviewNotesCopiedResetTimerRef, copiedReviewNoteResetTimerRef, clearReviewCopyTimers }
+}
+
+function useRichMarkdownReviewNoteCopy({
+  markdownReviewContent,
+  rootRef,
+  copiedReviewNoteResetTimerRef,
+  setCopiedReviewNoteId
+}: {
+  markdownReviewContent: string
+  rootRef: MutableRefObject<HTMLDivElement | null>
+  copiedReviewNoteResetTimerRef: MutableRefObject<number | null>
+  setCopiedReviewNoteId: Dispatch<SetStateAction<string | null>>
+}) {
+  return useCallback(
     async (note: MarkdownReviewNote): Promise<void> => {
       const copied = await copyReviewNotes([note], markdownReviewContent)
       if (copied && rootRef.current) {
@@ -49,16 +87,8 @@ export function useRichMarkdownReviewCopyFeedback({
         }, 1600)
       }
     },
-    [markdownReviewContent, rootRef]
+    [copiedReviewNoteResetTimerRef, markdownReviewContent, rootRef, setCopiedReviewNoteId]
   )
-
-  return {
-    clearReviewCopyTimers,
-    copiedReviewNoteId,
-    handleCopyMarkdownReviewNote,
-    handleCopyMarkdownReviewNotes,
-    reviewNotesCopied
-  }
 }
 
 function clearWindowTimer(ref: MutableRefObject<number | null>): void {
