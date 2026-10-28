@@ -3,7 +3,8 @@ import { outsideWslUserAct } from './wsl/wsl-user-act-scope'
 import {
   onConfirmedRunningWslDistros,
   onRunningWslDistrosStopped,
-  peekConfirmedRunningWslDistros
+  peekConfirmedRunningWslDistros,
+  peekConfirmedRunningWslDistrosObservation
 } from './wsl-running-distro-cache'
 
 // Background work must not boot stopped distros: old WSL idle-stop can erase VM-wide WSLInterop (microsoft/WSL#13885).
@@ -99,6 +100,16 @@ export async function settledWslRunningReadAnchor(
   return anchor
 }
 
+/** Without probing: the last confirmed list names `distro` and was probed after any stop settled. */
+export function wasWslDistroLastSeenRunningSettled(distro: string): boolean {
+  const observation = peekConfirmedRunningWslDistrosObservation()
+  return (
+    observation !== null &&
+    observation.probeStartedAt >= settledRunningFloor(distro) &&
+    observation.distros.some((candidate) => distroKey(candidate) === distroKey(distro))
+  )
+}
+
 /** A confirmed list from a probe started after `startedAfter` and after `distro`'s stop settled. */
 export async function readSettledConfirmedRunningWslDistros(
   distro: string,
@@ -159,13 +170,15 @@ export function deferUntilWslDistroRunning(
   }
   // A probe started inside a user act must not hand its boot allowance to the drain it causes.
   // A list probed while a distro was still stopping names it too: only a settled one may drain it.
-  unsubscribeObservations ??= onConfirmedRunningWslDistros((distros, probeStartedAt) =>
-    outsideWslUserAct(() =>
-      noteWslDistrosRunning(
-        distros.filter((distro) => probeStartedAt >= settledRunningFloor(distro))
-      )
-    )
-  )
+  unsubscribeObservations ??= onConfirmedRunningWslDistros((distros, probeStartedAt) => {
+    const settled = distros.filter((distro) => probeStartedAt >= settledRunningFloor(distro))
+    for (const distro of distros) {
+      if (!settled.includes(distro)) {
+        probeAfterStopSettles(distro)
+      }
+    }
+    outsideWslUserAct(() => noteWslDistrosRunning(settled))
+  })
   let tasks = deferredTasksByDistro.get(keyForDistro)
   if (!tasks) {
     tasks = new Map()
@@ -178,6 +191,26 @@ export function deferUntilWslDistroRunning(
       current.delete(key)
     }
   }
+}
+
+const settleProbes = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Deferred work a mid-stop list skipped should not wait on an unrelated probe: list once more past the settle. */
+function probeAfterStopSettles(distro: string): void {
+  const key = distroKey(distro)
+  if (!deferredTasksByDistro.get(key)?.size || settleProbes.has(key)) {
+    return
+  }
+  const floor = settledRunningFloor(distro)
+  const timer = setTimeout(
+    () => {
+      settleProbes.delete(key)
+      void readConfirmedRunningWslDistros({ startedAfter: floor })
+    },
+    Math.max(Math.ceil(floor - performance.now()), 0) + 1
+  )
+  timer.unref?.()
+  settleProbes.set(key, timer)
 }
 
 /** Runs work deferred for these distros; callers must know they are running now. */
@@ -209,6 +242,10 @@ function logDeferredTaskFailure(error: unknown): void {
 
 export function _resetWslBackgroundDistroGateForTests(): void {
   deferredTasksByDistro.clear()
+  for (const timer of settleProbes.values()) {
+    clearTimeout(timer)
+  }
+  settleProbes.clear()
   unsubscribeObservations?.()
   unsubscribeObservations = null
   mayHaveStoppedAt.clear()

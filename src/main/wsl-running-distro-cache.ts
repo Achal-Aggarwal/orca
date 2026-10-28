@@ -155,6 +155,14 @@ export function peekConfirmedRunningWslDistros(): readonly string[] | null {
   return cache
 }
 
+/** The last confirmed list with its probe's start, for callers that must judge its age. */
+export function peekConfirmedRunningWslDistrosObservation(): {
+  distros: readonly string[]
+  probeStartedAt: number
+} | null {
+  return cache ? { distros: cache, probeStartedAt: cacheStartedAt } : null
+}
+
 export function _resetRunningWslDistroCacheForTests(): void {
   cache = null
   cacheStartedAt = -Infinity
