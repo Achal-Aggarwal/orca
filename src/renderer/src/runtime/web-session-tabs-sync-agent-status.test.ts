@@ -559,6 +559,8 @@ it.each([false, true])(
         parentTabId: `host-tab-${index}`,
         leafId: LEAF_ID,
         isActive: index === 1,
+        status: 'ready' as const,
+        terminal: `terminal-${index}`,
         agentStatus: {
           state: 'working' as const,
           prompt: 'task',
