@@ -36,7 +36,9 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
       if (
         renderer &&
         !renderer.isDestroyed() &&
-        (currentGuestId === undefined || currentGuestId === guest.id)
+        (currentGuestId === undefined ||
+          currentGuestId === guest.id ||
+          (!docked && !this.devToolsDock.isDocked(currentGuestId)))
       ) {
         renderer.send('browser:devToolsDockChanged', { browserPageId: browserTabId, docked })
       }

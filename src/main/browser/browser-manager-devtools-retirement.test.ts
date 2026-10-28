@@ -433,6 +433,28 @@ describe('pending page DevTools retirement', () => {
     expect(children).toHaveLength(1)
   })
 
+  it('undocks the renderer when a retained old guest closes its dock', async () => {
+    const { manager, destroy, renderer } = createFixture()
+    await expect(manager.openDevTools('page')).resolves.toBe(true)
+    const replacement = createGuest(102)
+    manager.attachGuestPolicies(asGuest(replacement.guest))
+    manager.registerGuest(
+      {
+        browserPageId: 'page',
+        webContentsId: replacement.guest.id,
+        rendererWebContentsId: renderer.id
+      },
+      { retainPreviousGuestPolicies: true }
+    )
+    renderer.send.mockClear()
+    destroy()
+
+    expect(renderer.send).toHaveBeenCalledWith('browser:devToolsDockChanged', {
+      browserPageId: 'page',
+      docked: false
+    })
+  })
+
   it('does not attach to a renderer retired while release is pending', async () => {
     const { manager, guest, renderer, children } = createFixture()
     await manager.openDevTools('page')
