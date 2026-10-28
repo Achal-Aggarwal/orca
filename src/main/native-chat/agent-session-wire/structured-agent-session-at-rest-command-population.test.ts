@@ -4,6 +4,7 @@ import {
   workspace,
   account,
   clock,
+  store,
   host,
   openHost,
   attachContext,
@@ -135,6 +136,11 @@ it.each(['claude', 'omp'] as const)(
           let frames = 0,
             hints = 0
           const snapshot = vi.spyOn(catalog, 'snapshot')
+          const expectIdle = (sessionIds: readonly string[]) => {
+            for (const sessionId of sessionIds) {
+              expect(catalog.snapshot(store.getRecord(sessionId)!).commandsPending).toBe(false)
+            }
+          }
           const emit = (event: AgentSessionSubscribeEvent) => {
             frames++
             if (event.type !== 'end' && event.commandsChanged) {
@@ -155,6 +161,7 @@ it.each(['claude', 'omp'] as const)(
                   emit
                 })
               )
+              expectIdle([sessionId])
               if (index < legacy) {
                 legacyStops.push(await host.subscribe({ id: `legacy-${index}`, sessionId, emit }))
               }
@@ -167,6 +174,7 @@ it.each(['claude', 'omp'] as const)(
                 emit
               })
             )
+            expectIdle(ids.slice(legacy))
             await vi.waitFor(() => expect(starts).toBe(Math.min(2, legacy)), { interval: 0 })
             const distinct = host.readCommands(ids[count]!, true)
             const overlap = host.readCommands(ids[legacy > 2 ? 2 : 0]!, true)
@@ -201,6 +209,7 @@ it.each(['claude', 'omp'] as const)(
             const cached = (await host.readCommands(ids[0]!, true)).commands
             let seeded = starts
             expect(seeded).toBe(count + 1)
+            expectIdle(ids)
             frames = 0
             hints = 0
             snapshot.mockClear()
@@ -216,6 +225,7 @@ it.each(['claude', 'omp'] as const)(
             expect(starts).toBe(seeded)
             expect(snapshot).toHaveBeenCalled()
             expect(frames).toBe(2)
+            expectIdle(ids)
             if (legacy > 0) {
               hold = true
               let retained: AgentSessionSubscribeEvent | undefined
@@ -247,6 +257,7 @@ it.each(['claude', 'omp'] as const)(
             }
             seeded += legacy > 0 ? 1 : 0
             expect(starts).toBe(seeded)
+            expectIdle(ids)
             frames = 0
             hints = 0
             selected = join(directory, 'replacement-account')
@@ -255,6 +266,7 @@ it.each(['claude', 'omp'] as const)(
             expect(starts).toBe(seeded)
             expect(hints).toBe(count + 3)
             expect(frames).toBe(count + 3)
+            expectIdle(ids)
             snapshot.mockClear()
             frames = 0
             expect(await host.readCommands(ids[0]!, true)).toMatchObject({ commandsPending: false })
@@ -269,17 +281,32 @@ it.each(['claude', 'omp'] as const)(
             await vi.advanceTimersByTimeAsync(0)
             expect(hints).toBe(count + 3)
             expect(starts).toBe(seeded + 1)
+            expectIdle(ids)
             await host.readCommands(ids[0]!, true)
             expect(launches.at(-1)?.cwd).toBe(cwd)
             // Retirement cancels logical ownership while old physical work is still held.
+            const beforeOld = starts
             catalog.retireContext()
+            await vi.advanceTimersByTimeAsync(0)
+            expectIdle(ids)
+            expect(starts).toBe(beforeOld)
             hold = true
             const old = host.readCommands(ids[0]!, true)
+            const oldSettled = omp
+              ? expect(old).rejects.toThrow('Command discovery unavailable')
+              : expect(old).resolves.toMatchObject({ commandsPending: true })
             await vi.waitFor(() => expect(physical).toBe(1), { interval: 0 })
             const cleanupGate = Promise.withResolvers<void>()
             cleanup = cleanupGate.promise
             releaseCleanup = () => cleanupGate.resolve()
+            // Finish logical demand while retaining physical work across provider/read deadlines.
+            await vi.advanceTimersByTimeAsync(10_000)
+            await oldSettled
+            const beforeReplacement = starts
             catalog.retireContext()
+            await vi.advanceTimersByTimeAsync(0)
+            expectIdle(ids)
+            expect(starts).toBe(beforeReplacement)
             const replacement = host.readCommands(ids[0]!, true)
             await vi.waitFor(() => expect(physical).toBe(2), { interval: 0 })
             expect(peak).toBe(Math.max(admitted, 2))
@@ -294,7 +321,7 @@ it.each(['claude', 'omp'] as const)(
             gates.forEach((gate) => gate.resolve())
             cleanupGate.resolve()
             cleanup = undefined
-            await Promise.all([old, replacement])
+            await replacement
             await vi.waitFor(() => expect(physical).toBe(0), { interval: 0 })
             if (omp) {
               const saved = account
