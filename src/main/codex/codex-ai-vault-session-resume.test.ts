@@ -7,6 +7,7 @@ const { resolveHome } = vi.hoisted(() => ({
   resolveHome: vi.fn((): string | undefined => '/selected/overlay-for-original-store')
 }))
 vi.mock('./codex-launch-home', () => ({ resolveCodexLaunchHome: resolveHome }))
+vi.mock('./codex-home-paths', () => ({ getSystemCodexHomePath: () => '/system/.codex' }))
 const row: AiVaultPrepareSessionResumeArgs = {
   agent: 'codex',
   executionHostId: LOCAL_EXECUTION_HOST_ID,
@@ -27,7 +28,7 @@ describe('History resumes retain the conversation store', () => {
             resolveSelectedHostAccountCodexHomePathForResume: () => '/selected/home',
             getHostCodexHomePathsForSessionDiscovery: () => ['/original/home', '/selected/home']
           },
-          systemCodexHomePath: undefined,
+          storeHomePath: undefined,
           preparePinnedLaunchHome: ready
         }
       )
@@ -44,6 +45,29 @@ describe('History resumes retain the conversation store', () => {
       expect(ready).toHaveBeenCalledWith('/selected/overlay-for-original-store')
     }
   )
+  it('uses the system login independently of the configured conversation folder', async () => {
+    const options = {
+      runtimeHome: null,
+      storeHomePath: '/configured/conversations',
+      preparePinnedLaunchHome: async () => {}
+    }
+    await prepareCodexAiVaultSessionResume(row, options)
+    expect(resolveHome).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selectedAccount: null,
+        systemHome: '/system/.codex',
+        conversationHome: '/original/home'
+      })
+    )
+    await prepareCodexAiVaultSessionResume({ ...row, codexHome: null }, options)
+    expect(resolveHome).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selectedAccount: null,
+        systemHome: '/system/.codex',
+        conversationHome: '/configured/conversations'
+      })
+    )
+  })
   it('propagates an unreadable selection before resolving any other login', async () => {
     await expect(
       prepareCodexAiVaultSessionResume(row, {
@@ -54,7 +78,7 @@ describe('History resumes retain the conversation store', () => {
           },
           getHostCodexHomePathsForSessionDiscovery: () => []
         },
-        systemCodexHomePath: undefined,
+        storeHomePath: undefined,
         preparePinnedLaunchHome: async () => {}
       })
     ).rejects.toThrow('temporarily unreadable')

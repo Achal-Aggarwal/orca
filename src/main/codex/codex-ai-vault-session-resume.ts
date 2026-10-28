@@ -14,7 +14,7 @@ type CodexAiVaultRuntimeHome = Pick<
 
 type CodexAiVaultResumeOptions = {
   runtimeHome: CodexAiVaultRuntimeHome | null
-  systemCodexHomePath: string | undefined
+  storeHomePath: string | undefined
   /** Readies a home a pane will pin as CODEX_HOME instead of the selected account's. */
   preparePinnedLaunchHome: (home: string) => Promise<void>
 }
@@ -32,7 +32,7 @@ export function codexAiVaultSessionResumePreparation(
     const options = getOptions()
     return prepareCodexAiVaultSessionResume(args, {
       ...options,
-      systemCodexHomePath: nativeSystemHomePath ?? options.systemCodexHomePath
+      storeHomePath: nativeSystemHomePath ?? options.storeHomePath
     })
   }
 }
@@ -47,7 +47,7 @@ export async function prepareCodexAiVaultSessionResume(
       options.runtimeHome?.isHostSystemDefaultRealHomeSelected() === true,
     getSelectedHostAccountCodexHomePath: () =>
       options.runtimeHome?.resolveSelectedHostAccountCodexHomePathForResume() ?? null,
-    systemCodexHomePath: options.systemCodexHomePath
+    storeHomePath: options.storeHomePath
   })
   if (result.substituteCodexHome) {
     await options.preparePinnedLaunchHome(result.substituteCodexHome)

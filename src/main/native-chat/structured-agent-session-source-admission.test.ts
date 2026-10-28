@@ -293,7 +293,7 @@ it('adopts a legacy Codex conversation through an overlay of the same recognized
       resolveSelectedHostAccountCodexHomePathForResume: () => selected,
       getHostCodexHomePathsForSessionDiscovery: () => [legacy]
     },
-    systemCodexHomePath: system,
+    storeHomePath: system,
     preparePinnedLaunchHome: async () => {}
   }))
   const adopted = await prepareCodexAdoption(source, id, prepare, [source.accountHome])

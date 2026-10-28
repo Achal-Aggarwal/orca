@@ -15,6 +15,7 @@ export async function prepareLegacySharedCodexSessionResume(
     getSelectedHostAccountCodexHomePath?: () => string | null
     legacyCodexHomePath?: string
     systemCodexHomePath?: string
+    storeHomePath?: string
   }
 ): Promise<AiVaultPrepareSessionResumeResult> {
   if (
@@ -28,7 +29,7 @@ export async function prepareLegacySharedCodexSessionResume(
   const selectedHome = options.getSelectedHostAccountCodexHomePath?.()
   const home = resolveCodexLaunchHome({
     selectedAccount: selectedHome ? { homePath: selectedHome } : null,
-    conversationHome: args.codexHome ?? systemHome,
+    conversationHome: args.codexHome ?? options.storeHomePath ?? systemHome,
     systemHome
   })
   return home ? { useRealCodexHome: false, substituteCodexHome: home } : { useRealCodexHome: true }

@@ -104,7 +104,7 @@ export function createOrcadAccountServices(args: {
       prepareAiVaultSessionResume: (resumeArgs) =>
         prepareCodexAiVaultSessionResume(resumeArgs, {
           runtimeHome: codexRuntimeHome,
-          systemCodexHomePath: resolveHostCodexSessionSourceHome(store.getSettings()),
+          storeHomePath: resolveHostCodexSessionSourceHome(store.getSettings()),
           preparePinnedLaunchHome: (home) => resumeLaunch.prepareCodexPinnedLaunchHome(home)
         })
     },
