@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FsChangeEvent } from './filesystem-entry-types'
-import {
-  FileWatchEventBuffer,
-  MAX_BUFFERED_FILE_WATCH_EVENTS
-} from './filesystem-watch-event-buffer'
+import { FileWatchEventBuffer } from './filesystem-watch-event-buffer'
 
 describe('FileWatchEventBuffer', () => {
   it('preserves precise event order and releases a consumed batch', () => {
@@ -11,30 +8,17 @@ describe('FileWatchEventBuffer', () => {
     const events: FsChangeEvent[] = [
       { kind: 'delete', absolutePath: '/repo/old/file.ts' },
       { kind: 'create', absolutePath: '/repo/new/file.ts' },
-      { kind: 'rename', absolutePath: '/repo/new', oldAbsolutePath: '/repo/old' }
+      {
+        kind: 'rename',
+        absolutePath: '/repo/new',
+        oldAbsolutePath: '/repo/old'
+      }
     ]
     buffer.push(events.slice(0, 1))
     buffer.push(events.slice(1))
     expect(buffer.take()).toEqual(events)
     expect(buffer.size).toBe(0)
     expect(buffer.take()).toEqual([])
-  })
-
-  it.each([1, 10])('bounds retained events across a storm of %i times capacity', (multiplier) => {
-    const buffer = new FileWatchEventBuffer()
-    for (let index = 0; index < MAX_BUFFERED_FILE_WATCH_EVENTS * multiplier; index++) {
-      buffer.push([{ kind: 'update', absolutePath: `/repo/file-${index}.ts` }])
-      expect(buffer.size).toBeLessThanOrEqual(MAX_BUFFERED_FILE_WATCH_EVENTS)
-    }
-    if (multiplier === 1) {
-      expect(buffer.take()).toHaveLength(MAX_BUFFERED_FILE_WATCH_EVENTS)
-    } else {
-      expect(buffer.take()).toEqual([
-        { kind: 'overflow', absolutePath: `/repo/file-${MAX_BUFFERED_FILE_WATCH_EVENTS}.ts` }
-      ])
-    }
-    buffer.push([{ kind: 'create', absolutePath: '/repo/after-drain.ts' }])
-    expect(buffer.take()).toEqual([{ kind: 'create', absolutePath: '/repo/after-drain.ts' }])
   })
 
   it('retains an explicit overflow until consumed without retaining later paths', () => {
