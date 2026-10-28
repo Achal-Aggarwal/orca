@@ -18621,6 +18621,13 @@
         "settings": "Open settings in Terminal",
         "extensions": "Open the extension dashboard in Terminal",
         "hotkeys": "Show keyboard shortcuts in Terminal"
+      },
+      "githubPeek": {
+        "updated": "updated {{time}}",
+        "oneComment": "1 comment",
+        "comments": "{{count}} comments",
+        "unavailable": "Preview unavailable.",
+        "retry": "Retry"
       }
     },
     "tab": {
