@@ -64,7 +64,7 @@ function selectText(editor: Editor, text: string, range = false): void {
 }
 
 function expectPressed(label: string, pressed: boolean): void {
-  const button = screen.getByRole('button', { name: label, exact: true })
+  const button = screen.getByRole('button', { name: label })
   expect(button.getAttribute('aria-pressed')).toBe(String(pressed))
   expect(button.classList.contains('is-active')).toBe(pressed)
 }
@@ -94,16 +94,14 @@ describe('rich Markdown toolbar formatting feedback', () => {
     expectPressed('Italic', false)
     expectPressed('Strike', false)
     expect(editor.getHTML()).toBe(original)
-    expect(
-      screen.getByRole('button', { name: 'Image', exact: true }).hasAttribute('aria-pressed')
-    ).toBe(false)
+    expect(screen.getByRole('button', { name: 'Image' }).hasAttribute('aria-pressed')).toBe(false)
   })
 
   it('updates after toolbar commands, undo, redo and stored-mark changes', () => {
     const editor = mountToolbar('<p>selected words</p>')
     selectText(editor, 'selected', true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bold', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Bold' }))
     expectPressed('Bold', true)
     expect(editor.getHTML()).toContain('<strong>selected</strong>')
 
