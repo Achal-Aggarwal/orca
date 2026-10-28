@@ -469,26 +469,26 @@ describe('STA-4325 message and delivery identity', () => {
         const first = await runBuiltCli(userDataPath, ['orchestration', 'check', '--json'])
         expect(first.exitCode, first.stderr || first.stdout).toBe(0)
         const firstPayload = JSON.parse(first.stdout) as { result: CheckResult }
-        expect(firstPayload.result).toMatchObject({ runId: run.id, count: 2, replayed: false })
+        expect(firstPayload.result).toMatchObject({
+          runId: run.id,
+          count: 2,
+          replayed: false,
+          deliveryAcknowledged: true
+        })
         expect(firstPayload.result.messages.map((message) => message.id)).toEqual([
           status.id,
           done.id
         ])
 
-        const replay = await runBuiltCli(userDataPath, ['orchestration', 'check', '--json'])
-        expect(replay.exitCode, replay.stderr).toBe(0)
-        const replayPayload = JSON.parse(replay.stdout) as { result: CheckResult }
-        expect(replayPayload.result).toMatchObject({
-          count: 2,
-          deliveryId: firstPayload.result.deliveryId,
-          replayed: true
-        })
+        const next = await runBuiltCli(userDataPath, ['orchestration', 'check', '--json'])
+        expect(next.exitCode, next.stderr).toBe(0)
+        expect(JSON.parse(next.stdout)).toMatchObject({ result: { count: 0, deliveryId: null } })
         expect(sqliteFor(db).prepare('SELECT id, status FROM deliveries').all()).toEqual([
-          { id: firstPayload.result.deliveryId, status: 'outstanding' }
+          { id: firstPayload.result.deliveryId, status: 'acknowledged' }
         ])
         expect(db.getMessageById(status.id)).toMatchObject({
           to_handle: `run:${run.id}`,
-          read: 0
+          read: 1
         })
 
         const acknowledged = await runBuiltCli(userDataPath, [
