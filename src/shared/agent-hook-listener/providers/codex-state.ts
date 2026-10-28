@@ -18,6 +18,7 @@ import {
   hasTrackedCodexTranscriptSubagents,
   type CodexSubagentTranscriptState
 } from '../../codex-subagent-transcript'
+import type { AgentHookEventPayload } from '../listener-event'
 import type { CodexLeadTurnState, HookListenerState } from '../listener-state'
 
 export function getOrCreateCodexSubagentRoster(
@@ -160,30 +161,63 @@ export function markCodexLeadTurnInterrupted(state: HookListenerState, paneKey: 
   })
 }
 
+/** The root state a Codex hook event implies; auto-allowed request_user_input still blocks on PreToolUse (Codex 0.145+). */
+export function codexHookEventState(
+  eventName: unknown,
+  toolName: string | undefined
+): CodexLeadTurnState['state'] | undefined {
+  switch (eventName) {
+    case 'Stop':
+    case 'Interrupt':
+      return 'done'
+    case 'PermissionRequest':
+      return 'waiting'
+    case 'PreToolUse':
+      return isAskUserQuestionTool(toolName) ? 'waiting' : 'working'
+    case 'SessionStart':
+    case 'UserPromptSubmit':
+    case 'PostToolUse':
+      return 'working'
+    default:
+      return undefined
+  }
+}
+
 export function codexLeadStateForHookEvent(
   eventName: string | undefined,
   normalizedState?: ParsedAgentStatusPayload['state'],
   toolName?: string
 ): CodexLeadTurnState['state'] | undefined {
-  if (eventName === 'Stop' || eventName === 'Interrupt') {
-    return 'done'
+  // Preserve execution-host reviewer ownership; event names alone would turn every relayed approval into waiting.
+  return eventName === 'PermissionRequest' && normalizedState === 'working'
+    ? 'working'
+    : codexHookEventState(eventName, toolName)
+}
+
+/** Which children an unlabelled relayed poll may retire by omitting them. */
+export type CodexRemoteRosterAuthority = {
+  /** Current relay connection session; a restarted guest rebuilds only part of its roster. */
+  relaySession: string
+  /** The relay shed the roster to fit a frame, so an absent list proves nothing. */
+  rosterShed: boolean
+}
+
+/** Retire children the current relay session listed but this poll no longer does. */
+function pruneCodexRosterFromRemotePoll(
+  roster: CodexSubagentRoster,
+  payload: ParsedAgentStatusPayload,
+  authority: CodexRemoteRosterAuthority
+): void {
+  // Aggregate done means the guest has no live children, even when its roster was shed.
+  if (!payload.subagents && authority.rosterShed && payload.state !== 'done') {
+    return
   }
-  if (eventName === 'PreToolUse' && isAskUserQuestionTool(toolName)) {
-    return 'waiting'
+  const listedIds = new Set(payload.subagents?.map((child) => child.id))
+  for (const [id, child] of roster) {
+    if (child.reportedBy === authority.relaySession && !listedIds.has(id)) {
+      roster.delete(id)
+    }
   }
-  if (eventName === 'PermissionRequest') {
-    // Preserve execution-host reviewer ownership; event names alone would turn every relayed approval into waiting.
-    return normalizedState === 'working' ? 'working' : 'waiting'
-  }
-  if (
-    eventName === 'SessionStart' ||
-    eventName === 'UserPromptSubmit' ||
-    eventName === 'PreToolUse' ||
-    eventName === 'PostToolUse'
-  ) {
-    return 'working'
-  }
-  return undefined
 }
 
 /** Why: relay restarts lose lead/roster state; merge child events into main's longer-lived cache. */
@@ -193,7 +227,8 @@ export function reconcileRemoteCodexState(
   eventName: string | undefined,
   agentId: string | undefined,
   payload: ParsedAgentStatusPayload,
-  previous: ParsedAgentStatusPayload | undefined
+  previous: ParsedAgentStatusPayload | undefined,
+  remoteRosterAuthority?: CodexRemoteRosterAuthority
 ): ParsedAgentStatusPayload {
   if (previous?.agentType === 'codex') {
     seedCodexStateFromSnapshot(state, paneKey, previous)
@@ -206,21 +241,12 @@ export function reconcileRemoteCodexState(
     return payload
   }
   const roster = getOrCreateCodexSubagentRoster(state, paneKey)
-  if (
-    !eventName &&
-    payload.mainAgent &&
-    (payload.subagents !== undefined || payload.state === 'done')
-  ) {
-    // A working poll can shed its roster in transit; only explicit children or done prove removals.
-    const liveIds = new Set(payload.subagents?.map((child) => child.id))
-    for (const id of roster.keys()) {
-      if (!liveIds.has(id)) {
-        roster.delete(id)
-      }
-    }
-  }
   if (payload.subagents) {
-    seedCodexSubagentRoster(roster, payload.subagents)
+    seedCodexSubagentRoster(roster, payload.subagents, remoteRosterAuthority?.relaySession)
+  }
+  // Polls restate the last hook's child attribution, so agentId does not narrow the guest's roster.
+  if (!eventName && payload.mainAgent && remoteRosterAuthority) {
+    pruneCodexRosterFromRemotePoll(roster, payload, remoteRosterAuthority)
   }
   if (agentId) {
     if (eventName === 'SubagentStop') {
@@ -242,10 +268,6 @@ export function reconcileRemoteCodexState(
   }
 
   if (!eventName && !agentId && payload.mainAgent && payload.mainAgent.state !== 'blocked') {
-    if (payload.mainAgent.state === 'done' && !payload.subagents) {
-      // Why: an unlabelled host turn end (failed or cancelled) reporting no children has none left.
-      roster.clear()
-    }
     setCodexMainAgentTurnState(state, paneKey, {
       ...payload.mainAgent,
       state: payload.mainAgent.state,
@@ -273,5 +295,33 @@ export function reconcileRemoteCodexState(
     subagents: codexRosterToSnapshots(roster),
     // Why: main's cache outlives a relay restart, so it is the main agent fact for a relayed row too.
     mainAgent: codexMainAgentStatusForPayload(lead)
+  }
+}
+
+/** Relayed rows and unlabelled root polls merge into main's Codex cache; local hooks already wrote it. */
+export function reconcileCodexStatusEvent<T extends AgentHookEventPayload>(
+  state: HookListenerState,
+  event: T,
+  previous: ParsedAgentStatusPayload | undefined,
+  remoteRosterAuthority?: CodexRemoteRosterAuthority
+): T {
+  if (
+    (!event.connectionId && event.hookEventName) ||
+    event.payload.agentType !== 'codex' ||
+    (!event.hookEventName && !event.payload.mainAgent)
+  ) {
+    return event
+  }
+  return {
+    ...event,
+    payload: reconcileRemoteCodexState(
+      state,
+      event.paneKey,
+      event.hookEventName,
+      event.toolAgentId,
+      event.payload,
+      previous,
+      remoteRosterAuthority
+    )
   }
 }
