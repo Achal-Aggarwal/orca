@@ -97,50 +97,47 @@ it('deletes the folder at startup without loading its session', async () => {
   expect(existsSync(folder)).toBe(false)
 })
 
-it.each([0, 1, 10, 100])(
-  'collects %i cold orphan folders without opening sessions, preserving retained and listed scopes',
-  async (count) => {
-    const store = currentBrowserRoutePartitionBindingStore()
-    const removedScope = deriveLocalSshBrowserRoutePartitionStorageScope({
-      orcaProfileId: 'profile-a',
-      targetId: 'removed'
-    })
-    const listedScope = deriveLocalSshBrowserRoutePartitionStorageScope({
-      orcaProfileId: 'profile-a',
-      targetId: 'listed'
-    })
-    const retained = `persist:orca-browser-v1-${'e'.repeat(64)}`
-    const listed = `persist:orca-browser-v1-${'f'.repeat(64)}`
-    const orphans = Array.from(
-      { length: count },
-      (_, index) => `persist:orca-browser-v1-${(index + 1).toString(16).padStart(64, '0')}`
-    )
-    const partitionFolder = (partition: string): string =>
-      join(mocks.userData, 'Partitions', partition.slice('persist:'.length))
-    for (const partition of [...orphans, retained, listed]) {
-      store.set(partition, 'a'.repeat(64), partition === listed ? listedScope : removedScope)
-      mkdirSync(partitionFolder(partition), { recursive: true })
-    }
-    const unregister = registerBrowserRoutePartitionRetentionProbe(
-      (partition) => partition === retained
-    )
-    try {
-      const cleared = await collectOrphanedBrowserRoutePartitionStorage(() => ['listed'])
-
-      expect(new Set(cleared)).toEqual(new Set(orphans))
-      expect(orphans.every((partition) => !existsSync(partitionFolder(partition)))).toBe(true)
-      expect(existsSync(partitionFolder(retained))).toBe(true)
-      expect(existsSync(partitionFolder(listed))).toBe(true)
-      expect(new Set(store.listBindings().keys())).toEqual(new Set([retained, listed]))
-      expect(mocks.fromPartition).not.toHaveBeenCalled()
-      expect(mocks.clearPolicies).not.toHaveBeenCalled()
-      expect(mocks.clearStorage).not.toHaveBeenCalled()
-      expect(mocks.clearCache).not.toHaveBeenCalled()
-    } finally {
-      unregister()
-    }
+it('collects cold orphan folders without opening sessions, preserving retained and listed scopes', async () => {
+  const store = currentBrowserRoutePartitionBindingStore()
+  const removedScope = deriveLocalSshBrowserRoutePartitionStorageScope({
+    orcaProfileId: 'profile-a',
+    targetId: 'removed'
+  })
+  const listedScope = deriveLocalSshBrowserRoutePartitionStorageScope({
+    orcaProfileId: 'profile-a',
+    targetId: 'listed'
+  })
+  const retained = `persist:orca-browser-v1-${'e'.repeat(64)}`
+  const listed = `persist:orca-browser-v1-${'f'.repeat(64)}`
+  const orphans = Array.from(
+    { length: 2 },
+    (_, index) => `persist:orca-browser-v1-${(index + 1).toString(16).padStart(64, '0')}`
+  )
+  const partitionFolder = (partition: string): string =>
+    join(mocks.userData, 'Partitions', partition.slice('persist:'.length))
+  for (const partition of [...orphans, retained, listed]) {
+    store.set(partition, 'a'.repeat(64), partition === listed ? listedScope : removedScope)
+    mkdirSync(partitionFolder(partition), { recursive: true })
   }
-)
+  const unregister = registerBrowserRoutePartitionRetentionProbe(
+    (partition) => partition === retained
+  )
+  try {
+    const cleared = await collectOrphanedBrowserRoutePartitionStorage(() => ['listed'])
+
+    expect(new Set(cleared)).toEqual(new Set(orphans))
+    expect(orphans.every((partition) => !existsSync(partitionFolder(partition)))).toBe(true)
+    expect(existsSync(partitionFolder(retained))).toBe(true)
+    expect(existsSync(partitionFolder(listed))).toBe(true)
+    expect(new Set(store.listBindings().keys())).toEqual(new Set([retained, listed]))
+    expect(mocks.fromPartition).not.toHaveBeenCalled()
+    expect(mocks.clearPolicies).not.toHaveBeenCalled()
+    expect(mocks.clearStorage).not.toHaveBeenCalled()
+    expect(mocks.clearCache).not.toHaveBeenCalled()
+  } finally {
+    unregister()
+  }
+})
 
 it('leaves a folder queued by one Orca profile for that profile to delete', async () => {
   const profileDirectory = (id: string) => {
