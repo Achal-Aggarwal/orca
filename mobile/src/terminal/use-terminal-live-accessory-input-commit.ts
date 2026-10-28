@@ -3,10 +3,12 @@ import type { TextInput } from 'react-native'
 import {
   getTerminalLiveAccessoryBytesDecision,
   getTerminalLiveAccessoryLocalEditText,
-  terminalLiveAccessoryInputEndsLine
+  terminalLiveAccessoryInputEndsLine,
+  type TerminalLiveInputSelection
 } from './terminal-live-text-commit'
 import type { TerminalLiveAccessoryInput } from './terminal-live-accessory-input'
 import { writeTerminalLiveInputText } from './terminal-live-input-text-write'
+import { normalizeTerminalTextInput } from './terminal-text-input-normalization'
 
 export type TerminalLiveAccessoryInputCommitResult =
   | { readonly kind: 'allow-raw' }
@@ -31,6 +33,8 @@ type TerminalLiveAccessoryInputCommitOptions = {
   readonly heldLiveInputTextRef: RefObject<string>
   readonly liveInputComposingRef: RefObject<boolean | undefined>
   readonly liveInputRef: RefObject<TextInput | null>
+  readonly liveInputTextRef: RefObject<string>
+  readonly liveInputSelectionRef: RefObject<TerminalLiveInputSelection | null>
   readonly liveInputTerminalHandles: ReadonlySet<string>
   readonly onInteraction: () => void
   readonly pendingLiveInputHandleRef: RefObject<string | null>
@@ -40,6 +44,7 @@ type TerminalLiveAccessoryInputCommitOptions = {
   readonly waitForPendingLiveInputFlush: () => Promise<boolean>
 }
 
+/** Keeps accessory edits local and orders terminal controls after pending text has been sent. */
 export function useTerminalLiveAccessoryInputCommit({
   activeHandle,
   applyLiveInputMirror,
@@ -48,6 +53,8 @@ export function useTerminalLiveAccessoryInputCommit({
   heldLiveInputTextRef,
   liveInputComposingRef,
   liveInputRef,
+  liveInputTextRef,
+  liveInputSelectionRef,
   liveInputTerminalHandles,
   onInteraction,
   pendingLiveInputHandleRef,
@@ -83,17 +90,31 @@ export function useTerminalLiveAccessoryInputCommit({
           return sent ? { kind: 'handled' } : { kind: 'suppress-raw' }
         }
         case 'local-edit': {
+          const fieldText = liveInputTextRef.current
+          const selection = liveInputSelectionRef.current
+          // Native text may arrive before its caret; guessing would delete at the old position.
+          if (!selection) {
+            return { kind: 'suppress-raw' }
+          }
           const editedText = getTerminalLiveAccessoryLocalEditText({
             localEdit: decision.localEdit,
-            fieldText: sentText + heldText
+            fieldText,
+            selection
           })
+          const start = Math.max(0, Math.min(selection.start, fieldText.length))
+          const cursor =
+            decision.localEdit === 'backspace' && selection.start === selection.end
+              ? start - (fieldText.length - editedText.length)
+              : start
+          const nextSelection = { start: cursor, end: cursor }
+          liveInputSelectionRef.current = nextSelection
           // Accessory buttons emit no native edits; change the field so mirror diffs synchronize PTY echo.
           setLiveInputCapture(editedText)
-          writeTerminalLiveInputText(liveInputRef, editedText)
+          writeTerminalLiveInputText(liveInputRef, editedText, nextSelection)
           // Undefined composition enables Android’s timed heuristic hold.
           const sent = await applyLiveInputMirror(
             activeHandle,
-            editedText,
+            normalizeTerminalTextInput(editedText),
             liveInputComposingRef.current
           )
           return sent ? { kind: 'handled' } : { kind: 'suppress-raw' }
@@ -115,6 +136,8 @@ export function useTerminalLiveAccessoryInputCommit({
       heldLiveInputTextRef,
       liveInputComposingRef,
       liveInputRef,
+      liveInputTextRef,
+      liveInputSelectionRef,
       liveInputTerminalHandles,
       onInteraction,
       pendingLiveInputHandleRef,
