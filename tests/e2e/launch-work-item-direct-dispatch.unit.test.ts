@@ -89,9 +89,9 @@ it.each(['blank', 'claude'] as const)(
     const createWorktree = vi.fn(async () => ({ worktree, setup: undefined }))
     useAppStore.setState({ ...project, settings, createWorktree })
     const host = {
-      getRepos: () => project.repos,
+      getRepos: () => [...project.repos],
       getRepo: () => project.repos[0],
-      getProjects: () => project.projects,
+      getProjects: () => [...project.projects],
       getSettings: () => settings
     }
     vi.mocked(callRuntimeRpc).mockImplementationOnce(async () =>
