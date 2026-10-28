@@ -36,7 +36,9 @@ function openSource(hostId: 'ssh:first-host' | 'ssh:second-host') {
     { preview: false }
   )
   const file = useAppStore.getState().openFiles.find((file) => file.id === id)
-  if (!file) throw new Error('Missing opened file')
+  if (!file) {
+    throw new Error('Missing opened file')
+  }
   return file
 }
 

@@ -55,7 +55,9 @@ test('keeps PDF zoom independent when the same folder/path is reopened on anothe
     const file = await orcaPage.evaluate(
       ({ id, host, filePath }) => {
         const store = window.__store
-        if (!store) throw new Error('Missing fixture store')
+        if (!store) {
+          throw new Error('Missing fixture store')
+        }
         store.getState().setActiveFolderWorkspace(id, host)
         const fileId = store
           .getState()
