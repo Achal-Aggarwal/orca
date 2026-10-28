@@ -281,7 +281,7 @@ export function attachWebgl(pane: ManagedPaneInternal): void {
       releaseWebglCanvasBackingWhileHidden(
         canvas,
         () => pane.container.closest('[data-worktree-surface-hidden]') === null,
-        () => restoreReleasedPaneWebglCanvas(pane)
+        (devicePixelSize) => restoreReleasedPaneWebglCanvas(pane, devicePixelSize)
       )
     }
     refreshTerminalAfterWebglAttach(pane)

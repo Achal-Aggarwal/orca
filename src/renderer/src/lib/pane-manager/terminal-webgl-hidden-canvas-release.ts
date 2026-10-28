@@ -24,7 +24,7 @@ const releasesByCanvas = new WeakMap<HTMLCanvasElement, CanvasRelease>()
 export function releaseWebglCanvasBackingWhileHidden(
   canvas: HTMLCanvasElement,
   canRelease: () => boolean,
-  restore: () => void
+  restore: (devicePixelSize: { width: number; height: number } | null) => void
 ): void {
   const view = canvas.ownerDocument.defaultView
   if (!view?.ResizeObserver || !view.MutationObserver || releasesByCanvas.has(canvas)) {
@@ -57,7 +57,8 @@ export function releaseWebglCanvasBackingWhileHidden(
   const release: CanvasRelease = {
     view,
     resize: new view.ResizeObserver((entries) => {
-      const box = entries.at(-1)?.contentRect
+      const entry = entries.at(-1)
+      const box = entry?.contentRect
       release.hasBox = Boolean(box && (box.width > 0 || box.height > 0))
       if (!release.hasBox) {
         scheduleRelease()
@@ -66,7 +67,10 @@ export function releaseWebglCanvasBackingWhileHidden(
       cancelRelease()
       if (release.released) {
         release.released = false
-        restore()
+        const devicePixels = entry?.devicePixelContentBoxSize?.[0]
+        restore(
+          devicePixels ? { width: devicePixels.inlineSize, height: devicePixels.blockSize } : null
+        )
       }
     }),
     // Why: a resize while hidden regrows the backing without a box change, so no resize entry follows.

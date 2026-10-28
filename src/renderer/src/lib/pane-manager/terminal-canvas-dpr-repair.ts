@@ -82,11 +82,15 @@ export function repairPaneWebglCanvasDprMismatch(pane: ManagedPane): boolean {
   return repairPaneWebglCanvasDpr(pane) === 'repaired'
 }
 
-/** Reveal of a released canvas: reallocate at the current DPR and draw past xterm's still-paused renderer so the first painted frame has content. */
-export function restoreReleasedPaneWebglCanvas(pane: ManagedPane): void {
+/** Reveal of a released canvas: reallocate and draw past xterm's still-paused renderer so the first painted frame has content. Reuses the cached layout and atlas unless the DPR changed while hidden. */
+export function restoreReleasedPaneWebglCanvas(
+  pane: ManagedPane,
+  devicePixelSize: { width: number; height: number } | null
+): void {
   const renderer = getXtermRenderer(pane)
-  const view = (renderer?._canvas ?? renderer?._gl?.canvas)?.ownerDocument?.defaultView
-  if (!renderer || !view) {
+  const canvas = renderer?._canvas ?? renderer?._gl?.canvas
+  const view = canvas?.ownerDocument?.defaultView
+  if (!renderer || !canvas || !view) {
     return
   }
   try {
@@ -94,10 +98,14 @@ export function restoreReleasedPaneWebglCanvas(pane: ManagedPane): void {
       renderer._devicePixelRatio !== view.devicePixelRatio &&
       renderer.handleDevicePixelRatioChange
     ) {
-      // Updates the cached DPR and resizes; a monitor move while hidden lands here.
+      // A monitor move while hidden: recompute dimensions and rebuild at the new DPR.
       renderer.handleDevicePixelRatioChange()
-    } else {
-      renderer.handleResize?.(pane.terminal.cols, pane.terminal.rows)
+    } else if (canvas.width === 0 && canvas.height === 0) {
+      // Match xterm's device-pixel observer exactly so it finds nothing to resize (a second
+      // reallocation and redraw); engines without that box fall back to xterm's own canvas size.
+      const size = devicePixelSize ?? renderer.dimensions?.device?.canvas
+      canvas.width = size?.width ?? 0
+      canvas.height = size?.height ?? 0
     }
     if (!forceRepaintThroughRenderPause(pane.terminal)) {
       pane.terminal.refresh(0, pane.terminal.rows - 1)
