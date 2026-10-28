@@ -130,12 +130,21 @@ it.each([100, 1000])(
     const bytecode = sql.verify()
     expect(sql.calls.every((call) => !/\bbody\b|\bpayload\b/.test(call.original))).toBe(true)
     expect(sql.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(count * 600)
-    console.info('cold source indexed candidate/bytes/receipt evidence', {
-      count,
-      visits: sql.count(),
-      calls: sql.calls,
-      bytecode
-    })
+    console.info(
+      'cold source indexed candidate/bytes/receipt evidence',
+      JSON.stringify({
+        count,
+        visits: sql.count(),
+        calls: sql.calls,
+        receiptLookups: vi.mocked(h.host.readCreation).mock.calls.length,
+        sourceBodies: bodies.mock.calls.length,
+        sourceBytes: sql.calls.reduce((sum, call) => sum + call.bytes, 0),
+        bytecode: bytecode.map((row) => ({
+          args: row.args,
+          opcodes: row.bytecode.map((item) => item.opcode)
+        }))
+      })
+    )
     sql.reset()
     vi.mocked(h.host.readCreation).mockClear()
     for (let n = 0; n < 10; n++) {

@@ -337,17 +337,27 @@ it.each([100, 1000])(
     await settle()
     await vi.waitFor(() => expect(dispatch.mock.calls.length).toBeGreaterThan(reportTurnCount))
     expect(state.db.getMessageById(tail)?.read).toBe(0)
-    console.info('installed semantic source/receipt/body/send/queue work', {
-      count,
-      baseline,
-      beforeBytes,
-      afterBytes: queuedMessagesPublishedBytes(worker.journal),
-      sourceCalls: sourceWork.calls,
-      queueBodySerializations: queueBodyWork(),
-      attemptIds: attempts.mock.calls.map(([, input]) => input.envelope.clientOperationId)
-    })
+    console.info(
+      'installed semantic source/receipt/body/send/queue work',
+      JSON.stringify({
+        count,
+        baseline,
+        beforeBytes,
+        afterBytes: queuedMessagesPublishedBytes(worker.journal),
+        sourceCalls: sourceWork.calls,
+        queueBodySerializations: queueBodyWork(),
+        attemptIds: attempts.mock.calls.map(([, input]) => input.envelope.clientOperationId)
+      })
+    )
     sourceWork.verify()
     sourceWork.restore()
+    const retiring = new MessageWaitScope()
+    const scoped = state.runtime.waitForMessage(mailbox, { scope: retiring, timeoutMs: 60000 })
+    const generic = state.runtime.waitForMessage(mailbox, { timeoutMs: 60000 })
+    state.runtime.disposeMessageWaiters()
+    expect(await Promise.all([scoped, generic])).toEqual(['cancelled', 'cancelled'])
+    expect(state.runtime.messageWaitersByHandle.size).toBe(0)
+    expect(retiring.complete()).toBe(true)
     releaseStructuredWorkerSession(dispatchId, state.runtime)
     attempts.mockClear()
     await worker.append('after-retirement')

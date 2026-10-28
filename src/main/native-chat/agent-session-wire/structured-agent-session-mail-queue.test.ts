@@ -705,7 +705,10 @@ it('reconciles a saved random batch through its original ordinary receipt after 
   expect(membership.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(10000)
   expect(receiptReads.mock.calls.filter(([, operation]) => operation === oldId)).toHaveLength(1)
   membership.verify()
-  console.info('legacy original-domain membership rows/bytes/arguments', membership.calls)
+  console.info(
+    'legacy original-domain membership rows/bytes/arguments',
+    JSON.stringify(membership.calls)
+  )
   membership.restore()
   expect(db.getMessageById(unobserved.id)).toMatchObject({ read: 0, delivered_at: null })
   expect(journal().queuedMessages.get(ordinaryMailCreationId(unobserved))).toBeNull()
