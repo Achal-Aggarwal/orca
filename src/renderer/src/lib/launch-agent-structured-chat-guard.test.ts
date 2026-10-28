@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import type * as StructuredLaunch from './launch-structured-agent-session'
 import type * as LaunchErrors from '@/lib/structured-agent-session-launch-errors'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -290,6 +291,132 @@ describe('structured chat adoption guard on the launch path', () => {
       retireStructuredAgentSessionLaunchCancellationTombstone('wt-1', sessionId)
     }
   })
+
+  it.each([
+    ['claude', 'success'],
+    ['claude', 'refusal'],
+    ['claude', 'failure'],
+    ['codex', 'success'],
+    ['codex', 'refusal'],
+    ['codex', 'failure']
+  ] as const)(
+    'keeps ordinary and picker %s Chat inputs and %s endpoint outcomes equivalent',
+    async (agent, outcome) => {
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+      const actual = await vi.importActual<typeof StructuredLaunch>(
+        './launch-structured-agent-session'
+      )
+      const { resetStructuredAgentLaunchRegistryForTests } =
+        await import('./agent-session/launch/structured-agent-session-launch-registry')
+      const { resetStructuredAgentLaunchPersistenceForTests } =
+        await import('./agent-session/launch/structured-agent-session-launch-persistence')
+      const { agentPickerChoiceSeeds, agentPickerDraft, agentPickerLaunchInputs } =
+        await import('../../../shared/agent-launch-picker')
+      store.settings.nativeChatSessionOptions = {
+        [agent]: {
+          model: 'saved-unknown-model',
+          valuesByModel: { 'saved-unknown-model': { effort: 'high' } }
+        }
+      }
+      const entry = {
+        agent,
+        label: agent,
+        rows: [{ agent, kind: 'chat' as const }],
+        surfaces: ['chat' as const, 'terminal' as const],
+        defaultSurface: 'chat' as const,
+        catalog: { origin: 'unknown' as const },
+        ...agentPickerChoiceSeeds(agent, store.settings)
+      }
+      mockCreateStructuredCodexSessionLaunchIntent.mockImplementation(
+        (worktreeId, selectedAgent, host, resume, seed) => {
+          const intent = actual.createStructuredAgentSessionLaunchIntent(
+            worktreeId,
+            selectedAgent,
+            host,
+            resume,
+            seed,
+            false
+          )
+          return {
+            ...intent,
+            sessionId: 'codex-session-1',
+            params: {
+              ...intent.params,
+              envelope: structuredLaunchIntent(worktreeId).params.envelope
+            }
+          }
+        }
+      )
+      const error =
+        outcome === 'refusal'
+          ? new launchErrorMocks.StructuredAgentSessionCreateRefusalError('provider unavailable')
+          : new Error('connection failed')
+      const perform = async (picker: boolean) => {
+        resetStructuredAgentLaunchRegistryForTests()
+        resetStructuredAgentLaunchPersistenceForTests()
+        mockLaunchStructuredCodexSession.mockClear()
+        mockCreateTab.mockClear()
+        mockToastError.mockClear()
+        if (outcome === 'failure') {
+          store.unifiedTabsByWorktree = {}
+          mockRefreshLocalStructuredSessionTabs.mockResolvedValue([])
+        }
+        const preparationErrors: unknown[] = []
+        mockLaunchStructuredCodexSession.mockImplementation(async (intent) => {
+          await Promise.resolve()
+          intent.createMessageSupport = true
+          try {
+            intent.prepareCreate?.(false)
+          } catch (error) {
+            preparationErrors.push(error instanceof Error ? error.stack : error)
+            throw error
+          }
+          if (outcome !== 'success') {
+            throw error
+          }
+          return { sessionId: intent.sessionId, fence: 1 }
+        })
+        const result = launchAgentInNewTab({
+          requestId: `equivalent-${agent}-${outcome}-${picker}`,
+          agent,
+          worktreeId: 'wt-1',
+          requestedSurface: 'chat',
+          ...(picker ? agentPickerLaunchInputs(agentPickerDraft(entry), entry) : {})
+        })
+        const settlement = await result?.structuredSettlement
+        expect(preparationErrors).toEqual([])
+        const intent = mockLaunchStructuredCodexSession.mock.calls[0]?.[0]
+        return {
+          surface: result?.surface,
+          settlement,
+          target: intent?.target,
+          params: intent?.params,
+          seed: intent?.seedOptions,
+          explicit: intent?.explicitLaunchOptions,
+          terminalCalls: mockCreateTab.mock.calls,
+          errors: mockToastError.mock.calls
+        }
+      }
+      const ordinary = await perform(false)
+      const picker = await perform(true)
+      expect(picker).toEqual(ordinary)
+      expect(picker.params).toMatchObject({
+        agent,
+        worktree: 'id:wt-1'
+      })
+      expect(picker.params).not.toHaveProperty('options')
+      expect(picker.explicit).toBeUndefined()
+      expect(picker.seed).toMatchObject({ model: 'saved-unknown-model', effort: 'high' })
+      expect(picker.terminalCalls).toEqual([])
+      expect(picker.settlement?.kind).toBe(
+        outcome === 'success'
+          ? 'structured'
+          : outcome === 'refusal'
+            ? 'failed'
+            : 'visibility-unknown'
+      )
+    }
+  )
 
   it('takes the structured path when the chat-default view is selected', async () => {
     const { launchAgentInNewTab, shouldQueueTerminalFocusAfterMenuClose } =

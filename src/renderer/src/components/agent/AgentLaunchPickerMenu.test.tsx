@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
-import { waitFor } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AgentLaunchSetupButton } from './AgentLaunchSetupButton'
 import { AgentLaunchPickerMenu } from './AgentLaunchPickerMenu'
 import type { AgentPickerEntry } from '../../../../shared/agent-launch-picker'
 
@@ -194,4 +195,43 @@ it('closes Configure with Escape without dispatch and returns focus to its trigg
   expect(launch).not.toHaveBeenCalled()
   expect(document.querySelector('input[aria-label="Search models"]')).toBeNull()
   await waitFor(() => expect(document.activeElement).toBe(configure))
+})
+
+it('unmounts the setup draft on close/reopen and resets an open draft when its owner is replaced', () => {
+  const own = {
+    ...entry,
+    ownerKey: 'pair7/runtime1',
+    defaultSurface: 'terminal' as const,
+    arguments: '--add-dir docs',
+    terminal: { permissionMode: 'ask' as const }
+  }
+  const show = (value = own) =>
+    act(() =>
+      root.render(
+        <TooltipProvider>
+          <AgentLaunchSetupButton entry={value} onUse={launch} />
+        </TooltipProvider>
+      )
+    )
+  show()
+  const configure = () =>
+    document.querySelector<HTMLButtonElement>('button[aria-label="Configure Codex"]')!
+  fireEvent.click(configure())
+  fireEvent.change(document.querySelector('textarea')!, { target: { value: '--add-dir src' } })
+  expect(document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('--add-dir src')
+  fireEvent.keyDown(document.querySelector('textarea')!, { key: 'Escape' })
+  expect(document.querySelector('textarea')).toBeNull()
+  fireEvent.click(configure())
+  expect(document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('--add-dir docs')
+  fireEvent.change(document.querySelector('textarea')!, {
+    target: { value: '--add-dir old-owner' }
+  })
+  show({ ...own, ownerKey: 'pair8/runtime2', arguments: '--add-dir new-owner' })
+  expect(document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('--add-dir new-owner')
+  fireEvent.click(
+    [...document.querySelectorAll('button')].find((b) => b.textContent === 'Open terminal')!
+  )
+  expect(launch).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ choices: {}, arguments: undefined })
+  )
 })

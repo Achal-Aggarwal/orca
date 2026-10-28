@@ -66,6 +66,7 @@ export function AgentLaunchSetupButton({
         onClick={(event) => event.stopPropagation()}
       >
         <AgentLaunchSetupPanel
+          key={`${entry.ownerKey}:${entry.agent}`}
           entry={entry}
           initial={initial}
           disabled={disabled}

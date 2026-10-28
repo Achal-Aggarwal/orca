@@ -98,14 +98,18 @@ export function reconcileAgentChoiceArgs(input: AgentChoiceArgsInput): {
           ? (patch.model ?? undefined)
           : (all.find((other) => other.key === 'model' && other.lift && counts.get('model') === 1)
               ?.value ?? choices.model)
-      const option = (
-        findCatalogModel(catalog ?? { models: [], modelApply: {} }, model ?? '')?.options ??
-        catalog?.unknownModelOptions
-      )?.find((option) => option.id === entry.key)
+      const option =
+        (
+          findCatalogModel(catalog ?? { models: [], modelApply: {} }, model ?? '')?.options ??
+          catalog?.unknownModelOptions
+        )?.find((option) => option.id === entry.key) ??
+        catalog?.unknownModelOptions?.find((option) => option.id === entry.key)
       if (
-        option?.kind.type !== 'select' ||
-        !option.apply.launchArgs ||
-        !option.kind.choices.some((choice) => choice.value === entry.value)
+        !option?.apply.launchArgs ||
+        (option.kind.type === 'boolean'
+          ? entry.value !== 'true' && entry.value !== 'false'
+          : option.kind.choices.length > 0 &&
+            !option.kind.choices.some((choice) => choice.value === entry.value))
       ) {
         return false
       }

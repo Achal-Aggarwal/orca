@@ -1,8 +1,17 @@
+import { analyzeAgentChoiceArgs } from './agent-choice-args'
+import {
+  agentPickerArgumentsKnown,
+  agentPickerArgumentsText
+} from './agent-launch-picker-authority'
+export {
+  agentPickerArgumentsKnown,
+  agentPickerArgumentsText
+} from './agent-launch-picker-authority'
 export {
   agentPickerChoiceSeeds,
   type AgentPickerDefaultSettings
 } from './agent-launch-picker-defaults'
-import { agentPickerOptions, agentPickerModels } from './agent-launch-picker-catalog'
+import { agentPickerOptions } from './agent-launch-picker-catalog'
 export {
   agentPickerOptions,
   agentPickerModels,
@@ -30,6 +39,7 @@ export type AgentPickerEntry = {
   structured: AgentDedicatedChoices
   arguments?: string | null
   catalog: AgentSessionModelCatalogResult
+  ownerKey?: string
   defaultsPending?: boolean
   structuredDefaultsPending?: boolean
 }
@@ -37,6 +47,7 @@ export type AgentPickerDraft = {
   agent: TuiAgent
   surface: AgentPickerSurface
   choices: AgentDedicatedChoices
+  argumentsOwner?: string
   arguments?: string | null
 }
 export type AgentPickerSetup = {
@@ -148,10 +159,28 @@ function agentPickerLaunchChoices(draft: AgentPickerDraft) {
 }
 
 export function agentPickerLaunchInputs(draft: AgentPickerDraft, entry?: AgentPickerEntry) {
-  const { choices, userArgs } = agentPickerLaunchChoices(draft)
+  const authorized = !entry || agentPickerArgumentsKnown(entry, draft)
+  const { choices: launchChoices, userArgs } = agentPickerLaunchChoices(
+    authorized ? draft : { ...draft, arguments: undefined }
+  )
+  const choices = {
+    ...launchChoices,
+    ...(launchChoices.options ? { options: { ...launchChoices.options } } : {})
+  }
+  const text = entry ? agentPickerArgumentsText(entry, draft) : draft.arguments
+  if (
+    text &&
+    analyzeAgentChoiceArgs(draft.agent, text).opaqueKeys.has('fastMode') &&
+    choices.options
+  ) {
+    choices.options = Object.fromEntries(
+      Object.entries(choices.options).filter(([key]) => key !== 'fastMode')
+    )
+  }
   // The existing dispatcher treats an Arguments override as the complete terminal profile.
+  const sessionOptions = agentPickerSessionOptions(choices)
   return {
-    sessionOptions: agentPickerSessionOptions(choices),
+    ...(Object.keys(sessionOptions).length ? { sessionOptions } : {}),
     ...(draft.surface === 'terminal' && userArgs !== undefined
       ? {
           agentArgs: projectAgentLaunchProfile(draft.agent, undefined, {
@@ -176,84 +205,7 @@ export function agentPickerButtonOrder(entry: AgentPickerEntry): AgentPickerSurf
   ]
 }
 
-const tokens = (value: string): string[] =>
-  value
-    .toLowerCase()
-    .replace(/extra[\s-]*high/g, 'xhigh')
-    .split(/[\s_\-/·]+/)
-    .filter(Boolean)
-const score = (word: string, values: readonly string[]): number =>
-  values.includes(word)
-    ? 2
-    : word.length >= 2 && values.some((value) => value.startsWith(word))
-      ? 1
-      : 0
-
-export function searchAgentPickerSetups(
-  entries: readonly AgentPickerEntry[],
-  query: string,
-  limit = 8
-): AgentPickerSetup[] {
-  const words = tokens(query)
-  if (!words.length) {
-    return []
-  }
-  const matches: { setup: AgentPickerSetup; score: number }[] = []
-  for (const entry of entries) {
-    if (!entry.surfaces.length || entry.catalog.origin === 'unknown') {
-      continue
-    }
-    const agentWords = tokens([entry.agent, entry.label, ...(entry.aliases ?? [])].join(' '))
-    if (words.every((word) => score(word, agentWords))) {
-      continue
-    }
-    for (const model of agentPickerModels(entry)) {
-      if (model.isLegacy || model.hidden) {
-        continue
-      }
-      const modelWords = tokens([model.id, model.label].join(' '))
-      if (!words.some((word) => !score(word, agentWords) && score(word, modelWords))) {
-        continue
-      }
-      const effortQuery = model.efforts.filter((effort) =>
-        words.some(
-          (word) =>
-            !score(word, agentWords) &&
-            !score(word, modelWords) &&
-            score(word, tokens(`${effort.value} ${effort.label}`))
-        )
-      )
-      const efforts = effortQuery.length ? effortQuery : [undefined]
-      for (const effort of efforts) {
-        const effortWords = effort ? tokens(`${effort.value} ${effort.label}`) : []
-        const values = words.map((word) =>
-          score(word, [...agentWords, ...modelWords, ...effortWords])
-        )
-        if (values.some((value) => value === 0)) {
-          continue
-        }
-        const choices = resolveAgentChoiceLayers({
-          agent: entry.agent,
-          explicit: { model: model.id, ...(effort ? { options: { effort: effort.value } } : {}) },
-          argumentOwner: 'defaults'
-        })
-        matches.push({
-          setup: {
-            entry,
-            model,
-            choices,
-            label: [entry.label, model.label, effort?.label].filter(Boolean).join(' · ')
-          },
-          score: values.reduce((a, b) => a + b, 0)
-        })
-      }
-    }
-  }
-  return matches
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((match) => match.setup)
-}
+export { searchAgentPickerSetups } from './agent-launch-picker-search'
 
 export function agentPickerSessionOptions(choices: AgentDedicatedChoices): Record<string, string> {
   return {

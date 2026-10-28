@@ -1,3 +1,4 @@
+import { AgentPermissionMenuOptions } from './AgentPermissionMenuOptions'
 import { ChevronDown, Terminal, X } from 'lucide-react'
 import type { Ref } from 'react'
 import type { AgentChatPermissionMode } from '../../../../shared/agent-chat-permission-mode'
@@ -15,10 +16,7 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
-import {
-  nativeChatPermissionModeDescription,
-  nativeChatPermissionModeLabel
-} from '../native-chat/native-chat-permission-mode-labels'
+import { nativeChatPermissionModeLabel } from '../native-chat/native-chat-permission-mode-labels'
 import {
   NativeChatPermissionModeItems,
   NativeChatPermissionModeName
@@ -179,7 +177,9 @@ export function AgentPermissionMenu({
   inheritLabel,
   disabled,
   size = 'xs',
-  layout = 'inline'
+  layout = 'inline',
+  showInherited = true,
+  rawValue
 }: {
   agentId: string
   label: string
@@ -188,10 +188,12 @@ export function AgentPermissionMenu({
   disabled?: boolean
   size?: 'xs' | 'sm'
   layout?: 'inline' | 'stacked'
+  showInherited?: boolean
+  rawValue?: string
 }): React.JSX.Element {
   const followAll =
     inheritLabel ?? translate('settings.agents.permissionSameAsAll', 'Same as all agents')
-  const current = agentPermissionChoiceLabel(permission.choice, label)
+  const current = rawValue ?? agentPermissionChoiceLabel(permission.choice, label)
   return (
     <div
       className={cn(
@@ -228,39 +230,16 @@ export function AgentPermissionMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" collisionPadding={8} className="w-80">
-          <DropdownMenuRadioGroup
-            value={permission.source === 'all' ? 'default' : permission.choice}
-          >
-            <DropdownMenuRadioItem
-              value="default"
-              disabled={disabled}
-              onSelect={() => permission.onSelect('default')}
-            >
-              <span className="truncate">
-                {followAll} · {agentPermissionChoiceLabel(permission.defaultChoice, label)}
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuSeparator />
-            {permission.choices.map((choice) => (
-              <DropdownMenuRadioItem
-                key={choice}
-                value={choice}
-                disabled={disabled}
-                onSelect={() => permission.onSelect(choice)}
-              >
-                <div className="min-w-0 py-0.5">
-                  <div className={cn(choice === 'full-access' && 'text-status-warning')}>
-                    {agentPermissionChoiceLabel(choice, label)}
-                  </div>
-                  <div className="text-xs font-normal text-muted-foreground">
-                    {choice === 'own'
-                      ? ownDescription(permission.chatOwnSupported === true)
-                      : nativeChatPermissionModeDescription(choice, agentId)}
-                  </div>
-                </div>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+          <AgentPermissionMenuOptions
+            agentId={agentId}
+            permission={permission}
+            disabled={disabled}
+            rawValue={rawValue}
+            showInherited={showInherited}
+            followAll={followAll}
+            choiceLabel={(choice) => agentPermissionChoiceLabel(choice, label)}
+            ownDescription={ownDescription(permission.chatOwnSupported === true)}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
       {permission.terminalChoice === 'own' && permission.chatChoice ? (

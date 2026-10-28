@@ -26,14 +26,16 @@ const entry: AgentPickerEntry = {
   ...agentPickerChoiceSeeds('claude', settings)
 }
 
-it('locks inherited raw permission Arguments despite a typed choice; chip removal overrides only this launch', () => {
+it('retains inherited raw permission precedence despite a typed choice; removal affects only this launch', () => {
   const draft = editAgentPickerDraft(agentPickerDraft(entry), { permissionMode: 'ask' })
   expect(draft.arguments).toBeUndefined()
   const permission = agentPickerArgumentPermission(entry, draft)
   expect(permission).toEqual({
     flag: '--dangerously-skip-permissions',
     remainingArguments: '',
-    locked: true
+    value: 'full-access',
+    choice: 'full-access',
+    opaque: false
   })
   expect(
     projectAgentLaunchProfile('claude', settings, { target: 'terminal', choices: draft.choices })
@@ -50,8 +52,8 @@ it('locks inherited raw permission Arguments despite a typed choice; chip remova
     }).args
   ).not.toContain('--dangerously-skip-permissions')
   expect(settings.agentDefaultArgs.claude).toBe('--dangerously-skip-permissions')
-  expect(agentPickerArgumentPermission(entry, { ...removed, arguments: undefined })?.locked).toBe(
-    true
+  expect(agentPickerArgumentPermission(entry, { ...removed, arguments: undefined })?.choice).toBe(
+    'full-access'
   )
 })
 
@@ -65,7 +67,9 @@ it('shows unliftable launch-owned permission bytes without guessing a native cho
   expect(permission).toEqual({
     flag: '--permission-mode plan',
     remainingArguments: '--add-dir docs',
-    locked: true
+    value: 'plan',
+    choice: undefined,
+    opaque: false
   })
   const removed = editAgentPickerArguments(draft, permission?.remainingArguments ?? '')
   expect(removed.arguments).toBe('--add-dir docs')
@@ -78,15 +82,21 @@ it('keeps shell-ambiguous Arguments together rather than inventing a removable p
     arguments: '--unknown value --permission-mode plan --add-dir docs'
   }
   expect(agentPickerArgumentPermission(entry, draft)).toEqual({
-    flag: draft.arguments,
-    remainingArguments: '',
-    locked: true
+    flag: '--permission-mode',
+    value: 'plan',
+    choice: undefined,
+    remainingArguments: draft.arguments,
+    opaque: true
   })
 })
 
-it('keeps chat Permissions editable: configured raw flags are filtered and launch-only Arguments do not own chat policy', () => {
+it('retains raw CLI permission bytes while native configured-Arguments filtering stays unchanged', () => {
   const chat = { ...agentPickerDraft(entry, 'chat'), arguments: '--permission-mode plan' }
-  expect(agentPickerArgumentPermission(entry, chat)?.locked).toBe(false)
+  expect(agentPickerArgumentPermission(entry, chat)).toMatchObject({
+    value: 'plan',
+    choice: undefined,
+    opaque: false
+  })
   expect(
     claudeStructuredLaunchArgs(structuredAgentConfiguredArgs('claude', settings)).extraArgs
   ).toEqual({})

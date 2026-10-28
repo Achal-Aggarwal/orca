@@ -32,25 +32,31 @@ export function agentPickerEntryOptions(
     (row) => row.id === model || (model === undefined && row.isDefault)
   )
   if (entry.catalog.origin === 'unknown' || !live) {
-    return options
+    return options.filter(
+      (option) => option.kind.type !== 'select' || option.kind.choices.length > 0
+    )
   }
   if (entry.agent === 'claude') {
     options = createClaudeCatalogOptions({
       effortLevelIds: live.efforts.map((choice) => choice.value),
       supportsFastMode:
-        surface === 'chat' &&
-        live.supportsFastMode === true &&
-        entry.catalog.fastModeSupport?.supported !== false
+        live.supportsFastMode === true && entry.catalog.fastModeSupport?.supported !== false
     })
   }
-  if (surface === 'chat') {
+  if (surface === 'chat' || entry.agent === 'codex') {
     const dynamic = discoveredModel(
       live,
       entry.catalog.fastModeSupport?.supported !== false
     ).options
+    if (entry.agent === 'codex') {
+      options = options.filter((option) => option.id !== 'serviceTier' && option.id !== 'fastMode')
+    }
     for (const option of dynamic) {
       if (!options.some((existing) => existing.id === option.id)) {
-        options.push(option)
+        const mapping = getAgentSessionOptionLaunchCatalog(entry.agent)?.unknownModelOptions?.find(
+          (seed) => seed.id === option.id
+        )
+        options.push(mapping ? { ...option, apply: mapping.apply } : option)
       }
     }
   }

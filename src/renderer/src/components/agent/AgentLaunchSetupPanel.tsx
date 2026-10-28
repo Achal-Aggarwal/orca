@@ -10,40 +10,33 @@ import {
   CommandEmpty,
   CommandItem
 } from '@/components/ui/command'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
 import { AgentDefaultArgsInput } from '../settings/AgentLaunchDefaultsEditor'
 import { NativeChatSessionOptionRows } from '../native-chat/NativeChatSessionOptionRows'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
-import { agentPickerArgumentPermission } from '../../../../shared/agent-launch-picker-permission'
+import { AgentPermissionMenu } from '../settings/AgentPermissionChoiceControls'
+import {
+  agentPickerPanelArguments,
+  agentPickerSpeedValue,
+  editAgentPickerSpeed,
+  editAgentPickerPanelText
+} from '../../../../shared/agent-launch-picker-arguments'
+import { agentPickerSpeedIsOpaque } from '../../../../shared/agent-launch-picker-speed'
+import { editAgentPickerPermission } from '../../../../shared/agent-launch-picker-permission'
 import {
   agentPickerButtonOrder,
+  agentPickerArgumentsKnown,
   agentPickerDraft,
   agentPickerEffectiveChoices,
   agentPickerModels,
   agentPickerEntryOptions,
   agentPickerPermissions,
-  editAgentPickerArguments,
   editAgentPickerDraft,
   type AgentPickerEntry,
   type AgentPickerDraft,
   type AgentPickerSurface
 } from '../../../../shared/agent-launch-picker'
-
-const permissionLabels = {
-  own: 'Use agent configuration',
-  ask: 'Ask',
-  'accept-edits': 'Accept edits',
-  auto: 'Approve for me',
-  'full-access': 'Full access'
-}
 
 export function AgentLaunchSetupPanel({
   entry,
@@ -60,10 +53,11 @@ export function AgentLaunchSetupPanel({
   const [modelQuery, setModelQuery] = useState('')
   const [legacy, setLegacy] = useState(false)
   const [argumentsOpen, setArgumentsOpen] = useState(entry.defaultSurface === 'terminal')
+  const argumentsKnown = agentPickerArgumentsKnown(entry, draft)
   const effective = agentPickerEffectiveChoices(entry, draft)
   const models = agentPickerModels(entry)
   const defaultsPending =
-    entry.defaultsPending || (draft.surface === 'chat' && entry.structuredDefaultsPending)
+    draft.surface === 'chat' ? entry.structuredDefaultsPending : entry.defaultsPending
   const seed = getAgentSessionOptionLaunchCatalog(entry.agent)
   const listedDefaultKnown =
     entry.catalog.origin !== 'unknown' &&
@@ -75,15 +69,13 @@ export function AgentLaunchSetupPanel({
       : undefined)
   const modelDisabled = disabled || defaultsPending || !currentModel
   const options = agentPickerEntryOptions(entry, currentModel, draft.surface)
-  const argumentPermission = agentPickerArgumentPermission(entry, draft)
-  const permissionChip = argumentPermission?.opaque ? undefined : argumentPermission
-  const argumentsText =
-    permissionChip?.remainingArguments ??
-    (draft.arguments === undefined ? (entry.arguments ?? '') : (draft.arguments ?? ''))
+  const argumentsView = agentPickerPanelArguments(entry, draft, currentModel)
   const optionRows: SessionOptionDescriptor[] = options.map((option) => {
     const liveModel = models.find((model) => model.id === currentModel)
     const current =
-      effective.options?.[option.id] ??
+      (option.id === 'fastMode' || option.id === 'serviceTier'
+        ? agentPickerSpeedValue(entry, draft, option.id)
+        : effective.options?.[option.id]) ??
       (currentModel && !defaultsPending
         ? option.kind.type === 'boolean'
           ? String(option.kind.defaultValue)
@@ -93,6 +85,26 @@ export function AgentLaunchSetupPanel({
               ? option.kind.defaultValue
               : undefined
         : undefined)
+    if (agentPickerSpeedIsOpaque(entry, draft, option.id)) {
+      return {
+        id: option.id,
+        label: option.label,
+        category: option.category,
+        kind: {
+          type: 'select',
+          choices: [
+            {
+              value: 'arguments',
+              label: translate('agentPicker.setByArguments', 'Set by your Arguments')
+            }
+          ],
+          currentValue: 'arguments'
+        },
+        valueSource: 'default',
+        transport: 'agent-session',
+        settable: false
+      }
+    }
     return {
       id: option.id,
       label: option.label,
@@ -110,7 +122,13 @@ export function AgentLaunchSetupPanel({
             },
       valueSource: current === undefined ? 'unknown' : 'default',
       transport: 'agent-session',
-      settable: !disabled && !defaultsPending && current !== undefined
+      settable:
+        !disabled &&
+        !defaultsPending &&
+        current !== undefined &&
+        (!(option.id === 'fastMode' || option.id === 'serviceTier') ||
+          !entry.surfaces.includes('terminal') ||
+          argumentsKnown)
     }
   })
   const renderOptions = (rows: SessionOptionDescriptor[]) => (
@@ -119,12 +137,15 @@ export function AgentLaunchSetupPanel({
       shownReason={null}
       pendingIds={new Set()}
       onSet={(option, value) =>
-        setDraft(editAgentPickerDraft(draft, { options: { [option.id]: String(value) } }))
+        setDraft(
+          option.id === 'fastMode' || option.id === 'serviceTier'
+            ? editAgentPickerSpeed(entry, draft, option.id, String(value), currentModel)
+            : editAgentPickerDraft(draft, { options: { [option.id]: String(value) } })
+        )
       }
       onAction={() => {}}
     />
   )
-  const permissionOwnedByArguments = argumentPermission?.locked ? argumentPermission : undefined
   const use = (surface: AgentPickerSurface) => onUse({ ...draft, surface })
   return (
     <div
@@ -219,38 +240,32 @@ export function AgentLaunchSetupPanel({
         </Command>
       </div>
       {renderOptions(optionRows.filter((row) => row.id !== 'fastMode' && row.id !== 'serviceTier'))}
-      <div className="space-y-1">
-        <Label variant="settings">{translate('agentPicker.permissions', 'Permissions')}</Label>
-        <Select
-          disabled={
-            disabled ||
-            defaultsPending ||
-            Boolean(permissionOwnedByArguments) ||
-            !effective.permissionMode
+      <AgentPermissionMenu
+        agentId={entry.agent}
+        label={entry.label}
+        layout="stacked"
+        showInherited={false}
+        rawValue={argumentsView.selectedPermission ? undefined : argumentsView.permission}
+        disabled={
+          disabled ||
+          defaultsPending ||
+          !argumentsView.permission ||
+          (entry.surfaces.includes('terminal') && !argumentsKnown)
+        }
+        permission={{
+          choice: argumentsView.selectedPermission ?? 'own',
+          defaultChoice: argumentsView.selectedPermission ?? 'own',
+          choices: agentPickerPermissions(entry.agent, draft.surface),
+          source: 'agent',
+          flag: '',
+          argsSetPermission: false,
+          onSelect: (choice) => {
+            if (choice !== 'default') {
+              setDraft(editAgentPickerPermission(entry, draft, choice))
+            }
           }
-          value={permissionOwnedByArguments ? '__arguments__' : (effective.permissionMode ?? '')}
-          onValueChange={(permissionMode) => {
-            const choice = agentPickerPermissions(entry.agent, draft.surface).find(
-              (choice) => choice === permissionMode
-            )
-            setDraft(editAgentPickerDraft(draft, { permissionMode: choice ?? 'default' }))
-          }}
-        >
-          <SelectTrigger aria-label={translate('agentPicker.permissions', 'Permissions')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {permissionOwnedByArguments ? (
-              <SelectItem value="__arguments__">{permissionOwnedByArguments.flag}</SelectItem>
-            ) : null}
-            {agentPickerPermissions(entry.agent, draft.surface).map((choice) => (
-              <SelectItem key={choice} value={choice}>
-                {translate(`agentPicker.permission.${choice}`, permissionLabels[choice])}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        }}
+      />
       {renderOptions(optionRows.filter((row) => row.id === 'fastMode' || row.id === 'serviceTier'))}
       {entry.surfaces.includes('terminal') ? (
         <Collapsible open={argumentsOpen} onOpenChange={setArgumentsOpen} className="relative pl-4">
@@ -265,34 +280,23 @@ export function AgentLaunchSetupPanel({
           ) : null}
           <CollapsibleContent>
             <AgentDefaultArgsInput
-              defaultArgs={argumentsText}
-              argsOverride={argumentsText}
-              disabled={disabled || entry.defaultsPending}
+              defaultArgs={argumentsView.text}
+              argsOverride={argumentsView.text}
+              disabled={disabled || !argumentsKnown}
               onSaveArgs={() => {}}
               onDraftChange={(text) =>
-                setDraft(
-                  editAgentPickerArguments(
-                    draft,
-                    [permissionChip?.flag, text].filter(Boolean).join(' ')
-                  )
-                )
+                setDraft(editAgentPickerPanelText(entry, draft, text, currentModel))
               }
-              choiceChips={
-                permissionChip
-                  ? [
-                      {
-                        key: 'permissionMode',
-                        label: entry.label,
-                        source: 'arguments',
-                        flag: permissionChip.flag,
-                        onRemove: (text) => {
-                          setDraft(editAgentPickerArguments(draft, text))
-                          return text
-                        }
-                      }
-                    ]
-                  : []
-              }
+              choiceChips={argumentsView.chips.map((chip) => ({
+                key: chip.key,
+                label: entry.label,
+                source: 'arguments',
+                flag: chip.flag,
+                onRemove: (text) => {
+                  setDraft(chip.remove())
+                  return text
+                }
+              }))}
               note={translate('agentPicker.argumentsHint', 'Applies only to CLI launches.')}
             />
           </CollapsibleContent>

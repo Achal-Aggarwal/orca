@@ -12,11 +12,15 @@ import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { formatAgentTypeLabel } from '../../../../shared/agent-type-label'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import { parseStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
+import {
+  currentAgentPickerAcquisition,
+  observeAgentPickerAcquisition
+} from './agent-launch-picker-acquisition'
+import { isAgentPermissionChoice } from '../../../../shared/tui-agent-permission-choice'
 import { isAgentChatPermissionChoice } from '../../../../shared/agent-chat-permission-mode'
 import {
   agentPickerEntriesFromRows,
   agentPickerChoiceSeeds,
-  agentPickerHydrationQueue,
   type AgentPickerDefaultSettings,
   type AgentPickerEntry
 } from '../../../../shared/agent-launch-picker'
@@ -31,21 +35,23 @@ export function useAgentLaunchPickerInventory(
   selectedRef.current = selected
   const context = model.state === 'settled' ? model.pickerContext : undefined
   const settings = context ? context.settings : useAppStore.getState().settings
-  const route = buildAgentLaunchRouteInput(useAppStore.getState(), {
-    agent: 'claude',
-    workspace: context?.workspace ?? {
-      kind: worktreeId ? workspaceKindForWorktreeId(worktreeId) : 'floating',
-      ...(worktreeId ? { worktreeId } : {})
-    }
-  })
-  const target = structuredAgentSessionTargetForHost(
-    context?.executionHostId ?? route.executionHostId
-  )
-  const executionHostId = context?.executionHostId ?? route.executionHostId
+  const executionHostId =
+    context?.executionHostId ??
+    buildAgentLaunchRouteInput(useAppStore.getState(), {
+      agent: 'claude',
+      workspace: context?.workspace ?? {
+        kind: worktreeId ? workspaceKindForWorktreeId(worktreeId) : 'floating',
+        ...(worktreeId ? { worktreeId } : {})
+      }
+    }).executionHostId
+  const target = structuredAgentSessionTargetForHost(executionHostId)
   const key = useMemo(
     () =>
       JSON.stringify([
         context?.key,
+        context?.workspace,
+        context?.pairingRevision,
+        context?.runtimeId,
         worktreeId,
         executionHostId,
         model.state === 'settled' ? model.rows : [],
@@ -60,9 +66,11 @@ export function useAgentLaunchPickerInventory(
       ]),
     [context, worktreeId, executionHostId, model, settings]
   )
-  const [snapshot, setSnapshot] = useState<{ key: string; entries: AgentPickerEntry[] } | null>(
-    null
-  )
+  const generation = useMemo(() => ({ key, open }), [key, open])
+  const [snapshot, setSnapshot] = useState<{
+    generation: object
+    entries: AgentPickerEntry[]
+  } | null>(null)
   const build = (defaults: AgentPickerDefaultSettings | null | undefined) =>
     model.state === 'settled'
       ? agentPickerEntriesFromRows(
@@ -81,9 +89,11 @@ export function useAgentLaunchPickerInventory(
             terminal: {},
             structured: {},
             arguments: undefined,
-            defaultsPending: true
+            defaultsPending: true,
+            structuredDefaultsPending: entry.surfaces.includes('chat'),
+            ownerKey: key
           }))
-        : build(settings),
+        : build(settings).map((entry) => ({ ...entry, ownerKey: key })),
     [key]
   )
   useEffect(() => {
@@ -91,113 +101,111 @@ export function useAgentLaunchPickerInventory(
       return
     }
     const controller = new AbortController()
-    const publish = (entries: AgentPickerEntry[]) => {
-      if (!controller.signal.aborted) {
-        setSnapshot({ key, entries: [...entries] })
-      }
-    }
-    void (async () => {
-      let entries = fallback
-      if (target.kind === 'environment') {
-        const host = await readHostAgentLaunchSettings(
-          {
-            environmentId: target.environmentId,
-            pairingRevision: context?.pairingRevision,
-            ...(context?.runtimeId ? { runtimeId: context.runtimeId } : {})
-          },
-          controller.signal
-        ).catch(() => null)
-        if (host) {
-          const permission = host.agentPermission
-          entries = build({
-            agentDefaultArgs: permission?.userArgs ?? host.agentDefaultArgs,
-            ...(permission
-              ? {
-                  agentPermissionDefault: permission.default,
-                  agentPermissionOverrides: permission.overrides
-                }
-              : {})
-          })
-        } else if (!controller.signal.aborted) {
-          const legacy = await callRuntimeRpc<{ settings: AgentPickerDefaultSettings }>(
-            target,
-            'settings.get',
-            undefined,
-            {
-              signal: controller.signal,
-              timeoutMs: 15_000,
-              expectedEnvironmentPairingRevision: context?.pairingRevision,
-              ...(context?.runtimeId ? { expectedEnvironmentRuntimeId: context.runtimeId } : {})
-            }
-          ).catch(() => null)
-          if (legacy) {
-            entries = build(legacy.settings)
-          }
-        }
-      }
-      if (controller.signal.aborted) {
-        return
-      }
-      entries = entries.map((entry) => ({
-        ...entry,
-        defaultsPending: false,
-        structuredDefaultsPending: target.kind === 'environment' && entry.surfaces.includes('chat')
-      }))
-      publish(entries)
-      const params = { worktree: `id:${worktreeId}` }
-      const catalogs = agentPickerHydrationQueue(entries, () => selectedRef.current)
-      const supports = agentPickerHydrationQueue(entries, () => selectedRef.current)
-      const hydrate = async (kind: 'catalog' | 'support') => {
-        while (!controller.signal.aborted) {
-          const index = (kind === 'catalog' ? catalogs : supports)()
-          if (index === undefined) {
-            break
-          }
-          const entry = entries[index]
-          if (kind === 'catalog') {
-            const catalog = await callStructuredAgentSession<AgentSessionModelCatalogResult>(
-              target,
-              'agentSession.modelCatalog',
-              { ...params, agent: entry.agent, waitForListing: true }
-            ).catch(() => null)
-            if (catalog) {
-              entries[index] = { ...entries[index], catalog }
-              publish(entries)
-            }
-          } else if (target.kind === 'environment' && entry.surfaces.includes('chat')) {
-            const support = await callStructuredAgentSession<{
-              seedOptions?: Record<string, string>
-            }>(target, 'agentSession.createSupport', { ...params, agent: entry.agent }).catch(
-              () => null
-            )
-            const { model, permissionMode, ...options } =
-              parseStructuredLaunchSeedOptions(support?.seedOptions) ?? {}
-            entries[index] = {
-              ...entries[index],
-              structuredDefaultsPending: false,
-              ...(support?.seedOptions
-                ? {
-                    structured: {
-                      ...(model ? { model } : {}),
-                      options,
-                      ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
-                    }
+    const record = (value: unknown): value is Record<string, unknown> =>
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+    const argsRecord = (value: unknown) =>
+      value === undefined ||
+      (record(value) && Object.values(value).every((v) => typeof v === 'string'))
+    const permissionsRecord = (value: unknown) =>
+      value === undefined || (record(value) && Object.values(value).every(isAgentPermissionChoice))
+    const usable = (value: unknown): value is AgentPickerDefaultSettings =>
+      record(value) &&
+      argsRecord(value.agentDefaultArgs) &&
+      permissionsRecord(value.agentPermissionOverrides) &&
+      (value.agentPermissionDefault === undefined ||
+        isAgentPermissionChoice(value.agentPermissionDefault)) &&
+      (value.agentPermission === undefined ||
+        (record(value.agentPermission) &&
+          isAgentPermissionChoice(value.agentPermission.default) &&
+          argsRecord(value.agentPermission.userArgs) &&
+          permissionsRecord(value.agentPermission.overrides)))
+    return observeAgentPickerAcquisition(
+      key,
+      fallback,
+      {
+        settings:
+          target.kind !== 'environment'
+            ? undefined
+            : async () => {
+                const host = await readHostAgentLaunchSettings(
+                  {
+                    environmentId: target.environmentId,
+                    pairingRevision: context?.pairingRevision,
+                    ...(context?.runtimeId ? { runtimeId: context.runtimeId } : {})
+                  },
+                  controller.signal
+                ).catch(() => null)
+                let defaults: AgentPickerDefaultSettings | undefined
+                if (usable(host)) {
+                  const permission = host.agentPermission
+                  defaults = {
+                    agentDefaultArgs: permission?.userArgs ?? host.agentDefaultArgs,
+                    ...(permission
+                      ? {
+                          agentPermissionDefault: permission.default,
+                          agentPermissionOverrides: permission.overrides
+                        }
+                      : {})
                   }
-                : {})
-            }
-            publish(entries)
+                } else {
+                  const legacy = await callRuntimeRpc<{ settings?: AgentPickerDefaultSettings }>(
+                    target,
+                    'settings.get',
+                    undefined,
+                    {
+                      signal: controller.signal,
+                      timeoutMs: 15_000,
+                      expectedEnvironmentPairingRevision: context?.pairingRevision,
+                      ...(context?.runtimeId
+                        ? { expectedEnvironmentRuntimeId: context.runtimeId }
+                        : {})
+                    }
+                  ).catch(() => null)
+                  if (usable(legacy?.settings)) {
+                    defaults = legacy.settings
+                  }
+                }
+                return defaults
+                  ? build(defaults).map((entry) => ({
+                      ...entry,
+                      defaultsPending: false,
+                      ownerKey: key
+                    }))
+                  : undefined
+              },
+        catalog: async (entry) =>
+          await callStructuredAgentSession<AgentSessionModelCatalogResult>(
+            target,
+            'agentSession.modelCatalog',
+            { worktree: `id:${worktreeId}`, agent: entry.agent, waitForListing: true }
+          ).catch(() => undefined),
+        support: async (entry) => {
+          const support = await callStructuredAgentSession<{
+            seedOptions?: Record<string, string>
+          }>(target, 'agentSession.createSupport', {
+            worktree: `id:${worktreeId}`,
+            agent: entry.agent
+          })
+          const parsed = parseStructuredLaunchSeedOptions(support?.seedOptions)
+          if (!parsed) {
+            return undefined
+          }
+          const { model, permissionMode, ...options } = parsed
+          return {
+            ...(model ? { model } : {}),
+            options,
+            ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
           }
         }
+      },
+      {
+        selected: () => selectedRef.current,
+        publish: (entries) => setSnapshot({ generation, entries: [...entries] })
       }
-      await Promise.all([
-        hydrate('catalog'),
-        hydrate('catalog'),
-        hydrate('support'),
-        hydrate('support')
-      ])
-    })().catch(() => publish(fallback))
-    return () => controller.abort()
+    )
   }, [key, open])
   /* oxlint-enable react-hooks/exhaustive-deps */
-  return snapshot?.key === key ? snapshot.entries : fallback
+  return snapshot?.generation === generation
+    ? snapshot.entries
+    : ((open ? currentAgentPickerAcquisition(key) : undefined) ?? fallback)
 }
