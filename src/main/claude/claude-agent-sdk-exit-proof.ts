@@ -204,8 +204,12 @@ export function createClaudeChildTreeReaper(
       deps.terminateWindowsTree ??
       ((pid: number) => terminateWindowsProcessTree(pid, { site: 'claude-structured-child-close' }))
     const terminated = await terminateTree(rootPid).catch(() => false)
-    terminateClaudeRoot({ child, exited })
     killDelivered ||= terminated
+    try {
+      terminateClaudeRoot({ child, exited })
+    } catch {
+      // Exact-root cleanup cannot retract successful tree termination.
+    }
     // Only taskkill's clean exit reports the whole tree terminated.
     return terminated ? 'exited' : 'unverifiable'
   }

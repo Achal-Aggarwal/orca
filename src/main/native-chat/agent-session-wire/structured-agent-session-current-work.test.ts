@@ -2,6 +2,8 @@
 // even when settlement/release writes fail; live generations retain their work.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mobileStructuredSessionStatusFeed } from '../../../../mobile/src/session/mobile-structured-session-status-feed'
+import { stubRpcClient } from '../../../../mobile/src/transport/rpc-client-test-stub'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
@@ -53,6 +55,16 @@ const FOLDER: AgentSessionExecutionLocation = {
 function watch(current: QueuedMessageTestRig) {
   let chat: StructuredAgentSessionState = EMPTY_STRUCTURED_AGENT_SESSION
   let listed: AgentSessionStatusSummary | undefined
+  const phone = mobileStructuredSessionStatusFeed(
+    stubRpcClient({
+      subscribe: (_method, _params, emit) =>
+        current.host.subscribeStatus({
+          id: 'phone-1',
+          emit: (event) => emit(structuredClone(event))
+        })
+    })
+  )
+  phone.subscribe(() => {})
   current.host.subscribe({
     id: 'chat-1',
     sessionId: SESSION,
@@ -73,6 +85,7 @@ function watch(current: QueuedMessageTestRig) {
   return {
     chat: () => chat,
     listed: () => listed,
+    phone: () => phone.getSnapshot().get(SESSION),
     answerable: () =>
       chat.items.some(
         (item) =>
@@ -119,6 +132,7 @@ describe("a dead generation's leftovers, its settlement refused and its lease re
     expect(work.working()).toBe(false)
     expect(work.actionablePromptIds()).toEqual([])
     expect(view.listed()?.status).not.toBe('working')
+    expect(view.phone()?.status).toBe(view.listed()?.status)
     expect(current.host.readStatusSummary(SESSION)?.status).not.toBe('working')
     const page = await hydration(current)
     expect(page.latestTurn?.turn.state).toBe('interrupted')
@@ -162,17 +176,20 @@ describe('a close Orca asked for, its settlement refused', () => {
       sessionId: SESSION,
       cause: 'requested-close',
       reason: 'closed by Orca',
+      deathEvidenceKind: 'kill-delivered',
       fence: child.fence,
       acquisitionGeneration: child.generation
     })
     await current.host.collaboratorsForTests().serialize(SESSION, async () => {})
 
+    expect(current.store.getRecord(SESSION)?.lease.deathEvidence?.kind).toBe('kill-delivered')
     expect(currentJournal(current).cursor().sequence).toBe(before)
     expect(turnState(current)).toBe('running')
     await vi.waitFor(() => expect(view.answerable()).toBe(false))
     expect(view.chat().working).toBe(false)
     expect(runningStructuredAgentSessionTurnId(view.chat())).toBeNull()
     expect(view.listed()?.status).not.toBe('working')
+    expect(view.phone()?.status).toBe(view.listed()?.status)
   })
 })
 
@@ -230,6 +247,7 @@ describe('a live owner', () => {
 
     const work = currentWork(current)
     expect(work.liveFence).toBe(current.store.getRecord(SESSION)?.lease.runtimeFence)
+    expect(view.phone()?.status).toBe('attention')
     expect(work.activeTurnId()).toBe('unfinished')
     expect(work.actionablePromptIds()).toEqual([APPROVAL_ID])
     const page = await hydration(current)

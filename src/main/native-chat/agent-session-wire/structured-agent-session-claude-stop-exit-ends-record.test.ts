@@ -663,8 +663,13 @@ it('releases a killed writer without an exit report and ignores its stale exit a
     return false
   })
   await expect(stop()).resolves.toMatchObject({ ok: true })
+  await laneDrained()
+  expect(connection.close).toHaveBeenCalled()
   expect(child()).toBeNull()
   expect(lease()?.deathEvidence).toMatchObject({ kind: 'kill-delivered', ownerFence: old.fence })
+  expect(await setModel('claude-opus-5')).toMatchObject({ ok: true })
+  expect(store.getRecord(SESSION)?.options?.model).toBe('claude-opus-5')
+  expect(claude.connections).toHaveLength(1)
   await send('Continue after the kill.')
   await resumedWith(connection, 'Continue after the kill.')
   const replacement = store.getRecord(SESSION)!.lease
@@ -684,13 +689,13 @@ it.each([true, false])(
   async (delivered) => {
     const connection = claude.connections[0]!
     await openTurn(connection)
+    connection.exitVerdict = {
+      root: 'live',
+      tree: 'unverifiable',
+      ...(delivered ? { killDelivered: true } : {})
+    }
     vi.spyOn(connection, 'close').mockImplementation(async () => {
       connection.closed = true
-      connection.exitVerdict = {
-        root: 'live',
-        tree: 'unverifiable',
-        ...(delivered ? { killDelivered: true } : {})
-      }
       return false
     })
     host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('journal unavailable'))
@@ -698,7 +703,7 @@ it.each([true, false])(
     if (!delivered) {
       expect(child()?.close?.failure).toEqual({ kind: 'hostFault' })
       connection.exitVerdict = { root: 'exited', tree: 'exited' }
-      connection.handlers.onExit?.(new Error('late exit after failed journal'))
+      connection.handlers.onExit?.(new Error('late exit after failed journal'), { expected: true })
       await eventually(() => expect(child()).toBeNull())
     } else {
       expect(child()).toBeNull()
@@ -712,5 +717,42 @@ it.each([true, false])(
         body: expect.objectContaining({ kind: 'status', failure: { kind: 'hostFault' } })
       })
     )
+  }
+)
+
+it.each(['idle', 'tab-close', 'sleep'] as const)(
+  'retires delivered/no-report writer through the %s consumer and delivers after reopen',
+  async (entry) => {
+    const connection = claude.connections[0]!
+    const old = child()!
+    vi.spyOn(connection, 'close').mockImplementation(async () => {
+      connection.closed = true
+      connection.exitVerdict = { root: 'live', tree: 'unverifiable', killDelivered: true }
+      return false
+    })
+    const before = await host.journalSnapshot(SESSION)
+    if (entry === 'idle') {
+      await host['lifetime'].idleSweep.tick()
+    } else if (entry === 'tab-close') {
+      await host.close(SESSION, 'user-close')
+    } else {
+      const result = await host.sleepWorkspace('workspace-1')
+      expect(JSON.stringify(result)).toContain(SESSION)
+    }
+    await laneDrained()
+    expect(connection.close).toHaveBeenCalledOnce()
+    expect(lease()).toMatchObject({
+      claimStatus: 'released',
+      ownerProcess: null,
+      deathEvidence: { kind: 'kill-delivered', ownerFence: old.fence }
+    })
+    const history = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(history.ok).toBe(true)
+    expect((await host.journalSnapshot(SESSION)).items).toEqual(
+      expect.arrayContaining(before.items)
+    )
+    await send(`Continue after ${entry}.`)
+    await resumedWith(connection, `Continue after ${entry}.`)
+    expect(claude.connections).toHaveLength(2)
   }
 )

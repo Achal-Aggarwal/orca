@@ -9,6 +9,10 @@ import {
   ACP_STOP_GRACE_MS,
   type AcpStructuredSessionAdapterDeps
 } from './acp-structured-session-adapter-deps'
+import {
+  createStructuredAgentSessionLogger,
+  neverThrowingStructuredAgentSessionLogger
+} from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { windDownAcpTurn } from './acp-structured-stop'
 
 export class AcpStructuredChildren {
@@ -30,6 +34,19 @@ export class AcpStructuredChildren {
     return () =>
       session.journalClosed === null &&
       (pending() || lane.hasPendingDiagnostic(input.clientMessageId))
+  }
+
+  stopAfterFailure(sessionId: string): void {
+    void this.stop(sessionId, false).catch((error: unknown) => {
+      const logger = neverThrowingStructuredAgentSessionLogger(
+        this.deps.logger ?? createStructuredAgentSessionLogger()
+      )
+      logger.warn('ACP failed-child cleanup failed', {
+        scope: 'acp-child-cleanup',
+        sessionId,
+        error
+      })
+    })
   }
 
   /** Requires root exit; reports unproven descendant cleanup separately. */
@@ -154,7 +171,7 @@ export class AcpStructuredChildren {
       `${session.spec.agent} ACP connection closed: ${error.message || error.name}`,
       error
     )
-    void this.stop(session.sessionId, false)
+    this.stopAfterFailure(session.sessionId)
   }
 
   private stopGraceMs(): number {

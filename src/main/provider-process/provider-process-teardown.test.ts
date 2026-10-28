@@ -308,3 +308,20 @@ it('counts the writer group kill, but never a supervisor-only kill, without an e
     })
   ).resolves.toBe('unverifiable')
 })
+
+it.each([true, false])(
+  'preserves taskkill=%s when exact-root cleanup throws',
+  async (delivered) => {
+    const target = child()
+    target.kill.mockImplementation(() => {
+      throw new Error('held root cleanup failed')
+    })
+    await expect(
+      terminateWithEvidence(target, {
+        site: 'fixture-cleanup',
+        platform: 'win32',
+        terminateWindowsTree: async () => delivered
+      })
+    ).resolves.toEqual(delivered ? { tree: 'exited', killDelivered: true } : 'unverifiable')
+  }
+)

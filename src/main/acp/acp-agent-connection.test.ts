@@ -1,3 +1,4 @@
+import { AcpLaunchGate } from './acp-launch-gate'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PipedProcessSpawner } from '@orca/process-host/process-spec'
@@ -385,4 +386,25 @@ it('closes a recognized stdout prompt over 16 MiB without inventing a signed-out
   agent.stdout.write(`SIGN IN ${'x'.repeat(16 * 1024 * 1024)}\n`)
   await vi.waitFor(() => expect(connection.closed).toBe(true))
   expect(answered).toHaveBeenCalledTimes(1)
+})
+
+it('runs setup through the retained launch gate after delivered writer death without another ladder', async () => {
+  vi.useFakeTimers()
+  const { connection } = fixture({}, { exitOnEnd: false })
+  const gate = new AcpLaunchGate('Antigravity')
+  gate.retain(connection)
+  teardown.mockResolvedValueOnce({ tree: 'unverifiable', killDelivered: true })
+  const first = connection.close()
+  await vi.advanceTimersByTimeAsync(grace + 1000)
+  expect(await first).toBe(true)
+  teardown.mockResolvedValue('unverifiable')
+  const work = vi.fn(async () => 'setup completed')
+  await expect(gate.run(async () => {}, work)).resolves.toBe('setup completed')
+  expect(work).toHaveBeenCalledOnce()
+  expect(teardown).toHaveBeenCalledOnce()
+  expect(connection.lastCloseResult).toEqual({
+    root: 'live',
+    tree: 'unverifiable',
+    killDelivered: true
+  })
 })

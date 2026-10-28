@@ -10,9 +10,10 @@ import {
   createClaudeControlSurface,
   type ClaudeControlSurface
 } from './claude-agent-sdk-control-requests'
-import { createClaudeChildTreeReaper, proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
+import { createClaudeChildTreeReaper } from './claude-agent-sdk-exit-proof'
 import { withTimeout } from '../../shared/promise-timeout-fallback'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
+import { claudeChildCloseProven } from './claude-child-exit-proof-ladder'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import {
   claudeUnwrittenUserMessageError,
@@ -261,10 +262,8 @@ export async function openClaudeStreamJsonConnection(
       // Capture before stopping: exited roots can leave reparented descendants undiscoverable.
       await (tree.refresh?.() ?? tree.capture())
       inbox.end()
-      const proven = await proveClaudeChildExit({
-        tree,
-        managed
-      })
+      const result = await managed.closeWriter(tree)
+      const proven = claudeChildCloseProven(result) || result.killDelivered === true
       inbox.fail(new Error('claude stream-json connection closed'))
       if (!proven) {
         if (managed.lastCloseResult?.root === 'exited' && managed.lastCloseResult.tree === 'live') {
@@ -305,7 +304,9 @@ export async function openClaudeStreamJsonConnection(
       return {
         root: managed.rootVerdict,
         tree: tree.treeVerdict,
-        ...(managed.lastCloseResult?.killDelivered ? { killDelivered: true } : {}),
+        ...(tree.killDelivered || managed.lastCloseResult?.killDelivered
+          ? { killDelivered: true }
+          : {}),
         ...(managed.processless ? { processless: true } : {})
       } as const
     },

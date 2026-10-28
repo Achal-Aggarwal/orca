@@ -96,7 +96,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         },
         onConnectionLost: (session, error) => this.children.connectionLost(session, error),
         onSettled: (settlement) => this.deps.onDispatchSettledLate?.({ sessionId, ...settlement }),
-        forceClose: (id) => void this.forceCloseSession(id)
+        forceClose: (id) => this.children.stopAfterFailure(id)
       })
       if (attempt.signal.aborted) {
         session.dispose()
@@ -256,10 +256,8 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     return session.options.reported()
   }
 
-  readOptions = async (input: { sessionId: string; fence: number }) => {
-    const session = this.live(input.sessionId)
-    return readAcpLiveOptions(session, session.spec.permissionModeConfig?.values)
-  }
+  readOptions = async (input: { sessionId: string; fence: number }) =>
+    readAcpLiveOptions(this.live(input.sessionId), this.deps.spec.permissionModeConfig?.values)
 
   readCommands = (sessionId: string) => {
     const session = this.children.sessions.get(sessionId)

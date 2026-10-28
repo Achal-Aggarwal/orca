@@ -51,9 +51,9 @@ export function rootOnlyProviderClosePolicy(supervised: boolean): ProviderProces
   }
 }
 
-/** Root-only policy reports unproven descendants without retrying them. */
-export function acceptProviderRootExit(result: ProviderProcessCloseResult): boolean {
-  return result.root === 'exited'
+/** Writer close is final after delivery; descendant observations remain independent. */
+export function acceptProviderWriterClose(result: ProviderProcessCloseResult): boolean {
+  return result.root === 'exited' || result.killDelivered === true
 }
 
 /** The supervisor owns the POSIX signal ladder; its wrapper must outlive that ladder. */

@@ -21,6 +21,9 @@ const paletteMeasurementFile =
 const measurementFiles = [measurementFile, paletteMeasurementFile]
 const phoneContractModules = [
   'mobile/src/session/native-chat/mobile-native-chat-stream-frame.ts',
+  'mobile/src/session/mobile-structured-session-status-feed.ts',
+  'mobile/src/transport/mobile-method-unavailable.ts',
+  'mobile/src/transport/rpc-client-test-stub.ts',
   'mobile/src/session/mobile-native-chat-render-data.ts'
 ].map((file) => normalizePath(resolve(file)))
 const phoneContractPattern = new RegExp(

@@ -169,7 +169,11 @@ async function terminateOnce(
     const terminate = deps.terminateWindowsTree ?? terminateWindowsProcessTree
     const treeTerminated = await terminate(rootPid, { site: deps.site })
     // Always stop the held root, even when taskkill fails.
-    child.kill('SIGKILL')
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // Exact-root cleanup cannot retract successful tree termination.
+    }
     // The root may be a cmd.exe shim, so only taskkill proves the writer was terminated.
     return treeTerminated ? { tree: 'exited', killDelivered: true } : 'unverifiable'
   }
