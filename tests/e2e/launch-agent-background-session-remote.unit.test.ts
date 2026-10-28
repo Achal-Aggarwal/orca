@@ -107,8 +107,10 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
     async (agent) => {
       useRemoteAgentBackgroundRuntime(state)
       const plan = independentActionEffortPlan(agent)
-      const spawn = vi.fn(async () => ({
+      const spawn = vi.fn<Parameters<typeof consumePreparedBackgroundCommand>[1]>(async () => ({
         handle: 'prepared-background',
+        worktreeId: 'wt-1',
+        title: null,
         savedStartupCwd: 'private'
       }))
       mockRuntimeEnvironmentCall.mockImplementation(async (request) => {
@@ -134,7 +136,9 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
             launchToken: 'reserved-token'
           }
         })
-      ).resolves.toEqual({ terminal: { handle: 'prepared-background' } })
+      ).resolves.toEqual({
+        terminal: { handle: 'prepared-background', worktreeId: 'wt-1', title: null }
+      })
       expect(spawn).toHaveBeenCalledExactlyOnceWith('id:wt-1', {
         command: plan.launchCommand,
         env: { ACTION_PROFILE: 'captured' },
