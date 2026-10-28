@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 // Reuse digests only while device/inode/size/mtime/ctime match; changed files must be rehashed.
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -11,20 +12,20 @@ export const ORCAD_ARTIFACT_VERIFICATION_RECORD_FILENAME = '.verified-sources.js
 const SETTLED_AFTER_MS = 2_000n
 
 const SignedFileSchema = z.object({
-  filename: z.string(),
-  signature: z.string().min(1)
+  filename: ScalarString,
+  signature: ScalarNonemptyString
 })
 
 const RecordSchema = z.object({
   version: z.literal(1),
-  contentDigest: z.string().regex(/^[a-f0-9]{12}$/u),
+  contentDigest: ScalarString.regex(/^[a-f0-9]{12}$/u),
   sources: z.array(
     SignedFileSchema.extend({
-      path: z.string(),
-      sha256: z.string().regex(/^[a-f0-9]{64}$/u)
+      path: ScalarString,
+      sha256: ScalarString.regex(/^[a-f0-9]{64}$/u)
     })
   ),
-  slot: z.object({ path: z.string(), files: z.array(SignedFileSchema) }).nullable()
+  slot: z.object({ path: ScalarString, files: z.array(SignedFileSchema) }).nullable()
 })
 
 export type OrcadArtifactVerificationRecord = z.infer<typeof RecordSchema>

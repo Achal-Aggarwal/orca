@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const PROFILE_STATE_RECOVERY_FLAG = '--profile-state-recovery'
@@ -5,16 +11,16 @@ export const PROFILE_STATE_RECOVERY_RESULT_PREFIX = '[profile-state-recovery] '
 /** Desktop variant: applies a startup-dialog choice, then relaunches Orca normally. */
 export const PROFILE_STATE_DESKTOP_RECOVERY_FLAG = '--profile-state-desktop-recovery'
 
-const positiveInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+const positiveInteger = ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER)
 const repairSectionSchema = z
-  .object({ domain: z.string(), backupId: z.string().min(1).nullable() })
+  .object({ domain: ScalarString, backupId: ScalarNonemptyString.nullable() })
   .strict()
 const selectorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('json'), revision: positiveInteger }).strict(),
   z.object({ kind: z.literal('current-json') }).strict(),
   z.object({ kind: z.literal('current-sqlite') }).strict(),
   z.object({ kind: z.literal('latest-json') }).strict(),
-  z.object({ kind: z.literal('sqlite'), backupId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('sqlite'), backupId: ScalarNonemptyString }).strict(),
   // Sections: the plan the user approved; omitted, the CLI repairs whatever it finds.
   z
     .object({ kind: z.literal('repair'), sections: z.array(repairSectionSchema).optional() })
@@ -23,32 +29,29 @@ const selectorSchema = z.discriminatedUnion('kind', [
 
 export const profileStateRecoveryRequestSchema = z
   .object({
-    userDataPath: z.string().min(1),
+    userDataPath: ScalarNonemptyString,
     selector: selectorSchema,
-    profileId: z
-      .string()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
-      .optional()
+    profileId: ScalarString.regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/).optional()
   })
   .strict()
 
 const exportsSchema = z.object({
-  profileId: z.string(),
-  dataFile: z.string(),
-  databaseFile: z.string(),
-  exportPaths: z.array(z.string()).readonly(),
+  profileId: ScalarString,
+  dataFile: ScalarString,
+  databaseFile: ScalarString,
+  exportPaths: z.array(ScalarString).readonly(),
   backups: z
-    .array(z.object({ id: z.string(), path: z.string(), createdAtMs: positiveInteger }))
+    .array(z.object({ id: ScalarString, path: ScalarString, createdAtMs: positiveInteger }))
     .readonly()
 })
 const rollbackSchema = exportsSchema.extend({
   // Canonical JSON edited outside SQLite has no database revision.
   revision: positiveInteger.nullable(),
-  quarantineDirectory: z.string(),
-  removedDatabaseFiles: z.array(z.string()).readonly(),
+  quarantineDirectory: ScalarString,
+  removedDatabaseFiles: z.array(ScalarString).readonly(),
   storage: z.enum(['json', 'sqlite']),
-  restoredPath: z.string(),
-  backupId: z.string().optional(),
+  restoredPath: ScalarString,
+  backupId: ScalarOptionalString,
   repairedSections: z
     .array(repairSectionSchema.extend({ backupCreatedAtMs: positiveInteger.optional() }))
     .readonly()
@@ -60,7 +63,7 @@ export const profileStateRecoveryResponseSchema = z.discriminatedUnion('ok', [
   z.object({
     ok: z.literal(false),
     code: z.enum(['invalid_argument', 'runtime_error']),
-    message: z.string()
+    message: ScalarString
   })
 ])
 

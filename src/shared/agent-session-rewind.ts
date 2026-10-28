@@ -1,3 +1,10 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalPositiveInteger
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   AgentJournalItemBodySchema,
@@ -38,7 +45,7 @@ export type AgentSessionRewindResult = {
   sequence?: number
 }
 
-const Key = z.string().min(1).max(4096)
+const Key = ScalarNonemptyString.max(4096)
 export const AgentSessionRewindRecordSchema = z.object({
   operationId: Key,
   callerKey: Key,
@@ -46,12 +53,12 @@ export const AgentSessionRewindRecordSchema = z.object({
   providerItemId: Key.optional(),
   expectedEpoch: Key,
   contextClearOperationId: Key.optional(),
-  contextClearSequence: z.number().int().positive().optional(),
+  contextClearSequence: ScalarOptionalPositiveInteger,
   phase: z.enum(['prepared', 'provider-succeeded', 'completed', 'refused']),
   epoch: Key.optional(),
-  sequence: z.number().int().nonnegative().optional(),
+  sequence: ScalarOptionalNonnegativeInteger,
   /** Written by older builds only, as is `retained`: rewind now derives both from the journal. */
-  hydrationVerified: z.boolean().optional(),
+  hydrationVerified: ScalarOptionalBoolean,
   // A provider that rewinds by forking: the session the chat continues in, copied from `sourceSessionId`
   // through `throughEntryId` (absent: nothing kept). Older records defer the copy to launch.
   providerFork: z
@@ -59,27 +66,27 @@ export const AgentSessionRewindRecordSchema = z.object({
       sessionId: Key,
       sourceSessionId: Key,
       throughEntryId: Key.optional(),
-      materialized: z.boolean().optional(),
+      materialized: ScalarOptionalBoolean,
       resumeCursor: Key.optional(),
       // The chat's session when it was rewound; a later head means the fork no longer applies.
       replacesSessionId: Key
     })
     .optional(),
-  reason: z.string().min(1).max(512).optional(),
+  reason: ScalarNonemptyString.max(512).optional(),
   retained: z
     .array(
       z.object({
         itemId: Key.refine((key) => parseAgentJournalItemKey(key) !== null),
         body: AgentJournalItemBodySchema,
-        observedAt: z.number().finite(),
+        observedAt: ScalarFiniteNumber,
         // Absent on records written before rows stated them: the rebuild then places the row by position.
         turnScope: AgentJournalTurnScopeSchema.optional(),
         // The row's execution provenance, carried into the rebuilt epoch. Absent on records written
         // before rows carried it.
-        ownerFence: z.number().int().nonnegative().optional(),
+        ownerFence: ScalarOptionalNonnegativeInteger,
         // The run executing a reusable child's row, kept apart from `ownerFence`. Absent on records
         // written before rows carried it.
-        executionOwner: z.number().int().nonnegative().optional(),
+        executionOwner: ScalarOptionalNonnegativeInteger,
         ...AgentJournalProducerLinkageFields
       })
     )

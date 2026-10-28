@@ -1,10 +1,9 @@
+import { ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { ORCA_VM_RECIPE_ID_PATTERN, ORCA_VM_RECIPE_ID_RULE } from '../orca-yaml'
 import type { OrcaVmRecipe } from '../orca-yaml-hook-types'
 
-const recipeCommandSchema = z
-  .string()
-  .trim()
+const recipeCommandSchema = ScalarString.trim()
   .min(1)
   .max(32 * 1024)
   .refine((value) => !value.includes('\0'), 'must not contain NUL bytes')
@@ -12,9 +11,9 @@ const recipeCommandSchema = z
 const pluginVmRecipeArtifactSchema = z
   .object({
     schemaVersion: z.literal(1),
-    id: z.string().regex(ORCA_VM_RECIPE_ID_PATTERN, ORCA_VM_RECIPE_ID_RULE),
-    name: z.string().trim().min(1).max(128),
-    description: z.string().trim().min(1).max(1024).optional(),
+    id: ScalarString.regex(ORCA_VM_RECIPE_ID_PATTERN, ORCA_VM_RECIPE_ID_RULE),
+    name: ScalarString.trim().min(1).max(128),
+    description: ScalarString.trim().min(1).max(1024).optional(),
     checkoutMode: z.enum(['orca-worktree', 'provisioned-root']).optional(),
     create: recipeCommandSchema,
     suspend: recipeCommandSchema.optional(),

@@ -1,17 +1,18 @@
+import { ScalarFiniteNumber, ScalarNonemptyString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const RuntimeEnvironmentReconciliationRecordSchema = z.object({
   version: z.literal(1),
   stage: z.enum(['prepared', 'catalog-active']),
-  requestId: z.string().min(1),
-  canonicalEnvironmentId: z.string().min(1),
-  runtimeId: z.string().min(1),
-  preparedAt: z.number().finite(),
+  requestId: ScalarNonemptyString,
+  canonicalEnvironmentId: ScalarNonemptyString,
+  runtimeId: ScalarNonemptyString,
+  preparedAt: ScalarFiniteNumber,
   registrations: z
     .array(
       z.object({
-        environmentId: z.string().min(1),
-        authorityDigest: z.string().regex(/^[a-f0-9]{64}$/)
+        environmentId: ScalarNonemptyString,
+        authorityDigest: ScalarString.regex(/^[a-f0-9]{64}$/)
       })
     )
     .length(2)

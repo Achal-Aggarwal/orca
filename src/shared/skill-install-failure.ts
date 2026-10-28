@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const SkillInstallFailureCategorySchema = z.enum([
@@ -17,8 +18,8 @@ export type SkillInstallFailureCategory = z.infer<typeof SkillInstallFailureCate
 export const SkillInstallFailureSchema = z
   .object({
     category: SkillInstallFailureCategorySchema,
-    code: z.string().regex(/^skill-[a-z0-9-]+$/),
-    retryable: z.boolean()
+    code: ScalarString.regex(/^skill-[a-z0-9-]+$/),
+    retryable: ScalarBoolean
   })
   .strict()
 

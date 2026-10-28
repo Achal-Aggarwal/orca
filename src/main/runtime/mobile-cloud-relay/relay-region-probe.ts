@@ -1,3 +1,4 @@
+import { ScalarString } from '../../../shared/scalar-value-schemas'
 import { performance } from 'node:perf_hooks'
 import { z } from 'zod'
 import { cancelUnreadResponseBody } from '../../lib/unread-response-body'
@@ -11,7 +12,7 @@ const PROBE_SAMPLES = 3
 const SPREAD_FLOOR_MS = 150
 
 export const RelayRegionSchema = z.enum(RELAY_REGIONS)
-export const RelayProbeOriginSchema = z.string().max(2_048).refine(isCanonicalHttpsOrigin)
+export const RelayProbeOriginSchema = ScalarString.max(2_048).refine(isCanonicalHttpsOrigin)
 export const RelayRegionCatalogSchema = z
   .object({
     v: z.literal(1),

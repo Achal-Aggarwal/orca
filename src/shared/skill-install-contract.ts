@@ -1,17 +1,20 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { SkillInstallFailureSchema, type SkillInstallFailure } from './skill-install-failure'
 
 export const SkillPackageIdentitySchema = z
   .object({
-    packageId: z.string().min(1).max(128),
-    versionId: z.string().min(1).max(128),
-    packageDigest: z.string().regex(/^[a-f0-9]{64}$/),
-    archiveSha256: z.string().regex(/^[a-f0-9]{64}$/),
-    compressedBytes: z
-      .number()
-      .int()
-      .positive()
-      .max(40 * 1024 * 1024)
+    packageId: ScalarNonemptyString.max(128),
+    versionId: ScalarNonemptyString.max(128),
+    packageDigest: ScalarString.regex(/^[a-f0-9]{64}$/),
+    archiveSha256: ScalarString.regex(/^[a-f0-9]{64}$/),
+    compressedBytes: ScalarPositiveInteger.max(40 * 1024 * 1024)
   })
   .strict()
 
@@ -23,22 +26,22 @@ const SkillInstallIngressSchema = z.discriminatedUnion('kind', [
       expiresAt: z.iso.datetime({ offset: true })
     })
     .strict(),
-  z.object({ kind: z.literal('staged-upload'), uploadId: z.string().min(1).max(128) }).strict(),
-  z.object({ kind: z.literal('local-file'), path: z.string().min(1) }).strict()
+  z.object({ kind: z.literal('staged-upload'), uploadId: ScalarNonemptyString.max(128) }).strict(),
+  z.object({ kind: z.literal('local-file'), path: ScalarNonemptyString }).strict()
 ])
 
-const SkillNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+const SkillNameSchema = ScalarString.regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
 
 export const SkillInstallDestinationSchema = z.discriminatedUnion('scope', [
   z
     .object({
       scope: z.literal('global'),
-      environmentId: z.string().min(1).optional(),
+      environmentId: ScalarOptionalNonemptyString,
       executionTarget: z
         .discriminatedUnion('kind', [
           z.object({ kind: z.literal('host') }).strict(),
-          z.object({ kind: z.literal('wsl'), distro: z.string().min(1) }).strict(),
-          z.object({ kind: z.literal('ssh'), connectionId: z.string().min(1).max(128) }).strict()
+          z.object({ kind: z.literal('wsl'), distro: ScalarNonemptyString }).strict(),
+          z.object({ kind: z.literal('ssh'), connectionId: ScalarNonemptyString.max(128) }).strict()
         ])
         .optional()
     })
@@ -46,19 +49,19 @@ export const SkillInstallDestinationSchema = z.discriminatedUnion('scope', [
   z
     .object({
       scope: z.literal('workspace'),
-      worktreeId: z.string().min(1).optional(),
-      folderWorkspaceId: z.string().min(1).optional()
+      worktreeId: ScalarOptionalNonemptyString,
+      folderWorkspaceId: ScalarOptionalNonemptyString
     })
     .strict()
     .refine((value) => Boolean(value.worktreeId) !== Boolean(value.folderWorkspaceId))
 ])
 
 /** Agents the user picked. Absent means every detected agent. */
-const SkillInstallProvidersSchema = z.array(z.string().min(1).max(64)).max(64)
+const SkillInstallProvidersSchema = z.array(ScalarNonemptyString.max(64)).max(64)
 
 export const SkillInstallRequestSchema = z
   .object({
-    operationId: z.string().min(1).max(128),
+    operationId: ScalarNonemptyString.max(128),
     package: SkillPackageIdentitySchema,
     ingress: SkillInstallIngressSchema,
     destination: SkillInstallDestinationSchema,
@@ -79,7 +82,7 @@ export const SkillInstallPreviewRequestSchema = z
 
 export const SkillRemoveRequestSchema = z
   .object({
-    operationId: z.string().min(1).max(128),
+    operationId: ScalarNonemptyString.max(128),
     name: SkillNameSchema,
     destination: SkillInstallDestinationSchema,
     conflictResolution: z.enum(['replace-and-discard-local', 'cancel']).optional()
@@ -127,18 +130,15 @@ export type ManagedSkillInstall = {
 
 export const ManagedSkillInstallSchema: z.ZodType<ManagedSkillInstall> = z.object({
   name: SkillNameSchema,
-  packageId: z.string(),
-  versionId: z.string(),
-  packageDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  bundleDigest: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .optional(),
+  packageId: ScalarString,
+  versionId: ScalarString,
+  packageDigest: ScalarString.regex(/^[a-f0-9]{64}$/),
+  bundleDigest: ScalarString.regex(/^[a-f0-9]{64}$/).optional(),
   scope: z.enum(['global', 'workspace']),
-  destinationIdentity: z.string(),
+  destinationIdentity: ScalarString,
   destination: SkillInstallDestinationSchema,
   providers: SkillInstallProvidersSchema.optional(),
-  installedAt: z.string(),
+  installedAt: ScalarString,
   state: z.enum(['unchanged', 'modified', 'missing'])
 })
 
@@ -146,8 +146,8 @@ export const ManagedSkillInstallListSchema = z.array(ManagedSkillInstallSchema).
 
 export const SkillInstallPreviewSchema: z.ZodType<SkillInstallPreview> = z.object({
   name: SkillNameSchema,
-  packageDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  destinationIdentity: z.string(),
+  packageDigest: ScalarString.regex(/^[a-f0-9]{64}$/),
+  destinationIdentity: ScalarString,
   currentState: z.enum([
     'missing',
     'unchanged',
@@ -159,7 +159,7 @@ export const SkillInstallPreviewSchema: z.ZodType<SkillInstallPreview> = z.objec
   ]),
   providers: z.array(
     z.object({
-      provider: z.string(),
+      provider: ScalarString,
       topology: z.enum(['canonical-copy', 'provider-alias', 'independent-copy']),
       state: z.enum(['ready', 'missing', 'conflict'])
     })
@@ -199,7 +199,7 @@ export type SkillInstallResult = {
 }
 
 export const SkillInstallResultSchema: z.ZodType<SkillInstallResult> = z.object({
-  operationId: z.string(),
+  operationId: ScalarString,
   status: z.enum([
     'installed',
     'updated',
@@ -210,25 +210,25 @@ export const SkillInstallResultSchema: z.ZodType<SkillInstallResult> = z.object(
     'cancelled',
     'failed'
   ]),
-  name: z.string(),
-  packageDigest: z.string(),
-  canonicalPath: z.string().optional(),
+  name: ScalarString,
+  packageDigest: ScalarString,
+  canonicalPath: ScalarOptionalString,
   placements: z.array(
     z.object({
-      provider: z.string(),
-      path: z.string(),
+      provider: ScalarString,
+      path: ScalarString,
       topology: z.enum(['canonical-copy', 'provider-alias', 'independent-copy']),
       status: z.enum(['installed', 'unchanged', 'removed', 'skipped', 'failed']),
-      errorCategory: z.string().optional(),
+      errorCategory: ScalarOptionalString,
       failure: SkillInstallFailureSchema.optional()
     })
   ),
   conflict: z
     .object({
       kind: z.enum(['modified', 'unowned', 'external-link', 'name-collision']),
-      existingDigest: z.string().optional()
+      existingDigest: ScalarOptionalString
     })
     .optional(),
-  errorCategory: z.string().optional(),
+  errorCategory: ScalarOptionalString,
   failure: SkillInstallFailureSchema.optional()
 })

@@ -1,3 +1,4 @@
+import { ScalarString, ScalarUnknown } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { getBrowserExtensionContextSignal } from './browser-extension-context-lifetime'
 import { getHostSessionState } from './browser-extension-contexts'
@@ -20,10 +21,10 @@ type ScriptState = {
   failed: Error | null
 }
 const states = new WeakMap<Electron.Session, Map<string, ScriptState>>()
-const scriptSchema = z.object({ id: z.string() }).loose()
+const scriptSchema = z.object({ id: ScalarString }).loose()
 const replySchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), scripts: z.array(scriptSchema), value: z.unknown() }),
-  z.object({ ok: z.literal(false), error: z.string() })
+  z.object({ ok: z.literal(true), scripts: z.array(scriptSchema), value: ScalarUnknown }),
+  z.object({ ok: z.literal(false), error: ScalarString })
 ])
 
 // Serialized into a native-only extension page; keep all its dependencies inside this function.

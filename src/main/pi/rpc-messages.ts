@@ -1,3 +1,4 @@
+import { ScalarOptionalString, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { BoundedMap } from '../../shared/bounded-map'
 import { MAX_PROVIDER_TIMELINE_OPEN_ENTRIES } from '../native-chat/agent-session-timeline/provider-timeline-budget'
@@ -12,7 +13,7 @@ import { piRpcMessageEventSchema, piRpcToolEventSchema } from './rpc-protocol'
 import type { PiRpcContextUsage } from './rpc-context-usage'
 
 const resultSchema = z.object({
-  content: z.array(z.object({ type: z.string(), text: z.string().optional() }))
+  content: z.array(z.object({ type: ScalarString, text: ScalarOptionalString }))
 })
 
 /** One row per turn: a second close of the same item is dropped. */

@@ -1,3 +1,8 @@
+import {
+  ScalarFiniteNumber,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { measureRelayRegionDecision } from './relay-region-decision'
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,10 +48,10 @@ const FAR_CELL_RATIO = 3
 const RelayRegionCacheSchema = z
   .object({
     v: z.literal(2),
-    directorUrl: z.string().max(2_048),
+    directorUrl: ScalarString.max(2_048),
     region: RelayRegionSchema.nullable(),
-    latencyMs: z.number().finite().nonnegative().max(60_000).optional(),
-    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+    latencyMs: ScalarFiniteNumber.nonnegative().max(60_000).optional(),
+    expiresAt: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER)
   })
   .strict()
 

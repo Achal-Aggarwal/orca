@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalNonemptyString,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import type { BrowserExtensionContextMenuPayload } from '../../shared/browser-extension-context-menu-types'
@@ -11,12 +16,12 @@ import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 
 const CLICK_CHANNEL = 'browserExtensions:contextMenuClick'
 const ACTION_MENU_CHANNEL = 'browserExtensions:actionContextMenu'
-const extensionId = z.string().refine(isChromeExtensionId)
-const clickArgs = z.object({ token: z.string().min(1), extensionId, key: z.string().min(1) })
+const extensionId = ScalarString.refine(isChromeExtensionId)
+const clickArgs = z.object({ token: ScalarNonemptyString, extensionId, key: ScalarNonemptyString })
 const actionMenuArgs = z.object({
-  profileId: z.string().min(1),
+  profileId: ScalarNonemptyString,
   extensionId,
-  browserPageId: z.string().min(1).optional()
+  browserPageId: ScalarOptionalNonemptyString
 })
 
 /** Extension items in Orca's page and toolbar-button menus; main owns what was clicked on. */

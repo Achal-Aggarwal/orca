@@ -1,3 +1,4 @@
+import { ScalarOptionalBoolean, ScalarString } from '../scalar-value-schemas'
 /** Advertised agentSession.agents lists registered agents/capabilities before sessions exist. Drop unreadable rows individually; unknown capability arms degrade to the least authority. */
 
 import { z } from 'zod'
@@ -22,10 +23,10 @@ export type AgentSessionAgentsResult = {
 const MAX_REGISTERED_AGENTS = 128
 
 // An absent flag is a capability the host did not claim.
-const capabilityFlag = z.boolean().optional().default(false)
+const capabilityFlag = ScalarOptionalBoolean.default(false)
 
 const registeredAgentSchema = z.object({
-  agent: z.string().refine(isStructuredAgentId),
+  agent: ScalarString.refine(isStructuredAgentId),
   capabilities: z.object({
     rewind: capabilityFlag,
     compact: capabilityFlag,

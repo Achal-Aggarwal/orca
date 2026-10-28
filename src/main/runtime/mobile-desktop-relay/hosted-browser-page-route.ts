@@ -1,10 +1,11 @@
+import { ScalarOptionalString } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { RpcRequest } from '../rpc/core'
 import { browserScreencastSubscriptionPageId } from '../browser-screencast-subscription-id'
 
 const BrowserCallParams = z.looseObject({
-  page: z.string().optional(),
-  subscriptionId: z.string().optional()
+  page: ScalarOptionalString,
+  subscriptionId: ScalarOptionalString
 })
 
 /** Rewrite calls for locally rendered client-placed pages; their server cannot screencast them. */

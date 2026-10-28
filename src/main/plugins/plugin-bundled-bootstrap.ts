@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { z } from 'zod'
@@ -20,12 +21,12 @@ const bundledPluginIndexSchema = z
       .array(
         z
           .object({
-            pluginKey: z
-              .string()
-              .refine(isQualifiedPluginKey, 'invalid qualified plugin identity')
-              .refine(isOfficialPluginIdentity, 'bundled plugins must use an official identity'),
+            pluginKey: ScalarString.refine(
+              isQualifiedPluginKey,
+              'invalid qualified plugin identity'
+            ).refine(isOfficialPluginIdentity, 'bundled plugins must use an official identity'),
             path: pluginRelativeDirectorySchema,
-            contentHash: z.string().regex(/^[0-9a-f]{64}$/)
+            contentHash: ScalarString.regex(/^[0-9a-f]{64}$/)
           })
           .strict()
       )

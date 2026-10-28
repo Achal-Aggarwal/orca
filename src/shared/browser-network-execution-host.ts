@@ -1,24 +1,25 @@
+import { ScalarNonemptyString, ScalarNonnegativeInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 
-const Identity = z.string().min(1).max(256)
+const Identity = ScalarNonemptyString.max(256)
 
 const BrowserNetworkNativeExecutionHost = z.object({
   kind: z.literal('native'),
   runtimeId: Identity,
-  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+  revision: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 })
 
 const BrowserNetworkSshExecutionHost = z.object({
   kind: z.literal('ssh'),
   targetId: Identity,
   providerEpoch: Identity,
-  connectionGeneration: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+  connectionGeneration: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 })
 
 const BrowserNetworkWslExecutionHost = z.object({
   kind: z.literal('wsl'),
   runtimeId: Identity,
-  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  revision: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER),
   distro: Identity
 })
 

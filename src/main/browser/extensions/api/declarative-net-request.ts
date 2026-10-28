@@ -1,3 +1,10 @@
+import {
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNumber,
+  ScalarString,
+  ScalarUnknown
+} from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { isDnrRegexSupported } from '../declarative-net-request/regex-filter'
 import { hasBrowserExtensionActiveTab } from '../browser-extension-active-tab'
@@ -25,39 +32,39 @@ export const DNR_NAMESPACE_PERMISSIONS = [
   'declarativeNetRequestWithHostAccess'
 ] as const
 
-const ruleIdsSchema = z.array(z.number().int())
+const ruleIdsSchema = z.array(ScalarNumber.int())
 const updateRulesSchema = z
-  .object({ removeRuleIds: ruleIdsSchema.optional(), addRules: z.array(z.unknown()).optional() })
+  .object({ removeRuleIds: ruleIdsSchema.optional(), addRules: z.array(ScalarUnknown).optional() })
   .loose()
 const ruleFilterSchema = z.object({ ruleIds: ruleIdsSchema.optional() }).loose().optional()
 const updateRulesetsSchema = z
   .object({
-    enableRulesetIds: z.array(z.string()).optional(),
-    disableRulesetIds: z.array(z.string()).optional()
+    enableRulesetIds: z.array(ScalarString).optional(),
+    disableRulesetIds: z.array(ScalarString).optional()
   })
   .loose()
 const updateStaticRulesSchema = z
   .object({
-    rulesetId: z.string(),
+    rulesetId: ScalarString,
     disableRuleIds: ruleIdsSchema.optional(),
     enableRuleIds: ruleIdsSchema.optional()
   })
   .loose()
 const regexOptionsSchema = z
   .object({
-    regex: z.string(),
-    isCaseSensitive: z.boolean().optional(),
-    requireCapturing: z.boolean().optional()
+    regex: ScalarString,
+    isCaseSensitive: ScalarOptionalBoolean,
+    requireCapturing: ScalarOptionalBoolean
   })
   .loose()
 const actionOptionsSchema = z
   .object({
-    displayActionCountAsBadgeText: z.boolean().optional(),
-    tabUpdate: z.object({ tabId: z.number().int(), increment: z.number().int() }).optional()
+    displayActionCountAsBadgeText: ScalarOptionalBoolean,
+    tabUpdate: z.object({ tabId: ScalarNumber.int(), increment: ScalarNumber.int() }).optional()
   })
   .loose()
 const matchedRulesFilterSchema = z
-  .object({ tabId: z.number().int().optional(), minTimeStamp: z.number().optional() })
+  .object({ tabId: ScalarNumber.int().optional(), minTimeStamp: ScalarOptionalNumber })
   .loose()
   .optional()
 

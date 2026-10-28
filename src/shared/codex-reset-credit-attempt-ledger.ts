@@ -1,18 +1,24 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNull,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import type { CodexRateLimitResetOutcome } from './rate-limit-types'
 import type { CodexResetCreditExpectedScope } from './codex-reset-credit-scope'
 
 const CodexResetCreditTargetSchema = z.discriminatedUnion('runtime', [
-  z.object({ runtime: z.literal('host'), wslDistro: z.null() }).strict(),
-  z.object({ runtime: z.literal('wsl'), wslDistro: z.string().trim().min(1).max(255) }).strict()
+  z.object({ runtime: z.literal('host'), wslDistro: ScalarNull }).strict(),
+  z.object({ runtime: z.literal('wsl'), wslDistro: ScalarString.trim().min(1).max(255) }).strict()
 ])
 
 const CodexResetCreditExpectedScopeSchema = z
   .object({
     target: CodexResetCreditTargetSchema,
-    accountId: z.string().min(1).max(512),
-    accountRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    offerRevision: z.string().startsWith('v1:').max(4_096)
+    accountId: ScalarNonemptyString.max(512),
+    accountRevision: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER),
+    offerRevision: ScalarString.startsWith('v1:').max(4_096)
   })
   .strict()
 

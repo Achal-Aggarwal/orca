@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { RuntimeBrowserCommandHost } from '../runtime/browser/browser-command-contracts'
@@ -8,7 +9,7 @@ import {
   externalChromiumTabInfo,
   type ExternalChromiumPageRecord
 } from './external-chromium-tab-projection'
-const AgentBrowserCreatedTab = z.object({ tabId: z.string().min(1) })
+const AgentBrowserCreatedTab = z.object({ tabId: ScalarNonemptyString })
 
 export class ExternalChromiumTabRegistry {
   private readonly pagesByPublicId = new Map<string, ExternalChromiumPageRecord>()

@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   NESTED_REPO_COUNT_BUCKETS,
@@ -22,11 +28,11 @@ import {
   workspaceSourceSchema
 } from './telemetry-property-schemas'
 
-export const existingWorkspaceCountSchema = z.number().int().min(1).max(50)
+export const existingWorkspaceCountSchema = ScalarNumber.int().min(1).max(50)
 export const addRepoExistingWorkspaceContextSchema = {
   source: addRepoExistingWorkspaceSourceSchema,
   existing_workspace_count: existingWorkspaceCountSchema,
-  existing_linked_workspace_count: z.number().int().min(0).max(50)
+  existing_linked_workspace_count: ScalarNumber.int().min(0).max(50)
 } as const
 
 export const addRepoSetupStepActionEventSchema = z
@@ -34,18 +40,18 @@ export const addRepoSetupStepActionEventSchema = z
     action: addRepoSetupStepActionSchema,
     source: addRepoExistingWorkspaceSourceSchema.optional(),
     existing_workspace_count: existingWorkspaceCountSchema.optional(),
-    existing_linked_workspace_count: z.number().int().min(0).max(50).optional(),
+    existing_linked_workspace_count: ScalarNumber.int().min(0).max(50).optional(),
     nth_repo_added: nthRepoAddedSchema
   })
   .strict()
 export const addRepoExistingWorkspacesDetectedSchema = z
   .object({
     ...addRepoExistingWorkspaceContextSchema,
-    main_workspace_count: z.number().int().min(0).max(50),
-    branch_named_workspace_count: z.number().int().min(0).max(50),
-    detached_workspace_count: z.number().int().min(0).max(50),
-    custom_named_workspace_count: z.number().int().min(0).max(50),
-    sparse_workspace_count: z.number().int().min(0).max(50),
+    main_workspace_count: ScalarNumber.int().min(0).max(50),
+    branch_named_workspace_count: ScalarNumber.int().min(0).max(50),
+    detached_workspace_count: ScalarNumber.int().min(0).max(50),
+    custom_named_workspace_count: ScalarNumber.int().min(0).max(50),
+    sparse_workspace_count: ScalarNumber.int().min(0).max(50),
     nth_repo_added: nthRepoAddedSchema
   })
   .strict()
@@ -76,7 +82,7 @@ export const setupScriptPromptContextSchema = {
   provider: setupScriptImportProviderSchema.optional(),
   file_count_bucket: setupScriptCountBucketSchema,
   unsupported_field_count_bucket: setupScriptCountBucketSchema,
-  has_shared_hooks: z.boolean(),
+  has_shared_hooks: ScalarBoolean,
   nth_repo_added: nthRepoAddedSchema
 } as const
 
@@ -160,16 +166,14 @@ export const setupScriptPromptActionSchema = z
       'dismissed',
       ...setupScriptDetectedSaveActions
     ]),
-    edited_before_save: z.boolean().optional()
+    edited_before_save: ScalarOptionalBoolean
   })
   .strict()
   .superRefine(validateSetupScriptPromptAction)
 
 export const nestedRepoTelemetrySurfaceSchema = z.enum(NESTED_REPO_TELEMETRY_SURFACES)
 export const nestedRepoTelemetryRuntimeKindSchema = z.enum(NESTED_REPO_TELEMETRY_RUNTIME_KINDS)
-export const nestedRepoCountSchema = z
-  .number()
-  .int()
+export const nestedRepoCountSchema = ScalarNumber.int()
   .min(0)
   .max(NESTED_REPO_TELEMETRY_MAX_REPO_COUNT)
 export const nestedRepoCountBucketSchema = z.enum(NESTED_REPO_COUNT_BUCKETS)
@@ -178,7 +182,7 @@ export const nestedRepoImportActionSchema = z.enum(NESTED_REPO_IMPORT_ACTIONS)
 export const nestedRepoImportOutcomeSchema = z.enum(NESTED_REPO_IMPORT_OUTCOMES)
 export const nestedRepoScanPathKindSchema = z.enum(['git_repo', 'non_git_folder'])
 export const nestedRepoImportModeSchema = z.enum(['group', 'separate'])
-export const nestedRepoAttemptIdSchema = z.string().uuid()
+export const nestedRepoAttemptIdSchema = ScalarString.uuid()
 
 export function validateNestedRepoCountBucket(
   props: Record<string, unknown>,
@@ -226,8 +230,8 @@ export const addRepoNestedScanResultSchema = z
     selected_path_kind: nestedRepoScanPathKindSchema.optional(),
     found_count: nestedRepoCountSchema,
     found_count_bucket: nestedRepoCountBucketSchema,
-    truncated: z.boolean(),
-    timed_out: z.boolean()
+    truncated: ScalarBoolean,
+    timed_out: ScalarBoolean
   })
   .strict()
   .superRefine(validateNestedRepoCountBuckets)
@@ -240,7 +244,7 @@ export const addRepoNestedImportActionSchema = z
     found_count_bucket: nestedRepoCountBucketSchema,
     selected_count: nestedRepoCountSchema,
     selected_count_bucket: nestedRepoCountBucketSchema,
-    all_selected: z.boolean()
+    all_selected: ScalarBoolean
   })
   .strict()
   .superRefine(validateNestedRepoCountBuckets)
@@ -260,7 +264,7 @@ export const addRepoNestedImportResultSchema = z
     already_known_count_bucket: nestedRepoCountBucketSchema,
     failed_count: nestedRepoCountSchema,
     failed_count_bucket: nestedRepoCountBucketSchema,
-    all_selected: z.boolean()
+    all_selected: ScalarBoolean
   })
   .strict()
   .superRefine(validateNestedRepoCountBuckets)

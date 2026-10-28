@@ -1,3 +1,8 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import { isChromeExtensionId } from '../../shared/browser-extension-url'
@@ -15,13 +20,13 @@ import {
 import { setBrowserExtensionPinned } from '../browser/extensions/browser-extension-toolbar-pins'
 import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 
-const pageArgs = z.object({ browserPageId: z.string().min(1) })
-const extensionId = z.string().refine(isChromeExtensionId)
+const pageArgs = z.object({ browserPageId: ScalarNonemptyString })
+const extensionId = ScalarString.refine(isChromeExtensionId)
 const anchorSchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
-  width: z.number().finite().nonnegative(),
-  height: z.number().finite().nonnegative()
+  x: ScalarFiniteNumber,
+  y: ScalarFiniteNumber,
+  width: ScalarFiniteNumber.nonnegative(),
+  height: ScalarFiniteNumber.nonnegative()
 })
 const UNTRUSTED: BrowserExtensionActionResult = { ok: false, error: 'Not allowed' }
 

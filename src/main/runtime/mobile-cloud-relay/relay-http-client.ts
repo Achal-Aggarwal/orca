@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger
+} from '../../../shared/scalar-value-schemas'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { E2EEKeypair } from '../e2ee-keypair'
@@ -21,23 +26,17 @@ const RELAY_RETRY_AFTER_MAX_MS = 5 * 60_000
 
 const RelayTokenResponseSchema = z
   .object({
-    relayToken: z
-      .string()
-      .min(1)
-      .max(8 * 1024),
-    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+    relayToken: ScalarNonemptyString.max(8 * 1024),
+    expiresAt: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER)
   })
   .strict()
 
 const AssignmentResponseSchema = z
   .object({
     v: z.literal(1),
-    cellUrl: z.string().min(1).max(2048),
-    assignmentEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    lease: z
-      .string()
-      .min(1)
-      .max(8 * 1024),
+    cellUrl: ScalarNonemptyString.max(2048),
+    assignmentEpoch: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER),
+    lease: ScalarNonemptyString.max(8 * 1024),
     regionCorrection: RelayRegionCorrectionResponseSchema.optional().catch(undefined)
   })
   .strict()

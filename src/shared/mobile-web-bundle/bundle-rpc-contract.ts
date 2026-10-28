@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { hostUnionArms } from '../zod-salvage'
 import {
@@ -52,16 +58,16 @@ export const MobileWebBundleManifestResultSchema = z
   .object({
     manifest: MobileWebBundleManifestSchema,
     /** Read the advertised grid; hosts may shrink it without client releases. The constant caps reply dataBase64. */
-    chunkBytes: z.number().int().positive().max(MOBILE_WEB_BUNDLE_CHUNK_BYTES),
+    chunkBytes: ScalarPositiveInteger.max(MOBILE_WEB_BUNDLE_CHUNK_BYTES),
     /** Absent on hosts without range support; loose phone readers must fall back to chunks (Rule 1). */
-    rangeBytes: z.number().int().positive().max(MOBILE_WEB_BUNDLE_RANGE_BYTES).optional()
+    rangeBytes: ScalarPositiveInteger.max(MOBILE_WEB_BUNDLE_RANGE_BYTES).optional()
   })
   .strict()
 
 const windowParamsFields = {
-  buildId: z.string().regex(SHA256_PATTERN),
+  buildId: ScalarString.regex(SHA256_PATTERN),
   path: MobileWebBundleAssetPathSchema,
-  offset: z.number().int().nonnegative().max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES)
+  offset: ScalarNonnegativeInteger.max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES)
 }
 
 /** Host validates offset alignment against advertised chunkBytes, which may be smaller than the constant; no fixed multipleOf. */
@@ -74,15 +80,15 @@ export const MobileWebBundleRangeParamsSchema = MobileWebBundleChunkParamsSchema
 const windowHeaderFields = {
   ...windowParamsFields,
   /** Whole-asset size, paired with sha256 for reassembly; never the window size. */
-  assetByteLength: z.number().int().nonnegative().max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES),
-  sha256: z.string().regex(SHA256_PATTERN),
-  eof: z.boolean()
+  assetByteLength: ScalarNonnegativeInteger.max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES),
+  sha256: ScalarString.regex(SHA256_PATTERN),
+  eof: ScalarBoolean
 }
 
 /** Strict, so a later `contentEncoding` is only a Rule 1 optional-field addition for clients whose
  *  own reply readers are not strict. */
 export const MobileWebBundleChunkResultSchema = z
-  .object({ ...windowHeaderFields, dataBase64: z.string().max(MAX_DATA_BASE64_LENGTH) })
+  .object({ ...windowHeaderFields, dataBase64: ScalarString.max(MAX_DATA_BASE64_LENGTH) })
   .strict()
 
 /** A chunk result plus the encoding of `dataBase64`, whose decoded length is
@@ -91,7 +97,7 @@ export const MobileWebBundleRangeResultSchema = z
   .object({
     ...windowHeaderFields,
     encoding: z.enum(MOBILE_WEB_BUNDLE_RANGE_ENCODINGS),
-    dataBase64: z.string().max(MOBILE_WEB_BUNDLE_RANGE_MAX_DATA_BASE64_LENGTH)
+    dataBase64: ScalarString.max(MOBILE_WEB_BUNDLE_RANGE_MAX_DATA_BASE64_LENGTH)
   })
   .strict()
 

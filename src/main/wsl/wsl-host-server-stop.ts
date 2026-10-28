@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 /** Stop terminals by handle, then managed-decommission orcad/daemon. Claim stopped only with zero-session census, exact serving-orcad identity and retired daemon evidence. */
 import { z } from 'zod'
 import { errorMessage } from '../../shared/error-message'
@@ -124,12 +125,12 @@ export type WslHostRuntimeAccess = {
 
 // Only what removal reads from each live terminal.
 const TerminalHandlesSchema = z.object({
-  terminals: z.array(z.object({ handle: z.string().min(1), worktreeId: z.string() }))
+  terminals: z.array(z.object({ handle: ScalarNonemptyString, worktreeId: ScalarString }))
 }) satisfies z.ZodType<{
   terminals: Pick<RuntimeTerminalListResult['terminals'][number], 'handle' | 'worktreeId'>[]
 }>
 
-const RuntimeIdSchema = z.object({ runtimeId: z.string().min(1) })
+const RuntimeIdSchema = z.object({ runtimeId: ScalarNonemptyString })
 
 /** Closing terminals, counting what is left and naming the serving orcad, all through its RPC. */
 export function wslHostRuntimeStopSteps(

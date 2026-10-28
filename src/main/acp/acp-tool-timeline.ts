@@ -1,3 +1,4 @@
+import { ScalarNumber, ScalarOptionalString } from '../../shared/scalar-value-schemas'
 import { createPatch } from 'diff'
 import { z } from 'zod'
 import type { AgentJournalToolCallItem } from '../../shared/agent-session-journal-types'
@@ -19,8 +20,8 @@ import type {
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { ToolCallUpdate } from './generated/acp-protocol.generated'
 
-const rawStreamsSchema = z.object({ stdout: z.string().optional(), stderr: z.string().optional() })
-const rawExitCodeSchema = z.looseObject({ exitCode: z.number().int().safe() })
+const rawStreamsSchema = z.object({ stdout: ScalarOptionalString, stderr: ScalarOptionalString })
+const rawExitCodeSchema = z.looseObject({ exitCode: ScalarNumber.int().safe() })
 
 function outputText(update: ToolCallUpdate): string | undefined {
   const text = update.content?.flatMap((block) =>

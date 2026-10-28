@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   defineBrowserExtensionMethod,
@@ -14,9 +15,9 @@ export {
   restoreBrowserExtensionContentScripts
 } from '../browser-extension-content-scripts'
 
-const scriptSchema = z.object({ id: z.string().min(1) }).loose()
+const scriptSchema = z.object({ id: ScalarNonemptyString }).loose()
 const filterSchema = z
-  .object({ ids: z.array(z.string()) })
+  .object({ ids: z.array(ScalarString) })
   .partial()
   .loose()
 

@@ -1,3 +1,11 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type {
   AgentSessionModelOption,
@@ -23,22 +31,22 @@ const EFFORT_LABELS: Readonly<Record<string, string>> = {
 const BUILT_IN_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
 const effortEntrySchema = z.union([
-  z.string().min(1),
+  ScalarNonemptyString,
   z.looseObject({
-    value: z.string().min(1),
-    id: z.string().min(1).optional(),
-    label: z.string().min(1).optional(),
-    description: z.string().optional(),
-    default: z.boolean().optional()
+    value: ScalarNonemptyString,
+    id: ScalarOptionalNonemptyString,
+    label: ScalarOptionalNonemptyString,
+    description: ScalarOptionalString,
+    default: ScalarOptionalBoolean
   })
 ])
 const modelMetaSchema = z.looseObject({
-  supportsReasoningEffort: z.boolean().optional(),
-  reasoningEfforts: z.array(z.unknown()).optional()
+  supportsReasoningEffort: ScalarOptionalBoolean,
+  reasoningEfforts: z.array(ScalarUnknown).optional()
 })
 const modelsListReplySchema = z.looseObject({
   result: SessionModelStateSchema.nullish(),
-  error: z.unknown().optional()
+  error: ScalarOptionalUnknown
 })
 
 function capitalized(id: string): string {

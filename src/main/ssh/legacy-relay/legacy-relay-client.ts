@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalString,
+  ScalarPositiveInteger
+} from '../../../shared/scalar-value-schemas'
 /** Drive only already-listening legacy relays using their own relay.js --connect and matching bundle hash; deploy/start nothing. COMPAT(legacy-relay-bridge): revisit 2027-01-15. */
 import { z } from 'zod'
 import type { MultiplexerTransport } from '../ssh-channel-multiplexer'
@@ -70,20 +75,20 @@ function errorCode(error: unknown): unknown {
 const OwnerGrantSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
   role: z.literal('session-owner'),
-  ownerGeneration: z.number().int().positive(),
-  ownerLease: z.string().min(1).max(512)
+  ownerGeneration: ScalarPositiveInteger,
+  ownerLease: ScalarNonemptyString.max(512)
 })
 
 const PtyRowSchema = z.object({
-  id: z.string().min(1),
-  cwd: z.string().optional().catch(undefined),
-  title: z.string().optional().catch(undefined),
-  worktreeId: z.string().optional().catch(undefined),
-  incarnationId: z.string().min(1).max(512).optional().catch(undefined),
-  terminalHandle: z.string().min(1).max(512).optional().catch(undefined)
+  id: ScalarNonemptyString,
+  cwd: ScalarOptionalString.catch(undefined),
+  title: ScalarOptionalString.catch(undefined),
+  worktreeId: ScalarOptionalString.catch(undefined),
+  incarnationId: ScalarNonemptyString.max(512).optional().catch(undefined),
+  terminalHandle: ScalarNonemptyString.max(512).optional().catch(undefined)
 })
 
-const AttachResultSchema = z.object({ replay: z.string().optional().catch(undefined) }).nullable()
+const AttachResultSchema = z.object({ replay: ScalarOptionalString.catch(undefined) }).nullable()
 
 function replayOf(result: unknown): string {
   const parsed = AttachResultSchema.safeParse(result)

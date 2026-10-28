@@ -1,7 +1,8 @@
+import { ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 const launchConfig = z
-  .object({ agents: z.record(z.string(), z.record(z.string(), z.unknown())).optional() })
+  .object({ agents: z.record(ScalarString, z.record(ScalarString, ScalarUnknown)).optional() })
   .passthrough()
 
 export function resolveOpenCodeLaunchModelConfig(options: {

@@ -1,3 +1,10 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarOptionalNullableString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -22,17 +29,17 @@ export type ExternalChromiumLaunch = {
 }
 
 const AgentBrowserTab = z.object({
-  active: z.boolean(),
-  tabId: z.string(),
-  title: z.string(),
-  url: z.string()
+  active: ScalarBoolean,
+  tabId: ScalarString,
+  title: ScalarString,
+  url: ScalarString
 })
 const AgentBrowserTabsResult = z.object({ tabs: z.array(AgentBrowserTab).optional() })
-const AgentBrowserScreenshotResult = z.object({ path: z.string().min(1) })
+const AgentBrowserScreenshotResult = z.object({ path: ScalarNonemptyString })
 const AgentBrowserEnvelope = z.object({
-  success: z.boolean(),
-  data: z.unknown().optional(),
-  error: z.string().nullable().optional()
+  success: ScalarBoolean,
+  data: ScalarOptionalUnknown,
+  error: ScalarOptionalNullableString
 })
 
 export type AgentBrowserTab = z.infer<typeof AgentBrowserTab>

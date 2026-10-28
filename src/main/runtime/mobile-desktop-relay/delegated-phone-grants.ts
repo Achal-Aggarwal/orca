@@ -1,3 +1,4 @@
+import { ScalarString } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   DELEGATED_MOBILE_DEVICE_SYNC_METHOD,
@@ -9,9 +10,11 @@ import { RemoteRuntimeClientError } from '../../../shared/remote-runtime/remote-
 import type { MobileDesktopRelayHost, MobileDesktopRelayHosts } from './mobile-desktop-relay-hosts'
 
 const SyncResultSchema = z.object({
-  devices: z.array(z.object({ phoneKey: z.string(), deviceId: z.string(), token: z.string() }))
+  devices: z.array(
+    z.object({ phoneKey: ScalarString, deviceId: ScalarString, token: ScalarString })
+  )
 })
-const StatusCapabilitiesSchema = z.object({ capabilities: z.array(z.string()).optional() })
+const StatusCapabilitiesSchema = z.object({ capabilities: z.array(ScalarString).optional() })
 
 export type DelegatedPhoneGrant = { deviceId: string; token: string }
 

@@ -1,15 +1,18 @@
+import {
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { PetManifestLike } from './pet-bundle'
 
 export const PetManifestSchema = z
   .object({
-    id: z.string().min(1).max(128).optional(),
-    displayName: z.string().min(1).max(120).optional(),
-    description: z.string().max(2000).optional(),
-    spritesheetPath: z
-      .string()
-      .min(1)
-      .max(255)
+    id: ScalarNonemptyString.max(128).optional(),
+    displayName: ScalarNonemptyString.max(120).optional(),
+    description: ScalarString.max(2000).optional(),
+    spritesheetPath: ScalarNonemptyString.max(255)
       // Reject unsafe manifest paths before the later resolved-path containment check.
       .refine(
         (p) => !p.includes('\0') && !p.startsWith('/') && !p.startsWith('\\') && !p.includes('..'),
@@ -18,20 +21,20 @@ export const PetManifestSchema = z
       .optional(),
     frame: z
       .object({
-        width: z.number().int().positive().max(1024),
-        height: z.number().int().positive().max(1024)
+        width: ScalarPositiveInteger.max(1024),
+        height: ScalarPositiveInteger.max(1024)
       })
       .optional(),
-    fps: z.number().positive().max(60).optional(),
-    defaultAnimation: z.string().min(1).max(64).optional(),
+    fps: ScalarNumber.positive().max(60).optional(),
+    defaultAnimation: ScalarNonemptyString.max(64).optional(),
     animations: z
       .record(
-        z.string().min(1).max(64),
+        ScalarNonemptyString.max(64),
         z.object({
-          row: z.number().int().min(0).max(256),
-          frames: z.number().int().positive().max(512),
+          row: ScalarNumber.int().min(0).max(256),
+          frames: ScalarPositiveInteger.max(512),
           // Bound frame holds so malformed manifests cannot freeze the overlay.
-          frameDurationsMs: z.array(z.number().positive().max(60_000)).max(512).optional()
+          frameDurationsMs: z.array(ScalarNumber.positive().max(60_000)).max(512).optional()
         })
       )
       .optional()

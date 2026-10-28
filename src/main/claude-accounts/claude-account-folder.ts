@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import {
   existsSync,
   lstatSync,
@@ -22,9 +23,7 @@ export type ClaudeFolderLogin = {
   organizationName: string | null
 }
 
-const text = z
-  .string()
-  .transform((value) => value.trim() || null)
+const text = ScalarString.transform((value) => value.trim() || null)
   .nullish()
   .catch(null)
 const oauthAccount = z.object({

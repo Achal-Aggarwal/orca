@@ -1,3 +1,8 @@
+import {
+  ScalarNullableString,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 // Copy the selected N-API/libc/arch slot into build/Release to avoid node-pty’s libc-blind fallback.
 // Build slots from patched sources: symbol pins and linker flags preserve the glibc floor.
 import { createHash } from 'node:crypto'
@@ -19,21 +24,21 @@ const SHA256 = /^[0-9a-f]{64}$/
 const SLOT_FILE = /^(?!.*(?:^|\/)\.\.(?:\/|$))[\w.-]+(?:\/[\w.-]+)*$/
 
 const PrebuiltSlotEntrySchema = z.object({
-  platform: z.string(),
-  arch: z.string(),
+  platform: ScalarString,
+  arch: ScalarString,
   libc: z.enum(['glibc', 'musl', 'none']),
   /** Highest required strong GLIBC_ symbol; null off glibc. */
-  glibc: z.string().nullable(),
-  napi: z.number().int().positive(),
-  files: z.record(z.string().regex(SLOT_FILE), z.string().regex(SHA256))
+  glibc: ScalarNullableString,
+  napi: ScalarPositiveInteger,
+  files: z.record(ScalarString.regex(SLOT_FILE), ScalarString.regex(SHA256))
 })
 
 const PrebuiltSlotManifestSchema = z.object({
   schemaVersion: z.literal(2),
-  module: z.string(),
-  version: z.string(),
-  napi: z.number().int().positive(),
-  slots: z.record(z.string(), PrebuiltSlotEntrySchema)
+  module: ScalarString,
+  version: ScalarString,
+  napi: ScalarPositiveInteger,
+  slots: z.record(ScalarString, PrebuiltSlotEntrySchema)
 })
 
 export type PrebuiltSlotEntry = z.infer<typeof PrebuiltSlotEntrySchema>

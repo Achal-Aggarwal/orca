@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNullishString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import {
@@ -11,14 +12,14 @@ import type { OrcadServerRepository } from './orcad-migration-repository-link'
 /** Include groups because they can supply a folder's host. */
 export type OrcadServerFolderCatalog = Omit<FolderHostCatalog, 'repos'>
 
-const HostFields = { connectionId: z.string().nullish(), executionHostId: z.string().nullish() }
+const HostFields = { connectionId: ScalarNullishString, executionHostId: ScalarNullishString }
 
 const ServerFolderWorkspacesSchema = z.object({
   folderWorkspaces: z.array(
     z.object({
-      id: z.string().min(1),
-      folderPath: z.string().min(1),
-      projectGroupId: z.string().min(1),
+      id: ScalarNonemptyString,
+      folderPath: ScalarNonemptyString,
+      projectGroupId: ScalarNonemptyString,
       ...HostFields
     })
   )
@@ -27,8 +28,8 @@ const ServerFolderWorkspacesSchema = z.object({
 const ServerProjectGroupsSchema = z.object({
   groups: z.array(
     z.object({
-      id: z.string().min(1),
-      parentGroupId: z.string().nullish(),
+      id: ScalarNonemptyString,
+      parentGroupId: ScalarNullishString,
       ...HostFields
     })
   )

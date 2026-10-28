@@ -1,3 +1,4 @@
+import { ScalarOptionalString, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
@@ -49,11 +50,11 @@ export function acpPermissionPresentation(
   }
 }
 
-const requestSessionSchema = z.object({ sessionId: z.string() })
+const requestSessionSchema = z.object({ sessionId: ScalarString })
 const UNADVERTISED_CLIENT_METHOD = /^(?:fs|terminal)\//
 const requestToolSchema = z.object({
-  toolCallId: z.string().optional(),
-  toolCall: z.object({ toolCallId: z.string() }).optional()
+  toolCallId: ScalarOptionalString,
+  toolCall: z.object({ toolCallId: ScalarString }).optional()
 })
 
 export function translateAcpRequest(

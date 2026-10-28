@@ -1,3 +1,8 @@
+import {
+  ScalarOptionalBoolean,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../../shared/scalar-value-schemas'
 import { defineMethod } from '../core'
 import path from 'node:path'
 import { z } from 'zod'
@@ -23,13 +28,13 @@ import {
 } from '../../../../shared/rpc-contract/emulator-params'
 
 const InstallParams = z.object({
-  path: z.string().refine((value) => path.isAbsolute(value), {
+  path: ScalarString.refine((value) => path.isAbsolute(value), {
     message: 'path must be absolute'
   }),
-  reinstall: z.boolean().optional(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  reinstall: ScalarOptionalBoolean,
+  device: ScalarOptionalString,
+  emulator: ScalarOptionalString,
+  worktree: ScalarOptionalString
 })
 
 export const EMULATOR_METHODS = [

@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { FederationRuntime } from './federation-runtime'
 import type { FederatedLifecycleSettlement } from './federation-lifecycle-settlement'
@@ -20,16 +25,16 @@ const MAX_FEDERATION_PULL_PAGES_PER_SYNC = 6
 // Decode untrusted peer pages before import to report malformed input as an orchestration error.
 const PulledRelayPage = z
   .object({
-    runtimeEpoch: z.string().min(1),
+    runtimeEpoch: ScalarNonemptyString,
     items: z.array(
       z
         .object({
-          dispatch_id: z.string(),
+          dispatch_id: ScalarString,
           direction: z.literal('to_home'),
-          sequence: z.number(),
-          message_id: z.string(),
-          kind: z.string(),
-          payload: z.string()
+          sequence: ScalarNumber,
+          message_id: ScalarString,
+          kind: ScalarString,
+          payload: ScalarString
         })
         .passthrough()
     )

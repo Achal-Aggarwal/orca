@@ -1,3 +1,12 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalNumber,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 /**
  * The orchestrator's per-distro records, in their own sidecar: older builds rewrite orca-data.json
  * without fields they do not know, and an unreadable file only costs the orchestrator its memory
@@ -22,7 +31,7 @@ const blockerSchema = z.object({
     'dispatch-running',
     'scrollback-too-large'
   ]),
-  ids: z.array(z.string()),
+  ids: z.array(ScalarString),
   actions: z.array(z.enum(['wait', 'end', 'skip-project', 'clear-scrollback']))
 })
 
@@ -32,15 +41,15 @@ const stateSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('deferred'),
     blockers: z.array(blockerSchema),
-    rechecks: z.number().int().nonnegative().default(0)
+    rechecks: ScalarNonnegativeInteger.default(0)
   }),
   z.object({ kind: z.literal('moving') }),
-  z.object({ kind: z.literal('waiting-for-host'), migrationId: z.string() }),
+  z.object({ kind: z.literal('waiting-for-host'), migrationId: ScalarString }),
   z.object({
     kind: z.literal('backoff'),
-    nextAttemptAt: z.number(),
-    reason: z.string(),
-    waits: z.number().int().nonnegative().optional()
+    nextAttemptAt: ScalarNumber,
+    reason: ScalarString,
+    waits: ScalarOptionalNonnegativeInteger
   }),
   z.object({
     kind: z.literal('parked'),
@@ -55,30 +64,30 @@ const stateSchema = z.discriminatedUnion('kind', [
       'stuck',
       'finish-pending'
     ]),
-    until: z.number().optional(),
+    until: ScalarOptionalNumber,
     cause: z.enum(['released-here', 'removed']).optional()
   }),
   z.object({
     kind: z.literal('done'),
-    migrationId: z.string(),
-    nextCheckAt: z.number().optional(),
-    waits: z.number().int().nonnegative().optional()
+    migrationId: ScalarString,
+    nextCheckAt: ScalarOptionalNumber,
+    waits: ScalarOptionalNonnegativeInteger
   }),
   z.object({ kind: z.literal('distro-gone') }),
   z.object({ kind: z.literal('restore-offered') })
 ])
 
 const recordSchema = z.object({
-  distro: z.string().min(1),
+  distro: ScalarNonemptyString,
   state: stateSchema,
-  attempts: z.number().int().nonnegative(),
-  appVersion: z.string(),
-  updatedAt: z.number()
+  attempts: ScalarNonnegativeInteger,
+  appVersion: ScalarString,
+  updatedAt: ScalarNumber
 })
 
 const fileSchema = z.object({
   version: z.literal(1),
-  distros: z.record(z.string(), z.unknown())
+  distros: z.record(ScalarString, ScalarUnknown)
 })
 
 export function wslMoveOrchestratorStorePath(userDataPath: string): string {

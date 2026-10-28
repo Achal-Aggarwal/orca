@@ -1,3 +1,4 @@
+import { ScalarNumber } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { browserManager } from '../../browser-manager'
 import { consumeBrowserExtensionCaptureQuota } from '../browser-extension-capture-quota'
@@ -17,7 +18,7 @@ import { browserExtensionHostPatternsInSession } from './permissions'
 const DEFAULT_JPEG_QUALITY = 90
 
 const imageDetailsSchema = z
-  .object({ format: z.enum(['jpeg', 'png']), quality: z.number().int().min(0).max(100) })
+  .object({ format: z.enum(['jpeg', 'png']), quality: ScalarNumber.int().min(0).max(100) })
   .partial()
   .loose()
 
@@ -95,7 +96,7 @@ async function captureVisibleTab(
 /** tabs.captureVisibleTab(windowId?, options?): the active tab of the window, as a data URL. */
 export const captureVisibleTabMethod = defineBrowserExtensionMethod(
   z.tuple([
-    z.union([z.number().int(), imageDetailsSchema]).nullable().optional(),
+    z.union([ScalarNumber.int(), imageDetailsSchema]).nullable().optional(),
     imageDetailsSchema.nullable().optional()
   ]),
   (caller, first, second) =>

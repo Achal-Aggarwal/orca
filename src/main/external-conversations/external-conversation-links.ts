@@ -1,3 +1,4 @@
+import { ScalarNumber, ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   CONNECTOR_SOURCES,
@@ -38,21 +39,17 @@ export type LinkedConversation = { workspace: AgentPaneWorkspace; link: External
 
 const ExternalConversationLinkSchema = z.object({
   source: z.enum(CONNECTOR_SOURCES),
-  externalId: z.string(),
-  paneKey: z.string(),
+  externalId: ScalarString,
+  paneKey: ScalarString,
   agent: z.enum(CONNECTOR_AGENTS),
   // A malformed provider session prevents reopening, but must not discard a usable link.
-  providerSession: z
-    .unknown()
-    .transform((raw) => normalizeAgentProviderSession(raw) ?? undefined)
-    .optional(),
-  captureHostId: z
-    .unknown()
-    .transform(
-      (raw) => (typeof raw === 'string' ? normalizeExecutionHostId(raw) : null) ?? undefined
-    )
-    .optional(),
-  createdAt: z.number()
+  providerSession: ScalarUnknown.transform(
+    (raw) => normalizeAgentProviderSession(raw) ?? undefined
+  ).optional(),
+  captureHostId: ScalarUnknown.transform(
+    (raw) => (typeof raw === 'string' ? normalizeExecutionHostId(raw) : null) ?? undefined
+  ).optional(),
+  createdAt: ScalarNumber
 })
 
 /** Skip malformed links so hand edits or newer host shapes do not break reads. */

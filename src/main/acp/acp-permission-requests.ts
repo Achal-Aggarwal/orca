@@ -1,3 +1,4 @@
+import { ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { AcpRequestContext } from './acp-json-rpc-peer'
 import {
@@ -16,11 +17,11 @@ export type AcpPermissionHandler = (
 
 const cancelled: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
 const routingSchema = z.looseObject({
-  sessionId: z.string(),
-  toolCall: z.looseObject({ toolCallId: z.string() }),
-  options: z.array(z.unknown())
+  sessionId: ScalarString,
+  toolCall: z.looseObject({ toolCallId: ScalarString }),
+  options: z.array(ScalarUnknown)
 })
-const optionRoutingSchema = z.looseObject({ optionId: z.string() })
+const optionRoutingSchema = z.looseObject({ optionId: ScalarString })
 
 // Preserve unknown fields for forward compatibility; report malformed known fields.
 function readableFields(

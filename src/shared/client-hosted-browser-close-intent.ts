@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNonnegativeInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 
 /** Persist unacknowledged client-hosted closes and replay browser.tabClose on reconnect, preventing runtime restoration of tabs closed while unreachable. Uses existing wire state. */
@@ -15,7 +16,7 @@ export const CLIENT_HOSTED_BROWSER_CLOSE_INTENT_MAX_AGE_MS = 30 * 24 * 60 * 60 *
 
 export const clientHostedBrowserCloseIntentSchema: z.ZodType<ClientHostedBrowserCloseIntent> =
   z.object({
-    browserPageId: z.string().min(1).max(256),
-    worktreeId: z.string().min(1).max(1024),
-    closedAt: z.number().int().nonnegative()
+    browserPageId: ScalarNonemptyString.max(256),
+    worktreeId: ScalarNonemptyString.max(1024),
+    closedAt: ScalarNonnegativeInteger
   })

@@ -1,3 +1,14 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNullableString,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import {
   getRepoExecutionHostId,
@@ -23,15 +34,15 @@ import { HostReportedActivitySchema, type HostReportedActivity } from './workspa
 /** One paired-server workspace as the sidebar lists it, keyed by its host-qualified id. */
 const PairedServerWorkspaceRowSchema = z
   .object({
-    key: z.string(),
-    worktreeId: z.string(),
-    repoId: z.string(),
+    key: ScalarString,
+    worktreeId: ScalarString,
+    repoId: ScalarString,
     kind: z.enum(['git', 'folder']),
-    path: z.string(),
-    branch: z.string(),
-    displayName: z.string(),
-    isArchived: z.boolean(),
-    isPinned: z.boolean()
+    path: ScalarString,
+    branch: ScalarString,
+    displayName: ScalarString,
+    isArchived: ScalarBoolean,
+    isPinned: ScalarBoolean
   })
   .extend(
     // Server-owned sorting/filter/lineage facts; older desktops omit them. Lineage is the checked edge, not the raw record.
@@ -61,18 +72,18 @@ const PairedServerWorkspaceRowSchema = z
 
 /** See PairedServerHost; health and compatibility stay open strings, as a reader only compares them. */
 const PairedServerHostFactsSchema = z.object({
-  label: z.string(),
-  health: z.string(),
-  compatibility: z.string().nullable(),
-  pairedDeviceId: z.string().nullable()
+  label: ScalarString,
+  health: ScalarString,
+  compatibility: ScalarNullableString,
+  pairedDeviceId: ScalarNullableString
 })
 
 /** Every configured server main lists rows for. Unverifiable: its last rows, not confirmed current. */
 export const PairedServerRowsSnapshotSchema = z.object({
-  revision: z.number(),
+  revision: ScalarNumber,
   servers: z.array(
     z.object({
-      hostId: z.string(),
+      hostId: ScalarString,
       freshness: z.enum(['live', 'unverifiable']),
       /** Null while the desktop does not show the server (a managed one folded into its SSH host). */
       host: PairedServerHostFactsSchema.nullable(),
@@ -152,36 +163,36 @@ export function buildPairedServerRows(catalog: {
 
 // Older servers omit `workspaceKind` and may send arms this build has not heard of.
 const ServerWorktreePsRowSchema = z.object({
-  worktreeId: z.string().min(1),
-  repoId: z.string(),
+  worktreeId: ScalarNonemptyString,
+  repoId: ScalarString,
   workspaceKind: openEnum(['git', 'folder-workspace'], 'git').optional(),
-  path: z.string().catch(''),
-  branch: z.string().catch(''),
-  displayName: z.string().catch(''),
-  isArchived: z.boolean().catch(false),
-  isPinned: z.boolean().catch(false),
-  isMainWorktree: z.boolean().catch(false),
-  unread: z.boolean().optional().catch(undefined),
-  worktreeInstanceId: z.string().optional().catch(undefined),
-  parentWorktreeId: z.string().nullable().optional().catch(undefined),
-  lineageWorktreeInstanceId: z.string().optional().catch(undefined),
-  parentWorktreeInstanceId: z.string().optional().catch(undefined),
-  workspaceStatus: z.string().catch(DEFAULT_WORKSPACE_STATUS_ID),
-  sortOrder: z.number().optional().catch(undefined),
-  manualOrder: z.number().optional().catch(undefined),
-  createdAt: z.number().optional().catch(undefined),
+  path: ScalarString.catch(''),
+  branch: ScalarString.catch(''),
+  displayName: ScalarString.catch(''),
+  isArchived: ScalarBoolean.catch(false),
+  isPinned: ScalarBoolean.catch(false),
+  isMainWorktree: ScalarBoolean.catch(false),
+  unread: ScalarOptionalBoolean.catch(undefined),
+  worktreeInstanceId: ScalarOptionalString.catch(undefined),
+  parentWorktreeId: ScalarOptionalNullableString.catch(undefined),
+  lineageWorktreeInstanceId: ScalarOptionalString.catch(undefined),
+  parentWorktreeInstanceId: ScalarOptionalString.catch(undefined),
+  workspaceStatus: ScalarString.catch(DEFAULT_WORKSPACE_STATUS_ID),
+  sortOrder: ScalarOptionalNumber.catch(undefined),
+  manualOrder: ScalarOptionalNumber.catch(undefined),
+  createdAt: ScalarOptionalNumber.catch(undefined),
   creatorProvenance: WorkspaceRowSchema.shape.creatorProvenance.catch(undefined),
-  defaultBranch: z.boolean().optional().catch(undefined),
+  defaultBranch: ScalarOptionalBoolean.catch(undefined),
   automationCreated: z.literal(true).optional().catch(undefined),
   cliCreated: z.literal(true).optional().catch(undefined),
   detachedHead: z.literal(true).optional().catch(undefined),
-  lastActivityAt: z.number().optional().catch(undefined),
+  lastActivityAt: ScalarOptionalNumber.catch(undefined),
   smartTier: z.enum(SMART_TIERS).optional().catch(undefined),
-  smartAt: z.number().optional().catch(undefined),
-  liveTerminalCount: z.number().optional().catch(undefined),
-  unverifiableTerminalCount: z.number().optional().catch(undefined),
-  status: z.string().optional().catch(undefined),
-  workingMode: z.string().optional().catch(undefined)
+  smartAt: ScalarOptionalNumber.catch(undefined),
+  liveTerminalCount: ScalarOptionalNumber.catch(undefined),
+  unverifiableTerminalCount: ScalarOptionalNumber.catch(undefined),
+  status: ScalarOptionalString.catch(undefined),
+  workingMode: ScalarOptionalString.catch(undefined)
 })
 
 function reportedActivity(row: z.infer<typeof ServerWorktreePsRowSchema>): HostReportedActivity {

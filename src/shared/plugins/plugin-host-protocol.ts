@@ -1,3 +1,12 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString,
+  ScalarUnknown
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { PLUGIN_COMMAND_LIMIT, PLUGIN_EVENT_NAMES, pluginCommandIdSchema } from './plugin-manifest'
 import { PLUGIN_CAPABILITY_KINDS } from './plugin-capabilities'
@@ -7,34 +16,34 @@ import { PLUGIN_CAPABILITY_KINDS } from './plugin-capabilities'
 export const pluginWorkerInitSchema = z.object({
   type: z.literal('init'),
   /** Qualified `<publisher>.<id>` key. */
-  pluginId: z.string().min(1),
-  pluginRoot: z.string().min(1),
-  mainEntry: z.string().min(1),
+  pluginId: ScalarNonemptyString,
+  pluginRoot: ScalarNonemptyString,
+  mainEntry: ScalarNonemptyString,
   /** Worker-side early refusals only; host rechecks every call regardless of declared grants. */
   grantedCapabilities: z.array(z.enum(PLUGIN_CAPABILITY_KINDS))
 })
 
 export const pluginWorkerInvokeCommandSchema = z.object({
   type: z.literal('invokeCommand'),
-  callId: z.number().int().nonnegative(),
-  commandId: z.string().min(1),
-  args: z.unknown().optional()
+  callId: ScalarNonnegativeInteger,
+  commandId: ScalarNonemptyString,
+  args: ScalarOptionalUnknown
 })
 
 export const pluginWorkerDeliverEventSchema = z.object({
   type: z.literal('deliverEvent'),
-  eventId: z.number().int().nonnegative(),
+  eventId: ScalarNonnegativeInteger,
   event: z.enum(PLUGIN_EVENT_NAMES),
-  payload: z.unknown()
+  payload: ScalarUnknown
 })
 
 export const pluginWorkerHostResultSchema = z.object({
   type: z.literal('hostResult'),
-  callId: z.number().int().nonnegative(),
-  ok: z.boolean(),
-  value: z.unknown().optional(),
-  errorCode: z.string().optional(),
-  error: z.string().optional()
+  callId: ScalarNonnegativeInteger,
+  ok: ScalarBoolean,
+  value: ScalarOptionalUnknown,
+  errorCode: ScalarOptionalString,
+  error: ScalarOptionalString
 })
 
 export const pluginWorkerShutdownSchema = z.object({ type: z.literal('shutdown') })
@@ -55,35 +64,35 @@ export const pluginWorkerReadySchema = z.object({
 
 export const pluginWorkerCommandResultSchema = z.object({
   type: z.literal('commandResult'),
-  callId: z.number().int().nonnegative(),
-  ok: z.boolean(),
+  callId: ScalarNonnegativeInteger,
+  ok: ScalarBoolean,
   // Fork IPC supplies cloneable data, but callers still validate the opaque result’s shape.
-  value: z.unknown().optional(),
-  error: z.string().max(8192).optional()
+  value: ScalarOptionalUnknown,
+  error: ScalarString.max(8192).optional()
 })
 
 export const pluginWorkerEventAckSchema = z.object({
   type: z.literal('eventAck'),
-  eventId: z.number().int().nonnegative()
+  eventId: ScalarNonnegativeInteger
 })
 
 /** Worker→host API call (the plugin SDK's transport for host methods). */
 export const pluginWorkerHostCallSchema = z.object({
   type: z.literal('hostCall'),
-  callId: z.number().int().nonnegative(),
-  method: z.string().min(1),
-  params: z.unknown().optional()
+  callId: ScalarNonnegativeInteger,
+  method: ScalarNonemptyString,
+  params: ScalarOptionalUnknown
 })
 
 export const pluginWorkerLogSchema = z.object({
   type: z.literal('log'),
   level: z.enum(['info', 'warn', 'error']),
-  message: z.string().max(8192)
+  message: ScalarString.max(8192)
 })
 
 export const pluginWorkerFatalSchema = z.object({
   type: z.literal('fatal'),
-  error: z.string().max(8192)
+  error: ScalarString.max(8192)
 })
 
 export const pluginWorkerChildMessageSchema = z.discriminatedUnion('type', [

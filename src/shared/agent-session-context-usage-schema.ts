@@ -1,3 +1,4 @@
+import { ScalarFiniteNumber, ScalarNonemptyString } from './scalar-value-schemas'
 // Bound replayed context facts to what live writers can produce.
 
 import { z } from 'zod'
@@ -8,10 +9,10 @@ import {
   type AgentSessionContextUsage
 } from './agent-session-context-usage'
 
-const TokenCount = z.number().finite().nonnegative()
-const WindowTokens = z.number().finite().positive()
-const CapturedAt = z.number().finite()
-const ModelId = z.string().min(1).max(MAX_CONTEXT_MODEL_ID_CHARS)
+const TokenCount = ScalarFiniteNumber.nonnegative()
+const WindowTokens = ScalarFiniteNumber.positive()
+const CapturedAt = ScalarFiniteNumber
+const ModelId = ScalarNonemptyString.max(MAX_CONTEXT_MODEL_ID_CHARS)
 
 const TokenUsage = z.object({
   inputTokens: TokenCount,
@@ -26,12 +27,12 @@ const Used = z.discriminatedUnion('kind', [
     model: ModelId,
     usedTokens: TokenCount,
     windowTokens: WindowTokens,
-    percentage: z.number().finite(),
+    percentage: ScalarFiniteNumber,
     autoCompactAtTokens: TokenCount.optional(),
     categories: z
       .array(
         z.object({
-          name: z.string().min(1).max(MAX_CONTEXT_CATEGORY_NAME_CHARS),
+          name: ScalarNonemptyString.max(MAX_CONTEXT_CATEGORY_NAME_CHARS),
           tokens: TokenCount,
           deferred: z.literal(true).optional()
         })

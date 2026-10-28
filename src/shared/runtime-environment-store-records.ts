@@ -1,3 +1,4 @@
+import { ScalarUnknown } from './scalar-value-schemas'
 import { constants, copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -30,7 +31,7 @@ export function getEnvironmentStorePath(userDataPath: string): string {
 // Records stay opaque so one bad or newer-format entry cannot hide the rest.
 const StoreEnvelopeSchema = z.object({
   version: z.literal(1),
-  environments: z.array(z.unknown())
+  environments: z.array(ScalarUnknown)
 })
 
 /** A record this build cannot read; it is rewritten verbatim so a newer build still finds it. */

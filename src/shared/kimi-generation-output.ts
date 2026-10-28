@@ -1,23 +1,24 @@
+import { ScalarOptionalString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 const messageSchema = z.discriminatedUnion('role', [
   z
     .object({
       role: z.literal('assistant'),
-      content: z.string().optional(),
+      content: ScalarOptionalString,
       tool_calls: z
         .array(
           z.object({
             type: z.literal('function'),
-            id: z.string(),
-            function: z.object({ name: z.string(), arguments: z.string() })
+            id: ScalarString,
+            function: z.object({ name: ScalarString, arguments: ScalarString })
           })
         )
         .optional()
     })
     .refine((message) => message.content !== undefined || (message.tool_calls?.length ?? 0) > 0),
-  z.object({ role: z.literal('tool'), tool_call_id: z.string(), content: z.string() }),
-  z.object({ role: z.literal('meta'), type: z.string() })
+  z.object({ role: z.literal('tool'), tool_call_id: ScalarString, content: ScalarString }),
+  z.object({ role: z.literal('meta'), type: ScalarString })
 ])
 
 export function parseKimiGenerationOutput(
@@ -47,7 +48,7 @@ export function parseKimiGenerationOutput(
   return { ok: true, text: answer }
 }
 
-const failureSchema = z.object({ type: z.literal('error'), code: z.string() })
+const failureSchema = z.object({ type: z.literal('error'), code: ScalarString })
 
 export function findKimiGenerationFailure(stdout: string): string | null {
   for (const line of stdout.split(/\r?\n/)) {

@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNumber, ScalarString } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   BrowserExtensionApiError,
@@ -17,17 +18,17 @@ import {
   type StoredContextMenuItem
 } from '../browser-extension-profile-state-store'
 
-const idSchema = z.union([z.string(), z.number().int()])
+const idSchema = z.union([ScalarString, ScalarNumber.int()])
 const menuItemPropertyFields = {
   type: z.enum(['normal', 'checkbox', 'radio', 'separator']),
-  title: z.string(),
-  checked: z.boolean(),
-  contexts: z.array(z.string()),
-  visible: z.boolean(),
-  enabled: z.boolean(),
+  title: ScalarString,
+  checked: ScalarBoolean,
+  contexts: z.array(ScalarString),
+  visible: ScalarBoolean,
+  enabled: ScalarBoolean,
   parentId: idSchema,
-  documentUrlPatterns: z.array(z.string()),
-  targetUrlPatterns: z.array(z.string())
+  documentUrlPatterns: z.array(ScalarString),
+  targetUrlPatterns: z.array(ScalarString)
 }
 const createSchema = z
   .object({ id: idSchema, ...menuItemPropertyFields })

@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarPositiveInteger } from '../../shared/scalar-value-schemas'
 // Connector tokens for the desktop's signed-in Orca account, fetched the way relay tokens are.
 import { z } from 'zod'
 import type { OrcaCloudAuthConfig } from '../orca-profiles/profile-cloud-auth-config'
@@ -9,11 +10,8 @@ import { requestConnector, type ConnectorFailure } from './connector-cloud-reque
 import type { ConnectorTokenMint } from './connector-transport'
 
 const ConnectorTokenResponse = z.object({
-  connectorToken: z
-    .string()
-    .min(1)
-    .max(8 * 1024),
-  expiresAt: z.number().int().positive()
+  connectorToken: ScalarNonemptyString.max(8 * 1024),
+  expiresAt: ScalarPositiveInteger
 })
 
 const SIGNED_OUT: ConnectorFailure = {

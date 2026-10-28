@@ -1,3 +1,11 @@
+import {
+  ScalarBoolean,
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 /** Stop files reach only the watching orcad; signals from stale PID records could stop an unrelated reused process. */
 import { z } from 'zod'
 import { openEnum } from './zod-salvage'
@@ -14,21 +22,21 @@ export const ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG = '--request-file'
 
 /** One orcad process: its PID, start time, and the instance lock record it published. */
 export const OrcadManagedStopInstanceSchema = z.object({
-  pid: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  startedAtMs: z.number().finite().nonnegative().nullable(),
+  pid: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER),
+  startedAtMs: ScalarFiniteNumber.nonnegative().nullable(),
   /** Linux only, copied from the lock; older clients omit it and older slots drop it. */
-  linuxStartTicks: z.string().regex(/^\d+$/).max(32).optional().catch(undefined),
-  bootId: z.string().min(1).max(255).optional().catch(undefined),
-  nonce: z.string().min(1).max(255),
-  lockPath: z.string().min(1).max(4096)
+  linuxStartTicks: ScalarString.regex(/^\d+$/).max(32).optional().catch(undefined),
+  bootId: ScalarNonemptyString.max(255).optional().catch(undefined),
+  nonce: ScalarNonemptyString.max(255),
+  lockPath: ScalarNonemptyString.max(4096)
 })
 
 // Older slots drop newer optional request fields rather than refuse the stop.
 export const OrcadManagedStopRequestSchema = z.object({
   schemaVersion: z.literal(1),
   transactionId: z.uuid(),
-  version: z.string().min(1).max(255),
-  runtimeId: z.string().min(1).max(255),
+  version: ScalarNonemptyString.max(255),
+  runtimeId: ScalarNonemptyString.max(255),
   instance: OrcadManagedStopInstanceSchema,
   /** Best effort: also retire the terminal daemon if it is provably idle. Never blocks the stop. */
   retireIdleDaemon: z.literal(true).optional()
@@ -65,7 +73,7 @@ export const OrcadManagedStopCompletionSchema = z.object({
   ...stopReplyRequestFields,
   kind: z.literal('orcad_managed_stop_completion'),
   verdict: openEnum(STOP_VERDICTS, 'unverifiable'),
-  receiptPersisted: z.boolean(),
+  receiptPersisted: ScalarBoolean,
   /** For a request that asked to retire the daemon, the outcome its receipt recorded. */
   retirement: openEnum(RETIREMENT_VERDICTS, 'unverifiable').optional()
 })
@@ -76,8 +84,8 @@ export const OrcadDaemonRetirementRecordSchema = z.strictObject({
   kind: z.literal('orcad_managed_stop_retirement'),
   request: OrcadManagedStopRequestSchema,
   retirement: OrcadDaemonRetirementVerdictSchema,
-  liveSessions: z.number().int().nonnegative().nullable(),
-  reason: z.string().max(4096).nullable()
+  liveSessions: ScalarNonnegativeInteger.nullable(),
+  reason: ScalarString.max(4096).nullable()
 })
 
 export const OrcadCompletedStopReceiptSchema = z.strictObject({

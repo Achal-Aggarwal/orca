@@ -1,14 +1,12 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
-const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u)
+const Sha256Schema = ScalarString.regex(/^[a-f0-9]{64}$/u)
 const TemplateTargetSchema = z
   .object({
-    files: z.record(z.string(), Sha256Schema),
+    files: z.record(ScalarString, Sha256Schema),
     packagedRipgrep: z.literal(true).optional(),
-    browserName: z
-      .string()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)
-      .optional(),
+    browserName: ScalarString.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u).optional(),
     browserSha256: Sha256Schema.optional(),
     /** The driver is the app's own `resources/<browserName>`, not a template copy. */
     packagedBrowser: z.literal(true).optional()
@@ -21,8 +19,8 @@ const TemplateTargetSchema = z
   })
 export const OrcadTemplateManifestSchema = z.object({
   schemaVersion: z.union([z.literal(3), z.literal(4)]),
-  commonSha256: z.record(z.string(), Sha256Schema),
-  targets: z.record(z.string(), TemplateTargetSchema)
+  commonSha256: z.record(ScalarString, Sha256Schema),
+  targets: z.record(ScalarString, TemplateTargetSchema)
 })
 
 export type OrcadTemplateManifest = z.infer<typeof OrcadTemplateManifestSchema>

@@ -1,3 +1,13 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNullableString,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   getAgentResumeArgv,
@@ -9,20 +19,20 @@ import { isValidTerminalTabId } from './terminal-tab-id'
 import { normalizeMainAgentStatusField } from './agent-status-types'
 import { salvagingRecord } from './zod-salvage'
 
-const terminalTabIdSchema = z
-  .string()
-  .min(1)
-  .refine(isValidTerminalTabId, 'terminal tab id must not contain ":"')
+const terminalTabIdSchema = ScalarNonemptyString.refine(
+  isValidTerminalTabId,
+  'terminal tab id must not contain ":"'
+)
 
 const agentProviderSessionSchema = z.preprocess(
   (raw) => normalizeAgentProviderSession(raw) ?? undefined,
   z.object({
     key: z.enum(['session_id', 'conversation_id']),
-    id: z.string().min(1).max(512),
+    id: ScalarNonemptyString.max(512),
     // Pi resume requires its persisted authoritative transcript path.
-    transcriptPath: z.string().min(1).optional(),
-    cwd: z.string().min(1).optional(),
-    effort: z.string().regex(AGENT_EFFORT_LEVEL).optional()
+    transcriptPath: ScalarOptionalNonemptyString,
+    cwd: ScalarOptionalNonemptyString,
+    effort: ScalarString.regex(AGENT_EFFORT_LEVEL).optional()
   })
 )
 
@@ -62,17 +72,15 @@ const sleepingAgentLaunchEnvSchema = z.preprocess(
     }
     return { ...cleaned }
   },
-  z.record(z.string(), z.string())
+  z.record(ScalarString, ScalarString)
 )
 
 export const sleepingAgentLaunchConfigBaseSchema = z.object({
-  agentCommand: z.string().optional(),
-  agentArgs: z.string(),
+  agentCommand: ScalarOptionalString,
+  agentArgs: ScalarString,
   agentEnv: sleepingAgentLaunchEnvSchema,
   // AI Vault scans arbitrary OMP roots; retain the exact resume locator for cold restore.
-  ompResumeFilePath: z
-    .string()
-    .trim()
+  ompResumeFilePath: ScalarString.trim()
     .min(1)
     .max(32 * 1024)
     .refine((value) => !hasUnsafeLaunchEnvChars(value))
@@ -86,24 +94,24 @@ export const sleepingAgentLaunchConfigSchema = z.preprocess((raw) => {
 
 export const sleepingAgentSessionRecordSchema = z
   .object({
-    paneKey: z.string().refine((value) => value.length > 0),
+    paneKey: ScalarString.refine((value) => value.length > 0),
     tabId: terminalTabIdSchema.optional(),
-    worktreeId: z.string().min(1),
+    worktreeId: ScalarNonemptyString,
     agent: z.enum(RESUMABLE_TUI_AGENTS),
     providerSession: agentProviderSessionSchema,
-    prompt: z.string(),
+    prompt: ScalarString,
     state: z.enum(['working', 'blocked', 'waiting', 'done']),
-    capturedAt: z.number().finite().positive(),
-    updatedAt: z.number().finite().positive(),
-    terminalTitle: z.string().optional(),
-    lastAssistantMessage: z.string().optional(),
-    interrupted: z.boolean().optional(),
+    capturedAt: ScalarFiniteNumber.positive(),
+    updatedAt: ScalarFiniteNumber.positive(),
+    terminalTitle: ScalarOptionalString,
+    lastAssistantMessage: ScalarOptionalString,
+    interrupted: ScalarOptionalBoolean,
     // A malformed value drops the field, never the record.
-    mainAgent: z.unknown().transform(normalizeMainAgentStatusField).optional(),
-    connectionId: z.string().nullable().optional(),
+    mainAgent: ScalarUnknown.transform(normalizeMainAgentStatusField).optional(),
+    connectionId: ScalarOptionalNullableString,
     launchConfig: sleepingAgentLaunchConfigSchema.optional(),
     origin: z.enum(['worktree-sleep', 'quit', 'live']).optional(),
-    restoreOnTabOpenOnly: z.boolean().optional()
+    restoreOnTabOpenOnly: ScalarOptionalBoolean
   })
   .refine(
     (record) => getAgentResumeArgv(record.agent, record.providerSession) !== null,
@@ -112,7 +120,7 @@ export const sleepingAgentSessionRecordSchema = z
   )
 
 export const sleepingAgentSessionsByPaneKeySchema = salvagingRecord(
-  z.string().refine((paneKey) => !isUnsafeObjectKey(paneKey)),
+  ScalarString.refine((paneKey) => !isUnsafeObjectKey(paneKey)),
   sleepingAgentSessionRecordSchema,
   (paneKey, record) => record.paneKey === paneKey
 ).transform((records) => (Object.keys(records).length > 0 ? records : undefined))

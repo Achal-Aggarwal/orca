@@ -1,3 +1,11 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalPositiveInteger,
+  ScalarPositiveInteger
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { appStarSourceSchema } from './gh-star-source'
 import {
@@ -23,14 +31,14 @@ import {
 import { workspaceCreatedTimingProperties } from './telemetry-workspace-create-schemas'
 
 // Cohort signal (repo count at emit time); `.optional()` lets a fail-soft `undefined` validate. See docs/onboarding-funnel-cohort-addendum.md.
-export const nthRepoAddedSchema = z.number().int().nonnegative().optional()
+export const nthRepoAddedSchema = ScalarOptionalNonnegativeInteger
 
 export const appOpenedSchema = z
   .object({
     nth_repo_added: nthRepoAddedSchema,
-    agent_dashboard_enabled: z.boolean().optional(),
+    agent_dashboard_enabled: ScalarOptionalBoolean,
     // Accept retired sampling fields from older callers; current builds no longer emit them.
-    tab_close_sampled: z.boolean().optional(),
+    tab_close_sampled: ScalarOptionalBoolean,
     tab_close_sample_rate: z.literal(0.1).optional()
   })
   .strict()
@@ -60,7 +68,7 @@ export const repoAddedSchema = z
   // Unknown git-ness must omit rather than guess false; optional keeps undetectable paths valid.
   .object({
     method: repoMethodSchema,
-    is_git_repo: z.boolean().optional(),
+    is_git_repo: ScalarOptionalBoolean,
     nth_repo_added: nthRepoAddedSchema
   })
   .strict()
@@ -77,12 +85,12 @@ export const starNagOutcomeEventSchema = z
     outcome: starNagOutcomeSchema,
     source: starNagPromptSourceSchema,
     mode: starNagPromptModeSchema,
-    threshold: z.number().int().positive(),
-    agents_since_baseline: z.number().int().nonnegative(),
+    threshold: ScalarPositiveInteger,
+    agents_since_baseline: ScalarNonnegativeInteger,
     agents_since_baseline_bucket: starNagAgentBucketSchema,
     nth_repo_added: nthRepoAddedSchema,
-    next_threshold: z.number().int().positive().optional(),
-    cooldown_days: z.number().int().positive().optional()
+    next_threshold: ScalarOptionalPositiveInteger,
+    cooldown_days: ScalarOptionalPositiveInteger
   })
   .strict()
   .refine(
@@ -109,7 +117,7 @@ export const starNagOutcomeEventSchema = z
 export const workspaceCreatedSchema = z
   .object({
     source: workspaceSourceSchema,
-    from_existing_branch: z.boolean(),
+    from_existing_branch: ScalarBoolean,
     nth_repo_added: nthRepoAddedSchema,
     ...workspaceCreatedTimingProperties
   })

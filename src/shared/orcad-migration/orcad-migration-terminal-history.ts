@@ -1,3 +1,4 @@
+import { ScalarNumber, ScalarString, ScalarUnknown } from '../scalar-value-schemas'
 /**
  * The `terminal-history` blob: one moved pane's daemon history (its checkpoint, cwd and size) for
  * the destination's own daemon to cold-restore once, exactly as after an app restart. The host
@@ -38,18 +39,18 @@ export type OrcadMigrationTerminalHistoryDocument = {
   checkpoint: Record<string, unknown>
 }
 
-const DimensionSchema = z.number().int().min(1).max(MAX_TERMINAL_DIMENSION)
+const DimensionSchema = ScalarNumber.int().min(1).max(MAX_TERMINAL_DIMENSION)
 
 const DocumentSchema = z
   .object({
     version: z.literal(ORCAD_MIGRATION_TERMINAL_HISTORY_VERSION),
-    paneKey: z
-      .string()
-      .refine((value) => value.length <= MAX_PANE_KEY_LEN && parsePaneKey(value) !== null),
-    cwd: z.string().refine(isOrcadMigrationTerminalRestoreHintCwd).nullable(),
+    paneKey: ScalarString.refine(
+      (value) => value.length <= MAX_PANE_KEY_LEN && parsePaneKey(value) !== null
+    ),
+    cwd: ScalarString.refine(isOrcadMigrationTerminalRestoreHintCwd).nullable(),
     cols: DimensionSchema,
     rows: DimensionSchema,
-    checkpoint: z.record(z.string(), z.unknown())
+    checkpoint: z.record(ScalarString, ScalarUnknown)
   })
   .strict()
 

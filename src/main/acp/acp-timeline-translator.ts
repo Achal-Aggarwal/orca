@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { AcpTimelineEvent as ProviderTimelineEvent } from './acp-timeline-event'
@@ -26,7 +27,7 @@ import type { NativeChatSubagentState } from '../../shared/native-chat-types'
 
 export { acpTurnEnd } from './acp-prompt-turns'
 
-const requestSessionSchema = z.object({ sessionId: z.string() })
+const requestSessionSchema = z.object({ sessionId: ScalarString })
 
 export type AcpTimelineTranslatorOptions = {
   sessionId: string

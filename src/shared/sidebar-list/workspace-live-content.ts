@@ -1,9 +1,10 @@
+import { ScalarBoolean, ScalarNonnegativeInteger } from '../scalar-value-schemas'
 import { z } from 'zod'
 
 /** Host-counted terminal content; idle workspaces are absent. */
 export const WorkspaceLiveContentSchema = z.object({
-  liveTerminalCount: z.number().int().nonnegative(),
-  hasAttachedPty: z.boolean()
+  liveTerminalCount: ScalarNonnegativeInteger,
+  hasAttachedPty: ScalarBoolean
 })
 
 export type WorkspaceLiveContent = z.infer<typeof WorkspaceLiveContentSchema>

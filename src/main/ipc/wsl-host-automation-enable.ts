@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNumber } from '../../shared/scalar-value-schemas'
 /** A WSL move's last host step: the moved automations go back on, through the host's own API. */
 import { z } from 'zod'
 import { encodePairingOffer, parsePairingCode } from '../../shared/pairing'
@@ -11,7 +12,7 @@ import type { WslMoveMovedAutomation } from '../persistence/moving-wsl-projects/
 export const AUTOMATION_NOT_FOUND = 'Automation not found'
 
 export const ShownAutomationSchema = z.object({
-  automation: z.object({ enabled: z.boolean(), updatedAt: z.number() })
+  automation: z.object({ enabled: ScalarBoolean, updatedAt: ScalarNumber })
 })
 
 export type WslHostAutomationApi = (

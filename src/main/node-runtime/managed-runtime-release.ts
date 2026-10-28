@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 // Launch reads use receipts and member sizes; full hashing belongs to installation.
 
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
@@ -27,11 +32,11 @@ const RECEIPT_MAX_BYTES = 8 * 1024
 const VERSION_ORDER = new Intl.Collator(undefined, { numeric: true })
 
 const runtimeReleaseReceiptSchema = z.object({
-  releaseId: z.string().regex(/^[a-f0-9]{64}$/),
-  version: z.string().min(1),
-  platform: z.string(),
-  arch: z.string(),
-  members: z.array(z.object({ path: z.string().min(1), bytes: z.number().int().positive() })).min(1)
+  releaseId: ScalarString.regex(/^[a-f0-9]{64}$/),
+  version: ScalarNonemptyString,
+  platform: ScalarString,
+  arch: ScalarString,
+  members: z.array(z.object({ path: ScalarNonemptyString, bytes: ScalarPositiveInteger })).min(1)
 })
 
 export type InstalledRuntimeRelease = {

@@ -1,3 +1,4 @@
+import { ScalarFiniteNumber, ScalarString } from '../../shared/scalar-value-schemas'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
@@ -15,11 +16,11 @@ import { writePluginFileAtomically } from './plugin-atomic-file-write'
 export const PLUGIN_MARKETPLACE_SOURCE_LIMIT = 64
 export const PLUGIN_MARKETPLACE_SOURCE_ID_PATTERN = /^[0-9a-f]{32}$/
 
-const sourceIdSchema = z.string().regex(PLUGIN_MARKETPLACE_SOURCE_ID_PATTERN)
+const sourceIdSchema = ScalarString.regex(PLUGIN_MARKETPLACE_SOURCE_ID_PATTERN)
 const registeredSourceSchema = z.strictObject({
   id: sourceIdSchema,
   source: pluginMarketplaceGitSourceSchema,
-  addedAt: z.number().finite().nonnegative()
+  addedAt: ScalarFiniteNumber.nonnegative()
 })
 const sourceFileSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -29,8 +30,8 @@ const cachedSnapshotSchema = z.strictObject({
   schemaVersion: z.literal(1),
   sourceId: sourceIdSchema,
   source: pluginMarketplaceGitSourceSchema,
-  marketplaceCommit: z.string().regex(PLUGIN_COMMIT_PATTERN),
-  fetchedAt: z.number().finite().nonnegative(),
+  marketplaceCommit: ScalarString.regex(PLUGIN_COMMIT_PATTERN),
+  fetchedAt: ScalarFiniteNumber.nonnegative(),
   marketplace: pluginMarketplaceSchema
 })
 

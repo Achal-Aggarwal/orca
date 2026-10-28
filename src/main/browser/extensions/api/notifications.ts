@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNumber, ScalarString } from '../../../../shared/scalar-value-schemas'
 import { Notification, nativeImage } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -19,14 +20,14 @@ import { noteBrowserExtensionUserGesture } from './permissions'
 const optionsSchema = z
   .object({
     type: z.enum(['basic', 'image', 'list', 'progress']),
-    iconUrl: z.string(),
-    title: z.string(),
-    message: z.string(),
-    contextMessage: z.string(),
-    buttons: z.array(z.object({ title: z.string() }).loose()).max(2),
-    requireInteraction: z.boolean(),
-    silent: z.boolean(),
-    priority: z.number().int()
+    iconUrl: ScalarString,
+    title: ScalarString,
+    message: ScalarString,
+    contextMessage: ScalarString,
+    buttons: z.array(z.object({ title: ScalarString }).loose()).max(2),
+    requireInteraction: ScalarBoolean,
+    silent: ScalarBoolean,
+    priority: ScalarNumber.int()
   })
   .partial()
   .loose()

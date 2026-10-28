@@ -1,4 +1,5 @@
-import { z } from 'zod'
+import { ScalarString } from '../scalar-value-schemas'
+import type { z } from 'zod'
 import { DesktopSidebarFactsSchema, type DesktopSidebarFacts } from './desktop-sidebar-facts'
 import type { InstalledSidebarInputs } from './sidebar-inputs-feed-installer'
 import {
@@ -95,7 +96,7 @@ const entityParsers = {
   pairedServerRows: entityParser(
     PairedServerRowsSnapshotSchema.shape.servers.element.shape.rows.element
   ),
-  repoIcons: entityParser(z.string())
+  repoIcons: entityParser(ScalarString)
 }
 
 function readKeyedDomain<Entity, Key extends string>(

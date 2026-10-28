@@ -1,3 +1,4 @@
+import { ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { expect, vi } from 'vitest'
 import { z } from 'zod'
@@ -12,13 +13,13 @@ import { envelope } from './wsl-orcad-chat-envelope'
 import type { ChatLane } from './wsl-orcad-structured-chat-contract'
 
 const ScriptedProviderReport = z.object({
-  argv: z.array(z.string()),
-  execPath: z.string(),
-  cwd: z.string(),
-  env: z.record(z.string(), z.string()),
-  methods: z.array(z.string()),
-  approvalResponses: z.array(z.unknown()).optional(),
-  permissionResponses: z.array(z.unknown()).optional()
+  argv: z.array(ScalarString),
+  execPath: ScalarString,
+  cwd: ScalarString,
+  env: z.record(ScalarString, ScalarString),
+  methods: z.array(ScalarString),
+  approvalResponses: z.array(ScalarUnknown).optional(),
+  permissionResponses: z.array(ScalarUnknown).optional()
 })
 
 /** Per provider: its approval answer, account home variable and what the fixture records for argv, the answer and Stop. */

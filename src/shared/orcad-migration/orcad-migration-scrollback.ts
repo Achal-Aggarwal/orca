@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT } from '../terminal-scrollback-limits'
 import type { WorkspaceSessionState } from '../workspace-session-state-types'
@@ -12,19 +17,18 @@ export const MAX_ORCAD_MIGRATION_SCROLLBACK_SNAPSHOTS = 512
 export const MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES = 256 * 1024 * 1024
 export const ORCAD_MIGRATION_SCROLLBACK_CHUNK_BYTES = 128 * 1024
 
-export const OrcadMigrationIdentitySchema = z.string().min(1).max(256)
-export const OrcadMigrationDigestSchema = z.string().regex(/^[a-f0-9]{64}$/)
-const SnapshotRef = z.string().regex(/^v1-[a-f0-9]{32}$/)
-export const OrcadMigrationChunkBase64Schema = z
-  .string()
-  .max(Math.ceil(ORCAD_MIGRATION_SCROLLBACK_CHUNK_BYTES / 3) * 4)
-  .refine((value) => {
-    try {
-      return value.length > 0 && Buffer.from(value, 'base64').toString('base64') === value
-    } catch {
-      return false
-    }
-  })
+export const OrcadMigrationIdentitySchema = ScalarNonemptyString.max(256)
+export const OrcadMigrationDigestSchema = ScalarString.regex(/^[a-f0-9]{64}$/)
+const SnapshotRef = ScalarString.regex(/^v1-[a-f0-9]{32}$/)
+export const OrcadMigrationChunkBase64Schema = ScalarString.max(
+  Math.ceil(ORCAD_MIGRATION_SCROLLBACK_CHUNK_BYTES / 3) * 4
+).refine((value) => {
+  try {
+    return value.length > 0 && Buffer.from(value, 'base64').toString('base64') === value
+  } catch {
+    return false
+  }
+})
 
 export type OrcadMigrationTerminalScrollbackSnapshot = {
   tabId: string
@@ -39,7 +43,7 @@ export const OrcadMigrationSnapshotChunkRequestSchema = z.object({
   migrationId: OrcadMigrationIdentitySchema,
   manifestSha256: OrcadMigrationDigestSchema,
   ref: SnapshotRef,
-  offset: z.number().int().nonnegative().max(MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES),
+  offset: ScalarNonnegativeInteger.max(MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES),
   bytesBase64: OrcadMigrationChunkBase64Schema
 })
 

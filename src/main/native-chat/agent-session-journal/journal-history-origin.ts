@@ -1,7 +1,8 @@
+import { ScalarFiniteNumber, ScalarNonemptyString } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { JournalEpochRow } from './journal-row-schema'
 
-const text = z.string().min(1)
+const text = ScalarNonemptyString
 const handle = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('codex'), threadId: text }),
   z.object({ kind: z.literal('claude'), sessionId: text, leafUuid: text.nullable() }),
@@ -11,7 +12,7 @@ const origin = z.object({
   version: z.literal(1),
   kind: z.literal('legacy_import'),
   providerHandle: handle,
-  importedAt: z.number().finite()
+  importedAt: ScalarFiniteNumber
 })
 
 /** Preserve raw annotations even when this build cannot interpret them. */

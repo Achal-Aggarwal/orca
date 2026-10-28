@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNonnegativeInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 import type { RuntimeSessionTabCloseReason } from './runtime-session-contracts'
 
@@ -19,8 +20,8 @@ export type ClosedTerminalTabTombstonesByTabId = Record<string, ClosedTerminalTa
 
 /** Colocate persistence schema with type; omitting it once let zod silently strip tombstones on every relaunch. */
 export const closedTerminalTabTombstoneSchema = z.object({
-  closedAt: z.number().int().nonnegative(),
-  worktreeId: z.string().min(1),
+  closedAt: ScalarNonnegativeInteger,
+  worktreeId: ScalarNonemptyString,
   // Why catch: a reason a newer build adds must not cost this build the record itself.
   reason: z.enum(TERMINAL_TAB_CLOSE_REASONS).optional().catch(undefined)
 })

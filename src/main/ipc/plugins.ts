@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import type { Store } from '../persistence'
@@ -33,28 +39,28 @@ export function parsePluginConsentArgs(args: unknown): z.infer<typeof pluginCons
 }
 
 const setEnabledArgsSchema = z.object({
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
-  enabled: z.boolean()
+  pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
+  enabled: ScalarBoolean
 })
 
 const readPanelEntryArgsSchema = z.object({
-  pluginKey: z.string().min(1),
-  panelId: z.string().min(1)
+  pluginKey: ScalarNonemptyString,
+  panelId: ScalarNonemptyString
 })
 
 const invokeCommandArgsSchema = z.object({
-  pluginKey: z.string().min(1),
-  commandId: z.string().min(1),
-  args: z.unknown().optional()
+  pluginKey: ScalarNonemptyString,
+  commandId: ScalarNonemptyString,
+  args: ScalarOptionalUnknown
 })
 
 const installArgsSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('local-path'), path: z.string().min(1) }),
+  z.object({ kind: z.literal('local-path'), path: ScalarNonemptyString }),
   z.object({
     kind: z.literal('git'),
-    url: z.string().trim().min(1).refine(isAllowedPluginGitUrl, 'git URL must use HTTPS or SSH'),
+    url: ScalarString.trim().min(1).refine(isAllowedPluginGitUrl, 'git URL must use HTTPS or SSH'),
     // Why: installs must stay reproducible even when callers bypass renderer validation.
-    ref: z.string().trim().min(1)
+    ref: ScalarString.trim().min(1)
   })
 ])
 
@@ -63,9 +69,9 @@ export function parsePluginInstallArgs(args: unknown): z.infer<typeof installArg
 }
 
 const removeArgsSchema = z.object({
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key')
+  pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key')
 })
-const logsArgsSchema = z.object({ pluginKey: z.string().min(1) })
+const logsArgsSchema = z.object({ pluginKey: ScalarNonemptyString })
 
 // Preserve import compatibility; runtime RPC uses the Electron-free client-list module.
 import { listPluginsForClients } from '../plugins/plugin-client-list'

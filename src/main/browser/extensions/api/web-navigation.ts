@@ -1,3 +1,4 @@
+import { ScalarNumber, ScalarString } from '../../../../shared/scalar-value-schemas'
 /// <reference types="chrome" />
 import { webFrameMain } from 'electron'
 import { z } from 'zod'
@@ -87,14 +88,14 @@ function emitNavigation(
 
 const getFrameSchema = z
   .object({
-    tabId: z.number().int(),
-    frameId: z.number().int(),
-    processId: z.number().int(),
-    documentId: z.string()
+    tabId: ScalarNumber.int(),
+    frameId: ScalarNumber.int(),
+    processId: ScalarNumber.int(),
+    documentId: ScalarString
   })
   .partial()
   .loose()
-const getAllFramesSchema = z.object({ tabId: z.number().int() }).loose()
+const getAllFramesSchema = z.object({ tabId: ScalarNumber.int() }).loose()
 
 // Preload-only (see browser-extension-document-targets.ts): Orca's ids for native scripting targets.
 const DOCUMENT_TARGETS_NAMESPACE = 'orcaDocumentTargets'

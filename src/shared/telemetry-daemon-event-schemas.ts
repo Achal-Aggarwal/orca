@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { AGENT_HOOK_TARGETS } from './agent-hook-types'
 import { ERRNO_CODE_PATTERN } from './errno-code'
@@ -50,8 +56,8 @@ export const remoteOutboundBudgetCloseSchema = z
 // keep observed unresponsive_ms raw to calibrate the 45s threshold without assuming every stall needs termination.
 export const mainThreadHangDetectedSchema = z
   .object({
-    unresponsive_ms: z.number().int().nonnegative(),
-    self_recovered: z.boolean()
+    unresponsive_ms: ScalarNonnegativeInteger,
+    self_recovered: ScalarBoolean
   })
   .strict()
 
@@ -75,7 +81,7 @@ export const DAEMON_ASYNC_IO_STALL_DURATION_BUCKETS = ['<1m', '1-5m', '5-30m', '
 
 // Why: measures how often daemon worker-pool stalls start and how long they last before clearing.
 const daemonAsyncIoHealthBase = {
-  protocol_generation: z.number().int().positive().max(1_000),
+  protocol_generation: ScalarPositiveInteger.max(1_000),
   app_version_match: z.enum(DAEMON_ADOPTED_APP_VERSION_MATCH)
 }
 export const daemonAsyncIoHealthSchema = z.discriminatedUnion('transition', [
@@ -138,7 +144,7 @@ export const daemonAuditEligibilityBaseSchema = z.object({
   reason: z.enum(DAEMON_AUDIT_REASON_VALUES),
   trigger: z.enum(DAEMON_AUDIT_TRIGGER_VALUES),
   evidence_sources: z.array(z.enum(DAEMON_EVIDENCE_SOURCE_VALUES)).min(1).max(12),
-  protocol_generation: z.number().int().positive().max(1_000),
+  protocol_generation: ScalarPositiveInteger.max(1_000),
   generation_role: z.enum(DAEMON_AUDIT_GENERATION_ROLE_VALUES),
   provider: z.literal('local-daemon'),
   endpoint_kind: z.enum(['unix-socket', 'windows-named-pipe']),
@@ -154,13 +160,13 @@ export const daemonAuditEligibilitySchema = z.discriminatedUnion('exact_incarnat
   daemonAuditEligibilityBaseSchema
     .extend({
       exact_incarnation: z.literal('endpoint-identity'),
-      exact_incarnation_correlation: z.string().regex(/^v1:[0-9a-f]{32}$/)
+      exact_incarnation_correlation: ScalarString.regex(/^v1:[0-9a-f]{32}$/)
     })
     .strict(),
   daemonAuditEligibilityBaseSchema
     .extend({
       exact_incarnation: z.literal('endpoint-identity-linux-ticks'),
-      exact_incarnation_correlation: z.string().regex(/^v1:[0-9a-f]{32}$/)
+      exact_incarnation_correlation: ScalarString.regex(/^v1:[0-9a-f]{32}$/)
     })
     .strict(),
   daemonAuditEligibilityBaseSchema.extend({ exact_incarnation: z.literal('unavailable') }).strict()
@@ -214,7 +220,7 @@ export const profileStateAuthoritySelectedSchema = z
     classification: z.enum(['neither', 'json-only', 'sqlite-only', 'both']),
     authority_mode: z.enum(['legacy', 'sqlite-candidate', 'sqlite-established']),
     runtime: z.enum(['desktop', 'orcad']),
-    migrated: z.boolean()
+    migrated: ScalarBoolean
   })
   .strict()
 
@@ -226,7 +232,7 @@ export type HookInstallAgent = z.infer<typeof hookInstallAgentSchema>
 export const agentHookInstallFailedSchema = z
   .object({
     agent: hookInstallAgentSchema,
-    error_message: z.union([z.literal('unknown'), z.string().regex(ERRNO_CODE_PATTERN)])
+    error_message: z.union([z.literal('unknown'), ScalarString.regex(ERRNO_CODE_PATTERN)])
   })
   .strict()
 
@@ -238,5 +244,5 @@ export const agentHookUnattributedSchema = z
 // Security software resetting loopback hook bodies can kill all runtime status (#11217). Count only;
 // truncated bodies contain prompts/tool I/O, so send nothing derived from them.
 export const agentHookTransportBlockedSchema = z
-  .object({ count: z.number().int().nonnegative() })
+  .object({ count: ScalarNonnegativeInteger })
   .strict()

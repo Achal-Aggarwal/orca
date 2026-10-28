@@ -1,3 +1,20 @@
+import {
+  ScalarBoolean,
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from './scalar-value-schemas'
 // Validate replayed JSON deeply before unguarded reducers/renderers read it; malformed rows fail load without deletion.
 // Extend with keys, open-union tags or a new row v; never tighten existing types/bounds/closed sets.
 // Unknown keys and string vocabularies survive; unknown bodies/blocks/goals/subjects remain undrawn and writable.
@@ -18,38 +35,39 @@ import type {
 } from './agent-session-journal-types'
 
 const BoundedPayload = z.object({
-  head: z.string(),
-  byteLength: z.number(),
-  digest: z.string(),
-  truncated: z.boolean()
+  head: ScalarString,
+  byteLength: ScalarNumber,
+  digest: ScalarString,
+  truncated: ScalarBoolean
 })
 
 const ProviderFrame = z.object({
-  provider: z.string(),
-  kind: z.string(),
+  provider: ScalarString,
+  kind: ScalarString,
   payload: BoundedPayload
 })
 
 const ToolMetadata = {
-  mcpIdentity: z.object({ server: z.string(), tool: z.string() }).optional(),
-  exitCode: z.number().int().optional(),
-  durationMs: z.number().nonnegative().optional(),
-  webSearchResults: z.array(z.object({ title: z.string(), url: z.string() })).optional()
+  mcpIdentity: z.object({ server: ScalarString, tool: ScalarString }).optional(),
+  exitCode: ScalarNumber.int().optional(),
+  durationMs: ScalarNumber.nonnegative().optional(),
+  webSearchResults: z.array(z.object({ title: ScalarString, url: ScalarString })).optional()
 }
 
 /** Provider IDs are opaque; reject all-whitespace values without rewriting valid IDs. */
-const ProviderCallId = z
-  .string()
-  .refine((value) => value.trim().length > 0, 'callId must contain a non-whitespace character')
+const ProviderCallId = ScalarString.refine(
+  (value) => value.trim().length > 0,
+  'callId must contain a non-whitespace character'
+)
 
 /** Keep lifecycle strings open so newer states do not make persisted rows malformed. */
 const SubagentEntry = z.object({
-  id: z.string(),
-  label: z.string(),
-  state: z.string().min(1),
-  tokens: z.number().optional(),
-  startedAt: z.number().optional(),
-  settledAt: z.number().optional()
+  id: ScalarString,
+  label: ScalarString,
+  state: ScalarNonemptyString,
+  tokens: ScalarOptionalNumber,
+  startedAt: ScalarOptionalNumber,
+  settledAt: ScalarOptionalNumber
 })
 
 /** Skip unknown block types, but reject malformed payloads of known types. */
@@ -57,109 +75,109 @@ const Block = openDiscriminatedUnion(
   z.discriminatedUnion('type', [
     z.object({
       type: z.literal('text'),
-      text: z.string(),
-      presentation: z.string().optional(),
-      tone: z.string().optional(),
+      text: ScalarString,
+      presentation: ScalarOptionalString,
+      tone: ScalarOptionalString,
       providerFrame: ProviderFrame.optional()
     }),
     // JSON.stringify drops input: undefined, so persisted canonical calls may omit it.
     z.object({
       type: z.literal('tool-call'),
-      name: z.string(),
-      input: z.unknown().optional(),
+      name: ScalarString,
+      input: ScalarOptionalUnknown,
       callId: ProviderCallId.optional(),
       ...ToolMetadata
     }),
     z.object({
       type: z.literal('tool-result'),
-      output: z.string(),
-      isError: z.boolean().optional()
+      output: ScalarString,
+      isError: ScalarOptionalBoolean
     }),
     z.object({
       type: z.literal('image-ref'),
-      path: z.string().optional(),
-      url: z.string().optional(),
-      alt: z.string().optional()
+      path: ScalarOptionalString,
+      url: ScalarOptionalString,
+      alt: ScalarOptionalString
     }),
     z.object({
       type: z.literal('subagent-group'),
-      groupId: z.string(),
+      groupId: ScalarString,
       agents: z.array(SubagentEntry)
     }),
     // `outcomeBasis` and `background` stay open for the same reason `state` does.
     SubagentEntry.extend({
       type: z.literal('subagent'),
-      groupId: z.string(),
-      parentId: z.string().optional(),
-      run: z.string().optional(),
-      outcomeBasis: z.string().optional(),
-      background: z.boolean().optional()
+      groupId: ScalarString,
+      parentId: ScalarOptionalString,
+      run: ScalarOptionalString,
+      outcomeBasis: ScalarOptionalString,
+      background: ScalarOptionalBoolean
     }),
     // Keep kind/state open for newer vocabularies; renderers fall back on unknown values.
     z.object({
       type: z.literal('background-task'),
-      taskId: z.string().min(1),
-      kind: z.string().min(1),
-      label: z.string(),
-      state: z.string().min(1),
-      parentToolUseId: z.string().optional(),
-      summary: z.string().optional(),
-      error: z.string().optional(),
-      outputFile: z.string().optional(),
-      tokens: z.number().optional(),
-      startedAt: z.number().optional(),
-      settledAt: z.number().optional()
+      taskId: ScalarNonemptyString,
+      kind: ScalarNonemptyString,
+      label: ScalarString,
+      state: ScalarNonemptyString,
+      parentToolUseId: ScalarOptionalString,
+      summary: ScalarOptionalString,
+      error: ScalarOptionalString,
+      outputFile: ScalarOptionalString,
+      tokens: ScalarOptionalNumber,
+      startedAt: ScalarOptionalNumber,
+      settledAt: ScalarOptionalNumber
     })
   ])
 )
 
 const PromptOption = z.object({
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional()
+  id: ScalarString,
+  label: ScalarString,
+  description: ScalarOptionalString
 })
 
 const FreeTextInput = z.object({
-  allowEmpty: z.boolean().optional(),
-  multiline: z.boolean().optional(),
-  initialValue: z.string().optional(),
-  placeholder: z.string().optional()
+  allowEmpty: ScalarOptionalBoolean,
+  multiline: ScalarOptionalBoolean,
+  initialValue: ScalarOptionalString,
+  placeholder: ScalarOptionalString
 })
 
 const Question = z.object({
-  id: z.string(),
-  question: z.string(),
-  header: z.string().optional(),
-  multiSelect: z.boolean(),
+  id: ScalarString,
+  question: ScalarString,
+  header: ScalarOptionalString,
+  multiSelect: ScalarBoolean,
   options: z.array(PromptOption),
-  freeTextQuestionId: z.string().optional(),
+  freeTextQuestionId: ScalarOptionalString,
   freeTextInput: FreeTextInput.optional()
 })
 
 const Resolution = z.object({
-  state: z.string().min(1),
-  selectedOptionId: z.string().nullable(),
+  state: ScalarNonemptyString,
+  selectedOptionId: ScalarNullableString,
   answers: z
     .array(
       z.object({
-        questionId: z.string(),
-        optionIds: z.array(z.string()),
-        other: z.string().optional()
+        questionId: ScalarString,
+        optionIds: z.array(ScalarString),
+        other: ScalarOptionalString
       })
     )
     .optional(),
-  resolvedBy: z.string().nullable(),
-  resolvedAt: z.number().nullable()
+  resolvedBy: ScalarNullableString,
+  resolvedAt: ScalarNullableNumber
 })
 
 const ApprovalMatchedAskRule = z.object({
-  source: z.string(),
-  toolName: z.string(),
-  ruleContent: z.string().optional()
+  source: ScalarString,
+  toolName: ScalarString,
+  ruleContent: ScalarOptionalString
 })
 
 const KnownApprovalSubject = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('plan'), text: z.string().min(1), filePath: z.string().optional() })
+  z.object({ kind: z.literal('plan'), text: ScalarNonemptyString, filePath: ScalarOptionalString })
 ])
 export const AGENT_JOURNAL_APPROVAL_SUBJECT_KINDS = knownTags(KnownApprovalSubject)
 /** Open like blocks; a subject this build cannot draw is never approvable here
@@ -168,28 +186,28 @@ const ApprovalSubject = openDiscriminatedUnion(KnownApprovalSubject)
 
 const MessageBody = z.object({
   kind: z.literal('message'),
-  role: z.string().min(1),
+  role: ScalarNonemptyString,
   blocks: z.array(Block),
   // Open like roles: a send mode a newer build writes must not turn the row malformed.
-  sentAs: z.string().min(1).optional(),
-  command: z.object({ name: z.string().min(1) }).optional(),
-  skills: z.array(z.object({ name: z.string().min(1), path: z.string().min(1) })).optional(),
+  sentAs: ScalarOptionalNonemptyString,
+  command: z.object({ name: ScalarNonemptyString }).optional(),
+  skills: z.array(z.object({ name: ScalarNonemptyString, path: ScalarNonemptyString })).optional(),
   // Open like `sentAs`: a state a newer host writes reads as completed, never malformed.
-  state: z.string().min(1).optional(),
-  completedAt: z.number().finite().optional()
+  state: ScalarOptionalNonemptyString,
+  completedAt: ScalarOptionalFiniteNumber
 })
 
 /** A turn's lifecycle, as the turn item and the legacy status row both carry it. */
 const TurnLifecycleFields = {
-  turnId: z.string(),
-  state: z.string().min(1),
+  turnId: ScalarString,
+  state: ScalarNonemptyString,
   // Keep newer verdicts readable; readAgentJournalTurnOutcome maps unplaceable ones to unknown.
-  outcome: z.string().min(1).optional(),
-  userItemId: z.string().min(1).optional(),
-  startedAt: z.number().finite().positive().optional(),
-  requestedAt: z.number().finite().positive().optional(),
-  completedAt: z.number().finite().positive().optional(),
-  durationMs: z.number().finite().nonnegative().optional()
+  outcome: ScalarOptionalNonemptyString,
+  userItemId: ScalarOptionalNonemptyString,
+  startedAt: ScalarFiniteNumber.positive().optional(),
+  requestedAt: ScalarFiniteNumber.positive().optional(),
+  completedAt: ScalarFiniteNumber.positive().optional(),
+  durationMs: ScalarFiniteNumber.nonnegative().optional()
 }
 
 const KnownItemBody = z.discriminatedUnion('kind', [
@@ -197,61 +215,61 @@ const KnownItemBody = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('tool-call'),
     ...ToolMetadata,
-    name: z.string(),
+    name: ScalarString,
     // See the tool-call block: the key itself is lost when `input` is undefined.
-    input: z.unknown().optional(),
+    input: ScalarOptionalUnknown,
     callId: ProviderCallId.optional(),
-    state: z.string().min(1),
+    state: ScalarNonemptyString,
     // Open like `state`: an ending a newer build writes reads as the `state` beside it.
-    endedAs: z.string().min(1).optional(),
+    endedAs: ScalarOptionalNonemptyString,
     output: BoundedPayload.optional()
   }),
-  z.object({ kind: z.literal('diff'), path: z.string(), patch: BoundedPayload }),
+  z.object({ kind: z.literal('diff'), path: ScalarString, patch: BoundedPayload }),
   z.object({
     kind: z.literal('approval'),
-    title: z.string(),
-    displayName: z.string().optional(),
-    description: z.string().optional(),
-    decisionReason: z.string().optional(),
-    blockedPath: z.string().optional(),
+    title: ScalarString,
+    displayName: ScalarOptionalString,
+    description: ScalarOptionalString,
+    decisionReason: ScalarOptionalString,
+    blockedPath: ScalarOptionalString,
     matchedAskRule: ApprovalMatchedAskRule.optional(),
     subject: ApprovalSubject.optional(),
-    detail: z.string().nullable(),
+    detail: ScalarNullableString,
     options: z.array(PromptOption),
     resolution: Resolution
   }),
   z.object({
     kind: z.literal('question'),
-    question: z.string(),
+    question: ScalarString,
     options: z.array(PromptOption),
     questions: z.array(Question).optional(),
-    freeTextQuestionId: z.string().optional(),
+    freeTextQuestionId: ScalarOptionalString,
     freeTextInput: FreeTextInput.optional(),
     resolution: Resolution
   }),
   z.object({
     kind: z.literal('status'),
-    text: z.string(),
-    presentation: z.string().optional(),
+    text: ScalarString,
+    presentation: ScalarOptionalString,
     contextClear: z
       .object({
-        operationId: z.string().min(1).max(512),
-        afterFence: z.number().int().nonnegative(),
-        clearedAt: z.number().int().nonnegative()
+        operationId: ScalarNonemptyString.max(512),
+        afterFence: ScalarNonnegativeInteger,
+        clearedAt: ScalarNonnegativeInteger
       })
       .optional(),
-    tone: z.string().optional(),
+    tone: ScalarOptionalString,
     turnLifecycle: z.object(TurnLifecycleFields).optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: AgentJournalThreadGoalStateSchema.optional(),
     failure: AgentSessionFailureFactSchema.optional(),
-    orcaStop: z.object({ cause: z.string().min(1) }).optional()
+    orcaStop: z.object({ cause: ScalarNonemptyString }).optional()
   }),
   z.object({
     kind: z.literal('turn'),
     ...TurnLifecycleFields,
     contextUsage: AgentSessionContextUsageSchema.optional(),
-    providerTurnId: z.string().min(1).optional()
+    providerTurnId: ScalarOptionalNonemptyString
   })
 ])
 
@@ -262,28 +280,28 @@ export const AgentJournalItemBodySchema = openDiscriminatedUnion(KnownItemBody)
 /** Keep producerKind open so newer producer types remain readable across the wire. */
 export const AgentJournalProducerLinkageFields = {
   // Empty IDs count as present and would permanently hide a parent's own row from parent-scoped readers.
-  agentId: z.string().min(1).optional(),
-  parentAgentId: z.string().min(1).optional(),
-  providerParentRef: z.string().min(1).optional(),
-  producerKind: z.string().min(1).optional(),
-  attempt: z.number().int().optional()
+  agentId: ScalarOptionalNonemptyString,
+  parentAgentId: ScalarOptionalNonemptyString,
+  providerParentRef: ScalarOptionalNonemptyString,
+  producerKind: ScalarOptionalNonemptyString,
+  attempt: ScalarNumber.int().optional()
 } as const
 
 /** Preserve unknown scope kinds from newer hosts without claiming a turn boundary or rejecting their content. */
 export const AgentJournalTurnScopeSchema = z.object({
-  kind: z.string().min(1),
-  turnItemId: z.string().min(1).optional()
+  kind: ScalarNonemptyString,
+  turnItemId: ScalarOptionalNonemptyString
 })
 
 export const AgentJournalRenderItemSchema = z.object({
-  itemId: z.string().min(1),
-  revision: z.number().int(),
+  itemId: ScalarNonemptyString,
+  revision: ScalarNumber.int(),
   body: AgentJournalItemBodySchema,
-  sequence: z.number().int(),
-  sequenceIndex: z.number().int().nonnegative().optional(),
-  observedAt: z.number(),
+  sequence: ScalarNumber.int(),
+  sequenceIndex: ScalarOptionalNonnegativeInteger,
+  observedAt: ScalarNumber,
   recovered: z.literal(true).optional(),
-  recoveredAt: z.number().optional(),
+  recoveredAt: ScalarOptionalNumber,
   turnScope: AgentJournalTurnScopeSchema.optional(),
   shortened: z.literal(true).optional(),
   ...AgentJournalProducerLinkageFields

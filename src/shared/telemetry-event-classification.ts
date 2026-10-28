@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 import { eventSchemas } from './telemetry-event-registry'
@@ -118,13 +119,13 @@ export function isOnboardingEvent(name: EventName): boolean {
 // Only official CI builds transmit; contributor/dev builds console-mirror, so no env discriminator is needed.
 export const commonPropsSchema = z
   .object({
-    app_version: z.string().max(64),
-    platform: z.string().max(64),
-    arch: z.string().max(64),
-    os_release: z.string().max(64),
+    app_version: ScalarString.max(64),
+    platform: ScalarString.max(64),
+    arch: ScalarString.max(64),
+    os_release: ScalarString.max(64),
     // Empty IDs merge unrelated users/sessions in analytics.
-    install_id: z.string().min(1).max(64),
-    session_id: z.string().min(1).max(64),
+    install_id: ScalarNonemptyString.max(64),
+    session_id: ScalarNonemptyString.max(64),
     orca_channel: z.enum(['stable', 'rc']),
     onboarding_language_v1: z.enum(['control', 'treatment']).optional()
   })

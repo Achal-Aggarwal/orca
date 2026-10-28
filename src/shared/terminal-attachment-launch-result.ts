@@ -1,3 +1,8 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarOptionalNonemptyString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import type { SleepingAgentLaunchConfig, TerminalLaunchResult } from './agent-session-resume'
 import { isTuiAgent } from './tui-agent-config'
@@ -18,11 +23,11 @@ export type TerminalAttachmentLaunchResult = TerminalLaunchResult & {
 }
 
 const launchResultSchema = z.object({
-  ptyId: z.string().min(1),
-  incarnationId: z.string().min(1),
+  ptyId: ScalarNonemptyString,
+  incarnationId: ScalarNonemptyString,
   savedResumeDecision: z
     .object({
-      agent: z.string().min(1),
+      agent: ScalarNonemptyString,
       providerSession: ResumeProviderSessionParam,
       verdict: z.enum(['admitted', 'chat-home', 'chat-writing', 'unverifiable'])
     })
@@ -31,27 +36,27 @@ const launchResultSchema = z.object({
   agentResumeRefused: z.enum(['chat-home', 'chat-writing', 'unverifiable']).optional(),
   refusedResume: z
     .object({
-      agent: z.string().min(1),
+      agent: ScalarNonemptyString,
       providerSession: ResumeProviderSessionParam,
       expectedStatus: z
         .object({
-          paneKey: z.string().min(1),
-          receivedAt: z.number().finite(),
-          stateStartedAt: z.number().finite()
+          paneKey: ScalarNonemptyString,
+          receivedAt: ScalarFiniteNumber,
+          stateStartedAt: ScalarFiniteNumber
         })
         .optional(),
       expectedSavedRecord: z
         .object({
-          paneKey: z.string().min(1),
-          capturedAt: z.number().finite(),
-          updatedAt: z.number().finite()
+          paneKey: ScalarNonemptyString,
+          capturedAt: ScalarFiniteNumber,
+          updatedAt: ScalarFiniteNumber
         })
         .optional()
     })
     .optional(),
   launchConfig: sleepingAgentLaunchConfigBaseSchema.optional(),
   launchAgent: z.custom<TuiAgent>(isTuiAgent).optional(),
-  launchToken: z.string().min(1).optional(),
+  launchToken: ScalarOptionalNonemptyString,
   resumeProviderSession: ResumeProviderSessionParam.optional()
 })
 

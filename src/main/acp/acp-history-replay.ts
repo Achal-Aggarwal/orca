@@ -1,3 +1,12 @@
+import {
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString,
+  ScalarUnknown
+} from '../../shared/scalar-value-schemas'
 // Replay grouping uses provider message/turn IDs and preserves source arrival order.
 
 import { z } from 'zod'
@@ -64,35 +73,39 @@ export type AcpHistoryTurn = {
 /** A replayed turn under the agent's own id. */
 export type AcpIdentifiedHistoryTurn = AcpHistoryTurn & { turn: string }
 
-const sessionSchema = z.object({ sessionId: z.string() })
-const looseRecord = z.record(z.string(), z.unknown())
+const sessionSchema = z.object({ sessionId: ScalarString })
+const looseRecord = z.record(ScalarString, ScalarUnknown)
 const frameSchema = z.looseObject({
   update: z.looseObject({
-    sessionUpdate: z.string(),
-    messageId: z.string().optional(),
-    prompt_id: z.string().optional(),
-    content: z.unknown().optional(),
-    _meta: z.looseObject({ promptIndex: z.number().int().nonnegative().optional() }).optional()
+    sessionUpdate: ScalarString,
+    messageId: ScalarOptionalString,
+    prompt_id: ScalarOptionalString,
+    content: ScalarOptionalUnknown,
+    _meta: z.looseObject({ promptIndex: ScalarOptionalNonnegativeInteger }).optional()
   }),
   _meta: z
     .looseObject({
-      promptId: z.string().optional(),
-      eventId: z.string().min(1).optional(),
-      agentTimestampMs: z.number().optional()
+      promptId: ScalarOptionalString,
+      eventId: ScalarOptionalNonemptyString,
+      agentTimestampMs: ScalarOptionalNumber
     })
     .optional()
 })
 const contentSchema = z.discriminatedUnion('type', [
   z.looseObject({
     type: z.literal('text'),
-    text: z.string(),
-    _meta: z.looseObject({ displayText: z.unknown().optional() }).optional()
+    text: ScalarString,
+    _meta: z.looseObject({ displayText: ScalarOptionalUnknown }).optional()
   }),
-  z.looseObject({ type: z.literal('image'), mimeType: z.string(), data: z.string() }),
-  z.looseObject({ type: z.literal('resource_link'), uri: z.string(), name: z.string().optional() }),
+  z.looseObject({ type: z.literal('image'), mimeType: ScalarString, data: ScalarString }),
+  z.looseObject({
+    type: z.literal('resource_link'),
+    uri: ScalarString,
+    name: ScalarOptionalString
+  }),
   z.looseObject({
     type: z.literal('resource'),
-    resource: z.looseObject({ uri: z.string(), text: z.string().optional() })
+    resource: z.looseObject({ uri: ScalarString, text: ScalarOptionalString })
   })
 ])
 

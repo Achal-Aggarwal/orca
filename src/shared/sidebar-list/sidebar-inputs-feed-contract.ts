@@ -1,3 +1,12 @@
+import {
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString,
+  ScalarUnknown
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { openEnum } from '../zod-salvage'
 
@@ -16,36 +25,36 @@ export const SIDEBAR_INPUTS_PAGE_MIN_BYTES = 16 * 1024
 
 /** No pageToken reads a same-generation cursor delta, or snapshot if unavailable; tokens continue their batch. */
 export const SidebarInputsReadParams = z.object({
-  generation: z.string().optional(),
-  cursor: z.number().int().nonnegative().optional(),
-  pageToken: z.string().optional(),
-  maxBytes: z.number().int().positive()
+  generation: ScalarOptionalString,
+  cursor: ScalarOptionalNonnegativeInteger,
+  pageToken: ScalarOptionalString,
+  maxBytes: ScalarPositiveInteger
 })
 
 export type SidebarInputsReadParams = z.infer<typeof SidebarInputsReadParams>
 
 /** One domain's entities as the batch changes them. */
 const SidebarInputsDomainChangeSchema = z.object({
-  upserts: z.record(z.string(), z.unknown()),
-  removals: z.array(z.string()),
+  upserts: z.record(ScalarString, ScalarUnknown),
+  removals: z.array(ScalarString),
   /** Pieces of entities too large for one page, as JSON text joined across the batch's pages. */
-  parts: z.record(z.string(), z.string())
+  parts: z.record(ScalarString, ScalarString)
 })
 
 export const SidebarInputsReadResultSchema = z.object({
   /** A new id each time the runtime starts; ids have no order. */
-  generation: z.string(),
+  generation: ScalarString,
   /** The revision this batch brings the reader to; a reset names the current one. */
-  revision: z.number().int(),
-  schemaVersion: z.number().int(),
-  semanticsVersion: z.number().int(),
+  revision: ScalarNumber.int(),
+  schemaVersion: ScalarNumber.int(),
+  semanticsVersion: ScalarNumber.int(),
   // A kind this build has not heard of reads as a reset: re-read from what is installed.
   kind: openEnum(['snapshot', 'delta', 'reset'], 'reset'),
   /** A delta applies only on exactly this revision; null otherwise. */
-  from: z.number().int().nullable(),
-  domains: z.record(z.string(), SidebarInputsDomainChangeSchema),
+  from: ScalarNumber.int().nullable(),
+  domains: z.record(ScalarString, SidebarInputsDomainChangeSchema),
   /** The batch's next page; null on its last. A batch installs only once it is whole. */
-  next: z.string().nullable()
+  next: ScalarNullableString
 })
 
 export type SidebarInputsDomainChange = z.infer<typeof SidebarInputsDomainChangeSchema>

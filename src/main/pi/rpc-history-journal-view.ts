@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNonnegativeInteger } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   agentJournalSubmissionKey,
@@ -10,9 +11,9 @@ import type { StructuredAgentSessionHistoryJournal } from '../native-chat/agent-
 export type PiHistoryClaim = { entry: string; epoch: string; sequence: number }
 
 const claimSchema = z.object({
-  entry: z.string().min(1),
-  epoch: z.string().min(1),
-  sequence: z.number().int().nonnegative()
+  entry: ScalarNonemptyString,
+  epoch: ScalarNonemptyString,
+  sequence: ScalarNonnegativeInteger
 })
 
 export function encodePiHistoryClaim(claim: PiHistoryClaim): string {

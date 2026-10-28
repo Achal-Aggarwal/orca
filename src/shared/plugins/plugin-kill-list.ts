@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { isQualifiedPluginKey } from './plugin-manifest'
 
@@ -5,22 +6,20 @@ export const PLUGIN_KILL_LIST_ENTRY_LIMIT = 4_096
 /** Publisher clocks and client clocks disagree by minutes, never by days. */
 export const PLUGIN_KILL_LIST_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000
 
-const advisoryUrlSchema = z
-  .string()
-  .url()
+const advisoryUrlSchema = ScalarString.url()
   .max(2_048)
   .refine((value) => new URL(value).protocol === 'https:', 'advisory URL must use HTTPS')
 
 export const pluginKillListEntrySchema = z.strictObject({
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
-  reason: z.string().min(1).max(1_024),
+  pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
+  reason: ScalarNonemptyString.max(1_024),
   advisoryUrl: advisoryUrlSchema.optional()
 })
 
 export const pluginKillListSchema = z
   .strictObject({
     version: z.literal(1),
-    generatedAt: z.string().datetime({ offset: true }),
+    generatedAt: ScalarString.datetime({ offset: true }),
     plugins: z.array(pluginKillListEntrySchema).max(PLUGIN_KILL_LIST_ENTRY_LIMIT)
   })
   .superRefine((killList, context) => {

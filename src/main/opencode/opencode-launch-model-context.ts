@@ -1,3 +1,10 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from '../../shared/scalar-value-schemas'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
@@ -19,12 +26,12 @@ const OPENCODE_PREFLIGHT_KILL_SITE = 'opencode-launch-model-preflight'
 const SUPERVISOR_PIPE_CLOSE_MS = 1_000
 
 const agent = z.object({
-  id: z.string().min(1),
-  mode: z.string().optional(),
-  hidden: z.boolean().optional()
+  id: ScalarNonemptyString,
+  mode: ScalarOptionalString,
+  hidden: ScalarOptionalBoolean
 })
-const location = z.object({ directory: z.string() })
-const agentResponse = z.object({ location, data: z.unknown().array() })
+const location = z.object({ directory: ScalarString })
+const agentResponse = z.object({ location, data: ScalarUnknown.array() })
 
 export type OpenCodeLaunchModelContext = {
   primaryAgent: string

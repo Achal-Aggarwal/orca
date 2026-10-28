@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarOptionalNonnegativeInteger
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { FEATURE_WALL_MAX_DWELL_MS } from './feature-wall-telemetry'
 import type { DiscoveryStatusEmitted } from './onboarding-state-types'
@@ -40,7 +46,7 @@ export const onboardingStepCompletedSchema = z
   .object({
     step: onboardingStepSchema,
     value_kind: onboardingValueKindSchema,
-    duration_ms: z.number().int().nonnegative().optional(),
+    duration_ms: ScalarOptionalNonnegativeInteger,
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -49,7 +55,7 @@ export const onboardingStepSkippedSchema = z
   .object({
     step: onboardingStepSchema,
     value_kind: onboardingValueKindSchema,
-    duration_ms: z.number().int().nonnegative().optional(),
+    duration_ms: ScalarOptionalNonnegativeInteger,
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -92,13 +98,13 @@ export function validateOnboardingTourOutcome(
 export const onboardingTourOutcomeEventSchema = z
   .object({
     outcome: onboardingTourOutcomeSchema,
-    intro_duration_ms: z.number().int().min(0).max(FEATURE_WALL_MAX_DWELL_MS).optional(),
-    tour_dwell_ms: z.number().int().min(0).max(FEATURE_WALL_MAX_DWELL_MS).optional(),
+    intro_duration_ms: ScalarNumber.int().min(0).max(FEATURE_WALL_MAX_DWELL_MS).optional(),
+    tour_dwell_ms: ScalarNumber.int().min(0).max(FEATURE_WALL_MAX_DWELL_MS).optional(),
     furthest_step: featureWallTourDepthStepSchema.optional(),
-    visited_workflow_count: z.number().int().min(0).max(5).optional(),
-    visited_substep_count: z.number().int().min(0).max(9).optional(),
-    completed_workflow_count: z.number().int().min(0).max(5).optional(),
-    completed_substep_count: z.number().int().min(0).max(9).optional(),
+    visited_workflow_count: ScalarNumber.int().min(0).max(5).optional(),
+    visited_substep_count: ScalarNumber.int().min(0).max(9).optional(),
+    completed_workflow_count: ScalarNumber.int().min(0).max(5).optional(),
+    completed_substep_count: ScalarNumber.int().min(0).max(9).optional(),
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -119,7 +125,7 @@ export const onboardingTaskSourcesSnapshotSchema = z
     github_status: onboardingTaskSourcesGithubStatusSchema,
     linear_status: onboardingTaskSourcesLinearStatusSchema,
     exit_action: onboardingTaskSourcesExitActionSchema,
-    duration_ms: z.number().int().nonnegative().optional(),
+    duration_ms: ScalarOptionalNonnegativeInteger,
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -129,7 +135,7 @@ export const onboardingWindowsTerminalSnapshotSchema = z
     default_shell: onboardingWindowsTerminalShellSchema,
     right_click_behavior: onboardingWindowsTerminalRightClickSchema,
     exit_action: onboardingWindowsTerminalExitActionSchema,
-    duration_ms: z.number().int().nonnegative().optional(),
+    duration_ms: ScalarOptionalNonnegativeInteger,
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -138,14 +144,14 @@ export const onboardingWindowsTerminalSnapshotSchema = z
 export const onboardingCompletedSchema = z
   .object({
     path: onboardingPathSchema,
-    total_duration_ms: z.number().int().nonnegative(),
+    total_duration_ms: ScalarNonnegativeInteger,
     cohort: cohortSchema
   })
   .strict()
 export const onboardingDismissedSchema = z
   .object({
     last_step: onboardingStepSchema,
-    duration_ms: z.number().int().nonnegative().optional(),
+    duration_ms: ScalarOptionalNonnegativeInteger,
     advanced_via: advancedViaSchema,
     cohort: cohortSchema
   })
@@ -153,7 +159,7 @@ export const onboardingDismissedSchema = z
 export const activationChecklistItemCompletedSchema = z
   .object({
     item: onboardingChecklistItemSchema,
-    time_since_completed_ms: z.number().int().nonnegative()
+    time_since_completed_ms: ScalarNonnegativeInteger
   })
   .strict()
 
@@ -189,12 +195,12 @@ void _pathSourceSyncCheck
 export const onboardingAgentPickedSchema = z
   .object({
     agent_kind: agentKindSchema,
-    on_path: z.boolean(),
-    detected_count: z.number().int().nonnegative(),
+    on_path: ScalarBoolean,
+    detected_count: ScalarNonnegativeInteger,
     // `'pending'` when detection is still running at click time (picked-before-detection vs picked-the-only-agent).
     detection_state: z.enum(['complete', 'pending']),
     // `true` when the agent lived under the "Show N more" disclosure — signals demand for less-popular agents.
-    from_collapsed_section: z.boolean(),
+    from_collapsed_section: ScalarBoolean,
     // Optional so pre-deploy events still validate; see docs/agent-on-path-detection.md.
     path_source: pathSourceSchema.optional(),
     path_failure_reason: pathFailureReasonSchema.optional(),
@@ -234,14 +240,14 @@ export const onboardingGhosttyImportFailedSchema = z
 export const onboardingFeatureSetupToggledSchema = z
   .object({
     feature: onboardingFeatureSetupFeatureSchema,
-    selected: z.boolean(),
+    selected: ScalarBoolean,
     cohort: cohortSchema
   })
   .strict()
 export const onboardingFeatureSetupRunSchema = z
   .object({
     ...onboardingFeatureSetupSelectionSchema,
-    cli_touched: z.boolean(),
+    cli_touched: ScalarBoolean,
     skill_install_result: z.enum([
       'installed',
       'needs_attention',
@@ -249,8 +255,8 @@ export const onboardingFeatureSetupRunSchema = z
       'connect_host',
       'failed'
     ]),
-    computer_use_permissions_opened: z.boolean(),
-    warning_count: z.number().int().nonnegative(),
+    computer_use_permissions_opened: ScalarBoolean,
+    warning_count: ScalarNonnegativeInteger,
     cohort: cohortSchema
   })
   // Validate derived selected_count at the untrusted IPC boundary.

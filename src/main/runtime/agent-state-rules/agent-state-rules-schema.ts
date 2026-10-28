@@ -1,3 +1,8 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNumber
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { RuntimeTerminalWaitBlockedReason } from '../../../shared/runtime-types'
 import type { TuiAgent } from '../../../shared/tui-agent'
@@ -12,7 +17,7 @@ const MAX_RULES = 32
 const MAX_ROWS = 12
 const MAX_TERMS = 8
 
-const Literal = z.string().min(1).max(MAX_PATTERN_LENGTH)
+const Literal = ScalarNonemptyString.max(MAX_PATTERN_LENGTH)
 
 const TailLiteral = Literal.refine(
   (text) => text === text.toLowerCase(),
@@ -47,7 +52,7 @@ const TailTextTestSchema = textTestSchema(TailLiteral)
 const RowSchema = z.union([TextTestSchema, z.object({ optional: TextTestSchema }).strict()])
 
 // JSON carries rule rationale as data.
-const Why = z.string().min(1).max(600)
+const Why = ScalarNonemptyString.max(600)
 
 const NAMED_SCREEN_PREDICATES = ['codex-header-ready', 'codex-composer-ready'] as const
 
@@ -57,7 +62,7 @@ const ScreenConditionSchema = z
   .object({
     region: z.literal('screen'),
     rows: z.array(RowSchema).min(1).max(MAX_ROWS).optional(),
-    endsWithinBottom: z.number().int().min(1).max(MAX_ROWS).optional(),
+    endsWithinBottom: ScalarNumber.int().min(1).max(MAX_ROWS).optional(),
     noneAbove: TextTestSchema.optional(),
     predicate: z.enum(NAMED_SCREEN_PREDICATES).optional()
   })
@@ -92,7 +97,7 @@ const RuleAnswerSchema = z.discriminatedUnion('state', [
       /** Strong settles a wait at once; weak only on the poll, once nothing stronger spoke. */
       strength: z.enum(['strong', 'weak']),
       /** Believed only after the output clock has been quiet (agents paint this mid-turn too). */
-      requiresQuiet: z.boolean(),
+      requiresQuiet: ScalarBoolean,
       /** Clockless panes accept strong quiet rules immediately unless explicitly skipped. */
       withoutClock: z.literal('skip').optional()
     })
@@ -110,7 +115,7 @@ const AgentStateRuleSchema = z
   .object({
     id: Literal,
     why: Why,
-    priority: z.number().int().min(0).max(1000),
+    priority: ScalarNumber.int().min(0).max(1000),
     when: RuleConditionSchema,
     answer: RuleAnswerSchema
   })
@@ -138,14 +143,14 @@ const TextAnchorConditionSchema = z
       z.object({ lastOf: TailLiteral }).strict(),
       z.object({ predicate: z.enum(NAMED_TEXT_ANCHORS) }).strict()
     ]),
-    withinLastLines: z.number().int().min(1).max(64).optional(),
+    withinLastLines: ScalarNumber.int().min(1).max(64).optional(),
     /** The text from the anchor to the end must pass this. */
     after: TailTextTestSchema.optional(),
     /** Ignore trailing blanks; includingLast also requires the final line to pass. */
     lines: z
       .object({
-        atLeast: z.number().int().min(1).max(MAX_ROWS),
-        includingLast: z.boolean(),
+        atLeast: ScalarNumber.int().min(1).max(MAX_ROWS),
+        includingLast: ScalarBoolean,
         test: TailTextTestSchema
       })
       .strict()

@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from '../../shared/scalar-value-schemas'
 /**
  * R39: a Remove that kept a WSL host's server for another Orca leaves that server, and anything a
  * move put on it, running. Undo of such a move must not read the removed host as stopped.
@@ -12,7 +13,7 @@ const MAX_KEPT_FILE_BYTES = 64 * 1024
 
 const KeptListSchema = z.object({
   version: z.literal(1),
-  environmentIds: z.array(z.string().min(1).max(256))
+  environmentIds: z.array(ScalarNonemptyString.max(256))
 })
 
 function keptFile(userDataPath: string): string {

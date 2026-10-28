@@ -1,13 +1,19 @@
+import {
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
-const EpochMsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const EpochMsSchema = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 
 export const RelayPhoneHelloSchema = z.union([
   z
     .object({
       type: z.literal('relay-hello'),
       ok: z.literal(false),
-      code: z.number().int().min(4000).max(4999)
+      code: ScalarNumber.int().min(4000).max(4999)
     })
     .strict(),
   z
@@ -24,7 +30,7 @@ export const RelayPhoneHelloSchema = z.union([
       ok: z.literal(true),
       credentialKind: z.literal('resume'),
       leaseExpiresAt: EpochMsSchema,
-      acceptedCredentialVersion: z.number().int().positive(),
+      acceptedCredentialVersion: ScalarPositiveInteger,
       acceptedAs: z.enum(['current', 'grace']),
       resumeExpiresAt: EpochMsSchema,
       graceExpiresAt: EpochMsSchema.optional()
@@ -38,7 +44,7 @@ export const RelayMovedSchema = z
   .object({
     type: z.literal('relay-moved'),
     v: z.literal(1),
-    cellUrl: z.string().refine((value) => {
+    cellUrl: ScalarString.refine((value) => {
       try {
         const parsed = new URL(value)
         return parsed.protocol === 'https:' && parsed.origin === value
@@ -46,6 +52,6 @@ export const RelayMovedSchema = z
         return false
       }
     }),
-    assignmentEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+    assignmentEpoch: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
   })
   .strict()

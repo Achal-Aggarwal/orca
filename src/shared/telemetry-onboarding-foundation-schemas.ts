@@ -1,11 +1,10 @@
+import { ScalarBoolean, ScalarNumber } from './scalar-value-schemas'
 import { z } from 'zod'
 import type { OnboardingChecklistState } from './onboarding-state-types'
 
 // Activation telemetry excludes raw paths, repo names, URLs and errors; retain legacy seven-step payload compatibility.
 export const ONBOARDING_TELEMETRY_LEGACY_MAX_STEP = 7
-export const onboardingStepSchema = z
-  .number()
-  .int()
+export const onboardingStepSchema = ScalarNumber.int()
   .min(1)
   .max(ONBOARDING_TELEMETRY_LEGACY_MAX_STEP)
 export const onboardingPathSchema = z.enum(['open_folder', 'clone_url', 'add_project_modal'])
@@ -77,11 +76,11 @@ export const onboardingFeatureSetupFeatureSchema = z.enum([
   'linear_tickets'
 ])
 export const onboardingFeatureSetupSelectionSchema = {
-  browser_use: z.boolean(),
-  computer_use: z.boolean(),
-  linear_tickets: z.boolean(),
-  orchestration: z.boolean(),
-  selected_count: z.number().int().min(0).max(3)
+  browser_use: ScalarBoolean,
+  computer_use: ScalarBoolean,
+  linear_tickets: ScalarBoolean,
+  orchestration: ScalarBoolean,
+  selected_count: ScalarNumber.int().min(0).max(3)
 } as const
 export type OnboardingFeatureSetupSelectionTelemetry = {
   browser_use: boolean

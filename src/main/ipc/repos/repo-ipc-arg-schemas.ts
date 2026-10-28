@@ -1,3 +1,14 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarOptionalBoolean,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNullableString,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { isTuiAgent } from '../../../shared/tui-agent-config'
 import { TaskSourceContextSchema } from '../../../shared/task-source-context-schema'
@@ -8,108 +19,105 @@ import { DiffCommentSchema } from '../../../shared/diff-comment-schema'
 import { normalizeExecutionHostId } from '../../../shared/execution-host'
 
 export const ProjectGroupCreateArgs = z.object({
-  name: z.string().min(1),
-  parentPath: z.string().nullable().optional(),
-  connectionId: z.string().nullable().optional(),
-  parentGroupId: z.string().nullable().optional(),
+  name: ScalarNonemptyString,
+  parentPath: ScalarOptionalNullableString,
+  connectionId: ScalarOptionalNullableString,
+  parentGroupId: ScalarOptionalNullableString,
   createdFrom: z.enum(['manual', 'folder-scan', 'migration']).optional()
 })
 
 export const ProjectGroupUpdateArgs = z.object({
-  groupId: z.string().min(1),
+  groupId: ScalarNonemptyString,
   updates: z.object({
-    name: z.string().optional(),
-    isCollapsed: z.boolean().optional(),
-    tabOrder: z.number().finite().optional(),
-    color: z.string().nullable().optional()
+    name: ScalarOptionalString,
+    isCollapsed: ScalarOptionalBoolean,
+    tabOrder: ScalarOptionalFiniteNumber,
+    color: ScalarOptionalNullableString
   })
 })
 
 export const ProjectGroupSelectorArgs = z.object({
-  groupId: z.string().min(1)
+  groupId: ScalarNonemptyString
 })
 
 export const ProjectHostSetupExistingFolderIpcArgs = z.object({
-  projectId: z.string().min(1),
+  projectId: ScalarNonemptyString,
   projectProviderIdentity: z
     .object({
       provider: z.literal('github'),
-      owner: z.string().min(1),
-      repo: z.string().min(1),
-      host: z.string().min(1).optional()
+      owner: ScalarNonemptyString,
+      repo: ScalarNonemptyString,
+      host: ScalarOptionalNonemptyString
     })
     .optional(),
-  hostId: z.string().min(1),
-  path: z.string().min(1),
+  hostId: ScalarNonemptyString,
+  path: ScalarNonemptyString,
   kind: z.enum(['git', 'folder']).optional(),
-  displayName: z.string().min(1).optional(),
+  displayName: ScalarOptionalNonemptyString,
   setupMethod: z.enum(['imported-existing-folder', 'cloned']).optional()
 })
 
 const LocalWindowsRuntimePreferenceIpcArgs = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('inherit-global') }),
   z.object({ kind: z.literal('windows-host') }),
-  z.object({ kind: z.literal('wsl'), distro: z.string().min(1) })
+  z.object({ kind: z.literal('wsl'), distro: ScalarNonemptyString })
 ])
 
 export const ProjectUpdateIpcArgs = z.object({
-  projectId: z.string().min(1),
+  projectId: ScalarNonemptyString,
   updates: z.object({
     localWindowsRuntimePreference: LocalWindowsRuntimePreferenceIpcArgs.optional()
   })
 })
 
-const IpcExecutionHostId = z
-  .string()
-  .min(1)
-  .transform((value, ctx) => {
-    const hostId = normalizeExecutionHostId(value)
-    if (!hostId) {
-      ctx.addIssue({ code: 'custom', message: 'Invalid host ID' })
-      return z.NEVER
-    }
-    return hostId
-  })
+const IpcExecutionHostId = ScalarNonemptyString.transform((value, ctx) => {
+  const hostId = normalizeExecutionHostId(value)
+  if (!hostId) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid host ID' })
+    return z.NEVER
+  }
+  return hostId
+})
 
 // Omitted host retains legacy behavior: move the first matching project ID.
 export const ProjectGroupMoveProjectArgs = z.object({
-  projectId: z.string().min(1),
-  groupId: z.string().nullable(),
-  order: z.number().finite().optional(),
+  projectId: ScalarNonemptyString,
+  groupId: ScalarNullableString,
+  order: ScalarOptionalFiniteNumber,
   hostId: IpcExecutionHostId.optional()
 })
 
 export const ProjectHostSetupCreateIpcArgs = z.object({
-  projectId: z.string().min(1),
+  projectId: ScalarNonemptyString,
   hostId: IpcExecutionHostId,
-  setupId: z.string().min(1).optional(),
-  path: z.string().optional(),
+  setupId: ScalarOptionalNonemptyString,
+  path: ScalarOptionalString,
   kind: z.enum(['git', 'folder']).optional(),
-  displayName: z.string().min(1).optional(),
-  worktreeBasePath: z.string().optional(),
-  gitUsername: z.string().optional(),
+  displayName: ScalarOptionalNonemptyString,
+  worktreeBasePath: ScalarOptionalString,
+  gitUsername: ScalarOptionalString,
   setupState: z.enum(['ready', 'not-set-up', 'setting-up', 'error', 'unsupported']).optional(),
   setupMethod: z.enum(['imported-existing-folder', 'cloned', 'provisioned']).optional()
 })
 
 export const ProjectHostSetupUpdateIpcArgs = z.object({
-  setupId: z.string().min(1),
+  setupId: ScalarNonemptyString,
   hostId: IpcExecutionHostId.optional(),
   updates: z.object({
-    displayName: z.string().optional(),
-    path: z.string().optional(),
-    worktreeBasePath: z.string().optional(),
+    displayName: ScalarOptionalString,
+    path: ScalarOptionalString,
+    worktreeBasePath: ScalarOptionalString,
     setupState: z.enum(['ready', 'not-set-up', 'setting-up', 'error', 'unsupported']).optional(),
     setupMethod: z
       .enum(['legacy-repo', 'imported-existing-folder', 'cloned', 'provisioned'])
       .optional(),
-    gitUsername: z.string().optional(),
+    gitUsername: ScalarOptionalString,
     kind: z.enum(['git', 'folder']).optional()
   })
 })
 
 export const ProjectHostSetupDeleteIpcArgs = z.object({
-  setupId: z.string().min(1),
+  setupId: ScalarNonemptyString,
   hostId: IpcExecutionHostId.optional()
 })
 
@@ -136,92 +144,92 @@ function assertFolderWorkspaceLinkedSourceContextMatch(
 
 export const FolderWorkspaceCreateArgs = z
   .object({
-    projectGroupId: z.string().min(1),
-    name: z.string().optional(),
-    folderPath: z.string().nullable().optional(),
-    connectionId: z.string().nullable().optional(),
+    projectGroupId: ScalarNonemptyString,
+    name: ScalarOptionalString,
+    folderPath: ScalarOptionalNullableString,
+    connectionId: ScalarOptionalNullableString,
     linkedTask: FolderWorkspaceLinkedTaskArgs.optional(),
     linkedItems: WorkspaceAttachmentsSchema.optional(),
 
     linkedTaskSourceContext: TaskSourceContextSchema.nullable().optional(),
-    createdWithAgent: z.string().refine(isTuiAgent).optional(),
-    pendingFirstAgentMessageRename: z.boolean().optional()
+    createdWithAgent: ScalarString.refine(isTuiAgent).optional(),
+    pendingFirstAgentMessageRename: ScalarOptionalBoolean
   })
   .superRefine(assertFolderWorkspaceLinkedSourceContextMatch)
 
 export const FolderWorkspaceUpdateArgs = z.object({
-  folderWorkspaceId: z.string().min(1),
+  folderWorkspaceId: ScalarNonemptyString,
   updates: z
     .object({
-      name: z.string().optional(),
-      folderPath: z.string().optional(),
+      name: ScalarOptionalString,
+      folderPath: ScalarOptionalString,
       linkedTask: FolderWorkspaceLinkedTaskArgs.optional(),
       linkedItems: WorkspaceAttachmentsSchema.optional(),
       linkedItemsBase: WorkspaceAttachmentsSchema.optional(),
-      linkedItemsSelectionChanged: z.boolean().optional(),
+      linkedItemsSelectionChanged: ScalarOptionalBoolean,
       linkedTaskSourceContext: TaskSourceContextSchema.nullable().optional(),
-      comment: z.string().optional(),
-      isArchived: z.boolean().optional(),
-      isUnread: z.boolean().optional(),
-      isPinned: z.boolean().optional(),
-      sortOrder: z.number().finite().optional(),
-      manualOrder: z.number().finite().optional(),
-      workspaceStatus: z.string().optional(),
-      createdWithAgent: z.string().refine(isTuiAgent).optional(),
-      pendingFirstAgentMessageRename: z.boolean().optional(),
-      firstAgentMessageRenameError: z.string().nullable().optional(),
-      lastActivityAt: z.number().finite().optional(),
+      comment: ScalarOptionalString,
+      isArchived: ScalarOptionalBoolean,
+      isUnread: ScalarOptionalBoolean,
+      isPinned: ScalarOptionalBoolean,
+      sortOrder: ScalarOptionalFiniteNumber,
+      manualOrder: ScalarOptionalFiniteNumber,
+      workspaceStatus: ScalarOptionalString,
+      createdWithAgent: ScalarString.refine(isTuiAgent).optional(),
+      pendingFirstAgentMessageRename: ScalarOptionalBoolean,
+      firstAgentMessageRenameError: ScalarOptionalNullableString,
+      lastActivityAt: ScalarOptionalFiniteNumber,
       diffComments: z.array(DiffCommentSchema).optional()
     })
     .superRefine(assertFolderWorkspaceLinkedSourceContextMatch)
 })
 
 export const FolderWorkspaceSelectorArgs = z.object({
-  folderWorkspaceId: z.string().min(1)
+  folderWorkspaceId: ScalarNonemptyString
 })
 
 export const FolderWorkspacePathStatusArgs = z.discriminatedUnion('scope', [
   z.object({
     scope: z.literal('folder-workspace'),
-    folderWorkspaceId: z.string().min(1)
+    folderWorkspaceId: ScalarNonemptyString
   }),
   z.object({
     scope: z.literal('project-group'),
-    projectGroupId: z.string().min(1)
+    projectGroupId: ScalarNonemptyString
   }),
   z.object({
     scope: z.literal('path'),
-    path: z.string().min(1),
-    connectionId: z.string().min(1).nullable().optional()
+    path: ScalarNonemptyString,
+    connectionId: ScalarNonemptyString.nullable().optional()
   })
 ])
 
 export const ProjectGroupScanNestedArgs = z.object({
-  path: z.string().min(1),
-  connectionId: z.string().min(1).optional(),
-  scanId: z.string().min(1).optional(),
-  options: z.unknown().optional()
+  path: ScalarNonemptyString,
+  connectionId: ScalarOptionalNonemptyString,
+  scanId: ScalarOptionalNonemptyString,
+  options: ScalarOptionalUnknown
 })
 
 export const ProjectGroupCancelNestedScanArgs = z.object({
-  scanId: z.string().min(1)
+  scanId: ScalarNonemptyString
 })
 
 export const ProjectGroupImportNestedArgs = z.discriminatedUnion('mode', [
   z.object({
-    parentPath: z.string().min(1),
-    groupName: z.string().optional().default(''),
-    projectPaths: z.array(z.string()),
-    connectionId: z.string().min(1).optional(),
-    scanId: z.string().min(1).optional(),
+    parentPath: ScalarNonemptyString,
+    groupName: ScalarOptionalString.default(''),
+    projectPaths: z.array(ScalarString),
+    connectionId: ScalarOptionalNonemptyString,
+    scanId: ScalarOptionalNonemptyString,
     mode: z.literal('group')
   }),
   z.object({
-    parentPath: z.string().min(1),
-    groupName: z.string().optional().default(''),
-    projectPaths: z.array(z.string()),
-    connectionId: z.string().min(1).optional(),
-    scanId: z.string().min(1).optional(),
+    parentPath: ScalarNonemptyString,
+    groupName: ScalarOptionalString.default(''),
+    projectPaths: z.array(ScalarString),
+    connectionId: ScalarOptionalNonemptyString,
+    scanId: ScalarOptionalNonemptyString,
     mode: z.literal('separate')
   })
 ])

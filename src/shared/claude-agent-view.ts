@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarOptionalString,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const CLAUDE_AGENT_VIEW_PATH = '/claude/agent-view'
@@ -7,14 +13,14 @@ export const CLAUDE_AGENT_VIEW_PLUGIN = 'orca-agent-view'
 export const CLAUDE_AGENT_VIEW_SUBSCRIBE = 'terminal.subscribeClaudeAgentViews'
 
 export const ClaudeAgentViewObservation = z.object({
-  agentId: z.string().min(1).max(256).optional(),
-  revision: z.number().int().nonnegative()
+  agentId: ScalarNonemptyString.max(256).optional(),
+  revision: ScalarNonnegativeInteger
 })
 export const ClaudeAgentViewSnapshot = z.array(
   z.object({
-    paneKey: z.string(),
-    sessionId: z.string(),
-    agentId: z.string().optional()
+    paneKey: ScalarString,
+    sessionId: ScalarString,
+    agentId: ScalarOptionalString
   })
 )
 export type ClaudeAgentViewSnapshot = z.infer<typeof ClaudeAgentViewSnapshot>

@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarOptionalString } from '../../shared/scalar-value-schemas'
 import { open, realpath } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 import { z } from 'zod'
@@ -72,8 +73,8 @@ export function checkPiRpcVersion(
 
 const headerSchema = z.object({
   type: z.literal('session'),
-  cwd: z.string().min(1),
-  id: z.string().optional()
+  cwd: ScalarNonemptyString,
+  id: ScalarOptionalString
 })
 
 export async function readPiSessionHeader(

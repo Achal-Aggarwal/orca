@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNonemptyString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { isAllowedPluginGitUrl } from './plugin-install-lockfile'
 import { isQualifiedPluginKey } from './plugin-manifest'
@@ -25,35 +26,31 @@ export function isMarketplaceListingSupported(categories: readonly string[]): bo
   return !categories.some((category) => UNSUPPORTED_MARKETPLACE_CATEGORIES.includes(category))
 }
 
-const marketplaceOwnerSchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/, 'invalid marketplace owner')
+const marketplaceOwnerSchema = ScalarNonemptyString.max(128).regex(
+  /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/,
+  'invalid marketplace owner'
+)
 
-const marketplaceCategorySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'categories must be lowercase slugs')
+const marketplaceCategorySchema = ScalarNonemptyString.max(64).regex(
+  /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+  'categories must be lowercase slugs'
+)
 
 export const pluginMarketplaceGitSourceSchema = z.strictObject({
   kind: z.literal('git'),
-  url: z
-    .string()
-    .trim()
+  url: ScalarString.trim()
     .min(1)
     .max(32 * 1024)
     .refine(isAllowedPluginGitUrl, 'git URL must use HTTPS or SSH'),
   // Require a named ref before resolving the exact commit; unspecified remote defaults are not reproducible listings.
-  ref: z.string().trim().min(1).max(4_096)
+  ref: ScalarString.trim().min(1).max(4_096)
 })
 
 const marketplaceEntryFields = {
   /** Canonical `<publisher>.<id>` identity expected in the source manifest. */
-  id: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
+  id: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
   source: pluginMarketplaceGitSourceSchema,
-  description: z.string().min(1).max(4_096).optional(),
+  description: ScalarNonemptyString.max(4_096).optional(),
   categories: z.array(marketplaceCategorySchema).max(PLUGIN_MARKETPLACE_CATEGORY_LIMIT).default([])
 }
 
@@ -96,7 +93,7 @@ export const pluginMarketplaceEntrySchema = z
   .superRefine(rejectDuplicateCategories)
 
 const marketplaceHeaderFields = {
-  name: z.string().min(1).max(256),
+  name: ScalarNonemptyString.max(256),
   owner: marketplaceOwnerSchema
 }
 
@@ -110,8 +107,8 @@ export const pluginMarketplaceSchema = z
 /** Host-derived trust metadata. Marketplace JSON cannot self-award either bit. */
 export const pluginMarketplaceTrustMetadataSchema = z
   .strictObject({
-    official: z.boolean(),
-    bundled: z.boolean()
+    official: ScalarBoolean,
+    bundled: ScalarBoolean
   })
   .refine((metadata) => !metadata.bundled || metadata.official, {
     message: 'bundled plugins must be official',

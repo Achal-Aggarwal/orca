@@ -1,13 +1,10 @@
+import { ScalarNonemptyString } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { UsageCacheSnapshotWriter } from '../usage-cache-snapshot-writer'
 
-const providerSessionIdSchema = z
-  .string()
-  .min(1)
-  .max(1024)
-  .refine((id) => id.trim().length > 0)
+const providerSessionIdSchema = ScalarNonemptyString.max(1024).refine((id) => id.trim().length > 0)
 const analyticsSessionIdSchema = z.uuidv4().brand<'AnalyticsSessionId'>()
 export type AnalyticsSessionId = z.infer<typeof analyticsSessionIdSchema>
 const identityFileSchema = z

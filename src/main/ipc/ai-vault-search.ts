@@ -1,5 +1,6 @@
+import { ScalarOptionalNonemptyString } from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
-import { z } from 'zod'
+
 import {
   searchSessionService,
   sessionSearchServiceStatus
@@ -53,7 +54,7 @@ const LOCAL_ENABLE_MESSAGE =
 const SSH_ENABLE_MESSAGE = 'unsupported'
 /** Exact text, not a class: the renderer maps this one message to its own copy. */
 const HOST_TOO_OLD_MESSAGE = 'host-too-old'
-const scopeSchema = z.string().min(1).optional()
+const scopeSchema = ScalarOptionalNonemptyString
 
 let handlerOptions: AiVaultSearchHandlerOptions = {}
 

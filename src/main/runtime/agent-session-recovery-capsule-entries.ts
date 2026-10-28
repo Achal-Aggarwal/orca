@@ -1,3 +1,11 @@
+import {
+  ScalarNonnegativeInteger,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalUnknown,
+  ScalarString,
+  ScalarUnknown
+} from '../../shared/scalar-value-schemas'
 // Parse recovery offers/failures, including legacy layouts, from files written by independently versioned hosts.
 
 import {
@@ -15,29 +23,29 @@ import {
 const RESUME_ACTION_LEASE_TTL_MS = 10 * 60 * 1000
 export const MAX_FAILURE_FIELD_LENGTH = 512
 
-const legacyCapsuleSchema = z.object({ version: z.literal(1), markers: z.array(z.unknown()) })
+const legacyCapsuleSchema = z.object({ version: z.literal(1), markers: z.array(ScalarUnknown) })
 const entrySchema = z.object({
   state: z.enum(['pending', 'in-progress']),
-  operationId: z.string().min(1).optional(),
-  startedAt: z.number().int().nonnegative().optional(),
-  marker: z.unknown(),
-  replacement: z.unknown().optional()
+  operationId: ScalarOptionalNonemptyString,
+  startedAt: ScalarOptionalNonnegativeInteger,
+  marker: ScalarUnknown,
+  replacement: ScalarOptionalUnknown
 })
 const failureSchema = z.object({
-  marker: z.unknown(),
-  failedAt: z.number().int().nonnegative(),
+  marker: ScalarUnknown,
+  failedAt: ScalarNonnegativeInteger,
   outcome: z.enum(AGENT_SESSION_RESUME_FAILURE_OUTCOMES),
-  reason: z.string().max(MAX_FAILURE_FIELD_LENGTH),
-  details: z.unknown().optional(),
-  latestPrompt: z.string().max(MAX_FAILURE_FIELD_LENGTH),
-  latestUserItemId: z.string().max(MAX_FAILURE_FIELD_LENGTH).nullable()
+  reason: ScalarString.max(MAX_FAILURE_FIELD_LENGTH),
+  details: ScalarOptionalUnknown,
+  latestPrompt: ScalarString.max(MAX_FAILURE_FIELD_LENGTH),
+  latestUserItemId: ScalarString.max(MAX_FAILURE_FIELD_LENGTH).nullable()
 })
 // Keep failures in a separate optional key: older builds reject new entry states but ignore unknown keys.
 const capsuleSchema = z.object({
   version: z.literal(2),
-  entries: z.array(z.unknown()),
-  dismissedAt: z.number().int().nonnegative().optional(),
-  failed: z.unknown().optional()
+  entries: z.array(ScalarUnknown),
+  dismissedAt: ScalarOptionalNonnegativeInteger,
+  failed: ScalarOptionalUnknown
 })
 
 /** Failure guidance remains until user action, successful retry, dismissal or a newer teardown supersedes it. */

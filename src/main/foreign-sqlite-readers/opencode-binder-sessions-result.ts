@@ -1,3 +1,4 @@
+import { ScalarNullableString, ScalarNumber, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 export type BinderSessionRow = {
@@ -19,10 +20,10 @@ export function openCodeBinderSessionsFailure(): BinderSessionRow[] {
 
 const rowsSchema = z.array(
   z.object({
-    id: z.string(),
-    directory: z.string(),
-    createdAtMs: z.number(),
-    parentId: z.string().nullable()
+    id: ScalarString,
+    directory: ScalarString,
+    createdAtMs: ScalarNumber,
+    parentId: ScalarNullableString
   })
 )
 

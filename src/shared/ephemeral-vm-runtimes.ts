@@ -1,3 +1,10 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalNonemptyString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   EphemeralVmRecipeConnectionResultSchema,
@@ -33,37 +40,37 @@ export const EphemeralVmRuntimeConnectionModeSchema = z.enum(['orca-server', 'ss
 
 const EphemeralVmRuntimeRecipeSchema = z
   .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    create: z.string().min(1),
+    id: ScalarNonemptyString,
+    name: ScalarNonemptyString,
+    create: ScalarNonemptyString,
     checkoutMode: z.enum(['orca-worktree', 'provisioned-root']).optional(),
-    description: z.string().min(1).optional(),
-    suspend: z.string().min(1).optional(),
-    resume: z.string().min(1).optional(),
-    destroy: z.string().min(1).optional(),
-    destroyDisabled: z.boolean().optional()
+    description: ScalarOptionalNonemptyString,
+    suspend: ScalarOptionalNonemptyString,
+    resume: ScalarOptionalNonemptyString,
+    destroy: ScalarOptionalNonemptyString,
+    destroyDisabled: ScalarOptionalBoolean
   })
   .strict()
 
 export const EphemeralVmRuntimeRecordSchema = z.object({
-  id: z.string().min(1),
-  recipeId: z.string().min(1),
+  id: ScalarNonemptyString,
+  recipeId: ScalarNonemptyString,
   /** Snapshot lifecycle commands so later pack updates/disabling/removal cannot change an existing runtime’s cleanup. */
   recipe: EphemeralVmRuntimeRecipeSchema.optional(),
-  repoId: z.string().min(1).optional(),
-  projectId: z.string().min(1).optional(),
-  workspaceId: z.string().min(1).optional(),
-  workspaceName: z.string().min(1).optional(),
+  repoId: ScalarOptionalNonemptyString,
+  projectId: ScalarOptionalNonemptyString,
+  workspaceId: ScalarOptionalNonemptyString,
+  workspaceName: ScalarOptionalNonemptyString,
   connectionMode: EphemeralVmRuntimeConnectionModeSchema.optional(),
-  runtimeEnvironmentId: z.string().min(1).optional(),
-  sshTargetId: z.string().min(1).optional(),
+  runtimeEnvironmentId: ScalarOptionalNonemptyString,
+  sshTargetId: ScalarOptionalNonemptyString,
   status: EphemeralVmRuntimeStatusSchema,
   cleanupStatus: EphemeralVmCleanupStatusSchema,
-  cleanupDisabled: z.boolean().optional(),
-  cleanupLastAttemptAt: z.number().finite().optional(),
-  cleanupLastError: z.string().min(1).optional(),
-  createdAt: z.number().finite(),
-  updatedAt: z.number().finite(),
+  cleanupDisabled: ScalarOptionalBoolean,
+  cleanupLastAttemptAt: ScalarOptionalFiniteNumber,
+  cleanupLastError: ScalarOptionalNonemptyString,
+  createdAt: ScalarFiniteNumber,
+  updatedAt: ScalarFiniteNumber,
   recipeResult: EphemeralVmRecipeResultSchema
 })
 
@@ -78,14 +85,14 @@ export type EphemeralVmRuntimeStore = z.infer<typeof EphemeralVmRuntimeStoreSche
 
 const RollbackEphemeralVmRuntimeRecipeSchema = z
   .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    create: z.string().min(1),
-    description: z.string().min(1).optional(),
-    suspend: z.string().min(1).optional(),
-    resume: z.string().min(1).optional(),
-    destroy: z.string().min(1).optional(),
-    destroyDisabled: z.boolean().optional()
+    id: ScalarNonemptyString,
+    name: ScalarNonemptyString,
+    create: ScalarNonemptyString,
+    description: ScalarOptionalNonemptyString,
+    suspend: ScalarOptionalNonemptyString,
+    resume: ScalarOptionalNonemptyString,
+    destroy: ScalarOptionalNonemptyString,
+    destroyDisabled: ScalarOptionalBoolean
   })
   .strict()
 

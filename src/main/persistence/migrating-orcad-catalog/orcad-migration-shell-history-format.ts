@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from '../../../shared/scalar-value-schemas'
 // The JSON header carries the unhashed worktree ID needed for history GC; raw history follows.
 import { z } from 'zod'
 import { ORCAD_MIGRATION_BLOB_KIND_CONTRACTS } from '../../../shared/orcad-migration/orcad-migration-blob-transfer'
@@ -15,7 +16,7 @@ const NEWLINE = 0x0a
 
 const HeaderSchema = z.object({
   version: z.literal(ORCAD_MIGRATION_SHELL_HISTORY_VERSION),
-  worktreeId: z.string().min(1),
+  worktreeId: ScalarNonemptyString,
   loginShell: z.literal(true).optional()
 })
 

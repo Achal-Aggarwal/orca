@@ -1,11 +1,11 @@
+import { ScalarUnknown } from './scalar-value-schemas'
 import { normalizeWorkspaceAttachmentOrigins } from './workspace-attachment-origins'
 import { z } from 'zod'
 import { normalizeWorkspaceAttachment } from './workspace-attachment-normalization'
 import type { WorkspaceAttachment } from './worktree/types'
 
-export const WorkspaceAttachmentSchema = z
-  .unknown()
-  .transform((value, ctx): WorkspaceAttachment => {
+export const WorkspaceAttachmentSchema = ScalarUnknown.transform(
+  (value, ctx): WorkspaceAttachment => {
     const item = normalizeWorkspaceAttachment(value)
     if (!item) {
       ctx.addIssue({ code: 'custom', message: 'Invalid workspace attachment' })
@@ -34,6 +34,7 @@ export const WorkspaceAttachmentSchema = z
       return z.NEVER
     }
     return item
-  })
+  }
+)
 
 export const WorkspaceAttachmentsSchema = z.array(WorkspaceAttachmentSchema)

@@ -1,9 +1,16 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
-const OpaqueIdSchema = z.string().min(1).max(128)
-const Base64Url32ByteSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
-const EpochMsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-const RelayHostIdSchema = z.string().regex(/^[A-Za-z0-9_-]{16}$/)
+const OpaqueIdSchema = ScalarNonemptyString.max(128)
+const Base64Url32ByteSchema = ScalarString.regex(/^[A-Za-z0-9_-]{43}$/)
+const EpochMsSchema = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
+const RelayHostIdSchema = ScalarString.regex(/^[A-Za-z0-9_-]{16}$/)
 
 function isCanonicalHttpsOrigin(value: string): boolean {
   try {
@@ -34,7 +41,7 @@ export const DeviceCredentialInstalledSchema = z
     v: z.literal(1),
     reqId: OpaqueIdSchema,
     authorizationMode: z.enum(['relay-basis', 'authenticated-direct']),
-    currentVersion: z.number().int().positive(),
+    currentVersion: ScalarPositiveInteger,
     resumeExpiresAt: EpochMsSchema,
     graceExpiresAt: EpochMsSchema.optional()
   })
@@ -56,9 +63,9 @@ export const DeviceResumeConfirmedSchema = z
   .object({
     v: z.literal(1),
     reqId: OpaqueIdSchema,
-    currentVersion: z.number().int().positive(),
+    currentVersion: ScalarPositiveInteger,
     acceptedAs: z.enum(['current', 'grace']),
-    renewed: z.boolean(),
+    renewed: ScalarBoolean,
     resumeExpiresAt: EpochMsSchema,
     graceExpiresAt: EpochMsSchema.optional()
   })
@@ -67,9 +74,9 @@ export const DeviceResumeConfirmedSchema = z
 export const MobileRelayEndpointSchema = z
   .object({
     v: z.literal(1),
-    directorUrl: z.string().refine(isCanonicalHttpsOrigin),
-    cellUrl: z.string().refine(isCanonicalHttpsOrigin),
-    assignmentEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    directorUrl: ScalarString.refine(isCanonicalHttpsOrigin),
+    cellUrl: ScalarString.refine(isCanonicalHttpsOrigin),
+    assignmentEpoch: ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER),
     relayHostId: RelayHostIdSchema,
     e2eeFraming: z.literal(2)
   })

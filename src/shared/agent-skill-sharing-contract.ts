@@ -1,3 +1,4 @@
+import { ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 import type { SkillCloudOperation, SkillCloudPublishResult } from './skill-cloud-contract'
 import { SkillDiscoveryTargetSchema } from './skills'
@@ -12,9 +13,9 @@ export const AGENT_SKILL_BUNDLE_NAME_TAKEN_CODE = 'agent_skill_bundle_name_taken
 
 export const AgentSkillShareRequestSchema = z
   .object({
-    skillSelectors: z.array(z.string().trim().min(1).max(4_096)).min(1).max(512),
-    bundleName: z.string().regex(/^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/),
-    releaseNotes: z.string().max(10_000).default(''),
+    skillSelectors: z.array(ScalarString.trim().min(1).max(4_096)).min(1).max(512),
+    bundleName: ScalarString.regex(/^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/),
+    releaseNotes: ScalarString.max(10_000).default(''),
     target: SkillDiscoveryTargetSchema.optional()
   })
   .strict()

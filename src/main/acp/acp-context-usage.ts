@@ -1,3 +1,4 @@
+import { ScalarOptionalBoolean, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { AgentSessionContextUsage } from '../../shared/agent-session-context-usage'
 import type {
@@ -63,7 +64,7 @@ export function acpWindowUsage(update: UsageUpdate, at: number): AgentSessionCon
 }
 
 export const acpNotificationEnvelopeSchema = z.looseObject({
-  sessionId: z.string(),
-  update: z.looseObject({ sessionUpdate: z.string() }),
-  _meta: z.looseObject({ isReplay: z.boolean().optional() }).nullish()
+  sessionId: ScalarString,
+  update: z.looseObject({ sessionUpdate: ScalarString }),
+  _meta: z.looseObject({ isReplay: ScalarOptionalBoolean }).nullish()
 })

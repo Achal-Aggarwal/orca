@@ -1,3 +1,10 @@
+import {
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonemptyString,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { parsePairingCode } from './pairing'
 import { MAX_SSH_RELAY_GRACE_PERIOD_SECONDS, MIN_SSH_RELAY_GRACE_PERIOD_SECONDS } from './ssh-types'
@@ -29,28 +36,26 @@ export const EPHEMERAL_VM_RECIPE_JSON_STRUCTURE_LIMITS = {
 
 const SavedPortForwardSchema = z
   .object({
-    localPort: z.number().int().min(1).max(65535),
-    remoteHost: z.string().min(1),
-    remotePort: z.number().int().min(1).max(65535),
-    label: z.string().min(1).optional()
+    localPort: ScalarNumber.int().min(1).max(65535),
+    remoteHost: ScalarNonemptyString,
+    remotePort: ScalarNumber.int().min(1).max(65535),
+    label: ScalarOptionalNonemptyString
   })
   .strict()
 
 export const EphemeralVmRecipeSshTargetSchema = z
   .object({
-    label: z.string().min(1),
-    configHost: z.string().min(1).optional(),
-    host: z.string().min(1),
-    port: z.number().int().min(1).max(65535),
-    username: z.string(),
-    identityFile: z.string().min(1).optional(),
-    identityAgent: z.string().min(1).optional(),
-    identitiesOnly: z.boolean().optional(),
-    proxyCommand: z.string().min(1).optional(),
-    jumpHost: z.string().min(1).optional(),
-    relayGracePeriodSeconds: z
-      .number()
-      .int()
+    label: ScalarNonemptyString,
+    configHost: ScalarOptionalNonemptyString,
+    host: ScalarNonemptyString,
+    port: ScalarNumber.int().min(1).max(65535),
+    username: ScalarString,
+    identityFile: ScalarOptionalNonemptyString,
+    identityAgent: ScalarOptionalNonemptyString,
+    identitiesOnly: ScalarOptionalBoolean,
+    proxyCommand: ScalarOptionalNonemptyString,
+    jumpHost: ScalarOptionalNonemptyString,
+    relayGracePeriodSeconds: ScalarNumber.int()
       .refine(
         (value) =>
           value === 0 ||
@@ -66,8 +71,8 @@ export const EphemeralVmRecipeSshTargetSchema = z
 const EphemeralVmRecipeOrcaServerConnectionSchema = z
   .object({
     type: z.literal('orca-server'),
-    pairingCode: z.string().min(1),
-    projectRoot: z.string().min(1)
+    pairingCode: ScalarNonemptyString,
+    projectRoot: ScalarNonemptyString
   })
   .strict()
 
@@ -75,7 +80,7 @@ const EphemeralVmRecipeSshConnectionSchema = z
   .object({
     type: z.literal('ssh'),
     target: EphemeralVmRecipeSshTargetSchema,
-    projectRoot: z.string().min(1)
+    projectRoot: ScalarNonemptyString
   })
   .strict()
 
@@ -89,9 +94,9 @@ export type EphemeralVmRecipeConnection = z.infer<typeof EphemeralVmRecipeConnec
 export const EphemeralVmRecipeLegacyResultSchema = z
   .object({
     schemaVersion: z.literal(1),
-    pairingCode: z.string().min(1),
-    projectRoot: z.string().min(1),
-    userData: z.record(z.string(), JsonValueSchema).optional()
+    pairingCode: ScalarNonemptyString,
+    projectRoot: ScalarNonemptyString,
+    userData: z.record(ScalarString, JsonValueSchema).optional()
   })
   .strict()
 
@@ -99,7 +104,7 @@ export const EphemeralVmRecipeConnectionResultSchema = z
   .object({
     schemaVersion: z.literal(1),
     connection: EphemeralVmRecipeConnectionSchema,
-    userData: z.record(z.string(), JsonValueSchema).optional()
+    userData: z.record(ScalarString, JsonValueSchema).optional()
   })
   .strict()
 
@@ -107,9 +112,9 @@ export const EphemeralVmRecipeProvisionedRootLegacyResultSchema = z
   .object({
     schemaVersion: z.literal(2),
     checkoutMode: z.literal('provisioned-root'),
-    pairingCode: z.string().min(1),
-    projectRoot: z.string().min(1),
-    userData: z.record(z.string(), JsonValueSchema).optional()
+    pairingCode: ScalarNonemptyString,
+    projectRoot: ScalarNonemptyString,
+    userData: z.record(ScalarString, JsonValueSchema).optional()
   })
   .strict()
 
@@ -118,7 +123,7 @@ export const EphemeralVmRecipeProvisionedRootConnectionResultSchema = z
     schemaVersion: z.literal(2),
     checkoutMode: z.literal('provisioned-root'),
     connection: EphemeralVmRecipeConnectionSchema,
-    userData: z.record(z.string(), JsonValueSchema).optional()
+    userData: z.record(ScalarString, JsonValueSchema).optional()
   })
   .strict()
 

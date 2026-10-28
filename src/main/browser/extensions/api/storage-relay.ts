@@ -1,3 +1,4 @@
+import { ScalarOptionalUnknown, ScalarString } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { emitBrowserExtensionEvent } from '../browser-extension-api-host'
 import {
@@ -15,8 +16,8 @@ import {
 const STORAGE_RELAY_NAMESPACE = 'orcaStorageRelay'
 
 const changesSchema = z.record(
-  z.string(),
-  z.object({ oldValue: z.unknown().optional(), newValue: z.unknown().optional() }).strict()
+  ScalarString,
+  z.object({ oldValue: ScalarOptionalUnknown, newValue: ScalarOptionalUnknown }).strict()
 )
 
 export function registerStorageRelayNamespace(): void {

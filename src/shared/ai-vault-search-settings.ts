@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarPositiveInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 
 /** Recorded opt-in precedes indexer construction, database open or transcript reads. Immutable indexers have no paused state; policy changes close/reconstruct them (session-search-instance.ts). */
@@ -15,8 +16,8 @@ export const DEFAULT_AI_VAULT_SEARCH_SETTINGS: AiVaultSearchSettings = {
 const HISTORY_DAYS_MAX = 3_650
 
 export const AiVaultSearchSettingsSchema: z.ZodType<AiVaultSearchSettings> = z.object({
-  enabled: z.boolean(),
-  historyDays: z.number().int().positive().max(HISTORY_DAYS_MAX).nullable()
+  enabled: ScalarBoolean,
+  historyDays: ScalarPositiveInteger.max(HISTORY_DAYS_MAX).nullable()
 })
 
 export function normalizeAiVaultSearchHistoryDays(value: unknown): number | null {

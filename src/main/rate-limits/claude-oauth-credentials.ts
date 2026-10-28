@@ -1,3 +1,4 @@
+import { ScalarOptionalString, ScalarOptionalUnknown } from '../../shared/scalar-value-schemas'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -31,9 +32,9 @@ type ClaudeOAuthCredentialReadOptions = {
 const schema = z.object({
   claudeAiOauth: z
     .object({
-      accessToken: z.string().optional(),
-      refreshToken: z.string().optional(),
-      refreshTokenExpiresAt: z.unknown().optional()
+      accessToken: ScalarOptionalString,
+      refreshToken: ScalarOptionalString,
+      refreshTokenExpiresAt: ScalarOptionalUnknown
     })
     .optional()
 })

@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { OrcadManagedStopRequestSchema } from '../../../shared/orcad-stop-request'
 import {
@@ -8,20 +13,14 @@ import {
 
 export const ORCAD_ACTIVATION_TRANSACTION_SCHEMA_VERSION = 1
 
-const RemoteVersionSchema = z
-  .string()
-  .refine(
-    (version) =>
-      remoteInstallVersionDirRegex(ORCAD_INSTALL_MODEL).test(
-        remoteInstallDirName(ORCAD_INSTALL_MODEL, version)
-      ),
-    'Expected a safe remote install version'
-  )
-const SafeSnapshotNameSchema = z
-  .string()
-  .min(1)
-  .max(255)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9.+-]*$/u)
+const RemoteVersionSchema = ScalarString.refine(
+  (version) =>
+    remoteInstallVersionDirRegex(ORCAD_INSTALL_MODEL).test(
+      remoteInstallDirName(ORCAD_INSTALL_MODEL, version)
+    ),
+  'Expected a safe remote install version'
+)
+const SafeSnapshotNameSchema = ScalarNonemptyString.max(255).regex(/^[A-Za-z0-9][A-Za-z0-9.+-]*$/u)
 const SnapshotVerdictSchema = z.object({
   dirName: SafeSnapshotNameSchema,
   state: z.enum(['pending', 'captured', 'empty'])
@@ -31,7 +30,7 @@ const OrcadActivationTransactionCommonFields = {
   transactionId: z.uuid(),
   startedAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
-  recordBefore: z.unknown()
+  recordBefore: ScalarUnknown
 }
 
 // Unknown operations must keep older clients from releasing recovery fences.
@@ -43,8 +42,8 @@ export const OrcadActivationTransactionSchema = z
       phase: z.enum(['prepared', 'incumbent-stopped', 'snapshot-captured', 'candidate-ready']),
       candidateVersion: RemoteVersionSchema,
       /** Absent in older journals; null when the activating app reported no version. */
-      candidateAppVersion: z.string().min(1).nullable().optional(),
-      recordAfter: z.unknown().nullable(),
+      candidateAppVersion: ScalarNonemptyString.nullable().optional(),
+      recordAfter: ScalarUnknown.nullable(),
       snapshot: SnapshotVerdictSchema
     }),
     z.object({
@@ -59,7 +58,7 @@ export const OrcadActivationTransactionSchema = z
       ]),
       incumbentVersion: RemoteVersionSchema,
       targetVersion: RemoteVersionSchema,
-      recordAfter: z.unknown(),
+      recordAfter: ScalarUnknown,
       rescue: SnapshotVerdictSchema
     }),
     z.object({
@@ -67,7 +66,7 @@ export const OrcadActivationTransactionSchema = z
       operation: z.literal('decommission'),
       phase: z.enum(['prepared', 'stop-dispatched', 'process-exited']),
       activeVersion: RemoteVersionSchema,
-      recordAfter: z.unknown(),
+      recordAfter: ScalarUnknown,
       /** Persist instance-bound stop intent before sending it to the host. */
       request: OrcadManagedStopRequestSchema.nullable(),
       dispatched: z

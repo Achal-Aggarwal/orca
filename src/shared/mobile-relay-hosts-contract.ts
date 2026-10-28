@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from './scalar-value-schemas'
 import { z } from 'zod'
 import type { ExecutionHostHealth } from './execution-host-health'
 
@@ -18,7 +19,7 @@ export type MobileRelayHost = {
 export type MobileRelayHostsListResult = { hosts: MobileRelayHost[] }
 
 export const MobileRelayHostWorktreesParamsSchema = z
-  .object({ hostId: z.string().min(1).max(1024) })
+  .object({ hostId: ScalarNonemptyString.max(1024) })
   .strict()
 
 /** One of a server's own `worktree.ps` rows (RuntimeWorktreePsSummary), carrying the server's host id. */

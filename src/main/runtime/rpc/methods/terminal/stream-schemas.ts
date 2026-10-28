@@ -1,10 +1,17 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalPositiveInteger
+} from '../../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { requiredString } from '../../../../../shared/rpc-contract/rpc-param-primitives'
 import { TerminalViewport } from '../../../../../shared/rpc-contract/terminal-unary-params'
 import { TerminalHandle } from '../../../../../shared/rpc-contract/terminal-stream-params'
 
 export const TerminalMultiplexSubscribeFrame = TerminalHandle.extend({
-  streamId: z.number().int().min(1),
+  streamId: ScalarNumber.int().min(1),
   client: z
     .object({
       id: requiredString('Missing client ID'),
@@ -26,16 +33,16 @@ export const TerminalMultiplexSubscribeFrame = TerminalHandle.extend({
     })
     .optional(),
   // Name the client input sequence domain across stream replacement so replay deduplicates.
-  inputSessionId: z.string().min(1).max(128).optional()
+  inputSessionId: ScalarNonemptyString.max(128).optional()
 })
 
 export const TerminalMultiplexLegacyAckFrame = z
   .object({
-    bytes: z.number().int().nonnegative()
+    bytes: ScalarNonnegativeInteger
   })
   .strict()
 
 export const TerminalMultiplexSnapshotRequestFrame = z.object({
-  requestId: z.number().int().positive().optional(),
-  scrollbackRows: z.number().finite().optional()
+  requestId: ScalarOptionalPositiveInteger,
+  scrollbackRows: ScalarOptionalFiniteNumber
 })

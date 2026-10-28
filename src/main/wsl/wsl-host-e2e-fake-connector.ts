@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarOptionalString } from '../../shared/scalar-value-schemas'
 /** ORCA_E2E_FAKE_WSL_HOSTS maps fake distros directly to a headless server pairing so any CI OS can test WSL host UI without wsl.exe. */
 import { appendFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { z } from 'zod'
@@ -14,7 +15,7 @@ import {
 
 const FakeDistrosSchema = z.array(
   z.object({
-    name: z.string().min(1),
+    name: ScalarNonemptyString,
     state: z.enum(['running', 'stopped']),
     version: z.union([z.literal(1), z.literal(2)])
   })
@@ -24,10 +25,10 @@ const FakeWslHostsSchema = z.object({
   distros: FakeDistrosSchema,
   /** Re-read on every listing, so a test can register a distro while the app runs, or stop one:
    *  a distro marked `stopped` loses its bridge, and only a booting connect starts it again. */
-  distrosFile: z.string().optional(),
-  pairingCode: z.string().min(1),
+  distrosFile: ScalarOptionalString,
+  pairingCode: ScalarNonemptyString,
   /** Each distro the fake is asked to start, one per line, so e2e can prove nothing respawns. */
-  connectLogFile: z.string().optional(),
+  connectLogFile: ScalarOptionalString,
   /** `missing` stands in for a build shipped without the orcad template. */
   serverFiles: z.enum(['present', 'missing']).optional()
 })

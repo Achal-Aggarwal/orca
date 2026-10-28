@@ -1,3 +1,11 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNullishString,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { acpNotificationEnvelopeSchema } from '../acp-context-usage'
 import type { AcpDialect, AcpDialectNotification, AcpHookBlock } from './acp-dialect'
@@ -8,35 +16,35 @@ import { grokSubagentNotification, grokToolSubagents } from './grok-subagents'
 import { grokSubagentStop } from './grok-subagent-stop'
 import { grokBackgroundTaskStop } from './grok-background-task-stop'
 
-const tokenCount = z.number().int().nonnegative()
-const toolMetaSchema = z.object({ 'x.ai/tool': z.object({ name: z.string().min(1) }) })
+const tokenCount = ScalarNonnegativeInteger
+const toolMetaSchema = z.object({ 'x.ai/tool': z.object({ name: ScalarNonemptyString }) })
 const turnMetaSchema = z.looseObject({
-  promptId: z.string().optional(),
+  promptId: ScalarOptionalString,
   turnStartMs: tokenCount.optional()
 })
 const completionSchema = z.looseObject({
   sessionUpdate: z.literal('turn_completed'),
-  prompt_id: z.string(),
-  stop_reason: z.string(),
-  agent_result: z.string().nullish(),
+  prompt_id: ScalarString,
+  stop_reason: ScalarString,
+  agent_result: ScalarNullishString,
   elapsed_ms: tokenCount.optional()
 })
 const retrySchema = z.looseObject({
   sessionUpdate: z.literal('retry_state'),
-  type: z.string(),
-  message: z.string().optional()
+  type: ScalarString,
+  message: ScalarOptionalString
 })
 const promptCompleteSchema = z.looseObject({
-  sessionId: z.string(),
-  promptId: z.string(),
-  stopReason: z.string(),
-  agentResult: z.string().nullish()
+  sessionId: ScalarString,
+  promptId: ScalarString,
+  stopReason: ScalarString,
+  agentResult: ScalarNullishString
 })
 const hookDeniedSchema = z.looseObject({
   cancellationCategory: z.literal('HookDenied'),
-  cancellationContext: z.looseObject({ reason: z.string().optional() }).nullish()
+  cancellationContext: z.looseObject({ reason: ScalarOptionalString }).nullish()
 })
-const promptErrorDataSchema = z.looseObject({ message: z.string() })
+const promptErrorDataSchema = z.looseObject({ message: ScalarString })
 const FAILED_STOP_REASONS = ['error', 'rate_limit']
 const SESSION_NOTIFICATIONS = ['x.ai/session_notification', 'x.ai/session/update']
 
@@ -52,14 +60,14 @@ const responseSchema = z.object({
     cache_creation_input_tokens: tokenCount.default(0)
   })
 })
-const queueSchema = z.object({ sessionId: z.string(), runningPromptId: z.string().nullish() })
+const queueSchema = z.object({ sessionId: ScalarString, runningPromptId: ScalarNullishString })
 const modelsSchema = z.object({
-  currentModelId: z.string().optional(),
+  currentModelId: ScalarOptionalString,
   availableModels: z
     .array(
       z.object({
-        modelId: z.string(),
-        _meta: z.object({ totalContextTokens: z.number().int().positive() }).optional()
+        modelId: ScalarString,
+        _meta: z.object({ totalContextTokens: ScalarPositiveInteger }).optional()
       })
     )
     .optional()

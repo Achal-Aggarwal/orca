@@ -1,3 +1,9 @@
+import {
+  ScalarNull,
+  ScalarOptionalUnknown,
+  ScalarString,
+  ScalarUnknown
+} from './scalar-value-schemas'
 // Share envelopes across CLI/desktop/non-Electron clients without client-to-client imports.
 import { z } from 'zod'
 import type { OrchestrationCompatibilityEvidence } from './orchestration-compatibility-evidence'
@@ -5,35 +11,35 @@ import type { OrchestrationCompatibilityEvidence } from './orchestration-compati
 // Independently updated peers may add envelope fields; strip unknown fields while validating known ones.
 const MetaSuccess = z
   .object({
-    runtimeId: z.string()
+    runtimeId: ScalarString
   })
   .strip()
 
 const MetaFailure = z
   .object({
-    runtimeId: z.union([z.string(), z.null()])
+    runtimeId: z.union([ScalarString, ScalarNull])
   })
   .strip()
   .optional()
 
 const Success = z
   .object({
-    id: z.string(),
+    id: ScalarString,
     ok: z.literal(true),
-    result: z.unknown(),
+    result: ScalarUnknown,
     _meta: MetaSuccess
   })
   .strip()
 
 const Failure = z
   .object({
-    id: z.string(),
+    id: ScalarString,
     ok: z.literal(false),
     error: z
       .object({
-        code: z.string(),
-        message: z.string(),
-        data: z.unknown().optional()
+        code: ScalarString,
+        message: ScalarString,
+        data: ScalarOptionalUnknown
       })
       .strip(),
     _meta: MetaFailure

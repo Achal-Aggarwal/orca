@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 // Counts only ever leave as these buckets, so a payload can't single out an install by an exact tally.
@@ -22,14 +23,11 @@ const countBucketSchema = z.enum(WSL_USAGE_COUNT_BUCKETS)
 // Daily, Windows-only aggregate of WSL adoption. No paths, distro names, or repo names by design.
 export const wslUsageSnapshotSchema = z
   .object({
-    wsl_installed: z.boolean(),
+    wsl_installed: ScalarBoolean,
     /** WSL package major.minor from its MSI registration; omitted for inbox/Store WSL or unreadable. */
-    wsl_version: z
-      .string()
-      .regex(/^\d{1,3}\.\d{1,3}$/)
-      .optional(),
+    wsl_version: ScalarString.regex(/^\d{1,3}\.\d{1,3}$/).optional(),
     /** False when the distro registry could not be read, so the distro buckets mean "unknown", not 0. */
-    distro_registry_readable: z.boolean(),
+    distro_registry_readable: ScalarBoolean,
     distros_installed: countBucketSchema,
     distros_running: countBucketSchema,
     distros_wsl1: countBucketSchema,
@@ -45,7 +43,7 @@ export const wslUsageSnapshotSchema = z
     projects_wsl_git: countBucketSchema,
     projects_wsl_folder: countBucketSchema,
     project_distros_used: countBucketSchema,
-    wsl_hosts_gate_open: z.boolean(),
+    wsl_hosts_gate_open: ScalarBoolean,
     /** open / serve-only / closed. Optional, so older builds' payloads still validate. */
     wsl_hosts_gate_state: z.enum(['open', 'serve-only', 'closed']).optional()
   })

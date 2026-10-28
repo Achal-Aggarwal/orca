@@ -1,3 +1,4 @@
+import { ScalarOptionalString } from '../../shared/scalar-value-schemas'
 import { createHash } from 'node:crypto'
 import { parse as parseToml } from 'smol-toml'
 import { z } from 'zod'
@@ -12,8 +13,8 @@ export type KimiCodeRuntimeAuth = {
 }
 
 const KimiManagedProviderSchema = z.object({
-  base_url: z.string().optional(),
-  oauth: z.object({ oauth_host: z.string().optional() }).optional()
+  base_url: ScalarOptionalString,
+  oauth: z.object({ oauth_host: ScalarOptionalString }).optional()
 })
 
 type KimiManagedProviderConfig = z.infer<typeof KimiManagedProviderSchema>

@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNullableString,
+  ScalarPositiveInteger
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 /** Refetch host cursor c, skip e emitted hits within generation g; null c starts that host's walk. */
@@ -15,14 +21,14 @@ export type MergedSearchCursor = {
 }
 
 const mergedCursorPayloadSchema = z.object({
-  l: z.number().int().positive(),
+  l: ScalarPositiveInteger,
   s: z.enum(['relevance', 'newest']),
   h: z.record(
-    z.string().min(1),
+    ScalarNonemptyString,
     z.object({
-      c: z.string().nullable(),
-      e: z.number().int().nonnegative(),
-      g: z.number().int().nonnegative()
+      c: ScalarNullableString,
+      e: ScalarNonnegativeInteger,
+      g: ScalarNonnegativeInteger
     })
   )
 })

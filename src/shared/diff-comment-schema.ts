@@ -1,38 +1,46 @@
+import {
+  ScalarFiniteNumber,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalPositiveInteger,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const MobileDiffReviewSchema = z.object({
   version: z.literal(1),
-  updatedAt: z.number().finite().optional(),
-  completedAt: z.number().finite().optional(),
+  updatedAt: ScalarOptionalFiniteNumber,
+  completedAt: ScalarOptionalFiniteNumber,
   files: z.record(
-    z.string(),
+    ScalarString,
     z.object({
-      key: z.string(),
-      filePath: z.string(),
-      oldPath: z.string().optional(),
+      key: ScalarString,
+      filePath: ScalarString,
+      oldPath: ScalarOptionalString,
       scope: z.enum(['unstaged', 'staged', 'branch']),
-      lastOpenedAt: z.number().finite().optional(),
-      lastSeenDiffIdentity: z.string().optional(),
-      reviewedAt: z.number().finite().optional(),
-      reviewDiffIdentity: z.string().optional()
+      lastOpenedAt: ScalarOptionalFiniteNumber,
+      lastSeenDiffIdentity: ScalarOptionalString,
+      reviewedAt: ScalarOptionalFiniteNumber,
+      reviewDiffIdentity: ScalarOptionalString
     })
   )
 })
 
 export const DiffCommentSchema = z.object({
-  id: z.string(),
-  worktreeId: z.string(),
-  filePath: z.string(),
+  id: ScalarString,
+  worktreeId: ScalarString,
+  filePath: ScalarString,
   source: z.enum(['diff', 'markdown']).optional(),
-  selectedText: z.string().optional(),
-  startLine: z.number().int().positive().optional(),
-  lineNumber: z.number().int().positive(),
-  body: z.string(),
-  createdAt: z.number().finite(),
-  updatedAt: z.number().finite().optional(),
-  sentAt: z.number().finite().optional(),
+  selectedText: ScalarOptionalString,
+  startLine: ScalarOptionalPositiveInteger,
+  lineNumber: ScalarPositiveInteger,
+  body: ScalarString,
+  createdAt: ScalarFiniteNumber,
+  updatedAt: ScalarOptionalFiniteNumber,
+  sentAt: ScalarOptionalFiniteNumber,
   scope: z.enum(['unstaged', 'staged', 'branch']).optional(),
-  oldPath: z.string().optional(),
-  diffIdentity: z.string().optional(),
+  oldPath: ScalarOptionalString,
+  diffIdentity: ScalarOptionalString,
   side: z.literal('modified')
 })

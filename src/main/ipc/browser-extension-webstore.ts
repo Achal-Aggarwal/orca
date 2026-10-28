@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNonemptyString } from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import type { BrowserExtensionWebStoreInstallResult } from '../../shared/browser-extension-webstore'
@@ -5,8 +6,11 @@ import { respondToBrowserExtensionInstallPrompt } from '../browser/extensions/br
 import { installBrowserExtensionFromWebStore } from '../browser/extensions/browser-extension-webstore-service'
 import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 
-const installArgs = z.object({ profileId: z.string().min(1), input: z.string().min(1).max(2048) })
-const promptResponse = z.object({ requestId: z.string().min(1), accepted: z.boolean() })
+const installArgs = z.object({
+  profileId: ScalarNonemptyString,
+  input: ScalarNonemptyString.max(2048)
+})
+const promptResponse = z.object({ requestId: ScalarNonemptyString, accepted: ScalarBoolean })
 
 /** Settings "Add from Chrome Web Store" and the install prompt's answer; trusted renderer only. */
 export function registerBrowserExtensionWebStoreHandlers(): void {

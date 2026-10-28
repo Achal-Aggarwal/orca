@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString, ScalarUnknown } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const BROWSER_CLIENT_AUTOMATION_HOST_CAPABILITY = 'automation-v1' as const
@@ -76,7 +77,7 @@ export const BrowserClientAutomationMethod = z.enum(BROWSER_CLIENT_AUTOMATION_ME
 export type BrowserClientAutomationMethod = z.infer<typeof BrowserClientAutomationMethod>
 
 const BrowserClientAutomationParams = z
-  .record(z.string(), z.unknown())
+  .record(ScalarString, ScalarUnknown)
   .superRefine((params, context) =>
     enforceJsonByteBudget(
       params,
@@ -86,16 +87,14 @@ const BrowserClientAutomationParams = z
     )
   )
 
-const BrowserClientAutomationResultValue = z
-  .unknown()
-  .superRefine((value, context) =>
-    enforceJsonByteBudget(
-      value,
-      BROWSER_CLIENT_AUTOMATION_RESULT_MAX_BYTES,
-      'Browser client automation result exceeds its byte budget',
-      context
-    )
+const BrowserClientAutomationResultValue = ScalarUnknown.superRefine((value, context) =>
+  enforceJsonByteBudget(
+    value,
+    BROWSER_CLIENT_AUTOMATION_RESULT_MAX_BYTES,
+    'Browser client automation result exceeds its byte budget',
+    context
   )
+)
 
 export const BrowserClientAutomationCommand = z.object({
   type: z.literal('automation'),
@@ -109,7 +108,7 @@ export const BrowserClientAutomationResult = z.discriminatedUnion('status', [
     status: z.literal('completed'),
     value: BrowserClientAutomationResultValue.optional()
   }),
-  z.object({ status: z.literal('failed'), errorCode: z.string().min(1).max(256) })
+  z.object({ status: z.literal('failed'), errorCode: ScalarNonemptyString.max(256) })
 ])
 export type BrowserClientAutomationResult = z.infer<typeof BrowserClientAutomationResult>
 

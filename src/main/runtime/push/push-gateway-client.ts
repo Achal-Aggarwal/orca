@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from '../../../shared/scalar-value-schemas'
 // Return best-effort gateway outcomes instead of throwing through notification fan-out.
 import { z } from 'zod'
 import { cancelUnreadResponseBody } from '../../lib/unread-response-body'
@@ -19,13 +20,13 @@ import { PushGatewaySession } from './push-gateway-session'
 
 export type { PushGatewayFailure, PushGatewayResult }
 
-const RegisterResponseSchema = z.object({ registrationId: z.string().min(1).max(512) })
+const RegisterResponseSchema = z.object({ registrationId: ScalarNonemptyString.max(512) })
 
 const SendResponseSchema = z.object({
   results: z
     .array(
       z.object({
-        registrationId: z.string().min(1).max(512),
+        registrationId: ScalarNonemptyString.max(512),
         status: z.enum(['queued', 'dead', 'rate_limited', 'error'])
       })
     )

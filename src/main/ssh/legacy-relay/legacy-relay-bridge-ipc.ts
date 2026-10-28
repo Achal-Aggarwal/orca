@@ -1,3 +1,11 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 /**
  * The bridge's own IPC channels, and the live collaborators it runs with.
  * COMPAT(legacy-relay-bridge): revisit 2027-01-15.
@@ -26,13 +34,13 @@ import {
 } from './legacy-relay-bridge-registry'
 import { terminalsBucket } from './legacy-relay-daily-activity'
 
-const PtyIdSchema = z.string().min(1).max(4096)
-const SizeSchema = z.number().int().positive().max(10_000)
+const PtyIdSchema = ScalarNonemptyString.max(4096)
+const SizeSchema = ScalarPositiveInteger.max(10_000)
 const PaneArgsSchema = z.object({ ptyId: PtyIdSchema })
-const DetachArgsSchema = z.object({ ptyId: PtyIdSchema, acquisitionId: z.number().int() })
-const AttachArgsSchema = z.object({ ptyId: PtyIdSchema, replayInStream: z.boolean().optional() })
-const WriteArgsSchema = z.object({ ptyId: PtyIdSchema, data: z.string() })
-const PausedArgsSchema = z.object({ ptyId: PtyIdSchema, paused: z.boolean() })
+const DetachArgsSchema = z.object({ ptyId: PtyIdSchema, acquisitionId: ScalarNumber.int() })
+const AttachArgsSchema = z.object({ ptyId: PtyIdSchema, replayInStream: ScalarOptionalBoolean })
+const WriteArgsSchema = z.object({ ptyId: PtyIdSchema, data: ScalarString })
+const PausedArgsSchema = z.object({ ptyId: PtyIdSchema, paused: ScalarBoolean })
 const ResizeArgsSchema = z.object({ ptyId: PtyIdSchema, cols: SizeSchema, rows: SizeSchema })
 
 export function registerLegacyRelayBridgeIpc(args: {

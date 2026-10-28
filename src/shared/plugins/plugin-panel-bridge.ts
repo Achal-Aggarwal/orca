@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { isPluginPanelAction } from './plugin-host-api'
 
@@ -25,16 +31,16 @@ export const PANEL_WATCHDOG_PONG_TIMEOUT_MS = 5_000
 export const panelActionRequestSchema = z.object({
   type: z.literal(PANEL_ACTION_REQUEST_TYPE),
   /** Plugin-chosen correlation id echoed back on the result message. */
-  requestId: z.string().min(1).max(128),
-  action: z.string().min(1).refine(isPluginPanelAction, 'not a panel-callable action'),
-  params: z.unknown().optional()
+  requestId: ScalarNonemptyString.max(128),
+  action: ScalarNonemptyString.refine(isPluginPanelAction, 'not a panel-callable action'),
+  params: ScalarOptionalUnknown
 })
 
 export type PluginPanelActionRequest = z.infer<typeof panelActionRequestSchema>
 
 export const panelPongSchema = z.object({
   type: z.literal(PANEL_PONG_TYPE),
-  pingId: z.number().int().nonnegative()
+  pingId: ScalarNonnegativeInteger
 })
 
 export type PluginPanelActionErrorCode =
@@ -64,14 +70,14 @@ export type PluginPanelActionOutcome =
   | { ok: true; value: unknown }
   | { ok: false; code: PluginPanelActionErrorCode; error: string }
 
-export const panelSessionTokenSchema = z.string().min(32).max(128)
+export const panelSessionTokenSchema = ScalarString.min(32).max(128)
 
 /** Host-issued opaque sessions identify approved panels; plugin callers never supply their own identity. */
 export const panelActionCallSchema = z
   .object({
     sessionToken: panelSessionTokenSchema,
-    action: z.string().min(1),
-    params: z.unknown().optional()
+    action: ScalarNonemptyString,
+    params: ScalarOptionalUnknown
   })
   .strict()
 

@@ -1,3 +1,8 @@
+import {
+  ScalarOptionalBoolean,
+  ScalarPositiveInteger,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import release from './agent-state-rules-release.json'
 import { parseAgentStateRuleFiles } from './agent-state-rules-catalog'
@@ -21,10 +26,10 @@ export const LIVE_UPDATABLE_AGENT_STATE_RULE_IDS: ReadonlySet<string> = new Set(
 // Check engine compatibility first so newer formats are not misreported as malformed files.
 const BundleEnvelopeSchema = z
   .object({
-    version: z.number().int().positive(),
+    version: ScalarPositiveInteger,
     engineVersion: z.literal(AGENT_STATE_RULES_ENGINE_VERSION),
-    bundledOnly: z.boolean().optional(),
-    files: z.array(z.unknown())
+    bundledOnly: ScalarOptionalBoolean,
+    files: z.array(ScalarUnknown)
   })
   .strict()
 

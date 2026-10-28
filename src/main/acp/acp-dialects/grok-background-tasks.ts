@@ -1,3 +1,11 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullishString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { AgentJournalToolCallItem } from '../../../shared/agent-session-journal-types'
 import {
@@ -9,24 +17,24 @@ import type { ToolCallUpdate } from '../generated/acp-protocol.generated'
 import type { AcpBackgroundTaskUpdate, AcpDialectNotification } from './acp-dialect'
 
 const taskSchema = z.object({
-  task_id: z.string().min(1),
-  command: z.string().optional(),
-  description: z.string().nullish(),
-  monitor_description: z.string().nullish(),
-  display_command: z.string().nullish(),
-  output_file: z.string().optional(),
-  summary: z.string().optional(),
-  error: z.string().optional(),
-  output: z.string().optional(),
-  kind: z.string().optional(),
-  task_type: z.string().optional(),
-  exit_code: z.number().int().nullish(),
-  signal: z.union([z.string(), z.number()]).nullish(),
-  explicitly_killed: z.boolean().optional()
+  task_id: ScalarNonemptyString,
+  command: ScalarOptionalString,
+  description: ScalarNullishString,
+  monitor_description: ScalarNullishString,
+  display_command: ScalarNullishString,
+  output_file: ScalarOptionalString,
+  summary: ScalarOptionalString,
+  error: ScalarOptionalString,
+  output: ScalarOptionalString,
+  kind: ScalarOptionalString,
+  task_type: ScalarOptionalString,
+  exit_code: ScalarNumber.int().nullish(),
+  signal: z.union([ScalarString, ScalarNumber]).nullish(),
+  explicitly_killed: ScalarOptionalBoolean
 })
 const backgroundedSchema = taskSchema.extend({
   sessionUpdate: z.literal('task_backgrounded'),
-  tool_call_id: z.string().optional()
+  tool_call_id: ScalarOptionalString
 })
 const completedSchema = z.object({
   sessionUpdate: z.literal('task_completed'),
@@ -34,8 +42,8 @@ const completedSchema = z.object({
 })
 const startedOutputSchema = taskSchema.extend({ type: z.literal('BackgroundTaskStarted') })
 const taskResultSchema = taskSchema.extend({
-  status: z.string().optional(),
-  outcome: z.string().optional()
+  status: ScalarOptionalString,
+  outcome: ScalarOptionalString
 })
 const resultOutputSchema = z.object({
   type: z.enum(['TaskOutput', 'KillTask']),
@@ -126,10 +134,10 @@ function snapshot(
 }
 
 const taskInputSchema = z.object({
-  description: z.string().optional(),
-  command: z.string().optional(),
-  task_id: z.string().trim().min(1).optional(),
-  task_ids: z.array(z.string().trim().min(1)).optional()
+  description: ScalarOptionalString,
+  command: ScalarOptionalString,
+  task_id: ScalarString.trim().min(1).optional(),
+  task_ids: z.array(ScalarString.trim().min(1)).optional()
 })
 
 export function grokToolBackgroundTasks(

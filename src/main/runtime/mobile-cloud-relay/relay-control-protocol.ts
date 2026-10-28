@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { RawData } from 'ws'
 import {
@@ -5,12 +11,12 @@ import {
   DeviceResumeConfirmedSchema
 } from '../../../shared/mobile-relay-credential-contract'
 
-const OpaqueIdSchema = z.string().min(1).max(128)
-const Base64Url32ByteSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
-const Base6432ByteSchema = z.string().regex(/^[A-Za-z0-9+/]{43}=$/)
-const Base64Raw24ByteSchema = z.string().regex(/^[A-Za-z0-9+/]{32}$/)
-const EpochMsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-const GenerationSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const OpaqueIdSchema = ScalarNonemptyString.max(128)
+const Base64Url32ByteSchema = ScalarString.regex(/^[A-Za-z0-9_-]{43}$/)
+const Base6432ByteSchema = ScalarString.regex(/^[A-Za-z0-9+/]{43}=$/)
+const Base64Raw24ByteSchema = ScalarString.regex(/^[A-Za-z0-9+/]{32}$/)
+const EpochMsSchema = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
+const GenerationSchema = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 
 export const RelayHostChallengeMessageSchema = z
   .object({
@@ -18,10 +24,7 @@ export const RelayHostChallengeMessageSchema = z
     challengeId: OpaqueIdSchema,
     relayEphemeralPublicKeyB64: Base6432ByteSchema,
     nonceB64: Base64Raw24ByteSchema,
-    ciphertextB64: z
-      .string()
-      .min(1)
-      .max(16 * 1024),
+    ciphertextB64: ScalarNonemptyString.max(16 * 1024),
     expiresAt: EpochMsSchema
   })
   .strict()
@@ -65,18 +68,14 @@ export const RelayConnectionOpenMessageSchema = z
     connTicket: Base64Url32ByteSchema,
     kind: ConnectionKindSchema,
     relayDeviceId: OpaqueIdSchema,
-    attachDeadlineMs: z.number().int().positive().max(60_000)
+    attachDeadlineMs: ScalarPositiveInteger.max(60_000)
   })
   .strict()
 
 export const RelayDrainMessageSchema = z
   .object({
     type: z.literal('drain'),
-    graceMs: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(60 * 60 * 1000),
+    graceMs: ScalarNonnegativeInteger.max(60 * 60 * 1000),
     recovery: z.literal('resolve-director')
   })
   .strict()
@@ -91,7 +90,7 @@ export const RelayInviteCreatedMessageSchema = z
     reqId: OpaqueIdSchema,
     inviteToken: Base64Url32ByteSchema,
     expiresAt: EpochMsSchema,
-    maxAttempts: z.number().int().positive().max(16)
+    maxAttempts: ScalarPositiveInteger.max(16)
   })
   .strict()
 
@@ -131,7 +130,7 @@ export const RelayDeviceResumeConfirmedMessageSchema = DeviceResumeConfirmedSche
 export const RelayControlErrorMessageSchema = z.object({
   type: z.literal('control-error'),
   reqId: OpaqueIdSchema.optional(),
-  code: z.string().min(1).max(128)
+  code: ScalarNonemptyString.max(128)
 })
 
 export type RelayPendingConnection = z.infer<typeof PendingConnectionSchema>

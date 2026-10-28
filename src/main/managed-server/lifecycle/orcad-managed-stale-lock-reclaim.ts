@@ -1,3 +1,8 @@
+import {
+  ScalarNumber,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 // Let the active slot gather lock evidence and apply nonce-pinned confirmation; clients only relay it.
 import { z } from 'zod'
 import { quotePosixShell } from '../../../shared/shell-argument-quoting'
@@ -34,17 +39,17 @@ const ReclaimStatusSchema = z.enum(['none', 'eligible', 'refused', 'reclaimed'])
 
 // Unknown newer statuses map to no-answer rather than failing reply parsing.
 const ReclaimAnswerSchema = z.object({
-  status: z.string(),
-  lockPath: z.string(),
-  message: z.string(),
+  status: ScalarString,
+  lockPath: ScalarString,
+  message: ScalarString,
   evidence: z
     .object({
-      pid: z.number(),
-      host: z.string(),
-      bootId: z.string(),
-      currentBootId: z.string(),
-      ageMinutes: z.number(),
-      nonce: z.string().optional()
+      pid: ScalarNumber,
+      host: ScalarString,
+      bootId: ScalarString,
+      currentBootId: ScalarString,
+      ageMinutes: ScalarNumber,
+      nonce: ScalarOptionalString
     })
     .optional()
 })

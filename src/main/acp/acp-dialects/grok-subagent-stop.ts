@@ -1,13 +1,19 @@
+import {
+  ScalarBoolean,
+  ScalarNull,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { AcpDialect } from './acp-dialect'
 import { grokSubagentNotification } from './grok-subagents'
 
 const response = z.object({
-  error: z.null().optional(),
+  error: ScalarNull.optional(),
   result: z.object({
-    subagentId: z.string(),
-    cancelled: z.boolean(),
-    outcome: z.looseObject({ kind: z.string(), status: z.string().optional() }).optional()
+    subagentId: ScalarString,
+    cancelled: ScalarBoolean,
+    outcome: z.looseObject({ kind: ScalarString, status: ScalarOptionalString }).optional()
   })
 })
 

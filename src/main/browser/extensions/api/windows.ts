@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNumber,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../../../shared/scalar-value-schemas'
 /// <reference types="chrome" />
 import { z } from 'zod'
 import {
@@ -23,36 +29,36 @@ import {
 } from '../browser-extension-window-model'
 import { requireOpenableUrl } from './tabs'
 
-const windowIdSchema = z.number().int()
+const windowIdSchema = ScalarNumber.int()
 const queryOptionsSchema = z
-  .object({ populate: z.boolean(), windowTypes: z.array(z.string()) })
+  .object({ populate: ScalarBoolean, windowTypes: z.array(ScalarString) })
   .partial()
   .loose()
 const windowStateSchema = z.enum(['normal', 'minimized', 'maximized', 'fullscreen'])
 const createDataSchema = z
   .object({
-    url: z.union([z.string(), z.array(z.string())]),
-    tabId: z.number().int(),
-    left: z.number().int(),
-    top: z.number().int(),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    focused: z.boolean(),
-    incognito: z.boolean(),
+    url: z.union([ScalarString, z.array(ScalarString)]),
+    tabId: ScalarNumber.int(),
+    left: ScalarNumber.int(),
+    top: ScalarNumber.int(),
+    width: ScalarPositiveInteger,
+    height: ScalarPositiveInteger,
+    focused: ScalarBoolean,
+    incognito: ScalarBoolean,
     type: z.enum(['normal', 'popup', 'panel']),
     state: windowStateSchema,
-    setSelfAsOpener: z.boolean()
+    setSelfAsOpener: ScalarBoolean
   })
   .partial()
   .loose()
 const updateInfoSchema = z
   .object({
-    left: z.number().int(),
-    top: z.number().int(),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    focused: z.boolean(),
-    drawAttention: z.boolean(),
+    left: ScalarNumber.int(),
+    top: ScalarNumber.int(),
+    width: ScalarPositiveInteger,
+    height: ScalarPositiveInteger,
+    focused: ScalarBoolean,
+    drawAttention: ScalarBoolean,
     state: windowStateSchema
   })
   .partial()

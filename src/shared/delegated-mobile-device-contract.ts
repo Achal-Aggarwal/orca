@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 // Why: a paired desktop relays each of its phones to this host as an ordinary phone device it owns.
@@ -10,8 +11,8 @@ export const DELEGATED_PHONE_NAME_MAX_CHARS = 128
 
 const DelegatedPhoneSchema = z
   .object({
-    phoneKey: z.string().min(1).max(128),
-    name: z.string().min(1).max(DELEGATED_PHONE_NAME_MAX_CHARS)
+    phoneKey: ScalarNonemptyString.max(128),
+    name: ScalarNonemptyString.max(DELEGATED_PHONE_NAME_MAX_CHARS)
   })
   .strict()
 

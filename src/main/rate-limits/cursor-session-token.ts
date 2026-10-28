@@ -1,6 +1,7 @@
+import { ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
-const jwtPayloadSchema = z.object({ sub: z.unknown(), exp: z.unknown() }).partial()
+const jwtPayloadSchema = z.object({ sub: ScalarUnknown, exp: ScalarUnknown }).partial()
 
 export type CursorSessionToken = {
   raw: string

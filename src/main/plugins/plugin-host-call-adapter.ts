@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarOptionalUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { isQualifiedPluginKey } from '../../shared/plugins/plugin-manifest'
 import type { PluginPanelActionOutcome } from '../../shared/plugins/plugin-panel-bridge'
@@ -5,8 +6,8 @@ import { executePluginHostCall, type ExecutePluginHostCallInput } from './plugin
 
 const pluginHostCallRequestSchema = z
   .object({
-    method: z.string().min(1).max(128),
-    params: z.unknown().optional()
+    method: ScalarNonemptyString.max(128),
+    params: ScalarOptionalUnknown
   })
   .strict()
 

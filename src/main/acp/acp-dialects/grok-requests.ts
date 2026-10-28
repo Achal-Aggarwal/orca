@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNullishString,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   isValidAgentSessionQuestionAnswers,
@@ -8,22 +14,22 @@ import { pendingAcpResolution } from '../acp-timeline-requests'
 import type { AcpRequestPresentation, AcpRequestSettlement } from './acp-dialect'
 
 const questionRequestSchema = z.object({
-  sessionId: z.string(),
-  toolCallId: z.string(),
+  sessionId: ScalarString,
+  toolCallId: ScalarString,
   questions: z
     .array(
       z.object({
-        question: z.string(),
-        multiSelect: z.boolean().nullish(),
-        options: z.array(z.object({ label: z.string(), description: z.string().optional() }))
+        question: ScalarString,
+        multiSelect: ScalarBoolean.nullish(),
+        options: z.array(z.object({ label: ScalarString, description: ScalarOptionalString }))
       })
     )
     .min(1)
 })
 const planRequestSchema = z.object({
-  sessionId: z.string(),
-  toolCallId: z.string(),
-  planContent: z.string().nullish()
+  sessionId: ScalarString,
+  toolCallId: ScalarString,
+  planContent: ScalarNullishString
 })
 
 function questionRequest(params: unknown): AcpRequestPresentation {

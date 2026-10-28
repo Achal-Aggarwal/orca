@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarPositiveInteger, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const ORCAD_PROFILE_PREFLIGHT_FLAG = '--orcad-profile-state-preflight'
@@ -16,12 +17,12 @@ export type OrcadPreflightRuntimeIdentity = {
 
 export const orcadProfilePreflightResponseSchema = z.object({
   type: z.literal('orca_profile_state_ready'),
-  nonce: z.string().uuid(),
+  nonce: ScalarString.uuid(),
   runtime: z.enum(ORCAD_PREFLIGHT_RUNTIMES),
-  runtimeVersion: z.string().min(1),
-  artifactVersion: z.string().regex(/^\d+\.\d+\.\d+\+[a-f0-9]{12}$/),
-  sqliteVersion: z.string().min(1),
-  revision: z.number().int().positive()
+  runtimeVersion: ScalarNonemptyString,
+  artifactVersion: ScalarString.regex(/^\d+\.\d+\.\d+\+[a-f0-9]{12}$/),
+  sqliteVersion: ScalarNonemptyString,
+  revision: ScalarPositiveInteger
 })
 
 export type OrcadProfilePreflightResponse = z.infer<typeof orcadProfilePreflightResponseSchema>

@@ -1,7 +1,8 @@
+import { ScalarNonnegativeInteger } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { RelayRegionSchema } from './relay-region-probe'
 
-const Counter = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const Counter = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 export const RelayRegionWindowSchema = z
   .object({
     generation: Counter,

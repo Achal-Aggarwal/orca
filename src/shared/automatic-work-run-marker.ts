@@ -1,3 +1,4 @@
+import { ScalarFiniteNumber, ScalarNullableString, ScalarNumber } from './scalar-value-schemas'
 // Use the prior terminal-host marker to admit automatic restores; the host owns persistence and clocks.
 import { z } from 'zod'
 import type { AutomaticWorkMode } from './host-spawn-admission'
@@ -49,14 +50,14 @@ export function decideStartupAutomaticWorkMode(
 
 const MarkerSchema = z.object({
   schemaVersion: z.literal(1),
-  boot: z.object({ bootTimeMs: z.number().finite().nullable(), bootId: z.string().nullable() }),
+  boot: z.object({ bootTimeMs: ScalarFiniteNumber.nullable(), bootId: ScalarNullableString }),
   state: z.enum(['running', 'clean-exit']),
   mode: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('normal') }),
     z.object({
       kind: z.literal('paused'),
       reason: z.enum(['unclean_host_death', 'pressure', 'operator']),
-      since: z.number()
+      since: ScalarNumber
     })
   ])
 })

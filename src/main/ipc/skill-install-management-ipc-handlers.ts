@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
 import { z } from 'zod'
@@ -23,8 +24,8 @@ import { callRuntimeEnvironment } from './runtime-environments/runtime-environme
 import { handleMainWindowSkillIpc } from './skill-ipc-main-window'
 import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 
-const environmentIdSchema = z.string().min(1).max(128)
-const skillNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+const environmentIdSchema = ScalarNonemptyString.max(128)
+const skillNameSchema = ScalarString.regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
 const installPreviewSchema = z
   .object({
     environmentId: environmentIdSchema.optional(),

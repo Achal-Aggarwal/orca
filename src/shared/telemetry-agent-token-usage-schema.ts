@@ -1,6 +1,7 @@
+import { ScalarNonnegativeInteger, ScalarPositiveInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 
-const tokenCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const tokenCount = ScalarNonnegativeInteger.max(Number.MAX_SAFE_INTEGER)
 
 export const agentTokenCountsSchema = z
   .object({
@@ -15,7 +16,7 @@ export const agentTokenUsageSchema = agentTokenCountsSchema
   .extend({
     provider: z.enum(['claude', 'codex', 'opencode']),
     analytics_session_id: z.uuidv4(),
-    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+    revision: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER)
   })
   .strict()
 

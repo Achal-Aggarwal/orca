@@ -1,22 +1,25 @@
+import {
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { SkillInstallDestinationSchema } from './skill-install-contract'
 import { SkillInstallFailureSchema, type SkillInstallFailure } from './skill-install-failure'
 
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/
-const ID_SCHEMA = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)
-const SKILL_NAME_SCHEMA = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+const ID_SCHEMA = ScalarString.regex(/^[A-Za-z0-9_-]{1,128}$/)
+const SKILL_NAME_SCHEMA = ScalarString.regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
 
 export const SkillBundlePackageIdentitySchema = z
   .object({
     packageId: ID_SCHEMA,
     versionId: ID_SCHEMA,
-    bundleDigest: z.string().regex(DIGEST_PATTERN),
-    archiveSha256: z.string().regex(DIGEST_PATTERN),
-    compressedBytes: z
-      .number()
-      .int()
-      .positive()
-      .max(40 * 1024 * 1024)
+    bundleDigest: ScalarString.regex(DIGEST_PATTERN),
+    archiveSha256: ScalarString.regex(DIGEST_PATTERN),
+    compressedBytes: ScalarPositiveInteger.max(40 * 1024 * 1024)
   })
   .strict()
 
@@ -29,11 +32,11 @@ const SkillBundleInstallIngressSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('staged-upload'), uploadId: ID_SCHEMA }).strict(),
-  z.object({ kind: z.literal('local-file'), path: z.string().min(1) }).strict()
+  z.object({ kind: z.literal('local-file'), path: ScalarNonemptyString }).strict()
 ])
 
 export const SkillBundleSelectedSkillSchema = z
-  .object({ id: ID_SCHEMA, name: SKILL_NAME_SCHEMA, digest: z.string().regex(DIGEST_PATTERN) })
+  .object({ id: ID_SCHEMA, name: SKILL_NAME_SCHEMA, digest: ScalarString.regex(DIGEST_PATTERN) })
   .strict()
 
 const SkillBundleConflictDecisionSchema = z
@@ -56,7 +59,7 @@ export const SkillBundleInstallRequestSchema = z
     ingress: SkillBundleInstallIngressSchema,
     destination: SkillInstallDestinationSchema,
     /** Agents the user picked; absent means every detected agent. */
-    providers: z.array(z.string().min(1).max(64)).max(64).optional(),
+    providers: z.array(ScalarNonemptyString.max(64)).max(64).optional(),
     conflictDecisions: z.array(SkillBundleConflictDecisionSchema).max(512).default([])
   })
   .strict()
@@ -98,19 +101,19 @@ const SkillBundleCurrentStateSchema = z.enum([
 export const SkillBundleInstallPreviewSchema = z.object({
   packageId: ID_SCHEMA,
   versionId: ID_SCHEMA,
-  bundleDigest: z.string().regex(DIGEST_PATTERN),
-  destinationIdentity: z.string(),
+  bundleDigest: ScalarString.regex(DIGEST_PATTERN),
+  destinationIdentity: ScalarString,
   skills: z.array(
     SkillBundleSelectedSkillSchema.extend({ currentState: SkillBundleCurrentStateSchema })
   )
 })
 
 const SkillBundlePlacementResultSchema = z.object({
-  provider: z.string(),
-  path: z.string(),
+  provider: ScalarString,
+  path: ScalarString,
   topology: z.enum(['canonical-copy', 'provider-alias', 'independent-copy']),
   status: z.enum(['installed', 'unchanged', 'skipped', 'failed']),
-  errorCategory: z.string().optional(),
+  errorCategory: ScalarOptionalString,
   failure: SkillInstallFailureSchema.optional()
 })
 
@@ -118,23 +121,23 @@ export const SkillBundleInstallResultSchema = z.object({
   operationId: ID_SCHEMA,
   packageId: ID_SCHEMA,
   versionId: ID_SCHEMA,
-  bundleDigest: z.string().regex(DIGEST_PATTERN),
+  bundleDigest: ScalarString.regex(DIGEST_PATTERN),
   status: z.enum(['complete', 'partial', 'cancelled', 'failed']),
   skills: z.array(
     z.object({
       skillId: ID_SCHEMA,
       name: SKILL_NAME_SCHEMA,
-      digest: z.string().regex(DIGEST_PATTERN),
+      digest: ScalarString.regex(DIGEST_PATTERN),
       status: z.enum(['installed', 'updated', 'unchanged', 'kept-local', 'failed', 'cancelled']),
-      canonicalPath: z.string().optional(),
+      canonicalPath: ScalarOptionalString,
       placements: z.array(SkillBundlePlacementResultSchema),
       conflict: z
         .object({
           kind: z.enum(['modified', 'unowned', 'external-link', 'name-collision']),
-          existingDigest: z.string().optional()
+          existingDigest: ScalarOptionalString
         })
         .optional(),
-      errorCategory: z.string().optional(),
+      errorCategory: ScalarOptionalString,
       failure: SkillInstallFailureSchema.optional()
     })
   )
@@ -154,11 +157,11 @@ export type SkillBundleInstallFailure = SkillInstallFailure
 
 export const SkillBundleInstallProgressSchema = z
   .object({
-    operationId: z.string().min(1).max(128),
-    skillId: z.string().min(1).max(128),
-    skillName: z.string().min(1).max(128),
-    skillIndex: z.number().int().min(1).max(512),
-    skillCount: z.number().int().min(1).max(512)
+    operationId: ScalarNonemptyString.max(128),
+    skillId: ScalarNonemptyString.max(128),
+    skillName: ScalarNonemptyString.max(128),
+    skillIndex: ScalarNumber.int().min(1).max(512),
+    skillCount: ScalarNumber.int().min(1).max(512)
   })
   .strict()
 

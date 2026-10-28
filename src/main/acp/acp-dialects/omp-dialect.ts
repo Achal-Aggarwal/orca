@@ -1,3 +1,9 @@
+import {
+  ScalarNumber,
+  ScalarOptionalUnknown,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { ToolCallContent, ToolCallUpdate } from '../generated/acp-protocol.generated'
 import type { AcpAgentError } from '../acp-errors'
@@ -5,20 +11,20 @@ import type { AcpCompactionReply, AcpDialect } from './acp-dialect'
 
 // Read raw result text instead of the repeated command echo in content.
 // Only timed foreground completion implies exit zero; service/background launches prove no exit.
-const textBlockSchema = z.looseObject({ type: z.literal('text'), text: z.string() })
-const promptErrorDataSchema = z.looseObject({ details: z.string() })
+const textBlockSchema = z.looseObject({ type: z.literal('text'), text: ScalarString })
+const promptErrorDataSchema = z.looseObject({ details: ScalarString })
 const SIGNED_OUT_DETAIL_PREFIXES = ['No model selected.\n\nUse /login', 'No API key found for ']
 const CANCEL_CLEANUP_TIMED_OUT = 'ACP cancel cleanup timed out'
 const toolResultSchema = z.looseObject({
-  content: z.array(z.unknown()),
+  content: z.array(ScalarUnknown),
   details: z
     .looseObject({
-      exitCode: z.number().int().safe().optional(),
-      wallTimeMs: z.number().nonnegative().optional(),
-      timedOut: z.unknown().optional(),
-      signal: z.unknown().optional(),
-      async: z.unknown().optional(),
-      service: z.unknown().optional()
+      exitCode: ScalarNumber.int().safe().optional(),
+      wallTimeMs: ScalarNumber.nonnegative().optional(),
+      timedOut: ScalarOptionalUnknown,
+      signal: ScalarOptionalUnknown,
+      async: ScalarOptionalUnknown,
+      service: ScalarOptionalUnknown
     })
     .optional()
 })

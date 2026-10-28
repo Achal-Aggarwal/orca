@@ -1,3 +1,4 @@
+import { ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import type { Repo } from '../repo-types'
 import type { Worktree } from '../worktree/types'
@@ -16,12 +17,12 @@ import { UNCACHED_LINKED_PR_STATE } from '../runtime-worktree-contracts'
 /** PR grouping currently admits only GitHub facts. */
 const WorkspaceReviewFactSchema = z.object({
   provider: z.literal('github'),
-  reviewState: z.string()
+  reviewState: ScalarString
 })
 
 /** On-demand facts have no revision; absent row key means no PR. */
 export const WorkspaceReviewFactsSnapshotSchema = z.object({
-  facts: z.record(z.string(), WorkspaceReviewFactSchema)
+  facts: z.record(ScalarString, WorkspaceReviewFactSchema)
 })
 
 export type WorkspaceReviewFact = z.infer<typeof WorkspaceReviewFactSchema>

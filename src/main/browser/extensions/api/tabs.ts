@@ -1,3 +1,10 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarString,
+  ScalarUnknown
+} from '../../../../shared/scalar-value-schemas'
 /// <reference types="chrome" />
 import { z } from 'zod'
 import { resolveBrowserExtensionRequestedUrl } from '../../../../shared/browser-extension-url'
@@ -39,39 +46,44 @@ import {
   listBrowserExtensionWindows
 } from '../browser-extension-window-model'
 
-const tabIdSchema = z.number().int().nonnegative()
-const nativeTabSchema = z.record(z.string(), z.unknown())
+const tabIdSchema = ScalarNonnegativeInteger
+const nativeTabSchema = z.record(ScalarString, ScalarUnknown)
 const queryInfoSchema = z
   .object({
-    active: z.boolean(),
-    highlighted: z.boolean(),
-    currentWindow: z.boolean(),
-    lastFocusedWindow: z.boolean(),
-    windowId: z.number().int(),
-    windowType: z.string(),
-    status: z.string(),
-    index: z.number().int(),
-    pinned: z.boolean(),
-    discarded: z.boolean(),
-    frozen: z.boolean(),
-    groupId: z.number().int()
+    active: ScalarBoolean,
+    highlighted: ScalarBoolean,
+    currentWindow: ScalarBoolean,
+    lastFocusedWindow: ScalarBoolean,
+    windowId: ScalarNumber.int(),
+    windowType: ScalarString,
+    status: ScalarString,
+    index: ScalarNumber.int(),
+    pinned: ScalarBoolean,
+    discarded: ScalarBoolean,
+    frozen: ScalarBoolean,
+    groupId: ScalarNumber.int()
   })
   .partial()
   .loose()
 const createPropertiesSchema = z
   .object({
-    url: z.string(),
-    active: z.boolean(),
-    selected: z.boolean(),
-    windowId: z.number().int(),
-    index: z.number().int(),
-    pinned: z.boolean(),
+    url: ScalarString,
+    active: ScalarBoolean,
+    selected: ScalarBoolean,
+    windowId: ScalarNumber.int(),
+    index: ScalarNumber.int(),
+    pinned: ScalarBoolean,
     openerTabId: tabIdSchema
   })
   .partial()
   .loose()
 const updatePropertiesSchema = z
-  .object({ url: z.string(), muted: z.boolean(), active: z.boolean(), highlighted: z.boolean() })
+  .object({
+    url: ScalarString,
+    muted: ScalarBoolean,
+    active: ScalarBoolean,
+    highlighted: ScalarBoolean
+  })
   .partial()
   .loose()
 

@@ -1,3 +1,4 @@
+import { ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   CURSOR_MODELS_BUCKET_NAME,
@@ -10,21 +11,21 @@ const MONTHLY_WINDOW_MINUTES = 43_200
 
 const cursorPoolSchema = z
   .object({
-    enabled: z.unknown(),
-    used: z.unknown(),
-    limit: z.unknown(),
-    totalPercentUsed: z.unknown(),
-    autoPercentUsed: z.unknown(),
-    apiPercentUsed: z.unknown()
+    enabled: ScalarUnknown,
+    used: ScalarUnknown,
+    limit: ScalarUnknown,
+    totalPercentUsed: ScalarUnknown,
+    autoPercentUsed: ScalarUnknown,
+    apiPercentUsed: ScalarUnknown
   })
   .partial()
 
 const cursorUsageSummarySchema = z
   .object({
-    billingCycleStart: z.unknown(),
-    billingCycleEnd: z.unknown(),
-    membershipType: z.unknown(),
-    isUnlimited: z.unknown(),
+    billingCycleStart: ScalarUnknown,
+    billingCycleEnd: ScalarUnknown,
+    membershipType: ScalarUnknown,
+    isUnlimited: ScalarUnknown,
     // The dashboard sends null for absent pools; optional-only schemas would reject the entire valid response.
     individualUsage: z
       .object({ plan: cursorPoolSchema.nullish(), onDemand: cursorPoolSchema.nullish() })
@@ -37,8 +38,8 @@ type CursorPool = z.infer<typeof cursorPoolSchema>
 export type CursorUsageSummary = z.infer<typeof cursorUsageSummarySchema>
 
 const cursorCurrentPeriodSchema = z.object({
-  billingCycleStart: z.unknown(),
-  billingCycleEnd: z.unknown(),
+  billingCycleStart: ScalarUnknown,
+  billingCycleEnd: ScalarUnknown,
   planUsage: cursorPoolSchema
 })
 
@@ -211,10 +212,10 @@ function addOneMonthUtc(startMs: number): number {
 }
 
 const legacyBucketSchema = z
-  .object({ numRequests: z.unknown(), maxRequestUsage: z.unknown() })
+  .object({ numRequests: ScalarUnknown, maxRequestUsage: ScalarUnknown })
   .partial()
 
-const legacyQuotaSchema = z.record(z.string(), z.union([legacyBucketSchema, z.unknown()]))
+const legacyQuotaSchema = z.record(ScalarString, z.union([legacyBucketSchema, ScalarUnknown]))
 
 /** Older plans meter per-model requests instead of currency allowance. */
 export function mapCursorLegacyRequestQuota(payload: unknown): RateLimitWindow | null {

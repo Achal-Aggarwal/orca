@@ -1,3 +1,8 @@
+import {
+  ScalarOptionalNonemptyString,
+  ScalarString,
+  ScalarUnknown
+} from '../../shared/scalar-value-schemas'
 // OpenCode 1.x models --verbose emits each provider/model ID followed by indented JSON.
 
 import { z } from 'zod'
@@ -11,8 +16,8 @@ const DEFAULT_VARIANT = 'default'
 const MODEL_JSON_LIMITS = { structuralTokens: 64 * 1024, nestingDepth: 32 } as const
 
 const modelMetaSchema = z.looseObject({
-  name: z.string().min(1).optional(),
-  variants: z.record(z.string(), z.unknown()).optional()
+  name: ScalarOptionalNonemptyString,
+  variants: z.record(ScalarString, ScalarUnknown).optional()
 })
 
 function variantLabel(variant: string): string {

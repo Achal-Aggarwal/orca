@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import { isChromeExtensionId } from '../../shared/browser-extension-url'
@@ -18,8 +19,8 @@ import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 import { registerBrowserExtensionToolbarHandlers } from './browser-extension-toolbar'
 import { registerBrowserExtensionWebStoreHandlers } from './browser-extension-webstore'
 
-const profileArgs = z.object({ profileId: z.string().min(1) })
-const extensionArgs = profileArgs.extend({ extensionId: z.string().refine(isChromeExtensionId) })
+const profileArgs = z.object({ profileId: ScalarNonemptyString })
+const extensionArgs = profileArgs.extend({ extensionId: ScalarString.refine(isChromeExtensionId) })
 const UNTRUSTED: BrowserExtensionActionResult = { ok: false, error: 'Not allowed' }
 
 const CHANNELS = [

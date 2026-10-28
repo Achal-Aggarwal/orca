@@ -1,3 +1,4 @@
+import { ScalarNullableString, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 export type CursorDesktopProfile = {
@@ -16,10 +17,10 @@ export function cursorProfileReadFailure(): CursorDesktopProfileReadResult {
   return { status: 'error', error: 'Unable to read the Cursor desktop login' }
 }
 
-const nullableString = z.string().nullable()
+const nullableString = ScalarNullableString
 const resultSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('missing') }),
-  z.object({ status: z.literal('error'), error: z.string() }),
+  z.object({ status: z.literal('error'), error: ScalarString }),
   z.object({
     status: z.literal('ok'),
     profile: z.object({

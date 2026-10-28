@@ -1,3 +1,16 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarString
+} from './scalar-value-schemas'
 import { resolveSessionSearchLimit, SESSION_SEARCH_LIMIT_MAX } from './ai-vault-search-limit'
 import { z } from 'zod'
 import {
@@ -17,26 +30,29 @@ function sinceAsStoredInstant(since: string): string {
 
 export const AiVaultSearchFiltersSchema = z.object({
   agents: z.array(z.enum(AI_VAULT_AGENTS)).optional(),
-  scopePaths: z.array(z.string().min(1).max(4096)).max(AI_VAULT_SCOPE_PATHS_MAX_COUNT).optional(),
-  since: z.string().datetime({ offset: true }).transform(sinceAsStoredInstant).optional(),
+  scopePaths: z
+    .array(ScalarNonemptyString.max(4096))
+    .max(AI_VAULT_SCOPE_PATHS_MAX_COUNT)
+    .optional(),
+  since: ScalarString.datetime({ offset: true }).transform(sinceAsStoredInstant).optional(),
   sort: z.enum(AI_VAULT_SEARCH_SORTS).optional()
 })
 
 // Strip unknown fields so legacy tier/refresh are accepted without affecting the query.
 export const AiVaultSearchRequestSchema = z
   .object({
-    query: z.string(),
+    query: ScalarString,
     scope: z.enum(['conversation', 'all']).optional(),
     freshness: z.enum(['indexed', 'wait-until-current']).optional(),
-    limit: z.number().optional().transform(resolveSessionSearchLimit),
-    cursor: z.string().optional(),
+    limit: ScalarOptionalNumber.transform(resolveSessionSearchLimit),
+    cursor: ScalarOptionalString,
     filters: AiVaultSearchFiltersSchema.optional(),
-    supportedAgents: z.array(z.string()).optional(),
-    supportsQoderHistory: z.boolean().optional(),
-    supportsJcodeHistory: z.boolean().optional(),
+    supportedAgents: z.array(ScalarString).optional(),
+    supportsQoderHistory: ScalarOptionalBoolean,
+    supportsJcodeHistory: ScalarOptionalBoolean,
     /** Scope by identity, resolved into paths by whichever host answers. */
     within: AiVaultSearchScopeIdentitySchema.optional(),
-    debug: z.boolean().optional()
+    debug: ScalarOptionalBoolean
   })
   // Refuse intersecting scopes instead of guessing and widening; neither scope still means all sessions.
   .refine(
@@ -46,48 +62,51 @@ export const AiVaultSearchRequestSchema = z
 
 export const AiVaultSearchSourceSchema = z.object({
   presence: z.enum(['present', 'unverifiable', 'missing']),
-  filePath: z.string().optional(),
-  codexHome: z.string().optional()
+  filePath: ScalarOptionalString,
+  codexHome: ScalarOptionalString
 })
 export const AiVaultSearchEvidenceSchema = z.object({
-  snippet: z.string(),
+  snippet: ScalarString,
   role: z.enum(['user', 'assistant', 'tool', 'system', 'unknown']),
-  timestamp: z.string().nullable()
+  timestamp: ScalarNullableString
 })
 // Older hosts may omit attribution; the desktop stamps remote answers.
-const executionHostIdSchema = z.string().min(1)
+const executionHostIdSchema = ScalarNonemptyString
 
 export const AiVaultSearchHitSchema = z
   .object({
     agent: z.enum(AI_VAULT_AGENTS),
     executionHostId: executionHostIdSchema.optional(),
-    sessionId: z.string(),
-    title: z.string(),
-    cwd: z.string().nullable(),
-    branch: z.string().nullable(),
-    updatedAt: z.string().nullable(),
-    messageCount: z.number().int().nonnegative(),
-    score: z.number(),
+    sessionId: ScalarString,
+    title: ScalarString,
+    cwd: ScalarNullableString,
+    branch: ScalarNullableString,
+    updatedAt: ScalarNullableString,
+    messageCount: ScalarNonnegativeInteger,
+    score: ScalarNumber,
     source: AiVaultSearchSourceSchema,
     evidence: AiVaultSearchEvidenceSchema.nullable(),
-    resumeCommand: z.string().optional(),
+    resumeCommand: ScalarOptionalString,
     /** The native chat owning this transcript, from the indexing host; older hosts omit it. */
     structuredSession: z
-      .object({ sessionId: z.string().min(1).max(512), workspaceId: z.string().min(1).max(512) })
+      .object({
+        sessionId: ScalarNonemptyString.max(512),
+        workspaceId: ScalarNonemptyString.max(512)
+      })
       .optional()
   })
   .refine((hit) => hit.source.presence === 'present' || hit.resumeCommand === undefined, {
     message: 'Only present sources may have a resume command'
   })
 export const AiVaultSearchPageSchema = z.object({
-  cursor: z.string().nullable(),
-  hasMore: z.boolean()
+  cursor: ScalarNullableString,
+  hasMore: ScalarBoolean
 })
 export const AiVaultSearchTruncationSchema = z.object({
-  candidates: z.boolean(),
-  snippets: z.number().int().nonnegative(),
-  query: z.boolean(),
-  freshness: z.boolean()
+  candidates: ScalarBoolean,
+  snippets: ScalarNonnegativeInteger,
+  query: ScalarBoolean,
+  freshness: ScalarBoolean
 })
 /** Desktop-only additive per-host results for all-computers merges; hosts never publish this and older readers drop it. */
 export const AiVaultSearchHostOutcomeSchema = z.object({
@@ -107,12 +126,12 @@ export const AiVaultSearchHostOutcomeSchema = z.object({
 const routeSchema = z.enum(['phrase', 'and', 'or', 'typo+phrase', 'typo+and', 'typo+or'])
 export const AiVaultSearchPlannerReportSchema = z.object({
   route: routeSchema,
-  repairedTerms: z.array(z.string()).optional(),
+  repairedTerms: z.array(ScalarString).optional(),
   scope: z.enum(['conversation', 'all'])
 })
 export const AiVaultSearchDebugSchema = z.object({
   route: routeSchema,
-  repairedTerms: z.array(z.string()).optional(),
+  repairedTerms: z.array(ScalarString).optional(),
   plannerReport: AiVaultSearchPlannerReportSchema
 })
 export const AiVaultSearchResponseSchema = z.discriminatedUnion('kind', [
@@ -120,16 +139,16 @@ export const AiVaultSearchResponseSchema = z.discriminatedUnion('kind', [
     kind: z.literal('results'),
     hits: z.array(AiVaultSearchHitSchema).max(SESSION_SEARCH_LIMIT_MAX),
     page: AiVaultSearchPageSchema,
-    generation: z.number().int().nonnegative(),
+    generation: ScalarNonnegativeInteger,
     truncated: AiVaultSearchTruncationSchema,
-    durationMs: z.number().nonnegative(),
+    durationMs: ScalarNumber.nonnegative(),
     debug: AiVaultSearchDebugSchema.optional(),
     hosts: z.array(AiVaultSearchHostOutcomeSchema).optional()
   }),
   z.object({
     kind: z.literal('stale-cursor'),
-    generation: z.number().int().nonnegative(),
-    expectedGeneration: z.number().int().nonnegative().optional()
+    generation: ScalarNonnegativeInteger,
+    expectedGeneration: ScalarOptionalNonnegativeInteger
   }),
   z.object({ kind: z.literal('malformed-cursor') }),
   z.object({
@@ -140,24 +159,24 @@ export const AiVaultSearchResponseSchema = z.discriminatedUnion('kind', [
 ])
 export const AiVaultSearchStatusRequestSchema = z.object({})
 /** Consent flip for one host's index. Answered with that host's status after the change is applied. */
-export const AiVaultSetSearchEnabledParamsSchema = z.object({ enabled: z.boolean() })
+export const AiVaultSetSearchEnabledParamsSchema = z.object({ enabled: ScalarBoolean })
 export const AiVaultSearchStatusSchema = z.object({
   // Strings keep a future host's larger catalog readable by this client.
-  supportedAgents: z.array(z.string()).optional(),
-  supportsQoderHistory: z.boolean().optional(),
-  supportsJcodeHistory: z.boolean().optional(),
-  enabled: z.boolean(),
+  supportedAgents: z.array(ScalarString).optional(),
+  supportsQoderHistory: ScalarOptionalBoolean,
+  supportsJcodeHistory: ScalarOptionalBoolean,
+  enabled: ScalarBoolean,
   phase: z.enum(['idle', 'indexing', 'current', 'degraded', 'closed']),
-  filesIndexed: z.number().int().nonnegative(),
-  filesDue: z.number().int().nonnegative(),
-  filesFailed: z.number().int().nonnegative(),
+  filesIndexed: ScalarNonnegativeInteger,
+  filesDue: ScalarNonnegativeInteger,
+  filesFailed: ScalarNonnegativeInteger,
   // Optional: a host that predates this field degrades to a session count only.
-  messagesIndexed: z.number().int().nonnegative().optional(),
+  messagesIndexed: ScalarOptionalNonnegativeInteger,
   // `root` is a host path, withheld over the relay; the array length is the count.
-  degradedRoots: z.array(z.object({ root: z.string().optional(), reason: z.string() })),
-  lastReconcileAt: z.number().nullable(),
-  lastSweepCompletedAt: z.number().nullable(),
+  degradedRoots: z.array(z.object({ root: ScalarOptionalString, reason: ScalarString })),
+  lastReconcileAt: ScalarNullableNumber,
+  lastSweepCompletedAt: ScalarNullableNumber,
   // Older hosts omit breakdowns; missing means no breakdown, never zero counts.
-  sessionsByAgent: z.record(z.string(), z.number().int().nonnegative()).optional(),
-  generation: z.number().int().nonnegative()
+  sessionsByAgent: z.record(ScalarString, ScalarNonnegativeInteger).optional(),
+  generation: ScalarNonnegativeInteger
 })

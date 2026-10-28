@@ -1,3 +1,4 @@
+import { ScalarNonemptyString } from '../../shared/scalar-value-schemas'
 // A place is where a connector start may run; its id rebuilds the launch target with no lookup, so twins on other hosts stay apart.
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
@@ -24,8 +25,8 @@ import {
 } from '../runtime/runtime-visible-catalog'
 
 const Place = z.union([
-  z.tuple([z.literal('git'), z.string().min(1), z.string().min(1)]),
-  z.tuple([z.literal('folder'), z.string().min(1)])
+  z.tuple([z.literal('git'), ScalarNonemptyString, ScalarNonemptyString]),
+  z.tuple([z.literal('folder'), ScalarNonemptyString])
 ])
 type Place = z.infer<typeof Place>
 

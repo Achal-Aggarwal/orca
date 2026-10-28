@@ -1,3 +1,4 @@
+import { ScalarOptionalNumber, ScalarOptionalString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 import { isTerminalLeafId } from './stable-pane-id'
 import { terminalPaneLayoutNodeSchema, terminalTabSchema } from './workspace-session-schema'
@@ -15,7 +16,7 @@ const NewTabRow = terminalTabSchema
     launchAgent: true,
     viewMode: true
   })
-  .extend({ shellOverride: z.string().optional() })
+  .extend({ shellOverride: ScalarOptionalString })
   .partial()
 
 // Optional fields degrade alone: a malformed one is dropped, not the whole placement.
@@ -26,12 +27,9 @@ const NewTabPlacement = z.object({
 
 const SplitPlacement = z.object({
   kind: z.literal('split'),
-  parentLeafId: z
-    .string()
-    .max(128)
-    .refine((value): boolean => isTerminalLeafId(value)),
+  parentLeafId: ScalarString.max(128).refine((value): boolean => isTerminalLeafId(value)),
   direction: z.enum(['horizontal', 'vertical']),
-  ratio: z.number().optional().catch(undefined),
+  ratio: ScalarOptionalNumber.catch(undefined),
   /** The tab's tree after the split, which `parentLeafId` alone can't express (subtrees, before/after). */
   proposedRoot: terminalPaneLayoutNodeSchema.optional().catch(undefined)
 })

@@ -1,3 +1,9 @@
+import {
+  ScalarNumber,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { githubReadExecutionScope as workItemSearchScope } from '../../github-read-execution-scope'
 export { githubReadExecutionScope as workItemSearchScope } from '../../github-read-execution-scope'
@@ -9,12 +15,12 @@ import { noteRepositoryRateLimitSpend, repositoryRateLimitGuard } from '../../ra
 import type { GitHubRepoExecOptions } from '../../github-api-repository'
 
 const envelopeSchema = z.object({
-  data: z.record(z.string(), z.unknown()).nullish(),
+  data: z.record(ScalarString, ScalarUnknown).nullish(),
   errors: z
     .array(
       z.object({
-        message: z.string().optional(),
-        path: z.array(z.union([z.string(), z.number()])).optional()
+        message: ScalarOptionalString,
+        path: z.array(z.union([ScalarString, ScalarNumber])).optional()
       })
     )
     .optional()

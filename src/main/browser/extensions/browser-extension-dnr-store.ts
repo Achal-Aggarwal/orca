@@ -1,3 +1,10 @@
+import {
+  ScalarBoolean,
+  ScalarNumber,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { app } from 'electron'
 import { z } from 'zod'
 import { BrowserExtensionSyncStorageStore } from './browser-extension-sync-storage-store'
@@ -9,12 +16,12 @@ import { getBrowserExtensionProfileDataDirectory } from './browser-extension-pro
  * and the action-count badge option. Session rules live only in memory.
  */
 const dnrStateSchema = z.object({
-  dynamicRules: z.array(z.unknown()).default([]),
+  dynamicRules: z.array(ScalarUnknown).default([]),
   /** The version the static-ruleset choices below were made for. */
-  extensionVersion: z.string().optional(),
-  enabledRulesetIds: z.array(z.string()).optional(),
-  disabledRuleIds: z.record(z.string(), z.array(z.number().int())).default({}),
-  displayActionCountAsBadgeText: z.boolean().default(false)
+  extensionVersion: ScalarOptionalString,
+  enabledRulesetIds: z.array(ScalarString).optional(),
+  disabledRuleIds: z.record(ScalarString, z.array(ScalarNumber.int())).default({}),
+  displayActionCountAsBadgeText: ScalarBoolean.default(false)
 })
 
 export type BrowserExtensionDnrState = z.infer<typeof dnrStateSchema>

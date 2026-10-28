@@ -1,3 +1,8 @@
+import {
+  ScalarBoolean,
+  ScalarOptionalBoolean,
+  ScalarOptionalString
+} from '../../shared/scalar-value-schemas'
 /**
  * The production port of "Use on this computer again": the host's copies of the project's
  * terminals, reached over its paired runtime.
@@ -42,9 +47,9 @@ export type WslMoveUndoPorts = {
 // What undo reads of the host's terminal list: whether each terminal is still running.
 const HostTerminalList = z.object({
   terminals: z.array(
-    z.object({ connected: z.boolean(), worktreeId: z.string().optional() }).passthrough()
+    z.object({ connected: ScalarBoolean, worktreeId: ScalarOptionalString }).passthrough()
   ),
-  truncated: z.boolean().optional()
+  truncated: ScalarOptionalBoolean
 })
 
 // The host's answer for a workspace selector it does not have.

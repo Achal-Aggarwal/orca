@@ -1,3 +1,8 @@
+import {
+  ScalarNullableString,
+  ScalarOptionalNonnegativeInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { app } from 'electron'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -11,16 +16,16 @@ const INSTALLED_FILE_NAME = 'installed.json'
 const REMOVALS_FILE_NAME = 'uninstalled.json'
 
 const installedExtensionSchema = z.object({
-  id: z.string().refine(isChromeExtensionId),
-  name: z.string(),
-  version: z.string(),
-  path: z.string(),
+  id: ScalarString.refine(isChromeExtensionId),
+  name: ScalarString,
+  version: ScalarString,
+  path: ScalarString,
   source: z.enum(['webstore', 'unpacked']),
-  iconPath: z.string().nullable(),
-  permissions: z.array(z.string()),
-  hostPermissions: z.array(z.string()),
-  optionsPage: z.string().nullable(),
-  installTime: z.number().int().nonnegative().optional()
+  iconPath: ScalarNullableString,
+  permissions: z.array(ScalarString),
+  hostPermissions: z.array(ScalarString),
+  optionsPage: ScalarNullableString,
+  installTime: ScalarOptionalNonnegativeInteger
 })
 
 /**

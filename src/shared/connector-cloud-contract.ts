@@ -1,3 +1,10 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarOptionalUnknown,
+  ScalarPositiveInteger,
+  ScalarUnknown
+} from './scalar-value-schemas'
 // Mirror of cloud/packages/connector-contract/src for the machine side of the Orca Cloud connector.
 import { z } from 'zod'
 import type { PendingPrompt } from './agent-pending-prompt'
@@ -32,17 +39,17 @@ export const CONNECTOR_CLIENT_LIMITS = {
 } as const
 
 // Machine-side readers: they keep what this Orca uses and ignore fields a newer cloud adds.
-export const ConnectorErrorResponse = z.object({ error: z.string().min(1) })
+export const ConnectorErrorResponse = z.object({ error: ScalarNonemptyString })
 
 // Each hello gets a revision above every earlier one for this machine; polls, acks and events carry it.
-export const ConnectorHelloResponse = z.object({ helloRev: z.number().int().positive() })
+export const ConnectorHelloResponse = z.object({ helloRev: ScalarPositiveInteger })
 
 /** Where an Orca Cloud conversation comes from. */
 export const CONNECTOR_CLOUD_SOURCES = ['slack', 'discord', 'linear'] as const
 
 export const ConnectorConversation = z.object({
   source: z.enum(CONNECTOR_CLOUD_SOURCES),
-  externalId: z.string().min(1)
+  externalId: ScalarNonemptyString
 })
 export type ConnectorConversation = z.infer<typeof ConnectorConversation>
 
@@ -56,8 +63,8 @@ export function cloudConversation(key: {
 }
 
 const DeliveryBase = {
-  deliveryId: z.string().min(1),
-  expiresAt: z.number().int().positive(),
+  deliveryId: ScalarNonemptyString,
+  expiresAt: ScalarPositiveInteger,
   conversation: ConnectorConversation
 }
 
@@ -65,44 +72,44 @@ export const ConnectorDelivery = z.discriminatedUnion('kind', [
   z.object({
     ...DeliveryBase,
     kind: z.literal('start'),
-    agent: z.string().min(1),
-    placeId: z.string().min(1),
-    prompt: z.string().min(1)
+    agent: ScalarNonemptyString,
+    placeId: ScalarNonemptyString,
+    prompt: ScalarNonemptyString
   }),
-  z.object({ ...DeliveryBase, kind: z.literal('send'), text: z.string().min(1) }),
+  z.object({ ...DeliveryBase, kind: z.literal('send'), text: ScalarNonemptyString }),
   z.object({
     ...DeliveryBase,
     kind: z.literal('answer'),
-    promptId: z.string().min(1),
-    optionId: z.string().min(1)
+    promptId: ScalarNonemptyString,
+    optionId: ScalarNonemptyString
   }),
   z.object({ ...DeliveryBase, kind: z.literal('cancel') })
 ])
 export type ConnectorDelivery = z.infer<typeof ConnectorDelivery>
 
 /** Enough of a delivery this Orca cannot read to settle it as unsupported. */
-export const ConnectorDeliveryId = z.object({ deliveryId: z.string().min(1) })
+export const ConnectorDeliveryId = z.object({ deliveryId: ScalarNonemptyString })
 
 // Each delivery and the control are read one by one, so one this Orca cannot read never drops the rest.
 export const ConnectorPollResponse = z.object({
-  serverNow: z.number().int().positive(),
-  holdMs: z.number().int().nonnegative(),
+  serverNow: ScalarPositiveInteger,
+  holdMs: ScalarNonnegativeInteger,
   unsettled: z
-    .array(z.object({ deliveryId: z.string().min(1), conversation: ConnectorConversation }))
+    .array(z.object({ deliveryId: ScalarNonemptyString, conversation: ConnectorConversation }))
     .optional(),
-  deliveries: z.array(z.unknown()),
-  control: z.unknown().optional()
+  deliveries: z.array(ScalarUnknown),
+  control: ScalarOptionalUnknown
 })
 
 export const ConnectorReplyResponse = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('posted'), messageId: z.string().min(1) }),
+  z.object({ status: z.literal('posted'), messageId: ScalarNonemptyString }),
   z.object({ status: z.literal('queued') })
 ])
 export type ConnectorReplyResponse = z.infer<typeof ConnectorReplyResponse>
 
 export const ConnectorPollControl = z.union([
-  z.object({ stop: z.string().min(1) }),
-  z.object({ pausedForMs: z.number().int().positive() }),
+  z.object({ stop: ScalarNonemptyString }),
+  z.object({ pausedForMs: ScalarPositiveInteger }),
   z.object({ reconnect: z.literal(true) })
 ])
 export type ConnectorPollControl = z.infer<typeof ConnectorPollControl>

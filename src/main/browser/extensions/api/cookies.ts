@@ -1,3 +1,10 @@
+import {
+  ScalarBoolean,
+  ScalarOptionalBoolean,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../../shared/scalar-value-schemas'
 /// <reference types="chrome" />
 import { z } from 'zod'
 import { emitBrowserExtensionEvent } from '../browser-extension-api-host'
@@ -14,31 +21,33 @@ import { browserExtensionHostPatternsInSession } from './permissions'
 /** Each extension session has one cookie store; Chrome names the regular store "0". */
 const STORE_ID = '0'
 
-const storeIdSchema = z.string().optional()
-const getSchema = z.object({ url: z.string(), name: z.string(), storeId: storeIdSchema }).loose()
+const storeIdSchema = ScalarOptionalString
+const getSchema = z
+  .object({ url: ScalarString, name: ScalarString, storeId: storeIdSchema })
+  .loose()
 const getAllSchema = z
   .object({
-    url: z.string(),
-    name: z.string(),
-    domain: z.string(),
-    path: z.string(),
-    secure: z.boolean(),
-    session: z.boolean(),
-    storeId: z.string()
+    url: ScalarString,
+    name: ScalarString,
+    domain: ScalarString,
+    path: ScalarString,
+    secure: ScalarBoolean,
+    session: ScalarBoolean,
+    storeId: ScalarString
   })
   .partial()
   .loose()
 const setSchema = z
   .object({
-    url: z.string(),
-    name: z.string().optional(),
-    value: z.string().optional(),
-    domain: z.string().optional(),
-    path: z.string().optional(),
-    secure: z.boolean().optional(),
-    httpOnly: z.boolean().optional(),
+    url: ScalarString,
+    name: ScalarOptionalString,
+    value: ScalarOptionalString,
+    domain: ScalarOptionalString,
+    path: ScalarOptionalString,
+    secure: ScalarOptionalBoolean,
+    httpOnly: ScalarOptionalBoolean,
     sameSite: z.enum(['no_restriction', 'lax', 'strict', 'unspecified']).optional(),
-    expirationDate: z.number().optional(),
+    expirationDate: ScalarOptionalNumber,
     storeId: storeIdSchema
   })
   .loose()

@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { PLUGIN_EVENT_NAMES } from './plugin-manifest'
 import type { PluginCapabilityKind } from './plugin-capabilities'
@@ -14,14 +20,14 @@ export const PLUGIN_TERMINAL_ID_MAX_LENGTH = 1024
 const workspaceReadContextParams = z.object({}).strict().optional()
 const workspaceReadContextResult = z
   .object({
-    branch: z.string().max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
-    displayName: z.string().max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
+    branch: ScalarString.max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
+    displayName: ScalarString.max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
     /** Explicit focused-worktree terminal IDs; the API offers no active-terminal mutation target. */
     terminals: z
       .array(
         z
           .object({
-            id: z.string().min(1).max(PLUGIN_TERMINAL_ID_MAX_LENGTH)
+            id: ScalarNonemptyString.max(PLUGIN_TERMINAL_ID_MAX_LENGTH)
           })
           .strict()
       )
@@ -32,24 +38,23 @@ const workspaceReadContextResult = z
 
 const terminalSendTextParams = z.object({
   /** Explicit target prevents delayed writes following focus changes into another pane. */
-  terminalId: z.string().min(1).max(PLUGIN_TERMINAL_ID_MAX_LENGTH),
-  text: z.string().min(1).max(PANEL_ACTION_TEXT_MAX_LENGTH),
-  enter: z.boolean().default(false)
+  terminalId: ScalarNonemptyString.max(PLUGIN_TERMINAL_ID_MAX_LENGTH),
+  text: ScalarNonemptyString.max(PANEL_ACTION_TEXT_MAX_LENGTH),
+  enter: ScalarBoolean.default(false)
 })
-const terminalSendTextResult = z.object({ accepted: z.boolean() })
+const terminalSendTextResult = z.object({ accepted: ScalarBoolean })
 
 const notificationsShowParams = z.object({
-  title: z.string().min(1).max(120),
-  body: z.string().max(1000).optional()
+  title: ScalarNonemptyString.max(120),
+  body: ScalarString.max(1000).optional()
 })
-const notificationsShowResult = z.object({ delivered: z.boolean() })
+const notificationsShowResult = z.object({ delivered: ScalarBoolean })
 
 const RESERVED_STORAGE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
-const storageKeySchema = z
-  .string()
-  .min(1)
-  .max(256)
-  .refine((key) => !RESERVED_STORAGE_KEYS.has(key), 'reserved storage key')
+const storageKeySchema = ScalarNonemptyString.max(256).refine(
+  (key) => !RESERVED_STORAGE_KEYS.has(key),
+  'reserved storage key'
+)
 const pluginJsonValueSchema = z.json()
 /** Caps keep per-plugin storage an honest key-value store, not a database. */
 export const PLUGIN_STORAGE_VALUE_MAX_BYTES = 256 * 1024
@@ -63,17 +68,17 @@ const storageSetResult = z.object({ ok: z.literal(true) })
 const storageDeleteParams = z.object({ key: storageKeySchema })
 const storageDeleteResult = z.object({ ok: z.literal(true) })
 const storageKeysParams = z.object({}).strict().optional()
-const storageKeysResult = z.object({ keys: z.array(z.string()).max(PLUGIN_STORAGE_KEY_LIMIT) })
+const storageKeysResult = z.object({ keys: z.array(ScalarString).max(PLUGIN_STORAGE_KEY_LIMIT) })
 
 const secretsGetParams = z.object({ key: storageKeySchema })
-const secretsGetResult = z.object({ value: z.string().nullable() })
-const secretsSetParams = z.object({ key: storageKeySchema, value: z.string().max(64 * 1024) })
+const secretsGetResult = z.object({ value: ScalarNullableString })
+const secretsSetParams = z.object({ key: storageKeySchema, value: ScalarString.max(64 * 1024) })
 const secretsSetResult = z.object({ ok: z.literal(true) })
 const secretsDeleteParams = z.object({ key: storageKeySchema })
 const secretsDeleteResult = z.object({ ok: z.literal(true) })
 
 const settingsGetParams = z.object({}).strict().optional()
-const settingsGetResult = z.object({ settings: z.record(z.string(), pluginJsonValueSchema) })
+const settingsGetResult = z.object({ settings: z.record(ScalarString, pluginJsonValueSchema) })
 const settingsSetParams = z.object({ key: storageKeySchema, value: pluginJsonValueSchema })
 const settingsSetResult = z.object({ ok: z.literal(true) })
 

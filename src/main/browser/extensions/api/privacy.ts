@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarString, ScalarUnknown } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { emitBrowserExtensionEvent } from '../browser-extension-api-host'
 import {
@@ -79,8 +80,8 @@ export function resolvePrivacySetting(
   }
 }
 
-const detailsSchema = z.object({ incognito: z.boolean() }).partial().loose()
-const setSchema = z.object({ value: z.unknown(), scope: z.string() }).partial().loose()
+const detailsSchema = z.object({ incognito: ScalarBoolean }).partial().loose()
+const setSchema = z.object({ value: ScalarUnknown, scope: ScalarString }).partial().loose()
 
 function readProfile(caller: BrowserExtensionCaller) {
   return getBrowserExtensionProfileStateStore().readProfile(caller.browserProfileId)

@@ -1,3 +1,4 @@
+import { ScalarString } from './scalar-value-schemas'
 /** Desktop-selected accounts are pushed to owned WSL orcad hosts without account services (D10).
  * Host-originated CLI/orchestration/automation/chat/generation/bare launches use the same per-distro account environment as desktop-originated launches. */
 import { z } from 'zod'
@@ -6,7 +7,7 @@ import { AgentLaunchAccountEnv } from './agent-launch-account-env'
 export const HostAccountLaunchEnvParams = z
   .object({
     /** The distro whose accounts these are; names the owner in this host's messages. */
-    wslDistro: z.string().trim().min(1).max(256),
+    wslDistro: ScalarString.trim().min(1).max(256),
     /** For a `claude` the host starts directly: the selected account's CLAUDE_CONFIG_DIR. */
     claude: AgentLaunchAccountEnv,
     /** For every other process: the pointer a typed `claude` follows, plus CODEX_HOME. */

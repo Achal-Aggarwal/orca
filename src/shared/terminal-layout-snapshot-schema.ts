@@ -1,3 +1,9 @@
+import {
+  ScalarNullableString,
+  ScalarOptionalString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import type { TerminalPaneLayoutNode } from './terminal-tab-types'
 import { salvagedOptional, salvagingRecord } from './zod-salvage'
@@ -21,24 +27,24 @@ export const terminalPaneLayoutNodeSchema: z.ZodType<TerminalPaneLayoutNode> = z
   ])
 )
 
-export const leafStringsSchema = salvagingRecord(z.string(), z.string())
+export const leafStringsSchema = salvagingRecord(ScalarString, ScalarString)
 
 const terminalGridSchema = z.object({
-  cols: z.number().int().positive(),
-  rows: z.number().int().positive()
+  cols: ScalarPositiveInteger,
+  rows: ScalarPositiveInteger
 })
 
 export const terminalLayoutSnapshotSchema = z.object({
   root: terminalPaneLayoutNodeSchema.nullable(),
-  activeLeafId: z.string().nullable(),
-  expandedLeafId: z.string().nullable(),
-  chatLeafId: z.string().optional(),
+  activeLeafId: ScalarNullableString,
+  expandedLeafId: ScalarNullableString,
+  chatLeafId: ScalarOptionalString,
   ptyIdsByLeafId: salvagedOptional('ptyIdsByLeafId', leafStringsSchema),
   buffersByLeafId: salvagedOptional('buffersByLeafId', leafStringsSchema),
   scrollbackRefsByLeafId: salvagedOptional('scrollbackRefsByLeafId', leafStringsSchema),
   titlesByLeafId: salvagedOptional('titlesByLeafId', leafStringsSchema),
   lastGridsByLeafId: salvagedOptional(
     'lastGridsByLeafId',
-    salvagingRecord(z.string(), terminalGridSchema)
+    salvagingRecord(ScalarString, terminalGridSchema)
   )
 })

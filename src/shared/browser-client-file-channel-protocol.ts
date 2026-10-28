@@ -1,3 +1,11 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const BROWSER_CLIENT_FILE_CHANNEL_PROTOCOL_VERSION = 1 as const
@@ -9,16 +17,15 @@ export const BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES = 64 * 1024 * 1024
 export const BROWSER_CLIENT_FILE_CHANNEL_MAX_FILES_PER_COMMAND = 16
 export const BROWSER_CLIENT_FILE_CHANNEL_MAX_ACTIVE_DOWNLOADS = 8
 
-const Identity = z.string().min(1).max(256)
-const Generation = z.number().int().min(1).max(0xffff_ffff)
+const Identity = ScalarNonemptyString.max(256)
+const Generation = ScalarNumber.int().min(1).max(0xffff_ffff)
 const FileChannelProtocolVersion = z.literal(BROWSER_CLIENT_FILE_CHANNEL_PROTOCOL_VERSION)
-const Base64Chunk = z
-  .string()
-  .max(Math.ceil(BROWSER_CLIENT_FILE_CHANNEL_CHUNK_MAX_BYTES / 3) * 4)
-  .refine(
-    (value) => value.length % 4 !== 1 && /^[A-Za-z0-9+/]*={0,2}$/.test(value),
-    'File channel chunk must be base64'
-  )
+const Base64Chunk = ScalarString.max(
+  Math.ceil(BROWSER_CLIENT_FILE_CHANNEL_CHUNK_MAX_BYTES / 3) * 4
+).refine(
+  (value) => value.length % 4 !== 1 && /^[A-Za-z0-9+/]*={0,2}$/.test(value),
+  'File channel chunk must be base64'
+)
 
 // Why: Buffer.from tolerates malformed base64 by dropping bytes, which would silently corrupt a staged file.
 export function decodeBrowserClientFileChannelChunk(contentBase64: string): Buffer {
@@ -41,28 +48,28 @@ const FileChannelPageAuthority = z.object({
 
 export const BrowserClientFileChannelReadParams = FileChannelPageAuthority.extend({
   // Why: remote upload sources are workspace-relative so containment is enforced by the runtime file target resolver.
-  workspaceRelativePath: z.string().min(1).max(4096),
-  offset: z.number().int().nonnegative().max(BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES),
-  length: z.number().int().positive().max(BROWSER_CLIENT_FILE_CHANNEL_CHUNK_MAX_BYTES)
+  workspaceRelativePath: ScalarNonemptyString.max(4096),
+  offset: ScalarNonnegativeInteger.max(BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES),
+  length: ScalarPositiveInteger.max(BROWSER_CLIENT_FILE_CHANNEL_CHUNK_MAX_BYTES)
 })
 
 export type BrowserClientFileChannelReadParams = z.infer<typeof BrowserClientFileChannelReadParams>
 
 export const BrowserClientFileChannelReadResult = z.object({
   contentBase64: Base64Chunk,
-  bytesRead: z.number().int().nonnegative(),
-  totalBytes: z.number().int().nonnegative(),
-  eof: z.boolean()
+  bytesRead: ScalarNonnegativeInteger,
+  totalBytes: ScalarNonnegativeInteger,
+  eof: ScalarBoolean
 })
 
 export type BrowserClientFileChannelReadResult = z.infer<typeof BrowserClientFileChannelReadResult>
 
 export const BrowserClientFileChannelWriteParams = FileChannelPageAuthority.extend({
   transferId: Identity,
-  filename: z.string().min(1).max(255),
+  filename: ScalarNonemptyString.max(255),
   contentBase64: Base64Chunk,
-  offset: z.number().int().nonnegative().max(BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES),
-  final: z.boolean()
+  offset: ScalarNonnegativeInteger.max(BROWSER_CLIENT_FILE_CHANNEL_TRANSFER_MAX_BYTES),
+  final: ScalarBoolean
 })
 
 export type BrowserClientFileChannelWriteParams = z.infer<
@@ -72,7 +79,7 @@ export type BrowserClientFileChannelWriteParams = z.infer<
 export const BrowserClientFileChannelWriteResult = z.object({
   accepted: z.literal(true),
   // Why: only the final chunk knows the committed destination, so earlier acks carry no path.
-  workspaceRelativePath: z.string().max(4096).optional()
+  workspaceRelativePath: ScalarString.max(4096).optional()
 })
 
 export type BrowserClientFileChannelWriteResult = z.infer<

@@ -1,3 +1,12 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalFiniteNumber,
+  ScalarOptionalNonemptyString,
+  ScalarPositiveInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import { PAIRING_OFFER_VERSION, type PairingOffer } from './pairing'
 import {
@@ -13,12 +22,12 @@ import {
 import type { WslHostServerStop } from './wsl-host-types'
 
 export const RuntimeAccessEndpointSchema = z.object({
-  id: z.string().min(1),
+  id: ScalarNonemptyString,
   kind: z.literal('websocket'),
-  label: z.string().min(1),
-  endpoint: z.string().min(1),
-  deviceToken: z.string().min(1),
-  publicKeyB64: z.string().min(1)
+  label: ScalarNonemptyString,
+  endpoint: ScalarNonemptyString,
+  deviceToken: ScalarNonemptyString,
+  publicKeyB64: ScalarNonemptyString
 })
 
 export const PublicRuntimeAccessEndpointSchema = RuntimeAccessEndpointSchema.omit({
@@ -32,10 +41,10 @@ export const RuntimeEnvironmentSourceSchema = z.enum(['manual', 'ephemeral-vm'])
 export type RuntimeEnvironmentSource = z.infer<typeof RuntimeEnvironmentSourceSchema>
 
 export const RuntimeSshTunnelLinkSchema = z.object({
-  sshTargetId: z.string().min(1),
-  sshTargetGeneration: z.number().int().positive(),
-  localPort: z.number().int().min(1).max(65_535),
-  remotePort: z.number().int().min(1).max(65_535)
+  sshTargetId: ScalarNonemptyString,
+  sshTargetGeneration: ScalarPositiveInteger,
+  localPort: ScalarNumber.int().min(1).max(65_535),
+  remotePort: ScalarNumber.int().min(1).max(65_535)
 })
 
 export type RuntimeSshTunnelLink = z.infer<typeof RuntimeSshTunnelLinkSchema>
@@ -63,17 +72,17 @@ export function getOrcadSshDeployment(environment: {
 }
 
 export const RuntimeSshAccessLinkSchema = RuntimeSshTunnelLinkSchema.extend({
-  requestId: z.string().min(1).optional(),
-  targetFingerprint: z.string().min(1).optional(),
-  endpointId: z.string().min(1),
-  previousPreferredEndpointId: z.string().min(1)
+  requestId: ScalarOptionalNonemptyString,
+  targetFingerprint: ScalarOptionalNonemptyString,
+  endpointId: ScalarNonemptyString,
+  previousPreferredEndpointId: ScalarNonemptyString
 })
 
 export const RuntimeSshAccessOperationSchema = RuntimeSshTunnelLinkSchema.omit({ localPort: true })
   .extend({
-    requestId: z.string().min(1),
+    requestId: ScalarNonemptyString,
     operation: z.enum(['link', 'unlink']),
-    targetFingerprint: z.string().min(1).optional()
+    targetFingerprint: ScalarOptionalNonemptyString
   })
   .refine((intent) => intent.operation !== 'link' || !!intent.targetFingerprint, {
     message: 'Link intent requires a target fingerprint.'
@@ -83,18 +92,18 @@ export type RuntimeSshAccessOperation = z.infer<typeof RuntimeSshAccessOperation
 
 /** The fields shipped builds read and rewrite in orca-environments.json. */
 export const PersistedRuntimeEnvironmentSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  createdAt: z.number().finite(),
-  updatedAt: z.number().finite(),
-  pairingRevision: z.number().finite().optional(),
-  pairedDeviceId: z.string().min(1).optional(),
-  lastUsedAt: z.number().finite().nullable(),
-  runtimeId: z.string().min(1).nullable(),
+  id: ScalarNonemptyString,
+  name: ScalarNonemptyString,
+  createdAt: ScalarFiniteNumber,
+  updatedAt: ScalarFiniteNumber,
+  pairingRevision: ScalarOptionalFiniteNumber,
+  pairedDeviceId: ScalarOptionalNonemptyString,
+  lastUsedAt: ScalarFiniteNumber.nullable(),
+  runtimeId: ScalarNonemptyString.nullable(),
   source: RuntimeEnvironmentSourceSchema.optional(),
   connectionDependency: z.literal('ssh-tunnel').optional(),
   endpoints: z.array(RuntimeAccessEndpointSchema).min(1),
-  preferredEndpointId: z.string().min(1)
+  preferredEndpointId: ScalarNonemptyString
 })
 
 export type PersistedRuntimeEnvironment = z.infer<typeof PersistedRuntimeEnvironmentSchema>
@@ -105,7 +114,7 @@ export const KnownRuntimeEnvironmentSchema = PersistedRuntimeEnvironmentSchema.e
   pendingSshAccessOperation: RuntimeSshAccessOperationSchema.optional(),
   orcadDeployment: OrcadDeploymentLinkSchema.optional(),
   /** When a migration into this managed server began committing; older snapshots predate it. */
-  orcadMigratedAt: z.string().datetime().optional(),
+  orcadMigratedAt: ScalarString.datetime().optional(),
   reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
 })
   .refine(

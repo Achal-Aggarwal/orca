@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarOptionalBoolean,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 // Preserve raw own keys: Zod records erase __proto__ before emptiness checks.
@@ -7,17 +12,17 @@ const rawConfigSchema = z.custom<Record<string, unknown>>(
 
 const modelRuleSchema = z
   .object({
-    providerId: z.string().min(1),
-    modelId: z.string().min(1),
+    providerId: ScalarNonemptyString,
+    modelId: ScalarNonemptyString,
     config: rawConfigSchema
   })
   .strict()
 const providerRuleSchema = z
   .object({
-    providerId: z.string().min(1),
-    templateId: z.string().min(1).nullable().optional(),
-    providerName: z.string().min(1).nullable().optional(),
-    enabled: z.boolean().optional(),
+    providerId: ScalarNonemptyString,
+    templateId: ScalarNonemptyString.nullable().optional(),
+    providerName: ScalarNonemptyString.nullable().optional(),
+    enabled: ScalarOptionalBoolean,
     config: rawConfigSchema
   })
   .strict()
@@ -26,7 +31,7 @@ const selectionSchema = z
     schemaVersion: z.literal(1),
     config: z
       .object({
-        providerOrder: z.array(z.string().min(1)).optional(),
+        providerOrder: z.array(ScalarNonemptyString).optional(),
         providerConfigRules: z.object({ providerRules: z.array(providerRuleSchema) }).strict(),
         modelConfigRules: z
           .object({
@@ -36,10 +41,10 @@ const selectionSchema = z
           .strict(),
         defaultModelSelection: z
           .object({
-            providerId: z.string().trim().min(1),
-            modelId: z.string().trim().min(1),
+            providerId: ScalarString.trim().min(1),
+            modelId: ScalarString.trim().min(1),
             options: z
-              .object({ reasoningLevel: z.string().trim().min(1).optional() })
+              .object({ reasoningLevel: ScalarString.trim().min(1).optional() })
               .strict()
               .optional()
           })

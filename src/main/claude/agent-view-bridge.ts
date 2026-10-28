@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { parsePaneKey } from '../../shared/stable-pane-id'
@@ -10,25 +11,22 @@ import {
 } from '../../shared/claude-agent-view'
 
 const Identity = z.object({
-  paneKey: z
-    .string()
-    .max(256)
-    .refine((value) => parsePaneKey(value) !== null),
-  sessionId: z.string().min(1).max(256),
-  instanceId: z.string().min(1).max(256)
+  paneKey: ScalarString.max(256).refine((value) => parsePaneKey(value) !== null),
+  sessionId: ScalarNonemptyString.max(256),
+  instanceId: ScalarNonemptyString.max(256)
 })
 const Message = z.discriminatedUnion('action', [
   Identity.extend({
     action: z.literal('register'),
-    keybindings: z.string().max(128 * 1024),
+    keybindings: ScalarString.max(128 * 1024),
     view: ClaudeAgentViewObservation.optional()
   }),
   Identity.extend({ action: z.literal('observe'), view: ClaudeAgentViewObservation }),
   Identity.extend({ action: z.literal('take') }),
   Identity.extend({
     action: z.literal('ack'),
-    requestId: z.string().max(64),
-    deny: z.string().max(1024).optional()
+    requestId: ScalarString.max(64),
+    deny: ScalarString.max(1024).optional()
   }),
   Identity.extend({ action: z.literal('end') })
 ])

@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNullishString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { pairedRuntimeConnectionFromOffer } from '../../shared/paired-runtime-connection'
 import {
@@ -171,11 +172,11 @@ export async function listServerRows(
 const ServerRepositoriesSchema = z.object({
   repos: z.array(
     z.object({
-      id: z.string().min(1),
-      path: z.string().min(1),
-      connectionId: z.string().nullish(),
-      executionHostId: z.string().nullish(),
-      projectGroupId: z.string().nullish()
+      id: ScalarNonemptyString,
+      path: ScalarNonemptyString,
+      connectionId: ScalarNullishString,
+      executionHostId: ScalarNullishString,
+      projectGroupId: ScalarNullishString
     })
   )
 })

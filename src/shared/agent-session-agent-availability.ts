@@ -1,3 +1,4 @@
+import { ScalarString } from './scalar-value-schemas'
 /**
  * `agentSession.subscribeAvailability`: the health of this host's installed agents, from each
  * agent's location rule and installed-release check on the host itself, not in any workspace.
@@ -31,10 +32,10 @@ export type AgentSessionAvailabilityFrame = {
 const MAX_AGENTS = 128
 
 const rowSchema = z.object({
-  agent: z.string().refine(isStructuredAgentId),
+  agent: ScalarString.refine(isStructuredAgentId),
   // A state this build does not know claims nothing.
   state: openEnum(['available', 'refused', 'unknown'] as const, 'unknown'),
-  reason: z.string().max(64).optional(),
+  reason: ScalarString.max(64).optional(),
   chatProgram: openEnum(['available', 'installable', 'missing', 'unknown'] as const, 'unknown')
     .optional()
     .catch(undefined)

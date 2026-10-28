@@ -1,3 +1,9 @@
+import {
+  ScalarNumber,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarOptionalUnknown
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { usageLimitResetsAt } from '../../../shared/agent-session-usage-limit'
 import type { AcpAgentError } from '../acp-errors'
@@ -6,20 +12,20 @@ import type { AcpDialect } from './acp-dialect'
 
 // Normalize rawOutput.metadata to the shared stdout/exitCode fields.
 const commandRawOutputSchema = z.looseObject({
-  output: z.unknown().optional(),
+  output: ScalarOptionalUnknown,
   metadata: z
     .looseObject({
-      exit: z.number().int().nullable().optional(),
-      output: z.string().optional()
+      exit: ScalarNumber.int().nullable().optional(),
+      output: ScalarOptionalString
     })
     .optional()
 })
 
 const promptFailureDataSchema = z.object({
   errorName: z.enum(['provider.quota', 'provider.rate-limit']),
-  status: z.number().optional().catch(undefined),
-  resetsAt: z.number().optional().catch(undefined),
-  retryAfterMs: z.number().nonnegative().optional().catch(undefined)
+  status: ScalarOptionalNumber.catch(undefined),
+  resetsAt: ScalarOptionalNumber.catch(undefined),
+  retryAfterMs: ScalarNumber.nonnegative().optional().catch(undefined)
 })
 
 // ACP omits HTTP status; documented billing and entitlement instructions survive in the message.

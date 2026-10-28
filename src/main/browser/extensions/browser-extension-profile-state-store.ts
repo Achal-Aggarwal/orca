@@ -1,3 +1,12 @@
+import {
+  ScalarBoolean,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { app } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -8,32 +17,32 @@ const STATE_FILE_NAME = 'profile-state.json'
 const PERSIST_DELAY_MS = 250
 
 const contextMenuItemSchema = z.object({
-  id: z.union([z.string(), z.number()]),
-  parentId: z.union([z.string(), z.number()]).optional(),
+  id: z.union([ScalarString, ScalarNumber]),
+  parentId: z.union([ScalarString, ScalarNumber]).optional(),
   type: z.enum(['normal', 'checkbox', 'radio', 'separator']),
-  title: z.string().optional(),
-  checked: z.boolean().optional(),
-  contexts: z.array(z.string()),
-  documentUrlPatterns: z.array(z.string()).optional(),
-  targetUrlPatterns: z.array(z.string()).optional(),
-  enabled: z.boolean(),
-  visible: z.boolean()
+  title: ScalarOptionalString,
+  checked: ScalarOptionalBoolean,
+  contexts: z.array(ScalarString),
+  documentUrlPatterns: z.array(ScalarString).optional(),
+  targetUrlPatterns: z.array(ScalarString).optional(),
+  enabled: ScalarBoolean,
+  visible: ScalarBoolean
 })
 
-const privacySettingSchema = z.object({ value: z.unknown(), setAt: z.number() })
+const privacySettingSchema = z.object({ value: ScalarUnknown, setAt: ScalarNumber })
 
 const extensionStateSchema = z.object({
-  removalGeneration: z.number().int().nonnegative().default(0),
-  grantedPermissions: z.array(z.string()).default([]),
-  grantedOrigins: z.array(z.string()).default([]),
+  removalGeneration: ScalarNonnegativeInteger.default(0),
+  grantedPermissions: z.array(ScalarString).default([]),
+  grantedOrigins: z.array(ScalarString).default([]),
   contextMenus: z.array(contextMenuItemSchema).default([]),
   /** scripting.RegisteredContentScript records, kept as Chrome shaped them. */
-  contentScripts: z.array(z.record(z.string(), z.unknown())).default([]),
-  privacy: z.record(z.string(), privacySettingSchema).default({}),
+  contentScripts: z.array(z.record(ScalarString, ScalarUnknown)).default([]),
+  privacy: z.record(ScalarString, privacySettingSchema).default({}),
   /** Scripts this profile's worker registration was made from; a mismatch re-registers it. */
-  workerSignature: z.string().optional(),
+  workerSignature: ScalarOptionalString,
   /** Versions at the last load; absent means runtime.onInstalled has not fired in this profile. */
-  lastLoaded: z.object({ extensionVersion: z.string(), chromiumVersion: z.string() }).optional()
+  lastLoaded: z.object({ extensionVersion: ScalarString, chromiumVersion: ScalarString }).optional()
 })
 
 export type StoredContextMenuItem = z.infer<typeof contextMenuItemSchema>

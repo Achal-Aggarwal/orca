@@ -1,3 +1,4 @@
+import { ScalarNumber } from '../../shared/scalar-value-schemas'
 /** Moves carry automations disabled, which every server version accepts; re-enable those that ran here once the move commits. */
 import { z } from 'zod'
 import type { Automation } from '../../shared/automations-types'
@@ -93,7 +94,7 @@ async function enableOnce(
 }
 
 // The server stores the moved row as sent; any later edit, ours included, changes updatedAt.
-const ServerAutomationSchema = z.object({ automation: z.object({ updatedAt: z.number() }) })
+const ServerAutomationSchema = z.object({ automation: z.object({ updatedAt: ScalarNumber }) })
 
 /** Uses automation.show/update, which servers had before migrations; re-sending dtstart skips occurrences missed during the move. */
 export async function enableRemoteOrcadAutomation(

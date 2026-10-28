@@ -1,12 +1,13 @@
+import { ScalarNonemptyString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 /** Freeze choices on acceptance; permission stays a launch setting. Strip unknown keys from free-form send/saved options. */
 export const AgentSessionExecutionOptionsSchema = z.object({
-  model: z.string().min(1).max(256).optional(),
-  effort: z.string().min(1).max(64).optional(),
-  personality: z.string().min(1).max(64).optional(),
+  model: ScalarNonemptyString.max(256).optional(),
+  effort: ScalarNonemptyString.max(64).optional(),
+  personality: ScalarNonemptyString.max(64).optional(),
   fastMode: z.enum(['true', 'false']).optional(),
-  serviceTier: z.string().min(1).max(64).optional()
+  serviceTier: ScalarNonemptyString.max(64).optional()
 })
 
 export type AgentSessionExecutionOptions = z.infer<typeof AgentSessionExecutionOptionsSchema>

@@ -1,3 +1,4 @@
+import { ScalarBoolean } from './scalar-value-schemas'
 import { z } from 'zod'
 import { SSH_RUNTIME_DURATION_BUCKETS } from './telemetry-ssh-runtime-event-schemas'
 
@@ -112,7 +113,7 @@ export const sshHostServerDecidedSchema = z
     reason: z.enum(SSH_HOST_SERVER_REASON_VALUES),
     refusal: z.enum(SSH_HOST_SERVER_REFUSAL_VALUES),
     // True when a recorded "orcad can't run here" sent the host to the relay without a try.
-    recorded: z.boolean(),
+    recorded: ScalarBoolean,
     ...hostFields,
     duration_bucket: z.enum(SSH_RUNTIME_DURATION_BUCKETS)
   })

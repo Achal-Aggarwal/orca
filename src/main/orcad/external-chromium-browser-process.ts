@@ -1,3 +1,4 @@
+import { ScalarOptionalString, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { RuntimeBrowserCommandHost } from '../runtime/browser/browser-command-contracts'
 import type { RuntimeBrowserCommands } from '../runtime/browser/browser-commands'
@@ -19,9 +20,9 @@ import {
 import { ExternalChromiumTabRegistry } from './external-chromium-tab-registry'
 const AgentBrowserSnapshot = z.object({
   refs: z
-    .record(z.string(), z.object({ name: z.string().optional(), role: z.string().optional() }))
+    .record(ScalarString, z.object({ name: ScalarOptionalString, role: ScalarOptionalString }))
     .optional(),
-  snapshot: z.string().optional()
+  snapshot: ScalarOptionalString
 })
 
 export class ExternalChromiumBrowserProcess {

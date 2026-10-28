@@ -1,3 +1,4 @@
+import { ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { existsSync, readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { readKeychainPassword } from '../macos-keychain/generic-password'
@@ -45,10 +46,10 @@ function nonEmpty(value: unknown): string | null {
 }
 
 const cliConfigSchema = z.object({
-  authInfo: z.object({ email: z.unknown(), displayName: z.unknown() }).partial().optional()
+  authInfo: z.object({ email: ScalarUnknown, displayName: ScalarUnknown }).partial().optional()
 })
 
-const cliAuthFileSchema = z.object({ accessToken: z.unknown() }).partial()
+const cliAuthFileSchema = z.object({ accessToken: ScalarUnknown }).partial()
 
 /** `cli-config.json` carries the signed-in identity for keychain-backed CLI sessions. */
 export function readCursorCliIdentity(configPath = getCursorCliConfigPath()): CursorIdentity {

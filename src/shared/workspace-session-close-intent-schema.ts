@@ -1,4 +1,5 @@
-import { z } from 'zod'
+import { ScalarNonemptyString } from './scalar-value-schemas'
+
 import { clientHostedBrowserCloseIntentSchema } from './client-hosted-browser-close-intent'
 import { pairedTerminalTabCloseIntentSchema } from './paired-terminal-tab-close-intent'
 import { salvagedOptional, salvagingArray, salvagingRecord } from './zod-salvage'
@@ -7,10 +8,10 @@ import { salvagedOptional, salvagingArray, salvagingRecord } from './zod-salvage
 export const workspaceSessionCloseIntentFieldSchemas = {
   clientHostedBrowserCloseIntentsByEnvironment: salvagedOptional(
     'clientHostedBrowserCloseIntentsByEnvironment',
-    salvagingRecord(z.string().min(1), salvagingArray(clientHostedBrowserCloseIntentSchema))
+    salvagingRecord(ScalarNonemptyString, salvagingArray(clientHostedBrowserCloseIntentSchema))
   ),
   pairedTerminalTabCloseIntentsByEnvironment: salvagedOptional(
     'pairedTerminalTabCloseIntentsByEnvironment',
-    salvagingRecord(z.string().min(1), salvagingArray(pairedTerminalTabCloseIntentSchema))
+    salvagingRecord(ScalarNonemptyString, salvagingArray(pairedTerminalTabCloseIntentSchema))
   )
 }

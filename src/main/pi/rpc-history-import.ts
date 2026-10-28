@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import {
@@ -16,16 +17,16 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-history-catch-up'
 
 const piEntrySchema = z.looseObject({
-  id: z.string().min(1),
-  parentId: z.string().min(1).nullable(),
-  type: z.string()
+  id: ScalarNonemptyString,
+  parentId: ScalarNonemptyString.nullable(),
+  type: ScalarString
 })
 export type PiSessionEntry = z.infer<typeof piEntrySchema>
 
 /** get_entries returns append order, including abandoned branches. */
 export const piEntriesAnswerSchema = z.object({
   entries: z.array(piEntrySchema),
-  leafId: z.string().min(1).nullable()
+  leafId: ScalarNonemptyString.nullable()
 })
 export type PiEntriesAnswer = z.infer<typeof piEntriesAnswerSchema>
 

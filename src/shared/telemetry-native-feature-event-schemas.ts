@@ -1,3 +1,4 @@
+import { ScalarNumber } from './scalar-value-schemas'
 import { z } from 'zod'
 import { FEATURE_WALL_MAX_DWELL_MS } from './feature-wall-telemetry'
 import { nthRepoAddedSchema } from './telemetry-app-event-schemas'
@@ -89,15 +90,15 @@ export const featureWallOpenedSchema = z
   .strict()
 export const featureWallClosedSchema = z
   .object({
-    dwell_ms: z.number().int().min(0).max(FEATURE_WALL_MAX_DWELL_MS),
+    dwell_ms: ScalarNumber.int().min(0).max(FEATURE_WALL_MAX_DWELL_MS),
     source: featureWallOpenSourceSchema.optional(),
     exit_action: featureWallExitActionSchema.optional(),
     furthest_step: featureWallTourDepthStepSchema.optional(),
     last_group_id: featureWallWorkflowIdSchema.optional(),
-    visited_workflow_count: z.number().int().min(0).max(5).optional(),
-    visited_substep_count: z.number().int().min(0).max(9).optional(),
-    completed_workflow_count: z.number().int().min(0).max(5).optional(),
-    completed_substep_count: z.number().int().min(0).max(9).optional()
+    visited_workflow_count: ScalarNumber.int().min(0).max(5).optional(),
+    visited_substep_count: ScalarNumber.int().min(0).max(9).optional(),
+    completed_workflow_count: ScalarNumber.int().min(0).max(5).optional(),
+    completed_substep_count: ScalarNumber.int().min(0).max(9).optional()
   })
   .strict()
 export const featureWallTileFocusedSchema = z

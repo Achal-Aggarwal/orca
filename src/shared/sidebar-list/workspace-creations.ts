@@ -1,15 +1,16 @@
+import { ScalarNumber, ScalarOptionalString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 
 const WorkspaceCreationSchema = z.object({
-  repoId: z.string(),
+  repoId: ScalarString,
   /** Set after persistence, before announcement; readers listing this workspace replace its creation without a gap or duplicate. */
-  worktreeId: z.string().optional()
+  worktreeId: ScalarOptionalString
 })
 
 /** Host-running creations by creationId; window preflight stays in its pending layer. */
 export const WorkspaceCreationsSnapshotSchema = z.object({
-  revision: z.number(),
-  creations: z.record(z.string(), WorkspaceCreationSchema)
+  revision: ScalarNumber,
+  creations: z.record(ScalarString, WorkspaceCreationSchema)
 })
 
 export type WorkspaceCreation = z.infer<typeof WorkspaceCreationSchema>

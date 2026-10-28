@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalString
+} from '../../shared/scalar-value-schemas'
 // The seam's watch, as the cloud reads it. Turn ends wait in an owner-only file so a restart still reports them.
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,16 +33,16 @@ type TurnEnded = Extract<ConnectorEvent, { kind: 'turn-ended' }>
 
 // Tagged with the account that produced them, so another account never sends them after a relaunch.
 const StoredOutbox = z.object({
-  account: z.string().min(1),
+  account: ScalarNonemptyString,
   turnEnds: z.array(
     z.object({
       kind: z.literal('turn-ended'),
       conversation: ConnectorConversation,
-      paneKey: z.string().min(1),
-      turnId: z.number(),
-      at: z.number(),
-      stopReason: z.string().min(1).nullable(),
-      lastAssistantMessage: z.string().optional()
+      paneKey: ScalarNonemptyString,
+      turnId: ScalarNumber,
+      at: ScalarNumber,
+      stopReason: ScalarNonemptyString.nullable(),
+      lastAssistantMessage: ScalarOptionalString
     })
   )
 })

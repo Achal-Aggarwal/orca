@@ -1,12 +1,13 @@
+import { ScalarFiniteNumber, ScalarNonemptyString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 import { terminalTabIdSchema } from './terminal-tab-id-schema'
 
 export const terminalSurfaceTombstoneSchema = z.object({
-  worktreeId: z.string(),
+  worktreeId: ScalarString,
   parentTabId: terminalTabIdSchema,
-  leafId: z.string(),
-  ptyId: z.string(),
-  incarnationId: z.string().min(1).max(128),
-  retiredAt: z.number().finite().nonnegative()
+  leafId: ScalarString,
+  ptyId: ScalarString,
+  incarnationId: ScalarNonemptyString.max(128),
+  retiredAt: ScalarFiniteNumber.nonnegative()
 })

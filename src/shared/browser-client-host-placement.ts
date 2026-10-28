@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarOptionalFiniteNumber } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const BrowserClientHostPlacementPreference = z.enum(['auto', 'server'])
@@ -6,8 +7,8 @@ export type BrowserClientHostPlacementPreference = z.infer<
 >
 
 export const BrowserClientHostPlacementPreparationRequest = z.object({
-  selector: z.string().min(1),
-  expectedPairingRevision: z.number().finite().optional(),
+  selector: ScalarNonemptyString,
+  expectedPairingRevision: ScalarOptionalFiniteNumber,
   preference: BrowserClientHostPlacementPreference.default('auto')
 })
 
@@ -19,7 +20,7 @@ export const BrowserPageCreationPlacement = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('server') }),
   z.object({
     kind: z.literal('client'),
-    browserHostClientId: z.string().min(1).max(256)
+    browserHostClientId: ScalarNonemptyString.max(256)
   })
 ])
 

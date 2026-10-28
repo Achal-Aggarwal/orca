@@ -1,14 +1,19 @@
+import {
+  ScalarBoolean,
+  ScalarOptionalBoolean,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 
 const sandboxPolicy = z.discriminatedUnion('type', [
-  z.looseObject({ type: z.literal('readOnly'), networkAccess: z.boolean().optional() }),
+  z.looseObject({ type: z.literal('readOnly'), networkAccess: ScalarOptionalBoolean }),
   z.looseObject({ type: z.literal('dangerFullAccess') }),
   z.looseObject({
     type: z.literal('workspaceWrite'),
-    writableRoots: z.array(z.string()),
-    networkAccess: z.boolean(),
-    excludeTmpdirEnvVar: z.boolean(),
-    excludeSlashTmp: z.boolean()
+    writableRoots: z.array(ScalarString),
+    networkAccess: ScalarBoolean,
+    excludeTmpdirEnvVar: ScalarBoolean,
+    excludeSlashTmp: ScalarBoolean
   }),
   z.looseObject({
     type: z.literal('externalSandbox'),

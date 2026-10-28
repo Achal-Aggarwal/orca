@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -11,8 +12,8 @@ import { getPetsDir, isSafeId, resolvePetFile } from './pet-storage-paths'
 
 // Validate untrusted IPC shape before resolvePetFile applies path constraints.
 const PetFileRequestSchema = z.object({
-  id: z.string(),
-  fileName: z.string(),
+  id: ScalarString,
+  fileName: ScalarString,
   kind: z.enum(['image', 'bundle']).optional()
 })
 

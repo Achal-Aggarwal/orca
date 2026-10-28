@@ -1,3 +1,10 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarOptionalNonemptyString,
+  ScalarString,
+  ScalarUnknown
+} from './scalar-value-schemas'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -20,23 +27,23 @@ const MAX_WSL_HOST_DEPLOYMENTS_FILE_BYTES = 256 * 1024
 /** A managed orcad in a WSL distro. The environment's name is its label; runtime state lives elsewhere. */
 /** A Remove that could not prove the host's server stopped (E11); the host stays until one does. */
 export const WslHostPendingStopSchema = z.object({
-  since: z.number().finite(),
-  reason: z.string().max(4_096),
+  since: ScalarFiniteNumber,
+  reason: ScalarString.max(4_096),
   verdict: z.enum(['live', 'unverifiable'])
 })
 
 export type WslHostPendingStop = z.infer<typeof WslHostPendingStopSchema>
 
 export const WslHostDeploymentRecordSchema = OrcadWslDeploymentLinkSchema.extend({
-  environmentId: z.string().min(1),
-  createdAt: z.number().finite(),
+  environmentId: ScalarNonemptyString,
+  createdAt: ScalarFiniteNumber,
   /**
    * The paired orcad's host key, so a stale record cannot claim a server re-paired under the same
    * id and bridge port. Optional: records written before it are bound by port only until refreshed.
    */
-  pairingPublicKeyB64: z.string().min(1).optional(),
+  pairingPublicKeyB64: ScalarOptionalNonemptyString,
   /** The key a refresh replaced, accepted until the pairing write that follows it lands. */
-  previousPairingPublicKeyB64: z.string().min(1).optional(),
+  previousPairingPublicKeyB64: ScalarOptionalNonemptyString,
   pendingStop: WslHostPendingStopSchema.optional()
 })
 
@@ -45,7 +52,7 @@ export type WslHostDeploymentRecord = z.infer<typeof WslHostDeploymentRecordSche
 // Records stay opaque so one bad or newer-kind record cannot hide the rest.
 const EnvelopeSchema = z.object({
   version: z.literal(1),
-  deployments: z.array(z.unknown())
+  deployments: z.array(ScalarUnknown)
 })
 
 type StoredRecord = {

@@ -1,3 +1,8 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger
+} from '../scalar-value-schemas'
 /**
  * What a WSL move did with the desktop's in-app browser logins (owner decision 3): copied once into
  * the WSL host's route partition, or left the host on a fresh partition and says why.
@@ -19,7 +24,7 @@ export const WSL_MOVE_BROWSER_COOKIE_FRESH_PARTITION_REASONS = [
 export type WslMoveBrowserCookieFreshPartitionReason =
   (typeof WSL_MOVE_BROWSER_COOKIE_FRESH_PARTITION_REASONS)[number]
 
-const count = z.number().int().nonnegative().max(1_000_000)
+const count = ScalarNonnegativeInteger.max(1_000_000)
 
 const WslMoveBrowserCookieCopyCountsSchema = z.object({
   copied: count,
@@ -60,10 +65,10 @@ export const WslMoveBrowserCookieCopySchema = z.discriminatedUnion('outcome', [
     profiles: z
       .array(
         z.object({
-          browserProfileId: z.string().min(1).max(256),
-          destinationPartition: z.string().min(1).max(256),
+          browserProfileId: ScalarNonemptyString.max(256),
+          destinationPartition: ScalarNonemptyString.max(256),
           /** An earlier move to this host already copied into this partition. */
-          alreadyCopied: z.boolean(),
+          alreadyCopied: ScalarBoolean,
           counts: WslMoveBrowserCookieCopyCountsSchema
         })
       )

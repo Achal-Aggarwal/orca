@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { pluginCommandIdSchema, pluginRelativePathSchema } from './plugin-manifest-fields'
 import { normalizeKeybinding } from '../keybindings'
@@ -19,9 +20,7 @@ function isWellFormedLocaleId(value: string): boolean {
 
 // Locale IDs become filenames/i18next keys; a bounded BCP 47 subset excludes path syntax.
 // Intl rejects shape-valid, ill-formed tags (`en-US-US`) at install, not silently when formatting.
-export const pluginLocaleIdSchema = z
-  .string()
-  .min(2)
+export const pluginLocaleIdSchema = ScalarString.min(2)
   .max(35)
   .regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/, 'must be a portable locale identifier')
   .refine(isWellFormedLocaleId, 'must be a well-formed locale identifier')
@@ -31,25 +30,21 @@ export const pluginLanguagePackContributionSchema = z
     locale: pluginLocaleIdSchema,
     path: pluginRelativePathSchema,
     // Native-language label for the Settings picker; omitted packs show `{locale} — {pluginKey}`.
-    displayName: z.string().trim().min(1).max(80).optional()
+    displayName: ScalarString.trim().min(1).max(80).optional()
   })
   .strict()
 
 export const pluginKeybindingContributionSchema = z
   .object({
     command: pluginCommandIdSchema,
-    key: z
-      .string()
-      .min(1)
-      .max(128)
-      .transform((value, ctx) => {
-        const normalized = normalizeKeybinding(value)
-        if (!normalized.ok) {
-          ctx.addIssue({ code: 'custom', message: normalized.error })
-          return z.NEVER
-        }
-        return normalized.value
-      }),
+    key: ScalarNonemptyString.max(128).transform((value, ctx) => {
+      const normalized = normalizeKeybinding(value)
+      if (!normalized.ok) {
+        ctx.addIssue({ code: 'custom', message: normalized.error })
+        return z.NEVER
+      }
+      return normalized.value
+    }),
     when: z.enum(['global', 'worktree']).optional()
   })
   .strict()

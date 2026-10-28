@@ -1,3 +1,9 @@
+import {
+  ScalarNullableString,
+  ScalarOptionalBoolean,
+  ScalarOptionalNullableString,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 import type { AgentType } from './agent-status-types'
 import type { ProjectExecutionRuntimeResolution } from './project-execution-runtime'
@@ -61,25 +67,25 @@ const ResolvedProjectRuntimeSchema = z.object({
   runtime: z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('local-host'),
-      hostPlatform: z.string(),
-      projectId: z.string(),
+      hostPlatform: ScalarString,
+      projectId: ScalarString,
       reason: z.literal('non-windows'),
-      cacheKey: z.string()
+      cacheKey: ScalarString
     }),
     z.object({
       kind: z.literal('windows-host'),
       hostPlatform: z.literal('win32'),
-      projectId: z.string(),
+      projectId: ScalarString,
       reason: z.enum(['project-override', 'global-default', 'migration-fallback']),
-      cacheKey: z.string()
+      cacheKey: ScalarString
     }),
     z.object({
       kind: z.literal('wsl'),
       hostPlatform: z.literal('wsl'),
-      projectId: z.string(),
-      distro: z.string(),
+      projectId: ScalarString,
+      distro: ScalarString,
       reason: z.enum(['project-override', 'global-default']),
-      cacheKey: z.string()
+      cacheKey: ScalarString
     })
   ])
 })
@@ -87,25 +93,25 @@ const ResolvedProjectRuntimeSchema = z.object({
 const RepairProjectRuntimeSchema = z.object({
   status: z.literal('repair-required'),
   repair: z.object({
-    projectId: z.string(),
-    preferredRuntime: z.object({ kind: z.literal('wsl'), distro: z.string().nullable() }),
+    projectId: ScalarString,
+    preferredRuntime: z.object({ kind: z.literal('wsl'), distro: ScalarNullableString }),
     reason: z.enum(['wsl-unavailable', 'wsl-distro-required', 'wsl-distro-missing']),
     source: z.enum(['project-override', 'global-default']),
-    cacheKey: z.string()
+    cacheKey: ScalarString
   })
 })
 
 /** Both desktop IPC and runtime RPC parse the complete discovery target here. */
 export const SkillDiscoveryTargetSchema: z.ZodType<SkillDiscoveryTarget> = z.object({
   runtime: z.enum(['host', 'wsl']).optional(),
-  wslDistro: z.string().nullable().optional(),
-  cwd: z.string().nullable().optional(),
-  worktreeId: z.string().nullable().optional(),
+  wslDistro: ScalarOptionalNullableString,
+  cwd: ScalarOptionalNullableString,
+  worktreeId: ScalarOptionalNullableString,
   projectRuntime: z
     .discriminatedUnion('status', [ResolvedProjectRuntimeSchema, RepairProjectRuntimeSchema])
     .optional(),
-  refresh: z.boolean().optional(),
-  names: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+  refresh: ScalarOptionalBoolean,
+  names: z.array(ScalarString.trim().min(1).max(200)).max(100).optional(),
   sourceKinds: z
     .array(z.enum(['home', 'repo', 'bundled', 'plugin']))
     .max(4)

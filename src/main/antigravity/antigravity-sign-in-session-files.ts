@@ -1,9 +1,10 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const SessionMetadata = z.looseObject({ cwd: z.string() })
+const SessionMetadata = z.looseObject({ cwd: ScalarString })
 
 /** Call after proven server exit; remove only sessions whose metadata matches the temporary cwd. */
 export async function removeAntigravitySignInSessionFiles(

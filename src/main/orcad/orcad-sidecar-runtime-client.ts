@@ -1,3 +1,4 @@
+import { ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { createConnection } from 'node:net'
 import { z } from 'zod'
@@ -7,12 +8,12 @@ import { BrowserError } from '../browser/browser-error'
 const SIDECAR_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
 const RuntimeResponse = z.discriminatedUnion('ok', [
-  z.object({ id: z.string(), ok: z.literal(true), result: z.unknown() }).passthrough(),
+  z.object({ id: ScalarString, ok: z.literal(true), result: ScalarUnknown }).passthrough(),
   z
     .object({
-      id: z.string(),
+      id: ScalarString,
       ok: z.literal(false),
-      error: z.object({ code: z.string(), message: z.string() }).passthrough()
+      error: z.object({ code: ScalarString, message: ScalarString }).passthrough()
     })
     .passthrough()
 ])

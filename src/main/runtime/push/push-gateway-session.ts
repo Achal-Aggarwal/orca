@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarPositiveInteger } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { cancelUnreadResponseBody } from '../../lib/unread-response-body'
 import type { E2EEKeypair } from '../e2ee-keypair'
@@ -18,22 +19,19 @@ const HANDSHAKE_RATE_LIMIT_TTL_MS = 60_000
 
 const ChallengeResponseSchema = z
   .object({
-    challengeId: z.string().min(1).max(512),
-    gatewayEphemeralPublicKeyB64: z.string().min(1).max(128),
-    nonceB64: z.string().min(1).max(128),
-    ciphertextB64: z
-      .string()
-      .min(1)
-      .max(8 * 1024),
-    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+    challengeId: ScalarNonemptyString.max(512),
+    gatewayEphemeralPublicKeyB64: ScalarNonemptyString.max(128),
+    nonceB64: ScalarNonemptyString.max(128),
+    ciphertextB64: ScalarNonemptyString.max(8 * 1024),
+    expiresAt: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER)
   })
   .strict()
 
 const SessionResponseSchema = z
   .object({
-    sessionToken: z.string().min(1).max(1024),
-    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    hostFingerprint: z.string().min(1).max(64)
+    sessionToken: ScalarNonemptyString.max(1024),
+    expiresAt: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER),
+    hostFingerprint: ScalarNonemptyString.max(64)
   })
   .strict()
 

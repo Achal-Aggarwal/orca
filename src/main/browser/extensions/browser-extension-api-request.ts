@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarString, ScalarUnknown } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { BrowserExtensionInvokeResult } from '../../../shared/browser-extension-channels'
 import {
@@ -19,17 +20,17 @@ import {
 const invokeRequestSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('call'),
-    namespace: z.string(),
-    method: z.string(),
-    args: z.array(z.unknown())
+    namespace: ScalarString,
+    method: ScalarString,
+    args: z.array(ScalarUnknown)
   }),
   z.object({
     type: z.literal('listen'),
-    namespace: z.string(),
-    event: z.string(),
-    active: z.boolean(),
+    namespace: ScalarString,
+    event: ScalarString,
+    active: ScalarBoolean,
     /** Every listener's filter (webRequest); omitted when one listener takes all events. */
-    filters: z.array(z.unknown()).optional()
+    filters: z.array(ScalarUnknown).optional()
   })
 ])
 

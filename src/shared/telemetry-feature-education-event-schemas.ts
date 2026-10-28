@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNumber } from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   CONTEXTUAL_TOUR_OUTCOMES,
@@ -24,7 +25,7 @@ export const contextualTourShownSchema = z
   .object({
     tour_id: featureEducationContextualTourIdSchema,
     source: featureEducationSourceSchema,
-    was_feature_previously_interacted: z.boolean()
+    was_feature_previously_interacted: ScalarBoolean
   })
   .strict()
 
@@ -33,10 +34,10 @@ export const contextualTourOutcomeSchema = z
     tour_id: featureEducationContextualTourIdSchema,
     source: featureEducationSourceSchema,
     outcome: z.enum(CONTEXTUAL_TOUR_OUTCOMES),
-    steps_seen: z.number().int().min(0).max(8),
-    total_steps: z.number().int().min(1).max(8),
-    furthest_step_index: z.number().int().min(1).max(8).optional(),
-    defined_step_count: z.number().int().min(1).max(8).optional()
+    steps_seen: ScalarNumber.int().min(0).max(8),
+    total_steps: ScalarNumber.int().min(1).max(8),
+    furthest_step_index: ScalarNumber.int().min(1).max(8).optional(),
+    defined_step_count: ScalarNumber.int().min(1).max(8).optional()
   })
   .refine((payload) => payload.steps_seen <= payload.total_steps, {
     message: 'steps_seen must be less than or equal to total_steps',
@@ -65,7 +66,7 @@ export const contextualTourOutcomeSchema = z
 export const setupGuideOpenedSchema = z
   .object({
     source: setupGuideSourceSchema,
-    initial_completed_count: z.number().int().min(0).max(8),
+    initial_completed_count: ScalarNumber.int().min(0).max(8),
     total_steps: z.literal(8),
     first_incomplete_step_id: setupGuideStepIdOrNoneSchema
   })
@@ -75,8 +76,8 @@ export const setupGuideClosedSchema = z
   .object({
     source: setupGuideSourceSchema,
     outcome: setupGuideCloseOutcomeSchema,
-    initial_completed_count: z.number().int().min(0).max(8),
-    final_completed_count: z.number().int().min(0).max(8),
+    initial_completed_count: ScalarNumber.int().min(0).max(8),
+    final_completed_count: ScalarNumber.int().min(0).max(8),
     total_steps: z.literal(8),
     active_step_id: setupGuideStepIdOrNoneSchema
   })
@@ -90,9 +91,9 @@ export const setupGuideStepCompletedSchema = z
   .object({
     step_id: setupGuideStepIdSchema,
     section_id: z.enum(['parallel-work', 'setup']),
-    completed_count: z.number().int().min(1).max(8),
+    completed_count: ScalarNumber.int().min(1).max(8),
     total_steps: z.literal(8),
-    setup_guide_visible: z.boolean()
+    setup_guide_visible: ScalarBoolean
   })
   .strict()
 

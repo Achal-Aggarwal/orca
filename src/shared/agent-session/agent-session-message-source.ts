@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarString,
+  ScalarUnknown
+} from '../scalar-value-schemas'
 // Agent-origin messages carry from outside fingerprints; absence identifies the person at the composer.
 
 import { z } from 'zod'
@@ -62,25 +68,25 @@ const orcaSessionIdSchema = z.custom<OrcaSessionId>(
 
 const mailNoticeSchema = z.object({
   message: z.literal('mail-notice'),
-  mailbox: z.string(),
-  dispatchId: z.string().nullable(),
-  messages: z.array(z.object({ messageId: z.string(), runId: z.string(), from: z.string() }))
+  mailbox: ScalarString,
+  dispatchId: ScalarNullableString,
+  messages: z.array(z.object({ messageId: ScalarString, runId: ScalarString, from: ScalarString }))
 })
 
 const taskSchema = z.object({
   message: z.literal('task'),
-  runId: z.string(),
-  taskId: z.string(),
-  dispatchId: z.string()
+  runId: ScalarString,
+  taskId: ScalarString,
+  dispatchId: ScalarString
 })
 
 const senderSchema = z.object({
   party: z.object({
-    address: z.string().min(1),
-    terminalHandle: z.string().nullable(),
+    address: ScalarNonemptyString,
+    terminalHandle: ScalarNullableString,
     orcaSessionId: orcaSessionIdSchema.nullable()
   }),
-  name: z.unknown().transform(agentMessageSenderName)
+  name: ScalarUnknown.transform(agentMessageSenderName)
 })
 
 // Parse separately so malformed senders or newer orchestration kinds never turn an agent message into a human message.

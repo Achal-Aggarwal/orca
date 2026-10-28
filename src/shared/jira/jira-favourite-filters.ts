@@ -1,3 +1,4 @@
+import { ScalarBoolean } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { MAX_JIRA_SAVED_FILTER_JQL_LENGTH } from './jira-saved-filters'
 import { getUtf8ByteLength, isUtf8ByteLengthWithinLimit } from '../utf8-byte-limits'
@@ -23,7 +24,7 @@ const Filter = z.object({
 })
 const List = z.object({
   filters: z.array(Filter).max(MAX_JIRA_FAVOURITE_FILTERS),
-  truncated: z.boolean()
+  truncated: ScalarBoolean
 })
 
 export type JiraFavouriteFilter = z.infer<typeof Filter>

@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import {
@@ -20,7 +26,7 @@ import {
 
 /** The store page's one IPC channel: every call is checked against the sender, never the payload. */
 
-const idArg = z.string().max(64)
+const idArg = ScalarString.max(64)
 const requestSchema = z.discriminatedUnion('method', [
   z.object({
     method: z.literal('beginInstallWithManifest3'),
@@ -28,23 +34,26 @@ const requestSchema = z.discriminatedUnion('method', [
       .tuple([
         z.object({
           id: idArg,
-          manifest: z.string().min(1).max(2_000_000),
-          localizedName: z.string().max(1000).nullish(),
-          iconUrl: z.string().max(8192).nullish()
+          manifest: ScalarNonemptyString.max(2_000_000),
+          localizedName: ScalarString.max(1000).nullish(),
+          iconUrl: ScalarString.max(8192).nullish()
         })
       ])
-      .rest(z.unknown())
+      .rest(ScalarUnknown)
   }),
-  z.object({ method: z.literal('completeInstall'), args: z.tuple([idArg]).rest(z.unknown()) }),
+  z.object({ method: z.literal('completeInstall'), args: z.tuple([idArg]).rest(ScalarUnknown) }),
   z.object({
     method: z.literal('getExtensionStatus'),
-    args: z.tuple([idArg, z.string().max(2_000_000).nullish()]).rest(z.unknown())
+    args: z.tuple([idArg, ScalarString.max(2_000_000).nullish()]).rest(ScalarUnknown)
   }),
-  z.object({ method: z.literal('management.getAll'), args: z.array(z.unknown()) }),
-  z.object({ method: z.literal('management.uninstall'), args: z.tuple([idArg]).rest(z.unknown()) }),
+  z.object({ method: z.literal('management.getAll'), args: z.array(ScalarUnknown) }),
+  z.object({
+    method: z.literal('management.uninstall'),
+    args: z.tuple([idArg]).rest(ScalarUnknown)
+  }),
   z.object({
     method: z.literal('management.setEnabled'),
-    args: z.tuple([idArg, z.boolean()]).rest(z.unknown())
+    args: z.tuple([idArg, ScalarBoolean]).rest(ScalarUnknown)
   })
 ])
 

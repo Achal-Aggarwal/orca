@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNonnegativeInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 import {
   CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS as CLOSED_TERMINAL_PANE_TTL_MS,
@@ -15,10 +16,10 @@ export type ClosedTerminalPane = {
 export type ClosedTerminalPanesByPaneKey = Record<string, ClosedTerminalPane>
 
 export const closedTerminalPaneSchema = z.object({
-  ptyId: z.string().min(1),
-  incarnationId: z.string().min(1),
-  worktreeId: z.string().min(1),
-  closedAt: z.number().int().nonnegative()
+  ptyId: ScalarNonemptyString,
+  incarnationId: ScalarNonemptyString,
+  worktreeId: ScalarNonemptyString,
+  closedAt: ScalarNonnegativeInteger
 })
 
 export function recordClosedTerminalPanes(

@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarOptionalNonnegativeInteger,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import { sha256 } from '../sha256'
 
@@ -33,11 +39,8 @@ const ROUTE_PATHNAME_PATTERN = /^\/(?![/\\])[^?#\s]*$/
 const GRANT_NAME_PATTERN = /^(?:[a-zA-Z][a-zA-Z0-9]*|native(?:\.[a-z][a-z0-9]*){2,})$/
 
 /** Share grant grammar with bridge init route-grant pairs; desktop and page must validate the same names. */
-export const MobileWebBundleGrantNameSchema = z
-  .string()
-  .min(1)
-  .max(MAX_GRANT_NAME_LENGTH)
-  .regex(GRANT_NAME_PATTERN)
+export const MobileWebBundleGrantNameSchema =
+  ScalarNonemptyString.max(MAX_GRANT_NAME_LENGTH).regex(GRANT_NAME_PATTERN)
 
 /** Portable bundle-root names: reject traversal and Windows-invalid/device segments. Regex already excludes absolute paths, backslashes, spaces and empty segments. */
 function isPortableAssetSegment(segment: string): boolean {
@@ -49,9 +52,7 @@ function isPortableAssetSegment(segment: string): boolean {
   )
 }
 
-export const MobileWebBundleAssetPathSchema = z
-  .string()
-  .max(MAX_ASSET_PATH_LENGTH)
+export const MobileWebBundleAssetPathSchema = ScalarString.max(MAX_ASSET_PATH_LENGTH)
   .regex(ASSET_PATH_PATTERN)
   .refine(
     (path) => path.split('/').every(isPortableAssetSegment),
@@ -61,9 +62,9 @@ export const MobileWebBundleAssetPathSchema = z
 export const MobileWebBundleAssetSchema = z
   .object({
     path: MobileWebBundleAssetPathSchema,
-    sha256: z.string().regex(SHA256_PATTERN),
-    byteLength: z.number().int().nonnegative().max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES),
-    contentType: z.string().min(1).max(MAX_CONTENT_TYPE_LENGTH).regex(CONTENT_TYPE_PATTERN)
+    sha256: ScalarString.regex(SHA256_PATTERN),
+    byteLength: ScalarNonnegativeInteger.max(MOBILE_WEB_BUNDLE_MAX_ASSET_BYTES),
+    contentType: ScalarNonemptyString.max(MAX_CONTENT_TYPE_LENGTH).regex(CONTENT_TYPE_PATTERN)
   })
   .strict()
 
@@ -101,7 +102,7 @@ export function computeMobileWebBundleId(assets: readonly MobileWebBundleAsset[]
  * never forward manifest entries: optional keys would reject the entire strict pair/session. */
 export const MobileWebBundleRouteSchema = z
   .object({
-    pathname: z.string().min(1).max(MAX_ROUTE_PATHNAME_LENGTH).regex(ROUTE_PATHNAME_PATTERN),
+    pathname: ScalarNonemptyString.max(MAX_ROUTE_PATHNAME_LENGTH).regex(ROUTE_PATHNAME_PATTERN),
     grants: z.array(MobileWebBundleGrantNameSchema).max(MOBILE_WEB_BUNDLE_MAX_ROUTE_GRANTS),
     optionalGrants: z
       .array(MobileWebBundleGrantNameSchema)
@@ -208,15 +209,15 @@ function validateManifestInvariants(
 export const MobileWebBundleManifestSchema = z
   .object({
     schemaVersion: z.literal(MOBILE_WEB_BUNDLE_SCHEMA_VERSION),
-    buildId: z.string().regex(SHA256_PATTERN),
+    buildId: ScalarString.regex(SHA256_PATTERN),
     /** The app version that produced the bundle; the update wall's only honest age source. */
-    desktopVersion: z.string().min(1).max(MAX_DESKTOP_VERSION_LENGTH),
-    minCompatibleRuntimeProtocolVersion: z.number().int().nonnegative(),
-    runtimeProtocolVersion: z.number().int().nonnegative(),
+    desktopVersion: ScalarNonemptyString.max(MAX_DESKTOP_VERSION_LENGTH),
+    minCompatibleRuntimeProtocolVersion: ScalarNonnegativeInteger,
+    runtimeProtocolVersion: ScalarNonnegativeInteger,
     /** `MOBILE_WEB_PAGE_VERSION` at build time; absent from a desktop older than the field. */
-    pageVersion: z.number().int().nonnegative().optional(),
+    pageVersion: ScalarOptionalNonnegativeInteger,
     entrypoint: z.literal(MOBILE_WEB_BUNDLE_ENTRYPOINT),
-    totalBytes: z.number().int().nonnegative().max(MOBILE_WEB_BUNDLE_MAX_TOTAL_BYTES),
+    totalBytes: ScalarNonnegativeInteger.max(MOBILE_WEB_BUNDLE_MAX_TOTAL_BYTES),
     assets: z.array(MobileWebBundleAssetSchema).min(1).max(MOBILE_WEB_BUNDLE_MAX_ASSETS),
     /** Outside buildId’s asset hash; routes derive from the same source tree as the script, so identical assets imply identical routes. */
     routes: z.array(MobileWebBundleRouteSchema).max(MOBILE_WEB_BUNDLE_MAX_ROUTES)

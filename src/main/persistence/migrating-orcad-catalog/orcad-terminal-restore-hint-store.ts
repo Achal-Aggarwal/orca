@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 // Host-local hints need independent durable writes until each pane's first spawn consumes them.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,15 +48,15 @@ const StoreDocumentSchema = z.object({
   version: z.literal(STORE_VERSION),
   hints: z.array(
     z.object({
-      paneKey: z.string().refine(isOrcadMigrationTerminalRestoreHintPaneKey),
-      cwd: z.string().refine(isOrcadMigrationTerminalRestoreHintCwd),
-      worktreeId: z.string().min(1),
-      migrationKey: z.string().regex(MIGRATION_KEY),
-      migrationId: z.string().min(1),
-      installedAt: z.number().int().nonnegative()
+      paneKey: ScalarString.refine(isOrcadMigrationTerminalRestoreHintPaneKey),
+      cwd: ScalarString.refine(isOrcadMigrationTerminalRestoreHintCwd),
+      worktreeId: ScalarNonemptyString,
+      migrationKey: ScalarString.regex(MIGRATION_KEY),
+      migrationId: ScalarNonemptyString,
+      installedAt: ScalarNonnegativeInteger
     })
   ),
-  installedMigrationKeys: z.array(z.string().regex(MIGRATION_KEY))
+  installedMigrationKeys: z.array(ScalarString.regex(MIGRATION_KEY))
 })
 
 export class OrcadTerminalRestoreHintStore {

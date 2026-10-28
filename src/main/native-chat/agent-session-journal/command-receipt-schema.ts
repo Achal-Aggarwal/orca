@@ -1,3 +1,11 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarOptionalString,
+  ScalarString,
+  ScalarUnknown
+} from '../../../shared/scalar-value-schemas'
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 import type Database from '../../sqlite/sync-database'
@@ -5,7 +13,7 @@ import { readAgentSessionRefusalReference } from '../../../shared/agent-session-
 
 export const commandReceiptScopeSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('global') }),
-  z.strictObject({ kind: z.literal('caller'), callerKey: z.string().min(1) })
+  z.strictObject({ kind: z.literal('caller'), callerKey: ScalarNonemptyString })
 ])
 
 export type CommandReceiptScope = z.infer<typeof commandReceiptScopeSchema>
@@ -22,32 +30,32 @@ export function commandReceiptScope(
 export const commandReceiptResultSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('journal-row'),
-    epoch: z.string().min(1),
+    epoch: ScalarNonemptyString,
     sequence: z.int().positive()
   }),
   z.strictObject({
     kind: z.literal('queued-draft'),
-    messageId: z.string().min(1)
+    messageId: ScalarNonemptyString
   }),
   // Persist accepted prompt answers so rewinds/revisions cannot change their replay.
   z.strictObject({
     kind: z.literal('prompt-answer'),
-    itemId: z.string().min(1),
+    itemId: ScalarNonemptyString,
     revision: z.int().positive(),
     resolution: z.strictObject({
       state: z.literal('resolved'),
-      selectedOptionId: z.string().nullable(),
+      selectedOptionId: ScalarNullableString,
       answers: z
         .array(
           z.strictObject({
-            questionId: z.string(),
-            optionIds: z.array(z.string()),
-            other: z.string().optional()
+            questionId: ScalarString,
+            optionIds: z.array(ScalarString),
+            other: ScalarOptionalString
           })
         )
         .optional(),
-      resolvedBy: z.string().nullable(),
-      resolvedAt: z.number().nullable()
+      resolvedBy: ScalarNullableString,
+      resolvedAt: ScalarNullableNumber
     })
   }),
   z.strictObject({ kind: z.literal('stop') }),
@@ -57,17 +65,17 @@ export const commandReceiptResultSchema = z.discriminatedUnion('kind', [
       z.strictObject({
         kind: z.literal('cancel'),
         cancelled: z.literal(false),
-        turnId: z.string().optional()
+        turnId: ScalarOptionalString
       }),
       z.strictObject({ kind: z.literal('queue-resume'), resumed: z.literal(false) }),
       z.strictObject({
         kind: z.literal('queue-move'),
-        messageId: z.string().min(1).max(512),
+        messageId: ScalarNonemptyString.max(512),
         status: z.enum(['moved', 'unchanged', 'gone', 'stale'])
       }),
       z.strictObject({
         kind: z.literal('queue-delete'),
-        messageId: z.string().min(1),
+        messageId: ScalarNonemptyString,
         disposition: z.enum(['dispatched', 'withdrawn', 'missing'])
       })
     ])
@@ -77,7 +85,7 @@ export const commandReceiptResultSchema = z.discriminatedUnion('kind', [
 export type CommandReceiptResult = z.infer<typeof commandReceiptResultSchema>
 
 const rejectionSchema = z
-  .strictObject({ reference: z.unknown(), message: z.string().optional() })
+  .strictObject({ reference: ScalarUnknown, message: ScalarOptionalString })
   .transform((value, ctx) => {
     const reference = readAgentSessionRefusalReference(value.reference)
     if (!reference || !isDeepStrictEqual(reference, value.reference)) {
@@ -88,11 +96,11 @@ const rejectionSchema = z
   })
 
 const receiptIdentity = {
-  operationId: z.string().min(1),
-  sessionId: z.string().min(1),
-  callerKey: z.string().min(1),
-  method: z.string().min(1),
-  fingerprint: z.string().min(1),
+  operationId: ScalarNonemptyString,
+  sessionId: ScalarNonemptyString,
+  callerKey: ScalarNonemptyString,
+  method: ScalarNonemptyString,
+  fingerprint: ScalarNonemptyString,
   acceptedAt: z.int().nonnegative()
 }
 

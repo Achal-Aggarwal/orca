@@ -1,9 +1,10 @@
+import { ScalarFiniteNumber, ScalarNonemptyString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 const PendingRuntimeRepoRemovalSchema = z.object({
-  environmentId: z.string().min(1),
-  repoId: z.string().min(1),
-  requestedAt: z.number().finite()
+  environmentId: ScalarNonemptyString,
+  repoId: ScalarNonemptyString,
+  requestedAt: ScalarFiniteNumber
 })
 
 /** A project this desktop removed while its paired server was unreachable; `repo.rm` replays on reconnect. */

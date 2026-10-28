@@ -1,9 +1,10 @@
+import { ScalarNonemptyString, ScalarNumber, ScalarPositiveInteger } from './scalar-value-schemas'
 import { z } from 'zod'
 
-const Identity = z.string().min(1).max(256)
-const Partition = z.string().min(1).max(512)
-const Generation = z.number().int().min(1).max(0xffff_ffff)
-const WebContentsId = z.number().int().positive()
+const Identity = ScalarNonemptyString.max(256)
+const Partition = ScalarNonemptyString.max(512)
+const Generation = ScalarNumber.int().min(1).max(0xffff_ffff)
+const WebContentsId = ScalarPositiveInteger
 
 export const BROWSER_CLIENT_PAGE_RENDERER_REQUEST_CHANNEL =
   'browser:clientPageRendererRequest' as const

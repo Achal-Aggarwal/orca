@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import type { Readable, Writable } from 'node:stream'
 import { z } from 'zod'
 import {
@@ -13,14 +19,14 @@ import {
 } from './peer-limits'
 import { settleOversizedJsonlRecord, type JsonlRpcRequestOptions } from './peer-oversized-record'
 
-const recordSchema = z.looseObject({ type: z.string() })
+const recordSchema = z.looseObject({ type: ScalarString })
 const responseSchema = z.looseObject({
   type: z.literal('response'),
-  id: z.string().optional(),
-  command: z.string(),
-  success: z.boolean(),
-  data: z.unknown().optional(),
-  error: z.string().optional()
+  id: ScalarOptionalString,
+  command: ScalarString,
+  success: ScalarBoolean,
+  data: ScalarOptionalUnknown,
+  error: ScalarOptionalString
 })
 
 export type JsonlRpcRecord = z.infer<typeof recordSchema>

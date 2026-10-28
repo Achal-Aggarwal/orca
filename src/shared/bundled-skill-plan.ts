@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 import type { SkillInstallProviderId } from './skill-install-providers'
 
@@ -122,21 +123,21 @@ export type BundledSkillInstallResult = {
   skills: readonly BundledSkillOutcome[]
 }
 
-const BundledSkillForceSchema = z.array(z.string().min(1).max(4096)).max(256)
+const BundledSkillForceSchema = z.array(ScalarNonemptyString.max(4096)).max(256)
 
 /** Frozen strict skills.bundled-orca.v1 request for the host’s own global homes; adding fields requires a new capability because older hosts reject them. */
 export const BundledSkillPlanRequestSchema = z.strictObject({
   force: BundledSkillForceSchema.optional(),
   /** Install named host-shipped skills; absent means update installed skills only. Reject names the host does not ship. */
   names: z
-    .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+    .array(ScalarString.regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
     .min(1)
     .max(64)
     .optional()
 })
 export type BundledSkillPlanRequest = z.infer<typeof BundledSkillPlanRequestSchema>
 
-const PlanDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u)
+const PlanDigestSchema = ScalarString.regex(/^[0-9a-f]{64}$/u)
 
 /** Runs the plan `request` produced, identified by its digest; the ops are never re-sent. */
 export const BundledSkillExecuteRequestSchema = z.strictObject({

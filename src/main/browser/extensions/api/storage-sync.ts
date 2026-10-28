@@ -1,3 +1,4 @@
+import { ScalarNull, ScalarString, ScalarUnknown } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { emitBrowserExtensionEvent } from '../browser-extension-api-host'
 import {
@@ -30,9 +31,9 @@ export const STORAGE_SYNC_QUOTAS = {
 
 type StorageChanges = Record<string, { oldValue?: unknown; newValue?: unknown }>
 
-const keyListSchema = z.union([z.string(), z.array(z.string())])
-const itemsSchema = z.record(z.string(), z.unknown())
-const getKeysSchema = z.union([z.null(), keyListSchema, itemsSchema]).optional()
+const keyListSchema = z.union([ScalarString, z.array(ScalarString)])
+const itemsSchema = z.record(ScalarString, ScalarUnknown)
+const getKeysSchema = z.union([ScalarNull, keyListSchema, itemsSchema]).optional()
 
 /** Chrome stores JSON values: functions and undefined members drop out; undefined means "skip". */
 function toStoredValue(value: unknown): unknown {

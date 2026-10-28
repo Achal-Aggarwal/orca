@@ -1,19 +1,26 @@
+import {
+  ScalarNull,
+  ScalarNumber,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { AcpAgentError, AcpInvalidResponseError } from './acp-errors'
 
-const idSchema = z.union([z.string(), z.number(), z.null()])
+const idSchema = z.union([ScalarString, ScalarNumber, ScalarNull])
 const errorSchema = z.object({
-  code: z.number().int(),
-  message: z.string(),
-  data: z.unknown().optional()
+  code: ScalarNumber.int(),
+  message: ScalarString,
+  data: ScalarOptionalUnknown
 })
 export const acpRpcEnvelopeSchema = z.looseObject({
   jsonrpc: z.literal('2.0'),
   id: idSchema.optional(),
-  method: z.string().optional(),
-  params: z.unknown().optional(),
-  result: z.unknown().optional(),
-  error: z.unknown().optional()
+  method: ScalarOptionalString,
+  params: ScalarOptionalUnknown,
+  result: ScalarOptionalUnknown,
+  error: ScalarOptionalUnknown
 })
 export type AcpJsonRpcMessage = z.infer<typeof acpRpcEnvelopeSchema>
 

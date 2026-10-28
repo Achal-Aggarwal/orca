@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { pluginCapabilitySchema } from './plugin-capabilities'
 import {
@@ -26,23 +27,23 @@ export const PLUGIN_PANEL_LIMIT = 64
 export const PLUGIN_COMMAND_LIMIT = 256
 
 // Closed >=x.y.z grammar keeps v0 gating predictable; richer ranges can be added later.
-const orcaEngineRangeSchema = z
-  .string()
-  .max(64)
-  .regex(/^>=\d+\.\d+\.\d+$/, 'must be a ">=x.y.z" version range')
+const orcaEngineRangeSchema = ScalarString.max(64).regex(
+  /^>=\d+\.\d+\.\d+$/,
+  'must be a ">=x.y.z" version range'
+)
 
 const panelContributionSchema = z.object({
   id: pluginIdSchema,
-  title: z.string().min(1).max(256),
+  title: ScalarNonemptyString.max(256),
   /** Lucide icon name rendered in the right-sidebar activity bar. */
-  icon: z.string().min(1).max(64).optional(),
+  icon: ScalarNonemptyString.max(64).optional(),
   /** HTML entry rendered inside a sandboxed panel frame. */
   entry: pluginRelativePathSchema
 })
 
 const commandContributionSchema = z.object({
   id: pluginCommandIdSchema,
-  title: z.string().min(1).max(256),
+  title: ScalarNonemptyString.max(256),
   context: z.enum(['global', 'worktree']).optional(),
   /** Built-in action aliases remain declarative and do not activate a worker. */
   action: pluginCommandIdSchema.optional()
@@ -67,13 +68,13 @@ const pluginManifestV1Object = z.object({
   id: pluginIdSchema,
   /** Qualify as publisher.id: bare-id global uniqueness cannot be verified without a registry. */
   publisher: pluginIdSchema,
-  name: z.string().min(1).max(256),
-  version: z.string().regex(SEMVER_RE, 'must be semver'),
-  description: z.string().max(4096).optional(),
+  name: ScalarNonemptyString.max(256),
+  version: ScalarString.regex(SEMVER_RE, 'must be semver'),
+  description: ScalarString.max(4096).optional(),
   author: z
-    .object({ name: z.string().min(1).max(256), url: z.string().max(2048).optional() })
+    .object({ name: ScalarNonemptyString.max(256), url: ScalarString.max(2048).optional() })
     .optional(),
-  repository: z.string().max(2048).optional(),
+  repository: ScalarString.max(2048).optional(),
   icon: pluginRelativePathSchema.optional(),
   /** Minimum host version gate; the host refuses to load below it. */
   engines: z.object({ orca: orcaEngineRangeSchema }),

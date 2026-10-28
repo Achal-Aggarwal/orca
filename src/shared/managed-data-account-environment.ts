@@ -1,10 +1,11 @@
+import { ScalarNullableString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 const originalEnvironment = z.object({
-  XDG_DATA_HOME: z.string().nullable(),
-  XDG_STATE_HOME: z.string().nullable(),
-  OPENCODE_AUTH_CONTENT: z.string().nullable(),
-  OPENCODE_DB: z.string().nullable(),
+  XDG_DATA_HOME: ScalarNullableString,
+  XDG_STATE_HOME: ScalarNullableString,
+  OPENCODE_AUTH_CONTENT: ScalarNullableString,
+  OPENCODE_DB: ScalarNullableString,
   inlineAuthReference: z.uuid().optional()
 })
 const ORIGINAL_ENV = 'ORCA_DATA_ACCOUNT_ORIGINAL_ENV'

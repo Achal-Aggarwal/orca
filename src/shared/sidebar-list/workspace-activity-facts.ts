@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarNumber, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import type { AgentStatusEntry } from '../agent-status-types'
 import {
@@ -10,16 +11,16 @@ const LiveAgentWorktreeStatusSchema = z.enum(['working', 'monitoring', 'permissi
 /** Host-observed activity that prevents sleeping; lost contact is unverifiable, never gone. */
 const WorkspaceActivityFactsSchema = z.object({
   terminal: z.enum(['live', 'unverifiable']).nullable(),
-  browser: z.boolean(),
-  structuredChat: z.boolean(),
+  browser: ScalarBoolean,
+  structuredChat: ScalarBoolean,
   /** The strongest fresh, unfinished agent. */
   agent: LiveAgentWorktreeStatusSchema.nullable()
 })
 
 /** Only workspaces with some activity are listed; an absent id has none. */
 export const WorkspaceActivityFactsSnapshotSchema = z.object({
-  revision: z.number(),
-  facts: z.record(z.string(), WorkspaceActivityFactsSchema)
+  revision: ScalarNumber,
+  facts: z.record(ScalarString, WorkspaceActivityFactsSchema)
 })
 
 /** Server-owned activity; its clients add browser/chat tabs. */

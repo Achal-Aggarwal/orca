@@ -1,3 +1,4 @@
+import { ScalarOptionalString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 export function buildAntigravityGenerationInput(prompt: string): string {
@@ -7,11 +8,11 @@ export function buildAntigravityGenerationInput(prompt: string): string {
   })}\n`
 }
 
-const eventSchema = z.object({ event: z.string() })
+const eventSchema = z.object({ event: ScalarString })
 const resultSchema = z.object({
-  status: z.string(),
-  response: z.string(),
-  error: z.string().optional()
+  status: ScalarString,
+  response: ScalarString,
+  error: ScalarOptionalString
 })
 const resultEventSchema = eventSchema.extend({ result: resultSchema })
 

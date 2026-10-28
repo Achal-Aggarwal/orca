@@ -1,3 +1,9 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarPositiveInteger,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 // Lock before profile load to prevent concurrent writers; terminal daemons own separate endpoints
 // and deliberately survive runtime lock release and restart.
 import { randomUUID } from 'node:crypto'
@@ -46,22 +52,22 @@ export const ORCAD_LOCK_FILE_NAME = 'orcad.lock'
 const GARBLED_LOCK_GRACE_MS = 10_000
 
 const OrcadLockRecordSchema = z.object({
-  pid: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  pid: ScalarPositiveInteger.max(Number.MAX_SAFE_INTEGER),
   /** Null means PID alone supplies the weaker fence. */
-  startedAtMs: z.number().finite().nonnegative().nullable(),
+  startedAtMs: ScalarFiniteNumber.nonnegative().nullable(),
   /** Drift-free Linux identity; tolerate unknown future encodings without losing the whole record. */
-  linuxStartTicks: z.string().regex(/^\d+$/).max(32).optional().catch(undefined),
-  bootId: z.string().min(1).max(255).optional().catch(undefined),
-  identity: z.string().min(1).max(1_024),
-  version: z.string().min(1).max(255),
+  linuxStartTicks: ScalarString.regex(/^\d+$/).max(32).optional().catch(undefined),
+  bootId: ScalarNonemptyString.max(255).optional().catch(undefined),
+  identity: ScalarNonemptyString.max(1_024),
+  version: ScalarNonemptyString.max(255),
   acquiredAt: z.iso.datetime({ offset: true }),
-  nonce: z.string().min(1).max(255),
+  nonce: ScalarNonemptyString.max(255),
   /** Older pre-desktop-sharing records omit role. */
   role: z.enum(['orcad', 'desktop']).optional(),
   /** Shared homes require machine identity: foreign PIDs establish no local liveness. */
-  machineIdentity: z.string().min(1).max(255).optional().catch(undefined),
+  machineIdentity: ScalarNonemptyString.max(255).optional().catch(undefined),
   /** Optional legacy-compatible hostname for stale-lock reclaim hints. */
-  host: z.string().min(1).max(255).optional().catch(undefined)
+  host: ScalarNonemptyString.max(255).optional().catch(undefined)
 })
 
 export type OrcadLockRecord = z.infer<typeof OrcadLockRecordSchema>

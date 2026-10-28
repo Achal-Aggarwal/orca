@@ -1,3 +1,12 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNullableString,
+  ScalarString,
+  ScalarUnknown
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   AI_VAULT_AGENTS,
@@ -29,7 +38,7 @@ const nodePlatformSchema = z.enum([
   'netbsd'
 ] satisfies NodeJS.Platform[])
 
-const executionHostIdSchema = z.string().transform((value, ctx) => {
+const executionHostIdSchema = ScalarString.transform((value, ctx) => {
   const normalized = normalizeExecutionHostId(value)
   if (normalized) {
     return normalized
@@ -40,50 +49,50 @@ const executionHostIdSchema = z.string().transform((value, ctx) => {
 
 const sessionPreviewMessageSchema = z.object({
   role: z.enum(['user', 'assistant', 'system', 'tool', 'unknown']),
-  text: z.string(),
-  timestamp: z.string().nullable()
+  text: ScalarString,
+  timestamp: ScalarNullableString
 })
 
 const aiVaultSessionSchema = z.object({
-  id: z.string(),
+  id: ScalarString,
   executionHostId: executionHostIdSchema,
   executionHostPlatform: nodePlatformSchema.nullable().optional(),
-  agent: z.string().min(1),
-  sessionId: z.string(),
-  title: z.string(),
-  cwd: z.string().nullable(),
+  agent: ScalarNonemptyString,
+  sessionId: ScalarString,
+  title: ScalarString,
+  cwd: ScalarNullableString,
   // Malformed aliases must not discard the entire session.
   cwdAliases: z
-    .array(z.string().min(1).max(4096))
+    .array(ScalarNonemptyString.max(4096))
     .max(AI_VAULT_SCOPE_PATHS_MAX_COUNT)
     .optional()
     .catch(undefined),
-  branch: z.string().nullable(),
-  model: z.string().nullable(),
-  filePath: z.string(),
-  codexHome: z.string().nullable(),
-  createdAt: z.string().nullable(),
-  updatedAt: z.string().nullable(),
-  modifiedAt: z.string(),
-  messageCount: z.number(),
-  totalTokens: z.number(),
+  branch: ScalarNullableString,
+  model: ScalarNullableString,
+  filePath: ScalarString,
+  codexHome: ScalarNullableString,
+  createdAt: ScalarNullableString,
+  updatedAt: ScalarNullableString,
+  modifiedAt: ScalarString,
+  messageCount: ScalarNumber,
+  totalTokens: ScalarNumber,
   previewMessages: z.array(sessionPreviewMessageSchema),
-  previewMessagesTruncated: z.boolean().optional(),
-  firstUserPrompt: z.string().nullable().optional(),
-  lastUserPrompt: z.string().nullable().optional(),
-  queuedMessageCount: z.number().default(0),
-  subagentTranscriptCount: z.number().default(0),
-  resumeCommand: z.string(),
+  previewMessagesTruncated: ScalarOptionalBoolean,
+  firstUserPrompt: ScalarOptionalNullableString,
+  lastUserPrompt: ScalarOptionalNullableString,
+  queuedMessageCount: ScalarNumber.default(0),
+  subagentTranscriptCount: ScalarNumber.default(0),
+  resumeCommand: ScalarString,
   structuredSession: z
     .object({
-      sessionId: z.string().min(1).max(512),
-      workspaceId: z.string().min(1).max(512)
+      sessionId: ScalarNonemptyString.max(512),
+      workspaceId: ScalarNonemptyString.max(512)
     })
     .optional(),
   subagent: z
     .object({
-      parentSessionId: z.string(),
-      agentType: z.string().nullable(),
+      parentSessionId: ScalarString,
+      agentType: ScalarNullableString,
       status: z.enum(['running', 'completed', 'failed', 'stopped']).nullable()
     })
     .nullable()
@@ -92,24 +101,21 @@ const aiVaultSessionSchema = z.object({
 
 const aiVaultScanIssueSchema = z.object({
   executionHostId: executionHostIdSchema.optional(),
-  agent: z.string().min(1),
+  agent: ScalarNonemptyString,
   // Future issue kinds degrade to scope banners; preserve absent kinds for skipped-transcript rows (#15036).
   kind: z
-    .union([z.enum(['host', 'scope', 'notice']), z.string().transform(() => 'scope' as const)])
+    .union([z.enum(['host', 'scope', 'notice']), ScalarString.transform(() => 'scope' as const)])
     .optional(),
-  path: z.string(),
-  message: z.string()
+  path: ScalarString,
+  message: ScalarString
 })
 
 const aiVaultListResultEnvelopeSchema = z
   .object({
-    sessions: z.array(z.unknown()),
-    issues: z.array(z.unknown()),
-    scannedAt: z.string(),
-    fingerprint: z
-      .string()
-      .regex(/^[0-9a-f]{64}$/)
-      .optional(),
+    sessions: z.array(ScalarUnknown),
+    issues: z.array(ScalarUnknown),
+    scannedAt: ScalarString,
+    fingerprint: ScalarString.regex(/^[0-9a-f]{64}$/).optional(),
     unchanged: z.literal(true).optional()
   })
   .refine(

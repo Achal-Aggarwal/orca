@@ -1,3 +1,12 @@
+import {
+  ScalarBoolean,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarString
+} from '../scalar-value-schemas'
 import { z } from 'zod'
 import {
   LOCAL_EXECUTION_HOST_ID,
@@ -22,62 +31,62 @@ import { SMART_TIERS } from './sort-stamps'
 
 /** Catalog/metadata/sort stamps only; separate activity and review domains keep terminal output from invalidating rows. */
 export const WorkspaceRowSchema = z.object({
-  id: z.string(),
-  hostId: z.string(),
+  id: ScalarString,
+  hostId: ScalarString,
   kind: z.enum(['git', 'folder']),
-  repoId: z.string(),
-  path: z.string(),
-  branch: z.string(),
-  displayName: z.string(),
-  isMainWorktree: z.boolean(),
-  instanceId: z.string().optional(),
+  repoId: ScalarString,
+  path: ScalarString,
+  branch: ScalarString,
+  displayName: ScalarString,
+  isMainWorktree: ScalarBoolean,
+  instanceId: ScalarOptionalString,
   /** Stored lineage edge; the builder validates it. */
   lineage: z
     .object({
-      parentWorktreeId: z.string(),
-      worktreeInstanceId: z.string(),
-      parentWorktreeInstanceId: z.string()
+      parentWorktreeId: ScalarString,
+      worktreeInstanceId: ScalarString,
+      parentWorktreeInstanceId: ScalarString
     })
     .nullable(),
-  isPinned: z.boolean(),
-  isArchived: z.boolean(),
-  isUnread: z.boolean(),
-  workspaceStatus: z.string(),
-  comment: z.string(),
-  manualOrder: z.number().optional(),
+  isPinned: ScalarBoolean,
+  isArchived: ScalarBoolean,
+  isUnread: ScalarBoolean,
+  workspaceStatus: ScalarString,
+  comment: ScalarString,
+  manualOrder: ScalarOptionalNumber,
   /** Manual fallback for rows lacking manualOrder; old hosts omit it. */
-  sortOrder: z.number().optional(),
-  createdAt: z.number().optional(),
+  sortOrder: ScalarOptionalNumber,
+  createdAt: ScalarOptionalNumber,
   creatorProvenance: z
     .union([
       z.object({ kind: z.literal('host') }),
-      z.object({ kind: z.literal('paired-device'), deviceId: z.string() })
+      z.object({ kind: z.literal('paired-device'), deviceId: ScalarString })
     ])
     .optional(),
-  linkedIssue: z.number().nullable(),
+  linkedIssue: ScalarNullableNumber,
   /** Metadata link only; cached branch PR belongs to the review domain. */
-  linkedPR: z.number().nullable(),
-  linkedLinearIssue: z.string().nullable(),
-  linkedGitLabMR: z.number().nullable(),
-  linkedGitLabIssue: z.number().nullable(),
+  linkedPR: ScalarNullableNumber,
+  linkedLinearIssue: ScalarNullableString,
+  linkedGitLabMR: ScalarNullableNumber,
+  linkedGitLabIssue: ScalarNullableNumber,
   linkedItems: WorkspaceAttachmentsSchema,
-  defaultBranch: z.boolean(),
+  defaultBranch: ScalarBoolean,
   automationCreated: z.literal(true).optional(),
-  automationName: z.string().optional(),
+  automationName: ScalarOptionalString,
   cliCreated: z.literal(true).optional(),
   detachedHead: z.literal(true).optional(),
   /** Main-owned terminal platform. */
-  terminalPlatform: z.string().optional(),
+  terminalPlatform: ScalarOptionalString,
   /** Host-owned sort stamps (sort-stamps.ts); old hosts omit tiers. */
-  recentAt: z.number().optional(),
+  recentAt: ScalarOptionalNumber,
   smartTier: z.enum(SMART_TIERS).optional(),
-  smartAt: z.number().optional()
+  smartAt: ScalarOptionalNumber
 })
 
 /** Legacy local rows without metadata host retain `|id` keys even when hostId names their owner. */
 export const WorkspaceRowsSnapshotSchema = z.object({
-  revision: z.number(),
-  rows: z.record(z.string(), WorkspaceRowSchema)
+  revision: ScalarNumber,
+  rows: z.record(ScalarString, WorkspaceRowSchema)
 })
 
 export type WorkspaceRow = z.infer<typeof WorkspaceRowSchema>

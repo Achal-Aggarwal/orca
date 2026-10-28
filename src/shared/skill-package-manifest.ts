@@ -1,3 +1,9 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarString
+} from './scalar-value-schemas'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
@@ -13,16 +19,12 @@ const WINDOWS_RESERVED_SEGMENT = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)
 
 export const SkillPackageFileSchema = z
   .object({
-    path: z.string().min(1).max(1024),
-    size: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(4 * 1024 * 1024),
-    executable: z.boolean(),
+    path: ScalarNonemptyString.max(1024),
+    size: ScalarNonnegativeInteger.max(4 * 1024 * 1024),
+    executable: ScalarBoolean,
     classification: z.enum(['text', 'binary']),
-    sha256: z.string().regex(SHA256_PATTERN),
-    identitySha256: z.string().regex(SHA256_PATTERN)
+    sha256: ScalarString.regex(SHA256_PATTERN),
+    identitySha256: ScalarString.regex(SHA256_PATTERN)
   })
   .strict()
 
@@ -31,13 +33,13 @@ export type SkillPackageFile = z.infer<typeof SkillPackageFileSchema>
 export const SkillPackageManifestV1Schema = z
   .object({
     schemaVersion: z.literal(SKILL_PACKAGE_SCHEMA_VERSION),
-    packageId: z.string().regex(ID_PATTERN),
-    versionId: z.string().regex(ID_PATTERN),
-    name: z.string().regex(SKILL_NAME_PATTERN),
-    description: z.string().max(4096),
+    packageId: ScalarString.regex(ID_PATTERN),
+    versionId: ScalarString.regex(ID_PATTERN),
+    name: ScalarString.regex(SKILL_NAME_PATTERN),
+    description: ScalarString.max(4096),
     createdAt: z.iso.datetime({ offset: true }),
     files: z.array(SkillPackageFileSchema).min(1).max(512),
-    packageDigest: z.string().regex(SHA256_PATTERN)
+    packageDigest: ScalarString.regex(SHA256_PATTERN)
   })
   .strict()
 

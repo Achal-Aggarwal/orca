@@ -1,3 +1,4 @@
+import { ScalarString } from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import {
   emitBrowserExtensionEvent,
@@ -35,7 +36,7 @@ const recentGestures = new WeakMap<
 const pendingRequests = new Set<string>()
 
 const permissionsSchema = z
-  .object({ permissions: z.array(z.string()), origins: z.array(z.string()) })
+  .object({ permissions: z.array(ScalarString), origins: z.array(ScalarString) })
   .partial()
   .loose()
 

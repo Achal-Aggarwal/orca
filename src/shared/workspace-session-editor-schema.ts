@@ -1,16 +1,22 @@
+import {
+  ScalarOptionalBoolean,
+  ScalarOptionalNullableString,
+  ScalarOptionalString,
+  ScalarString
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 export const persistedOpenFileSchema = z.object({
-  filePath: z.string(),
-  relativePath: z.string(),
-  worktreeId: z.string(),
-  language: z.string(),
-  isPreview: z.boolean().optional(),
-  runtimeEnvironmentId: z.string().nullable().optional(),
+  filePath: ScalarString,
+  relativePath: ScalarString,
+  worktreeId: ScalarString,
+  language: ScalarString,
+  isPreview: ScalarOptionalBoolean,
+  runtimeEnvironmentId: ScalarOptionalNullableString,
   mirroredFromRuntimeSession: z.literal(true).optional(),
-  externalSshTargetId: z.string().trim().min(1).optional(),
-  dirtyDraftContent: z.string().optional(),
-  lastKnownDiskSignature: z.string().optional(),
-  readOnly: z.boolean().optional(),
-  liveTail: z.boolean().optional()
+  externalSshTargetId: ScalarString.trim().min(1).optional(),
+  dirtyDraftContent: ScalarOptionalString,
+  lastKnownDiskSignature: ScalarOptionalString,
+  readOnly: ScalarOptionalBoolean,
+  liveTail: ScalarOptionalBoolean
 })

@@ -1,3 +1,9 @@
+import {
+  ScalarNonnegativeInteger,
+  ScalarNullishString,
+  ScalarOptionalString,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 // Grok's subagent IDs also name their child sessions (1.0.46 recordings).
 
 import { z } from 'zod'
@@ -7,14 +13,14 @@ import type { ToolCallUpdate } from '../generated/acp-protocol.generated'
 import type { AcpSubagentUpdate } from './acp-dialect'
 import { grokTaskResults, isGrokSubagentTask } from './grok-background-tasks'
 
-const tokenCount = z.number().int().nonnegative()
-const idSchema = z.string().trim().min(1)
+const tokenCount = ScalarNonnegativeInteger
+const idSchema = ScalarString.trim().min(1)
 const spawnedSchema = z.looseObject({
   sessionUpdate: z.literal('subagent_spawned'),
   subagent_id: idSchema,
-  parent_prompt_id: z.string().optional(),
-  description: z.string().nullish(),
-  subagent_type: z.string().nullish()
+  parent_prompt_id: ScalarOptionalString,
+  description: ScalarNullishString,
+  subagent_type: ScalarNullishString
 })
 const progressSchema = z.looseObject({
   sessionUpdate: z.literal('subagent_progress'),
@@ -24,20 +30,20 @@ const progressSchema = z.looseObject({
 const finishedSchema = z.looseObject({
   sessionUpdate: z.literal('subagent_finished'),
   subagent_id: idSchema,
-  status: z.string(),
-  output: z.string().nullish(),
+  status: ScalarString,
+  output: ScalarNullishString,
   tokens_used: tokenCount.optional()
 })
 const spawnInputSchema = z.looseObject({
-  description: z.string().optional(),
-  prompt: z.string().optional()
+  description: ScalarOptionalString,
+  prompt: ScalarOptionalString
 })
 const completedSpawnSchema = z.looseObject({
   type: z.literal('SubagentCompleted'),
   subagent_id: idSchema,
-  output: z.string().nullish()
+  output: ScalarNullishString
 })
-const spawnAckSchema = z.looseObject({ type: z.literal('Text'), text: z.string() })
+const spawnAckSchema = z.looseObject({ type: z.literal('Text'), text: ScalarString })
 const killInputSchema = z.object({
   task_id: idSchema.optional(),
   task_ids: z.array(idSchema).optional()

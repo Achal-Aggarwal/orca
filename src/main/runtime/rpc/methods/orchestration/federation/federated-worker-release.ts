@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarOptionalString,
+  ScalarOptionalUnknown
+} from '../../../../../../shared/scalar-value-schemas'
 import { ORCHESTRATION_FEDERATION_RELEASE_ARCHIVE_RUNTIME_CAPABILITY } from '../../../../../../shared/protocol-version'
 import type { RuntimeStatus } from '../../../../../../shared/runtime-types'
 import { z } from 'zod'
@@ -18,7 +24,7 @@ type RemoteReleaseReceipt = Omit<WorkerReleaseReceipt, 'archive'> & {
 
 const RemoteReleaseReceiptSchema = z
   .object({
-    dispatchId: z.string().min(1),
+    dispatchId: ScalarNonemptyString,
     state: z.enum([
       'released',
       'already_released',
@@ -26,15 +32,15 @@ const RemoteReleaseReceiptSchema = z
       'release_pending',
       'release_unknown'
     ]),
-    reason: z.string().optional(),
+    reason: ScalarOptionalString,
     processAction: z.enum(['closed_agent_terminal', 'closed_exited_terminal', 'none']),
     archive: z
-      .object({ source: z.string().nullable(), status: z.string().nullable() })
+      .object({ source: ScalarNullableString, status: ScalarNullableString })
       .nullable()
       .optional(),
-    recovery: z.string().optional(),
-    lastError: z.string().optional(),
-    output: z.unknown().optional()
+    recovery: ScalarOptionalString,
+    lastError: ScalarOptionalString,
+    output: ScalarOptionalUnknown
   })
   .passthrough()
 

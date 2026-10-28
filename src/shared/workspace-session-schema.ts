@@ -1,3 +1,17 @@
+import {
+  ScalarBoolean,
+  ScalarFiniteNumber,
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNullableString,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarString
+} from './scalar-value-schemas'
 // Validate persisted sessions at read boundaries so malformed legacy data never reaches React. Ignore unknown fields, validate fields we read, and salvage independent entries via zod-salvage; only non-session payloads reset to defaults.
 import { z } from 'zod'
 import {
@@ -39,30 +53,30 @@ const workspaceKeySchema = z.custom<WorkspaceKey>(
 
 export const terminalTabSchema = z.object({
   id: terminalTabIdSchema,
-  ptyId: z.string().nullable(),
-  worktreeId: z.string(),
-  title: z.string(),
-  defaultTitle: z.string().optional(),
-  generatedTitle: z.string().nullable().optional(),
+  ptyId: ScalarNullableString,
+  worktreeId: ScalarString,
+  title: ScalarString,
+  defaultTitle: ScalarOptionalString,
+  generatedTitle: ScalarOptionalNullableString,
   aiVaultTitle: z
     .object({
       agent: z.enum(['claude', 'codex']),
-      sessionId: z.string(),
-      title: z.string()
+      sessionId: ScalarString,
+      title: ScalarString
     })
     .nullable()
     .optional()
     .catch(undefined),
-  quickCommandLabel: z.string().nullable().optional(),
-  customTitle: z.string().nullable(),
-  color: z.string().nullable(),
-  isPinned: z.boolean().optional(),
+  quickCommandLabel: ScalarOptionalNullableString,
+  customTitle: ScalarNullableString,
+  color: ScalarNullableString,
+  isPinned: ScalarOptionalBoolean,
   // Preserve chat ownership through restore; missing/unknown modes safely default to terminal, matching unified tabs.
   viewMode: z.enum(['terminal', 'chat']).catch('terminal').optional(),
-  sortOrder: z.number(),
-  createdAt: z.number(),
-  generation: z.number().optional(),
-  startupCwd: z.string().min(1).optional(),
+  sortOrder: ScalarNumber,
+  createdAt: ScalarNumber,
+  generation: ScalarOptionalNumber,
+  startupCwd: ScalarOptionalNonemptyString,
   // Retain the idle agent icon before hooks fire; unknown IDs degrade to absent without resetting the session.
   launchAgent: z
     .custom<TuiAgent>((v) => isTuiAgent(v))
@@ -75,48 +89,46 @@ const executionHostIdSchema = z.custom<ExecutionHostId>(
 )
 
 const tabSchema = z.object({
-  id: z.string(),
-  entityId: z.string(),
-  groupId: z.string(),
-  worktreeId: z.string(),
+  id: ScalarString,
+  entityId: ScalarString,
+  groupId: ScalarString,
+  worktreeId: ScalarString,
   executionHostId: executionHostIdSchema.optional(),
   contentType: tabContentTypeSchema,
   // Accept registered agent slugs across mixed versions; invalid slugs become absent rather than rejecting the session.
-  agentSessionAgent: z
-    .string()
-    .refine((value) => isStructuredAgentId(value))
+  agentSessionAgent: ScalarString.refine((value) => isStructuredAgentId(value))
     .optional()
     .catch(undefined),
-  label: z.string(),
-  generatedLabel: z.string().nullable().optional(),
+  label: ScalarString,
+  generatedLabel: ScalarOptionalNullableString,
   aiVaultTitle: z
     .object({
       agent: z.enum(['claude', 'codex']),
-      sessionId: z.string(),
-      title: z.string()
+      sessionId: ScalarString,
+      title: ScalarString
     })
     .nullable()
     .optional()
     .catch(undefined),
-  quickCommandLabel: z.string().nullable().optional(),
-  customLabel: z.string().nullable(),
-  color: z.string().nullable(),
-  sortOrder: z.number(),
-  createdAt: z.number(),
+  quickCommandLabel: ScalarOptionalNullableString,
+  customLabel: ScalarNullableString,
+  color: ScalarNullableString,
+  sortOrder: ScalarNumber,
+  createdAt: ScalarNumber,
   // Why: corrupt optional recency must not discard the whole persisted tab.
-  lastFocusedAt: z.number().finite().nonnegative().optional().catch(undefined),
-  isPreview: z.boolean().optional(),
-  isPinned: z.boolean().optional(),
+  lastFocusedAt: ScalarFiniteNumber.nonnegative().optional().catch(undefined),
+  isPreview: ScalarOptionalBoolean,
+  isPinned: ScalarOptionalBoolean,
   // Preserve chat mode on restore; unknown future values degrade to terminal and missing legacy values remain absent.
   viewMode: z.enum(['terminal', 'chat']).catch('terminal').optional()
 })
 
 const tabGroupSchema = z.object({
-  id: z.string(),
-  worktreeId: z.string(),
-  activeTabId: z.string().nullable(),
-  tabOrder: z.array(z.string()),
-  recentTabIds: z.array(z.string()).optional()
+  id: ScalarString,
+  worktreeId: ScalarString,
+  activeTabId: ScalarNullableString,
+  tabOrder: z.array(ScalarString),
+  recentTabIds: z.array(ScalarString).optional()
 })
 
 const tabGroupSplitDirectionSchema = z.enum(['horizontal', 'vertical'])
@@ -137,17 +149,17 @@ const tabGroupLayoutNodeSchema: z.ZodType<TabGroupLayoutNode> = z.lazy(() =>
   ])
 )
 
-const worktreeIdSchema = z.string()
+const worktreeIdSchema = ScalarString
 
 export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.object({
-  activeRepoId: salvagedField('activeRepoId', z.string().nullable(), () => null),
+  activeRepoId: salvagedField('activeRepoId', ScalarNullableString, () => null),
   activeWorkspaceKey: salvagedOptional('activeWorkspaceKey', workspaceKeySchema.nullable()),
   activeWorkspaceExecutionHostId: salvagedOptional(
     'activeWorkspaceExecutionHostId',
     executionHostIdSchema.nullable()
   ),
-  activeWorktreeId: salvagedField('activeWorktreeId', z.string().nullable(), () => null),
-  activeTabId: salvagedField('activeTabId', z.string().nullable(), () => null),
+  activeWorktreeId: salvagedField('activeWorktreeId', ScalarNullableString, () => null),
+  activeTabId: salvagedField('activeTabId', ScalarNullableString, () => null),
   tabsByWorktree: salvagedField(
     'tabsByWorktree',
     salvagingRecord(worktreeIdSchema, salvagingArray(terminalTabSchema)),
@@ -173,11 +185,11 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   ),
   activeFileIdByWorktree: salvagedOptional(
     'activeFileIdByWorktree',
-    salvagingRecord(worktreeIdSchema, z.string().nullable())
+    salvagingRecord(worktreeIdSchema, ScalarNullableString)
   ),
   markdownFrontmatterVisible: salvagedOptional(
     'markdownFrontmatterVisible',
-    salvagingRecord(z.string(), z.boolean())
+    salvagingRecord(ScalarString, ScalarBoolean)
   ),
   browserTabsByWorktree: salvagedOptional(
     'browserTabsByWorktree',
@@ -185,11 +197,11 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   ),
   browserPagesByWorkspace: salvagedOptional(
     'browserPagesByWorkspace',
-    salvagingRecord(z.string(), salvagingArray(browserPageSchema))
+    salvagingRecord(ScalarString, salvagingArray(browserPageSchema))
   ),
   activeBrowserTabIdByWorktree: salvagedOptional(
     'activeBrowserTabIdByWorktree',
-    salvagingRecord(worktreeIdSchema, z.string().nullable())
+    salvagingRecord(worktreeIdSchema, ScalarNullableString)
   ),
   clientHostedBrowserPagesByWorktree: salvagedOptional(
     'clientHostedBrowserPagesByWorktree',
@@ -204,7 +216,7 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   workspaceDocHistory: salvagedOptional('workspaceDocHistory', workspaceDocHistoryEntriesSchema),
   activeTabIdByWorktree: salvagedOptional(
     'activeTabIdByWorktree',
-    salvagingRecord(worktreeIdSchema, z.string().nullable())
+    salvagingRecord(worktreeIdSchema, ScalarNullableString)
   ),
   unifiedTabs: salvagedOptional(
     'unifiedTabs',
@@ -220,21 +232,21 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   ),
   activeGroupIdByWorktree: salvagedOptional(
     'activeGroupIdByWorktree',
-    salvagingRecord(worktreeIdSchema, z.string())
+    salvagingRecord(worktreeIdSchema, ScalarString)
   ),
   activeConnectionIdsAtShutdown: salvagedOptional(
     'activeConnectionIdsAtShutdown',
-    salvagingArray(z.string())
+    salvagingArray(ScalarString)
   ),
   remoteSessionIdsByTabId: salvagedOptional(
     'remoteSessionIdsByTabId',
-    salvagingRecord(terminalTabIdSchema, z.string())
+    salvagingRecord(terminalTabIdSchema, ScalarString)
   ),
   // Why: the sort comparator in order-empty-query-worktrees.ts would produce NaN
   // (undefined sort order) from a NaN or Infinity persisted here.
   lastVisitedAtByWorktreeId: salvagedOptional(
     'lastVisitedAtByWorktreeId',
-    salvagingRecord(worktreeIdSchema, z.number().finite().nonnegative())
+    salvagingRecord(worktreeIdSchema, ScalarFiniteNumber.nonnegative())
   ),
   defaultTerminalTabsAppliedByWorktreeId: salvagedOptional(
     'defaultTerminalTabsAppliedByWorktreeId',
@@ -246,15 +258,15 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   ),
   terminalPtyIncarnationsByPaneKey: salvagedOptional(
     'terminalPtyIncarnationsByPaneKey',
-    salvagingRecord(z.string(), z.string().min(1).max(128))
+    salvagingRecord(ScalarString, ScalarNonemptyString.max(128))
   ),
   terminalTopologyRevisionByRepoId: salvagedOptional(
     'terminalTopologyRevisionByRepoId',
-    salvagingRecord(z.string(), z.number().int().nonnegative())
+    salvagingRecord(ScalarString, ScalarNonnegativeInteger)
   ),
   terminalSurfaceTombstonesByPaneKey: salvagedOptional(
     'terminalSurfaceTombstonesByPaneKey',
-    salvagingRecord(z.string(), terminalSurfaceTombstoneSchema)
+    salvagingRecord(ScalarString, terminalSurfaceTombstoneSchema)
   ),
   closedTerminalTabTombstonesByTabId: salvagedOptional(
     'closedTerminalTabTombstonesByTabId',
@@ -262,7 +274,7 @@ export const workspaceSessionStateSchema: z.ZodType<WorkspaceSessionState> = z.o
   ),
   closedTerminalPanesByPaneKey: salvagedOptional(
     'closedTerminalPanesByPaneKey',
-    salvagingRecord(z.string().min(1), closedTerminalPaneSchema)
+    salvagingRecord(ScalarNonemptyString, closedTerminalPaneSchema)
   )
 })
 

@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 /** R39: a WSL host's server lives in the Linux login's ~/.orca, so another Orca on this computer may share it. */
 import { z } from 'zod'
 import { ORCAD_PEER_DESKTOPS_RUNTIME_CAPABILITY } from '../../shared/orcad-runtime-capabilities'
@@ -13,7 +14,7 @@ export type WslHostPeerDesktops =
   /** An older server can't say: Remove keeps today's teardown. */
   | { kind: 'unsupported' }
 
-const StatusCapabilitiesSchema = z.looseObject({ capabilities: z.array(z.string()).optional() })
+const StatusCapabilitiesSchema = z.looseObject({ capabilities: z.array(ScalarString).optional() })
 
 /**
  * Another Orca counts only while its control socket is open on the server right now; a closed one

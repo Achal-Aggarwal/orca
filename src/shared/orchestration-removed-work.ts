@@ -1,13 +1,21 @@
+import {
+  ScalarBoolean,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarString,
+  ScalarUnknown
+} from './scalar-value-schemas'
 import { z } from 'zod'
 
 // Tolerant fields: a missing or mistyped value reads as null instead of failing the entry.
-const text = z.string().nullable().catch(null)
+const text = ScalarNullableString.catch(null)
 /** Stored as an integer; every other record field is stored as text. */
-export const REMOVED_WORK_INT_FIELD = z.number().nullable().catch(null)
+export const REMOVED_WORK_INT_FIELD = ScalarNullableNumber.catch(null)
 const int = REMOVED_WORK_INT_FIELD
 // Drops non-string elements and keeps the rest; text that isn't JSON reads as null.
 const idList = z
-  .preprocess(parseJsonText, z.array(z.unknown()).nullable())
+  .preprocess(parseJsonText, z.array(ScalarUnknown).nullable())
   .transform((items) => items?.filter((item): item is string => typeof item === 'string') ?? null)
   .catch(null)
 
@@ -86,8 +94,8 @@ export const REMOVED_WORK_LINEAGE_FIELDS = {
 
 export type RemovedWorkKind = keyof typeof REMOVED_WORK_LINEAGE_FIELDS
 
-const entryBase = { seq: z.number(), id: z.string(), removedAt: z.string() }
-const workerBase = { ...entryBase, activeAtRemoval: z.boolean() }
+const entryBase = { seq: ScalarNumber, id: ScalarString, removedAt: ScalarString }
+const workerBase = { ...entryBase, activeAtRemoval: ScalarBoolean }
 const lineage = REMOVED_WORK_LINEAGE_FIELDS
 
 /** One listed entry: the stored record checked against its kind's fields. */

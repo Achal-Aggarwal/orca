@@ -1,3 +1,4 @@
+import { ScalarNonnegativeInteger, ScalarNumber } from '../../../../shared/scalar-value-schemas'
 /// <reference types="chrome" />
 import { z } from 'zod'
 import {
@@ -18,10 +19,10 @@ import {
   findBrowserExtensionDiscardedTab
 } from '../browser-extension-discarded-tab-model'
 
-const tabIdSchema = z.number().int().nonnegative()
+const tabIdSchema = ScalarNonnegativeInteger
 const optionalTabId = z.tuple([tabIdSchema.nullable().optional()])
 const moveSchema = z
-  .object({ index: z.number().int(), windowId: z.number().int() })
+  .object({ index: ScalarNumber.int(), windowId: ScalarNumber.int() })
   .partial({ windowId: true })
   .loose()
 

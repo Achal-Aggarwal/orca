@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import { PLUGIN_COMMIT_PATTERN } from '../../shared/plugins/plugin-install-lockfile'
@@ -13,19 +14,19 @@ export type PluginMarketplaceHandlerServices = {
   installer: PluginMarketplaceInstaller
 }
 
-const sourceIdSchema = z.string().regex(PLUGIN_MARKETPLACE_SOURCE_ID_PATTERN)
+const sourceIdSchema = ScalarString.regex(PLUGIN_MARKETPLACE_SOURCE_ID_PATTERN)
 const removeMarketplaceSchema = z.strictObject({ sourceId: sourceIdSchema })
 const refreshMarketplaceSchema = z.strictObject({ sourceId: sourceIdSchema.optional() })
 const marketplacePluginSchema = z.strictObject({
   marketplaceSourceId: sourceIdSchema,
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key')
+  pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key')
 })
 const installMarketplacePluginSchema = marketplacePluginSchema.extend({
-  marketplaceCommit: z.string().regex(PLUGIN_COMMIT_PATTERN),
-  resolvedCommit: z.string().regex(PLUGIN_COMMIT_PATTERN)
+  marketplaceCommit: ScalarString.regex(PLUGIN_COMMIT_PATTERN),
+  resolvedCommit: ScalarString.regex(PLUGIN_COMMIT_PATTERN)
 })
 const installedPluginSchema = z.strictObject({
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key')
+  pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key')
 })
 
 export function registerPluginMarketplaceHandlers(

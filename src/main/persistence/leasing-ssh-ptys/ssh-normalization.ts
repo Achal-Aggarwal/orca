@@ -1,3 +1,8 @@
+import {
+  ScalarNonnegativeInteger,
+  ScalarOptionalNonnegativeInteger,
+  ScalarString
+} from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type {
   SshPtyConsumerRecovery,
@@ -165,14 +170,11 @@ function normalizeOrcadFence(target: SshTarget): SshTarget {
 const SshRemoteRuntimeResolutionSchema = z
   .object({
     rung: z.enum(SSH_REMOTE_RUNTIME_RUNGS),
-    pinnedRefusal: z.string().max(64).optional(),
-    refusedAt: z.number().int().nonnegative().optional(),
-    glibc: z
-      .string()
-      .regex(/^\d+\.\d+$/)
-      .nullable(),
-    runtimeSha256: z.string().regex(/^[0-9a-f]{64}$/),
-    orcaMajor: z.number().int().nonnegative()
+    pinnedRefusal: ScalarString.max(64).optional(),
+    refusedAt: ScalarOptionalNonnegativeInteger,
+    glibc: ScalarString.regex(/^\d+\.\d+$/).nullable(),
+    runtimeSha256: ScalarString.regex(/^[0-9a-f]{64}$/),
+    orcaMajor: ScalarNonnegativeInteger
   })
   .strict()
 

@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarPositiveInteger,
+  ScalarString,
+  ScalarUnknown
+} from './scalar-value-schemas'
 /** An opted-in desktop serves a managed SSH host’s CLI browser requests. Both peers must advertise desktopBridge.v1; unsupported peers refuse with unavailable instead of hanging. */
 import { z } from 'zod'
 
@@ -81,7 +87,7 @@ export function isDesktopBrowserBridgeMethod(method: string): boolean {
   return DESKTOP_BROWSER_BRIDGE_METHODS.has(method)
 }
 
-const Identity = z.string().min(1).max(256)
+const Identity = ScalarNonemptyString.max(256)
 const MAX_FORWARDED_PARAMS_BYTES = 1024 * 1024
 const MAX_WORKSPACE_ID_LENGTH = 16 * 1024
 
@@ -92,19 +98,14 @@ export const DesktopBrowserBridgeAttachParams = z.object({
 export const DesktopBrowserBridgeRequest = z.object({
   type: z.literal('request'),
   requestId: Identity,
-  method: z.string().refine(isDesktopBrowserBridgeMethod, 'method is not forwarded'),
+  method: ScalarString.refine(isDesktopBrowserBridgeMethod, 'method is not forwarded'),
   /** How long orcad waits for this answer; the desktop never starts the command after it. */
-  timeoutMs: z
-    .number()
-    .int()
-    .positive()
-    .max(60 * 60_000)
-    .optional(),
+  timeoutMs: ScalarPositiveInteger.max(60 * 60_000).optional(),
   /** The workspace orcad resolved the caller's selector to; absent when it named none. */
   // Why longer than an identity: a worktree id embeds the repository's absolute path.
-  workspaceId: z.string().min(1).max(MAX_WORKSPACE_ID_LENGTH).optional(),
+  workspaceId: ScalarNonemptyString.max(MAX_WORKSPACE_ID_LENGTH).optional(),
   params: z
-    .record(z.string(), z.unknown())
+    .record(ScalarString, ScalarUnknown)
     .refine(
       (value) => JSON.stringify(value).length <= MAX_FORWARDED_PARAMS_BYTES,
       'params exceed the forwarded size budget'
@@ -121,8 +122,8 @@ export const DesktopBrowserBridgeEvent = z.discriminatedUnion('type', [
 export type DesktopBrowserBridgeEvent = z.infer<typeof DesktopBrowserBridgeEvent>
 
 const BridgeError = z.object({
-  code: z.string().min(1).max(128),
-  message: z.string().max(4096)
+  code: ScalarNonemptyString.max(128),
+  message: ScalarString.max(4096)
 })
 
 export const DesktopBrowserBridgeResultParams = z.discriminatedUnion('ok', [
@@ -130,7 +131,7 @@ export const DesktopBrowserBridgeResultParams = z.discriminatedUnion('ok', [
     attachmentId: Identity,
     requestId: Identity,
     ok: z.literal(true),
-    result: z.unknown()
+    result: ScalarUnknown
   }),
   z.object({
     attachmentId: Identity,

@@ -1,3 +1,8 @@
+import {
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarString
+} from '../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { getChromeExtensionOrigin } from '../../../../shared/browser-extension-url'
 import { iconFromImageData } from '../browser-extension-action-icon'
@@ -22,9 +27,9 @@ import { requireCallerTab } from '../browser-extension-tab-model'
 import { getPinnedBrowserExtensionIds } from '../browser-extension-toolbar-pins'
 import { requestBrowserExtensionPopup } from '../browser-extension-toolbar'
 
-const tabIdSchema = z.number().int().nonnegative()
+const tabIdSchema = ScalarNonnegativeInteger
 const tabDetailsSchema = z.object({ tabId: tabIdSchema.optional() }).loose()
-const colorSchema = z.union([z.string(), z.array(z.number())])
+const colorSchema = z.union([ScalarString, z.array(ScalarNumber)])
 const UNSET_COLOR: BrowserExtensionColor = [0, 0, 0, 0]
 
 /** A tabId must name a tab the caller can reach; omitted means the global value. */

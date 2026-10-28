@@ -1,4 +1,10 @@
 import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarString
+} from './scalar-value-schemas'
+import {
   BrowserClientProfileMetadata,
   BrowserClientProfileSwitchCommand
 } from './browser-client-profile-switch-protocol'
@@ -10,8 +16,8 @@ import {
 } from './browser-client-automation-protocol'
 import { BROWSER_CLIENT_FILE_CHANNEL_PROTOCOL_VERSION } from './browser-client-file-channel-protocol'
 
-const Generation = z.number().int().min(1).max(0xffff_ffff)
-const Identity = z.string().min(1).max(256)
+const Generation = ScalarNumber.int().min(1).max(0xffff_ffff)
+const Identity = ScalarNonemptyString.max(256)
 export const BROWSER_CLIENT_HOST_PAGE_INVENTORY_IDENTITY_MAX_JSON_BYTES = 384
 const PageInventoryIdentity = Identity.refine(
   (value) =>
@@ -19,7 +25,7 @@ const PageInventoryIdentity = Identity.refine(
     BROWSER_CLIENT_HOST_PAGE_INVENTORY_IDENTITY_MAX_JSON_BYTES,
   'Browser page inventory identity exceeds its JSON byte budget'
 )
-const CommandSequence = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
+const CommandSequence = ScalarNumber.int().min(1).max(Number.MAX_SAFE_INTEGER)
 export const BROWSER_CLIENT_HOST_PAGE_INVENTORY_MAX_PAGES = 256
 export const BROWSER_CLIENT_HOST_PAGE_INVENTORY_MAX_BYTES = 768 * 1024
 export const BROWSER_CLIENT_HOST_PAGE_INVENTORY_URL_MAX_LENGTH = 8192
@@ -64,7 +70,7 @@ export const BrowserClientHostedPageInventory = z.object({
   browserProfileId: PageInventoryIdentity,
   executionHostKey: PageInventoryIdentity,
   state: z.enum(['active', 'outcomeUnknown']),
-  currentUrl: z.string().max(BROWSER_CLIENT_HOST_PAGE_INVENTORY_URL_MAX_LENGTH).optional(),
+  currentUrl: ScalarString.max(BROWSER_CLIENT_HOST_PAGE_INVENTORY_URL_MAX_LENGTH).optional(),
   // Echo createPage metadata to rebuild records after runtime restart; absent for older placements.
   workspaceId: PageInventoryIdentity.optional()
 })
@@ -111,7 +117,7 @@ export const BrowserClientHostAttachParams = z
   .object({
     authorityRuntimeId: Identity,
     browserHostClientId: Identity,
-    hostCapabilities: z.array(z.string().min(1).max(128)).max(32),
+    hostCapabilities: z.array(ScalarNonemptyString.max(128)).max(32),
     pageCommandProtocolVersion: PageCommandProtocolVersion.optional(),
     pageInventoryProtocolVersion: PageInventoryProtocolVersion.optional(),
     pageInventory: BrowserClientHostedPageInventoryList.optional(),
@@ -215,7 +221,7 @@ const BrowserClientHostCreatePageCommand = z.object({
 
 const BrowserClientHostNavigateCommand = z.object({
   type: z.literal('navigate'),
-  url: z.string().min(1).max(8192)
+  url: ScalarNonemptyString.max(8192)
 })
 
 const BrowserClientHostReclaimPageCommand = z.object({
@@ -236,7 +242,7 @@ const BrowserClientHostRestorePageCommand = z.object({
   browserProfileId: Identity,
   profile: BrowserClientProfileMetadata.optional(),
   executionHostKey: Identity,
-  url: z.string().min(1).max(8192).optional(),
+  url: ScalarNonemptyString.max(8192).optional(),
   workspaceId: Identity.optional()
 })
 
@@ -301,7 +307,7 @@ export const BrowserClientHostCommandResultParams = BrowserClientPageCommandAuth
 })
 
 export const BrowserClientHostCommandResultAck = z.object({
-  accepted: z.boolean()
+  accepted: ScalarBoolean
 })
 
 export const BrowserClientHostEvent = z.union([

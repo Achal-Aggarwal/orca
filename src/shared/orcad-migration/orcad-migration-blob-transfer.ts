@@ -1,3 +1,4 @@
+import { ScalarNonnegativeInteger, ScalarNumber, ScalarString } from '../scalar-value-schemas'
 /** Opaque migration blobs travel beside the signed catalog. Gate each kind by its destination capability:
  * older destinations drop unknown kinds, so clients must refuse before staging. */
 import { z } from 'zod'
@@ -86,9 +87,9 @@ const WINDOWS_RESERVED_FILE_NAME = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..
 export const OrcadMigrationBlobDescriptorSchema = z
   .object({
     blobKind: z.enum(ORCAD_MIGRATION_BLOB_KINDS),
-    key: z.string().max(256),
+    key: ScalarString.max(256),
     sha256: OrcadMigrationDigestSchema,
-    byteLength: z.number().int().min(1)
+    byteLength: ScalarNumber.int().min(1)
   })
   .superRefine((value, context) => {
     const contract = ORCAD_MIGRATION_BLOB_KIND_CONTRACTS[value.blobKind]
@@ -108,7 +109,7 @@ export const OrcadMigrationBlobChunkRequestSchema = z.object({
   migrationId: OrcadMigrationIdentitySchema,
   manifestSha256: OrcadMigrationDigestSchema,
   blob: OrcadMigrationBlobDescriptorSchema,
-  offset: z.number().int().nonnegative().max(MAX_ORCAD_MIGRATION_BLOB_TOTAL_BYTES),
+  offset: ScalarNonnegativeInteger.max(MAX_ORCAD_MIGRATION_BLOB_TOTAL_BYTES),
   bytesBase64: OrcadMigrationChunkBase64Schema
 })
 

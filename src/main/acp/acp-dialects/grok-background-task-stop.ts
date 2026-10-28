@@ -1,15 +1,16 @@
+import { ScalarNull, ScalarString } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { AcpDialect } from './acp-dialect'
 
 const response = z.union([
   z.object({
-    error: z.null().optional(),
+    error: ScalarNull.optional(),
     result: z.object({
-      taskId: z.string(),
+      taskId: ScalarString,
       outcome: z.enum(['killed', 'already_exited', 'not_found'])
     })
   }),
-  z.object({ result: z.null(), error: z.string() })
+  z.object({ result: ScalarNull, error: ScalarString })
 ])
 
 export const grokBackgroundTaskStop: NonNullable<AcpDialect['backgroundTaskStop']> = {

@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarNumber, ScalarString } from '../../shared/scalar-value-schemas'
 import { lstatSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -8,15 +9,15 @@ import { writeSecureFile } from '../../shared/secure-file'
 import type { ManagedDataAccountProvider } from '../../shared/managed-account-types'
 
 const credential = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('key'), key: z.string().min(1) }),
-  z.object({ type: z.literal('api'), key: z.string().min(1) }),
+  z.object({ type: z.literal('key'), key: ScalarNonemptyString }),
+  z.object({ type: z.literal('api'), key: ScalarNonemptyString }),
   z.object({
     type: z.literal('oauth'),
-    access: z.string().min(1),
-    refresh: z.string(),
-    expires: z.number().nonnegative()
+    access: ScalarNonemptyString,
+    refresh: ScalarString,
+    expires: ScalarNumber.nonnegative()
   }),
-  z.object({ type: z.literal('wellknown'), key: z.string().min(1), token: z.string().min(1) })
+  z.object({ type: z.literal('wellknown'), key: ScalarNonemptyString, token: ScalarNonemptyString })
 ])
 
 function requireRegularFile(path: string): void {

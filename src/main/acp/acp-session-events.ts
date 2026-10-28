@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { getCompiledSchema } from '../zod-schema-compilation'
 import {
@@ -6,8 +7,8 @@ import {
 } from './generated/acp-protocol.generated'
 
 const updateEnvelopeSchema = z.looseObject({
-  sessionId: z.string(),
-  update: z.looseObject({ sessionUpdate: z.string() })
+  sessionId: ScalarString,
+  update: z.looseObject({ sessionUpdate: ScalarString })
 })
 
 export type AcpSessionEvent =

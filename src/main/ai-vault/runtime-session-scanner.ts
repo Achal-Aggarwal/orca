@@ -1,3 +1,8 @@
+import {
+  ScalarBoolean,
+  ScalarOptionalString,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { AiVaultChatForkSourceSchema } from '../../shared/ai-vault-chat-fork-contract'
 import { z } from 'zod'
 import {
@@ -37,14 +42,14 @@ export type RuntimeAiVaultScanOptions = {
 
 // Zod strips undeclared keys; keep the repinned home so resume uses the correct account.
 const aiVaultPrepareSessionResumeResultSchema = z.object({
-  useRealCodexHome: z.boolean(),
+  useRealCodexHome: ScalarBoolean,
   cliForkSource: AiVaultChatForkSourceSchema.optional(),
-  substituteCodexHome: z.string().optional(),
+  substituteCodexHome: ScalarOptionalString,
   forkedSession: z
     .object({
-      sessionId: z.string(),
+      sessionId: ScalarString,
       agent: z.enum(AI_VAULT_AGENTS),
-      filePath: z.string().optional()
+      filePath: ScalarOptionalString
     })
     .optional()
 })

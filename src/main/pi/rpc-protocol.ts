@@ -1,24 +1,35 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarNumber,
+  ScalarOptionalBoolean,
+  ScalarOptionalNonnegativeInteger,
+  ScalarOptionalNumber,
+  ScalarOptionalString,
+  ScalarOptionalUnknown,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { JsonlRpcRecord } from '../jsonl-rpc/peer'
 
 export const piRpcModelSchema = z.looseObject({
-  id: z.string(),
-  provider: z.string(),
-  name: z.string().optional(),
-  contextWindow: z.number().nonnegative().optional(),
-  reasoning: z.boolean().optional(),
-  input: z.array(z.string()).optional()
+  id: ScalarString,
+  provider: ScalarString,
+  name: ScalarOptionalString,
+  contextWindow: ScalarNumber.nonnegative().optional(),
+  reasoning: ScalarOptionalBoolean,
+  input: z.array(ScalarString).optional()
 })
 export type PiRpcModel = z.infer<typeof piRpcModelSchema>
 
 export const piRpcStateSchema = z.looseObject({
   model: piRpcModelSchema.nullish(),
-  thinkingLevel: z.string().optional(),
-  sessionFile: z.string().min(1),
-  sessionId: z.string().optional(),
-  isStreaming: z.boolean(),
-  isCompacting: z.boolean(),
-  pendingMessageCount: z.number().int().nonnegative().optional()
+  thinkingLevel: ScalarOptionalString,
+  sessionFile: ScalarNonemptyString,
+  sessionId: ScalarOptionalString,
+  isStreaming: ScalarBoolean,
+  isCompacting: ScalarBoolean,
+  pendingMessageCount: ScalarOptionalNonnegativeInteger
 })
 export type PiRpcState = z.infer<typeof piRpcStateSchema>
 
@@ -27,23 +38,23 @@ export function piRpcIdle(state: PiRpcState): boolean {
 }
 
 export const piRpcContentSchema = z.looseObject({
-  type: z.string(),
-  text: z.string().optional(),
-  thinking: z.string().optional()
+  type: ScalarString,
+  text: ScalarOptionalString,
+  thinking: ScalarOptionalString
 })
 export const piRpcUsageSchema = z.object({
-  input: z.number().nonnegative(),
-  output: z.number().nonnegative(),
-  cacheRead: z.number().nonnegative(),
-  cacheWrite: z.number().nonnegative()
+  input: ScalarNumber.nonnegative(),
+  output: ScalarNumber.nonnegative(),
+  cacheRead: ScalarNumber.nonnegative(),
+  cacheWrite: ScalarNumber.nonnegative()
 })
 export const piRpcMessageSchema = z.looseObject({
-  role: z.string(),
-  content: z.union([z.string(), z.array(piRpcContentSchema)]),
-  stopReason: z.string().optional(),
-  errorMessage: z.string().optional(),
+  role: ScalarString,
+  content: z.union([ScalarString, z.array(piRpcContentSchema)]),
+  stopReason: ScalarOptionalString,
+  errorMessage: ScalarOptionalString,
   usage: piRpcUsageSchema.optional(),
-  timestamp: z.number().optional()
+  timestamp: ScalarOptionalNumber
 })
 export const piRpcMessageEventSchema = z.object({
   type: z.enum(['message_start', 'message_update', 'message_end']),
@@ -51,9 +62,9 @@ export const piRpcMessageEventSchema = z.object({
   usage: piRpcUsageSchema.optional(),
   assistantMessageEvent: z
     .looseObject({
-      type: z.string(),
-      delta: z.string().optional(),
-      contentIndex: z.number().int().nonnegative().optional(),
+      type: ScalarString,
+      delta: ScalarOptionalString,
+      contentIndex: ScalarOptionalNonnegativeInteger,
       partial: piRpcMessageSchema.optional()
     })
     .optional()
@@ -100,49 +111,49 @@ export function piRpcSkippedEvent(
 
 export const piRpcToolEventSchema = z.object({
   type: z.enum(['tool_execution_start', 'tool_execution_update', 'tool_execution_end']),
-  toolCallId: z.string(),
-  toolName: z.string(),
-  args: z.unknown().optional(),
-  partialResult: z.unknown().optional(),
-  result: z.unknown().optional(),
-  isError: z.boolean().optional()
+  toolCallId: ScalarString,
+  toolName: ScalarString,
+  args: ScalarOptionalUnknown,
+  partialResult: ScalarOptionalUnknown,
+  result: ScalarOptionalUnknown,
+  isError: ScalarOptionalBoolean
 })
 export type PiRpcToolEvent = z.infer<typeof piRpcToolEventSchema>
 
 export const piRpcPromptReplySchema = z.object({
   type: z.literal('response'),
   command: z.literal('prompt'),
-  success: z.boolean(),
-  error: z.string().optional(),
+  success: ScalarBoolean,
+  error: ScalarOptionalString,
   data: z
     .object({
       disposition: z.enum(['started', 'queued', 'handled']).optional(),
-      agentInvoked: z.boolean().optional()
+      agentInvoked: ScalarOptionalBoolean
     })
     .optional()
 })
 
 export const piRpcDialogSchema = z.discriminatedUnion('method', [
   z.object({
-    id: z.union([z.string(), z.number()]),
+    id: z.union([ScalarString, ScalarNumber]),
     method: z.literal('confirm'),
-    title: z.string(),
-    message: z.string().optional()
+    title: ScalarString,
+    message: ScalarOptionalString
   }),
   z.object({
-    id: z.union([z.string(), z.number()]),
+    id: z.union([ScalarString, ScalarNumber]),
     method: z.literal('select'),
-    title: z.string(),
-    message: z.string().optional(),
-    options: z.array(z.string()).min(1).max(64)
+    title: ScalarString,
+    message: ScalarOptionalString,
+    options: z.array(ScalarString).min(1).max(64)
   }),
   z.object({
-    id: z.union([z.string(), z.number()]),
+    id: z.union([ScalarString, ScalarNumber]),
     method: z.enum(['input', 'editor']),
-    title: z.string(),
-    message: z.string().optional(),
-    placeholder: z.string().optional(),
-    prefill: z.string().optional()
+    title: ScalarString,
+    message: ScalarOptionalString,
+    placeholder: ScalarOptionalString,
+    prefill: ScalarOptionalString
   })
 ])
 export type PiRpcDialog = z.infer<typeof piRpcDialogSchema>

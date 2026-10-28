@@ -1,3 +1,12 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableNumber,
+  ScalarNullableString,
+  ScalarNumber,
+  ScalarOptionalNonemptyString,
+  ScalarOptionalNumber,
+  ScalarString
+} from './scalar-value-schemas'
 // Deep-validate dispatch submissions with open string vocabularies, as in agent-session-journal-schemas.ts.
 
 import { z } from 'zod'
@@ -8,24 +17,24 @@ import { AgentSessionExecutionOptionsSchema } from './agent-session-execution-op
 
 // Every persisted field is listed, or a parse strips it: this schema drops unknown keys.
 export const AgentJournalSubmissionSchema = z.object({
-  clientMessageId: z.string().min(1),
-  fence: z.number().int(),
-  payloadFingerprint: z.string(),
-  dispatchState: z.string().min(1),
-  providerItemId: z.string().nullable(),
-  reason: z.string().nullable(),
-  submittedAt: z.number(),
-  resolvedAt: z.number().nullable(),
-  submittedSequence: z.number().int().optional(),
+  clientMessageId: ScalarNonemptyString,
+  fence: ScalarNumber.int(),
+  payloadFingerprint: ScalarString,
+  dispatchState: ScalarNonemptyString,
+  providerItemId: ScalarNullableString,
+  reason: ScalarNullableString,
+  submittedAt: ScalarNumber,
+  resolvedAt: ScalarNullableNumber,
+  submittedSequence: ScalarNumber.int().optional(),
   answeredInTurn: AgentJournalAnsweredTurnSchema.optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
-  handedOverAt: z.number().optional(),
+  handedOverAt: ScalarOptionalNumber,
   rejection: AgentSessionFailureFactSchema.optional(),
-  queuedMessageId: z.string().min(1).optional(),
+  queuedMessageId: ScalarOptionalNonemptyString,
   // The kind only; an object's other keys (a sender) are stripped, never published.
-  source: z.object({ kind: z.string() }).optional(),
-  keptAsQueuedMessageId: z.string().min(1).optional(),
+  source: z.object({ kind: ScalarString }).optional(),
+  keptAsQueuedMessageId: ScalarOptionalNonemptyString,
   options: AgentSessionExecutionOptionsSchema.optional()
 })
 

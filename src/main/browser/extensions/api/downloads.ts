@@ -1,3 +1,8 @@
+import {
+  ScalarBoolean,
+  ScalarNonemptyString,
+  ScalarString
+} from '../../../../shared/scalar-value-schemas'
 import { webContents as allWebContents } from 'electron'
 import { z } from 'zod'
 import {
@@ -25,12 +30,12 @@ type DownloadPlace = { filename?: string; savePath?: string }
 
 const optionsSchema = z
   .object({
-    url: z.string().min(1),
-    filename: z.string(),
-    saveAs: z.boolean(),
+    url: ScalarNonemptyString,
+    filename: ScalarString,
+    saveAs: ScalarBoolean,
     method: z.enum(['GET', 'POST']),
-    headers: z.array(z.object({ name: z.string(), value: z.string() })),
-    body: z.string(),
+    headers: z.array(z.object({ name: ScalarString, value: ScalarString })),
+    body: ScalarString,
     conflictAction: z.enum(['uniquify', 'overwrite', 'prompt'])
   })
   .partial()

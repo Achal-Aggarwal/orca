@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarString } from '../../../../shared/scalar-value-schemas'
 import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
 import { z } from 'zod'
@@ -24,8 +25,8 @@ import {
 const NATIVE_MESSAGING_NAMESPACE = 'orcaNativeMessaging'
 const PORT_EVENT = 'onPortEvent'
 
-const portId = z.string().min(1).max(100)
-const jsonText = z.string().refine((text) => {
+const portId = ScalarNonemptyString.max(100)
+const jsonText = ScalarString.refine((text) => {
   try {
     JSON.parse(text)
     return true

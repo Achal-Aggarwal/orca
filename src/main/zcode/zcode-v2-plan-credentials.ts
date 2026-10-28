@@ -1,3 +1,4 @@
+import { ScalarString } from '../../shared/scalar-value-schemas'
 import { createDecipheriv, createHash } from 'node:crypto'
 import { homedir, platform, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -13,7 +14,7 @@ function readV2File(path: string): string {
   }).buffer.toString('utf8')
 }
 
-const credentialSchema = z.record(z.string(), z.string())
+const credentialSchema = z.record(ScalarString, ScalarString)
 const sites = new Map([
   ['account:zai-individual-coding-plan', 'zai'],
   ['account:bigmodel-individual-coding-plan', 'bigmodel']

@@ -1,3 +1,8 @@
+import {
+  ScalarNonemptyString,
+  ScalarNonnegativeInteger,
+  ScalarString
+} from './scalar-value-schemas'
 // Teardown captures live work/activity once; persisted running rows could resurrect nonexistent work and reattach rewrites history.
 // No expiry: remove on a non-continuation start, successful resume, dismissal or chat close.
 
@@ -53,14 +58,14 @@ export type AgentSessionResumeMarker = {
 const MAX_FIELD_LENGTH = 512
 
 /** Bounded because a marker is read back from a file this process did not necessarily write. */
-const markerField = z.string().min(1).max(MAX_FIELD_LENGTH)
+const markerField = ScalarNonemptyString.max(MAX_FIELD_LENGTH)
 
 const agentSessionResumeWorkSchema = z.object({
   kind: z.enum(['turn', 'submission']),
   id: markerField
 })
 
-const activityLabel = z.string().max(AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH)
+const activityLabel = ScalarString.max(AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH)
 
 const agentSessionRestartActivitySchema = z.object({
   state: z.enum(AGENT_STATUS_STATES),
@@ -77,13 +82,13 @@ const agentSessionResumeMarkerSchema = z.object({
   sessionId: markerField,
   work: agentSessionResumeWorkSchema,
   latestUserItemId: markerField.nullable().optional(),
-  recordedAt: z.number().int().nonnegative(),
+  recordedAt: ScalarNonnegativeInteger,
   trigger: z.enum(AGENT_SESSION_RESUME_TRIGGERS),
   providerHandleRoot: markerField,
   teardownId: markerField,
   contextClearOperationId: markerField.optional().catch(undefined),
   journalCursor: z
-    .object({ epoch: markerField, sequence: z.number().int().nonnegative() })
+    .object({ epoch: markerField, sequence: ScalarNonnegativeInteger })
     .optional()
     .catch(undefined),
   activity: agentSessionRestartActivitySchema.optional().catch(undefined)

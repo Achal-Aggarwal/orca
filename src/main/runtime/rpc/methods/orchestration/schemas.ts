@@ -1,3 +1,4 @@
+import { ScalarUnknown } from '../../../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import {
@@ -127,19 +128,16 @@ export const SendParams = z
 
 export const TaskUpdateParams = z.object({
   id: requiredString('Missing --id'),
-  status: z
-    .unknown()
-    .transform((v) => {
-      if (typeof v === 'string' && TASK_STATUSES.includes(v as TaskStatus)) {
-        return v as TaskStatus
-      }
-      return ''
+  status: ScalarUnknown.transform((v) => {
+    if (typeof v === 'string' && TASK_STATUSES.includes(v as TaskStatus)) {
+      return v as TaskStatus
+    }
+    return ''
+  }).pipe(
+    z.enum(['pending', 'ready', 'dispatched', 'completed', 'failed', 'blocked'], {
+      message: 'Missing --status'
     })
-    .pipe(
-      z.enum(['pending', 'ready', 'dispatched', 'completed', 'failed', 'blocked'], {
-        message: 'Missing --status'
-      })
-    ),
+  ),
   result: OptionalString,
   run: OptionalString,
   callerTerminalHandle: OptionalString

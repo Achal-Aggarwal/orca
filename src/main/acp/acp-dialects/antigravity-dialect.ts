@@ -1,3 +1,4 @@
+import { ScalarNumber, ScalarOptionalString } from '../../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { legacyAgentSessionQuestionAnswers } from '../../../shared/agent-session-question-answer'
 import { AcpRpcError } from '../acp-errors'
@@ -48,8 +49,8 @@ function questionRequest(method: string, params: unknown): AcpRequestPresentatio
 const WARNING_MAX_CHARS = 512
 const securityWarningSchema = z.looseObject({
   'agy.security.warning': z.looseObject({
-    title: z.string().optional(),
-    message: z.string().optional()
+    title: ScalarOptionalString,
+    message: ScalarOptionalString
   })
 })
 
@@ -67,7 +68,7 @@ function warnedApproval(method: string, params: unknown): AcpRequestPresentation
 }
 
 // Normalize the server's command-field variants to command/cwd and stdout/exitCode.
-const optionalText = z.string().optional()
+const optionalText = ScalarOptionalString
 const commandFieldsSchema = z.looseObject({
   CommandLine: optionalText,
   command_line: optionalText,
@@ -79,8 +80,8 @@ const commandFieldsSchema = z.looseObject({
   cwd: optionalText,
   combinedOutput: optionalText,
   combined_output: optionalText,
-  exitCode: z.number().int().safe().optional(),
-  exit_code: z.number().int().safe().optional()
+  exitCode: ScalarNumber.int().safe().optional(),
+  exit_code: ScalarNumber.int().safe().optional()
 })
 
 function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {

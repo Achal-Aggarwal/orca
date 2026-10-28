@@ -1,13 +1,14 @@
+import { ScalarOptionalString, ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 
 const eventSchema = z.object({
-  type: z.string(),
-  part: z.object({ id: z.string().optional(), text: z.string().optional() }).optional(),
+  type: ScalarString,
+  part: z.object({ id: ScalarOptionalString, text: ScalarOptionalString }).optional(),
   error: z
     .object({
-      name: z.string().optional(),
-      message: z.string().optional(),
-      data: z.object({ message: z.string().optional() }).optional()
+      name: ScalarOptionalString,
+      message: ScalarOptionalString,
+      data: z.object({ message: ScalarOptionalString }).optional()
     })
     .optional()
 })

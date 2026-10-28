@@ -1,3 +1,4 @@
+import { ScalarNonemptyString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { open } from 'node:fs/promises'
 import { z } from 'zod'
 
@@ -43,7 +44,7 @@ export async function readPiSessionLastEntryId(file: string): Promise<string | n
   }
 }
 
-const entryHeadSchema = z.looseObject({ type: z.unknown(), id: z.string().min(1) })
+const entryHeadSchema = z.looseObject({ type: ScalarUnknown, id: ScalarNonemptyString })
 
 function entryId(parts: Buffer[]): string | null {
   let record: unknown

@@ -1,3 +1,9 @@
+import {
+  ScalarNonemptyString,
+  ScalarNullableString,
+  ScalarOptionalString,
+  ScalarString
+} from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import type {
@@ -15,9 +21,9 @@ export type PiRpcRequester = {
 }
 
 const modelSchema = piRpcModelSchema.safeExtend({
-  provider: z.string().min(1),
-  id: z.string().min(1),
-  thinkingLevelMap: z.record(z.string(), z.string().nullable()).optional()
+  provider: ScalarNonemptyString,
+  id: ScalarNonemptyString,
+  thinkingLevelMap: z.record(ScalarString, ScalarNullableString).optional()
 })
 const modelsSchema = z.object({ models: z.array(modelSchema) })
 const stateSchema = piRpcStateSchema.safeExtend({
@@ -26,9 +32,9 @@ const stateSchema = piRpcStateSchema.safeExtend({
 const commandsSchema = z.object({
   commands: z.array(
     z.object({
-      name: z.string().min(1),
-      description: z.string().optional(),
-      source: z.string().optional()
+      name: ScalarNonemptyString,
+      description: ScalarOptionalString,
+      source: ScalarOptionalString
     })
   )
 })

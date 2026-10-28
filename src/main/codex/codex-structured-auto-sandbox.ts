@@ -1,3 +1,4 @@
+import { ScalarBoolean, ScalarString, ScalarUnknown } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { CodexAppServerConnection } from './app-server/codex-app-server-connection-types'
 import type { CodexSandboxPolicy } from './codex-structured-sandbox-policy'
@@ -6,15 +7,15 @@ const configuration = z.object({
   config: z.object({
     sandbox_workspace_write: z
       .object({
-        writable_roots: z.array(z.string()).default([]),
-        network_access: z.boolean().default(false),
-        exclude_tmpdir_env_var: z.boolean().default(false),
-        exclude_slash_tmp: z.boolean().default(false)
+        writable_roots: z.array(ScalarString).default([]),
+        network_access: ScalarBoolean.default(false),
+        exclude_tmpdir_env_var: ScalarBoolean.default(false),
+        exclude_slash_tmp: ScalarBoolean.default(false)
       })
       .nullish()
   })
 })
-const requirements = z.object({ requirements: z.record(z.string(), z.unknown()).nullable() })
+const requirements = z.object({ requirements: z.record(ScalarString, ScalarUnknown).nullable() })
 
 /** Only the legacy path with observable inputs is projected; managed/backend compilation stays Codex's. */
 export async function readCodexAutoSandbox(

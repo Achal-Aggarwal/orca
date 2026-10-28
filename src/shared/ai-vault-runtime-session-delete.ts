@@ -1,3 +1,4 @@
+import { ScalarString } from './scalar-value-schemas'
 import { z } from 'zod'
 import { AI_VAULT_AGENTS } from './ai-vault-types'
 import {
@@ -15,7 +16,7 @@ const AiVaultDeleteSessionResultSchema = z.union([
     // A newer host may add codes; every rejection renders as one failure message.
     reason: z.enum(AI_VAULT_SESSION_DELETE_REJECTION_CODES).catch('invalid-path')
   }),
-  z.object({ outcome: z.literal('failed'), agent: z.enum(AI_VAULT_AGENTS), error: z.string() })
+  z.object({ outcome: z.literal('failed'), agent: z.enum(AI_VAULT_AGENTS), error: ScalarString })
 ])
 
 /** The owning host validates the path itself, so only the row identity travels. */

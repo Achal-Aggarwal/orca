@@ -1,3 +1,4 @@
+import { ScalarString } from '../scalar-value-schemas'
 /** One terminal-restore-hints JSON blob restores moved panes’ source cwd. Format changes require a new capability. */
 import { z } from 'zod'
 import { MAX_PANE_KEY_LEN } from '../agent-hook-listener/listener-limits'
@@ -33,10 +34,10 @@ export function isOrcadMigrationTerminalRestoreHintCwd(value: string): boolean {
 }
 
 const HintSchema = z.object({
-  paneKey: z.string().refine(isOrcadMigrationTerminalRestoreHintPaneKey, {
+  paneKey: ScalarString.refine(isOrcadMigrationTerminalRestoreHintPaneKey, {
     message: 'orcad_migration_terminal_restore_hint_pane_key_invalid'
   }),
-  cwd: z.string().refine(isOrcadMigrationTerminalRestoreHintCwd, {
+  cwd: ScalarString.refine(isOrcadMigrationTerminalRestoreHintCwd, {
     message: 'orcad_migration_terminal_restore_hint_cwd_invalid'
   })
 })

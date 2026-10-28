@@ -1,3 +1,4 @@
+import { ScalarNullableNumber, ScalarNumber } from '../../shared/scalar-value-schemas'
 import { z } from 'zod'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { piRpcUsageSchema, type PiRpcModel } from './rpc-protocol'
@@ -5,9 +6,9 @@ import { piRpcUsageSchema, type PiRpcModel } from './rpc-protocol'
 const statsSchema = z.object({
   contextUsage: z
     .object({
-      tokens: z.number().nonnegative().nullable().optional(),
-      contextWindow: z.number().positive(),
-      percent: z.number().nullable().optional()
+      tokens: ScalarNumber.nonnegative().nullable().optional(),
+      contextWindow: ScalarNumber.positive(),
+      percent: ScalarNullableNumber.optional()
     })
     .optional()
 })

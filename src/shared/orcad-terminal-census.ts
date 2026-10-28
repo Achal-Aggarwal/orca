@@ -1,8 +1,14 @@
+import {
+  ScalarFiniteNumber,
+  ScalarNonnegativeInteger,
+  ScalarNumber,
+  ScalarPositiveInteger
+} from './scalar-value-schemas'
 /** Terminal census for lifecycle planning; null is unverifiable, never zero. Lost contact cannot prove process death
  * (docs/reference/ssh-execution-boundary.md). */
 import { z } from 'zod'
 
-const CountSchema = z.number().int().nonnegative().nullable()
+const CountSchema = ScalarNonnegativeInteger.nullable()
 
 export const OrcadTerminalCensusSchema = z.object({
   /** Sessions the live daemon owns right now. */
@@ -10,13 +16,13 @@ export const OrcadTerminalCensusSchema = z.object({
   /** Of those, how many started at or after the active version's activation. */
   startedSinceActivation: CountSchema,
   /** Protocol of the daemon that owns those sessions; null unless exactly one generation owns them. */
-  daemonProtocolVersion: z.number().int().positive().nullable(),
+  daemonProtocolVersion: ScalarPositiveInteger.nullable(),
   /** Protocol of every daemon generation owning those sessions; absent on older hosts. */
-  daemonProtocolVersions: z.array(z.number().int().positive()).optional(),
+  daemonProtocolVersions: z.array(ScalarPositiveInteger).optional(),
   /** In-process fallback sessions end with orcad, unlike daemon sessions; absent on older hosts. */
   inProcessSessions: CountSchema.optional(),
   /** Admission-fence expiry, epoch ms; 0 means reopened. Absence never proves older servers fenced admission. */
-  admissionClosedUntil: z.number().finite().nonnegative().optional()
+  admissionClosedUntil: ScalarFiniteNumber.nonnegative().optional()
 })
 
 export type OrcadTerminalCensus = z.infer<typeof OrcadTerminalCensusSchema>
@@ -42,9 +48,12 @@ export const ORCAD_TERMINAL_CENSUS_METHOD = 'orcad.terminalCensus'
 
 export const OrcadTerminalCensusParamsSchema = z.object({
   /** The active version's activation time, epoch ms; sessions created at or after it count. */
-  activatedAt: z.number().finite().nonnegative(),
+  activatedAt: ScalarFiniteNumber.nonnegative(),
   /** Before restart, release unused finished automation terminals; older servers ignore this optional request. */
   releaseFinishedAutomationTerminals: z.literal(true).optional(),
   /** Fence new terminals before the final census/stop; 0 reopens. Older servers ignore this optional request. */
-  closeAdmissionForMs: z.number().int().min(0).max(ORCAD_TERMINAL_ADMISSION_MAX_FENCE_MS).optional()
+  closeAdmissionForMs: ScalarNumber.int()
+    .min(0)
+    .max(ORCAD_TERMINAL_ADMISSION_MAX_FENCE_MS)
+    .optional()
 })

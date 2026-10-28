@@ -1,3 +1,4 @@
+import { ScalarFiniteNumber, ScalarNonemptyString, ScalarString } from '../scalar-value-schemas'
 import { z } from 'zod'
 import { isQualifiedPluginKey } from './plugin-manifest'
 
@@ -12,44 +13,38 @@ export const PLUGIN_COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 export const pluginInstallSourceSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('local-path'),
-    path: z
-      .string()
-      .min(1)
-      .max(32 * 1024)
+    path: ScalarNonemptyString.max(32 * 1024)
   }),
   z.object({
     kind: z.literal('git'),
-    url: z
-      .string()
-      .min(1)
-      .max(32 * 1024)
-      .refine(isAllowedPluginGitUrl, 'git URL must use HTTPS or SSH'),
+    url: ScalarNonemptyString.max(32 * 1024).refine(
+      isAllowedPluginGitUrl,
+      'git URL must use HTTPS or SSH'
+    ),
     /** Requested ref (`#ref` suffix); empty means the remote default branch. */
-    ref: z.string().max(4096).default('')
+    ref: ScalarString.max(4096).default('')
   }),
   z.object({
     kind: z.literal('marketplace'),
     marketplace: z.object({
-      url: z
-        .string()
-        .min(1)
-        .max(32 * 1024)
-        .refine(isAllowedPluginGitUrl, 'marketplace Git URL must use HTTPS or SSH'),
-      ref: z.string().min(1).max(4096),
-      resolvedCommit: z.string().regex(PLUGIN_COMMIT_PATTERN)
+      url: ScalarNonemptyString.max(32 * 1024).refine(
+        isAllowedPluginGitUrl,
+        'marketplace Git URL must use HTTPS or SSH'
+      ),
+      ref: ScalarNonemptyString.max(4096),
+      resolvedCommit: ScalarString.regex(PLUGIN_COMMIT_PATTERN)
     }),
     plugin: z.object({
-      url: z
-        .string()
-        .min(1)
-        .max(32 * 1024)
-        .refine(isAllowedPluginGitUrl, 'plugin Git URL must use HTTPS or SSH'),
-      ref: z.string().min(1).max(4096)
+      url: ScalarNonemptyString.max(32 * 1024).refine(
+        isAllowedPluginGitUrl,
+        'plugin Git URL must use HTTPS or SSH'
+      ),
+      ref: ScalarNonemptyString.max(4096)
     })
   }),
   z.object({
     kind: z.literal('bundled'),
-    bundleId: z.string().refine(isQualifiedPluginKey, 'invalid bundled plugin identity')
+    bundleId: ScalarString.refine(isQualifiedPluginKey, 'invalid bundled plugin identity')
   })
 ])
 
@@ -78,18 +73,18 @@ export function isAllowedPluginGitUrl(value: string): boolean {
 export const pluginLockEntrySchema = z
   .object({
     /** Qualified `<publisher>.<id>` key. */
-    pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
-    version: z.string().min(1).max(128),
+    pluginKey: ScalarString.refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
+    version: ScalarNonemptyString.max(128),
     source: pluginInstallSourceSchema,
     /** Commit the git source resolved to at install time; null for local. */
-    resolvedCommit: z.string().regex(PLUGIN_COMMIT_PATTERN).nullable(),
+    resolvedCommit: ScalarString.regex(PLUGIN_COMMIT_PATTERN).nullable(),
     /** Deterministic hash of the installed file tree (also the install dir name). */
-    contentHash: z.string().regex(PLUGIN_CONTENT_HASH_PATTERN),
+    contentHash: ScalarString.regex(PLUGIN_CONTENT_HASH_PATTERN),
     /** New descriptive name, accepted for forward compatibility. */
-    consentFingerprint: z.string().min(1).max(256).optional(),
+    consentFingerprint: ScalarNonemptyString.max(256).optional(),
     /** v1 on-disk name retained so existing Orca builds can read new lockfiles. */
-    capabilityHash: z.string().min(1).max(256).optional(),
-    installedAt: z.number().finite().nonnegative()
+    capabilityHash: ScalarNonemptyString.max(256).optional(),
+    installedAt: ScalarFiniteNumber.nonnegative()
   })
   .refine((entry) => entry.consentFingerprint || entry.capabilityHash, {
     message: 'consent fingerprint is required'
@@ -104,7 +99,7 @@ export type PluginLockEntry = z.infer<typeof pluginLockEntrySchema>
 export const pluginLockfileSchema = z
   .object({
     version: z.literal(1),
-    plugins: z.record(z.string(), pluginLockEntrySchema)
+    plugins: z.record(ScalarString, pluginLockEntrySchema)
   })
   .superRefine((lock, ctx) => {
     for (const [key, entry] of Object.entries(lock.plugins)) {
