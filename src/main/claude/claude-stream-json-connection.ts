@@ -305,7 +305,7 @@ export async function openClaudeStreamJsonConnection(
         root: managed.rootVerdict,
         tree: tree.treeVerdict,
         ...(tree.killDelivered || managed.lastCloseResult?.killDelivered
-          ? { killDelivered: true }
+          ? { killDelivered: true as const }
           : {}),
         ...(managed.processless ? { processless: true } : {})
       } as const

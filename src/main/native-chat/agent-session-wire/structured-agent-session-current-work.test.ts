@@ -2,11 +2,13 @@
 // even when settlement/release writes fail; live generations retain their work.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mobileStructuredSessionStatusFeed } from '../../../../mobile/src/session/mobile-structured-session-status-feed'
-import { stubRpcClient } from '../../../../mobile/src/transport/rpc-client-test-stub'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
-import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusEvent,
+  AgentSessionStatusSummary
+} from '../../../shared/agent-session-wire'
+import type { AgentSessionStatusSnapshot } from '../../../shared/agent-session-status-snapshot-fold'
 import {
   isActionableStructuredAgentSessionPrompt,
   runningStructuredAgentSessionTurnId
@@ -36,6 +38,12 @@ import {
   turnState
 } from './structured-agent-session-leftover-settlement.test-fixture'
 
+// Mobile has its own typecheck project; run its real consumer across the shared wire boundary.
+const phoneFeedPath = '../../../../mobile/src/session/mobile-structured-session-status-feed'
+const phoneClientPath = '../../../../mobile/src/transport/rpc-client-test-stub'
+const { mobileStructuredSessionStatusFeed } = await import(phoneFeedPath)
+const { stubRpcClient } = await import(phoneClientPath)
+
 let rig: QueuedMessageTestRig | undefined
 
 afterEach(async () => {
@@ -55,9 +63,16 @@ const FOLDER: AgentSessionExecutionLocation = {
 function watch(current: QueuedMessageTestRig) {
   let chat: StructuredAgentSessionState = EMPTY_STRUCTURED_AGENT_SESSION
   let listed: AgentSessionStatusSummary | undefined
-  const phone = mobileStructuredSessionStatusFeed(
+  const phone: {
+    subscribe: (listener: () => void) => () => void
+    getSnapshot: () => AgentSessionStatusSnapshot
+  } = mobileStructuredSessionStatusFeed(
     stubRpcClient({
-      subscribe: (_method, _params, emit) =>
+      subscribe: (
+        _method: string,
+        _params: unknown,
+        emit: (event: AgentSessionStatusEvent) => void
+      ) =>
         current.host.subscribeStatus({
           id: 'phone-1',
           emit: (event) => emit(structuredClone(event))

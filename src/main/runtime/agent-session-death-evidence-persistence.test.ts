@@ -223,16 +223,18 @@ describe('a failed acquisition', () => {
 it.each([10, 100])(
   'bounds same-fence evidence work with %s records and duplicate events',
   async (population) => {
+    const releasedWriter = { fence: 7, generation: 'released-writer-generation' }
     const evidence = {
       kind: 'kill-delivered' as const,
       detail: 'writer terminated',
       observedAt: 90000,
-      ownerFence: 7
+      ownerFence: releasedWriter.fence
     }
     const records = Array.from({ length: population }, (_, index) =>
       agentSessionRecordFixture(
         agentSessionLeaseFixture({
           sessionId: index === 0 ? SESSION : `session-other-${index}`,
+          runtimeFence: releasedWriter.fence,
           ownerProcess: null,
           reservedSpawnToken: null,
           claimStatus: 'released',
@@ -249,7 +251,8 @@ it.each([10, 100])(
     const event = {
       type: 'ended' as const,
       sessionId: SESSION,
-      fence: 7,
+      fence: releasedWriter.fence,
+      acquisitionGeneration: releasedWriter.generation,
       cause: 'requested-close' as const,
       reason: 'late exit',
       observedAt: 91000
