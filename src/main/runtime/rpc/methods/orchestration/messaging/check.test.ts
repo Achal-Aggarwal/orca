@@ -220,6 +220,25 @@ describe('orchestration RPC methods', () => {
       expect(timedOut).toMatchObject({ timedOut: true, cancelled: false, count: 0 })
     })
 
+    it('says to end the turn only while a worker runs and owes nothing', async () => {
+      setup()
+      const { task, dispatch } = createDispatchedTask()
+      const check = (params: Record<string, unknown> = {}) =>
+        call('orchestration.check', { terminal: 'term_coord', ...params })
+
+      expect(await check()).toMatchObject({
+        count: 0,
+        next: expect.stringContaining('end your turn')
+      })
+      expect(await check({ peek: true })).not.toHaveProperty('next')
+      insertWorkerDone({ taskId: task.id, dispatchId: dispatch.id })
+      const delivered = (await check()) as { count: number; deliveryId: string }
+      expect(delivered.count).toBe(1)
+      expect(delivered).not.toHaveProperty('next')
+      // The only worker settled, so nothing is left to wait for.
+      expect(await check({ ack: delivered.deliveryId })).not.toHaveProperty('next')
+    })
+
     it('lets a forgotten Run wait coexist with a new one that receives the same Delivery', async () => {
       setup()
       const waitSpy = vi.spyOn(runtime, 'waitForMessage')

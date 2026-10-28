@@ -2,6 +2,7 @@ import { OrchestrationError } from '../../../../orchestration/orchestration-erro
 import { defineMethod } from '../../../core'
 import { startFederatedWorker } from '../federation/federated-worker-start'
 import { startLocalWorker } from './local-worker-start'
+import { withWorkerStartNext } from '../receipt-next'
 import {
   decideWorkerStartMode,
   readWorkerStartModeSettings
@@ -79,9 +80,11 @@ export const ORCHESTRATION_WORKER_START_METHODS = [
           orchestrationMutation,
           callerSession: orchestrationCaller
         })
-        return receipt && typeof receipt === 'object' ? { ...receipt, mode } : receipt
+        return withWorkerStartNext(
+          receipt && typeof receipt === 'object' ? { ...receipt, mode } : receipt
+        )
       }
-      return startLocalWorker({
+      const receipt = await startLocalWorker({
         params: { ...params, timeoutMs: readinessTimeoutMs },
         runtime,
         db,
@@ -93,6 +96,7 @@ export const ORCHESTRATION_WORKER_START_METHODS = [
         mode,
         helperCreator
       })
+      return withWorkerStartNext(receipt)
     }
   })
 ]

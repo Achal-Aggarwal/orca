@@ -110,8 +110,11 @@ ORCA status --json
 ORCA orchestration run-create --objective "<objective>" --json
 ORCA orchestration worker-start --spec "<worker A task>" --worktree current --agent codex --json
 ORCA orchestration worker-start --spec "<worker B task>" --worktree current --agent claude --json
-ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
 ```
+
+Wake loop: if a receipt has `next`, follow it; otherwise act on the result. An
+older Orca sends no `next`; there, wait with
+`ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json`.
 
 After a restart, resume your own Run with `run-use --id <run_id>`. A worker
 cannot bind the Run it works for or an ancestor, and cannot use
@@ -139,7 +142,7 @@ active Dispatch, and decide each settled terminal's next owner before the ack:
 ```text
 ORCA orchestration reply --id <message_id> --body "<answer>" --json
 ORCA orchestration worker-release --dispatch <dispatch_id> --json
-ORCA orchestration check --ack <delivery_id> --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
+ORCA orchestration check --ack <delivery_id> --json
 ```
 
 Keep waiting until every expected Dispatch settles. A timeout or empty result is

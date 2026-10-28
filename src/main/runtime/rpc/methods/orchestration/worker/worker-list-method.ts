@@ -20,8 +20,7 @@ import {
   pinWorkerListSnapshot,
   readWorkerListSnapshot
 } from './worker-list-snapshot-store'
-import { projectWorkerFleet, type WorkerListPageParams } from './worker-list-projection'
-import { chatAssigneeObserver } from './session-worker-observation'
+import { projectLocalWorkerFleet, type WorkerListPageParams } from './worker-list-projection'
 import { exposeWorkerTerminalResource } from './worker-terminal-resource-presentation'
 import {
   WORKER_TERMINAL_LIST_STATES,
@@ -194,20 +193,9 @@ async function projectWorkerListPageWithFilteredSnapshot(
   const db = runtime.getOrchestrationDb()
   const hasMore = rows.length > limit
   const pageRows = hasMore ? rows.slice(0, limit) : rows
-  const authorityNow = Date.now()
-  const attentionFacts = db.getWorkerAttentionFactsForDispatches(
-    pageRows.map((row) => row.dispatchId),
-    authorityNow
-  )
-  const statuses = runtime.getOrchestrationFleetAgentStatusSnapshot()
-  const fleet = projectWorkerFleet({
-    rows: pageRows,
-    attentionFacts,
-    statuses,
+  const fleet = await projectLocalWorkerFleet(runtime, pageRows, {
     limit,
-    now: authorityNow,
-    completeProjection: args.completeProjection,
-    observeChat: await chatAssigneeObserver(runtime, db, pageRows)
+    completeProjection: args.completeProjection
   })
   const federated = params.includeRemote
     ? await readFederatedFleetSnapshots({

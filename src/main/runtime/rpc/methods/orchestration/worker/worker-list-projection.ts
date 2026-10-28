@@ -7,12 +7,14 @@ import {
 import { resolveFleetWorkerOutcome } from '../../../../../../shared/orchestration-fleet-outcome-resolution'
 import type { WorkerTerminalListState } from '../../../../orchestration/worker-terminal-ownership'
 import type { OrchestrationDb } from '../../../../orchestration/db'
+import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { OrcaSessionId } from '../../../../../../shared/orca-session-address'
 import {
   chatAssigneeSessionId,
   type ChatAssigneeObservation
 } from '../../../../orchestration/chat-assignee'
 import { refreshFleetWorkerVerdict } from '../federation/federated-fleet-snapshot'
+import { chatAssigneeObserver } from './session-worker-observation'
 
 export type WorkerListPageParams = {
   run?: string
@@ -114,4 +116,26 @@ function applyChatAssigneeLiveness(
     worker.evidence.lastObservedAt = observed.status === 'live' ? now : null
     refreshFleetWorkerVerdict(worker, fleet.durable)
   }
+}
+
+/** Project rows from local evidence only; host verdicts are layered on by --include-remote. */
+export async function projectLocalWorkerFleet(
+  runtime: OrcaRuntimeService,
+  rows: ReturnType<OrchestrationDb['listWorkerTerminalResources']>,
+  options: { limit: number; completeProjection?: boolean }
+) {
+  const db = runtime.getOrchestrationDb()
+  const now = Date.now()
+  return projectWorkerFleet({
+    rows,
+    attentionFacts: db.getWorkerAttentionFactsForDispatches(
+      rows.map((row) => row.dispatchId),
+      now
+    ),
+    statuses: runtime.getOrchestrationFleetAgentStatusSnapshot(),
+    limit: options.limit,
+    now,
+    completeProjection: options.completeProjection,
+    observeChat: await chatAssigneeObserver(runtime, db, rows)
+  })
 }
