@@ -1,4 +1,5 @@
 import { quotePosixShell } from '../../../shared/shell-argument-quoting'
+import { ownRetainedString } from '../../../shared/own-retained-string'
 import {
   resolveSetupRunnerCommand,
   type SetupRunnerCommandPlatform,
@@ -71,7 +72,7 @@ export function createSetupCompletionScanner(
           return
         }
       }
-      carry = combined.slice(-SETUP_COMPLETION_CARRY_LENGTH)
+      carry = ownRetainedString(combined.slice(-SETUP_COMPLETION_CARRY_LENGTH))
     }
   }
 }
