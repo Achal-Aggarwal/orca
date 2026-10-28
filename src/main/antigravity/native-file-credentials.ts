@@ -35,11 +35,14 @@ export function readAntigravityCredentialFile(path: string): string | null {
   }
 }
 
-export function createAntigravityFileCredentialBackend(path: string): AntigravityCredentialBackend {
+export function createAntigravityFileCredentialBackend(
+  path: string,
+  parseCredential = parseAntigravityNativeCredential
+): AntigravityCredentialBackend {
   async function read() {
     try {
       const contents = readAntigravityCredentialFile(path)
-      return contents === null ? null : parseAntigravityNativeCredential(contents)
+      return contents === null ? null : parseCredential(contents)
     } catch {
       throw new Error('The Antigravity execution-host credential file could not be read safely.')
     }
@@ -47,7 +50,7 @@ export function createAntigravityFileCredentialBackend(path: string): Antigravit
   return {
     read,
     async write(contents, expected) {
-      parseAntigravityNativeCredential(contents)
+      parseCredential(contents)
       if ((await read())?.contents !== (expected ?? undefined)) {
         throw new Error(CONFLICT)
       }

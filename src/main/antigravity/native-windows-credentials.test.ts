@@ -13,7 +13,7 @@ import {
   resetWindowsSecurityLoadForTests
 } from '../../shared/windows-security-addon'
 import { hardenedDaclSddl } from '../../shared/windows-secure-dacl'
-import { credential, harness } from './native-account-test-fixtures'
+import { credential, harness, refreshedWithoutIdToken } from './native-account-test-fixtures'
 import { AntigravityAccountService } from './native-account-service'
 import { createAntigravityHostCredentialBackend } from './native-credential-backend'
 import {
@@ -53,7 +53,12 @@ describe('Windows native Antigravity credentials', () => {
 
   it.each([
     '{"token":{"refresh_token":"fixture-only"},"auth_method":"consumer"}',
-    '{"wif_provider":"fixture-only"}'
+    '{"wif_provider":"fixture-only"}',
+    '{}',
+    'null',
+    '{"auth_method":"consumer"}',
+    '{"token":{}}',
+    '{"token":7}'
   ])(
     'never selects an old file when authoritative native snapshot support fails: %s',
     async (raw) => {
@@ -67,7 +72,9 @@ describe('Windows native Antigravity credentials', () => {
       const writes = vi.spyOn(fake, 'writeGenericCredential')
       const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
       vi.mocked(h.store.write).mockClear()
-      await expect(service.selectAccount(saved.accounts[0].id)).rejects.toThrow('could not be read')
+      await expect(service.selectAccount(saved.accounts[0].id)).rejects.toThrow()
+      await expect(service.addCurrentAccount()).rejects.toThrow()
+      await expect(service.removeAccount(saved.accounts[0].id)).rejects.toThrow()
       await expect(new AntigravityAccountService(h.store, backend).listAccounts()).rejects.toThrow()
       expect(writes).not.toHaveBeenCalled()
       expect(fileWrites).not.toHaveBeenCalled()
@@ -106,6 +113,13 @@ describe('Windows native Antigravity credentials', () => {
     fake.readGenericCredential = () => {
       throw new TypeError('fixture-local-capability')
     }
+    await expect(backend.read()).rejects.toThrow('could not be read')
+    expect(fileReads).not.toHaveBeenCalled()
+    fake.readGenericCredential = () => {
+      throw Object.assign(new Error('fixture-only'), { win32Code: 5 })
+    }
+    await expect(backend.read()).rejects.toThrow('could not be read')
+    Reflect.deleteProperty(fake, 'readGenericCredential')
     await expect(backend.read()).rejects.toThrow('could not be read')
     expect(fileReads).not.toHaveBeenCalled()
     setWindowsSecurityForTests(null)
@@ -152,16 +166,16 @@ describe('Windows native Antigravity credentials', () => {
     )
   })
 
-  it('separates absence and defined-empty records from inaccessible or corrupt native values', async () => {
+  it('distinguishes genuine absence from unsupported legacy-empty and corrupt native values', async () => {
     expect(await readAntigravityWindowsCredential()).toBeNull()
     fake.writeGenericCredential(
       'gemini:antigravity',
       'antigravity',
       Buffer.from('{"auth_method":"consumer","token":null}')
     )
-    expect(await readAntigravityWindowsCredential()).toBeNull()
+    await expect(readAntigravityWindowsCredential()).rejects.toThrow('could not be decoded')
     fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from([255]))
-    await expect(readAntigravityWindowsCredential()).rejects.toThrow('could not be read')
+    await expect(readAntigravityWindowsCredential()).rejects.toThrow('could not be decoded')
     fake.readGenericCredential = () => {
       throw new Error('fixture-secret')
     }
@@ -229,5 +243,172 @@ describe('Windows native Antigravity credentials', () => {
       /^Antigravity could not update its credential file privately\. Check the file permissions and try again\.$/
     )
     expect((await backend.read())?.contents).toBe(credential('a'))
+  })
+  it.each([
+    '{"access_token":7}',
+    '{"token":{"access_token":"wrong"},"project_id":17,"expires_in":"x"}',
+    '\ufeff{"access_token":"wrong"}'
+  ])('uses the actual effective file after both native decodes reject: %s', async (raw) => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    const h = harness()
+    const service = new AntigravityAccountService(h.store, backend)
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('b')))
+    const id = (await service.addCurrentAccount()).accounts[0].id
+    const path = privateFile(credential('a'))
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(raw))
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    vi.mocked(h.store.write).mockClear()
+    expect((await service.selectAccount(id)).selectedAccountId).toBe(id)
+    expect(readFileSync(path, 'utf8')).toBe(credential('b'))
+    expect(writes).not.toHaveBeenCalled()
+    expect(fileWrites).toHaveBeenCalledTimes(1)
+    expect(h.store.write).toHaveBeenCalledTimes(1)
+    expect(
+      (await new AntigravityAccountService(h.store, backend).listAccounts()).activeAccountId
+    ).toBe(id)
+  })
+
+  it('validates a carried requested snapshot before publishing a current refresh', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    const h = harness()
+    const service = new AntigravityAccountService(h.store, backend)
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('a')))
+    await service.addCurrentAccount()
+    const carried = h.getVault()
+    carried.accounts.push({
+      ...carried.accounts[0],
+      id: 'carried',
+      subject: 'b',
+      credentials: '{"token":{"access_token":"b","expiry":7},"access_token":7}'
+    })
+    h.store.write(carried)
+    fake.writeGenericCredential(
+      'gemini:antigravity',
+      'antigravity',
+      Buffer.from(credential('a', 2))
+    )
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    vi.mocked(h.store.write).mockClear()
+    await expect(service.selectAccount('carried')).rejects.toThrow('could not be decoded')
+    expect(writes).not.toHaveBeenCalled()
+    expect(fileWrites).not.toHaveBeenCalled()
+    expect(h.store.write).not.toHaveBeenCalled()
+    expect(h.getVault()).toEqual(carried)
+  })
+
+  it('does not publish selection when recovered native authority shadows a file write', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    const h = harness()
+    const service = new AntigravityAccountService(h.store, backend)
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('b')))
+    const id = (await service.addCurrentAccount()).accounts[0].id
+    const path = privateFile(credential('a'))
+    fake.readGenericCredential = () => {
+      throw Object.assign(new Error('fixture-only'), { syscall: 'CredReadW', win32Code: 5 })
+    }
+    const create = fake.createFileWithDacl
+    fake.createFileWithDacl = (...args) => {
+      create(...args)
+      fake.readGenericCredential = () => Buffer.from(credential('a'))
+    }
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    vi.mocked(h.store.write).mockClear()
+    await expect(service.selectAccount(id)).rejects.toThrow('could not be verified')
+    expect(writes).not.toHaveBeenCalled()
+    expect(fileWrites).toHaveBeenCalledTimes(1)
+    expect(h.store.write).not.toHaveBeenCalled()
+    expect(h.getVault().selectedAccountId).toBeNull()
+    expect(readFileSync(path, 'utf8')).toBe(credential('b'))
+    const restarted = new AntigravityAccountService(h.store, backend)
+    expect((await restarted.listAccounts()).activeAccountId).toBeNull()
+  })
+
+  it('re-derives the destination when native recovers with the same effective bytes', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    privateFile(credential('a'))
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('a')))
+    const read = vi.spyOn(fake, 'readGenericCredential')
+    read.mockImplementationOnce(() => {
+      throw Object.assign(new Error('fixture-only'), { syscall: 'CredReadW', win32Code: 5 })
+    })
+    const expected = (await backend.read())?.contents ?? null
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    await backend.write(credential('b'), expected)
+    expect(writes).toHaveBeenCalledTimes(1)
+    expect(fileWrites).not.toHaveBeenCalled()
+    expect((await backend.read())?.contents).toBe(credential('b'))
+    await expect(backend.write(credential('c'), credential('a'))).rejects.toThrow(
+      'changed during selection'
+    )
+    expect(writes).toHaveBeenCalledTimes(1)
+  })
+  it('rejects lossy native snapshots without changing an existing selection or any store', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    const h = harness()
+    const service = new AntigravityAccountService(h.store, backend)
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('b')))
+    const id = (await service.addCurrentAccount()).accounts[0].id
+    await service.selectAccount(id)
+    privateFile(credential('a'))
+    fake.writeGenericCredential(
+      'gemini:antigravity',
+      'antigravity',
+      Buffer.concat([
+        Buffer.from('{"token":{"access_token":"'),
+        Buffer.from([255]),
+        Buffer.from('"}}')
+      ])
+    )
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    vi.mocked(h.store.write).mockClear()
+    await expect(service.selectAccount(id)).rejects.toThrow('losslessly')
+    await expect(new AntigravityAccountService(h.store, backend).listAccounts()).rejects.toThrow(
+      'losslessly'
+    )
+    expect(writes).not.toHaveBeenCalled()
+    expect(fileWrites).not.toHaveBeenCalled()
+    expect(h.store.write).not.toHaveBeenCalled()
+    expect(h.getVault().selectedAccountId).toBe(id)
+  })
+
+  it('never fabricates absence from decoder rejection and refuses an unsafe effective file', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    fake.writeGenericCredential(
+      'gemini:antigravity',
+      'antigravity',
+      Buffer.from('{"access_token":7}')
+    )
+    const writes = vi.spyOn(fake, 'writeGenericCredential')
+    const fileWrites = vi.spyOn(fake, 'createFileWithDacl')
+    await expect(backend.write(credential('a'), null)).rejects.toThrow('could not be decoded')
+    const path = privateFile(credential('a'))
+    fake.dacls.set(path, 'D:(A;;FA;;;WD)')
+    await expect(backend.write(credential('b'), credential('a'))).rejects.toThrow('read safely')
+    expect(writes).not.toHaveBeenCalled()
+    expect(fileWrites).not.toHaveBeenCalled()
+    expect(readFileSync(path, 'utf8')).toBe(credential('a'))
+  })
+  it('matches a refreshed grant to its typed saved token after ordered field folding and reopen', async () => {
+    const backend = createAntigravityHostCredentialBackend('/ignored-HOME')
+    const h = harness()
+    const service = new AntigravityAccountService(h.store, backend)
+    const original = credential('a')
+      .replace('"access_token"', '"ACCESS_TOKEN"')
+      .replace('"refresh_token"', '"REFRESH_TOKEN"')
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(original))
+    const id = (await service.addCurrentAccount()).activeAccountId
+    const refreshed = refreshedWithoutIdToken(2)
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(refreshed))
+    expect((await service.listAccounts()).activeAccountId).toBe(id)
+    expect(h.getVault().accounts).toHaveLength(1)
+    expect(h.getVault().accounts[0].credentials).toBe(refreshed)
+    expect(
+      (await new AntigravityAccountService(h.store, backend).listAccounts()).activeAccountId
+    ).toBe(id)
   })
 })

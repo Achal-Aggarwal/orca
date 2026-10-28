@@ -94,6 +94,22 @@ export type AntigravityNativeCredential = {
   refreshToken: string | null
 }
 
+export function projectAntigravityNativeCredential(
+  contents: string,
+  token: { authMethod: string; accessToken: string; refreshToken: string | null; idToken: unknown }
+): AntigravityNativeCredential {
+  if (Buffer.byteLength(contents) > MAX_CREDENTIAL_BYTES || !token.accessToken.trim()) {
+    throw invalidCredential()
+  }
+  return {
+    contents,
+    authMethod: token.authMethod,
+    identity: readIdentity(token.idToken),
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken || null
+  }
+}
+
 export function parseAntigravityNativeCredential(contents: string): AntigravityNativeCredential {
   if (Buffer.byteLength(contents) > MAX_CREDENTIAL_BYTES) {
     throw invalidCredential()
@@ -119,13 +135,11 @@ export function parseAntigravityNativeCredential(contents: string): AntigravityN
   ) {
     throw invalidCredential()
   }
-  return {
-    // Preserve unknown fields for CLI compatibility.
-    contents,
+  return projectAntigravityNativeCredential(contents, {
     authMethod,
-    identity: readIdentity(value.id_token ?? token.id_token),
+    idToken: value.id_token ?? token.id_token,
     accessToken: token.access_token,
     refreshToken:
       typeof token.refresh_token === 'string' && token.refresh_token ? token.refresh_token : null
-  }
+  })
 }

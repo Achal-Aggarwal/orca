@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadWindowsSecurity } from '../../shared/windows-security-addon'
-import { parseAntigravityNativeCredential } from './native-credential-codec'
+import {
+  decodeAntigravityWindowsToken,
+  parseAntigravityWindowsSnapshot,
+  projectAntigravityWindowsToken
+} from './native-windows-token-decode'
 import {
   createAntigravityFileCredentialBackend,
   isAntigravityFileStorageHost
@@ -32,9 +36,7 @@ class NativeCredentialReadFailure extends Error {
   }
 }
 
-export async function readAntigravityWindowsCredentialContents(
-  target = nativeTarget
-): Promise<string | null> {
+function readNativeBytes(target: string): Uint8Array | null {
   let bytes: Uint8Array | null
   try {
     bytes = security().readGenericCredential(target)
@@ -46,13 +48,25 @@ export async function readAntigravityWindowsCredentialContents(
       'win32Code' in error &&
       typeof error.win32Code === 'number' &&
       Number.isInteger(error.win32Code) &&
-      error.win32Code > 0 &&
-      error.win32Code !== 1168
+      error.win32Code > 0
     ) {
+      if (error.win32Code === 1168) {
+        return null
+      }
       throw new NativeCredentialReadFailure(error.win32Code)
     }
     throw new Error('The Antigravity Windows credential store could not be read.')
   }
+  if (bytes !== null && (!(bytes instanceof Uint8Array) || bytes.byteLength > 2560)) {
+    throw new Error('The Antigravity Windows credential store could not be read.')
+  }
+  return bytes
+}
+
+export async function readAntigravityWindowsCredentialContents(
+  target = nativeTarget
+): Promise<string | null> {
+  const bytes = readNativeBytes(target)
   try {
     return bytes === null
       ? null
@@ -63,42 +77,11 @@ export async function readAntigravityWindowsCredentialContents(
 }
 
 export async function readAntigravityWindowsCredential(target = nativeTarget) {
-  const contents = await readAntigravityWindowsCredentialContents(target)
-  if (contents === null || contents.length === 0) {
-    return null
-  }
-  try {
-    const value: unknown = JSON.parse(contents)
-    // agy's composite store treats an empty StoredToken as absent.
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      !Object.entries(value).some(([key, field]) =>
-        key === 'token'
-          ? field !== null
-          : [
-              'access_token',
-              'id_token_email',
-              'wif_provider',
-              'saved_wif_provider',
-              'project_id',
-              'region',
-              'user_tier',
-              'tier_display_name'
-            ].includes(key) && Boolean(field)
-      )
-    ) {
-      return null
-    }
-    return parseAntigravityNativeCredential(contents)
-  } catch {
-    throw new Error('The Antigravity Windows credential store could not be read.')
-  }
+  const bytes = readNativeBytes(target)
+  return bytes === null ? null : projectAntigravityWindowsToken(bytes)
 }
 
-export async function writeAntigravityWindowsCredential(contents: string, target = nativeTarget) {
-  parseAntigravityNativeCredential(contents)
+function writeNative(contents: string, target: string) {
   const bytes = Buffer.from(contents, 'utf8')
   if (bytes.length > 2560) {
     throw new Error('Antigravity credentials exceed the Windows credential size limit.')
@@ -108,6 +91,11 @@ export async function writeAntigravityWindowsCredential(contents: string, target
   } catch {
     throw new Error('The Antigravity Windows credential store could not be updated.')
   }
+}
+
+export async function writeAntigravityWindowsCredential(contents: string, target = nativeTarget) {
+  parseAntigravityWindowsSnapshot(contents)
+  writeNative(contents, target)
   if ((await readAntigravityWindowsCredential(target))?.contents !== contents) {
     throw new Error('The Antigravity Windows credential update could not be verified.')
   }
@@ -137,7 +125,8 @@ export function createAntigravityWindowsCredentialBackend(
   home: string
 ): AntigravityCredentialBackend {
   const file = createAntigravityFileCredentialBackend(
-    join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token')
+    join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+    parseAntigravityWindowsSnapshot
   )
   async function effective() {
     if (isAntigravityWindowsFileHost(process.env)) {
@@ -145,9 +134,13 @@ export function createAntigravityWindowsCredentialBackend(
     }
     let nativeError: unknown
     try {
-      const current = await readAntigravityWindowsCredential()
-      if (current) {
-        return { current, file: false }
+      const bytes = readNativeBytes(nativeTarget)
+      if (bytes !== null) {
+        const decoded = decodeAntigravityWindowsToken(bytes)
+        if (decoded) {
+          return { current: projectAntigravityWindowsToken(bytes, decoded), file: false }
+        }
+        nativeError = new Error('The Antigravity Windows credential store could not be decoded.')
       }
     } catch (error) {
       if (!(error instanceof NativeCredentialReadFailure)) {
@@ -162,19 +155,19 @@ export function createAntigravityWindowsCredentialBackend(
     return { current, file: current !== null }
   }
   return {
+    parse: parseAntigravityWindowsSnapshot,
     async read() {
       return (await effective()).current
     },
     async write(contents, expected) {
+      parseAntigravityWindowsSnapshot(contents)
       const route = await effective()
       if ((route.current?.contents ?? null) !== expected) {
         throw new Error(
           'The native Antigravity credential changed during selection; refresh before retrying.'
         )
       }
-      await (route.file
-        ? file.write(contents, expected)
-        : writeAntigravityWindowsCredential(contents))
+      await (route.file ? file.write(contents, expected) : writeNative(contents, nativeTarget))
       if ((await effective()).current?.contents !== contents) {
         throw new Error('The Antigravity Windows credential update could not be verified.')
       }
