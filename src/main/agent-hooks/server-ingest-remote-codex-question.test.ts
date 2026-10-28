@@ -4,8 +4,14 @@ import {
   createHookListenerState,
   seedLegacyAgentStatusForTests
 } from '../../shared/agent-hook-listener/listener-state'
+import { buildRelayHookEnvelope } from '../../wsl-guest/agent-hook-envelope-build'
 import { AgentHookServer, _internals } from './server'
-import { PANE } from './server.test-fixtures'
+import { PANE, buildBody } from './server.test-fixtures'
+
+vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
+vi.mock('../telemetry/cohort-classifier', () => ({
+  getCohortAtEmit: () => ({ nth_repo_added: 2 })
+}))
 
 const QUESTIONS = {
   questions: [
@@ -35,7 +41,7 @@ function remoteCodex() {
       const event = normalizeHookPayload(
         host,
         'codex',
-        { paneKey: PANE, tabId: 'tab-1', worktreeId: 'folder-workspace', payload },
+        buildBody(payload, { worktreeId: 'folder-workspace' }),
         'production'
       )
       if (!event) {
@@ -44,7 +50,10 @@ function remoteCodex() {
       seedLegacyAgentStatusForTests(host, event)
       const { mainAgent: _mainAgent, ...legacyPayload } = event.payload
       server.ingestRemote(
-        { ...event, payload: legacy ? legacyPayload : event.payload },
+        buildRelayHookEnvelope(
+          { ...event, payload: legacy ? legacyPayload : event.payload },
+          'codex'
+        ),
         'wsl:Ubuntu'
       )
       return server.getStatusSnapshotForPane(PANE)[0]
