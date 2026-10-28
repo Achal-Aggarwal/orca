@@ -1,19 +1,18 @@
-import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
-import type { PendingNativeChatFile } from './mobile-native-chat-file-attachment'
-import { useSyncExternalStore, useCallback, type SetStateAction } from 'react'
+import { useSyncExternalStore, type SetStateAction } from 'react'
 import type { AgentJournalSkillRef } from '../../../../../src/shared/agent-session-journal-types'
-import { pickedSkillsInText } from '../../../../../src/shared/structured-agent-session-send-mutation'
+import {
+  resetMobileNativeChatDraftInputsForTests,
+  pruneMobileNativeChatDraftSkills,
+  readMobileNativeChatDraftInputs,
+  updateMobileNativeChatDraftInputs
+} from './mobile-native-chat-draft-inputs'
 import type { MobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 
 // Text and its edit revision outlive the screen, including callbacks from an older mount.
-type DraftAttachments = {
-  images: PendingNativeChatImage[]
-  files: readonly PendingNativeChatFile[]
-}
-type Draft = Partial<DraftAttachments> & {
+// Picks behave like desktop chips: user edits drop skills the text stops naming and an origin that stops leading.
+type Draft = {
   text: string
   editGeneration: number
-  skills?: AgentJournalSkillRef[]
   skillOrigin?: string
 }
 
@@ -34,9 +33,11 @@ export function recordMobileNativeChatSkillPick(
   const current = drafts.get(draftKey) ?? { text: '', editGeneration: 0 }
   const name = skill.token.slice(1)
   // A pick replaces whatever file its token named before, like re-picking a desktop chip.
-  const kept = (current.skills ?? []).filter((held) => held.name !== name)
-  const skills = skill.path ? [...kept, { name, path: skill.path }] : kept
-  drafts.set(draftKey, { ...current, skillOrigin: skill.token, skills })
+  updateMobileNativeChatDraftInputs(draftKey, (inputs) => {
+    const kept = inputs.skills.filter((held) => held.name !== name)
+    return { ...inputs, skills: skill.path ? [...kept, { name, path: skill.path }] : kept }
+  })
+  drafts.set(draftKey, { ...current, skillOrigin: skill.token })
 }
 
 // A rejected send's restored text gets back the files it named, even if newer edits dropped them.
@@ -44,15 +45,14 @@ export function restoreMobileNativeChatPickedSkills(
   draftKey: string,
   skills: readonly AgentJournalSkillRef[]
 ): void {
-  const current = drafts.get(draftKey)
-  if (!current || skills.length === 0) {
+  if (!drafts.has(draftKey) || skills.length === 0) {
     return
   }
-  const paths = new Set((current.skills ?? []).map((skill) => skill.path))
-  drafts.set(draftKey, {
+  const paths = new Set(readMobileNativeChatDraftInputs(draftKey).skills.map((skill) => skill.path))
+  updateMobileNativeChatDraftInputs(draftKey, (current) => ({
     ...current,
-    skills: [...(current.skills ?? []), ...skills.filter((skill) => !paths.has(skill.path))]
-  })
+    skills: [...current.skills, ...skills.filter((skill) => !paths.has(skill.path))]
+  }))
 }
 
 export function readMobileNativeChatSkillOrigin(draftKey: string): string | null {
@@ -60,7 +60,7 @@ export function readMobileNativeChatSkillOrigin(draftKey: string): string | null
 }
 
 export function readMobileNativeChatPickedSkills(draftKey: string): AgentJournalSkillRef[] {
-  return drafts.get(draftKey)?.skills ?? []
+  return [...readMobileNativeChatDraftInputs(draftKey).skills]
 }
 
 function subscribe(listener: () => void): () => void {
@@ -78,15 +78,14 @@ function writeDraft(draftKey: string, update: SetStateAction<string>, userEdit: 
     return
   }
   // Send clears and restores are not edits, so a rejected draft keeps its picks.
-  const skills =
-    userEdit && current?.skills ? pickedSkillsInText(next, current.skills) : current?.skills
+  if (userEdit) {
+    pruneMobileNativeChatDraftSkills(draftKey, next)
+  }
   const skillOrigin =
     userEdit && current?.skillOrigin !== next.split(/\s/, 1)[0] ? undefined : current?.skillOrigin
   drafts.set(draftKey, {
-    ...current,
     text: next,
     editGeneration: (current?.editGeneration ?? 0) + 1,
-    skills,
     skillOrigin
   })
   if (next === text) {
@@ -129,40 +128,9 @@ export function useMobileNativeChatDraft(draftKey: string | null): string {
 }
 
 export function resetMobileNativeChatDraftStoreForTests(): void {
+  resetMobileNativeChatDraftInputsForTests()
   drafts.clear()
-  attachmentId = 0
   mobileNativeChatLaunchDraftSeeds.clear()
-}
-
-const noImages: PendingNativeChatImage[] = []
-const noFiles: readonly PendingNativeChatFile[] = []
-function readDraftAttachments(draft: Draft | undefined): DraftAttachments {
-  return { images: draft?.images ?? noImages, files: draft?.files ?? noFiles }
-}
-let attachmentId = 0
-export function nextMobileDraftAttachmentId(prefix: string): string {
-  return `${prefix}-${++attachmentId}`
-}
-
-export function useMobileDraftAttachments<K extends keyof DraftAttachments>(
-  scope: string | null,
-  kind: K
-) {
-  const read = (): DraftAttachments[K] =>
-    readDraftAttachments(scope ? drafts.get(scope) : undefined)[kind]
-  const value = useSyncExternalStore(subscribe, read, read)
-  const update = useCallback(
-    (key: string, change: (current: DraftAttachments[K]) => DraftAttachments[K]) => {
-      const current = drafts.get(key) ?? { text: '', editGeneration: 0 }
-      const next = change(readDraftAttachments(current)[kind])
-      drafts.set(key, { ...current, [kind]: next })
-      for (const listener of listeners) {
-        listener()
-      }
-    },
-    [kind]
-  )
-  return [value, update] as const
 }
 
 export type MobileComposerWriter = ((text: string) => boolean) & {

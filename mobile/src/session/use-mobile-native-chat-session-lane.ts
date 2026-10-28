@@ -13,6 +13,7 @@ import type { MobileNativeChatSendErrorReporter } from './native-chat/use-mobile
 export function useMobileNativeChatSessionLane({
   client,
   hostId,
+  composerScopeKey,
   structured,
   resolution,
   sourceIdentity,
@@ -21,10 +22,12 @@ export function useMobileNativeChatSessionLane({
   enabled,
   connState,
   onSendError,
+  onQueuedEditNotice,
   onActionResolved
 }: {
   client: RpcClient | null
   hostId: string
+  composerScopeKey?: string | null
   structured: boolean
   resolution: MobileNativeChatResolution | null
   sourceIdentity: Parameters<typeof useMobileNativeChatSession>[0]['sourceIdentity']
@@ -33,6 +36,7 @@ export function useMobileNativeChatSessionLane({
   appendComposerTextRef: { readonly current: (text: string) => boolean }
   enabled: boolean
   connState: ConnectionState
+  onQueuedEditNotice?: (message: string) => void
   onSendError: MobileNativeChatSendErrorReporter
   onActionResolved?: () => void
 }): {
@@ -66,6 +70,7 @@ export function useMobileNativeChatSessionLane({
     sourceIdentity,
     hostSupport,
     appendComposerText,
+    composerScopeKey,
     enabled,
     // Holds are connection-scoped; dropping this on transport loss lets the hook
     // reacquire the provider without clearing the cached transcript.
@@ -73,6 +78,7 @@ export function useMobileNativeChatSessionLane({
     agent: structured ? agent : null,
     sessionCommands: sessionCommands.commands,
     onSendError,
+    onQueuedEditNotice,
     ...(onActionResolved ? { onActionResolved } : {})
   })
   return {

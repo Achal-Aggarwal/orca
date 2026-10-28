@@ -1,8 +1,11 @@
+import { createUuidV4 } from '../../../../../src/shared/uuid-v4'
 import {
-  useMobileDraftAttachments,
-  nextMobileDraftAttachmentId
-} from './mobile-native-chat-draft-store'
-import { useCallback } from 'react'
+  readMobileNativeChatDraftInputs,
+  useMobileNativeChatDraftInputs,
+  updateMobileNativeChatDraftInputs,
+  type MobileNativeChatDraftDestination
+} from './mobile-native-chat-draft-inputs'
+import { useCallback, useMemo } from 'react'
 import { buildAgentTuiClearInputForText } from '../../../../../src/shared/agent-tui-input-clear'
 import type { RpcClient } from '../../../transport/rpc-client'
 import type { ConnectionState } from '../../../transport/types'
@@ -115,15 +118,24 @@ export function useMobileNativeChatImageAttachments({
   onError,
   sleep = defaultSleep
 }: Args): MobileNativeChatImageAttachments {
-  const [attachments, updateImages] = useMobileDraftAttachments(scopeKey, 'images')
+  const images = useMobileNativeChatDraftInputs(scopeKey, 'images')
+  const pending = useMobileNativeChatDraftInputs(scopeKey, 'pending')
+  const attachments = useMemo(() => [...images], [images])
+
   const addUploadedImages = useCallback(
-    (scope: string, uploaded: Omit<PendingNativeChatImage, 'id'>[]) => {
-      updateImages(scope, (current) => [
+    (
+      scope: MobileNativeChatDraftDestination,
+      uploadedImages: Omit<PendingNativeChatImage, 'id'>[]
+    ) => {
+      updateMobileNativeChatDraftInputs(scope, (current) => ({
         ...current,
-        ...uploaded.map((image) => ({ ...image, id: nextMobileDraftAttachmentId('img') }))
-      ])
+        images: [
+          ...current.images,
+          ...uploadedImages.map((image) => ({ ...image, id: createUuidV4() }))
+        ]
+      }))
     },
-    [updateImages]
+    []
   )
 
   const { attachImage, isAttaching } = useMobileNativeChatImageUpload({
@@ -145,9 +157,12 @@ export function useMobileNativeChatImageAttachments({
       if (!scope) {
         return
       }
-      updateImages(scope, (current) => current.filter((attachment) => attachment.id !== id))
+      updateMobileNativeChatDraftInputs(scope, (current) => ({
+        ...current,
+        images: current.images.filter((attachment) => attachment.id !== id)
+      }))
     },
-    [scopeKey, updateImages]
+    [scopeKey]
   )
 
   const sendNativeChat = useCallback(
@@ -166,8 +181,11 @@ export function useMobileNativeChatImageAttachments({
       const sentAt = Date.now()
       try {
         const scope = scopeKey
+        if ((readMobileNativeChatDraftInputs(scope).pending ?? 0) > 0) {
+          return false
+        }
         const pendingImages = attachments
-        // Only stored files: one still uploading holds Send in the composer.
+        // Hold Send until all selected files finish uploading.
         const storedFiles = structuredNativeChat
           ? files.flatMap((file) =>
               file.path === null ? [] : [{ kind: 'file' as const, id: file.id, path: file.path }]
@@ -187,9 +205,10 @@ export function useMobileNativeChatImageAttachments({
           )
           if (outcome === 'accepted') {
             const sentIds = new Set(pendingImages.map((attachment) => attachment.id))
-            updateImages(scope, (current) =>
-              current.filter((attachment) => !sentIds.has(attachment.id))
-            )
+            updateMobileNativeChatDraftInputs(scope, (current) => ({
+              ...current,
+              images: current.images.filter((attachment) => !sentIds.has(attachment.id))
+            }))
             onFilesSent?.(storedFiles.map((file) => file.id))
           }
           return outcome !== 'rejected'
@@ -271,9 +290,10 @@ export function useMobileNativeChatImageAttachments({
           if (outcome !== 'rejected') {
             // Drop only chips in this send, including unknown delivery to avoid duplicate retries; preserve newly attached chips.
             const sentIds = new Set(pendingImages.map((attachment) => attachment.id))
-            updateImages(scope, (current) =>
-              current.filter((attachment) => !sentIds.has(attachment.id))
-            )
+            updateMobileNativeChatDraftInputs(scope, (current) => ({
+              ...current,
+              images: current.images.filter((attachment) => !sentIds.has(attachment.id))
+            }))
           }
           return outcome !== 'rejected'
         } catch {
@@ -292,7 +312,6 @@ export function useMobileNativeChatImageAttachments({
     [
       activeHandleRef,
       attachments,
-      updateImages,
       baseSend,
       client,
       connState,
@@ -309,5 +328,11 @@ export function useMobileNativeChatImageAttachments({
     ]
   )
 
-  return { attachments, isAttaching, attachImage, removeAttachment, sendNativeChat }
+  return {
+    attachments,
+    isAttaching: isAttaching || (pending ?? 0) > 0,
+    attachImage,
+    removeAttachment,
+    sendNativeChat
+  }
 }

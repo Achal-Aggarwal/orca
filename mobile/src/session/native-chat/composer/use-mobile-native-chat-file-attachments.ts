@@ -1,7 +1,10 @@
+import { createUuidV4 } from '../../../../../src/shared/uuid-v4'
 import {
-  useMobileDraftAttachments,
-  nextMobileDraftAttachmentId
-} from './mobile-native-chat-draft-store'
+  useMobileNativeChatDraftInputs,
+  updateMobileNativeChatDraftInputs,
+  mobileNativeChatDraftDestination,
+  type MobileNativeChatDraftDestination
+} from './mobile-native-chat-draft-inputs'
 import { useCallback } from 'react'
 import type { RpcClient } from '../../../transport/rpc-client'
 import { useMediaPicker } from '../../../platform/media-picker'
@@ -28,34 +31,64 @@ export function useMobileNativeChatFileAttachments(args: {
   showToast: ShowToast
 }): MobileNativeChatFileAttachments {
   const { client, sessionId, scopeKey, enabled, showToast } = args
-  const [files, updateScope] = useMobileDraftAttachments(scopeKey, 'files')
+
   const picker = useMediaPicker()
+  const files = useMobileNativeChatDraftInputs(scopeKey, 'files')
+
+  const updateScope = useCallback(
+    (
+      scope: string | MobileNativeChatDraftDestination,
+      next: (current: readonly PendingNativeChatFile[]) => readonly PendingNativeChatFile[]
+    ) =>
+      updateMobileNativeChatDraftInputs(scope, (current) => ({
+        ...current,
+        files: next(current.files)
+      })),
+    []
+  )
+
   const attachFiles = useCallback(async (): Promise<void> => {
     const scope = scopeKey
     if (!client || !sessionId || !scope || !enabled) {
       return
     }
-    await uploadPickedNativeChatFiles({
-      picked: picker.pickFiles(),
-      upload: (file) =>
-        uploadMobileAgentSessionAttachment(client, {
-          sessionId,
-          name: file.name,
-          base64: file.base64
-        }),
-      nextId: () => {
-        return nextMobileDraftAttachmentId('file')
-      },
-      onPicked: (file) => updateScope(scope, (current) => [...current, file]),
-      onStored: (id, stored) =>
-        updateScope(scope, (current) =>
-          current.map((file) =>
-            file.id === id ? { ...file, name: stored.name, path: stored.path } : file
-          )
-        ),
-      onFailed: (id) => updateScope(scope, (current) => current.filter((file) => file.id !== id)),
-      onError: (message) => showToast(message)
-    })
+    const destination = mobileNativeChatDraftDestination(scope)
+    updateMobileNativeChatDraftInputs(destination, (current) => ({
+      ...current,
+      pending: (current.pending ?? 0) + 1
+    }))
+    try {
+      await uploadPickedNativeChatFiles({
+        canContinue: () => destination.active,
+        picked: picker.pickFiles(),
+        upload: (file) =>
+          uploadMobileAgentSessionAttachment(client, {
+            sessionId,
+            name: file.name,
+            base64: file.base64
+          }),
+        nextId: createUuidV4,
+        onPicked: (file) => updateScope(destination, (current) => [...current, file]),
+        onStored: (id, stored) =>
+          updateScope(destination, (current) =>
+            current.map((file) =>
+              file.id === id ? { ...file, name: stored.name, path: stored.path } : file
+            )
+          ),
+        onFailed: (id) =>
+          updateScope(destination, (current) => current.filter((file) => file.id !== id)),
+        onError: (message) => {
+          if (destination.active) {
+            showToast(message)
+          }
+        }
+      })
+    } finally {
+      updateMobileNativeChatDraftInputs(destination, (current) => ({
+        ...current,
+        pending: Math.max(0, (current.pending ?? 0) - 1)
+      }))
+    }
   }, [client, enabled, picker, scopeKey, sessionId, showToast, updateScope])
 
   const removeFiles = useCallback(

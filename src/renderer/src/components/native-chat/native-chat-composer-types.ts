@@ -83,6 +83,8 @@ export type NativeChatOptimisticSendOutcome = {
 export type NativeChatComposerProps = {
   /** Tab hosting the agent; used to resolve the live ptyId + runtime settings. */
   terminalTabId: string
+  /** Input-only edit session: every submit saves, Escape cancels, and send-only actions are absent. */
+  editSession?: { save: () => void; cancel: () => void; canSave: boolean }
   /** Stable split-leaf identity; unlike a PTY id, this survives reconnects. */
   paneKey: string
   /** Unsent-draft owner; defaults to paneKey, while structured chats share conversation scope. */
@@ -103,7 +105,7 @@ export type NativeChatComposerProps = {
   /** Interrupt the hosted agent, usually by sending ESC into the PTY. */
   onStop?: () => void
   /** Render an optimistic echo until the real transcript turn lands. */
-  onOptimisticSend?: (text: string, imagePaths?: string[], recovery?: boolean) => string | undefined
+  onOptimisticSend?: (text: string, imagePaths?: string[]) => string | undefined
   /** Settle an optimistic echo whose write was refused or never acknowledged. */
   optimisticSendOutcome?: NativeChatOptimisticSendOutcome
   /** Remove an optimistic echo when its delayed submit is canceled. */
@@ -143,8 +145,10 @@ export type NativeChatLaunchSeed = {
 
 export type NativeChatComposerHandle = {
   resend?: (text: string, imagePaths?: string[]) => boolean
+  isComposing?: () => boolean
   focus: () => boolean
   insertTypedText: (text: string) => boolean
+  insertPastedText?: (text: string) => boolean
   /** Whether the input is there and enabled, so text given to it lands. */
   acceptsText: () => boolean
   /** Append deduplicated text after a blank line and place the caret at its end. */

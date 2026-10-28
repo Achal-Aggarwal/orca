@@ -6,9 +6,12 @@ import type { RpcClient } from '../transport/rpc-client'
 import {
   resetMobileNativeChatDraftStoreForTests,
   setMobileNativeChatDraftText,
-  useMobileDraftAttachments,
   useMobileNativeChatDraft
 } from './native-chat/composer/mobile-native-chat-draft-store'
+import {
+  updateMobileNativeChatDraftInputs,
+  type MobileNativeChatDraftInputs
+} from './native-chat/composer/mobile-native-chat-draft-inputs'
 import { useMobileNativeChatDrafts } from './native-chat/composer/use-mobile-native-chat-drafts'
 import { useMobileNativeChatFileAttachments } from './native-chat/composer/use-mobile-native-chat-file-attachments'
 import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
@@ -54,6 +57,24 @@ vi.mock('react', async (importOriginal) => {
 vi.mock('../platform/media-picker', () => ({ useMediaPicker: () => ({ pickImages: vi.fn() }) }))
 const SCOPE_A = 'h\0w\0tab-a'
 type Hook = ReturnType<typeof useMobileNativeChatImageAttachments>
+function updateImages(
+  scope: string,
+  update: (images: MobileNativeChatDraftInputs['images']) => MobileNativeChatDraftInputs['images']
+) {
+  updateMobileNativeChatDraftInputs(scope, (current) => ({
+    ...current,
+    images: update(current.images)
+  }))
+}
+function updateFiles(
+  scope: string,
+  update: (files: MobileNativeChatDraftInputs['files']) => MobileNativeChatDraftInputs['files']
+) {
+  updateMobileNativeChatDraftInputs(scope, (current) => ({
+    ...current,
+    files: update(current.files)
+  }))
+}
 let renderer: ReactTestRenderer | null = null
 beforeEach(() => resetMobileNativeChatDraftStoreForTests())
 afterEach(() => {
@@ -79,8 +100,8 @@ it('owns unknown text, images and files across screen teardown, retry and a late
     drafts: ReturnType<typeof useMobileNativeChatDrafts> & { composerText: string }
     files: ReturnType<typeof useMobileNativeChatFileAttachments>
     images: Hook
-    addImage: ReturnType<typeof useMobileDraftAttachments<'images'>>[1]
-    addFile: ReturnType<typeof useMobileDraftAttachments<'files'>>[1]
+    addImage: typeof updateImages
+    addFile: typeof updateFiles
   }
   function Full({ tab }: { tab: string }): null {
     const scope = `h\0w\0${tab}`
@@ -127,8 +148,8 @@ it('owns unknown text, images and files across screen teardown, retry and a late
       drafts: { ...drafts, composerText: useMobileNativeChatDraft(drafts.draftKey) },
       files,
       images,
-      addImage: useMobileDraftAttachments(scope, 'images')[1],
-      addFile: useMobileDraftAttachments(scope, 'files')[1]
+      addImage: updateImages,
+      addFile: updateFiles
     }
     return null
   }
@@ -196,7 +217,7 @@ it('owns unknown text, images and files across screen teardown, retry and a late
 })
 
 it.each([100, 1000])(
-  'isolates real text/image/file leaves across %i scopes while counting global wake work separately',
+  'isolates real text/image/file leaves across %i scopes while counting text and scoped input wake work',
   async (population) => {
     const scopes = Array.from({ length: population }, (_, index) =>
       index === 2 ? 'other-host\0w\0tab-0' : `h\0w\0tab-${index}`
@@ -225,21 +246,11 @@ it.each([100, 1000])(
     const renders = scopes.map(() => ({ text: 0, images: 0, files: 0 }))
     const removeImages: Hook['removeAttachment'][] = []
     const removeFiles: ReturnType<typeof useMobileNativeChatFileAttachments>['removeFiles'][] = []
-    let seedImages!: ReturnType<typeof useMobileDraftAttachments<'images'>>[1]
-    let seedFiles!: ReturnType<typeof useMobileDraftAttachments<'files'>>[1]
-    function Seed(): null {
-      seedImages = useMobileDraftAttachments(null, 'images')[1]
-      seedFiles = useMobileDraftAttachments(null, 'files')[1]
-      return null
-    }
-    await act(async () => {
-      renderer = create(createElement(Seed))
-    })
     act(() => {
       for (const [index, scope] of scopes.entries()) {
         setMobileNativeChatDraftText(scope, expected[index].text)
-        seedImages(scope, () => expected[index].images)
-        seedFiles(scope, () => expected[index].files)
+        updateImages(scope, () => expected[index].images)
+        updateFiles(scope, () => expected[index].files)
       }
       renderer?.unmount()
     })
@@ -300,7 +311,7 @@ it.each([100, 1000])(
       )
     })
     expect(shown).toEqual(expected)
-    const listeners = population * 3
+    const listeners = population * 4
     expect(subscriptionWork.active).toBe(listeners)
     const measurements: object[] = []
     for (const target of [0, 1, 2]) {
@@ -334,9 +345,10 @@ it.each([100, 1000])(
             }
           }
         }
-        expect(subscriptionWork.wakes).toBe(listeners)
-        expect(subscriptionWork.snapshots).toBeGreaterThanOrEqual(listeners)
-        expect(subscriptionWork.snapshots).toBeLessThanOrEqual(2 * listeners)
+        const wakes = kind === 'text' ? population : 3
+        expect(subscriptionWork.wakes).toBe(wakes)
+        expect(subscriptionWork.snapshots).toBeGreaterThanOrEqual(wakes)
+        expect(subscriptionWork.snapshots).toBeLessThanOrEqual((kind === 'text' ? 2 : 3) * wakes)
         measurements.push({
           target,
           kind,

@@ -50,9 +50,11 @@ export function useNativeChatComposerHandle(
   useImperativeHandle(
     ref,
     () => ({
+      isComposing,
       focus,
       resend: args.resend,
       insertTypedText,
+      insertPastedText: insertPastedTextOrFile,
       acceptsText,
       appendText,
       handlePasteEvent,
@@ -60,9 +62,11 @@ export function useNativeChatComposerHandle(
       contains
     }),
     [
+      isComposing,
       focus,
       args.resend,
       insertTypedText,
+      insertPastedTextOrFile,
       acceptsText,
       appendText,
       handlePasteEvent,
