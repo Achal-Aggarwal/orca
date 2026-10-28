@@ -3,6 +3,7 @@ import React, { useCallback, useLayoutEffect, useRef } from 'react'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-diagnostics'
 import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
+import { isEditableTarget } from '@/lib/editable-target'
 import {
   afterPointerGestureEnds,
   isEventTargetInsideCurrentTarget,
@@ -137,6 +138,8 @@ export function useWorktreeCardActivationActions({
         !isEventTargetInsideCurrentTarget(event.currentTarget, event.target) ||
         isSidebarPointerDragBlocked(event.target, event.currentTarget) ||
         isSelectableTextTarget(event.target) ||
+        // The press prevents mousedown's focus move, so an open edit would keep the keystrokes.
+        isEditableTarget(document.activeElement) ||
         !canActivateWorktreeOnPress({
           worktreeId: worktree.id,
           rowHostId: worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined)

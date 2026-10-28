@@ -22,7 +22,9 @@ describe('press activation hosts', () => {
       sleepingAgentSessionsByPaneKey: {},
       folderWorkspaces: [],
       projectGroups: [],
-      repos: [LOCAL_REPO]
+      repos: [LOCAL_REPO],
+      tabsByWorktree: { [WORKTREE_ID]: [{ id: 'tab-1' }] },
+      ptyIdsByTabId: { 'tab-1': ['pty-1'] }
     }
   })
 
@@ -35,6 +37,11 @@ describe('press activation hosts', () => {
 
   it('keeps click activation for a local row whose id also names a remote twin', () => {
     state = { ...state, repos: [WSL_TWIN_REPO, LOCAL_REPO] }
+    expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(false)
+  })
+
+  it('keeps click activation when a terminal would respawn', () => {
+    state = { ...state, ptyIdsByTabId: { 'tab-1': [] } }
     expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(false)
   })
 })

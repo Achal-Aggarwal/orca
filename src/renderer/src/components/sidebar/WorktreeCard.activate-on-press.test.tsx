@@ -36,6 +36,8 @@ vi.mock('@/store', () => {
     settings: { experimentalNewWorktreeCardStyle: true },
     sshConnectionStates: new Map(),
     sleepingAgentSessionsByPaneKey: {},
+    tabsByWorktree: {},
+    ptyIdsByTabId: {},
     sshTargetLabels: new Map(),
     updateWorktreeMeta,
     workspacePortScan: null,
@@ -191,6 +193,15 @@ describe('WorktreeCard press activation', () => {
     press(surface)
     click(surface, 0)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(2)
+  })
+
+  it('waits for the click while a text field has focus', async () => {
+    const surface = await renderCard({ activateOnPress: true })
+    const input = document.body.appendChild(document.createElement('input'))
+    input.focus()
+    press(surface)
+    expect(activateWorktreeFromSidebar).not.toHaveBeenCalled()
+    input.remove()
   })
 
   it('waits for the click before waking a sleeping workspace', async () => {
