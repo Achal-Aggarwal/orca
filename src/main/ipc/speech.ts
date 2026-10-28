@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, systemPreferences } from 'electron'
+import { abortWhenRendererGone } from './renderer-lifetime-abort'
 import { join } from 'node:path'
 import { writeFile, unlink } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
@@ -84,6 +85,23 @@ export function registerSpeechHandlers(store: Store): void {
     return join(getSpeechModelManager(store).getModelsDir(), `speech-hotwords-${digest}.txt`)
   }
 
+  const hotwordFileUsers = new Map<string, { users: number; written: boolean }>()
+  const retainHotwordsFile = (path: string): ((written: boolean) => void) => {
+    const entry = hotwordFileUsers.get(path) ?? { users: 0, written: false }
+    entry.users += 1
+    hotwordFileUsers.set(path, entry)
+    return (written) => {
+      entry.written ||= written
+      entry.users -= 1
+      if (entry.users === 0) {
+        hotwordFileUsers.delete(path)
+        if (entry.written) {
+          unlink(path).catch(() => {})
+        }
+      }
+    }
+  }
+
   const getDesktopOwner = (senderId: number, sessionId: string): string =>
     `desktop:${senderId}:${sessionId}`
 
@@ -97,31 +115,30 @@ export function registerSpeechHandlers(store: Store): void {
         return
       }
       let resolvedHotwordsPath: string | undefined
-      let windowClosed = false
+      let releaseHotwords: ((written: boolean) => void) | undefined
+      let rendererRetired = false
+      const rendererLifetime = abortWhenRendererGone(event.sender)
       const senderId = event.sender.id
       const owner = getDesktopOwner(senderId, sessionId)
       let sessionListenerRemoved = false
       let sessionReady = false
-      const cleanupOnWindowClosed = (): void => {
-        windowClosed = true
+      const cleanupOnRendererGone = (): void => {
+        rendererRetired = true
         cleanupSessionListener()
         void getSpeechSttService(store)
-          .stopDictation(owner)
-          .finally(() => {
-            if (resolvedHotwordsPath) {
-              unlink(resolvedHotwordsPath).catch(() => {})
-            }
-          })
+          .stopDictation(owner, { discard: true })
           .catch(() => {})
       }
       const cleanupSessionListener = (): void => {
         sessionListenerRemoved = true
-        window.off('closed', cleanupOnWindowClosed)
+        window.off('closed', cleanupOnRendererGone)
+        rendererLifetime.dispose()
         if (dictationListeners.get(senderId)?.cleanup === cleanupSessionListener) {
           dictationListeners.delete(senderId)
         }
       }
-      window.once('closed', cleanupOnWindowClosed)
+      window.once('closed', cleanupOnRendererGone)
+      rendererLifetime.signal.addEventListener('abort', cleanupOnRendererGone, { once: true })
 
       try {
         // macOS can return silent microphone streams without TCC permission; request it before capture.
@@ -142,15 +159,13 @@ export function registerSpeechHandlers(store: Store): void {
         if (hotwords && hotwords.length > 0) {
           const content = `${hotwords.map((w) => `${w} :2.0`).join('\n')}\n`
           const hotwordsFilePath = getHotwordsFilePath(content)
+          releaseHotwords = retainHotwordsFile(hotwordsFilePath)
           await writeFile(hotwordsFilePath, content, 'utf-8')
           resolvedHotwordsPath = hotwordsFilePath
         }
 
-        if (windowClosed || window.isDestroyed()) {
+        if (rendererRetired || window.isDestroyed()) {
           cleanupSessionListener()
-          if (resolvedHotwordsPath) {
-            unlink(resolvedHotwordsPath).catch(() => {})
-          }
           return
         }
 
@@ -160,7 +175,7 @@ export function registerSpeechHandlers(store: Store): void {
             if (msg.type === 'ready') {
               sessionReady = true
             }
-            if (window.isDestroyed()) {
+            if (rendererRetired || window.isDestroyed()) {
               return
             }
             switch (msg.type) {
@@ -198,15 +213,11 @@ export function registerSpeechHandlers(store: Store): void {
         } else {
           cleanupSessionListener()
         }
-        if (resolvedHotwordsPath) {
-          unlink(resolvedHotwordsPath).catch(() => {})
-        }
       } catch (err) {
         cleanupSessionListener()
-        if (resolvedHotwordsPath) {
-          unlink(resolvedHotwordsPath).catch(() => {})
-        }
         throw err
+      } finally {
+        releaseHotwords?.(resolvedHotwordsPath !== undefined)
       }
     }
   )
