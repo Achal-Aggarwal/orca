@@ -18,10 +18,17 @@ import { runProcess } from '@orca/process-host'
 import { preflightOrcadNativeRuntime } from './orcad-runtime-native-preflight'
 import { orcadCompileCacheEnv } from './orcad-compile-cache'
 import {
+  consumeOrcadStartupQualification,
+  orcadStartupQualificationKey,
+  recordOrcadStartupQualification
+} from './orcad-startup-qualification'
+import {
   isRunningAsBundledOrcadRuntime,
   OrcadBundledRuntimeError,
   resolveBundledOrcadSlot
 } from './orcad-bundled-runtime'
+
+let pendingQualification: { directory: string; key: string } | null = null
 
 /** Qualify packaged startup before touching profile indexes, data-root locks or imports. */
 export async function preflightBundledOrcadStartup(): Promise<void> {
@@ -30,6 +37,11 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
     return
   }
   const identity = await readInstalledVersion(directory)
+  const key = await orcadStartupQualificationKey(directory, identity).catch(() => null)
+  if (key && (await consumeOrcadStartupQualification(directory, key))) {
+    pendingQualification = { directory, key }
+    return
+  }
   const nonce = randomUUID()
   // Keep disposable SQLite ownership and native state out of the serving process.
   const result = await runProcess({
@@ -51,6 +63,16 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
     throw new OrcadBundledRuntimeError('The bundled runtime returned invalid readiness identity', {
       cause
     })
+  }
+  pendingQualification = key ? { directory, key } : null
+}
+
+/** Call once readiness is published: only a launch that got there lets the next one skip. */
+export async function confirmBundledOrcadStartupQualified(): Promise<void> {
+  const qualified = pendingQualification
+  pendingQualification = null
+  if (qualified) {
+    await recordOrcadStartupQualification(qualified.directory, qualified.key)
   }
 }
 
