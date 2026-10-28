@@ -23,6 +23,7 @@ export type RichMarkdownSearchStats = { segmentVisits: number }
 type RichMarkdownSearchState = {
   activeIndex: number
   decorations: DecorationSet
+  matches: RichMarkdownSearchMatch[] | null
   query: string
 }
 
@@ -131,6 +132,7 @@ export function createRichMarkdownSearchPlugin(): Plugin<RichMarkdownSearchState
       init: () => ({
         activeIndex: -1,
         decorations: DecorationSet.empty,
+        matches: null,
         query: ''
       }),
       apply: (tr, pluginState) => {
@@ -142,15 +144,44 @@ export function createRichMarkdownSearchPlugin(): Plugin<RichMarkdownSearchState
           return {
             activeIndex: -1,
             decorations: DecorationSet.empty,
+            matches: null,
             query: ''
           }
         }
 
         // Reuse supplied matches; remap decorations during edits until React recomputes, avoiding a second full document walk.
         if (meta) {
+          if (
+            !tr.docChanged &&
+            query === pluginState.query &&
+            meta.matches === pluginState.matches
+          ) {
+            if (activeIndex === pluginState.activeIndex) {
+              return pluginState
+            }
+            const changedIndices = [pluginState.activeIndex, activeIndex]
+            let decorations = pluginState.decorations
+            const additions: Decoration[] = []
+            for (const index of changedIndices) {
+              const match = meta.matches[index]
+              if (!match) {
+                continue
+              }
+              decorations = decorations.remove(
+                decorations.find(match.from, match.to, (spec) => spec.searchMatchIndex === index)
+              )
+              additions.push(...buildSearchMatchDecorations(match, index, activeIndex))
+            }
+            return {
+              ...pluginState,
+              activeIndex,
+              decorations: decorations.add(tr.doc, additions)
+            }
+          }
           return {
             activeIndex,
             decorations: buildSearchDecorationsFromMatches(tr.doc, meta.matches, activeIndex),
+            matches: meta.matches,
             query
           }
         }
@@ -159,6 +190,7 @@ export function createRichMarkdownSearchPlugin(): Plugin<RichMarkdownSearchState
           return {
             activeIndex: pluginState.activeIndex,
             decorations: pluginState.decorations.map(tr.mapping, tr.doc),
+            matches: null,
             query: pluginState.query
           }
         }
@@ -184,18 +216,27 @@ function buildSearchDecorationsFromMatches(
   }
 
   const decorations = matches.flatMap((match, index) =>
-    (match.decorationRanges ?? [{ from: match.from, to: match.to, kind: 'inline' as const }]).map(
-      (range) => {
-        const attrs = {
-          class: 'rich-markdown-search-match',
-          'data-active': index === activeIndex ? 'true' : undefined
-        }
-        return range.kind === 'node'
-          ? Decoration.node(range.from, range.to, attrs)
-          : Decoration.inline(range.from, range.to, attrs)
-      }
-    )
+    buildSearchMatchDecorations(match, index, activeIndex)
   )
 
   return DecorationSet.create(doc, decorations)
+}
+
+function buildSearchMatchDecorations(
+  match: RichMarkdownSearchMatch,
+  index: number,
+  activeIndex: number
+): Decoration[] {
+  return (
+    match.decorationRanges ?? [{ from: match.from, to: match.to, kind: 'inline' as const }]
+  ).map((range) => {
+    const attrs = {
+      class: 'rich-markdown-search-match',
+      'data-active': index === activeIndex ? 'true' : undefined
+    }
+    const spec = { searchMatchIndex: index }
+    return range.kind === 'node'
+      ? Decoration.node(range.from, range.to, attrs, spec)
+      : Decoration.inline(range.from, range.to, attrs, spec)
+  })
 }
