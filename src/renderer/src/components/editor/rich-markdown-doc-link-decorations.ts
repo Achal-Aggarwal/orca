@@ -138,6 +138,10 @@ function updateIndexedDecorations(
   ranges: DocumentRange[],
   additions: Decoration[]
 ): DecorationSet {
+  const onlyRange = ranges.length === 1 ? ranges[0] : undefined
+  if (onlyRange && onlyRange.from === 0 && onlyRange.to === transaction.doc.content.size) {
+    return DecorationSet.create(transaction.doc, additions)
+  }
   let mapped = decorations.map(transaction.mapping, transaction.doc)
   for (const range of ranges) {
     const stale = mapped
