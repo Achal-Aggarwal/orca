@@ -33,19 +33,20 @@ function isLegacyDesktopSpeechSetupReply(reply: RpcResponse): boolean {
 }
 
 // Headless servers lacked speech from 1.4.229 until #31174; name the required fix.
-export const SPEECHLESS_SERVER_MESSAGE = 'Update Orca on this server to use voice dictation.'
+const SPEECHLESS_SERVER_MESSAGE = 'Update Orca on this server to use voice dictation.'
 
-export function isSpeechlessServerError(message: string): boolean {
+function isSpeechlessServerError(message: string): boolean {
   return message.startsWith('speech_unavailable')
 }
 
-// The host has one speech model, so one dictation runs at a time across the computer and every phone.
+const DICTATION_SESSION_LOST_MESSAGE = 'Dictation lost its connection to the computer. Try again.'
 const HOST_DICTATION_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  // The host has one speech model, so one dictation runs at a time across the computer and every phone.
   dictation_already_active: 'Dictation is already in use on the computer or another phone.',
   dictation_requires_mobile_client: 'Re-pair this phone with the computer to use dictation.',
-  dictation_owner_mismatch: 'Dictation lost its connection to the computer. Try again.',
-  dictation_stream_not_started: 'Dictation lost its connection to the computer. Try again.',
-  dictation_stream_closing: 'Dictation lost its connection to the computer. Try again.'
+  dictation_owner_mismatch: DICTATION_SESSION_LOST_MESSAGE,
+  dictation_stream_not_started: DICTATION_SESSION_LOST_MESSAGE,
+  dictation_stream_closing: DICTATION_SESSION_LOST_MESSAGE
 }
 
 export function dictationFailureMessage(message: string): string {
