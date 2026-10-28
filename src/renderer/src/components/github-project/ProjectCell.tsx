@@ -101,18 +101,23 @@ export default function ProjectCell({
       return <span className="text-xs text-muted-foreground" />
     }
     const labels = linked.pullRequests.map((pr) => `#${pr.number}`)
-    const overflow =
-      linked.totalCount > linked.pullRequests.length
-        ? ` ${translate(
-            'auto.components.github.project.ProjectCell.linkedPullRequestsOverflow',
-            '+{{count}} more',
-            { count: linked.totalCount - linked.pullRequests.length }
-          )}`
-        : ''
+    const overflow = linked.totalCount - linked.pullRequests.length
+    // Only the numbers truncate, so "+N more" stays visible in narrow columns.
     return (
-      <span className="min-w-0 self-center truncate text-xs text-muted-foreground">
-        {labels.join(', ')}
-        {overflow}
+      <span className="flex min-w-0 items-center gap-1 self-center text-xs text-muted-foreground">
+        <span className="truncate">{labels.join(', ')}</span>
+        {overflow > 0 ? (
+          <>
+            {' '}
+            <span className="shrink-0">
+              {translate(
+                'auto.components.github.project.ProjectCell.linkedPullRequestsOverflow',
+                '+{{count}} more',
+                { count: overflow }
+              )}
+            </span>
+          </>
+        ) : null}
       </span>
     )
   }
