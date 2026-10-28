@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { Editor } from '@tiptap/react'
 import type * as EditorInstance from './useRichMarkdownEditorInstance'
 import RichMarkdownEditor from './RichMarkdownEditor'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const live = vi.hoisted((): { editor: Editor | null } => ({ editor: null }))
 vi.mock('./useRichMarkdownEditorInstance', async (importOriginal) => {
@@ -48,18 +49,20 @@ it.each(['outside', 'null', 'inside'] as const)(
     })
     const onContentChange = vi.fn()
     const view = render(
-      <RichMarkdownEditor
-        fileId="focus-file"
-        viewStateId="focus-view"
-        content="base"
-        filePath="/repo/focus.md"
-        worktreeId="focus-workspace"
-        scrollCacheKey="focus-file"
-        onContentChange={onContentChange}
-        onDirtyStateHint={() => {}}
-        onSave={() => {}}
-        headerSlot={<input aria-label="inside" />}
-      />
+      <TooltipProvider>
+        <RichMarkdownEditor
+          fileId="focus-file"
+          viewStateId="focus-view"
+          content="base"
+          filePath="/repo/focus.md"
+          worktreeId="focus-workspace"
+          scrollCacheKey="focus-file"
+          onContentChange={onContentChange}
+          onDirtyStateHint={() => {}}
+          onSave={() => {}}
+          headerSlot={<input aria-label="inside" />}
+        />
+      </TooltipProvider>
     )
     await act(async () => {})
     const editor = live.editor
