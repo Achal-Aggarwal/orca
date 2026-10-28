@@ -177,9 +177,11 @@ function replacementSnapshots(
     snapshots.push(
       new Proxy(doc, {
         get(target, property, receiver) {
-          return property === 'content'
-            ? materialize().content
-            : Reflect.get(target, property, receiver)
+          if (property === 'content') {
+            return materialize().content
+          }
+          // oxlint-disable-next-line anti-slop/no-reflect-get -- Forward Node accessors with the snapshot proxy receiver.
+          return Reflect.get(target, property, receiver)
         },
         getOwnPropertyDescriptor(target, property) {
           const descriptor = Reflect.getOwnPropertyDescriptor(target, property)
