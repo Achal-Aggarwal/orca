@@ -14,6 +14,8 @@ import { getRemoteHostPlatform, type RemoteHostPlatform } from './ssh-remote-pla
 import { powerShellCommand } from './ssh-remote-powershell'
 
 const PLATFORM_PROBE_MARKER = '__ORCA_REMOTE_PLATFORM__'
+/** The probe's marker-backed line starts with this. */
+export const UNAME_PLATFORM_PROBE_MARKER = `${PLATFORM_PROBE_MARKER} `
 const MAX_UNAME_FIELD_CHARS = 64
 const MAX_THROWN_OUTPUT_CHARS = 200
 const MAX_LOGGED_OUTPUT_CHARS = 1000

@@ -24,12 +24,16 @@ const mocks = vi.hoisted(() => {
 vi.mock('../ssh/remote-exec/remote-exec-command', () => ({
   execCommand: vi.fn(
     async (_conn: unknown, command: string, options?: { signal?: AbortSignal }) => {
-      const label = command.includes('uname -r') ? 'host-facts' : command
+      const label =
+        command === 'uname -r' ? command : command.includes('uname -r') ? 'host-facts' : command
       if (options?.signal?.aborted) {
         mocks.refused.push(label)
         throw options.signal.reason
       }
       mocks.spawned.push(label)
+      if (label === 'uname -r') {
+        return `${mocks.facts.includes('-Microsoft') ? '4.4.0-19041-Microsoft' : '5.15.167.4-microsoft-standard-WSL2'}\n`
+      }
       return label === 'host-facts' ? mocks.facts : ''
     }
   )
@@ -56,7 +60,13 @@ vi.mock('../managed-server/install/orcad-remote-context', async () => {
   }
 })
 
-import { holdWslDistroWithContext, isWsl1KernelRelease } from './wsl-orcad-held-context'
+import { runProcess } from '@orca/process-host'
+import {
+  holdWslDistroWithContext,
+  isWsl1KernelRelease,
+  readWslHostFacts,
+  WSL_HOST_FACTS_COMMAND
+} from './wsl-orcad-held-context'
 
 const target: WslOrcadHostTarget = { kind: 'wsl', id: 'wsl:u', distro: 'U', label: 'U' }
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every host call is mocked at its module.
@@ -75,12 +85,16 @@ function holderRejectingOn(gate: Promise<void>): WslDistroHolder {
   }
 }
 
+/** What WSL_HOST_FACTS_COMMAND prints. */
+function facts(kernel: string, home: string, uname: string): string {
+  return `__ORCA_WSL_KERNEL__ ${kernel}\n__ORCA_WSL_HOME__ ${home}\n\n__ORCA_REMOTE_PLATFORM__ ${uname}\n`
+}
+
 beforeEach(() => {
   mocks.spawned.length = 0
   mocks.refused.length = 0
   mocks.probeStep = null
-  mocks.facts =
-    '5.15.167.4-microsoft-standard-WSL2\n/home/u\n\n__ORCA_REMOTE_PLATFORM__ Linux x86_64\n'
+  mocks.facts = facts('5.15.167.4-microsoft-standard-WSL2', '/home/u', 'Linux x86_64')
   mocks.contextArgs = []
 })
 
@@ -183,15 +197,31 @@ describe('the folded host facts probe', () => {
   })
 
   it('leaves the context to probe what the facts did not prove', async () => {
+    await resolveWith(facts('5.15.167.4-microsoft-standard-WSL2', '', 'Linux sparc'))
+
+    expect(mocks.contextArgs).toEqual([undefined, undefined])
+    expect(mocks.spawned[0]).toBe('host-facts')
+    expect(mocks.spawned).not.toContain('uname -r')
+  })
+
+  it('falls back to the separate probes for a HOME with a newline, never a truncated path', async () => {
+    await resolveWith(facts('5.15.167.4-microsoft-standard-WSL2', '/home/a\nb', 'Linux x86_64'))
+
+    expect(mocks.contextArgs).toEqual([undefined, undefined])
+    expect(mocks.spawned.slice(0, 2)).toEqual(['host-facts', 'uname -r'])
+  })
+
+  it('falls back without throwing when stdout noise precedes the facts', async () => {
     await resolveWith(
-      '5.15.167.4-microsoft-standard-WSL2\n\n\n__ORCA_REMOTE_PLATFORM__ Linux sparc\n'
+      `Welcome to Ubuntu\n${facts('5.15.167.4-microsoft-standard-WSL2', '/home/u', 'Linux x86_64')}`
     )
 
     expect(mocks.contextArgs).toEqual([undefined, undefined])
+    expect(mocks.spawned.slice(0, 2)).toEqual(['host-facts', 'uname -r'])
   })
 
   it('refuses WSL 1 from the kernel line before holding or probing', async () => {
-    mocks.facts = '4.4.0-19041-Microsoft\n/home/u\n\n__ORCA_REMOTE_PLATFORM__ Linux x86_64\n'
+    mocks.facts = facts('4.4.0-19041-Microsoft', '/home/u', 'Linux x86_64')
     const holder = heldNow()
 
     await expect(
@@ -201,6 +231,22 @@ describe('the folded host facts probe', () => {
     })
     expect(holder.ensureHeld).not.toHaveBeenCalled()
     expect(mocks.spawned).toEqual(['host-facts'])
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('WSL_HOST_FACTS_COMMAND under a real sh', () => {
+  it('prints exactly the shape readWslHostFacts accepts', async () => {
+    const result = await runProcess({
+      program: 'sh',
+      args: ['-c', WSL_HOST_FACTS_COMMAND],
+      env: { ...process.env, HOME: '/home/orca user' },
+      timeoutMs: 10_000
+    })
+
+    expect(readWslHostFacts(result.stdout)).toMatchObject({
+      kernel: expect.stringMatching(/\S/),
+      loginHome: '/home/orca user'
+    })
   })
 })
 
