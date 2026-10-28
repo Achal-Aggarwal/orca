@@ -1,4 +1,8 @@
-import type { BridgeTerminalToolbar, BridgeTerminalKeyRail } from './bridge/bridge-terminal-key'
+import type {
+  BridgeTerminalKeyId,
+  BridgeTerminalToolbar,
+  BridgeTerminalKeyRail
+} from './bridge/bridge-terminal-key'
 import type { BridgePageGeometry } from './bridge/bridge-page-geometry'
 import type { TerminalBacklogEnd, TerminalBacklogTimers } from './bridge-terminal-output-backlog'
 import type { RpcClient } from '../transport/rpc-client'
@@ -123,4 +127,32 @@ export type BridgeHostOptions = {
   onBinaryFramesDropped?: (total: number) => void
   // Inject timers for tests so they exercise the shipped silence bound without waiting twenty seconds per case.
   terminalTimers?: TerminalBacklogTimers
+}
+
+export type BridgeHost = {
+  publishStorage: () => void
+  receive: (json: string) => void
+  // Hold same-screen param updates even when posting fails; repair from the next ready without delivery tracking. Different pathnames require remount; the page clears consumed params (rulings 33.1/34).
+  publishRoute: (next: BridgeInitRoute) => void
+  publishSafeAreaInsets: (next: BridgeSafeAreaInsets) => void
+  publishKeyboardInset: (next: number) => void
+  /** Hands this session a moved fold over the same re-sent `init`. */
+  publishPageGeometry: (next: BridgePageGeometry) => void
+  publishFoldDivision: (next: BridgeFoldDivision | null) => void
+  /** Tells this session the shell's key rail shows or hides, over the same re-sent `init`. */
+  publishTerminalKeyRail: (next: BridgeTerminalKeyRail) => void
+  publishColorScheme: (next: BridgeColorScheme) => void
+  /**
+   * Hands the page one press on the key rail. False when this session was not granted the rail,
+   * which is every page older than it, or when no document holds the view.
+   */
+  sendTerminalKey: (key: BridgeTerminalKeyId, inputOwner?: string) => boolean
+  /**
+   * Hands the page one Back press. False when this document never said it takes one, which is
+   * every page older than the frame; the caller then leaves the key to the navigator.
+   */
+  sendBack: () => boolean
+  // Transfer the session’s Back state on client-driven host rebuild; the mounted page never reclaims it. Ending sessions simply discard it.
+  readSessionBack: () => BridgeSessionBack
+  dispose: () => void
 }

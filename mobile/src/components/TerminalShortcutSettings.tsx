@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  AppState,
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Switch,
-  type AppStateStatus
-} from 'react-native'
+import { AppState, View, Text, Pressable, Switch, type AppStateStatus } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import { ChevronRight, X } from 'lucide-react-native'
 import type Animated from 'react-native-reanimated'
@@ -17,8 +9,8 @@ import { CustomKeyModal } from './CustomKeyModal'
 import { loadCustomKeys, saveCustomKeys, type CustomKey } from '../terminal/terminal-custom-keys'
 import { DragReorderList } from './DragReorderList'
 import { useSerializedStoredState } from '../storage/use-serialized-stored-state'
-import { colors, radii, spacing, typography } from '../theme/mobile-theme'
-import { themedStyleSheet } from '../theme/themed-styles'
+import { colors } from '../theme/mobile-theme'
+import { styles } from './terminal-shortcut-settings-styles'
 import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import {
   TERMINAL_ACCESSORY_KEYS,
@@ -180,30 +172,34 @@ export function TerminalShortcutSettings({
 
   return (
     <>
-      <Text style={[styles.groupHeading, styles.groupTopGap]}>DIRECTION PAD</Text>
-      <View style={[styles.section, styles.sectionTopGap]}>
-        <View style={styles.row}>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowLabel}>Show D-pad</Text>
-            <Text style={styles.rowSublabel}>
-              Pin the direction pad in the side rail. Arrow shortcuts below are independent.
-            </Text>
+      {hasPad ? (
+        <>
+          <Text style={[styles.groupHeading, styles.groupTopGap]}>DIRECTION PAD</Text>
+          <View style={[styles.section, styles.sectionTopGap]}>
+            <View style={styles.row}>
+              <View style={styles.rowContent}>
+                <Text style={styles.rowLabel}>Show D-pad</Text>
+                <Text style={styles.rowSublabel}>
+                  Pin the direction pad in the side rail. Arrow shortcuts below are independent.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Show D-pad"
+                value={shortcutLayout.directionPadEnabled !== false}
+                onValueChange={(enabled) =>
+                  setShortcutLayout((current) => {
+                    const next = { ...current, directionPadEnabled: enabled }
+                    persistLayout(next)
+                    return next
+                  })
+                }
+                trackColor={{ false: colors.borderSubtle, true: colors.textSecondary }}
+                thumbColor={colors.textPrimary}
+              />
+            </View>
           </View>
-          <Switch
-            accessibilityLabel="Show D-pad"
-            value={shortcutLayout.directionPadEnabled !== false}
-            onValueChange={(enabled) =>
-              setShortcutLayout((current) => {
-                const next = { ...current, directionPadEnabled: enabled }
-                persistLayout(next)
-                return next
-              })
-            }
-            trackColor={{ false: colors.borderSubtle, true: colors.textSecondary }}
-            thumbColor={colors.textPrimary}
-          />
-        </View>
-      </View>
+        </>
+      ) : null}
       <Text style={[styles.groupHeading, styles.groupTopGap]}>SHORTCUT BAR</Text>
       <Text style={styles.groupDescription}>
         Toggle keys to show or hide them, and hold the grip to drag a key into the order you want on
@@ -321,102 +317,3 @@ export function TerminalShortcutSettings({
     </>
   )
 }
-
-const styles = themedStyleSheet(() => ({
-  groupHeading: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.xs
-  },
-  groupTopGap: {
-    marginTop: spacing.xl
-  },
-  groupDescription: {
-    fontSize: typography.bodySize - 1,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    paddingHorizontal: spacing.xs
-  },
-  section: {
-    backgroundColor: colors.bgPanel,
-    borderRadius: radii.card,
-    overflow: 'hidden'
-  },
-  sectionTopGap: {
-    marginTop: spacing.sm
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 2,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md + 2
-  },
-  rowPressed: {
-    backgroundColor: colors.bgRaised
-  },
-  // Reorder list supplies fixed height/trailing grip; pad content only on left.
-  reorderRowContent: {
-    flex: 1,
-    height: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 2,
-    paddingLeft: spacing.md + 2
-  },
-  rowContent: {
-    flex: 1
-  },
-  rowLabel: {
-    fontSize: typography.bodySize,
-    fontWeight: '500',
-    color: colors.textPrimary
-  },
-  rowSublabel: {
-    fontSize: typography.bodySize - 2,
-    color: colors.textSecondary,
-    marginTop: 2
-  },
-  keycap: {
-    minWidth: 62,
-    alignItems: 'center',
-    backgroundColor: colors.bgRaised,
-    borderRadius: radii.button,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs
-  },
-  keycapText: {
-    color: colors.textSecondary,
-    fontSize: typography.metaSize,
-    fontFamily: typography.monoFamily
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    marginHorizontal: spacing.md
-  },
-  emptyContainer: {
-    padding: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  emptyText: {
-    fontSize: typography.bodySize,
-    color: colors.textSecondary,
-    padding: spacing.md
-  },
-  deleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)'
-  },
-  deleteButtonPressed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)'
-  }
-}))

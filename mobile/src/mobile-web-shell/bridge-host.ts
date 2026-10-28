@@ -10,56 +10,20 @@ import {
   BRIDGE_RPC_ENVELOPE_GRANT,
   readBridgeClientMessage,
   type BridgeClientMessage,
-  type BridgeColorScheme,
-  type BridgeConnectionSnapshot,
-  type BridgeInitRoute
+  type BridgeConnectionSnapshot
 } from './bridge/bridge-envelope'
 import { BridgePageRouteGrantsSchema } from './bridge/bridge-page-route-grants'
 import { createBridgeInitFrame } from './bridge/bridge-init-frame'
 import { splitBridgeReply } from './bridge/bridge-reply-chunking'
 import { createBridgeHostFrames } from './bridge-host-frames'
-import { createBridgeHostBack, type BridgeSessionBack } from './bridge-host-back'
+import { createBridgeHostBack } from './bridge-host-back'
 import { createBridgeNotifyForwarder } from './bridge-host-notify'
 import { createBridgeHostRoute } from './bridge-host-route'
 import { pageStorageForReader } from './page-storage-keys'
-import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
-import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
-import {
-  BRIDGE_TERMINAL_KEY_FRAME,
-  type BridgeTerminalKeyId,
-  type BridgeTerminalKeyRail
-} from './bridge/bridge-terminal-key'
-import type { BridgeHostOptions } from './bridge-host-contract'
+import { BRIDGE_TERMINAL_KEY_FRAME } from './bridge/bridge-terminal-key'
+import type { BridgeHost, BridgeHostOptions } from './bridge-host-contract'
 
-export type { BridgeHostDiagnostic, BridgeHostOptions } from './bridge-host-contract'
-
-export type BridgeHost = {
-  publishStorage: () => void
-  receive: (json: string) => void
-  // Hold same-screen param updates even when posting fails; repair from the next ready without delivery tracking. Different pathnames require remount; the page clears consumed params (rulings 33.1/34).
-  publishRoute: (next: BridgeInitRoute) => void
-  publishSafeAreaInsets: (next: BridgeSafeAreaInsets) => void
-  publishKeyboardInset: (next: number) => void
-  /** Hands this session a moved fold over the same re-sent `init`. */
-  publishPageGeometry: (next: import('./bridge/bridge-page-geometry').BridgePageGeometry) => void
-  publishFoldDivision: (next: BridgeFoldDivision | null) => void
-  /** Tells this session the shell's key rail shows or hides, over the same re-sent `init`. */
-  publishTerminalKeyRail: (next: BridgeTerminalKeyRail) => void
-  publishColorScheme: (next: BridgeColorScheme) => void
-  /**
-   * Hands the page one press on the key rail. False when this session was not granted the rail,
-   * which is every page older than it, or when no document holds the view.
-   */
-  sendTerminalKey: (key: BridgeTerminalKeyId, inputOwner?: string) => boolean
-  /**
-   * Hands the page one Back press. False when this document never said it takes one, which is
-   * every page older than the frame; the caller then leaves the key to the navigator.
-   */
-  sendBack: () => boolean
-  // Transfer the session’s Back state on client-driven host rebuild; the mounted page never reclaims it. Ending sessions simply discard it.
-  readSessionBack: () => BridgeSessionBack
-  dispose: () => void
-}
+export type { BridgeHost, BridgeHostDiagnostic, BridgeHostOptions } from './bridge-host-contract'
 
 // Bind the host structurally to one RPC client; the protocol lets pages name no other host. Native origin checks reject expired sessions, and init caps are enforced here.
 export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
