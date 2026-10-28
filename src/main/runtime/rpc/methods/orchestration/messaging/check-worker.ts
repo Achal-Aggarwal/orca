@@ -1,4 +1,6 @@
 import type { MessageRow, MessageType, OrchestrationDb } from '../../../../orchestration/db'
+import type { MailboxDeliveryBatch } from '../../../../orchestration/db/messages/role-mailbox-delivery'
+import type { MessageWake } from '../../../../runtime-message-waiters'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { formatMessageBanner } from '../../../../orchestration/formatter'
@@ -197,6 +199,20 @@ export async function checkWorkerMailbox(args: {
       : {}
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
   const readPeek = () => db.getUnreadMessages(address, typeFilter)
+  const deliveryResult = (current: MailboxDeliveryBatch | undefined) => ({
+    ...mailboxIdentity,
+    deliveryId: current?.delivery.id ?? null,
+    messages: exposeMessages(current?.messages ?? []),
+    count: current?.messages.length ?? 0,
+    replayed: current?.replayed ?? false,
+    ...(current ? { deliveryAcknowledged: true } : {}),
+    acknowledged: acknowledged?.delivery.id ?? null,
+    timedOut: false,
+    cancelled: false,
+    connectionLost: false,
+    ...formatted(current?.messages ?? [])
+  })
+  // The receipt commits with the take, so --retry-request can always replay a consumed batch.
   const readDelivery = (wakeTypes?: MessageType[]) => {
     if (args.deferDelivery?.()) {
       return undefined
@@ -207,7 +223,8 @@ export async function checkWorkerMailbox(args: {
         mailboxHandle: address,
         consumerGeneration: workerMailbox.generation,
         consumerSource: activeDispatch ? 'dispatch' : 'attachment',
-        wakeTypes
+        wakeTypes,
+        recordTaken: (taken) => args.recordMutationReceipt?.(deliveryResult(taken))
       })
     } catch (error) {
       throw asDispatchFence(error)
@@ -237,22 +254,10 @@ export async function checkWorkerMailbox(args: {
   } else {
     const current = readDelivery(params.wait ? typeFilter : args.wakeTypes)
     if (current || !params.wait) {
-      return {
-        ...mailboxIdentity,
-        deliveryId: current?.delivery.id ?? null,
-        messages: exposeMessages(current?.messages ?? []),
-        count: current?.messages.length ?? 0,
-        replayed: current?.replayed ?? false,
-        ...(current ? { deliveryAcknowledged: true } : {}),
-        acknowledged: acknowledged?.delivery.id ?? null,
-        timedOut: false,
-        cancelled: false,
-        connectionLost: false,
-        ...formatted(current?.messages ?? [])
-      }
+      return deliveryResult(current)
     }
   }
-  const deliveryCursor = db.getDeliveryCursor()
+  const woken: { wake?: MessageWake } = {}
   // Binding can happen during recovery, before run-create/run-use can cancel this wait.
   const waitResult =
     activeDispatch && currentDispatchAssigneeRun(runtime, db, activeDispatch)
@@ -260,7 +265,10 @@ export async function checkWorkerMailbox(args: {
       : await runtime.waitForMessage(address, {
           typeFilter: typeFilter as string[] | undefined,
           timeoutMs: params.timeoutMs ?? undefined,
-          signal
+          signal,
+          onWake: (wake) => {
+            woken.wake = wake
+          }
         })
   await revalidateWorkerMailbox()
   if (readCurrentGeneration() !== workerMailbox.generation) {
@@ -287,17 +295,7 @@ export async function checkWorkerMailbox(args: {
       ...formatted(arrived)
     }
   }
-  const arrived =
-    readDelivery(typeFilter) ??
-    db.getMailboxDeliveryTakenAfter(address, workerMailbox.generation, deliveryCursor)
-  return {
-    ...mailboxIdentity,
-    deliveryId: arrived?.delivery.id ?? null,
-    messages: exposeMessages(arrived?.messages ?? []),
-    count: arrived?.messages.length ?? 0,
-    replayed: arrived?.replayed ?? false,
-    ...(arrived ? { deliveryAcknowledged: true } : {}),
-    acknowledged: acknowledged?.delivery.id ?? null,
-    ...formatted(arrived?.messages ?? [])
-  }
+  const take = () => readDelivery(typeFilter)
+  const key = `${address}:${workerMailbox.generation}`
+  return deliveryResult(woken.wake ? woken.wake.share(key, take) : take())
 }

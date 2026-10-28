@@ -1,4 +1,6 @@
 import type { MessageRow, MessageType, OrchestrationDb } from '../../../../orchestration/db'
+import type { MailboxDeliveryBatch } from '../../../../orchestration/db/messages/role-mailbox-delivery'
+import type { MessageWake } from '../../../../runtime-message-waiters'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { RpcContext } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
@@ -96,6 +98,9 @@ export async function checkRunMailbox(args: {
   try {
     revalidateConsumer()
   } catch (error) {
+    if (pending.consumed) {
+      return pending.result
+    }
     if (pending.acknowledged) {
       return interruptedAcknowledgedCheck(run.id, pending.acknowledged, 'consumer_fenced')
     }
@@ -132,29 +137,36 @@ export async function checkRunMailbox(args: {
       : {})
   })
   const readPeek = () => db.getUnreadRunMailbox(run.id, 100, typeFilter)
-  const readDelivery = (wakeTypes?: MessageType[]) =>
-    db.takeRunDelivery({ runId: run.id, consumerGeneration: generation, wakeTypes })
+  const takenResult = (taken: MailboxDeliveryBatch) => ({
+    runId: run.id,
+    deliveryId: taken.delivery.id,
+    messages: exposeMessages(taken.messages),
+    count: taken.messages.length,
+    replayed: taken.replayed,
+    deliveryAcknowledged: true,
+    acknowledged: acknowledged ?? null,
+    timedOut: false,
+    cancelled: false,
+    connectionLost: false,
+    ...(params.format || params.inject
+      ? { formatted: taken.messages.map(formatMessageBanner).join('\n\n') }
+      : {})
+  })
+  // The receipt commits with the take, so --retry-request can always replay a consumed batch.
+  const takeDelivery = (wakeTypes?: MessageType[]) =>
+    db.takeRunDelivery({
+      runId: run.id,
+      consumerGeneration: generation,
+      wakeTypes,
+      recordTaken: (taken) => args.recordMutationReceipt?.(takenResult(taken))
+    })
   let peeked = params.peek ? readPeek() : []
   if (params.peek && peeked.length > 0) {
     return peekResult(peeked)
   }
-  let current = params.peek ? undefined : readDelivery(params.wait ? typeFilter : undefined)
+  const current = params.peek ? undefined : takeDelivery(params.wait ? typeFilter : undefined)
   if (current) {
-    return {
-      runId: run.id,
-      deliveryId: current.delivery.id,
-      messages: exposeMessages(current.messages),
-      count: current.messages.length,
-      replayed: current.replayed,
-      deliveryAcknowledged: true,
-      acknowledged: acknowledged ?? null,
-      timedOut: false,
-      cancelled: false,
-      connectionLost: false,
-      ...(params.format || params.inject
-        ? { formatted: current.messages.map(formatMessageBanner).join('\n\n') }
-        : {})
-    }
+    return takenResult(current)
   }
   if (!params.wait) {
     if (params.peek) {
@@ -172,11 +184,14 @@ export async function checkRunMailbox(args: {
     }
   }
 
-  const deliveryCursor = db.getDeliveryCursor()
+  const woken: { wake?: MessageWake } = {}
   const waitResult = await runtime.waitForMessage(address, {
     typeFilter: typeFilter as string[] | undefined,
     timeoutMs: params.timeoutMs ?? undefined,
-    signal
+    signal,
+    onWake: (wake) => {
+      woken.wake = wake
+    }
   })
   try {
     revalidateConsumer()
@@ -235,21 +250,19 @@ export async function checkRunMailbox(args: {
     peeked = readPeek()
     return { ...peekResult(peeked), timedOut: false, cancelled: false, connectionLost: false }
   }
-  current =
-    readDelivery(typeFilter) ?? db.getMailboxDeliveryTakenAfter(address, generation, deliveryCursor)
+  const take = () => takeDelivery(typeFilter)
+  const arrived = woken.wake ? woken.wake.share(`${address}:${generation}`, take) : take()
+  if (arrived) {
+    return takenResult(arrived)
+  }
   return {
     runId: run.id,
-    deliveryId: current?.delivery.id ?? null,
-    messages: exposeMessages(current?.messages ?? []),
-    count: current?.messages.length ?? 0,
-    replayed: current?.replayed ?? false,
-    ...(current ? { deliveryAcknowledged: true } : {}),
+    deliveryId: null,
+    messages: [],
+    count: 0,
     acknowledged: acknowledged ?? null,
     timedOut: false,
     cancelled: false,
-    connectionLost: false,
-    ...(params.format && current
-      ? { formatted: current.messages.map(formatMessageBanner).join('\n\n') }
-      : {})
+    connectionLost: false
   }
 }

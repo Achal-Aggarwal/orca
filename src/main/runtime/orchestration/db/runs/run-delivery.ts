@@ -2,6 +2,7 @@ import type { MessageType, MessageRow, RunRow, DeliveryRow } from '../../types'
 import { OrchestrationError } from '../../orchestration-error'
 import { exposeMessageListTimestamps } from '../utc-timestamp'
 import type { OrchestrationDb } from '../orchestration-db'
+import type { MailboxDeliveryBatch } from '../messages/role-mailbox-delivery'
 
 export function requireCurrentConsumer(
   this: OrchestrationDb,
@@ -42,14 +43,10 @@ export function takeRunDelivery(
     runId: string
     consumerGeneration: number
     wakeTypes?: MessageType[]
+    recordTaken?: (batch: MailboxDeliveryBatch) => void
   }
-): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
-  return this.takeMailboxDelivery({
-    runId: params.runId,
-    mailboxHandle: `run:${params.runId}`,
-    consumerGeneration: params.consumerGeneration,
-    wakeTypes: params.wakeTypes
-  })
+): MailboxDeliveryBatch | undefined {
+  return this.takeMailboxDelivery({ ...params, mailboxHandle: `run:${params.runId}` })
 }
 
 export function acknowledgeRunDelivery(

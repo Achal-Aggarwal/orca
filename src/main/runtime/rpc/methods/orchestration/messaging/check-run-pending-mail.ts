@@ -21,7 +21,7 @@ export async function checkRunPendingMail(args: {
   signal: AbortSignal | undefined
   revalidateConsumer: () => void
   recordMutationReceipt: ((receipt: unknown) => void) | undefined
-}): Promise<{ acknowledged?: string; result?: unknown }> {
+}): Promise<{ acknowledged?: string; result?: unknown; consumed?: boolean }> {
   const {
     params,
     runtime,
@@ -110,6 +110,14 @@ export async function checkRunPendingMail(args: {
     try {
       revalidateConsumer()
     } catch (error) {
+      // The batch is already handled and receipted; withholding it would lose it.
+      if (result && 'deliveryAcknowledged' in result && result.deliveryAcknowledged) {
+        return {
+          acknowledged: acknowledged?.delivery.id,
+          result: { ...result, acknowledged: acknowledged?.delivery.id ?? null },
+          consumed: true
+        }
+      }
       if (acknowledged) {
         return {
           acknowledged: acknowledged.delivery.id,
