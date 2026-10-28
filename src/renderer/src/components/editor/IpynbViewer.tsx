@@ -31,6 +31,7 @@ import { useIpynbCellExecution } from './useIpynbCellExecution'
 import { resolveNotebookExecutionHost } from './ipynb-execution-host'
 import { useIpynbScrollRestoration } from './useIpynbScrollRestoration'
 import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
+import { staleViewEditEpoch } from './editor-stale-view-edit'
 
 type IpynbViewerProps = {
   content: string
@@ -100,6 +101,7 @@ export default function IpynbViewer({
   useIpynbScrollRestoration(rootRef, scrollCacheKey, content)
   const saveShortcut = useShortcutKeyDetails('editor.save')
   const fontSize = computeEditorFontSize(13, editorFontZoomLevel)
+  const editEpoch = staleViewEditEpoch(fileId)
 
   const saveNotebook = useCallback(async (): Promise<void> => {
     const latestContent = flushSourceDrafts()
@@ -204,6 +206,7 @@ export default function IpynbViewer({
         ) : (
           notebook.cells.map((cell, index) => {
             const cellKey = getIpynbCellKey(cell, index)
+            const modelKey = JSON.stringify([fileId, scrollCacheKey, cellKey, editEpoch])
             const source = hasIpynbSourceDraft(sourceDrafts, cellKey)
               ? (sourceDrafts[cellKey] ?? '')
               : cell.source
@@ -226,6 +229,8 @@ export default function IpynbViewer({
                 </div>
                 <div className="min-w-0 flex-1">
                   <IpynbCellSource
+                    key={modelKey}
+                    modelKey={modelKey}
                     cell={cell}
                     source={source}
                     active={editingCellKey === cellKey}

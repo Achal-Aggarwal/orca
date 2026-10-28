@@ -107,17 +107,23 @@ function notebookContent(
 function NotebookCells({
   content,
   onContentChange,
-  onDirtyStateHint
+  onDirtyStateHint,
+  fileId = 'external-notebook',
+  viewKey = 'default',
+  editEpoch = 0
 }: {
   content: string
   onContentChange: (content: string) => void
   onDirtyStateHint: (dirty: boolean) => void
+  fileId?: string
+  viewKey?: string
+  editEpoch?: number
 }): React.JSX.Element {
   const notebook = useMemo(() => parseIpynb(content), [content])
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null)
   const editing = useIpynbDocumentEditing({
     content,
-    fileId: 'external-notebook',
+    fileId,
     notebook,
     onContentChange,
     onDirtyStateHint,
@@ -130,6 +136,7 @@ function NotebookCells({
         return (
           <IpynbCellSource
             key={key}
+            modelKey={JSON.stringify([fileId, viewKey, key, editEpoch])}
             cell={cell}
             source={
               hasIpynbSourceDraft(editing.sourceDrafts, key)
@@ -183,6 +190,91 @@ afterEach(() => {
 })
 
 describe('active notebook cell external reload', () => {
+  it('restores undo after whole-view unmount without retaining the disposed model', async () => {
+    const callbacks = {
+      onContentChange: vi.fn<(content: string) => void>(),
+      onDirtyStateHint: vi.fn()
+    }
+    const original = notebookContent([{ id: 'tab-return', source: 'original source' }])
+    const firstView = render(<NotebookCells content={original} {...callbacks} />)
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'original source' }), { button: 0 })
+    const firstModel = activeModel()
+    appendText(firstModel, '!')
+    const edited = callbacks.onContentChange.mock.calls.at(-1)?.[0]
+    expect(edited).toBeDefined()
+    firstView.unmount()
+    expect(firstModel.isDisposed()).toBe(true)
+
+    render(<NotebookCells content={edited ?? ''} {...callbacks} />)
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'original source!' }), { button: 0 })
+    const returnedModel = activeModel()
+    expect(returnedModel).not.toBe(firstModel)
+    callbacks.onDirtyStateHint.mockClear()
+    await act(async () => {
+      await returnedModel.undo()
+    })
+    expect(returnedModel.getValue()).toBe('original source')
+    expect(callbacks.onDirtyStateHint).toHaveBeenCalledOnce()
+    await act(async () => {
+      await returnedModel.redo()
+    })
+    expect(returnedModel.getValue()).toBe('original source!')
+  })
+
+  it.each([{ fileId: 'another-notebook' }, { viewKey: 'another-view' }, { editEpoch: 1 }])(
+    'does not borrow undo from another cell owner: %j',
+    async (owner) => {
+      const callbacks = {
+        onContentChange: vi.fn<(content: string) => void>(),
+        onDirtyStateHint: vi.fn()
+      }
+      const firstView = render(
+        <NotebookCells
+          content={notebookContent([{ id: 'owner-isolation', source: 'original source' }])}
+          {...callbacks}
+        />
+      )
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'original source' }), { button: 0 })
+      appendText(activeModel(), '!')
+      const edited = callbacks.onContentChange.mock.calls.at(-1)?.[0]
+      expect(edited).toBeDefined()
+      firstView.unmount()
+
+      render(<NotebookCells content={edited ?? ''} {...callbacks} {...owner} />)
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'original source!' }), { button: 0 })
+      const otherModel = activeModel()
+      await act(async () => {
+        await otherModel.undo()
+      })
+      expect(otherModel.getValue()).toBe('original source!')
+    }
+  )
+
+  it('drops disposed history when the source changed while the notebook view was absent', async () => {
+    const callbacks = { onContentChange: vi.fn(), onDirtyStateHint: vi.fn() }
+    const firstView = render(
+      <NotebookCells
+        content={notebookContent([{ id: 'absent-reload', source: 'original source' }])}
+        {...callbacks}
+      />
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'original source' }), { button: 0 })
+    appendText(activeModel(), '!')
+    firstView.unmount()
+    render(
+      <NotebookCells
+        content={notebookContent([{ id: 'absent-reload', source: 'new source from disk' }])}
+        {...callbacks}
+      />
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'new source from disk' }), { button: 0 })
+    const returnedModel = activeModel()
+    await act(async () => {
+      await returnedModel.undo()
+    })
+    expect(returnedModel.getValue()).toBe('new source from disk')
+  })
+
   it('retains per-cell undo across activation changes and releases models with their cell owners', async () => {
     const callbacks = { onContentChange: vi.fn(), onDirtyStateHint: vi.fn() }
     const content = notebookContent([

@@ -37,6 +37,7 @@ export function IpynbMarkdownCell({ source }: { source: string }): React.JSX.Ele
 }
 
 type IpynbCellSourceProps = {
+  modelKey: string
   cell: IpynbCell
   source: string
   active: boolean
@@ -148,6 +149,7 @@ function IpynbCodePreview({
 }
 
 function IpynbSourceEditor({
+  modelKey,
   cell,
   source,
   pressedAt,
@@ -184,7 +186,14 @@ function IpynbSourceEditor({
       return
     }
     const { lineHeight, paddingX, paddingY } = CODE_LAYOUT
-    const model = sourceModelRef.current ?? monaco.editor.createModel(source, cell.language)
+    // Named cell models use Monaco's bounded undo restoration after the notebook view unmounts.
+    const model =
+      sourceModelRef.current ??
+      monaco.editor.createModel(
+        source,
+        cell.language,
+        monaco.Uri.from({ scheme: 'vscode-notebook-cell', path: `/${modelKey}` })
+      )
     sourceModelRef.current = model
     const editorInstance = monaco.editor.create(container, {
       dropIntoEditor: { enabled: false },
