@@ -88,3 +88,34 @@ export function planTerminalPrewarmTabMount(args: {
   }
   return admitsRevealTab ? { allowedTabIds, deferredTabIds } : null
 }
+
+export type TerminalPrewarmNarrowing = {
+  allowedTabIds: ReadonlySet<string>
+  deferredTabIds: ReadonlySet<string>
+}
+
+/**
+ * Hand a narrowed live mount back on lease release, but only while the lease still owns it: once
+ * activation or another mount replaced the restriction, the deferred ids belong to that owner.
+ */
+export function undoTerminalPrewarmNarrowing(args: {
+  restrictions: Map<string, ReadonlySet<string>>
+  deferredMountTabIdsByWorktree: Map<string, ReadonlySet<string>>
+  worktreeId: string
+  narrowing: TerminalPrewarmNarrowing
+  isActivated: boolean
+}): void {
+  const { restrictions, deferredMountTabIdsByWorktree, worktreeId, narrowing } = args
+  if (args.isActivated || restrictions.get(worktreeId) !== narrowing.allowedTabIds) {
+    return
+  }
+  restrictions.delete(worktreeId)
+  const remaining = [...(deferredMountTabIdsByWorktree.get(worktreeId) ?? [])].filter(
+    (tabId) => !narrowing.deferredTabIds.has(tabId)
+  )
+  if (remaining.length > 0) {
+    deferredMountTabIdsByWorktree.set(worktreeId, new Set(remaining))
+  } else {
+    deferredMountTabIdsByWorktree.delete(worktreeId)
+  }
+}

@@ -10,7 +10,9 @@ import {
   getTerminalPrewarmWorktrees,
   setHeldTerminalPrewarmWorktrees,
   planTerminalPrewarmTabMount,
-  subscribeTerminalPrewarmWorktrees
+  subscribeTerminalPrewarmWorktrees,
+  undoTerminalPrewarmNarrowing,
+  type TerminalPrewarmNarrowing
 } from './terminal-worktree-prewarm'
 import type { TerminalColdActivationController } from '../terminal-cold-activation'
 import { hasRetainedWorkspaceTerminalFrames } from './terminal-worktree-retained-frames'
@@ -59,10 +61,7 @@ type PrewarmLease = {
   // Hovered leases stay laid out for the press; neighbor-only leases settle hidden once warm.
   hovered: boolean
   /** Set when the lease narrowed a live, unrestricted mount; release hands those panes back. */
-  narrowedLiveMount: {
-    allowedTabIds: ReadonlySet<string>
-    deferredTabIds: ReadonlySet<string>
-  } | null
+  narrowedLiveMount: TerminalPrewarmNarrowing | null
 }
 
 /**
@@ -125,23 +124,17 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     const release = (worktreeId: string, lease: PrewarmLease): void => {
       lease.cancelNextStage?.()
       leases.delete(worktreeId)
-      const narrowed = lease.narrowedLiveMount
-      if (narrowed) {
+      if (lease.narrowedLiveMount) {
         const c = controllerRef.current
-        const restrictions = c.backgroundMountTabIdsByWorktreeRef.current
-        // Only undo our own narrowing; activation or another mount may have replaced it since.
-        if (restrictions.get(worktreeId) === narrowed.allowedTabIds) {
-          restrictions.delete(worktreeId)
-        }
-        const deferred = c.activationDeferredMountTabIdsByWorktreeRef.current
-        const remaining = [...(deferred.get(worktreeId) ?? [])].filter(
-          (tabId) => !narrowed.deferredTabIds.has(tabId)
-        )
-        if (remaining.length > 0) {
-          deferred.set(worktreeId, new Set(remaining))
-        } else {
-          deferred.delete(worktreeId)
-        }
+        undoTerminalPrewarmNarrowing({
+          restrictions: c.backgroundMountTabIdsByWorktreeRef.current,
+          deferredMountTabIdsByWorktree: c.activationDeferredMountTabIdsByWorktreeRef.current,
+          worktreeId,
+          narrowing: lease.narrowedLiveMount,
+          isActivated:
+            c.renderedActiveWorktreeId === worktreeId ||
+            c.lastActivationWorktreeIdRef.current === worktreeId
+        })
       }
       stopMeasuring(worktreeId)
     }
@@ -167,10 +160,12 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
         (tab) => !hasRegisteredRuntimeTerminalTab(tab.id, worktreeId)
       )
       const needsTabPlan = !mounted || restrictions.has(worktreeId) || parked || hasNonLiveTab
-      // Narrowing a live unrestricted mount is temporary (undone on release); it also drops the emulator overlay, so leave simulator workspaces alone.
-      const narrowsLiveMount = mounted && !restrictions.has(worktreeId) && !parked && hasNonLiveTab
+      // Any restriction on an unrestricted mount drops its emulator overlay, so leave simulator workspaces alone.
+      const restrictsUnrestrictedMount = mounted && !restrictions.has(worktreeId) && needsTabPlan
+      // Narrowing a live unrestricted mount is temporary (undone on release).
+      const narrowsLiveMount = restrictsUnrestrictedMount && !parked && hasNonLiveTab
       if (
-        narrowsLiveMount &&
+        restrictsUnrestrictedMount &&
         (state.unifiedTabsByWorktree[worktreeId] ?? []).some(
           (tab) => tab.contentType === 'simulator'
         )
