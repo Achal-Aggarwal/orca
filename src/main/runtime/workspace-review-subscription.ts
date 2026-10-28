@@ -27,6 +27,7 @@ export class WorkspaceReviewSubscription {
   private target?: WorkspaceReviewTarget
   private generation = 0
   private sequence = 0
+  private hasPublished = false
   private lastError?: string
   private released = false
   private timer?: ReturnType<typeof setTimeout>
@@ -57,7 +58,7 @@ export class WorkspaceReviewSubscription {
     this.stopListening = subscribePRRefreshEvents((event) => {
       void this.apply(event).catch(() => {
         this.lastError = 'Review status unavailable'
-        this.publish('updated')
+        this.publish()
       })
     })
     if (signal?.aborted) {
@@ -138,7 +139,7 @@ export class WorkspaceReviewSubscription {
         this.subscriptionId
       )
       this.armExpiry()
-      this.publish(version === 1 ? 'snapshot' : 'updated')
+      this.publish()
       return !this.released
     } catch (error) {
       if (version !== this.generation || this.released) {
@@ -149,7 +150,7 @@ export class WorkspaceReviewSubscription {
     }
   }
 
-  private publish(type: WorktreeReviewStatus['type']): void {
+  private publish(): void {
     if (this.released || !this.target) {
       return
     }
@@ -200,6 +201,8 @@ export class WorkspaceReviewSubscription {
       candidate?.currentHeadOid != null &&
       cachedHead != null &&
       candidate.currentHeadOid !== cachedHead
+    const type = this.hasPublished ? 'updated' : 'snapshot'
+    this.hasPublished = true
     this.send({
       type,
       subscriptionId: this.subscriptionId,
@@ -269,7 +272,7 @@ export class WorkspaceReviewSubscription {
         ++this.generation,
         this.subscriptionId
       )
-      this.publish('updated')
+      this.publish()
       return
     }
     this.target = current
@@ -302,6 +305,6 @@ export class WorkspaceReviewSubscription {
         }
       }
     }
-    this.publish('updated')
+    this.publish()
   }
 }

@@ -129,6 +129,7 @@ describe('workspace review asynchronous ownership', () => {
     const subscription = h.open()
     const older = subscription.renew()
     expect(await subscription.renew()).toBe(true)
+    expect(snapshots(h.frames)).toMatchObject([{ type: 'snapshot', review: null }])
     fail(new Error('old preparation failed'))
     expect(await older).toBe(false)
     expect(h.cleanups.size).toBe(1)
@@ -137,5 +138,45 @@ describe('workspace review asynchronous ownership', () => {
     expect(h.cleanups.size).toBe(0)
     await vi.advanceTimersByTimeAsync(300_000)
     expect(mocks.getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+  })
+
+  it('starts with a snapshot after overlapping preparation and updates cache and target changes', async () => {
+    const h = await harness()
+    const oldTarget = await h.prepare()
+    let finish: (target: WorkspaceReviewTarget) => void = () => {}
+    h.prepare.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    mocks.getPRForBranchOutcomeMock.mockResolvedValue({
+      kind: 'found',
+      pr: makePR({ number: 13 }),
+      fetchedAt: Date.now()
+    })
+    const subscription = h.open()
+    const older = subscription.renew()
+    expect(h.frames).toHaveLength(0)
+    h.candidate = { ...h.candidate, branch: 'replacement', cacheKey: '/repo::replacement' }
+    expect(await subscription.renew()).toBe(true)
+    finish(oldTarget)
+    expect(await older).toBe(false)
+    expect(snapshots(h.frames)).toMatchObject([
+      { type: 'snapshot', branch: 'replacement', review: null }
+    ])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(snapshots(h.frames)).toMatchObject([
+      { type: 'snapshot', branch: 'replacement', review: null },
+      { type: 'updated', branch: 'replacement', review: { number: 13 }, stale: false }
+    ])
+    h.candidate = { ...h.candidate, branch: 'next', cacheKey: '/repo::next' }
+    expect(await subscription.renew()).toBe(true)
+    expect(snapshots(h.frames)).toMatchObject([
+      { type: 'snapshot', branch: 'replacement', review: null },
+      { type: 'updated', branch: 'replacement', review: { number: 13 }, stale: false },
+      { type: 'updated', branch: 'next', review: null }
+    ])
+    subscription.close()
   })
 })
