@@ -10,7 +10,6 @@ import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { CODEX_SCRIPTED_THREAD as THREAD } from '../codex/codex-scripted-child.test-fixture'
 import {
   HOST_TEST_SESSION as SESSION,
-  HOST_TEST_NOW,
   hostTestAttachParams,
   hostTestMessage
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
@@ -142,12 +141,11 @@ async function pipedChat() {
       return connection
     }
   })
-  host.deps.now = () => HOST_TEST_NOW
   const caller = { callerKey: 'codex-stop-evidence' }
   const record = () => host.deps.store.getRecord(SESSION)!
   const envelope = (method: string, fields: Record<string, unknown>) => ({
     sessionId: SESSION,
-    clientOperationId: `${HOST_TEST_NOW}-${(++operation).toString(16).padStart(32, '0')}`,
+    clientOperationId: `${Date.now()}-${(++operation).toString(16).padStart(32, '0')}`,
     expectedRuntimeFence: record().lease.runtimeFence,
     payloadFingerprint: computeAgentSessionPayloadFingerprint({
       method,
@@ -189,7 +187,7 @@ async function pipedChat() {
         providerHandle: undefined,
         accountHome: { variable: 'CODEX_HOME', path: join(directory, 'codex') }
       })
-      params.envelope.clientOperationId = `${HOST_TEST_NOW}-${(++operation).toString(16).padStart(32, '0')}`
+      params.envelope.clientOperationId = `${Date.now()}-${(++operation).toString(16).padStart(32, '0')}`
       const attached = await host.attach(caller, params)
       expect(attached, JSON.stringify(attached)).toMatchObject({ ok: true })
       await vi.waitFor(() =>
