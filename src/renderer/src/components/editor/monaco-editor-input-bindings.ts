@@ -16,6 +16,7 @@ import {
 } from './monaco-markdown-selection-annotation'
 import { handleMonacoLargeTextPaste } from './monaco-large-text-paste'
 import { beginEditorLargePaste } from './editor-large-paste-in-flight'
+import { registerMonacoNativePasteGuardOwner } from './install-monaco-native-paste-limit'
 import type { MarkdownCommentPopoverState } from './use-monaco-markdown-annotations'
 import type { MonacoEditorPropsRef } from './monaco-editor-mount-params'
 
@@ -134,6 +135,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
       }
     })
   }
+  const releaseNativePasteGuard = registerMonacoNativePasteGuardOwner(editorInstance)
   pasteCaptureNode.addEventListener('paste', onLargeTextPaste, { capture: true })
 
   return {
@@ -142,6 +144,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
       cleanupFindShortcut()
       cleanupAddReviewNoteShortcut()
       pasteCaptureNode.removeEventListener('paste', onLargeTextPaste, { capture: true })
+      releaseNativePasteGuard()
       searchInFilesAction.dispose()
     }
   }

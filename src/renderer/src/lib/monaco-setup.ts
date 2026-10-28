@@ -23,6 +23,7 @@ import { installMonacoDelayerCancellationGuard } from './monaco-delayer-cancella
 import { installMonacoDiffEditorDisposalGuard } from './monaco-diff-editor-disposal'
 import { installMonacoPeekReferencesPreviewOptions } from './monaco-peek-preview-options'
 import { installMonacoContextMenuPaste } from '@/components/editor/install-monaco-context-menu-paste'
+import { installMonacoNativePasteLimit } from '@/components/editor/install-monaco-native-paste-limit'
 import { runMonacoSetupSteps } from './monaco-setup-steps'
 import { installMonacoTsWorkerIdleStop } from './monaco-ts-worker-idle-stop'
 
@@ -89,8 +90,13 @@ runMonacoSetupSteps([
 
 loader.config({ monaco })
 
+const unregisterNativePasteLimit = installMonacoNativePasteLimit(
+  monaco.editor,
+  monaco.editor.EditorOption.readOnly
+)
 const unregisterEditorModelRegistry = editorModelRegistry.register(monaco)
 if (import.meta.hot) {
   import.meta.hot.dispose(unregisterEditorModelRegistry)
+  import.meta.hot.dispose(unregisterNativePasteLimit)
 }
 export { monaco }
