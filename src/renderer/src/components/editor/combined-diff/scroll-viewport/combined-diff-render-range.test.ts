@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
+import { defaultRangeExtractor } from '@tanstack/react-virtual'
 import { describe, expect, it, vi } from 'vitest'
 import {
   getCombinedDiffRenderRange,
+  includeFocusedCombinedDiffSection,
   getFocusedCombinedDiffSectionIndex
 } from './combined-diff-render-range'
 
@@ -53,9 +55,23 @@ it.each([100, 1000])(
       const visible = Array.from({ length: 13 }, (_, index) => 35 + index)
       expect(extract()).toEqual([2, ...visible])
       expect(estimate).toHaveBeenCalledTimes(10)
+      expect(
+        includeFocusedCombinedDiffSection(
+          defaultRangeExtractor(range),
+          count,
+          getFocusedCombinedDiffSectionIndex(viewport)
+        )
+      ).toEqual([2, ...visible])
       input.blur()
       estimate.mockClear()
       expect(extract()).toEqual(visible)
+      expect(
+        includeFocusedCombinedDiffSection(
+          defaultRangeExtractor(range),
+          count,
+          getFocusedCombinedDiffSectionIndex(viewport)
+        )
+      ).toEqual(visible)
       expect(estimate).toHaveBeenCalledTimes(10)
     } finally {
       viewport.remove()

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import React, { useLayoutEffect, useRef, useState } from 'react'
-import { act, cleanup, render, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { DiffOnMount } from '@monaco-editor/react'
@@ -20,6 +20,23 @@ import {
   readCombinedDiffViewMemory,
   releaseCombinedDiffView
 } from './combined-diff/remember-view/combined-diff-view-cache'
+
+import {
+  prFilesDiffScrollTopCache,
+  prFilesDiffViewStateCache
+} from '../pull-request-page/cache/files-diff-view'
+import {
+  reviewHostFixture,
+  reviewHostComponents,
+  installReviewHostResizeObserver
+} from './combined-diff-review-host.fixture'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { useCombinedDiffScrollbar } from './combined-diff/scroll-viewport/use-combined-diff-scrollbar'
+import { useCombinedDiffDirectScrollInput } from './combined-diff/scroll-viewport/use-combined-diff-direct-scroll-input'
+import {
+  COMBINED_DIFF_DIRECT_INPUT_EVENT,
+  notifyCombinedDiffDirectInput
+} from './combined-diff-viewport'
 
 // Instrument only the installers' pane reads, excluding Monaco's own geometry/layout work.
 const operations = { bridge: 0, heightReads: 0, publications: 0 }
@@ -120,6 +137,15 @@ vi.mock('@monaco-editor/react', () => ({
       initial.current.onMount(diff, monaco)
       return () => diff.dispose()
     }, [])
+    useLayoutEffect(() => {
+      if (reviewHostFixture.configureViewport && ref.current?.parentElement) {
+        diff.updateOptions(options)
+        diff.layout({
+          width: 1000,
+          height: Number.parseFloat(ref.current.parentElement.style.height)
+        })
+      }
+    })
     return <div ref={ref} />
   }
 }))
@@ -127,37 +153,80 @@ vi.mock('@monaco-editor/react', () => ({
 const disposers: (() => void)[] = []
 afterEach(() => {
   cleanup()
+  prFilesDiffScrollTopCache.clear()
+  prFilesDiffViewStateCache.clear()
   disposers.splice(0).forEach((dispose) => dispose())
   document.body.replaceChildren()
+  reviewHostFixture.configureViewport = undefined
+  reviewHostFixture.virtualizer = undefined
+  reviewHostFixture.navigateTree = undefined
+  reviewHostFixture.toggleSplit = undefined
+  vi.unstubAllGlobals()
 })
 const frame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()))
 
-async function fixture(sideBySide: boolean, rowCount = 100) {
-  const outer = document.createElement('div')
+async function fixture(
+  sideBySide: boolean,
+  rowCount = 100,
+  host: 'worktree' | 'page' | 'dialog' = 'worktree'
+) {
+  const container = document.createElement('div')
+  let outer = document.createElement('div')
   outer.className = 'combined-diff-scroll-container'
-  document.body.append(outer)
-  let scrollTop = 1000
+  outer.setAttribute('data-combined-diff-viewport', '')
+  document.body.append(host === 'worktree' ? outer : container)
+  let scrollTop = host === 'worktree' ? 1000 : 0
   let scrollFrame = 0
   let height = 500
-  Object.defineProperties(outer, {
-    clientHeight: { value: 300 },
-    scrollHeight: { get: () => (rowCount - 1) * 500 + height + 30 },
-    offsetHeight: { value: 300 },
-    offsetWidth: { value: 1000 },
-    scrollTop: {
-      get: () => scrollTop,
-      set: (value: number) => {
-        scrollTop = Math.max(0, Math.min(value, (rowCount - 1) * 500 + height + 30 - 300))
-        cancelAnimationFrame(scrollFrame)
-        scrollFrame = requestAnimationFrame(() => outer.dispatchEvent(new Event('scroll')))
-      }
+  let added = vi.spyOn(outer, 'addEventListener')
+  let removed = vi.spyOn(outer, 'removeEventListener')
+  const totalHeight = () =>
+    host === 'worktree'
+      ? (rowCount - 1) * 500 + height + 30
+      : Number.parseFloat(
+          outer.firstElementChild?.getAttribute('style')?.match(/height: ([\d.]+)px/)?.[1] ??
+            '50000'
+        )
+  const configureViewport = (node: HTMLDivElement) => {
+    if (node === outer && host !== 'worktree') {
+      return
     }
-  })
-  const added = vi.spyOn(outer, 'addEventListener')
-  const removed = vi.spyOn(outer, 'removeEventListener')
-  outer.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 300)
-  outer.getClientRects = () =>
-    Object.assign([outer.getBoundingClientRect()], { item: () => outer.getBoundingClientRect() })
+    outer = node
+    Object.defineProperties(outer, {
+      clientHeight: { value: 300 },
+      scrollHeight: { get: totalHeight },
+      offsetHeight: { value: 300 },
+      offsetWidth: { value: 1000 },
+      scrollTop: {
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = Math.max(0, Math.min(value, totalHeight() - 300))
+          cancelAnimationFrame(scrollFrame)
+          scrollFrame = requestAnimationFrame(() => outer.dispatchEvent(new Event('scroll')))
+        }
+      }
+    })
+    added = vi.spyOn(outer, 'addEventListener')
+    removed = vi.spyOn(outer, 'removeEventListener')
+    outer.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 300)
+    outer.getClientRects = () =>
+      Object.assign([outer.getBoundingClientRect()], { item: () => outer.getBoundingClientRect() })
+  }
+  let deliverResize = () => {}
+  if (host === 'worktree') {
+    configureViewport(outer)
+  } else {
+    reviewHostFixture.configureViewport = configureViewport
+    deliverResize = installReviewHostResizeObserver(() => outer)
+  }
+
+  const lines = Array.from({ length: 300 }, (_, i) => `line ${i} ${'wrapped content '.repeat(20)}`)
+  const originalText = lines.join('\n')
+  lines[10] = 'changed'
+  reviewHostFixture.loadedContents = {
+    originalContent: originalText,
+    modifiedContent: lines.join('\n')
+  }
   const section = {
     key: 'tail',
     path: 'tail.ts',
@@ -222,41 +291,94 @@ async function fixture(sideBySide: boolean, rowCount = 100) {
       </div>
     ) : null
   }
-  const view = render(<Rows />, { container: outer })
-  const header = outer.querySelector<HTMLElement>('[data-combined-diff-section-header]')!
+  const Viewer = host === 'page' ? reviewHostComponents.page : reviewHostComponents.dialog
+  const props = {
+    files: Array.from({ length: rowCount }, (_, index) => ({
+      path: `file-${String(index).padStart(3, '0')}.ts`,
+      status: 'modified' as const,
+      additions: 1,
+      deletions: 1,
+      isBinary: false
+    })),
+    comments: [],
+    repoPath: '/repo',
+    repoId: `reveal-${host}-${sideBySide}`,
+    prNumber: 7,
+    prUrl: 'https://example.test/pr/7',
+    headSha: 'head',
+    baseSha: 'base',
+    pendingViewedPaths: new Set<string>(),
+    onCommentAdded: () => {},
+    onViewedChange: async () => true
+  }
+  const view = render(
+    host === 'worktree' ? (
+      <Rows />
+    ) : (
+      <TooltipProvider>
+        <Viewer {...props} />
+      </TooltipProvider>
+    ),
+    {
+      container: host === 'worktree' ? outer : container
+    }
+  )
+  if (host !== 'worktree') {
+    await vi.waitFor(() =>
+      expect(outer.querySelector('[data-index="2"] .monaco-diff-editor')).not.toBeNull()
+    )
+    if (sideBySide) {
+      act(() => reviewHostFixture.toggleSplit?.())
+    }
+  }
+  const header = outer.querySelector<HTMLElement>(
+    '[data-index="2"] [data-combined-diff-section-header]'
+  )!
   header.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 30)
-  const lines = Array.from({ length: 300 }, (_, i) => `line ${i} ${'wrapped content '.repeat(20)}`)
-  const original = monaco.editor.createModel(lines.join('\n'))
-  lines[10] = 'changed'
-  const modified = monaco.editor.createModel(lines.join('\n'))
+  const original = monaco.editor.createModel(reviewHostFixture.loadedContents.originalContent)
+  const modified = monaco.editor.createModel(reviewHostFixture.loadedContents.modifiedContent)
   disposers.push(() => {
     original.dispose()
     modified.dispose()
   })
+  const editorTop = () =>
+    host === 'worktree'
+      ? 1030
+      : Number.parseFloat(root.closest<HTMLElement>('[data-index]')?.style.top ?? '0') + 30
+  const editorHeight = () =>
+    host === 'worktree' ? height : Number.parseFloat(root.parentElement?.style.height ?? '500')
   for (const pane of [diff.getOriginalEditor(), diff.getModifiedEditor()]) {
     const host = pane.getContainerDomNode()
-    host.getBoundingClientRect = () => new DOMRect(0, 1030 - scrollTop, 500, height)
+    host.getBoundingClientRect = () => new DOMRect(0, editorTop() - scrollTop, 500, editorHeight())
     host.getClientRects = () =>
       Object.assign([host.getBoundingClientRect()], { item: () => host.getBoundingClientRect() })
   }
   const root = diff.getContainerDomNode()
   root.getClientRects = () =>
-    Object.assign([new DOMRect(0, 1030 - scrollTop, 1000, height)], { item: () => null })
+    Object.assign([new DOMRect(0, editorTop() - scrollTop, 1000, editorHeight())], {
+      item: () => null
+    })
   diff.setModel({ original, modified })
   await vi.waitFor(() => expect(diff.getLineChanges()).not.toBeNull())
   disposers.push(() => cancelAnimationFrame(scrollFrame))
   for (let index = 0; index < 4; index++) {
-    await act(frame)
+    await act(async () => {
+      deliverResize()
+      await frame()
+    })
   }
   return {
     outer,
     view,
-    measuredHeight: () => height,
+    measuredHeight: () => (host === 'worktree' ? height : editorHeight() - 19),
     added,
     removed,
     settle: async () => {
       for (let index = 0; index < 4; index++) {
-        await act(frame)
+        await act(async () => {
+          deliverResize()
+          await frame()
+        })
       }
     }
   }
@@ -478,7 +600,7 @@ it.each([100, 1000])('bounds keyboard, extent and disposed work with %i rows', a
   expect(top).toBeGreaterThanOrEqual(30)
   expect(top + cursor.height).toBeLessThanOrEqual(300)
 
-  outer.dispatchEvent(new WheelEvent('wheel'))
+  notifyCombinedDiffDirectInput(outer)
   operations.bridge = 0
   operations.heightReads = 0
   operations.publications = 0
@@ -508,7 +630,13 @@ it.each([100, 1000])('bounds keyboard, extent and disposed work with %i rows', a
   view.unmount()
   await settle()
   outer.dispatchEvent(new WheelEvent('wheel'))
+  notifyCombinedDiffDirectInput(outer)
   expect(operations).toEqual(beforeDispose)
+  const localListener = added.mock.calls.filter(
+    ([type]) => type === COMBINED_DIFF_DIRECT_INPUT_EVENT
+  )
+  expect(localListener).toHaveLength(1)
+  expect(removed).toHaveBeenCalledWith(COMBINED_DIFF_DIRECT_INPUT_EVENT, localListener[0][1])
   for (const type of ['pointerdown', 'wheel', 'touchmove']) {
     const listeners = added.mock.calls.filter(
       ([event, , options]) =>
@@ -520,3 +648,136 @@ it.each([100, 1000])('bounds keyboard, extent and disposed work with %i rows', a
     }
   }
 })
+
+it('yields pending and re-armed reveal to production scrollbar press and captured moves', async () => {
+  const { outer, settle } = await fixture(true)
+  const { result } = renderHook(() => {
+    const scrollContainerRef = useRef(outer)
+    const { markDirectScrollInput } = useCombinedDiffDirectScrollInput(scrollContainerRef)
+    return useCombinedDiffScrollbar({ markDirectScrollInput, scrollContainerRef })
+  })
+  const trackView = render(
+    <div data-testid="track" onPointerDown={result.current.handleScrollbarPointerDown} />
+  )
+  const track = trackView.getByTestId('track')
+  track.getBoundingClientRect = () => new DOMRect(1000, 0, 16, 300)
+  const captured = new Set<number>()
+  track.setPointerCapture = (id) => {
+    captured.add(id)
+  }
+  track.hasPointerCapture = (id) => captured.has(id)
+  track.releasePointerCapture = (id) => {
+    captured.delete(id)
+  }
+  const pane = diff.getModifiedEditor()
+  pane.focus()
+  pane.trigger('keyboard', 'cursorBottom', null)
+  const focused = document.activeElement
+  operations.bridge = 0
+  fireEvent.pointerDown(track, { pointerId: 7, clientY: 40 })
+  const pressed = outer.scrollTop
+  expect(captured.has(7)).toBe(true)
+  expect(document.activeElement).toBe(focused)
+  diff.layout({ width: 999, height: pane.getContentHeight() })
+  await settle()
+  expect(outer.scrollTop).toBe(pressed)
+  expect(operations.bridge).toBe(0)
+  fireEvent.pointerMove(window, { pointerId: 7, clientX: 2000, clientY: 20 })
+  const moved = outer.scrollTop
+  expect(moved).not.toBe(pressed)
+  diff.layout({ width: 998, height: pane.getContentHeight() })
+  await settle()
+  expect(outer.scrollTop).toBe(moved)
+  expect(operations.bridge).toBe(0)
+
+  pane.trigger('keyboard', 'cursorTop', null)
+  expect(operations.bridge).toBeGreaterThan(0)
+  expect(captured.has(7)).toBe(true)
+  fireEvent.pointerMove(window, { pointerId: 7, clientX: 2000, clientY: 60 })
+  const latest = outer.scrollTop
+  operations.bridge = 0
+  diff.layout({ width: 997, height: pane.getContentHeight() })
+  await settle()
+  expect(outer.scrollTop).toBe(latest)
+  expect(operations.bridge).toBe(0)
+  expect(document.activeElement).toBe(focused)
+  fireEvent.pointerUp(window, { pointerId: 7 })
+  expect(captured.size).toBe(0)
+})
+
+const reviewHosts = (['page', 'dialog'] as const).flatMap((host) => [
+  { host, split: true, original: true },
+  { host, split: true, original: false },
+  { host, split: false, original: false }
+])
+it.each(reviewHosts)(
+  'integrates $host visibility, retained tail and tree input (split=$split original=$original)',
+  async ({ host, split, original }) => {
+    const { outer, measuredHeight, settle } = await fixture(split, 100, host)
+    expect(outer.hasAttribute('data-combined-diff-viewport')).toBe(true)
+    expect(outer.classList.contains('scrollbar-editor')).toBe(true)
+    expect(outer.classList.contains('combined-diff-scroll-container')).toBe(false)
+    expect(
+      diff
+        .getContainerDomNode()
+        .querySelector('.monaco-diff-editor')
+        ?.classList.contains('side-by-side')
+    ).toBe(split)
+    const pane = original ? diff.getOriginalEditor() : diff.getModifiedEditor()
+    const mounted = diff
+    const disposed = vi.fn()
+    pane.onDidDispose(disposed)
+    const assertVisible = () => {
+      const cursor = pane.getScrolledVisiblePosition(pane.getPosition()!)!
+      const top = pane.getContainerDomNode().getBoundingClientRect().top + cursor.top
+      expect(top).toBeGreaterThanOrEqual(30)
+      expect(top + cursor.height).toBeLessThanOrEqual(300)
+    }
+    pane.focus()
+    pane.setPosition({ lineNumber: 12, column: 1 })
+    for (let index = 0; index < 30; index++) {
+      pane.trigger('keyboard', 'cursorDown', null)
+    }
+    await settle()
+    assertVisible()
+    pane.setPosition({ lineNumber: 12, column: 1 })
+    await settle()
+    const extent = measuredHeight()
+    const before = pane.getContentHeight()
+    await act(async () => {
+      pane.trigger('keyboard', 'cursorBottom', null)
+      expect(measuredHeight()).toBe(extent)
+      outer.dispatchEvent(new Event('scroll'))
+    })
+    expect(disposed).not.toHaveBeenCalled()
+    await settle()
+    expect(diff).toBe(mounted)
+    expect(pane.getPosition()?.lineNumber).toBe(300)
+    expect(pane.getContentHeight()).toBeGreaterThan(before)
+    expect(reviewHostFixture.virtualizer?.getVirtualItems().some((item) => item.index === 2)).toBe(
+      true
+    )
+    assertVisible()
+
+    // Invoke the real semantic callback without synthesizing blur or a tree pointer event.
+    pane.trigger('keyboard', 'cursorTop', null)
+    const focused = document.activeElement
+    operations.bridge = 0
+    expect(reviewHostFixture.navigateTree).toBeDefined()
+    act(() =>
+      reviewHostFixture.navigateTree?.({
+        path: 'file-000.ts',
+        status: 'modified',
+        added: 1,
+        removed: 1
+      })
+    )
+    const destination = outer.scrollTop
+    expect(document.activeElement).toBe(focused)
+    diff.layout({ width: 999, height: pane.getContentHeight() })
+    await settle()
+    expect(outer.scrollTop).toBe(destination)
+    expect(operations.bridge).toBe(0)
+    expect(disposed).not.toHaveBeenCalled()
+  }
+)

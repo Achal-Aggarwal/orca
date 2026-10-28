@@ -1,15 +1,21 @@
 import type { editor } from 'monaco-editor'
+import {
+  COMBINED_DIFF_VIEWPORT_SELECTOR,
+  COMBINED_DIFF_ROW_SELECTOR,
+  COMBINED_DIFF_HEADER_SELECTOR,
+  COMBINED_DIFF_DIRECT_INPUT_EVENT
+} from './combined-diff-viewport'
 import { hasLayoutBox } from '@/hooks/virtualized-hidden-row-measurement'
 
 export function installCombinedDiffCursorReveal(diff: editor.IStandaloneDiffEditor): () => void {
   const root = diff.getContainerDomNode()
-  const viewport = root.closest<HTMLElement>('.combined-diff-scroll-container')
+  const viewport = root.closest<HTMLElement>(COMBINED_DIFF_VIEWPORT_SELECTOR)
   if (!viewport) {
     return () => {}
   }
   const header = root
-    .closest('[data-combined-diff-section-row]')
-    ?.querySelector<HTMLElement>('[data-combined-diff-section-header]')
+    .closest(COMBINED_DIFF_ROW_SELECTOR)
+    ?.querySelector<HTMLElement>(COMBINED_DIFF_HEADER_SELECTOR)
   let active: editor.ICodeEditor | null = null
   let frame: number | null = null
   const clear = (): void => {
@@ -63,12 +69,14 @@ export function installCombinedDiffCursorReveal(diff: editor.IStandaloneDiffEdit
     pane.onDidBlurEditorText(clear)
   ])
   subscriptions.push(diff.onDidContentSizeChange(scheduleReveal))
+  viewport.addEventListener(COMBINED_DIFF_DIRECT_INPUT_EVENT, clear)
   const directInputs = ['pointerdown', 'wheel', 'touchmove'] as const
   for (const event of directInputs) {
     viewport.addEventListener(event, clear, { capture: true, passive: true })
   }
   return () => {
     clear()
+    viewport.removeEventListener(COMBINED_DIFF_DIRECT_INPUT_EVENT, clear)
     subscriptions.forEach((subscription) => subscription.dispose())
     for (const event of directInputs) {
       viewport.removeEventListener(event, clear, true)

@@ -132,7 +132,8 @@ export default function CombinedDiffViewer({
     entrySignature: entrySet.entrySignature,
     sections
   })
-  const { hasDirectScrollInput, markDirectScrollInput } = useCombinedDiffDirectScrollInput()
+  const { hasDirectScrollInput, markDirectScrollInput } =
+    useCombinedDiffDirectScrollInput(scrollContainerRef)
   const { cleanupActiveScrollbarDrag, handleScrollbarPointerDown, scrollThumb, updateScrollbar } =
     useCombinedDiffScrollbar({ markDirectScrollInput, scrollContainerRef })
   const virtualizer = useCombinedDiffVirtualizer({

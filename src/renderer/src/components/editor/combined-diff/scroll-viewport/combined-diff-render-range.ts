@@ -1,4 +1,5 @@
 import type { Range } from '@tanstack/react-virtual'
+import { COMBINED_DIFF_ROW_SELECTOR } from '../../combined-diff-viewport'
 
 export function getCombinedDiffRenderRange(
   range: Range,
@@ -26,11 +27,19 @@ export function getCombinedDiffRenderRange(
     end += 1
   }
   const indices = Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
+  return includeFocusedCombinedDiffSection(indices, range.count, focusedIndex)
+}
+
+export function includeFocusedCombinedDiffSection(
+  indices: number[],
+  count: number,
+  focusedIndex: number | undefined
+): number[] {
   // Cursor reveal can leave the old extent before deferred section measurements reach the virtualizer.
   if (
     focusedIndex !== undefined &&
     focusedIndex >= 0 &&
-    focusedIndex < range.count &&
+    focusedIndex < count &&
     !indices.includes(focusedIndex)
   ) {
     indices.push(focusedIndex)
@@ -46,7 +55,7 @@ export function getFocusedCombinedDiffSectionIndex(
   if (!focused || !viewport?.contains(focused)) {
     return undefined
   }
-  const row = focused.closest<HTMLElement>('[data-combined-diff-section-row]')
+  const row = focused.closest<HTMLElement>(COMBINED_DIFF_ROW_SELECTOR)
   const index = row?.dataset.index
   return index === undefined ? undefined : Number(index)
 }
