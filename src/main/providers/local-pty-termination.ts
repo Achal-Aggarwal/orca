@@ -6,6 +6,7 @@ import {
   forceKillPosixPtyProcessGroups,
   forceKillPosixPtyProcessGroupsSync
 } from '../pty/posix-pty-process-groups'
+import { PendingPtyGroupSweep } from '../pty/pending-pty-group-sweep'
 import { terminatePtyJob } from '../windows/windows-pty-job'
 import {
   clearLocalPtyForceKillTimer,
@@ -45,6 +46,17 @@ function waitForPtyPhysicalExit(id: string, physicalExit?: PhysicalExitTracker):
   )
 }
 
+const groupSweeps = new WeakMap<pty.IPty, PendingPtyGroupSweep>()
+
+function groupSweepFor(proc: pty.IPty): PendingPtyGroupSweep {
+  let sweep = groupSweeps.get(proc)
+  if (!sweep) {
+    sweep = new PendingPtyGroupSweep()
+    groupSweeps.set(proc, sweep)
+  }
+  return sweep
+}
+
 function killLocalPtyProcess(proc: pty.IPty, immediate: boolean): void {
   if (process.platform === 'win32') {
     proc.kill()
@@ -73,19 +85,23 @@ function armLocalPtyForceKill(
     }
     ptyTerminationMode.set(id, 'force')
     // Graceful mode is POSIX-only, so this deadline never reaches the ConPTY kill path.
-    forceKillPosixPtyProcessGroups(proc.pid, () => proc.kill('SIGKILL'), {
-      ownsRoot: () => ptyProcesses.get(id) === proc
-    }).catch((error: unknown) => {
-      ptyTerminationMode.set(id, 'graceful')
-      console.error('[pty] failed to force-kill PTY after graceful deadline', { id, error })
-      // Why: a transient native rejection must not consume the only SIGKILL owner while shutdown still awaits physical exit.
-      if (attemptsRemaining > 1) {
-        armLocalPtyForceKill(id, proc, {
-          delayMs: LOCAL_PTY_FORCE_KILL_RETRY_MS,
-          attemptsRemaining: attemptsRemaining - 1
+    groupSweepFor(proc)
+      .track(
+        forceKillPosixPtyProcessGroups(proc.pid, () => proc.kill('SIGKILL'), {
+          ownsRoot: () => ptyProcesses.get(id) === proc
         })
-      }
-    })
+      )
+      .catch((error: unknown) => {
+        ptyTerminationMode.set(id, 'graceful')
+        console.error('[pty] failed to force-kill PTY after graceful deadline', { id, error })
+        // Why: a transient native rejection must not consume the only SIGKILL owner while shutdown still awaits physical exit.
+        if (attemptsRemaining > 1) {
+          armLocalPtyForceKill(id, proc, {
+            delayMs: LOCAL_PTY_FORCE_KILL_RETRY_MS,
+            attemptsRemaining: attemptsRemaining - 1
+          })
+        }
+      })
   }, options.delayMs ?? LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
   timer.unref?.()
   ptyForceKillTimers.set(id, timer)
@@ -131,7 +147,7 @@ function requestPtyTermination(id: string, proc: pty.IPty): void {
     }
   }
   // Shutdown/orphan cleanup can overlap; retain onExit and tracking until physical exit.
-  destroyPtyProcess(proc, { alreadyKilled: true })
+  groupSweepFor(proc).afterSettled(() => destroyPtyProcess(proc, { alreadyKilled: true }))
 }
 
 function requestTrackedPtyShutdown(id: string, proc: pty.IPty, immediate: boolean): void {

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Session } from './session'
 import { TerminalSessionTeardown } from './terminal-session-teardown'
-import { SESSION_FORCE_KILL_RETRY_MS } from './session-termination-controller'
+import {
+  IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS,
+  SESSION_FORCE_KILL_RETRY_MS
+} from './session-termination-controller'
 import type { SessionState, ShellReadyState } from './types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import {
@@ -727,6 +730,31 @@ describe('Session', () => {
       await shutdown
 
       expect(session.state).toBe('exited')
+    })
+
+    it('starts a joining caller’s exit budget only after the shared force kill is sent', async () => {
+      const signalsSent = Promise.withResolvers<void>()
+      let forceKillAttempts = 0
+      subprocess.forceKill = () => {
+        forceKillAttempts++
+        return signalsSent.promise
+      }
+      createSession()
+
+      const first = session.forceKillAndWaitForExit()
+      const joined = session.forceKillAndWaitForExit()
+      let joinedSettled = false
+      void joined.then(
+        () => (joinedSettled = true),
+        () => (joinedSettled = true)
+      )
+      await vi.advanceTimersByTimeAsync(IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS)
+      expect(joinedSettled).toBe(false)
+
+      signalsSent.resolve()
+      subprocess.simulateExit(137)
+      await Promise.all([first, joined])
+      expect(forceKillAttempts).toBe(1)
     })
 
     it('retries a rejected graceful-deadline force kill', async () => {

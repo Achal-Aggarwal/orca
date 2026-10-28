@@ -3,6 +3,7 @@ import type { RecognizedAgentProcess } from '../../../shared/agent-process-recog
 import { readPtySlavePath } from '../../../shared/pty-slave-line-discipline-echo'
 import { forceKillPosixPtyProcessGroups } from '../../pty/posix-pty-process-groups'
 import { signalPosixPtyForegroundGroup } from '../../pty/posix-pty-foreground-group'
+import { PendingPtyGroupSweep } from '../../pty/pending-pty-group-sweep'
 import { readPtsName } from '../../pty/node-pty-pts-name'
 import { terminatePtyJob } from '../../windows/windows-pty-job'
 import { isValidPtySize } from '../daemon-pty-size'
@@ -47,7 +48,7 @@ export function createDaemonPtySubprocessHandle(args: {
   let dead = false
   // Unlike dead, disposal keeps this false so an in-flight force-kill still lands.
   let exited = false
-  let posixForceKillInFlight: Promise<void> | null = null
+  const groupSweep = new PendingPtyGroupSweep()
   // I/O failure is not exit evidence; keep termination and producer flow control available.
   let ioFailed = false
   let disposed = false
@@ -151,17 +152,11 @@ export function createDaemonPtySubprocessHandle(args: {
       return
     }
     // A reaped root frees its pid and TTY for reuse, so a table read that outlives it signals nothing.
-    const sweep = forceKillPosixPtyProcessGroups(proc.pid, killRoot, {
-      ownsRoot: () => !exited
-    }).catch(fallBackToNodePtyKill)
-    posixForceKillInFlight = sweep
-    const settled = (): void => {
-      if (posixForceKillInFlight === sweep) {
-        posixForceKillInFlight = null
-      }
-    }
-    sweep.then(settled, settled)
-    await sweep
+    await groupSweep.track(
+      forceKillPosixPtyProcessGroups(proc.pid, killRoot, { ownsRoot: () => !exited }).catch(
+        fallBackToNodePtyKill
+      )
+    )
   }
   // Stays synchronous: dispose() reads nodePtyKillIssued right after to avoid double-closing ConPTY.
   const forceKillConpty = (): void => {
@@ -312,12 +307,7 @@ export function createDaemonPtySubprocessHandle(args: {
       } else if (nodePtyKillIssued) {
         return
       }
-      // Closing the master hangs up the shell; let an in-flight sweep see the root alive first.
-      if (posixForceKillInFlight) {
-        posixForceKillInFlight.then(destroy, destroy)
-        return
-      }
-      destroy()
+      groupSweep.afterSettled(destroy)
     }
   }
 }

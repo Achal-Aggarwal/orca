@@ -15,8 +15,10 @@ const {
   killWithDescendantSweepMock,
   isWslAvailableAsyncMock,
   wslUncDirectoryExistsAsyncMock,
-  createShellPromptReadinessProbeMock
+  createShellPromptReadinessProbeMock,
+  readProcessTableMock
 } = vi.hoisted(() => ({
+  readProcessTableMock: vi.fn<(rootPid: number) => Promise<string>>(),
   existsSyncMock: vi.fn(),
   statSyncMock: vi.fn(),
   accessSyncMock: vi.fn(),
@@ -57,7 +59,7 @@ vi.mock('node-pty', () => ({
 // Fixture pids must never be looked up in the real host process table.
 vi.mock('../pty/posix-pty-process-table', async (importOriginal) => ({
   ...(await importOriginal<typeof PosixPtyProcessTable>()),
-  readPosixPtyProcessTable: async () => ''
+  readPosixPtyProcessTable: readProcessTableMock
 }))
 
 vi.mock('./macos-tcc-login-shell', async (importOriginal) => ({
@@ -161,6 +163,8 @@ describe('LocalPtyProvider', () => {
       }
     })
     spawnMock.mockReturnValue(mockProc)
+    readProcessTableMock.mockReset()
+    readProcessTableMock.mockResolvedValue('')
 
     provider = new LocalPtyProvider()
   })
@@ -296,6 +300,31 @@ describe('LocalPtyProvider', () => {
         await graceful
         expect(provider.hasPty(id)).toBe(false)
         expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('keeps the kill handle until a graceful-deadline sweep settles when orphan cleanup joins', async () => {
+      vi.useFakeTimers()
+      try {
+        const killSpy = vi.fn()
+        const destroySpy = vi.fn()
+        spawnMock.mockReturnValue({ ...mockProc, kill: killSpy, destroy: destroySpy })
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+        const table = Promise.withResolvers<string>()
+        readProcessTableMock.mockReturnValueOnce(table.promise)
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        expect(provider.killOrphanedPtys(1)).toEqual([{ id }])
+        expect(destroySpy).not.toHaveBeenCalled()
+
+        table.resolve('')
+        await vi.waitFor(() => expect(destroySpy).toHaveBeenCalledOnce())
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
       } finally {
         vi.useRealTimers()
       }
