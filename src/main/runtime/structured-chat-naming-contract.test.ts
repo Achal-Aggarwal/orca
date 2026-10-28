@@ -112,7 +112,7 @@ function nativeReply() {
       resolveCommand: () => '/fixture/grok'
     },
     connect: (launch, options) => {
-      expect(launch.env.GROK_HOME).toBe('/recorded/grok')
+      expect(launch.env?.GROK_HOME).toBe('/recorded/grok')
       const child = new FakeAcpChild(launch, options)
       const { agent } = child
       const sessionId = '11111111-1111-4111-8111-111111111111'
