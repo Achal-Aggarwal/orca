@@ -12,6 +12,7 @@ import frCatalogUrl from './locales/fr.json?url'
 import jaCatalogUrl from './locales/ja.json?url'
 import koCatalogUrl from './locales/ko.json?url'
 import ptCatalogUrl from './locales/pt.json?url'
+import trCatalogUrl from './locales/tr.json?url'
 import zhCatalogUrl from './locales/zh.json?url'
 import { isPseudoLocalizationLocale, pseudoLocalizeString } from './pseudo-localization'
 import { advanceTranslationResourceVersion } from './translation-resource-version'
@@ -33,6 +34,7 @@ const NON_DEFAULT_LOCALE_URLS: Record<Exclude<SupportedUiLocale, 'en'>, string> 
   ja: jaCatalogUrl,
   ko: koCatalogUrl,
   pt: ptCatalogUrl,
+  tr: trCatalogUrl,
   zh: zhCatalogUrl
 }
 

@@ -9,6 +9,7 @@ import {
   UI_LANGUAGE_PORTUGUESE,
   UI_LANGUAGE_SPANISH,
   UI_LANGUAGE_SYSTEM,
+  UI_LANGUAGE_TURKISH,
   normalizeUiLanguage
 } from './ui-language'
 
@@ -22,6 +23,7 @@ describe('normalizeUiLanguage', () => {
     expect(normalizeUiLanguage(UI_LANGUAGE_SPANISH)).toBe('es')
     expect(normalizeUiLanguage(UI_LANGUAGE_FRENCH)).toBe('fr')
     expect(normalizeUiLanguage(UI_LANGUAGE_PORTUGUESE)).toBe('pt')
+    expect(normalizeUiLanguage(UI_LANGUAGE_TURKISH)).toBe('tr')
   })
 
   it('falls back unknown values to system', () => {
