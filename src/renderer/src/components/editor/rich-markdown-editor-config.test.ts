@@ -3,6 +3,8 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { DOMParser as DocumentParser } from '@tiptap/pm/model'
+import { createRichMarkdownExtensions } from './rich-markdown-extensions'
 import { handleRichMarkdownEditorClick } from './rich-markdown-editor-click-routing'
 import type { DocLinkMenuState } from './rich-markdown-commands'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -196,5 +198,183 @@ describe('rich Markdown DOM click routing', () => {
     const event = new PointerEvent('click', { metaKey: true, shiftKey: true, cancelable: true })
     expect(click(event)).toBe(false)
     expect(event.defaultPrevented).toBe(false)
+  })
+})
+
+describe('rich Markdown DOM paste admission', () => {
+  const editors: Editor[] = []
+
+  afterEach(() => {
+    editors.splice(0).forEach((editor) => editor.destroy())
+    document.body.replaceChildren()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  function pasteEditor() {
+    vi.useFakeTimers()
+    const saveClipboardImageAsTempFile = vi.fn().mockResolvedValue(null)
+    vi.stubGlobal('api', undefined)
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { ui: { setMarkdownEditorFocused: vi.fn(), saveClipboardImageAsTempFile } }
+    })
+    const params = createConfigParams({ content: 'hello world\n\nother paragraph' })
+    const config = createRichMarkdownEditorConfig(params)
+    const editor = new Editor({
+      ...config,
+      extensions: createRichMarkdownExtensions({
+        codec: params.codec,
+        htmlSuperscriptLinks: true,
+        htmlSuperscriptLinkContext: params.htmlSuperscriptLinkContext
+      })
+    })
+    params.editorRef.current = editor
+    document.body.append(editor.view.dom)
+    editor.view.dom.focus()
+    editor.commands.setTextSelection({ from: 7, to: 12 })
+    editors.push(editor)
+    const parser = DocumentParser.fromSchema(editor.schema)
+    const parseSlice = vi.spyOn(parser, 'parseSlice')
+    const transformPastedText = vi.fn((text: string) => text)
+    const transformPastedHTML = vi.fn((html: string) => html)
+    editor.setOptions({
+      editorProps: {
+        ...config.editorProps,
+        clipboardParser: parser,
+        transformPastedText,
+        transformPastedHTML
+      }
+    })
+    return {
+      editor,
+      parseSlice,
+      transformPastedText,
+      transformPastedHTML,
+      saveClipboardImageAsTempFile
+    }
+  }
+
+  function paste(editor: Editor, text: string, html = ''): ClipboardEvent {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', text)
+    if (html) {
+      clipboardData.setData('text/html', html)
+    }
+    const event = new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true })
+    editor.view.dom.dispatchEvent(event)
+    return event
+  }
+
+  it.each(['text', 'html'])('chunks large %s before clipboard parsing', async (format) => {
+    const { editor, parseSlice, transformPastedText, transformPastedHTML } = pasteEditor()
+    const before = editor.state.doc
+    const text = 'large paste '.repeat(6_000)
+
+    expect(paste(editor, text, format === 'html' ? `<p>${text}</p>` : '').defaultPrevented).toBe(
+      true
+    )
+    await vi.runAllTimersAsync()
+
+    expect(editor.state.doc.firstChild?.textContent).toBe(`hello ${text}`)
+    expect(editor.state.doc.child(1).textContent).toBe('other paragraph')
+    expect({
+      textTransforms: transformPastedText.mock.calls.length,
+      htmlTransforms: transformPastedHTML.mock.calls.length,
+      parsedSlices: parseSlice.mock.calls.length
+    }).toEqual({ textTransforms: 0, htmlTransforms: 0, parsedSlices: 0 })
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.state.doc.eq(before)).toBe(true)
+    expect(editor.commands.redo()).toBe(true)
+    expect(editor.state.doc.firstChild?.textContent).toBe(`hello ${text}`)
+  })
+
+  it('retains formatting for a small native paste', async () => {
+    const { editor, parseSlice, transformPastedHTML } = pasteEditor()
+    paste(editor, 'bold', '<strong>bold</strong>')
+    await vi.runAllTimersAsync()
+
+    expect(editor.state.doc.firstChild?.textContent).toBe('hello bold')
+    expect(editor.state.doc.firstChild?.lastChild?.marks.map((mark) => mark.type.name)).toEqual([
+      'bold'
+    ])
+    expect(parseSlice.mock.calls.length).toBe(1)
+    expect(transformPastedHTML.mock.calls.length).toBe(1)
+  })
+
+  it('keeps source-rich clipboard content on the parsed preservation route', async () => {
+    const { editor, parseSlice } = pasteEditor()
+    const text = 'source '.repeat(10_000)
+    const source = '<sup><a href="https://example.com">[1]</a></sup>'
+    const document = editor.schema.node('doc', null, [
+      editor.schema.node('paragraph', null, [
+        editor.schema.text(text),
+        editor.schema.node('richMarkdownHtmlSuperscriptLink', {
+          source,
+          href: 'https://example.com',
+          label: '[1]',
+          title: null
+        })
+      ])
+    ])
+    const html = editor.view.serializeForClipboard(document.slice(1, document.content.size - 1)).dom
+      .innerHTML
+    paste(editor, `${text}[1]`, html)
+    await vi.runAllTimersAsync()
+
+    expect(editor.getMarkdown()).toContain(source)
+    expect(editor.state.doc.firstChild?.textContent).toBe(`hello ${text}`)
+    expect(parseSlice.mock.calls.length).toBe(1)
+    let citations = 0
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'richMarkdownHtmlSuperscriptLink') {
+        citations += 1
+      }
+    })
+    expect(citations).toBe(1)
+  })
+
+  it.each([1, 3_000])('preserves terminal paths with %i repeated lines', async (repeats) => {
+    const { editor, parseSlice } = pasteEditor()
+    const text = 'C:\\Users\\orca\\README.md\n'.repeat(repeats)
+    paste(editor, text, '<a href="http://README.md">README.md</a>')
+    await vi.runAllTimersAsync()
+
+    expect(editor.state.doc.firstChild?.textContent).toBe(`hello ${text}`)
+    expect(editor.state.doc.firstChild?.lastChild?.marks).toEqual([])
+    expect(parseSlice.mock.calls.length).toBe(repeats === 1 ? 1 : 0)
+  })
+
+  it('keeps image import ahead of a large text fallback', async () => {
+    const { editor, parseSlice, saveClipboardImageAsTempFile } = pasteEditor()
+    const before = editor.state.doc
+    const clipboardData = new DataTransfer()
+    clipboardData.items.add(new File(['image'], 'image.png', { type: 'image/png' }))
+    clipboardData.setData('text/plain', 'fallback '.repeat(10_000))
+    const event = new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true })
+    editor.view.dom.dispatchEvent(event)
+    await vi.runAllTimersAsync()
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(saveClipboardImageAsTempFile.mock.calls.length).toBe(1)
+    expect(editor.state.doc.eq(before)).toBe(true)
+    expect(parseSlice.mock.calls.length).toBe(0)
+  })
+
+  it.each(['read-only', 'composing'])('defers %s paste to native handling', async (mode) => {
+    const { editor, parseSlice } = pasteEditor()
+    const before = editor.state.doc
+    if (mode === 'read-only') {
+      editor.setEditable(false)
+    } else {
+      Object.defineProperty(editor.view, 'composing', { value: true, configurable: true })
+    }
+    const event = paste(editor, 'unchanged '.repeat(10_000))
+    await vi.runAllTimersAsync()
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(editor.state.doc.eq(before)).toBe(true)
+    expect(parseSlice.mock.calls.length).toBe(0)
   })
 })
