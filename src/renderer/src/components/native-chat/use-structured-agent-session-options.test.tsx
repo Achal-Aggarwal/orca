@@ -199,7 +199,8 @@ describe('useStructuredAgentSessionOptions', () => {
         label: id,
         isDefault: false,
         effortsKnown: id === model && !!effort,
-        efforts: id === model && effort ? [{ value: effort, label: effort }] : []
+        efforts:
+          id === model && effort ? [effort, 'off'].map((value) => ({ value, label: value })) : []
       })),
       current: { model, ...(effort ? { effort } : {}) }
     })
@@ -239,7 +240,11 @@ describe('useStructuredAgentSessionOptions', () => {
     expect(currentValue(result.current.optionSnapshot, 'model')).toBe('newer')
     expect(descriptor(result.current.optionSnapshot, 'effort')).toMatchObject({
       settable: true,
-      kind: { type: 'select', currentValue: 'high', choices: [{ value: 'high' }] }
+      kind: {
+        type: 'select',
+        currentValue: 'high',
+        choices: [{ value: 'high' }, { value: 'off' }]
+      }
     })
     unmount()
   })

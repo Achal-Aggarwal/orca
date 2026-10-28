@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import {
   NewSessionResponseSchema,
@@ -12,7 +13,8 @@ import { PROVIDER_SESSION, waitFor } from './acp-structured-adapter.test-support
 import type { AcpScriptedAgent, FakeFrame } from './acp-scripted-agent.test-support'
 import {
   CALLER,
-  envelope
+  envelope,
+  hostTestState
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-harness'
 import {
   HOST_TEST_SESSION as SESSION,
@@ -52,13 +54,14 @@ async function openModels(
     control?: (agent: AcpScriptedAgent, frame: FakeFrame) => boolean
   } = {}
 ) {
+  const accountHome = { variable: 'GEMINI_HOME', path: join(hostTestState().root, 'antigravity') }
   let records: AgentSessionRecordStore | undefined
   const catalog = createAgentModelCatalogService({
     store: new AgentModelCatalogStore(),
     getRecord: (id) => records?.getRecord(id) ?? undefined,
     getConversation: (id) => records?.getConversation(id) ?? undefined,
     drivesRecord: () => true,
-    resolveAccountHome: async () => ({ variable: 'GEMINI_HOME', path: '/unused/antigravity' }),
+    resolveAccountHome: async () => accountHome,
     recordWorkspacePath: async () => '/workspace/project',
     agentReadsProjectModelConfig: () => false,
     workspaceMayOverrideDefaultModel: async () => false
@@ -70,7 +73,13 @@ async function openModels(
     spec,
     modelCatalog: catalog,
     initialize: recording.initialize,
-    deps: { resolveLaunch: launch(() => resumed, spec), optionWriteTimeoutMs: settings.timeoutMs },
+    deps: {
+      resolveLaunch: async () => ({
+        ...(await launch(() => resumed, spec)()),
+        env: { GEMINI_HOME: accountHome.path }
+      }),
+      optionWriteTimeoutMs: settings.timeoutMs
+    },
     script: (agent) => {
       let native = settings.flat ? [] : (session.configOptions ?? [])
       if (settings.noEffort) {
@@ -123,7 +132,7 @@ async function openModels(
       hostTestAttachParams(fence, {
         provider: 'antigravity',
         agent: 'antigravity',
-        accountHome: { variable: 'GEMINI_HOME', path: '/unused/antigravity' },
+        accountHome,
         providerHandle: undefined,
         options: fence === null ? (settings.saved ?? { model: FLASH }) : undefined
       })
@@ -246,12 +255,12 @@ it.each([
         new Set()
       )
     ).toEqual({ model: PRO, effort: 'low' })
+    const scans = vi.spyOn(rig.journal(), 'submissions')
     if (path === 'cold') {
       await rig.host.close(SESSION, 'user-close')
     }
     const wake = await rig.defer(path)
     const proWrites = rig.writes().length
-    const scans = vi.spyOn(rig.journal(), 'submissions')
     expect(await rig.picks('model', PRO)).toMatchObject({ ok: true })
     if (path === 'live') {
       await rig.host.readOptions(SESSION)
@@ -288,6 +297,8 @@ it.each([false, 'normal', 'live', 'busy', 'held'] as const)(
   'scopes prior Medium through %s model application',
   async (path) => {
     const rig = await openModels({ saved: { model: FLASH, effort: 'medium' } })
+    expect(await rig.picks('model', FLASH)).toMatchObject({ ok: true })
+    await rig.host.readOptions(SESSION)
     await rig.deliver('Flash Medium')
     const wake = await rig.defer(path)
     if (path === 'normal') {
@@ -394,8 +405,14 @@ it.each([10, 100, 'Send', 'rejection'] as const)(
     })
     const begins = vi.spyOn(rig.state.acquireAborts, 'begin')
     const places = vi.spyOn(rig.state.deliveryOrder, 'reserve')
-    await rig.picks('model', PRO)
+    let receipted = false
+    const receipt = rig.picks('model', PRO).then((result) => {
+      receipted = true
+      return result
+    })
     await waitFor(() => expect(held).toBeDefined())
+    await waitFor(() => expect(receipted).toBe(true))
+    expect(await receipt).toMatchObject({ ok: true })
     let readDone = false
     const reading = rig.host.readOptions(SESSION).then((answer) => {
       readDone = true
@@ -481,7 +498,11 @@ it.each([10, 100, 'Send', 'rejection'] as const)(
 it.each(['Stop', 'deadline', 'child close', 'unproven close'] as const)(
   'retires an uncertain producer on %s without sending on its old channel',
   async (ending) => {
-    const rig = await openModels({ timeoutMs: 100, control: () => true })
+    const rig = await openModels({
+      timeoutMs: 100,
+      control: (_agent, frame) =>
+        SetSessionConfigOptionRequestSchema.parse(frame.params).configId === 'model'
+    })
     await rig.deliver('history before uncertainty')
     if (ending === 'deadline' || ending === 'unproven close') {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })

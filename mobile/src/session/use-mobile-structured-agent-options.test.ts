@@ -753,7 +753,10 @@ it('joins the post-receipt menu read with an unchanged phone option stamp', asyn
           id: 'family',
           label: 'Family',
           isDefault: false,
-          efforts: [{ value: 'low', label: 'Low' }]
+          efforts: [
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' }
+          ]
         }
       ],
       current: { model: 'family', effort: 'low' }
