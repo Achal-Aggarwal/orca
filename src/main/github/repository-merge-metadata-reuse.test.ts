@@ -84,7 +84,53 @@ describe('repository merge metadata reuse', () => {
     expect(exec).toHaveBeenCalledTimes(2)
   })
 
-  it('isolates both completed and overlapping probes by credentials, host, branch and execution route', async () => {
+  it('preserves repository-wide cache reuse across different worktree directories', async () => {
+    exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
+
+    await detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', { cwd: '/another-worktree' }, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: true })
+
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps inferred WSL distro credentials separate from native and other distros', async () => {
+    exec.mockResolvedValueOnce(response(true)).mockResolvedValue(response(false))
+
+    await detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    for (const cwd of ['\\\\wsl.localhost\\Ubuntu\\repo', '\\\\wsl.localhost\\Debian\\repo']) {
+      await expect(
+        detectRepositoryMergeMetadata(repository, 'main', { cwd }, 'local:host')
+      ).resolves.toMatchObject({ autoMergeAllowed: false })
+    }
+
+    expect(exec).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps newer worktree settings when an older directory probe completes later', async () => {
+    const older = Promise.withResolvers<{ stdout: string }>()
+    const newer = Promise.withResolvers<{ stdout: string }>()
+    exec.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    const first = detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    const second = detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { cwd: '/another-worktree' },
+      'local:host'
+    )
+
+    newer.resolve(response(false))
+    await expect(second).resolves.toMatchObject({ autoMergeAllowed: false })
+    older.resolve(response(true))
+    await expect(first).resolves.toMatchObject({ autoMergeAllowed: true })
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('isolates credential/host/branch/route caches and cwd-sensitive overlapping probes', async () => {
     const pending = Promise.withResolvers<{ stdout: string }>()
     exec.mockReturnValue(pending.promise)
     const requests = [

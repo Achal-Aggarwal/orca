@@ -20,6 +20,8 @@ export const repositoryMergeMetadataCache = new Map<
 export const repositoryMergeMetadataReads: CoalescedProbes<GitHubRepositoryMergeMetadata> =
   new Map()
 
+export const repositoryMergeMetadataWriters = new Map<string, object>()
+
 export function pruneRepositoryMergeMetadataCache(now = Date.now()): void {
   for (const [cacheKey, cached] of repositoryMergeMetadataCache) {
     if (cached.expiresAt <= now) {
@@ -54,6 +56,7 @@ export function cacheRepositoryMergeMetadata(
 export function _resetMergeQueueCacheForTests(): void {
   repositoryMergeMetadataCache.clear()
   repositoryMergeMetadataReads.clear()
+  repositoryMergeMetadataWriters.clear()
 }
 
 export function _getMergeQueueCacheSizeForTests(): number {

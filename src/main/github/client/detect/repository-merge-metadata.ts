@@ -5,12 +5,14 @@ import { githubRepoIdentityKey } from '../../../../shared/github/repository-iden
 import { noteRepositoryRateLimitSpend, repositoryRateLimitGuard } from '../../rate-limit'
 import { githubReadExecutionScope } from '../../github-read-execution-scope'
 import { runCoalescedProbe } from '../../../git/coalesced-probe'
+import { parseWslUncPath } from '../../../../shared/wsl-paths'
 import type { GhExecOptions } from './../github-exec-scope'
 import {
   MERGE_QUEUE_CACHE_TTL_MS,
   MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS,
   repositoryMergeMetadataCache,
   repositoryMergeMetadataReads,
+  repositoryMergeMetadataWriters,
   pruneRepositoryMergeMetadataCache,
   cacheRepositoryMergeMetadata,
   type GitHubRepositoryMergeMetadata
@@ -22,9 +24,13 @@ export async function detectRepositoryMergeMetadata(
   executionScope: string | undefined = 'default'
 ): Promise<GitHubRepositoryMergeMetadata> {
   const options = { ...ghOptions, ...githubHostExecOptions(ownerRepo) }
+  const { cwd, ...cacheOptions } = options
   const cacheKey = JSON.stringify([
     executionScope,
-    githubReadExecutionScope(options),
+    githubReadExecutionScope({
+      ...cacheOptions,
+      wslDistro: options.wslDistro ?? (cwd ? parseWslUncPath(cwd)?.distro : undefined)
+    }),
     githubRepoIdentityKey(ownerRepo),
     branchName ?? null
   ])
@@ -33,9 +39,24 @@ export async function detectRepositoryMergeMetadata(
   if (cached) {
     return cached.value
   }
-  return runCoalescedProbe(repositoryMergeMetadataReads, cacheKey, (ownsKey) =>
-    readRepositoryMergeMetadata(ownerRepo, branchName, options, cacheKey, ownsKey)
-  )
+  // Completed settings span worktrees; cold probes retain cwd-sensitive execution.
+  const readKey = JSON.stringify([cacheKey, githubReadExecutionScope(options)])
+  return runCoalescedProbe(repositoryMergeMetadataReads, readKey, async (ownsKey) => {
+    const writer = {}
+    repositoryMergeMetadataWriters.set(cacheKey, writer)
+    const ownsCache = (): boolean => repositoryMergeMetadataWriters.get(cacheKey) === writer
+    try {
+      return await readRepositoryMergeMetadata(
+        ownerRepo,
+        branchName,
+        options,
+        cacheKey,
+        () => ownsKey() && ownsCache()
+      )
+    } finally {
+      if (ownsCache()) repositoryMergeMetadataWriters.delete(cacheKey)
+    }
+  })
 }
 
 async function readRepositoryMergeMetadata(
