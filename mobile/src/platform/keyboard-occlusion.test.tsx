@@ -66,9 +66,8 @@ import type { SoftKeyboardState } from './keyboard-occlusion'
 import type * as KeyboardOcclusion from './keyboard-occlusion'
 let keyboardModule: typeof KeyboardOcclusion
 const currentSoftKeyboardHeight = () => keyboardModule.currentSoftKeyboardHeight()
-const subscribeSoftKeyboard: typeof KeyboardOcclusion.subscribeSoftKeyboard = (
-  ...args
-) => keyboardModule.subscribeSoftKeyboard(...args)
+const subscribeSoftKeyboard: typeof KeyboardOcclusion.subscribeSoftKeyboard = (...args) =>
+  keyboardModule.subscribeSoftKeyboard(...args)
 const useKeyboardOcclusion = () => keyboardModule.useKeyboardOcclusion()
 const useSoftKeyboard = () => keyboardModule.useSoftKeyboard()
 

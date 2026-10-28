@@ -77,6 +77,11 @@ export const MOBILE_WEB_PAGE_ROUTES = [
       'native.audio.stop'
     ],
     // Optional media.name falls back to the file type; terminalKeyRail falls back to the page's row.
-    optionalGrants: ['externalNavigation', 'native.media.name', 'native.pdf.view', 'terminalKeyRail']
+    optionalGrants: [
+      'externalNavigation',
+      'native.media.name',
+      'native.pdf.view',
+      'terminalKeyRail'
+    ]
   }
 ]

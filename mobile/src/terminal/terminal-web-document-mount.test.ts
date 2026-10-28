@@ -203,6 +203,7 @@ describe('terminal panes start when first selected', () => {
           onHaptic: noop,
           onTerminalInput: noop,
           onTerminalQueryReply: noop,
+          onTerminalInteraction: noop,
           onTerminalTap: noop,
           onFileTap: noop,
           onOpenUrl: noop

@@ -54,7 +54,10 @@ it.each(['touch', 'wheel', 'mouse', 'tap'] as const)(
       altScreen: true,
       mouseTrackingMode: 'none' as const,
       sgrMouseMode: false,
-      sgrMousePixelsMode: false
+      sgrMousePixelsMode: false,
+      applicationCursorKeysMode: false,
+      kittyKeyboardFlags: 0,
+      modifyOtherKeys: 0
     }
     const pointerModes = { ...modes, mouseTrackingMode: 'vt200' as const, sgrMouseMode: true }
     const liveHandles = { current: new Set<string>() }
