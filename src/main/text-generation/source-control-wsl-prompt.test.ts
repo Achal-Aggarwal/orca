@@ -426,22 +426,36 @@ it('fails a real post-proof storage redirect without running a partial request',
   expect(result.existed).toBe(true)
 })
 
-it.each(['data', 'final'] as const)(
-  'does not authorize after cancellation at %s write continuation',
-  async (boundary) => {
+it.each([
+  { boundary: 'data', stopping: 'cancel' },
+  { boundary: 'final', stopping: 'cancel' },
+  { boundary: 'data', stopping: 'deadline' },
+  { boundary: 'final', stopping: 'deadline' }
+] as const)(
+  'does not authorize after $stopping at $boundary write continuation',
+  async ({ boundary, stopping }) => {
+    vi.useFakeTimers()
     const { child, execution, proof, nonce } = start()
     const writes: string[] = []
     vi.spyOn(child.stdin, 'write').mockImplementation((chunk) => {
       const record = String(chunk)
       writes.push(record)
       if (record.startsWith(boundary === 'data' ? 'D' : 'F')) {
-        cancelLocalGeneration('conversation-name', cwd)
+        if (stopping === 'cancel') {
+          cancelLocalGeneration('conversation-name', cwd)
+        } else {
+          vi.advanceTimersByTime(SOURCE_CONTROL_GENERATION_TIMEOUT_MS)
+        }
       }
       return true
     })
     child.stderr.emit('data', Buffer.from(proof))
     close(child)
-    expect(await execution.result).toMatchObject({ success: false, canceled: true })
+    expect(await execution.result).toMatchObject(
+      stopping === 'cancel'
+        ? { success: false, canceled: true }
+        : { success: false, error: 'Generation timed out after 60s.' }
+    )
     await execution.processClosed
     expect(writes).not.toContain(`X${nonce}\n`)
   }
