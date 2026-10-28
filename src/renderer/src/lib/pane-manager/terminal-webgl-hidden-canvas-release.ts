@@ -2,17 +2,29 @@
 export const HIDDEN_WEBGL_CANVAS_RELEASE_DELAY_MS = 30_000
 
 type CanvasRelease = {
+  view: Window & typeof globalThis
   resize: ResizeObserver
   mutation: MutationObserver
   timer: number | null
+  // A zero-size element yields no initial ResizeObserver entry, so "no box" is the default until one reports.
+  hasBox: boolean
+  released: boolean
 }
 
 const releasesByCanvas = new WeakMap<HTMLCanvasElement, CanvasRelease>()
 
-/** Chromium keeps a display:none WebGL canvas's drawing buffers (on macOS a back buffer plus up to four pooled full-size surfaces), so collapse the backing store once the canvas has stayed without a box; xterm's device-pixel observer restores it and redraws synchronously on reveal. `canRelease` vetoes panes whose reveal must stay allocation-free. */
+/**
+ * Chromium keeps a display:none WebGL canvas's drawing buffers (on macOS a back buffer plus up to
+ * four pooled full-size surfaces), so collapse the backing store once the canvas has stayed without
+ * a box. The reveal's ResizeObserver callback runs before that frame paints, and `restore` must
+ * reallocate and draw synchronously there: xterm's renderer stays paused until its
+ * IntersectionObserver task lands a frame later, and not every engine re-sizes the canvas itself.
+ * `canRelease` vetoes panes whose reveal must stay allocation-free.
+ */
 export function releaseWebglCanvasBackingWhileHidden(
   canvas: HTMLCanvasElement,
-  canRelease: () => boolean
+  canRelease: () => boolean,
+  restore: () => void
 ): void {
   const view = canvas.ownerDocument.defaultView
   if (!view?.ResizeObserver || !view.MutationObserver || releasesByCanvas.has(canvas)) {
@@ -25,39 +37,49 @@ export function releaseWebglCanvasBackingWhileHidden(
     }
   }
   const scheduleRelease = (): void => {
+    if (release.timer !== null || release.hasBox || (canvas.width === 0 && canvas.height === 0)) {
+      return
+    }
     release.timer = view.setTimeout(() => {
+      release.timer = null
+      if (release.hasBox) {
+        return
+      }
       if (!canRelease()) {
         scheduleRelease()
         return
       }
-      release.timer = null
+      release.released = true
       canvas.width = 0
       canvas.height = 0
     }, HIDDEN_WEBGL_CANVAS_RELEASE_DELAY_MS)
   }
   const release: CanvasRelease = {
+    view,
     resize: new view.ResizeObserver((entries) => {
       const box = entries.at(-1)?.contentRect
-      if (!box || box.width > 0 || box.height > 0) {
-        cancelRelease()
+      release.hasBox = Boolean(box && (box.width > 0 || box.height > 0))
+      if (!release.hasBox) {
+        scheduleRelease()
         return
       }
-      if (release.timer === null && (canvas.width > 0 || canvas.height > 0)) {
-        scheduleRelease()
+      cancelRelease()
+      if (release.released) {
+        release.released = false
+        restore()
       }
     }),
-    // Why: a resize while hidden regrows the backing; re-observing yields a fresh box reading without forcing layout.
-    mutation: new view.MutationObserver(() => {
-      if (canvas.width > 0 || canvas.height > 0) {
-        release.resize.unobserve(canvas)
-        release.resize.observe(canvas)
-      }
-    }),
-    timer: null
+    // Why: a resize while hidden regrows the backing without a box change, so no resize entry follows.
+    mutation: new view.MutationObserver(() => scheduleRelease()),
+    timer: null,
+    hasBox: false,
+    released: false
   }
   release.resize.observe(canvas)
   release.mutation.observe(canvas, { attributeFilter: ['width', 'height'] })
   releasesByCanvas.set(canvas, release)
+  // Attached while hidden: a boxless canvas gets no initial resize entry; one with a box cancels this.
+  scheduleRelease()
 }
 
 export function stopReleasingWebglCanvasBacking(canvas: HTMLCanvasElement): void {
@@ -66,9 +88,13 @@ export function stopReleasingWebglCanvasBacking(canvas: HTMLCanvasElement): void
     return
   }
   if (release.timer !== null) {
-    clearTimeout(release.timer)
+    release.view.clearTimeout(release.timer)
   }
   release.resize.disconnect()
   release.mutation.disconnect()
   releasesByCanvas.delete(canvas)
+}
+
+export function isWebglCanvasBackingReleased(canvas: HTMLCanvasElement): boolean {
+  return releasesByCanvas.get(canvas)?.released === true
 }

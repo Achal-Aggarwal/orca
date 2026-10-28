@@ -8,7 +8,10 @@ import {
 } from './terminal-webgl-auto-policy'
 import { safeFit, safeFitAndThen } from './pane-fit'
 import { setPaneFitWebglAttachHook } from './pane-fit-webgl-attach-signal'
-import { repairPaneWebglCanvasDprMismatch } from './terminal-canvas-dpr-repair'
+import {
+  repairPaneWebglCanvasDprMismatch,
+  restoreReleasedPaneWebglCanvas
+} from './terminal-canvas-dpr-repair'
 import { recordPaneWebglContextLoss } from './pane-webgl-context-loss-policy'
 import { presentPaneViewport } from './pane-viewport-present'
 import {
@@ -274,8 +277,12 @@ export function attachWebgl(pane: ManagedPaneInternal): void {
     pane.webglAddon = addon
     const canvas = getXtermWebglCanvas(addon)
     if (canvas) {
-      // Why: worktree-suspended panes keep their backing so switching worktrees never pays a reallocation.
-      releaseWebglCanvasBackingWhileHidden(canvas, () => pane.webglAttachmentDeferred !== true)
+      // Why: panes of a hidden worktree surface keep their backing so switching worktrees never pays a reallocation.
+      releaseWebglCanvasBackingWhileHidden(
+        canvas,
+        () => pane.container.closest('[data-worktree-surface-hidden]') === null,
+        () => restoreReleasedPaneWebglCanvas(pane)
+      )
     }
     refreshTerminalAfterWebglAttach(pane)
   } catch (err) {

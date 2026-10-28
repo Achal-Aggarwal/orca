@@ -1,5 +1,7 @@
 import type { ManagedPane } from './pane-manager-types'
 import { recordTerminalWebglDiagnostic } from '../../../../shared/terminal-webgl-diagnostics'
+import { forceRepaintThroughRenderPause } from './terminal-render-pause-release'
+import { isWebglCanvasBackingReleased } from './terminal-webgl-hidden-canvas-release'
 
 // Hidden-time DPR changes can evade WebGL’s device-pixel observer, leaving stale-scale canvas backing (e.g. 2160px for 1080 CSS pixels at DPR 1). Use xterm’s resize path to recompute device dimensions/backing at current DPR.
 type XtermRendererInternals = {
@@ -13,20 +15,27 @@ type XtermRendererInternals = {
   handleResize?: (cols: number, rows: number) => void
 }
 
-export type PaneWebglCanvasDprRepairState = 'current' | 'deferred' | 'repaired'
+// 'released': the hidden backing was collapsed and its reveal restore resizes at the current DPR, so callers treat it as current.
+export type PaneWebglCanvasDprRepairState = 'current' | 'deferred' | 'released' | 'repaired'
 
-export function repairPaneWebglCanvasDpr(pane: ManagedPane): PaneWebglCanvasDprRepairState {
-  const renderer = (
+function getXtermRenderer(pane: ManagedPane): XtermRendererInternals | undefined {
+  return (
     pane.terminal as unknown as {
       _core?: { _renderService?: { _renderer?: { value?: XtermRendererInternals } } }
     }
   )._core?._renderService?._renderer?.value
+}
+
+export function repairPaneWebglCanvasDpr(pane: ManagedPane): PaneWebglCanvasDprRepairState {
+  const renderer = getXtermRenderer(pane)
   const canvas = renderer?._canvas ?? renderer?._gl?.canvas
   if (!renderer || !canvas) {
     return 'current'
   }
-  // A 0x0 backing was collapsed while hidden; xterm's device-pixel observer restores it on reveal.
-  if (!canvas.isConnected || (canvas.width === 0 && canvas.height === 0)) {
+  if (isWebglCanvasBackingReleased(canvas)) {
+    return 'released'
+  }
+  if (!canvas.isConnected) {
     return 'deferred'
   }
   const view = canvas.ownerDocument?.defaultView
@@ -71,4 +80,29 @@ export function repairPaneWebglCanvasDpr(pane: ManagedPane): PaneWebglCanvasDprR
 
 export function repairPaneWebglCanvasDprMismatch(pane: ManagedPane): boolean {
   return repairPaneWebglCanvasDpr(pane) === 'repaired'
+}
+
+/** Reveal of a released canvas: reallocate at the current DPR and draw past xterm's still-paused renderer so the first painted frame has content. */
+export function restoreReleasedPaneWebglCanvas(pane: ManagedPane): void {
+  const renderer = getXtermRenderer(pane)
+  const view = (renderer?._canvas ?? renderer?._gl?.canvas)?.ownerDocument?.defaultView
+  if (!renderer || !view) {
+    return
+  }
+  try {
+    if (
+      renderer._devicePixelRatio !== view.devicePixelRatio &&
+      renderer.handleDevicePixelRatioChange
+    ) {
+      // Updates the cached DPR and resizes; a monitor move while hidden lands here.
+      renderer.handleDevicePixelRatioChange()
+    } else {
+      renderer.handleResize?.(pane.terminal.cols, pane.terminal.rows)
+    }
+    if (!forceRepaintThroughRenderPause(pane.terminal)) {
+      pane.terminal.refresh(0, pane.terminal.rows - 1)
+    }
+  } catch {
+    // Pane may be mid-teardown; xterm's own observers still repaint a frame later.
+  }
 }
