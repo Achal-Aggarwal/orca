@@ -127,7 +127,7 @@ it('preserves equal rebuilt remote owners and rejects old-host results after an 
     target: { kind: 'environment', environmentId: 'remote-a' },
     worktreeId: 'folder',
     worktreePath: '/folder',
-    expectedExecutionHostId: 'host-a'
+    expectedExecutionHostId: 'ssh:host-a'
   }
   const render = (runtimeContext: RichMarkdownImageRuntimeContext): void => {
     act(() =>
@@ -152,7 +152,7 @@ it('preserves equal rebuilt remote owners and rejects old-host results after an 
   const nextOwner: RichMarkdownImageRuntimeContext = {
     ...owner,
     target: { kind: 'environment', environmentId: 'remote-b' },
-    expectedExecutionHostId: 'host-b'
+    expectedExecutionHostId: 'ssh:host-b'
   }
   render(nextOwner)
   await settle()
