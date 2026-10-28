@@ -12,6 +12,12 @@ function currentRevokedFdCount(): number {
     .filter((line) => line.includes('(revoked)')).length
 }
 
+function currentKqueueFdCount(): number {
+  return execFileSync('lsof', ['-p', String(process.pid)], { encoding: 'utf8' })
+    .split('\n')
+    .filter((line) => /\bKQUEUE\b/.test(line)).length
+}
+
 function currentOpenFdCount(): number {
   return execFileSync('lsof', ['-p', String(process.pid)], { encoding: 'utf8' })
     .split('\n')
@@ -53,6 +59,17 @@ describeOnDarwin('node-pty macOS spawn fd handling', () => {
     const after = currentRevokedFdCount()
 
     expect(after - before).toBe(0)
+  }, 15000)
+
+  // Each leaked exit-wait kqueue holds a system file-table slot until the host exits (ENFILE, e238c63c).
+  it('does not leak exit-wait kqueues across exited pty spawns', async () => {
+    const before = currentKqueueFdCount()
+
+    for (let i = 0; i < 50; i++) {
+      await spawnExitingPty(i)
+    }
+
+    await expect.poll(() => currentKqueueFdCount() - before, { timeout: 2000 }).toBe(0)
   }, 15000)
 
   it('does not leak fds when native posix_spawn setup fails', async () => {

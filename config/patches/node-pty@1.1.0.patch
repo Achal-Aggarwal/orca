@@ -297,7 +297,7 @@ index 181ccabbbe9c4948a9725fb1db907a68e9de01fc..67f31facf85562b67adbfbd04ce28ddd
  process.send!({ consoleProcessList });
  process.exit(0);
 diff --git a/src/unix/pty.cc b/src/unix/pty.cc
-index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e7baac249 100644
+index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..8e427a0716bfd187272f936751a3a3d1c538f4b1 100644
 --- a/src/unix/pty.cc
 +++ b/src/unix/pty.cc
 @@ -23,7 +23,9 @@
@@ -350,7 +350,32 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  /* Some platforms name VWERASE and VDISCARD differently */
  #if !defined(VWERASE) && defined(VWERSE)
  #define VWERASE	VWERSE
-@@ -228,6 +263,9 @@ Napi::Value PtyGetProc(const Napi::CallbackInfo& info);
+@@ -138,8 +173,11 @@ void SetupExitCallback(Napi::Env env, Napi::Function cb, pid_t pid) {
+     int kq = HANDLE_EINTR(kqueue());
+     struct kevent change = {0};
+     EV_SET(&change, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, NULL);
+-    ret = HANDLE_EINTR(kevent(kq, &change, 1, NULL, 0, NULL));
+-    if (ret == -1) {
++    ret = kq == -1 ? -1 : HANDLE_EINTR(kevent(kq, &change, 1, NULL, 0, NULL));
++    if (kq == -1) {
++      // Orca: kqueue() fails when the fd tables are full; still reap the child.
++      HANDLE_EINTR(waitpid(pid, &stat_loc, 0));
++    } else if (ret == -1) {
+       if (errno == ESRCH) {
+         // At this point, one of the following has occurred:
+         // 1. The process has died but has not yet been reaped.
+@@ -167,6 +205,10 @@ void SetupExitCallback(Napi::Env env, Napi::Function cb, pid_t pid) {
+         }
+       }
+     }
++    // Orca: one kqueue per spawned pty leaked a kernel file until the host exited.
++    if (kq != -1) {
++      close(kq);
++    }
+ #else
+     while (true) {
+       errno = 0;
+@@ -228,6 +270,9 @@ Napi::Value PtyGetProc(const Napi::CallbackInfo& info);
  static int
  pty_nonblock(int);
  
@@ -360,7 +385,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  #if defined(__APPLE__)
  static char *
  pty_getproc(int);
-@@ -237,13 +275,23 @@ pty_getproc(int, char *);
+@@ -237,13 +282,23 @@ pty_getproc(int, char *);
  #endif
  
  #if defined(__APPLE__) || defined(__OpenBSD__)
@@ -385,7 +410,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  #endif
  
  struct DelBuf {
-@@ -345,8 +393,8 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
+@@ -345,8 +400,8 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
    term->c_cc[VSTATUS] = 20;
    #endif
  
@@ -396,7 +421,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  
    // helperPath
    std::string helper_path = info[9].As<Napi::String>();
-@@ -367,14 +415,18 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
+@@ -367,14 +422,18 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
      argv[i + 3] = strdup(arg.c_str());
    }
  
@@ -419,7 +444,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  #else
    int argc = argv_.Length();
    int argl = argc + 2;
-@@ -445,6 +497,9 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
+@@ -445,6 +504,9 @@ Napi::Value PtyFork(const Napi::CallbackInfo& info) {
        if (pty_nonblock(master) == -1) {
          throw Napi::Error::New(napiEnv, "Could not set master fd to nonblocking.");
        }
@@ -429,7 +454,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
    }
  #endif
  
-@@ -586,6 +641,23 @@ pty_nonblock(int fd) {
+@@ -586,6 +648,23 @@ pty_nonblock(int fd) {
    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
  }
  
@@ -453,7 +478,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  /**
   * pty_getproc
   * Taken from tmux.
-@@ -684,15 +756,73 @@ pty_getproc(int fd, char *tty) {
+@@ -684,15 +763,73 @@ pty_getproc(int fd, char *tty) {
  #endif
  
  #if defined(__APPLE__)
@@ -529,7 +554,7 @@ index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..5e67653b45061e9a9cad4b2d461d563e
  
    for (; count < 3; count++) {
      low_fds[count] = posix_openpt(O_RDWR);
-@@ -706,80 +836,118 @@ pty_posix_spawn(char** argv, char** env,
+@@ -706,80 +843,118 @@ pty_posix_spawn(char** argv, char** env,
                POSIX_SPAWN_SETSID;
    *master = posix_openpt(O_RDWR);
    if (*master == -1) {
