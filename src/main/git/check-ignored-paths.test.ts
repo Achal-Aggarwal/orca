@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkIgnoredPaths } from './check-ignored-paths'
 import { gitExecFileAsync } from './runner'
-import { GIT_CHECK_IGNORE_TIMEOUT_MS } from '../../shared/git-check-ignore-stdio'
+import {
+  GIT_CHECK_IGNORE_STDIN_CHUNK_BYTES,
+  GIT_CHECK_IGNORE_TIMEOUT_MS
+} from '../../shared/git-check-ignore-stdio'
 
 vi.mock('./runner', () => ({
   gitExecFileAsync: vi.fn()
@@ -25,6 +28,7 @@ describe('checkIgnoredPaths', () => {
       ['-c', 'core.quotePath=false', 'check-ignore', '-z', '--stdin'],
       {
         cwd: '/repo',
+        captureWslLoginShellOutput: true,
         stdin: 'dist/bundle.js\0src/index.ts\0.env\0',
         timeout: GIT_CHECK_IGNORE_TIMEOUT_MS
       }
@@ -45,9 +49,28 @@ describe('checkIgnoredPaths', () => {
   })
 
   it('treats exit code 1 as no ignored paths', async () => {
-    gitExecFileAsyncMock.mockRejectedValue(Object.assign(new Error('no matches'), { code: 1 }))
+    gitExecFileAsyncMock.mockRejectedValue(
+      Object.assign(new Error('no matches'), { code: 1, stdout: 'Login notice.\n' })
+    )
 
     await expect(checkIgnoredPaths('/repo', ['src/index.ts'])).resolves.toEqual([])
+  })
+
+  it('retains matched chunks when another chunk has no ignored paths', async () => {
+    const ignored = 'x'.repeat(GIT_CHECK_IGNORE_STDIN_CHUNK_BYTES - 1)
+    gitExecFileAsyncMock
+      .mockResolvedValueOnce({ stdout: `${ignored}\0`, stderr: '' })
+      .mockRejectedValueOnce(Object.assign(new Error('no matches'), { code: 1, stdout: '' }))
+
+    await expect(checkIgnoredPaths('/repo', [ignored, 'visible.txt'])).resolves.toEqual([ignored])
+    expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([128, 'ABORT_ERR'])('propagates failures with code %s', async (code) => {
+    const error = Object.assign(new Error('failed'), { code })
+    gitExecFileAsyncMock.mockRejectedValue(error)
+
+    await expect(checkIgnoredPaths('/repo', ['visible.txt'])).rejects.toBe(error)
   })
 
   it('skips the subprocess for an empty path list', async () => {

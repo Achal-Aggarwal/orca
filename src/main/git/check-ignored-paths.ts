@@ -9,8 +9,6 @@ import {
   splitGitCheckIgnorePathsByStdinBytes
 } from '../../shared/git-check-ignore-stdio'
 
-type GitExecError = Error & { stdout?: string; code?: number | string }
-
 async function runCheckIgnoredPaths(
   worktreePath: string,
   relativePaths: string[],
@@ -19,14 +17,14 @@ async function runCheckIgnoredPaths(
   try {
     const { stdout } = await gitExecFileAsync([...GIT_CHECK_IGNORE_STDIN_ARGS], {
       ...gitOptionsForWorktree(worktreePath, options),
+      captureWslLoginShellOutput: true,
       stdin: encodeGitCheckIgnorePaths(relativePaths),
       timeout: GIT_CHECK_IGNORE_TIMEOUT_MS
     })
     return parseGitCheckIgnorePaths(stdout)
   } catch (error) {
-    const gitError = error as GitExecError
-    if (gitError.code === 1) {
-      return parseGitCheckIgnorePaths(gitError.stdout ?? '')
+    if (error && typeof error === 'object' && 'code' in error && error.code === 1) {
+      return []
     }
     throw error
   }
