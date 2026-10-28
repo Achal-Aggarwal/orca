@@ -1,25 +1,11 @@
 import { readFile, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { Repo } from '../../shared/repo-types'
-import {
-  getRuntimePathBasename,
-  normalizeRuntimePathSeparators,
-  resolveRuntimePath
-} from '../../shared/cross-platform-path'
-
-function runtimeDirname(pathValue: string): string {
-  const normalized = normalizeRuntimePathSeparators(pathValue).replace(/\/+$/, '')
-  const index = normalized.lastIndexOf('/')
-  if (index === -1) {
-    return '.'
-  }
-  if (index === 0) {
-    return '/'
-  }
-  return normalized.slice(0, index)
-}
+import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
+import { resolveGitDirectoryPath } from '../../shared/git-metadata-path'
 
 export async function resolveWorktreeCommonGitDirectory(repo: Repo): Promise<string | null> {
-  const dotGitPath = resolveRuntimePath(repo.path, '.git')
+  const dotGitPath = join(repo.path, '.git')
   try {
     const dotGitStat = await stat(dotGitPath)
     if (dotGitStat.isDirectory()) {
@@ -29,13 +15,13 @@ export async function resolveWorktreeCommonGitDirectory(repo: Repo): Promise<str
       return null
     }
     const content = await readFile(dotGitPath, 'utf8')
-    const gitDir = content.match(/^gitdir:\s*(.+)\s*$/m)?.[1]?.trim()
-    if (!gitDir) {
+    const payload = parseGitdirMarkerPayload(content)
+    const resolvedGitDir = payload && resolveGitDirectoryPath(repo.path, payload)
+    if (!resolvedGitDir) {
       return null
     }
-    const resolvedGitDir = resolveRuntimePath(repo.path, gitDir)
-    return getRuntimePathBasename(runtimeDirname(resolvedGitDir)) === 'worktrees'
-      ? runtimeDirname(runtimeDirname(resolvedGitDir))
+    return basename(dirname(resolvedGitDir)) === 'worktrees'
+      ? dirname(dirname(resolvedGitDir))
       : resolvedGitDir
   } catch (error) {
     console.warn(`[worktree-base-watcher] cannot resolve git common dir for ${repo.id}:`, error)

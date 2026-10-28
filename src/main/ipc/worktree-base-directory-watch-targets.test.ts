@@ -210,7 +210,7 @@ describe('worktree base directory watch target resolution', () => {
     const targets = await buildWorktreeBaseDirectoryWatchTargets(makeStore([repo]) as never)
 
     expect([...targets.values()].map((target) => target.kind)).toEqual(['git-common'])
-    expect([...targets.values()][0]?.path).toBe('C:/Users/alice/orca/.git')
+    expect([...targets.values()][0]?.path).toBe(join(repo.path, '.git'))
   })
 
   it('does not publish ordered partial targets when a repo resolver rejects unexpectedly', async () => {

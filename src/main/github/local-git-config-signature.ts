@@ -3,6 +3,8 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { runCoalescedProbe, type CoalescedProbes } from '../git/coalesced-probe'
 import type { GitHubRepoContext } from './github-repository-identity'
+import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
+import { resolveGitDirectoryPath } from '../../shared/git-metadata-path'
 
 type LocalGitConfigPaths = {
   commonConfigPath: string
@@ -230,11 +232,11 @@ async function resolveLocalGitConfigPaths(repoPath: string): Promise<LocalGitCon
 
   try {
     const gitFile = await readFile(dotGitPath, 'utf8')
-    const match = gitFile.match(/^gitdir:\s*(.+?)\s*$/im)
-    if (!match) {
+    const payload = parseGitdirMarkerPayload(gitFile)
+    const gitDir = payload && resolveGitDirectoryPath(repoPath, payload)
+    if (!gitDir) {
       return null
     }
-    const gitDir = resolve(dirname(dotGitPath), match[1])
     let commonGitDir = gitDir
     try {
       const commonDir = (await readFile(join(gitDir, 'commondir'), 'utf8')).trim()
