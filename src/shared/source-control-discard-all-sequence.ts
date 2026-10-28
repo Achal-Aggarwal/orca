@@ -1,4 +1,5 @@
 import type { GitStatusEntry } from './git-status-types'
+import { hasRuntimeRpcErrorCode } from './runtime-rpc-error-code'
 
 export type DiscardAllArea = 'staged' | 'unstaged' | 'untracked'
 
@@ -67,11 +68,11 @@ export type DiscardAllDeps = {
 }
 
 export type DiscardAllResult = {
-  /** Paths whose `discardOne` call resolved successfully. */
+  /** Paths whose discard call resolved successfully. */
   discarded: string[]
-  /** Paths whose `discardOne` call rejected. Best-effort: the loop continues past these. */
+  /** Paths whose discard was not confirmed. */
   failed: string[]
-  /** True only when bulk unstage failed before discarding; per-file failures populate failed instead. */
+  /** True only when bulk unstage failed before discarding; discard failures populate failed instead. */
   aborted: boolean
 }
 
@@ -98,8 +99,12 @@ export async function runDiscardAllForArea(
     try {
       await deps.discardMany([...paths])
       return { discarded: [...paths], failed: [], aborted: false }
-    } catch {
-      // Older SSH relays may lack bulk discard; fall back to the established per-file calls.
+    } catch (error) {
+      // Only an unsupported method proves the bulk mutation did not run.
+      if (!hasRuntimeRpcErrorCode(error, 'method_not_found')) {
+        deps.onError?.(error)
+        return { discarded: [], failed: [...paths], aborted: false }
+      }
     }
   }
 

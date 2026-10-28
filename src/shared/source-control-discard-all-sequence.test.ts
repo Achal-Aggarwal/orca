@@ -205,13 +205,30 @@ describe('runDiscardAllForArea', () => {
     )
   })
 
-  it('falls back to per-file discard when bulk discard rejects', async () => {
-    const ctx = makeDeps({ discardManyError: new Error('unknown method') })
+  it('falls back to per-file discard when the host lacks bulk discard', async () => {
+    const ctx = makeDeps({
+      discardManyError: { code: 'method_not_found', message: 'Unknown method: git.bulkDiscard' }
+    })
     const result = await runDiscardAllForArea('unstaged', ['a.ts', 'b.ts'], ctx.depsWithBulkDiscard)
     expect(result).toEqual({ discarded: ['a.ts', 'b.ts'], failed: [], aborted: false })
     expect(ctx.discardManyCalls).toEqual([['a.ts', 'b.ts']])
     expect(ctx.discardOneCalls).toEqual(['a.ts', 'b.ts'])
     expect(ctx.onError).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    new Error('Connection closed before the response arrived'),
+    { code: 'runtime_timeout', message: 'Discard response timed out' },
+    { code: 'forbidden', message: 'Permission denied' },
+    new Error('Unknown method: git.bulkDiscard')
+  ])('does not replay an unconfirmed bulk discard: %j', async (error) => {
+    const ctx = makeDeps({ discardManyError: error })
+
+    const result = await runDiscardAllForArea('unstaged', ['a.ts', 'b.ts'], ctx.depsWithBulkDiscard)
+
+    expect(result).toEqual({ discarded: [], failed: ['a.ts', 'b.ts'], aborted: false })
+    expect(ctx.discardOne).not.toHaveBeenCalled()
+    expect(ctx.errors).toEqual([error])
   })
 
   it('aborts and skips the discard loop if bulk-unstage rejects', async () => {
