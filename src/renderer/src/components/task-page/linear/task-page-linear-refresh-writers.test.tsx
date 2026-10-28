@@ -8,7 +8,7 @@ import {
   read,
   loadingHook,
   source
-} from './task-page-linear-refresh-fixtures.test-support'
+} from './task-page-linear-refresh-test-fixtures'
 import { LinearIssueProjectSelector } from '../../linear-issue-project-selector'
 import { syncWorkspaceBoardTaskStatuses } from '../../sidebar/workspace-board-task-status-sync'
 import { readWorkspaceReferenceDetails } from '../../sidebar/workspace-reference-detail-read'

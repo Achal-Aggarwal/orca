@@ -9,7 +9,7 @@ import {
   response,
   loadingHook,
   source
-} from './task-page-linear-refresh-fixtures.test-support'
+} from './task-page-linear-refresh-test-fixtures'
 import { pendingLinearIssueWrites } from '@/store/slices/linear/linear-issue-publication'
 import { writeLinearIssue } from '@/lib/linear-issue-write'
 import { useLinearIssuePublication } from '@/hooks/useLinearIssuePublication'

@@ -5,7 +5,7 @@ import {
   store,
   source,
   deferredIssueSetters
-} from './task-page-linear-refresh-fixtures.test-support'
+} from './task-page-linear-refresh-test-fixtures'
 import { pendingLinearIssueWrites } from '@/store/slices/linear/linear-issue-publication'
 import { getLinearSourceScope } from '@/store/slices/linear/linear-slice-scope'
 import { writeLinearIssue } from '@/lib/linear-issue-write'

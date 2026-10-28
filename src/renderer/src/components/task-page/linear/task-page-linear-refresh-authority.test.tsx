@@ -12,7 +12,7 @@ import {
   display,
   loadingHook,
   source
-} from './task-page-linear-refresh-fixtures.test-support'
+} from './task-page-linear-refresh-test-fixtures'
 import { TaskPageLinearIssueTable } from './IssueTable'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { TaskPageComposerActionsModel } from '../use-task-page-composer-actions'

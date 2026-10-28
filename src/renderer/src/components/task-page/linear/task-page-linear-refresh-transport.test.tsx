@@ -1,11 +1,5 @@
 // @vitest-environment happy-dom
-import {
-  reads,
-  task,
-  store,
-  display,
-  source
-} from './task-page-linear-refresh-fixtures.test-support'
+import { reads, task, store, display, source } from './task-page-linear-refresh-test-fixtures'
 import { afterEach, expect, it, vi } from 'vitest'
 import type * as RuntimeLinearProjectClient from '@/runtime/runtime-linear-project-client'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
