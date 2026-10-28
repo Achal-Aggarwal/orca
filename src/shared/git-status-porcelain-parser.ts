@@ -1,5 +1,6 @@
 import type { GitStatusEntry } from './git-status-types'
 import { decodeGitCQuotedPath } from './git-cquoted-path'
+import { ownRetainedString } from './own-retained-string'
 
 /** Parse porcelain v2 incrementally so callers can stop Git at the entry limit instead of buffering output past V8’s string ceiling.
  * Carry partial newline-delimited records between chunks. Defer unmerged u rows to caller resolution (using mW presence), but count them toward the cap. */
@@ -52,7 +53,7 @@ export class StatusPorcelainParser {
         return true
       }
     }
-    this.carry = text.slice(start)
+    this.carry = start === 0 ? text : ownRetainedString(text.slice(start))
     return false
   }
 
@@ -69,18 +70,19 @@ export class StatusPorcelainParser {
       return
     }
     if (line.startsWith('# branch.oid ')) {
-      this.branch.head = line.slice('# branch.oid '.length).trim()
+      this.branch.head = ownRetainedString(line.slice('# branch.oid '.length).trim())
       return
     }
     if (line.startsWith('# branch.head ')) {
-      const branchHead = line.slice('# branch.head '.length).trim()
+      const branchHead = ownRetainedString(line.slice('# branch.head '.length).trim())
       // Undefined preserves transport compatibility and lets renderer clear detached-HEAD branch state.
       this.branch.branch =
         branchHead && branchHead !== '(detached)' ? `refs/heads/${branchHead}` : undefined
       return
     }
     if (line.startsWith('# branch.upstream ')) {
-      this.branch.upstreamName = line.slice('# branch.upstream '.length).trim() || undefined
+      this.branch.upstreamName =
+        ownRetainedString(line.slice('# branch.upstream '.length).trim()) || undefined
       return
     }
     if (line.startsWith('# branch.ab ')) {
@@ -99,20 +101,21 @@ export class StatusPorcelainParser {
     }
     if (line.startsWith('? ')) {
       this.push({
-        path: decodeGitCQuotedPath(line.slice(2)),
+        path: ownRetainedString(decodeGitCQuotedPath(line.slice(2))),
         status: 'untracked',
         area: 'untracked'
       })
       return
     }
     if (line.startsWith('! ')) {
-      this.ignoredPaths.push(decodeGitCQuotedPath(line.slice(2)))
+      this.ignoredPaths.push(ownRetainedString(decodeGitCQuotedPath(line.slice(2))))
       return
     }
     if (line.startsWith('u ')) {
+      const ownedLine = ownRetainedString(line)
       this.count += 1
-      this.unmergedLines.push(line)
-      this.statusRecords.push({ type: 'unmerged', line })
+      this.unmergedLines.push(ownedLine)
+      this.statusRecords.push({ type: 'unmerged', line: ownedLine })
     }
   }
 
@@ -127,8 +130,10 @@ export class StatusPorcelainParser {
     if (line.startsWith('2 ')) {
       // Type-2 paths follow nine fixed fields, with oldPath after TAB; retain spaces for row actions and numstat keys.
       const tabParts = line.split('\t')
-      const path = decodeGitCQuotedPath(tabParts[0].split(' ').slice(9).join(' '))
-      const oldPath = decodeGitCQuotedPath(tabParts.slice(1).join('\t'))
+      const path = ownRetainedString(
+        decodeGitCQuotedPath(tabParts[0].split(' ').slice(9).join(' '))
+      )
+      const oldPath = ownRetainedString(decodeGitCQuotedPath(tabParts.slice(1).join('\t')))
       if (indexStatus !== '.') {
         this.push({
           path,
@@ -150,7 +155,7 @@ export class StatusPorcelainParser {
       return
     }
 
-    const path = decodeGitCQuotedPath(parts.slice(8).join(' '))
+    const path = ownRetainedString(decodeGitCQuotedPath(parts.slice(8).join(' ')))
     if (indexStatus !== '.') {
       this.push({
         path,
