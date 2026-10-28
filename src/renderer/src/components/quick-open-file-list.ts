@@ -1,4 +1,4 @@
-import { getRuntimeFileListTarget } from './quick-open-file-list-target'
+import { getRuntimeFileListTarget, useKeyedExcludeRequest } from './quick-open-file-list-target'
 export {
   getRuntimeFileListTarget,
   getNestedWorktreeExcludeRequest
@@ -93,7 +93,7 @@ export function useRuntimeFileListForWorktree({
     () => getRuntimeFileListTarget(worktreeId, worktreePath, repoWorktrees),
     [repoWorktrees, worktreeId, worktreePath]
   )
-  const { excludeRequest } = target
+  const excludeRequest = useKeyedExcludeRequest(target.excludeRequest)
 
   const operationOwnerState = useAppStore(
     useShallow((state) => ({
@@ -111,8 +111,8 @@ export function useRuntimeFileListForWorktree({
     [operationOwnerState, worktreeId]
   )
   const operationOwnerKey = JSON.stringify(operationOwner)
-  const requestRef = useRef({ owner: operationOwner, paths: excludeRequest.paths })
-  requestRef.current = { owner: operationOwner, paths: excludeRequest.paths }
+  const operationOwnerRef = useRef(operationOwner)
+  operationOwnerRef.current = operationOwner
   const operationRoute = getFileExplorerOperationRoute(operationOwner)
   const operationRouteAvailable = operationRoute !== null
   const connectionId = operationRoute?.connectionId
@@ -177,16 +177,16 @@ export function useRuntimeFileListForWorktree({
     if (usesRuntimePathSearch && remoteQueryTooLarge) {
       setListing(NO_LISTING)
       setLoadingRequest({ requestKey, loading: false })
-      setListedOperationOwner(requestRef.current.owner)
+      setListedOperationOwner(operationOwnerRef.current)
       return
     }
 
     setLoadingRequest({ requestKey, loading: true })
 
-    const excludePaths = requestRef.current.paths.length > 0 ? requestRef.current.paths : undefined
+    const excludePaths = excludeRequest.paths.length > 0 ? excludeRequest.paths : undefined
     const requestToken = createBrowserUuid()
     const requestAbortController = new AbortController()
-    const requestOperationOwner = requestRef.current.owner
+    const requestOperationOwner = operationOwnerRef.current
     const requestContext = {
       target: runtimeTargetForOwnerEnvironment(runtimeEnvironmentId),
       worktreeId,
@@ -299,7 +299,7 @@ export function useRuntimeFileListForWorktree({
     eligibilityKey,
     includeIgnored,
     followSymlinks,
-    excludeRequest.key,
+    excludeRequest,
     connectionId,
     operationOwnerKey,
     operationRouteAvailable,
