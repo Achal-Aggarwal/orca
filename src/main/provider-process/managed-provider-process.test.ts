@@ -247,6 +247,33 @@ describe('managed provider process', () => {
     }
   )
 
+  it("never blames the agent's CLI when the supervisor binary itself is gone", () => {
+    const execPath = process.execPath
+    // Orca's binary replaced mid-update: the supervisor spawn finds no such file.
+    const gone = join(tmpdir(), 'orca-updated-away', 'Orca')
+    Object.defineProperty(process, 'execPath', { configurable: true, value: gone })
+    try {
+      const fixture = fakeChild(null)
+      const managed = spawnManagedProviderProcess(
+        { command: 'fixture-provider', args: ['serve'], cwd: tmpdir() },
+        {
+          spawnImpl: fixture.spawn,
+          platform: 'linux',
+          site: 'fixture-provider-teardown',
+          policy: () => ({ gracefulExitMs: PROVIDER_SUPERVISOR_MAX_STOP_MS, forcedExitMs: 50 })
+        }
+      )
+      fixture.child.emit(
+        'error',
+        Object.assign(new Error(`spawn ${gone} ENOENT`), { code: 'ENOENT', path: gone })
+      )
+      expect(managed.spawnAbsence).toBeNull()
+      expect(managed.executableMissing).toBe(false)
+    } finally {
+      Object.defineProperty(process, 'execPath', { configurable: true, value: execPath })
+    }
+  })
+
   it('does not turn a transport close with an existing pid into Claude exit proof', () => {
     const fixture = fakeChild()
     const managed = launch(fixture)
