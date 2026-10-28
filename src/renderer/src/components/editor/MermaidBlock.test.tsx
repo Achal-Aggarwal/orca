@@ -162,4 +162,22 @@ describe('MermaidBlock rendering', () => {
     await act(async () => second.resolve({ svg: diagram }))
     await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(3))
   })
+
+  it('drops queued diagrams when their content changes, rendering is disabled, or the view unmounts', async () => {
+    const first = Promise.withResolvers<{ svg: string }>()
+    mermaid.render.mockReturnValueOnce(first.promise)
+    const blocker = render(<MermaidBlock content="active" isDark={false} />)
+    await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(1))
+    const updated = render(<MermaidBlock content="obsolete" isDark={false} />)
+    updated.rerender(<MermaidBlock content="current" isDark={false} />)
+    const disabled = render(<MermaidBlock content="disabled" isDark={false} />)
+    disabled.rerender(<MermaidBlock content="disabled" isDark={false} renderEnabled={false} />)
+    const removed = render(<MermaidBlock content="unmounted" isDark={false} />)
+    removed.unmount()
+
+    await act(async () => first.resolve({ svg: diagram }))
+    await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(2))
+    expect(mermaid.render.mock.calls.map(([, content]) => content)).toEqual(['active', 'current'])
+    blocker.unmount()
+  })
 })

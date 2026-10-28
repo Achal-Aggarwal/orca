@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify'
 import { readableMermaidFlowchartSvg } from '../../../../shared/mermaid-flowchart-contrast'
 import { getMermaidConfig } from './mermaid-config'
 import { readMermaidThemeColors } from './mermaid-theme-colors'
+import { enqueueMermaidRender } from './mermaid-render-queue'
 import { translate } from '@/i18n/i18n'
 
 type MermaidApi = typeof mermaidNamespace
@@ -29,19 +30,6 @@ type MermaidBlockProps = {
   pendingContent?: React.ReactNode
   renderEnabled?: boolean
   onExpand?: (diagram: RenderedMermaidDiagram) => void
-}
-
-// Serialize Mermaid’s global DOM/parser state; reset the settled queue so old content and ID closures become unreachable.
-let renderQueue: Promise<void> = Promise.resolve()
-
-function enqueueRender(fn: () => Promise<void>): void {
-  const tail = renderQueue.then(fn, fn).then(() => {
-    // Release settled render closures instead of retaining a growing promise chain.
-    if (renderQueue === tail) {
-      renderQueue = Promise.resolve()
-    }
-  })
-  renderQueue = tail
 }
 
 /** Render SVG with a source/error fallback so invalid syntax cannot break the preview. */
@@ -107,9 +95,10 @@ export default function MermaidBlock({
       }
     }
 
-    enqueueRender(render)
+    const cancelQueuedRender = enqueueMermaidRender(render)
     return () => {
       cancelled = true
+      cancelQueuedRender()
     }
   }, [content, htmlLabels, isDark, id, renderEnabled])
 
