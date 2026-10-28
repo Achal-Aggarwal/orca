@@ -1,30 +1,9 @@
-import { useAppStore } from '@/store'
 import type { LinearCollectionResult } from '../../../../../shared/linear/workspace-types'
 import { LINEAR_ISSUE_LIST_MAX } from '../../../../../shared/linear/issue-read-limits'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
-import { sortedStrings } from '../task-page-work-item-signatures'
 
 function linearIssueKey(issue: LinearIssue): string {
-  return issue.id
-}
-
-function linearIssueStatusSignature(issue: LinearIssue): string {
-  return JSON.stringify([
-    issue.identifier,
-    issue.title,
-    issue.url,
-    issue.state.name,
-    issue.state.type,
-    issue.state.color,
-    issue.team.id,
-    issue.team.name,
-    issue.team.key,
-    sortedStrings(issue.labels),
-    issue.assignee?.id ?? null,
-    issue.assignee?.displayName ?? null,
-    issue.priority,
-    issue.updatedAt
-  ])
+  return JSON.stringify([issue.workspaceId, issue.id])
 }
 
 export function shouldReplaceTaskPageLinearIssuesAfterRefresh(
@@ -49,27 +28,13 @@ export function reconcileTaskPageLinearIssuesAfterLandingRefresh(
   let changed = false
   const next = currentIssues.map((issue) => {
     const refreshed = refreshedByKey.get(linearIssueKey(issue))
-    if (!refreshed || linearIssueStatusSignature(issue) === linearIssueStatusSignature(refreshed)) {
+    if (!refreshed || issue === refreshed) {
       return issue
     }
     changed = true
     return refreshed
   })
   return changed ? next : (currentIssues as LinearIssue[])
-}
-
-export function subscribeToTaskPageLinearIssues(
-  read: () => LinearIssue[] | null,
-  publish: (issues: LinearIssue[]) => void
-): () => void {
-  let previous = read()
-  return useAppStore.subscribe(() => {
-    const issues = read()
-    if (issues && issues !== previous) {
-      previous = issues
-      publish(issues)
-    }
-  })
 }
 
 export function taskPageLinearIssuesHaveMore(

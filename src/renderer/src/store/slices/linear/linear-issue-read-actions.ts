@@ -1,0 +1,103 @@
+import type { LinearIssueData, LinearIssueRequest } from './linear-issue-publication'
+import { openLinearIssueRead } from './linear-issue-publication'
+import {
+  canWriteLinearReadResult,
+  canPublishLinearScopeCache,
+  isCurrentLinearRuntimeContext,
+  type LinearReadScope
+} from './linear-slice-scope'
+import { getLinearCacheGeneration, getLinearMutationGeneration } from './linear-slice-request-state'
+import type { LinearSliceGet } from './linear-slice-contract'
+import { isFresh, looksLikeAuthError, shouldRefreshStatusAfterRead } from './linear-cache'
+import type { CacheEntry } from '../../github/cache-model'
+import { isIntegrationCredentialDecryptionError } from '../../../../../shared/integration-credential-errors'
+
+export function openStoreLinearIssueRead<T extends LinearIssueData>(args: {
+  scope: LinearReadScope
+  key: string
+  workspaceId?: string | null
+  identifier?: string
+  requests: Map<string, LinearIssueRequest<T>>
+  cached: CacheEntry<T> | undefined
+  seed?: T
+  force?: boolean
+  get: LinearSliceGet
+  dispatch: () => Promise<T>
+  publish: (data: T) => void
+}): LinearIssueRequest<T> {
+  const { scope, requests, key, get } = args
+  const expose = (read: LinearIssueRequest<T>): LinearIssueRequest<T> => ({
+    ...read,
+    acquire: (isLive = () => true) =>
+      read.acquire(
+        () =>
+          isLive() &&
+          (scope.explicitSource ||
+            isCurrentLinearRuntimeContext(scope.runtimeContextKey, get().settings))
+      )
+  })
+  const requestKey = JSON.stringify([scope.contextKey, key])
+  const existing = requests.get(requestKey)
+  if (existing?.contextKey === scope.contextKey) {
+    if (args.force) {
+      existing.force()
+    }
+    return expose(existing)
+  }
+  existing?.abandon()
+  const generation = getLinearCacheGeneration()
+  const mutationGeneration = getLinearMutationGeneration()
+  let read: LinearIssueRequest<T> | undefined
+  read = openLinearIssueRead({
+    scope,
+    workspaceId: args.workspaceId,
+    identifier: args.identifier,
+    workspaces:
+      get().linearStatusContextKey === scope.runtimeContextKey ||
+      (!scope.explicitSource && !get().linearStatusContextKey)
+        ? get().linearStatus.workspaces
+        : undefined,
+    seed:
+      args.seed ??
+      (canPublishLinearScopeCache(scope, get().settings) ? (args.cached?.data ?? null) : null),
+    cached:
+      !args.force && canPublishLinearScopeCache(scope, get().settings) && isFresh(args.cached),
+    dispatch: args.dispatch,
+    publish: (data) => {
+      if (canPublishLinearScopeCache(scope, get().settings)) {
+        args.publish(data)
+      }
+    },
+    isCurrent: () =>
+      scope.isCurrentRuntime() &&
+      (!read || requests.get(requestKey) === read) &&
+      canWriteLinearReadResult(
+        scope.contextKey,
+        generation,
+        mutationGeneration,
+        get().settings,
+        true
+      ),
+    remove: () => {
+      if (requests.get(requestKey) === read) {
+        requests.delete(requestKey)
+      }
+    },
+    onSettled: (data, error) => {
+      const failure =
+        error ??
+        (data && !Array.isArray(data) && 'errors' in data ? data.errors?.[0]?.message : undefined)
+      if (
+        canPublishLinearScopeCache(scope, get().settings) &&
+        !(scope.explicitSource && args.workspaceId !== undefined) &&
+        (isIntegrationCredentialDecryptionError(failure) ||
+          looksLikeAuthError(failure) ||
+          shouldRefreshStatusAfterRead(args.workspaceId, get().linearStatus))
+      ) {
+        void get().checkLinearConnection(true)
+      }
+    }
+  })
+  requests.set(requestKey, read)
+  return expose(read)
+}

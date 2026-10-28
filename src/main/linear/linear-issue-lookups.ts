@@ -1,3 +1,4 @@
+import { isIntegrationCredentialDecryptionError } from '../../shared/integration-credential-errors'
 import type { LinearIssue } from '../../shared/linear/issue-types'
 import type { LinearWorkspaceSelection } from '../../shared/linear/workspace-types'
 import { acquire, release } from './linear-request-concurrency'
@@ -205,7 +206,10 @@ export async function searchIssues(
   )
   const failure = results.find((result) => result.status === 'rejected')
   if (failure?.status === 'rejected' && results.every((result) => result.status === 'rejected')) {
-    throw failure.reason
+    if (isIntegrationCredentialDecryptionError(failure.reason)) {
+      throw failure.reason
+    }
+    throw new Error('Unable to load Linear issues. Try again.')
   }
   // Single-workspace results must retain Linear relevance ranking instead of updatedAt order.
   if (entries.length === 1) {

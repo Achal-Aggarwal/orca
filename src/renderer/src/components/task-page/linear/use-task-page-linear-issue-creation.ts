@@ -1,8 +1,10 @@
+import { getLinearSourceScope } from '@/store/slices/linear/linear-slice-scope'
+import { observeLinearIssueRead } from '@/store/slices/linear/linear-issue-publication'
 import type { TaskPageLinearProjectCreationModel } from './use-task-page-linear-project-creation'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
-import { linearCreateIssue, linearGetIssue } from '@/runtime/runtime-linear-issue-mutations'
+import { linearCreateIssue } from '@/runtime/runtime-linear-issue-mutations'
 import { useAppStore } from '@/store'
 import { defaultScopeSource } from '@/lib/default-creation-host'
 export function useTaskPageLinearIssueCreation(model: TaskPageLinearProjectCreationModel) {
@@ -34,6 +36,21 @@ export function useTaskPageLinearIssueCreation(model: TaskPageLinearProjectCreat
     discardNewLinearIssueDraft,
     newLinearIssueTargetTeam
   } = model
+  const publication = useRef<(() => void) | null>(null)
+  const selection = useRef(model.linearSelectionRequest)
+  const sourceKey = getLinearSourceScope(
+    linearTaskSourceContext ?? defaultScopeSource(settings)
+  ).contextKey
+  const source = useRef(sourceKey)
+  selection.current = model.linearSelectionRequest
+  source.current = sourceKey
+  useEffect(
+    () => () => {
+      publication.current?.()
+      publication.current = null
+    },
+    [model.linearSelectionRequest, sourceKey]
+  )
   const handleCreateNewLinearIssue = useCallback(async (): Promise<void> => {
     if (!newLinearIssueTargetTeam) {
       return
@@ -57,6 +74,8 @@ export function useTaskPageLinearIssueCreation(model: TaskPageLinearProjectCreat
     }
     setNewLinearIssueSubmitting(true)
     const submitProviderRuntimeContextKey = providerRuntimeContextKey
+    const initialSelection = selection.current
+    publication.current?.()
     try {
       const result = await linearCreateIssue(
         linearTaskSourceContext ?? defaultScopeSource(settings),
@@ -107,22 +126,25 @@ export function useTaskPageLinearIssueCreation(model: TaskPageLinearProjectCreat
       setLinearRefreshNonce((n) => n + 1)
       useAppStore.getState().recordFeatureInteraction('linear-tasks')
 
-      void linearGetIssue(
-        linearTaskSourceContext ?? defaultScopeSource(settings),
-        result.id,
-        newLinearIssueTargetTeam.workspaceId
-      )
-        .then((full) => {
-          if (submitProviderRuntimeContextKey !== providerRuntimeContextKeyRef.current) {
-            return
-          }
-          if (full) {
-            setSelectedLinearIssue(full, {
-              allowOutsideList: true
+      publication.current = observeLinearIssueRead(
+        useAppStore.getState().fetchLinearIssue(result.id, newLinearIssueTargetTeam.workspaceId, {
+          scope: getLinearSourceScope(linearTaskSourceContext ?? defaultScopeSource(settings)),
+          force: true
+        }),
+        () =>
+          submitProviderRuntimeContextKey === providerRuntimeContextKeyRef.current &&
+          source.current === sourceKey &&
+          selection.current === initialSelection,
+        (lease, view) => {
+          if (view.kind === 'data' && view.data) {
+            setSelectedLinearIssue(view.data, {
+              allowOutsideList: true,
+              expectedSelection: initialSelection,
+              isCurrent: () => lease.commit(view, false, () => true)
             })
           }
-        })
-        .catch(() => {})
+        }
+      )
     } finally {
       if (submitProviderRuntimeContextKey === providerRuntimeContextKeyRef.current) {
         setNewLinearIssueSubmitting(false)
@@ -143,6 +165,7 @@ export function useTaskPageLinearIssueCreation(model: TaskPageLinearProjectCreat
     setSelectedLinearIssue,
     linearTaskSourceContext,
     settings,
+    sourceKey,
     discardNewLinearIssueDraft,
     setNewLinearIssuePriority,
     setNewLinearIssueBody,

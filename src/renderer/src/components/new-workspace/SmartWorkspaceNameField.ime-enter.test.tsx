@@ -1,3 +1,4 @@
+import { linearIssueReadFixture } from '@/store/slices/linear-slice-test-harness'
 // @vitest-environment happy-dom
 
 import React, { act } from 'react'
@@ -85,9 +86,9 @@ beforeEach(() => {
   useAppStore.setState({
     linearStatus: { connected: false, viewer: null },
     linearStatusChecked: false,
-    fetchLinearIssue: vi.fn(async () => null),
-    listLinearIssues: vi.fn(async () => ({ items: [] })),
-    searchLinearIssues: vi.fn(async () => [])
+    fetchLinearIssue: vi.fn(() => linearIssueReadFixture(async () => null)),
+    listLinearIssues: vi.fn(() => linearIssueReadFixture(async () => ({ items: [] }))),
+    searchLinearIssues: vi.fn(() => linearIssueReadFixture(async () => []))
   })
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -290,7 +291,7 @@ describe('SmartWorkspaceNameField Linear URL loading', () => {
         ]
       },
       linearStatusChecked: true,
-      fetchLinearIssue: vi.fn(() => new Promise<null>(() => {}))
+      fetchLinearIssue: vi.fn(() => linearIssueReadFixture(() => new Promise<null>(() => {})))
     })
 
     await act(async () => {

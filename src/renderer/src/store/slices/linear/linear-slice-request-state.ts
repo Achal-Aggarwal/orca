@@ -1,3 +1,4 @@
+import { abandonLinearIssueReads, type LinearIssueRequest } from './linear-issue-publication'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
 import type {
   LinearCustomViewSummary,
@@ -10,26 +11,9 @@ import type {
 } from '../../../../../shared/linear/workspace-types'
 import { clearLinearMetadataCache } from '../../../hooks/useIssueMetadata'
 
-export type InflightLinearIssueRequest = {
-  promise: Promise<LinearIssue | null>
-  generation: number
-  contextKey: string
-  mutationGeneration: number
-}
-
-export type InflightLinearListRequest = {
-  promise: Promise<LinearIssue[]>
-  generation: number
-  contextKey: string
-  mutationGeneration: number
-}
-
-export type InflightLinearPlainListRequest = {
-  promise: Promise<LinearCollectionResult<LinearIssue>>
-  generation: number
-  contextKey: string
-  mutationGeneration: number
-}
+export type InflightLinearIssueRequest = LinearIssueRequest<LinearIssue | null>
+export type InflightLinearListRequest = LinearIssueRequest<LinearIssue[]>
+export type InflightLinearPlainListRequest = LinearIssueRequest<LinearCollectionResult<LinearIssue>>
 
 export type InflightLinearCollectionRequest<T> = {
   promise: Promise<LinearCollectionResult<T>>
@@ -58,13 +42,13 @@ export const linearRequestState = {
   teamRequests: new Map<string, InflightLinearTeamRequest>(),
   projectRequests: new Map<string, InflightLinearCollectionRequest<LinearProjectSummary>>(),
   projectDetailRequests: new Map<string, InflightLinearDetailRequest<LinearProjectDetail | null>>(),
-  projectIssueRequests: new Map<string, InflightLinearCollectionRequest<LinearIssue>>(),
+  projectIssueRequests: new Map<string, InflightLinearPlainListRequest>(),
   customViewRequests: new Map<string, InflightLinearCollectionRequest<LinearCustomViewSummary>>(),
   customViewDetailRequests: new Map<
     string,
     InflightLinearDetailRequest<LinearCustomViewSummary | null>
   >(),
-  customViewIssueRequests: new Map<string, InflightLinearCollectionRequest<LinearIssue>>(),
+  customViewIssueRequests: new Map<string, InflightLinearPlainListRequest>(),
   customViewProjectRequests: new Map<
     string,
     InflightLinearCollectionRequest<LinearProjectSummary>
@@ -88,6 +72,7 @@ export const inflightCustomViewIssueRequests = linearRequestState.customViewIssu
 export const inflightCustomViewProjectRequests = linearRequestState.customViewProjectRequests
 
 export function clearLinearRequestMaps(): void {
+  abandonLinearIssueReads()
   linearRequestState.issueRequests.clear()
   linearRequestState.searchRequests.clear()
   linearRequestState.listRequests.clear()
@@ -105,13 +90,6 @@ export function invalidateLinearCaches(): void {
   linearRequestState.cacheGeneration += 1
   clearLinearRequestMaps()
   clearLinearMetadataCache()
-}
-
-export function clearLinearIssueCollectionRequestMaps(): void {
-  linearRequestState.searchRequests.clear()
-  linearRequestState.listRequests.clear()
-  linearRequestState.projectIssueRequests.clear()
-  linearRequestState.customViewIssueRequests.clear()
 }
 
 export function beginLinearMutation(): number {

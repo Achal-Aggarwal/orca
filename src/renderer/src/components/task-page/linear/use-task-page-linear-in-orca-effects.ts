@@ -1,6 +1,4 @@
-import { useAppStore } from '@/store'
-import { getLinearReadScope, scopedLinearCacheKey } from '@/store/slices/linear/linear-slice-scope'
-import { linearIssueReadError } from '@/lib/linear-read-error'
+import { observeLinearIssueRead } from '@/store/slices/linear/linear-issue-publication'
 import type { TaskPageLinearListEffectsModel } from './use-task-page-linear-list-effects'
 import { useEffect } from 'react'
 import {
@@ -68,95 +66,54 @@ export function useTaskPageLinearInOrcaEffects(model: TaskPageLinearListEffectsM
       setLinearIssues([])
     }
     setLinearLoading(true)
-    let unsubscribe = () => {}
-    // Explicit refresh must use refreshLinearIssue because fetchLinearIssue serves its TTL cache regardless of force.
-    void readLinkedLinearIssuesWithLimit(linkedRefs, (ref) => {
-      const read = forceRefresh ? refreshLinearIssue : fetchLinearIssue
-      return read(ref.identifier, ref.workspaceId ?? selectedLinearWorkspaceId, {
+    const read = readLinkedLinearIssuesWithLimit(linkedRefs, (ref) => {
+      const fetch = forceRefresh ? refreshLinearIssue : fetchLinearIssue
+      return fetch(ref.identifier, ref.workspaceId ?? selectedLinearWorkspaceId, {
         sourceContext: ref.sourceContext ?? linearTaskSourceContext
       })
     })
-      .then((results) => {
-        if (
-          cancelled ||
-          !isCurrentLinearRequest(lastLinearRequestRef, requestSignature, linearRefreshNonce)
-        ) {
-          return
-        }
-        const publish = () =>
-          setLinearIssues(
-            filterLinearIssuesForInOrcaWorkspace(
-              results.filter((issue): issue is LinearIssue => issue != null),
-              selectedLinearWorkspaceId
-            )
-          )
-        const updateFromCache = () => {
-          const state = useAppStore.getState()
-          let changed = false
-          linkedRefs.forEach((ref, index) => {
-            const scope = getLinearReadScope(
-              state.settings,
-              ref.sourceContext ?? linearTaskSourceContext
-            )
-            const key = scopedLinearCacheKey(
-              scope,
-              `${ref.workspaceId ?? selectedLinearWorkspaceId ?? 'selected'}::${ref.identifier}`
-            )
-            const issue = state.linearIssueCache[key]?.data
-            if (issue && results[index] && issue !== results[index]) {
-              results[index] = issue
-              changed = true
-            }
-          })
-          if (changed) {
-            publish()
-          }
-        }
-        updateFromCache()
-        unsubscribe = useAppStore.subscribe((state, previous) => {
-          if (state.linearIssueCache !== previous.linearIssueCache) {
-            updateFromCache()
-          }
-        })
-        const loaded = results.filter((issue): issue is LinearIssue => issue != null)
-        // Reads resolve null on failure; all-null linked results must show failure rather than an unlinked empty state.
-        if (loaded.length === 0) {
-          setLinearError(
-            translate(
-              'auto.components.TaskPage.linearHasWorktreeLoadFailed',
-              'Unable to load Linear issues linked to an Orca workspace.'
-            )
-          )
-          setLinearIssues([])
-          setLinearLoading(false)
-          return
-        }
-        if (loaded.length !== results.length) {
-          setLinearError(
-            translate(
-              'auto.components.TaskPage.linearHasWorktreePartialLoadFailed',
-              'Some Linear issues linked to an Orca workspace could not be loaded. Refresh to try again.'
+    const release = observeLinearIssueRead(
+      read,
+      () =>
+        !cancelled &&
+        isCurrentLinearRequest(lastLinearRequestRef, requestSignature, linearRefreshNonce),
+      (lease, view) => {
+        if (view.data) {
+          setLinearIssues((current) =>
+            lease.commit(view, current, (_, results) =>
+              filterLinearIssuesForInOrcaWorkspace(
+                (results ?? []).filter((issue): issue is LinearIssue => issue !== null),
+                selectedLinearWorkspaceId
+              )
             )
           )
         }
-        publish()
-        setLinearLoading(false)
-      })
-      .catch((err) => {
-        if (
-          cancelled ||
-          !isCurrentLinearRequest(lastLinearRequestRef, requestSignature, linearRefreshNonce)
-        ) {
-          return
+        if (view.kind === 'data') {
+          setLinearError((current) =>
+            lease.commit(view, current, (_, results) => {
+              const loaded = results?.filter(Boolean).length ?? 0
+              if (loaded === 0) {
+                return translate(
+                  'auto.components.TaskPage.linearHasWorktreeLoadFailed',
+                  'Unable to load Linear issues linked to an Orca workspace.'
+                )
+              }
+              return loaded === results?.length
+                ? null
+                : translate(
+                    'auto.components.TaskPage.linearHasWorktreePartialLoadFailed',
+                    'Some Linear issues linked to an Orca workspace could not be loaded. Refresh to try again.'
+                  )
+            })
+          )
         }
-        setLinearError(linearIssueReadError(err))
-        setLinearLoading(false)
-      })
+        setLinearLoading((current) => lease.commit(view, current, () => view.kind === 'loading'))
+      }
+    )
     return () => {
       cancelled = true
-      unsubscribe()
+      release()
     }
-    // Depend on link signatures rather than unrelated worktree activity so unchanged tickets are not re-read.
   }, [
     fetchLinearIssue,
     inOrcaLinkedLinearRefsSignature,

@@ -15,7 +15,8 @@ import {
   invalidateLinearCaches,
   isCurrentLinearMutation
 } from './linear-slice-request-state'
-import { isCurrentLinearRuntimeContext } from './linear-slice-scope'
+import { detachLinearIssuePublication } from './linear-issue-publication'
+import { getLinearReadScope, isCurrentLinearRuntimeContext } from './linear-slice-scope'
 import { linearStatusScopeSignature } from './linear-cache'
 import { defaultScopeSource } from '@/lib/default-creation-host'
 
@@ -166,15 +167,17 @@ export function createLinearConnectionActions(
     },
 
     disconnectLinear: async () => {
+      const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
       const contextKey = getProviderRuntimeContextKey(get().settings)
-      await linearDisconnect(defaultScopeSource(get().settings))
+      await linearDisconnect(scope.settings)
       if (
         !isCurrentLinearMutation(requestGeneration) ||
         !isCurrentLinearRuntimeContext(contextKey, get().settings)
       ) {
         return
       }
+      detachLinearIssuePublication(scope)
       invalidateLinearCaches()
       set({
         linearStatus: { connected: false, viewer: null },

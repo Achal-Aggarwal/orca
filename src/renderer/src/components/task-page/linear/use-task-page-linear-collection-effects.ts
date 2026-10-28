@@ -1,7 +1,4 @@
-import { useAppStore } from '@/store'
-import { getLinearReadScope, scopedLinearCacheKey } from '@/store/slices/linear/linear-slice-scope'
-import { linearCollectionCacheKey } from '@/store/slices/linear/linear-cache'
-import { subscribeToTaskPageLinearIssues } from './task-page-linear-cache-selectors'
+import { observeLinearIssueRead } from '@/store/slices/linear/linear-issue-publication'
 import { linearIssueReadError } from '@/lib/linear-read-error'
 import type { TaskPageLinearInOrcaEffectsModel } from './use-task-page-linear-in-orca-effects'
 import { useEffect } from 'react'
@@ -157,20 +154,7 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
     setLinearProjectIssuesLoading(true)
     setLinearProjectIssuesError(null)
     const effectiveLimit = clampLinearIssueListLimit(linearProjectIssueLimit)
-    const cacheKey = scopedLinearCacheKey(
-      getLinearReadScope(useAppStore.getState().settings, linearTaskSourceContext),
-      linearCollectionCacheKey(
-        selectedLinearProject.workspaceId,
-        'project-issues',
-        selectedLinearProject.id,
-        effectiveLimit
-      )
-    )
-    const unsubscribe = subscribeToTaskPageLinearIssues(
-      () => useAppStore.getState().linearProjectIssueCache[cacheKey]?.data?.items ?? null,
-      (items) => setLinearProjectIssuesResult((current) => ({ ...current, items }))
-    )
-    void listLinearProjectIssues(
+    const request = listLinearProjectIssues(
       selectedLinearProject.id,
       selectedLinearProject.workspaceId,
       effectiveLimit,
@@ -179,21 +163,32 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
         sourceContext: linearTaskSourceContext
       }
     )
-      .then((result) => {
-        if (!cancelled) {
-          setLinearProjectIssuesResult(result)
-          setLinearProjectIssuesLoading(false)
+    const release = observeLinearIssueRead(
+      request,
+      () => !cancelled,
+      (lease, view) => {
+        if (view.data) {
+          setLinearProjectIssuesResult((current) =>
+            lease.commit(view, current, (_, data) => data ?? current)
+          )
         }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setLinearProjectIssuesError(linearIssueReadError(error))
-          setLinearProjectIssuesLoading(false)
-        }
-      })
+        setLinearProjectIssuesError((current) =>
+          lease.commit(view, current, (_, data) =>
+            view.kind === 'error'
+              ? linearIssueReadError(view.error)
+              : data?.errors?.length
+                ? linearIssueReadError(data.errors[0].message)
+                : null
+          )
+        )
+        setLinearProjectIssuesLoading((current) =>
+          lease.commit(view, current, () => view.kind === 'loading')
+        )
+      }
+    )
     return () => {
       cancelled = true
-      unsubscribe()
+      release()
     }
   }, [
     linearProjectIssueLimit,

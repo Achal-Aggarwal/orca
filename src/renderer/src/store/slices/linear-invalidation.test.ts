@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { create } from 'zustand'
-import type { AppState } from '../types'
+import { createTestStore } from './linear-slice-test-harness'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { LinearConnectionStatus, LinearTeam } from '../../../../shared/linear/workspace-types'
-import { createLinearSlice } from './linear'
 
 const linearStatus = vi.fn()
 const linearConnect = vi.fn()
@@ -47,16 +45,6 @@ const viewer = {
   displayName: 'Ada',
   email: 'ada@example.com',
   organizationName: 'Alpha'
-}
-
-function createTestStore() {
-  return create<AppState>()(
-    (...a) =>
-      ({
-        settings: null,
-        ...createLinearSlice(...a)
-      }) as AppState
-  )
 }
 
 function issue(id: string): LinearIssue {
@@ -216,7 +204,8 @@ describe('createLinearSlice invalidation', () => {
 
     staleIssue.resolve(issue('issue-1'))
     staleTeams.resolve([team('team-stale')])
-    await Promise.all([issuePromise, teamPromise])
+    await expect(issuePromise).rejects.toThrow('Linear read abandoned')
+    await teamPromise
 
     expect(store.getState().linearIssueCache).toEqual({})
     expect(store.getState().getCachedLinearTeams('workspace-1')).toBeNull()
@@ -276,9 +265,7 @@ describe('createLinearSlice invalidation', () => {
 
     await expect(
       store.getState().listLinearIssues({ kind: 'list', filter: 'all', limit: 36 }, { force: true })
-    ).resolves.toEqual({
-      items: []
-    })
+    ).rejects.toThrow('401 unauthorized')
     expect(store.getState().linearStatus.connected).toBe(true)
     await vi.waitFor(() => {
       expect(store.getState().linearStatus.workspaces?.map((workspace) => workspace.id)).toEqual([

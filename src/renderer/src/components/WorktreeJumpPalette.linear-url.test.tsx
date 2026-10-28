@@ -1,3 +1,4 @@
+import { linearIssueReadFixture } from '@/store/slices/linear-slice-test-harness'
 // @vitest-environment happy-dom
 
 import { act } from 'react'
@@ -251,7 +252,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
 
   it('delays loading feedback before replacing the pending row with an issue preview', async () => {
     const issueLookup = deferredValue<LinearIssue | null>()
-    const fetchLinearIssue = vi.fn(() => issueLookup.promise)
+    const fetchLinearIssue = vi.fn(() => linearIssueReadFixture(() => issueLookup.promise))
     await renderPalette({
       fetchLinearIssue,
       linearStatus: {
@@ -329,7 +330,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
   })
 
   it('rejects oversized Linear URLs before lookup or create-row rendering', async () => {
-    const fetchLinearIssue = vi.fn(async () => makeLinearIssue())
+    const fetchLinearIssue = vi.fn(() => linearIssueReadFixture(async () => makeLinearIssue()))
     await renderPalette({ fetchLinearIssue })
 
     await act(async () =>
@@ -344,7 +345,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
 
   it('opens the composer with the resolved issue and generated workspace name', async () => {
     await renderPalette({
-      fetchLinearIssue: vi.fn(async () => makeLinearIssue()),
+      fetchLinearIssue: vi.fn(() => linearIssueReadFixture(async () => makeLinearIssue())),
       prefetchWorktreeCreateBase: vi.fn(async () => {})
     })
     await act(async () => setCommandQuery?.(LINEAR_URL))
@@ -392,7 +393,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
       kind: 'folder' as const,
       executionHostId: 'runtime:folder-env'
     }
-    const fetchLinearIssue = vi.fn(async () => makeLinearIssue())
+    const fetchLinearIssue = vi.fn(() => linearIssueReadFixture(async () => makeLinearIssue()))
     const prefetchWorktreeCreateBase = vi.fn(async () => {})
     await renderPalette({
       activeRepoId: folderRepo.id,
@@ -461,7 +462,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
       connectionId: 'runtime-ssh-workspace-1',
       upstream: { owner: 'stablyai', repo: 'orca' }
     }
-    const fetchLinearIssue = vi.fn(async () => makeLinearIssue())
+    const fetchLinearIssue = vi.fn(() => linearIssueReadFixture(async () => makeLinearIssue()))
     await renderPalette({
       activeRepoId: runtimeOwnedRepo.id,
       repos: [unrelatedRepo, localSibling, runtimeOwnedRepo],
@@ -484,7 +485,9 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
 
   it('does not open the composer after the palette closes during lookup', async () => {
     const issueLookup = deferredValue<LinearIssue | null>()
-    await renderPalette({ fetchLinearIssue: vi.fn(() => issueLookup.promise) })
+    await renderPalette({
+      fetchLinearIssue: vi.fn(() => linearIssueReadFixture(() => issueLookup.promise))
+    })
     await act(async () => setCommandQuery?.(LINEAR_URL))
     await flushEffects()
 
@@ -508,7 +511,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
     const issueLookup = deferredValue<LinearIssue | null>()
     await renderPalette({
       activeWorktreeId: 'wt-alpha',
-      fetchLinearIssue: vi.fn(() => issueLookup.promise)
+      fetchLinearIssue: vi.fn(() => linearIssueReadFixture(() => issueLookup.promise))
     })
     await act(async () => setCommandQuery?.(LINEAR_URL))
     await flushEffects()
@@ -533,7 +536,9 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
     const secondLookup = deferredValue<LinearIssue | null>()
     await renderPalette({
       fetchLinearIssue: vi.fn((identifier: string) =>
-        identifier === 'STA-4084' ? Promise.resolve(makeLinearIssue()) : secondLookup.promise
+        linearIssueReadFixture(() =>
+          identifier === 'STA-4084' ? Promise.resolve(makeLinearIssue()) : secondLookup.promise
+        )
       )
     })
     await act(async () => setCommandQuery?.(LINEAR_URL))
@@ -571,7 +576,9 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
     const secondLookup = deferredValue<LinearIssue | null>()
     await renderPalette({
       fetchLinearIssue: vi.fn((identifier: string) =>
-        identifier === 'STA-4084' ? firstLookup.promise : secondLookup.promise
+        linearIssueReadFixture(() =>
+          identifier === 'STA-4084' ? firstLookup.promise : secondLookup.promise
+        )
       )
     })
 
@@ -630,7 +637,7 @@ describe('WorktreeJumpPalette Linear URL intent', () => {
     })
     const other = makeWorktree('wt-other', 'Unrelated workspace')
     await renderPalette({
-      fetchLinearIssue: vi.fn(async () => makeLinearIssue()),
+      fetchLinearIssue: vi.fn(() => linearIssueReadFixture(async () => makeLinearIssue())),
       worktreesByRepo: { 'repo-1': [other, linked] }
     })
 

@@ -1,7 +1,4 @@
-import { useAppStore } from '@/store'
-import { getLinearReadScope, scopedLinearCacheKey } from '@/store/slices/linear/linear-slice-scope'
-import { linearCollectionCacheKey } from '@/store/slices/linear/linear-cache'
-import { subscribeToTaskPageLinearIssues } from './task-page-linear-cache-selectors'
+import { observeLinearIssueRead } from '@/store/slices/linear/linear-issue-publication'
 import { linearIssueReadError } from '@/lib/linear-read-error'
 import type { TaskPageLinearInOrcaEffectsModel } from './use-task-page-linear-in-orca-effects'
 import { useEffect } from 'react'
@@ -11,11 +8,7 @@ import {
 } from './task-page-linear-issue-model'
 import { LINEAR_ITEM_LIMIT } from '../task-page-source-context'
 import type { LinearCollectionResult } from '../../../../../shared/linear/workspace-types'
-import type { LinearIssue } from '../../../../../shared/linear/issue-types'
-import type {
-  LinearCustomViewSummary,
-  LinearProjectSummary
-} from '../../../../../shared/linear/project-types'
+import type { LinearCustomViewSummary } from '../../../../../shared/linear/project-types'
 import { clampLinearIssueListLimit } from '../../../../../shared/linear/issue-read-limits'
 export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEffectsModel) {
   const {
@@ -119,63 +112,59 @@ export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEf
     setLinearCustomViewContentsLoading(true)
     setLinearCustomViewContentsError(null)
     const issueLimit = clampLinearIssueListLimit(linearCustomViewIssueLimit)
-    const cacheKey = scopedLinearCacheKey(
-      getLinearReadScope(useAppStore.getState().settings, linearTaskSourceContext),
-      linearCollectionCacheKey(
-        selectedLinearCustomView.workspaceId,
-        'custom-view-issues',
-        selectedLinearCustomView.id,
-        issueLimit
+    let release = () => {}
+    if (selectedLinearCustomView.model === 'issue') {
+      release = observeLinearIssueRead(
+        listLinearCustomViewIssues(
+          selectedLinearCustomView.id,
+          selectedLinearCustomView.workspaceId,
+          issueLimit,
+          { force: linearRefreshNonce > 0, sourceContext: linearTaskSourceContext }
+        ),
+        () => !cancelled,
+        (lease, view) => {
+          if (view.data) {
+            setLinearCustomViewIssuesResult((current) =>
+              lease.commit(view, current, (_, data) => data ?? current)
+            )
+          }
+          setLinearCustomViewContentsError((current) =>
+            lease.commit(view, current, (_, data) =>
+              view.kind === 'error'
+                ? linearIssueReadError(view.error)
+                : data?.errors?.length
+                  ? linearIssueReadError(data.errors[0].message)
+                  : null
+            )
+          )
+          setLinearCustomViewContentsLoading((current) =>
+            lease.commit(view, current, () => view.kind === 'loading')
+          )
+        }
       )
-    )
-    const unsubscribe = subscribeToTaskPageLinearIssues(
-      () =>
-        selectedLinearCustomView.model === 'issue'
-          ? (useAppStore.getState().linearCustomViewIssueCache[cacheKey]?.data?.items ?? null)
-          : null,
-      (items) => setLinearCustomViewIssuesResult((current) => ({ ...current, items }))
-    )
-    const request =
-      selectedLinearCustomView.model === 'issue'
-        ? listLinearCustomViewIssues(
-            selectedLinearCustomView.id,
-            selectedLinearCustomView.workspaceId,
-            issueLimit,
-            {
-              force: linearRefreshNonce > 0,
-              sourceContext: linearTaskSourceContext
-            }
-          )
-        : listLinearCustomViewProjects(
-            selectedLinearCustomView.id,
-            selectedLinearCustomView.workspaceId,
-            LINEAR_ITEM_LIMIT,
-            {
-              force: linearRefreshNonce > 0,
-              sourceContext: linearTaskSourceContext
-            }
-          )
-    void request
-      .then((result) => {
-        if (cancelled) {
-          return
-        }
-        if (selectedLinearCustomView.model === 'issue') {
-          setLinearCustomViewIssuesResult(result as LinearCollectionResult<LinearIssue>)
-        } else {
-          setLinearCustomViewProjectsResult(result as LinearCollectionResult<LinearProjectSummary>)
-        }
-        setLinearCustomViewContentsLoading(false)
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setLinearCustomViewContentsError(linearIssueReadError(error))
-          setLinearCustomViewContentsLoading(false)
-        }
-      })
+    } else {
+      void listLinearCustomViewProjects(
+        selectedLinearCustomView.id,
+        selectedLinearCustomView.workspaceId,
+        LINEAR_ITEM_LIMIT,
+        { force: linearRefreshNonce > 0, sourceContext: linearTaskSourceContext }
+      )
+        .then((result) => {
+          if (!cancelled) {
+            setLinearCustomViewProjectsResult(result)
+            setLinearCustomViewContentsLoading(false)
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setLinearCustomViewContentsError(linearIssueReadError(error))
+            setLinearCustomViewContentsLoading(false)
+          }
+        })
+    }
     return () => {
       cancelled = true
-      unsubscribe()
+      release()
     }
   }, [
     linearRefreshNonce,

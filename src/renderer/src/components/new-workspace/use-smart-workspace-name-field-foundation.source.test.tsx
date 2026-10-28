@@ -1,3 +1,4 @@
+import { linearIssueReadFixture } from '@/store/slices/linear-slice-test-harness'
 // @vitest-environment happy-dom
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
@@ -40,7 +41,12 @@ vi.mock('@/lib/gitlab-work-item-source-lookup', () => ({
   lookupGitLabWorkItemByPathForSource: vi.fn()
 }))
 vi.mock('@/store', () => ({
-  useAppStore: (selector: (state: typeof mocks.state) => unknown) => selector(mocks.state)
+  useAppStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      ...mocks.state,
+      searchLinearIssues: (...args: Parameters<typeof mocks.state.searchLinearIssues>) =>
+        linearIssueReadFixture(() => mocks.state.searchLinearIssues(...args))
+    })
 }))
 vi.mock('@/lib/local-preflight-context', () => ({
   getLocalPreflightContext: () => ({}),

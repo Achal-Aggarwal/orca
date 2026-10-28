@@ -40,22 +40,15 @@ function makeEntry(options?: {
   } as unknown as LinearClientForWorkspace
 }
 
-function rawIssue(id: string, updatedAt = '2026-01-01T00:00:00.000Z', branchName?: string | null) {
+function rawIssue(id: string) {
   return {
     id,
     identifier: id,
     title: id,
-    branchName,
-    description: 'Description',
-    url: `https://linear.app/${id}`,
-    estimate: 3,
-    priority: 2,
-    updatedAt,
-    labelIds: ['label-1'],
+    updatedAt: '2026-01-01T00:00:00.000Z',
     state: { name: 'Todo', type: 'unstarted', color: '#888888' },
     team: { id: 'team-1', name: 'Team', key: 'TM' },
-    assignee: { id: 'user-1', displayName: 'Ada', avatarUrl: null },
-    labels: { nodes: [{ id: 'label-1', name: 'Bug' }] }
+    labels: { nodes: [] }
   }
 }
 
@@ -69,7 +62,9 @@ describe('Linear search failures', () => {
   it('rejects failed provider search and preserves successful workspaces in an all-workspace search', async () => {
     const { searchIssues } = await import('./linear-issue-lookups')
     rawRequest.mockRejectedValueOnce(new Error('provider network failure'))
-    await expect(searchIssues('bug', 36, 'workspace-1')).rejects.toThrow('provider network failure')
+    await expect(searchIssues('bug', 36, 'workspace-1')).rejects.toThrow(
+      'Unable to load Linear issues. Try again.'
+    )
     const other = vi
       .fn()
       .mockResolvedValue({ data: { searchIssues: { nodes: [rawIssue('FRESH')] } } })
@@ -81,6 +76,8 @@ describe('Linear search failures', () => {
     await expect(searchIssues('bug', 36, 'all')).resolves.toMatchObject([{ id: 'FRESH' }])
     rawRequest.mockRejectedValueOnce(new Error('all unavailable'))
     other.mockRejectedValueOnce(new Error('all unavailable'))
-    await expect(searchIssues('bug', 36, 'all')).rejects.toThrow('all unavailable')
+    await expect(searchIssues('bug', 36, 'all')).rejects.toThrow(
+      'Unable to load Linear issues. Try again.'
+    )
   })
 })

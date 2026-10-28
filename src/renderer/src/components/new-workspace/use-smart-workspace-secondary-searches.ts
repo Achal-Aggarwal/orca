@@ -1,4 +1,10 @@
-import { getCachedSmartWorkspaceLinearIssues } from './smart-workspace-linear-read'
+import {
+  observeLinearIssueRead,
+  mapLinearIssueRead,
+  type LinearIssueRead
+} from '@/store/slices/linear/linear-issue-publication'
+import type { LinearIssue } from '../../../../shared/linear/issue-types'
+import type { LinearCollectionResult } from '../../../../shared/linear/workspace-types'
 import { linearIssueReadError } from '@/lib/linear-read-error'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { useEffect, useMemo, useRef } from 'react'
@@ -46,9 +52,6 @@ export function useSmartWorkspaceSecondarySearches({
     setBranchResultsSource,
     setBranchesLoading,
     linearStatus,
-    fetchLinearIssue,
-    searchLinearIssues,
-    listLinearIssues,
     linearSourceContext,
     linearWorkspaceIdOverride,
     setLinearIssues,
@@ -67,10 +70,9 @@ export function useSmartWorkspaceSecondarySearches({
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   linearStatusRef.current = linearStatus
   // Store action references can change with wiring; reads should only rerun for query/scope changes.
-  const linearReadMethods = { fetchLinearIssue, listLinearIssues, searchLinearIssues }
-  const linearReadMethodsRef = useRef(linearReadMethods)
+  const linearReadMethodsRef = useRef(foundation)
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
-  linearReadMethodsRef.current = linearReadMethods
+  linearReadMethodsRef.current = foundation
   const failedLinearReadRef = useRef<readonly unknown[] | null>(null)
   const linearConnected = linearStatus.connected === true
   const linearScopeSignature = linearWorkspaceScopeSignature(linearStatus)
@@ -173,68 +175,68 @@ export function useSmartWorkspaceSecondarySearches({
     if (trimmed === '') {
       setLinearIssues([])
     }
-    let readError: string | null = null
     const readOptions = {
       sourceContext: linearSourceContext,
       ...(linearWorkspaceIdOverride !== undefined ? { workspaceId: linearWorkspaceIdOverride } : {})
     }
-    const request = linearUrlIntent
-      ? lookupLinearIssueUrl({
-          intent: linearUrlIntent,
-          knownStatus: linearStatusRef.current,
-          sourceContext: linearSourceContext,
-          fetchLinearIssue: (identifier, workspaceId, options) =>
-            linearReadMethodsRef.current.fetchLinearIssue(identifier, workspaceId, {
-              ...options,
-              rejectCredentialError: true
-            })
-        }).then((issue) => (issue ? [issue] : []))
-      : trimmed
-        ? linearReadMethodsRef.current.searchLinearIssues(
-            getSmartWorkspaceLinearSearchQuery(trimmed),
-            RESULT_LIMIT,
-            readOptions
+    const request: LinearIssueRead<LinearIssue[] | LinearCollectionResult<LinearIssue>> =
+      linearUrlIntent
+        ? mapLinearIssueRead(
+            lookupLinearIssueUrl({
+              intent: linearUrlIntent,
+              knownStatus: linearStatusRef.current,
+              sourceContext: linearSourceContext,
+              fetchLinearIssue: (identifier, workspaceId, options) =>
+                linearReadMethodsRef.current.fetchLinearIssue(identifier, workspaceId, {
+                  ...options,
+                  rejectCredentialError: true
+                })
+            }),
+            (issue) => (issue ? [issue] : [])
           )
-        : linearReadMethodsRef.current
-            .listLinearIssues(
+        : trimmed
+          ? linearReadMethodsRef.current.searchLinearIssues(
+              getSmartWorkspaceLinearSearchQuery(trimmed),
+              RESULT_LIMIT,
+              readOptions
+            )
+          : linearReadMethodsRef.current.listLinearIssues(
               { kind: 'list', filter: 'assigned', limit: RESULT_LIMIT },
               readOptions
             )
-            .then((result) => {
-              readError = result.errors?.length
-                ? linearIssueReadError(result.errors[0].message)
-                : null
-              return result.items
-            })
-    void request
-      .then((issues) => {
-        if (!stale) {
-          failedLinearReadRef.current = null
-          setLinearReadError(readError)
-          setLinearIssues(issues)
+    const release = observeLinearIssueRead(
+      request,
+      () => !stale,
+      (lease, view) => {
+        setLinearIssues((current) =>
+          lease.commit(view, current, (_, data) =>
+            data ? (Array.isArray(data) ? data : data.items) : view.kind === 'error' ? current : []
+          )
+        )
+        if (view.kind === 'data' || view.kind === 'error') {
+          failedLinearReadRef.current =
+            view.kind === 'error' && isIntegrationCredentialDecryptionError(view.error)
+              ? readKey
+              : null
+          setLinearReadError((current) =>
+            lease.commit(view, current, (_, data) =>
+              view.kind === 'error'
+                ? linearIssueReadError(view.error)
+                : data && !Array.isArray(data) && data.errors?.length
+                  ? linearIssueReadError(data.errors[0].message)
+                  : null
+            )
+          )
+          setSettledLinearUrlQuery((current) =>
+            lease.commit(view, current, () => (linearUrlIntent ? trimmed : null))
+          )
         }
-      })
-      .catch((error) => {
-        if (!stale) {
-          const credentialError = isIntegrationCredentialDecryptionError(error)
-          const cached =
-            credentialError || linearUrlIntent
-              ? null
-              : getCachedSmartWorkspaceLinearIssues(trimmed, readOptions)
-          setLinearIssues(Array.isArray(cached) ? cached : (cached?.items ?? []))
-          // Why: the read reports its own host's failure; host-wide status may describe another host.
-          failedLinearReadRef.current = credentialError ? readKey : null
-          setLinearReadError(linearIssueReadError(error))
-        }
-      })
-      .finally(() => {
-        if (!stale) {
-          setLinearLoading(false)
-          setSettledLinearUrlQuery(linearUrlIntent ? trimmed : null)
-        }
-      })
+        setLinearLoading((current) => lease.commit(view, current, () => view.kind === 'loading'))
+      }
+    )
     return () => {
       stale = true
+      release()
     }
   }, [
     disabled,

@@ -1,206 +1,34 @@
 // @vitest-environment happy-dom
+import {
+  reads,
+  task,
+  store,
+  views,
+  listArgs,
+  read,
+  wire,
+  response,
+  fixture,
+  display,
+  loadingHook,
+  source
+} from './task-page-linear-refresh-fixtures.test-support'
 import { useState } from 'react'
+import { PaginationBar } from '../PaginationBar'
+import { useTaskPageLinearListProjectionPrelude } from './use-task-page-linear-list-projection'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
-import { useStore } from 'zustand'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import { useTaskPageLinearInOrcaEffects } from './use-task-page-linear-in-orca-effects'
-import { useTaskPageLinearCollectionEffectsPrelude } from './use-task-page-linear-collection-effects'
-import { useTaskPageLinearCustomViewEffects } from './use-task-page-linear-custom-view-effects'
 import { useTaskPageDetailRouting } from '../use-task-page-detail-routing'
 import { useLinearIssueWorkspaceDetail } from '../../linear-issue-workspace-detail-state'
-import { useSmartWorkspaceSecondarySearches } from '../../new-workspace/use-smart-workspace-secondary-searches'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  act,
-  cleanup,
-  renderHook,
-  waitFor,
-  render,
-  fireEvent,
-  screen
-} from '@testing-library/react'
-import { createTestStore, deferred, issue } from '../../../store/slices/linear-slice-test-harness'
+import { describe, expect, it, vi } from 'vitest'
+import { act, renderHook, waitFor, render, fireEvent, screen } from '@testing-library/react'
+import { deferred } from '../../../store/slices/linear-slice-test-harness'
 import { clearLinearRequestMaps } from '../../../store/slices/linear/linear-slice-request-state'
 import { useTaskPageLinearListSelectionPrelude } from './use-task-page-linear-list-selection'
 import { LinearStateCell } from './task-page-linear-issue-model'
 import { getTaskSourceCacheScope } from '../../../../../shared/task-source-context'
 import { useTaskPageLinearListEffects } from './use-task-page-linear-list-effects'
-
-const active = vi.hoisted(() => ({ store: vi.fn<() => Store>() }))
-vi.mock('@/store', () => ({
-  useAppStore: Object.assign(
-    (selector: (state: ReturnType<Store['getState']>) => unknown) =>
-      useStore(active.store(), selector),
-    {
-      getState: () => active.store().getState(),
-      subscribe: (...args: Parameters<Store['subscribe']>) => active.store().subscribe(...args)
-    }
-  )
-}))
-vi.mock('@/i18n/i18n', async (original) => ({
-  ...(await original<Record<string, unknown>>()),
-  translate: (_key: string, fallback: string) => fallback
-}))
-const reads = vi.hoisted(() => ({
-  list: vi.fn(),
-  search: vi.fn(),
-  project: vi.fn(),
-  view: vi.fn(),
-  detail: vi.fn(),
-  update: vi.fn()
-}))
-vi.mock('@/runtime/runtime-linear-client', async (original) => ({
-  ...(await original<Record<string, unknown>>()),
-  linearListIssues: (...args: unknown[]) => reads.list(...args),
-  linearSearchIssues: (...args: unknown[]) => reads.search(...args)
-}))
-vi.mock('@/runtime/runtime-linear-project-client', async (original) => ({
-  ...(await original<Record<string, unknown>>()),
-  linearListProjectIssues: (...args: unknown[]) => reads.project(...args),
-  linearListCustomViewIssues: (...args: unknown[]) => reads.view(...args)
-}))
-vi.mock('@/runtime/runtime-linear-issue-mutations', async (original) => ({
-  ...(await original<Record<string, unknown>>()),
-  linearGetIssue: reads.detail,
-  linearIssueComments: async () => [],
-  linearUpdateIssue: reads.update
-}))
-vi.mock('@/hooks/useIssueMetadata', () => ({
-  clearLinearMetadataCache: vi.fn(),
-  useTeamStates: () => ({
-    data: [{ id: 'done', name: 'Done', type: 'completed', color: '#888888' }],
-    loading: false
-  })
-}))
-
-function task(state = 'In Review') {
-  return {
-    ...issue('same-uuid'),
-    identifier: 'DAT-124',
-    workspaceId: 'w',
-    state: { name: state, type: state === 'Done' ? 'completed' : 'started', color: '#888888' }
-  }
-}
-function store() {
-  const result = createTestStore()
-  result.setState({ linearStatus: { connected: true, viewer: null, selectedWorkspaceId: 'w' } })
-  active.store.mockReturnValue(result)
-  return result
-}
-type Store = ReturnType<typeof store>
-type View = 'list' | 'search' | 'project' | 'custom-view'
-const views: View[] = ['list', 'search', 'project', 'custom-view']
-const listArgs = { kind: 'list', filter: 'all', limit: 36 } as const
-function read(s: Store, view: View, force = true) {
-  const state = s.getState()
-  if (view === 'search') {
-    return state.searchLinearIssues('DAT-124', 36, { force })
-  }
-  if (view === 'project') {
-    return state.listLinearProjectIssues('p', 'w', 36, { force })
-  }
-  if (view === 'custom-view') {
-    return state.listLinearCustomViewIssues('v', 'w', 36, { force })
-  }
-  return state.listLinearIssues(listArgs, { force })
-}
-function wire(view: View) {
-  return view === 'custom-view' ? reads.view : reads[view]
-}
-function response(view: View, state: string) {
-  return view === 'search' ? [task(state)] : { items: [task(state)] }
-}
-function fixture(s: Store, rows: LinearIssue[], view: View = 'list') {
-  const state = s.getState()
-  return {
-    settings: null,
-    linearStatus: state.linearStatus,
-    selectedLinearWorkspaceId: 'w',
-    linearTaskSourceContext: null,
-    linearMode: 'issues',
-    linearAttributeFilter: { stateIds: [], priorities: [], assignee: null, labelIds: [] },
-    linearAttributeFilterWorkspaceId: 'w',
-    linearIssues: rows,
-    linearIssueLimit: 36,
-    linearIssuePage: 0,
-    linearIssueLoadingTargetPage: null,
-    linearIssuesHasMore: false,
-    linearLoading: false,
-    linearError: null,
-    appliedLinearSearch: view === 'search' ? 'DAT-124' : '',
-    selectedLinearProject:
-      view === 'project' ? { id: 'p', workspaceId: 'w', name: 'Project' } : null,
-    linearProjectTab: view === 'project' ? 'issues' : 'overview',
-    linearProjectIssuesResult: { items: rows },
-    linearProjectIssueLimit: 36,
-    linearProjectIssuePage: 0,
-    linearProjectIssueLoadingTargetPage: null,
-    linearProjectIssuesLoading: false,
-    linearProjectIssuesError: null,
-    selectedLinearCustomView:
-      view === 'custom-view' ? { id: 'v', workspaceId: 'w', model: 'issue', name: 'View' } : null,
-    linearCustomViewIssuesResult: { items: rows },
-    linearCustomViewIssueLimit: 36,
-    linearCustomViewIssuePage: 0,
-    linearCustomViewIssueLoadingTargetPage: null,
-    linearCustomViewContentsLoading: false,
-    linearCustomViewContentsError: null,
-    availableTeams: []
-  }
-}
-function display(s: Store, rows: LinearIssue[], view: View = 'list') {
-  const base = { ...fixture(s, rows, view), ...s.getState() }
-  const noop = vi.fn()
-  return renderHook(() => {
-    const [current, setRows] = useState(rows)
-    const model = {
-      ...base,
-      linearIssues: current,
-      linearProjectIssuesResult: { items: current },
-      linearCustomViewIssuesResult: { items: current },
-      taskResumeApplied: true,
-      filteredLinearIssues: rows,
-      clearSelectedLinearIssue: noop,
-      linearConnected: true,
-      taskSource: 'linear',
-      linearRefreshNonce: 0,
-      fetchLinearProject: async () => ({ id: 'p' }),
-      setSelectedLinearProjectDetail: noop,
-      setLinearProjectDetailLoading: noop,
-      setLinearProjectDetailError: noop,
-      setLinearProjectIssuesLoading: noop,
-      setLinearProjectIssuesError: noop,
-      setLinearCustomViewContentsLoading: noop,
-      setLinearCustomViewContentsError: noop,
-      setLinearCustomViewProjectsResult: noop,
-      setLinearProjectIssuesResult: (update: React.SetStateAction<{ items: LinearIssue[] }>) =>
-        setRows((items) => (typeof update === 'function' ? update({ items }) : update).items),
-      setLinearCustomViewIssuesResult: (update: React.SetStateAction<{ items: LinearIssue[] }>) => {
-        if (view === 'custom-view') {
-          setRows((items) => (typeof update === 'function' ? update({ items }) : update).items)
-        }
-      }
-    }
-    // SAFETY: fixture supplies the selected collection loader's fields; unrelated persistence is disabled.
-    useTaskPageLinearCollectionEffectsPrelude({
-      ...model,
-      selectedLinearProject: view === 'project' ? base.selectedLinearProject : null
-    } as never)
-    // SAFETY: fixture supplies the custom-view loader fields and no view inventory is requested.
-    useTaskPageLinearCustomViewEffects({ ...model, linearMode: 'issues' } as never)
-    // List/search cache notifications are exercised with the real loader in loadingHook.
-    // SAFETY: fixture supplies the selection prelude fields.
-    return useTaskPageLinearListSelectionPrelude(model as never)
-  })
-}
-beforeEach(() => {
-  vi.resetAllMocks()
-  clearLinearRequestMaps()
-})
-afterEach(() => {
-  cleanup()
-  clearLinearRequestMaps()
-})
 
 describe('Linear refresh row authority', () => {
   it.each(views)(
@@ -218,102 +46,7 @@ describe('Linear refresh row authority', () => {
       expect(display(s, rows, view).result.current.displayedLinearIssues[0].state.name).toBe('Done')
     }
   )
-
-  it.each(['project', 'custom-view'] as const)(
-    '%s keeps optimistic edits and rollback visible through its active collection',
-    async (view) => {
-      const s = store()
-      wire(view).mockResolvedValue(response(view, 'In Review'))
-      const result = await read(s, view)
-      const rows = Array.isArray(result) ? result : result.items
-      const hook = display(s, rows, view)
-      act(() => s.getState().patchLinearIssue('same-uuid', { state: task('Done').state }))
-      expect(hook.result.current.displayedLinearIssues[0].state.name).toBe('Done')
-      act(() => s.getState().patchLinearIssue('same-uuid', { state: task().state }))
-      expect(hook.result.current.displayedLinearIssues[0].state.name).toBe('In Review')
-    }
-  )
-
-  it.each(views)(
-    '%s refresh starts after the click and an older forced response cannot overwrite it',
-    async (view) => {
-      const s = store()
-      const old = deferred<ReturnType<typeof response>>()
-      const fresh = deferred<ReturnType<typeof response>>()
-      wire(view).mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
-      const beforeClick = read(s, view)
-      const afterClick = read(s, view)
-      const dispatches = wire(view).mock.calls.length
-      // Resolve both even on the buggy implementation so a failing assertion leaves no pending request.
-      old.resolve(response(view, 'In Review'))
-      await beforeClick
-      const joined = read(s, view, false)
-      expect(wire(view)).toHaveBeenCalledTimes(2)
-      fresh.resolve(response(view, 'Done'))
-      const [, refreshed] = await Promise.all([beforeClick, afterClick, joined])
-      expect(dispatches).toBe(2)
-      const rows = Array.isArray(refreshed) ? refreshed : refreshed.items
-      expect(rows[0].state.name).toBe('Done')
-      const caches =
-        view === 'list'
-          ? s.getState().linearListCache
-          : view === 'search'
-            ? s.getState().linearSearchCache
-            : view === 'project'
-              ? s.getState().linearProjectIssueCache
-              : s.getState().linearCustomViewIssueCache
-      const cached = Object.values(caches)[0].data
-      expect(Array.isArray(cached) ? cached[0].state.name : cached?.items[0].state.name).toBe(
-        'Done'
-      )
-    }
-  )
 })
-
-function loadingHook(s: Store, query = '', extra = {}) {
-  const refs = {
-    linearSearchPersistReadyRef: { current: false },
-    linearViewPersistReadyRef: { current: false },
-    linearAttributeFilterReadRef: { current: null },
-    lastLinearRequestRef: { current: null },
-    landingLinearRefreshKeysRef: { current: new Set<string>() }
-  }
-  const noop = vi.fn()
-  const base = {
-    ...fixture(s, [task()]),
-    ...refs,
-    ...s.getState(),
-    taskSource: 'linear',
-    linearConnected: true,
-    taskResumeApplied: true,
-    linearSearchInput: query,
-    appliedLinearSearch: query,
-    setTaskResumeState: noop,
-    setAppliedLinearSearch: noop,
-    setLinearIssueLimit: noop,
-    setLinearIssuePage: noop,
-    setLinearIssueLoadingTargetPage: noop,
-    setLinearIssuesHasMore: noop,
-    setLinearLoading: noop,
-    linearIssueFiltersByWorkspaceId: {},
-    ...extra
-  }
-  return renderHook(
-    ({ nonce }) => {
-      const [rows, setLinearIssues] = useState([task()])
-      const [error, setLinearError] = useState<string | null>(null)
-      // SAFETY: fixture supplies the loader's dependencies; persistence setters are inert in this hook test.
-      useTaskPageLinearListEffects({
-        ...base,
-        linearRefreshNonce: nonce,
-        setLinearIssues,
-        setLinearError
-      } as never)
-      return { rows, error }
-    },
-    { initialProps: { nonce: 0 } }
-  )
-}
 
 describe('Linear refresh failure', () => {
   it.each(['list', 'search'] as const)(
@@ -336,39 +69,7 @@ describe('Linear refresh failure', () => {
       expect(hook.result.current.error).toBeNull()
     }
   )
-
-  it('retains rows and surfaces workspace errors returned by the plain list', async () => {
-    const s = store()
-    reads.list.mockResolvedValueOnce({ items: [task()] })
-    await read(s, 'list')
-    reads.list.mockResolvedValue({
-      items: [],
-      errors: [
-        {
-          workspaceId: 'w',
-          workspaceName: 'Workspace',
-          type: 'network',
-          message: 'Linear is unavailable. Try refreshing again.'
-        }
-      ]
-    })
-    const hook = loadingHook(s)
-    await waitFor(() => expect(hook.result.current.error).toBeTruthy())
-    expect(hook.result.current.rows[0].state.name).toBe('In Review')
-  })
 })
-
-function source(hostId: TaskSourceContext['hostId']): TaskSourceContext {
-  return {
-    kind: 'task-source',
-    provider: 'linear',
-    hostId,
-    projectId: 'project',
-    repoId: null,
-    providerIdentity: null,
-    accountLabel: null
-  }
-}
 
 it('keeps a filtered status-cell success through invalidation and rolls back a later failed edit', async () => {
   const s = store()
@@ -383,11 +84,12 @@ it('keeps a filtered status-cell success through invalidation and rolls back a l
   fireEvent.click(screen.getByRole('button', { name: /Change Linear state from/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Done', exact: true }))
   await waitFor(() => expect(hook.result.current.rows[0].state.name).toBe('Done'))
+  reads.list.mockResolvedValue({ items: [task('Done')] })
   await act(async () => {
     pending.resolve({ ok: true })
     await pending.promise
   })
-  expect(s.getState().getCachedLinearIssues({ ...listArgs, attributeFilter: filter })).toBeNull()
+  expect(reads.list).toHaveBeenCalledTimes(2)
   expect(hook.result.current.rows[0].state.name).toBe('Done')
   // A separate failed edit starts from the last provider-confirmed row.
   cell.unmount()
@@ -479,68 +181,25 @@ it('opens the fresh row on its origin source despite stale aliases and failed de
   expect(reads.detail).toHaveBeenCalledWith(origin, 'same-uuid', 'w')
 })
 
-it('preserves New Workspace same-query warm rows on rejection and reports cold failure', async () => {
-  const s = store()
-  reads.search.mockResolvedValue([task()])
-  await s.getState().searchLinearIssues('DAT-124', 12)
-  const setter = vi.fn(),
-    error = vi.fn()
-  const base = {
-    ...s.getState(),
-    disabled: false,
-    jiraSource: { intent: false },
-    selectedRepo: null,
-    branchesEnabled: false,
-    linearSourceContext: null,
-    linearWorkspaceIdOverride: 'w',
-    setBranches: vi.fn(),
-    setBranchResultsSource: vi.fn(),
-    setBranchesLoading: vi.fn(),
-    setLinearIssues: setter,
-    setLinearReadError: error,
-    setLinearLoading: vi.fn(),
-    setSettledLinearUrlQuery: vi.fn(),
-    setJiraIssues: vi.fn(),
-    setJiraLoading: vi.fn(),
-    searchLinearIssues: vi.fn().mockRejectedValue(new Error('raw failure'))
+it.each(['full', 'partial'] as const)(
+  'keeps failed-workspace rows after %s list failure and reports one sanitized error',
+  async (failure) => {
+    const s = store()
+    reads.list.mockResolvedValueOnce({ items: [task()] })
+    await read(s, 'list')
+    reads.list.mockResolvedValue({
+      items:
+        failure === 'partial' ? [{ ...task('Done'), id: 'another', workspaceId: 'healthy' }] : [],
+      errors: [{ workspaceId: 'w', type: 'network', message: 'secret provider diagnostic' }]
+    })
+    const hook = loadingHook(s)
+    await waitFor(() => expect(hook.result.current.error).toBeTruthy())
+    expect(hook.result.current.rows.map((row) => row.state.name)).toEqual(
+      failure === 'partial' ? ['Done', 'In Review'] : ['In Review']
+    )
+    expect(hook.result.current.error).toBe('Unable to load Linear issues. Try again.')
   }
-  const hook = renderHook(
-    ({ query }) => {
-      // SAFETY: fixture disables repo/Jira reads and supplies Linear setters.
-      useSmartWorkspaceSecondarySearches({
-        foundation: base,
-        shouldQueryLinear: true,
-        linearQuery: query,
-        linearUrlIntent: null,
-        linearUrlIntentOwnsInput: false,
-        shouldQueryJira: false,
-        jiraSearchQuery: null
-      } as never)
-    },
-    { initialProps: { query: 'DAT-124' } }
-  )
-  await waitFor(() =>
-    expect(error).toHaveBeenLastCalledWith('Unable to load Linear issues. Try again.')
-  )
-  expect(setter).toHaveBeenLastCalledWith([task()])
-  hook.rerender({ query: 'missing' })
-  await waitFor(() => expect(setter).toHaveBeenLastCalledWith([]))
-  expect(error).toHaveBeenLastCalledWith('Unable to load Linear issues. Try again.')
-})
-
-it('keeps failed-workspace rows beside fresh partial list results and reports one sanitized error', async () => {
-  const s = store()
-  reads.list.mockResolvedValueOnce({ items: [task()] })
-  await read(s, 'list')
-  reads.list.mockResolvedValue({
-    items: [{ ...task('Done'), id: 'another', workspaceId: 'healthy' }],
-    errors: [{ workspaceId: 'w', type: 'network', message: 'secret provider diagnostic' }]
-  })
-  const hook = loadingHook(s)
-  await waitFor(() => expect(hook.result.current.rows).toHaveLength(2))
-  expect(hook.result.current.rows.map((row) => row.state.name)).toEqual(['Done', 'In Review'])
-  expect(hook.result.current.error).toBe('Unable to load Linear issues. Try again.')
-})
+)
 
 it.each(['project', 'custom-view'] as const)(
   '%s failure uses only its source-qualified smaller collection and retains the request error',
@@ -570,5 +229,234 @@ it.each(['project', 'custom-view'] as const)(
     expect(hook.result.current.activeLinearIssueError).toBe(
       'Unable to load Linear issues. Try again.'
     )
+  }
+)
+
+it('keeps retained page two reachable after a failed refresh and a successful retry', async () => {
+  const s = store()
+  const rows = Array.from({ length: 72 }, (_, i) => ({
+    ...task(),
+    id: `id-${i + 1}`,
+    identifier: `DAT-${i + 1}`
+  }))
+  reads.list.mockResolvedValue({ items: rows })
+  await s.getState().listLinearIssues({ ...listArgs, limit: 72 }, { force: true })
+  const noop = vi.fn()
+  const base = {
+    ...fixture(s, rows),
+    ...s.getState(),
+    linearIssueLimit: 72,
+    linearOrderBy: 'identifier',
+    taskSource: 'linear',
+    linearConnected: true,
+    taskResumeApplied: true,
+    linearSearchInput: '',
+    setTaskResumeState: noop,
+    setAppliedLinearSearch: noop,
+    setLinearIssueLimit: noop,
+    setLinearIssueLoadingTargetPage: noop,
+    setLinearIssuesHasMore: noop,
+    setLinearLoading: noop,
+    linearIssueFiltersByWorkspaceId: {},
+    linearSearchPersistReadyRef: { current: false },
+    linearViewPersistReadyRef: { current: false },
+    linearAttributeFilterReadRef: { current: null },
+    lastLinearRequestRef: { current: null },
+    landingLinearRefreshKeysRef: { current: new Set<string>() }
+  }
+  function Pages() {
+    const [nonce, refresh] = useState(0)
+    const [items, setLinearIssues] = useState(rows)
+    const [error, setLinearError] = useState<string | null>(null)
+    const [page, setLinearIssuePage] = useState(0)
+    const model = {
+      ...base,
+      linearRefreshNonce: nonce,
+      linearIssues: items,
+      linearError: error,
+      linearIssuePage: page,
+      setLinearIssues,
+      setLinearError,
+      setLinearIssuePage
+    }
+    // SAFETY: fixture supplies the real list loader, selection and projection dependencies.
+    useTaskPageLinearListEffects(model as never)
+    // SAFETY: fixture supplies selection fields; persistence is disabled.
+    const selection = useTaskPageLinearListSelectionPrelude(model as never)
+    // SAFETY: only pagination is rendered, so presentation-only model fields are unused.
+    const projection = useTaskPageLinearListProjectionPrelude(selection as never)
+    return (
+      <>
+        <button onClick={() => refresh((n) => n + 1)}>Refresh</button>
+        <output data-testid="read-error">{error}</output>
+        <output data-testid="retained-count">{items.length}</output>
+        <output data-testid="page-first">{projection.pagedLinearIssues[0]?.identifier}</output>
+        {projection.showLinearIssuePagination ? (
+          <PaginationBar
+            currentPage={projection.visibleLinearIssuePage}
+            totalPages={projection.linearIssueTotalPages}
+            loadingTarget={null}
+            onPageChange={projection.handleLinearIssuePageChange}
+          />
+        ) : null}
+      </>
+    )
+  }
+  render(<Pages />)
+  await waitFor(() => expect(reads.list).toHaveBeenCalledTimes(2))
+  expect(screen.getByRole('button', { name: 'Next page' })).toBeTruthy()
+  reads.list.mockRejectedValueOnce(new Error('private network diagnostic'))
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+  await waitFor(() =>
+    expect(screen.getByTestId('read-error').textContent).toBe(
+      'Unable to load Linear issues. Try again.'
+    )
+  )
+  expect(screen.getByTestId('retained-count').textContent).toBe('72')
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+  expect(screen.getByTestId('page-first').textContent).toBe('DAT-37')
+  fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+  expect(screen.getByTestId('page-first').textContent).toBe('DAT-1')
+  expect(reads.list).toHaveBeenCalledTimes(3)
+  reads.list.mockResolvedValue({ items: rows })
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+  await waitFor(() => expect(screen.getByTestId('read-error').textContent).toBe(''))
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+  expect(screen.getByTestId('page-first').textContent).toBe('DAT-37')
+})
+
+it('bounds partial-workspace retention at N/10N through the real list action', async () => {
+  const operations: number[] = []
+  for (const n of [20, 200]) {
+    clearLinearRequestMaps()
+    const s = store()
+    let ids = 0
+    const counted = (workspaceId: string) =>
+      Array.from({ length: n }, (_, i) => ({
+        ...task(),
+        workspaceId,
+        get id() {
+          ids++
+          return `id-${i}`
+        }
+      }))
+    const cached = counted('w')
+    const fresh = counted('healthy')
+    reads.list.mockResolvedValueOnce({ items: cached })
+    await read(s, 'list')
+    reads.list.mockResolvedValueOnce({
+      items: fresh,
+      errors: [{ workspaceId: 'w', type: 'network', message: 'failed' }]
+    })
+    ids = 0
+    const result = await read(s, 'list')
+    operations.push(ids)
+    expect(ids).toBeLessThanOrEqual(n * 4)
+    expect(!Array.isArray(result) && result.items.map((row) => row.workspaceId)).toEqual([
+      ...Array(n).fill('healthy'),
+      ...Array(n).fill('w')
+    ])
+    const success = { items: fresh }
+    reads.list.mockResolvedValueOnce(success)
+    expect(await read(s, 'list')).toBe(success)
+  }
+  expect(operations[1]).toBeLessThanOrEqual(operations[0] * 11)
+  console.info('partial retention identity reads N20/N200', operations)
+})
+
+it.each([20, 200])(
+  'isolates real list and linked consumers at N=%i; counts work separately from renders',
+  async (n) => {
+    const s = store()
+    let ids = 0
+    const rows = Array.from({ length: n }, (_, i) => ({
+      ...task(),
+      get id() {
+        ids++
+        return `DAT-${i}`
+      },
+      identifier: `DAT-${i}`
+    }))
+    reads.list.mockResolvedValue({ items: rows })
+    const list = loadingHook(s)
+    await waitFor(() => expect(list.result.current.rows).toHaveLength(n))
+    const origin = source('local')
+    const refs = rows.map((row) => ({
+      identifier: row.identifier,
+      workspaceId: 'w',
+      sourceContext: origin
+    }))
+    const byId = new Map(rows.map((row) => [row.identifier, row]))
+    reads.detail.mockImplementation((_source, id) => Promise.resolve(byId.get(id)))
+    const base = {
+      ...fixture(s, []),
+      ...s.getState(),
+      taskResumeApplied: true,
+      taskSource: 'linear',
+      linearMode: 'in-orca',
+      linearConnected: true,
+      linearRefreshNonce: 0,
+      lastLinearRequestRef: { current: null },
+      inOrcaLinkedLinearRefsRef: { current: refs },
+      inOrcaLinkedLinearRefsSignature: `N${n}`,
+      setLinearLoading: vi.fn(),
+      setLinearError: vi.fn(),
+      setLinearIssuesHasMore: vi.fn()
+    }
+    let renders = 0
+    const linked = renderHook(() => {
+      renders++
+      const [current, setLinearIssues] = useState<LinearIssue[]>([])
+      // SAFETY: the fixture installs the actual linked hook's selected dependencies.
+      useTaskPageLinearInOrcaEffects({ ...base, setLinearIssues } as never)
+      return current
+    })
+    await waitFor(() => expect(linked.result.current).toHaveLength(n))
+    expect(renders).toBeLessThanOrEqual(3)
+    const before = renders
+    const listRenders = list.result.current.renders
+    const listRows = list.result.current.rows
+    ids = 0
+    act(() => s.setState({ linearTeamCache: {} }))
+    expect(renders).toBe(before)
+    expect(list.result.current.renders).toBe(listRenders)
+    expect(ids).toBe(0)
+    act(() =>
+      s
+        .getState()
+        .patchLinearIssue(
+          'DAT-0',
+          { state: task('Foreign').state },
+          { sourceContext: source('runtime:foreign') }
+        )
+    )
+    expect(renders).toBe(before)
+    expect(list.result.current.rows).toBe(listRows)
+    expect(list.result.current.renders).toBe(listRenders)
+    expect(ids).toBe(0)
+    act(() =>
+      s
+        .getState()
+        .patchLinearIssue('DAT-0', { state: task('Done').state }, { sourceContext: origin })
+    )
+    const patchOperations = ids
+    expect(patchOperations).toBeLessThanOrEqual(n * 5)
+    expect(renders).toBeGreaterThan(before)
+    expect(linked.result.current[0].state.name).toBe('Done')
+    expect(list.result.current.rows).toBe(listRows)
+    ids = 0
+    act(() =>
+      s.getState().patchLinearIssue('DAT-0', { state: task().state }, { sourceContext: origin })
+    )
+    expect(ids).toBeLessThanOrEqual(n * 5)
+    expect(linked.result.current[0].state.name).toBe('In Review')
+    act(() => s.getState().patchLinearIssue('DAT-0', { state: task('Done').state }))
+    expect(list.result.current.rows[0].state.name).toBe('Done')
+    expect(list.result.current.renders).toBeGreaterThan(listRenders)
+    const patchedRenders = list.result.current.renders
+    act(() => s.getState().patchLinearIssue('DAT-0', { state: task().state }))
+    expect(list.result.current.rows[0].state.name).toBe('In Review')
+    expect(list.result.current.renders).toBeGreaterThan(patchedRenders)
+    console.info('linked identity reads N', n, patchOperations)
   }
 )

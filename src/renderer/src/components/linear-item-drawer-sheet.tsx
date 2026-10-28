@@ -47,14 +47,8 @@ type LinearItemDrawerSheetProps = {
   issue: LinearIssue | null
   onClose: () => void
   displayed: LinearIssue | null
-  handleIssueTextChange: Parameters<typeof LinearIssueTextEditor>[0] extends {
-    onIssueChange: infer Handler
-  }
-    ? Handler
-    : never
   sourceContext: TaskSourceContext | null | undefined
   editState: LinearEditState | null
-  handleEditStateChange: (patch: Partial<LinearEditState>) => void
   commentsLoading: boolean
   comments: LinearComment[]
   handleCommentAdded: (comment: LinearLocalComment) => void
@@ -68,10 +62,8 @@ export function renderLinearItemDrawerSheet({
   issue,
   onClose,
   displayed,
-  handleIssueTextChange,
   sourceContext,
   editState,
-  handleEditStateChange,
   commentsLoading,
   comments,
   handleCommentAdded,
@@ -117,7 +109,6 @@ export function renderLinearItemDrawerSheet({
                   <div className="mt-1">
                     <LinearIssueTextEditor
                       issue={displayed}
-                      onIssueChange={handleIssueTextChange}
                       density="drawer"
                       fields="title"
                       sourceContext={sourceContext}
@@ -176,7 +167,6 @@ export function renderLinearItemDrawerSheet({
               <LinearIssueEditSection
                 issue={displayed}
                 editState={editState}
-                onEditStateChange={handleEditStateChange}
                 sourceContext={sourceContext}
               />
             )}
@@ -185,7 +175,6 @@ export function renderLinearItemDrawerSheet({
               <div className="px-4 py-4">
                 <LinearIssueTextEditor
                   issue={displayed}
-                  onIssueChange={handleIssueTextChange}
                   density="drawer"
                   fields="description"
                   sourceContext={sourceContext}

@@ -1,3 +1,9 @@
+import {
+  observeLinearIssueRead,
+  type LinearIssueRead
+} from '@/store/slices/linear/linear-issue-publication'
+import type { LinearIssue } from '../../../../../shared/linear/issue-types'
+import type { LinearCollectionResult } from '../../../../../shared/linear/workspace-types'
 import type { TaskPageGlobalEffectsModel } from '../use-task-page-global-effects'
 import { useEffect } from 'react'
 import { isIntegrationCredentialDecryptionError } from '../../../../../shared/integration-credential-errors'
@@ -14,8 +20,7 @@ import { linearIssueAttributeFilterSignature } from '../../../../../shared/linea
 import { linearIssueReadError } from '@/lib/linear-read-error'
 import {
   taskPageLinearIssuesHaveMore,
-  reconcileTaskPageLinearIssuesAfterLandingRefresh,
-  subscribeToTaskPageLinearIssues
+  reconcileTaskPageLinearIssuesAfterLandingRefresh
 } from './task-page-linear-cache-selectors'
 import { LINEAR_ITEM_LIMIT } from '../task-page-source-context'
 import { useTaskSearchDebouncedApply } from '../use-task-search-debounced-apply'
@@ -29,7 +34,6 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
     selectedLinearWorkspaceId,
     taskSource,
     linearTaskSourceContext,
-    linearListInvalidationVersionForSource,
     linearSearchPersistReadyRef,
     linearViewPersistReadyRef,
     taskResumeApplied,
@@ -157,17 +161,6 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
       sourceContext: linearTaskSourceContext,
       workspaceId: selectedLinearWorkspaceId
     })
-    if (readArgs.kind === 'search') {
-      setLinearIssuesHasMore(false)
-    }
-    if (cachedResult) {
-      setLinearIssues(Array.isArray(cachedResult) ? cachedResult : cachedResult.items)
-      if (!Array.isArray(cachedResult)) {
-        setLinearIssuesHasMore(
-          taskPageLinearIssuesHaveMore(cachedResult, effectiveLinearIssueLimit)
-        )
-      }
-    }
     const nextFilterRead: LinearIssueListFilterRead = {
       workspaceId: linearAttributeFilterWorkspaceId,
       signature: linearIssueAttributeFilterSignature(linearAttributeFilter)
@@ -188,16 +181,6 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
       searchQuery: searchActive ? trimmed : undefined
     })
     const previousRequest = lastLinearRequestRef.current
-    if (!cachedResult && previousRequest?.signature !== requestSignature) {
-      setLinearIssues([])
-    }
-    const unsubscribe = subscribeToTaskPageLinearIssues(() => {
-      const cached = getCachedLinearIssues(readArgs, {
-        sourceContext: linearTaskSourceContext,
-        workspaceId: selectedLinearWorkspaceId
-      })
-      return Array.isArray(cached) ? cached : (cached?.items ?? null)
-    }, setLinearIssues)
     const forceRefresh =
       filterForce ||
       (linearRefreshNonce > 0 &&
@@ -220,7 +203,7 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
 
     // Why: keep cached rows visible on navigation; only explicit refresh or a true cache miss shows the blocking loading state.
     setLinearLoading(forceRefresh || cachedResult === null)
-    const request =
+    const request: LinearIssueRead<LinearIssue[] | LinearCollectionResult<LinearIssue>> =
       readArgs.kind === 'search'
         ? searchLinearIssues(readArgs.query, LINEAR_ITEM_LIMIT, {
             force: forceRefresh || shouldProbeOnLanding,
@@ -232,48 +215,57 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
             sourceContext: linearTaskSourceContext,
             workspaceId: selectedLinearWorkspaceId
           })
-    void request
-      .then((result) => {
-        if (
-          cancelled ||
-          lastLinearRequestRef.current?.signature !== requestSignature ||
-          lastLinearRequestRef.current?.nonce !== linearRefreshNonce
-        ) {
-          return
+    const release = observeLinearIssueRead(
+      request,
+      () =>
+        !cancelled &&
+        lastLinearRequestRef.current?.signature === requestSignature &&
+        lastLinearRequestRef.current?.nonce === linearRefreshNonce,
+      (lease, view) => {
+        if (view.data === null && view.kind === 'loading') {
+          setLinearIssues((current) => lease.commit(view, current, () => []))
         }
-        setLinearError(
-          !Array.isArray(result) && result.errors?.length
-            ? linearIssueReadError(result.errors[0].message)
-            : null
+        if (view.data !== null) {
+          setLinearIssues((current) =>
+            lease.commit(view, current, (_, result) => {
+              if (!result) {
+                return current
+              }
+              const issues = Array.isArray(result) ? result : result.items
+              return shouldProbeOnLanding
+                ? reconcileTaskPageLinearIssuesAfterLandingRefresh(current, issues)
+                : issues
+            })
+          )
+          setLinearIssuesHasMore((current) =>
+            lease.commit(view, current, (_, result) =>
+              result ? taskPageLinearIssuesHaveMore(result, effectiveLinearIssueLimit) : false
+            )
+          )
+        }
+        if (view.kind === 'data' || view.kind === 'error') {
+          setLinearError((current) =>
+            lease.commit(view, current, (_, result) =>
+              view.kind === 'error'
+                ? linearIssueReadError(view.error)
+                : result && !Array.isArray(result) && result.errors?.length
+                  ? linearIssueReadError(result.errors[0].message)
+                  : null
+            )
+          )
+        }
+        setLinearLoading((current) =>
+          lease.commit(
+            view,
+            current,
+            () => view.kind === 'loading' && (forceRefresh || view.data === null)
+          )
         )
-        const issues = Array.isArray(result) ? result : result.items
-        setLinearIssuesHasMore(taskPageLinearIssuesHaveMore(result, effectiveLinearIssueLimit))
-        setLinearIssues((current) =>
-          shouldProbeOnLanding
-            ? reconcileTaskPageLinearIssuesAfterLandingRefresh(current, issues)
-            : issues
-        )
-        setLinearLoading(false)
-      })
-      .catch((err) => {
-        if (
-          cancelled ||
-          lastLinearRequestRef.current?.signature !== requestSignature ||
-          lastLinearRequestRef.current?.nonce !== linearRefreshNonce
-        ) {
-          return
-        }
-        // Why: a credential failure used to resolve as no rows; keep not showing the previous scope's rows.
-        if (isIntegrationCredentialDecryptionError(err)) {
-          setLinearIssues([])
-          setLinearIssuesHasMore(false)
-        }
-        setLinearError(linearIssueReadError(err))
-        setLinearLoading(false)
-      })
+      }
+    )
     return () => {
       cancelled = true
-      unsubscribe()
+      release()
     }
   }, [
     taskSource,
@@ -285,7 +277,6 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
     linearRefreshNonce,
     linearAttributeFilter,
     linearAttributeFilterWorkspaceId,
-    linearListInvalidationVersionForSource,
     taskResumeApplied,
     getCachedLinearIssues,
     searchLinearIssues,

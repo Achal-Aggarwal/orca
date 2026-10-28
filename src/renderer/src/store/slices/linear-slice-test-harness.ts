@@ -1,17 +1,68 @@
-import { create } from 'zustand'
+import { openLinearIssueRead, type LinearIssueData } from './linear/linear-issue-publication'
+import { getLinearSourceScope } from './linear/linear-slice-scope'
+import type { LinearIssueRead } from './linear/linear-issue-publication'
+import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { AppState } from '../types'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { LinearProjectSummary } from '../../../../shared/linear/project-types'
 import { createLinearSlice } from './linear'
 
+type IssueReadAction =
+  | 'fetchLinearIssue'
+  | 'refreshLinearIssue'
+  | 'searchLinearIssues'
+  | 'listLinearIssues'
+  | 'listLinearProjectIssues'
+  | 'listLinearCustomViewIssues'
+type AwaitableRead<T> = LinearIssueRead<T> & PromiseLike<T>
+type TestAppState = Omit<AppState, IssueReadAction> & {
+  [K in IssueReadAction]: AppState[K] extends (...args: infer A) => LinearIssueRead<infer T>
+    ? (...args: A) => AwaitableRead<T>
+    : never
+}
+
+export async function readLinearIssueForTest<T>(read: LinearIssueRead<T>): Promise<T> {
+  const lease = read.acquire()
+  try {
+    const view = await lease.waitForCurrentTerminal()
+    if (view.kind === 'error') {
+      throw view.error
+    }
+    if (view.kind !== 'data') {
+      throw new Error('Linear read abandoned')
+    }
+    return view.data
+  } finally {
+    lease.release()
+  }
+}
+
+function awaitableRead<T>(read: LinearIssueRead<T>): AwaitableRead<T> {
+  return {
+    acquire: read.acquire,
+    // oxlint-disable-next-line unicorn/no-thenable -- Why: test-only awaits acquire and release the real owned read.
+    then: (resolve, reject) => readLinearIssueForTest(read).then(resolve, reject)
+  }
+}
+
 export function createTestStore() {
-  return create<AppState>()(
-    (...a) =>
-      ({
-        settings: null,
-        ...createLinearSlice(...a)
-      }) as AppState
-  )
+  const store = create<AppState>()((...a) => {
+    const slice = createLinearSlice(...a)
+    return {
+      settings: null,
+      ...slice,
+      fetchLinearIssue: (...args) => awaitableRead(slice.fetchLinearIssue(...args)),
+      refreshLinearIssue: (...args) => awaitableRead(slice.refreshLinearIssue(...args)),
+      searchLinearIssues: (...args) => awaitableRead(slice.searchLinearIssues(...args)),
+      listLinearIssues: (...args) => awaitableRead(slice.listLinearIssues(...args)),
+      listLinearProjectIssues: (...args) => awaitableRead(slice.listLinearProjectIssues(...args)),
+      listLinearCustomViewIssues: (...args) =>
+        awaitableRead(slice.listLinearCustomViewIssues(...args))
+      // SAFETY: tests exercise the Linear slice; unrelated AppState fields are not installed.
+    } as AppState
+  })
+  // SAFETY: each issue action above is decorated with acquire plus the test-only then adapter.
+  return store as unknown as UseBoundStore<StoreApi<TestAppState>>
 }
 
 export function issue(id: string): LinearIssue {
@@ -39,4 +90,17 @@ export function deferred<T>() {
     resolve = res
   })
   return { promise, resolve }
+}
+
+export function linearIssueReadFixture<T extends LinearIssueData>(
+  dispatch: () => Promise<T>
+): LinearIssueRead<T> {
+  return openLinearIssueRead({
+    scope: getLinearSourceScope({ kind: 'local' }),
+    seed: null,
+    dispatch,
+    publish: () => {},
+    isCurrent: () => true,
+    remove: () => {}
+  })
 }

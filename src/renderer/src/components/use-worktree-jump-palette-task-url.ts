@@ -1,4 +1,8 @@
 import {
+  mapLinearIssueRead,
+  type LinearIssueLease
+} from '@/store/slices/linear/linear-issue-publication'
+import {
   selectCanonicalProjects,
   selectCanonicalProjectHostSetups
 } from '@/store/project-host-setup-selector'
@@ -73,7 +77,7 @@ export function useWorktreeJumpPaletteTaskUrl({
     useState<CmdJGitHubWorkItemPreview | null>(null)
   const linearLookupRef = useRef<{
     query: string
-    promise: Promise<CmdJLinearIssuePreview>
+    lease: LinearIssueLease<CmdJLinearIssuePreview>
   } | null>(null)
   const githubLookupRef = useRef<{
     query: string
@@ -107,24 +111,34 @@ export function useWorktreeJumpPaletteTaskUrl({
       sourceContext
     }
     setLinearIssuePreview(pending)
-    const promise = lookupLinearIssueUrl({
-      intent: linearIssueUrlIntent,
-      knownStatus: state.linearStatus,
-      sourceContext,
-      fetchLinearIssue: state.fetchLinearIssue
-    })
-      .catch(() => null)
-      .then((issue): CmdJLinearIssuePreview => ({ ...pending, issue, loading: false }))
-    linearLookupRef.current = { query: createWorktreeName, promise }
-    void promise.then((preview) => {
-      if (linearGenerationRef.current === generation) {
-        setLinearIssuePreview(preview)
-      }
-    })
+    const read = mapLinearIssueRead(
+      lookupLinearIssueUrl({
+        intent: linearIssueUrlIntent,
+        knownStatus: state.linearStatus,
+        sourceContext,
+        fetchLinearIssue: state.fetchLinearIssue
+      }),
+      (issue): CmdJLinearIssuePreview => ({ ...pending, issue, loading: false }),
+      (): CmdJLinearIssuePreview => ({ ...pending, issue: null, loading: false })
+    )
+    const lease = read.acquire(() => linearGenerationRef.current === generation)
+    linearLookupRef.current = { query: createWorktreeName, lease }
+    const update = () => {
+      const view = lease.currentView()
+      setLinearIssuePreview((previous) =>
+        lease.commit(view, previous, (_, data) =>
+          view.kind === 'loading' ? { ...pending, issue: data?.issue ?? null } : data
+        )
+      )
+    }
+    const unsubscribe = lease.subscribe(update)
+    update()
     return () => {
       if (linearGenerationRef.current === generation) {
         linearGenerationRef.current += 1
       }
+      unsubscribe()
+      lease.release()
     }
   }, [createWorktreeName, linearIssueUrlIntent, visible])
 

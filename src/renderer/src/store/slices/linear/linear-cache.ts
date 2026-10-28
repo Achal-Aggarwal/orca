@@ -222,12 +222,12 @@ export function patchLinearIssueCollectionCache(
     if (!canPatchCacheKey(key) || !entry?.data) {
       continue
     }
-    const idx = entry.data.items.findIndex((item) => item.id === issueId)
-    if (idx === -1) {
+    if (!entry.data.items.some((item) => item.id === issueId)) {
       continue
     }
-    const updatedItems = [...entry.data.items]
-    updatedItems[idx] = { ...updatedItems[idx], ...patch }
+    const updatedItems = entry.data.items.map((item) =>
+      item.id === issueId ? { ...item, ...patch } : item
+    )
     nextCache[key] = {
       ...entry,
       data: { ...entry.data, items: updatedItems }

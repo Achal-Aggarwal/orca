@@ -1,3 +1,4 @@
+import { linearIssueReadFixture } from '@/store/slices/linear-slice-test-harness'
 // @vitest-environment happy-dom
 import React, { createRef, type ReactNode } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -120,7 +121,7 @@ const connectedLinear: LinearConnectionStatus = {
   ]
 }
 const onAdd = vi.fn<(item: WorkspaceAttachment) => boolean>(() => true)
-const fetchLinearIssue = vi.fn<() => Promise<LinearIssue | null>>()
+const fetchLinearIssue = vi.fn<(...args: unknown[]) => Promise<LinearIssue | null>>()
 
 function composer(value: string): React.JSX.Element {
   return (
@@ -159,9 +160,10 @@ describe('workspace reference URL resolution and recovery', () => {
       refreshPreflightStatus: vi.fn(async () => {}),
       checkLinearConnection: vi.fn(async () => {}),
       linearStatusChecked: true,
-      fetchLinearIssue,
-      searchLinearIssues: vi.fn(async () => []),
-      listLinearIssues: vi.fn(async () => ({ items: [] }))
+      fetchLinearIssue: (...args: unknown[]) =>
+        linearIssueReadFixture(() => fetchLinearIssue(...args)),
+      searchLinearIssues: vi.fn(() => linearIssueReadFixture(async () => [])),
+      listLinearIssues: vi.fn(() => linearIssueReadFixture(async () => ({ items: [] })))
     })
     Object.assign(sourceMock.jiraState, {
       intent: false,

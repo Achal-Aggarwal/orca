@@ -1,3 +1,5 @@
+import { useLinearIssuePublication } from '@/hooks/useLinearIssuePublication'
+import { defaultScopeSource } from '@/lib/default-creation-host'
 import type { TaskPageGitHubIssueDraftModel } from './github/use-task-page-github-issue-draft'
 import { useState, useMemo, useCallback } from 'react'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
@@ -13,10 +15,25 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     jiraTaskSourceContext,
     setDialogWorkItem
   } = model
-  const [selectedLinearIssueIdState, setSelectedLinearIssueId] = useState<string | null>(null)
-  const [selectedLinearIssueFallbackState, setSelectedLinearIssueFallback] =
-    useState<LinearIssue | null>(null)
-  const [selectedLinearIssueCanFloatState, setSelectedLinearIssueCanFloat] = useState(false)
+  const [linearSelection, setLinearSelection] = useState<{
+    id: string | null
+    fallback: LinearIssue | null
+    canFloat: boolean
+    request: object
+  }>({ id: null, fallback: null, canFloat: false, request: {} })
+  const {
+    id: selectedLinearIssueIdState,
+    fallback: selectedLinearIssueFallbackState,
+    canFloat: selectedLinearIssueCanFloatState
+  } = linearSelection
+  const setSelectedLinearIssueFallback = useCallback(
+    (update: React.SetStateAction<LinearIssue | null>) =>
+      setLinearSelection((previous) => ({
+        ...previous,
+        fallback: typeof update === 'function' ? update(previous.fallback) : update
+      })),
+    []
+  )
 
   const selectedLinearIssueId = pageData.openLinearIssue?.id ?? selectedLinearIssueIdState
   const selectedLinearIssueFallback = pageData.openLinearIssue ?? selectedLinearIssueFallbackState
@@ -39,23 +56,38 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     pageData.openLinearSourceContext,
     selectedLinearIssue
   ])
+  const acceptRead = useLinearIssuePublication(
+    selectedLinearIssueFallback,
+    linearDetailSourceContext ?? defaultScopeSource(useAppStore.getState().settings),
+    (apply) => {
+      setSelectedLinearIssueFallback((previous) => (previous ? apply(previous) : previous))
+    }
+  )
   const setSelectedLinearIssue = useCallback(
     (
       issue: LinearIssue | null,
       options?: {
         allowOutsideList?: boolean
+        isCurrent?: () => boolean
+        expectedSelection?: object
       }
     ) => {
-      setSelectedLinearIssueCanFloat(Boolean(issue && options?.allowOutsideList))
-      setSelectedLinearIssueId(issue?.id ?? null)
-      setSelectedLinearIssueFallback(issue)
+      setLinearSelection((previous) =>
+        (options?.isCurrent && !options.isCurrent()) ||
+        (options?.expectedSelection && previous.request !== options.expectedSelection)
+          ? previous
+          : {
+              request: {},
+              id: issue?.id ?? null,
+              fallback: issue ? acceptRead(issue) : null,
+              canFloat: Boolean(issue && options?.allowOutsideList)
+            }
+      )
     },
-    []
+    [acceptRead]
   )
   const clearSelectedLinearIssue = useCallback(() => {
-    setSelectedLinearIssueCanFloat(false)
-    setSelectedLinearIssueId(null)
-    setSelectedLinearIssueFallback(null)
+    setLinearSelection({ id: null, fallback: null, canFloat: false, request: {} })
   }, [])
   const openLinearDetailPage = useCallback(
     (issue: LinearIssue) => {
@@ -167,12 +199,11 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
   )
 
   const nextModel = model as typeof model & {
+    linearSelectionRequest: object
     selectedLinearIssueId: typeof selectedLinearIssueId
-    setSelectedLinearIssueId: typeof setSelectedLinearIssueId
     selectedLinearIssueFallback: typeof selectedLinearIssueFallback
     setSelectedLinearIssueFallback: typeof setSelectedLinearIssueFallback
     selectedLinearIssueCanFloat: typeof selectedLinearIssueCanFloat
-    setSelectedLinearIssueCanFloat: typeof setSelectedLinearIssueCanFloat
     selectedLinearIssue: typeof selectedLinearIssue
     linearDetailSourceContext: typeof linearDetailSourceContext
     setSelectedLinearIssue: typeof setSelectedLinearIssue
@@ -191,12 +222,11 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     setSelectedJiraIssue: typeof setSelectedJiraIssue
     openJiraDetailPage: typeof openJiraDetailPage
   }
+  nextModel.linearSelectionRequest = linearSelection.request
   nextModel.selectedLinearIssueId = selectedLinearIssueId
-  nextModel.setSelectedLinearIssueId = setSelectedLinearIssueId
   nextModel.selectedLinearIssueFallback = selectedLinearIssueFallback
   nextModel.setSelectedLinearIssueFallback = setSelectedLinearIssueFallback
   nextModel.selectedLinearIssueCanFloat = selectedLinearIssueCanFloat
-  nextModel.setSelectedLinearIssueCanFloat = setSelectedLinearIssueCanFloat
   nextModel.selectedLinearIssue = selectedLinearIssue
   nextModel.linearDetailSourceContext = linearDetailSourceContext
   nextModel.setSelectedLinearIssue = setSelectedLinearIssue

@@ -196,7 +196,7 @@ describe('createLinearSlice', () => {
     ).toMatchObject({ items: [{ id: 'LIN-REMOTE' }] })
 
     localList.resolve({ items: [issue('LIN-LOCAL')] })
-    await localRequest
+    await expect(localRequest).rejects.toThrow('Linear read abandoned')
     expect(
       store.getState().getCachedLinearIssues({ kind: 'list', filter: 'assigned', limit: 20 })
     ).toMatchObject({ items: [{ id: 'LIN-REMOTE' }] })
