@@ -124,6 +124,43 @@ function append(model: editor.ITextModel, text: string): void {
 afterEach(cleanup)
 
 describe('automation prompt large paste publication', () => {
+  it('keeps overlapping pastes deferred until both original operations settle', () => {
+    const onChange = vi.fn()
+    render(
+      <AutomationEditorPromptEditor
+        value="base"
+        placeholder=""
+        ariaLabel="Prompt"
+        onChange={onChange}
+      />
+    )
+    const { instance, model } = currentEditor()
+    const first = beginMonacoLargePasteLifecycle(instance)
+    act(() => append(model, '-one'))
+    const second = beginMonacoLargePasteLifecycle(instance)
+    act(() => append(model, '-two'))
+    act(() =>
+      first?.({
+        status: 'cancelled',
+        reason: 'target-unavailable',
+        byteLength: 100000,
+        chunksWritten: 1
+      })
+    )
+    expect(onChange).not.toHaveBeenCalled()
+    act(() => append(model, '-three'))
+    expect(onChange).not.toHaveBeenCalled()
+    act(() => second?.({ status: 'pasted', mode: 'chunked', byteLength: 100000, chunksWritten: 2 }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('base-one-two-three')
+    first?.({
+      status: 'cancelled',
+      reason: 'target-unavailable',
+      byteLength: 100000,
+      chunksWritten: 1
+    })
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
   for (const chunks of [5, 50]) {
     it(`reads and publishes once for ${chunks} admitted model chunks and preserves Undo`, async () => {
       const onChange = vi.fn()

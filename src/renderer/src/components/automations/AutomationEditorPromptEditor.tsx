@@ -93,28 +93,53 @@ export function AutomationEditorPromptEditor({
     const editorDomNode = editorInstance.getContainerDomNode()
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
     const cleanupEscapeDismiss = installPromptEditorEscapeDismiss(editorDomNode, onDismissRef)
-    let applyingLargePaste = false
+    let pendingPaste: {
+      model: editor.ITextModel | null
+      publish: (content: string) => void
+      count: number
+      changed: boolean
+    } | null = null
     const unregisterPasteLifecycle = registerMonacoLargePasteLifecycle(editorInstance, () => {
-      applyingLargePaste = true
       const model = editorInstance.getModel()
-      const publish = onChangeRef.current
-      return (result) => {
-        applyingLargePaste = false
-        if (
-          (result.status === 'pasted' || result.status === 'cancelled') &&
-          model &&
-          !model.isDisposed()
-        ) {
+      const pending =
+        pendingPaste?.model === model
+          ? pendingPaste
+          : {
+              model,
+              publish: onChangeRef.current,
+              count: 0,
+              changed: false
+            }
+      pendingPaste = pending
+      pending.count += 1
+      let finished = false
+      return () => {
+        if (finished) {
+          return
+        }
+        finished = true
+        pending.count -= 1
+        if (pending.count > 0) {
+          return
+        }
+        if (pendingPaste === pending) {
+          pendingPaste = null
+        }
+        if (pending.changed && model && !model.isDisposed()) {
           const next = model.getValue()
           if (editorRef.current === editorInstance && editorInstance.getModel() === model) {
             lastSyncedContentRef.current = next
           }
-          publish(next)
+          pending.publish(next)
         }
       }
     })
     const contentListener = editorInstance.onDidChangeModelContent(() => {
-      if (isApplyingProgrammaticContentRef.current || applyingLargePaste) {
+      if (isApplyingProgrammaticContentRef.current) {
+        return
+      }
+      if (pendingPaste && pendingPaste.model === editorInstance.getModel()) {
+        pendingPaste.changed = true
         return
       }
       const next = editorInstance.getValue()
