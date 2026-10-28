@@ -36,8 +36,8 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
   const repoOrdering = createRepoOrderingActions(set, get)
   return {
     repos: [],
-    endpointProjects: [],
-    endpointProjectHostSetups: [],
+    projects: [],
+    projectHostSetups: [],
     projectGroups: [],
     folderWorkspaces: [],
     wslMovedProjects: [],
