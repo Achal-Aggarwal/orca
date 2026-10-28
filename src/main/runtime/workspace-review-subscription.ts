@@ -8,6 +8,10 @@ import type { OrcaRuntimeService } from './orca-runtime'
 import type { WorkspaceReviewTarget } from './runtime-workspace-review-target'
 import type { GitHubPRRefreshEvent } from '../../shared/github/pull-request-refresh-types'
 import {
+  applyPRCacheResult,
+  shouldPreserveMergedPRForFallbackMiss
+} from '../../shared/github/pr-cache-result'
+import {
   WORKTREE_REVIEW_LEASE_MS,
   type WorktreeReviewStatus
 } from '../../shared/worktree-review-status'
@@ -277,17 +281,25 @@ export class WorkspaceReviewSubscription {
       const cache = store.getGitHubCache()
       const existing = cache.pr[candidate.cacheKey]
       if (!existing || existing.fetchedAt <= outcome.fetchedAt) {
-        store.setGitHubCache?.({
-          ...cache,
-          pr: {
-            ...cache.pr,
-            [candidate.cacheKey]: {
-              data: outcome.kind === 'found' ? outcome.pr : null,
-              fetchedAt: outcome.fetchedAt,
-              fetchedHeadOid: candidate.currentHeadOid
-            }
-          }
-        })
+        const pr = outcome.kind === 'found' ? outcome.pr : null
+        const next = applyPRCacheResult(
+          cache.pr,
+          candidate.cacheKey,
+          pr,
+          outcome.fetchedAt,
+          true,
+          shouldPreserveMergedPRForFallbackMiss({
+            currentPR: existing?.data,
+            nextPR: pr,
+            currentHeadOid: current.candidate.currentHeadOid,
+            linkedPRNumber: current.candidate.linkedPRNumber,
+            rejectedPRUrls: outcome.kind === 'no-pr' ? outcome.rejectedPRUrls : undefined
+          }),
+          candidate.currentHeadOid
+        )
+        if (next !== cache.pr) {
+          store.setGitHubCache?.({ ...cache, pr: next })
+        }
       }
     }
     this.publish('updated')

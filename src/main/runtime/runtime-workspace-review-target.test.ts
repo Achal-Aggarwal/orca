@@ -169,6 +169,30 @@ describe('workspace review target uses host identity and existing review selecti
     })
   })
 
+  it.each([
+    { state: 'open', headSha: 'current-head', expected: 12 },
+    { state: 'merged', headSha: 'current-head', expected: 12 },
+    {
+      state: 'merged',
+      headSha: 'other-head',
+      confirmedContainedHeadOid: 'current-head',
+      expected: 12
+    },
+    { state: 'merged', headSha: 'other-head', expected: null }
+  ] as const)(
+    'uses only a head-current cached PR as an implicit merged fallback: %j',
+    async ({ expected, ...pr }) => {
+      const h = target()
+      h.args.store.setWorktreeMeta({}, { linkedPR: null })
+      h.cache = { pr: { [h.key]: { data: makePR(pr), fetchedAt: 500 } }, issue: {} }
+      expect((await workspaceReviewTarget(h.args)).candidate).toMatchObject({
+        linkedPRNumber: null,
+        fallbackPRNumber: expected,
+        fallbackPRSource: expected === null ? null : 'pr-cache'
+      })
+    }
+  )
+
   it('keeps folders, stopped WSL hosts, and other providers out of GitHub scheduling', async () => {
     const h = target()
     expect(

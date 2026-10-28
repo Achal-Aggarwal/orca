@@ -4,6 +4,10 @@ import type { WorkspaceReviewTarget } from './runtime-workspace-review-target'
 import { WorktreeReviewStatusSchema } from '../../shared/worktree-review-status'
 import { makeCandidate } from '../github/pr-refresh-coordinator-test-harness'
 import { RuntimeSubscriptionRegistry } from './runtime-subscription-registry'
+import {
+  cachedPRCandidateFields,
+  selectPRRefreshFallback
+} from '../../shared/github/pr-refresh-selection'
 
 export async function harness() {
   const { WorkspaceReviewSubscription } = await import('./workspace-review-subscription')
@@ -23,13 +27,15 @@ export async function harness() {
     return {
       worktreeId: 'wt-1',
       branch: candidate.branch,
+      linkedPR: candidate.linkedPRNumber,
       candidate: {
         ...candidate,
-        cachedFetchedAt: cached?.fetchedAt ?? null,
-        cachedHeadOid: cached?.fetchedHeadOid,
-        cachedHasPR: cached ? cached.data !== null : null,
-        cachedPRState: cached?.data?.state,
-        cachedChecksStatus: cached?.data?.checksStatus
+        ...selectPRRefreshFallback({
+          linkedPRNumber: candidate.linkedPRNumber,
+          cachedPR: cached?.data,
+          currentHeadOid: candidate.currentHeadOid
+        }),
+        ...cachedPRCandidateFields(cached)
       }
     }
   })

@@ -21,6 +21,10 @@ import type { RuntimeStore } from './runtime-store-contract'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import { getForgeProviderForRepository } from '../source-control/forge-provider'
 import { hostedReviewSshConnectionId } from '../source-control/hosted-review-execution-host'
+import {
+  cachedPRCandidateFields,
+  selectPRRefreshFallback
+} from '../../shared/github/pr-refresh-selection'
 
 export type WorkspaceReviewTarget = {
   worktreeId: string
@@ -150,14 +154,13 @@ export async function workspaceReviewTarget(args: {
       localGitOptions,
       currentHeadOid: head,
       linkedPRNumber: staleLinked ? null : (selection.linkedPR ?? null),
+      ...selectPRRefreshFallback({
+        linkedPRNumber: staleLinked ? null : selection.linkedPR,
+        cachedPR: usableCached?.data,
+        currentHeadOid: head
+      }),
       isSelected: true,
-      cachedFetchedAt: usableCached?.fetchedAt ?? null,
-      cachedHeadOid: usableCached?.fetchedHeadOid ?? usableCached?.data?.headSha ?? null,
-      cachedHasPR: usableCached ? usableCached.data !== null : null,
-      cachedPRState: usableCached?.data?.state ?? null,
-      cachedChecksStatus: usableCached?.data?.checksStatus ?? null,
-      cachedMergeable: usableCached?.data?.mergeable ?? null,
-      cachedMergeStateStatus: usableCached?.data?.mergeStateStatus ?? null
+      ...cachedPRCandidateFields(usableCached)
     }
   }
 }
