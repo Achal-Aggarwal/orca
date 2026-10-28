@@ -32,9 +32,7 @@ function removeAllButConversationStoreLinks(managedHomePath: string): void {
 }
 
 function removeManagedHomeTreeSync(targetPath: string): void {
-  // Why: codex login descendants can briefly keep Windows handles on files in
-  // the managed home (e.g. log/codex-login.log); bounded retries absorb the
-  // transient lock instead of failing with ENOTEMPTY and orphaning the home.
+  // Retry transient Windows locks held by login descendants to avoid orphaning the home.
   rmSync(targetPath, {
     recursive: true,
     force: true,
@@ -57,7 +55,7 @@ export class CodexManagedHomeLifecycle {
 
     const managedHomePath = join(this.paths.getRoot(), accountId, 'home')
     mkdirSync(managedHomePath, { recursive: true })
-    // Why: marker lets future cleanup prove the path belongs to Orca before deleting anything.
+    // Cleanup requires this ownership marker before deleting the home.
     writeFileSync(join(managedHomePath, '.orca-managed-home'), `${accountId}\n`, 'utf-8')
     return {
       managedHomePath: this.paths.assert(managedHomePath, accountId),
@@ -67,9 +65,6 @@ export class CodexManagedHomeLifecycle {
     }
   }
 
-  // Why: copy the auth.json from an already-authenticated CODEX_HOME (e.g. a temp
-  // dir the CLI ran `codex login` into) into the managed home. Mirrors the login
-  // step of doAddAccount without spawning an interactive browser flow.
   importAuthFromHome(sourceHome: string, managedHomePath: string, accountId: string): void {
     const trimmed = sourceHome.trim()
     if (!trimmed) {
@@ -80,9 +75,7 @@ export class CodexManagedHomeLifecycle {
     try {
       sourceAuthContents = readFileSync(join(resolvedSourceHome, 'auth.json'), 'utf-8')
     } catch (error) {
-      // Why: "no credentials here, run codex login" is only true for a definitive
-      // absence. A locked source file used to produce that advice, which sends the
-      // user to re-run a login they had already completed.
+      // An unreadable source cannot justify telling an authenticated user to log in again.
       if (!isDefinitiveAbsence(error)) {
         throw new ManagedCodexHomeTemporarilyUnavailableError(undefined, { cause: error })
       }
@@ -94,11 +87,7 @@ export class CodexManagedHomeLifecycle {
     writeFileAtomically(join(trustedHome, 'auth.json'), sourceAuthContents, { mode: 0o600 })
   }
 
-  /**
-   * Rollback deletes the managed home, so it may only run on a *proven* failure.
-   * An unreadable credential file means the login may well have succeeded, and a
-   * kept home is a recoverable leak where a deleted one is permanent data loss.
-   */
+  /** Preserve an unreadable home: rollback could destroy a successful login. */
   removeUnlessUnproven(error: unknown, managedHomePath: string, accountId: string): void {
     if (error instanceof ManagedCodexHomeTemporarilyUnavailableError) {
       return
@@ -124,8 +113,7 @@ export class CodexManagedHomeLifecycle {
     try {
       removeManagedHomeTreeSync(managedHomePath)
     } catch (error) {
-      // Why: this runs from error-cleanup paths; a still-held Windows handle
-      // must not mask the original failure with an ENOTEMPTY from rmSync.
+      // Cleanup failures must not mask the original error.
       console.warn('[codex-accounts] Failed to remove managed home:', error)
       return
     }
@@ -139,10 +127,10 @@ export class CodexManagedHomeLifecycle {
       return
     }
 
-    // Why: homes live at <accounts-root>/<uuid>/home; removing the home/ leaf leaves an empty <uuid>/ behind.
+    // Remove the account directory left after deleting its home leaf.
     try {
       const parentDir = resolve(managedHomePath, '..')
-      // Why: canonicalize the root too so the prefix check works on macOS where userData resolves through /private/var.
+      // Canonicalize both sides for macOS userData paths that resolve through /private/var.
       const root = realpathSync(this.paths.getRoot())
       if (parentDir.startsWith(root + sep) && parentDir !== root) {
         removeManagedHomeTreeSync(parentDir)
@@ -212,7 +200,7 @@ export class CodexManagedHomeLifecycle {
     linuxHomePath: string,
     expectedAccountId: string
   ): Promise<void> {
-    // Why: creation can fail after mkdir/marker but before trust, so cleanup must verify the marker/account ID inside WSL.
+    // Verify WSL ownership even when creation failed before the host validated the home.
     try {
       const result = await runWslProcess({
         distro,

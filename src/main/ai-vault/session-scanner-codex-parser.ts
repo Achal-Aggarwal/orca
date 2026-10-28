@@ -35,11 +35,6 @@ import {
   subtractCodexUsage
 } from './session-scanner-values'
 import { readCodexTimelineOnlyRecord } from './session-scanner-codex-record-fast-path'
-import { readCodexHistoryBase } from '../codex/codex-rollout-session-meta'
-import {
-  markMissingInheritedHistory,
-  withInheritedHistory
-} from './session-scanner-inherited-history'
 import { extractCodexSessionMetadataTitle } from './session-scanner-codex-session-meta'
 import {
   readCodexNonUserOrigin,
@@ -72,18 +67,11 @@ export async function parseCodexSessionFile(
 type CodexSessionParseState = {
   accumulator: SessionAccumulator
   previousTotals: CodexUsageSnapshot | null
-  // Codex's own classification of this thread as something other than the
-  // user's own — a spawned agent, a review pass, a compaction, a guardian. Codex
-  // writes all of those into the same history tree and AI Vault shows
-  // user-started sessions only, so the parse is rejected on this record's
-  // presence rather than on a separate flag beside it.
+  // Non-user origin excludes worker and internal transcripts stored alongside user sessions.
   nonUserOrigin: CodexNonUserOrigin | null
   sawSessionMeta: boolean
   historyMode: string | null
-  // A reverted or forked segment holds only its own turns; the rest is this inherited prefix.
-  historyBase: ReturnType<typeof readCodexHistoryBase>
-  // Which source set the current title; an index-file title outranks the raw
-  // first user prompt, so finalize must know whether 'meta' already won.
+  // Metadata titles outrank indexed titles, which outrank raw user prompts.
   titleSource: 'meta' | 'user' | null
 }
 
@@ -102,7 +90,6 @@ function createCodexParseState(
     nonUserOrigin: null,
     sawSessionMeta: false,
     historyMode: null,
-    historyBase: null,
     titleSource: null
   }
 }
@@ -128,8 +115,7 @@ function consumeCodexRecordLine(state: CodexSessionParseState, line: string): vo
   updateTimeline(accumulator, extractString(record.timestamp))
 
   const payload = asRecord(record.payload)
-  // Codex keeps the first session_meta canonical; a fork copies its parent's in after it, and
-  // such a later one is ignored below like any other record type this parser does not read.
+  // Forks may copy parent metadata later; the first session_meta defines this thread.
   if (record.type === 'session_meta' && payload && !state.sawSessionMeta) {
     state.nonUserOrigin = readCodexNonUserOrigin(payload)
     if (state.nonUserOrigin) {
@@ -137,7 +123,6 @@ function consumeCodexRecordLine(state: CodexSessionParseState, line: string): vo
     }
     state.sawSessionMeta = true
     state.historyMode = extractString(payload.history_mode)
-    state.historyBase = readCodexHistoryBase(payload.history_base)
     const sessionId = extractString(payload.id)
     if (sessionId) {
       accumulator.sessionId = sessionId
@@ -237,34 +222,18 @@ async function finalizeCodexParseState(
   }
   // Finalize a snapshot: the live state keeps accumulating appended lines.
   const snapshot = cloneCodexParseState(state)
-  const inherited = snapshot.historyBase
-    ? await withInheritedHistory(snapshot.accumulator, snapshot.titleSource === 'meta', (file) => {
-        const fold = createCodexParseState(file)
-        return {
-          consumeLine: (line) => consumeCodexRecordLine(fold, line),
-          result: () => fold.accumulator
-        }
-      })
-    : null
-  snapshot.accumulator = inherited?.accumulator ?? snapshot.accumulator
-  // Why: Codex names threads lazily in session_index.jsonl, so the lookup runs
-  // per finalize (the index read is signature-cached) — a title that appears
-  // after the transcript was first parsed must still replace the raw prompt.
+  // Recheck the signature-cached index: a title can arrive after the transcript stops growing.
   if (snapshot.sawSessionMeta && snapshot.titleSource !== 'meta') {
     const indexedTitle = await args.titleReader?.(snapshot.accumulator.sessionId)
     if (indexedTitle) {
       snapshot.accumulator.title = indexedTitle
     }
   }
-  const session = finalizeSession(snapshot.accumulator, platform, {
+  return finalizeSession(snapshot.accumulator, platform, {
     codexHome: args.codexHome,
     executionHostId: args.executionHostId,
     executionHostPlatform: args.executionHostPlatform
   })
-  if (session && inherited && !inherited.complete) {
-    markMissingInheritedHistory(session)
-  }
-  return session
 }
 
 export function createCodexSessionResumeState(
@@ -323,7 +292,6 @@ async function parseCodexSessionLines(args: {
   for await (const line of args.lines) {
     consumeCodexRecordLine(state, line)
     if (state.nonUserOrigin) {
-      // Worker transcripts are excluded outright; stop reading early.
       return null
     }
   }

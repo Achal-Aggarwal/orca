@@ -1,3 +1,4 @@
+import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import {
   createCodexStructuredLaunchResolver,
   TEST_SPAWN_TOKEN
@@ -41,7 +42,7 @@ async function withPlatform<T>(platform: NodeJS.Platform, run: () => Promise<T>)
 }
 
 function record(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRecord {
-  return {
+  return agentSessionRecordFixture({
     sessionId: SESSION_ID,
     provider: 'codex',
     location: {
@@ -53,7 +54,7 @@ function record(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRecord
     accountHome: { variable: 'CODEX_HOME', path: '/home/work/.codex' },
     providerHandleChain: [],
     ...overrides
-  } as AgentSessionRecord
+  })
 }
 
 function resolverFor(
@@ -105,7 +106,7 @@ describe('codex structured launch resolution', () => {
     }
   )
 
-  it('starts a new thread after clear', async () => {
+  it('starts a new thread after clear without reusing the old handle', async () => {
     const value = record({
       providerContextBoundary: { operationId: 'clear', afterFence: 2, clearedAt: 100 },
       providerHandleChain: []
@@ -160,10 +161,9 @@ describe('codex structured launch resolution', () => {
       cwd: '/repos/workspace-1',
       codexHome: '/home/work/.codex',
       resumeThreadId: null,
-      // Every launch carries a posture; none is left for config.toml to decide. No mode asks.
       permissionPolicy: {
         approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
+        sandbox: 'read-only',
         approvalsReviewer: 'user'
       },
       env: { CODEX_HOME: '/home/work/.codex' },
@@ -249,12 +249,8 @@ describe('codex structured launch resolution', () => {
     expect(fresh).not.toHaveProperty('supersedeIfUnsaved')
   })
 
-  // app-server owns the permission posture on the thread RPC, not process flags.
   it.each([
-    [
-      'ask',
-      { approvalPolicy: 'on-request', sandbox: 'workspace-write', approvalsReviewer: 'user' }
-    ],
+    ['ask', { approvalPolicy: 'on-request', sandbox: 'read-only', approvalsReviewer: 'user' }],
     [
       'auto',
       { approvalPolicy: 'on-request', sandbox: 'workspace-write', approvalsReviewer: 'auto_review' }
@@ -274,7 +270,15 @@ describe('codex structured launch resolution', () => {
     expect(launch.permissionPolicy).toEqual(policy)
   })
 
-  // The chat's mode replaces Agent Permissions: a Yolo terminal setting grants a chat nothing.
+  it('adds no policy overrides for the agent’s own settings', async () => {
+    const launch = await resolverFor(record())({
+      identity: IDENTITY,
+      spawnToken: TEST_SPAWN_TOKEN,
+      permissionMode: 'own'
+    })
+    expect(launch).not.toHaveProperty('permissionPolicy')
+  })
+
   it('ignores the bypass flag the agent Arguments carry', async () => {
     const launch = await resolverFor(record(), undefined, () => [
       '--dangerously-bypass-approvals-and-sandbox'
@@ -283,8 +287,6 @@ describe('codex structured launch resolution', () => {
     expect(launch.permissionPolicy).toMatchObject({ approvalPolicy: 'on-request' })
   })
 
-  // A thread opened on the configured default and then given a turn on the saved model reads to
-  // Codex as a model switch, and it injects the saved model's whole prompt a second time.
   it('opens the thread on the model the record saved', async () => {
     const launch = await resolverFor(
       record({ options: { model: 'gpt-chosen', effort: 'high', fastMode: 'false' } })
@@ -316,18 +318,20 @@ describe('codex structured launch resolution', () => {
     ])
   })
 
-  it('resumes the durable thread by id and keeps its launch args', async () => {
+  it('resumes the durable thread ID under its pinned account home', async () => {
     const launch = await resolverFor(
       record({
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only each link's handle, so the link's other fields stay unset.
         launchArgs: ['--enable', 'unified_exec', '-c', 'model_reasoning_effort=high'],
         providerHandleChain: [
           { handle: codexProviderHandle('thread-current') }
         ] as AgentSessionRecord['providerHandleChain']
-      })
+      }),
+      async (id) => `/repos/${id}`
     )({ identity: IDENTITY })
 
     expect(launch.resumeThreadId).toBe('thread-current')
+    expect(launch.codexHome).toBe('/home/work/.codex')
+    expect(launch.env?.CODEX_HOME).toBe('/home/work/.codex')
     expect(launch.args).toEqual([
       '--enable',
       'unified_exec',

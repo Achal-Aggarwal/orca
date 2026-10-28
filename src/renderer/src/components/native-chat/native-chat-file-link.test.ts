@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
-import type { AppState } from '@/store/types'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import { createNativeChatFileHref } from '../../../../shared/native-chat-href-routing'
@@ -58,7 +57,10 @@ describe('resolveNativeChatFileLinkContext', () => {
     expect(
       resolveNativeChatFileLinkContext(
         state({
-          settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings']
+          // The client stamps a server's rows on arrival; focus alone never names the owner.
+          worktreesByRepo: {
+            repo: [{ ...worktreeFixture('wt-1', '/repo/worktree'), hostId: 'runtime:env-1' }]
+          }
         }),
         'tab-1'
       )
@@ -296,5 +298,26 @@ describe('resolveNativeChatFileLink', () => {
 
   it('ignores http links so normal markdown navigation can handle them', () => {
     expect(resolveNativeChatFileLink('https://example.com/docs/guide.md', context)).toBeNull()
+  })
+
+  it('reads URL-style /D:/ targets as the drive only in a Windows workspace', () => {
+    const windowsContext = { ...context, worktreePath: 'D:/repo' }
+    for (const href of ['/D:/Temp/report.txt', createNativeChatFileHref('/D:/Temp/report.txt')]) {
+      expect(resolveNativeChatFileLink(href, windowsContext)?.absolutePath).toBe(
+        'D:/Temp/report.txt'
+      )
+    }
+    expect(
+      resolveNativeChatFileLink(
+        createNativeChatFileHref('/D:/Temp/report.txt', 'literal'),
+        windowsContext
+      )?.absolutePath
+    ).toBe('D:/Temp/report.txt')
+    expect(
+      resolveNativeChatFileLink('//server/share/report.txt', windowsContext)?.absolutePath
+    ).toBe('//server/share/report.txt')
+    expect(resolveNativeChatFileLink('/D:/Temp/report.txt', context)?.absolutePath).toBe(
+      '/D:/Temp/report.txt'
+    )
   })
 })

@@ -44,7 +44,6 @@ function createEnvironment(): KnownRuntimeEnvironment {
   }
 }
 
-/** A real forward manager over a provider whose forwards stay "listening" until closed. */
 function setup(
   options: { targeting?: OrcadManagedTunnelTargeting; startGate?: Promise<void> } = {}
 ) {
@@ -58,7 +57,10 @@ function setup(
     orcadFence: { environmentId: 'environment-1' }
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a test double for the members the tunnel manager calls.
-  const connection = { getConnectGeneration: () => 3 } as unknown as SshConnection
+  const connection = {
+    getConnectGeneration: () => 3,
+    isDisposed: () => false
+  } as unknown as SshConnection
   const listening = new Set<string>()
   const provider: SshPortForwardProvider = {
     canHandle: () => true,
