@@ -3,7 +3,11 @@
  * the terminal gate. The preview shows exactly this; the move re-runs it and starts only if it
  * still passes.
  */
-import type { WslMoveRefusal, WslMoveRequest } from '../../../shared/wsl-move/wsl-move-driver-types'
+import {
+  WSL_MOVE_FINISH_PENDING_DETAIL,
+  type WslMoveRefusal,
+  type WslMoveRequest
+} from '../../../shared/wsl-move/wsl-move-driver-types'
 import {
   WSL_MOVE_CUTOVER_PHASES,
   wslMoveJournalKey
@@ -87,10 +91,16 @@ async function settleInterruptedWslMove(
   // Before this move stages: a leftover stage of an earlier reset would refuse it.
   await settleWslMoveOwedHostAborts(deps.userDataPath, journalKey, host.catalog)
   const head = listWslMoveCutoverChain(deps.userDataPath, journalKey).at(-1)
+  if (!head) {
+    return null
+  }
+  if (head.phase === 'destination-committed') {
+    // Committed, its desktop rewrite still owed (e.g. an automatic settle left it for a restart).
+    return finishCommittedOnDesktop(deps, settle)
+  }
   if (
-    !head ||
-    WSL_MOVE_CUTOVER_PHASES.indexOf(head.phase) >=
-      WSL_MOVE_CUTOVER_PHASES.indexOf('destination-committed')
+    WSL_MOVE_CUTOVER_PHASES.indexOf(head.phase) >
+    WSL_MOVE_CUTOVER_PHASES.indexOf('destination-committed')
   ) {
     return null
   }
@@ -102,18 +112,27 @@ async function settleInterruptedWslMove(
     return refusal('wsl_move_already_in_flight', { detail: reset.reason })
   }
   if (reset.outcome === 'committed') {
-    if (settle === 'finish-at-restart') {
-      // The desktop rewrite reloads the window past its unload veto; the startup pass runs it
-      // before any window opens instead.
-      return refusal('wsl_move_finished_earlier_move')
-    }
-    await deps.finishOnDesktop().catch((error: unknown) => {
-      console.warn('[wsl-move] Finishing an interrupted move on this desktop paused:', error)
-    })
-    // The window must reload before another move starts under it.
-    return refusal('wsl_move_finished_earlier_move')
+    return finishCommittedOnDesktop(deps, settle)
   }
   return null
+}
+
+/** The desktop half of a committed earlier move: now, or the next start's pass before any window. */
+async function finishCommittedOnDesktop(
+  deps: WslMoveDriverDeps,
+  settle: WslMoveInterruptedSettle
+): Promise<WslMoveRefusal> {
+  if (settle === 'finish-at-restart') {
+    // The rewrite reloads the window past its unload veto; an automatic step never does that.
+    return refusal('wsl_move_finished_earlier_move', {
+      detail: WSL_MOVE_FINISH_PENDING_DETAIL
+    })
+  }
+  await deps.finishOnDesktop().catch((error: unknown) => {
+    console.warn('[wsl-move] Finishing an interrupted move on this desktop paused:', error)
+  })
+  // The window must reload before another move starts under it.
+  return refusal('wsl_move_finished_earlier_move')
 }
 
 /**

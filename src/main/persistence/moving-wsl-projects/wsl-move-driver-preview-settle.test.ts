@@ -15,7 +15,7 @@ import {
   resetWslMoveDesktopRewriteStoresForTests,
   setWslMoveDesktopRewriteRegistryCompleteForTests
 } from './wsl-move-desktop-rewrite-stores'
-import { previewWslMove } from './wsl-move-driver'
+import { moveProjectsToWslHost, previewWslMove } from './wsl-move-driver'
 import { claimWslMoveRun, isWslMoveRunning, releaseWslMoveRun } from './wsl-move-running-moves'
 import { runWslMoveDesktopRewritePass } from './wsl-move-desktop-rewrite'
 import {
@@ -49,7 +49,7 @@ afterEach(() => {
 
 const request = { distro: 'Ubuntu' }
 const journal = () => listWslMoveCutovers(userDataPath)
-const AUTOMATIC = { settleInterrupted: true }
+const AUTOMATIC = { settleInterrupted: 'finish-at-restart' } as const
 
 // An app update or crash between sending the copy and the host's commit leaves this record; the
 // startup recovery has no host to ask, so the projects stay fenced until a move settles it.
@@ -91,7 +91,8 @@ describe('the automatic mover previewing after an interrupted commit', () => {
     world.catalog.set(seedInterruptedCommit(), 'committed')
     expect(await previewWslMove(world.deps, request, AUTOMATIC)).toEqual({
       outcome: 'refused',
-      code: 'wsl_move_finished_earlier_move'
+      code: 'wsl_move_finished_earlier_move',
+      detail: 'finish-pending'
     })
     expect(journal().find((cutover) => cutover.migrationId === 'stuck')?.phase).toBe(
       'destination-committed'
@@ -107,6 +108,23 @@ describe('the automatic mover previewing after an interrupted commit', () => {
     expect(journal().find((cutover) => cutover.migrationId === 'stuck')?.phase).toBe(
       'client-rewritten'
     )
+  })
+
+  it("lets the user's Move finish a commit the automatic settle left for a restart", async () => {
+    world.catalog.set(seedInterruptedCommit(), 'committed')
+    await previewWslMove(world.deps, request, AUTOMATIC)
+    const finishOnDesktop = vi.spyOn(world.deps, 'finishOnDesktop')
+
+    expect(await moveProjectsToWslHost(world.deps, request)).toEqual({
+      outcome: 'refused',
+      code: 'wsl_move_finished_earlier_move'
+    })
+    expect(finishOnDesktop).toHaveBeenCalledTimes(1)
+    expect(journal().find((cutover) => cutover.migrationId === 'stuck')?.phase).toBe(
+      'client-rewritten'
+    )
+    // Nothing of a new move started under the window that must reload first.
+    expect(world.slept).toEqual([])
   })
 
   it('leaves settling to a move this process is already running', async () => {

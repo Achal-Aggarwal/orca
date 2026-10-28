@@ -1,7 +1,7 @@
 /** What a move of the distro would take, before anything is journaled. */
 import type { WslMovePreview, WslMoveRequest } from '../../../shared/wsl-move/wsl-move-driver-types'
 import type { WslMoveDriverDeps } from './wsl-move-driver-ports'
-import { prepareWslMove, refusal } from './wsl-move-driver-plan'
+import { prepareWslMove, refusal, type WslMoveInterruptedSettle } from './wsl-move-driver-plan'
 import { claimWslMoveRun, releaseWslMoveRun } from './wsl-move-running-moves'
 import { unreadableSleptHistory } from './wsl-move-slept-scrollback'
 
@@ -9,7 +9,7 @@ export async function previewWslMove(
   deps: WslMoveDriverDeps,
   request: WslMoveRequest,
   /** The automatic mover's preview: settle an interrupted move first, or its fence never lifts. */
-  options: { settleInterrupted?: boolean } = {}
+  options: { settleInterrupted?: WslMoveInterruptedSettle } = {}
 ): Promise<WslMovePreview> {
   if (!options.settleInterrupted) {
     return previewPrepared(deps, request, false)
@@ -20,7 +20,7 @@ export async function previewWslMove(
     return refusal('wsl_move_already_running')
   }
   try {
-    return await previewPrepared(deps, request, true)
+    return await previewPrepared(deps, request, options.settleInterrupted)
   } finally {
     releaseWslMoveRun(request.distro, running)
   }
@@ -29,16 +29,10 @@ export async function previewWslMove(
 async function previewPrepared(
   deps: WslMoveDriverDeps,
   request: WslMoveRequest,
-  settleInterrupted: boolean
+  settleInterrupted: WslMoveInterruptedSettle | false
 ): Promise<WslMovePreview> {
   const migrationId = deps.newMigrationId()
-  const prepared = await prepareWslMove(
-    deps,
-    request,
-    migrationId,
-    deps.now(),
-    settleInterrupted && 'finish-at-restart'
-  )
+  const prepared = await prepareWslMove(deps, request, migrationId, deps.now(), settleInterrupted)
   if ('outcome' in prepared) {
     return prepared
   }

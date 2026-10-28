@@ -220,11 +220,11 @@ describe('WSL move orchestrator wiring', () => {
     ]
     await register()
     await answerWindow()
-    // The automatic mover's preview settles a move an update or crash interrupted.
+    // The automatic mover's preview settles a move an update or crash interrupted, finishing at restart.
     expect(driver.previewWslMove).toHaveBeenCalledWith(
       expect.anything(),
       { distro: 'Ubuntu', sleptPanes },
-      { settleInterrupted: true }
+      { settleInterrupted: 'finish-at-restart' }
     )
     expect(driver.moveProjectsToWslHost).toHaveBeenCalledWith(expect.anything(), {
       distro: 'Ubuntu',
