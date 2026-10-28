@@ -107,12 +107,9 @@ function resolveWslHostStockProgram(
   const options = { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) }
   // A CLI the agent runs under its own command (Agent Teams' claude, dsh's dsh) can't be Windows-only either.
   for (const name of config.detectRequiredCommands ?? []) {
-    const message = windowsOnlyCliMessage(
-      resolveGuestNativeAgentCommand(name, options, probe.mounts),
-      name
-    )
-    if (message) {
-      throw new WslHostWindowsOnlyAgentError(message)
+    const required = resolveGuestNativeAgentCommand(name, options, probe.mounts)
+    if (isWindowsOnlyAgentCommand(required)) {
+      throw windowsOnlyRefusal(required, name, agent)
     }
   }
   // Wrapper launches (Agent Teams runs Orca's CLI as `orca` or `orca-ide`) keep their command.
@@ -133,9 +130,17 @@ function resolveWslHostStockProgram(
     }
   }
   if (windowsOnly) {
-    throw new WslHostWindowsOnlyAgentError(
-      `${windowsOnlyCliMessage(windowsOnly, agent)} Or set the ${agent} Command setting to a program inside the distro.`
-    )
+    throw windowsOnlyRefusal(windowsOnly, agent, agent)
   }
   return null
+}
+
+function windowsOnlyRefusal(
+  command: string,
+  cli: string,
+  agent: TuiAgent
+): WslHostWindowsOnlyAgentError {
+  return new WslHostWindowsOnlyAgentError(
+    `${windowsOnlyCliMessage(command, cli)} Or set the ${agent} Command setting to a program inside the distro.`
+  )
 }

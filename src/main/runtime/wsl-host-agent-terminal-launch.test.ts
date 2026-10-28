@@ -80,7 +80,7 @@ describe.skipIf(process.platform === 'win32')('resolveWslHostAgentLaunchInputs',
   it('refuses Agent Teams when the Claude it runs exists only on Windows', () => {
     fakeExecutable(windowsBin, 'claude')
     expect(() => launch('claude-agent-teams', `${nativeBin}:${windowsBin}`)).toThrow(
-      'claude is installed only on Windows, not in this WSL distro. Install it inside the distro.'
+      'claude is installed only on Windows, not in this WSL distro. Install it inside the distro. Or set the claude-agent-teams Command setting to a program inside the distro.'
     )
   })
 
@@ -101,7 +101,7 @@ describe.skipIf(process.platform === 'win32')('resolveWslHostAgentLaunchInputs',
     fakeExecutable(nativeBin, 'dsh-tui')
     fakeExecutable(windowsBin, 'dsh')
     expect(() => launch('dsh', `${nativeBin}:${windowsBin}`)).toThrow(
-      'dsh is installed only on Windows, not in this WSL distro.'
+      'dsh is installed only on Windows, not in this WSL distro. Install it inside the distro. Or set the dsh Command setting to a program inside the distro.'
     )
   })
 
