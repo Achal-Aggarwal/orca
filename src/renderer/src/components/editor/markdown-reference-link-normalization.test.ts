@@ -146,3 +146,26 @@ it('preserves bracket-bearing definitions and Unicode folding after rejected out
     '[[[[Docs](nested) [[[[A\uFEFFΣ](deeper) [Label](nested) [Docs](plain)\n\n'
   )
 })
+
+it('rejects oversized nested labels across many supported bracket counts', () => {
+  const count = 400_000
+  const prefix = `${'['.repeat(count)}${'X'.repeat(count)}]`
+  const definitions = Array.from(
+    { length: Math.floor(Math.sqrt(count)) },
+    (_, index) => `[${'['.repeat(index)}missing]: url`
+  ).join('\n')
+  const source = `${prefix}\n\n${definitions}\n`
+  const normalized = runInNewContext(
+    'normalize(source)',
+    { normalize: normalizeMarkdownReferenceLinks, source },
+    { timeout: 1500 }
+  )
+  expect(normalized).toBe(`${prefix}\n\n`)
+})
+
+it('keeps large supported labels after collapsing long whitespace runs', () => {
+  const label = `${'['.repeat(50_000)}D${'\uFEFF'.repeat(50_000)}OCS`
+  const definition = `${'['.repeat(50_000)}d ocs`
+  const source = `${'['.repeat(8)}[${label}][]\n\n[${definition}]: large\n`
+  expect(normalizeMarkdownReferenceLinks(source)).toBe(`${'['.repeat(8)}[${label}](large)\n\n`)
+})

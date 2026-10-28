@@ -133,14 +133,28 @@ function createClosingBracketCursor(content: string): (start: number) => number 
   }
 }
 
-function countOpeningBrackets(content: string, start: number, end: number): number {
-  let count = 0
+type ReferenceTextCharacterCounts = {
+  openingBrackets: number
+  asciiNonWhitespace: number
+}
+
+function countReferenceTextCharacters(
+  content: string,
+  start: number,
+  end: number
+): ReferenceTextCharacterCounts {
+  let openingBrackets = 0
+  let asciiNonWhitespace = 0
   for (let index = start; index < end; index += 1) {
-    if (content[index] === '[') {
-      count += 1
+    const code = content.charCodeAt(index)
+    if (code === 91) {
+      openingBrackets += 1
+    }
+    if (code < 128 && !isMarkdownReferenceLabelWhitespace(code)) {
+      asciiNonWhitespace += 1
     }
   }
-  return count
+  return { openingBrackets, asciiNonWhitespace }
 }
 
 function createReferenceTextDefinitionLookup(
@@ -150,7 +164,8 @@ function createReferenceTextDefinitionLookup(
   let definitionBracketCounts: Set<number> | undefined
   let previousStart = 0
   let previousEnd = -1
-  let openingBracketCount: number | null = null
+  let textCounts: ReferenceTextCharacterCounts | null = null
+  let maximumDefinitionLength = 0
   return (text, start, end) => {
     const lastStart = previousStart
     previousStart = start
@@ -158,19 +173,28 @@ function createReferenceTextDefinitionLookup(
       if (!definitionBracketCounts) {
         definitionBracketCounts = new Set<number>()
         for (const label of definitions.keys()) {
-          definitionBracketCounts.add(countOpeningBrackets(label, 0, label.length))
+          definitionBracketCounts.add(
+            countReferenceTextCharacters(label, 0, label.length).openingBrackets
+          )
+          maximumDefinitionLength = Math.max(maximumDefinitionLength, label.length)
         }
       }
-      openingBracketCount =
-        openingBracketCount === null
-          ? countOpeningBrackets(markdown, start, end)
-          : openingBracketCount - countOpeningBrackets(markdown, lastStart, start)
-      if (!definitionBracketCounts.has(openingBracketCount)) {
+      if (textCounts === null) {
+        textCounts = countReferenceTextCharacters(markdown, start, end)
+      } else {
+        const removed = countReferenceTextCharacters(markdown, lastStart, start)
+        textCounts.openingBrackets -= removed.openingBrackets
+        textCounts.asciiNonWhitespace -= removed.asciiNonWhitespace
+      }
+      if (
+        !definitionBracketCounts.has(textCounts.openingBrackets) ||
+        textCounts.asciiNonWhitespace > maximumDefinitionLength
+      ) {
         return undefined
       }
     } else {
       previousEnd = end
-      openingBracketCount = null
+      textCounts = null
     }
     return definitions.get(normalizeReferenceLabel(text))
   }
