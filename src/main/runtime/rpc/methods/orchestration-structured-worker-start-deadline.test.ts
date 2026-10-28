@@ -49,7 +49,13 @@ vi.mock('./orchestration/worker/worker-topology', async (importOriginal) => ({
 vi.mock('./orchestration/runs/dispatch-creator', () => ({
   resolveDispatchCreator: () => ({ kind: 'terminal', handle: 'term_c' })
 }))
-vi.mock('../../orchestration/preamble', () => ({ buildDispatchPreamble: () => 'preamble' }))
+vi.mock('../../orchestration/preamble', () => ({
+  buildDispatchPreamble: () => 'preamble',
+  buildDispatchPreambleParts: () => ({
+    text: 'preamble',
+    instructions: { length: 1, sha256: 'a'.repeat(64) }
+  })
+}))
 
 const { startLocalWorker } = await import('./orchestration/worker/local-worker-start')
 

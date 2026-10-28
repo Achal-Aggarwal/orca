@@ -93,3 +93,26 @@ describe("a message's sender, read through its one reader", () => {
     expect(more).toBe(2)
   })
 })
+
+it('salvages malformed instruction metadata and unknown relations without losing provenance', () => {
+  const task = {
+    message: 'task',
+    runId: 'r',
+    taskId: 't',
+    dispatchId: 'd',
+    instructions: { length: -1, sha256: 'bad' }
+  }
+  const parsed = readAgentMessageSource({
+    ...FROM,
+    orchestration: task,
+    senders: FROM.senders.map((sender) => ({ ...sender, relation: 'future' }))
+  })
+  expect(parsed?.orchestration).toMatchObject({ message: 'task', dispatchId: 'd' })
+  expect(
+    parsed?.orchestration && 'instructions' in parsed.orchestration
+      ? parsed.orchestration.instructions
+      : undefined
+  ).toBeUndefined()
+  expect(parsed?.senders).toHaveLength(2)
+  expect(parsed?.senders[0].relation).toBeUndefined()
+})

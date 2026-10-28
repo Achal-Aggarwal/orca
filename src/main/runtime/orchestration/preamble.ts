@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { OrchestrationCliCommand } from './cli-command'
 import type { RuntimeAgentPromptWriteOptions } from '../runtime-terminal-contracts'
 import { ORCA_DISPATCH_PROMPT_LEAD_LINE } from '../../../shared/orca-dispatch-status-prompt'
@@ -50,6 +51,13 @@ function dispatchIdentityLines(params: PreambleParams): string {
 
 // Place behavior rules beside CLI examples, where agent readers use them.
 export function buildDispatchPreamble(params: PreambleParams): string {
+  return buildDispatchPreambleParts(params).text
+}
+
+export function buildDispatchPreambleParts(params: PreambleParams): {
+  text: string
+  instructions: { length: number; sha256: string }
+} {
   // Dev agents must reach the dev socket through orca-dev.
   const cli = params.devMode ? 'orca-dev' : (params.cliCommand ?? 'orca')
   const chat = isSessionHandle(params.workerHandle)
@@ -145,10 +153,17 @@ ${postDoneInstructions}`
       : buildSubDispatchSection(cli, params.workerHandle)
     : ''
 
-  return `${header}${drift}${subDispatch}
+  const prefix = `${header}${drift}${subDispatch}
 
 === TASK ===
-${params.taskSpec}`
+`
+  return {
+    text: prefix + params.taskSpec,
+    instructions: {
+      length: prefix.length,
+      sha256: createHash('sha256').update(prefix).digest('hex')
+    }
+  }
 }
 
 export type DispatchPreambleSendOptions = Pick<

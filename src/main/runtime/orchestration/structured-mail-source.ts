@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/agent-session/agent-session-message-source'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { MessageRow, OrchestrationDb } from './db'
+import { agentMessageRelation } from './agent-message-relation'
 import { agentMessageSender, type SenderNameResolver } from './agent-message-sender'
 import type { OrchestrationCliCommand } from './cli-command'
 import { formatMessagePointer } from './formatter'
@@ -26,15 +27,27 @@ export function structuredMailSource(input: {
   const senders = new Map<string, AgentMessageSender>()
   for (const { from_handle: address } of input.batch) {
     if (!senders.has(address)) {
-      senders.set(
-        address,
-        agentMessageSender(
-          address,
-          input.db,
-          input.senderName,
-          reportedDispatchId(input.batch, address)
+      const reported = reportedDispatchId(input.batch, address)
+      const sender = agentMessageSender(address, input.db, input.senderName, reported)
+      const relations = input.batch
+        .filter((message) => message.from_handle === address)
+        .map((message) =>
+          message.type === 'worker_done' && !reportedDispatchId([message], address)
+            ? undefined
+            : agentMessageRelation({
+                db: input.db,
+                sender: sender.party,
+                recipient: input.mailboxHandle,
+                runId: message.run_id,
+                reportedDispatchId: reportedDispatchId([message], address),
+                recipientDispatchId: input.dispatchId
+              })
         )
-      )
+      const relation = relations[0]
+      senders.set(address, {
+        ...sender,
+        ...(relation && relations.every((value) => value === relation) ? { relation } : {})
+      })
     }
   }
   return {

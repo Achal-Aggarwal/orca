@@ -1,8 +1,17 @@
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { agentMessageDisplayText } from '../../../shared/agent-session/agent-message-display-text'
+import { projectQueuedMessageCards } from '../../../shared/structured-agent-session-queued-cards'
+import { nativeChatMessageCopyText } from '../../../shared/native-chat-message-copy-text'
+import type { AgentMessageSource } from '../../../shared/agent-session/agent-session-message-source'
 import { spawnSync } from 'node:child_process'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import { describe, expect, it } from 'vitest'
-import { buildDispatchPreamble, CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH } from './preamble'
+import {
+  buildDispatchPreambleParts,
+  buildDispatchPreamble,
+  CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH
+} from './preamble'
 
 function baseParams(overrides: Partial<Parameters<typeof buildDispatchPreamble>[0]> = {}) {
   return {
@@ -310,5 +319,45 @@ describe('how the preamble names the worker and its coordinator, by kind', () =>
       expect(chat).toContain(`check --terminal ${SESSION_WORKER}`)
       expect(afterWorkerDoneSection(chat).trimEnd().endsWith(CHAT_REDISPATCH)).toBe(true)
     }
+  })
+})
+
+describe('task display without changing provider input', () => {
+  it('verifies the constructed prefix, falls back on edits, and keeps raw queued text', () => {
+    const spec = 'Task 🐋\n=== TASK ===\nKeep this task boundary.'
+    const { text, instructions } = buildDispatchPreambleParts(baseParams({ taskSpec: spec }))
+    expect(text).toBe(buildDispatchPreamble(baseParams({ taskSpec: spec })))
+    const from: AgentMessageSource = {
+      kind: 'agent',
+      senders: [],
+      orchestration: {
+        message: 'task',
+        runId: 'r',
+        taskId: 't',
+        dispatchId: 'd',
+        instructions
+      }
+    }
+    const body: AgentJournalMessageItem = {
+      kind: 'message',
+      role: 'user',
+      blocks: [{ type: 'text', text }],
+      from
+    }
+    expect(agentMessageDisplayText(body.blocks, from)).toBe(spec)
+    expect(nativeChatMessageCopyText(body)).toBe(text)
+    expect(agentMessageDisplayText(body.blocks)).toBe(text)
+    const edited = [{ type: 'text', text: 'Edited ' + text }] as const
+    expect(agentMessageDisplayText(edited, from)).toBe(edited[0].text)
+    expect(agentMessageDisplayText([...body.blocks, { type: 'text', text: 'extra' }], from)).toBe(
+      text + '\nextra'
+    )
+    const card = projectQueuedMessageCards(
+      [{ messageId: 'q', position: 0, body, state: 'waiting' }],
+      [],
+      {}
+    )[0]
+    expect(card.text).toBe(text)
+    expect(card.displayText).toBe(spec)
   })
 })

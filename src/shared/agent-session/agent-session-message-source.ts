@@ -11,6 +11,7 @@ export type AgentMessageSender = Readonly<{
   party: Omit<OrchestrationPartyIdentity, 'paneKey'>
   /** What Orca called the sender when it wrote, kept for when it is gone; null when it had none. */
   name: string | null
+  relation?: 'worker' | 'coordinator' | 'none'
 }>
 
 /** One orchestration message a notice points at: its record, and its sender's `senders` address. */
@@ -31,6 +32,7 @@ export type OrchestrationTaskMessage = Readonly<{
   runId: string
   taskId: string
   dispatchId: string
+  instructions?: Readonly<{ length: number; sha256: string }>
 }>
 
 /** What Orca delivers for other agents, one shape per message kind. */
@@ -71,7 +73,14 @@ const taskSchema = z.object({
   message: z.literal('task'),
   runId: z.string(),
   taskId: z.string(),
-  dispatchId: z.string()
+  dispatchId: z.string(),
+  instructions: salvagedOptional(
+    'instructions',
+    z.object({
+      length: z.number().int().positive().safe(),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/)
+    })
+  )
 })
 
 const senderSchema = z.object({
@@ -80,6 +89,7 @@ const senderSchema = z.object({
     terminalHandle: z.string().nullable(),
     orcaSessionId: orcaSessionIdSchema.nullable()
   }),
+  relation: salvagedOptional('relation', z.enum(['worker', 'coordinator', 'none'])),
   name: z.unknown().transform(agentMessageSenderName)
 })
 
