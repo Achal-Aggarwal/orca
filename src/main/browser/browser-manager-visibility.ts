@@ -1,3 +1,4 @@
+import { webContents } from 'electron'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { BrowserManagerState } from './browser-manager-state'
 import { focusGuardUnavailableError, guardPaneFocusForAgentInput } from './agent-input-focus-guard'
@@ -8,7 +9,7 @@ import {
 } from './browser-agent-activity'
 
 export abstract class BrowserManagerVisibility extends BrowserManagerState {
-  private readonly capturePaintHolds = new Map<string, number>()
+  private readonly capturePaintHolds = new Map<Electron.WebContents, Map<string, number>>()
   protected readonly agentActivity = new BrowserAgentActivity({
     pageIdForGuest: (guestWebContentsId) =>
       this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId),
@@ -28,34 +29,58 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
 
   // Do not await the renderer: minimized or throttled windows must not stall frame capture.
   holdPaintForCapture(guestWebContentsId: number): () => void {
+    const guest = webContents.fromId(guestWebContentsId)
+    const releaseGuestThrottle =
+      guest && !guest.isDestroyed() ? rendererPublicationThrottle.acquire(guest) : () => {}
     const browserPageId = this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId)
     const renderer = browserPageId ? this.resolveRendererForBrowserTab(browserPageId) : null
     if (!browserPageId || !renderer || renderer.isDestroyed()) {
-      return () => {}
+      return releaseGuestThrottle
     }
-    const holds = this.capturePaintHolds.get(browserPageId) ?? 0
-    this.capturePaintHolds.set(browserPageId, holds + 1)
-    if (holds === 0) {
-      renderer.send('browser:capturePaintHold', { browserPageId, held: true })
+    let pageHolds = this.capturePaintHolds.get(renderer)
+    if (!pageHolds) {
+      pageHolds = new Map()
+      this.capturePaintHolds.set(renderer, pageHolds)
     }
-    // Lift throttling so capture retries do not repeatedly wait on delayed parking changes.
-    const releaseThrottle = rendererPublicationThrottle.acquire(renderer)
+    const holds = pageHolds.get(browserPageId) ?? 0
+    pageHolds.set(browserPageId, holds + 1)
+    let releaseThrottle = (): void => {}
     let released = false
-    return () => {
+    const release = (): void => {
       if (released) {
         return
       }
       released = true
-      releaseThrottle()
-      const remaining = (this.capturePaintHolds.get(browserPageId) ?? 1) - 1
+      const remaining = (pageHolds.get(browserPageId) ?? 1) - 1
       if (remaining > 0) {
-        this.capturePaintHolds.set(browserPageId, remaining)
-        return
+        pageHolds.set(browserPageId, remaining)
+      } else {
+        pageHolds.delete(browserPageId)
+        if (pageHolds.size === 0) {
+          this.capturePaintHolds.delete(renderer)
+        }
       }
-      this.capturePaintHolds.delete(browserPageId)
-      if (!renderer.isDestroyed()) {
-        renderer.send('browser:capturePaintHold', { browserPageId, held: false })
+      try {
+        if (remaining === 0 && !renderer.isDestroyed()) {
+          renderer.send('browser:capturePaintHold', { browserPageId, held: false })
+        }
+      } finally {
+        releaseThrottle()
+        releaseGuestThrottle()
       }
+    }
+    try {
+      if (holds === 0) {
+        renderer.send('browser:capturePaintHold', { browserPageId, held: true })
+      }
+      // Lift throttling so capture retries do not wait on delayed parking changes.
+      releaseThrottle = rendererPublicationThrottle.acquire(renderer)
+      return release
+    } catch (error) {
+      try {
+        release()
+      } catch {}
+      throw error
     }
   }
 
