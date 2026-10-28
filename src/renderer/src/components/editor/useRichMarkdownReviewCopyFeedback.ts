@@ -20,16 +20,13 @@ export function useRichMarkdownReviewCopyFeedback({
     useRichMarkdownReviewCopyTimers()
 
   const handleCopyMarkdownReviewNotes = useCallback(async (): Promise<void> => {
-    const copied = await copyReviewNotes(markdownReviewNotes, markdownReviewContent)
-    if (copied && rootRef.current) {
-      clearReviewCopyTimers()
-      setCopiedReviewNoteId(null)
-      setReviewNotesCopied(true)
-      reviewNotesCopiedResetTimerRef.current = window.setTimeout(() => {
-        reviewNotesCopiedResetTimerRef.current = null
-        setReviewNotesCopied(false)
-      }, 1600)
-    }
+    return finishCopyReviewNotes(copyReviewNotes(markdownReviewNotes, markdownReviewContent), {
+      clearReviewCopyTimers,
+      reviewNotesCopiedResetTimerRef,
+      rootRef,
+      setCopiedReviewNoteId,
+      setReviewNotesCopied
+    })
   }, [
     clearReviewCopyTimers,
     markdownReviewContent,
@@ -77,15 +74,11 @@ function useRichMarkdownReviewNoteCopy({
 }) {
   return useCallback(
     async (note: MarkdownReviewNote): Promise<void> => {
-      const copied = await copyReviewNotes([note], markdownReviewContent)
-      if (copied && rootRef.current) {
-        clearWindowTimer(copiedReviewNoteResetTimerRef)
-        setCopiedReviewNoteId(note.id)
-        copiedReviewNoteResetTimerRef.current = window.setTimeout(() => {
-          copiedReviewNoteResetTimerRef.current = null
-          setCopiedReviewNoteId(null)
-        }, 1600)
-      }
+      return finishCopyReviewNote(copyReviewNotes([note], markdownReviewContent), note.id, {
+        copiedReviewNoteResetTimerRef,
+        rootRef,
+        setCopiedReviewNoteId
+      })
     },
     [copiedReviewNoteResetTimerRef, markdownReviewContent, rootRef, setCopiedReviewNoteId]
   )
@@ -100,12 +93,64 @@ function clearWindowTimer(ref: MutableRefObject<number | null>): void {
 
 async function copyReviewNotes(notes: MarkdownReviewNote[], content: string): Promise<boolean> {
   try {
-    return await copyMarkdownReviewNotesForAgent({
+    return copyMarkdownReviewNotesForAgent({
       notes,
       content,
       writeClipboardText: window.api.ui.writeClipboardText
-    })
+    }).catch(() => false)
   } catch {
     return false
+  }
+}
+
+async function finishCopyReviewNotes(
+  copy: Promise<boolean>,
+  {
+    clearReviewCopyTimers,
+    reviewNotesCopiedResetTimerRef,
+    rootRef,
+    setCopiedReviewNoteId,
+    setReviewNotesCopied
+  }: {
+    clearReviewCopyTimers: () => void
+    reviewNotesCopiedResetTimerRef: MutableRefObject<number | null>
+    rootRef: MutableRefObject<HTMLDivElement | null>
+    setCopiedReviewNoteId: Dispatch<SetStateAction<string | null>>
+    setReviewNotesCopied: Dispatch<SetStateAction<boolean>>
+  }
+): Promise<void> {
+  const copied = await copy
+  if (copied && rootRef.current) {
+    clearReviewCopyTimers()
+    setCopiedReviewNoteId(null)
+    setReviewNotesCopied(true)
+    reviewNotesCopiedResetTimerRef.current = window.setTimeout(() => {
+      reviewNotesCopiedResetTimerRef.current = null
+      setReviewNotesCopied(false)
+    }, 1600)
+  }
+}
+
+async function finishCopyReviewNote(
+  copy: Promise<boolean>,
+  noteId: string,
+  {
+    copiedReviewNoteResetTimerRef,
+    rootRef,
+    setCopiedReviewNoteId
+  }: {
+    copiedReviewNoteResetTimerRef: MutableRefObject<number | null>
+    rootRef: MutableRefObject<HTMLDivElement | null>
+    setCopiedReviewNoteId: Dispatch<SetStateAction<string | null>>
+  }
+): Promise<void> {
+  const copied = await copy
+  if (copied && rootRef.current) {
+    clearWindowTimer(copiedReviewNoteResetTimerRef)
+    setCopiedReviewNoteId(noteId)
+    copiedReviewNoteResetTimerRef.current = window.setTimeout(() => {
+      copiedReviewNoteResetTimerRef.current = null
+      setCopiedReviewNoteId(null)
+    }, 1600)
   }
 }
