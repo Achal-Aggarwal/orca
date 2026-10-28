@@ -48,6 +48,7 @@ export function AgentLaunchSetupPanel({
 }) {
   const [draft, setDraft] = useState(() => initial ?? agentPickerDraft(entry))
   const effective = agentPickerEffectiveChoices(entry, draft)
+  const defaults = agentPickerEffectiveChoices(entry, { ...draft, choices: {} })
   const models = agentPickerModels(entry)
   const currentModel = effective.model
   const options = agentPickerEntryOptions(entry, currentModel, draft.surface)
@@ -131,8 +132,8 @@ export function AgentLaunchSetupPanel({
               <SelectContent>
                 <SelectItem value={DEFAULT}>
                   {translate('agentPicker.default', 'Default')}
-                  {effective.options?.[option.id]
-                    ? ` · ${choices.find((choice) => choice.value === effective.options?.[option.id])?.label ?? effective.options[option.id]}`
+                  {defaults.options?.[option.id]
+                    ? ` · ${choices.find((choice) => choice.value === defaults.options?.[option.id])?.label ?? defaults.options[option.id]}`
                     : ''}
                 </SelectItem>
                 {choices.map((choice) => (
@@ -171,8 +172,8 @@ export function AgentLaunchSetupPanel({
             ) : null}
             <SelectItem value={DEFAULT}>
               {translate('agentPicker.agentsDefaults', 'Agents defaults')}
-              {effective.permissionMode
-                ? ` · ${translate(`agentPicker.permission.${effective.permissionMode}`, permissionLabels[effective.permissionMode])}`
+              {defaults.permissionMode
+                ? ` · ${translate(`agentPicker.permission.${defaults.permissionMode}`, permissionLabels[defaults.permissionMode])}`
                 : ''}
             </SelectItem>
             {agentPickerPermissions(entry.agent, draft.surface).map((choice) => (

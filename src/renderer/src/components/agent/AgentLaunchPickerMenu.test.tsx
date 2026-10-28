@@ -12,7 +12,6 @@ import { AgentLaunchPickerMenu } from './AgentLaunchPickerMenu'
 import type { AgentPickerEntry } from '../../../../shared/agent-launch-picker'
 
 vi.mock('@/hooks/useShortcutLabel', () => ({ useOptionalShortcutLabel: () => null }))
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 const entry: AgentPickerEntry = {
   agent: 'codex',
   label: 'Codex',
@@ -33,6 +32,7 @@ let root: Root
 let host: HTMLDivElement
 const launch = vi.fn()
 beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   launch.mockClear()
   host = document.createElement('div')
   document.body.append(host)
@@ -68,6 +68,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   host.remove()
+  vi.unstubAllGlobals()
 })
 
 it('opens setup with a clicked chevron without launching, then dispatches its selected surface once', () => {

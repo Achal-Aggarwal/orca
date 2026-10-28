@@ -86,3 +86,42 @@ it('leaves chat Permissions enabled even with launch-owned raw CLI permission te
   )
   expect(host.querySelector('button[aria-label="Remove --permission-mode plan"]')).not.toBeNull()
 })
+
+it('shows the remembered chat defaults while keeping an untouched configured launch sparse', () => {
+  const chat: AgentPickerEntry = {
+    ...entry,
+    agent: 'codex',
+    defaultSurface: 'chat',
+    arguments: '--add-dir docs',
+    structured: { model: 'astra', options: { effort: 'low' }, permissionMode: 'ask' },
+    catalog: {
+      origin: 'probe',
+      fetchedAt: 1,
+      models: [
+        { id: 'astra', label: 'Astra', isDefault: true, efforts: [{ value: 'low', label: 'Low' }] }
+      ]
+    }
+  }
+  act(() =>
+    root.render(
+      <TooltipProvider>
+        <AgentLaunchSetupPanel entry={chat} onUse={onUse} />
+      </TooltipProvider>
+    )
+  )
+  const selections = [...host.querySelectorAll('[role="combobox"]')].map(
+    (control) => control.textContent
+  )
+  expect(selections).toEqual(['Agent default · Astra', 'Default · Low', 'Agents defaults · Ask'])
+  act(() =>
+    [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Open chat')
+      ?.click()
+  )
+  expect(onUse).toHaveBeenCalledExactlyOnceWith({
+    agent: 'codex',
+    surface: 'chat',
+    choices: {},
+    arguments: undefined
+  })
+})
