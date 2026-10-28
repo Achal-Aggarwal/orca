@@ -5,7 +5,7 @@ import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudeSession } from './structured/claude-structured-session-state'
 import { loadClaudeAgentSdk } from './claude-stream-json-connection'
 
 /** A running CLI saves the name itself (transcript line, title sidecar, its own memory). At rest,

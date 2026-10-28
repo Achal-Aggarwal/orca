@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import * as transcriptFs from '../native-chat/wsl-transcript-fs-access'
 import { renameClaudeProviderSession } from './claude-provider-session-rename'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudeSession } from './structured/claude-structured-session-state'
 
 let home: string
 let conversation: string
