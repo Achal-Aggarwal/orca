@@ -43,24 +43,22 @@ describe('readPreviewGrantRange', () => {
 
   it('reads a PDF range for the renderer that minted it, and for no other', async () => {
     const url = await mint('doc.pdf', '%PDF-1.4 body')
-    expect(new TextDecoder().decode(await readPreviewGrantRange(sender.id, url, 1, 3))).toBe('PDF')
-    await expect(readPreviewGrantRange(sender.id + 1, url, 0, 4)).rejects.toThrow(
-      'Preview is no longer available'
-    )
+    expect(new TextDecoder().decode(await readPreviewGrantRange(sender, url, 1, 3))).toBe('PDF')
+    await expect(
+      readPreviewGrantRange({ ...sender, id: sender.id + 1 }, url, 0, 4)
+    ).rejects.toThrow('Preview is no longer available')
   })
 
   it('serves PDF grants only, within bounds, and nothing after teardown', async () => {
     const pdf = await mint('doc.pdf', '%PDF-1.4')
     const image = await mint('shot.svg', '<svg/>')
-    await expect(readPreviewGrantRange(sender.id, image, 0, 4)).rejects.toThrow()
-    await expect(readPreviewGrantRange(sender.id, pdf, -1, 4)).rejects.toThrow(
-      'Invalid preview range'
-    )
-    await expect(readPreviewGrantRange(sender.id, pdf, 0, 64 * 1024 * 1024)).rejects.toThrow(
+    await expect(readPreviewGrantRange(sender, image, 0, 4)).rejects.toThrow()
+    await expect(readPreviewGrantRange(sender, pdf, -1, 4)).rejects.toThrow('Invalid preview range')
+    await expect(readPreviewGrantRange(sender, pdf, 0, 64 * 1024 * 1024)).rejects.toThrow(
       'Invalid preview range'
     )
     emitter.emit('destroyed')
-    await expect(readPreviewGrantRange(sender.id, pdf, 0, 4)).rejects.toThrow(
+    await expect(readPreviewGrantRange(sender, pdf, 0, 4)).rejects.toThrow(
       'Preview is no longer available'
     )
   })

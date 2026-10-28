@@ -128,7 +128,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
   ipcMain.handle(
     'fs:readPreviewRange',
     (event, args: { url: string; offset: number; length: number }) =>
-      readPreviewGrantRange(event.sender.id, String(args?.url), args?.offset, args?.length)
+      readPreviewGrantRange(event.sender, String(args?.url), args?.offset, args?.length)
   )
 
   ipcMain.handle('fs:grantRuntimeFilePreview', (event, args: unknown) => {

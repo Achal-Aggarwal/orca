@@ -20,7 +20,16 @@ export const PR_EDITOR_PREVIEW_E2E_SOURCE_ROUTES = [
         /^src\/renderer\/src\/components\/editor\/(?:ImageViewer|PdfViewer|pdf-document-loader|pdf-js-document-options|pdf-orca-media-range-transport)\.tsx?$/.test(
           file
         ) ||
-        file === 'src/renderer/src/runtime/runtime-file-range-preview.ts' ||
-        file === 'src/shared/file-preview-kind.ts')
+        /^src\/renderer\/src\/components\/editor\/(?:EditorEditFileSurface|EditorConflictReviewSurface)\.tsx$/.test(
+          file
+        ) ||
+        [
+          'src/main/ipc/filesystem/filesystem-read-handlers.ts',
+          'src/main/startup/privileged-custom-schemes.ts',
+          'src/preload/api/fs-bridge.ts',
+          'src/renderer/src/runtime/runtime-file-range-preview.ts',
+          'src/renderer/src/runtime/runtime-file-read-client.ts',
+          'src/shared/file-preview-kind.ts'
+        ].includes(file))
   }
 ]

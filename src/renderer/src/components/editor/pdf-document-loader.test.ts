@@ -28,15 +28,16 @@ describe('PDF document loader sources', () => {
 
   it('reads a sized URL by range, and still decodes base64 for diffs and the web client', () => {
     const loader = createPdfDocumentLoader({ display: () => () => {}, onError: vi.fn() })
-    loader.load({ url: 'orca-media://file/doc?revision=r1' })
-    expect(getDocument).toHaveBeenLastCalledWith(
-      expect.objectContaining({ url: 'orca-media://file/doc?revision=r1' })
-    )
-    expect(getDocument.mock.lastCall?.[0]).not.toHaveProperty('data')
-
     loader.load({ url: 'orca-media://file/doc?revision=r2', length: 4096 })
     expect(getDocument.mock.lastCall?.[0]).toMatchObject({ range: { length: 4096 } })
     expect(getDocument.mock.lastCall?.[0]).not.toHaveProperty('url')
+
+    getDocument.mockClear()
+    const onError = vi.fn()
+    const unsized = createPdfDocumentLoader({ display: () => () => {}, onError })
+    unsized.load({ url: 'orca-media://file/empty?revision=r3' })
+    expect(getDocument).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenLastCalledWith('Failed to load PDF preview')
 
     loader.load({ base64: 'JVBERg==' })
     expect(getDocument.mock.lastCall?.[0]).toMatchObject({

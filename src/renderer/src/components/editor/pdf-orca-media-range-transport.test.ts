@@ -49,4 +49,19 @@ describe('orca-media range transport for pdf.js', () => {
 
     await vi.waitFor(() => expect(onFailure).toHaveBeenCalledOnce())
   })
+
+  it('stops reading the rest of a merged range once the viewer aborts', async () => {
+    let release: (bytes: Uint8Array) => void = () => {}
+    const readPreviewRange = vi.fn(() => new Promise<Uint8Array>((resolve) => (release = resolve)))
+    stubRangeReads(readPreviewRange)
+    const transport = createOrcaMediaRangeTransport('orca-media://file/doc', 12 << 20, vi.fn())
+
+    transport.requestDataRange(0, 12 << 20)
+    await vi.waitFor(() => expect(readPreviewRange).toHaveBeenCalledOnce())
+    transport.abort()
+    release(new Uint8Array(4 << 20))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(readPreviewRange).toHaveBeenCalledOnce()
+  })
 })

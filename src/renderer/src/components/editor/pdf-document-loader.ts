@@ -67,7 +67,8 @@ export function createPdfDocumentLoader({
                   failRange(error)
                 )
               }
-            : { url: source.url }
+            : // orca-media refuses fetch, so a URL is only readable through its sized range transport.
+              'Failed to load PDF preview'
           : decodePdfBase64(source.base64)
       if (typeof documentSource === 'string') {
         onError(documentSource)
