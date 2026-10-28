@@ -418,12 +418,13 @@ describe('orchestration RPC methods', () => {
       expect(
         await call('orchestration.check', { terminal: 'term_coord', types: 'worker_done' })
       ).toMatchObject({ count: 0 })
-      const acknowledged = (await call('orchestration.check', {
-        terminal: 'term_coord',
-        ack: result.deliveryId,
-        types: 'worker_done'
-      })) as { count: number }
-      expect(acknowledged.count).toBe(0)
+      expect(
+        await call('orchestration.check', {
+          terminal: 'term_coord',
+          ack: result.deliveryId,
+          types: 'worker_done'
+        })
+      ).toMatchObject({ count: 0 })
       expect(db.getTask(task.id)?.completed_at).toBe(completedAt)
       expect(db.getTask(task.id)?.result).toBe(taskResult)
     })
