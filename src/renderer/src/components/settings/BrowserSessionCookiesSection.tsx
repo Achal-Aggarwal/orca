@@ -8,6 +8,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { BrowserProfileRow, type BrowserProfileRowProps } from './BrowserProfileRow'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
+import { translateSearchKeyword } from './settings-search-keywords'
 
 type BrowserSessionHostOption = {
   id: ExecutionHostId
@@ -60,8 +61,8 @@ export function BrowserSessionCookiesSection({
         'Manage browser profiles and import cookies from Chrome, Edge, Comet, or other browsers.'
       )}
       keywords={[
-        'google',
-        'sign-in',
+        ...translateSearchKeyword('auto.components.settings.browser.search.8a489aab8d', 'google'),
+        ...translateSearchKeyword('browser.googleCookieClear.signInKeyword', 'sign-in'),
         'cookies',
         'session',
         'import',

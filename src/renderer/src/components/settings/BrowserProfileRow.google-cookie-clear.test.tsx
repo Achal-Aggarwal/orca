@@ -10,6 +10,7 @@ import { getDefaultBrowserProfileForHost } from '@/store/slices/browser/browser-
 import type { AppState } from '@/store/types'
 import { createCompatibleRuntimeStatusResponse } from '@/runtime/runtime-compatibility-test-fixture'
 import type { GoogleCookieClearLocalTarget } from '../../../../shared/browser-google-cookie-clear'
+import { i18n } from '@/i18n/i18n'
 
 let store: ReturnType<typeof createTestStore>
 const mocks = vi.hoisted(() => ({
@@ -184,8 +185,9 @@ beforeEach(() => {
     fetchDetectedBrowsers: vi.fn(async () => {})
   })
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  await i18n.changeLanguage('en')
   replaceRuntimeEnvironmentRevisions([])
   clearRuntimeCompatibilityCacheForTests()
 })
@@ -217,6 +219,11 @@ it('places one Google section after the rows and clears the current Active profi
   expect(mocks.confirm).toHaveBeenLastCalledWith(
     expect.objectContaining({ title: 'Clear Google cookies from Private?' })
   )
+  cleanup()
+  await i18n.changeLanguage('zh')
+  store.setState({ settingsSearchQuery: '谷歌' })
+  mount(<SessionSection />)
+  expect(screen.getByRole('button', { name: 'Clear Google cookies…' })).toBeTruthy()
 })
 
 it('captures the selected Host and Active profile at press through delayed capture/confirmation, cancel and repeat', async () => {
