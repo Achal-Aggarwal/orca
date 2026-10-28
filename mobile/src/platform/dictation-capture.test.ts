@@ -36,9 +36,6 @@ vi.mock('@orca/expo-two-way-audio', () => ({
   },
   toggleRecording: (on: boolean) => {
     engine.calls.push(`toggleRecording(${String(on)})`)
-    if (engine.throwOn.has(`toggleRecording(${String(on)})`)) {
-      throw new Error('the audio engine would not stop')
-    }
     return true
   }
 }))
@@ -100,14 +97,8 @@ describe('the calls the native half makes', () => {
     expect(engine.calls).toEqual(['permission', 'initialize'])
     expect(capture.begin()).toBe(true)
     await capture.end()
-    capture.release()
-    expect(engine.calls).toEqual([
-      'permission',
-      'initialize',
-      'toggleRecording(true)',
-      'toggleRecording(false)',
-      'tearDown'
-    ])
+    // Muting alone would keep the session and leave other apps' audio ducked until unmount.
+    expect(engine.calls).toEqual(['permission', 'initialize', 'toggleRecording(true)', 'tearDown'])
   })
 
   it('hands every microphone event over with nothing dropped', () => {
@@ -166,10 +157,10 @@ describe('the screen the native microphone holds awake', () => {
 describe('a device whose audio session will not shut down', () => {
   it('resolves `end` rather than rejecting it, which the contract promises', async () => {
     // Synchronous try cannot catch void end() rejection; swallow/log binding failures inside cleanup to prevent unhandled rejections.
-    engine.throwOn.add('toggleRecording(false)')
+    engine.throwOn.add('tearDown')
     const capture = useDictationCapture()
     await expect(capture.end()).resolves.toBeUndefined()
-    expect(engine.calls).toEqual(['toggleRecording(false)'])
+    expect(engine.calls).toEqual(['tearDown'])
   })
 
   it('does not throw out of `release`, which runs bare in the unmount path', async () => {
@@ -178,14 +169,5 @@ describe('a device whose audio session will not shut down', () => {
     expect(() => capture.release()).not.toThrow()
     await Promise.resolve()
     expect(engine.calls).toEqual(['tearDown'])
-  })
-
-  it('still stops the engine when the tear-down is the half that fails', async () => {
-    engine.throwOn.add('tearDown')
-    const capture = useDictationCapture()
-    await capture.end()
-    capture.release()
-    await Promise.resolve()
-    expect(engine.calls).toEqual(['toggleRecording(false)', 'tearDown'])
   })
 })
