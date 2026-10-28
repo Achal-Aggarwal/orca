@@ -13,6 +13,7 @@ type UserClaimableResource = { id: string; owner_dispatch_id: string; pane_key: 
 
 // Exact pane key first; a reminted tab id still names the same leaf.
 function findUserClaimableResources(db: OrchestrationDb, paneKey: string): UserClaimableResource[] {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this projection selects exactly the three columns the row type names.
   const exact = db.db
     .prepare(
       `SELECT id, owner_dispatch_id, pane_key FROM worker_terminal_resources
@@ -22,14 +23,14 @@ function findUserClaimableResources(db: OrchestrationDb, paneKey: string): UserC
   if (exact.length > 0) {
     return exact
   }
-  return (
-    db.db
-      .prepare(
-        `SELECT id, owner_dispatch_id, pane_key FROM worker_terminal_resources
-          WHERE ${USER_CLAIMABLE_RESOURCE_SQL} AND pane_key IS NOT NULL`
-      )
-      .all() as UserClaimableResource[]
-  ).filter((candidate) => isEquivalentPaneKey(candidate.pane_key, paneKey))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this projection selects exactly the three columns the row type names.
+  const candidates = db.db
+    .prepare(
+      `SELECT id, owner_dispatch_id, pane_key FROM worker_terminal_resources
+        WHERE ${USER_CLAIMABLE_RESOURCE_SQL} AND pane_key IS NOT NULL`
+    )
+    .all() as UserClaimableResource[]
+  return candidates.filter((candidate) => isEquivalentPaneKey(candidate.pane_key, paneKey))
 }
 
 export function markWorkerTerminalUserOwned(this: OrchestrationDb, paneKey: string): number {

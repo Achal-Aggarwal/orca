@@ -132,8 +132,10 @@ describe('orchestration federated worker output', () => {
           authToken: 'run-home-device-token',
           method,
           params:
-            homeOmitsAutoRelease && method === 'orchestration.federationAck'
-              ? { ...(params as Record<string, unknown>), autoRelease: undefined }
+            homeOmitsAutoRelease &&
+            method === 'orchestration.federationAck' &&
+            typeof params === 'object'
+              ? { ...params, autoRelease: undefined }
               : params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
           orchestrationRequestId: envelope?.orchestrationRequestId

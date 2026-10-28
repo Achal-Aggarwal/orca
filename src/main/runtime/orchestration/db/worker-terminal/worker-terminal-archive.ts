@@ -221,6 +221,7 @@ function retainOwnedTerminalResource(
       return { disposition: 'already_released', resource }
     }
     const retained = retainTerminalResourceInTransaction(database, resource.id, dispatchId)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row was read under this transaction's write lock, so it still exists.
     const updated = database.getWorkerTerminalResource(resource.id) as WorkerTerminalResourceRow
     database.db.exec('COMMIT')
     return retained

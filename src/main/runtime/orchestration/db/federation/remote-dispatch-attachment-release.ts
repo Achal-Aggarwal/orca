@@ -66,6 +66,7 @@ export function requestRemoteAttachmentTerminalRelease(
       return {
         disposition: 'retained',
         resource,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: retained_reason is only ever written from WorkerTerminalRetainedReason values.
         reason: (resource.retained_reason as WorkerTerminalRetainedReason) ?? 'identity_unproven'
       }
     }

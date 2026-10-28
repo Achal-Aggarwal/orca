@@ -67,12 +67,12 @@ export function claimDueWorkerTerminalAutoReleases(this: OrchestrationDb, nowMs:
 }
 
 export function nextWorkerTerminalAutoReleaseAtMs(this: OrchestrationDb): number | null {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an aggregate SELECT always returns exactly this one-column row.
   const row = this.db
     .prepare(
       `SELECT MIN(auto_release_at) AS at FROM worker_terminal_resources
         WHERE ${WORKER_TERMINAL_AUTO_RELEASE_LIVE_SQL}`
     )
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an aggregate SELECT always returns exactly this one-column row.
     .get() as { at: string | null }
   return row.at ? Date.parse(exposeUtcTimestamp(row.at) ?? row.at) : null
 }
