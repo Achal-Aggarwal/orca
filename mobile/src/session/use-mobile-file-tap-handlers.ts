@@ -22,18 +22,13 @@ type MobileFileTapHandlerOptions<T extends FileTapSessionTab> = {
   switchSessionTab: (tab: T) => void
   scheduleDelayedAction: (callback: () => void, delayMs: number) => unknown
   reportChatTapFailure: (message: string) => void
-  getLiveInteractionGeneration: () => number
 }
 
 // Share stable dispatch-time handlers and activation sequence so newer terminal/chat file taps supersede in-flight opens.
 export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
   options: MobileFileTapHandlerOptions<T>
 ): {
-  handleFileTap: (
-    handle: string,
-    candidates: readonly ParsedFileLinkLocation[],
-    onNoFile?: () => void
-  ) => void
+  handleFileTap: (handle: string, candidates: readonly ParsedFileLinkLocation[]) => void
   handleNativeChatFileTap: (pathText: string) => void
 } {
   const {
@@ -42,7 +37,6 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
     fetchSessionTabs,
     getActiveSessionTabId,
     getActiveSessionTabType,
-    getLiveInteractionGeneration,
     getSessionTabs,
     hostId,
     nativeChatSessionId,
@@ -67,7 +61,6 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
       fetchSessionTabs,
       getActiveSessionTabId,
       getActiveSessionTabType,
-      getLiveInteractionGeneration,
       getSessionTabs,
       hostId,
       nativeChatSessionId,
@@ -85,7 +78,6 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
     fetchSessionTabs,
     getActiveSessionTabId,
     getActiveSessionTabType,
-    getLiveInteractionGeneration,
     getSessionTabs,
     hostId,
     nativeChatSessionId,
@@ -100,7 +92,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
   ])
 
   const handleFileTap = useCallback(
-    (handle: string, candidates: readonly ParsedFileLinkLocation[], onNoFile?: () => void) => {
+    (handle: string, candidates: readonly ParsedFileLinkLocation[]) => {
       const current = optionsRef.current
       if (
         handle !== current.activeHandleRef.current ||
@@ -110,8 +102,6 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
         return
       }
       const activationSeq = ++activationSeqRef.current
-      // Why: typing after the tap must not be followed by its stale click.
-      const liveInteraction = current.getLiveInteractionGeneration()
       openMobileFileTap<T>({
         client: current.client,
         hostId: current.hostId,
@@ -135,14 +125,7 @@ export function useMobileFileTapHandlers<T extends FileTapSessionTab>(
           activeTabType: current.getActiveSessionTabType()
         }),
         switchSessionTab: current.switchSessionTab,
-        scheduleDelayedAction: current.scheduleDelayedAction,
-        onNoFile: onNoFile
-          ? () => {
-              if (current.getLiveInteractionGeneration() === liveInteraction) {
-                onNoFile()
-              }
-            }
-          : undefined
+        scheduleDelayedAction: current.scheduleDelayedAction
       })
     },
     []

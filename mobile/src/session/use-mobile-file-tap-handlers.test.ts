@@ -19,7 +19,6 @@ function ok(result: unknown): RpcResponse {
 describe('useMobileFileTapHandlers', () => {
   let renderer: ReactTestRenderer | null = null
   let handlers: Handlers | null = null
-  let liveInteraction = 0
 
   beforeEach(() => {
     push.mockClear()
@@ -47,8 +46,7 @@ describe('useMobileFileTapHandlers', () => {
       getActiveSessionTabType: () => 'terminal',
       switchSessionTab: vi.fn(),
       scheduleDelayedAction: vi.fn(),
-      reportChatTapFailure: vi.fn(),
-      getLiveInteractionGeneration: () => liveInteraction
+      reportChatTapFailure: vi.fn()
     }
   }
 
@@ -111,23 +109,6 @@ describe('useMobileFileTapHandlers', () => {
       },
       { timeoutMs: 10_000 }
     )
-  })
-
-  it('drops the replayed tap once the user typed after it', async () => {
-    const sendRequest = vi.fn(async () => ok({ exists: false, isDirectory: false }))
-    act(() => {
-      renderer = create(createElement(Harness, { options: createOptions(sendRequest) }))
-    })
-    const onNoFile = vi.fn()
-
-    handlers!.handleFileTap('terminal-1', [{ pathText: 'a b', line: null, column: null }], onNoFile)
-    liveInteraction += 1
-    await act(async () => {})
-    expect(onNoFile).not.toHaveBeenCalled()
-
-    handlers!.handleFileTap('terminal-1', [{ pathText: 'a b', line: null, column: null }], onNoFile)
-    await act(async () => {})
-    expect(onNoFile).toHaveBeenCalledTimes(1)
   })
 
   it('ignores terminal taps from a non-active handle', () => {

@@ -153,11 +153,7 @@ describe('openMobileFileTap', () => {
   })
 
   // Answers like the mobile page bridge, which refuses past 64 pending requests.
-  async function openTerminalReadings(
-    readings: string[],
-    existing: Set<string>,
-    onNoFile?: () => void
-  ) {
+  async function openTerminalReadings(readings: string[], existing: Set<string>) {
     let pending = 0
     const client = {
       sendRequest: vi.fn<SendRequest>(async (method, params) => {
@@ -196,8 +192,7 @@ describe('openMobileFileTap', () => {
       getActiveSessionTabId: () => 'terminal-tab',
       getActivationState: activeTerminalState,
       switchSessionTab: vi.fn(),
-      scheduleDelayedAction: vi.fn(),
-      onNoFile
+      scheduleDelayedAction: vi.fn()
     })
     await vi.advanceTimersByTimeAsync(0)
     return client.sendRequest.mock.calls
@@ -211,17 +206,6 @@ describe('openMobileFileTap', () => {
       new Set(['src/index.ts', 'src/index.ts.map'])
     )
     expect(opened).toEqual([{ worktree: 'id:wt-1', relativePath: 'src/index.ts.map' }])
-  })
-
-  it('replays the ordinary tap when no terminal reading names a file', async () => {
-    const onNoFile = vi.fn()
-    const opened = await openTerminalReadings(
-      ['~/proj$ git', '~/proj$ git status'],
-      new Set(),
-      onNoFile
-    )
-    expect(opened).toEqual([])
-    expect(onNoFile).toHaveBeenCalledTimes(1)
   })
 
   it('still checks the real path behind hundreds of hard-wrap guesses', async () => {

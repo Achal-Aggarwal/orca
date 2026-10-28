@@ -12,25 +12,10 @@ export type TerminalWebViewNotificationHandlers = Omit<
   reportEngineError: (message: string, fatal: boolean) => void
 }
 
-const PAGE_GESTURE_TYPES = new Set([
-  'terminal-input',
-  'terminal-tap',
-  'terminal-file-tap',
-  'open-url',
-  'set-select-mode'
-])
-
-/** Counts the page's gestures, so a withheld tap replays only if nothing newer happened. */
-type TerminalInteractionCount = { current: number }
-
 export function dispatchTerminalWebViewNotification(
   msg: Record<string, unknown>,
-  handlers: TerminalWebViewNotificationHandlers,
-  interactions: TerminalInteractionCount
+  handlers: TerminalWebViewNotificationHandlers
 ) {
-  if (PAGE_GESTURE_TYPES.has(String(msg.type))) {
-    interactions.current += 1
-  }
   if (msg.type === 'log') {
     const tag = typeof msg.tag === 'string' ? msg.tag : '[fit]'
     console.log(tag, msg.payload)
@@ -80,7 +65,7 @@ export function dispatchTerminalWebViewNotification(
   } else if (msg.type === 'terminal-file-tap') {
     const candidates = parseFileTapCandidates(msg.candidates)
     if (candidates.length > 0) {
-      handlers.onFileTap?.(candidates, fileTapFallback(msg.fallback, handlers, interactions))
+      handlers.onFileTap?.(candidates)
     }
   } else if (msg.type === 'open-url') {
     const url = typeof msg.url === 'string' ? msg.url : ''
@@ -101,32 +86,6 @@ export function dispatchTerminalWebViewNotification(
     }
   } else if (msg.type === 'mobile-clip-cancel-by-pinch') {
     console.warn('[mobile-clip] selection cancelled by pinch')
-  }
-}
-
-// Replays the ordinary tap the page withheld while the host checked the readings.
-function fileTapFallback(
-  value: unknown,
-  handlers: TerminalWebViewNotificationHandlers,
-  interactions: TerminalInteractionCount
-): (() => void) | undefined {
-  if (typeof value !== 'object' || value === null) {
-    return undefined
-  }
-  const clickInput =
-    'clickInput' in value && typeof value.clickInput === 'string' ? value.clickInput : ''
-  const focus = 'focus' in value && value.focus === true
-  const interaction = interactions.current
-  return () => {
-    if (interactions.current !== interaction) {
-      return
-    }
-    if (clickInput.length > 0) {
-      handlers.onTerminalInput?.(clickInput, { click: true })
-    }
-    if (focus) {
-      handlers.onTerminalTap?.()
-    }
   }
 }
 

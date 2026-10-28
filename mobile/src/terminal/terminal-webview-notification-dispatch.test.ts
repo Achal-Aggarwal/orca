@@ -13,8 +13,7 @@ describe('dispatchTerminalWebViewNotification', () => {
         rows: 40,
         altScreen: true
       },
-      { onKeyboardAvoidanceMetrics, reportEngineError: vi.fn() },
-      { current: 0 }
+      { onKeyboardAvoidanceMetrics, reportEngineError: vi.fn() }
     )
     expect(onKeyboardAvoidanceMetrics).toHaveBeenCalledWith({
       cursorY: 30,
@@ -28,8 +27,7 @@ describe('dispatchTerminalWebViewNotification', () => {
     const onKeyboardAvoidanceMetrics = vi.fn()
     dispatchTerminalWebViewNotification(
       { type: 'keyboard-avoidance-metrics', cursorY: 12, rows: 40 },
-      { onKeyboardAvoidanceMetrics, reportEngineError: vi.fn() },
-      { current: 0 }
+      { onKeyboardAvoidanceMetrics, reportEngineError: vi.fn() }
     )
     expect(onKeyboardAvoidanceMetrics).toHaveBeenCalledWith({
       cursorY: 12,
@@ -46,40 +44,9 @@ describe('dispatchTerminalWebViewNotification', () => {
     const wheel = '\x1b[<64;9;31M'
     dispatchTerminalWebViewNotification(
       { type: 'terminal-input', bytes: click, click: true },
-      handlers,
-      { current: 0 }
+      handlers
     )
-    dispatchTerminalWebViewNotification({ type: 'terminal-input', bytes: wheel }, handlers, {
-      current: 0
-    })
+    dispatchTerminalWebViewNotification({ type: 'terminal-input', bytes: wheel }, handlers)
     expect(onTerminalInput.mock.calls).toEqual([[click, { click: true }], [wheel]])
-  })
-
-  it('replays a withheld file tap only when no newer tap arrived', () => {
-    const onTerminalInput = vi.fn()
-    const onTerminalTap = vi.fn()
-    const fallbacks: (() => void)[] = []
-    const handlers = {
-      onTerminalInput,
-      onTerminalTap,
-      onFileTap: (_candidates: unknown, onNoFile?: () => void) => fallbacks.push(onNoFile!),
-      reportEngineError: vi.fn()
-    }
-    const interactions = { current: 0 }
-    const fileTap = {
-      type: 'terminal-file-tap',
-      candidates: [{ pathText: '~/proj$ git' }],
-      fallback: { clickInput: 'old-click', focus: true }
-    }
-    dispatchTerminalWebViewNotification(fileTap, handlers, interactions)
-    dispatchTerminalWebViewNotification({ type: 'terminal-tap' }, handlers, interactions)
-    fallbacks[0]()
-    expect(onTerminalInput).not.toHaveBeenCalled()
-    expect(onTerminalTap).toHaveBeenCalledTimes(1)
-
-    dispatchTerminalWebViewNotification(fileTap, handlers, interactions)
-    fallbacks[1]()
-    expect(onTerminalInput).toHaveBeenCalledWith('old-click', { click: true })
-    expect(onTerminalTap).toHaveBeenCalledTimes(2)
   })
 })

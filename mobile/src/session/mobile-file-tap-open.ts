@@ -51,8 +51,6 @@ export type OpenMobileFileTapOptions<T extends FileTapSessionTab> = {
   scheduleDelayedAction: (callback: () => void, delayMs: number) => unknown
   // Optional feedback; callers without it retain silent best-effort misses.
   onOpenFailed?: () => void
-  // Why: readings are guesses, so a terminal tap on prose that names no file stays an ordinary tap.
-  onNoFile?: () => void
 }
 
 export function openMobileFileTap<T extends FileTapSessionTab>(
@@ -131,11 +129,7 @@ async function openMobileFileTapAsync<T extends FileTapSessionTab>(
     undefined
   )
   if (!found?.resolved) {
-    if (!options.onNoFile) {
-      reportOpenFailure(options)
-    } else if (shouldActivateOpenedMobileSessionTab(options.getActivationState(false))) {
-      options.onNoFile()
-    }
+    reportOpenFailure(options)
     return
   }
   const { target } = found

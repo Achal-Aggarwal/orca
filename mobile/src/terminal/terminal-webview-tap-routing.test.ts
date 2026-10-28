@@ -267,6 +267,18 @@ describe('terminal WebView tap routing', () => {
     })
   })
 
+  it('keeps a tap on prose beside a path an ordinary tap', async () => {
+    const line = 'me@host:~/proj$ git status'
+    const { posted } = boot(line)
+    await settle()
+
+    fireTouch('touchstart', [{ x: screenXForCol(line.indexOf('git') + 1), y: tapY }])
+    fireTouch('touchend', [])
+
+    expect(posted.find((m) => m.type === 'terminal-file-tap')).toBeUndefined()
+    expect(posted.find((m) => m.type === 'terminal-tap')).toBeDefined()
+  })
+
   it('opens plain file URLs through terminal file taps', async () => {
     const line = 'open file:///tmp/result.json#L12C3 now'
     const { posted } = boot(line)
@@ -277,8 +289,7 @@ describe('terminal WebView tap routing', () => {
 
     expect(posted.find((m) => m.type === 'terminal-file-tap')).toEqual({
       type: 'terminal-file-tap',
-      candidates: [{ pathText: '/tmp/result.json', line: 12, column: 3 }],
-      fallback: { clickInput: '', focus: true }
+      candidates: [{ pathText: '/tmp/result.json', line: 12, column: 3 }]
     })
   })
 

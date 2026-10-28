@@ -26,8 +26,7 @@ export function useMobileSessionFileActions(scope: MobileSessionTerminalSendActi
     handleCreateBrowserRef,
     scheduleDelayedAction,
     nativeChatSendError,
-    fetchSessionTabs,
-    getLiveInteractionGeneration
+    fetchSessionTabs
   } = scope
   const { handleFileTap, handleNativeChatFileTap } = useMobileFileTapHandlers<MobileSessionTab>({
     client,
@@ -44,8 +43,7 @@ export function useMobileSessionFileActions(scope: MobileSessionTerminalSendActi
     getActiveSessionTabType: () => activeSessionTabTypeRef.current,
     switchSessionTab: (tab) => switchSessionTabRef.current?.(tab),
     scheduleDelayedAction,
-    reportChatTapFailure: nativeChatSendError.show,
-    getLiveInteractionGeneration
+    reportChatTapFailure: nativeChatSendError.show
   })
 
   const handleOpenedFileDiffActivationSeqRef = useRef(0)

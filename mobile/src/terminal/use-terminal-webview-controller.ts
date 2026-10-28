@@ -58,7 +58,6 @@ export function useTerminalWebViewController(
   // Await init’s ready after its render chain so follow-up fit uses its measured cell box.
   const promises = useTerminalWebViewReadyPromises()
   const cellBoxRef = useRef<TerminalCellBox | null>(null)
-  const interactionsRef = useRef(0)
   const { clearEngineError, engineError, reportEngineError, reportNativeEngineError } =
     useTerminalWebViewEngineErrorState(onEngineError)
   const { armWebReadyWatchdog, clearWebReadyWatchdog } = useTerminalWebReadyWatchdog(
@@ -154,25 +153,21 @@ export function useTerminalWebViewController(
           onCellBoxChange?.()
         }
       } else {
-        dispatchTerminalWebViewNotification(
-          msg,
-          {
-            reportEngineError,
-            onSelectionMode,
-            onSelectionCopy,
-            onSelectionEvicted,
-            onClipboardWrite,
-            onModesChanged,
-            onKeyboardAvoidanceMetrics,
-            onHaptic,
-            onTerminalInput,
-            onTerminalTap,
-            onFileTap,
-            onOpenUrl,
-            onTextScaleChange
-          },
-          interactionsRef
-        )
+        dispatchTerminalWebViewNotification(msg, {
+          reportEngineError,
+          onSelectionMode,
+          onSelectionCopy,
+          onSelectionEvicted,
+          onClipboardWrite,
+          onModesChanged,
+          onKeyboardAvoidanceMetrics,
+          onHaptic,
+          onTerminalInput,
+          onTerminalTap,
+          onFileTap,
+          onOpenUrl,
+          onTextScaleChange
+        })
       }
     },
     [
