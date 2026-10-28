@@ -1,5 +1,9 @@
-import { readFile, stat } from 'node:fs/promises'
 import * as path from 'node:path'
+import {
+  NodeFileNotRegularError,
+  NodeFileReadTooLargeError,
+  readNodeFileWithinLimit
+} from '../../../shared/node-bounded-file-reader'
 import { isBinaryBuffer } from '../../../shared/binary-buffer'
 import { isMissingGitBlobPath } from '../../../shared/git-blob-absence'
 import type { GitRuntimeOptions } from '../git-runtime-options'
@@ -89,26 +93,21 @@ export async function readGitBlobAtOidPath(
 }
 
 export async function readWorkingTreeFile(filePath: string): Promise<GitBlobReadResult> {
-  let fileStat
   try {
-    fileStat = await stat(filePath)
-  } catch (error) {
-    // Only ENOENT proves deletion; other stat errors leave presence unknown.
-    const missing = (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-    return { content: '', isBinary: false, exists: !missing, ...(missing ? {} : { failed: true }) }
-  }
-  if (!fileStat.isFile()) {
-    return { content: '', isBinary: false, exists: false }
-  }
-  if (fileStat.size > MAX_GIT_SHOW_BYTES) {
-    // Mirror the Git buffer cap so filesystem reads cannot load huge assets.
-    return { content: '', isBinary: true, exists: true }
-  }
-  try {
-    const buffer = await readFile(filePath)
+    const { buffer } = await readNodeFileWithinLimit(filePath, MAX_GIT_SHOW_BYTES, {
+      regularFileOnly: true
+    })
     return bufferToBlob(buffer, filePath)
-  } catch {
-    return { content: '', isBinary: false, exists: true, failed: true }
+  } catch (error) {
+    if (error instanceof NodeFileReadTooLargeError) {
+      return { content: '', isBinary: true, exists: true }
+    }
+    if (error instanceof NodeFileNotRegularError) {
+      return { content: '', isBinary: false, exists: false }
+    }
+    // Only ENOENT proves deletion; other read errors leave presence unknown.
+    const missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'
+    return { content: '', isBinary: false, exists: !missing, ...(missing ? {} : { failed: true }) }
   }
 }
 
