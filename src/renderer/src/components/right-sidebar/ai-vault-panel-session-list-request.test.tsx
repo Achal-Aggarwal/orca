@@ -85,3 +85,14 @@ it('builds the exact request the Session History panel sends for the active work
   fireEvent.click(screen.getByRole('radio', { name: /^Workspace$/ }))
   expect(panelRequests.at(-1)).toEqual(request)
 })
+
+it('carries the registered symlink spelling in both Workspace and All requests', async () => {
+  useAppStore.setState({
+    worktreesByRepo: { 'repo-1': [makeWorktree(WORKTREE_ID, 'wt', { path: '/var/example' })] }
+  })
+  const { default: AiVaultPanel } = await import('./AiVaultPanel')
+  render(<AiVaultPanel />)
+  expect(panelRequests.at(-1)?.scopePaths).toContain('/var/example')
+  fireEvent.click(screen.getByRole('radio', { name: /^All$/ }))
+  expect(panelRequests.at(-1)?.scopePaths).toContain('/var/example')
+})

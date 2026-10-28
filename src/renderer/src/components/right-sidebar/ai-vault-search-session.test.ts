@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { searchHit } from '../../../../shared/ai-vault-search-test-fixture'
+import { resolveAiVaultSessionResumeInChatEligibility } from './ai-vault-session-resume-in-chat'
 import {
   aiVaultSearchHitToSession,
   canResumeAiVaultSearchHit,
@@ -8,6 +9,39 @@ import {
 } from './ai-vault-search-session'
 
 describe('withAiVaultHistoryPreviews', () => {
+  it('restores resume correspondence when history arrives after a search hit, even with an existing preview', () => {
+    const hit = aiVaultSearchHitToSession(
+      { ...searchHit(), agent: 'claude', cwd: '/private/var/example' },
+      'local'
+    )
+    const previewed = {
+      ...hit,
+      previewMessages: [{ role: 'user' as const, text: 'Keep this preview', timestamp: null }]
+    }
+    const history = { ...hit, cwdAliases: ['/var/example'] }
+    const resume = (session: typeof hit) =>
+      resolveAiVaultSessionResumeInChatEligibility({
+        session,
+        targetWorkspaceId: 'folder:example',
+        targetWorkspacePath: '/var/example',
+        structuredRouteAvailable: true
+      })
+    expect(resume(withAiVaultHistoryPreviews([previewed], [])[0]).available).toBe(false)
+    const [hydrated] = withAiVaultHistoryPreviews([previewed], [history])
+    expect(hydrated.previewMessages).toBe(previewed.previewMessages)
+    expect(resume(hydrated)).toEqual({ available: true, workspaceId: 'folder:example' })
+    const redacted = { ...hit, filePath: '' }
+    expect(resume(withAiVaultHistoryPreviews([redacted], [history])[0]).available).toBe(true)
+    for (const rows of [
+      [history, { ...history, id: 'duplicate' }],
+      [{ ...history, cwd: '/private/var/different' }],
+      [{ ...history, filePath: '/other-transcript' }],
+      [{ ...history, executionHostId: 'runtime:other' as const }]
+    ]) {
+      expect(withAiVaultHistoryPreviews([hit], rows)[0].cwdAliases).toBeUndefined()
+    }
+  })
+
   it("shows a paired server hit's conversation preview from its scanned history row", () => {
     // A relay hit arrives without its transcript path, so its row id differs from the scanned row's.
     const hitSession = aiVaultSearchHitToSession(

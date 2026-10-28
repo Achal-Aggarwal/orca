@@ -11,8 +11,10 @@ import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { resolveAiVaultSessionRowChatActions } from '../right-sidebar/ai-vault-session-chat-action'
 import { useAiVaultPanelSessionResume } from '../right-sidebar/use-ai-vault-panel-session-resume'
+import { resolveAiVaultPanelSessionListRequest } from '../right-sidebar/ai-vault-panel-session-list-request'
 import {
   resolveTabSessionSwitch,
+  lookupTabSessionHistoryRow,
   type TabSessionHistorySubject
 } from './tab-session-history-switch'
 
@@ -180,14 +182,14 @@ describe('the tab menu offers exactly what the Session History row offers', () =
     expect(resolveTabSessionSwitch(state, emptyChat, subject)).toBeNull()
   })
 
-  it("Switch to Chat in the conversation's own folder workspace", () => {
+  it("Switch to Chat in the conversation's symlinked folder, with another workspace active", async () => {
     useAppStore.setState({
       folderWorkspaces: [
         {
           id: 'folder-1',
           projectGroupId: 'group-1',
           name: 'Notes',
-          folderPath: '/work/notes',
+          folderPath: '/var/notes',
           executionHostId: 'local',
           linkedTask: null,
           comment: '',
@@ -202,18 +204,27 @@ describe('the tab menu offers exactly what the Session History row offers', () =
       ]
     })
     const state = useAppStore.getState()
-    const session = row({ cwd: '/work/notes' })
+    const session = row({ cwd: '/private/var/notes', cwdAliases: ['/var/notes'] })
     const panel = panelTargets(state, session)
+    const subject: TabSessionHistorySubject = {
+      kind: 'cli',
+      agent: 'claude',
+      providerSessionId: session.sessionId,
+      workspaceId: folderWorkspaceKey('folder-1'),
+      request: resolveAiVaultPanelSessionListRequest(state, folderWorkspaceKey('folder-1'))
+    }
+    const list = vi.fn(async () => ({ sessions: [session], issues: [], scannedAt: '' }))
+    const found = await lookupTabSessionHistoryRow(subject, list, {
+      requestToken: 'symlink',
+      isCancelled: () => false
+    })
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ scopePaths: ['/var/notes'] }))
+    expect(found).toBe(session)
 
     expect(panel.resumeInNewChatWorkspaceId).toBe(folderWorkspaceKey('folder-1'))
-    expect(
-      resolveTabSessionSwitch(state, session, {
-        kind: 'cli',
-        agent: 'claude',
-        providerSessionId: session.sessionId,
-        workspaceId: WORKTREE_ID,
-        request
-      })
-    ).toEqual({ action: 'resume-in-new-chat', worktreeId: folderWorkspaceKey('folder-1') })
+    expect(found && resolveTabSessionSwitch(state, found, subject)).toEqual({
+      action: 'resume-in-new-chat',
+      worktreeId: folderWorkspaceKey('folder-1')
+    })
   })
 })

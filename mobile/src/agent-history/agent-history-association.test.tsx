@@ -48,7 +48,8 @@ it('refreshes a mounted provider row on current-client association changes with 
     executionHostId: 'local',
     filePath: '/provider',
     resumeCommand: 'pi --session /provider',
-    cwd: null,
+    cwd: '/private/var/example',
+    cwdAliases: ['/var/example'],
     modifiedAt: '',
     previewMessages: [],
     messageCount: 1,
@@ -84,7 +85,21 @@ it('refreshes a mounted provider row on current-client association changes with 
   let clientGeneration = 0
   connection.client = { ...fakeClient(send), subscribe, getGeneration: () => clientGeneration }
   connection.state = 'connected'
-  const worktrees: Worktree[] = []
+  const worktrees: Worktree[] = [
+    {
+      worktreeId: 'workspace',
+      repoId: 'repo',
+      repo: 'repo',
+      branch: 'main',
+      displayName: 'example',
+      path: '/var/example',
+      liveTerminalCount: 0,
+      hasAttachedPty: false,
+      unread: false,
+      isPinned: false,
+      linkedPR: null
+    }
+  ]
   let hostId = 'phone-host'
   let current: ReturnType<typeof useMobileAgentHistoryState> | null = null
   function Probe() {
@@ -105,6 +120,23 @@ it('refreshes a mounted provider row on current-client association changes with 
     return current
   }
   try {
+    expect(send).toHaveBeenCalledWith(
+      'aiVault.listSessions',
+      expect.objectContaining({ scopePaths: ['/var/example'] })
+    )
+    expect(read().screenState).toMatchObject({
+      kind: 'ready',
+      sessions: [{ cwdAliases: ['/var/example'] }]
+    })
+    await act(async () => read().onSelectScope('all'))
+    expect(send).toHaveBeenLastCalledWith(
+      'aiVault.listSessions',
+      expect.objectContaining({ scopePaths: ['/var/example'] })
+    )
+    expect(read().screenState).toMatchObject({
+      kind: 'ready',
+      sessions: [{ cwdAliases: ['/var/example'] }]
+    })
     await act(async () => emit({ type: 'snapshot', sessions: [native] }))
     const baseline = send.mock.calls.length
     for (const n of [10, 100]) {

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
+import { withAiVaultSessionCwdAliases } from '../../../../shared/ai-vault-session-cwd-aliases'
 
 type SubagentListState = {
   sessions: AiVaultSession[]
@@ -51,8 +52,13 @@ export function useSubagentSessions(
     session.modifiedAt,
     attempt
   ])
+  const sessions = useMemo(
+    () => state.sessions.map((child) => withAiVaultSessionCwdAliases(child, session)),
+    [state.sessions, session]
+  )
   return {
     ...state,
+    sessions,
     showLoading: showLoading && state.status === 'loading',
     retry: () => setAttempt((value) => value + 1)
   }
