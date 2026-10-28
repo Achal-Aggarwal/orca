@@ -144,8 +144,9 @@ it.each(['worker-start', 'dispatch'] as const)(
     const { main }: { main(argv: string[]): Promise<void> } = await import(cliPath)
     const task = '  Current task 🐋\r\n\r\n=== TASK ===\nDo not clip the task.  '
     let argv: string[]
+    let openingSend: string | undefined
     if (command === 'dispatch') {
-      await current.workingSend()
+      openingSend = await current.workingSend()
       const created = db.createTask({ runId: run.id, spec: task })
       argv = [
         'orchestration',
@@ -213,7 +214,7 @@ it.each(['worker-start', 'dispatch'] as const)(
       expect(queuedMessageCardLine(card)).toBe(task)
       expect(card.text).toBe(raw) // Exactly what the editor opens.
       const journal = current.host.collaboratorsForTests().sessions.get(WORKER)!.journal
-      const edited = raw.slice(0, raw.length - task.length) + 'Edited task'
+      const edited = `${raw.slice(0, raw.length - task.length)}Edited task`
       const fields = {
         messageId: queued.messageId,
         expectedBodyFingerprint: journal.queuedMessages.get(queued.messageId)!.fingerprint,
@@ -238,14 +239,19 @@ it.each(['worker-start', 'dispatch'] as const)(
         text: edited,
         displayText: 'Edited task'
       })
-      await current.sendNow(queued.messageId)
-      await eventually(() =>
-        expect(
-          current.dispatch.mock.calls.some(
-            ([args]) => nativeChatMessageCopyText(args.body) === edited
-          )
-        ).toBe(true)
-      )
+      if (!openingSend) {
+        throw new Error('busy dispatch has no opening send')
+      }
+      expect(await current.sendNow(queued.messageId)).toMatchObject({ ok: true })
+      await current.settleAccepted(openingSend, 'opening-task-turn')
+      await eventually(async () => {
+        const handoff = await current.handoffId(queued.messageId)
+        const delivered = current.dispatch.mock.calls.find(
+          ([args]) => args.clientMessageId === handoff
+        )
+        expect(delivered).toBeDefined()
+        expect(nativeChatMessageCopyText(delivered![0].body)).toBe(edited)
+      })
     } else {
       expect(nativeChatMessageCopyText(current.dispatch.mock.calls[0][0].body)).toBe(raw)
     }

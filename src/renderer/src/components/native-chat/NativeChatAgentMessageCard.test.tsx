@@ -63,8 +63,15 @@ beforeEach(() => {
   const computedStyle = getComputedStyle
   vi.stubGlobal('getComputedStyle', (element: Element) => {
     const style = computedStyle(element)
-    Object.defineProperty(style, 'lineHeight', { value: '24px' })
-    return style
+    return new Proxy(style, {
+      get(target, key) {
+        if (key === 'lineHeight') {
+          return '24px'
+        }
+        const value = Reflect.get(target, key, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      }
+    })
   })
   vi.stubGlobal(
     'ResizeObserver',

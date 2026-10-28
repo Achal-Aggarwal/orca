@@ -67,7 +67,9 @@ describe("another agent's message in the transcript", () => {
     const source = from([{ address: CODER.address, name: 'Coder' }])
     renderUserMessage(source)
     fireEvent.click(screen.getByRole('button', { name: 'Coder' }))
-    expect(openAgentMessageSender).toHaveBeenCalledWith(source, source.senders[0], 'wt-chat')
+    expect(openAgentMessageSender).toHaveBeenCalledWith(source, source.senders[0], 'wt-chat', {
+      kind: 'local'
+    })
   })
 
   it('separates the names as the queued card does, and keeps two same-named senders two', () => {

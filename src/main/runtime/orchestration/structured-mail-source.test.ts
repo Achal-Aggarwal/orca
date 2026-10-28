@@ -225,7 +225,10 @@ it.each([
     }))
     const bySession = new Map(records.map((record) => [record.sessionId, record]))
     let scanVisits = 0,
-      clears = 0,
+      canonicalClears = 0,
+      canonicalLinks = 0,
+      forwardClears = 0,
+      forwardLinks = 0,
       canonicalDepth = 0,
       phase: 'sender' | 'relation' = 'sender',
       partyDepth = 0
@@ -239,13 +242,35 @@ it.each([
       }
     })
     const listRecords = vi.fn(() => scanned)
-    const getRecord = vi.fn((id: string) => bySession.get(id) ?? null)
+    const getRecord = vi.fn((id: string) => {
+      const record = bySession.get(id)
+      return record
+        ? new Proxy(record, {
+            get(target, key, receiver) {
+              if (key === 'conversationCommand') {
+                const command = target.conversationCommand
+                forwardClears++
+                forwardLinks +=
+                  command?.command === 'clear' &&
+                  command.phase === 'committed' &&
+                  command.replacementSessionId
+                    ? 1
+                    : 0
+                return command
+              }
+              return Reflect.get(target, key, receiver)
+            }
+          })
+        : null
+    })
     const reader = { listRecords, getRecord }
     vi.spyOn(lineage, 'readAgentSessionRecordStore').mockReturnValue(reader)
     const clearedInto = lineage.clearedInto
     vi.spyOn(lineage, 'clearedInto').mockImplementation((record) => {
-      clears++
-      return clearedInto(record)
+      canonicalClears++
+      const next = clearedInto(record)
+      canonicalLinks += next ? 1 : 0
+      return next
     })
     const canonicalize = canonical.canonicalOrcaSessionId
     const canonicalCalls = vi
@@ -378,7 +403,10 @@ it.each([
         payloadParses = 0
         payloadBytes = 0
         scanVisits = 0
-        clears = 0
+        canonicalClears = 0
+        canonicalLinks = 0
+        forwardClears = 0
+        forwardLinks = 0
         candidateRows = 0
         reportedCandidateRows = 0
         calls.sender = 0
@@ -434,7 +462,15 @@ it.each([
       expect(canonicalCalls).toHaveBeenCalledTimes(groups * 8)
       expect(listRecords).toHaveBeenCalledTimes(canonicalCalls.mock.calls.length)
       expect(scanVisits).toBe(listRecords.mock.calls.length * sessionCount)
-      expect(clears).toBe(scanVisits + getRecord.mock.calls.length)
+      expect(canonicalClears).toBe(scanVisits) // Imported canonical checks only; name lookup calls its lexical function.
+      expect(canonicalLinks).toBe(0)
+      expect(forwardClears).toBe(groups) // Actual command reads in name lookup, one per returned direct-get record.
+      expect(forwardLinks).toBe(0)
+      for (const [index, [id]] of canonicalCalls.mock.calls.entries()) {
+        expect(canonicalCalls.mock.results[index]).toMatchObject({ type: 'return', value: id })
+      }
+      // canonical-orca-session-id:16-31 builds no predecessor edges here: K initial Map.gets, no loop steps.
+      expect(canonicalCalls.mock.calls.length).toBe(groups * 8)
       expect(canonicalDepth).toBe(0)
       expect(registry).toHaveBeenCalledTimes(groups * 2)
       expect(workerRows).toHaveBeenCalledTimes(groups * 2)
@@ -499,7 +535,22 @@ it.each([
       expect(afterClear.senders[0].relation).toBe('worker')
       expect(getRecord).toHaveBeenCalledTimes(2) // Forward name chain root -> successor.
       expect(scanVisits).toBe(listRecords.mock.calls.length * sessionCount)
-      expect(clears).toBe(scanVisits + 2)
+      expect(canonicalClears).toBe(scanVisits)
+      expect(canonicalLinks).toBe(listRecords.mock.calls.length) // One committed predecessor per full scan.
+      expect(getRecord.mock.calls.map(([id]) => id)).toEqual([sessions[0], successor])
+      expect(forwardClears).toBe(2) // Lexical forward checks: root -> successor, then no successor.
+      expect(forwardLinks).toBe(1)
+      let reverseEdges = 0
+      for (const [index, [id]] of canonicalCalls.mock.calls.entries()) {
+        const root = id === successor ? sessions[0] : id
+        expect(canonicalCalls.mock.results[index]).toMatchObject({ type: 'return', value: root })
+        reverseEdges += id === successor ? 1 : 0
+      }
+      // One stored edge: source-composed reverse loop steps = successor inputs, Map.gets = K + steps.
+      expect(reverseEdges).toBe(1)
+      expect(canonicalCalls.mock.calls.length + reverseEdges).toBe(
+        listRecords.mock.calls.length + 1
+      )
       const terminalRun = db.createRun({
         objective: 'terminal',
         coordinatorHandle: 'term_coord',
@@ -530,6 +581,10 @@ it.each([
       expect(getRecord).not.toHaveBeenCalled()
       expect(canonicalCalls).not.toHaveBeenCalled()
       expect(scanVisits).toBe(0)
+      expect(canonicalClears).toBe(0)
+      expect(canonicalLinks).toBe(0)
+      expect(forwardClears).toBe(0)
+      expect(forwardLinks).toBe(0)
       expect(terminal).toHaveBeenCalledTimes(1)
       expect(nameDispatch).toHaveBeenCalledTimes(1)
       expect(tasks).toHaveBeenCalledTimes(1)
