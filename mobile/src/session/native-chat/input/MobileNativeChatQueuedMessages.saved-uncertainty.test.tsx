@@ -9,6 +9,10 @@ import type { AgentSessionQueuedMessage } from '../../../../../src/shared/agent-
 
 const fontScale = 1
 vi.mock('../../../components/DragReorderList', () => ({ DragReorderList: 'DragReorderList' }))
+vi.mock('../../MobileQueuedMessageComposer', () => ({
+  MobileQueuedMessageComposer: 'QueuedMessageComposer'
+}))
+
 vi.mock('react-native-reanimated', async () => {
   const { useRef } = await import('react')
   return {
@@ -31,6 +35,7 @@ vi.mock('react-native', () => ({
 }))
 
 vi.mock('lucide-react-native', () => ({
+  Image: 'Image',
   AlertCircle: 'AlertCircle',
   Check: 'Check',
   ChevronDown: 'ChevronDown',

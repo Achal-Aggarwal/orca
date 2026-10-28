@@ -62,6 +62,10 @@ const asyncStorage = vi.hoisted(() => ({
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
 vi.mock('../components/DragReorderList', () => ({ DragReorderList: 'DragReorderList' }))
+vi.mock('./MobileQueuedMessageComposer', () => ({
+  MobileQueuedMessageComposer: 'QueuedMessageComposer'
+}))
+
 vi.mock('react-native-reanimated', async () => {
   const { useRef } = await import('react')
   return {
