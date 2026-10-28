@@ -1,6 +1,5 @@
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import React from 'react'
-import { GitPullRequest } from 'lucide-react'
 import { TYPE_FIELD_DATA_TYPE } from './columns'
 import type {
   GitHubIssueType,
@@ -9,7 +8,6 @@ import type {
   GitHubProjectRow
 } from '../../../../shared/github/project-types'
 import { translate } from '@/i18n/i18n'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ProjectTitleCell, ProjectTypeCell } from './ProjectCellIdentity'
 import { ProjectAssigneesCell, ProjectLabelsCell } from './ProjectCellRepositoryEditors'
 import { ProjectIterationCell, ProjectSingleSelectCell } from './ProjectCellSelectionEditors'
@@ -85,12 +83,14 @@ export default function ProjectCell({
   }
   if (field.dataType === 'REPOSITORY') {
     return (
-      <span className="truncate text-xs text-muted-foreground">{row.content.repository ?? ''}</span>
+      <span className="min-w-0 self-center truncate text-xs text-muted-foreground">
+        {row.content.repository ?? ''}
+      </span>
     )
   }
   if (field.dataType === 'PARENT_ISSUE') {
     return (
-      <span className="truncate text-xs text-muted-foreground">
+      <span className="min-w-0 self-center truncate text-xs text-muted-foreground">
         {row.content.parentIssue ? `#${row.content.parentIssue.number}` : ''}
       </span>
     )
@@ -100,59 +100,20 @@ export default function ProjectCell({
     if (!linked) {
       return <span className="text-xs text-muted-foreground" />
     }
-    const overflow = Math.max(0, linked.totalCount - linked.pullRequests.length)
-    const overflowLabel = translate(
-      'auto.components.github.project.ProjectCell.linkedPullRequestsOverflow',
-      '{{count}} more linked pull requests',
-      { count: overflow }
-    )
-    const itemUrl = row.content.url
+    const labels = linked.pullRequests.map((pr) => `#${pr.number}`)
+    const overflow =
+      linked.totalCount > linked.pullRequests.length
+        ? ` ${translate(
+            'auto.components.github.project.ProjectCell.linkedPullRequestsOverflow',
+            '+{{count}} more',
+            { count: linked.totalCount - linked.pullRequests.length }
+          )}`
+        : ''
     return (
-      <div className="flex min-w-0 max-w-full items-center text-xs text-muted-foreground">
-        <span className="min-w-0 overflow-hidden whitespace-nowrap">
-          {linked.pullRequests.map((pr, index) => (
-            <React.Fragment key={pr.url}>
-              {index > 0 ? ', ' : null}
-              <button
-                type="button"
-                title={pr.title}
-                className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/40 px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onKeyDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void window.api.shell.openUrl(pr.url)
-                }}
-              >
-                <GitPullRequest className="size-3" aria-hidden="true" />#{pr.number}
-              </button>
-            </React.Fragment>
-          ))}
-        </span>
-        {overflow > 0 && itemUrl ? (
-          <>
-            {' '}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={overflowLabel}
-                  className="ml-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border/40 px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onKeyDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void window.api.shell.openUrl(itemUrl)
-                  }}
-                >
-                  +{overflow}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={4}>
-                {overflowLabel}
-              </TooltipContent>
-            </Tooltip>
-          </>
-        ) : null}
-      </div>
+      <span className="min-w-0 self-center truncate text-xs text-muted-foreground">
+        {labels.join(', ')}
+        {overflow}
+      </span>
     )
   }
   if (field.dataType === 'SUB_ISSUES_PROGRESS') {
@@ -161,7 +122,7 @@ export default function ProjectCell({
       return <span className="text-xs text-muted-foreground" />
     }
     return (
-      <span className="truncate text-xs text-muted-foreground">
+      <span className="min-w-0 self-center truncate text-xs text-muted-foreground">
         {progress.completed}/{progress.total} ({progress.percentCompleted}%)
       </span>
     )

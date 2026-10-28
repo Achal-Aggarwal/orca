@@ -3122,7 +3122,7 @@
             "36341ffc66": "Assign",
             "e369bf4fec": "Select",
             "ffeff79861": "PULL_REQUEST",
-            "linkedPullRequestsOverflow": "{{count}} more linked pull requests"
+            "linkedPullRequestsOverflow": "+{{count}} more"
           },
           "ProjectGroupHeader": {
             "82a22d2079": "Current",

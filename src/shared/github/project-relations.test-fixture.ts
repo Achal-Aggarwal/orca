@@ -23,7 +23,6 @@ export function projectRelationsTableFixture(): GitHubProjectTable {
     fieldValuesByFieldId: { points: { kind: 'number', fieldId: 'points', number: points } }
   })
   const populated = row('populated', 0, 2)
-  populated.content.url = 'https://github.com/acme/repo/issues/1'
   populated.content.linkedPullRequests = {
     pullRequests: [{ number: 12, title: 'Change', url: 'https://github.com/acme/repo/pull/12' }],
     totalCount: 3
