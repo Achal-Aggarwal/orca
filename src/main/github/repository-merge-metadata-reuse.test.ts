@@ -23,6 +23,7 @@ function response(autoMergeAllowed: boolean): { stdout: string } {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.stubEnv('GH_CONFIG_DIR', undefined)
   _resetMergeQueueCacheForTests()
   guard.mockReturnValue({ blocked: false })
 })
