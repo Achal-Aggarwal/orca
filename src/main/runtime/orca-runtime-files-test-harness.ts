@@ -62,7 +62,7 @@ export function createRuntimeFileCommands(options?: {
   const commands = new RuntimeFileCommands({
     getRuntimeId: () => 'runtime-1',
     requireStore: () => store,
-    resolveWorktreeSelector: vi.fn(async () => worktree),
+    resolveGitWorktreeSelector: vi.fn(async () => worktree),
     resolveRuntimeFileTarget:
       options?.resolveRuntimeFileTarget ??
       vi.fn(async () => ({

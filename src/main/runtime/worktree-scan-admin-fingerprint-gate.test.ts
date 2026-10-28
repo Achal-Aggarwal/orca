@@ -606,8 +606,8 @@ describe('scoped explicit worktree-id resolution', () => {
     const runtime = new OrcaRuntimeService(makeStore({ repoCount: 10 }) as never)
     const resolve = (selector: string): Promise<{ id: string }> =>
       (
-        runtime as unknown as { resolveWorktreeSelector: (s: string) => Promise<{ id: string }> }
-      ).resolveWorktreeSelector(selector)
+        runtime as unknown as { resolveGitWorktreeSelector: (s: string) => Promise<{ id: string }> }
+      ).resolveGitWorktreeSelector(selector)
 
     const resolved = await resolve(`id:${MAIN_WORKTREE_ID}`)
 
@@ -618,8 +618,8 @@ describe('scoped explicit worktree-id resolution', () => {
     const runtime = new OrcaRuntimeService(makeStore({ repoCount: 10 }) as never)
     const resolve = (selector: string): Promise<{ id: string }> =>
       (
-        runtime as unknown as { resolveWorktreeSelector: (s: string) => Promise<{ id: string }> }
-      ).resolveWorktreeSelector(selector)
+        runtime as unknown as { resolveGitWorktreeSelector: (s: string) => Promise<{ id: string }> }
+      ).resolveGitWorktreeSelector(selector)
     const identityKey = canonicalWorktreeIdentity({
       worktreeId: MAIN_WORKTREE_ID,
       executionHostId: 'local',
@@ -635,8 +635,8 @@ describe('scoped explicit worktree-id resolution', () => {
     const runtime = new OrcaRuntimeService(makeStore({ repoCount: 10 }) as never)
     const resolve = (selector: string): Promise<{ id: string }> =>
       (
-        runtime as unknown as { resolveWorktreeSelector: (s: string) => Promise<{ id: string }> }
-      ).resolveWorktreeSelector(selector)
+        runtime as unknown as { resolveGitWorktreeSelector: (s: string) => Promise<{ id: string }> }
+      ).resolveGitWorktreeSelector(selector)
 
     const otherId = `${REPO_ID}-3::${REPO_PATH}-3`
     const resolved = await resolve(`id:${otherId}`)
@@ -649,8 +649,8 @@ describe('scoped explicit worktree-id resolution', () => {
     const runtime = new OrcaRuntimeService(makeStore({ repoCount: 10 }) as never)
     const resolve = (selector: string): Promise<unknown> =>
       (
-        runtime as unknown as { resolveWorktreeSelector: (s: string) => Promise<unknown> }
-      ).resolveWorktreeSelector(selector)
+        runtime as unknown as { resolveGitWorktreeSelector: (s: string) => Promise<unknown> }
+      ).resolveGitWorktreeSelector(selector)
 
     await expect(resolve('branch:main')).rejects.toThrow('selector_ambiguous')
     expect(new Set(scannedRepoPaths()).size).toBe(10)
@@ -660,8 +660,8 @@ describe('scoped explicit worktree-id resolution', () => {
     const runtime = new OrcaRuntimeService(makeStore({ repoCount: 10 }) as never)
     const resolve = (selector: string): Promise<unknown> =>
       (
-        runtime as unknown as { resolveWorktreeSelector: (s: string) => Promise<unknown> }
-      ).resolveWorktreeSelector(selector)
+        runtime as unknown as { resolveGitWorktreeSelector: (s: string) => Promise<unknown> }
+      ).resolveGitWorktreeSelector(selector)
 
     await expect(resolve('id:missing-repo::/nowhere')).rejects.toThrow('selector_not_found')
     expect(new Set(scannedRepoPaths()).size).toBe(10)

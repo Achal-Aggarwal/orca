@@ -232,7 +232,7 @@ export class RuntimeLinearTeamWriteCommands extends RuntimeLinearDedupeCommands 
             'The provided Linear worktree context does not match the caller terminal.'
           )
         }
-        worktree = await this.resolveWorktreeSelector(`id:${terminal.worktreeId}`)
+        worktree = await this.resolveWorkspaceSelector(`id:${terminal.worktreeId}`)
       } catch (error) {
         if (error instanceof LinearAgentAccessError) {
           throw error

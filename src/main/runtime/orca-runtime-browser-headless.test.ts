@@ -68,7 +68,7 @@ function createHost(overrides: Partial<RuntimeBrowserCommandHost> = {}): Runtime
         tabList: vi.fn(() => ({ tabs: [] }))
       } as unknown as AgentBrowserBridge)
   return {
-    resolveWorktreeSelector: async (selector) => ({ id: selector.replace(/^id:/, '') }),
+    resolveGitWorktreeSelector: async (selector) => ({ id: selector.replace(/^id:/, '') }),
     resolveBrowserWorkspace: async (selector) => ({ id: selector.replace(/^id:/, '') }),
     getRuntimeBrowserPageRegistry: () => runtimeBrowserPages,
     getAuthoritativeWindow: vi.fn(),
