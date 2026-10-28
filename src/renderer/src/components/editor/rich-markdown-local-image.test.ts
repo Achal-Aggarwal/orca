@@ -36,6 +36,7 @@ async function flushPromises(): Promise<void> {
 
 describe('rich markdown local images', () => {
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', undefined)
     resetLocalImageSrcStateForTests()
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:rich-local-image')
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)

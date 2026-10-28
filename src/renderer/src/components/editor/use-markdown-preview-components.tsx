@@ -20,7 +20,7 @@ import type { MarkdownPreviewAnnotationRenderers } from './use-markdown-preview-
 import type { MarkdownPreviewFoundation } from './use-markdown-preview-foundation'
 import type { MarkdownPreviewReviewActions } from './use-markdown-preview-review-actions'
 import type { MarkdownPreviewViewport } from './use-markdown-preview-viewport'
-import { useLocalImageSrc } from './useLocalImageSrc'
+import { DocumentPreviewImage } from './DocumentPreviewImage'
 import { documentResourceAccess } from '@/lib/local-file-access'
 import { MarkdownGitHubCallout } from '@/components/markdown-github-callout'
 import { readGitHubCalloutKind } from '@/lib/remark-github-callouts'
@@ -129,13 +129,6 @@ export function useMarkdownPreviewComponents({
         )
       },
       img: function MarkdownImg({ src, alt, ...props }) {
-        const resolvedSrc = useLocalImageSrc(
-          src,
-          filePath,
-          undefined,
-          imageRuntimeContext,
-          imageAccess
-        )
         const handleImageClick = (event: React.MouseEvent<HTMLImageElement>): void => {
           if (!isMarkdownPreviewOpenModifier(event, isMac)) {
             return
@@ -156,7 +149,17 @@ export function useMarkdownPreviewComponents({
           })
         }
 
-        return <img {...props} src={resolvedSrc} alt={alt ?? ''} onClick={handleImageClick} />
+        return (
+          <DocumentPreviewImage
+            {...props}
+            src={src}
+            alt={alt ?? ''}
+            filePath={filePath}
+            runtimeContext={imageRuntimeContext}
+            access={imageAccess}
+            onClick={handleImageClick}
+          />
+        )
       },
       code: ({ className, children, ...props }) => {
         if (/language-mermaid/.test(className || '')) {

@@ -9,6 +9,7 @@ import {
   invalidateLocalImageSrcCacheForTests,
   loadLocalImageSrc,
   releaseLocalImageSrcByKey,
+  releaseUnusedLocalImageSrcByKey,
   resetLocalImageSrcStateForTests,
   useLocalImageSrc
 } from './useLocalImageSrc'
@@ -280,6 +281,41 @@ describe('loadLocalImageSrc', () => {
     expect(readFile).toHaveBeenCalledTimes(2)
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:newer')
   })
+
+  it.each(['persistent', 'cancellable'])(
+    'preserves a surviving %s read when an unused display releases its key',
+    async (owner) => {
+      const read = deferred<PreviewResult>()
+      const readFile = vi.fn().mockReturnValue(read.promise)
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:surviving-read')
+      setReadFile(readFile)
+      const controller = new AbortController()
+      const key = getLocalImageSrcCacheKey('diagram.png', '/repo/docs/readme.md')
+      expect(key).not.toBeNull()
+      if (!key) {
+        return
+      }
+
+      const pending = loadLocalImageSrc(
+        'diagram.png',
+        '/repo/docs/readme.md',
+        undefined,
+        undefined,
+        undefined,
+        owner === 'cancellable' ? controller.signal : undefined
+      )
+      await flushPromises()
+      releaseUnusedLocalImageSrcByKey(key)
+      read.resolve(binaryPreview())
+
+      await expect(pending).resolves.toBe('blob:surviving-read')
+      expect(blobUrlCache.get(key)).toBe('blob:surviving-read')
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+      releaseUnusedLocalImageSrcByKey(key)
+      expect(blobUrlCache.size).toBe(0)
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:surviving-read')
+    }
+  )
 
   it('does not retain a read that resolves after its preview lease is released', async () => {
     const read = deferred<PreviewResult>()

@@ -10,6 +10,7 @@ import {
   loadLocalImageSrc,
   resetLocalImageSrcStateForTests
 } from './useLocalImageSrc'
+import { blobUrlCache } from './local-image-src-cache'
 import { readRuntimeFilePreview } from '@/runtime/runtime-file-read-client'
 
 vi.mock('@/runtime/runtime-file-read-client', () => ({ readRuntimeFilePreview: vi.fn() }))
@@ -72,6 +73,7 @@ async function saturateLocalReads(): Promise<void> {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', undefined)
   resetLocalImageSrcStateForTests()
   readFile.mockClear()
   vi.mocked(readRuntimeFilePreview).mockReset()
@@ -95,6 +97,7 @@ afterEach(async () => {
   }
   await flushReads()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   if (originalApi) {
     Object.defineProperty(window, 'api', originalApi)
   } else {
@@ -153,6 +156,7 @@ describe('rich markdown image read admission', () => {
       await prewarm.done
       await flushReads()
       expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+      expect(blobUrlCache.size).toBe(1)
       if (owner === 'prewarm') {
         expect(document.host.querySelector('img')?.src).toBe('blob:admitted-image')
       }

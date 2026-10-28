@@ -12,11 +12,7 @@ import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { BlockMath, InlineMath } from '@tiptap/extension-mathematics'
 import { createRichMarkdownExtension } from './rich-markdown-extension'
 import { createLowlight, common } from 'lowlight'
-import {
-  acquireLocalImageSrcLease,
-  loadLocalImageSrc,
-  onImageCacheInvalidated
-} from './useLocalImageSrc'
+import { createDocumentImageDisplay } from './document-image-display'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
 import {
   createRawMarkdownHtmlBlock,
@@ -141,67 +137,25 @@ export function createRichMarkdownExtensions({
           syncImageAttributes(mergeAttributes(this.options.HTMLAttributes, HTMLAttributes))
           dom.appendChild(img)
 
-          let currentSrc = node.attrs.src as string | undefined
+          let currentSrc = typeof node.attrs.src === 'string' ? node.attrs.src : undefined
           let currentContextVersion = getImageContextVersion(this.storage)
-          let releaseImageLease: (() => void) | undefined
-          let imageLoadController: AbortController | undefined
-
-          const loadImage = (src: string | undefined): void => {
-            imageLoadController?.abort()
-            releaseImageLease?.()
-            releaseImageLease = undefined
-            const fp = this.storage.filePath as string
-            const runtimeContext = readRichMarkdownImageRuntimeContext(this.storage)
-            const contextVersionAtLoad = getImageContextVersion(this.storage)
-            if (src && fp) {
-              const access = documentResourceAccess(fp)
-              releaseImageLease = acquireLocalImageSrcLease(
-                src,
-                fp,
-                undefined,
-                runtimeContext,
-                access
-              )
-              const controller = new AbortController()
-              imageLoadController = controller
-              void loadLocalImageSrc(
-                src,
-                fp,
-                undefined,
-                runtimeContext,
-                access,
-                controller.signal
-              ).then((resolved) => {
-                if (
-                  controller.signal.aborted ||
-                  currentSrc !== src ||
-                  currentContextVersion !== contextVersionAtLoad
-                ) {
-                  return
-                }
-                if (resolved) {
-                  img.src = resolved
-                  return
-                }
-                // Local paths require main’s file checks; failed loads must not fall back to Chromium reading raw paths.
-                img.removeAttribute('src')
-              })
-            } else if (src) {
-              img.src = resolveRichMarkdownImageUrl(this.storage, src)
-            } else {
-              img.removeAttribute('src')
+          const readImageSource = () => {
+            const filePath = typeof this.storage.filePath === 'string' ? this.storage.filePath : ''
+            return {
+              src: currentSrc,
+              filePath,
+              runtimeContext: readRichMarkdownImageRuntimeContext(this.storage),
+              access: documentResourceAccess(filePath),
+              resolvedSrc: currentSrc
+                ? resolveRichMarkdownImageUrl(this.storage, currentSrc)
+                : undefined
             }
           }
+          const imageDisplay = createDocumentImageDisplay(dom, img, readImageSource())
 
-          loadImage(currentSrc)
-
-          // Cache invalidation on refocus must reload replaced/deleted image files from disk.
-          const unsubscribe = onImageCacheInvalidated(() => {
-            loadImage(currentSrc)
-          })
           const reloadForContextChange = (): void => {
             currentContextVersion = getImageContextVersion(this.storage)
-            loadImage(currentSrc)
+            imageDisplay.update(readImageSource())
           }
           const reloadListeners = this.storage.reloadListeners
           if (reloadListeners instanceof Set) {
@@ -220,22 +174,22 @@ export function createRichMarkdownExtensions({
                   getRenderedAttributes(updatedNode, editor.extensionManager.attributes)
                 )
               )
-              const newSrc = updatedNode.attrs.src as string | undefined
+              imageDisplay.updateLayout()
+              const newSrc =
+                typeof updatedNode.attrs.src === 'string' ? updatedNode.attrs.src : undefined
               const nextContextVersion = getImageContextVersion(this.storage)
               if (newSrc !== currentSrc || nextContextVersion !== currentContextVersion) {
                 currentSrc = newSrc
                 currentContextVersion = nextContextVersion
-                loadImage(newSrc)
+                imageDisplay.update(readImageSource())
               }
               return true
             },
             destroy: () => {
-              imageLoadController?.abort()
-              releaseImageLease?.()
+              imageDisplay.destroy()
               if (reloadListeners instanceof Set) {
                 reloadListeners.delete(reloadForContextChange)
               }
-              unsubscribe()
             }
           }
         }

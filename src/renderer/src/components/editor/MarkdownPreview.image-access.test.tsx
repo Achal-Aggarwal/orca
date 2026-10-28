@@ -6,7 +6,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const useLocalImageSrcSpy = vi.hoisted(() => vi.fn((src?: string, ..._context: unknown[]) => src))
+const imageSourceSpy = vi.hoisted(() => vi.fn())
 
 const storeState = {
   openFile: vi.fn(),
@@ -69,7 +69,12 @@ vi.mock('@/i18n/i18n', () => ({
   i18n: { language: 'en' },
   translate: (_key: string, fallback: string) => fallback
 }))
-vi.mock('./useLocalImageSrc', () => ({ useLocalImageSrc: useLocalImageSrcSpy }))
+vi.mock('./DocumentPreviewImage', () => ({
+  DocumentPreviewImage: (props: { src?: string; access?: unknown }) => {
+    imageSourceSpy(props)
+    return <img src={props.src} />
+  }
+}))
 vi.mock('./markdown-preview-local-images', () => ({
   prewarmMarkdownPreviewLocalImages: () => ({ cancel: () => {}, done: Promise.resolve() })
 }))
@@ -92,7 +97,7 @@ describe('MarkdownPreview images', () => {
       shell: { openUrl: vi.fn(), openFileUri: vi.fn(), pathExists: vi.fn(async () => true) },
       ui: { writeClipboardText: vi.fn(async () => true) }
     })
-    useLocalImageSrcSpy.mockClear()
+    imageSourceSpy.mockClear()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -118,8 +123,8 @@ describe('MarkdownPreview images', () => {
       )
     })
 
-    expect(useLocalImageSrcSpy.mock.calls[0]?.[0]).toBe('./logo.png')
-    expect(useLocalImageSrcSpy.mock.calls[0]?.[4]).toEqual({
+    expect(imageSourceSpy.mock.calls[0]?.[0].src).toBe('./logo.png')
+    expect(imageSourceSpy.mock.calls[0]?.[0].access).toEqual({
       kind: 'document-resource',
       documentPath: '/notes/readme.md'
     })

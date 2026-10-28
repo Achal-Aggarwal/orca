@@ -80,6 +80,7 @@ function retiredBlobBytes(): number {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', undefined)
   vi.useFakeTimers()
   vi.stubGlobal('Blob', NativeBlob)
   vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {

@@ -1,3 +1,4 @@
+import { observeViewportVisibility as observeTranscriptVisibility } from '@/lib/viewport-visibility'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,40 +22,7 @@ import { isNativeChatPastedImagePath } from '../../../../shared/native-chat-imag
 import { nativeChatImageLabel } from './native-chat-image-label'
 import { chatImageAccess } from '@/lib/local-file-access'
 
-type VisibilityListener = (isVisible: boolean) => void
-
-const visibilityListeners = new Map<Element, VisibilityListener>()
-let visibilityObserver: IntersectionObserver | null = null
-
-export function observeTranscriptVisibility(
-  element: Element,
-  listener: VisibilityListener
-): () => void {
-  if (typeof IntersectionObserver === 'undefined') {
-    listener(true)
-    return () => {}
-  }
-
-  visibilityObserver ??= new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        visibilityListeners.get(entry.target)?.(entry.isIntersecting)
-      }
-    },
-    { rootMargin: '128px' }
-  )
-  visibilityListeners.set(element, listener)
-  visibilityObserver.observe(element)
-
-  return () => {
-    visibilityListeners.delete(element)
-    visibilityObserver?.unobserve(element)
-    if (visibilityListeners.size === 0) {
-      visibilityObserver?.disconnect()
-      visibilityObserver = null
-    }
-  }
-}
+export { observeViewportVisibility as observeTranscriptVisibility } from '@/lib/viewport-visibility'
 
 function renderableImageSource(source: string | undefined): boolean {
   return Boolean(source && /^(?:https?|data|blob):/i.test(source))

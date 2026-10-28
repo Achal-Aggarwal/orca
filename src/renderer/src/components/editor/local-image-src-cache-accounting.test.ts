@@ -3,6 +3,9 @@ import {
   blobUrlCache,
   cacheLocalImageBlob,
   invalidateLocalImageCache,
+  hasLocalImageCacheCapacity,
+  isLocalImageCacheCapacityBlocked,
+  subscribeToLocalImageCacheCapacity,
   pinLocalImageCache,
   releaseLocalImageBlob,
   resetLocalImageCacheState,
@@ -69,4 +72,45 @@ it('preserves byte admission and oldest eligible eviction through replacements a
   expect(cacheLocalImageBlob('full', 'blob:full', halfBudget * 2)).toBe(true)
   expect(cacheLocalImageBlob('next', 'blob:next', 1)).toBe(true)
   expect(Array.from(blobUrlCache.keys())).toEqual(['next'])
+})
+
+it('notifies capacity waiters once after a final owner releases enough encoded bytes', async () => {
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const half = 64 * 1024 * 1024
+  for (const key of ['first', 'second', 'waiting']) {
+    pinLocalImageCache(key)
+  }
+  pinLocalImageCache('first')
+  expect(cacheLocalImageBlob('first', 'blob:first', half)).toBe(true)
+  expect(cacheLocalImageBlob('second', 'blob:second', half)).toBe(true)
+  expect(cacheLocalImageBlob('waiting', 'blob:waiting', half)).toBe(false)
+  expect(isLocalImageCacheCapacityBlocked('waiting')).toBe(true)
+  expect(hasLocalImageCacheCapacity('waiting')).toBe(false)
+  const listener = vi.fn()
+  const unsubscribe = subscribeToLocalImageCacheCapacity(listener)
+  unpinLocalImageCache('first')
+  await Promise.resolve()
+  expect(listener).not.toHaveBeenCalled()
+  expect(hasLocalImageCacheCapacity('waiting')).toBe(false)
+  unpinLocalImageCache('first')
+  releaseLocalImageBlob('first')
+  await Promise.resolve()
+  expect(listener).toHaveBeenCalledOnce()
+  expect(hasLocalImageCacheCapacity('waiting')).toBe(true)
+  expect(cacheLocalImageBlob('waiting', 'blob:admitted', half)).toBe(true)
+  expect(isLocalImageCacheCapacityBlocked('waiting')).toBe(false)
+  unsubscribe()
+})
+
+it('clears refusal ownership on final unpin and ignores a permanently oversized image', () => {
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  pinLocalImageCache('full')
+  pinLocalImageCache('waiting')
+  expect(cacheLocalImageBlob('full', 'blob:full', 128 * 1024 * 1024)).toBe(true)
+  expect(cacheLocalImageBlob('waiting', 'blob:waiting', 1)).toBe(false)
+  unpinLocalImageCache('waiting')
+  expect(isLocalImageCacheCapacityBlocked('waiting')).toBe(false)
+  pinLocalImageCache('oversized')
+  expect(cacheLocalImageBlob('oversized', 'blob:oversized', 128 * 1024 * 1024 + 1)).toBe(false)
+  expect(isLocalImageCacheCapacityBlocked('oversized')).toBe(false)
 })

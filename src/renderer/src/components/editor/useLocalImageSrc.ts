@@ -19,6 +19,7 @@ import {
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import {
   createLocalImageRead,
+  hasLocalImageReadOwner,
   ownLocalImageRead,
   resetLocalImageReadAdmissionForTests
 } from './local-image-read-admission'
@@ -274,3 +275,9 @@ export function acquireLocalImageSrcLease(
 
 /** Evict the image cached under a `getLocalImageSrcCacheKey` key unless a preview pins it. */
 export const releaseLocalImageSrcByKey = releaseLocalImageBlob
+
+export function releaseUnusedLocalImageSrcByKey(key: string): void {
+  if (!hasLocalImageReadOwner(key)) {
+    releaseLocalImageBlob(key)
+  }
+}

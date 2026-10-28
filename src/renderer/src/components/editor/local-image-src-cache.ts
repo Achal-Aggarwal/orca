@@ -1,4 +1,9 @@
 import {
+  notifyLocalImageCacheCapacity,
+  resetLocalImageCacheCapacityEvents
+} from './local-image-cache-capacity-events'
+export { subscribeToLocalImageCacheCapacity } from './local-image-cache-capacity-events'
+import {
   clearLocalImageCachePins,
   isLocalImageCacheKeyPinned,
   pinLocalImageCacheKey,
@@ -13,6 +18,7 @@ export const blobUrlCache = new Map<string, string>()
 const blobUrlCacheBytes = new Map<string, number>()
 let retainedBytes = 0
 let pinnedCacheEntries = 0
+let pinnedBytes = 0
 export const inFlightBlobUrlLoads = new Map<string, Promise<string | null>>()
 // Invalidate late reads on release so they cannot repopulate an unused cache entry.
 const cacheKeyVersions = new Map<string, number>()
@@ -33,6 +39,20 @@ export function cleanupLocalImageCacheKeyVersion(key: string): void {
 
 let cacheGeneration = 0
 const cacheListeners = new Set<() => void>()
+const capacityBlockedKeys = new Map<string, number>()
+
+export function hasLocalImageCacheCapacity(key: string): boolean {
+  const blockedBytes = capacityBlockedKeys.get(key)
+  return (
+    blockedBytes !== undefined &&
+    pinnedBytes - (blobUrlCacheBytes.get(key) ?? 0) + blockedBytes <= BLOB_URL_CACHE_MAX_BYTES
+  )
+}
+
+export function isLocalImageCacheCapacityBlocked(key: string): boolean {
+  return capacityBlockedKeys.has(key)
+}
+
 const pendingBlobUrlRevocations = new Map<string, Set<string>>()
 let pendingBlobUrlRevocationTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -68,6 +88,7 @@ function deleteCachedImage(key: string): void {
   const url = blobUrlCache.get(key)
   if (blobUrlCache.delete(key) && isLocalImageCacheKeyPinned(key)) {
     pinnedCacheEntries -= 1
+    pinnedBytes -= blobUrlCacheBytes.get(key) ?? 0
   }
   retainedBytes -= blobUrlCacheBytes.get(key) ?? 0
   blobUrlCacheBytes.delete(key)
@@ -93,10 +114,13 @@ export function cacheLocalImageBlob(
   byteLength: number,
   expectedVersion?: number
 ): boolean {
-  if (
-    (expectedVersion !== undefined && getLocalImageCacheKeyVersion(key) !== expectedVersion) ||
-    byteLength > BLOB_URL_CACHE_MAX_BYTES
-  ) {
+  if (expectedVersion !== undefined && getLocalImageCacheKeyVersion(key) !== expectedVersion) {
+    URL.revokeObjectURL(url)
+    cleanupLocalImageCacheKeyVersion(key)
+    return false
+  }
+  capacityBlockedKeys.delete(key)
+  if (byteLength > BLOB_URL_CACHE_MAX_BYTES) {
     URL.revokeObjectURL(url)
     cleanupLocalImageCacheKeyVersion(key)
     return false
@@ -113,6 +137,9 @@ export function cacheLocalImageBlob(
       if (isLocalImageCacheKeyPinned(key) && projectedBytes <= BLOB_URL_CACHE_MAX_BYTES) {
         break
       }
+      if (isLocalImageCacheKeyPinned(key)) {
+        capacityBlockedKeys.set(key, byteLength)
+      }
       URL.revokeObjectURL(url)
       cleanupLocalImageCacheKeyVersion(key)
       return false
@@ -127,6 +154,9 @@ export function cacheLocalImageBlob(
     URL.revokeObjectURL(previousUrl)
   }
   retainedBytes += byteLength - previousBytes
+  if (isLocalImageCacheKeyPinned(key)) {
+    pinnedBytes += byteLength - previousBytes
+  }
   if (previousUrl === undefined && isLocalImageCacheKeyPinned(key)) {
     pinnedCacheEntries += 1
   }
@@ -145,6 +175,7 @@ export function pinLocalImageCache(key: string): void {
   pinLocalImageCacheKey(key)
   if (!wasPinned && blobUrlCache.has(key)) {
     pinnedCacheEntries += 1
+    pinnedBytes += blobUrlCacheBytes.get(key) ?? 0
   }
 }
 
@@ -153,6 +184,11 @@ export function unpinLocalImageCache(key: string): void {
   unpinLocalImageCacheKey(key)
   if (wasPinned && !isLocalImageCacheKeyPinned(key) && blobUrlCache.has(key)) {
     pinnedCacheEntries -= 1
+    pinnedBytes -= blobUrlCacheBytes.get(key) ?? 0
+    notifyLocalImageCacheCapacity()
+  }
+  if (!isLocalImageCacheKeyPinned(key)) {
+    capacityBlockedKeys.delete(key)
   }
   releaseUnpinnedPendingBlobUrls(key)
   pruneImageCache(key)
@@ -221,6 +257,8 @@ export function invalidateLocalImageCache(): void {
   blobUrlCacheBytes.clear()
   retainedBytes = 0
   pinnedCacheEntries = 0
+  pinnedBytes = 0
+  capacityBlockedKeys.clear()
   inFlightBlobUrlLoads.clear()
   cacheKeyVersions.clear()
   cacheGeneration += 1
@@ -236,6 +274,7 @@ export function releaseLocalImageBlob(key: string): void {
   if (isLocalImageCacheKeyPinned(key)) {
     return
   }
+  capacityBlockedKeys.delete(key)
   cacheKeyVersions.set(key, getLocalImageCacheKeyVersion(key) + 1)
   const inFlight = inFlightBlobUrlLoads.get(key)
   if (inFlight) {
@@ -245,6 +284,7 @@ export function releaseLocalImageBlob(key: string): void {
   const url = blobUrlCache.get(key)
   if (url) {
     deleteCachedImage(key)
+    notifyLocalImageCacheCapacity()
   }
   if (!inFlight) {
     cleanupLocalImageCacheKeyVersion(key)
@@ -264,6 +304,9 @@ export function resetLocalImageCacheState(): void {
   blobUrlCacheBytes.clear()
   retainedBytes = 0
   pinnedCacheEntries = 0
+  pinnedBytes = 0
+  capacityBlockedKeys.clear()
+  resetLocalImageCacheCapacityEvents()
   clearLocalImageCachePins()
   inFlightBlobUrlLoads.clear()
   cacheKeyVersions.clear()

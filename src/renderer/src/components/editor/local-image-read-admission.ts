@@ -54,6 +54,16 @@ type LocalImageReadOwnership = {
 const imageReadOwnership = new WeakMap<Promise<string | null>, LocalImageReadOwnership>()
 const imageReadControllers = new Set<AbortController>()
 
+export function hasLocalImageReadOwner(cacheKey: string): boolean {
+  const pending = inFlightBlobUrlLoads.get(cacheKey)
+  const ownership = pending ? imageReadOwnership.get(pending) : undefined
+  return Boolean(
+    ownership &&
+    !ownership.controller.signal.aborted &&
+    (ownership.persistent || ownership.users > 0)
+  )
+}
+
 export function ownLocalImageRead(
   cacheKey: string,
   promise: Promise<string | null>,

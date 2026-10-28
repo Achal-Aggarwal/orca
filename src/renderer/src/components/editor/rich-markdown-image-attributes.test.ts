@@ -82,6 +82,7 @@ function updateImage(editor: Editor, attributes: Record<string, unknown>): void 
 }
 
 beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', undefined)
   resetLocalImageSrcStateForTests()
   readFile.mockReset().mockResolvedValue(imageResult)
   Object.defineProperty(window, 'api', { configurable: true, value: { fs: { readFile } } })
@@ -95,6 +96,7 @@ afterEach(() => {
   }
   resetLocalImageSrcStateForTests()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   if (originalApi) {
     Object.defineProperty(window, 'api', originalApi)
   } else {

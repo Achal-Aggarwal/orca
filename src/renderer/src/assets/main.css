@@ -11,6 +11,17 @@
 @import './text-shimmer.css';
 @import '../../../shared/styles/scrollbar-sleek.css';
 
+.document-image-placeholder {
+  position: relative;
+  overflow: clip;
+}
+
+.document-image-placeholder > img {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
 @font-face {
   font-family: 'Geist';
   src: url('./fonts/Geist-Variable.woff2') format('woff2');

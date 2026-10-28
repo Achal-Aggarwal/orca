@@ -39,6 +39,7 @@ function mountImages(count: number) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', undefined)
   resetLocalImageSrcStateForTests()
   readFile.mockClear()
   nextUrl = 0
@@ -55,6 +56,7 @@ afterEach(() => {
   }
   resetLocalImageSrcStateForTests()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   if (originalApi) {
     Object.defineProperty(window, 'api', originalApi)
   } else {
@@ -84,12 +86,12 @@ it.each([101, 1_000])(
     expect(blobUrlCache.size).toBe(count)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     view.editor.destroy()
-    expect(blobUrlCache.size).toBe(100)
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(count - 100 + 1)
+    expect(blobUrlCache.size).toBe(0)
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(count + 1)
   }
 )
 
-it('preserves a shared displayed URL while closing the larger owner prunes unleased entries', async () => {
+it('preserves a shared displayed URL while closing the larger owner releases unused entries', async () => {
   const first = mountImages(101)
   const second = mountImages(1)
   await settleImages()
@@ -97,12 +99,12 @@ it('preserves a shared displayed URL while closing the larger owner prunes unlea
   expect(shared).toBe(first.host.querySelector('img')?.src)
   expect(readFile).toHaveBeenCalledTimes(101)
   first.editor.destroy()
-  expect(blobUrlCache.size).toBe(100)
+  expect(blobUrlCache.size).toBe(1)
   expect(second.host.querySelector('img')?.src).toBe(shared)
   expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(shared)
   const prewarm = prewarmMarkdownPreviewLocalImages('![](successor.png)', '/repo/docs/readme.md')
   await prewarm.done
-  expect(blobUrlCache.size).toBe(100)
+  expect(blobUrlCache.size).toBe(2)
   expect(second.host.querySelector('img')?.src).toBe(shared)
   expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(shared)
 })
