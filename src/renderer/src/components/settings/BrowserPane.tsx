@@ -170,6 +170,12 @@ export function BrowserPane({
     browserSessionHostIdOverride,
     settingsFocusedHostId
   )
+  const activeBrowserSessionProfileId =
+    useAppStore((s) => s.defaultBrowserSessionProfileIdByHostId[selectedBrowserSessionHostId]) ??
+    ((browserSessionHostIdOverride ?? settingsFocusedHostId) === selectedBrowserSessionHostId
+      ? defaultBrowserSessionProfileId
+      : null) ??
+    'default'
   useEffect(() => {
     const requestedHostId = browserSessionHostIdOverride ?? settingsFocusedHostId
     if (selectedBrowserSessionHostId !== requestedHostId) {
@@ -326,6 +332,7 @@ export function BrowserPane({
           importState={browserSessionImportState}
           hostOptions={browserSessionHostOptions}
           selectedHostId={selectedBrowserSessionHostId}
+          activeProfileId={activeBrowserSessionProfileId}
           onAddProfile={() => setNewProfileDialogOpen(true)}
           onSelectHost={selectBrowserSessionHost}
           onSelectDefaultProfile={() => setDefaultBrowserSessionProfileId(null)}

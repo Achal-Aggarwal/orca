@@ -1,6 +1,4 @@
 import { useGoogleCookieClear } from '../use-google-cookie-clear'
-import { useAppStore } from '@/store'
-import { getDefaultBrowserProfileForHost } from '@/store/slices/browser/browser-host-state'
 import { Plus } from 'lucide-react'
 import type { BrowserSessionProfile } from '../../../../shared/browser-workspace-types'
 import { Button } from '../ui/button'
@@ -24,6 +22,7 @@ type BrowserSessionCookiesSectionProps = {
   importState: BrowserProfileRowProps['importState']
   hostOptions: readonly BrowserSessionHostOption[]
   selectedHostId: ExecutionHostId
+  activeProfileId: string
   onAddProfile: () => void
   onSelectHost: (hostId: ExecutionHostId) => void
   onSelectDefaultProfile: () => void
@@ -37,13 +36,12 @@ export function BrowserSessionCookiesSection({
   importState,
   hostOptions,
   selectedHostId,
+  activeProfileId,
   onAddProfile,
   onSelectHost,
   onSelectDefaultProfile,
   onSelectProfile
 }: BrowserSessionCookiesSectionProps): React.JSX.Element {
-  const activeProfileId =
-    useAppStore((state) => getDefaultBrowserProfileForHost(state, selectedHostId)) ?? 'default'
   const activeProfile = [defaultProfile, ...nonDefaultProfiles].find(
     (profile) => profile?.id === activeProfileId
   )

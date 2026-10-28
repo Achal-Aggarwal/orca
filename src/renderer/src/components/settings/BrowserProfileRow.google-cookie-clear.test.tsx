@@ -6,6 +6,7 @@ import { Profiler, StrictMode, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import { ConfirmationDialogContext } from '../confirmation-dialog-context'
 import { createTestStore, createBrowserMockApi } from '@/store/slices/browser-slice-test-harness'
+import { getDefaultBrowserProfileForHost } from '@/store/slices/browser/browser-host-state'
 import type { AppState } from '@/store/types'
 import { createCompatibleRuntimeStatusResponse } from '@/runtime/runtime-compatibility-test-fixture'
 import type { GoogleCookieClearLocalTarget } from '../../../../shared/browser-google-cookie-clear'
@@ -114,9 +115,12 @@ function selectServer(capable = true) {
 function SessionSection() {
   const hostId = useStore(store, (s) => s.browserSessionHostIdOverride ?? 'local')
   const profiles = useStore(store, (s) => s.browserSessionProfiles)
+  const activeProfileId =
+    useStore(store, (s) => getDefaultBrowserProfileForHost(s, hostId)) ?? 'default'
   return (
     <BrowserSessionCookiesSection
       selectedHostId={hostId}
+      activeProfileId={activeProfileId}
       defaultProfile={profiles.find((p) => p.id === 'default')}
       nonDefaultProfiles={profiles.filter((p) => p.id !== 'default')}
       detectedBrowsers={[browser]}
