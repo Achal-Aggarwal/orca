@@ -130,17 +130,27 @@ test('notebook menu paste batches publication and drains Save and tab teardown',
         stats.events = 0
         control.held = false
         const postMessage = MessagePort.prototype.postMessage
-        MessagePort.prototype.postMessage = new Proxy(postMessage, {
-          apply(target, receiver, args) {
-            if (stats.events === 3 && typeof args[0] === 'number') {
-              MessagePort.prototype.postMessage = postMessage
-              control.held = true
-              control.release = () => Reflect.apply(target, receiver, args)
-              return
+        MessagePort.prototype.postMessage = function (
+          this: MessagePort,
+          message: unknown,
+          options?: StructuredSerializeOptions | Transferable[]
+        ): void {
+          const forward = postMessage.bind(this)
+          const send = (): void => {
+            if (Array.isArray(options)) {
+              forward(message, options)
+            } else {
+              forward(message, options)
             }
-            return Reflect.apply(target, receiver, args)
           }
-        })
+          if (stats.events === 3 && typeof message === 'number') {
+            MessagePort.prototype.postMessage = postMessage
+            control.held = true
+            control.release = send
+            return
+          }
+          send()
+        }
       }
       return { instance, model, stats, original, control, holdAfterThirdChunk }
     },
