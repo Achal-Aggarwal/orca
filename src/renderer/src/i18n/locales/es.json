@@ -371,7 +371,7 @@
       "port": "Puerto",
       "pr": "PR",
       "task": "Tarea",
-      "automation": "Corrida"
+      "automationItem": "Automatización"
     },
     "filter": {
       "emptyTitle": "Ningún resultado coincide con el filtro activo",
@@ -1210,6 +1210,9 @@
             }
           }
         }
+      },
+      "claudeAgentRowView": {
+        "subagentNavigationSetup": "Activa la navegación de subagentes de Claude en Ajustes → Agentes y luego inicia Claude 2.1.300+ en Orca. Comprueba que keybindings.json siga asignando Ctrl+Alt+G, H o V a command:orca-agent-view."
       }
     },
     "hooks": {
@@ -1502,7 +1505,6 @@
         "0bbdc673c1": "No se pudieron actualizar los checks",
         "e7007aa1d8": "No se pueden actualizar los checks sin una ruta al repositorio.",
         "675bc0d638": "Cancelar",
-        "a18f669c7a": "{{value0}} {{value1}} reacción{{value2}}",
         "53fe19aefc": "Abrir el cuadro de merge de GitHub",
         "a2495e4784": "Pull request",
         "ce360fc318": "No se pudo deshabilitar auto-merge",
@@ -1534,6 +1536,7 @@
         "5221548274": "Descripción actualizada.",
         "06c06e58ba": "Mostrar más líneas abajo",
         "307c98e8e3": "Mostrar {{value0}} más líneas arriba",
+        "showMoreLinesBelow": "Mostrar {{value0}} más líneas abajo",
         "5664681624": "Mostrar más líneas arriba",
         "b1574e8ac2": "Restablecer contexto de código",
         "d43736d09c": "Controles de contexto de código",
@@ -1623,7 +1626,7 @@
           "activity": "Actividad",
           "noActivity": "Sin actividad aún."
         },
-        "checkActionRequiredHint": "Esta verificación necesita una acción manual en GitHub (por ejemplo, aprobar la ejecución del workflow) antes de que se desbloquee la fusión.",
+        "checkActionRequiredHint": "Requiere una acción manual en GitHub (por ejemplo, aprobar la ejecución) para desbloquear la fusión.",
         "e15a8b77ef": "No hay detalles en línea disponibles para esta verificación.",
         "e45324fbed": "No se pudieron cargar los detalles de la verificación.",
         "dcb3c546fe": "Reintentar",
@@ -1634,7 +1637,9 @@
         "8812225174": "Reabrir",
         "09d67a0f9b": "No se pudo cerrar la PR",
         "88809e79db": "No se pudo reabrir la PR",
-        "00f55cc17b": "El acceso al repositorio no está disponible para esta PR."
+        "00f55cc17b": "El acceso al repositorio no está disponible para esta PR.",
+        "reactionCountSingular": "{{count}} {{reaction}} reacción",
+        "reactionCountPlural": "{{count}} {{reaction}} reacciones"
       },
       "GitLabItemDialog": {
         "65e784c1f1": "Reabrir",
@@ -1695,12 +1700,13 @@
         "22511537d2": "Aprobado",
         "00f3bab87b": " de {{value0}} obligatorias",
         "11384f99aa": "número",
-        "40c56b95e2": "{{value0}} aprobación{{value1}} restante",
         "3a051b8ade": "Work item",
         "32f8bef818": "Sin output de log.",
         "4168eb2c51": "Resolver",
         "commentTooLarge": "El comentario es demasiado grande para enviarlo de forma segura.",
-        "gitlabActionFailed": "La acción de GitLab falló."
+        "gitlabActionFailed": "La acción de GitLab falló.",
+        "approvalsRemainingSingular": "{{count}} aprobación restante",
+        "approvalsRemainingPlural": "{{count}} aprobaciones restantes"
       },
       "JiraIssueWorkspace": {
         "b0b92666c9": "Comentar",
@@ -2130,7 +2136,7 @@
         "8ff5ae8866": "Asignados",
         "82c87eceb9": "Editar asignados",
         "1ff5d979df": "Nadie asignado",
-        "checkActionRequiredHint": "Esta verificación necesita una acción manual en GitHub (por ejemplo, aprobar la ejecución del workflow) antes de que se desbloquee la fusión.",
+        "checkActionRequiredHint": "Requiere una acción manual en GitHub (por ejemplo, aprobar la ejecución) para desbloquear la fusión.",
         "dd5d9a4f17": "actualizado {{value0}}",
         "71a3c0f9d2": "Iniciar espacio de trabajo",
         "filesUnavailable": "No se pudieron cargar los archivos modificados.",
@@ -2417,10 +2423,8 @@
         "3b11c8e8fc": "array",
         "e178c0a953": "Elige un proyecto de Jira antes de crear el issue.",
         "0f7b0d964a": "Crea un nuevo issue en {{value0}}.",
-        "eff9800d4b": "{{value0}} etiqueta{{value1}}",
         "d7f16d0e32": "Seleccionar equipo",
         "5301ca0f20": "Crear proyecto",
-        "7719d8daa9": "{{value0}} miembro{{value1}}",
         "5af6f0ae5b": "Seleccionar equipo",
         "cfb730b73e": "issue",
         "3659f9792a": "board",
@@ -2522,7 +2526,11 @@
         "jiraColumnStoryPoints": "Puntos",
         "jiraColumnOriginalEstimate": "Estimación",
         "jiraColumnRemainingEstimate": "Restante",
-        "jiraBoardEmptyColumn": "Sin incidencias"
+        "jiraBoardEmptyColumn": "Sin incidencias",
+        "labelCountPlural": "{{count}} etiquetas",
+        "labelCountSingular": "{{count}} etiqueta",
+        "memberCountPlural": "{{count}} miembros",
+        "memberCountSingular": "{{count}} miembro"
       },
       "Terminal": {
         "73768427cf": "Cerrar",
@@ -2619,7 +2627,7 @@
         "1628fd7dfa": "No hay worktrees activos, ajustes, acciones ni pestañas abiertas",
         "b781ae05e3": "Escribe para buscar worktrees, ajustes, pestañas y acciones.",
         "f60f8730be": "No hay otros worktrees a los que cambiar",
-        "c4afa68159": "Prueba con un worktree, ajuste, acción, título de pestaña, prompt de agente, URL, PR o puerto.",
+        "c4afa68159": "Prueba con un worktree, proyecto, ajuste, acción, título de pestaña, prompt de agente, URL, PR o puerto.",
         "dbd9d87eec": "Ningún resultado coincide con tu búsqueda",
         "2c38630a01": "El espacio de trabajo ya no existe",
         "7726ce9970": "La pestaña del emulador móvil ya no existe",
@@ -3038,6 +3046,7 @@
               "5f79bc76b0": "Volver a proyectos",
               "aac9a4afc6": "Abrir en Linear",
               "7616c986c6": "Abrir issues de {{value0}}",
+              "openInLinear": "Abrir {{value0}} en Linear",
               "93e1f6bfca": "Cargando",
               "98730088a6": ". Busca o abre Linear para ver el conjunto completo.",
               "06b887d622": "Mostrando primero",
@@ -3508,8 +3517,6 @@
             "drop": {
               "handler": {
                 "1e072f611e": "No se pudo subir {{value0}} {{value1}}.",
-                "53f015fd85": "Se omitió {{value0}} symlink{{value1}}.",
-                "29c031b49a": "Subiendo {{value0}} archivo{{value1}} al host…",
                 "0c77693641": "El worktree no está listo; inténtalo de nuevo en un momento.",
                 "ce8248b835": "Ruta del worktree no disponible.",
                 "internalTooManyPaths": "El drop contiene demasiadas rutas para pegarlas de forma segura en el terminal.",
@@ -3517,7 +3524,13 @@
                 "internalHostMismatch": "Arrastra archivos del mismo host que este terminal.",
                 "b4cf68e889": "Se omitió {{value0}} {{value1}}.",
                 "writeTimeout": "Se canceló el drop de archivos: el terminal no aceptó la ruta antes del tiempo límite de seguridad.",
-                "writeRejected": "Se canceló el drop de archivos: el terminal no pudo aceptar la ruta."
+                "writeRejected": "Se canceló el drop de archivos: el terminal no pudo aceptar la ruta.",
+                "skippedSymlinkSingular": "Se omitió {{count}} symlink.",
+                "skippedSymlinkPlural": "Se omitieron {{count}} symlinks.",
+                "uploadingFileSingular": "Subiendo {{count}} archivo al host…",
+                "uploadingFilePlural": "Subiendo {{count}} archivos al host…",
+                "uploadingFileToRemoteSingular": "Subiendo {{count}} archivo al host remoto…",
+                "uploadingFileToRemotePlural": "Subiendo {{count}} archivos al host remoto…"
               }
             }
           },
@@ -5046,12 +5059,12 @@
           "74b70892ea": "Los archivos locales fueron modificados.",
           "86ed219b55": "Elige una versión",
           "9c04bd0120": "Versión instalada",
-          "64c71cf7b9": "No se encontraron instalaciones de habilidades administradas por Orca en esta máquina.",
+          "64c71cf7b9": "Orca aún no ha instalado ninguna habilidad en esta máquina.",
           "0900db719a": "— desconectado",
           "176fef9516": "· SSH",
           "6cb1fbe039": "esta computadora",
-          "3677ae58e7": "Actualice, revierta o elimine de forma segura las versiones instaladas por Orca.",
-          "44d118a8f7": "Administrar habilidades instaladas",
+          "3677ae58e7": "Habilidades que Orca instaló desde un enlace. Reinstálelas, vuelva a una versión anterior o elimínelas.",
+          "44d118a8f7": "Instaladas por Orca",
           "1c9e7f420a": "Habilidades del paquete instalado",
           "34c2ef9e71": "Instalar habilidades {{count}}",
           "a0cab67c2f": "Eliminar habilidades {{count}}",
@@ -5072,15 +5085,15 @@
           "fab8fce842": "archivos",
           "8f9833d509": "Versión inmutable",
           "66270286ac": "· Puedes volver a intentarlo de forma segura.",
-          "1b6ad2ca5c": "comprobado.",
-          "3fc62a61eb": "colocación",
           "157de228b4": "inspeccionar habilidad",
           "69236de8d6": "De cheques…",
           "27672470d9": "Abrir el enlace no instala nada. Revise primero la versión inmutable.",
           "66cff7a804": "https://app.orca.dev/skills/share/…",
           "93eb0fe8c7": "Enlace de habilidad de Orca",
           "releaseNotes": "Notas de la versión:",
-          "targetHeader": "Objetivo de instalación"
+          "targetHeader": "Objetivo de instalación",
+          "placementsChecked_one": "Se comprobó {{count}} ubicación.",
+          "placementsChecked_other": "Se comprobaron {{count}} ubicaciones."
         },
         "SkillInstallTargetFields": {
           "8e6a972229": "No se conocen espacios de trabajo en esta máquina.",
@@ -5254,7 +5267,7 @@
           "singleRunnableWarning": "Esta habilidad incluye scripts o archivos binarios.",
           "runnableWarning": "{{affectedCount}} de {{selectedCount}} habilidades seleccionadas incluyen scripts o archivos binarios: {{affected}}.",
           "reviewRunnableFiles": "Incluye scripts o archivos binarios.",
-          "reviewSupportingFiles": "Incluye archivos de soporte",
+          "reviewSupportingFiles": "Revisa los archivos de soporte",
           "reviewInstructions": "Acerca de esta habilidad",
           "supportingFileWarning": "Las habilidades seleccionadas incluyen {{fileCount}} más allá de SKILL.md.",
           "agentAccessWarning": "Las habilidades contienen instrucciones que su agente puede seguir. Continúe solo si confía en la fuente de este enlace para compartir.",
@@ -5263,7 +5276,7 @@
           "agentsCountBadge": "{{count}} seleccionado",
           "agentsCountLabel": "{{count}} {{label}}",
           "targetAgentsHeader": "Agentes objetivo",
-          "deselectAll": "Deseleccionar opcional",
+          "deselectAll": "Deseleccionar todo",
           "selectAll": "Seleccionar todo",
           "canonicalHeader": "Agentes Estándar (Siempre Incluidos)",
           "canonicalExplanation": "Estos agentes leen de forma nativa {{root}}, que Orca instala de forma predeterminada:",
@@ -5808,6 +5821,7 @@
           "dc0bb670bc": "Agrupar por",
           "9919ae1082": "Opciones de espacio de trabajo",
           "bc96dbd041": "Opciones de espacio de trabajo ({{value0}})",
+          "optionsActiveLabel": "Opciones de espacio de trabajo ({{value0}} activos)",
           "af9249c505": "Actividad más reciente en el espacio de trabajo",
           "b451c8b162": "Reciente",
           "6664282a7b": "Arrastra proyectos para organizarlos",
@@ -5875,6 +5889,7 @@
           "79eb990aa4": "Agregar estado",
           "054cb50df7": "Quitar {{value0}}",
           "b45b350eb0": "Mover {{value0}} a la izquierda",
+          "moveStatusRight": "Mover {{value0}} a la derecha",
           "8ce44af9a8": "Cambiar nombre {{value0}}",
           "395e541d5d": "Estados",
           "34f03eb0de": "Ajustes del tablero",
@@ -5889,6 +5904,7 @@
         },
         "WorkspaceStatusAppearancePopover": {
           "514be2f569": "Establecer color de {{value0}} en {{value1}}",
+          "setStatusIcon": "Establecer icono de {{value0}} en {{value1}}",
           "8be427206b": "Icono",
           "2ac106f6b2": "Color",
           "74b1413279": "Apariencia",
@@ -6061,7 +6077,6 @@
           "0cd15956d4": "Ocultar {{value0}} espacios de trabajo secundarios",
           "bd37a57ac8": "Crear espacio de trabajo para {{value0}}",
           "b667b59632": "Algunos proyectos no se pudieron eliminar de Orca",
-          "f94466bc39": "{{value0}} de {{value1}} proyecto{{value2}} contenido(s) permanecieron tras eliminar el grupo.",
           "groupDeleteFailed": "No se pudo eliminar el grupo",
           "groupDeleteFailedDesc": "Algo salió mal al eliminar el grupo. No se eliminó ningún proyecto.",
           "7a8b9c0d1e": "Actualización requerida",
@@ -6072,7 +6087,9 @@
           "failedUnnestWorkspace": "Error al expandir el espacio de trabajo",
           "groupRenameFailed": "No se pudo cambiar el nombre del grupo",
           "groupRenameFailedDesc": "Orca no pudo confirmar el nuevo nombre con el anfitrión del grupo. Vuelva a verificar el grupo después de volver a conectarse.",
-          "hostRepairRequired": "Re-pair required"
+          "hostRepairRequired": "Re-pair required",
+          "groupProjectsRemainedSingular": "{{remaining}} de {{count}} proyecto contenido permaneció tras eliminar el grupo.",
+          "groupProjectsRemainedPlural": "Proyectos contenidos que permanecieron tras eliminar el grupo: {{remaining}} de {{count}}."
         },
         "WorktreeMetaDialog": {
           "3db0a2a593": "Cancelar",
@@ -6579,15 +6596,14 @@
           "port": "Puerto",
           "identityFile": "Archivo de identidad",
           "identityFilePlaceholder": "~/.ssh/id_ed25519 (opcional)",
-          "serverName": "Nombre del servidor",
+          "nameInOrca": "Nombre en Orca",
           "serverNamePlaceholder": "Dev box",
-          "pairingCode": "Código de emparejamiento",
+          "accessLink": "Enlace de acceso",
           "pairingCodePlaceholder": "orca://pair?code=...",
           "pairingHelpPrefix": "Ejecuta",
           "pairingCommand": "orca serve --pairing-address <host>",
           "pairingHelpSuffix": "en el servidor y pega la URL de emparejamiento impresa.",
           "sshImportAlreadySynced": "~/.ssh/config ya está sincronizado.",
-          "sshImportSynced": "Se sincronizó {{value0}} host{{value1}}.",
           "sshImportFailed": "No se pudo importar la configuración SSH.",
           "sshPersistenceDefault": "Los terminales remotos en este host seguirán activos hasta que los cierres o restablezcas el relay.",
           "advanced": "Advanced",
@@ -6601,7 +6617,7 @@
           "sshConfigPickerRestartRequired": "Reinicie Orca para terminar de aplicar la actualización del selector de configuración SSH.",
           "sshConfigPickerFilled": "Llenado desde {{value0}}. Revisar y guardar.",
           "sshConfigPickerTitle": "Elija entre ~/.ssh/config",
-          "sshConfigPickerDescription": "Elija un anfitrión para completar el formulario. No se guarda nada hasta que haces clic en Guardar.",
+          "sshConfigPickerImportDescription": "Elija un host para completar el formulario o agregue todos los hosts nuevos a la lista de hosts de Orca.",
           "sshConfigPickerFilter": "Filtrar hosts…",
           "sshConfigPickerHostsLabel": "Hosts de configuración SSH",
           "sshConfigPickerLoading": "Leyendo ~/.ssh/config…",
@@ -6622,7 +6638,9 @@
           "identityFileFromConfigHint": "Dejado vacío a propósito: Orca usa todas las claves ~/.ssh/config resuelve para {{value0}}. Escriba una ruta para usar solo esa clave.",
           "sshConfigPickerRetry": "Probar de nuevo",
           "sshConfigPickerResolving": "Lectura…",
-          "pairingHelpShareComputer": "Créalo en Ajustes → Servidores remotos de Orca → Compartir este equipo en el otro equipo."
+          "pairingHelpShareComputer": "Créalo en Ajustes → Servidores remotos de Orca → Compartir este equipo en el otro equipo.",
+          "sshImportSyncedPlural": "Se agregaron {{count}} hosts a Orca.",
+          "sshImportSyncedSingular": "Se agregó {{count}} host a Orca."
         },
         "ForgetSshWorkspaceDialog": {
           "reconnectFailed": "Error de reconexión",
@@ -7136,7 +7154,6 @@
           "c9b33eb5c0": "Actualizando…",
           "13647f9f80": "Vuelve a leer PATH de tu shell y vuelve a detectar los Agents instalados",
           "db9e9e5887": "Personalizar comando",
-          "959b67385b": "Establecer predeterminado",
           "24e032fa34": "Predeterminado",
           "5f986a9b92": "Establecer como predeterminado",
           "cfb3f35775": "Argumentos",
@@ -7695,7 +7712,7 @@
         "GeneralSupportSection": {
           "af7d9f4396": "¡Gracias por el apoyo!",
           "6922c1fa2b": "Dale una estrella a Orca en GitHub",
-          "511782265b": "Apoya el proyecto con una estrella de GitHub mediante la CLI gh.",
+          "511782265b": "Apoya el proyecto con una estrella de GitHub.",
           "55a87e5fd1": "Apoya a Orca",
           "964acc6bb4": "Dar una estrella",
           "73b327e793": "Intentar otra vez",
@@ -7752,7 +7769,7 @@
           "e2955d9ccb": "Configura dónde se crean nuevos espacios de trabajo.",
           "7511097c5d": "Espacio de trabajo",
           "externalWorktrees": "Worktrees externos",
-          "externalWorktreesDescription": "Elige si los worktrees creados fuera de Orca aparecen de forma predeterminada.",
+          "externalWorktreesDescription": "Elige qué worktrees creados fuera de Orca aparecen de forma predeterminada en este host.",
           "show": "Mostrar",
           "hide": "Ocultar",
           "31e300af1c": "Preguntar antes de eliminar artefactos",
@@ -7962,8 +7979,6 @@
         "McpConfigSection": {
           "4d16a0d9ac": "Comprobado",
           "b900cd6282": "No se encontró ninguna configuración de MCP. Agrega una configuración vacía de workspace cuando quieras que este repositorio defina sus propios servidores MCP.",
-          "3b224167ff": "server",
-          "251b96564a": "detectado ·",
           "f34c152dc0": "Actualizar configuraciones de MCP",
           "6bac9ddfc6": "Los repositorios SSH se leen a través del sistema de archivos remoto. La creación inicial se limita a la configuración raíz del espacio de trabajo.",
           "96f5609b04": "Inspecciona las definiciones de servidores MCP que los agentes pueden usar mientras trabajan en este repositorio.",
@@ -7971,7 +7986,9 @@
           "9ee215caf6": ".mcp.json",
           "1f3665e35a": "Configuración de MCP creada",
           "82436439eb": "Agregar configuración de MCP",
-          "0a5c1ead54": "Crear configuración vacía"
+          "0a5c1ead54": "Crear configuración vacía",
+          "detectedServers_one": "Detectados: {{detected}} · {{count}} servidor",
+          "detectedServers_other": "Detectados: {{detected}} · {{count}} servidores"
         },
         "MobileEmulatorAgentControlRow": {
           "1861982430": "No se pudo cargar el estado de CLI.",
@@ -8338,6 +8355,7 @@
         },
         "RepositoryIconPicker": {
           "2b7d27b93c": "Usar {{value0}} como color del repositorio",
+          "useRepoIcon": "Usar {{value0}} como icono del repositorio",
           "fde066a63b": "Las cargas PNG deben tener un tamaño de 256 KB o menos.",
           "cc1286e263": "Favicon",
           "03ca1a4e9b": "example.com",
@@ -8403,10 +8421,11 @@
           "setupKindGit": "Repositorio Git",
           "setupKindFolder": "Carpeta",
           "settingUpHost": "Importando...",
-          "setupHost": "Importar",
+          "addingProject": "Agregando...",
+          "setupHost": "Agregar proyecto",
           "cloningHost": "Clonando...",
           "cloneHost": "Clonar",
-          "creatingPendingSetup": "Creando...",
+          "creatingPendingSetup": "Agregando...",
           "createPendingSetup": "Registrar configuración",
           "hostSetupCheckingCapability": "Comprobando capacidades del host",
           "hostAvailability": "Disponibilidad del host",
@@ -8649,7 +8668,7 @@
           "1b4e0bbcc5": "No se pudieron cargar las concesiones de acceso compartido.",
           "b91e36a986": "web",
           "custom-option": "{{address}} (personalizada)",
-          "add-custom": "Añadir dirección personalizada…",
+          "add-custom": "Usar dirección personalizada…",
           "custom-title": "Dirección de conexión personalizada",
           "custom-description": "Anuncia una dirección que otro dispositivo pueda alcanzar: un host de LAN o Tailscale, o una URL ws(s):// completa.",
           "custom-hint": "Introduce un host, host:puerto o una URL ws(s)://.",
@@ -8734,8 +8753,6 @@
           "ad6c529693": "Cuentas de proveedores de IA",
           "ec1ba547f7": "Administra agentes de IA, define uno predeterminado y personaliza comandos.",
           "8afa676615": "Agentes",
-          "add3b97ee6": "\"",
-          "3c88ec55d6": "No se encontraron configuraciones para \"",
           "c7ad095d96": "Cargando ajustes...",
           "acc7bbdefd": "Presiona ESC de nuevo para salir de ajustes",
           "43b68e10f0": "Hay ajustes de IA sin guardar. Se descartarán al salir.",
@@ -8754,7 +8771,8 @@
           "linearTitle": "Linear",
           "linearDescription": "Cómo funciona Linear en Orca, lista de configuración, habilidad del agente y ejemplos de prompts.",
           "tasksDescription": "Conecta proveedores, instala la habilidad de Linear y elige qué aparece en Tareas.",
-          "remoteServersDescription": "Ejecuta Orca en otra máquina y trabaja en ella desde aquí."
+          "remoteServersDescription": "Ejecuta Orca en otra máquina y trabaja en ella desde aquí.",
+          "noSettingsFoundForQuery": "No se encontraron configuraciones para \"{{value0}}\""
         },
         "SettingsFormControls": {
           "42a4d15a30": "No hay fuentes coincidentes.",
@@ -8792,7 +8810,10 @@
           "df8466f3fc": "Borrar búsqueda de atajos",
           "f733c4b89f": "Buscar comando o teclas",
           "02dc7d4251": "Buscar atajos",
-          "1d5634ba31": "Atajo de {{value0}}"
+          "1d5634ba31": "Atajo de {{value0}}",
+          "filterAll": "Todos",
+          "filterUnassigned": "Sin asignar",
+          "filterConflicts": "Conflictos"
         },
         "ShortcutRowsList": {
           "4ce3cd24d9": "Ningún atajo coincide con esos filtros."
@@ -9762,7 +9783,7 @@
                 "55a1860e47": "renombrar",
                 "9319bd9827": "rama",
                 "ea94b9da8a": "Renombra automáticamente la rama generada según el trabajo cuando se inicia un agente.",
-                "427f2cd1eb": "Renombrar rama automáticamente"
+                "427f2cd1eb": "Renombrar rama y worktree automáticamente"
               }
             }
           }
@@ -10545,7 +10566,7 @@
           },
           "settings": {
             "search": {
-              "b730ff7049": "experimental",
+              "b730ff7049": "aplicación",
               "8d4ba0ef09": "beta",
               "6bfa001752": "APK",
               "a7eececc1d": "Android",
@@ -10872,7 +10893,8 @@
           }
         },
         "shortcutDefinitionCatalog": {
-          "missionControlConflict": "Bloqueado por Mission Control. Reasigna aquí o cámbialo en Ajustes del Sistema."
+          "missionControlConflict": "Bloqueado por Mission Control. Reasigna aquí o cámbialo en Ajustes del Sistema.",
+          "bindingConflict": "{{binding}} entra en conflicto con {{actions}}."
         },
         "shortcuts": {
           "search": {
@@ -11952,7 +11974,7 @@
           "update": "Update",
           "title": "Actualizar servidores remotos Orca",
           "description": "Revise los servidores emparejados y actualice las instalaciones admitidas desde este cliente Orca.",
-          "restartWarning": "La actualización reinicia estos servidores. Es posible que {{value0}} pestañas activas y {{value1}} paneles de terminal se desconecten brevemente.",
+          "restartWarning": "La actualización reinicia estos servidores. Es posible que {{value0}} y {{value1}} se desconecten brevemente.",
           "checking": "Checking paired servers…",
           "empty": "No hay servidores Orca remotos emparejados.",
           "checkAgain": "Check again",
@@ -11961,10 +11983,10 @@
           "noUpdates": "No updates available",
           "updateOne": "Update server",
           "downloadProgress": "{{value0}} download progress",
-          "liveTabOne": "1 live tab",
-          "liveTabs": "{{value0}} live tabs",
-          "livePaneOne": "1 live pane",
-          "livePanes": "{{value0}} live panes"
+          "liveTabOne": "1 pestaña activa",
+          "liveTabs": "{{value0}} pestañas activas",
+          "livePaneOne": "1 panel activo",
+          "livePanes": "{{value0}} paneles activos"
         },
         "RemoteServerUpdateStatus": {
           "checking": "Checking…",
@@ -12563,7 +12585,7 @@
               "connectFailed": "La conexión falló",
               "title": "Conectar Bitbucket",
               "description": "Utilice una credencial de Bitbucket Cloud para explorar solicitudes de extracción y estados de compilación. Orca lo verifica antes de guardar.",
-              "remoteRuntime": "Las credenciales de Bitbucket guardadas aquí se almacenan únicamente en esta máquina local. En su lugar, establezca las variables de entorno ORCA_BITBUCKET_* en el tiempo de ejecución remoto.",
+              "remoteRuntime": "Se guarda en esta máquina, no en el tiempo de ejecución remoto activo; en su lugar, establezca ORCA_BITBUCKET_* allí. Las variables de entorno siempre tienen prioridad sobre lo que guarde aquí.",
               "environmentManaged": "Bitbucket ya está configurado a través de las variables de entorno ORCA_BITBUCKET_*, que tienen prioridad. Desactívelos para guardar una credencial en Orca.",
               "authModeLabel": "Método de autenticación de Bitbucket",
               "modeBasic": "Token de correo electrónico y API",
@@ -13222,7 +13244,7 @@
             "b5dd73a105": "Selecciona un espacio de trabajo para ver los checks",
             "a4ef4e0832": "Ningún espacio de trabajo seleccionado",
             "5594400d73": "No hay checks con errores que corregir.",
-            "abf59262fb": "Revisa el prompt antes de iniciar un agente.",
+            "abf59262fb": "Revisa y edita la entrada de comando completa antes de iniciar un agente.",
             "4ede779461": "Resolver conflictos de revisión con IA",
             "3b203c62f8": "Esto eliminará permanentemente el comentario del PR.",
             "ea9b649ce3": "¿Eliminar comentario?",
@@ -13474,12 +13496,14 @@
           "Search": {
             "1abfb25a66": "Escriba para buscar en archivos",
             "d56d140747": "Presione Enter para buscar",
-            "0b8104eaf2": "archivo",
-            "4107975b3a": "en",
-            "6aeda362ed": "resultado",
             "98c8435e36": "Seleccione un espacio de trabajo para buscar",
             "1ec640c9c7": "coincidencia",
-            "dcc294f28d": "(resultados truncados)"
+            "dcc294f28d": "(resultados truncados)",
+            "resultsInFiles": "{{results}} en {{files}}",
+            "resultCount_one": "{{count}} resultado",
+            "resultCount_other": "{{count}} resultados",
+            "fileCount_one": "{{count}} archivo",
+            "fileCount_other": "{{count}} archivos"
           },
           "SearchFilters": {
             "01e4671ccf": "archivos a excluir (por ejemplo, *.min.js, dist/**)",
@@ -13509,7 +13533,6 @@
             "conflictsSection": "Conflictos",
             "cc05b2d088": "Abrir en el Explorador de archivos",
             "03194cfff4": "Estado de la sesión local derivado de un conflicto que abrió aquí.",
-            "413a3ba113": "conflicto",
             "27a50fe970": "Revisar conflictos",
             "f6cb48b6fe": "Resolver con IA",
             "3eeccbb221": "Los archivos resueltos vuelven a los cambios normales después de salir del estado de conflicto activo.",
@@ -13537,7 +13560,7 @@
             "37a81f29ad": "Generando mensaje de commit. Haga clic para detener.",
             "b94112eb9e": "Mensaje de commit",
             "0d0a8359d3": "Mensaje",
-            "15b7f210d7": "Revisa el prompt antes de iniciar un agente.",
+            "15b7f210d7": "Elige el agente y edita la entrada de comando completa antes de iniciar.",
             "054ead86b1": "Solucionar error de commit con IA",
             "9e5ccd00aa": "Contexto del error de commit no disponible",
             "f0a2dc9e46": "Personalizar lanzamiento...",
@@ -13569,7 +13592,7 @@
             "1a6a6e0bc5": "Generar detalles de reseña alojada",
             "6b122529d4": "Generar mensaje de commit",
             "e48caaf0dd": "Inició un agente de IA para los conflictos.",
-            "901140f47d": "Revisa el prompt antes de iniciar un agente.",
+            "901140f47d": "Revisa y edita la entrada de comando completa antes de iniciar un agente.",
             "19652ddd76": "Resolver conflictos con IA",
             "c9ad22888e": "Elige el destino de comparación de ramas para este repositorio.",
             "574d2f4413": "Borrar notas",
@@ -13584,7 +13607,6 @@
             "e131cd7128": "Source Control sólo está disponible para repositorios Git",
             "c07b236287": "Seleccione un espacio de trabajo para ver los cambios",
             "dc5a6465fc": "{{value0}} (por ejemplo, {{value1}}{{value2}})",
-            "8eb3782a0c": "No se pudo descartar el archivo {{value0}}{{value1}}",
             "a5e5a11090": "Descartar todo falló: no se pueden eliminar los archivos antes de descartarlos",
             "8a5ba6a988": "No se pudo cargar la diferencia de commit",
             "fe5bd1a610": "Creando {{value0}}...",
@@ -13593,7 +13615,6 @@
             "0453ca3a9a": "{{value0}} creado, pero Orca no pudo actualizarlo todavía.",
             "f99560ab29": "No se pudo abortar {{value0}}",
             "eae7a1da5f": "No se pudieron borrar las notas.",
-            "657e0c90ad": "{{value0}} nota{{value1}}",
             "df5040e3c3": "Quitar del stage",
             "8cde1a2fb0": "Agregar al stage",
             "d54dd48b0b": "Descartar cambios",
@@ -13736,7 +13757,13 @@
             "entryDiscardFailed": "No se pudo descartar \"{{value0}}\"",
             "entryDeleteFailed": "No se pudo eliminar \"{{value0}}\"",
             "entryFailedInWorkspace": "{{value0}} en {{value1}}",
-            "diffCommentNotesCopyFailed": "No se pudieron copiar notas"
+            "diffCommentNotesCopyFailed": "No se pudieron copiar notas",
+            "conflictCount_one": "{{count}} conflicto",
+            "conflictCount_other": "{{count}} conflictos",
+            "discardFailedSingular": "No se pudo descartar {{count}} archivo",
+            "discardFailedPlural": "No se pudieron descartar {{count}} archivos",
+            "noteCountSingular": "{{count}} nota",
+            "noteCountPlural": "{{count}} notas"
           },
           "SourceControlAgentActionDialog": {
             "8e856842d1": "No se pudo iniciar el agente seleccionado.",
@@ -13794,7 +13821,6 @@
           "checks": {
             "panel": {
               "content": {
-                "3916814392": "por detrás (commit base:",
                 "755be805f6": "Sin comentarios",
                 "751f7c6e5c": "Mostrando los primeros 100 comentarios por fuente",
                 "94557d68e2": "Comentarios",
@@ -13841,13 +13867,10 @@
                 "c16762ac8c": "Los checks y comentarios a continuación muestran el contexto obtenido actualmente.",
                 "9d0e7bcefc": "Sin acciones de PR de bloqueo",
                 "5856874b59": "Orca actualizará los checks mientras este panel permanezca abierto.",
-                "5341023167": "check",
                 "b45db92d0e": "Arreglar",
                 "5d4ebf9391": "Inspecciona los detalles o inicia una pasada de corrección con IA.",
-                "b652f38caf": "check fallido",
                 "87cd07c69a": "Esta rama tiene conflictos que deben resolverse",
                 "0975eeaaef": "Archivos con conflictos",
-                "6fa7f8723f": "commit",
                 "2b2be92919": "Añadir comentario",
                 "7440d09d2c": "Iniciar conversación",
                 "b37ebdc51c": "Comentarios no disponibles.",
@@ -13881,13 +13904,22 @@
                 "b13f85d75c": "Cronología",
                 "f5cf324efa": "Opciones de visualización de comentarios",
                 "5e6e5a13fa": "Vista",
-                "actionRequiredHint": "Este check requiere una acción manual en GitHub (por ejemplo, aprobar la ejecución del workflow) antes de que el merge quede desbloqueado.",
+                "actionRequiredHint": "Requiere una acción manual en GitHub (por ejemplo, aprobar la ejecución) para desbloquear el merge.",
                 "b3195cba33": "Desmarcar autor como bot",
                 "f588b46a6c": "Marcar autor como bot",
                 "e45324fbed": "No se pudieron cargar los detalles del check.",
                 "dcb3c546fe": "Reintentar",
                 "checksUnresolvedChip": "irresoluto",
-                "checksUnresolvedStripHint": "Estas comprobaciones finalizaron sin un veredicto de aprobación o desaprobación."
+                "checksUnresolvedStripHint": "Estas comprobaciones finalizaron sin un veredicto de aprobación o desaprobación.",
+                "commitsBehind_one": "{{count}} commit por detrás",
+                "commitsBehind_other": "{{count}} commits por detrás",
+                "baseCommitLabel": "commit base:",
+                "failingChecks_one": "{{count}} comprobación fallida",
+                "failingChecks_other": "{{count}} comprobaciones fallidas",
+                "pendingChecks_one": "{{count}} comprobación pendiente",
+                "pendingChecks_other": "{{count}} comprobaciones pendientes",
+                "unresolvedChecks_one": "{{count}} comprobación sin resolver",
+                "unresolvedChecks_other": "{{count}} comprobaciones sin resolver"
               },
               "empty": {
                 "state": {
@@ -14195,7 +14227,67 @@
                   "226b85a3a7": "Fetch",
                   "323bb614aa": "Commit y sincronizar",
                   "2b8e6595fd": "Commit",
-                  "04d709801d": "Fetch del remoto sin hacer merge"
+                  "04d709801d": "Fetch del remoto sin hacer merge",
+                  "titleCheckOutBranchToPush": "Haz checkout de una rama antes de hacer push de commits",
+                  "titleLinkedReviewTargetUnavailable": "El destino de la rama de review vinculada no está disponible",
+                  "titlePublishBranchFirstToPush": "Publica la rama primero para hacer push de commits",
+                  "titleCommitAndForcePush": "Hacer commit de los cambios staged y force push con lease",
+                  "titleCommitAndTryPush": "Hacer commit de los cambios staged e intentar hacer push",
+                  "titleCommitAndPush": "Hacer commit de los cambios staged y push",
+                  "commitForcePush": "Commit y Force Push",
+                  "commitPush": "Commit y push",
+                  "titleOperationInProgress": "Operación en curso…",
+                  "titleAbortRebaseInProgress": "Abortar el rebase en curso",
+                  "titleAbortMergeInProgress": "Abortar el merge en curso",
+                  "titleNothingToPushTo": "No hay nada para hacer push a {{upstreamName}}",
+                  "titleNothingToPush": "No hay nada para hacer push",
+                  "titleNothingToForcePushTo": "No hay nada para hacer force push a {{upstreamName}}",
+                  "titleNothingToForcePush": "No hay nada para hacer force push",
+                  "titlePushAndSetUpstream": "Haz push de esta rama y configura un upstream si es necesario",
+                  "titleTryRegularPush": "Intenta un push normal; git puede requerir force push",
+                  "titlePushMayNeedSync": "Haz push de los commits locales; git puede requerir sincronizar primero",
+                  "titleCheckOutBranchToForcePush": "Haz checkout de una rama antes de hacer force push de commits",
+                  "titleCheckOutBranchToPull": "Haz checkout de una rama antes de hacer pull de commits",
+                  "titlePublishBranchFirstToPull": "Publica la rama primero para hacer pull de commits",
+                  "titleNothingNewToPull": "No hay nada nuevo para hacer pull — el remoto solo tiene copias antiguas de commits locales",
+                  "titleNothingToPull": "No hay nada para hacer pull",
+                  "fastForward": "Fast-forward",
+                  "titleCheckOutBranchToFastForward": "Haz checkout de una rama antes de hacer fast-forward",
+                  "titlePublishBranchFirstToFastForward": "Publica la rama primero para hacer fast-forward",
+                  "titleNothingNewToFastForward": "No hay nada nuevo para hacer fast-forward — el remoto solo tiene copias antiguas de commits locales",
+                  "titleNothingToFastForward": "No hay nada para hacer fast-forward",
+                  "titleTryFastForwardPull": "Intenta un pull con fast-forward; git puede rechazar los commits locales",
+                  "titleUseForcePushToSync": "Usa Force Push — el remoto solo tiene copias antiguas de commits locales",
+                  "titleBranchUpToDate": "La rama está actualizada",
+                  "publishPrStatus": "Estado del PR",
+                  "publishLinkedReview": "Review vinculada",
+                  "publishNoBranch": "Sin rama",
+                  "titleLinkedReviewBranchExists": "La rama de review vinculada ya existe",
+                  "titleCheckOutBranchToPublish": "Haz checkout de una rama antes de publicar commits",
+                  "titleBranchAlreadyPublished": "La rama ya está publicada",
+                  "titleCreateReviewForBranch": "Crear un {{reviewLabel}} para esta rama",
+                  "forcePushBeforeReview": "Force Push antes de {{shortLabel}}",
+                  "pushBeforeReview": "Push antes de {{shortLabel}}",
+                  "titleForcePushBeforeCreatingReview": "Haz force push con lease antes de crear un {{reviewLabel}}",
+                  "titlePushBeforeCreatingReview": "Haz push de los commits locales antes de crear un {{reviewLabel}}",
+                  "pushCount_one": "Hacer push de {{count}} commit",
+                  "pushCount_other": "Hacer push de {{count}} commits",
+                  "pullCount_one": "Hacer pull de {{count}} commit",
+                  "pullCount_other": "Hacer pull de {{count}} commits",
+                  "fastForwardCount_one": "Hacer fast-forward de {{count}} commit",
+                  "fastForwardCount_other": "Hacer fast-forward de {{count}} commits",
+                  "syncCounts": "Pull de {{behind}}, push de {{ahead}}",
+                  "remoteBranchFallback": "la rama remota",
+                  "titleForcePushOlderCopiesBranch": "El remoto solo tiene copias antiguas de commits locales. Haz force push con lease de esta rama para actualizar {{upstreamName}}.",
+                  "titleForcePushOlderCopiesCount_one": "El remoto solo tiene copias antiguas de commits locales. Haz force push con lease de {{count}} commit de la rama para actualizar {{upstreamName}}.",
+                  "titleForcePushOlderCopiesCount_other": "El remoto solo tiene copias antiguas de commits locales. Haz force push con lease de {{count}} commits de la rama para actualizar {{upstreamName}}.",
+                  "titleManualForcePush_one": "Haz force push con lease de {{count}} commit local para actualizar {{upstreamName}}.",
+                  "titleManualForcePush_other": "Haz force push con lease de {{count}} commits locales para actualizar {{upstreamName}}.",
+                  "titleManualForcePushReplaceRemote_one": "Haz force push con lease de {{count}} commit local para actualizar {{upstreamName}} y reemplazar los commits que solo están en el remoto.",
+                  "titleManualForcePushReplaceRemote_other": "Haz force push con lease de {{count}} commits locales para actualizar {{upstreamName}} y reemplazar los commits que solo están en el remoto.",
+                  "titleUnpublishedForcePushBranch": "Haz force push con lease de esta rama y configura un upstream si es necesario.",
+                  "titleUnpublishedForcePushCount_one": "Haz force push con lease de {{count}} commit de la rama y configura un upstream si es necesario.",
+                  "titleUnpublishedForcePushCount_other": "Haz force push con lease de {{count}} commits de la rama y configura un upstream si es necesario."
                 }
               },
               "primary": {
@@ -14267,7 +14359,8 @@
               },
               "compare": {
                 "summary": {
-                  "dd72a6fd37": "{{value0}} confirma{{value1}} antes de {{value2}}"
+                  "commitsAheadSingular": "{{count}} commit por delante de {{ref}}",
+                  "commitsAheadPlural": "{{count}} commits por delante de {{ref}}"
                 }
               },
               "conflict": {
@@ -14837,12 +14930,13 @@
           "5c115cb713": "CLI no instalada",
           "217beb0658": "GitHub",
           "4983ae7433": "Agregue acceso Linear con una clave API personal. Las claves de acceso total pueden mostrar todos los equipos a los que puede acceder el propietario de la clave.",
-          "b08a6ac93c": "{{value0}} workspace{{value1}} vinculado. Agrega otro workspace o reemplaza una clave restringida en cualquier momento.",
           "93f0c49ad1": "no autenticado",
           "a3bcf13694": "conectado",
           "d6e5dba05a": "Iniciar sesión",
           "0b4a7d23ab": "Iniciando sesión",
-          "a74c6d6b18": "no instalado"
+          "a74c6d6b18": "no instalado",
+          "linearWorkspacesLinkedSingular": "{{count}} workspace vinculado. Agrega otro workspace o reemplaza una clave restringida en cualquier momento.",
+          "linearWorkspacesLinkedPlural": "{{count}} workspaces vinculados. Agrega otro workspace o reemplaza una clave restringida en cualquier momento."
         },
         "NotificationStep": {
           "3bede04483": "Enviar notificación de prueba",
@@ -15978,7 +16072,6 @@
           "f338288514": "Cargando contenido del conflicto…",
           "90d576adb2": "Actualizar",
           "a1ce36f77d": "Instantánea capturada a las ",
-          "4be41eaafc": "conflicto no resuelto",
           "c8ca989aea": "Mostrar árbol de archivos",
           "58ad5ad431": "Descartar",
           "28e7db4a90": "Control de código fuente",
@@ -15989,7 +16082,9 @@
           "9c2901ef8a": "Siguiente conflicto",
           "41d9af2e7a": "Conflicto anterior",
           "55d61a0ccd": "conflicto ·",
-          "da539359b6": "No hay ningún archivo del worktree disponible para editar este conflicto."
+          "da539359b6": "No hay ningún archivo del worktree disponible para editar este conflicto.",
+          "unresolvedConflicts_one": "{{count}} conflicto no resuelto",
+          "unresolvedConflicts_other": "{{count}} conflictos no resueltos"
         },
         "ConflictReviewFileTree": {
           "3449521a8c": "No hay conflictos en esta instantánea.",
@@ -16258,8 +16353,8 @@
           "e84705f223": "Sesión de agente activo",
           "03378aea75": "Enviar notas a",
           "f5096c6e4e": "No se pudieron enviar notas al agente activo.",
-          "bb9c69a0c9": "Notas enviadas al agente activo.",
-          "50f7e753ea": "Enviando notas al agente activo..."
+          "bb9c69a0c9": "Notas enviadas.",
+          "50f7e753ea": "Enviando notas..."
         },
         "RichMarkdownAnnotationOverlay": {
           "069b5677b8": "Texto seleccionado",
@@ -16753,7 +16848,7 @@
             "88fea8e84e": "No enviar",
             "50b00dc327": "Copiar detalles",
             "6d3ebe216a": "Texto de diagnóstico",
-            "835037edc9": "· Orca",
+            "835037edc9": "Orca",
             "56a3dfa283": "No se pudo enviar el informe de fallas.",
             "8e24fe4f75": "Informe de fallo enviado.",
             "8b8473c544": "Se copió el informe de fallos.",
@@ -17662,7 +17757,9 @@
           "unselected": "Elija el host que almacena y programa esta automatización.",
           "orphan": "Las automatizaciones sin host no pueden alojar otras nuevas. Elija un host en el que crear esta automatización.",
           "unavailable": "Ese host todavía no puede alojar una nueva automatización. Elija otro host para crear esta.",
+          "projectUnavailable": "Elija un proyecto disponible en este host antes de guardar.",
           "stale": "{host} cambió mientras este formulario estaba abierto. Elíjalo de nuevo antes de guardar.",
+          "projectStale": "{host} cambió mientras este formulario estaba abierto. Elija el proyecto de nuevo antes de guardar.",
           "projectMismatch": "Ese proyecto no está en {host}. Elija un proyecto en ese host, u otro host.",
           "noProjects": "No hay proyectos configurados en {host}. Agregue uno allí o elija otro host.",
           "updateRequired": "Actualice el servidor de Orca en {hosts} para almacenar automatizaciones allí.",
@@ -17812,6 +17909,7 @@
           "8c3b621ddf": "Proyecto",
           "4a3986b200": "Estado",
           "770d458144": "Agrupar por",
+          "groupAgentActivityBy": "Agrupar actividad de agentes por",
           "795cbf26e2": "Filtrar...",
           "4616ea39fd": "Ir al workspace",
           "showSearch": "Mostrar búsqueda",
@@ -18319,14 +18417,14 @@
           "delete": "Eliminar",
           "title": "Artefactos",
           "retry": "Reintentar",
-          "signInHeading": "Iniciar sesión en Orca",
+          "shareSignInHeading": "Inicia sesión para compartir artefactos",
           "signIn": "Iniciar sesión en Orca",
           "signInAgainAction": "Iniciar sesión nuevamente",
           "refresh": "Refrescar",
           "signInAgain": "Inicia sesión en Orca de nuevo para cargar los artefactos.",
           "loadFailed": "No se pudieron cargar los artefactos.",
           "deleteFailed": "No se pudo eliminar el artefacto.",
-          "signInCopy": "Inicia sesión para ver y gestionar los artefactos compartidos desde tu cuenta.",
+          "shareSignInCopy": "Usa tu cuenta de Orca para subir artefactos y gestionar sus enlaces públicos.",
           "empty": "No hay artefactos compartidos",
           "emptyCopy": "Abre un archivo HTML o Markdown y selecciona Compartir como artefacto, o pídele a tu agente que lo comparta.",
           "openArtifact": "Abrir artefacto",
@@ -18757,7 +18855,43 @@
           "insertColumnLeft": "Insertar columna a la izquierda",
           "insertColumnRight": "Insertar columna a la derecha",
           "deleteColumn": "Eliminar columna",
-          "deleteTable": "Eliminar tabla"
+          "deleteTable": "Eliminar tabla",
+          "addLink": "Añadir enlace",
+          "format": "Formato",
+          "bold": "Negrita",
+          "italic": "Cursiva",
+          "strike": "Tachado",
+          "inlineCode": "Código inline",
+          "codeBlock": "Bloque de código",
+          "quote": "Cita",
+          "paragraph": "Párrafo",
+          "bodyText": "Texto del cuerpo",
+          "heading1": "Título 1",
+          "heading2": "Título 2",
+          "heading3": "Título 3",
+          "heading4": "Título 4",
+          "heading5": "Título 5",
+          "bulletList": "Lista con viñetas",
+          "numberedList": "Lista numerada",
+          "checklist": "Lista de verificación",
+          "insert": "Insertar",
+          "link": "Enlace",
+          "image": "Imagen",
+          "divider": "Divisor",
+          "paste": "Pegar",
+          "pasteAsPlainText": "Pegar como texto sin formato",
+          "addToDictionary": "Añadir al diccionario"
+        }
+      },
+      "ipc": {
+        "diagnostics": {
+          "uploadConfirm": {
+            "send": "Enviar",
+            "cancel": "Cancelar",
+            "title": "¿Enviar este archivo a soporte?",
+            "message": "Se subirá el archivo de diagnóstico de la app, ya censurado, que revisaste.",
+            "detail": "ID de diagnóstico: {{id}}\nRegistros de diagnóstico: {{records}}\nTamaño: {{sizeKb}} KB"
+          }
         }
       }
     },
@@ -19577,6 +19711,83 @@
         "settingsUnconfirmed": "Codex no confirmó el modelo y el esfuerzo seleccionados. No se envió este cambio de objetivo. Revisa el chat e inténtalo de nuevo.",
         "pauseUnconfirmed": "Codex dejó de ejecutarse, pero no se confirmó la pausa del objetivo. Revisa el objetivo antes de continuar.",
         "stopUnconfirmed": "Codex no pudo confirmar la detención. Revisa el chat antes de continuar."
+      },
+      "slashCommandDescriptions": {
+        "clearConversation": "Borrar la conversación",
+        "clearHistory": "Borrar el historial de la conversación",
+        "clearTerminal": "Borrar la terminal e iniciar un chat nuevo",
+        "clearKeepSession": "Borrar el contexto sin cerrar la sesión",
+        "help": "Mostrar los comandos disponibles",
+        "compactSummarize": "Resumir y compactar la conversación",
+        "compactConversation": "Compactar la conversación",
+        "compactContext": "Compactar el contexto de la conversación",
+        "initClaude": "Inicializar un CLAUDE.md",
+        "initAgents": "Crear un archivo AGENTS.md",
+        "review": "Revisar los cambios actuales",
+        "contextUsage": "Mostrar el uso del contexto",
+        "contextEstimated": "Mostrar el uso estimado del contexto",
+        "modelAndEffort": "Elegir el modelo y el esfuerzo de razonamiento",
+        "modelTerminal": "Abrir el selector de modelo en la terminal",
+        "model": "Elegir el modelo",
+        "effort": "Elegir el esfuerzo de razonamiento",
+        "ide": "Incluir el contexto del IDE",
+        "permissions": "Elegir qué puede hacer Codex",
+        "keymap": "Reasignar los atajos de la TUI",
+        "vim": "Activar o desactivar el modo Vim",
+        "experimental": "Activar o desactivar las funciones experimentales",
+        "approve": "Aprobar un reintento de la revisión automática",
+        "memories": "Configurar el uso de la memoria",
+        "skills": "Gestionar y usar skills",
+        "import": "Importar la configuración de Claude Code",
+        "hooks": "Ver los hooks del ciclo de vida",
+        "renameThread": "Cambiar el nombre del hilo actual",
+        "renameSession": "Cambiar el nombre de la sesión",
+        "newChat": "Iniciar un chat nuevo",
+        "newSession": "Iniciar una sesión nueva",
+        "archive": "Archivar esta sesión y salir",
+        "delete": "Eliminar esta sesión y salir",
+        "resumeSaved": "Reanudar un chat guardado",
+        "resumeSession": "Reanudar una sesión; sin argumentos, elige en la terminal",
+        "forkChat": "Hacer un fork del chat actual",
+        "forkMessage": "Hacer un fork desde un mensaje anterior en la terminal",
+        "app": "Continuar en Codex Desktop",
+        "planSwitch": "Cambiar al modo Plan",
+        "planToggle": "Activar o desactivar el modo Plan",
+        "goal": "Establecer o ver el objetivo",
+        "agent": "Cambiar el hilo de agente activo",
+        "subagents": "Cambiar el hilo de agente activo",
+        "side": "Iniciar una conversación paralela",
+        "copy": "Copiar la última respuesta como Markdown",
+        "raw": "Activar o desactivar el modo de historial sin formato",
+        "diff": "Mostrar el diff de trabajo",
+        "mention": "Mencionar un archivo",
+        "status": "Mostrar la configuración y el uso de la sesión",
+        "usageAccount": "Ver el uso de la cuenta",
+        "usageProvider": "Mostrar el uso y los límites del proveedor",
+        "title": "Configurar el título de la terminal",
+        "statusline": "Configurar la línea de estado",
+        "theme": "Elegir un tema de resaltado de sintaxis",
+        "pets": "Elegir u ocultar la mascota de la terminal",
+        "mcp": "Mostrar las herramientas MCP configuradas",
+        "plugins": "Explorar plugins",
+        "logout": "Cerrar sesión en Codex",
+        "exit": "Salir de Codex",
+        "feedback": "Enviar registros a los mantenedores",
+        "ps": "Mostrar las terminales en segundo plano",
+        "stop": "Detener todas las terminales en segundo plano",
+        "personality": "Elegir un estilo de comunicación",
+        "switch": "Abrir el selector de modelo temporal en la terminal",
+        "branch": "Volver a un mensaje anterior en la terminal",
+        "tree": "Explorar el árbol de sesiones en la terminal",
+        "session": "Mostrar la información y los controles de la sesión",
+        "fast": "Activar o desactivar el nivel de servicio prioritario",
+        "tools": "Mostrar las herramientas visibles para el agente",
+        "jobs": "Mostrar los trabajos en segundo plano",
+        "git": "Abrir el visor de Git en la terminal",
+        "export": "Exportar la sesión a HTML",
+        "settings": "Abrir la configuración en la terminal",
+        "extensions": "Abrir el panel de extensiones en la terminal",
+        "hotkeys": "Mostrar los atajos de teclado en la terminal"
       }
     },
     "tab": {
@@ -19884,6 +20095,7 @@
       }
     },
     "agentSessionContinuation": {
+      "preparingContext": "Preparando el contexto guardado del chat…",
       "handOffToAnotherAgent": "Pasar a otro agente",
       "dialogTitle": "Pasar a otro agente",
       "dialogDescription": "Inicia una sesión nueva del agente desde este punto. La sesión original no cambia.",
@@ -19897,6 +20109,8 @@
       "context": "Contexto",
       "modeFocused": "Traspaso enfocado (recomendado)",
       "modeFocusedDescription": "Usa el estado más reciente y el espacio de trabajo actual, y consulta detalles anteriores solo cuando hacen falta.",
+      "modeLoadedDescription": "Usa los mensajes recientes cargados en este chat y el espacio de trabajo actual.",
+      "modeCapturedDescription": "Usa el texto capturado y el espacio de trabajo actual.",
       "modeFull": "Transcripción completa de la sesión",
       "modeFullDescription": "Pide al nuevo agente que lea toda la sesión guardada antes de continuar. Puede tardar más y consumir una cantidad considerable de contexto, uso del plan o créditos de API.",
       "startsIn": "Se inicia en:",
@@ -20310,7 +20524,7 @@
     "sshRoute": {
       "preparingTitle": "Conectando a través del host SSH",
       "errorTitle": "Enrutamiento del navegador por SSH no disponible",
-      "errorDescription": "Las páginas de este espacio de trabajo navegan a través de su host SSH, y esa conexión no está disponible ahora mismo.",
+      "errorDescription": "Las páginas de este espacio de trabajo navegan a través de su host SSH, y no se pudo configurar el enrutamiento.",
       "retry": "Reintentar",
       "tryAnyway": "Intentar de todos modos",
       "browseLocally": "Navegar desde este dispositivo",
@@ -20349,6 +20563,28 @@
     },
     "managedProfile": {
       "createFailed": "No se pudo crear el perfil del navegador de este espacio de trabajo. Cierra esta pestaña y abre una nueva para volver a intentarlo."
+    },
+    "history": {
+      "clear": "Borrar el historial de navegación",
+      "clearAllTime": "Todo el tiempo",
+      "clearLastHour": "Última hora",
+      "clearRange": "Borrar historial desde",
+      "clearToday": "Hoy",
+      "cleared": "Historial de navegación borrado",
+      "close": "Cerrar",
+      "description": "Busca y administra el historial de navegación",
+      "empty": "Las páginas que visites aparecerán aquí",
+      "enterKey": "Intro",
+      "escKey": "Esc",
+      "menuItem": "Historial",
+      "noMatches": "Ninguna página coincide con tu búsqueda",
+      "open": "Abrir",
+      "remove": "Eliminar del historial",
+      "removeShort": "Eliminar",
+      "search": "Buscar en el historial",
+      "title": "Historial",
+      "today": "Hoy",
+      "yesterday": "Ayer"
     }
   },
   "runtimeRpc": {
@@ -20570,7 +20806,8 @@
       "openAnyway": "Abrir de todos modos"
     },
     "fileLoad": {
-      "hostUnresolved": "El host no pudo encontrar el espacio de trabajo de este archivo. Puede que se haya eliminado o que el host aún no lo conozca. Reintenta o cierra esta pestaña desde la barra de pestañas."
+      "hostUnresolved": "El host no pudo encontrar el espacio de trabajo de este archivo. Puede que se haya eliminado o que el host aún no lo conozca. Reintenta o cierra esta pestaña desde la barra de pestañas.",
+      "remoteTooLarge": "Este archivo es demasiado grande para abrirlo desde su host."
     }
   },
   "accounts": {
@@ -21118,7 +21355,8 @@
       "deleting": "Eliminando…",
       "confirm": "Eliminar todos los worktrees indicados",
       "preservedBranches": "Se conservaron algunas ramas de worktrees anidados"
-    }
+    },
+    "setupTerminalTitle": "Configuración"
   },
   "mediaPreview": {
     "unavailable": "No se puede reproducir este archivo multimedia. El archivo puede no estar disponible o usar un códec no compatible.",
@@ -21135,11 +21373,71 @@
   },
   "projectViews": {
     "layout": {
-      "board": "Tablero"
+      "board": "Tablero",
+      "roadmap": "Hoja de ruta",
+      "table": "Tabla"
     },
     "unsupported": {
       "switchLayout": "Cambia a una vista de Tabla, Tablero o Hoja de ruta para trabajar con este proyecto en Orca.",
-      "description": "Orca representa vistas de proyectos de tabla, tablero y hoja de ruta. Esta vista usa un diseño que aún no puede representar."
+      "description": "Orca representa vistas de proyectos de tabla, tablero y hoja de ruta. Esta vista usa un diseño que aún no puede representar.",
+      "layoutNotSupported": "Orca aún no admite vistas de proyecto de tipo {{layout}}."
+    },
+    "authHelp": {
+      "hostSignedOut": "`gh` no ha iniciado sesión en {{host}}.",
+      "hostSignedOutDetail": "Los hosts de GitHub Enterprise necesitan su propio inicio de sesión de `gh`, independiente de github.com. Ejecuta el comando de inicio de sesión en una terminal, completa el flujo del navegador en {{host}} y luego recarga.",
+      "ghMissing": "GitHub CLI (`gh`) no está instalado o no está en el PATH.",
+      "ghMissingDetail": "Orca usa `gh` para comunicarse con GitHub Projects. Instálalo desde cli.github.com y luego inicia sesión.",
+      "envTokenKeyringFallback": "Tu llavero ya tiene un inicio de sesión de `gh` que se usará cuando quites la variable de entorno.",
+      "envTokenLoginAfterUnset": "Después de quitarla, ejecuta `gh auth login` para iniciar sesión normalmente y vuelve a intentarlo.",
+      "envTokenRemoveWindows": "Busca dónde está definida `{{varName}}` (variables de entorno del sistema o del usuario, o tu perfil de PowerShell), elimínala y reinicia Orca para que cargue el nuevo entorno.",
+      "envTokenRemovePosix": "Busca dónde se exporta `{{varName}}` (normalmente `~/.zshrc`, `~/.zshenv`, `~/.bashrc`, `~/.profile` o el gestor de secretos de tu shell), elimínala y reinicia Orca para que cargue el nuevo entorno.",
+      "envTokenActive": "`{{varName}}` está definida en tu entorno, así que `gh` usa ese token en lugar del inicio de sesión de tu llavero. `gh auth refresh` no puede modificar tokens que vienen del entorno; por eso ejecutarlo no sirvió.",
+      "envTokenInherited": "Orca heredó `{{varName}}` de tu shell y `gh` está usando ese token. `gh auth refresh` no se aplica a tokens que vienen del entorno.",
+      "envTokenInheritedDetailWindows": "Quita `{{varName}}` en el shell que inicia Orca (o en tus variables de entorno de usuario) y luego reinicia Orca.",
+      "envTokenInheritedDetailPosix": "Quita `{{varName}}` en el shell que inicia Orca (o en el archivo rc de tu shell) y luego reinicia Orca.",
+      "signedOut": "No has iniciado sesión en GitHub con `gh`.",
+      "missingScopes": "A tu token de `gh` le faltan permisos necesarios para GitHub Projects: {{scopes}}.",
+      "missingScopesDetail": "Ejecuta el comando de actualización en una terminal. Abrirá un navegador para autorizar los nuevos permisos; después vuelve aquí y recarga.",
+      "accessDeniedDetail": "Tu token tiene los permisos necesarios, pero GitHub sigue denegando el acceso. Si el proyecto está en una organización con SAML SSO, debes autorizar este token para la organización en Settings → Developer settings → Personal access tokens → Configure SSO."
+    },
+    "picker": {
+      "pasteUnparseable": "Se esperaba una URL de proyecto o owner/number",
+      "ownerLoadFailed": "No se pudieron cargar los proyectos de {{owner}}.",
+      "organizationsLoadFailed": "Algunas organizaciones no se cargaron ({{failureCount}})."
+    },
+    "error": {
+      "notFoundState": "No se pudo encontrar este proyecto o vista.",
+      "schemaDrift": "No se pudo leer esta vista del proyecto.",
+      "projectOrViewNotFound": "No se encontró el proyecto o la vista.",
+      "projectNotFound": "No se encontró el proyecto.",
+      "viewNotFound": "No se pudo encontrar la vista seleccionada.",
+      "ownerNotFound": "No se encontró el propietario.",
+      "itemNotFound": "No se encontró el elemento.",
+      "issueNotFound": "No se encontró el issue.",
+      "inputRequired": "Se requiere un valor.",
+      "inputTooLarge": "La referencia del proyecto es demasiado larga para resolverla.",
+      "inputUnparseable": "No se pudo interpretar la entrada. Se esperaba una URL de proyecto de GitHub o `owner/number`.",
+      "invalidSlug": "{{field}} no válido: \"{{value}}\" no es un identificador de GitHub válido.",
+      "invalidPositiveInteger": "{{field}} no válido: debe ser un entero positivo.",
+      "invalidOwnerType": "Tipo de propietario no válido.",
+      "invalidItemType": "Tipo de elemento no válido.",
+      "missingIds": "Faltan identificadores.",
+      "updatesRequired": "Se requieren cambios.",
+      "commentBodyRequired": "El comentario no puede estar vacío.",
+      "duplicateTargetNotAllowed": "El destino duplicado solo es válido al cerrar como duplicado.",
+      "duplicateTargetRequired": "Se requiere el número del issue de destino duplicado.",
+      "requestInvalid": "Solicitud no válida — {{detail}}",
+      "requestFailedDetail": "La solicitud a GitHub falló: {{detail}}",
+      "requestFailed": "La solicitud a GitHub falló.",
+      "unexpectedRestResponse": "Respuesta REST inesperada: {{detail}}",
+      "authRequired": "Inicia sesión en GitHub para cargar las tareas del proyecto. Ejecuta `{{command}}`.",
+      "scopeMissing": "El acceso a proyectos de GitHub necesita permisos adicionales. Ejecuta `{{command}}`.",
+      "rateLimitNearlyExhausted": "El límite de velocidad de GitHub está casi agotado (quedan {{remaining}}/{{limit}}). Se restablece en unos {{minutes}} min.",
+      "rateLimited": "Se alcanzó el límite de velocidad de GitHub. Inténtalo de nuevo en unos minutos.",
+      "network": "Error de red — comprueba tu conexión.",
+      "tooLargeUnknownCount": "Esta vista tiene demasiados elementos para mostrarla en Orca. Restringe el filtro de la vista en GitHub.",
+      "tooLarge": "Esta vista tiene {{itemCount}} elementos, demasiados para mostrarla en Orca. Restringe el filtro de la vista en GitHub.",
+      "schemaDriftDetail": "No se pudo leer esta vista del proyecto: {{detail}}."
     }
   },
   "projectField": {
@@ -21466,5 +21764,211 @@
     "ok": "Aceptar",
     "unavailableMessage": "Orca no puede detener todas las sesiones de terminal en este momento.",
     "unavailableDetail": "No se detuvo nada. Vuelve a intentarlo cuando se hayan abierto tus terminales. Si una terminal indica que se abrió en una versión más reciente de Orca, vuelve a abrirla primero. Si tus terminales ya están abiertas, cierra Orca, vuelve a abrirlo y vuelve a intentarlo."
+  },
+  "keybindings": {
+    "title": {
+      "worktreeQuickOpen": "Ir al archivo",
+      "appSettings": "Abrir ajustes",
+      "appForceReload": "Forzar recarga",
+      "worktreePalette": "Cambiar de worktree",
+      "worktreeNavigateUp": "Worktree anterior",
+      "worktreeNavigateDown": "Worktree siguiente",
+      "workspaceCreate": "Crear worktree",
+      "workspaceRename": "Renombrar worktree",
+      "workspaceDelete": "Eliminar espacio de trabajo",
+      "workspaceOpenBoard": "Alternar tablero de espacios de trabajo",
+      "dashboardToggle": "Alternar panel de agentes",
+      "workspaceSelectByIndex": "Seleccionar espacio de trabajo 1–9",
+      "voiceDictation": "Dictado",
+      "viewTasks": "Abrir tareas",
+      "sidebarLeftToggle": "Alternar barra lateral",
+      "sidebarRightToggle": "Alternar barra lateral derecha",
+      "sidebarExplorerToggle": "Mostrar explorador",
+      "sidebarSearchToggle": "Mostrar búsqueda",
+      "sidebarSourceControlToggle": "Mostrar control de código fuente",
+      "sidebarChecksToggle": "Mostrar checks",
+      "sidebarPortsToggle": "Mostrar puertos",
+      "sidebarSleepingWorkspacesToggle": "Alternar espacios de trabajo en reposo",
+      "sidebarFocusWorktreeList": "Enfocar la lista de worktrees",
+      "floatingTerminalToggle": "Alternar terminal flotante",
+      "floatingWorkspaceMaximize": "Maximizar panel de espacio de trabajo flotante",
+      "floatingWorkspaceMinimize": "Minimizar panel de espacio de trabajo flotante",
+      "zoomIn": "Acercar",
+      "zoomOut": "Alejar",
+      "zoomReset": "Restablecer tamaño",
+      "worktreeHistoryBack": "Retroceder en el historial de worktrees",
+      "worktreeHistoryForward": "Avanzar en el historial de worktrees",
+      "tabNewTerminal": "Nueva pestaña de terminal",
+      "tabNewAgent": "Nueva pestaña de agente (agente predeterminado)",
+      "tabNewBrowser": "Nueva pestaña del navegador",
+      "tabNewSimulator": "Nueva pestaña de emulador móvil",
+      "tabNewMarkdown": "Nueva pestaña de Markdown",
+      "tabOpenMarkdown": "Abrir pestaña de Markdown",
+      "tabClose": "Cerrar pestaña activa",
+      "tabCloseAll": "Cerrar todas las pestañas del editor",
+      "tabRename": "Renombrar pestaña activa",
+      "tabReopenClosed": "Reabrir pestaña cerrada",
+      "tabNextSameType": "Pestaña siguiente (mismo tipo)",
+      "tabPreviousSameType": "Pestaña anterior (mismo tipo)",
+      "tabNextAllTypes": "Pestaña siguiente (todos los tipos)",
+      "tabPreviousAllTypes": "Pestaña anterior (todos los tipos)",
+      "tabPreviousRecent": "Pestaña reciente anterior",
+      "tabNextTerminal": "Pestaña de terminal siguiente",
+      "tabPreviousTerminal": "Pestaña de terminal anterior",
+      "tabSelectByIndex": "Seleccionar pestaña 1–9",
+      "tabOpenQuickCommandsMenu": "Alternar menú de comandos rápidos",
+      "browserFind": "Buscar en el navegador",
+      "browserBack": "Retroceder en el navegador",
+      "browserForward": "Avanzar en el navegador",
+      "browserShowHistory": "Mostrar historial del navegador",
+      "browserReload": "Recargar página del navegador",
+      "browserHardReload": "Recarga forzada de la página del navegador",
+      "browserFocusAddressBar": "Enfocar la barra de direcciones del navegador",
+      "browserGrabElement": "Capturar elemento de la página",
+      "browserAnnotateElement": "Anotar elemento de la página",
+      "editorFind": "Buscar en el editor",
+      "editorReplace": "Reemplazar en el editor",
+      "editorSave": "Guardar archivo",
+      "editorMarkdownPreview": "Mostrar vista previa de Markdown",
+      "editorToggleWordWrap": "Alternar ajuste de línea",
+      "editorCopyContext": "Copiar contexto",
+      "editorPreviousChange": "Ir al cambio anterior",
+      "editorNextChange": "Ir al cambio siguiente",
+      "editorAddReviewNote": "Agregar nota de revisión",
+      "sourceControlSendReviewNotes": "Enviar notas de revisión al agente",
+      "fileExplorerUndo": "Deshacer operación de archivo",
+      "fileExplorerRedo": "Rehacer operación de archivo",
+      "fileExplorerCopyPath": "Copiar ruta del archivo",
+      "fileExplorerCopyRelativePath": "Copiar ruta relativa del archivo",
+      "fileExplorerDelete": "Eliminar archivo",
+      "settingsSearch": "Buscar en ajustes",
+      "terminalCopySelection": "Copiar selección del terminal",
+      "terminalSelectAll": "Seleccionar todo el texto del terminal",
+      "terminalPaste": "Pegar en el terminal",
+      "terminalSearch": "Buscar en el panel activo",
+      "terminalClear": "Limpiar panel activo",
+      "terminalFocusNextPane": "Enfocar el panel siguiente",
+      "terminalFocusPreviousPane": "Enfocar el panel anterior",
+      "terminalEqualizePaneSizes": "Igualar el tamaño de los paneles",
+      "terminalExpandPane": "Expandir / contraer panel",
+      "terminalSetTitle": "Establecer título…",
+      "chatFind": "Buscar en el chat",
+      "terminalToggleNativeChat": "Cambiar entre la interfaz de chat y el terminal",
+      "sidebarChildWorkspacesToggle": "Alternar espacios de trabajo secundarios",
+      "terminalClearPaneTitle": "Borrar título del panel",
+      "terminalClosePane": "Cerrar panel activo",
+      "terminalSplitRight": "Dividir terminal a la derecha",
+      "terminalSplitDown": "Dividir terminal hacia abajo",
+      "terminalSwitchInputSource": "Cambiar fuente de entrada / idioma (nativo)",
+      "newAgentTab": "Nueva pestaña de {{agent}}"
+    },
+    "group": {
+      "global": "Global",
+      "tabs": "Pestañas",
+      "tabNavigation": "Navegación entre pestañas",
+      "quickCommands": "Comandos rápidos",
+      "browser": "Navegador",
+      "editors": "Editores",
+      "fileExplorer": "Explorador de archivos",
+      "settings": "Ajustes",
+      "terminalPanes": "Paneles del terminal",
+      "chat": "Chat",
+      "agents": "Agentes"
+    }
+  },
+  "gpuFallback": {
+    "recoveredLaunch": {
+      "keepSafeButton": "Mantener el modo de gráficos seguro",
+      "tryHardwareButton": "Probar la aceleración por hardware",
+      "title": "El modo de gráficos seguro está activo",
+      "message": "Orca se recuperó en el modo de gráficos seguro.",
+      "detail": "El modo de gráficos seguro se activó tras fallos gráficos repetidos. Mantenlo para mayor estabilidad, o reinicia y vuelve a probar la aceleración por hardware."
+    },
+    "restartPrompt": {
+      "restartButton": "Reiniciar en modo de gráficos seguro",
+      "keepRunningButton": "Seguir ejecutando",
+      "title": "¿Reiniciar Orca en modo de gráficos seguro?",
+      "message": "El proceso de gráficos de Orca ha fallado repetidamente.",
+      "detail": "El modo de gráficos seguro desactiva la aceleración por hardware y WebGL para esta versión de Orca. Los terminales y el contenido 3D pueden mostrarse más lentamente. Seguir ejecutando no cambia la configuración de gráficos."
+    }
+  },
+  "profileState": {
+    "startupRecovery": {
+      "quitButton": "Salir",
+      "copyCommandButton": "Copiar comando de recuperación",
+      "copyCommandDetail": "Copia el comando de recuperación y ejecútalo cuando Orca se cierre.",
+      "quitDetail": "Sal de Orca y resuelve qué estado del perfil es el válido antes de volver a intentarlo.",
+      "title": "No se puede abrir el estado del perfil de Orca",
+      "message": "Orca no puede abrir este perfil de forma segura."
+    },
+    "copyChoice": {
+      "lastSaved": "Guardado por última vez: {{time}}.",
+      "useSqliteButton": "Usar SQLite (recomendado)",
+      "useJsonButton": "Usar JSON",
+      "quitButton": "Salir",
+      "title": "Elegir el estado del perfil",
+      "message": "Este perfil tiene dos copias guardadas que no coinciden.",
+      "cause": "Esto suele ocurrir después de abrir el perfil en una versión anterior de Orca.",
+      "sqliteOption": "SQLite: lo que guardó esta versión de Orca. Se descartan los cambios hechos en la versión anterior.",
+      "jsonOption": "JSON: incluye los cambios hechos en la versión anterior. Se descartan los cambios que esta versión guardó desde entonces.",
+      "archiveNote": "Orca archiva ambas copias antes de cambiar y luego se reinicia."
+    },
+    "repairChoice": {
+      "sectionStartsEmpty": "{{section}}: no hay ninguna copia de seguridad legible, así que empezará vacío.",
+      "sectionRestored": "{{section}}: se restaura desde la copia de seguridad guardada el {{time}}.",
+      "projectsForgotten": "Orca olvidará tus proyectos y los detalles de sus espacios de trabajo. Los archivos en disco no se modifican.",
+      "newerProjectsRemoved": "Los proyectos añadidos después de esa copia de seguridad se quitarán de Orca, junto con los detalles de sus espacios de trabajo. Los archivos en disco no se modifican.",
+      "repairButton": "Reparar y reiniciar",
+      "quitButton": "Salir",
+      "title": "Reparar perfil",
+      "message": "Parte del estado guardado de este perfil está dañada.",
+      "restUnchanged": "Todo lo demás se queda como está.",
+      "damagedCopyKept": "Orca guarda una copia del archivo dañado en su carpeta de datos y luego se reinicia."
+    },
+    "recoveryNotApplied": {
+      "quitButton": "Salir",
+      "title": "Orca no pudo terminar de recuperar este perfil",
+      "message": "Orca no pudo aplicar el estado del perfil seleccionado.",
+      "reopenDetail": "Vuelve a abrir Orca para elegir de nuevo."
+    },
+    "writeFailure": {
+      "title": "Se detuvo el guardado",
+      "message": "Orca dejó de guardar este perfil.",
+      "indeterminateDetail": "Orca no pudo confirmar si se guardó tu cambio más reciente. Los cambios nuevos no se guardarán hasta que reinicies Orca.",
+      "safeDetail": "Los cambios guardados antes de este momento están a salvo. Los cambios nuevos no se guardarán hasta que reinicies Orca.",
+      "okButton": "Aceptar"
+    },
+    "section": {
+      "projects": "Proyectos",
+      "projectGroups": "Grupos de proyectos",
+      "folderWorkspaces": "Espacios de trabajo de carpeta",
+      "reviewComments": "Comentarios de revisión",
+      "workspaceDetails": "Detalles del espacio de trabajo",
+      "settings": "Ajustes",
+      "windowLayout": "Disposición de la ventana",
+      "openTabs": "Pestañas y terminales abiertos",
+      "sshHosts": "Hosts SSH",
+      "automations": "Automatizaciones",
+      "automationHistory": "Historial de automatizaciones",
+      "onboarding": "Progreso del onboarding",
+      "other": "Otro estado guardado de la app"
+    }
+  },
+  "startupFailure": {
+    "title": "Orca no pudo iniciarse"
+  },
+  "localBuild": {
+    "chooseTitle": "Elegir una compilación local de Orca",
+    "chooseButton": "Elegir compilación",
+    "manifestFilter": "Manifiesto de actualización de Orca",
+    "sameVersionError": "Esta compilación tiene la misma versión que la aplicación en ejecución. Vuelve a ejecutar pn build:mac para crear una compilación con una versión única.",
+    "noLiveTerminals": "No hay terminales activos que deban volver a conectarse.",
+    "liveTerminals_one": "{{count}} terminal activo se volverá a conectar tras el reinicio.",
+    "liveTerminals_other": "{{count}} terminales activos se volverán a conectar tras el reinicio.",
+    "confirmTitle": "¿Usar la compilación local de Orca?",
+    "schemaCompatibility": "Las tarjetas del espacio de trabajo y la configuración son compatibles con el esquema de estado {{schemaVersion}}.",
+    "signatureRequirement": "La compilación debe tener la misma firma de código válida que Orca; de lo contrario, la instalación se detendrá.",
+    "useButton": "Usar compilación local",
+    "cancelButton": "Cancelar"
   }
 }
