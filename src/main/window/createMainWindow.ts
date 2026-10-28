@@ -21,8 +21,7 @@ import { installMainWindowFocusLifecycle } from './main-window-focus-lifecycle'
 import { installMainWindowShortcutRouting } from './main-window-shortcut-routing'
 import { installMainWindowStateLifecycle } from './main-window-state-lifecycle'
 import { stopHiddenWindowFramePumpOnShow } from './hidden-window-frame-pump'
-import { wslHostsGateState } from '../wsl/wsl-host-gate'
-import { formatWslHostsServeOnlyArgument } from '../../shared/wsl-host-internal-gate'
+import { wslHostsWindowArguments } from '../wsl/wsl-host-gate'
 import {
   formatHiddenWindowFramePumpArgument,
   shouldPumpHiddenWindowFrames
@@ -146,7 +145,7 @@ export function createMainWindow(
       additionalArguments: [
         formatBrowserClientHostIdArgument(getBrowserClientHostId()),
         ...(pumpHiddenFrames ? [formatHiddenWindowFramePumpArgument()] : []),
-        ...(wslHostsGateState() === 'serve-only' ? [formatWslHostsServeOnlyArgument()] : [])
+        ...wslHostsWindowArguments()
       ]
     }
   })

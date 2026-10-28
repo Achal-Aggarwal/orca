@@ -1,4 +1,5 @@
 import {
+  formatWslHostsServeOnlyArgument,
   isWslHostsInternalGateOpen,
   resolveWslHostsGateState,
   type WslHostsGateState
@@ -43,6 +44,11 @@ export function wslHostsGateState(): WslHostsGateState {
     hasSavedWslHost: promoted?.hasSavedWslHost ?? false,
     hasCommittedWslMove: promoted?.hasCommittedWslMove ?? false
   })
+}
+
+/** Argv for any window on the shared preload, which cannot read the disk to learn serve-only. */
+export function wslHostsWindowArguments(): string[] {
+  return wslHostsGateState() === 'serve-only' ? [formatWslHostsServeOnlyArgument()] : []
 }
 
 /** The internal gate itself: adding hosts and starting moves need it. */

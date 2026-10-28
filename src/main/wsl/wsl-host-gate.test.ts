@@ -7,6 +7,7 @@ import {
   wslHostsGateOpen,
   wslHostsGateState,
   wslHostsServing,
+  wslHostsWindowArguments,
   WSL_HOSTS_GATED_OFF_MESSAGE
 } from './wsl-host-gate'
 
@@ -78,5 +79,17 @@ describe('WSL hosts gate', () => {
   it('is closed before startup configures it', () => {
     vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', undefined)
     expect(wslHostsGateState()).toBe('closed')
+  })
+
+  it('stamps window argv only in serve-only', () => {
+    vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', undefined)
+    configureWslHostsGate(facts(false, false))
+    expect(wslHostsWindowArguments()).toEqual([])
+
+    configureWslHostsGate(facts(true, false))
+    expect(wslHostsWindowArguments()).toEqual(['--orca-wsl-hosts-serve-only'])
+
+    vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', '1')
+    expect(wslHostsWindowArguments()).toEqual([])
   })
 })
