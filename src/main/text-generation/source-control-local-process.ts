@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { toLinuxPath } from '../../shared/wsl-paths'
 import { WindowsCmdLineBreakError } from '@orca/process-host'
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { commandLineLength, MAX_COMMAND_LINE_CHARS } from '../../shared/windows-command-line-budget'
@@ -83,15 +87,36 @@ export function runLocalSourceControlPlan(input: {
   wslDistro?: string
   spawnAgent: SpawnSourceControlAgent
 }): LocalProcessExecution<InternalTextGenerationResult> {
-  const { plan, cwd, operation } = input
+  let { plan } = input
+  const { cwd, operation } = input
+  let promptDirectory: string | undefined
   let markProcessClosed!: () => void
   const processClosed = new Promise<void>((resolve) => {
-    markProcessClosed = resolve
+    markProcessClosed = () => {
+      if (promptDirectory) {
+        try {
+          rmSync(promptDirectory, { recursive: true, force: true })
+          promptDirectory = undefined
+        } catch (error) {
+          console.error('[commit-message] Failed to remove generation prompt:', error)
+        }
+      }
+      resolve()
+    }
   })
   const couldNotStart = `${plan.label} could not be started. Check the agent command in Settings and try again.`
   const result = new Promise<InternalTextGenerationResult>((resolve) => {
     let child: SpawnedSourceControlAgentProcess
     try {
+      if (plan.promptFile) {
+        promptDirectory = mkdtempSync(join(tmpdir(), 'orca-generation-'))
+        const promptPath = join(promptDirectory, 'prompt.txt')
+        writeFileSync(promptPath, plan.promptFile.content, { encoding: 'utf8', mode: 0o600 })
+        const args = [...plan.args]
+        args[plan.promptFile.argIndex] =
+          `@${input.wslDistro ? toLinuxPath(promptPath) : promptPath}`
+        plan = { ...plan, args }
+      }
       // Reject oversized argv before opaque E2BIG spawn failure so users can act on the prompt-size limit.
       const budgetFailure = argumentBudgetFailure(plan)
       if (budgetFailure) {
