@@ -21,6 +21,10 @@ vi.mock('../provider-process/provider-process-teardown', () => ({
   terminateProviderProcessTree: teardown
 }))
 
+const actual = await vi.importActual<{
+  terminateProviderProcessTree: typeof terminateProviderProcessTree
+}>('../provider-process/provider-process-teardown')
+
 const opened: { connection: AcpAgentConnection; exit: () => void }[] = []
 const grace =
   process.platform === 'win32' ? ROOT_ONLY_GRACEFUL_EXIT_MS : PROVIDER_SUPERVISOR_MAX_STOP_MS
@@ -392,9 +396,6 @@ it.each([true, false])(
   'runs setup through the retained launch gate with initial kill delivery=%s',
   async (initialDelivery) => {
     vi.useFakeTimers()
-    const actual = await vi.importActual<{
-      terminateProviderProcessTree: typeof terminateProviderProcessTree
-    }>('../provider-process/provider-process-teardown')
     const { connection, child } = fixture({}, { exitOnEnd: false })
     let permitted = initialDelivery
     let writerGone = false
