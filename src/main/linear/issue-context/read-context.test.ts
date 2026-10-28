@@ -154,7 +154,7 @@ describe('Linear issue context', () => {
         includeErrors: [
           { include: 'comments', code: 'linear_network_error', message: 'fetch failed' }
         ],
-        sections: { attachments: { returned: 1, mayHaveMore: false } }
+        sections: { attachments: { returned: 1, hasMore: false } }
       }
     })
     expect(output.comments).toBeUndefined()
