@@ -24,12 +24,7 @@ export function renderListItems(scope: RichMarkdownEditorScope, items: ParsedLis
       .map((item) => {
         const children = item.children.length ? renderListItems(scope, item.children) : ''
         if (kind === 'task') {
-          const checked = item.task === true
-          return (
-            `<li data-checked="${String(checked)}"><label contenteditable="false">` +
-            `<input type="checkbox" ${checked ? 'checked ' : ''}${scope.editable ? '' : 'disabled '}/>` +
-            `</label><div><p>${renderInline(item.text)}</p>${children}</div></li>`
-          )
+          return renderTaskListItem(scope, renderInline(item.text), item.task === true, children)
         }
         const orderedAttrs =
           kind === 'ol' && item.orderedNumber !== null
@@ -41,4 +36,17 @@ export function renderListItems(scope: RichMarkdownEditorScope, items: ParsedLis
     html.push(`<${tag}${attrs}>${rendered}</${tag}>`)
   }
   return html.join('')
+}
+
+export function renderTaskListItem(
+  scope: RichMarkdownEditorScope,
+  content: string,
+  checked = false,
+  children = ''
+): string {
+  return (
+    `<li data-checked="${String(checked)}"><label contenteditable="false">` +
+    `<input type="checkbox" ${checked ? 'checked ' : ''}${scope.editable ? '' : 'disabled '}/>` +
+    `</label><div><p>${content}</p>${children}</div></li>`
+  )
 }

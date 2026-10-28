@@ -5,15 +5,12 @@ import {
   restoreSelectionOrEnd,
   wrapSelection
 } from './editor-selection'
+import { taskListCommandHtml } from './editor-task-list'
 import { editorElement } from './editor-surface'
 import { isSafeUrl } from './markdown-escaping'
 import type { MobileRichMarkdownCommand } from '../mobile-rich-markdown-editor-contract'
 import type { RichMarkdownEditorScope } from './document-scope'
 import type { RichMarkdownUrlPromptKind } from './document-host-seams'
-
-const TASK_LIST_HTML =
-  '<ul data-type="taskList"><li data-checked="false"><label contenteditable="false">' +
-  '<input type="checkbox" /></label><div><p>Task</p></div></li></ul>'
 
 const CODE_BLOCK_HTML = '<pre data-language=""><code>code</code></pre><p><br></p>'
 
@@ -50,7 +47,7 @@ async function insertUrl(
 // Use record over command union so contract additions fail compile until handled.
 const COMMANDS: Record<
   MobileRichMarkdownCommand,
-  (scope: RichMarkdownEditorScope) => void | Promise<void>
+  (scope: RichMarkdownEditorScope) => void | false | Promise<void>
 > = {
   paragraph: (scope) => exec(scope, 'formatBlock', 'p'),
   heading1: (scope) => exec(scope, 'formatBlock', 'h1'),
@@ -61,7 +58,10 @@ const COMMANDS: Record<
   strike: (scope) => exec(scope, 'strikeThrough'),
   bulletList: (scope) => exec(scope, 'insertUnorderedList'),
   orderedList: (scope) => exec(scope, 'insertOrderedList'),
-  taskList: (scope) => exec(scope, 'insertHTML', TASK_LIST_HTML),
+  taskList: (scope) => {
+    const html = taskListCommandHtml(scope)
+    return html === null ? false : exec(scope, 'insertHTML', html)
+  },
   quote: (scope) => exec(scope, 'formatBlock', 'blockquote'),
   inlineCode: (scope) => wrapSelection(scope, 'code'),
   codeBlock: (scope) => exec(scope, 'insertHTML', CODE_BLOCK_HTML),
@@ -80,6 +80,9 @@ export async function runCommand(
   }
   restoreSelectionOrEnd(scope)
   const pending = COMMANDS[command]?.(scope)
+  if (pending === false) {
+    return
+  }
   if (pending) {
     await pending
     // Recheck after wait so stale edit cannot emit under newly replaced generation.

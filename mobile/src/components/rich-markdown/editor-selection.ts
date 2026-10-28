@@ -173,3 +173,27 @@ export function wrapSelection(scope: RichMarkdownEditorScope, tagName: string) {
     applySelectionRange(scope, formatted)
   }
 }
+
+export function selectedInlineFragments(scope: RichMarkdownEditorScope): DocumentFragment[] {
+  const selection = scope.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return []
+  }
+  const hostDocument = scope.getDocument()
+  return selectedInlineRuns(editorElement(scope), selection.getRangeAt(0)).map((range) => {
+    let content: Node = range.cloneContents()
+    let ancestor =
+      range.commonAncestorContainer instanceof Element
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentElement
+    while (ancestor && ancestor !== editorElement(scope) && !ancestor.matches(BLOCK_CONTENT)) {
+      const wrapper = ancestor.cloneNode(false)
+      wrapper.appendChild(content)
+      content = wrapper
+      ancestor = ancestor.parentElement
+    }
+    const fragment = hostDocument.createDocumentFragment()
+    fragment.appendChild(content)
+    return fragment
+  })
+}

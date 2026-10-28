@@ -1,5 +1,6 @@
 // Exercise real editor in Chromium/WebKit under shipped CSP: toolbar effects, private ready/change seam, listener/style cleanup, font floor and URL modal.
 // Native WebView postMessage/injectJavaScript are replaced by direct module calls; execCommand behavior requires real engines.
+import { checklistSelectionTest } from './mobile-web-app-checklist-selection.mjs'
 import { Buffer } from 'node:buffer'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -292,9 +293,8 @@ async function setContentWithin(page, markdown, selector) {
 // Nested ul-in-p serialization once returned unchanged text, leaving next command against previous document.
 const bodyFor = (index) => `body text ${String(index)}`
 
-function readSurface(page, surface = '#first-surface') {
-  return page.evaluate((id) => document.querySelector(`${id} #editor`)?.innerHTML ?? null, surface)
-}
+const readSurface = (page, surface = '#first-surface') =>
+  page.evaluate((id) => document.querySelector(`${id} #editor`)?.innerHTML ?? null, surface)
 
 async function select(page, how) {
   await page.evaluate((mode) => {
@@ -329,9 +329,7 @@ describeEditor(
           browser = await engine.launch()
         }, 180_000)
 
-        afterAll(async () => {
-          await browser?.close()
-        })
+        afterAll(() => browser?.close())
 
         it('mounts the document, reports ready through the seam and never touches the bridge', async () => {
           const { page, consoleErrors } = await openPage(browser)
@@ -553,6 +551,8 @@ describeEditor(
             await page.close()
           }
         }, 600_000)
+
+        checklistSelectionTest(() => browser, openPage, setContent, select, press, readSurface)
 
         it('opens a link through the host rather than navigating the page', async () => {
           const { page } = await openPage(browser)
