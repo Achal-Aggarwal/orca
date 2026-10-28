@@ -2,6 +2,7 @@
 
 // Exercise the real attention path from completion stream to indicators/OS delivery; mock only transport and preload.
 
+import { useEffect, useMemo } from 'react'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { AgentJournalTurnOutcome } from '../../../../shared/agent-session-journal-types'
@@ -12,6 +13,7 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import type { NotificationDispatchRequest } from '../../../../shared/notification-settings-types'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
+import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import type { Tab } from '../../../../shared/tab-types'
 import type { AppState } from '@/store/types'
 import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
@@ -63,7 +65,11 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { StructuredAgentSessionAttentionBridge } from './StructuredAgentSessionAttentionBridge'
 import { applyWebSessionTabsSnapshot } from '@/runtime/web-session-tabs-sync/snapshot-api'
 import { resolveNotificationTabOwner } from '@/attention/notification-subject-owner'
-import { resetStructuredAgentSessionTurnCompletionFeedsForTests } from '@/runtime/structured-agent-session-turn-completion-feed'
+import {
+  getStructuredAgentSessionTurnCompletionFeed,
+  resetStructuredAgentSessionTurnCompletionFeedsForTests,
+  structuredAgentSessionTurnCompletionFeedCountForTests as retainedCount
+} from '@/runtime/structured-agent-session-turn-completion-feed'
 import {
   getStructuredAgentSessionStatusFeed,
   resetStructuredAgentSessionStatusFeedsForTests
@@ -116,7 +122,9 @@ function completionFrame(
   return { type: 'completion', completion: turnCompletion(sessionId, outcome) }
 }
 
-function promptFrame(sessionId = SESSION): AgentSessionTurnCompletionEvent {
+function promptFrame(
+  sessionId = SESSION
+): Extract<AgentSessionTurnCompletionEvent, { type: 'prompt' }> {
   return {
     type: 'prompt',
     prompt: { scope: turnCompletion().scope, sessionId, promptId: 'approval-1', raisedAt: 1 }
@@ -225,54 +233,49 @@ describe('StructuredAgentSessionAttentionBridge', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     resetStructuredAgentSessionTurnCompletionFeedsForTests()
     resetStructuredAgentSessionStatusFeedsForTests()
   })
 
-  it('lights the unread indicators when the host reports a successful turn', async () => {
-    render(<StructuredAgentSessionAttentionBridge />)
-    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
-    expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
+  // Every settled outcome is news; main chooses its wording from the host verdict.
+  it.each([
+    { kind: 'completion', outcome: 'success' },
+    { kind: 'completion', outcome: 'failure' },
+    { kind: 'completion', outcome: 'cancellation' },
+    { kind: 'prompt', outcome: undefined }
+  ] as const)(
+    'lights unread indicators and dispatches host $kind/$outcome',
+    async ({ kind, outcome }) => {
+      render(<StructuredAgentSessionAttentionBridge />)
+      await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+      expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
 
-    act(() => hostStream()(completionFrame()))
+      act(() =>
+        hostStream()(kind === 'completion' ? completionFrame(SESSION, outcome) : promptFrame())
+      )
 
-    expect(indicators()).toEqual({
-      workspaceBold: true,
-      paneDot: 'agent-completion',
-      tabDot: 'agent-completion'
-    })
-    expect(onlyDispatch()).toMatchObject({
-      source: 'agent-task-complete',
-      surface: 'agent-session',
-      worktreeId: WORKSPACE,
-      paneKey: CHAT_SUBJECT,
-      agentState: 'done',
-      agentTurnOutcome: 'success'
-    })
-  })
-
-  it('lights the indicators and says "needs input" when the host raises a prompt mid-turn', async () => {
-    render(<StructuredAgentSessionAttentionBridge />)
-    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
-
-    act(() => hostStream()(promptFrame()))
-
-    expect(indicators()).toEqual({
-      workspaceBold: true,
-      paneDot: 'agent-completion',
-      tabDot: 'agent-completion'
-    })
-    const request = onlyDispatch()
-    expect(request).toMatchObject({
-      source: 'agent-task-complete',
-      surface: 'agent-session',
-      worktreeId: WORKSPACE,
-      paneKey: CHAT_SUBJECT,
-      agentState: 'blocked'
-    })
-    expect(request).not.toHaveProperty('agentTurnOutcome')
-  })
+      expect(indicators()).toEqual({
+        workspaceBold: true,
+        paneDot: 'agent-completion',
+        tabDot: 'agent-completion'
+      })
+      const request = onlyDispatch()
+      expect(request).toMatchObject({
+        source: 'agent-task-complete',
+        surface: 'agent-session',
+        worktreeId: WORKSPACE,
+        paneKey: CHAT_SUBJECT,
+        agentState: kind === 'completion' ? 'done' : 'blocked'
+      })
+      if (kind === 'completion') {
+        expect(request).toMatchObject({ agentTurnOutcome: outcome })
+      } else {
+        expect(request).not.toHaveProperty('agentTurnOutcome')
+      }
+    }
+  )
 
   it('does not invent a read boundary before the chat has accepted history', async () => {
     render(<StructuredAgentSessionAttentionBridge />)
@@ -284,31 +287,22 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     expect(mocks.acknowledgeAttention).not.toHaveBeenCalled()
   })
 
-  it("ignores a prompt for a session the tab doesn't hold", async () => {
-    render(<StructuredAgentSessionAttentionBridge />)
-    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
-
-    act(() => hostStream()(promptFrame('another-session')))
-
-    expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
-    expect(dispatched).toEqual([])
-  })
-
-  // Every settled outcome is news; main chooses its wording from the host verdict.
-  it.each(['failure', 'cancellation'] as const)(
-    'lights the indicators and hands main the %s the host reports',
-    async (outcome) => {
+  it.each(['completion', 'prompt'] as const)(
+    'ignores a %s for a session the tab does not hold',
+    async (kind) => {
       render(<StructuredAgentSessionAttentionBridge />)
       await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
 
-      act(() => hostStream()(completionFrame(SESSION, outcome)))
+      act(() =>
+        hostStream()(
+          kind === 'completion'
+            ? completionFrame('another-session')
+            : promptFrame('another-session')
+        )
+      )
 
-      expect(indicators()).toEqual({
-        workspaceBold: true,
-        paneDot: 'agent-completion',
-        tabDot: 'agent-completion'
-      })
-      expect(onlyDispatch()).toMatchObject({ agentState: 'done', agentTurnOutcome: outcome })
+      expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
+      expect(dispatched).toEqual([])
     }
   )
 
@@ -399,15 +393,6 @@ describe('StructuredAgentSessionAttentionBridge', () => {
 
     expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
     expect(dispatched).toEqual([])
-  })
-
-  it('ignores a completion for another session on the same host', async () => {
-    render(<StructuredAgentSessionAttentionBridge />)
-    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
-
-    act(() => hostStream()(completionFrame('session-elsewhere')))
-
-    expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
   })
 
   it('shares one host stream across tabs and routes each completion to its own tab', async () => {
@@ -704,32 +689,189 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     expect(mocks.subscribeCompletions).not.toHaveBeenCalled()
   })
 
-  it('drops the host stream when the last structured tab closes', async () => {
-    render(<StructuredAgentSessionAttentionBridge />)
-    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+  it('retires the final remote tab, keeps local attention live and reopens qualified remote attention', async () => {
+    vi.useFakeTimers()
+    const store = mocks.store
+    if (!store) {
+      throw new Error('test store was not initialized')
+    }
+    const local = chatTab({ executionHostId: 'local' })
+    const remote = chatTab({ id: 'remote-tab', executionHostId: 'runtime:env-1' })
+    const teardowns: Mock[] = []
+    mocks.subscribeCompletions.mockImplementation(
+      (_target: RuntimeClientTarget, emit: (event: AgentSessionTurnCompletionEvent) => void) => {
+        mocks.emitters.push(emit)
+        const unsubscribe = vi.fn()
+        teardowns.push(unsubscribe)
+        return Promise.resolve({ unsubscribe })
+      }
+    )
+    store.setState({
+      unifiedTabsByWorktree: { [WORKSPACE]: [local, remote] },
+      runtimeEnvironments: [
+        {
+          id: 'env-1',
+          name: 'Paired server',
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: null,
+          runtimeId: null,
+          endpoints: [],
+          preferredEndpointId: 'endpoint'
+        }
+      ]
+    })
+    const view = render(<StructuredAgentSessionAttentionBridge />)
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(mocks.subscribeCompletions.mock.calls.map(([target]) => target)).toEqual([
+      { kind: 'local' },
+      { kind: 'environment', environmentId: 'env-1' }
+    ])
+    expect(retainedCount()).toBe(2)
+    await act(async () => store.setState({ unifiedTabsByWorktree: { [WORKSPACE]: [local] } }))
+    expect(teardowns[1]).toHaveBeenCalledOnce()
+    expect(teardowns[0]).not.toHaveBeenCalled()
+    expect(retainedCount()).toBe(1)
 
-    act(() => mocks.store?.setState({ unifiedTabsByWorktree: { [WORKSPACE]: [] } }))
+    const deliver = (index: number, tab: Tab, source: string, phase: string): void => {
+      for (const kind of ['completion', 'prompt'] as const) {
+        store.setState({
+          unreadAgentCompletionPanes: {},
+          unreadTerminalTabs: {},
+          unreadTerminalPanes: {},
+          worktreesByRepo: {
+            repo1: store
+              .getState()
+              .worktreesByRepo.repo1.map((worktree) => ({ ...worktree, isUnread: false }))
+          }
+        })
+        dispatched.length = 0
+        const paneKey = structuredAgentSessionPaneKey(tab.id, SESSION)
+        const event: AgentSessionTurnCompletionEvent =
+          kind === 'completion'
+            ? {
+                type: kind,
+                completion: { ...turnCompletion(), turnId: `turn-${phase}`, completedAt: 2 }
+              }
+            : {
+                type: kind,
+                prompt: { ...promptFrame().prompt, promptId: `prompt-${phase}`, raisedAt: 2 }
+              }
+        act(() => hostStream(index)(event))
+        expect(store.getState().unreadAgentCompletionPanes).toEqual({
+          [paneKey]: 'agent-completion'
+        })
+        expect(store.getState().unreadTerminalTabs).toEqual({ [tab.id]: 'agent-completion' })
+        expect(store.getState().worktreesByRepo.repo1?.[0]?.isUnread).toBe(true)
+        expect(onlyDispatch()).toMatchObject({
+          paneKey,
+          notificationSourceId: source,
+          agentState: kind === 'completion' ? 'done' : 'blocked'
+        })
+        expect(onlyDispatch().executionHost).toBe(source === 'local' ? undefined : source)
+      }
+    }
+    deliver(0, local, 'local', 'local-after-close')
+    await act(async () =>
+      store.setState({ unifiedTabsByWorktree: { [WORKSPACE]: [local, remote] } })
+    )
+    expect(mocks.subscribeCompletions).toHaveBeenCalledTimes(3)
+    expect(mocks.subscribeCompletions.mock.calls[2]?.[0]).toEqual({
+      kind: 'environment',
+      environmentId: 'env-1'
+    })
+    expect(retainedCount()).toBe(2)
+    deliver(2, remote, 'runtime:env-1', 'remote-after-reopen')
+    expect(teardowns[0]).not.toHaveBeenCalled()
+    expect(teardowns[2]).not.toHaveBeenCalled()
+    view.unmount()
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(teardowns).toHaveLength(3)
+    teardowns.forEach((stop) => expect(stop).toHaveBeenCalledOnce())
+    expect(retainedCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
 
-    await waitFor(() => expect(mocks.unsubscribe).toHaveBeenCalledOnce())
+  it('keeps one stream through mounted combined-effect renewal and passive-effect reentry', async () => {
+    vi.useFakeTimers()
+    const target: RuntimeClientTarget = { kind: 'local' }
+    const ownerSubscription = { subscribe: vi.fn((_observe: () => void) => vi.fn()) }
+    const passive = vi.fn()
+    const current = vi.fn()
+    function Consumer({
+      tab,
+      target,
+      owner
+    }: {
+      tab: Tab
+      target: RuntimeClientTarget
+      owner: typeof ownerSubscription
+    }): null {
+      const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
+      useEffect(() => {
+        const stopOwner = owner.subscribe(() => {})
+        const stopEdges = feed.subscribe(passive)
+        return () => {
+          stopOwner()
+          stopEdges()
+        }
+      }, [feed, owner, tab.entityId, target])
+      useEffect(() => {
+        const stopListening = feed.subscribe((edge) => current(tab.label, edge.type))
+        const release = feed.activate()
+        return () => {
+          release()
+          stopListening()
+        }
+      }, [feed, tab, target])
+      return null
+    }
+    const consumerProps = { target, owner: ownerSubscription }
+    const view = render(<Consumer {...consumerProps} tab={chatTab({ label: 'initial' })} />)
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    for (const tab of [
+      chatTab({ label: 'metadata' }),
+      chatTab({ label: 'rebound', entityId: 'session-2' })
+    ]) {
+      view.rerender(<Consumer {...consumerProps} tab={tab} />)
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
+      expect(mocks.unsubscribe).not.toHaveBeenCalled()
+      current.mockClear()
+      passive.mockClear()
+      act(() => {
+        hostStream()(completionFrame(tab.entityId))
+        hostStream()(promptFrame(tab.entityId))
+      })
+      expect(current.mock.calls).toEqual([
+        [tab.label, 'completion'],
+        [tab.label, 'prompt']
+      ])
+      expect(passive.mock.calls.map(([edge]) => edge.type)).toEqual(['completion', 'prompt'])
+      expect(ownerSubscription.subscribe).toHaveBeenCalledTimes(tab.entityId === SESSION ? 1 : 2)
+    }
+    expect(ownerSubscription.subscribe.mock.results[0]?.value).toHaveBeenCalledOnce()
+    view.unmount()
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(ownerSubscription.subscribe.mock.results[1]?.value).toHaveBeenCalledOnce()
+    expect(mocks.unsubscribe).toHaveBeenCalledOnce()
+    expect(retainedCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('replays nothing after a reconnect, so a completion missed while down stays missed', async () => {
     vi.useFakeTimers()
-    try {
-      render(<StructuredAgentSessionAttentionBridge />)
-      await act(() => Promise.resolve())
-      expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
+    render(<StructuredAgentSessionAttentionBridge />)
+    await act(() => Promise.resolve())
+    expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
 
-      act(() => hostStream()({ type: 'end' }))
-      await act(() => vi.advanceTimersByTimeAsync(5_000))
-      expect(mocks.subscribeCompletions).toHaveBeenCalledTimes(2)
+    act(() => hostStream()({ type: 'end' }))
+    await act(() => vi.advanceTimersByTimeAsync(5_000))
+    expect(mocks.subscribeCompletions).toHaveBeenCalledTimes(2)
 
-      // Reopened streams are live-only; never replay old completion dots during recovery.
-      expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
-      act(() => hostStream(1)(completionFrame()))
-      expect(indicators().paneDot).toBe('agent-completion')
-    } finally {
-      vi.useRealTimers()
-    }
+    // Reopened streams are live-only; never replay old completion dots during recovery.
+    expect(indicators()).toEqual({ workspaceBold: false, paneDot: undefined, tabDot: undefined })
+    act(() => hostStream(1)(completionFrame()))
+    expect(indicators().paneDot).toBe('agent-completion')
   })
 })
