@@ -18,6 +18,7 @@ import { hydratePullRequestLookupData } from './pull-request-lookup-hydration'
 import { isGitObjectId, isUsableRestStackMetadata } from './rest-stack-metadata-validation'
 import { revalidateGitHubRestJson } from '../../github-rest-revalidation'
 import { noteRepositoryRateLimitSpend } from '../../rate-limit'
+import { readPullRequestSidebarQuery } from './pull-request-sidebar-query'
 export async function getRestPRByNumber(
   ownerRepo: GitHubApiRepository,
   number: number,
@@ -59,6 +60,13 @@ export async function getPRByNumber(
   knownPullRequestData?: PullRequestLookupData | null
 ): Promise<PullRequestLookupData | null> {
   try {
+    const sidebarData =
+      knownPullRequestData === undefined
+        ? await readPullRequestSidebarQuery(ownerRepo, number, ghOptions)
+        : undefined
+    if (sidebarData) {
+      return hydratePullRequestLookupData(ownerRepo, sidebarData, ghOptions, executionScope)
+    }
     noteRepositoryRateLimitSpend(ownerRepo, 'graphql', 1, ghOptions)
     const { stdout } = await ghExecFileAsync(
       [
