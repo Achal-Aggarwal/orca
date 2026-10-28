@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { marked } from 'marked'
 import { normalizeMarkdownReferenceLinks } from './markdown-reference-link-normalization'
@@ -85,4 +86,29 @@ describe('normalizeMarkdownReferenceLinks', () => {
       )
     ).toHaveLength(0)
   })
+})
+
+it.each([
+  { name: 'unfinished text', prefix: '['.repeat(100_000) },
+  { name: 'escaped closing brackets', prefix: '[\\] '.repeat(100_000) },
+  { name: 'unfinished label', prefix: `[text][${'['.repeat(100_000)}` }
+])('normalizes $name without repeatedly scanning the remaining source', ({ prefix }) => {
+  const source = `[valid]\n${prefix}\n\n[valid]: https://example.com\n`
+  const normalized = runInNewContext(
+    'normalize(source)',
+    { normalize: normalizeMarkdownReferenceLinks, source },
+    { timeout: 1500 }
+  )
+  expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
+})
+
+it('reuses the escape status of a shared closing bracket', () => {
+  const prefix = `${'['.repeat(100_000)}${'\\'.repeat(100_000)}](`
+  const source = `[valid]\n${prefix}\n\n[valid]: https://example.com\n`
+  const normalized = runInNewContext(
+    'normalize(source)',
+    { normalize: normalizeMarkdownReferenceLinks, source },
+    { timeout: 1500 }
+  )
+  expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
 })

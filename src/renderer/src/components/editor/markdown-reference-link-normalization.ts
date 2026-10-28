@@ -116,13 +116,21 @@ function isEscaped(content: string, index: number): boolean {
   return backslashCount % 2 === 1
 }
 
-function findClosingBracket(content: string, start: number): number {
-  for (let index = start; index < content.length; index += 1) {
-    if (content[index] === ']' && !isEscaped(content, index)) {
-      return index
+function createClosingBracketCursor(content: string): (start: number) => number {
+  let closingIndex: number | null = null
+  return (start) => {
+    if (closingIndex === -1 || (closingIndex !== null && closingIndex >= start)) {
+      return closingIndex
     }
+    for (let index = start; index < content.length; index += 1) {
+      if (content[index] === ']' && !isEscaped(content, index)) {
+        closingIndex = index
+        return closingIndex
+      }
+    }
+    closingIndex = -1
+    return closingIndex
   }
-  return -1
 }
 
 function formatInlineReferenceLink(text: string, definition: ReferenceLinkDefinition): string {
@@ -141,6 +149,8 @@ function replaceReferenceLinks(
   let result = ''
   let index = 0
   const isInsideFence = createMarkdownFenceRangeCursor(getMarkdownFenceRanges(markdown))
+  const findClosingTextBracket = createClosingBracketCursor(markdown)
+  const findClosingLabelBracket = createClosingBracketCursor(markdown)
 
   while (index < markdown.length) {
     if (isInsideFence(index) || markdown[index] !== '[' || isEscaped(markdown, index)) {
@@ -149,7 +159,7 @@ function replaceReferenceLinks(
       continue
     }
 
-    const closingTextIndex = findClosingBracket(markdown, index + 1)
+    const closingTextIndex = findClosingTextBracket(index + 1)
     if (closingTextIndex === -1) {
       result += markdown[index]
       index += 1
@@ -165,7 +175,7 @@ function replaceReferenceLinks(
     }
 
     if (afterText === '[') {
-      const closingLabelIndex = findClosingBracket(markdown, closingTextIndex + 2)
+      const closingLabelIndex = findClosingLabelBracket(closingTextIndex + 2)
       if (closingLabelIndex !== -1) {
         const rawLabel = markdown.slice(closingTextIndex + 2, closingLabelIndex)
         const label = normalizeReferenceLabel(rawLabel || text)
