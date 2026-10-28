@@ -1,5 +1,5 @@
 import { endianness } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createNativeHostMessageReader,
   encodeNativeHostMessage,
@@ -54,6 +54,29 @@ describe('native host message framing', () => {
     const { reader, messages } = collect()
     reader.push(Buffer.concat([frame('1'), frame('{"a":2}'), frame('"three"')]))
     expect(messages).toEqual(['1', '{"a":2}', '"three"'])
+  })
+
+  it('does not repeatedly join a growing body after a fragmented header', () => {
+    const { reader, messages, errors } = collect()
+    const json = JSON.stringify('x'.repeat(MAX_NATIVE_HOST_MESSAGE_BYTES - 2))
+    const bytes = frame(json)
+    const concat = vi.spyOn(Buffer, 'concat')
+    let joinedBytes: number
+    try {
+      reader.push(bytes.subarray(0, 1))
+      for (let offset = 1; offset < bytes.length; offset += 16 * 1024) {
+        reader.push(bytes.subarray(offset, offset + 16 * 1024))
+      }
+      joinedBytes = concat.mock.calls.reduce(
+        (sum, [parts]) => sum + parts.reduce((length, part) => length + part.length, 0),
+        0
+      )
+    } finally {
+      concat.mockRestore()
+    }
+    expect(messages).toEqual([json])
+    expect(errors).toEqual([])
+    expect(joinedBytes).toBeLessThanOrEqual(bytes.length)
   })
 
   it('takes a message of exactly 1 MB and refuses one byte more without waiting for it', () => {

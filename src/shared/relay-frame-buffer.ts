@@ -22,6 +22,17 @@ export class RelayFrameBuffer {
     this.bytes = 0
   }
 
+  releaseConsumedBacking(): void {
+    const first = this.chunks[this.head]
+    if (
+      first &&
+      first.buffer.byteLength > Buffer.poolSize &&
+      first.length * 2 < first.buffer.byteLength
+    ) {
+      this.chunks[this.head] = Buffer.from(first)
+    }
+  }
+
   drain(): Buffer {
     const out =
       this.chunks.length - this.head === 1

@@ -1,4 +1,5 @@
 import { endianness } from 'node:os'
+import { RelayFrameBuffer } from '../../../shared/relay-frame-buffer'
 
 /**
  * Chrome's native messaging wire format: each message is a 32-bit length in the machine's native
@@ -36,21 +37,18 @@ export function createNativeHostMessageReader(
   onMessage: (json: string) => void,
   onError: (reason: string) => void
 ): NativeHostMessageReader {
-  let pending: Buffer[] = []
-  let pendingBytes = 0
+  const pending = new RelayFrameBuffer()
   let failed = false
 
   const fail = (reason: string): false => {
     failed = true
-    pending = []
-    pendingBytes = 0
+    pending.clear()
     onError(reason)
     return false
   }
 
   const readSize = (): number => {
-    const head =
-      pending[0].length >= HEADER_BYTES ? pending[0] : Buffer.concat(pending, pendingBytes)
+    const head = pending.peek(HEADER_BYTES)
     return littleEndian ? head.readUInt32LE(0) : head.readUInt32BE(0)
   }
 
@@ -59,22 +57,20 @@ export function createNativeHostMessageReader(
       if (failed) {
         return false
       }
-      pending.push(chunk)
-      pendingBytes += chunk.length
-      while (pendingBytes >= HEADER_BYTES) {
+      if (chunk.length === 0) {
+        return true
+      }
+      pending.append(chunk)
+      while (pending.length >= HEADER_BYTES) {
         const size = readSize()
         if (size > MAX_NATIVE_HOST_MESSAGE_BYTES) {
           return fail(`message of ${size} bytes is over the 1 MB limit`)
         }
-        if (pendingBytes < HEADER_BYTES + size) {
-          return true
+        if (pending.length < HEADER_BYTES + size) {
+          break
         }
-        // Why concat only now: a 1 MB message arrives in many chunks; joining each time is quadratic.
-        const buffered = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes)
+        const buffered = pending.take(HEADER_BYTES + size)
         const json = buffered.toString('utf8', HEADER_BYTES, HEADER_BYTES + size)
-        const rest = buffered.subarray(HEADER_BYTES + size)
-        pending = rest.length > 0 ? [rest] : []
-        pendingBytes = rest.length
         try {
           JSON.parse(json)
         } catch {
@@ -82,6 +78,7 @@ export function createNativeHostMessageReader(
         }
         onMessage(json)
       }
+      pending.releaseConsumedBacking()
       return true
     }
   }
