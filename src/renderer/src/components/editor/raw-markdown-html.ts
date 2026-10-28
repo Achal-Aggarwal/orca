@@ -1,3 +1,7 @@
+import {
+  createRawMarkdownCodeSpanScanner,
+  type MarkdownCodeSpanScanner
+} from './markdown-code-span-scanner'
 import { createDetailsMatcher, isEditableDetailsHtmlBlock } from './details-markdown-html'
 import { formatMarkdownDocLinkBody, parseMarkdownDocLink } from './markdown-doc-links'
 import { normalizeMarkdownReferenceLinks } from './markdown-reference-link-normalization'
@@ -53,6 +57,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
   let activeFence: '`' | '~' | null = null
   let activeFenceLength = 0
   let result = ''
+  let codeSpans: MarkdownCodeSpanScanner | undefined
   const nonWhitespace = /\S/g
   const fencePrefix = /(`{3,}|~{3,})/y
   let fenceProbe = -1
@@ -89,33 +94,11 @@ export function encodeRawMarkdownHtmlForRichEditor(
     }
 
     if (normalizedContent[index] === '`') {
-      let tickCount = 0
-      while (normalizedContent[index + tickCount] === '`') {
-        tickCount += 1
-      }
-
-      // CommonMark closes inline code only on an exact-length backtick run.
-      let searchFrom = index + tickCount
-      let closingIndex = -1
-      while (searchFrom < normalizedContent.length) {
-        const candidate = normalizedContent.indexOf('`'.repeat(tickCount), searchFrom)
-        if (candidate === -1) {
-          break
-        }
-        if (
-          (candidate === 0 || normalizedContent[candidate - 1] !== '`') &&
-          normalizedContent[candidate + tickCount] !== '`'
-        ) {
-          closingIndex = candidate
-          break
-        }
-        searchFrom = candidate + 1
-      }
-
-      if (closingIndex !== -1) {
-        const rawSpan = normalizedContent.slice(index, closingIndex + tickCount)
-        result += rawSpan
-        index = closingIndex + tickCount
+      codeSpans ??= createRawMarkdownCodeSpanScanner(normalizedContent)
+      const spanEnd = codeSpans.findSpanEnd(index)
+      if (spanEnd !== null) {
+        result += normalizedContent.slice(index, spanEnd)
+        index = spanEnd
         continue
       }
     }

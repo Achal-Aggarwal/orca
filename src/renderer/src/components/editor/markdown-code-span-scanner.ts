@@ -134,6 +134,34 @@ export function createMarkdownCodeSpanScanner(content: string): MarkdownCodeSpan
     }
   })
 
+  return createBacktickRunLookup(starts, lengths, runsByLength, blocks, escaped)
+}
+
+export function createRawMarkdownCodeSpanScanner(content: string): MarkdownCodeSpanScanner {
+  const starts: number[] = []
+  const lengths: number[] = []
+  const runsByLength = new Map<number, number[]>()
+  for (const match of content.matchAll(/`+/g)) {
+    const runLength = match[0].length
+    const candidates = runsByLength.get(runLength)
+    if (candidates) {
+      candidates.push(starts.length)
+    } else {
+      runsByLength.set(runLength, [starts.length])
+    }
+    starts.push(match.index)
+    lengths.push(runLength)
+  }
+  return createBacktickRunLookup(starts, lengths, runsByLength)
+}
+
+function createBacktickRunLookup(
+  starts: number[],
+  lengths: number[],
+  runsByLength: Map<number, number[]>,
+  blocks?: number[],
+  escaped?: boolean[]
+): MarkdownCodeSpanScanner {
   function findRunAt(index: number): number {
     let low = 0
     let high = starts.length - 1
@@ -176,7 +204,7 @@ export function createMarkdownCodeSpanScanner(content: string): MarkdownCodeSpan
         return null
       }
       // Resume within rejected runs; escaped backticks cannot open but marked permits them to close a span.
-      const openStart = escaped[opener] ? Math.max(index, starts[opener] + 1) : index
+      const openStart = escaped?.[opener] ? Math.max(index, starts[opener] + 1) : index
       const openerEnd = starts[opener] + lengths[opener]
       if (openStart >= openerEnd) {
         return null
@@ -186,7 +214,7 @@ export function createMarkdownCodeSpanScanner(content: string): MarkdownCodeSpan
         return null
       }
       const closer = findFirstRunFrom(candidates, openerEnd)
-      if (closer === -1 || blocks[closer] !== blocks[opener]) {
+      if (closer === -1 || (blocks && blocks[closer] !== blocks[opener])) {
         return null
       }
       return starts[closer] + lengths[closer]
