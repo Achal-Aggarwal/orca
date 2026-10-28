@@ -1,8 +1,13 @@
+// @vitest-environment happy-dom
+
+import '@testing-library/jest-dom/vitest'
+import { screen } from '@testing-library/react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeLineage } from '../../../../shared/worktree/lineage-types'
+import type { WorktreeRemovalTarget } from '../../../../shared/worktree/removal'
 import type { Worktree } from '../../../../shared/worktree/types'
 
 const mocks = vi.hoisted(() => {
@@ -13,12 +18,18 @@ const mocks = vi.hoisted(() => {
     removeWorktree: vi.fn(),
     clearWorktreeDeleteState: vi.fn(),
     allWorktrees: vi.fn<() => Worktree[]>(() => []),
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     repos: [] as Repo[],
     worktreeLineageById: {} as Record<string, WorktreeLineage>,
     updateSettings: vi.fn(),
     openSettingsTarget: vi.fn(),
     openSettingsPage: vi.fn(),
     settings: null,
+    sshTargetLabels: new Map<string, string>(),
+    sshConnectionStates: new Map(),
+    runtimeEnvironments: [] as { id: string; name: string }[],
+    runtimeStatusByEnvironmentId: new Map(),
     gitStatusByWorktree: {} as Record<string, { path: string; status: 'modified' }[]>,
     setGitStatus: vi.fn(),
     deleteStateByWorktreeId: {} as Record<
@@ -47,7 +58,16 @@ vi.mock('@/store', () => ({
 vi.mock('@/store/selectors', () => ({
   useAllWorktrees: () => mocks.state.allWorktrees(),
   getWorktreeMapFromState: () =>
-    new Map(mocks.state.allWorktrees().map((worktree) => [worktree.id, worktree]))
+    new Map(mocks.state.allWorktrees().map((worktree) => [worktree.id, worktree])),
+  // Resolve on the named host; unqualified lookup retains first-wins compatibility.
+  getWorktreeOnHostFromState: (_state: unknown, worktreeId: string, hostId?: string) => {
+    const rows = mocks.state
+      .allWorktrees()
+      .filter((worktree: { id: string }) => worktree.id === worktreeId)
+    return hostId
+      ? rows.find((worktree: { hostId?: string }) => worktree.hostId === hostId)
+      : rows[0]
+  }
 }))
 
 vi.mock('@/components/ui/dialog', () => ({
@@ -89,10 +109,6 @@ vi.mock('sonner', () => ({
 
 vi.mock('./delete-worktree-flow', () => ({
   runWorktreeDeletesInParallel: vi.fn()
-}))
-
-vi.mock('./active-worktree-focus-after-delete', () => ({
-  prepareActiveWorktreeFocusAfterDelete: () => vi.fn()
 }))
 
 vi.mock('./stale-workspace-list-toast', () => ({
@@ -141,6 +157,13 @@ function buttonText(props: Record<string, unknown>): string {
   return renderToStaticMarkup(<>{props.children as ReactNode}</>)
 }
 
+function clickCancel(): void {
+  const onClick = mocks.buttonProps.find((props) => props.variant === 'outline')?.onClick
+  if (typeof onClick === 'function') {
+    onClick()
+  }
+}
+
 function visibleMarkupText(markup: string): string {
   return markup.replace(/<[^>]*>/g, '')
 }
@@ -152,11 +175,70 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     mocks.state.modalData = {}
     mocks.state.allWorktrees.mockReturnValue([])
     mocks.state.repos = []
+    mocks.state.sshTargetLabels = new Map()
+    mocks.state.sshConnectionStates = new Map()
+    mocks.state.runtimeEnvironments = []
+    mocks.state.runtimeStatusByEnvironmentId = new Map()
+    document.body.innerHTML = ''
     mocks.state.worktreeLineageById = {}
     mocks.state.gitStatusByWorktree = {}
     mocks.state.deleteStateByWorktreeId = {}
     mocks.buttonProps = []
     vi.mocked(runWorktreeDeletesInParallel).mockResolvedValue([])
+  })
+
+  it('labels the confirmed single-host target when workspace ids collide', async () => {
+    const local = {
+      ...makeWorktree('shared', '/workspaces/local'),
+      instanceId: 'local-instance',
+      displayName: 'Local sibling',
+      hostId: 'local' as const
+    }
+    const ssh = {
+      ...makeWorktree('shared', '/workspaces/ssh'),
+      instanceId: 'ssh-instance',
+      displayName: 'SSH target',
+      hostId: 'ssh:builder' as const
+    }
+    mocks.state.modalData = {
+      worktreeId: ssh.id,
+      worktreeDeleteIdentities: [{ id: ssh.id, instanceId: ssh.instanceId, hostId: ssh.hostId }]
+    }
+    mocks.state.sshTargetLabels = new Map([['builder', 'Build server']])
+    mocks.state.allWorktrees.mockReturnValue([local, ssh])
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
+    document.body.innerHTML = markup
+
+    expect(markup).toContain('SSH target')
+    expect(markup).not.toContain('Local sibling')
+    expect(screen.getByRole('region')).toHaveAccessibleName(
+      'SSH target /workspaces/ssh Build server'
+    )
+  })
+
+  it('keeps Space safety-checked confirmation non-force', async () => {
+    const workspace = makeWorktree('Workspace', '/workspaces/workspace')
+    mocks.state.modalData = {
+      worktreeId: workspace.id,
+      worktreeDeleteIdentities: [{ id: workspace.id, instanceId: workspace.instanceId }],
+      forceOnConfirm: false
+    }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    renderToStaticMarkup(<DeleteWorktreeDialog />)
+    const deleteButton = mocks.buttonProps.find((props) => props.variant === 'destructive') as
+      | { onClick?: () => void }
+      | undefined
+    deleteButton?.onClick?.()
+
+    expect(runWorktreeDeletesInParallel).toHaveBeenCalledWith([workspace], {
+      force: false,
+      onForceDeleted: expect.any(Function),
+      confirmedDiscards: expect.any(Map)
+    })
   })
 
   it('shows child-delete copy and only a delete-all action when the workspace has children', async () => {
@@ -197,7 +279,8 @@ describe('DeleteWorktreeDialog lineage copy', () => {
 
     expect(runWorktreeDeletesInParallel).toHaveBeenCalledWith([child, parent], {
       force: true,
-      onForceDeleted: expect.any(Function)
+      onForceDeleted: expect.any(Function),
+      confirmedDiscards: expect.any(Map)
     })
   })
 
@@ -212,6 +295,7 @@ describe('DeleteWorktreeDialog lineage copy', () => {
       <DeleteWorktreeLineageNotice
         descendants={[child]}
         dirtyChangeCountsByWorktreeId={new Map()}
+        dirtyChangePreviewsByWorktreeId={new Map()}
       />
     )
 
@@ -219,6 +303,42 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     expect(markup).toContain('mt-2 min-w-0 max-w-full space-y-1 overflow-hidden')
     expect(markup).toContain('min-w-0 overflow-hidden')
     expect(markup).toContain('truncate text-muted-foreground')
+  })
+
+  it('names a different checkout of the same project in the delete disclosure', async () => {
+    const repo: Repo = {
+      id: 'repo-1',
+      path: '/parent',
+      displayName: 'Parent project',
+      badgeColor: 'gray',
+      addedAt: 1
+    }
+    const checkout: Repo = {
+      id: 'second-checkout',
+      displayName: 'Second checkout',
+      path: '/second',
+      badgeColor: 'gray',
+      addedAt: 2
+    }
+    const parent = { ...makeWorktree('parent', '/parent'), repoId: repo.id }
+    const child = { ...makeWorktree('child', '/child'), repoId: checkout.id }
+    const { DeleteWorktreeLineageNotice } = await import('./DeleteWorktreeLineageNotice')
+    const markup = renderToStaticMarkup(
+      <DeleteWorktreeLineageNotice
+        parent={parent}
+        descendants={[child]}
+        repoMap={
+          new Map([
+            [repo.id, repo],
+            [checkout.id, checkout]
+          ])
+        }
+        dirtyChangeCountsByWorktreeId={new Map()}
+        dirtyChangePreviewsByWorktreeId={new Map()}
+      />
+    )
+    expect(visibleMarkupText(markup)).toContain('(Second checkout)')
+    expect(visibleMarkupText(markup)).toContain('child · Second checkout')
   })
 
   it('uses non-destructive disk copy for folder workspace deletes', async () => {
@@ -275,7 +395,9 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
 
     expect(markup).toContain('2 uncommitted or untracked changes')
-    expect(markup).toContain('Deleting this workspace permanently removes these changes from disk.')
+    expect(markup).toContain(
+      'Any uncommitted or untracked changes in Git workspaces will be permanently deleted.'
+    )
     expect(markup).not.toContain('Also delete local branch')
   })
 
@@ -305,6 +427,57 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
   })
 
+  it('shows the error the host lists for a failed delete, not a stale local one', async () => {
+    const failure = 'Operation not permitted'
+    const workspace = {
+      ...makeWorktree('Failed workspace', '/workspaces/failed'),
+      removalError: failure
+    }
+    mocks.state.modalData = { worktreeId: workspace.id }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    // Model a lost retry reply while the host lists that retry’s failure.
+    mocks.state.deleteStateByWorktreeId = {
+      [workspace.id]: {
+        isDeleting: false,
+        error: 'Request timed out',
+        canForceDelete: false,
+        forceDeleteReason: null
+      }
+    }
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
+
+    expect(markup).toContain(failure)
+    expect(markup).not.toContain('Request timed out')
+  })
+
+  it('shows a failed row’s host error in a batch and clears every stale error on Cancel', async () => {
+    const failed = {
+      ...makeWorktree('Failed workspace', '/workspaces/failed'),
+      removalError: 'Operation not permitted'
+    }
+    const dirty = makeWorktree('Dirty workspace', '/workspaces/dirty')
+    mocks.state.modalData = { worktreeIds: [failed.id, dirty.id] }
+    mocks.state.allWorktrees.mockReturnValue([failed, dirty])
+    mocks.state.deleteStateByWorktreeId = {
+      [dirty.id]: {
+        isDeleting: false,
+        error: 'Worktree has uncommitted changes',
+        canForceDelete: true,
+        forceDeleteReason: 'dirty'
+      }
+    }
+
+    const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+    const markup = renderToStaticMarkup(<DeleteWorktreeDialog />)
+    clickCancel()
+
+    expect(markup).toContain('Operation not permitted')
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(failed.id, undefined)
+    expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith(dirty.id, undefined)
+  })
+
   it('notifies the dialog caller after a toast force delete succeeds', async () => {
     const workspace = makeWorktree('Workspace', '/workspaces/workspace')
     const onDeleted = vi.fn()
@@ -326,14 +499,15 @@ describe('DeleteWorktreeDialog lineage copy', () => {
 
     expect(runWorktreeDeletesInParallel).toHaveBeenCalledWith([workspace], {
       force: true,
-      onForceDeleted: expect.any(Function)
+      onForceDeleted: expect.any(Function),
+      confirmedDiscards: expect.any(Map)
     })
     const options = vi.mocked(runWorktreeDeletesInParallel).mock.calls[0]?.[1] as
-      | { onForceDeleted?: (worktreeId: string) => void }
+      | { onForceDeleted?: (target: WorktreeRemovalTarget) => void }
       | undefined
-    options?.onForceDeleted?.(workspace.id)
+    options?.onForceDeleted?.({ id: workspace.id, executionHostId: null })
 
-    expect(onDeleted).toHaveBeenCalledWith([workspace.id])
+    expect(onDeleted).toHaveBeenCalledWith([{ id: workspace.id, executionHostId: null }])
   })
 
   it('rejects confirmation when the workspace instance changed after the dialog opened', async () => {

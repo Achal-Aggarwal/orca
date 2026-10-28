@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
@@ -18,17 +18,54 @@ export type GoldenWorktree = {
   worktreePath: string
 }
 
+function existingNativeRealpath(value: string): string {
+  try {
+    return realpathSync.native(value)
+  } catch {
+    return value
+  }
+}
+
+/** Slash-fold, strip macOS /private, and expand 8.3 aliases so Git listings match. */
+export function canonicalizeGoldenWorktreePath(
+  value: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  const normalized = existingNativeRealpath(value)
+    .replace(/\\/g, '/')
+    .replace(/^\/private(?=\/var\/)/, '')
+    .replace(/\/+$/, '')
+  return platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+export function goldenWorktreePathsMatch(
+  left: string,
+  right: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return (
+    canonicalizeGoldenWorktreePath(left, platform) ===
+    canonicalizeGoldenWorktreePath(right, platform)
+  )
+}
+
 export function createGoldenWorktree(repoPath: string, label: string): GoldenWorktree {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`
   const branchName = `e2e-golden-${label}-${suffix}`
-  const worktreePath = path.join(os.tmpdir(), branchName)
-  execFileSync('git', ['worktree', 'add', worktreePath, '-b', branchName], {
+  const requestedPath = path.join(os.tmpdir(), branchName)
+  execFileSync('git', ['worktree', 'add', requestedPath, '-b', branchName], {
     cwd: repoPath,
     stdio: 'pipe'
   })
+  // Roll back here until callers can register cleanup; canonicalize Windows 8.3 paths so sidebar identity matches Git.
+  let worktreePath: string
+  try {
+    worktreePath = realpathSync.native(requestedPath)
+  } catch (realpathError) {
+    rollbackGoldenWorktree(repoPath, { branchName, worktreePath: requestedPath })
+    throw realpathError
+  }
   const fixture: GoldenWorktree = { branchName, worktreePath }
-  // Callers only register cleanup once this returns, so roll back here or the
-  // half-built worktree and branch leak into every later run.
   try {
     execFileSync('git', ['config', 'extensions.worktreeConfig', 'true'], {
       cwd: worktreePath,
@@ -43,14 +80,17 @@ export function createGoldenWorktree(repoPath: string, label: string): GoldenWor
       stdio: 'pipe'
     })
   } catch (setupError) {
-    try {
-      cleanupGoldenWorktree(repoPath, fixture)
-    } catch {
-      // Keep the setup failure as the reported cause.
-    }
+    rollbackGoldenWorktree(repoPath, fixture)
     throw setupError
   }
   return fixture
+}
+
+/** Best-effort cleanup that keeps the original setup failure as the reported cause. */
+function rollbackGoldenWorktree(repoPath: string, fixture: GoldenWorktree): void {
+  try {
+    cleanupGoldenWorktree(repoPath, fixture)
+  } catch {}
 }
 
 export function cleanupGoldenWorktree(repoPath: string, fixture: GoldenWorktree): void {
@@ -110,40 +150,52 @@ export async function activateGoldenWorktree(
 ): Promise<void> {
   await expect
     .poll(
-      () =>
-        page.evaluate(
-          async ({ registeredRepoPath, targetWorktreePath }) => {
+      async () => {
+        const listed = await page.evaluate(async () => {
+          const store = window.__store
+          if (!store) {
+            throw new Error('window.__store is not available')
+          }
+          await store.getState().fetchRepos({ runtimeEnvironmentId: null, throwOnError: true })
+          const repos: {
+            id: string
+            path: string
+            worktrees: { id: string; path: string }[]
+          }[] = []
+          for (const repo of store.getState().repos) {
+            await store.getState().fetchWorktrees(repo.id)
+            repos.push({
+              id: repo.id,
+              path: repo.path,
+              worktrees: (store.getState().worktreesByRepo[repo.id] ?? []).map((entry) => ({
+                id: entry.id,
+                path: entry.path
+              }))
+            })
+          }
+          return repos
+        })
+        // Compare in Node because only it can expand Windows 8.3 aliases with realpath.
+        const repo = listed.find((entry) => goldenWorktreePathsMatch(entry.path, repoPath))
+        const worktree = repo?.worktrees.find((entry) =>
+          goldenWorktreePathsMatch(entry.path, worktreePath)
+        )
+        if (!repo || !worktree) {
+          return false
+        }
+        await page.evaluate(
+          ({ repoId, worktreeId }) => {
             const store = window.__store
             if (!store) {
               throw new Error('window.__store is not available')
             }
-            await store.getState().fetchRepos()
-            const normalize = (value: string): string => {
-              const normalized = value
-                .replace(/\\/g, '/')
-                .replace(/^\/private(?=\/var\/)/, '')
-                .replace(/\/+$/, '')
-              return navigator.userAgent.includes('Windows') ? normalized.toLowerCase() : normalized
-            }
-            const repo = store
-              .getState()
-              .repos.find((entry) => normalize(entry.path) === normalize(registeredRepoPath))
-            if (!repo) {
-              return false
-            }
-            await store.getState().fetchWorktrees(repo.id)
-            const worktree = (store.getState().worktreesByRepo[repo.id] ?? []).find(
-              (entry) => normalize(entry.path) === normalize(targetWorktreePath)
-            )
-            if (!worktree) {
-              return false
-            }
-            store.getState().setActiveRepo(repo.id)
-            store.getState().setActiveWorktree(worktree.id)
-            return true
+            store.getState().setActiveRepo(repoId)
+            store.getState().setActiveWorktree(worktreeId)
           },
-          { registeredRepoPath: repoPath, targetWorktreePath: worktreePath }
-        ),
+          { repoId: repo.id, worktreeId: worktree.id }
+        )
+        return true
+      },
       { timeout: 10_000, message: `Golden worktree did not load: ${worktreePath}` }
     )
     .toBe(true)

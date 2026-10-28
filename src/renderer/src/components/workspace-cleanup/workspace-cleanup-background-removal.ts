@@ -6,6 +6,7 @@ import type {
   WorkspaceCleanupRemoveResult
 } from '@/store/slices/workspace-cleanup'
 import { translate } from '@/i18n/i18n'
+import { getWorkspaceCleanupCandidateHostId } from '../../../../shared/workspace-cleanup-host-identity'
 import {
   getSkippedAncestorMessage,
   isStrictWorkspaceCleanupDescendant,
@@ -40,13 +41,10 @@ export type WorkspaceCleanupBackgroundRemovalArgs = {
   ) => Promise<WorkspaceCleanupRemoveResult>
   onProgress: (progress: WorkspaceCleanupRemovalProgress) => void
   onResult?: (result: WorkspaceCleanupRemoveResult) => void
-  // Why: the timeout is provisional because renderer IPC cannot be cancelled;
-  // consumers need the eventual outcome to replace stale timeout UI.
+  // IPC cannot be canceled; timeout is provisional until authoritative settlement replaces its UI.
   onLateResult?: (result: WorkspaceCleanupRemoveResult) => void
   onError?: (error: unknown) => void
-  // Why: a row can fail before its removal starts (preflight failure or a
-  // skipped nested workspace); report it now so its queued overlay can clear
-  // instead of waiting for the whole batch to settle.
+  // Report preflight/nested-workspace failures immediately so queued overlays clear before batch completion.
   onRowFailed?: (failure: WorkspaceCleanupFailure) => void
   removalTimeoutMs?: number
   removalSettlementGraceMs?: number
@@ -55,6 +53,7 @@ export type WorkspaceCleanupBackgroundRemovalArgs = {
     begin: () => Promise<void>
     finish: () => Promise<void>
   }
+  getRemoveOptions?: (candidate: WorkspaceCleanupCandidate) => WorkspaceCleanupRemoveOptions
 }
 
 export function startWorkspaceCleanupBackgroundRemoval({
@@ -67,25 +66,25 @@ export function startWorkspaceCleanupBackgroundRemoval({
   onRowFailed,
   removalTimeoutMs = DEFAULT_WORKSPACE_CLEANUP_REMOVAL_TIMEOUT_MS,
   removalSettlementGraceMs = DEFAULT_WORKSPACE_CLEANUP_SETTLEMENT_GRACE_MS,
-  snapshotPruneBatch
+  snapshotPruneBatch,
+  getRemoveOptions
 }: WorkspaceCleanupBackgroundRemovalArgs): void {
   if (candidates.length === 0) {
     try {
-      onResult?.({ removedIds: [], failures: [] })
+      onResult?.({ removedIds: [], removedIdentities: [], failures: [] })
     } catch (callbackError) {
       console.error('Workspace cleanup result callback failed', callbackError)
     }
     return
   }
 
-  const count = candidates.length
   const removedIds: string[] = []
+  const removedIdentities: string[] = []
   const failures: WorkspaceCleanupFailure[] = []
   const preservedBranches: NonNullable<WorkspaceCleanupRemoveResult['preservedBranches']> = []
   const failedCandidates: WorkspaceCleanupCandidate[] = []
   const lateSettlementTrackers: WorkspaceCleanupLateSettlementTracker[] = []
-  // Why: rows past the removal deadline are still removing; their skip fallout
-  // and batch toasts must not present them as definitive failures.
+  // Past-deadline rows still remove; ancestor skips and toasts must not call them definitive failures.
   const provisionallyBlocked = new Set<WorkspaceCleanupCandidate>()
   const pendingSettlementFailures = new Set<WorkspaceCleanupFailure>()
   const skippedAncestors: SkippedWorkspaceCleanupAncestor[] = []
@@ -93,7 +92,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
 
   const emitProgress = (): void => {
     onProgress({
-      totalCount: count,
+      totalCount: candidates.length,
       processedCount,
       removedCount: removedIds.length,
       failedCount: failures.length
@@ -123,8 +122,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
 
   emitProgress()
 
-  // Why: keep the store's nested-worktree delete invariant even though progress
-  // is emitted per row; children must be removed before parent workspaces.
+  // Preserve child-before-parent deletion order even with per-row progress.
   const queue = [...candidates].sort((a, b) => b.path.length - a.path.length)
 
   const findBlockingDescendants = (
@@ -141,6 +139,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
     const provisional = blockers.every((blocker) => provisionallyBlocked.has(blocker))
     const failure: WorkspaceCleanupFailure = {
       worktreeId: candidate.worktreeId,
+      executionHostId: getWorkspaceCleanupCandidateHostId(candidate),
       displayName: candidate.displayName,
       message: getSkippedAncestorMessage(provisional)
     }
@@ -154,9 +153,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
     emitProgress()
   }
 
-  // Why: a late child settlement can unblock or definitively doom skipped
-  // ancestors; re-derive each skip from the current blocker set so the batch
-  // never reports "could not be removed" for a row whose blocker succeeded.
+  // Recompute ancestor skips from current blockers so late child success can unblock retries.
   const resettleSkippedAncestors = (): void => {
     const { unblocked } = reclassifySkippedWorkspaceCleanupAncestors({
       skippedAncestors,
@@ -196,6 +193,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
           const outcome = await waitForWorkspaceCleanupRemovalWithTimeout(
             removeCandidates([candidate.worktreeId], {
               approvedCandidates: [candidate],
+              ...getRemoveOptions?.(candidate),
               ...(snapshotPruneBatchActive && snapshotPruneBatch
                 ? { snapshotPruneBatchId: snapshotPruneBatch.batchId }
                 : {})
@@ -212,16 +210,14 @@ export function startWorkspaceCleanupBackgroundRemoval({
             provisionallyBlocked.add(candidate)
             pendingSettlementFailures.add(timeoutFailure)
             reportFailures([timeoutFailure])
-            // Why: renderer IPC cannot be cancelled at the timeout boundary; keep
-            // its authoritative settlement without unblocking ancestors early.
-            // After the batch ends, detach switches to the post-batch path which
-            // still holds skip state so ancestors can reclassify.
+            // Retain authoritative IPC settlement after timeout without prematurely unblocking ancestors; post-batch reporting still reclassifies skips.
             lateSettlementTrackers.push(
               trackWorkspaceCleanupLateSettlement(outcome.settlement, candidate, (lateResult) => {
                 removeArrayEntry(failures, timeoutFailure)
                 pendingSettlementFailures.delete(timeoutFailure)
                 provisionallyBlocked.delete(candidate)
                 removedIds.push(...lateResult.removedIds)
+                removedIdentities.push(...(lateResult.removedIdentities ?? []))
                 preservedBranches.push(...(lateResult.preservedBranches ?? []))
                 reportFailures(lateResult.failures)
                 if (lateResult.failures.length === 0) {
@@ -235,6 +231,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
           }
           const result = outcome.result
           removedIds.push(...result.removedIds)
+          removedIdentities.push(...(result.removedIdentities ?? []))
           preservedBranches.push(...(result.preservedBranches ?? []))
           reportFailures(result.failures)
           if (result.failures.length > 0) {
@@ -245,6 +242,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
           reportFailures([
             {
               worktreeId: candidate.worktreeId,
+              executionHostId: getWorkspaceCleanupCandidateHostId(candidate),
               displayName: candidate.displayName,
               message: error instanceof Error ? error.message : String(error)
             }
@@ -279,6 +277,7 @@ export function startWorkspaceCleanupBackgroundRemoval({
     )
     const result: WorkspaceCleanupRemoveResult = {
       removedIds,
+      removedIdentities,
       failures,
       ...(preservedBranches.length > 0 ? { preservedBranches } : {})
     }

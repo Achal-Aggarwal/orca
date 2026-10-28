@@ -26,8 +26,7 @@ function makeFileOption(path: string): ActiveOption {
   }
 }
 
-// The tooltip itself is asserted in tests/e2e/tab-create-entry-file-paths.spec.ts,
-// where it actually opens; here we only need the row's own text layout.
+// Keep tooltip opening in E2E; this render only verifies row text layout.
 function renderRow(option: ActiveOption): HTMLButtonElement {
   act(() => {
     root.render(
@@ -102,5 +101,53 @@ describe('EntryActionRow', () => {
     expect(getByRole(container, 'option', { name: 'Search Kagi private project' })).toBeTruthy()
     expect(container.textContent).toBe('Search Kagi·private project')
     expect(container.textContent).not.toContain('https://')
+  })
+
+  it('uses the occupant agent icon when a terminal tab is confidently occupied', () => {
+    renderRow({
+      kind: 'tab',
+      option: {
+        executionHostId: 'local',
+        source: 'workspace',
+        id: 'open-tab:workspace:tab-1',
+        title: 'grok',
+        matchedText: null,
+        worktreeId: 'wt',
+        contentType: 'terminal',
+        tabId: 'tab-1',
+        entityId: 'term-1',
+        groupId: 'g',
+        relativePath: null,
+        occupantAgent: 'grok'
+      }
+    })
+
+    expect(container.querySelector('[data-agent-icon="grok"]')).toBeTruthy()
+    expect(container.textContent).toContain('Switch to tab')
+  })
+
+  it('keeps the generic terminal icon when occupancy is not known', () => {
+    renderRow({
+      kind: 'tab',
+      option: {
+        executionHostId: 'local',
+        source: 'workspace',
+        id: 'open-tab:workspace:tab-1',
+        title: 'grok',
+        matchedText: null,
+        worktreeId: 'wt',
+        contentType: 'terminal',
+        tabId: 'tab-1',
+        entityId: 'term-1',
+        groupId: 'g',
+        relativePath: null,
+        occupantAgent: null
+      }
+    })
+
+    expect(container.querySelector('[data-agent-icon]')).toBeNull()
+    // Guard against the row rendering no icon at all, which "no agent icon" alone would pass.
+    expect(container.querySelector('svg.lucide-square-terminal')).toBeTruthy()
+    expect(container.textContent).toContain('Switch to tab')
   })
 })

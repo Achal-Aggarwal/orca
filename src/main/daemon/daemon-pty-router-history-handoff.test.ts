@@ -1,3 +1,4 @@
+import './mock-descendant-sweep'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,7 +10,7 @@ import { getDaemonSocketPath } from './daemon-spawner'
 import { TERMINAL_HISTORY_INLINE_SEED_CODE_UNITS } from './terminal-history-seed-chunks'
 import { DAEMON_SESSION_SCROLLBACK_ROWS } from './daemon-session-scrollback-window'
 import type { DaemonFileLog } from './daemon-file-log'
-import type { SubprocessHandle } from './session'
+import type { SubprocessHandle } from './session-subprocess-handle'
 
 function createMockSubprocess(): SubprocessHandle & {
   emitData: (data: string) => void
@@ -24,6 +25,7 @@ function createMockSubprocess(): SubprocessHandle & {
     pause: vi.fn(),
     resume: vi.fn(),
     kill: vi.fn(() => setTimeout(() => onExit?.(0), 0)),
+    terminateOwnedTree: () => 'unavailable' as const,
     forceKill: vi.fn(() => setTimeout(() => onExit?.(137), 0)),
     signal: vi.fn(),
     onData(callback) {
@@ -101,13 +103,11 @@ describe('DaemonPtyRouter history handoff', () => {
   it('moves a slept v29 session to v30 with its full large history', async () => {
     const sessionId = 'large-legacy-session'
     const marker = 'V29-HISTORY-HANDOFF-MARKER'
-    // Why: this fixture plays an OLD daemon binary, whose sessions retained ~5000 rows. New code
-    // applies the flat window at session create, which would shrink the history below the chunked
-    // seed threshold and silently skip the transfer path this test exists to cover.
+    // Model the legacy 5,000-row window so the fixture exceeds the chunked-seed threshold.
     vi.stubEnv('ORCA_DAEMON_SESSION_SCROLLBACK_ROWS', '5000')
     await legacyAdapter.spawn({ sessionId, cols: 400, rows: 24 })
     legacySubprocess.emitData(`${'x'.repeat(TERMINAL_HISTORY_INLINE_SEED_CODE_UNITS + 1)}${marker}`)
-    // Keep only the played legacy session deep; the receiving daemon must use today's flat window.
+    // Restore the receiving daemon's smaller live window.
     vi.stubEnv('ORCA_DAEMON_SESSION_SCROLLBACK_ROWS', String(DAEMON_SESSION_SCROLLBACK_ROWS))
     router = new DaemonPtyRouter({ current: currentAdapter, legacy: [legacyAdapter] })
     await router.discoverLegacySessions()

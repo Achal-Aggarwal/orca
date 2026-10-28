@@ -1,8 +1,7 @@
 import type { GitBranchChangeStatus } from './git-status-types'
 import type { LargeDiffRenderLimit } from './large-diff-render-limit'
 
-// ─── Git Status ─────────────────────────────────────────────
-// Re-exported from git-status-types.ts so mobile shares the wire contract without this desktop aggregate.
+// Mobile consumes git-status-types.ts directly to avoid this desktop aggregate.
 
 export type GitBranchChangeEntry = {
   path: string
@@ -20,6 +19,7 @@ export type GitBranchCompareSummary = {
   mergeBase: string | null
   changedFiles: number
   commitsAhead?: number
+  commitsBehind?: number
   status: 'ready' | 'invalid-base' | 'unborn-head' | 'no-merge-base' | 'loading' | 'error'
   errorMessage?: string
 }

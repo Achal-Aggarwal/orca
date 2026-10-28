@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PtyTransport } from './pty-transport'
+import type { PtyTransport } from './pty-transport-types'
 import {
   createTerminalImeDeferredNewlineSender,
   createTerminalImeModifiedEnterChordOwner,
   isTerminalImeEnterKeyUp,
   isTerminalImeProcessEnter,
-  sendTerminalInputAfterComposition
+  sendTerminalInputAfterComposition,
+  TERMINAL_IME_DEFERRED_NEWLINE_FALLBACK_MS
 } from './terminal-ime-deferred-newline'
 import {
   installTerminalImeCompositionRoute,
@@ -37,6 +38,40 @@ describe('sendTerminalInputAfterComposition', () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 
+  // Newlines can safely use a late fallback; cursor chords must wait through long conversions to avoid mid-preedit corruption (#12871).
+  it('never fires on a timer when the caller opts out of the fallback', () => {
+    const el = document.createElement('div')
+    const send = vi.fn()
+
+    sendTerminalInputAfterComposition(el, send, { fallbackMs: null })
+    vi.advanceTimersByTime(60_000)
+    expect(send).not.toHaveBeenCalled()
+
+    el.dispatchEvent(new Event('compositionend'))
+    vi.runAllTimers()
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  // Indefinite waits need disposal to detach listeners if compositionend never arrives (STA-4476).
+  it('detaches its listeners and never sends once disposed', () => {
+    const el = document.createElement('div')
+    const send = vi.fn()
+    const removeEventListener = vi.spyOn(el, 'removeEventListener')
+
+    const dispose = sendTerminalInputAfterComposition(el, send, { fallbackMs: null })
+    dispose()
+
+    expect(removeEventListener).toHaveBeenCalledWith('compositionend', expect.any(Function))
+    expect(removeEventListener).toHaveBeenCalledWith(
+      XTERM_COMPOSITION_SESSION_END_EVENT,
+      expect.any(Function)
+    )
+
+    el.dispatchEvent(new Event('compositionend'))
+    vi.runAllTimers()
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('falls back to sending when no compositionend arrives', () => {
     const el = document.createElement('div')
     const send = vi.fn()
@@ -45,6 +80,21 @@ describe('sendTerminalInputAfterComposition', () => {
     vi.runAllTimers()
 
     expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  // Enter’s finite fallback always releases listeners, even without compositionend (STA-4476).
+  it('detaches its listeners on the fallback, not only on compositionend', () => {
+    const el = document.createElement('div')
+    const removeEventListener = vi.spyOn(el, 'removeEventListener')
+
+    sendTerminalInputAfterComposition(el, vi.fn())
+    vi.advanceTimersByTime(TERMINAL_IME_DEFERRED_NEWLINE_FALLBACK_MS)
+
+    expect(removeEventListener).toHaveBeenCalledWith('compositionend', expect.any(Function))
+    expect(removeEventListener).toHaveBeenCalledWith(
+      XTERM_COMPOSITION_SESSION_END_EVENT,
+      expect.any(Function)
+    )
   })
 
   it('finishes from the captured xterm transaction when deferral starts after compositionend', () => {
@@ -88,6 +138,36 @@ describe('sendTerminalInputAfterComposition', () => {
     route.dispose()
   })
 
+  // Later compositions must not overtake Enter: 한 Enter 글 must not arrive as 한글 then newline.
+  it('does not let a composition started after the defer hold the newline', () => {
+    const el = document.createElement('div')
+    const send = vi.fn()
+    const terminal = { input: vi.fn() }
+    const transport = { getPtyId: () => 'pty-1' } as unknown as PtyTransport
+    const route = installTerminalImeCompositionRoute({
+      terminalElement: el,
+      terminal,
+      capturedTransport: transport,
+      getCurrentTransport: () => transport
+    })
+    const sessionEvent = (type: string, id: number, data: string) =>
+      new CustomEvent(type, { cancelable: true, detail: { id, data } })
+
+    el.dispatchEvent(sessionEvent(XTERM_COMPOSITION_SESSION_START_EVENT, 1, ''))
+    const stopWaiting = sendTerminalInputAfterComposition(el, send, { fallbackMs: null })
+    el.dispatchEvent(sessionEvent(XTERM_COMPOSITION_SESSION_START_EVENT, 2, ''))
+    expect(send).not.toHaveBeenCalled()
+
+    el.dispatchEvent(sessionEvent(XTERM_COMPOSITION_SESSION_END_EVENT, 1, '한'))
+    vi.advanceTimersByTime(0)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(terminal.input.mock.calls).toEqual([['한']])
+
+    stopWaiting()
+    route.dispose()
+  })
+
   it('sends only once and drops the listener after firing', () => {
     const el = document.createElement('div')
     const send = vi.fn()
@@ -97,7 +177,6 @@ describe('sendTerminalInputAfterComposition', () => {
     vi.runAllTimers()
     expect(send).toHaveBeenCalledTimes(1)
 
-    // A later composition on the same terminal must not re-fire the stale newline.
     el.dispatchEvent(new Event('compositionend'))
     vi.runAllTimers()
     expect(send).toHaveBeenCalledTimes(1)
@@ -150,7 +229,6 @@ describe('createTerminalImeDeferredNewlineSender', () => {
     el.dispatchEvent(new Event('compositionend'))
     vi.runAllTimers()
     expect(send).toHaveBeenCalledTimes(1)
-    // The credit was consumed pre-send, so nothing lingers to eat a real Enter.
     expect(sender.absorbRedispatchedEnter(enter(10))).toBe(false)
   })
 

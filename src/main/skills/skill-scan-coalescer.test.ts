@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SkillScanCoalescer } from './skill-scan-coalescer'
+import { SkillScanCoalescer, SkillScanShedError } from './skill-scan-coalescer'
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
@@ -92,14 +92,11 @@ describe('SkillScanCoalescer', () => {
     const refreshed = await coalescer.run('root', { ttlMs: 10_000, refresh: true }, task)
 
     expect(refreshed).toEqual({ value: 2, cached: false })
-    // The refreshed result is what later readers see, not the entry it replaced.
     expect(await coalescer.run('root', { ttlMs: 10_000 }, task)).toEqual({ value: 2, cached: true })
     expect(runs).toBe(2)
   })
 
-  // Why: discovery issues one refreshing run() per root, synchronously. An
-  // invalidation counter shared across keys would let only the last-issued root
-  // publish and silently discard the rest, so every later scan re-walks them.
+  // Refresh fan-out needs per-key publish ownership; a global counter would cache only the last root.
   it('caches every key when a refresh fans out across roots', async () => {
     const coalescer = new SkillScanCoalescer<string>(64)
     const keys = ['root-a', 'root-b', 'root-c', 'root-d']
@@ -119,7 +116,6 @@ describe('SkillScanCoalescer', () => {
     const coalescer = new SkillScanCoalescer<string>(8)
     const slowScan = deferred<string>()
 
-    // A focus/mount scan is already in flight when the user installs a skill.
     const inFlight = coalescer.run('root', { ttlMs: 10_000 }, () => slowScan.promise)
     const refreshed = await coalescer.run(
       'root',
@@ -128,8 +124,7 @@ describe('SkillScanCoalescer', () => {
     )
     expect(refreshed.value).toBe('after-install')
 
-    // The older scan now lands. It must not overwrite the post-install entry with
-    // a pre-install listing and a fresh lifetime.
+    // A pre-install scan must not overwrite the refreshed result with a new lifetime.
     slowScan.resolve('before-install')
     await inFlight
 
@@ -144,7 +139,6 @@ describe('SkillScanCoalescer', () => {
     const slowScan = deferred<string>()
 
     const inFlight = coalescer.run('root', { ttlMs: 10_000 }, () => slowScan.promise)
-    // A skill update run rewrote disk while that scan was walking it.
     coalescer.clear()
     slowScan.resolve('pre-update')
     await inFlight
@@ -180,7 +174,6 @@ describe('SkillScanCoalescer', () => {
 
     await scan('a')
     await scan('b')
-    // Reading 'a' promotes it, so 'b' is the eviction candidate when 'c' arrives.
     expect((await scan('a')).cached).toBe(true)
     await scan('c')
 
@@ -188,22 +181,27 @@ describe('SkillScanCoalescer', () => {
     expect((await scan('b')).cached).toBe(false)
   })
 
-  // ttl is non-zero on purpose: with ttl 0 nothing is ever written, which hides
-  // whether the abandoned scan can still publish over the replacement's result.
+  // Use nonzero TTL to expose abandoned scans incorrectly publishing over replacements.
   it('stops joining a scan that never settles, and never lets it publish later', async () => {
     let now = 1_000
     const coalescer = new SkillScanCoalescer<number>(8, () => now)
     const wedged = deferred<number>()
     let runs = 0
-    const task = (): Promise<number> => {
+    const task = (signal: AbortSignal): Promise<number> => {
       runs += 1
-      // The first scan models a root on a stalled mount: its readdir never settles.
-      return runs === 1 ? wedged.promise : Promise.resolve(runs)
+      // Model a stalled mount whose syscall never settles.
+      return runs === 1
+        ? Promise.race([
+            wedged.promise,
+            new Promise<number>((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason))
+            })
+          ])
+        : Promise.resolve(runs)
     }
 
-    void coalescer.run('root', { ttlMs: 10_000 }, task)
+    void coalescer.run('root', { ttlMs: 10_000 }, task).catch(() => undefined)
     now = 1_100
-    // Still young enough to share.
     const joined = coalescer.run('root', { ttlMs: 10_000 }, task)
     now = 40_000
 
@@ -213,10 +211,70 @@ describe('SkillScanCoalescer', () => {
     })
     expect(runs).toBe(2)
 
-    // The wedged callers still receive its eventual value rather than being orphaned...
+    // Abort releases abandoned-scan callers even if the mount never answers.
+    await expect(joined).rejects.toThrow()
     wedged.resolve(99)
-    expect((await joined).value).toBe(99)
-    // ...but it must not overwrite the replacement's newer result with a fresh ttl.
     expect(await coalescer.run('root', { ttlMs: 10_000 }, task)).toEqual({ value: 2, cached: true })
+  })
+
+  it('aborts the scan it abandons so its walk stops doing filesystem work', async () => {
+    let now = 1_000
+    const coalescer = new SkillScanCoalescer<number>(8, () => now)
+    const signals: AbortSignal[] = []
+    const task = (signal: AbortSignal): Promise<number> => {
+      signals.push(signal)
+      return signals.length === 1 ? new Promise<number>(() => {}) : Promise.resolve(2)
+    }
+
+    void coalescer.run('root', { ttlMs: 10_000 }, task).catch(() => undefined)
+    expect(signals[0].aborted).toBe(false)
+    now = 40_000
+    await coalescer.run('root', { ttlMs: 10_000 }, task)
+
+    expect(signals[0].aborted).toBe(true)
+    // The new owner must not be aborted with its predecessor.
+    expect(signals[1].aborted).toBe(false)
+  })
+
+  // Keep healthy superseded callers alive; publish ownership already prevents stale caching.
+  it('does not abort the scan a refresh supersedes', async () => {
+    const coalescer = new SkillScanCoalescer<string>(8)
+    const slowScan = deferred<string>()
+    const signals: AbortSignal[] = []
+
+    const inFlight = coalescer.run('root', { ttlMs: 10_000 }, (signal) => {
+      signals.push(signal)
+      return slowScan.promise
+    })
+    await coalescer.run('root', { ttlMs: 10_000, refresh: true }, async () => 'after-install')
+
+    expect(signals[0].aborted).toBe(false)
+    slowScan.resolve('before-install')
+    expect((await inFlight).value).toBe('before-install')
+  })
+
+  // A stuck syscall cannot settle on abort; budget abandoned scans until actual completion.
+  it('sheds a replacement once too many abandoned scans are still live', async () => {
+    let now = 1_000
+    const coalescer = new SkillScanCoalescer<number>(64, () => now)
+    const task = (): Promise<number> => new Promise<number>(() => {})
+    const keys = Array.from({ length: 17 }, (_unused, index) => `root-${index}`)
+
+    // Each stalled root spends abandonment budget when a caller seeks a replacement.
+    for (const key of keys) {
+      void coalescer.run(key, { ttlMs: 10_000 }, task).catch(() => undefined)
+    }
+    now = 40_000
+    const shed: string[] = []
+    for (const key of keys) {
+      void coalescer.run(key, { ttlMs: 10_000 }, task).catch((error: unknown) => {
+        if (error instanceof SkillScanShedError) {
+          shed.push(key)
+        }
+      })
+    }
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(shed).toEqual(['root-16'])
   })
 })

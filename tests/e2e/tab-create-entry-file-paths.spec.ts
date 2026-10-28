@@ -19,17 +19,20 @@ test('new-tab file results prioritize the filename and reveal the full path on h
   await ensureTerminalVisible(orcaPage)
 
   const newTab = orcaPage.getByRole('button', { name: 'New tab' })
-  // Keyboard activation avoids the animated tab bar's pointer stability gate in CI.
-  await newTab.press('Space')
-  const searchInput = orcaPage.getByRole('combobox')
-  await searchInput.fill('s')
-  // Not the placeholder/aria-label: that copy is translated and already drifted
-  // once. aria-controls points at the results listbox id, which is structural.
-  const input = orcaPage.locator('input[role="combobox"][aria-controls="tab-create-entry-results"]')
-  await input.fill('secondaryNav')
-
+  // Use untranslated aria-autocomplete because aria-controls appears only once results exist.
+  const input = orcaPage.locator('input[role="combobox"][aria-autocomplete="list"]')
   const row = orcaPage.locator('[role="option"]').filter({ hasText: 'Open file' }).first()
-  await expect(row).toBeVisible()
+  // Activate by keyboard to avoid animated-strip stability; reopen/refill until async file scanning produces a result.
+  await expect(async () => {
+    if ((await newTab.getAttribute('aria-expanded')) !== 'true') {
+      await newTab.press('Space')
+    }
+    await expect(input).toBeVisible({ timeout: 1_000 })
+    if ((await input.inputValue()) !== 'secondaryNav') {
+      await input.fill('secondaryNav')
+    }
+    await expect(row).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(row).toContainText('SecondaryNav.tsx')
   await expect(row).toContainText('packages/orca/src/renderer/src/components/navigation/')
   const rowText = await row.textContent()
@@ -48,16 +51,12 @@ test('new-tab file results prioritize the filename and reveal the full path on h
   })
   expect(overflow).toEqual({ filenameClipped: false, rowClipped: false })
 
-  // Two hovers on purpose: results stream in and remount the row, and Radix only
-  // opens on a pointermove it actually receives. A single hover can land before
-  // the remount and leave the cursor sitting still over a row that never saw it.
+  // Hover twice because streamed results can remount under a stationary pointer before Radix receives pointermove.
   await row.hover({ position: { x: 20, y: 12 } })
   await orcaPage.waitForTimeout(250)
   await row.hover({ position: { x: 40, y: 12 } })
 
-  // Exact cursor placement is arithmetic, unit-tested via cursorTooltipOffsets.
-  // Asserting it here measured the app mid-reflow and was flaky; what E2E is
-  // uniquely good for is that the tooltip really opens with the whole path.
+  // Units pin exact cursor offsets; E2E proves the full-path tooltip opens without measuring mid-reflow geometry.
   await expect(
     orcaPage.locator('[data-slot="tooltip-content"]').filter({ hasText: relativeFilePath })
   ).toBeVisible()

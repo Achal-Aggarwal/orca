@@ -4,10 +4,15 @@ import { ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import NoticeHostGlyph from './NoticeHostGlyph'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 
 type NewExternalWorktreesInboxLineProps = {
   repoDisplayName: string
+  /** Disambiguates checkouts when the project appears on multiple hosts. */
+  hostContextLabel?: string
+  hostContextHostId?: ExecutionHostId
   inboxCount: number
   pending: boolean
   error: string | null
@@ -18,6 +23,8 @@ type NewExternalWorktreesInboxLineProps = {
 
 export default function NewExternalWorktreesInboxLine({
   repoDisplayName,
+  hostContextLabel,
+  hostContextHostId,
   inboxCount,
   pending,
   error,
@@ -29,10 +36,18 @@ export default function NewExternalWorktreesInboxLine({
     'auto.components.sidebar.NewExternalWorktreesInboxLine.c3e8a1f4b2',
     "Don't show again"
   )
+  // Accessible names need host labels to distinguish the same project on multiple hosts.
+  const repoScopeLabel = hostContextLabel
+    ? translate(
+        'auto.components.sidebar.NewExternalWorktreesInboxLine.6c07f3a91e',
+        '{{value0}} on {{value1}}',
+        { value0: repoDisplayName, value1: hostContextLabel }
+      )
+    : repoDisplayName
   const suppressAriaLabel = translate(
     'auto.components.sidebar.NewExternalWorktreesInboxLine.9f2d4c8b17',
     'Hide external worktrees permanently for {{value0}}',
-    { value0: repoDisplayName }
+    { value0: repoScopeLabel }
   )
   const isSingular = inboxCount === 1
   const countLabel = isSingular
@@ -48,12 +63,12 @@ export default function NewExternalWorktreesInboxLine({
     ? translate(
         'auto.components.sidebar.NewExternalWorktreesInboxLine.7f18c5b0d3',
         'Review {{value0}} hidden worktree in {{value1}}',
-        { value0: inboxCount, value1: repoDisplayName }
+        { value0: inboxCount, value1: repoScopeLabel }
       )
     : translate(
         'auto.components.sidebar.NewExternalWorktreesInboxLine.4e2b7a9c05',
         'Review {{value0}} hidden worktrees in {{value1}}',
-        { value0: inboxCount, value1: repoDisplayName }
+        { value0: inboxCount, value1: repoScopeLabel }
       )
 
   if (inboxCount === 0) {
@@ -83,11 +98,25 @@ export default function NewExternalWorktreesInboxLine({
             {inboxCount}
           </span>
           <span className="min-w-0 flex-1 truncate text-left">{countLabel}</span>
+          {hostContextLabel ? (
+            <span className="inline-flex min-w-0 shrink items-center gap-1">
+              {hostContextHostId ? (
+                <NoticeHostGlyph
+                  hostId={hostContextHostId}
+                  hostLabel={hostContextLabel}
+                  keyboardFocusable={false}
+                />
+              ) : null}
+              <span className="min-w-0 truncate text-[10px] leading-none text-muted-foreground">
+                {hostContextLabel}
+              </span>
+            </span>
+          ) : null}
           <ChevronRight
             aria-hidden="true"
             className={cn(
               'size-3 shrink-0',
-              // Why: the suppress control takes over this slot on hover.
+              // Suppress replaces this indicator on hover.
               onSuppress &&
                 'can-hover:group-hover:opacity-0 can-hover:group-focus-within:opacity-0 [@media(hover:none)]:opacity-0'
             )}

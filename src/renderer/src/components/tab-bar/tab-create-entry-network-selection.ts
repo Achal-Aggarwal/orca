@@ -27,15 +27,19 @@ export function useNetworkSafeTabEntrySelection({
   const pinnedOptionIndex = pinnedOptionId
     ? activeOptions.findIndex((option) => getActiveOptionId(option) === pinnedOptionId)
     : -1
+  const missingPinnedAgent =
+    pinnedOptionIndex < 0 &&
+    (pinnedOptionId?.startsWith('chat:') || pinnedOptionId?.startsWith('cli:'))
   const rankedOption = pinnedOptionIndex < 0 ? activeOptions[0] : undefined
   const rankedClassification =
     rankedOption?.kind === 'entry' ? rankedOption.option.classification : null
+  // Wait for file indexing before history navigation so an unseen file match cannot lose to a network destination.
   const rankedNetworkAction =
     !forcedSearch &&
-    (rankedClassification?.kind === 'search' || rankedClassification?.kind === 'host-url')
-  // Why: a still-scanning index can promote a file match later, so hold Enter
-  // unless the scan can no longer change the ranking — it failed outright, or
-  // the text is a phrase that would never rank as a file.
+    (rankedOption?.kind === 'history' ||
+      rankedClassification?.kind === 'search' ||
+      rankedClassification?.kind === 'host-url')
+  // Hold network Enter until scanning cannot change ranking: completed/failed indexing or an unambiguous search phrase.
   const networkRankingSettled =
     fileIndexReady ||
     fileIndexFailed ||
@@ -43,9 +47,7 @@ export function useNetworkSafeTabEntrySelection({
       isUnambiguousSearchQuery(rankedClassification.query))
   const rankingKey = `${menuOpen}:${query}`
   const hasRankedOption = rankedOption !== undefined
-  // Why: once a query ranked a local action first, a later re-index that promotes
-  // a network row must not arm Enter under the user's fingers — the text they
-  // aimed at a file would silently leave for a search engine. Retyping clears it.
+  // Do not arm network Enter after reindexing replaces a file ranking; require fresh typing to establish intent.
   const blockedNetworkRankingRef = useRef<string | null>(null)
   useEffect(() => {
     if (fileIndexReady && hasRankedOption && !rankedNetworkAction) {
@@ -54,8 +56,9 @@ export function useNetworkSafeTabEntrySelection({
   }, [fileIndexReady, hasRankedOption, rankedNetworkAction, rankingKey])
   const networkActionAllowed =
     networkRankingSettled && blockedNetworkRankingRef.current !== rankingKey
-  const activeSelectedIndex =
-    pinnedOptionIndex >= 0
+  const activeSelectedIndex = missingPinnedAgent
+    ? null
+    : pinnedOptionIndex >= 0
       ? pinnedOptionIndex
       : activeOptions.length === 0 || (rankedNetworkAction && !networkActionAllowed)
         ? null

@@ -1,16 +1,12 @@
 import { execFile, type ExecFileException } from 'node:child_process'
 
-// Why this exists: a startup color reply is written to the PTY master, and a POSIX
-// line discipline in ECHO copies it straight back out as visible junk (#12112).
-// Whether that will happen is readable state on the slave, not something that has to
-// be inferred from the bytes that come back — so Orca asks instead of guessing.
+// Probe line discipline for prompt readiness only. Never defer replies awaiting ECHO-clear: asynchronous writes reordered
+// replies into later programs’ stdin (#15559). Suppress echoes on output via pty-startup-reply-echo-shapes.ts.
 
 /** `unknown` means "could not be determined", never "assume quiet". */
 export type PtySlaveLineDisciplineEcho = 'echoing' | 'quiet' | 'unknown'
 
-export type PtySlaveEchoProbe = () => Promise<PtySlaveLineDisciplineEcho>
-
-export type PtySlaveLineEditorState = 'line-editor' | 'other' | 'unknown'
+export type PtySlaveLineEditorState = 'line-editor' | 'other' | 'unknown' | 'unavailable'
 
 export type PtySlaveLineEditorProbe = () => Promise<PtySlaveLineEditorState>
 
@@ -28,14 +24,6 @@ function sttyArgs(ptsName: string, platform: NodeJS.Platform): readonly string[]
     : ['-a', '-F', ptsName]
 }
 
-function parseEchoFlag(sttyOutput: string): PtySlaveLineDisciplineEcho {
-  const match = ECHO_FLAG.exec(sttyOutput)
-  if (!match) {
-    return 'unknown'
-  }
-  return match[1] === '-' ? 'quiet' : 'echoing'
-}
-
 function parseLineEditorState(sttyOutput: string): PtySlaveLineEditorState {
   const echo = ECHO_FLAG.exec(sttyOutput)
   const icanon = ICANON_FLAG.exec(sttyOutput)
@@ -49,12 +37,7 @@ function parseLineEditorState(sttyOutput: string): PtySlaveLineEditorState {
 
 type SttyProbeResult = { stdout: string | null; permanent: boolean }
 
-/**
- * A spawn that never ran (`stty` absent) or a device that answered non-zero (reaped,
- * not a tty) will answer the same way forever. A kill by the timeout, or a fork that
- * failed for want of a resource, is contention — the very thing a multi-pane restore
- * produces — and must not condemn the pty to guessing for the rest of its life.
- */
+/** Missing stty/reaped/non-TTY devices fail permanently; timeout/resource contention during restore must remain retryable. */
 function isPermanentSttyFailure(error: ExecFileException): boolean {
   if (error.killed || error.signal) {
     return false
@@ -79,28 +62,10 @@ function runStty(ptsName: string, platform: NodeJS.Platform): Promise<SttyProbeR
   })
 }
 
-/**
- * node-pty's UnixTerminal carries the slave device path, but its public typings do not
- * declare it and the Windows terminal has no such field — so read it defensively.
- */
+/** node-pty exposes Unix ptsName outside public typings; Windows omits it, so read defensively. */
 export function readPtySlavePath(pty: unknown): string | undefined {
   const candidate = (pty as { ptsName?: unknown } | null | undefined)?.ptsName
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined
-}
-
-/**
- * Probe for whether the slave would echo a write to the master right now.
- *
- * Returns undefined when the platform has no line discipline to read: ConPTY and
- * wsl.exe do not echo a master write at all, so a caller with no probe is correct to
- * write immediately rather than degraded. A probe that exists but answers `unknown`
- * is the degraded case, and callers must not read that as `quiet`.
- */
-export function createPtySlaveEchoProbe(
-  ptsName: string | undefined,
-  platform: NodeJS.Platform = process.platform
-): PtySlaveEchoProbe | undefined {
-  return createSttyProbe(ptsName, platform, parseEchoFlag)
 }
 
 export function createPtySlaveLineEditorProbe(
@@ -114,25 +79,27 @@ function createSttyProbe<T extends string>(
   ptsName: string | undefined,
   platform: NodeJS.Platform,
   parse: (output: string) => T | 'unknown'
-): (() => Promise<T | 'unknown'>) | undefined {
+): (() => Promise<T | 'unknown' | 'unavailable'>) | undefined {
   if (platform === 'win32' || !ptsName) {
     return undefined
   }
-  // Why latch: `stty` missing or the slave already reaped is a permanent condition for
-  // this pty, and the caller polls — without this a dead probe respawns a process per
-  // attempt. A successful probe is never cached, because the bit is what changes, and a
-  // transient failure is not latched at all (see isPermanentSttyFailure).
+  // Latch only permanent missing/reaped failures to avoid repeated dead subprocesses. Success and resource contention
+  // must be re-probed because line discipline changes.
   let unavailable = false
   let inFlight: Promise<SttyProbeResult> | null = null
   return async () => {
     if (unavailable) {
-      return 'unknown'
+      return 'unavailable'
     }
     inFlight ??= runStty(ptsName, platform).finally(() => {
       inFlight = null
     })
     const result = await inFlight
     unavailable = result.permanent
-    return result.stdout === null ? 'unknown' : parse(result.stdout)
+    return result.stdout === null
+      ? result.permanent
+        ? 'unavailable'
+        : 'unknown'
+      : parse(result.stdout)
   }
 }

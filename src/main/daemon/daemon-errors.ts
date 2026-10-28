@@ -1,10 +1,15 @@
-// Error classes shared across the daemon protocol boundary (client, server,
-// host). Split from types.ts, which is capped for wire-shape declarations.
+const ATTACH_CANCELED_PREFIX = 'Attach canceled for session '
+
 export class TerminalAttachCanceledError extends Error {
   constructor(sessionId: string) {
-    super(`Attach canceled for session ${sessionId}`)
+    super(`${ATTACH_CANCELED_PREFIX}${sessionId}`)
     this.name = 'TerminalAttachCanceledError'
   }
+}
+
+/** Only the error message survives daemon transport. */
+export function isTerminalAttachCanceledMessage(message: string): boolean {
+  return message.startsWith(ATTACH_CANCELED_PREFIX)
 }
 
 export class DaemonProtocolError extends Error {
@@ -14,10 +19,37 @@ export class DaemonProtocolError extends Error {
   }
 }
 
+/** Control transport failed; every session sharing it needs reconnection, regardless of request delivery. */
+export class DaemonConnectionLostError extends DaemonProtocolError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DaemonConnectionLostError'
+  }
+}
+
+/** A request deadline alone does not establish connection loss. */
+export class DaemonRequestTimeoutError extends DaemonProtocolError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DaemonRequestTimeoutError'
+  }
+}
+
+/** Route an unresponsive but still-connected daemon through legacy reconnect matching. */
+export const DAEMON_UNAVAILABLE_RECONNECT_MESSAGE = 'Daemon temporarily unavailable; reconnect'
+
 export class SessionNotFoundError extends Error {
   constructor(sessionId: string) {
     super(`Session not found: ${sessionId}`)
     this.name = 'SessionNotFoundError'
+  }
+}
+
+/** The process may still be alive, but no input can reach it through this PTY master. */
+export class SessionInputClosedError extends Error {
+  constructor(sessionId: string) {
+    super(`Session input closed: ${sessionId}`)
+    this.name = 'SessionInputClosedError'
   }
 }
 
@@ -35,7 +67,7 @@ export class TerminalHostGoneError extends Error {
   }
 }
 
-// Connect ENOENT/ECONNREFUSED proves the endpoint is absent; open ENOENT can be a missing token file.
+// Connect errors establish endpoint failure; open ENOENT may only mean a missing token file.
 export function isDaemonEndpointGoneError(err: unknown): boolean {
   const candidate = err as { code?: unknown; syscall?: unknown } | null
   return (

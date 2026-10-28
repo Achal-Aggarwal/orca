@@ -1,16 +1,25 @@
-import { routeNativeChatHref } from '../../../../shared/native-chat-href-routing'
-import type { Worktree } from '../../../../shared/worktree/types'
+import { chatWorkspaceByTabId } from '@/lib/structured-chat-tab-index'
+import {
+  routeNativeChatHref,
+  type NativeChatHrefRoute
+} from '../../../../shared/native-chat-href-routing'
+import { WINDOWS_DRIVE_PATH_PREFIX } from '../../../../shared/file-uri-path'
+import { normalizeAbsolutePath } from '../../../../shared/terminal-path-normalization'
 import {
   parseExplicitFileLinkTarget,
-  resolveExplicitFileLinkTarget
-} from '@/lib/explicit-file-link-target'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+  resolveExplicitFileLinkTarget,
+  resolveExplicitFileLinkTargetPath
+} from '../../../../shared/explicit-file-link-target'
+import { runtimeEnvironmentIdOrLocalUnlessTwin } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '@/store/types'
+import { resolveNativeChatTabDirectory } from './native-chat-tab-directory'
 
 export type NativeChatFileLinkContext = {
   worktreeId: string
   worktreePath: string
   runtimeEnvironmentId: string | null
+  /** The chat's own tab (terminal or agent-session); editor opens place beside its group. */
+  sourceTabId?: string
 }
 
 export type NativeChatResolvedFileLink = {
@@ -19,65 +28,89 @@ export type NativeChatResolvedFileLink = {
   column: number | null
 }
 
-type NativeChatFileLinkState = Pick<
+export type NativeChatFileLinkState = Pick<
   AppState,
+  | 'detectedWorktreesByRepo'
   | 'folderWorkspaces'
-  | 'getKnownWorktreeById'
+  | 'floatingWorkspacePath'
   | 'projectGroups'
   | 'repos'
   | 'settings'
   | 'tabsByWorktree'
   | 'worktreesByRepo'
->
+> & {
+  unifiedTabsByWorktree?: AppState['unifiedTabsByWorktree']
+  structuredSessionLaunchDirectoryByTabId?: AppState['structuredSessionLaunchDirectoryByTabId']
+}
 
 export function findTerminalTabWorktreeId(
   tabsByWorktree: NativeChatFileLinkState['tabsByWorktree'],
   terminalTabId: string
 ): string | null {
-  for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
-    // Why: tabsByWorktree stores TerminalTab records; unified tabs carry
-    // entityId, but the terminal owner lookup must use the backing tab id.
-    if (tabs.some((tab) => tab.id === terminalTabId)) {
-      return worktreeId
-    }
-  }
-  return null
+  return chatWorkspaceByTabId(tabsByWorktree, terminalTabId)
 }
 
-function findWorktreeFallback(
-  worktreesByRepo: NativeChatFileLinkState['worktreesByRepo'],
-  worktreeId: string
-): Pick<Worktree, 'id' | 'path'> | null {
-  for (const worktrees of Object.values(worktreesByRepo)) {
-    const worktree = worktrees.find((entry) => entry.id === worktreeId)
-    if (worktree) {
-      return worktree
+/** The workspace that owns a native chat tab, independent of whether its directory is known. */
+export function findNativeChatTabOwnerWorktreeId(
+  state: Pick<NativeChatFileLinkState, 'tabsByWorktree' | 'unifiedTabsByWorktree'>,
+  tabId: string
+): string | null {
+  return (
+    findTerminalTabWorktreeId(state.tabsByWorktree, tabId) ??
+    chatWorkspaceByTabId(state.unifiedTabsByWorktree, tabId)
+  )
+}
+
+export function createNativeChatTabOwnerSelector(tabId: string) {
+  let terminalTabs: NativeChatFileLinkState['tabsByWorktree'] | null = null
+  let unifiedTabs: NativeChatFileLinkState['unifiedTabsByWorktree']
+  let owner: string | null = null
+  return (state: Pick<NativeChatFileLinkState, 'tabsByWorktree' | 'unifiedTabsByWorktree'>) => {
+    // Hidden chats still subscribe; ownership changes only with the immutable tab maps.
+    if (terminalTabs !== state.tabsByWorktree || unifiedTabs !== state.unifiedTabsByWorktree) {
+      owner = findNativeChatTabOwnerWorktreeId(state, tabId)
+      terminalTabs = state.tabsByWorktree
+      unifiedTabs = state.unifiedTabsByWorktree
     }
+    return owner
   }
-  return null
 }
 
 export function resolveNativeChatFileLinkContext(
   state: NativeChatFileLinkState,
   terminalTabId: string
 ): NativeChatFileLinkContext | null {
-  const worktreeId = findTerminalTabWorktreeId(state.tabsByWorktree, terminalTabId)
+  return resolveNativeChatFileLinkContextForOwner(
+    state,
+    terminalTabId,
+    findNativeChatTabOwnerWorktreeId(state, terminalTabId)
+  )
+}
+
+export function createNativeChatFileLinkContextSelector(tabId: string) {
+  const selectOwner = createNativeChatTabOwnerSelector(tabId)
+  return (state: NativeChatFileLinkState) =>
+    resolveNativeChatFileLinkContextForOwner(state, tabId, selectOwner(state))
+}
+
+export function resolveNativeChatFileLinkContextForOwner(
+  state: Omit<NativeChatFileLinkState, 'tabsByWorktree'>,
+  terminalTabId: string,
+  worktreeId: string | null
+): NativeChatFileLinkContext | null {
   if (!worktreeId) {
     return null
   }
-
-  const knownWorktree = state.getKnownWorktreeById(worktreeId)
-  const worktree = knownWorktree?.path
-    ? knownWorktree
-    : findWorktreeFallback(state.worktreesByRepo, worktreeId)
-  if (!worktree?.path) {
+  const worktreePath = resolveNativeChatTabDirectory(state, terminalTabId, worktreeId)
+  if (!worktreePath) {
     return null
   }
 
   return {
     worktreeId,
-    worktreePath: worktree.path,
-    runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+    worktreePath,
+    runtimeEnvironmentId: runtimeEnvironmentIdOrLocalUnlessTwin(state, worktreeId),
+    sourceTabId: terminalTabId
   }
 }
 
@@ -90,8 +123,7 @@ function resolvePathText(
   if (!parsed) {
     return null
   }
-  // Native chat hrefs are explicit agent-authored links, so avoid the terminal
-  // detector's conservative extension/filename filters.
+  // Explicit agent-authored hrefs bypass automatic terminal-detection filename filters.
   const resolved = resolveExplicitFileLinkTarget(parsed, context.worktreePath)
   if (!resolved) {
     return null
@@ -103,6 +135,19 @@ function resolvePathText(
   }
 }
 
+// Chats open a drive-letter workspace as native Windows (no WSL mapping), so URL-style /D:/… there is D:.
+function routeNativeChatFileHref(
+  href: string | undefined,
+  worktreePath: string
+): NativeChatHrefRoute {
+  const route = routeNativeChatHref(href)
+  return route.kind === 'file' &&
+    WINDOWS_DRIVE_PATH_PREFIX.test(route.pathText) &&
+    normalizeAbsolutePath(worktreePath)?.rootKind === 'windows'
+    ? { ...route, pathText: route.pathText.slice(1) }
+    : route
+}
+
 export function resolveNativeChatFileLink(
   href: string | undefined,
   context: NativeChatFileLinkContext | null
@@ -110,9 +155,13 @@ export function resolveNativeChatFileLink(
   if (!context) {
     return null
   }
-  const route = routeNativeChatHref(href)
+  const route = routeNativeChatFileHref(href, context.worktreePath)
   if (route.kind !== 'file') {
     return null
+  }
+  if (route.pathKind === 'literal') {
+    const absolutePath = resolveExplicitFileLinkTargetPath(route.pathText, context.worktreePath)
+    return absolutePath ? { absolutePath, line: null, column: null } : null
   }
   return resolvePathText(route.pathText, route.line, context)
 }

@@ -1,6 +1,7 @@
 import type { Dirent } from 'node:fs'
 import { readdir, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
+import { isSkillStagingEntryName } from './skill-delete/staging-names'
 
 export const SKILL_FILE_NAME = 'SKILL.md'
 
@@ -24,13 +25,17 @@ async function readEntries(dirPath: string): Promise<Dirent[] | null> {
   }
 }
 
-export async function findSkillFiles(rootPath: string, maxDepth: number): Promise<string[]> {
+/** Abort prevents future filesystem work; dispatched readdir/realpath/stat calls cannot be cancelled and finish in libuv. */
+export async function findSkillFiles(
+  rootPath: string,
+  maxDepth: number,
+  signal?: AbortSignal
+): Promise<string[]> {
   const out: string[] = []
   const visitedDirectoryPaths = new Set<string>()
   async function visit(dirPath: string): Promise<void> {
-    if (!isWithinDepth(rootPath, dirPath, maxDepth)) {
-      return
-    }
+    // Reject on abort; a cached truncated listing would falsely report skills removed.
+    signal?.throwIfAborted()
     let resolvedDirPath: string
     try {
       resolvedDirPath = await realpath(dirPath)
@@ -46,7 +51,14 @@ export async function findSkillFiles(rootPath: string, maxDepth: number): Promis
     if (!entries) {
       return
     }
+    // Directory entry names add one segment, so siblings share the depth verdict.
+    let childrenWithinDepth: boolean | undefined
     for (const entry of entries) {
+      signal?.throwIfAborted()
+      // Hide transaction siblings so in-flight skills cannot appear twice or be deleted again.
+      if (isSkillStagingEntryName(entry.name)) {
+        continue
+      }
       const entryPath = join(dirPath, entry.name)
       if (entry.name === SKILL_FILE_NAME) {
         if (entry.isFile()) {
@@ -65,18 +77,25 @@ export async function findSkillFiles(rootPath: string, maxDepth: number): Promis
         continue
       }
       if (entry.isDirectory()) {
-        await visit(entryPath)
+        if ((childrenWithinDepth ??= isWithinDepth(rootPath, entryPath, maxDepth))) {
+          await visit(entryPath)
+        }
         continue
       }
-      if (entry.isSymbolicLink()) {
-        // Why: users commonly symlink agent skill dirs across providers; follow
-        // directory links but guard by realpath so recursive links cannot loop.
+      if (
+        entry.isSymbolicLink() &&
+        (childrenWithinDepth ??= isWithinDepth(rootPath, entryPath, maxDepth))
+      ) {
+        // Follow provider directory links but guard realpaths against cycles.
+        let linksToDirectory = false
         try {
-          if ((await stat(entryPath)).isDirectory()) {
-            await visit(entryPath)
-          }
+          linksToDirectory = (await stat(entryPath)).isDirectory()
         } catch {
           // Broken links are not valid skill directories.
+        }
+        // Keep recursive visit outside broken-link catch so nested aborts cannot become successful truncated scans.
+        if (linksToDirectory) {
+          await visit(entryPath)
         }
       }
     }

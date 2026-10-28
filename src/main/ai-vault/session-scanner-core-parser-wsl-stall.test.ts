@@ -29,6 +29,8 @@ import {
   resetSessionParseCacheForTests
 } from './session-scanner-parse-cache'
 import {
+  resetWslTranscriptFsGateForTests,
+  WSL_TRANSCRIPT_FS_ROUTE_QUARANTINE_BASE_MS,
   WSL_TRANSCRIPT_FS_SCAN_TIMEOUT_MS,
   WslTranscriptFsError
 } from '../native-chat/wsl-transcript-fs-gate'
@@ -107,8 +109,18 @@ function missing(): Error {
   return Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }
 
+// UNC child serialization reads every Dirent kind flag.
 function dirent(name: string) {
-  return { name, isFile: () => true }
+  return {
+    name,
+    isBlockDevice: () => false,
+    isCharacterDevice: () => false,
+    isDirectory: () => false,
+    isFIFO: () => false,
+    isFile: () => true,
+    isSocket: () => false,
+    isSymbolicLink: () => false
+  }
 }
 
 function candidate(agent: SessionFileCandidate['agent'], path: string): SessionFileCandidate {
@@ -132,13 +144,15 @@ async function expectRefusal(target: SessionFileCandidate): Promise<void> {
   await refusal
 }
 
+// Late results cannot clear quarantine; advance through backoff before retrying.
 async function releaseAndSettle(): Promise<void> {
   releaseStall?.()
   releaseStall = undefined
-  await vi.advanceTimersByTimeAsync(0)
+  await vi.advanceTimersByTimeAsync(WSL_TRANSCRIPT_FS_ROUTE_QUARANTINE_BASE_MS)
 }
 
 beforeEach(() => {
+  resetWslTranscriptFsGateForTests()
   resetSessionParseCacheForTests()
   mocks.open.mockReset()
   mocks.readFile.mockReset()
@@ -146,7 +160,8 @@ beforeEach(() => {
   mocks.stat.mockReset()
   releaseStall = undefined
   mocks.stat.mockRejectedValue(missing())
-  vi.useFakeTimers()
+  // performance.now drives the route quarantine clock, so it must be faked too.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] })
 })
 
 afterEach(async () => {
@@ -176,8 +191,6 @@ describe('Kimi session parse against a stalled WSL transcript', () => {
     expect(recovered?.messageCount).toBe(1)
   })
 
-  // Pins the narrowness of the parser's `instanceof WslTranscriptFsError`
-  // rethrow: widening it to every error turns this into a hard scan issue.
   it('still returns a metadata-only session when the wire file is simply missing', async () => {
     const state = uncPath('KimiMissing', ...KIMI_HOME, 'state.json')
     mocks.readFile.mockResolvedValue(KIMI_STATE)
@@ -251,8 +264,6 @@ describe('OpenCode session parse against a stalled WSL transcript', () => {
     expect(recovered?.messageCount).toBe(1)
   })
 
-  // Same guard as Kimi's: a live process mid-write must stay a parseable
-  // session, not a refusal.
   it('still returns the session when a live process left a half-written message', async () => {
     const file = sessionPath('OpenCodeHalfWritten')
     mocks.readdir.mockResolvedValue([dirent('msg-1.json')])

@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import type { Repo } from '../../../../shared/repo-types'
 import type {
   TerminalQuickCommand,
   TerminalQuickCommandScope
 } from '../../../../shared/terminal-quick-command-types'
+import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   getTerminalQuickCommandAction,
@@ -11,6 +11,7 @@ import {
   isTerminalAgentQuickCommand,
   supportsTerminalAgentQuickCommand
 } from '../../../../shared/terminal-quick-commands'
+import { getTerminalQuickCommandBodySize } from '../../../../shared/terminal-quick-command-prompt-limit'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
   Dialog,
@@ -22,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { getAgentCatalog } from '@/lib/agent-catalog'
 import { getScreenSubmitShortcutLabel, isScreenSubmitShortcut } from '@/lib/screen-submit-shortcut'
+import { isSelectAllShortcut } from '@/lib/editable-target'
 import { TerminalQuickCommandActionToggle } from './TerminalQuickCommandActionToggle'
 import { TerminalQuickCommandAdvancedSection } from './TerminalQuickCommandAdvancedSection'
 import { TerminalQuickCommandContentSection } from './TerminalQuickCommandContentSection'
@@ -43,8 +45,11 @@ type TerminalQuickCommandDialogProps = {
   /** Settings has no ambient workspace to imply scope from, so it opens the
    *  Advanced section up front. In-workspace entry points leave it collapsed. */
   defaultAdvancedOpen?: boolean
+  /** An older target host's agent-prompt character cap; `null` (the default) means none. */
+  agentPromptMaxLength?: number | null
   onOpenChange: (open: boolean) => void
-  onSave: (command: TerminalQuickCommand) => void
+  /** Resolves whether the save landed; the dialog closes only then, so a refusal keeps the text. */
+  onSave: (command: TerminalQuickCommand) => Promise<boolean> | boolean
 }
 
 const EMPTY_REPOS: Pick<Repo, 'id' | 'displayName' | 'path' | 'badgeColor'>[] = []
@@ -67,6 +72,7 @@ export function TerminalQuickCommandDialog({
   command,
   repos = EMPTY_REPOS,
   defaultAdvancedOpen = false,
+  agentPromptMaxLength = null,
   onOpenChange,
   onSave
 }: TerminalQuickCommandDialogProps): React.JSX.Element {
@@ -74,8 +80,13 @@ export function TerminalQuickCommandDialog({
     getAgentCatalog().find((entry) => supportsTerminalAgentQuickCommand(entry.id))?.id ?? 'claude'
   const [draft, setDraft] = useState<TerminalQuickCommand>(command)
   const wasOpenRef = useRef(open)
+  const savingRef = useRef(false)
+  const [saving, setSaving] = useState(false)
   const syncedCommandRef = useRef(command)
-  const draftMemoryRef = useRef(createTerminalQuickCommandDialogDraftMemory(command, fallbackAgent))
+  const draftMemoryRef = useRef<ReturnType<typeof createTerminalQuickCommandDialogDraftMemory>>(
+    undefined!
+  )
+  draftMemoryRef.current ??= createTerminalQuickCommandDialogDraftMemory(command, fallbackAgent)
   const initialScope = getTerminalQuickCommandScope(command)
   const lastRepoScopeIdRef = useRef<string | null>(
     initialScope.type === 'repo' ? initialScope.repoId : null
@@ -105,6 +116,13 @@ export function TerminalQuickCommandDialog({
 
   const selectedAgent =
     isAgentAction && supportsTerminalAgentQuickCommand(draft.agent) ? draft.agent : fallbackAgent
+  const bodySize = getTerminalQuickCommandBodySize(
+    selectedAction,
+    isAgentAction ? draft.prompt : draft.command,
+    agentPromptMaxLength
+  )
+  // Why: past the limit the host refuses the save, so block it instead of losing the text.
+  const bodyTooLong = bodySize.used > bodySize.max
 
   const setAction = (action: 'terminal-command' | 'agent-prompt'): void => {
     setDraft((current) => {
@@ -129,7 +147,10 @@ export function TerminalQuickCommandDialog({
     )
   }
 
-  const saveDraft = (): void => {
+  const saveDraft = async (): Promise<void> => {
+    if (savingRef.current) {
+      return
+    }
     const next: TerminalQuickCommand = isTerminalAgentQuickCommand(draft)
       ? {
           id: draft.id,
@@ -149,31 +170,49 @@ export function TerminalQuickCommandDialog({
         }
     if (
       !next.label ||
+      bodyTooLong ||
       (isTerminalAgentQuickCommand(next)
         ? !next.prompt.trim() || !supportsTerminalAgentQuickCommand(next.agent)
         : !next.command.trim())
     ) {
       return
     }
-    onSave(next)
-    onOpenChange(false)
+    savingRef.current = true
+    setSaving(true)
+    try {
+      if (await onSave(next)) {
+        onOpenChange(false)
+      }
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  const changeOpen = (nextOpen: boolean): void => {
+    if (!savingRef.current) {
+      onOpenChange(nextOpen)
+    }
   }
 
   const canSave =
+    !saving &&
     draft.label.trim().length > 0 &&
+    !bodyTooLong &&
     (isAgentAction
       ? draft.prompt.trimEnd().length > 0 && supportsTerminalAgentQuickCommand(draft.agent)
       : draft.command.trimEnd().length > 0)
   const submitShortcutLabel = getScreenSubmitShortcutLabel()
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={changeOpen}>
+      {/* Why: fixed large width so Terminal ↔ Agent content swaps never reflow the shell. */}
       <DialogContent
-        className="max-h-[min(88vh,54rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-xl"
+        className="flex max-h-[min(90vh,52rem)] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
         showCloseButton={false}
       >
-        <DialogHeader>
-          <DialogTitle>
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="text-sm">
             {mode === 'edit'
               ? translate(
                   'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.f9b184fc16',
@@ -184,68 +223,88 @@ export function TerminalQuickCommandDialog({
                   'Add Quick Command'
                 )}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs">
             {translate(
               'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.ed04233b3e',
-              'Save terminal commands or agent prompts for quick access.'
+              'Saved items appear in the tab bar menu for one-click run.'
             )}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Why -mx-3/px-3: overflow clips at the padding box, so the padding has
-            to cover the widest negative margin inside (Advanced's -ml-2) plus a
-            focus ring. The matching negative margin keeps children aligned. */}
-        <div
-          className="-mx-3 min-h-0 space-y-4 overflow-y-auto px-3 py-1 scrollbar-sleek"
+        <fieldset
+          disabled={saving}
+          className="scrollbar-sleek flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5"
           onKeyDown={(event) => {
+            if (
+              event.defaultPrevented ||
+              !(event.target instanceof Node) ||
+              !event.currentTarget.contains(event.target)
+            ) {
+              return
+            }
+            if (
+              isSelectAllShortcut(event) &&
+              (event.target instanceof HTMLInputElement ||
+                event.target instanceof HTMLTextAreaElement)
+            ) {
+              event.preventDefault()
+              event.stopPropagation()
+              event.target.select()
+              return
+            }
             if (isScreenSubmitShortcut(event) && canSave) {
               event.preventDefault()
-              saveDraft()
+              void saveDraft()
             }
           }}
         >
-          <TerminalQuickCommandLabelField label={draft.label} setDraft={setDraft} />
-
-          <div className="space-y-2">
-            <Label>
-              {translate(
-                'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.ec8f081919',
-                'Action'
-              )}
-            </Label>
-            <TerminalQuickCommandActionToggle
-              selectedAction={selectedAction}
-              onActionChange={setAction}
-            />
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <TerminalQuickCommandLabelField label={draft.label} setDraft={setDraft} />
+            <div className="space-y-2">
+              <Label>
+                {translate(
+                  'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.ec8f081919',
+                  'Action'
+                )}
+              </Label>
+              <TerminalQuickCommandActionToggle
+                selectedAction={selectedAction}
+                onActionChange={setAction}
+              />
+            </div>
           </div>
 
           <TerminalQuickCommandContentSection
+            disabled={saving}
             draft={draft}
             isAgentAction={isAgentAction}
             selectedAgent={selectedAgent}
+            bodySize={bodySize}
             draftMemoryRef={draftMemoryRef}
             setDraft={setDraft}
+            toggleAppendEnter={toggleAppendEnter}
           />
 
           <TerminalQuickCommandAdvancedSection
-            draft={draft}
+            disabled={saving}
             repos={repos}
             advancedOpen={advancedOpen}
             selectedScope={selectedScope}
+            selectedRepo={selectedRepo}
             selectedRepoId={selectedRepoId}
             selectedRepoMissing={selectedRepoMissing}
             lastRepoScopeIdRef={lastRepoScopeIdRef}
             setAdvancedOpen={setAdvancedOpen}
             setDraft={setDraft}
-            toggleAppendEnter={toggleAppendEnter}
           />
-        </div>
+        </fieldset>
 
         <TerminalQuickCommandDialogFooter
           canSave={canSave}
+          saving={saving}
           submitShortcutLabel={submitShortcutLabel}
-          onCancel={() => onOpenChange(false)}
-          onSave={saveDraft}
+          onCancel={() => changeOpen(false)}
+          onSave={() => void saveDraft()}
         />
       </DialogContent>
     </Dialog>

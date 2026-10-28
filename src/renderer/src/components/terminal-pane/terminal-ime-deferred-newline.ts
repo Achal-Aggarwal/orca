@@ -1,24 +1,30 @@
 import {
+  capturePendingTerminalImeCompositionSessions,
   hasPendingTerminalImeComposition,
   XTERM_COMPOSITION_SESSION_END_EVENT
 } from './terminal-ime-composition-route'
 
 export const TERMINAL_IME_DEFERRED_NEWLINE_FALLBACK_MS = 200
 
+/** Wait only for already-open compositions; later ones must not overtake this input. Newlines allow a fallback; indefinite cursor-chord waits need disposal because early send corrupts preedit and missing compositionend otherwise leaks a stale send. */
 export function sendTerminalInputAfterComposition(
   terminalElement: HTMLElement | null | undefined,
   send: () => void,
-  options?: { fallbackMs?: number }
-): void {
+  options?: { fallbackMs?: number | null }
+): () => void {
   if (!terminalElement) {
-    window.setTimeout(send, 0)
-    return
+    const immediateTimer = window.setTimeout(send, 0)
+    return () => window.clearTimeout(immediateTimer)
   }
 
-  const fallbackMs = options?.fallbackMs ?? TERMINAL_IME_DEFERRED_NEWLINE_FALLBACK_MS
+  const fallbackMs =
+    options?.fallbackMs === null
+      ? null
+      : (options?.fallbackMs ?? TERMINAL_IME_DEFERRED_NEWLINE_FALLBACK_MS)
   let done = false
+  const capturedSessions = capturePendingTerminalImeCompositionSessions(terminalElement)
 
-  const finish = (): void => {
+  const stopWaiting = (): void => {
     if (done) {
       return
     }
@@ -28,13 +34,22 @@ export function sendTerminalInputAfterComposition(
       XTERM_COMPOSITION_SESSION_END_EVENT,
       onCompositionSessionEnd
     )
-    window.clearTimeout(fallbackTimer)
+    if (fallbackTimer !== undefined) {
+      window.clearTimeout(fallbackTimer)
+    }
+  }
+
+  const finish = (): void => {
+    if (done) {
+      return
+    }
+    stopWaiting()
     // xterm flushes the committed glyph after compositionend.
     window.setTimeout(send, 0)
   }
 
   const finishAfterPendingComposition = (): void => {
-    if (!hasPendingTerminalImeComposition(terminalElement)) {
+    if (!hasPendingTerminalImeComposition(terminalElement, capturedSessions)) {
       finish()
     }
   }
@@ -42,28 +57,30 @@ export function sendTerminalInputAfterComposition(
   const onCompositionSessionEnd = (): void => finishAfterPendingComposition()
   terminalElement.addEventListener('compositionend', onCompositionEnd)
   terminalElement.addEventListener(XTERM_COMPOSITION_SESSION_END_EVENT, onCompositionSessionEnd)
-  const fallbackTimer = window.setTimeout(finish, fallbackMs)
+  const fallbackTimer = fallbackMs === null ? undefined : window.setTimeout(finish, fallbackMs)
+
+  return stopWaiting
 }
 
 export type TerminalImeDeferredNewlineSender = {
   defer: (
-    enter: TerminalImeEnterIdentity,
+    enter: TerminalImeKeyIdentity,
     terminalElement: HTMLElement | null | undefined,
     send: () => void
   ) => void
-  absorbRedispatchedEnter: (enter: TerminalImeEnterIdentity) => boolean
+  absorbRedispatchedEnter: (enter: TerminalImeKeyIdentity) => boolean
   releaseRedispatchedEnter: (
-    enter: TerminalImeEnterIdentity,
-    originatingEnter?: TerminalImeEnterIdentity
+    enter: TerminalImeKeyIdentity,
+    originatingEnter?: TerminalImeKeyIdentity
   ) => void
   clearRedispatchedEnters: () => void
 }
 
-export type TerminalImeEnterIdentity = Pick<KeyboardEvent, 'code' | 'timeStamp'>
+export type TerminalImeKeyIdentity = Pick<KeyboardEvent, 'code' | 'timeStamp'>
 
 export type TerminalImeModifiedEnterKind = 'shift' | 'ctrl'
 
-export type TerminalImeModifiedEnterChord = TerminalImeEnterIdentity & {
+export type TerminalImeModifiedEnterChord = TerminalImeKeyIdentity & {
   kind: TerminalImeModifiedEnterKind
   terminalModifierKeyDownObserved?: boolean
 }
@@ -151,7 +168,7 @@ type DeferredNewlineState = {
 export function createTerminalImeDeferredNewlineSender(): TerminalImeDeferredNewlineSender {
   const statesByEnterCode = new Map<string, Map<number, DeferredNewlineState>>()
 
-  const cleanUpIfSettled = (enter: TerminalImeEnterIdentity, state: DeferredNewlineState): void => {
+  const cleanUpIfSettled = (enter: TerminalImeKeyIdentity, state: DeferredNewlineState): void => {
     if (state.inFlightSends <= 0 && state.absorbCredits <= 0) {
       const statesByTimeStamp = statesByEnterCode.get(enter.code)
       statesByTimeStamp?.delete(enter.timeStamp)

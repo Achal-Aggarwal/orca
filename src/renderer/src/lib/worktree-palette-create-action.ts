@@ -1,4 +1,4 @@
-import { isWorktreePaletteQueryTooLarge } from './worktree-palette-query-bounds'
+import { isWorktreePaletteQueryTooLarge } from '../../../shared/palette-match/worktree-palette-query-bounds'
 
 export const CREATE_WORKTREE_ITEM_ID = '__create_worktree__'
 
@@ -10,7 +10,6 @@ export type WorktreePaletteCreateActionState = {
 export function getWorktreePaletteCreateActionState({
   query
 }: {
-  canCreateWorktree: boolean
   query: string
 }): WorktreePaletteCreateActionState {
   const createWorktreeName = query.trim()
@@ -20,11 +19,25 @@ export function getWorktreePaletteCreateActionState({
       showCreateAction: false
     }
   }
-  const showCreateAction = createWorktreeName.length > 0
+  // Composer can add the first project inline, so creation needs no existing project.
   return {
     createWorktreeName,
-    showCreateAction
+    showCreateAction: createWorktreeName.length > 0
   }
+}
+
+/**
+ * cmdk auto-selects the first item once the controlled value is empty, so a
+ * query that matches nothing would leave Create armed for Enter. Creation
+ * therefore needs an explicit gesture — a recognized task URL is the one intent
+ * allowed to arm itself.
+ */
+export function isWorktreePaletteCreateActivationAllowed(args: {
+  hasTaskUrlIntent: boolean
+  hasCreateName: boolean
+  selectionMovedByUser: boolean
+}): boolean {
+  return args.hasTaskUrlIntent || args.hasCreateName || args.selectionMovedByUser
 }
 
 type WorktreePaletteSelectionCandidateEntry = {
@@ -32,9 +45,7 @@ type WorktreePaletteSelectionCandidateEntry = {
   type: string
 }
 
-// Why every rendered CommandItem type belongs here: an id missing from this list fails the
-// `includes` check in getNextWorktreePaletteSelection, so arrowing onto that row snaps the
-// highlight back to the top — making the whole section mouse-only.
+// Include every rendered item type or keyboard navigation’s includes guard snaps its highlight to top, leaving mouse-only rows.
 const SELECTABLE_ENTRY_TYPES = [
   'worktree',
   'create-worktree',
@@ -43,7 +54,8 @@ const SELECTABLE_ENTRY_TYPES = [
   'browser-page',
   'workspace-tab',
   'simulator-tab',
-  'project-target'
+  'project-target',
+  'hint'
 ] as const
 
 type WorktreePaletteSelectableEntryType = (typeof SELECTABLE_ENTRY_TYPES)[number]
@@ -60,27 +72,42 @@ export function isSelectableWorktreePaletteEntry(
 
 export function getWorktreePaletteSelectionItemIds<
   T extends WorktreePaletteSelectionCandidateEntry
->(entries: readonly T[]): string[] {
-  // Why: keyboard focus should mirror rendered order, including synthetic
-  // action rows, while skipping headers and explanatory hint rows.
-  return entries.filter(isSelectableWorktreePaletteEntry).map((entry) => entry.id)
+>(entries: readonly T[], renderKeys: readonly string[] = []): string[] {
+  // Keyboard order must include synthetic actions and skip only headers.
+  // Prefer deduplicated renderKeys; bare IDs omit duplicate rows and snap keyboard highlight to top.
+  return entries
+    .map((entry, index) => ({ entry, id: renderKeys[index] ?? entry.id }))
+    .filter(({ entry }) => isSelectableWorktreePaletteEntry(entry))
+    .map(({ id }) => id)
 }
 
 export function getNextWorktreePaletteSelection({
   currentSelectedItemId,
   queryChanged,
   selectableItemIds,
-  showCreateAction
+  showCreateAction,
+  autoSelectCreateAction = false
 }: {
   currentSelectedItemId: string
   queryChanged: boolean
   selectableItemIds: readonly string[]
   showCreateAction: boolean
+  /**
+   * Only a recognized task URL may land on Create by default. Free text must
+   * never arm Enter to create, no matter how empty the result list is.
+   */
+  autoSelectCreateAction?: boolean
 }): string {
-  const firstSelectableId = selectableItemIds[0] ?? null
+  const defaultSelectableId =
+    (autoSelectCreateAction
+      ? selectableItemIds[0]
+      : selectableItemIds.find((id) => id !== CREATE_WORKTREE_ITEM_ID)) ?? null
+  const fallbackId =
+    defaultSelectableId ??
+    (showCreateAction && autoSelectCreateAction ? CREATE_WORKTREE_ITEM_ID : '')
 
   if (queryChanged) {
-    return firstSelectableId ?? (showCreateAction ? CREATE_WORKTREE_ITEM_ID : '')
+    return fallbackId
   }
 
   if (currentSelectedItemId === CREATE_WORKTREE_ITEM_ID && showCreateAction) {
@@ -91,7 +118,7 @@ export function getNextWorktreePaletteSelection({
     return currentSelectedItemId
   }
 
-  return firstSelectableId ?? (showCreateAction ? CREATE_WORKTREE_ITEM_ID : '')
+  return fallbackId
 }
 
 export type WorktreePaletteRequestGuard = {

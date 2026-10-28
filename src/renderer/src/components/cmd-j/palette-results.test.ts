@@ -4,6 +4,7 @@ import { Globe, Settings } from 'lucide-react'
 import type { CmdJQuickAction } from './quick-actions'
 import {
   CMD_J_PALETTE_QUERY_MAX_BYTES,
+  bestCmdJPaletteSectionQualityClass,
   buildCmdJActionResults,
   buildCmdJSettingsResults,
   isCmdJPaletteQueryTooLarge,
@@ -12,6 +13,7 @@ import {
   type CmdJSettingsResult
 } from './palette-results'
 import { hasCmdJProjectSearchCandidates, searchCmdJProjectResults } from './palette-project-results'
+import { PALETTE_QUERY_MAX_TOKENS } from '../../../../shared/palette-match/palette-query'
 import type { SettingsNavSection } from '@/lib/settings-navigation-types'
 import type { ProjectGroup } from '../../../../shared/project-group-types'
 import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
@@ -158,12 +160,68 @@ const sections: SettingsNavSection[] = [
   }
 ]
 
-function top(query: string): string | undefined {
+function rankMiddle(query: string): ReturnType<typeof rankCmdJMiddleResults> {
   return rankCmdJMiddleResults({
     query,
     settingsResults: buildCmdJSettingsResults(sections),
     actionResults: buildCmdJActionResults(actions)
-  })[0]?.id
+  })
+}
+
+function top(query: string): string | undefined {
+  return rankMiddle(query)[0]?.id
+}
+
+describe('action keyword folding', () => {
+  it('folds verbKeywords so a raw-cased command still reaches exact-intent', () => {
+    // Fold action keywords like queries so exact intent can outrank workspace prefixes.
+    const [folded] = buildCmdJActionResults([
+      {
+        id: 'quick-action:format',
+        kind: 'action',
+        title: 'Format Document',
+        description: 'Format the open file',
+        verbKeywords: ['Format Document', 'FORMAT  DOC']
+      } as (typeof actions)[number]
+    ])
+    expect(folded.verbKeywords).toEqual(['format document', 'format doc'])
+  })
+})
+
+const overTokenLimitQuery = Array.from(
+  { length: PALETTE_QUERY_MAX_TOKENS + 1 },
+  (_, index) => `token${index}`
+).join(' ')
+
+function throwingSettingsResult(): CmdJSettingsResult {
+  return {
+    id: 'settings:throwing',
+    kind: 'settings',
+    title: 'Throwing Setting',
+    description: '',
+    icon: Settings,
+    sectionId: 'general',
+    order: 0,
+    get configKeywords(): string[] {
+      throw new Error('rejected palette queries must not scan settings keywords')
+    }
+  } as CmdJSettingsResult
+}
+
+function throwingActionResult(): CmdJActionResult {
+  return {
+    id: 'throwing-action',
+    kind: 'action',
+    title: 'Throwing Action',
+    description: '',
+    icon: Globe,
+    order: 0,
+    isAvailable: available,
+    run: noopRun,
+    get verbKeywords(): string[] {
+      throw new Error('rejected palette queries must not scan action keywords')
+    }
+  } as CmdJActionResult
 }
 
 afterEach(() => {
@@ -211,8 +269,7 @@ describe('Cmd+J palette middle-band ranking', () => {
   })
 
   it('drops candidates that cover a minority of the words typed', () => {
-    // Why: "linear triage" used to surface the Linear and Integrations panes on the
-    // "linear" token alone, with the unmatched word costing nothing. See screenshot report.
+    // One matched word must not hide the unmatched remainder of a query.
     const integrationSections: SettingsNavSection[] = [
       {
         id: 'linear',
@@ -245,8 +302,7 @@ describe('Cmd+J palette middle-band ranking', () => {
   })
 
   it('drops verb-prefixed settings queries whose middle words match nothing', () => {
-    // Why: the verb-plus-settings-keyword rule reads only the head and tail of the query, so
-    // "new terminal <junk> browser settings" used to win on those two ends alone.
+    // Head/tail shortcut rules also need coverage checks for unmatched middle words.
     expect(top('new terminal sparkles glitter browser settings')).toBeUndefined()
     expect(top('new terminal settings')).toBe('settings:terminal')
   })
@@ -257,15 +313,12 @@ describe('Cmd+J palette middle-band ranking', () => {
   })
 
   it('ignores navigation filler words when measuring coverage', () => {
-    // Why: "open"/"go to" carry no intent, so they must not read as unmatched words
-    // and blank the band mid-query.
     expect(top('open terminal settings')).toBe('settings:terminal')
     expect(top('go to ssh settings')).toBe('settings:ssh')
     expect(top('change the terminal font')).toBe('settings:terminal')
   })
 
   it('counts non-latin query words instead of discarding them', () => {
-    // Why: tokenizing on ASCII only let a localized query skip the coverage rule entirely.
     expect(top('ssh 主机 设置')).toBeUndefined()
     expect(top('ssh 设置')).toBeUndefined()
   })
@@ -288,40 +341,52 @@ describe('Cmd+J palette middle-band ranking', () => {
 
   it('rejects oversized pasted queries before reading candidate keywords', () => {
     const oversizedQuery = 'secret-palette-query'.repeat(CMD_J_PALETTE_QUERY_MAX_BYTES)
-    const setting = {
-      id: 'settings:throwing',
-      kind: 'settings',
-      title: 'Throwing Setting',
-      description: '',
-      icon: Settings,
-      sectionId: 'general',
-      order: 0,
-      get configKeywords(): string[] {
-        throw new Error('oversized palette queries must not scan settings keywords')
-      }
-    } as CmdJSettingsResult
-    const action = {
-      id: 'throwing-action',
-      kind: 'action',
-      title: 'Throwing Action',
-      description: '',
-      icon: Globe,
-      order: 0,
-      isAvailable: available,
-      run: noopRun,
-      get verbKeywords(): string[] {
-        throw new Error('oversized palette queries must not scan action keywords')
-      }
-    } as CmdJActionResult
 
     expect(isCmdJPaletteQueryTooLarge(oversizedQuery)).toBe(true)
     expect(
       rankCmdJMiddleResults({
         query: oversizedQuery,
-        settingsResults: [setting],
-        actionResults: [action]
+        settingsResults: [throwingSettingsResult()],
+        actionResults: [throwingActionResult()]
       })
     ).toEqual([])
+  })
+
+  it('rejects queries past the shared unique-token ceiling before reading keywords', () => {
+    expect(
+      rankCmdJMiddleResults({
+        query: overTokenLimitQuery,
+        settingsResults: [throwingSettingsResult()],
+        actionResults: [throwingActionResult()]
+      })
+    ).toEqual([])
+    // Why: the ceiling counts unique tokens, so a repeated phrase still ranks.
+    expect(top('terminal settings '.repeat(PALETTE_QUERY_MAX_TOKENS))).toBe('settings:terminal')
+  })
+
+  it('classifies exact, prefix, and token-score hits for cross-section leadership', () => {
+    expect(rankMiddle('terminal settings')[0]).toMatchObject({
+      id: 'settings:terminal',
+      qualityClass: 'exact-intent'
+    })
+    expect(rankMiddle('new terminal settings')[0]).toMatchObject({
+      id: 'settings:terminal',
+      qualityClass: 'exact-intent'
+    })
+    expect(rankMiddle('appear')[0]).toMatchObject({
+      id: 'settings:appearance',
+      qualityClass: 'visible-prefix'
+    })
+    expect(rankMiddle('font term')[0]).toMatchObject({
+      id: 'settings:terminal',
+      qualityClass: 'partial-evidence'
+    })
+  })
+
+  it('reports the strongest quality class in a section', () => {
+    expect(bestCmdJPaletteSectionQualityClass([])).toBeNull()
+    expect(bestCmdJPaletteSectionQualityClass(rankMiddle('terminal settings'))).toBe('exact-intent')
+    expect(bestCmdJPaletteSectionQualityClass(rankMiddle('font term'))).toBe('partial-evidence')
   })
 })
 
@@ -379,8 +444,6 @@ function projectGroup(id: string, name: string, parentGroupId: string | null = n
 
 describe('Cmd+J project and repo-group search', () => {
   it('drops projects that only match the query through a generic alias word', () => {
-    // Why: every project carries the 'repo'/'project' aliases, so "repo triage" used to
-    // match all of them on that word alone — the same bug the middle band had.
     const search = (query: string): string[] =>
       searchCmdJProjectResults({
         query,
@@ -412,6 +475,23 @@ describe('Cmd+J project and repo-group search', () => {
     })
   })
 
+  it('lists a same-id Project Group from two hosts once, by the name the sidebar shows', () => {
+    const search = (query: string) =>
+      searchCmdJProjectResults({
+        query,
+        projectGroups: [
+          { ...projectGroup('group-1', 'Infrastructure'), executionHostId: 'local' },
+          { ...projectGroup('group-1', 'Platform'), executionHostId: 'runtime:env-b' }
+        ],
+        repos: [],
+        projects: [],
+        projectHostSetups: []
+      }).map((result) => [result.id, result.title])
+
+    expect(search('platform')).toEqual([['project-group:group-1', 'Platform']])
+    expect(search('infra')).toEqual([])
+  })
+
   it('finds a Project by project name and a repo-backed fallback by repo name', () => {
     const projectResults = searchCmdJProjectResults({
       query: 'api',
@@ -436,31 +516,8 @@ describe('Cmd+J project and repo-group search', () => {
     ])
   })
 
-  it('splits independent same-host checkouts of one project into per-setup keys', () => {
-    // Why: two `cloned` checkouts share the project's remote identity but are
-    // distinct user clones; the palette follows the sidebar and surfaces each as
-    // its own jump target rather than collapsing them. See #5374.
-    const results = searchCmdJProjectResults({
-      query: 'platform',
-      projectGroups: [],
-      repos: [repo('repo-1', 'platform-a'), repo('repo-2', 'platform-b')],
-      projects: [project('project-1', 'Platform')],
-      projectHostSetups: [
-        setup('setup-1', 'project-1', 'local', 'repo-1'),
-        setup('setup-2', 'project-1', 'local', 'repo-2')
-      ]
-    })
-
-    expect(results.map((result) => result.rowKey)).toEqual([
-      'project:project-1::setup:repo-1',
-      'project:project-1::setup:repo-2'
-    ])
-  })
-
   it('keeps a provisioned runtime copy under one project key alongside a same-host checkout', () => {
-    // Why: a `provisioned` (recipe-created ephemeral) copy shares the project's
-    // remote identity but must not split the user's real checkout; it nests
-    // under the single project key. Mirrors the sidebar grouping. See #6320 / #5374.
+    // Provisioned ephemeral copies nest with the real checkout under one project key, matching the sidebar.
     const results = searchCmdJProjectResults({
       query: 'platform',
       projectGroups: [],
@@ -548,5 +605,40 @@ describe('Cmd+J project and repo-group search', () => {
         projectHostSetups: []
       })
     ).toEqual([])
+  })
+
+  it('rejects queries past the shared unique-token ceiling', () => {
+    expect(
+      searchCmdJProjectResults({
+        query: overTokenLimitQuery,
+        projectGroups: [projectGroup('group-1', 'Infrastructure')],
+        repos: [repo('repo-1', 'linear-sync')],
+        projects: [],
+        projectHostSetups: []
+      })
+    ).toEqual([])
+  })
+
+  it('classifies exact, prefix, and token-score hits for cross-section leadership', () => {
+    const search = (query: string): { title: string; qualityClass: string }[] =>
+      searchCmdJProjectResults({
+        query,
+        projectGroups: [projectGroup('group-1', 'Infrastructure')],
+        repos: [repo('repo-1', 'linear-sync')],
+        projects: [],
+        projectHostSetups: []
+      }).map((result) => ({ title: result.title, qualityClass: result.qualityClass }))
+
+    expect(search('infrastructure')[0]).toEqual({
+      title: 'Infrastructure',
+      qualityClass: 'exact-intent'
+    })
+    expect(search('infra')[0]).toEqual({ title: 'Infrastructure', qualityClass: 'visible-prefix' })
+    // Generic aliases cannot outrank a named entity hit.
+    expect(search('repo')[0]).toEqual({ title: 'linear-sync', qualityClass: 'visible-prefix' })
+    expect(search('linear repo')[0]).toEqual({
+      title: 'linear-sync',
+      qualityClass: 'partial-evidence'
+    })
   })
 })

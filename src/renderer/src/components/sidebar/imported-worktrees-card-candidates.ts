@@ -12,7 +12,7 @@ import {
   effectiveExternalWorktreeVisibility,
   isLegacyRepoForExternalWorktreeVisibility
 } from '../../../../shared/worktree/ownership'
-import type { ImportedWorktreesCardCandidate } from './worktree-list-groups'
+import type { ImportedWorktreesCardCandidate } from '../../../../shared/sidebar-list/row-types'
 
 export function getHiddenImportedWorktrees(
   detected: DetectedWorktreeListResult | undefined

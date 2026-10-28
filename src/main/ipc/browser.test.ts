@@ -68,13 +68,12 @@ vi.mock('../browser/browser-manager', () => ({
   }
 }))
 
+import { registerBrowserHandlers, setAgentBrowserBridgeRef, type BrowserGuestArgs } from './browser'
 import {
-  registerBrowserHandlers,
-  setAgentBrowserBridgeRef,
   waitForAnyTabRegistration,
   waitForTabRegistration,
   waitForWorktreeTabRegistration
-} from './browser'
+} from './browser-tab-registration-wait'
 
 describe('registerBrowserHandlers', () => {
   beforeEach(() => {
@@ -137,9 +136,10 @@ describe('registerBrowserHandlers', () => {
       registerGuestMock.mockReturnValue(false)
       const settled = Promise.allSettled([waitForTabRegistration('page-1', 1000)])
       registerBrowserHandlers()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ipcMain.handle's mock records handlers as a loose tuple; this is the signature registerBrowserHandlers registered for this channel.
       const registerHandler = handleMock.mock.calls.find(
         ([channel]) => channel === 'browser:registerGuest'
-      )?.[1] as (event: { sender: Electron.WebContents }, args: object) => boolean
+      )?.[1] as (event: { sender: Electron.WebContents }, args: BrowserGuestArgs) => boolean
 
       const result = registerHandler(
         {
@@ -795,6 +795,8 @@ describe('registerBrowserHandlers', () => {
 
   it('validates annotation viewport bridge requests before syncing to the guest', async () => {
     registerBrowserHandlers()
+    const guest = { isDestroyed: () => false } as Electron.WebContents
+    getAuthorizedGuestMock.mockReturnValue(guest)
 
     const syncHandler = handleMock.mock.calls.find(
       ([channel]) => channel === 'browser:setAnnotationViewportBridge'
@@ -819,12 +821,48 @@ describe('registerBrowserHandlers', () => {
     )
 
     expect(result).toBe(true)
-    expect(setAnnotationViewportBridgeMock).toHaveBeenCalledWith('page-1', {
-      emitViewport: false,
-      enabled: true,
-      markers: [],
-      token: 'annotationviewporttoken'
-    })
+    expect(setAnnotationViewportBridgeMock).toHaveBeenCalledWith(
+      'page-1',
+      {
+        emitViewport: false,
+        enabled: true,
+        markers: [],
+        token: 'annotationviewporttoken'
+      },
+      // Resolve at execution time because queued navigation may replace the guest.
+      expect.any(Function)
+    )
+  })
+
+  // Annotation tools must enforce the same renderer ownership as grab tools.
+  it('refuses an annotation viewport bridge request from a renderer that does not own the page', async () => {
+    registerBrowserHandlers()
+    getAuthorizedGuestMock.mockReturnValue(null)
+
+    const syncHandler = handleMock.mock.calls.find(
+      ([channel]) => channel === 'browser:setAnnotationViewportBridge'
+    )?.[1] as (event: { sender: Electron.WebContents }, args: unknown) => Promise<boolean> | boolean
+
+    const result = await syncHandler(
+      {
+        sender: {
+          id: 91,
+          isDestroyed: () => false,
+          getType: () => 'window',
+          getURL: () => 'file:///renderer/index.html'
+        } as Electron.WebContents
+      },
+      {
+        browserPageId: 'page-1',
+        emitViewport: false,
+        enabled: true,
+        markers: [],
+        token: 'annotationviewporttoken'
+      }
+    )
+
+    expect(result).toBe(false)
+    expect(setAnnotationViewportBridgeMock).not.toHaveBeenCalled()
   })
 
   it('rejects invalid annotation viewport bridge requests', async () => {

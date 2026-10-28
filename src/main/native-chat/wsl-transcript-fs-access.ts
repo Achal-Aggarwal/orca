@@ -1,29 +1,67 @@
 import { createReadStream, type Dirent, type Stats } from 'node:fs'
-import { lstat, open, readdir, readFile, stat, type FileHandle } from 'node:fs/promises'
+import { access, lstat, open, readdir, readFile, stat, type FileHandle } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import { runWslTranscriptFsTask, type WslTranscriptFsTaskPriority } from './wsl-transcript-fs-gate'
-import { wslTranscriptFsRouteKey } from './wsl-transcript-fs-route'
+import {
+  closeWslTranscriptFsProcess,
+  isWslTranscriptFsProcessHandle,
+  openWslTranscriptFsProcess,
+  readWslTranscriptFsProcess,
+  runWslTranscriptFsProcess,
+  type WslTranscriptFsProcessHandle
+} from './wsl-transcript-fs-process-dispatch'
+import type { WslTranscriptFsReusableProcessCall } from './wsl-transcript-fs-process-protocol'
+import { wslTranscriptFsLaneKey } from './wsl-transcript-fs-route'
+import {
+  readSshTranscript,
+  statSshTranscript,
+  type SshTranscriptHandle
+} from './ssh-transcript-fs-access'
+import { parseSshTranscriptPath } from './ssh-transcript-path'
 
 /** Never nest a gated call inside another — that deadlocks the scan slot. */
 
-// Why: one deadline per chunk instead of one for the whole file, so a large
-// healthy-but-slow transcript is not false-failed by a whole-file timeout.
+// Deadline each chunk so healthy large files do not fail a whole-file timeout.
 export const WSL_TRANSCRIPT_READ_CHUNK_BYTES = 1024 * 1024
-type Operation = Parameters<typeof runWslTranscriptFsTask>[0]['operation']
 
-function runPathOperation<T>(
-  operation: Operation,
-  path: string,
+export type TranscriptFileHandle = FileHandle | WslTranscriptFsProcessHandle | SshTranscriptHandle
+export type TranscriptFileStats = Pick<Stats, 'size' | 'mtimeMs' | 'ctimeMs' | 'dev' | 'ino'>
+
+function isSshTranscriptHandle(handle: TranscriptFileHandle): handle is SshTranscriptHandle {
+  return 'sshTranscript' in handle
+}
+
+// One request defines both route/dedup identity and child operation, preventing mismatches.
+function runReusableFsOperation<T>(
+  request: WslTranscriptFsReusableProcessCall,
   priority: WslTranscriptFsTaskPriority,
   signal: AbortSignal | undefined,
-  task: () => Promise<T>,
-  options?: { dedupe?: boolean; onAbandonedResult?: (value: T) => void }
+  localTask: () => Promise<T>
 ): Promise<T> {
-  return isWslUncPath(path)
-    ? runWslTranscriptFsTask({ operation, path, priority, signal, ...options }, task)
-    : task()
+  return isWslUncPath(request.path)
+    ? runWslTranscriptFsTask(
+        { operation: request.operation, path: request.path, priority, signal },
+        (taskSignal) =>
+          runWslTranscriptFsProcess<T>(
+            request,
+            taskSignal,
+            wslTranscriptFsLaneKey(request.path, priority)
+          )
+      )
+    : localTask()
+}
+
+export function wslGatedAccess(
+  path: string,
+  priority: WslTranscriptFsTaskPriority,
+  signal?: AbortSignal
+): Promise<boolean> {
+  return runReusableFsOperation({ operation: 'access', path }, priority, signal, async () => {
+    await access(path)
+    return true
+  })
 }
 
 export function wslGatedStat(
@@ -31,7 +69,16 @@ export function wslGatedStat(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<Stats> {
-  return runPathOperation('stat', path, priority, signal, () => stat(path))
+  return runReusableFsOperation({ operation: 'stat', path }, priority, signal, () => stat(path))
+}
+
+export function transcriptFileStat(
+  path: string,
+  priority: WslTranscriptFsTaskPriority,
+  signal?: AbortSignal
+): Promise<TranscriptFileStats> {
+  const ssh = parseSshTranscriptPath(path)
+  return ssh ? statSshTranscript(ssh) : wslGatedStat(path, priority, signal)
 }
 
 export function wslGatedLstat(
@@ -39,7 +86,7 @@ export function wslGatedLstat(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<Stats> {
-  return runPathOperation('lstat', path, priority, signal, () => lstat(path))
+  return runReusableFsOperation({ operation: 'lstat', path }, priority, signal, () => lstat(path))
 }
 
 export function wslGatedReaddir(
@@ -47,7 +94,7 @@ export function wslGatedReaddir(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<Dirent[]> {
-  return runPathOperation('readdir', path, priority, signal, () =>
+  return runReusableFsOperation({ operation: 'readdir', path }, priority, signal, () =>
     readdir(path, { withFileTypes: true })
   )
 }
@@ -58,31 +105,42 @@ export function wslGatedReadFile(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<string> {
-  return runPathOperation('readfile', path, priority, signal, () => readFile(path, encoding))
+  return runReusableFsOperation({ operation: 'readfile', path, encoding }, priority, signal, () =>
+    readFile(path, encoding)
+  )
 }
 
-// dedupe:false — two joiners would share one FileHandle and both close it.
-export function wslGatedOpen(
+// Do not coalesce opens: joiners would share one handle and both close it.
+export function openTranscriptFile(
   path: string,
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
-): Promise<FileHandle> {
-  return runPathOperation('open', path, priority, signal, () => open(path, 'r'), {
-    dedupe: false,
-    // An unabortable open can still succeed after its caller timed out or
-    // cancelled; without this the descriptor leaks for the process lifetime.
-    onAbandonedResult: (handle) => void closeTranscriptHandle(handle, path)
-  })
+): Promise<TranscriptFileHandle> {
+  const ssh = parseSshTranscriptPath(path)
+  if (ssh) {
+    return Promise.resolve({ sshTranscript: ssh })
+  }
+  if (!isWslUncPath(path)) {
+    return open(path, 'r')
+  }
+  return runWslTranscriptFsTask<TranscriptFileHandle>(
+    {
+      operation: 'open',
+      path,
+      priority,
+      signal,
+      dedupe: false,
+      onAbandonedResult: (handle) => void closeTranscriptHandle(handle, path)
+    },
+    (taskSignal) =>
+      openWslTranscriptFsProcess(path, taskSignal, wslTranscriptFsLaneKey(path, priority))
+  )
 }
 
-/**
- * `path` is only the gate's route key and UNC guard — the handle carries no
- * path and is never re-opened. dedupe:false because `read` fills the CALLER's
- * buffer: a joiner would receive the first caller's buffer while its own
- * (often `Buffer.allocUnsafe`) stays uninitialized.
- */
-export function wslGatedRead(
-  handle: FileHandle,
+/** path selects route/UNC policy without reopening the handle. Never coalesce caller-buffer reads:
+ * a joiner’s allocUnsafe buffer would remain uninitialized while receiving another caller’s result. */
+export function readTranscriptFile(
+  handle: TranscriptFileHandle,
   path: string,
   buffer: Buffer,
   offset: number,
@@ -91,77 +149,44 @@ export function wslGatedRead(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<{ bytesRead: number; buffer: Buffer }> {
-  return runPathOperation(
-    'read',
-    path,
-    priority,
-    signal,
-    () => handle.read(buffer, offset, length, position),
-    { dedupe: false }
+  if (isSshTranscriptHandle(handle)) {
+    return readSshTranscript(handle)
+  }
+  // Process handle identity overrides path spelling; never route it into native FileHandle reads.
+  if (!isWslUncPath(path) && !isWslTranscriptFsProcessHandle(handle)) {
+    return (handle as FileHandle).read(buffer, offset, length, position)
+  }
+  return runWslTranscriptFsTask(
+    { operation: 'read', path, priority, signal, dedupe: false },
+    async (taskSignal) => {
+      if (!isWslTranscriptFsProcessHandle(handle)) {
+        return (handle as FileHandle).read(buffer, offset, length, position)
+      }
+      const body = await readWslTranscriptFsProcess(handle, position, length, taskSignal)
+      buffer.set(body, offset)
+      return { bytesRead: body.byteLength, buffer }
+    }
   )
 }
 
-// A blocked `uv_fs_close` holds a libuv threadpool thread just like a blocked
-// read does, but it is invisible to the gate — so UNC teardown drains one handle
-// at a time. Unbounded fire-and-forget closes are what would exhaust the pool the
-// gate's two permits are sized against, re-creating the process-wide stall the
-// gate exists to prevent; serializing them costs at most one extra busy thread.
-// The queue cannot grow without bound: opens on a stuck route already fast-fail.
-// Keyed by route like the gate's own admission, because a close that blocks on a
-// stalled distro never settles — a shared queue would strand every later close,
-// including handles on healthy distros, for the process lifetime.
-const MAX_CONCURRENT_UNC_CLOSES_PER_ROUTE = 1
-type RouteCloseQueue = { queued: FileHandle[]; active: number }
-const closeQueuesByRoute = new Map<string, RouteCloseQueue>()
-
-function drainQueuedCloses(route: string): void {
-  const lane = closeQueuesByRoute.get(route)
-  if (!lane) {
-    return
+/** Never gated; process-owned handles retire on the client's bounded deadline. */
+export function closeTranscriptHandle(handle: TranscriptFileHandle, path: string): Promise<void> {
+  if (isSshTranscriptHandle(handle)) {
+    return Promise.resolve()
   }
-  while (lane.active < MAX_CONCURRENT_UNC_CLOSES_PER_ROUTE) {
-    const handle = lane.queued.shift()
-    if (!handle) {
-      if (lane.active === 0) {
-        closeQueuesByRoute.delete(route)
-      }
-      return
-    }
-    lane.active += 1
-    void handle
-      .close()
-      .catch(() => {})
-      .finally(() => {
-        lane.active -= 1
-        drainQueuedCloses(route)
-      })
+  if (isWslTranscriptFsProcessHandle(handle)) {
+    void closeWslTranscriptFsProcess(handle).catch(() => {})
+    return Promise.resolve()
   }
-}
-
-/**
- * Never gated. Off UNC this is the prior contract verbatim — the caller awaits
- * fd teardown and a close failure surfaces. On UNC it is fire-and-forget:
- * closing a handle on a stalled mount can itself block, and a gated close would
- * burn a permit and a waiter deadline purely for teardown. One leaked fd until
- * the OS unblocks beats a second blocked waiter.
- */
-export function closeTranscriptHandle(handle: FileHandle, path: string): Promise<void> {
   if (!isWslUncPath(path)) {
     return handle.close()
   }
-  const route = wslTranscriptFsRouteKey(path)
-  const lane = closeQueuesByRoute.get(route) ?? { queued: [], active: 0 }
-  closeQueuesByRoute.set(route, lane)
-  lane.queued.push(handle)
-  drainQueuedCloses(route)
+  // Test-only UNC FileHandles mirror process close: fire-and-forget, swallowing failures.
+  void handle.close().catch(() => {})
   return Promise.resolve()
 }
 
-/**
- * Open, read one slice, close — for callers that want bytes at an offset and
- * never touch the handle. Each of the two syscalls is admitted separately, so a
- * stalled mount fails at whichever one it blocks on.
- */
+/** Admit open/read separately so a stalled mount fails at the blocking syscall. */
 export async function readTranscriptSlice(
   path: string,
   position: number,
@@ -169,10 +194,10 @@ export async function readTranscriptSlice(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<Buffer> {
-  const handle = await wslGatedOpen(path, priority, signal)
+  const handle = await openTranscriptFile(path, priority, signal)
   try {
     const buffer = Buffer.allocUnsafe(length)
-    const { bytesRead } = await wslGatedRead(
+    const { bytesRead } = await readTranscriptFile(
       handle,
       path,
       buffer,
@@ -190,11 +215,8 @@ export async function readTranscriptSlice(
 
 export type TranscriptReadStreamOptions = {
   start?: number
-  /** Inclusive, matching `createReadStream`. */
   end?: number
-  /** Set it to get decoded string chunks on both branches; leave it unset and
-   *  the UNC branch yields `Buffer`s the consumer must decode incrementally
-   *  itself, since a chunk boundary can split a multibyte codepoint. */
+  /** Without encoding, decode Buffer chunks incrementally; boundaries may split multibyte codepoints. */
   encoding?: BufferEncoding
 }
 
@@ -204,9 +226,8 @@ async function* gatedChunks(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): AsyncGenerator<Buffer | string> {
-  const handle = await wslGatedOpen(path, priority, signal)
-  // Why: chunk boundaries fall mid-codepoint, so decoding each slice
-  // independently would emit U+FFFD on both sides of any straddling character.
+  const handle = await openTranscriptFile(path, priority, signal)
+  // Decode across chunk boundaries to avoid replacement characters on split codepoints.
   const decoder = options.encoding ? new StringDecoder(options.encoding) : null
   try {
     let position = options.start ?? 0
@@ -219,7 +240,7 @@ async function* gatedChunks(
         break
       }
       const buffer = Buffer.allocUnsafe(length)
-      const { bytesRead } = await wslGatedRead(
+      const { bytesRead } = await readTranscriptFile(
         handle,
         path,
         buffer,
@@ -243,33 +264,24 @@ async function* gatedChunks(
         yield decoded
       }
     }
-    // Trailing bytes of an incomplete sequence at EOF, replacement-char'd once.
     const trailing = decoder?.end()
     if (trailing) {
       yield trailing
     }
   } finally {
-    // Runs on `.destroy()` too (Readable.from calls the generator's return()),
-    // so an aborted head-read cannot leak the gated handle.
+    // Readable.destroy calls generator return, closing handles even after aborted head reads.
     await closeTranscriptHandle(handle, path)
   }
 }
 
-/**
- * A read stream whose UNC branch admits and deadlines each 1 MiB chunk
- * separately. A gate refusal mid-stream surfaces as an `'error'` event carrying
- * the `WslTranscriptFsError`, which every existing consumer funnels into its
- * `catch`.
- */
+/** Deadline each UNC chunk separately; gate refusal reaches consumers as a stream error. */
 export function openTranscriptReadStream(
   path: string,
   options: TranscriptReadStreamOptions,
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Readable {
-  if (!isWslUncPath(path)) {
-    // Node destroys the stream with an AbortError on abort, matching how the
-    // gated branch surfaces cancellation to the same consumers.
+  if (!isWslUncPath(path) && !parseSshTranscriptPath(path)) {
     return createReadStream(path, { ...options, signal })
   }
   return Readable.from(gatedChunks(path, options, priority, signal))

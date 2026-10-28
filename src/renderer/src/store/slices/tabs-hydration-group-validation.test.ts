@@ -121,9 +121,7 @@ describe('buildHydratedTabState referential repair', () => {
   }
 
   it('keeps tabs reachable when a worktree lost every tab group', () => {
-    // Why: session salvage drops a corrupt group record and leaves its tabs
-    // behind. Groupless tabs render nowhere yet still count as renderable, so the
-    // auto-create rescue never fires and the worktree body comes back blank.
+    // Salvage can drop groups but retain tabs; groupless tabs block auto-create yet render nowhere, leaving a blank workspace.
     const result = buildHydratedTabState(
       {
         ...makeBaseSession(),
@@ -175,9 +173,7 @@ describe('buildHydratedTabState referential repair', () => {
   })
 
   it('spans every surviving group when the persisted layout is gone', () => {
-    // Why: salvage can drop a corrupt tabGroupLayouts entry while both groups
-    // survive; a fallback leaf naming only the first hides the second group and
-    // every tab in it, with nothing downstream to notice.
+    // Salvaged layouts must span every surviving group or tabs in omitted groups remain silently hidden.
     const result = buildHydratedTabState(
       {
         ...makeBaseSession(),
@@ -207,6 +203,42 @@ describe('buildHydratedTabState referential repair', () => {
           ]
         },
         tabGroupLayouts: { w1: { type: 'leaf', groupId: 'g1' } }
+      },
+      new Set(['w1'])
+    )
+
+    expect(leafGroupIds(result.layoutByWorktree.w1)).toEqual(['g1', 'g2'])
+  })
+
+  it('collapses a persisted layout that repeats one group across leaves', () => {
+    const result = buildHydratedTabState(
+      {
+        ...makeBaseSession(),
+        unifiedTabs: { w1: [tab('t1', 'g1', 0), tab('t2', 'g2', 1)] },
+        tabGroups: {
+          w1: [
+            { id: 'g1', worktreeId: 'w1', activeTabId: 't1', tabOrder: ['t1'] },
+            { id: 'g2', worktreeId: 'w1', activeTabId: 't2', tabOrder: ['t2'] }
+          ]
+        },
+        tabGroupLayouts: {
+          w1: {
+            type: 'split',
+            direction: 'horizontal',
+            first: { type: 'leaf', groupId: 'g1' },
+            second: {
+              type: 'split',
+              direction: 'horizontal',
+              first: { type: 'leaf', groupId: 'g1' },
+              second: {
+                type: 'split',
+                direction: 'horizontal',
+                first: { type: 'leaf', groupId: 'g2' },
+                second: { type: 'leaf', groupId: 'g1' }
+              }
+            }
+          }
+        }
       },
       new Set(['w1'])
     )

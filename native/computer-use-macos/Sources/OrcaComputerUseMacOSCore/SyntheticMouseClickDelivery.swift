@@ -1,10 +1,5 @@
-/// Event plan for synthetic mouse clicks (STA-3433).
-///
-/// Clicks must be posted to the HID event tap, not `CGEventPostToPid`:
-/// pid-targeted mouse events reach the app with no window association, so
-/// AppKit never routes the press to a view (hover fires, activation never
-/// happens). The window server also drops a mouseUp posted back-to-back
-/// with its mouseDown, so consecutive events need a pause between them.
+/// STA-3433: use HID taps; CGEventPostToPid lacks window association and AppKit drops presses.
+/// Pace down/up events or WindowServer can drop mouseUp.
 public enum SyntheticMouseClickDelivery {
     public static let maxClickCount = 3
 
@@ -18,6 +13,17 @@ public enum SyntheticMouseClickDelivery {
         }
     }
 
+    public enum RecipientObservation: Equatable, Sendable {
+        case focused(Recipient)
+        case dismissed
+        case unavailable
+
+        var recipient: Recipient? {
+            guard case let .focused(recipient) = self else { return nil }
+            return recipient
+        }
+    }
+
     public enum FenceFailure: Error, Equatable {
         case recipientChanged(expected: Recipient, actual: Recipient?, deliveredPresses: Int)
     }
@@ -28,13 +34,10 @@ public enum SyntheticMouseClickDelivery {
         case buttonUp(pressIndex: Int)
     }
 
-    /// Pause after posting each event; unpaced posts race the window
-    /// server's routing and the mouseUp is silently dropped.
+    /// Pace events so WindowServer can route mouseUp.
     public static let interEventPauseMicroseconds: UInt32 = 50_000
 
-    /// One move, then a paired down/up per press. `pressIndex` becomes the
-    /// event's click state so repeated presses register as double/triple
-    /// clicks instead of independent single clicks.
+    /// Paired presses use pressIndex as click state to register double/triple clicks.
     public static func steps(clickCount: Int) -> [Step] {
         var steps: [Step] = [.move]
         for press in 1...min(max(clickCount, 1), maxClickCount) {
@@ -69,19 +72,20 @@ public enum SyntheticMouseClickDelivery {
     public static func deliver<Event>(
         clickCount: Int,
         target: Recipient,
-        currentRecipient: () -> Recipient?,
+        currentObservation: () -> RecipientObservation,
         makeEvent: (Step) throws -> Event,
         post: (Event) -> Void,
         pause: (UInt32) -> Void
     ) throws {
         post(try makeEvent(.move))
         pause(interEventPauseMicroseconds)
-        for pressIndex in 1...min(max(clickCount, 1), maxClickCount) {
-            let beforeDown = currentRecipient()
-            guard beforeDown == target else {
+        let pressCount = min(max(clickCount, 1), maxClickCount)
+        for pressIndex in 1...pressCount {
+            let beforeDown = currentObservation()
+            guard beforeDown == .focused(target) else {
                 throw FenceFailure.recipientChanged(
                     expected: target,
-                    actual: beforeDown,
+                    actual: beforeDown.recipient,
                     deliveredPresses: pressIndex - 1
                 )
             }
@@ -90,11 +94,13 @@ public enum SyntheticMouseClickDelivery {
             post(down)
             pause(interEventPauseMicroseconds)
             post(up)
-            let afterUp = currentRecipient()
-            guard afterUp == target else {
+            let afterUp = currentObservation()
+            // A final mouse-up may dismiss the target, but an unavailable probe is unsafe.
+            let finalDismissal = pressIndex == pressCount && afterUp == .dismissed
+            guard afterUp == .focused(target) || finalDismissal else {
                 throw FenceFailure.recipientChanged(
                     expected: target,
-                    actual: afterUp,
+                    actual: afterUp.recipient,
                     deliveredPresses: pressIndex
                 )
             }

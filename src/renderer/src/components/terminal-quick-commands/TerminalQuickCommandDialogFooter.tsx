@@ -1,11 +1,10 @@
 import { Button } from '@/components/ui/button'
 import { DialogFooter } from '@/components/ui/dialog'
-import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
-import { getScreenSubmitModifierLabel } from '@/lib/screen-submit-shortcut'
 import { translate } from '@/i18n/i18n'
 
 type TerminalQuickCommandDialogFooterProps = {
   canSave: boolean
+  saving: boolean
   submitShortcutLabel: string
   onCancel: () => void
   onSave: () => void
@@ -13,13 +12,14 @@ type TerminalQuickCommandDialogFooterProps = {
 
 export function TerminalQuickCommandDialogFooter({
   canSave,
+  saving,
   submitShortcutLabel,
   onCancel,
   onSave
 }: TerminalQuickCommandDialogFooterProps): React.JSX.Element {
   return (
-    <DialogFooter className="sm:items-center">
-      <Button type="button" variant="outline" onClick={onCancel}>
+    <DialogFooter className="border-t border-border px-6 py-4 sm:justify-end">
+      <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
         {translate(
           'auto.components.terminal.quick.commands.TerminalQuickCommandDialogFooter.28370f16b9',
           'Cancel'
@@ -39,11 +39,7 @@ export function TerminalQuickCommandDialogFooter({
           'auto.components.terminal.quick.commands.TerminalQuickCommandDialogFooter.2e2b958dfc',
           'Save'
         )}
-        <ShortcutKeyCombo
-          keys={[getScreenSubmitModifierLabel(), 'Enter']}
-          className="ml-1"
-          keyCapClassName="border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground/80 shadow-none"
-        />
+        <span className="ml-1 text-[10px] opacity-60">{submitShortcutLabel}</span>
       </Button>
     </DialogFooter>
   )

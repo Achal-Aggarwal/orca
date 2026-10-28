@@ -4,6 +4,8 @@ import type {
   WorkspaceSpaceScanProgress,
   WorkspaceSpaceWorktreeMeasurement
 } from '../../../../shared/workspace-space-types'
+import type { WorktreeRemovalTarget } from '../../../../shared/worktree/removal'
+import { composeWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
 import type { AppState } from '../types'
 
 let inFlightScan: Promise<WorkspaceSpaceAnalysis> | null = null
@@ -19,15 +21,33 @@ export type WorkspaceSpaceSlice = {
   /** Stale-while-revalidate seed; true when the persisted analysis filled an empty slice. */
   hydrateWorkspaceSpaceFromCache: () => Promise<boolean>
   refreshWorkspaceSpace: () => Promise<WorkspaceSpaceAnalysis>
-  removeWorkspaceSpaceWorktrees: (worktreeIds: readonly string[]) => void
+  removeWorkspaceSpaceWorktrees: (
+    worktreeTargets: readonly (string | WorktreeRemovalTarget)[]
+  ) => void
 }
 
 function removeDeletedWorktreesFromAnalysis(
   analysis: WorkspaceSpaceAnalysis,
-  deletedWorktreeIds: readonly string[]
+  deletedWorktreeTargets: readonly (string | WorktreeRemovalTarget)[]
 ): WorkspaceSpaceAnalysis {
-  const deletedSet = new Set(deletedWorktreeIds)
-  const worktrees = analysis.worktrees.filter((worktree) => !deletedSet.has(worktree.worktreeId))
+  const deletedIds = new Set<string>()
+  const deletedIdentities = new Set<string>()
+  for (const target of deletedWorktreeTargets) {
+    if (typeof target === 'string') {
+      deletedIds.add(target)
+    } else {
+      deletedIdentities.add(
+        composeWorktreeHostIdentity(target.executionHostId ?? undefined, target.id)
+      )
+    }
+  }
+  const worktrees = analysis.worktrees.filter(
+    (worktree) =>
+      !deletedIds.has(worktree.worktreeId) &&
+      !deletedIdentities.has(
+        composeWorktreeHostIdentity(worktree.executionHostId, worktree.worktreeId)
+      )
+  )
   if (worktrees.length === analysis.worktrees.length) {
     return analysis
   }
@@ -148,8 +168,7 @@ export const createWorkspaceSpaceSlice: StateCreator<AppState, [], [], Workspace
       workspaceSpaceScanError: null,
       workspaceSpaceMeasurements: []
     })
-    // Why: the compact Resource Manager card and the full Space page share
-    // one manual scan result; duplicate button presses should join the same IO.
+    // Resource Manager and Space share manual-scan IO; duplicate clicks join it.
     inFlightScan = window.api.workspaceSpace
       .analyze()
       .then((result) => {
@@ -181,20 +200,32 @@ export const createWorkspaceSpaceSlice: StateCreator<AppState, [], [], Workspace
       })
     return inFlightScan
   },
-  removeWorkspaceSpaceWorktrees: (worktreeIds) => {
-    if (worktreeIds.length > 0) {
+  removeWorkspaceSpaceWorktrees: (worktreeTargets) => {
+    if (worktreeTargets.length > 0) {
       get().recordFeatureInteraction?.('workspace-cleanup')
     }
     set((state) => {
-      const deletedSet = new Set(worktreeIds)
+      const deletedIds = new Set(
+        worktreeTargets.flatMap((target) => (typeof target === 'string' ? [target] : []))
+      )
+      const deletedIdentities = new Set(
+        worktreeTargets.flatMap((target) =>
+          typeof target !== 'string'
+            ? [composeWorktreeHostIdentity(target.executionHostId ?? undefined, target.id)]
+            : []
+        )
+      )
       const nextMeasurements = state.workspaceSpaceMeasurements.filter(
-        (measurement) => !deletedSet.has(measurement.worktreeId)
+        (measurement) =>
+          !deletedIds.has(measurement.worktreeId) &&
+          !deletedIdentities.has(
+            composeWorktreeHostIdentity(measurement.executionHostId, measurement.worktreeId)
+          )
       )
       const nextAnalysis = state.workspaceSpaceAnalysis
-        ? removeDeletedWorktreesFromAnalysis(state.workspaceSpaceAnalysis, worktreeIds)
+        ? removeDeletedWorktreesFromAnalysis(state.workspaceSpaceAnalysis, worktreeTargets)
         : null
-      // Why: this runs on every worktree removal and list refresh; a no-op
-      // must not mint new identities and wake every space subscriber.
+      // Removal/list refresh runs often; no-op must preserve identities to avoid waking all Space subscribers.
       if (
         nextMeasurements.length === state.workspaceSpaceMeasurements.length &&
         nextAnalysis === state.workspaceSpaceAnalysis

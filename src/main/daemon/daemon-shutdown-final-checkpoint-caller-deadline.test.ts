@@ -1,20 +1,21 @@
+import './mock-descendant-sweep'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DaemonPtyAdapter, FinalCheckpointWaitExpiredError } from './daemon-pty-adapter'
+import { DaemonPtyAdapter } from './daemon-pty-adapter'
+import { FinalCheckpointWaitExpiredError } from './daemon-pty-lifecycle-errors'
 import { DaemonServer } from './daemon-server'
 import { getDaemonSocketPath } from './daemon-spawner'
 import type { DaemonFileLog } from './daemon-file-log'
 import { HistoryReader } from './history-reader'
 import type { HistoryCheckpointResult } from './terminal-history-manager-options'
-import type { SubprocessHandle } from './session'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import type { TerminalSnapshot } from './types'
 
-// Worktree sleep threads an absolute deadline into stopAndWait; this stands in for it.
+// Model the absolute stop deadline used by worktree sleep.
 const CALLER_DEADLINE_MS = 300
-// Why well above the deadline it proves: a stop that only settles because the whole suite is slow
-// would prove nothing, and a stop that never settles must fail this test rather than hang the run.
+// Outlast the caller deadline so a stranded stop fails without the watchdog masking its behavior.
 const STOP_BUDGET_MS = 8_000
 
 function createMockSubprocess(): SubprocessHandle & { emitData: (data: string) => void } {
@@ -26,6 +27,7 @@ function createMockSubprocess(): SubprocessHandle & { emitData: (data: string) =
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn(() => setTimeout(() => onExit?.(0), 1)),
+    terminateOwnedTree: () => 'unavailable' as const,
     forceKill: vi.fn(() => onExit?.(137)),
     signal: vi.fn(),
     onData(callback) {
@@ -41,7 +43,6 @@ function createMockSubprocess(): SubprocessHandle & { emitData: (data: string) =
   }
 }
 
-/** Resolves 'timed-out' instead of hanging, so a stranded stop fails the test rather than the run. */
 async function withinBudget<T>(work: Promise<T>, budgetMs: number): Promise<T | 'timed-out'> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const budget = new Promise<'timed-out'>((resolve) => {
@@ -68,10 +69,12 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
   let server: DaemonServer
   let adapter: DaemonPtyAdapter
   let subprocesses: ReturnType<typeof createMockSubprocess>[]
+  let releaseStall: (() => void) | undefined
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'orca-final-checkpoint-deadline-'))
     subprocesses = []
+    releaseStall = undefined
     const log: DaemonFileLog = { log: () => {}, close: () => {} }
     server = new DaemonServer({
       socketPath: getDaemonSocketPath(dir),
@@ -92,12 +95,24 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
   })
 
   afterEach(async () => {
-    adapter?.dispose()
+    // Settle abandoned writes before removal; their temp-file rename can otherwise recreate the test directory.
+    releaseStall?.()
+    releaseStall = undefined
+    if (adapter) {
+      const internals = adapter as unknown as {
+        checkpointInFlight: Promise<void> | null
+        stopCheckpointTimer: () => void
+      }
+      await internals.checkpointInFlight
+      internals.stopCheckpointTimer()
+      await internals.checkpointInFlight
+      await adapter.getHistoryManager()?.dispose()
+      adapter.dispose()
+    }
     await server?.shutdown()
     rmSync(dir, { recursive: true, force: true })
   })
 
-  /** Wedges one session's checkpoint at the history-write layer until explicitly released. */
   function stallCheckpointFor(stalledSessionId: string): { release: () => void } {
     const manager = adapter.getHistoryManager()
     expect(manager).not.toBeNull()
@@ -106,6 +121,7 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
     const stalled = new Promise<void>((resolve) => {
       release = resolve
     })
+    releaseStall = release
     vi.spyOn(manager!, 'checkpoint').mockImplementation(
       async (
         sessionId: string,
@@ -151,8 +167,7 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
     expect(
       await withinBudget(rejectionOf(stopKeepingHistory(wedgedId)), STOP_BUDGET_MS)
     ).toBeInstanceOf(FinalCheckpointWaitExpiredError)
-    // Why issued only now: this is the sleep-stranding case — a stop that starts while the wedged
-    // checkpoint still owns the exclusive tail, which before this fix waited on it forever.
+    // Start the second stop while the abandoned checkpoint still owns the exclusive tail.
     expect(
       await withinBudget(rejectionOf(stopKeepingHistory(laterId)), STOP_BUDGET_MS)
     ).toBeInstanceOf(FinalCheckpointWaitExpiredError)
@@ -167,8 +182,6 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
       await withinBudget(rejectionOf(stopKeepingHistory(wedgedId)), STOP_BUDGET_MS)
     ).toBeInstanceOf(FinalCheckpointWaitExpiredError)
 
-    // Why liveness and not just bookkeeping: the whole point is that an unproven snapshot must not
-    // authorize the kill, so the daemon must still answer for this session.
     expect(await adapter.probePtyLiveness(wedgedId)).toBe(true)
     expect(adapter.hasPty(wedgedId)).toBe(true)
     stall.release()
@@ -187,8 +200,6 @@ describe('STA-4228 keep-history stop bounds only the caller wait on the final ch
     ).toBeInstanceOf(FinalCheckpointWaitExpiredError)
 
     stall.release()
-    // Why this is the whole point of bounding the wait and not the work: both callers walked away,
-    // and both durable writes still land on disk — the abandoned one and the one queued behind it.
     await vi.waitFor(async () => {
       expect(await onDisk(wedgedId)).toContain('COMMITTING_OUTPUT')
       expect(await onDisk(laterId)).toContain('QUEUED_OUTPUT')

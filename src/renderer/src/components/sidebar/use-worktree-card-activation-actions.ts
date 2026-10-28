@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useLayoutEffect, useRef } from 'react'
 
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-diagnostics'
@@ -19,10 +19,12 @@ export function useWorktreeCardActivationActions({
   isActive,
   activationRowKey,
   onActivate,
+  onWorktreeCardClick,
   onImmediateActivate,
   isDeleting,
   isSshDisconnected,
   updateWorktreeMeta,
+  setWorkspaceUnreadByUser,
   openModal
 }: Pick<
   WorktreeCardProps,
@@ -33,11 +35,18 @@ export function useWorktreeCardActivationActions({
   | 'isActive'
   | 'activationRowKey'
   | 'onActivate'
+  | 'onWorktreeCardClick'
   | 'onImmediateActivate'
 > &
-  Pick<Foundation, 'isSshDisconnected' | 'updateWorktreeMeta' | 'openModal'> &
+  Pick<
+    Foundation,
+    'isSshDisconnected' | 'updateWorktreeMeta' | 'setWorkspaceUnreadByUser' | 'openModal'
+  > &
   Pick<LinkedDetails, 'isDeleting'>) {
-  // Stable click handler – ignore clicks that are really text selections.
+  const worktreeRef = useRef(worktree)
+  useLayoutEffect(() => {
+    worktreeRef.current = worktree
+  }, [worktree])
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!isEventTargetInsideCurrentTarget(event.currentTarget, event.target)) {
@@ -58,7 +67,7 @@ export function useWorktreeCardActivationActions({
       }
       const selectionOnly = affiliateListMode
         ? false
-        : (onSelectionGesture?.(event, worktree.id) ?? false)
+        : (onSelectionGesture?.(event, worktreeRef.current) ?? false)
       if (selectionOnly) {
         event.preventDefault()
         event.stopPropagation()
@@ -69,7 +78,8 @@ export function useWorktreeCardActivationActions({
         event.stopPropagation()
         return
       }
-      // Why: route sidebar clicks through the shared activation path so the back/forward stack stays complete.
+      onWorktreeCardClick?.()
+      // Use shared activation so sidebar navigation participates in back/forward history.
       recordRendererCrashBreadcrumb('sidebar_worktree_activate', {
         worktreeId: worktree.id,
         repoId: worktree.repoId,
@@ -94,18 +104,22 @@ export function useWorktreeCardActivationActions({
       activationRowKey,
       isSshDisconnected,
       onActivate,
+      onWorktreeCardClick,
       onImmediateActivate,
       onSelectionGesture
     ]
   )
 
   const handleRenameTitle = useCallback(
-    // Inline rename has no surface for the failure; the store already logs and
-    // refetches, which reverts the optimistic title in place.
+    // Store logging/refetch reverts failed optimistic renames; inline rename has no separate error surface.
     async (displayName: string): Promise<void> => {
-      await updateWorktreeMeta(worktree.id, { displayName })
+      await updateWorktreeMeta(
+        worktree.id,
+        { displayName },
+        { executionHostId: worktree.hostId ?? 'local' }
+      )
     },
-    [updateWorktreeMeta, worktree.id]
+    [updateWorktreeMeta, worktree.hostId, worktree.id]
   )
 
   const handleDoubleClick = useCallback(
@@ -119,6 +133,7 @@ export function useWorktreeCardActivationActions({
       openModal('edit-meta', {
         worktreeId: worktree.id,
         repoId: worktree.repoId,
+        executionHostId: worktree.hostId,
         currentDisplayName: worktree.displayName,
         currentIssue: worktree.linkedIssue,
         currentPR: worktree.linkedPR,
@@ -130,6 +145,7 @@ export function useWorktreeCardActivationActions({
       affiliateListMode,
       worktree.comment,
       worktree.displayName,
+      worktree.hostId,
       worktree.id,
       worktree.linkedIssue,
       worktree.linkedPR,
@@ -141,9 +157,9 @@ export function useWorktreeCardActivationActions({
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
-      updateWorktreeMeta(worktree.id, { isUnread: !worktree.isUnread })
+      setWorkspaceUnreadByUser(worktree.id, !worktree.isUnread, worktree.hostId ?? 'local')
     },
-    [worktree.id, worktree.isUnread, updateWorktreeMeta]
+    [worktree.hostId, worktree.id, worktree.isUnread, setWorkspaceUnreadByUser]
   )
 
   return { handleClick, handleRenameTitle, handleDoubleClick, handleToggleUnreadQuick }

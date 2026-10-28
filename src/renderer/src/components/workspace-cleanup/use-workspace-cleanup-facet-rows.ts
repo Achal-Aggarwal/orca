@@ -36,11 +36,12 @@ import {
   createWorkspaceCleanupFacetListCache,
   createWorkspaceCleanupReviewInfoCache
 } from './workspace-cleanup-facet-row-caches'
+import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 export type WorkspaceCleanupFacetRows = {
   rows: WorkspaceCleanupFacets[]
-  selectableWorktreeIds: string[]
-  facetMatchedWorktreeIds: ReadonlySet<string>
+  selectableIdentities: string[]
+  facetMatchedIdentities: ReadonlySet<string>
   matchedCount: number
   totalCount: number
   facetCounts: WorkspaceCleanupFacetCounts
@@ -72,15 +73,7 @@ const EMPTY_FACET_OPTIONS: WorkspaceCleanupFacetOptions = Object.freeze({
   reviewProviders: Object.freeze([])
 })
 
-/**
- * Joins the scan rows with everything the flat list filters and sorts on:
- * renderer-only signals (visits, live agents, review cache, dismissals) plus
- * sizes from the EXISTING workspace-space scan — no second scanner.
- *
- * Per-candidate work is cached on candidate object identity (see
- * workspace-cleanup-facet-row-caches) so streaming ticks touch only changed
- * rows and no-op ticks skip every downstream pass.
- */
+/** Join renderer signals with existing workspace-space scan sizes; cache by candidate identity so unchanged streaming rows skip downstream work. */
 export function useWorkspaceCleanupFacetRows({
   candidates,
   filters,
@@ -92,13 +85,12 @@ export function useWorkspaceCleanupFacetRows({
   filters: WorkspaceCleanupFilterState
   sort: WorkspaceCleanupSortState
   now: number
-  /** Facet counts/options are only rendered inside the filter popover; pass
-   * false while it is closed to skip their O(N) passes entirely. */
+  /** Skip facet count/option O(N) passes while the filter popover is closed. */
   facetPanelOpen?: boolean
 }): WorkspaceCleanupFacetRows {
   const sources = useAppStore(
     useShallow((s) => ({
-      worktreesByRepo: s.worktreesByRepo,
+      worktreesByRepo: selectWorktreesByRepo(s),
       hostedReviewCache: s.hostedReviewCache,
       repos: s.repos,
       settings: s.settings,
@@ -117,10 +109,7 @@ export function useWorkspaceCleanupFacetRows({
     () => countWorkspaceCleanupCandidateIds(candidates),
     [candidates]
   )
-  // Why: each per-candidate cache lives in one memo together with the derived
-  // context it is keyed on — the memo deps ARE the cache invalidation, no refs
-  // (ref writes during render are unsafe under concurrent rendering), and
-  // interior fills are content-addressed and idempotent.
+  // Own caches in useMemo with invalidation dependencies; content-addressed/idempotent fills are safe across concurrent render replay, unlike ref mutation.
   const reviewContext = useMemo(
     () => ({
       sources: { hostedReviewCache, repos, settings, worktreesByRepo },
@@ -141,7 +130,8 @@ export function useWorkspaceCleanupFacetRows({
     () => getLiveAgentStatusByWorktreeId(sources.agentStatusByPaneKey, sources.tabsByWorktree, now),
     [now, sources.agentStatusByPaneKey, sources.tabsByWorktree]
   )
-  const dismissedWorktreeIds = useMemo(
+  // Dismissals use host-qualified identities; bare worktree IDs never match (STA-4343).
+  const dismissedIdentities = useMemo(
     () => new Set(Object.keys(sources.dismissals)),
     [sources.dismissals]
   )
@@ -183,13 +173,13 @@ export function useWorkspaceCleanupFacetRows({
           lastVisitedAtByWorktreeId: sources.lastVisitedAtByWorktreeId,
           liveAgentStatusByWorktreeId,
           reviewInfoByWorktreeId,
-          dismissedWorktreeIds
+          dismissedIdentities
         },
         cache: facetContext.cache
       }),
     [
       candidates,
-      dismissedWorktreeIds,
+      dismissedIdentities,
       facetContext,
       liveAgentStatusByWorktreeId,
       reviewInfoByWorktreeId,
@@ -236,11 +226,10 @@ export function useWorkspaceCleanupFacetRows({
         : EMPTY_FACET_COUNTS,
     [facetFilters, facetPanelOpen, facets, now]
   )
-  // Identity churn here is harmless: the only consumer reads the latest set
-  // inside a useEffectEvent body and never keys an effect on it.
-  const facetMatchedWorktreeIds = useMemo<ReadonlySet<string>>(
+  // Only useEffectEvent reads this set; no effect depends on its identity.
+  const facetMatchedIdentities = useMemo<ReadonlySet<string>>(
     () =>
-      new Set(filterWorkspaceCleanupFacets(facets, facetFilters, now).map((row) => row.worktreeId)),
+      new Set(filterWorkspaceCleanupFacets(facets, facetFilters, now).map((row) => row.identity)),
     [facetFilters, facets, now]
   )
   const measuredSizeCount = useMemo(() => countWorkspaceCleanupMeasuredRows(facets), [facets])
@@ -275,8 +264,8 @@ export function useWorkspaceCleanupFacetRows({
 
   return {
     rows: result.rows,
-    selectableWorktreeIds: result.selectableWorktreeIds,
-    facetMatchedWorktreeIds,
+    selectableIdentities: result.selectableIdentities,
+    facetMatchedIdentities,
     matchedCount: result.matchedCount,
     totalCount: result.totalCount,
     facetCounts,

@@ -43,12 +43,13 @@ import { registerWorkspaceCleanupHandlers } from './workspace-cleanup'
 const NOW = 1_700_000_000_000
 
 function makeScanEvent(senderOverrides: Record<string, unknown> = {}): never {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads only the sender members supplied here.
   return {
     sender: {
       id: 1,
       isDestroyed: () => false,
       send: vi.fn(),
-      once: vi.fn(),
+      on: vi.fn(),
       removeListener: vi.fn(),
       ...senderOverrides
     }
@@ -129,8 +130,7 @@ describe('workspace cleanup snapshot IPC', () => {
       .mocked(ipcMain.handle)
       .mock.calls.find(([channel]) => channel === 'workspaceCleanup:scan')?.[1]
 
-    // Why: worktreeIds: [] is a targeted scan that returns nothing; persisting
-    // it as broad would wipe the fleet cache.
+    // Empty target lists are still targeted; persisting them as broad would wipe the fleet snapshot.
     await handler?.(makeScanEvent(), { worktreeIds: [], includeAllWorkspaces: true })
 
     expect(persistScanResultMock).not.toHaveBeenCalled()
@@ -165,7 +165,7 @@ describe('workspace cleanup snapshot IPC', () => {
       .mocked(ipcMain.handle)
       .mock.calls.find(([channel]) => channel === 'workspaceCleanup:scan')?.[1]
     const event = makeScanEvent({
-      once: vi.fn((eventName: string, listener: () => void) => {
+      on: vi.fn((eventName: string, listener: () => void) => {
         if (eventName === 'destroyed') {
           abortListener = listener
         }
@@ -191,8 +191,7 @@ describe('workspace cleanup snapshot IPC', () => {
       .mocked(ipcMain.handle)
       .mock.calls.find(([channel]) => channel === 'workspaceCleanup:scan')?.[1]
 
-    // Why: different includeAllWorkspaces modes are separate lanes; one must
-    // not abort the other even from the same renderer.
+    // Legacy and full-list modes are separate cancellation lanes even for one renderer.
     const [legacy, full] = await Promise.allSettled([
       handler?.(makeScanEvent({ id: 7 }), { includeAllWorkspaces: false }) as Promise<unknown>,
       handler?.(makeScanEvent({ id: 7 }), { includeAllWorkspaces: true }) as Promise<unknown>
@@ -258,6 +257,41 @@ describe('workspace cleanup snapshot IPC', () => {
     await expect(handler?.({} as never)).resolves.toBe(snapshot)
     expect(readScanSnapshotMock).toHaveBeenCalledWith('/profile-a')
     expect(vi.mocked(ipcMain.removeHandler)).toHaveBeenCalledWith('workspaceCleanup:getCachedScan')
+  })
+
+  it('persists same-id dismissals by host and prunes every key by worktree id', async () => {
+    let dismissals = {}
+    const store = {
+      ...makeEmptyStore(),
+      getUI: () => ({ workspaceCleanup: { dismissals } }),
+      updateUI: (update: { workspaceCleanup: { dismissals: typeof dismissals } }) => {
+        dismissals = update.workspaceCleanup.dismissals
+      }
+    } as unknown as Store
+    registerWorkspaceCleanupHandlers(store)
+    const handler = Object.fromEntries(vi.mocked(ipcMain.handle).mock.calls)[
+      'workspaceCleanup:dismiss'
+    ]
+    const base = {
+      worktreeId: 'repo-1::/same',
+      dismissedAt: NOW,
+      fingerprint: 'fp',
+      classifierVersion: 2
+    }
+
+    await handler?.({} as never, {
+      dismissals: [
+        { ...base, executionHostId: 'local' },
+        { ...base, executionHostId: 'ssh:ssh-1' }
+      ]
+    })
+
+    expect(Object.keys(dismissals).sort()).toEqual(
+      ['local\0repo-1::/same', 'ssh:ssh-1\0repo-1::/same'].sort()
+    )
+
+    await handler?.({} as never, { dismissals: [], removedWorktreeIds: [base.worktreeId] })
+    expect(dismissals).toEqual({})
   })
 
   it('routes a validated removal snapshot prune batch through its explicit boundary', async () => {

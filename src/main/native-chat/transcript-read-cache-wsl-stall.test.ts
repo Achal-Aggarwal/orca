@@ -24,12 +24,16 @@ import {
   clearNativeChatTranscriptCache,
   readNativeChatTranscriptCached
 } from './transcript-read-cache'
-import { WSL_TRANSCRIPT_FS_EXACT_TIMEOUT_MS } from './wsl-transcript-fs-gate'
+import {
+  resetWslTranscriptFsGateForTests,
+  WSL_TRANSCRIPT_FS_EXACT_TIMEOUT_MS
+} from './wsl-transcript-fs-gate'
 
 const SLOW_MESSAGE =
   'WSL transcript files are temporarily unavailable because filesystem access is taking too long. Try again shortly or restart Orca if the issue continues.'
 
 beforeEach(() => {
+  resetWslTranscriptFsGateForTests()
   mocks.resolve.mockReset()
   mocks.stat.mockReset()
   mocks.read.mockReset()
@@ -54,9 +58,7 @@ describe('cached native chat transcript read with a stalled post-resolution stat
   })
 
   it('re-attempts the stat on the next call instead of serving a poisoned entry', async () => {
-    // The stalled task above still holds its permit, so this fast-fails on the
-    // stuck route rather than waiting out a second deadline — but it must still
-    // reach `stat` again once a different distro answers.
+    // The prior stalled task keeps its permit; a healthy distro must still get a fresh stat.
     const healthyPath = '\\\\wsl.localhost\\Debian\\home\\ada\\.claude\\projects\\p\\session.jsonl'
     mocks.resolve.mockResolvedValue(healthyPath)
     mocks.stat.mockResolvedValue({ mtimeMs: 5, size: 0 })
@@ -80,8 +82,7 @@ describe('cached native chat transcript read with a stalled post-resolution stat
       const stalled = readNativeChatTranscriptCached('claude', 'session-id')
       await vi.advanceTimersByTimeAsync(WSL_TRANSCRIPT_FS_EXACT_TIMEOUT_MS + 1)
 
-      // The stat is what the stall refuses; the parse it would have validated is
-      // complete and unchanged, so the chat stays rendered.
+      // Failed validation cannot invalidate an unchanged complete cached parse.
       await expect(stalled).resolves.toBe(warm)
       expect(mocks.read).toHaveBeenCalledOnce()
     } finally {

@@ -1,17 +1,13 @@
-import { isRuntimeOwnedSshTargetId } from '../../../shared/execution-host'
+import {
+  isRuntimeOwnedSshTargetId,
+  toRuntimeExecutionHostId,
+  toSshExecutionHostId,
+  type ExecutionHostId
+} from '../../../shared/execution-host'
+import { composeWorktreeHostIdentity } from '../../../shared/worktree/host-qualified-identity'
+import { refreshRuntimeEnvironmentCatalog } from '@/runtime/runtime-environment-pairing-refresh'
 
-/**
- * Tear down the ephemeral-VM runtimes backing a set of deleted workspaces (and,
- * optionally, runtimes pinned to a removed repo's runtime-owned SSH target).
- *
- * Centralized because both the per-workspace delete (`removeWorktree`) and the
- * project removal (`removeProject`) must clean up the runtime — an SSH-mode
- * per-workspace-env's workspace is the repo's *main* worktree, so deleting it
- * routes through project removal, which must not leak the live Docker/VM and its
- * hidden SSH target.
- *
- * Classifies runtime-owned SSH targets so callers purge only confirmed-destroyed projects.
- */
+/** Destroy runtimes for removed workspaces and runtime-owned SSH targets. Share with project removal because SSH-mode main worktrees delete through that path; classify targets so callers purge only confirmed destruction. */
 export type EphemeralVmCleanupSummary = {
   destroyedSshTargetIds: string[]
   retainedSshTargetIds: string[]
@@ -19,8 +15,12 @@ export type EphemeralVmCleanupSummary = {
 
 export async function cleanupEphemeralVmRuntimesForDeleted(args: {
   workspaceIds?: readonly string[]
-  // Raw runtime-owned SSH target ids (e.g. a removed repo's connectionId) whose
-  // backing runtime should also be torn down, even if no workspace id matched.
+  /** Workspace owners whose same-id siblings on other hosts must survive. */
+  hostScopedWorkspaces?: readonly {
+    workspaceId: string
+    executionHostId: ExecutionHostId
+  }[]
+  // Also destroy runtimes pinned to these raw SSH target IDs even without a matching workspace.
   runtimeOwnedSshTargetIds?: readonly string[]
 }): Promise<EphemeralVmCleanupSummary> {
   const destroyedSshTargetIds = new Set<string>()
@@ -30,16 +30,39 @@ export async function cleanupEphemeralVmRuntimesForDeleted(args: {
     const sshTargetIdSet = new Set(
       (args.runtimeOwnedSshTargetIds ?? []).filter((id) => isRuntimeOwnedSshTargetId(id))
     )
+    const hostScopedWorkspaceIdentities = new Set(
+      (args.hostScopedWorkspaces ?? []).map((target) =>
+        composeWorktreeHostIdentity(target.executionHostId, target.workspaceId)
+      )
+    )
     const runtimes = await window.api.ephemeralVm.listRuntimes()
     const matchingRuntimes = runtimes.filter(
       (runtime) =>
         (runtime.cleanupStatus !== 'succeeded' || runtime.sshTargetId !== undefined) &&
         ((runtime.workspaceId !== undefined && workspaceIdSet.has(runtime.workspaceId)) ||
+          (runtime.workspaceId !== undefined &&
+            ((runtime.runtimeEnvironmentId !== undefined &&
+              hostScopedWorkspaceIdentities.has(
+                composeWorktreeHostIdentity(
+                  toRuntimeExecutionHostId(runtime.runtimeEnvironmentId),
+                  runtime.workspaceId
+                )
+              )) ||
+              (runtime.sshTargetId !== undefined &&
+                hostScopedWorkspaceIdentities.has(
+                  composeWorktreeHostIdentity(
+                    toSshExecutionHostId(runtime.sshTargetId),
+                    runtime.workspaceId
+                  )
+                )))) ||
           (runtime.sshTargetId !== undefined && sshTargetIdSet.has(runtime.sshTargetId)))
     )
+    let releasedServer = false
     for (const runtime of matchingRuntimes) {
       try {
         const cleaned = await window.api.ephemeralVm.cleanup({ runtimeId: runtime.id })
+        releasedServer ||=
+          runtime.runtimeEnvironmentId !== undefined || runtime.sshTargetId !== undefined
         if (runtime.sshTargetId) {
           const targetIds = cleaned.sshTargetId ? retainedSshTargetIds : destroyedSshTargetIds
           targetIds.add(runtime.sshTargetId)
@@ -50,6 +73,10 @@ export async function cleanupEphemeralVmRuntimesForDeleted(args: {
           retainedSshTargetIds.add(runtime.sshTargetId)
         }
       }
+    }
+    if (releasedServer) {
+      // Cleanup can forget the VM's server; purge its rows now instead of on the next catalog read.
+      await refreshRuntimeEnvironmentCatalog()
     }
   } catch (error) {
     console.error('Failed to clean up ephemeral VM runtime for deleted workspace:', error)

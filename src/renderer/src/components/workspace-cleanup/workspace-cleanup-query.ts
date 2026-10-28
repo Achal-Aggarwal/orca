@@ -28,10 +28,9 @@ export type WorkspaceCleanupQuery = {
 }
 
 export type WorkspaceCleanupQueryResult = {
-  /** Sorted rows that passed every facet. */
   rows: WorkspaceCleanupFacets[]
-  /** Rows the user could actually queue for deletion, for the select-all affordance. */
-  selectableWorktreeIds: string[]
+  /** Host-qualified keys of rows the user could queue, for the select-all affordance. */
+  selectableIdentities: string[]
   totalCount: number
   matchedCount: number
 }
@@ -88,13 +87,12 @@ export function runWorkspaceCleanupQuery(
   const rows = sortWorkspaceCleanupFacets(matched, query.sort)
   return {
     rows,
-    selectableWorktreeIds: rows.filter((row) => row.isSelectable).map((row) => row.worktreeId),
+    selectableIdentities: rows.filter((row) => row.isSelectable).map((row) => row.identity),
     totalCount: facets.length,
     matchedCount: rows.length
   }
 }
 
-/** One-shot convenience for callers holding raw scan candidates. */
 export function queryWorkspaceCleanupCandidates(
   candidates: readonly WorkspaceCleanupCandidate[],
   query: WorkspaceCleanupQuery,
@@ -104,11 +102,7 @@ export function queryWorkspaceCleanupCandidates(
   return runWorkspaceCleanupQuery(buildWorkspaceCleanupFacetList(candidates, sources), query, now)
 }
 
-/**
- * Per-facet-group match counts for badge/count rendering. Each entry counts the
- * rows that would survive if only that group were applied, so a UI can show how
- * much each facet is costing without re-running the whole pipeline per group.
- */
+/** Count each facet group independently so badges explain its restriction without rerunning the full pipeline per group. */
 export function countWorkspaceCleanupFacetMatches(
   facets: readonly WorkspaceCleanupFacets[],
   filters: WorkspaceCleanupFilterState,

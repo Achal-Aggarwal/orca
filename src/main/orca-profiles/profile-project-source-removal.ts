@@ -18,6 +18,7 @@ export function removeSourceRepo(
     ...state,
     repos: state.repos.filter((repo) => repo.id !== repoId),
     sparsePresetsByRepo: { ...state.sparsePresetsByRepo },
+    retiredWorktreeNamesByRepo: { ...state.retiredWorktreeNamesByRepo },
     worktreeMeta: { ...state.worktreeMeta },
     worktreeLineageById: { ...state.worktreeLineageById },
     workspaceLineageByChildKey: { ...state.workspaceLineageByChildKey },
@@ -34,10 +35,15 @@ export function removeSourceRepo(
           ? null
           : state.ui.lastActiveWorktreeId,
       filterRepoIds: state.ui.filterRepoIds?.filter((id) => id !== repoId) ?? [],
+      explorerDisplayRootByWorktree: removeRepoWorktreeRecord(
+        state.ui.explorerDisplayRootByWorktree,
+        repoId
+      ),
       showDotfilesByWorktree: removeRepoWorktreeRecord(state.ui.showDotfilesByWorktree, repoId)
     }
   }
   delete next.sparsePresetsByRepo[repoId]
+  delete next.retiredWorktreeNamesByRepo?.[repoId]
   removeRepoWorktreeMetadata(next, repoId)
   return rebuildRepoBackedProjectState(next)
 }

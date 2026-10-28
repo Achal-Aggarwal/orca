@@ -1,3 +1,4 @@
+import { ImeInput } from '@/lib/ime-text-field'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronLeft, SearchIcon } from 'lucide-react'
@@ -92,23 +93,29 @@ export function PaletteFilterFieldOptions({
     [group.options, selected, normalizedQuery, rankMode]
   )
 
-  // State, not a ref: the scroller unmounts on an empty list, and the wheel
-  // listener has to re-attach to the node that replaces it.
+  // The scroller remounts after empty results; state reattaches the native wheel listener to its replacement.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  // Why the field/query are stored alongside the index instead of reset in an
-  // effect: a stale row would stay active for one paint. Why not key off the
-  // ranked list identity: a toggle re-ranks, so that would yank the cursor back
-  // to the top mid multi-select.
-  const [highlight, setHighlight] = useState(() => ({
+  // Store field/query with highlight to avoid stale paints; list identity changes on toggles and must not reset multi-select navigation.
+  const [highlight, setHighlight] = useState<{
+    field: PaletteFilterField
+    query: string
+    id: string | null
+  }>(() => ({
     field: group.field,
     query: normalizedQuery,
-    index: 0
+    id: null
   }))
-  const storedIndex =
-    highlight.field === group.field && highlight.query === normalizedQuery ? highlight.index : 0
-  // The stored index can outlive the rows it pointed at when the list shrinks.
-  const activeIndex = Math.min(storedIndex, Math.max(0, ranked.ordered.length - 1))
+  const storedId =
+    highlight.field === group.field && highlight.query === normalizedQuery ? highlight.id : null
+  // Track option IDs: toggling re-ranks rows, so indices could aim the next Enter at another option.
+  const activeIndex =
+    storedId === null
+      ? 0
+      : Math.max(
+          0,
+          ranked.ordered.findIndex((option) => option.id === storedId)
+        )
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -146,14 +153,17 @@ export function PaletteFilterFieldOptions({
       }
       const next = Math.max(0, Math.min(ranked.ordered.length - 1, activeIndex + delta))
       virtualizer.scrollToIndex(next, { align: 'auto' })
-      setHighlight({ field: group.field, query: normalizedQuery, index: next })
+      setHighlight({
+        field: group.field,
+        query: normalizedQuery,
+        id: ranked.ordered[next]?.id ?? null
+      })
     },
-    [activeIndex, group.field, normalizedQuery, ranked.ordered.length, virtualizer]
+    [activeIndex, group.field, normalizedQuery, ranked.ordered, virtualizer]
   )
 
   const handleListKeyDown = useCallback(
-    // Space toggles only from the listbox; in the search input it stays a
-    // typeable character, and labels like "Delta Host" need it.
+    // Space toggles only from the listbox; search text must still accept spaces.
     (event: React.KeyboardEvent, allowSpaceToToggle = true) => {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -185,8 +195,7 @@ export function PaletteFilterFieldOptions({
     group.field === 'host'
       ? translate('worktreeJumpPalette.filter.noHosts', 'No matching hosts')
       : translate('worktreeJumpPalette.filter.noProjects', 'No matching projects')
-  // Why a dedicated string per field: lowercasing a translated heading breaks in
-  // languages that capitalize nouns mid-sentence (German "Projekte").
+  // Translate complete field-specific labels; lowercasing nouns breaks languages such as German.
   const clearLabel =
     group.field === 'host'
       ? translate('worktreeJumpPalette.filter.clearHosts', 'Clear hosts')
@@ -220,7 +229,7 @@ export function PaletteFilterFieldOptions({
           className="mr-2 size-3.5 shrink-0 text-muted-foreground/60"
           aria-hidden="true"
         />
-        <input
+        <ImeInput
           ref={inputRef}
           value={optionQuery}
           onChange={(event) => onOptionQueryChange(event.target.value)}
@@ -258,7 +267,7 @@ export function PaletteFilterFieldOptions({
           aria-label={group.heading}
           tabIndex={-1}
           onKeyDown={handleListKeyDown}
-          className="popover-scroll-content scrollbar-sleek overflow-y-auto py-1"
+          className="scrollbar-sleek overflow-y-auto py-1"
           style={{ maxHeight: FILTER_OPTION_LIST_MAX_HEIGHT }}
         >
           <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>

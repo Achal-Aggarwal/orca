@@ -10,6 +10,8 @@ import type {
   ExternalAutomationJob,
   ExternalAutomationManager
 } from '../../../../shared/automations-types'
+import type { AutomationListRow } from './automation-list-row-identity'
+import type { ExternalAutomationScope } from './external-automation-scope-client'
 import { AutomationListLocalRows } from './AutomationListLocalRows'
 import { AutomationListExternalRows } from './AutomationListExternalRows'
 import { indexLatestAutomationRuns } from './automation-list-last-run'
@@ -53,7 +55,7 @@ function makeExternalJob(overrides: Partial<ExternalAutomationJob> = {}): Extern
   return {
     id: 'job-1',
     managerId: 'manager-1',
-    provider: 'hermes',
+    provider: 'openclaw',
     name: 'Nightly',
     schedule: '0 0 * * *',
     rawSchedule: null,
@@ -75,8 +77,8 @@ function makeExternalJob(overrides: Partial<ExternalAutomationJob> = {}): Extern
 function makeExternalManager(): ExternalAutomationManager {
   return {
     id: 'manager-1',
-    provider: 'hermes',
-    label: 'Local Hermes',
+    provider: 'openclaw',
+    label: 'Local OpenClaw',
     targetLabel: 'Local',
     target: { type: 'local' },
     status: 'available',
@@ -112,14 +114,20 @@ function makeRun(overrides: Partial<AutomationRun> = {}): AutomationRun {
 }
 
 function renderLocalRows(handlers: {
-  onSelect: (automationId: string) => void
-  onDelete?: (automation: Automation) => void
+  onSelect: (rowKey: string) => void
+  onDelete?: (row: AutomationListRow) => void
   runs?: AutomationRun[]
 }) {
+  const row: AutomationListRow = {
+    key: 'row|local|automation-1',
+    automation: makeAutomation(),
+    hostLabel: 'Local',
+    usageSummary: null
+  }
   return render(
     <AutomationListLocalRows
-      automations={[makeAutomation()]}
-      selectedId={null}
+      rows={[row]}
+      selectedRowKey={null}
       isSelectedLocal={true}
       lastRunByAutomationId={indexLatestAutomationRuns(handlers.runs ?? [])}
       relativeNow={Date.now()}
@@ -128,8 +136,8 @@ function renderLocalRows(handlers: {
       projectHostSetups={[]}
       sshConnectionStates={new Map()}
       runtimeStatusByEnvironmentId={new Map()}
-      automationHostTarget={null}
-      automationSourceHostAvailabilityById={new Map()}
+      hostTargetFor={() => null}
+      automationSourceHostAvailabilityByRowKey={new Map()}
       hostLabelById={new Map()}
       onSelect={handlers.onSelect}
       onRunNow={vi.fn()}
@@ -145,21 +153,25 @@ function renderExternalRows(handlers: {
   onRequestAction?: (
     manager: ExternalAutomationManager,
     job: ExternalAutomationJob,
-    action: 'run' | 'pause' | 'resume' | 'delete'
+    action: 'run' | 'pause' | 'resume' | 'delete',
+    scope: ExternalAutomationScope
   ) => void
 }) {
   const manager = makeExternalManager()
   const job = makeExternalJob()
+  const scope: ExternalAutomationScope = {
+    owner: { authority: { kind: 'desktop' }, selector: { kind: 'self' } },
+    provider: 'openclaw'
+  }
   return render(
     <AutomationListExternalRows
-      entries={[{ key: `${manager.id}:${job.id}`, manager, job }]}
+      entries={[{ key: `${manager.id}:${job.id}`, scope, manager, job }]}
       selectedExternalKey={null}
       relativeNow={Date.now()}
       sshConnectionStates={new Map()}
       externalActionKey={null}
       onSelect={handlers.onSelect}
       onRequestAction={handlers.onRequestAction ?? vi.fn()}
-      onEdit={vi.fn()}
     />
   )
 }
@@ -171,9 +183,7 @@ afterEach(() => {
 
 describe('Automation list row selection', () => {
   it('does not open local detail when a quick-action menu item is chosen', async () => {
-    // Radix portals the menu out of the row's DOM, but React bubbles its
-    // clicks back through the component tree. Selecting Delete must not call
-    // onSelect (which opens the detail page behind the confirm dialog).
+    // React bubbles portaled Delete clicks through the row; onSelect must not open detail behind confirmation.
     const onSelect = vi.fn()
     const onDelete = vi.fn()
     renderLocalRows({ onSelect, onDelete })
@@ -205,13 +215,11 @@ describe('Automation list row selection', () => {
     await user.click(row as Element)
 
     expect(onSelect).toHaveBeenCalledTimes(1)
-    expect(onSelect).toHaveBeenCalledWith('automation-1')
+    expect(onSelect).toHaveBeenCalledWith('row|local|automation-1')
   })
 
   it('opens the actions menu on keyboard activation without selecting the row', async () => {
-    // The row handles Enter/Space for its own activation. Those keys bubble
-    // from the actions trigger too, so an unguarded row handler would
-    // preventDefault the button's native activation and open detail instead.
+    // Guard Enter/Space from the actions trigger so row activation cannot veto the button and open detail.
     const onSelect = vi.fn()
     renderLocalRows({ onSelect })
     const user = userEvent.setup()

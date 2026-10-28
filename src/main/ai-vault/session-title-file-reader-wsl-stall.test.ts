@@ -11,7 +11,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof NodeFsPromisesModule>()
   return {
     ...original,
-    // Only the WSL request is faked; the local sibling reads a real temp file.
     lstat: (path: string, ...rest: unknown[]) =>
       path.startsWith('\\\\')
         ? mocks.lstat(path)
@@ -24,7 +23,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readAiVaultSessionTitlesFromFiles } from './session-title-file-reader'
 import { resetSessionParseCacheForTests } from './session-scanner-parse-cache'
-import { WSL_TRANSCRIPT_FS_SCAN_TIMEOUT_MS } from '../native-chat/wsl-transcript-fs-gate'
+import {
+  resetWslTranscriptFsGateForTests,
+  WSL_TRANSCRIPT_FS_SCAN_TIMEOUT_MS
+} from '../native-chat/wsl-transcript-fs-gate'
 
 let releaseStall: (() => void) | undefined
 let tempRoot: string | undefined
@@ -47,6 +49,7 @@ function userRecord(sessionId: string, text: string): string {
 }
 
 beforeEach(async () => {
+  resetWslTranscriptFsGateForTests()
   resetSessionParseCacheForTests()
   mocks.lstat.mockReset()
   releaseStall = undefined

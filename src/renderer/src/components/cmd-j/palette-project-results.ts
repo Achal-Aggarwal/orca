@@ -1,18 +1,20 @@
 import { isCmdJPaletteQueryTooLarge } from './palette-results'
 import {
   cmdJPaletteTokenScore,
+  isCmdJPaletteQueryOverTokenLimit,
+  uniqueCmdJPaletteQueryTokens,
   normalizeCmdJPaletteQuery,
   uniqueNormalizedCmdJPaletteKeywords
 } from './palette-query-tokens'
+import type { PaletteResultQualityClass } from '../../../../shared/palette-match/match-quality'
 import type { ProjectGroup } from '../../../../shared/project-group-types'
 import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
 import type { Repo } from '../../../../shared/repo-types'
 import { translate } from '@/i18n/i18n'
-import {
-  getProjectGroupHeaderKey,
-  getProjectHeaderRevealTarget,
-  type ProjectGroupingModel
-} from '../sidebar/worktree-list-groups'
+import { getProjectGroupHeaderKey } from '../../../../shared/sidebar-list/group-keys'
+import { getDistinctProjectGroups } from '../../../../shared/project-groups'
+import { getProjectHeaderRevealTarget } from '../../../../shared/project-section-grouping'
+import type { ProjectGroupingModel } from '../../../../shared/project-section-grouping'
 
 export type CmdJProjectGroupResult = {
   id: string
@@ -37,10 +39,23 @@ export type CmdJProjectResult = {
 
 export type CmdJProjectSearchResult = CmdJProjectGroupResult | CmdJProjectResult
 
+/** Ranked row plus the cross-section class that decides which palette section leads. */
+export type CmdJRankedProjectSearchResult = CmdJProjectSearchResult & {
+  qualityClass: PaletteResultQualityClass
+}
+
 type RankedProjectResult = {
   result: CmdJProjectSearchResult
   rule: number
   score: number
+}
+
+/** Only exact own-title matches signal decisive intent; generic project/repo aliases must not lead the whole section. */
+function projectRuleQualityClass(rule: number): PaletteResultQualityClass {
+  if (rule === 1) {
+    return 'exact-intent'
+  }
+  return rule <= 4 ? 'visible-prefix' : 'partial-evidence'
 }
 
 const PROJECT_GROUP_ALIASES = ['group', 'repo group']
@@ -63,7 +78,7 @@ function buildCmdJProjectSearchCandidates({
   const repoMap = new Map(repos.map((repo) => [repo.id, repo]))
   const candidates: CmdJProjectSearchResult[] = []
 
-  projectGroups.forEach((group, order) => {
+  getDistinctProjectGroups(projectGroups).forEach((group, order) => {
     candidates.push({
       id: `project-group:${group.id}`,
       kind: 'project-group',
@@ -133,6 +148,7 @@ export function hasCmdJProjectSearchCandidates({
 
 function projectRankingForCandidate(
   query: string,
+  queryTokens: readonly string[],
   candidate: CmdJProjectSearchResult
 ): RankedProjectResult | null {
   const title = normalizeCmdJPaletteQuery(candidate.title)
@@ -149,7 +165,7 @@ function projectRankingForCandidate(
   if (candidate.keywords.some((keyword) => keyword.startsWith(query))) {
     return { result: candidate, rule: 4, score: 0 }
   }
-  const score = cmdJPaletteTokenScore(query, [candidate.title, ...candidate.keywords])
+  const score = cmdJPaletteTokenScore(queryTokens, [candidate.title, ...candidate.keywords])
   return score > 0 ? { result: candidate, rule: 5, score } : null
 }
 
@@ -180,18 +196,17 @@ export function searchCmdJProjectResults({
   projects: readonly Project[]
   projectHostSetups: readonly ProjectHostSetup[]
   renderableRepoIds?: ReadonlySet<string>
-}): CmdJProjectSearchResult[] {
-  // Why: oversized pasted input should not force the palette to scan project,
-  // repo, or group names that may include private workspace details.
+}): CmdJRankedProjectSearchResult[] {
+  // Bound pasted queries before scanning potentially private project, repo or group names.
   if (isCmdJPaletteQueryTooLarge(query)) {
     return []
   }
   const normalizedQuery = normalizeCmdJPaletteQuery(query)
-  // Why: project/group rows sit after worktree matches, so one-character
-  // searches would add broad noisy navigation targets before intent is clear.
-  if (normalizedQuery.length < 2) {
+  // Require at least two query characters before adding broad project/group navigation targets.
+  if (normalizedQuery.length < 2 || isCmdJPaletteQueryOverTokenLimit(normalizedQuery)) {
     return []
   }
+  const queryTokens = uniqueCmdJPaletteQueryTokens(normalizedQuery)
   return buildCmdJProjectSearchCandidates({
     projectGroups,
     repos,
@@ -199,8 +214,8 @@ export function searchCmdJProjectResults({
     projectHostSetups,
     renderableRepoIds
   })
-    .map((candidate) => projectRankingForCandidate(normalizedQuery, candidate))
+    .map((candidate) => projectRankingForCandidate(normalizedQuery, queryTokens, candidate))
     .filter((entry): entry is RankedProjectResult => entry !== null)
     .sort(compareProjectRanked)
-    .map((entry) => entry.result)
+    .map((entry) => ({ ...entry.result, qualityClass: projectRuleQualityClass(entry.rule) }))
 }
