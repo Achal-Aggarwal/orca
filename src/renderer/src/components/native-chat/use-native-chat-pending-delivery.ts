@@ -106,9 +106,14 @@ export function useNativeChatPendingDelivery(args: {
       ),
     [save]
   )
-  // Stop cannot cancel a settled failure; its bubble holds the only message copy.
+  // Stop cannot discard failed or uncertain writes: their bubbles may hold the only message copy.
   const clear = useCallback(
-    () => save((entries) => entries.filter((entry) => entry.delivery || entry.recovery)),
+    () =>
+      save((entries) =>
+        entries.filter(
+          (entry) => entry.delivery || entry.recovery || entry.writeUnconfirmedAt !== undefined
+        )
+      ),
     [save]
   )
 
@@ -159,22 +164,16 @@ export function useNativeChatPendingDelivery(args: {
   }, [nextHoldDeadline, messages, save, sessionId])
 
   const notices = useMemo(() => {
-    if (!pending.some((entry) => entry.delivery)) {
+    if (!pending.some((entry) => entry.delivery === 'rejected')) {
       return NO_NOTICES
     }
     const result = new Map<string, NativeChatDeliveryNotice>()
     for (const entry of pending) {
-      if (!entry.delivery) {
+      if (entry.delivery !== 'rejected') {
         continue
       }
       result.set(`pending:${entry.id}`, {
-        text:
-          entry.delivery === 'rejected'
-            ? translate('components.native-chat.messageNotSent', 'Message not sent')
-            : translate(
-                'components.native-chat.deliveryUnconfirmed',
-                "Couldn't confirm whether this was sent. It hasn't been resent."
-              ),
+        text: translate('components.native-chat.messageNotSent', 'Message not sent'),
         ...(composerRef
           ? {
               onSend: () => {

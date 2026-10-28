@@ -416,8 +416,8 @@ it.each([false, true])(
         source: { kind: 'user' },
         options: fields.options
       })
-      expect(cards.map((card) => card.messageId)).toEqual([written ? `recovery:${id}` : id])
-      expect(cards[0]).toMatchObject({ body: fields.body, options: fields.options })
+      expect(cards.map((card) => card.messageId)).toEqual(written ? [] : [id])
+      expect(journal.submissionBody(id)).toEqual(fields.body)
       if (!written) {
         expect(row).toMatchObject({
           dispatchState: 'rejected',

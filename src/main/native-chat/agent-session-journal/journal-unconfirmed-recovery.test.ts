@@ -22,7 +22,11 @@ import { settleObservedExitForTest } from '../agent-session-wire/structured-agen
 import { readQueuePublication } from '../agent-session-wire/structured-agent-session-queued-publication'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { createTrackedJournalOpener } from './journal-host-database-test-support'
+import {
+  appendTestJournalQueueRow,
+  openTestJournalHostDatabase,
+  createTrackedJournalOpener
+} from './journal-host-database-test-support'
 import type { AgentSessionJournal } from './journal-store'
 
 const journals = createTrackedJournalOpener()
@@ -51,7 +55,7 @@ const work = () =>
   })
 const open = async () => {
   journal = await journals.open({ identity, stateDirectory: root, now: () => ++clock })
-  journal.queuedMessages.recoveryWork = work
+  journal.queuedMessages.inputWork = work
 }
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'b1-recovery-'))
@@ -99,76 +103,58 @@ async function receipt(id: string) {
   })
 }
 
-it('keeps one actionable copy, adopts only a person’s action, and never duplicates the stopped-text carry', async () => {
-  await journal.appendItem(
-    { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId: 'turn-lifecycle:turn' },
-    { kind: 'turn', turnId: 'turn', state: 'running' },
-    { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-  )
+function savedCopy(id: string, changedBody?: AgentJournalMessageItem) {
+  appendTestJournalQueueRow(openTestJournalHostDatabase(root).db, journal, cardId(id), {
+    op: 'queued',
+    body: changedBody ?? journal.submissionBody(id)!,
+    position: 0,
+    queuedAt: journal.cursor(),
+    recovers: id,
+    options: { model: 'gpt-5', effort: 'high' },
+    ...(!changedBody
+      ? {
+          returned: {
+            reason: 'old uncertainty sentence',
+            rejection: { kind: 'unconfirmed' as const }
+          }
+        }
+      : {})
+  })
+  return journal.queuedMessages.get(cardId(id))!
+}
+
+it('keeps uncertain input ordinary, rejects stale virtual actions, and preserves exclusive stopped carry', async () => {
   await send('send')
   await ended()
-  const copy = journal.queuedMessages.get(cardId('send'))!
-  expect(copy.state).toBe('returned')
-  expect(
-    journal.queuedMessages.editLeases.acquire(
-      { callerKey: 'editor', editId: 'edit' },
-      { messageId: copy.messageId, fingerprint: copy.fingerprint }
-    ).status
-  ).toBe('held')
+  const original = journal.submission('send')!
+  expect(journal.itemBody(agentJournalSubmissionKey('send'))).toEqual(body('send'))
+  expect(journal.queuedMessages.list()).toEqual([])
   expect(
     await journal.queuedMessages.update({
-      messageId: copy.messageId,
-      expectedBodyFingerprint: copy.fingerprint,
-      text: 'send'
-    })
-  ).toMatchObject({ status: 'updated' })
-  await journal.appendSubmission(
-    {
-      clientMessageId: 'fresh',
-      body: copy.body,
-      payloadFingerprint: copy.fingerprint,
-      fence: 7,
-      origin: 'client',
-      handoverRecorded: true
-    },
-    { messageId: copy.messageId, expect: 'returned' }
-  )
-  expect(journal.queuedMessages.get(copy.messageId)).toMatchObject({
-    state: 'dispatched',
-    consumedAs: 'fresh',
-    recovers: 'send'
-  })
-  await receipt('send')
-  expect(journal.queuedMessages.get(copy.messageId)?.consumedAs).toBe('fresh')
-  await send('late')
-  await ended('late-end')
-  const late = journal.queuedMessages.get(cardId('late'))!
-  await receipt('late')
-  expect(journal.queuedMessages.get(late.messageId)).toBeNull()
-  expect(
-    await journal.queuedMessages.update({
-      messageId: late.messageId,
-      expectedBodyFingerprint: late.fingerprint,
+      messageId: cardId('send'),
+      expectedBodyFingerprint: original.payloadFingerprint,
       text: 'typing'
     })
   ).toMatchObject({ status: 'gone' })
-  await send('edit')
-  await ended('edit-end')
-  const edit = journal.queuedMessages.get(cardId('edit'))!
-  await journal.queuedMessages.update({
-    messageId: edit.messageId,
-    expectedBodyFingerprint: edit.fingerprint,
-    text: 'changed'
-  })
-  await receipt('edit')
-  expect(journal.queuedMessages.get(edit.messageId)).toMatchObject({
-    state: 'waiting',
-    recovers: 'edit'
-  })
-  await send('delete')
-  await ended('delete-end')
-  await journal.queuedMessages.withdraw([cardId('delete')])
-  expect(journal.queuedMessages.get(cardId('delete'))?.state).toBe('withdrawn')
+  await expect(
+    journal.appendSubmission(
+      {
+        clientMessageId: 'phantom',
+        body: body('send'),
+        payloadFingerprint: original.payloadFingerprint,
+        fence: 7,
+        origin: 'client',
+        handoverRecorded: true
+      },
+      { messageId: cardId('send'), expect: 'returned' }
+    )
+  ).rejects.toThrow()
+  expect(journal.submission('phantom')).toBeUndefined()
+  expect(journal.submission('send')).toEqual(original)
+  await journal.close()
+  await open()
+  expect(journal.itemBody(agentJournalSubmissionKey('send'))).toEqual(body('send'))
+  expect(journal.queuedMessages.list()).toEqual([])
   await send('stopped', false)
   await journal.stops.accept({ event: { reason: 'user-stop' }, fence: 7, liveTurnId: () => null })
   const carried = agentSessionStoppedHistoryOwed({
@@ -199,7 +185,8 @@ it('keeps one actionable copy, adopts only a person’s action, and never duplic
     carries: ['stopped']
   })
   await ended('carrier-end')
-  expect(journal.queuedMessages.get(cardId('carrier'))?.body).toEqual(body('carrier'))
+  expect(journal.queuedMessages.get(cardId('carrier'))).toBeNull()
+  expect(journal.submissionBody('carrier')).toEqual(body('carrier'))
   expect(
     agentSessionStoppedHistoryOwed({
       submissions: journal.submissions(),
@@ -230,14 +217,14 @@ it('keeps one actionable copy, adopts only a person’s action, and never duplic
   expect(journal.queuedMessages.get(cardId('carrier'))).toBeNull()
 })
 
-it('re-derives after restart, waits for owner reconciliation, and retires an unchanged copy on an exact replay receipt', async () => {
+it('retains ordinary input through restart/reconciliation and exact replay receipt', async () => {
   await send('restart')
   await ended('replayed')
   await journal.close()
   await open()
   await journal.markPendingSubmissionsUnknown(7)
   lease.unreconciled = true
-  journal.queuedMessages.recoveryWork = () =>
+  journal.queuedMessages.inputWork = () =>
     structuredAgentSessionCurrentWork(journal, {
       record: conversation(),
       child: null
@@ -245,7 +232,8 @@ it('re-derives after restart, waits for owner reconciliation, and retires an unc
   expect(journal.queuedMessages.get(cardId('restart'))).toBeNull()
   lease.unreconciled = false
   lease.claimStatus = 'released'
-  expect(journal.queuedMessages.get(cardId('restart'))?.state).toBe('returned')
+  expect(journal.queuedMessages.get(cardId('restart'))).toBeNull()
+  expect(journal.submissionBody('restart')).toEqual(body('restart'))
   const { catchUpCodexThread } = await import('../../codex/codex-structured-thread-catch-up')
   const { createDeferredStructuredAgentSessionEventSink } =
     await import('../agent-session-wire/structured-agent-session-event-sink')
@@ -359,7 +347,7 @@ it('confirms id-less live receipts and releases unopened error/interrupt holds w
   const echoes = createCodexDispatchEchoes(undefined, (id) => {
     remembered.push(id)
   })
-  journal.queuedMessages.recoveryWork = () =>
+  journal.queuedMessages.inputWork = () =>
     structuredAgentSessionCurrentWork(journal, {
       record: conversation(),
       child: { fence: 7, heldSends: echoes.heldSends }
@@ -402,7 +390,8 @@ it('confirms id-less live receipts and releases unopened error/interrupt holds w
     },
     { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
-  expect(journal.queuedMessages.get(cardId('legacy-error'))?.state).toBe('returned')
+  expect(journal.queuedMessages.get(cardId('legacy-error'))).toBeNull()
+  expect(journal.queuedMessages.attemptEnded('legacy-error')).toBe(true)
   expect(
     journal.submissions().find((send) => send.clientMessageId === 'legacy-error')?.dispatchState
   ).toBe('pending')
@@ -412,7 +401,8 @@ it('confirms id-less live receipts and releases unopened error/interrupt holds w
   await journal.appendStopEvent({ reason: 'user-stop' }, 7)
   expect(journal.queuedMessages.get(cardId('unopened-stop'))).toBeNull()
   echoes.endTurn('thread', 'stop-turn', { status: 'interrupted' })
-  expect(journal.queuedMessages.get(cardId('unopened-stop'))?.state).toBe('returned')
+  expect(journal.queuedMessages.get(cardId('unopened-stop'))).toBeNull()
+  expect(journal.queuedMessages.attemptEnded('unopened-stop')).toBe(true)
 })
 
 it('retains full source, action resolution and exact late proof across cuts and epochs', async () => {
@@ -431,7 +421,7 @@ it('retains full source, action resolution and exact late proof across cuts and 
   }
   await send('U', true, full)
   await ended('U-end')
-  const original = journal.queuedMessages.get(cardId('U'))!
+  const original = savedCopy('U')
   await journal.context.rewind(floor, 7, [], () => noop)
   expect(journal.item(agentJournalSubmissionKey('U'))).toBeNull()
   expect(journal.queuedMessages.get(original.messageId)?.body).toEqual(full)
@@ -444,9 +434,14 @@ it('retains full source, action resolution and exact late proof across cuts and 
   await open()
   expect(journal.queuedMessages.get(original.messageId)?.body).toEqual(full)
   await receipt('U')
-  expect(journal.queuedMessages.get(original.messageId)).toBeNull()
+  expect(journal.queuedMessages.get(original.messageId)).toMatchObject({
+    state: 'waiting',
+    holdReason: 'delivery_unconfirmed',
+    body: full
+  })
   await send('delete-U')
   await ended('delete-end')
+  savedCopy('delete-U')
   await journal.queuedMessages.withdraw([cardId('delete-U')])
   await journal.replaceEpochItems('handle_forked', 7, [])
   await journal.close()
@@ -455,7 +450,7 @@ it('retains full source, action resolution and exact late proof across cuts and 
   expect(journal.queuedMessages.list().filter((c) => c.state === 'returned')).toEqual([])
   await send('edited', true, full)
   await ended('edited-end')
-  const edit = journal.queuedMessages.get(cardId('edited'))!
+  const edit = savedCopy('edited', full)
   const before = journal.cursor()
   await journal.queuedMessages.update({
     messageId: edit.messageId,
@@ -468,9 +463,32 @@ it('retains full source, action resolution and exact late proof across cuts and 
     expectedBodyFingerprint: edit.fingerprint,
     text: 'changed'
   })
+  const changed = journal.queuedMessages.get(edit.messageId)!
+  expect(changed).toMatchObject({
+    state: 'waiting',
+    holdReason: null,
+    recovers: 'edited',
+    options: edit.options
+  })
+  await journal.queuedMessages.update({
+    messageId: edit.messageId,
+    expectedBodyFingerprint: changed.fingerprint,
+    text: 'original'
+  })
+  expect(journal.queuedMessages.get(edit.messageId)).toMatchObject({
+    state: 'waiting',
+    holdReason: null,
+    body: full,
+    options: edit.options
+  })
+  await journal.queuedMessages.update({
+    messageId: edit.messageId,
+    expectedBodyFingerprint: edit.fingerprint,
+    text: 'changed'
+  })
   await send('resent', true, full)
   await ended('resent-end')
-  const retry = journal.queuedMessages.get(cardId('resent'))!
+  const retry = savedCopy('resent')
   await journal.appendSubmission(
     {
       clientMessageId: 'fresh-attempt',
@@ -479,7 +497,7 @@ it('retains full source, action resolution and exact late proof across cuts and 
       fence: 7,
       handoverRecorded: true
     },
-    { messageId: retry.messageId, expect: 'returned' }
+    { messageId: retry.messageId, expect: 'waiting' }
   )
   await receipt('fresh-attempt')
   await journal.replaceEpochItems('handle_forked', 7, [])
@@ -534,44 +552,6 @@ it('does not end observation from warnings, retry errors or another attempt’s 
   expect(journal.queuedMessages.get(cardId('U'))).toBeNull()
   await ended('U-end')
   expect(journal.queuedMessages.attemptEnded('U')).toBe(true)
-})
-
-it('keeps U actions and barrier through later V and a starting child; only first presentation waits', async () => {
-  const { bindStructuredAgentSessionRecoveryWork } =
-    await import('../agent-session-wire/structured-agent-session-host-current-work')
-  const { deferFirstRecoveryPresentation, finishFirstRecoveryPresentation } =
-    await import('../agent-session-wire/structured-agent-session-queued-publication')
-  await send('U')
-  await ended('U-end')
-  const child = { phase: 'starting' as const, fence: 7, generation: 'later', heldSends: () => held }
-  const store = {
-    getConversation: () => conversation(),
-    replacedRuntime: () => undefined
-  }
-  const session = { journal, child }
-  bindStructuredAgentSessionRecoveryWork(store, identity.sessionId, session)
-  const gate = () => ({ work: work(), record: records.agentSessionRecordFixture(lease) })
-  deferFirstRecoveryPresentation(journal, child)
-  expect(readQueuePublication(journal, gate).queuedMessages).toEqual([])
-  expect(journal.queuedMessages.get(cardId('U'))?.state).toBe('returned')
-  finishFirstRecoveryPresentation(journal, child)
-  expect(readQueuePublication(journal, gate).queuedMessages.map((c) => c.messageId)).toContain(
-    cardId('U')
-  )
-  await journal.queuedMessages.insert({ messageId: 'W', body: body('waiting') })
-  await send('V')
-  held.add('V')
-  await journal.appendItem(
-    { provider: 'legacy', agent: 'codex', sessionId: 'thread', recordId: 'turn-lifecycle:V' },
-    { kind: 'turn', turnId: 'V', state: 'running' },
-    { fence: 7, turnScope: { kind: 'thread' } }
-  )
-  deferFirstRecoveryPresentation(journal, child)
-  expect(readQueuePublication(journal, gate).queuedMessages.map((c) => c.messageId)).toContain(
-    cardId('U')
-  )
-  expect(journal.queuedMessages.get(cardId('U'))?.state).toBe('returned')
-  expect(readQueuePublication(journal, gate).nextQueuedMessageId).toBeNull()
 })
 
 it.each([100, 1000])(
@@ -647,7 +627,8 @@ it.each([100, 1000])(
     await ended('candidate-end')
     expect(journal.queuedMessages.get(cardId('candidate'))).toBeNull()
     held.delete('candidate')
-    expect(journal.queuedMessages.get(cardId('candidate'))?.state).toBe('returned')
+    expect(journal.queuedMessages.get(cardId('candidate'))).toBeNull()
+    expect(journal.queuedMessages.attemptEnded('candidate')).toBe(true)
     await receipt('candidate')
     expect(journal.queuedMessages.get(cardId('candidate'))).toBeNull()
     const { structuredAgentSessionCommandTurnIdentity } =
@@ -743,7 +724,7 @@ it('retains an ordinary consumed payload and attempt across failed replacement, 
 it('indexes queue-restored unknown for an ordinary card and a retained recovery successor', async () => {
   await send('original')
   await ended('original-end')
-  const recovery = journal.queuedMessages.get(cardId('original'))!
+  const recovery = savedCopy('original')
   await journal.appendSubmission(
     {
       clientMessageId: 'V',
@@ -753,7 +734,7 @@ it('indexes queue-restored unknown for an ordinary card and a retained recovery 
       origin: 'client',
       handoverRecorded: true
     },
-    { messageId: recovery.messageId, expect: 'returned' }
+    { messageId: recovery.messageId, expect: 'waiting' }
   )
   await journal.queuedMessages.insert({ messageId: 'ordinary', body: body('ordinary') })
   const ordinary = journal.queuedMessages.get('ordinary')!
@@ -787,13 +768,15 @@ it('indexes queue-restored unknown for an ordinary card and a retained recovery 
       }
     })
     expect(journal.submission(id)?.dispatchState).toBe('unknown')
-    expect(journal.queuedMessages.get(cardId(id))?.state).toBe('returned')
+    expect(journal.queuedMessages.get(cardId(id))).toBeNull()
+    expect(journal.submissionBody(id)).toBeDefined()
   }
   await journal.replaceEpochItems('handle_forked', 7, [])
   await journal.close()
   await open()
   for (const id of ['U', 'V']) {
-    expect(journal.queuedMessages.get(cardId(id))?.state).toBe('returned')
+    expect(journal.queuedMessages.get(cardId(id))).toBeNull()
+    expect(journal.submissionBody(id)).toBeDefined()
     await journal.acceptLate({
       clientMessageId: id,
       state: 'accepted',

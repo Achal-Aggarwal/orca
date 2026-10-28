@@ -1,3 +1,4 @@
+import { appendTestJournalQueueRow } from '../agent-session-journal/journal-host-database-test-support'
 // An earlier build kept queued cards in their own table. They move into the chat's journal: the
 // queue reads each the same before and after, each action moves only its own card, and the bulk
 // import runs once per open, all-or-nothing, until no readable legacy row is left.
@@ -354,18 +355,28 @@ it.each([false, true])(
     const open = async () => {
       journal = journalFor(session)
       await journal.open()
-      journal.queuedMessages.recoveryWork = () => ({
-        allowsRecovery: () => true,
+      journal.queuedMessages.inputWork = () => ({
+        allowsObservation: () => true,
         owesSend: () => false,
-        generationEnded: () => true,
-        activeTurnId: () => null,
-        recoveryViewKey: () => ''
+        generationEnded: () => true
       })
     }
     await open()
     for (const id of ids) {
       expect(journal.submission(`U-${id}`)?.dispatchState).toBe('unknown')
-      expect(journal.queuedMessages.get(`recovery:U-${id}`)?.state).toBe('returned')
+      expect(journal.queuedMessages.get(`recovery:U-${id}`)).toBeNull()
+      appendTestJournalQueueRow(db(), journal, `recovery:U-${id}`, {
+        op: 'queued',
+        body: message(id),
+        recovers: `U-${id}`,
+        position: 0,
+        queuedAt: journal.cursor(),
+        returned: { reason: 'prior-build uncertainty', rejection: { kind: 'unconfirmed' } }
+      })
+      expect(journal.queuedMessages.get(`recovery:U-${id}`)).toMatchObject({
+        state: 'waiting',
+        holdReason: 'delivery_unconfirmed'
+      })
     }
     if (failed) {
       db().exec(
@@ -374,7 +385,7 @@ it.each([false, true])(
       await expect(journal.queuedMessages.withdraw(['recovery:U-deleted'])).rejects.toThrow(
         'action unavailable'
       )
-      expect(journal.queuedMessages.get('recovery:U-deleted')?.state).toBe('returned')
+      expect(journal.queuedMessages.get('recovery:U-deleted')?.state).toBe('waiting')
       expect(legacyIds(session)).toHaveLength(4)
       db().exec('DROP TRIGGER fail_action')
     }
@@ -403,7 +414,7 @@ it.each([false, true])(
         origin: 'client',
         handoverRecorded: true
       },
-      { messageId: send.messageId, expect: 'returned' }
+      { messageId: send.messageId, expect: 'waiting' }
     )
     if (failed) {
       expect(legacyIds(session)).toHaveLength(4)
@@ -412,7 +423,11 @@ it.each([false, true])(
     await journal.close()
     await open()
     expect(journal.submission('U-proof')?.dispatchState).toBe('accepted')
-    expect(journal.queuedMessages.get('recovery:U-proof')).toBeNull()
+    expect(journal.queuedMessages.get('recovery:U-proof')).toMatchObject({
+      state: 'waiting',
+      holdReason: 'delivery_unconfirmed',
+      body: message('proof')
+    })
     expect(journal.queuedMessages.get('recovery:U-deleted')?.state).toBe('withdrawn')
     expect(journal.queuedMessages.get('recovery:U-edited')).toMatchObject({
       state: 'waiting',
@@ -499,19 +514,17 @@ it.each([false, true])(
     const open = async () => {
       journal = journalFor(session)
       await journal.open()
-      journal.queuedMessages.recoveryWork = () => ({
-        allowsRecovery: () => true,
+      journal.queuedMessages.inputWork = () => ({
+        allowsObservation: () => true,
         owesSend: () => false,
-        generationEnded: () => true,
-        activeTurnId: () => null,
-        recoveryViewKey: () => ''
+        generationEnded: () => true
       })
     }
     await open()
     const independent = journal.queuedMessages.get('Q-proof')!
     expect(
       readPublishedQueuedMessages(journal).find((card) => card.messageId === 'Q-proof')
-    ).toMatchObject({ independentRecovery: true, body: editedBody })
+    ).toMatchObject({ state: 'waiting', paused: true, body: editedBody })
     expect(independent).toMatchObject({
       state: 'waiting',
       consumedAs: null,

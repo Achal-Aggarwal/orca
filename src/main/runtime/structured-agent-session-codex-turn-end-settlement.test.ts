@@ -411,7 +411,7 @@ describe('a queued card sent now into the turn a Stop ends', () => {
     await vi.waitFor(
       async () =>
         expect({ cards: (await queue()).cards, sends: await sends(cardId) }).toEqual({
-          cards: [{ messageId: `recovery:${steered.clientMessageId}`, state: 'returned' }],
+          cards: [],
           sends: [{ verdict: 'unknown' }]
         }),
       { timeout: 5_000 }
@@ -437,14 +437,11 @@ describe('a queued card sent now into the turn a Stop ends', () => {
         (entry) => entry.clientMessageId === steered.clientMessageId
       )?.providerItemId
     ).toBeNull()
-    expect((await queue()).cards).toEqual([
-      { messageId: `recovery:${steered.clientMessageId}`, state: 'returned' }
-    ])
-    expect(journal.queuedMessages.get(`recovery:${steered.clientMessageId}`)).toMatchObject({
-      recovers: steered.clientMessageId,
-      body: hostTestMessage('and check the tests'),
-      options: { model: MODEL.model }
-    })
+    expect((await queue()).cards).toEqual([])
+    expect(journal.queuedMessages.get(`recovery:${steered.clientMessageId}`)).toBeNull()
+    expect(journal.itemBody(`orca:${steered.clientMessageId}`)).toEqual(
+      hostTestMessage('and check the tests')
+    )
   }, 20_000)
 })
 
@@ -512,12 +509,8 @@ describe("a queued card's Send-now while a Codex turn runs", () => {
       providerItemId: null,
       options: { model: MODEL.model }
     })
-    expect(journal.queuedMessages.get(`recovery:${sent}`)).toMatchObject({
-      recovers: sent,
-      state: 'returned',
-      body: hostTestMessage('and check the tests'),
-      options: { model: MODEL.model }
-    })
+    expect(journal.queuedMessages.get(`recovery:${sent}`)).toBeNull()
+    expect(journal.itemBody(`orca:${sent}`)).toEqual(hostTestMessage('and check the tests'))
     expect((await settled()).owesWork).toBe(false)
   })
 })

@@ -1,5 +1,3 @@
-import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
-import { sameProviderChild } from './structured-agent-session-provider-child'
 // The published view of a conversation's queue: its whole draft list, the queue's
 // pause and the card it sends next, on the `commands` precedent — read per emit,
 // reference-stable while unchanged, so the subscribers' identity dedup keeps token
@@ -55,16 +53,10 @@ export function structuredQueueSendGate(
 
 /** Waiting and returned rows only. `paused` is a per-card hold (a failed conversion); a person's
  *  Stop pauses the queue, published once beside it. */
-function computePublishedQueuedMessages(
-  journal: AgentSessionJournal,
-  deferRecovery = false
-): AgentSessionQueuedMessage[] {
+function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
   const published: AgentSessionQueuedMessage[] = []
   for (const row of journal.queuedMessages.list()) {
-    if (
-      (deferRecovery && journal.queuedMessages.isDerivedRecovery(row.messageId)) ||
-      (row.state !== 'waiting' && row.state !== 'returned')
-    ) {
+    if (row.state !== 'waiting' && row.state !== 'returned') {
       continue
     }
     const held = row.state === 'waiting' && row.holdReason !== null
@@ -73,7 +65,6 @@ function computePublishedQueuedMessages(
       position: row.position,
       body: row.body,
       state: row.state,
-      ...(row.recovers ? { independentRecovery: true as const } : {}),
       ...(held ? { paused: true as const } : {}),
       // Unknown stored reasons remain plain holds.
       ...(held && isPublishedPausedReason(row.holdReason) ? { pausedReason: row.holdReason } : {}),
@@ -93,26 +84,6 @@ function isPublishedPausedReason(
 }
 
 type ListMemo = { key: string; serialized: string; list: AgentSessionQueuedMessage[] }
-const firstReplay = new WeakMap<AgentSessionJournal, StructuredAgentSessionProviderChildIdentity>()
-const recoveryPresented = new WeakSet<AgentSessionJournal>()
-export function deferFirstRecoveryPresentation(
-  journal: AgentSessionJournal,
-  child: StructuredAgentSessionProviderChildIdentity
-): void {
-  if (!recoveryPresented.has(journal)) {
-    firstReplay.set(journal, child)
-  }
-}
-export function finishFirstRecoveryPresentation(
-  journal: AgentSessionJournal,
-  child: StructuredAgentSessionProviderChildIdentity
-): void {
-  const pending = firstReplay.get(journal)
-  if (pending && sameProviderChild(pending, child)) {
-    firstReplay.delete(journal)
-  }
-}
-
 /** Stable identity avoids repeated serialization on token frames. */
 const listMemos = new WeakMap<AgentSessionJournal, ListMemo>()
 const publications = new WeakMap<AgentSessionJournal, QueuePublication>()
@@ -120,16 +91,12 @@ const publications = new WeakMap<AgentSessionJournal, QueuePublication>()
 export function readPublishedQueuedMessages(
   journal: AgentSessionJournal
 ): AgentSessionQueuedMessage[] {
-  const deferred = firstReplay.has(journal)
-  const key = `${journal.queuedMessages.revision()}:${deferred}`
+  const key = journal.queuedMessages.revision()
   const memo = listMemos.get(journal)
   if (memo && memo.key === key) {
     return memo.list
   }
-  const list = computePublishedQueuedMessages(journal, deferred)
-  if (list.some((card) => card.messageId.startsWith('recovery:'))) {
-    recoveryPresented.add(journal)
-  }
+  const list = computePublishedQueuedMessages(journal)
   // Belt for the identity dedup: equal recomputed content keeps the previous reference.
   const serialized = JSON.stringify(list)
   if (memo && memo.serialized === serialized) {

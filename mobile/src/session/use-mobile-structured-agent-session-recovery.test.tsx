@@ -217,13 +217,12 @@ describe('current recovery publication and normal Resume', () => {
     unmountSession()
   })
 
-  describe('derived recovery marker through feed, controller, tray and normal header', () => {
+  describe('saved independent hold through feed, controller, tray and normal header', () => {
     const r = queuedDraft({
       messageId: 'R',
       position: 0,
-      state: 'returned',
-      independentRecovery: true,
-      returnedRejection: { kind: 'unconfirmed' }
+      state: 'waiting',
+      paused: true
     })
     const w1 = queuedDraft({ messageId: 'W1', position: 1 })
     const q = queuedDraft({
@@ -237,7 +236,7 @@ describe('current recovery publication and normal Resume', () => {
       renderer!.root.findAllByProps({ accessibilityLabel: 'Resume sending the queued messages' })
 
     it.each([1, 2])(
-      'keeps %i literal recoveries while normal Resume targets only the queue',
+      'keeps %i uncertain originals ordinary while normal Resume targets only the queue',
       async (count) => {
         showTray = true
         const rig = await createQueuedMessageTestRig({ restartable: true })
@@ -257,7 +256,7 @@ describe('current recovery publication and normal Resume', () => {
           let snapshot: AgentSessionSubscribeEvent | undefined
           await vi.waitFor(async () => {
             const result = await rig.host.history({ sessionId: 'session-alpha', direction: 'tail' })
-            expect(result.page.queuedMessages).toHaveLength(count + 2)
+            expect(result.page.queuedMessages).toHaveLength(2)
             snapshot = {
               type: 'snapshot',
               sessionId: result.page.sessionId,
@@ -282,15 +281,8 @@ describe('current recovery publication and normal Resume', () => {
               : ok({})
           )
           await mountSession(CAPABLE, snapshot, 'session-alpha')
-          expect(hook!.queued.cards).toHaveLength(count + 2)
-          expect(hook!.queued.cards.slice(0, count)).toMatchObject(
-            Array.from({ length: count }, () => ({
-              state: 'returned',
-              needsAttention: true,
-              caption: "Couldn't confirm whether this was sent. It hasn't been resent."
-            }))
-          )
-          expect(hook!.queued.cards.slice(count).map((c) => c.caption)).toEqual([null, null])
+          expect(hook!.queued.cards).toHaveLength(2)
+          expect(hook!.queued.cards.map((c) => c.caption)).toEqual([null, null])
           expect(header()).toHaveLength(1)
           await act(async () => header()[0]!.props.onPress())
           expect(calls('agentSession.queuedMessagesResume')).toHaveLength(1)
@@ -335,7 +327,7 @@ describe('current recovery publication and normal Resume', () => {
         [r],
         [],
         [queuedDraft({ messageId: 'P', paused: true })],
-        [{ ...r, independentRecovery: undefined }, w2]
+        [{ ...r, state: 'returned' as const, paused: undefined }, w2]
       ]) {
         act(() => listener?.(batchEvent(queuedMessages, [], { reason: 'stopped' })))
         expect(header()).toHaveLength(0)
@@ -348,13 +340,45 @@ describe('current recovery publication and normal Resume', () => {
       expect(hook!.queued.cards).toEqual([])
       expect(header()).toHaveLength(0)
       act(() => listener?.(snapshotEvent({ queuedMessages: [w1, { ...r, position: 2 }, w2] })))
-      expect(hook!.queued.cards.map((c) => c.caption)).toEqual([
-        null,
-        "Couldn't confirm whether this was sent. It hasn't been resent.",
-        null
-      ])
+      expect(hook!.queued.cards.map((c) => c.caption)).toEqual([null, 'Paused', null])
       expect(header()).toHaveLength(0)
     })
+
+    it.each([100, 1000])(
+      'bounds actual publication/feed/controller join work at N=%i',
+      async (n) => {
+        await mountSession({ ...CAPABLE, queuedMessageReorder: true })
+        vi.useFakeTimers()
+        let reads = 0
+        const messages = Array.from({ length: n }, (_, i) => {
+          const message = queuedDraft({ messageId: `W${i}`, position: i })
+          return new Proxy(message, {
+            get(target, property, receiver) {
+              if (property === 'messageId') {
+                reads++
+              }
+              return Reflect.get(target, property, receiver)
+            }
+          })
+        })
+        act(() => listener?.(batchEvent(messages, [], { reason: 'stopped' })))
+        expect(hook!.queued.cards).toHaveLength(n)
+        expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
+        expect(reads).toBeGreaterThanOrEqual(n)
+        expect(reads).toBeLessThanOrEqual(20 * n)
+        const before = reads
+        act(() => {
+          listener?.(
+            batchEvent(undefined, [acceptedSubmission('handoff-W0', 'W0')], { reason: 'stopped' })
+          )
+          vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
+        })
+        expect(hook!.queued.cards).toHaveLength(n - 1)
+        expect(hook!.queued.cards.some((card) => card.messageId === 'W0')).toBe(false)
+        expect(reads - before).toBeGreaterThanOrEqual(n)
+        expect(reads - before).toBeLessThanOrEqual(20 * n)
+      }
+    )
 
     it('intersects a pending raw preview with fresh visibility and facts, retaining hidden-anchor order and refusal rollback', async () => {
       await mountSession(

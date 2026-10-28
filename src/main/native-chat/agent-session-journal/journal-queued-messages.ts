@@ -1,4 +1,4 @@
-import { journalInputAttemptEnded } from './journal-input-obligations'
+import { journalInputAttemptEnded, type JournalInputWork } from './journal-input-obligations'
 // The queue's one view and its writes. A card is folded from the chat's own rows
 // (`journal-queue-fold.ts`), so every change to one is a journal row on the journal's own lane,
 // committed with whatever else the action writes: the queue keeps no second copy to fall behind.
@@ -17,7 +17,7 @@ import {
   type JournalQueueRow
 } from './journal-queue-events'
 import { LegacyQueuedCards } from './journal-queue-import'
-import { queuedChangeOf, queueNeedsReopen } from './journal-queue-retention'
+import { queueNeedsReopen } from './journal-queue-retention'
 import { composeJournalOperationReceipts, type JournalOperationReceipt } from './journal-row-writer'
 import type { JournalQueuedMessagesDeps, JournalSubmissionConsume } from './journal-store-contracts'
 import {
@@ -35,11 +35,6 @@ import {
 import { QueuedMessageNotConsumableError } from './queued-message-consume-error'
 import { QueuedMessageEditLeases } from './queued-message-edit-leases'
 import { queuedMessageUpdateDecision, type QueuedMessageUpdate } from './queued-message-update'
-import {
-  adoptUnconfirmedRecovery,
-  unconfirmedRecoveryCards,
-  type JournalRecoveryWork
-} from './journal-unconfirmed-recovery'
 import { queuedMessageMovePlan } from './queued-message-move'
 
 export type JournalQueuePlan = {
@@ -50,7 +45,7 @@ export type JournalQueuePlan = {
 export class JournalQueuedMessages {
   readonly editLeases = new QueuedMessageEditLeases(() => this.list())
   private readonly legacy: LegacyQueuedCards
-  recoveryWork: () => JournalRecoveryWork | null = () => null
+  inputWork: () => JournalInputWork | null = () => null
   private viewed: { key: string; cards: readonly QueuedMessageRow[] } | null = null
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {
@@ -65,27 +60,22 @@ export class JournalQueuedMessages {
 
   revision(): string {
     const { epoch, queue } = this.deps.state()
-    return `${epoch}:${queue.revision}:${this.legacy.key()}:${this.deps.state().inputs.revision}:${this.recoveryWork()?.recoveryViewKey() ?? ''}`
+    return `${epoch}:${queue.revision}:${this.legacy.key()}`
   }
 
   list(): readonly QueuedMessageRow[] {
     const key = this.revision()
     if (this.viewed?.key !== key) {
       const cards = [...this.deps.state().queue.cards.values(), ...this.legacy.cards()]
-      cards.push(...unconfirmedRecoveryCards(this.deps.state(), cards, this.recoveryWork()))
       this.viewed = { key, cards: cards.sort((a, b) => a.position - b.position) }
     }
     return this.viewed.cards
   }
 
-  isDerivedRecovery(messageId: string): boolean {
-    return messageId.startsWith('recovery:') && !this.deps.state().queue.cards.has(messageId)
-  }
-
   attemptEnded(clientMessageId: string): boolean {
     const state = this.deps.state()
     const send = state.submissions.get(clientMessageId)
-    return send !== undefined && journalInputAttemptEnded(state, send, this.recoveryWork())
+    return send !== undefined && journalInputAttemptEnded(state, send, this.inputWork())
   }
 
   get(messageId: string): QueuedMessageRow | null {
@@ -152,16 +142,8 @@ export class JournalQueuedMessages {
       edit = undefined
       const card = this.get(input.messageId)
       const decision = queuedMessageUpdateDecision(card, this.deps.sessionId, input)
-      const derived =
-        card?.recovers &&
-        !this.deps.state().queue.cards.has(card.messageId) &&
-        !this.legacy.adoption(card.messageId)
       if (decision.status !== 'ready') {
-        const result =
-          decision.status === 'unchanged' && derived
-            ? { ...decision, status: 'updated' as const }
-            : decision
-        return { changes: [], result }
+        return { changes: [], result: decision }
       }
       edit = { body: decision.body, previous: decision.previous }
       const { messageId } = input
@@ -169,9 +151,7 @@ export class JournalQueuedMessages {
         changes: [
           {
             messageId,
-            change: derived
-              ? { ...queuedChangeOf(card), body: decision.body }
-              : { op: 'edited', body: decision.body }
+            change: { op: 'edited', body: decision.body }
           }
         ],
         result: { status: 'updated', messageId, fingerprint: decision.fingerprint }
@@ -230,10 +210,7 @@ export class JournalQueuedMessages {
         rows.push(...this.legacy.witnessRows(source, adopted))
       }
       const own = this.deps.state().queue.cards.has(messageId) || adopted.includes(messageId)
-      const adoption = own
-        ? null
-        : (this.legacy.adoption(messageId) ??
-          adoptUnconfirmedRecovery(this.list(), messageId, change))
+      const adoption = own ? null : this.legacy.adoption(messageId)
       if (adoption) {
         rows.push(journalQueueRowBuilder(this.deps.state, messageId, adoption))
         adopted.push(messageId)

@@ -1,4 +1,8 @@
 import {
+  appendTestJournalQueueRow,
+  openTestJournalHostDatabase
+} from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
   reduceStructuredAgentSession,
   EMPTY_STRUCTURED_AGENT_SESSION
 } from '../../../../shared/structured-agent-session-reducer'
@@ -197,9 +201,6 @@ it('installs old-reader source and exact controls through RPC, disk reopen, Send
   ).toMatchObject({ result: { page: { queuedMessages: [expect.objectContaining({ body })] } } })
   await rig.quitRestartHostProcess()
   setStructuredAgentSessionHost(rig.host)
-  expect((await history({ direction: 'tail' }, false)).page.queuedMessages?.[0]).not.toHaveProperty(
-    'independentRecovery'
-  )
   const reopened = await history()
   expectFrozenSource(frozen, reopened.page, id, body)
   expectFrozenSource(frozen, (await history({ direction: 'tail' }, false)).page, id, body, false)
@@ -679,7 +680,7 @@ it.each([
   { image: true, edit: false },
   { image: true, edit: true }
 ])(
-  'keeps the pinned original through unknown/cold and retires only its recovery on late proof ($image/$edit)',
+  'keeps ordinary uncertain original through cold/late proof, independent of a saved physical edit ($image/$edit)',
   async ({ image, edit }) => {
     rig = await createQueuedMessageTestRig({ restartable: true })
     setStructuredAgentSessionHost(rig.host)
@@ -698,29 +699,37 @@ it.each([
     await eventually(() => expect(rig!.dispatch).toHaveBeenCalledTimes(1))
     await eventually(() => expect(journal().submission(id)?.handedOverAt).toBeDefined())
     await rig.stop()
-    await eventually(() => expect(journal().queuedMessages.get(`recovery:${id}`)).not.toBeNull())
-    const card = journal().queuedMessages.get(`recovery:${id}`)!
-    expect(card).toMatchObject({
-      state: 'returned',
-      recovers: id,
-      body,
-      options: { model: 'default' }
-    })
+    await rig.host.flushStreamedEvents(SESSION)
+    await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
+    expect(journal().queuedMessages.list()).toEqual([])
+    if (edit) {
+      appendTestJournalQueueRow(
+        openTestJournalHostDatabase(rig.root).db,
+        journal(),
+        `recovery:${id}`,
+        {
+          op: 'queued',
+          body,
+          recovers: id,
+          position: 0,
+          queuedAt: journal().cursor(),
+          options: { model: 'default' },
+          returned: { reason: 'prior-build uncertainty', rejection: { kind: 'unconfirmed' } }
+        }
+      )
+    }
+    const card = journal().queuedMessages.get(`recovery:${id}`)
     const original = journal().submission(id)!
     const receipt = journal().receiptFor(id)
     expect(original).toMatchObject({ dispatchState: 'unknown', providerItemId: null })
     expectFrozenSource(frozen, (await history()).page, id, body)
-    // Exercise the existing missing-source restoration path, not removal of accepted conversation history.
-    if (image) {
-      await journal().rollEpoch('unreconcilable_prefix', original.fence)
-    }
     const frames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
     expectFrozenSource(frozen, streamState(frames), id, body)
     await rig.quitRestartHostProcess()
     setStructuredAgentSessionHost(rig.host)
     expectFrozenSource(frozen, (await history()).page, id, body)
     const settledFrames = await openStream('agentSession.subscribe', { sessionId: SESSION }, OLD)
-    if (edit) {
+    if (card) {
       const fields = {
         messageId: card.messageId,
         expectedBodyFingerprint: card.fingerprint,
@@ -733,7 +742,7 @@ it.each([
       expect(await call('agentSession.queuedMessageUpdate', params, MODERN)).toMatchObject({
         result: { ok: true, value: { status: 'updated' } }
       })
-      const edited = journal().queuedMessages.get(card.messageId)!
+      const edited = journal().queuedMessages.get(`recovery:${id}`)!
       expect(edited.body).toEqual({
         ...body,
         blocks: [
@@ -743,15 +752,15 @@ it.each([
       })
       expect(edited.options).toEqual(card.options)
       expect(edited.state).toBe('waiting')
-      expectFrozenSource(frozen, (await history()).page, id, body, false)
+      expectFrozenSource(frozen, (await history()).page, id, body)
       expect(await call('agentSession.queuedMessageUpdate', params, MODERN)).toMatchObject({
         result: { ok: true }
       })
-      expect(journal().queuedMessages.get(card.messageId)).toEqual(edited)
+      expect(journal().queuedMessages.get(`recovery:${id}`)).toEqual(edited)
     }
     const input = structuredClone(journal().queuedMessages.displayState().inputs.sources.get(id))
     expect(input).toMatchObject({ body, options: original.options, fence: original.fence })
-    const beforeProof = journal().queuedMessages.get(card.messageId)
+    const beforeProof = journal().queuedMessages.get(`recovery:${id}`)
     expect(journal().submission(id)).toEqual(original)
     expect(journal().receiptFor(id)).toEqual(receipt)
     expect(journal().submissionBody(id)).toEqual(body)
@@ -779,8 +788,8 @@ it.each([
     expect(journal().queuedMessages.displayState().inputs.sources.get(id)).toEqual(input)
     expect(journal().submissionBody(id)).toEqual(body)
     expect(rig.dispatch).toHaveBeenCalledTimes(1)
-    if (edit) {
-      expect(journal().queuedMessages.get(card.messageId)).toEqual(beforeProof)
+    if (card) {
+      expect(journal().queuedMessages.get(`recovery:${id}`)).toEqual(beforeProof)
       const old = (await history()).page
       expect(
         frozen.mobileQueuedMessageCards(old.queuedMessages ?? [], old.submissions)
@@ -793,12 +802,12 @@ it.each([
         }
       ])
     } else {
-      expect(journal().queuedMessages.get(card.messageId)).toBeNull()
+      expect(journal().queuedMessages.get(`recovery:${id}`)).toBeNull()
     }
-    expectFrozenSource(frozen, (await history()).page, id, body, !image)
-    expectFrozenSource(frozen, streamState(settledFrames), id, body, !image)
+    expectFrozenSource(frozen, (await history()).page, id, body)
+    expectFrozenSource(frozen, streamState(settledFrames), id, body)
     await rig.quitRestartHostProcess()
-    expectFrozenSource(frozen, (await history()).page, id, body, !image)
-    expect(journal().queuedMessages.get(card.messageId)).toEqual(edit ? beforeProof : null)
+    expectFrozenSource(frozen, (await history()).page, id, body)
+    expect(journal().queuedMessages.get(`recovery:${id}`)).toEqual(beforeProof)
   }
 )

@@ -57,7 +57,7 @@ function move(
 }
 describe('authoritative queue ordering', () => {
   it('persists mixed-sender ID moves and replays a spent move without reordering again', async () => {
-    const working = await rig.workingSend()
+    await rig.workingSend()
     const a = await queue('a')
     const mail = await queue('mail', true)
     const b = await queue('b')
@@ -108,31 +108,16 @@ describe('authoritative queue ordering', () => {
     expect(reopened).toMatchObject({
       ok: true,
       page: {
-        queuedMessages: [
-          {
-            messageId: `recovery:${working}`,
-            state: 'returned',
-            returnedRejection: { kind: 'unconfirmed' },
-            body: {
-              kind: 'message',
-              role: 'user',
-              blocks: [{ type: 'text', text: 'work on this' }]
-            }
-          },
-          { messageId: mail },
-          { messageId: a },
-          { messageId: c },
-          { messageId: b }
-        ]
+        queuedMessages: [{ messageId: mail }, { messageId: a }, { messageId: c }, { messageId: b }]
       }
     })
     expect(await move(c, { beforeMessageId: a }, op)).toMatchObject({
       ok: true,
       value: { status: 'moved' }
     })
-    expect(order()).toEqual([`recovery:${working}`, mail, a, c, b])
+    expect(order()).toEqual([mail, a, c, b])
     expect(journal().queuedMessages.get(mail)?.body).toEqual(facts[1]!.body)
-    expect(journal().queuedMessages.list()).toHaveLength(5)
+    expect(journal().queuedMessages.list()).toHaveLength(4)
     expect(await rig.deleteQueued(c)).toMatchObject({ ok: true })
     expect(await move(c, { beforeMessageId: null })).toMatchObject({
       ok: true,

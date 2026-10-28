@@ -104,7 +104,7 @@ it.each(['before', 'after', 'none'] as const)(
     expect(
       (await rig.host.journalSnapshot(SESSION)).items.filter((row) => row.body.kind === 'turn')
     ).toEqual([])
-    expect(await rig.drafts()).toEqual([{ messageId: `recovery:${id}`, state: 'returned' }])
+    expect(await rig.drafts()).toEqual([])
   }
 )
 
@@ -183,13 +183,19 @@ it('keeps full unconfirmed input through accepted Stop, a resumed send, exact la
   expect(observed).toBe(true)
   expect(await rig.submission(id)).toMatchObject({ dispatchState: 'unknown', options })
   expect(journal().receiptFor(id)).toBeNull()
-  expect(await rig.drafts()).toEqual([{ messageId: `recovery:${id}`, state: 'returned' }])
+  expect(await rig.drafts()).toEqual([])
   const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
   expect(page).toMatchObject({
     ok: true,
-    page: { queuedMessages: [{ messageId: `recovery:${id}`, body }] }
+    page: {
+      queuedMessages: [],
+      items: expect.arrayContaining([
+        expect.objectContaining({ itemId: agentJournalSubmissionKey(id), body })
+      ])
+    }
   })
-  expect(journal().queuedMessages.get(`recovery:${id}`)).toMatchObject({ body, options })
+  expect(journal().queuedMessages.get(`recovery:${id}`)).toBeNull()
+  expect(journal().submissionBody(id)).toEqual(body)
   expect(rig.dispatch.mock.calls[0]?.[0]).toMatchObject({
     clientMessageId: id,
     body,

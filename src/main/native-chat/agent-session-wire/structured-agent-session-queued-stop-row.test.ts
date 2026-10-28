@@ -1,6 +1,6 @@
 // Stop writes one event row before it interrupts, and the queue's pause is derived from it:
 // through the real host, the cards queued before a Stop wait, a card queued after it sends
-// normally but never ahead of them, an unconfirmed hand-off returns for a decision, a crash keeps the
+// normally but never ahead of them, an unconfirmed hand-off stays ordinary history, a crash keeps the
 // pause, any turn sent after it ends it, and no stored pause is ever written.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -167,7 +167,7 @@ describe("Stop's event", () => {
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
   })
 
-  it('a stopped unconfirmed hand-off keeps its recovery independent of the waiting cards pause', async () => {
+  it('a stopped unconfirmed hand-off stays ordinary while Resume drains waiting cards', async () => {
     const working = await rig.workingSend()
     await openRigTurnFor(rig, working)
     const steered = await queuedDraft('sent now into the turn')
@@ -192,22 +192,17 @@ describe("Stop's event", () => {
     await openRigTurnFor(rig, working, 'interrupted')
     await expectHeld('stopped', opening, last)
     expect(await rig.drafts()).toEqual([
-      { messageId: `recovery:${steer}`, state: 'returned' },
       { messageId: opening, state: 'waiting' },
       { messageId: last, state: 'waiting' }
     ])
     expect(journal().submissionBody(steer)).toEqual(hostTestMessage('sent now into the turn'))
-    expect(journal().queuedMessages.get(`recovery:${steer}`)).toMatchObject({
-      recovers: steer,
-      body: hostTestMessage('sent now into the turn'),
-      options: {},
-      state: 'returned'
-    })
+    expect(journal().queuedMessages.get(`recovery:${steer}`)).toBeNull()
+    expect(journal().submission(steer)?.options).toEqual({})
     // The turn's message, unconfirmed, as an old client's projection draws it too.
     expect(await send(steer)).toMatchObject({ dispatchState: 'unknown', recovered: true })
     expect(await drawn(steer)).toEqual({ stoppedBeforeStart: undefined })
 
-    expect(await rig.deleteQueued(`recovery:${steer}`)).toMatchObject({ value: { deleted: true } })
+    expect(await rig.deleteQueued(`recovery:${steer}`)).toMatchObject({ value: { deleted: false } })
     await expectHeld('stopped', opening, last)
     // Resume hands the next card over; an explicit refusal before it opens is still a rejection.
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
@@ -234,7 +229,7 @@ describe("Stop's event", () => {
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).not.toContain('restarted')
   })
 
-  it('survives a host crash: the unconfirmed hand-off needs a decision before Resume releases', async () => {
+  it('survives a host crash: Resume releases waiting work without resending the uncertain original', async () => {
     const working = await rig.workingSend()
     await openRigTurnFor(rig, working)
     await rig.settleAccepted(working, 'received')
@@ -247,19 +242,17 @@ describe("Stop's event", () => {
     await rig.host.flushAllStreamedEvents()
     rig.crashRestartHostProcess()
     expect((await rig.handoff(sentId))?.dispatchState).toBe('unknown')
-    // The returned copy holds the queue; it never resends automatically.
+    // The ordinary original never becomes queued work or resends automatically.
     await expectHeld(null, waiting)
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual([
       'stopped',
       'restarted'
     ])
     const handoff = await rig.handoffId(sentId)
-    expect(await rig.drafts()).toContainEqual({
-      messageId: `recovery:${handoff}`,
-      state: 'returned'
-    })
+    expect(await rig.drafts()).toEqual([{ messageId: waiting, state: 'waiting' }])
+    expect(journal().submissionBody(handoff)).toEqual(hostTestMessage('sent now into the turn'))
     expect(await rig.deleteQueued(`recovery:${handoff}`)).toMatchObject({
-      value: { deleted: true }
+      value: { deleted: false }
     })
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(waiting)).toBeDefined())

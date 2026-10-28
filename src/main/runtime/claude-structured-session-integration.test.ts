@@ -541,9 +541,8 @@ describe('a structured Claude session over agentSession.*', () => {
       })
       expect(journal.submissionBody(original.clientMessageId)).toEqual(body)
       const page = await runtime.history({ sessionId: SESSION, direction: 'tail' })
-      expect(page.ok && page.page.queuedMessages).toMatchObject([
-        { messageId: `recovery:${original.clientMessageId}`, body, state: 'returned' }
-      ])
+      expect(page.ok && page.page.queuedMessages).toEqual([])
+      expect(journal.itemBody(`orca:${original.clientMessageId}`)).toEqual(body)
       expect(
         page.ok &&
           page.page.items.filter((item) => item.body.kind === 'status').map((item) => item.body)
@@ -576,7 +575,7 @@ describe('a structured Claude session over agentSession.*', () => {
       expect(journal.submissionBody(original.clientMessageId)).toEqual(body)
       expect(
         journal.queuedMessages.list().filter((card) => card.recovers === original.clientMessageId)
-      ).toMatchObject([{ body, options: {}, state: 'returned' }])
+      ).toEqual([])
     }
   )
 

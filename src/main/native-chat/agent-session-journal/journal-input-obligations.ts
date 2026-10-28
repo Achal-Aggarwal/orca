@@ -17,11 +17,16 @@ import type {
   JournalItemRow,
   JournalTombstoneRow
 } from './journal-row-schema'
-import type { JournalRecoveryWork } from './journal-unconfirmed-recovery'
 import { foldQueuedHandOffInDoubt } from './journal-submission-fold'
 import { queuedHandOffOutcome } from './journal-dispatch-settlement'
 import type { QueuedMessageRow } from './queued-message-table'
 import type { JournalItemLinkageVisitor } from './journal-store-contracts'
+
+export type JournalInputWork = {
+  allowsObservation: () => boolean
+  owesSend: (submission: AgentJournalSubmission) => boolean
+  generationEnded: (submission: AgentJournalSubmission) => boolean
+}
 
 export function createJournalInputObligations() {
   return {
@@ -207,7 +212,7 @@ function providerAttemptEnded(frame: AgentJournalStatusItem['providerFrame']): b
 export function journalInputAttemptEnded(
   state: JournalReducerState,
   send: AgentJournalSubmission,
-  work: JournalRecoveryWork | null
+  work: JournalInputWork | null
 ): boolean {
   if (isQueuedAgentJournalSubmission(send)) {
     return false
@@ -219,7 +224,7 @@ export function journalInputAttemptEnded(
       state.inputs.sources.get(send.clientMessageId)?.fence ??
       send.fence
   }
-  if (!work?.allowsRecovery() || work.owesSend(original)) {
+  if (!work?.allowsObservation() || work.owesSend(original)) {
     return false
   }
   if (work.generationEnded(original) || (send.dispatchState === 'unknown' && send.recovered)) {

@@ -14,7 +14,10 @@ import type { JournalQueueRow, JournalQueuedChange } from './journal-queue-event
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import { placeQueuedHandOffInDoubt } from './journal-submission-fold'
-import type { QueuedMessageRow } from './queued-message-table'
+import {
+  QUEUED_MESSAGE_HELD_DELIVERY_UNCONFIRMED,
+  type QueuedMessageRow
+} from './queued-message-table'
 
 export type JournalQueueState = {
   cards: Map<string, QueuedMessageRow>
@@ -92,13 +95,16 @@ export function queuedCardFromChange(
   }
   const { returned } = change
   if (typeof returned === 'object' && returned !== null) {
+    const rejection = readStoredRejectionFact(returned.rejection) ?? null
+    // Saved independent copies need their own Send; a later consumed attempt keeps its refusal.
+    const independent = card.recovers && attempt === null && rejection?.kind === 'unconfirmed'
     return {
       ...card,
-      state: 'returned',
-      holdReason: null,
+      state: independent ? 'waiting' : 'returned',
+      holdReason: independent ? QUEUED_MESSAGE_HELD_DELIVERY_UNCONFIRMED : null,
       consumedAs: attempt,
       returnedReason: typeof returned.reason === 'string' ? returned.reason : null,
-      returnedRejection: readStoredRejectionFact(returned.rejection) ?? null
+      returnedRejection: rejection
     }
   }
   if (attempt !== null) {

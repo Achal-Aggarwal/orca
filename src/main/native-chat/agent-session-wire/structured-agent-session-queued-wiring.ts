@@ -5,7 +5,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
-  bindStructuredAgentSessionRecoveryWork,
+  bindStructuredAgentSessionInputWork,
   hostStructuredAgentSessionCurrentWork
 } from './structured-agent-session-host-current-work'
 import { StructuredAgentSessionQueuedMessageDrain } from './structured-agent-session-queued-messages'
@@ -44,11 +44,7 @@ export function wireStructuredAgentSessionQueuedMessages(
   return {
     drain,
     onOpened: (sessionId: string) => {
-      bindStructuredAgentSessionRecoveryWork(
-        context().deps.store,
-        sessionId,
-        sessions.get(sessionId)
-      )
+      bindStructuredAgentSessionInputWork(context().deps.store, sessionId, sessions.get(sessionId))
       const journal = sessions.get(sessionId)?.journal
       journal?.queuedMessages.editLeases.onDeadline(() => {
         void context()

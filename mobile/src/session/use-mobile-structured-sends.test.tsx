@@ -207,11 +207,12 @@ describe('a structured send in the open chat', () => {
     expect(onSendError).not.toHaveBeenCalled()
   })
 
-  it('draws nothing for a send whose answer was lost', async () => {
+  it('keeps the complete ordinary bubble for host-recorded uncertainty', async () => {
     await mount()
     answer = (id) => ({ clientMessageId: id, submission: recorded(id, 'unknown') })
-    await send('maybe')
-    expect(shown()).toEqual([])
+    const id = await send('maybe')
+    expect(shown()).toEqual([[agentJournalSubmissionKey(id), 'maybe']])
+    expect(onSendError).not.toHaveBeenCalled()
   })
 
   it('draws nothing of its own for a send the host keeps as a card', async () => {

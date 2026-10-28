@@ -29,13 +29,13 @@ describe('mobileStructuredSendDelivery', () => {
     })
   })
 
-  it('reports transport and host uncertainty on this send', () => {
+  it('distinguishes transport doubt from an admitted unknown ordinary message', () => {
     expect(mobileStructuredSendDelivery({ status: 'unknown' })).toEqual({
       outcome: 'unknown',
       error: null
     })
     expect(mobileStructuredSendDelivery(accepted('unknown'))).toEqual({
-      outcome: 'unknown',
+      outcome: 'accepted',
       error: null
     })
   })

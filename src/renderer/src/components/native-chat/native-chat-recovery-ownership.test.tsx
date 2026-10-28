@@ -136,6 +136,7 @@ it.each(['before-body', 'between-body-enter', 'transport-unknown', 'submitted'] 
     expect(delivery).toBe(
       phase === 'before-body' ? 'rejected' : phase === 'submitted' ? undefined : 'unconfirmed'
     )
+    expect(mounted.result.current.notices.size).toBe(phase === 'before-body' ? 1 : 0)
     const late: NativeChatMessage = {
       ...boundary,
       id: 'late-receipt',

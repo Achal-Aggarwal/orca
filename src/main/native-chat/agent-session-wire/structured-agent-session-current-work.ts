@@ -124,7 +124,7 @@ export class StructuredAgentSessionCurrentWork {
     private readonly heldSends?: () => ReadonlySet<string> | undefined
   ) {}
 
-  allowsRecovery(): boolean {
+  allowsObservation(): boolean {
     return !this.ownerUnverifiable
   }
 
@@ -154,15 +154,6 @@ export class StructuredAgentSessionCurrentWork {
       (submission) => `${submission.clientMessageId}:${this.holds(submission) ? 1 : 0}`
     )
     return `${this.viewKey()}|${this.working() ? 1 : 0}|${sends.join(',')}`
-  }
-
-  recoveryViewKey(): string {
-    const held = this.heldSends?.()
-    return JSON.stringify([
-      this.viewKey(),
-      held ? [...held].sort() : null,
-      [...structuredAgentSessionHandingOver(this.journal)].sort()
-    ])
   }
 
   /** A send as clients are told it. One handed to the live child that it no longer holds, with no
@@ -218,7 +209,7 @@ export class StructuredAgentSessionCurrentWork {
     return provenance === undefined || provenance >= this.liveFence
   }
 
-  /** Hand over only this process’s accepted sends; earlier-process sends recover as cards first. */
+  /** Hand over only this process’s accepted sends; earlier-process sends remain ordinary history. */
   handsOver(submission: AgentJournalSubmission): boolean {
     return structuredAgentSessionHandsOver(this.journal, submission)
   }

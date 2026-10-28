@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalStopAcceptor } from '../agent-session-journal/journal-stop-acceptance'
-import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import {
+  appendTestJournalQueueRow,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import {
   HOST_TEST_SESSION,
@@ -72,12 +75,8 @@ function expectOriginalRecovery(id: string): void {
   const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
   const body = hostTestMessage('work on this')
   expect(journal.submissionBody(id)).toEqual(body)
-  expect(journal.queuedMessages.get(`recovery:${id}`)).toMatchObject({
-    recovers: id,
-    body,
-    options: {},
-    state: 'returned'
-  })
+  expect(journal.queuedMessages.get(`recovery:${id}`)).toBeNull()
+  expect(journal.itemBody(`orca:${id}`)).toEqual(body)
   expect(journal.submissions().find((send) => send.clientMessageId === id)).toMatchObject({
     dispatchState: 'unknown',
     providerItemId: null,
@@ -103,6 +102,89 @@ async function handedOverUserSend(text: string): Promise<string> {
 
 describe("a Stop's queue pause", () => {
   installRigLifecycleHooks()
+
+  it('replays a saved own-held copy, drains W1/W2 through normal Resume, and keeps its later refusal real', async () => {
+    const originalId = await rig.workingSend()
+    const first = await queuedDraft('W1')
+    const second = await queuedDraft('W2')
+    await rig.stop()
+    await laneDrained()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+    const originalBody = journal.submissionBody(originalId)!
+    const original = structuredClone(journal.submission(originalId))
+    const originalReceipt = journal.receiptFor(originalId)
+    const savedId = `recovery:${originalId}`
+    const options = { model: 'gpt-5', effort: 'high' }
+    appendTestJournalQueueRow(openTestJournalHostDatabase(rig.root).db, journal, savedId, {
+      op: 'queued',
+      body: originalBody,
+      options,
+      recovers: originalId,
+      position: -1,
+      queuedAt: journal.cursor(),
+      returned: { reason: 'prior-build uncertainty', rejection: { kind: 'unconfirmed' } }
+    })
+    await journal.open()
+    expect(await rig.drafts()).toEqual([
+      { messageId: savedId, state: 'waiting', paused: true },
+      { messageId: first, state: 'waiting' },
+      { messageId: second, state: 'waiting' }
+    ])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await handedOver(first)
+    await rig.settleAccepted(await rig.handoffId(first), 'W1')
+    await handedOver(second)
+    await rig.settleAccepted(await rig.handoffId(second), 'W2')
+    expect(await rig.handoff(savedId)).toBeUndefined()
+    const reopened = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
+    const copy = reopened.queuedMessages.get(savedId)!
+    expect(copy).toMatchObject({
+      body: originalBody,
+      options,
+      recovers: originalId,
+      state: 'waiting',
+      holdReason: 'delivery_unconfirmed'
+    })
+    expect(reopened.submissionBody(originalId)).toEqual(originalBody)
+    expect(reopened.submission(originalId)).toMatchObject({
+      options: original!.options,
+      payloadFingerprint: original!.payloadFingerprint
+    })
+    expect(reopened.receiptFor(originalId)).toEqual(originalReceipt)
+    const sendOperation = hostTestOperationId()
+    const sent = await rig.sendNow(savedId, sendOperation)
+    expect(sent).toMatchObject({ ok: true, value: { submission: { queuedMessageId: savedId } } })
+    await handedOver(savedId)
+    const attempt = await rig.handoffId(savedId)
+    expect((await rig.handoff(savedId))?.options).toEqual(options)
+    const suffix = await queuedDraft('after the independent choice')
+    await rig.settleRejected(attempt, 'turn/start refused')
+    await rig.settleAccepted(originalId, 'late-U')
+    await reopened.open()
+    const dispatches = rig.dispatch.mock.calls.length
+    expect(await rig.sendNow(savedId, sendOperation)).toMatchObject({ ok: true, replayed: true })
+    expect(rig.dispatch).toHaveBeenCalledTimes(dispatches)
+    expect(reopened.queuedMessages.get(savedId)).toMatchObject({
+      body: originalBody,
+      options,
+      recovers: originalId,
+      consumedAs: attempt,
+      state: 'returned'
+    })
+    await observationClock.observe(250)
+    expect(await rig.handoff(suffix)).toBeUndefined()
+    expect(await rig.queuePause()).toBeNull()
+    const page = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+    expect(page.page.nextQueuedMessageId).toBeNull()
+    expect(page.page.queuedMessages).toMatchObject([
+      { messageId: savedId, state: 'returned' },
+      { messageId: suffix, state: 'waiting' }
+    ])
+    expect(await rig.deleteQueued(savedId)).toMatchObject({ ok: true, value: { deleted: true } })
+    await handedOver(suffix)
+    await rig.settleAccepted(await rig.handoffId(suffix), 'suffix')
+  })
 
   it('outlives a user send the provider accepts and then refuses; a later send that starts lifts it', async () => {
     const draftId = await stoppedDraft()
@@ -154,7 +236,6 @@ describe("a Stop's queue pause", () => {
     await expectPaused(olderId, typedId)
     expectOriginalRecovery(working)
     expect(await rig.drafts()).toEqual([
-      { messageId: `recovery:${working}`, state: 'returned' },
       { messageId: olderId, state: 'waiting' },
       { messageId: typedId, state: 'waiting' }
     ])
@@ -257,7 +338,7 @@ describe('a card queued after a Stop is a new instruction', () => {
 
     const correction = await rig.send('typed right after the stop', 'queue-if-active').result
     expect(correction).toMatchObject({ ok: true, value: { submission: { fence: 2 } } })
-    expect(await rig.drafts()).toEqual([{ messageId: `recovery:${working}`, state: 'returned' }])
+    expect(await rig.drafts()).toEqual([])
     expectOriginalRecovery(working)
     expect(await rig.queuePause()).toBeNull()
   })
@@ -460,7 +541,7 @@ describe('Resume', () => {
   })
 
   it.each([1, 2])(
-    'normal Resume drains W1/W2 FIFO around %i independent recoveries without resending them',
+    'normal Resume drains W1/W2 FIFO with %i uncertain originals and no synthetic queue work',
     async (count) => {
       const original = [await rig.workingSend()]
       const first = await queuedDraft('W1')
@@ -478,12 +559,6 @@ describe('Resume', () => {
         page: {
           queuePause: { reason: 'stopped' },
           queuedMessages: [
-            ...original.map((id) => ({
-              messageId: `recovery:${id}`,
-              state: 'returned',
-              independentRecovery: true,
-              returnedRejection: { kind: 'unconfirmed' }
-            })),
             { messageId: first, state: 'waiting' },
             { messageId: second, state: 'waiting' }
           ]
@@ -502,10 +577,8 @@ describe('Resume', () => {
       const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!.journal
       for (const id of original) {
         expect(journal.receiptFor(id)).toBeNull()
-        expect(journal.queuedMessages.get(`recovery:${id}`)).toMatchObject({
-          recovers: id,
-          state: 'returned'
-        })
+        expect(journal.queuedMessages.get(`recovery:${id}`)).toBeNull()
+        expect(journal.submissionBody(id)).toBeDefined()
       }
     }
   )
@@ -523,10 +596,7 @@ describe('Resume', () => {
     release()
     await stopping
     await eventually(async () =>
-      expect(await rig.drafts()).toEqual([
-        { messageId: `recovery:${working}`, state: 'returned' },
-        { messageId: draftId, state: 'waiting' }
-      ])
+      expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
     )
     const withdrawn = await rig.handoffId(draftId)
     expect(await rig.resume(operationId)).toMatchObject({

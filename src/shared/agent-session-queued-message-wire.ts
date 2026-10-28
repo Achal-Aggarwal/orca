@@ -40,8 +40,6 @@ export type AgentSessionQueuedMessage = {
   position: number
   body: AgentJournalMessageItem
   state: 'waiting' | 'returned'
-  /** Independent recovery copy, derived from the host's canonical recovers relation. */
-  independentRecovery?: true
   /** This one card is held, whatever the queue's pause: its conversion failed. */
   paused?: true
   /** send_failed needs explicit Send; unknown markers remain held. queuePause is separate and published with the list. */

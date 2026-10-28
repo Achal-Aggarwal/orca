@@ -1,4 +1,3 @@
-import { finishFirstRecoveryPresentation } from './structured-agent-session-queued-publication'
 import type { StructuredRewindRecoveryEvidence } from './structured-rewind-recovery'
 import {
   publishAttachedChild,
@@ -296,9 +295,6 @@ async function runAttachUnderAbort(
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)
   } finally {
     if (!attempt.committed) {
-      if (attempt.bound && attempt.candidate) {
-        finishFirstRecoveryPresentation(attempt.bound.journal, attempt.candidate.child)
-      }
       attemptSink.close()
       if (attempt.startup) {
         context.runtimeState.startupAttempts.abandon(sessionId, attempt.startup.attemptId)

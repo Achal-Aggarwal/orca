@@ -51,8 +51,8 @@ export function heldStructuredAgentSessionCurrentWork(
   })
 }
 
-/** Canonical recovery remains available independently of provider startup presentation. */
-export function bindStructuredAgentSessionRecoveryWork(
+/** Attempt-end observation uses current ownership independently of provider startup presentation. */
+export function bindStructuredAgentSessionInputWork(
   store: StructuredAgentSessionCurrentWorkHost['store'],
   sessionId: string,
   session:
@@ -63,7 +63,7 @@ export function bindStructuredAgentSessionRecoveryWork(
     | undefined
 ): void {
   if (session) {
-    session.journal.queuedMessages.recoveryWork = () =>
+    session.journal.queuedMessages.inputWork = () =>
       heldStructuredAgentSessionCurrentWork(store, sessionId, session.journal, session)
   }
 }

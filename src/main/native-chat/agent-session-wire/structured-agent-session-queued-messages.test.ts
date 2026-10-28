@@ -335,7 +335,6 @@ describe('Stop and Delete', () => {
     expect(replayed).toMatchObject({ ok: true, replayed: true, value: { cancelled: false } })
     expect(replayed.ok && Object.keys(replayed.value).sort()).toEqual(['cancelled'])
     expect(await drafts()).toEqual([
-      { messageId: `recovery:${working}`, state: 'returned' },
       { messageId: first.value.queued.messageId, state: 'waiting' },
       { messageId: second.value.queued.messageId, state: 'waiting' }
     ])
@@ -351,13 +350,12 @@ describe('Stop and Delete', () => {
     expect(
       page.ok && page.page.queuedMessages?.map(({ body, state }) => ({ body, state }))
     ).toEqual([
-      { body: hostTestMessage('work on this'), state: 'returned' },
       { body: hostTestMessage('first text'), state: 'waiting' },
       { body: hostTestMessage('second text'), state: 'waiting' }
     ])
     const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
     expect(journal.submissionBody(working)).toEqual(hostTestMessage('work on this'))
-    expect(journal.queuedMessages.list().map((card) => card.options)).toEqual([{}, {}, {}])
+    expect(journal.queuedMessages.list().map((card) => card.options)).toEqual([{}, {}])
     expect(dispatch).toHaveBeenCalledTimes(1)
     expect(await rig.handoff(first.value.queued.messageId)).toBeUndefined()
     expect(await rig.handoff(second.value.queued.messageId)).toBeUndefined()

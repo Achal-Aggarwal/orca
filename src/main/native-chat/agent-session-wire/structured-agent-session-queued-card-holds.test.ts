@@ -254,7 +254,7 @@ describe('after a restart, nothing sends by itself', () => {
   }
 
   it('idle: no card is handed off across opens and commits, and no pause or next card is published', async () => {
-    const { first, second, working } = await restartedWithCards()
+    const { first, second } = await restartedWithCards()
     const views = await watchClient()
     await expectNothingSent(first, second)
     expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
@@ -263,16 +263,15 @@ describe('after a restart, nothing sends by itself', () => {
     await rig.host.close(HOST_TEST_SESSION, 'evict')
     expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
     await expectNothingSent(first, second)
-    // The independent recovery needs attention; ordinary waiting cards keep their own policy.
+    // The uncertain original stays in history; ordinary waiting cards keep their own policy.
     expect(views.at(-1)).toMatchObject({
       working: false,
       header: false,
-      cards: 3,
-      holds: ['returned', 'turn', 'turn'],
-      steers: [false, true, true]
+      cards: 2,
+      holds: ['turn', 'turn'],
+      steers: [true, true]
     })
     expect(await rig.drafts()).toEqual([
-      { messageId: `recovery:${working}`, state: 'returned' },
       { messageId: first, state: 'waiting' },
       { messageId: second, state: 'waiting' }
     ])

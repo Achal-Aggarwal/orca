@@ -21,7 +21,11 @@ import {
   type QueuePublication
 } from '../agent-session-wire/structured-agent-session-queued-publication'
 import type { Subscriber } from '../agent-session-wire/structured-agent-session-subscribers'
-import { createTrackedJournalOpener } from './journal-host-database-test-support'
+import {
+  appendTestJournalQueueRow,
+  openTestJournalHostDatabase,
+  createTrackedJournalOpener
+} from './journal-host-database-test-support'
 import type { AgentSessionJournal } from './journal-store'
 
 const journals = createTrackedJournalOpener()
@@ -50,7 +54,7 @@ afterEach(async () => {
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
-async function send(id: string, handed = true, message = body(id)) {
+async function send(id: string, handed = true, message = body(id), saved = true) {
   await journal.appendSubmission({
     clientMessageId: id,
     body: message,
@@ -68,6 +72,19 @@ async function send(id: string, handed = true, message = body(id)) {
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
   }
+  if (saved) {
+    saveCopy(id, message)
+  }
+}
+function saveCopy(id: string, message: AgentJournalMessageItem) {
+  appendTestJournalQueueRow(openTestJournalHostDatabase(root).db, journal, `recovery:${id}`, {
+    op: 'queued',
+    body: message,
+    recovers: id,
+    position: journal.cursor().sequence,
+    queuedAt: journal.cursor(),
+    returned: { reason: 'old uncertainty', rejection: { kind: 'unconfirmed' } }
+  })
 }
 async function receipt(id: string) {
   await journal.resolveDispatch({
@@ -78,13 +95,11 @@ async function receipt(id: string) {
   })
 }
 
-it('delivers deferred hidden image sources in bounded semantic batches without resetting expanded history', async () => {
+it('delivers newly loaded saved image choices in bounded semantic batches without resetting expanded history', async () => {
   const { AgentSessionSubscribers } =
     await import('../agent-session-wire/structured-agent-session-subscribers')
   const { queuedImageReaderSnapshot, queuedImageReaderEvent, queuedImageSourceIds } =
     await import('../agent-session-wire/agent-session-queued-image-reader')
-  const { deferFirstRecoveryPresentation, finishFirstRecoveryPresentation } =
-    await import('../agent-session-wire/structured-agent-session-queued-publication')
   const { projectQueuedImageCardPublication } =
     await import('../../runtime/rpc/methods/structured-agent-session-queued-image-capability')
   const { MOBILE_BRIDGE_MAX_FRAME_BYTES } =
@@ -93,16 +108,20 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     await import('../agent-session-wire/agent-session-subscriber-frame-fields')
   const { emptyAgentSessionBatch } = await import('../agent-session-wire/agent-session-empty-batch')
   const frames: AgentSessionSubscribeEvent[] = []
-  const child = { fence: 7, generation: 'replayed-child' }
   for (let i = 0; i < 10; i++) {
-    await send(`image-${i}`, true, {
-      kind: 'message',
-      role: 'user',
-      blocks: [
-        { type: 'text', text: `${i}:${'x'.repeat(150_000)}` },
-        { type: 'image-ref', url: 'https://example.test/original.png' }
-      ]
-    })
+    await send(
+      `image-${i}`,
+      true,
+      {
+        kind: 'message',
+        role: 'user',
+        blocks: [
+          { type: 'text', text: `${i}:${'x'.repeat(150_000)}` },
+          { type: 'image-ref', url: 'https://example.test/original.png' }
+        ]
+      },
+      false
+    )
   }
   const idleWork = structuredAgentSessionCurrentWork(journal, {
     record: agentSessionConversationView(
@@ -115,9 +134,8 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
       )
     )
   })
-  journal.queuedMessages.recoveryWork = () => idleWork
+  journal.queuedMessages.inputWork = () => idleWork
   await journal.rollEpoch('unreconcilable_prefix', 7)
-  deferFirstRecoveryPresentation(journal, child)
   const subscribers = new AgentSessionSubscribers({
     readQueuePublication: () =>
       readQueuePublication(journal, () => ({
@@ -140,6 +158,8 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     fence: 7,
     emit: (event) => frames.push(event),
     boundedFrames: true,
+    readsCurrentRequests: false,
+    snapshotCatchUp: false,
     ...projected
   })
   expect(frames[0]?.type === 'snapshot' && frames[0].page.items).toEqual([])
@@ -164,13 +184,16 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
       retryFrames.push(event)
     }
   }
-  finishFirstRecoveryPresentation(journal, child)
+  for (let i = 0; i < 10; i++) {
+    saveCopy(`image-${i}`, journal.submissionBody(`image-${i}`)!)
+  }
+  await journal.open()
   const correction = {
     type: 'batch' as const,
     sessionId: identity.sessionId,
     fence: 7,
     hostNow: 1234,
-    batch: emptyAgentSessionBatch(baseline)
+    batch: emptyAgentSessionBatch(journal.cursor())
   }
   const hooks = { readQueuePublication: () => subscribers.readQueuePublication(identity.sessionId) }
   emitSubscriberFrame(hooks, target, correction, { currentWork: idleWork })
@@ -198,11 +221,14 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
   ).toBe(10)
   for (const event of retryFrames) {
     if (event.type === 'batch') {
-      expect(event.batch.cursor).toEqual(baseline)
+      expect(event.batch.cursor.epoch).toBe(baseline.epoch)
+      expect(event.batch.cursor.sequence).toBeGreaterThanOrEqual(baseline.sequence)
+      expect(event.batch.cursor.sequence).toBeLessThanOrEqual(journal.cursor().sequence)
       expect(event.fence).toBe(7)
       expect(event.hostNow).toBe(1234)
     }
   }
+  expect(retryFrames.at(-1)).toMatchObject({ type: 'batch', batch: { cursor: journal.cursor() } })
   subscribers.publish(identity.sessionId, journal)
   expect(frames.every((event) => event.type === 'batch')).toBe(true)
   const inserted = frames.flatMap((event) => (event.type === 'batch' ? event.batch.items : []))
@@ -217,9 +243,12 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
       expect(event.working).toBe(false)
       expect(event.latestTurn).toEqual(idleWork.publishedLatestTurn(null))
       expect(event.fence).toBe(7)
-      expect(event.batch.cursor).toEqual(baseline)
+      expect(event.batch.cursor.epoch).toBe(baseline.epoch)
+      expect(event.batch.cursor.sequence).toBeGreaterThanOrEqual(baseline.sequence)
+      expect(event.batch.cursor.sequence).toBeLessThanOrEqual(journal.cursor().sequence)
     }
   }
+  expect(frames.at(-1)).toMatchObject({ type: 'batch', batch: { cursor: journal.cursor() } })
   frames.length = 0
   subscribers.publish(identity.sessionId, journal, { turnId: 't', text: 'metadata only' })
   expect(frames.flatMap((event) => (event.type === 'batch' ? event.batch.items : []))).toEqual([])
@@ -239,7 +268,7 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
       handoverRecorded: true,
       origin: 'client'
     },
-    { messageId: 'recovery:image-1', expect: 'returned' }
+    { messageId: 'recovery:image-1', expect: 'waiting' }
   )
   await journal.resolveDispatch({
     clientMessageId: 'new-V',
@@ -252,7 +281,8 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
     state: 'dispatched',
     consumedAs: 'new-V'
   })
-  expect(journal.queuedMessages.get('recovery:new-V')?.body).toEqual(original)
+  expect(journal.queuedMessages.get('recovery:new-V')).toBeNull()
+  expect(journal.submissionBody('new-V')).toEqual(original)
   await journal.acceptLate({
     clientMessageId: 'image-1',
     state: 'accepted',
@@ -262,7 +292,8 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
   subscribers.publish(identity.sessionId, journal)
   expect(journal.submission('image-1')?.dispatchState).toBe('accepted')
   expect(journal.submission('new-V')?.dispatchState).toBe('pending')
-  expect(journal.queuedMessages.get('recovery:new-V')?.body).toEqual(original)
+  expect(journal.queuedMessages.get('recovery:new-V')).toBeNull()
+  expect(journal.submissionBody('new-V')).toEqual(original)
   expect(
     queuedImageReaderSnapshot(journal).items.some(
       (item) => item.itemId === agentJournalSubmissionKey('image-1')
@@ -282,9 +313,10 @@ it('delivers deferred hidden image sources in bounded semantic batches without r
       )
     )
   })
-  journal.queuedMessages.recoveryWork = () => reopenedWork
+  journal.queuedMessages.inputWork = () => reopenedWork
   expect(journal.submission('image-1')?.dispatchState).toBe('accepted')
-  expect(journal.queuedMessages.get('recovery:new-V')?.body).toEqual(original)
+  expect(journal.queuedMessages.get('recovery:new-V')).toBeNull()
+  expect(journal.submissionBody('new-V')).toEqual(original)
   expect(
     queuedImageReaderSnapshot(journal).items.some(
       (item) => item.itemId === agentJournalSubmissionKey('image-1')
@@ -310,7 +342,7 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
         )
       )
     })
-    journal.queuedMessages.recoveryWork = () => idleWork
+    journal.queuedMessages.inputWork = () => idleWork
     if (source !== 'none') {
       await send('active-image', true, {
         kind: 'message',
@@ -426,9 +458,7 @@ it.each([100, 1000].flatMap((n) => ['none', 'visible', 'cut'].map((source) => ({
     }
     expect(journal.cursor().sequence - baseline.sequence).toBe(10)
     if (source !== 'none') {
-      expect(journal.queuedMessages.list().filter((row) => row.state === 'returned')).toHaveLength(
-        1
-      )
+      expect(journal.queuedMessages.list().filter((row) => row.state === 'waiting')).toHaveLength(1)
       await receipt('active-image')
     }
   }
@@ -452,7 +482,7 @@ it('projects a still-active cut source before stateless and middle-page catch-up
       )
     )
   })
-  journal.queuedMessages.recoveryWork = () => idleWork
+  journal.queuedMessages.inputWork = () => idleWork
   await send('cut-touch', true, {
     kind: 'message',
     role: 'user',
@@ -547,13 +577,13 @@ it('projects a still-active cut source before stateless and middle-page catch-up
 
 it('keeps proven unwritten input waiting after both old-process hold writes fail, then preserves one exact actionable copy', async () => {
   const { holdUnsentSends } = await import('./journal-unsent-send-hold')
-  const { bindStructuredAgentSessionRecoveryWork, heldStructuredAgentSessionCurrentWork } =
+  const { bindStructuredAgentSessionInputWork, heldStructuredAgentSessionCurrentWork } =
     await import('../agent-session-wire/structured-agent-session-host-current-work')
   const { StructuredAgentSessionSendSettlement } =
     await import('../agent-session-wire/structured-agent-session-send-settlement')
   const open = async () => {
     journal = await journals.open({ identity, stateDirectory: root, now: () => ++clock })
-    journal.queuedMessages.recoveryWork = () =>
+    journal.queuedMessages.inputWork = () =>
       structuredAgentSessionCurrentWork(journal, {
         record: agentSessionConversationView(agentSessionRecordFixture(lease))
       })
@@ -583,7 +613,7 @@ it('keeps proven unwritten input waiting after both old-process hold writes fail
     replacedRuntime: () => undefined
   }
   const session = { journal, child: null }
-  bindStructuredAgentSessionRecoveryWork(store, identity.sessionId, session)
+  bindStructuredAgentSessionInputWork(store, identity.sessionId, session)
   const current = () =>
     heldStructuredAgentSessionCurrentWork(store, identity.sessionId, journal, session)
   const cursor = journal.cursor()
@@ -668,5 +698,6 @@ it('keeps proven unwritten input waiting after both old-process hold writes fail
   })
   expect(journal.submission('legacy-no-handover-protocol')?.handoverRecorded).toBeUndefined()
   expect(journal.queuedMessages.attemptEnded('legacy-no-handover-protocol')).toBe(true)
-  expect(journal.queuedMessages.get('recovery:legacy-no-handover-protocol')?.state).toBe('returned')
+  expect(journal.queuedMessages.get('recovery:legacy-no-handover-protocol')).toBeNull()
+  expect(journal.submissionBody('legacy-no-handover-protocol')).toEqual(full)
 })

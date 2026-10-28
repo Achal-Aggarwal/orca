@@ -1,4 +1,3 @@
-import { finishFirstRecoveryPresentation } from './structured-agent-session-queued-publication'
 import { sameProviderChild } from './structured-agent-session-provider-child'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
@@ -21,10 +20,6 @@ export async function openStructuredAgentSessionProviderChild(
   child: StructuredAgentSessionProviderChildIdentity
 ): Promise<void> {
   if (!context.runtimeState.startupAttempts.onClock(sessionId, child)) {
-    const journal = context.sessions.get(sessionId)?.journal
-    if (journal) {
-      finishFirstRecoveryPresentation(journal, child)
-    }
     return
   }
   const attempt = context.runtimeState.acquireAborts.begin(sessionId, false, false, () => {
@@ -70,10 +65,6 @@ export async function openStructuredAgentSessionProviderChild(
         )
     }
   } finally {
-    const journal = context.sessions.get(sessionId)?.journal
-    if (journal) {
-      finishFirstRecoveryPresentation(journal, child)
-    }
     context.publishStatus?.(sessionId)
     attempt.end()
   }

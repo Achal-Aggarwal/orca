@@ -71,19 +71,12 @@ it('keeps Resume visible beside an idle-evicted unknown send recovery', async ()
   expect(stopEvents()).toEqual(before)
   expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
   expect(journal().submissionBody(id)).toEqual(fields.body)
-  expect(journal().queuedMessages.get(`recovery:${id}`)).toMatchObject({
-    recovers: id,
-    body: fields.body,
-    options: {},
-    state: 'returned'
-  })
+  expect(journal().queuedMessages.get(`recovery:${id}`)).toBeNull()
+  expect(journal().itemBody(`orca:${id}`)).toEqual(fields.body)
   expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toContain('stopped')
-  expect(await rig.drafts()).toEqual([
-    { messageId: `recovery:${id}`, state: 'returned' },
-    { messageId: held, state: 'waiting' }
-  ])
+  expect(await rig.drafts()).toEqual([{ messageId: held, state: 'waiting' }])
   expect(await rig.handoff(held)).toBeUndefined()
-  expect(await rig.deleteQueued(`recovery:${id}`)).toMatchObject({ value: { deleted: true } })
+  expect(await rig.deleteQueued(`recovery:${id}`)).toMatchObject({ value: { deleted: false } })
   expect(await rig.submission(id)).toMatchObject({ dispatchState: 'unknown' })
   expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
   expect(await rig.handoff(held)).toBeUndefined()

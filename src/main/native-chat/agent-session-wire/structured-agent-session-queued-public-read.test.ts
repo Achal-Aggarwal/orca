@@ -1,3 +1,4 @@
+import { appendTestJournalQueueRow } from '../agent-session-journal/journal-host-database-test-support'
 import { expect, it, vi } from 'vitest'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -359,7 +360,7 @@ it('public metadata follows legacy-only commits, item recreation and epoch repla
   await journal.close()
 })
 
-it('carries canonical derived and adopted recovery markers through real publication, bounded snapshot/reset/catch-up/live and both reducers', async () => {
+it('carries saved independent holds through real publication, bounded snapshot/reset/catch-up/live and the shared reducer', async () => {
   const journal = journalFor(SESSION)
   await journal.open()
   try {
@@ -379,35 +380,35 @@ it('carries canonical derived and adopted recovery markers through real publicat
       fence: 0,
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
-    journal.queuedMessages.recoveryWork = () => ({
-      allowsRecovery: () => true,
-      owesSend: () => false,
-      generationEnded: () => true,
-      activeTurnId: () => null,
-      recoveryViewKey: () => 'ended'
+    appendTestJournalQueueRow(db(), journal, 'recovery:original', {
+      op: 'queued',
+      body,
+      recovers: 'original',
+      position: 0,
+      queuedAt: journal.cursor(),
+      options: { model: 'default' },
+      returned: { reason: 'old stored uncertainty', rejection: { kind: 'unconfirmed' } }
     })
     await journal.queuedMessages.insert({ messageId: 'W', body: message('waiting') })
     const cards = readPublishedQueuedMessages(journal)
     expect(cards).toMatchObject([
       {
         messageId: 'recovery:original',
-        independentRecovery: true,
-        state: 'returned',
-        body: message('immutable full original'),
-        returnedRejection: { kind: 'unconfirmed' }
+        state: 'waiting',
+        paused: true,
+        body: message('immutable full original')
       },
       { messageId: 'W', state: 'waiting' }
     ])
     expect(cards[1]).not.toHaveProperty('independentRecovery')
     expect(readPublishedQueuedMessages(journal)).toBe(cards)
-    // A real queue move adopts the derived row without changing its source/body.
+    // A real move keeps the saved card’s source/body and own hold.
     await journal.queuedMessages.move({ messageId: 'recovery:original', afterMessageId: 'W' })
     const adopted = readPublishedQueuedMessages(journal)
-    expect(adopted.find((c) => c.independentRecovery)).toEqual({
+    expect(adopted.find((c) => c.messageId === 'recovery:original')).toEqual({
       ...cards[0],
-      position: adopted.find((c) => c.independentRecovery)!.position
+      position: adopted.find((c) => c.messageId === 'recovery:original')!.position
     })
-    expect(journal.queuedMessages.isDerivedRecovery('recovery:original')).toBe(false)
     const publication = {
       queuedMessages: adopted,
       queuePause: { reason: 'stopped' } as const,
@@ -458,7 +459,7 @@ it('carries canonical derived and adopted recovery markers through real publicat
     const projected = projectQueuedMessageCards(desktop.queuedMessages, desktop.submissions, {
       queuePaused: true
     })
-    expect(projected.map((c) => c.hold)).toEqual(['queue-paused', 'returned'])
+    expect(projected.map((c) => c.hold)).toEqual(['queue-paused', 'paused'])
     expect(queuedMessagesQueuePause(projected, desktop.queuePause ?? null)).toEqual(
       publication.queuePause
     )
@@ -479,7 +480,8 @@ it('carries canonical derived and adopted recovery markers through real publicat
     ])
     expect(bounded.queuedMessages[0]).toMatchObject({
       messageId: 'recovery:original',
-      independentRecovery: true,
+      state: 'waiting',
+      paused: true,
       body
     })
     expect(bounded.queuedMessages.slice(1).map((c) => c.body)).toEqual([heldBody, heldBody])

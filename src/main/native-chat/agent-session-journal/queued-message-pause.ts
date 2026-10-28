@@ -227,14 +227,14 @@ export function queuePauseHolding(
   return pauses.find((pause) => queuedBefore(pause, card))
 }
 
-/** Recovery copies are independent; returned, paused or edited queue cards block later cards. */
+/** Returned, queue-paused or edited queue cards block later cards. */
 export function nextSendableQueuedCard<T extends QueueCard & { messageId: string }>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[],
   editHeld: ReadonlySet<string> = new Set()
 ): T | null {
   for (const card of cards) {
-    if ((card.state === 'returned' && !card.recovers) || queuePauseHolding(pauses, card)) {
+    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
       return null
     }
     if (card.state === 'waiting' && card.holdReason === null) {
@@ -244,13 +244,13 @@ export function nextSendableQueuedCard<T extends QueueCard & { messageId: string
   return null
 }
 
-/** Independent recovery copies cannot hide Resume; returned queue cards still block it. */
+/** Returned queue cards block Resume for their suffix; own-held waiting cards do not. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]
 ): DerivedQueuePause | null {
   for (const card of cards) {
-    if (card.state === 'returned' && !card.recovers) {
+    if (card.state === 'returned') {
       return null
     }
     const holding = queuePauseHolding(pauses, card)

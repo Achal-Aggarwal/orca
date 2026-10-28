@@ -317,7 +317,7 @@ describe('cards queued behind a working turn, then Orca stops', () => {
   it.each(['quit', 'crash'] as const)(
     'after a %s they wait under the restart hold, not kept, with no hand-off made',
     async (how) => {
-      const working = await rig.workingSend()
+      await rig.workingSend()
       const first = rig.send('queued behind work', 'queue-if-active')
       expect(await first.result).toMatchObject({
         ok: true,
@@ -335,7 +335,6 @@ describe('cards queued behind a working turn, then Orca stops', () => {
       }
 
       expect(await rig.drafts()).toEqual([
-        { messageId: `recovery:${working}`, state: 'returned' },
         { messageId: first.id, state: 'waiting' },
         { messageId: second.id, state: 'waiting' }
       ])
@@ -607,15 +606,12 @@ describe("the reopen's mark", () => {
       const queued = rig.send('queued before the close', 'queue-if-active')
       await queued.result
       await rig.host.close(SESSION, cause)
-      expect(await rig.drafts()).toEqual([
-        { messageId: `recovery:${working}`, state: 'returned' },
-        { messageId: queued.id, state: 'waiting' }
-      ])
+      expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
       await observationClock.observe(100)
       expect(await rig.handoff(queued.id)).toBeUndefined()
       expect(dispatchedTexts()).toEqual(['work on this'])
       expect(await rig.deleteQueued(`recovery:${working}`)).toMatchObject({
-        value: { deleted: true }
+        value: { deleted: false }
       })
 
       const next = rig.send('after the reopen')

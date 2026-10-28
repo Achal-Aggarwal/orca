@@ -28,7 +28,7 @@ export function mobileStructuredSendDelivery(
       : { outcome: 'queued', error: null }
   }
   const submission = 'submission' in result.value ? result.value.submission : undefined
-  if (!submission || submission.dispatchState === 'unknown') {
+  if (!submission) {
     return { outcome: 'unknown', error: null }
   }
   if (submission.queuedMessageId === result.value.clientMessageId) {

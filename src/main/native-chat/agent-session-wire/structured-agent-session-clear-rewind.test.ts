@@ -226,6 +226,26 @@ describe('rewind behind a clear boundary', () => {
     expect(reopened.snapshot()).toEqual(journal().snapshot())
   })
 
+  it('keeps an explicitly rewound suffix hidden while retaining immutable original proof', async () => {
+    const { target, params } = await seed()
+    const id = target.slice('orca:'.length)
+    const original = journal().submission(id)!
+    const body = journal().submissionBody(id)
+    const proof = journal().receiptFor(id)
+    expect(proof).not.toBeNull()
+    expect(await rig.host.rewind(CALLER, params)).toMatchObject({ ok: true })
+    expect(journal().itemBody(target)).toBeNull()
+    expect(journal().submissionBody(id)).toEqual(body)
+    expect(journal().receiptFor(id)).toEqual(proof)
+    expect(journal().queuedMessages.get(`recovery:${id}`)).toBeNull()
+    await rig.restartHostProcess()
+    await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(journal().itemBody(target)).toBeNull()
+    expect(journal().submissionBody(id)).toEqual(body)
+    expect(journal().submission(id)?.payloadFingerprint).toBe(original.payloadFingerprint)
+    expect(journal().receiptFor(id)).toEqual(proof)
+  })
+
   it('rolls suffix changes and success back together, then recovers once without provider retry', async () => {
     const { floor, raw, params } = await seed()
     const before = journal().snapshot()

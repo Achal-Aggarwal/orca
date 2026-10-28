@@ -61,11 +61,6 @@ export function useMobileStructuredNativeChatSendBridge(args: {
       if (outcome === 'rejected' || outcome === 'unknown') {
         restoreRejectedDraft(origin, text)
         restoreMobileNativeChatPickedSkills(origin.draftKey, skills)
-        if (outcome === 'unknown') {
-          onSendError(
-            "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
-          )
-        }
       }
       return outcome
     },

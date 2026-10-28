@@ -243,9 +243,8 @@ describe('mobile structured send actions', () => {
       )
       await mountSession()
       await act(async () => {
-        const outcome = state === 'unknown' ? 'unknown' : 'accepted'
-        expect(await hook!.sendWithOutcome('same text')).toBe(outcome)
-        expect(await hook!.sendWithOutcome('same text')).toBe(outcome)
+        expect(await hook!.sendWithOutcome('same text')).toBe('accepted')
+        expect(await hook!.sendWithOutcome('same text')).toBe('accepted')
       })
       expect(new Set(sentIds()).size).toBe(2)
     }
@@ -439,7 +438,7 @@ describe('mobile structured send actions', () => {
               previewUri: 'file:///photo.jpg'
             }
           ])
-        ).toBe('unknown')
+        ).toBe('accepted')
       }
     })
     expect(new Set(sentIds()).size).toBe(2)

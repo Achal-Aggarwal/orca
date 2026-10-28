@@ -96,8 +96,7 @@ export function projectQueuedMessageCards(
             : session.queuePaused
               ? 'queue-paused'
               : 'turn'
-    behindReturned =
-      behindReturned || (message.state === 'returned' && !message.independentRecovery)
+    behindReturned = behindReturned || message.state === 'returned'
     const from = readAgentMessageSource(message.body.from)
     return {
       messageId: message.messageId,

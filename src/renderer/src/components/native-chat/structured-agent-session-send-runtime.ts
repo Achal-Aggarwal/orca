@@ -74,9 +74,10 @@ export function handBack(
     const parts: readonly AgentSessionWriteNoticePart[] | null = returnToComposer(entry)
       ? notice
       : [...(notice ?? []), 'messageNotSaved']
-    if (parts) {
+    const visible = parts?.filter((part) => part !== 'sendOutcomeLost')
+    if (visible?.length) {
       publishStructuredAgentSessionSends(entry.sessionId, {
-        notice: agentSessionWriteNoticeText([...parts])
+        notice: agentSessionWriteNoticeText(visible)
       })
     }
   } finally {

@@ -157,9 +157,8 @@ describe("the header row's pause", () => {
 describe('published recovery membership through the Resume controller', () => {
   const stopped = { reason: 'stopped' } as const
   const recovery = card('R', {
-    state: 'returned',
-    independentRecovery: true,
-    returnedRejection: { kind: 'unconfirmed' }
+    state: 'waiting',
+    paused: true
   })
   const q = card('Q', { position: 3, state: 'returned' })
   const w1 = card('W1', { position: 2 })
@@ -177,7 +176,7 @@ describe('published recovery membership through the Resume controller', () => {
   })
 
   it.each([1, 2])(
-    'renders normal Resume beside %i uncertain recovery copies without changing their actions',
+    'renders normal Resume beside %i uncertain originals without synthetic actions',
     async (count) => {
       const rig = await createQueuedMessageTestRig({ restartable: true })
       onTestFinished(() => rig.dispose())
@@ -199,15 +198,10 @@ describe('published recovery membership through the Resume controller', () => {
         if (!result.ok) {
           throw new Error('history refused')
         }
-        expect(result.page.queuedMessages).toHaveLength(count + 2)
+        expect(result.page.queuedMessages).toHaveLength(2)
         state = reduceStructuredAgentSession(state, { type: 'history-page', page: result.page })
       })
-      expect(state.queuedMessages?.slice(0, count)).toMatchObject(
-        Array.from({ length: count }, () => ({
-          independentRecovery: true,
-          returnedRejection: { kind: 'unconfirmed' }
-        }))
-      )
+      expect(state.queuedMessages?.every((card) => card.state === 'waiting')).toBe(true)
       mocks.call.mockResolvedValue(RESUMED)
       const { result } = renderController({
         queuedMessages: state.queuedMessages ?? [],
@@ -218,15 +212,10 @@ describe('published recovery membership through the Resume controller', () => {
           <NativeChatQueuedMessageList chatWorktreeId={null} controller={result.current} />
         </TooltipProvider>
       )
-      expect(screen.getAllByRole('listitem')).toHaveLength(count + 2)
-      expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(count)
+      expect(screen.getAllByRole('listitem')).toHaveLength(2)
+      expect(screen.queryAllByRole('button', { name: 'Send' })).toHaveLength(0)
       expect(screen.getAllByRole('button', { name: 'Steer' })).toHaveLength(2)
-      expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(count + 2)
-      for (const row of screen.getAllByRole('listitem').slice(0, count)) {
-        expect(row.textContent).toContain(
-          "Couldn't confirm whether this was sent. It hasn't been resent."
-        )
-      }
+      expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
       await act(() => fireEvent.click(screen.getByRole('button', { name: 'Resume' })))
       expect(mocks.call).toHaveBeenCalledExactlyOnceWith(
         expect.anything(),
@@ -281,7 +270,7 @@ describe('published recovery membership through the Resume controller', () => {
       [recovery],
       [],
       [card('P', { paused: true })],
-      [{ ...recovery, independentRecovery: undefined }, w2]
+      [{ ...recovery, state: 'returned', paused: undefined }, w2]
     ]) {
       rerender({ queuedMessages })
       expect(result.current.pause).toBeNull()
@@ -290,7 +279,7 @@ describe('published recovery membership through the Resume controller', () => {
     expect(result.current.cards).toEqual([])
     expect(result.current.pause).toBeNull()
     rerender({ queuedMessages: [w1, { ...recovery, position: 3 }, w2], queuePause: null })
-    expect(result.current.cards.map((c) => c.hold)).toEqual(['turn', 'returned', 'turn'])
+    expect(result.current.cards.map((c) => c.hold)).toEqual(['turn', 'paused', 'turn'])
     expect(result.current.pause).toBeNull()
   })
 })

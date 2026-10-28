@@ -84,17 +84,14 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
     }
   )
 
-  it('restores unknown text and reports the same lost-result notice as desktop', async () => {
+  it('restores transport-unknown text without uncertain-message advice', async () => {
     sendStructured.mockResolvedValue('unknown')
     mount('codex')
 
     await expect(sendWithOutcome('/review')).resolves.toBe('unknown')
 
     expect(restoreRejectedDraft).toHaveBeenCalledWith(ORIGIN, '/review')
-    expect(onSendError).toHaveBeenCalledOnce()
-    expect(onSendError).toHaveBeenCalledWith(
-      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
-    )
+    expect(onSendError).not.toHaveBeenCalled()
   })
 
   it('restores unknown text for every agent', async () => {
