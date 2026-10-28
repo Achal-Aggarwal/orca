@@ -34,6 +34,7 @@ vi.mock('./MobileNativeChatOverlay', () => ({ MobileNativeChatOverlay: () => nul
 vi.mock('./MobileSessionFileReader', () => ({ FileReader: () => null }))
 vi.mock('./MobileSessionMarkdownReader', () => ({ MarkdownReader: () => null }))
 vi.mock('./mobile-session-styles', () => ({ styles: {} }))
+vi.mock('../transport/use-host-profile', () => ({ useHostProfile: () => null }))
 import { TerminalPaneView } from './TerminalPaneView'
 import { MobileSessionActiveContent } from './MobileSessionActiveContent'
 import { terminalPaneViewport } from './mobile-terminal-pane-layout'
@@ -165,7 +166,8 @@ it.each(['stacked', 'side-by-side'] as const)(
         render(focused, 300)
         expect(terminalStyle('a').transform).toBeUndefined()
         expect(terminalStyle('b').transform).toEqual([{ translateY: -expectedLift }])
-        expect(terminalStyle('c').transform).toBeUndefined()
+        // A pane never shown has not mounted its terminal yet.
+        expect(renderer.root.findAllByType(hosts.TerminalWebView)).toHaveLength(2)
         for (const pane of renderer.root.findAllByType(TerminalPaneView).slice(0, 2)) {
           const [outer, clip, measured] = pane.findAllByType(hosts.View)
           const outerStyle = Object.assign({}, ...outer.props.style.filter(Boolean))
@@ -178,7 +180,7 @@ it.each(['stacked', 'side-by-side'] as const)(
       render('a', 0)
       expect(terminalStyle('a').transform).toBeUndefined()
       expect(terminalStyle('b').transform).toBeUndefined()
-      expect(terminalStyle('c').transform).toBeUndefined()
+      expect(renderer.root.findAllByType(hosts.TerminalWebView)).toHaveLength(2)
     } finally {
       act(() => renderer?.unmount())
     }

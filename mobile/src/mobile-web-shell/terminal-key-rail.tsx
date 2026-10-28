@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { AppState, Pressable, ScrollView, Text, View } from 'react-native'
 import {
   Keyboard,
   ChevronDown,
@@ -22,6 +22,8 @@ import {
   TERMINAL_ACCESSORY_REPEAT_INTERVAL_MS
 } from '../terminal/terminal-accessory-repeat'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { TerminalDirectionPad, type TerminalDirectionPadHandle } from './terminal-direction-pad'
 import {
   sameTerminalKeyRailToolbar,
@@ -99,6 +101,7 @@ export function TerminalKeyRail({
   toolbar?: BridgeTerminalToolbar
   inputOwner?: string | null
 }) {
+  useMobileColorScheme()
   const [repeat] = useState(() => createTerminalAccessoryRepeatController<BridgeTerminalKeyId>())
   const padRef = useRef<TerminalDirectionPadHandle | null>(null)
   const strip = useSideRailStrip()
@@ -385,7 +388,7 @@ export function usePublishedShellKeyRail(
   useSideRailContent(node)
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   viewport: {
     flex: 1
   },
@@ -414,4 +417,4 @@ const styles = StyleSheet.create({
     fontSize: typography.metaSize,
     fontFamily: typography.monoFamily
   }
-})
+}))

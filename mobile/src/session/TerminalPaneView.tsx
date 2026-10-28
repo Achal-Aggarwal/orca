@@ -3,6 +3,8 @@ import { StyleSheet, View, Text, Pressable } from 'react-native'
 import type { ParsedFileLinkLocation } from '../../../src/shared/file-link-location'
 import { terminalPaneKeyboardLayout } from './mobile-terminal-pane-layout'
 import { colors, spacing } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import type { TerminalFrame } from '../terminal/terminal-webview-messages'
 import { TerminalWebView } from '../terminal/TerminalWebView'
 import type {
@@ -76,6 +78,7 @@ export function TerminalPaneView({
   onTextScaleChange,
   onCellBoxChange
 }: TerminalPaneViewProps) {
+  useMobileColorScheme()
   const [visited, setVisited] = useState(visible)
   if (visible && !visited) {
     setVisited(true)
@@ -167,7 +170,7 @@ export function TerminalPaneView({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   terminalPane: {
     ...StyleSheet.absoluteFillObject
   },
@@ -188,4 +191,4 @@ const styles = StyleSheet.create({
   terminalWebView: {
     flex: 1
   }
-})
+}))

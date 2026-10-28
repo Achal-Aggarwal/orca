@@ -61,7 +61,7 @@ export function useMobileSessionTerminalStreamDisplay(
           ...(deviceTokenRef.current
             ? { client: { id: deviceTokenRef.current, type: 'mobile' as const } }
             : {}),
-          // Why: late-bind viewport for terminals subscribed before measurement, or auto toggles no-op on a null stored viewport.
+          // Measure viewport live so pre-measure subscriptions can switch to auto successfully.
           ...(viewport && next === 'auto' ? { viewport } : {})
         })
       } catch {

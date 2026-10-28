@@ -7,13 +7,15 @@ import {
   useRef,
   useState
 } from 'react'
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, Pressable, Text, View } from 'react-native'
 import {
   createTerminalAccessoryRepeatController,
   TERMINAL_ACCESSORY_REPEAT_DELAY_MS,
   TERMINAL_ACCESSORY_REPEAT_INTERVAL_MS
 } from '../terminal/terminal-accessory-repeat'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 
 export const TERMINAL_DIRECTION_KEYS = ['arrowUp', 'arrowLeft', 'arrowRight', 'arrowDown'] as const
 type DirectionKey = (typeof TERMINAL_DIRECTION_KEYS)[number]
@@ -35,6 +37,7 @@ export const TerminalDirectionPad = forwardRef<
     onInteractionStart: () => void
   }
 >(function TerminalDirectionPad({ enabled, width, onKey, onInteractionStart }, ref) {
+  useMobileColorScheme()
   const [repeat] = useState(() => createTerminalAccessoryRepeatController<DirectionKey>())
   const delivery = useRef({ enabled, onKey })
   useLayoutEffect(() => {
@@ -134,7 +137,7 @@ export const TerminalDirectionPad = forwardRef<
   )
 })
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   pad: { alignSelf: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
   middle: { flexDirection: 'row', gap: spacing.xs },
   key: {
@@ -152,4 +155,4 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySize,
     fontFamily: typography.monoFamily
   }
-})
+}))

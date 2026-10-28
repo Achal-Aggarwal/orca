@@ -39,6 +39,7 @@ vi.mock('./MobileSessionHeaderIconButton', () => ({
 }))
 vi.mock('./QuickCommandsTabButton', () => ({ QuickCommandsTabButton: () => null }))
 vi.mock('./mobile-session-styles', () => ({ styles: {} }))
+vi.mock('../transport/use-host-profile', () => ({ useHostProfile: () => null }))
 vi.mock('../platform/keyboard-persisting-taps', () => ({ useKeyboardPersistingTaps: () => null }))
 vi.mock('../navigation/workspace-execution-host', () => ({ useWorkspaceExecutionHost: () => ({}) }))
 vi.mock('../browser/MobileBrowserPane', () => ({ MobileBrowserPane: () => null }))
