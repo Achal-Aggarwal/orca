@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { shallow } from 'zustand/shallow'
 import {
   getLocalExecutionHostLabel,
   getRepoExecutionHostId,
@@ -61,10 +62,22 @@ export function useAutomationsPagePresentationState({
         sourceHostAvailability: automationSourceHostAvailabilityByRowKey.get(selectedRow.key)
       })
     : null
+  const hasDraftChanges = useMemo(
+    () =>
+      editingAutomationId !== null &&
+      draftAtOpen !== null &&
+      draft !== draftAtOpen &&
+      !shallow(
+        // Omitted and undefined setup decisions have the same saved meaning.
+        { ...draft, setupDecision: draft.setupDecision },
+        { ...draftAtOpen, setupDecision: draftAtOpen.setupDecision }
+      ),
+    [draft, draftAtOpen, editingAutomationId]
+  )
   const canSaveDraft =
     editingAutomationId === null ||
     !draftAtOpen ||
-    JSON.stringify(draft) !== JSON.stringify(draftAtOpen) ||
+    hasDraftChanges ||
     (editingAutomationId !== null &&
       local.editingHostStableKey !== destination.rowRecoveryHost(local.editingRowKey)?.stableKey)
   const getAutomationRepoHostLabel = useCallback(

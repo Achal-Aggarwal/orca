@@ -73,6 +73,8 @@ export type DetailPaneProps = {
 export type EditorDialogProps = {
   open: boolean
   isEditing: boolean
+  canSave: boolean
+  onOpenChange: (open: boolean) => void
   createDestination?: AutomationCreateDestinationControl
   editDestination?: AutomationCreateDestinationControl
   notice?: { message: string; recovery: string | null } | null
