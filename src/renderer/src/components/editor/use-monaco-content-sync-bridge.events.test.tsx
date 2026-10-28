@@ -51,6 +51,57 @@ function mountBridge(model: editor.ITextModel, onContentChange = vi.fn()) {
 }
 
 describe('Monaco content event admission', () => {
+  it.each([1, 10])('materializes each model version once for %i pane publishers', (paneCount) => {
+    const model = monaco.editor.createModel('line\n'.repeat(10_000))
+    const panes = Array.from({ length: paneCount }, () => mountBridge(model))
+    for (const value of ['first edit', 'second edit']) {
+      act(() => model.setValue(value))
+      for (const pane of panes) {
+        expect(pane.onContentChange).toHaveBeenLastCalledWith(value)
+      }
+    }
+    expect(panes.reduce((count, pane) => count + pane.getValue.mock.calls.length, 0)).toBe(2)
+    for (const pane of panes) {
+      expect(pane.onContentChange).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it('keeps models with the same version independent', () => {
+    const firstModel = monaco.editor.createModel('initial')
+    const secondModel = monaco.editor.createModel('initial')
+    const first = mountBridge(firstModel)
+    const second = mountBridge(secondModel)
+    act(() => {
+      firstModel.setValue('first model')
+      secondModel.setValue('second model')
+    })
+    expect(firstModel.getVersionId()).toBe(secondModel.getVersionId())
+    expect(first.getValue).toHaveBeenCalledOnce()
+    expect(second.getValue).toHaveBeenCalledOnce()
+    expect(first.onContentChange).toHaveBeenCalledExactlyOnceWith('first model')
+    expect(second.onContentChange).toHaveBeenCalledExactlyOnceWith('second model')
+  })
+
+  it('reads the new version when a publisher edits the model during event delivery', () => {
+    const model = monaco.editor.createModel('initial')
+    const publisher = vi.fn((value: string) => {
+      if (value === 'outer edit') {
+        model.setValue('nested edit')
+      }
+    })
+    const first = mountBridge(model, publisher)
+    const sibling = mountBridge(model)
+    act(() => model.setValue('outer edit'))
+    expect(publisher.mock.calls.map(([value]) => value)).toEqual(['outer edit', 'nested edit'])
+    expect(sibling.onContentChange.mock.calls.map(([value]) => value)).toEqual([
+      'nested edit',
+      'nested edit'
+    ])
+    expect(first.getValue.mock.calls.length + sibling.getValue.mock.calls.length).toBe(2)
+    expect(first.result.current.lastSyncedContentRef.current).toBe('nested edit')
+    expect(sibling.result.current.lastSyncedContentRef.current).toBe('nested edit')
+  })
+
   it('reads genuine edits once and follows the current publisher without retaining a subscription', () => {
     const model = monaco.editor.createModel('initial')
     const bridge = mountBridge(model)
@@ -92,7 +143,7 @@ describe('Monaco content event admission', () => {
     }
     act(() => model.setValue('after paste'))
     expect(first.getValue).toHaveBeenCalledOnce()
-    expect(sibling.getValue).toHaveBeenCalledOnce()
+    expect(sibling.getValue).not.toHaveBeenCalled()
     expect(first.onContentChange).toHaveBeenCalledExactlyOnceWith('after paste')
     expect(sibling.onContentChange).toHaveBeenCalledExactlyOnceWith('after paste')
   })
