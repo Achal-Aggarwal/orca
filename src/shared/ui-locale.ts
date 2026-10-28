@@ -6,6 +6,7 @@ import {
   UI_LANGUAGE_JAPANESE,
   UI_LANGUAGE_KOREAN,
   UI_LANGUAGE_PORTUGUESE,
+  UI_LANGUAGE_RUSSIAN,
   UI_LANGUAGE_SPANISH,
   UI_LANGUAGE_SYSTEM,
   UI_LANGUAGE_TURKISH,
@@ -22,6 +23,7 @@ export const SUPPORTED_UI_LOCALES = [
   'es',
   'fr',
   'pt',
+  'ru',
   'tr'
 ] as const
 export type SupportedUiLocale = (typeof SUPPORTED_UI_LOCALES)[number]
@@ -144,6 +146,9 @@ export function resolveUiLocale(
   }
   if (language === UI_LANGUAGE_PORTUGUESE) {
     return 'pt'
+  }
+  if (language === UI_LANGUAGE_RUSSIAN) {
+    return 'ru'
   }
   if (language === UI_LANGUAGE_TURKISH) {
     return 'tr'
