@@ -85,9 +85,22 @@ function scanDocLinks(
 
 function changedTextblockRanges(transaction: Transaction): DocumentRange[] {
   const doc = transaction.doc
+  const hasUnlocalizedStep = transaction.steps.some((step, index) => {
+    let hasMappedRange = false
+    transaction.mapping.maps[index].forEach(() => {
+      hasMappedRange = true
+    })
+    return (
+      !hasMappedRange &&
+      (!('from' in step) ||
+        typeof step.from !== 'number' ||
+        !('to' in step) ||
+        typeof step.to !== 'number')
+    )
+  })
   const changes = getChangedRanges(transaction)
-  if (changes.length === 0) {
-    // Attribute-only custom steps may not expose a mapped range.
+  if (hasUnlocalizedStep || changes.length === 0) {
+    // Unlocalized steps need a full rescan even when another step provides a range.
     return [{ from: 0, to: doc.content.size }]
   }
   const ranges = changes.map(({ newRange }) => {

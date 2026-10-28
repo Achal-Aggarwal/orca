@@ -219,4 +219,45 @@ describe('incremental document links', () => {
       'Replacement'
     )
   })
+
+  it.each(['before', 'after'])(
+    'refreshes distant attribute edits %s localized text edits',
+    (order) => {
+      const editor = createEditor([
+        paragraph('before'),
+        paragraph('between'),
+        {
+          type: 'paragraph',
+          content: [{ type: 'markdownDocLink', attrs: { target: 'Guide', label: 'Read guide' } }]
+        }
+      ])
+      const targetPosition = editor.state.doc.content.size - 2
+      const transaction = editor.state.tr
+      if (order === 'before') {
+        transaction.setNodeAttribute(targetPosition, 'target', 'Changed').insertText('prefix ', 1)
+      } else {
+        transaction.insertText('prefix ', 1)
+        transaction.setNodeAttribute(transaction.mapping.map(targetPosition), 'target', 'Changed')
+      }
+      editor.view.dispatch(transaction)
+      expect(targets(editor)).toEqual(['Changed'])
+      const storage = editor.storage.markdownDocLink
+      if (!storage) {
+        throw new Error('Missing document-link storage')
+      }
+      storage.documents = [
+        {
+          filePath: '/repo/Changed.md',
+          relativePath: 'Changed.md',
+          basename: 'Changed.md',
+          name: 'Changed'
+        }
+      ]
+      editor.view.dispatch(editor.state.tr.setMeta('docLinksUpdated', true))
+      expect(editor.view.dom.querySelector('.rich-markdown-doc-link--missing')).toBeNull()
+      expect(editor.view.dom.querySelector('[data-doc-link-target="Changed"]')?.textContent).toBe(
+        'Read guide'
+      )
+    }
+  )
 })
