@@ -69,12 +69,12 @@ export abstract class AgentBrowserBridgeCaptureCommands extends AgentBrowserBrid
       worktreeId,
       browserPageId,
       async (_sessionName, target) => {
-        // A caller that left must not start a script nor hold this page's queue; its script keeps running.
         throwIfSignalAborted(signal)
         const wc = this.requireTargetWebContents(target)
         let releaseDebugger = (): void => {}
         try {
           releaseDebugger = acquireElectronDebugger(wc).release
+          // A caller leaving frees the page queue but does not terminate its script.
           // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Runtime.evaluate with returnByValue always answers this CDP shape; unchanged from before the bound.
           const { result, exceptionDetails } = (await waitForPromiseWithSignal(
             bound(
