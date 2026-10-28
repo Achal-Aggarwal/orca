@@ -19,7 +19,6 @@ type TableContext = {
   columnCount: number
   hasHeaderRow: boolean
   rowCount: number
-  selectedCellPositions: Set<number>
   tablePosition: number
 }
 
@@ -136,25 +135,18 @@ function tableContext(editor: Editor, targetCellPosition: number): TableContext 
     return null
   }
   const tableMap = TableMap.get(table)
-  const selectedCellPositions = new Set<number>()
-  const selection = editor.state.selection
-  if (selection instanceof CellSelection) {
-    selection.forEachCell((_cell, position) => selectedCellPositions.add(position))
-  } else {
-    selectedCellPositions.add(targetCellPosition)
-  }
   return {
     columnCount: tableMap.width,
     hasHeaderRow: table.firstChild?.firstChild?.type.spec.tableRole === 'header_cell',
     rowCount: tableMap.height,
-    selectedCellPositions,
     tablePosition
   }
 }
 
 function selectedTableCoverage(
   editor: Editor,
-  context: TableContext
+  context: TableContext,
+  targetCellPosition: number
 ): {
   columns: Set<number>
   rows: Set<number>
@@ -167,11 +159,18 @@ function selectedTableCoverage(
   if (!table) {
     return { columns, rows, includesHeader }
   }
+  const selectedCellPositions = new Set<number>()
+  const selection = editor.state.selection
+  if (selection instanceof CellSelection) {
+    selection.forEachCell((_cell, position) => selectedCellPositions.add(position))
+  } else {
+    selectedCellPositions.add(targetCellPosition)
+  }
   const tableMap = TableMap.get(table)
   const tableStart = context.tablePosition + 1
   tableMap.map.forEach((cellOffset, index) => {
     const position = tableStart + cellOffset
-    if (!context.selectedCellPositions.has(position)) {
+    if (!selectedCellPositions.has(position)) {
       return
     }
     rows.add(Math.floor(index / tableMap.width))
@@ -261,18 +260,21 @@ export function runRichMarkdownTableAction(
   if (!context) {
     return false
   }
-  const coverage = selectedTableCoverage(editor, context)
   const chain = editor.chain().focus()
 
   switch (action) {
     case 'insert-row-above':
-      if (context.hasHeaderRow && coverage.includesHeader) {
+      if (
+        context.hasHeaderRow &&
+        selectedTableCoverage(editor, context, targetCellPosition).includesHeader
+      ) {
         return false
       }
       return chain.addRowBefore().run()
     case 'insert-row-below':
       return chain.addRowAfter().run()
-    case 'delete-row':
+    case 'delete-row': {
+      const coverage = selectedTableCoverage(editor, context, targetCellPosition)
       if (coverage.rows.size >= context.rowCount) {
         return chain.deleteTable().run()
       }
@@ -280,6 +282,7 @@ export function runRichMarkdownTableAction(
         return false
       }
       return chain.deleteRow().run()
+    }
     case 'insert-column-left': {
       const insertedColumnIndex = selectedRect(editor.state).left
       return chain
@@ -300,11 +303,13 @@ export function runRichMarkdownTableAction(
         })
         .run()
     }
-    case 'delete-column':
+    case 'delete-column': {
+      const coverage = selectedTableCoverage(editor, context, targetCellPosition)
       if (coverage.columns.size >= context.columnCount) {
         return chain.deleteTable().run()
       }
       return chain.deleteColumn().run()
+    }
     case 'delete-table':
       return chain.deleteTable().run()
   }
