@@ -573,7 +573,7 @@ it('retires absent contexts by provider/workspace independently of ordinary null
     await attachContext('claude', 22),
     await attachContext('omp', 23)
   ]
-  const events = ids.map(() => [] as AgentSessionSubscribeEvent[])
+  const events = ids.map<AgentSessionSubscribeEvent[]>(() => [])
   const stops = await Promise.all(
     ids.map((sessionId, index) =>
       host.subscribe({
