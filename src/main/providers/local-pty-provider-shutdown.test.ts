@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacosTccLoginShell from './macos-tcc-login-shell'
+import type * as PosixPtyProcessTable from '../pty/posix-pty-process-table'
+import type * as DescendantTermination from '../pty-descendant-termination'
 
 const {
   existsSyncMock,
@@ -14,8 +16,10 @@ const {
   killWithDescendantSweepMock,
   isWslAvailableAsyncMock,
   wslUncDirectoryExistsAsyncMock,
-  createShellPromptReadinessProbeMock
+  createShellPromptReadinessProbeMock,
+  readProcessTableMock
 } = vi.hoisted(() => ({
+  readProcessTableMock: vi.fn<(rootPid: number) => Promise<string>>(),
   existsSyncMock: vi.fn(),
   statSyncMock: vi.fn(),
   accessSyncMock: vi.fn(),
@@ -51,6 +55,13 @@ vi.mock('electron', () => ({
 
 vi.mock('node-pty', () => ({
   spawn: spawnMock
+}))
+
+// Fixture pids must never be looked up in the real host process table.
+vi.mock('../pty/posix-pty-process-table', async (importOriginal) => ({
+  ...(await importOriginal<typeof PosixPtyProcessTable>()),
+  readPosixPtyProcessTable: readProcessTableMock,
+  readPosixPtyProcessTableSync: () => ''
 }))
 
 vi.mock('./macos-tcc-login-shell', async (importOriginal) => ({
@@ -123,6 +134,31 @@ import {
   type LocalPtyMockProcess
 } from './local-pty-provider-test-harness'
 
+async function installActualShutdownSweep() {
+  const actual = await vi.importActual<typeof DescendantTermination>(
+    '../pty-descendant-termination'
+  )
+  const capture = {
+    capturedAtMs: Date.parse('Tue Jul 14 12:01:00 2026'),
+    rows: [
+      { pid: 12345, ppid: 1, pgid: 12345, startedAt: 'Tue Jul 14 12:00:00 2026' },
+      { pid: 12346, ppid: 12345, pgid: 12346, startedAt: 'Tue Jul 14 12:00:00 2026' }
+    ]
+  }
+  const readTable = vi.fn(async () => capture)
+  const terminateDescendants = vi.fn(
+    async (_snapshot: DescendantTermination.DescendantSnapshot) => {}
+  )
+  killWithDescendantSweepMock.mockImplementation(
+    (
+      pid: number,
+      killRoot: () => void,
+      deps: Parameters<typeof actual.killWithDescendantSweep>[2]
+    ) => actual.killWithDescendantSweep(pid, killRoot, { ...deps, readTable, terminateDescendants })
+  )
+  return { capture, readTable, terminateDescendants }
+}
+
 describe('LocalPtyProvider', () => {
   let provider: LocalPtyProvider
   let mockProc: LocalPtyMockProcess
@@ -154,6 +190,8 @@ describe('LocalPtyProvider', () => {
       }
     })
     spawnMock.mockReturnValue(mockProc)
+    readProcessTableMock.mockReset()
+    readProcessTableMock.mockResolvedValue('')
 
     provider = new LocalPtyProvider()
   })
@@ -294,6 +332,64 @@ describe('LocalPtyProvider', () => {
       }
     })
 
+    it('keeps the kill handle until a graceful-deadline sweep settles when orphan cleanup joins', async () => {
+      vi.useFakeTimers()
+      try {
+        const killSpy = vi.fn()
+        const destroySpy = vi.fn()
+        spawnMock.mockReturnValue({ ...mockProc, kill: killSpy, destroy: destroySpy })
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+        const table = Promise.withResolvers<string>()
+        readProcessTableMock.mockReturnValueOnce(table.promise)
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        expect(provider.killOrphanedPtys(1)).toEqual([{ id }])
+        expect(destroySpy).not.toHaveBeenCalled()
+
+        table.resolve('')
+        await vi.waitFor(() => expect(destroySpy).toHaveBeenCalledOnce())
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('escalates through orphan cleanup when the graceful-deadline sweep it joined is refused', async () => {
+      vi.useFakeTimers()
+      try {
+        let forceAttempts = 0
+        const destroySpy = vi.fn()
+        const killSpy = vi.fn((signal: string) => {
+          if (signal === 'SIGKILL' && forceAttempts++ === 0) {
+            throw new Error('transient force-kill failure')
+          }
+          if (destroySpy.mock.calls.length > 0) {
+            throw new Error('killed through a released handle')
+          }
+        })
+        spawnMock.mockReturnValue({ ...mockProc, kill: killSpy, destroy: destroySpy })
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+        const table = Promise.withResolvers<string>()
+        readProcessTableMock.mockReturnValueOnce(table.promise)
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        provider.killOrphanedPtys(1)
+        table.resolve('')
+
+        await vi.waitFor(() => expect(destroySpy).toHaveBeenCalledOnce())
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('retries a rejected graceful-deadline SIGKILL before the physical timeout', async () => {
       vi.useFakeTimers()
       try {
@@ -426,30 +522,143 @@ describe('LocalPtyProvider', () => {
       expect(spawnMock).toHaveBeenCalledTimes(spawnCallsBefore + 2)
     })
 
-    it('coalesces duplicate shutdown while descendant sweep is pending', async () => {
-      let releaseSweep!: () => void
-      killWithDescendantSweepMock.mockImplementation(
-        (_rootPid: number, killRoot: () => void) =>
-          new Promise<void>((resolve) => {
-            releaseSweep = () => {
-              killRoot()
-              resolve()
-            }
-          })
-      )
-      const { id } = await provider.spawn({
-        cols: 80,
-        rows: 24,
-        launchAgent: 'claude'
-      })
+    it.each(['synchronous', 'asynchronous'] as const)(
+      'coalesces duplicate shutdown through detached descendants and %s physical exit',
+      async (exitTiming) => {
+        const sweep = await installActualShutdownSweep()
+        const table = Promise.withResolvers<typeof sweep.capture>()
+        const descendants = Promise.withResolvers<void>()
+        sweep.readTable.mockReturnValueOnce(table.promise)
+        sweep.terminateDescendants.mockReturnValueOnce(descendants.promise)
+        const killSpy = vi.fn(() => {
+          if (exitTiming === 'synchronous') {
+            exitCb?.({ exitCode: 137 })
+          }
+        })
+        mockProc.kill = killSpy
+        const { id } = await provider.spawn({
+          cols: 80,
+          rows: 24,
+          launchAgent: 'claude'
+        })
 
-      const first = provider.shutdown(id, { immediate: true })
-      const second = provider.shutdown(id, { immediate: true })
-      expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
-      releaseSweep()
-      await Promise.all([first, second])
-      expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
-    })
+        const first = provider.shutdown(id, { immediate: true })
+        const second = provider.shutdown(id, { immediate: true })
+        let settled = false
+        const completion = Promise.all([first, second]).then(() => {
+          settled = true
+        })
+        expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
+        expect(killSpy).not.toHaveBeenCalled()
+        table.resolve(sweep.capture)
+        await vi.waitFor(() => expect(sweep.terminateDescendants).toHaveBeenCalledOnce())
+        expect(sweep.terminateDescendants.mock.calls[0][0].descendants).toEqual([
+          sweep.capture.rows[1]
+        ])
+        expect(killSpy).not.toHaveBeenCalled()
+        expect(settled).toBe(false)
+        descendants.resolve()
+        await vi.waitFor(() => expect(killSpy).toHaveBeenCalledOnce())
+        if (exitTiming === 'asynchronous') {
+          expect(settled).toBe(false)
+          expect(provider.hasPty(id)).toBe(true)
+          exitCb?.({ exitCode: 137 })
+        }
+        await completion
+        expect(provider.hasPty(id)).toBe(false)
+        expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
+      }
+    )
+
+    it.each(['capture', 'callback', 'denied', 'accepted'] as const)(
+      'ordinary Stop preserves full shutdown with an optional %s transaction',
+      async (stage) => {
+        const sweep = await installActualShutdownSweep()
+        const table = Promise.withResolvers<typeof sweep.capture>()
+        const authority = Promise.withResolvers<boolean>()
+        const entered = Promise.withResolvers<void>()
+        const descendants = Promise.withResolvers<void>()
+        const authorizeStop = vi.fn(() => {
+          entered.resolve()
+          return authority.promise
+        })
+        if (stage === 'capture') {
+          sweep.readTable.mockReturnValueOnce(table.promise)
+        }
+        sweep.terminateDescendants.mockReturnValueOnce(descendants.promise)
+        const killSpy = vi.fn()
+        mockProc.kill = killSpy
+        const args = {
+          cols: 80,
+          rows: 24,
+          sessionId: 'optional-stop',
+          launchAgent: 'claude' as const
+        }
+        const { id, incarnationId } = await provider.spawn(args)
+        const optional = provider.shutdown(id, {
+          immediate: true,
+          expectedIncarnationId: incarnationId,
+          authorizeStop
+        })
+        const optionalResult =
+          stage === 'accepted'
+            ? expect(optional).resolves.toBeUndefined()
+            : expect(optional).rejects.toThrow('terminal_stop_declined')
+        if (stage !== 'capture') {
+          await entered.promise
+        }
+        if (stage === 'denied') {
+          authority.resolve(false)
+        } else if (stage === 'accepted') {
+          authority.resolve(true)
+          await vi.waitFor(() => expect(sweep.terminateDescendants).toHaveBeenCalledOnce())
+        }
+        const ordinary = provider.shutdown(id, { immediate: true })
+        const duplicate = provider.shutdown(id, { immediate: true })
+        await vi.waitFor(() => expect(sweep.terminateDescendants).toHaveBeenCalledOnce())
+        expect(sweep.terminateDescendants.mock.calls[0][0].descendants).toEqual([
+          sweep.capture.rows[1]
+        ])
+        expect(killSpy).not.toHaveBeenCalled()
+        if (stage === 'denied') {
+          await optionalResult
+        }
+        const replacement = createLocalPtyMockProcess({
+          get: () => exitCb,
+          set: (cb) => {
+            exitCb = cb
+          }
+        })
+        spawnMock.mockReturnValueOnce(replacement)
+        const callsBefore = spawnMock.mock.calls.length
+        const respawn = provider.spawn(args)
+        await Promise.resolve()
+        expect(spawnMock).toHaveBeenCalledTimes(callsBefore)
+        descendants.resolve()
+        await vi.waitFor(() => expect(killSpy).toHaveBeenCalledOnce())
+        let settled = false
+        void ordinary.then(() => {
+          settled = true
+        })
+        await Promise.resolve()
+        expect(settled).toBe(false)
+        exitCb?.({ exitCode: 137 })
+        await Promise.all([ordinary, duplicate])
+        const restarted = await respawn
+        expect(restarted.incarnationId).not.toBe(incarnationId)
+        if (stage === 'capture') {
+          table.resolve(sweep.capture)
+        } else {
+          authority.resolve(true)
+        }
+        await optionalResult
+        expect(replacement.kill).not.toHaveBeenCalled()
+        expect(provider.hasPty(id)).toBe(true)
+        expect(sweep.terminateDescendants).toHaveBeenCalledOnce()
+        expect(killWithDescendantSweepMock).toHaveBeenCalledTimes(stage === 'accepted' ? 1 : 2)
+        expect(authorizeStop).toHaveBeenCalledTimes(stage === 'capture' ? 0 : 1)
+      }
+    )
 
     it('does not terminate descendants after the tracked root exits mid-sweep', async () => {
       const terminateDescendants = vi.fn()
