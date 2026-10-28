@@ -202,16 +202,19 @@ export function activateAndRevealWorktree(
     state.activeWorkspaceExecutionHostId === (opts?.executionHostId ?? null) &&
     state.activeView === 'terminal'
 
-  if (wt.repoId !== state.activeRepoId) {
-    state.setActiveRepo(wt.repoId)
-  }
-
   if (state.activeView !== 'terminal') {
     state.setActiveView('terminal')
   }
 
   const previousActive = readPreviousActive(state)
-  state.setActiveWorktree(worktreeId, opts?.executionHostId)
+  // Switch repo and worktree in one store write; each write re-runs every subscriber's selector.
+  state.setActiveWorktree(
+    worktreeId,
+    opts?.executionHostId,
+    wt.repoId !== state.activeRepoId
+      ? { stateTransition: () => ({ patch: { activeRepoId: wt.repoId }, activate: true }) }
+      : undefined
+  )
   const postActivationState = useAppStore.getState()
   const ownerRuntimeEnvironmentId = runtimeEnvironmentIdOrLocalUnlessTwin(
     postActivationState,
