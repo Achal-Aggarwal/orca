@@ -15,6 +15,7 @@ const liveModels = vi.hoisted(() => {
   const models: editor.ITextModel[] = []
   return models
 })
+const activeWidgetModel = vi.hoisted((): { current?: editor.ITextModel } => ({}))
 const widgetCalls = vi.hoisted(() => ({
   focus: vi.fn(),
   layout: vi.fn(),
@@ -57,25 +58,28 @@ vi.mock('@/lib/monaco-setup', async () => {
           liveModels.push(model)
           return model
         },
-        create: (_container: HTMLElement, { model }: { model: editor.ITextModel }) => ({
-          getModel: () => model,
-          getContentHeight: () => 28,
-          layout: widgetCalls.layout,
-          onDidContentSizeChange: () => ({ dispose: vi.fn() }),
-          restoreViewState: vi.fn(),
-          saveViewState: () => null,
-          getTargetAtClientPoint: () => null,
-          setPosition: vi.fn(),
-          focus: widgetCalls.focus,
-          onDidBlurEditorWidget: () => ({ dispose: vi.fn() }),
-          addCommand: vi.fn(),
-          updateOptions: widgetCalls.updateOptions,
-          pushUndoStop: () => {
-            model.pushStackElement()
-            return true
-          },
-          dispose: vi.fn()
-        })
+        create: (_container: HTMLElement, { model }: { model: editor.ITextModel }) => {
+          activeWidgetModel.current = model
+          return {
+            getModel: () => model,
+            getContentHeight: () => 28,
+            layout: widgetCalls.layout,
+            onDidContentSizeChange: () => ({ dispose: vi.fn() }),
+            restoreViewState: vi.fn(),
+            saveViewState: () => null,
+            getTargetAtClientPoint: () => null,
+            setPosition: vi.fn(),
+            focus: widgetCalls.focus,
+            onDidBlurEditorWidget: () => ({ dispose: vi.fn() }),
+            addCommand: vi.fn(),
+            updateOptions: widgetCalls.updateOptions,
+            pushUndoStop: () => {
+              model.pushStackElement()
+              return true
+            },
+            dispose: vi.fn()
+          }
+        }
       }
     }
   }
@@ -144,7 +148,7 @@ function NotebookCells({
 }
 
 function activeModel(): editor.ITextModel {
-  const model = liveModels.at(-1)
+  const model = activeWidgetModel.current
   if (!model) {
     throw new Error('No notebook cell editor was created')
   }
@@ -169,6 +173,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  activeWidgetModel.current = undefined
   for (const model of liveModels.splice(0)) {
     if (!model.isDisposed()) {
       model.dispose()
@@ -178,6 +183,43 @@ afterEach(() => {
 })
 
 describe('active notebook cell external reload', () => {
+  it('retains per-cell undo across activation changes and releases models with their cell owners', async () => {
+    const callbacks = { onContentChange: vi.fn(), onDirtyStateHint: vi.fn() }
+    const content = notebookContent([
+      { id: 'a', source: 'first source' },
+      { id: 'b', source: 'second source' }
+    ])
+    const { rerender, unmount } = render(<NotebookCells content={content} {...callbacks} />)
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'first source' }), { button: 0 })
+    const firstModel = activeModel()
+    appendText(firstModel, '!')
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'second source' }), { button: 0 })
+    const secondModel = activeModel()
+    appendText(secondModel, '?')
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'first source!' }), { button: 0 })
+    const returnedModel = activeModel()
+    callbacks.onDirtyStateHint.mockClear()
+    await act(async () => {
+      await returnedModel.undo()
+    })
+
+    expect(returnedModel.getValue()).toBe('first source')
+    expect(callbacks.onDirtyStateHint).toHaveBeenCalledOnce()
+    expect(secondModel.getValue()).toBe('second source?')
+    expect(returnedModel).toBe(firstModel)
+    expect(liveModels).toEqual([firstModel, secondModel])
+    rerender(
+      <NotebookCells
+        content={notebookContent([{ id: 'b', source: 'second source?' }])}
+        {...callbacks}
+      />
+    )
+    expect(firstModel.isDisposed()).toBe(true)
+    expect(secondModel.isDisposed()).toBe(false)
+    unmount()
+    expect(secondModel.isDisposed()).toBe(true)
+  })
+
   it('shows the new source without dirtying the clean notebook or recreating the model', () => {
     const onContentChange = vi.fn<(content: string) => void>()
     const onDirtyStateHint = vi.fn<(dirty: boolean) => void>()

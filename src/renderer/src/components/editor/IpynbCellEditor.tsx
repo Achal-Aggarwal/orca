@@ -50,6 +50,14 @@ type ClientPoint = { x: number; y: number }
 export function IpynbCellSource(props: IpynbCellSourceProps): React.JSX.Element {
   const { cell, source, active, onActivate } = props
   const [pressedAt, setPressedAt] = useState<ClientPoint | null>(null)
+  const sourceModelRef = useRef<editor.ITextModel | null>(null)
+  useLayoutEffect(
+    () => () => {
+      sourceModelRef.current?.dispose()
+      sourceModelRef.current = null
+    },
+    []
+  )
   const activate = (point: ClientPoint | null): void => {
     setPressedAt(point)
     onActivate()
@@ -78,7 +86,7 @@ export function IpynbCellSource(props: IpynbCellSourceProps): React.JSX.Element 
   return (
     <div className="ipynb-code-surface overflow-hidden rounded-md border border-border bg-muted/60 focus-within:border-ring">
       {active ? (
-        <IpynbSourceEditor {...props} pressedAt={pressedAt} />
+        <IpynbSourceEditor {...props} pressedAt={pressedAt} sourceModelRef={sourceModelRef} />
       ) : (
         <div
           role="button"
@@ -143,9 +151,13 @@ function IpynbSourceEditor({
   cell,
   source,
   pressedAt,
+  sourceModelRef,
   onDeactivate,
   onChange
-}: IpynbCellSourceProps & { pressedAt: ClientPoint | null }): React.JSX.Element {
+}: IpynbCellSourceProps & {
+  pressedAt: ClientPoint | null
+  sourceModelRef: React.RefObject<editor.ITextModel | null>
+}): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const editorFontZoomLevel = useAppStore((s) => s.editorFontZoomLevel)
   const isDark = useDocumentDarkTheme()
@@ -172,7 +184,8 @@ function IpynbSourceEditor({
       return
     }
     const { lineHeight, paddingX, paddingY } = CODE_LAYOUT
-    const model = monaco.editor.createModel(source, cell.language)
+    const model = sourceModelRef.current ?? monaco.editor.createModel(source, cell.language)
+    sourceModelRef.current = model
     const editorInstance = monaco.editor.create(container, {
       dropIntoEditor: { enabled: false },
       model,
@@ -214,7 +227,7 @@ function IpynbSourceEditor({
       editorInstance.setPosition(target.position)
     }
     editorInstance.focus()
-    model.onDidChangeContent(() => {
+    const contentListener = model.onDidChangeContent(() => {
       if (!syncingSourceRef.current) {
         callbacksRef.current.onChange(model.getValue())
       }
@@ -229,8 +242,11 @@ function IpynbSourceEditor({
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
     return () => {
       cleanupFindShortcut()
+      contentListener.dispose()
+      if (!model.isDisposed()) {
+        model.pushStackElement()
+      }
       editorInstance.dispose()
-      model.dispose()
       editorRef.current = null
       fitHeightRef.current = null
     }
