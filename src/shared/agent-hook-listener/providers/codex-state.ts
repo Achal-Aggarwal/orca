@@ -1,4 +1,5 @@
 import type { AgentMainAgentStatus, ParsedAgentStatusPayload } from '../../agent-status-types'
+import { isAskUserQuestionTool } from '../../agent-question-answered-intent'
 import {
   continueMainAgentStatus,
   foldAgentLeadStatus,
@@ -161,10 +162,14 @@ export function markCodexLeadTurnInterrupted(state: HookListenerState, paneKey: 
 
 export function codexLeadStateForHookEvent(
   eventName: string | undefined,
-  normalizedState?: ParsedAgentStatusPayload['state']
+  normalizedState?: ParsedAgentStatusPayload['state'],
+  toolName?: string
 ): CodexLeadTurnState['state'] | undefined {
   if (eventName === 'Stop' || eventName === 'Interrupt') {
     return 'done'
+  }
+  if (eventName === 'PreToolUse' && isAskUserQuestionTool(toolName)) {
+    return 'waiting'
   }
   if (eventName === 'PermissionRequest') {
     // Preserve execution-host reviewer ownership; event names alone would turn every relayed approval into waiting.
@@ -201,6 +206,19 @@ export function reconcileRemoteCodexState(
     return payload
   }
   const roster = getOrCreateCodexSubagentRoster(state, paneKey)
+  if (
+    !eventName &&
+    payload.mainAgent &&
+    (payload.subagents !== undefined || payload.state === 'done')
+  ) {
+    // A working poll can shed its roster in transit; only explicit children or done prove removals.
+    const liveIds = new Set(payload.subagents?.map((child) => child.id))
+    for (const id of roster.keys()) {
+      if (!liveIds.has(id)) {
+        roster.delete(id)
+      }
+    }
+  }
   if (payload.subagents) {
     seedCodexSubagentRoster(roster, payload.subagents)
   }
@@ -209,7 +227,7 @@ export function reconcileRemoteCodexState(
       finishCodexSubagent(roster, agentId)
     }
   } else {
-    const leadState = codexLeadStateForHookEvent(eventName, payload.state)
+    const leadState = codexLeadStateForHookEvent(eventName, payload.state, payload.toolName)
     if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
       roster.clear()
     }
