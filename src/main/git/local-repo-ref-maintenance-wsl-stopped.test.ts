@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as GitRunner from './runner'
 import type * as WslUncAccessGate from '../wsl/wsl-unc-access-gate'
 import { RepoRefMaintenance } from '../../shared/repo-ref-maintenance'
-import { WslDistroStoppedError } from '../wsl/wsl-unc-access-gate'
+import { WslDistroStoppedError, WslDistroUnverifiableError } from '../wsl/wsl-unc-access-gate'
 
 const mocks = vi.hoisted(() => ({
   gitExecFileAsync: vi.fn(),
@@ -14,7 +14,9 @@ vi.mock('./runner', async (importOriginal) => ({
 }))
 vi.mock('../wsl/wsl-unc-access-gate', async (importOriginal) => ({
   ...(await importOriginal<typeof WslUncAccessGate>()),
-  assertWslUncPathRunning: mocks.assertWslUncPathRunning
+  assertWslUncPathRunning: mocks.assertWslUncPathRunning,
+  // Off Windows no path maps to a distro; stand in for the WSL repo's UNC root.
+  wslDistroForPath: (path: string) => (path.startsWith('\\\\wsl.localhost\\') ? 'Ubuntu' : null)
 }))
 
 import { createLocalRepoRefMaintenanceTarget } from './local-repo-ref-maintenance'
@@ -23,7 +25,7 @@ const QUIET_MS = 1000
 const WSL_REPO = '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo'
 const engines: RepoRefMaintenance[] = []
 
-function createHarness() {
+function createHarness(repoPath = WSL_REPO) {
   const maintenance = new RepoRefMaintenance({
     quietPeriodMs: QUIET_MS,
     onError: () => {},
@@ -34,7 +36,7 @@ function createHarness() {
   const resolveRefsDirectory = vi.fn(async () => undefined)
   const packRefs = vi.fn(async () => {})
   const target = {
-    ...createLocalRepoRefMaintenanceTarget({ key: 'local::wsl-repo', repoPath: WSL_REPO }),
+    ...createLocalRepoRefMaintenanceTarget({ key: `local::${repoPath}`, repoPath }),
     maintainPackIndex,
     resolveRefsDirectory,
     packRefs
@@ -77,6 +79,23 @@ describe('ref maintenance on a stopped WSL distro (E9)', () => {
     await elapse(h.maintenance, 2 * QUIET_MS)
     expect(mocks.gitExecFileAsync).toHaveBeenCalledTimes(1)
     expect(h.maintainPackIndex).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats an unverifiable distro as blocked too', async () => {
+    mocks.assertWslUncPathRunning.mockRejectedValueOnce(new WslDistroUnverifiableError('Ubuntu'))
+    const h = createHarness()
+    h.maintenance.arm(h.target)
+    await elapse(h.maintenance, QUIET_MS)
+    expect(mocks.gitExecFileAsync).not.toHaveBeenCalled()
+    expect(h.maintainPackIndex).not.toHaveBeenCalled()
+  })
+
+  it('never asks the gate for a host repo', async () => {
+    const h = createHarness('C:/repos/one')
+    h.maintenance.arm(h.target)
+    await elapse(h.maintenance, QUIET_MS)
+    expect(mocks.assertWslUncPathRunning).not.toHaveBeenCalled()
+    expect(mocks.gitExecFileAsync).toHaveBeenCalledTimes(1)
   })
 
   it('maintains a running distro exactly as before', async () => {

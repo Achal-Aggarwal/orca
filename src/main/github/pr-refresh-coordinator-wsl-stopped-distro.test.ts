@@ -67,6 +67,26 @@ describe('PR refresh for a stopped WSL distro (E9)', () => {
     expect(getPRForBranchOutcomeMock).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['visible', 'active', 'post-push'] as const)(
+    'skips an automatic %s refreshPRNow without running gh, keeping the cached PR',
+    async (reason) => {
+      const { refreshPRNow } = await import('./pr-refresh-coordinator')
+      const outcome = await refreshPRNow(
+        makeCandidate({ repoPath: WSL_REPO, cacheKey: `${WSL_REPO}::c` }),
+        reason
+      )
+      expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+      expect(outcome).toMatchObject({ kind: 'upstream-error' })
+    }
+  )
+
+  it('treats an unverifiable distro as blocked', async () => {
+    gate.blockedWslDistroForPath.mockResolvedValue({ distro: 'Ubuntu', state: 'unverifiable' })
+    const { refreshPRNow } = await import('./pr-refresh-coordinator')
+    await refreshPRNow(makeCandidate({ repoPath: WSL_REPO, cacheKey: `${WSL_REPO}::d` }), 'visible')
+    expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+  })
+
   it('still runs a manual refresh, which is the user asking', async () => {
     const { refreshPRNow } = await import('./pr-refresh-coordinator')
     await refreshPRNow(makeCandidate({ repoPath: WSL_REPO, cacheKey: `${WSL_REPO}::b` }))

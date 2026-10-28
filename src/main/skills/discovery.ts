@@ -20,6 +20,10 @@ import {
   type SkillScanRoot
 } from './skill-discovery-sources'
 import { rootMayContainSourceKind } from './skill-discovery-source-filter'
+import {
+  isOnStoppedWslDistro,
+  withoutStoppedWslDistroRoots
+} from './skill-discovery-stopped-wsl-roots'
 import { buildRemoteRepoSkillSources } from './skill-remote-repo-sources'
 import { discoverClaudePluginSkillSources } from './claude-plugin-skill-sources'
 import { findSkillFiles } from './skill-root-file-walk'
@@ -232,18 +236,21 @@ export async function discoverSkills(args: {
   const startedAt = Date.now()
   const homeDir = args.homeDir ?? homedir()
   const refresh = args.refresh === true
-  const roots = [
-    ...buildSkillDiscoverySources({ ...args, homeDir }),
-    // Plugin inventory belongs to explicit workspaces; untargeted Settings scans retain their existing scope/cost.
-    ...(args.cwd &&
-    args.includeCwd !== false &&
-    (!args.sourceKinds?.length || args.sourceKinds.includes('plugin'))
-      ? await waitForPromiseWithSignal(
-          discoverClaudePluginSkillSources({ homeDir, cwd: args.cwd, signal: args.signal }),
-          args.signal
-        )
-      : [])
-  ].filter((root) => rootMayContainSourceKind(root, args.sourceKinds))
+  const roots = (
+    await withoutStoppedWslDistroRoots([
+      ...buildSkillDiscoverySources({ ...args, homeDir }),
+      // Plugin inventory belongs to explicit workspaces; untargeted Settings scans retain their existing scope/cost.
+      ...(args.cwd &&
+      args.includeCwd !== false &&
+      (!args.sourceKinds?.length || args.sourceKinds.includes('plugin')) &&
+      !(await isOnStoppedWslDistro(args.cwd))
+        ? await waitForPromiseWithSignal(
+            discoverClaudePluginSkillSources({ homeDir, cwd: args.cwd, signal: args.signal }),
+            args.signal
+          )
+        : [])
+    ])
+  ).filter((root) => rootMayContainSourceKind(root, args.sourceKinds))
   args.signal?.throwIfAborted()
   const scans = await waitForPromiseWithSignal(
     Promise.all(roots.map((root) => scanRootShared(root, refresh))),

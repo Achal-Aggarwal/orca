@@ -2,14 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 import * as repoWorktreeAdminFingerprint from '../repo-worktree-admin-fingerprint'
 import * as wslUncAccessGate from '../../wsl/wsl-unc-access-gate'
 import { OrcaRuntimeService, listWorktrees } from '../orca-runtime-test-mocks.spec'
-import { makeWorktreeInfo, store } from '../orca-runtime-test-fixtures.spec'
+import { makeWorktreeInfo, makeWorktreeMeta, store } from '../orca-runtime-test-fixtures.spec'
 
 const WSL_REPO_PATH = '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo'
 
-function runtimeFor(path: string): OrcaRuntimeService {
+function runtimeFor(path: string, storedWorktreePaths: string[] = []): OrcaRuntimeService {
   const repos = [{ ...store.getRepos()[0], id: 'wsl-repo', path }]
+  const storedMeta = Object.fromEntries(
+    storedWorktreePaths.map((worktreePath) => [`wsl-repo::${worktreePath}`, makeWorktreeMeta()])
+  )
   const runtimeStore = {
     ...store,
+    getAllWorktreeMeta: () => storedMeta,
     getRepos: () => repos,
     getRepo: (id: string) => repos.find((repo) => repo.id === id)
   }
@@ -57,6 +61,29 @@ describe('worktree scans of a stopped WSL distro (E9)', () => {
       vi.useRealTimers()
     }
   })
+
+  it.each(['stopped', 'unverifiable'] as const)(
+    'with no cached scan, a %s distro answers from stored rows without any read or Git',
+    async (state) => {
+      vi.mocked(listWorktrees).mockReset()
+      const fingerprint = vi.spyOn(repoWorktreeAdminFingerprint, 'readRepoWorktreeAdminFingerprint')
+      const blocked = vi
+        .spyOn(wslUncAccessGate, 'blockedWslDistroForPath')
+        .mockResolvedValue({ distro: 'Ubuntu', state })
+      const distroFor = vi.spyOn(wslUncAccessGate, 'wslDistroForPath').mockReturnValue('Ubuntu')
+      try {
+        const runtime = runtimeFor(WSL_REPO_PATH, [WSL_REPO_PATH])
+        const result = await runtime.listDetectedManagedWorktrees('id:wsl-repo')
+        expect(listWorktrees).not.toHaveBeenCalled()
+        expect(fingerprint).not.toHaveBeenCalled()
+        expect(result.worktrees.map((worktree) => worktree.path)).toEqual([WSL_REPO_PATH])
+      } finally {
+        distroFor.mockRestore()
+        blocked.mockRestore()
+        fingerprint.mockRestore()
+      }
+    }
+  )
 
   it('scans a host repo exactly as before', async () => {
     vi.mocked(listWorktrees).mockReset()
