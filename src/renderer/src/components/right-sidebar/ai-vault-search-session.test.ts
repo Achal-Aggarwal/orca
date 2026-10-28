@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { searchHit } from '../../../../shared/ai-vault-search-test-fixture'
+import * as correspondence from '../../../../shared/ai-vault-session-cwd-aliases'
 import { resolveAiVaultSessionResumeInChatEligibility } from './ai-vault-session-resume-in-chat'
 import {
   aiVaultSearchHitToSession,
@@ -8,7 +9,46 @@ import {
   withAiVaultHistoryPreviews
 } from './ai-vault-search-session'
 
+afterEach(() => vi.restoreAllMocks())
+
 describe('withAiVaultHistoryPreviews', () => {
+  it('bounds identity indexing and correspondence work when history adds aliases at N and 10N', () => {
+    const copy = vi.spyOn(correspondence, 'withAiVaultSessionCwdAliases')
+    for (const size of [100, 1000]) {
+      let identityReads = 0
+      const hits = Array.from({ length: size }, (_, index) => {
+        const row = aiVaultSearchHitToSession(
+          { ...searchHit(), sessionId: `session-${index}`, cwd: '/private/var/example' },
+          'local'
+        )
+        return {
+          ...row,
+          get sessionId() {
+            identityReads += 1
+            return row.sessionId
+          }
+        }
+      })
+      const history = hits.map((hit) => ({ ...hit }))
+      expect(withAiVaultHistoryPreviews(hits, history).every((row) => !row.cwdAliases)).toBe(true)
+      const updated = history.map((row) => ({
+        ...row,
+        cwdAliases: ['/var/example'],
+        get sessionId() {
+          identityReads += 1
+          return row.sessionId
+        }
+      }))
+      identityReads = 0
+      copy.mockClear()
+      const hydrated = withAiVaultHistoryPreviews(hits, updated)
+      expect(hydrated.every((row) => row.cwdAliases?.[0] === '/var/example')).toBe(true)
+      expect(copy).toHaveBeenCalledTimes(size)
+      expect(identityReads).toBeGreaterThanOrEqual(2 * size)
+      expect(identityReads).toBeLessThanOrEqual(4 * size)
+    }
+  })
+
   it('restores resume correspondence when history arrives after a search hit, even with an existing preview', () => {
     const hit = aiVaultSearchHitToSession(
       { ...searchHit(), agent: 'claude', cwd: '/private/var/example' },

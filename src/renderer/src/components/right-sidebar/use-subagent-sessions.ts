@@ -52,10 +52,14 @@ export function useSubagentSessions(
     session.modifiedAt,
     attempt
   ])
-  const sessions = useMemo(
-    () => state.sessions.map((child) => withAiVaultSessionCwdAliases(child, session)),
-    [state.sessions, session]
-  )
+  const { agent, cwd, cwdAliases, executionHostId, filePath } = session
+  const sessions = useMemo(() => {
+    if (!cwdAliases?.length) {
+      return state.sessions
+    }
+    const source = { agent, cwd, cwdAliases, executionHostId, filePath }
+    return state.sessions.map((child) => withAiVaultSessionCwdAliases(child, source))
+  }, [state.sessions, agent, cwd, cwdAliases, executionHostId, filePath])
   return {
     ...state,
     sessions,

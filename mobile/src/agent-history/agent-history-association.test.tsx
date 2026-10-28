@@ -6,6 +6,8 @@ import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState, RpcResponse } from '../transport/types'
 import type { Worktree } from '../worktree/workspace-list-types'
 import { useMobileAgentHistoryState } from './use-mobile-agent-history-state'
+import { resolveMobileAiVaultSessionResumeTarget } from './agent-history-resume-target'
+import { buildMobileAiVaultResumeLaunch } from '../session/ai-vault-resume-launch'
 
 const connection = vi.hoisted((): { client: RpcClient | null; state: ConnectionState } => ({
   client: null,
@@ -137,6 +139,53 @@ it('refreshes a mounted provider row on current-client association changes with 
       kind: 'ready',
       sessions: [{ cwdAliases: ['/var/example'] }]
     })
+    const ready = read().screenState
+    if (ready.kind !== 'ready') {
+      throw new Error('history did not become ready')
+    }
+    const delivered = ready.sessions[0]
+    const targetArgs = {
+      session: delivered,
+      activeWorktreeId: 'elsewhere',
+      worktrees: [
+        { ...worktrees[0], worktreeId: 'elsewhere', path: '/elsewhere' },
+        {
+          ...worktrees[0],
+          worktreeId: 'folder:example',
+          repoId: 'folder-workspace:group',
+          workspaceKind: 'folder-workspace' as const
+        }
+      ],
+      catalog: {
+        repos: [],
+        folderWorkspaces: [{ id: 'example', projectGroupId: 'group', folderPath: '/var/example' }],
+        projectGroups: []
+      },
+      hostPlatform: 'darwin' as const
+    }
+    expect(resolveMobileAiVaultSessionResumeTarget(targetArgs)).toMatchObject({
+      status: 'ready',
+      worktreeId: 'folder:example',
+      workspacePath: '/var/example'
+    })
+    expect(
+      resolveMobileAiVaultSessionResumeTarget({
+        ...targetArgs,
+        session: { ...delivered, executionHostId: 'ssh:other' }
+      }).status
+    ).toBe('blocked')
+    const launch = buildMobileAiVaultResumeLaunch({
+      session: delivered,
+      workspacePlatform: 'darwin'
+    })
+    expect(launch.command).toContain("cd '/private/var/example'")
+    expect(launch.resumeProviderSession).toEqual({
+      key: 'session_id',
+      id: row.sessionId,
+      transcriptPath: row.filePath
+    })
+    expect(delivered.cwd).toBe(row.cwd)
+    expect(delivered.sessionId).toBe(row.sessionId)
     await act(async () => emit({ type: 'snapshot', sessions: [native] }))
     const baseline = send.mock.calls.length
     for (const n of [10, 100]) {

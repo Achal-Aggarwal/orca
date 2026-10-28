@@ -6,7 +6,7 @@ import { normalizeExecutionHostId } from './execution-host'
 /** A relationship or provider id alone does not prove that two rows recorded the same directory. */
 export function withAiVaultSessionCwdAliases(
   session: AiVaultSession,
-  source: AiVaultSession
+  source: Pick<AiVaultSession, 'agent' | 'cwd' | 'cwdAliases' | 'executionHostId' | 'filePath'>
 ): AiVaultSession {
   if (
     !source.cwdAliases?.length ||
