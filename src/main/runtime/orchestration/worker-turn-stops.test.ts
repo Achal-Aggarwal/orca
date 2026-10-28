@@ -62,7 +62,10 @@ function terminal(ctx: ReturnType<typeof setup>, current: { row: AgentStatusIpcP
   return new TerminalWorkerTurnStops({
     ...ctx.deps,
     readHookRow: () => current.row,
-    setTimer: () => ({ cancel: () => {} }),
+    setTimer: (run) => {
+      queueMicrotask(run)
+      return { cancel: () => {} }
+    },
     getHandle: () => HANDLE,
     getProcessIncarnation: () => null,
     readScreen: async () => ({
@@ -105,6 +108,25 @@ describe('terminal worker turn stops', () => {
     await settle()
     expect(ctx.mail().map((m) => m.subject)).toContain('Worker stopped without reporting')
     expect(ctx.mail()).toHaveLength(2)
+  })
+
+  it('waits for a lead and its children to settle before reporting the finish', async () => {
+    const ctx = setup()
+    const current = { row: hookRow({ state: 'working', turnCompletedAt: 150 }) }
+    const stops = terminal(ctx, current)
+    stops.observe({
+      kind: 'observed',
+      paneKey: PANE,
+      workspace: { worktreeId: 'repo::/tmp/wt', sshHostId: null },
+      phase: 'working',
+      at: 1
+    })
+    await settle()
+    expect(ctx.mail()).toHaveLength(0)
+    current.row = hookRow({ turnCompletedAt: 150 })
+    stops.observe(moved('working', 'done'))
+    await settle()
+    expect(ctx.mail()).toHaveLength(1)
   })
 
   it('reports a worker stopped at an approval prompt', async () => {
@@ -185,6 +207,19 @@ describe('remote worker turn stops', () => {
       kind: 'escalation'
     })
     expect(first.messageId).toBe(second.messageId)
-    expect(JSON.parse(first.payload)).toMatchObject({ type: 'escalation', priority: 'high' })
+    const relayed = JSON.parse(first.payload)
+    expect(relayed).toMatchObject({ type: 'escalation', priority: 'high' })
+    expect(JSON.parse(relayed.payload)).toMatchObject({ stopReason: 'finished' })
+
+    // A worker_done still queued for the home is a report, not a silent stop.
+    db.enqueueFederationRelay({
+      dispatchId: 'dsp_remote',
+      direction: 'to_home',
+      kind: 'worker_done',
+      payload: '{}'
+    })
+    enqueueFederationRelay.mockClear()
+    reportWorkerTurnStop(db, target, { ...stop, stopKey: 'k2' }, deps)
+    expect(enqueueFederationRelay).not.toHaveBeenCalled()
   })
 })

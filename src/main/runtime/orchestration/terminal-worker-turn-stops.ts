@@ -8,6 +8,7 @@ import type { OrchestrationDb } from './db'
 import { redactWorkerTerminalView } from './worker-terminal-redaction'
 import {
   reportWorkerTurnStop,
+  workerTurnStopDispatchId,
   type WorkerTurnStopDispatch,
   type WorkerTurnStopReportDeps
 } from './worker-turn-stop-report'
@@ -29,7 +30,9 @@ export class TerminalWorkerTurnStops {
       readHookRow: deps.readHookRow,
       prepare: (news) => news,
       deliver: (news) => void this.report(news),
-      setTimer: deps.setTimer
+      setTimer: deps.setTimer,
+      // A lead waiting on its own children is not stopped; their all-clear is.
+      allClearOnly: true
     })
   }
 
@@ -46,9 +49,12 @@ export class TerminalWorkerTurnStops {
       .readScreen(stopped.handle)
       .then((view) => redactWorkerTerminalView(view).tail.join('\n'))
       .catch(() => undefined)
-    // The read awaited: the worker may have resumed or reported since.
+    // The read awaited: the worker may have resumed, reported, or been handed a new Dispatch since.
     const resolved = this.atRest(paneKey, row) ? this.resolve(paneKey) : null
-    if (!resolved) {
+    if (
+      !resolved ||
+      workerTurnStopDispatchId(resolved.target) !== workerTurnStopDispatchId(stopped.target)
+    ) {
       return
     }
     reportWorkerTurnStop(

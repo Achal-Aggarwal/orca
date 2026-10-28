@@ -29,6 +29,10 @@ export type WorkerTurnStopReportDeps = {
   notify: (handle: string, messageType: string) => void
 }
 
+export function workerTurnStopDispatchId(target: WorkerTurnStopDispatch): string {
+  return target.kind === 'local' ? target.dispatch.id : target.attachment.dispatch_id
+}
+
 const SUBJECTS: Record<WorkerTurnStopReason, string> = {
   finished: 'Worker stopped without reporting',
   errored: 'Worker stopped on an error without reporting',
@@ -63,7 +67,7 @@ export function reportWorkerTurnStop(
   stop: WorkerTurnStop,
   deps: WorkerTurnStopReportDeps
 ): void {
-  const dispatchId = target.kind === 'local' ? target.dispatch.id : target.attachment.dispatch_id
+  const dispatchId = workerTurnStopDispatchId(target)
   // Waiting on its own helpers' reports is deliberate, like `check --wait`.
   if (
     deps.isWaitingForMail(`dispatch:${dispatchId}`) ||
@@ -97,6 +101,10 @@ export function reportWorkerTurnStop(
   }
   // The Run home imports relayed worker mail into the coordinator's Run and wakes it.
   const { attachment } = target
+  // A worker_done the home has not acknowledged yet is still a report.
+  if (db.hasPendingFederatedWorkerReport(dispatchId)) {
+    return
+  }
   // The stable message id makes a repeated report of the same stop a no-op on both sides.
   try {
     db.enqueueFederationRelay({
@@ -111,7 +119,8 @@ export function reportWorkerTurnStop(
         type: 'escalation',
         priority: 'high',
         threadId: null,
-        payload: { taskId: attachment.task_id, ...payload }
+        // Relayed payloads travel as strings, as a worker's own `send` relays them.
+        payload: JSON.stringify({ taskId: attachment.task_id, ...payload })
       })
     })
   } catch (error) {

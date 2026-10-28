@@ -21,6 +21,8 @@ export type TerminalAgentTurnNewsDeps<Prepared> = {
   started?: (news: TerminalAgentTurnNewsItem) => void
   /** Opt-in: a turn its user stopped or a newer request replaced, which is otherwise no news. */
   stopped?: (news: TerminalAgentTurnNewsItem) => void
+  /** Opt-in: a finish is news only once the pane's children settle too, not when its lead agent does. */
+  allClearOnly?: true
 }
 
 type PendingFinish = {
@@ -115,7 +117,7 @@ export class TerminalAgentTurnNews<Prepared> {
       return
     }
     const { turnCompletedAt } = row
-    if (turnCompletedAt === undefined) {
+    if (turnCompletedAt === undefined || this.deps.allClearOnly) {
       this.workingSeen.add(paneKey)
       return
     }
