@@ -1,5 +1,6 @@
 import { sha256 } from '@noble/hashes/sha256'
 import { gzipSync } from 'fflate'
+import type * as FflateModule from 'fflate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeMobileWebBundleId } from '../../../src/shared/mobile-web-bundle/manifest-contract'
 import { createFakeRpcClient } from '../mobile-web-shell/bridge-host-test-fakes'
@@ -28,7 +29,7 @@ vi.mock('expo-crypto', async () => {
 })
 
 vi.mock('fflate', async (importOriginal) => {
-  const original = await importOriginal<typeof import('fflate')>()
+  const original = await importOriginal<typeof FflateModule>()
   return {
     ...original,
     gunzipSync: (...args: Parameters<typeof original.gunzipSync>) => {
