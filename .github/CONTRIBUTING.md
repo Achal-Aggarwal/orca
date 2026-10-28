@@ -93,6 +93,26 @@ pnpm dev:fresh [--keep] [--seed-from[=<profile dir>]]   # temporary profile, rem
 
 ### Targeting Local Tests
 
+During iteration, use `pnpm check:iteration --maxWorkers=2` to select checks for staged,
+unstaged, and untracked edits against HEAD. Before handoff, run
+`pnpm check:changed --maxWorkers=2` for the whole branch against its merge base with
+`origin/main` (override with `--base=<ref>`). `check:changed --scope=worktree` is the
+explicit form of `check:iteration`. A clean worktree has nothing to check in iteration
+mode, even if the branch has committed changes.
+
+Both gates print each step's command, deadline, start, and completion, emit a heartbeat
+every 15 seconds, and stream Vitest progress. Each step has a five-minute deadline;
+pass `--stepTimeoutMs=<ms>` to increase it for a larger check. A timeout fails the gate
+and terminates the step's process tree. `--maxWorkers` also caps concurrent check tasks.
+Passing results are cached separately for branch and worktree scope; a timeout, failure,
+or cancellation never records a pass. `--force` bypasses a cached pass.
+
+Iteration checks use the CI unit inventory, leaving shell, Electron, and cross-version
+tests to their dedicated CI jobs. Ordinary `pnpm test` and the branch handoff gate retain
+their broader local discovery, and explicit test commands can still run those suites.
+Both gates use the installed incremental dependency recording and its cold-cache static
+fallback described below. Neither gate replaces CI's full coverage of global inputs.
+
 Use a test file or directory when you know the relevant suites. For dependency-based
 feedback, Vitest can select tests affected by your edits:
 

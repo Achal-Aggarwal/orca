@@ -68,3 +68,34 @@ it('keys the pass on every edit state and ignores its own cache file', () => {
   writeFileSync(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 10\n')
   expect(computePassHash(root, base)).not.toBe(beforeLockfile)
 })
+
+it('limits worktree selection to edits after HEAD, including staged additions and deletions', () => {
+  writeFileSync(join(root, 'committed.ts'), 'export const committed = 1\n')
+  git('add', '.')
+  git('commit', '-qm', 'branch change')
+  expect(collectChangedFiles(root, base)).toEqual(['committed.ts'])
+  expect(collectChangedFiles(root, 'HEAD')).toEqual([])
+
+  rmSync(join(root, 'tracked.ts'))
+  writeFileSync(join(root, 'staged.ts'), 'export const staged = 1\n')
+  git('add', '.')
+  writeFileSync(join(root, 'untracked.ts'), 'export const untracked = 1\n')
+  expect(collectChangedFiles(root, 'HEAD')).toEqual(['staged.ts', 'tracked.ts', 'untracked.ts'])
+})
+
+it('keeps scope passes separate and invalidates iteration passes after a commit', () => {
+  writeFileSync(join(root, 'tracked.ts'), 'export const a = 2\n')
+  const branchHash = computePassHash(root, base)
+  const iterationHash = computePassHash(root, base, 'worktree')
+  expect(branchHash).not.toBe(iterationHash)
+  writePassHash(root, iterationHash, 'worktree')
+  expect(readPassHash(root)).toBeNull()
+  writePassHash(root, branchHash)
+  expect(readPassHash(root, 'worktree')).toBe(iterationHash)
+  expect(readPassHash(root)).toBe(branchHash)
+
+  writeFileSync(join(root, 'committed.ts'), 'export const committed = 1\n')
+  git('add', 'committed.ts')
+  git('commit', '-qm', 'new dependency')
+  expect(computePassHash(root, 'HEAD', 'worktree')).not.toBe(iterationHash)
+})

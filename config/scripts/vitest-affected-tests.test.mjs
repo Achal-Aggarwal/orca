@@ -106,6 +106,12 @@ it('uses recorded imports in both runtimes and retains cold, new, and global-inp
     const fresh = writeTest(runtimes[0], 'new')
     expect(run(input)).toEqual(normalize([...affected, fresh]))
     expect(run(join(root, 'pnpm-lock.yaml'))).toEqual(normalize([...affected, ...unrelated, fresh]))
+    const coldAffected = writeTest(runtimes[0], 'cold-affected', true)
+    for (let index = 0; index < 101; index += 1) {
+      writeTest(runtimes[index % runtimes.length], `cold-unrelated-${index}`)
+    }
+    expect(run(input)).toEqual(normalize([...affected, coldAffected]))
+    expect(readFileSync(transformed, 'utf8')).not.toContain('cold-unrelated-')
   } finally {
     rmSync(directory, { recursive: true, force: true, maxRetries: 3 })
   }

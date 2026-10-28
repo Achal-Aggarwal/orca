@@ -1,6 +1,7 @@
 # Useful Commands
 
 - **Before handoff**: `pnpm check:changed --maxWorkers=2` (format, lint, typecheck, affected tests, ratchets; cached when nothing changed)
+- **During iteration**: `pnpm check:iteration --maxWorkers=2` (staged, unstaged, untracked edits against HEAD; CI unit inventory; does not replace the branch handoff gate)
 - **Typecheck**: `pnpm tc` (or `tc:node` / `tc:cli` / `tc:web`)
 - **Test**: `pnpm test [path/to/file.test.ts]`; affected only: `pnpm test:changed [path] --maxWorkers=2` ([details](.github/CONTRIBUTING.md#targeting-local-tests))
 - **Lint**: `oxlint`; format: `pnpm format`

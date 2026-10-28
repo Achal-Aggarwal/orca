@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export const PASS_CACHE_PATH = '.cache/check-changed.json'
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 
 // Inputs outside the diff that still decide what the checks report.
 const HASHED_CONFIG_FILES = [
@@ -15,7 +15,8 @@ const HASHED_CONFIG_FILES = [
   'config/vitest.config.ts',
   'config/scripts/check-changed.mjs',
   'config/scripts/check-changed-selection.mjs',
-  'config/scripts/check-changed-pass-cache.mjs'
+  'config/scripts/check-changed-pass-cache.mjs',
+  'config/scripts/check-changed-task-runner.mjs'
 ]
 
 function git(root, args) {
@@ -45,7 +46,7 @@ export function collectChangedFiles(root, mergeBase) {
   return [...new Set([...tracked, ...untracked])].sort()
 }
 
-export function computePassHash(root, mergeBase) {
+export function computePassHash(root, mergeBase, scope = 'branch') {
   const hash = createHash('sha256')
   const field = (label, value) => {
     hash.update(`${label}\0${value.length}\0`)
@@ -54,6 +55,11 @@ export function computePassHash(root, mergeBase) {
   field('version', String(CACHE_VERSION))
   field('runtime', `${process.platform} ${process.arch} ${process.version}`)
   field('base', mergeBase)
+  field('scope', scope)
+  if (scope === 'worktree') {
+    // A committed dependency can affect an unchanged local edit.
+    field('head', git(root, ['rev-parse', 'HEAD']).trim())
+  }
   // Base plus each changed path's working-tree bytes pins the tree like the diff does, but stays
   // stable when an edit is staged or committed, so committing a passing change keeps its pass.
   for (const file of collectChangedFiles(root, mergeBase)) {
@@ -67,20 +73,29 @@ export function computePassHash(root, mergeBase) {
   return hash.digest('hex')
 }
 
-export function readPassHash(root) {
+export function readPassHash(root, scope = 'branch') {
   try {
-    const { version, hash } = JSON.parse(readFileSync(path.join(root, PASS_CACHE_PATH), 'utf8'))
-    return version === CACHE_VERSION && typeof hash === 'string' ? hash : null
+    const { version, passes } = JSON.parse(readFileSync(path.join(root, PASS_CACHE_PATH), 'utf8'))
+    return version === CACHE_VERSION && typeof passes?.[scope]?.hash === 'string'
+      ? passes[scope].hash
+      : null
   } catch {
     return null
   }
 }
 
-export function writePassHash(root, hash) {
+export function writePassHash(root, hash, scope = 'branch') {
   const file = path.join(root, PASS_CACHE_PATH)
+  let passes = {}
+  try {
+    const cached = JSON.parse(readFileSync(file, 'utf8'))
+    if (cached.version === CACHE_VERSION) {
+      passes = cached.passes ?? {}
+    }
+  } catch {
+    // Missing or invalid caches require a fresh pass.
+  }
+  passes[scope] = { hash, passedAt: new Date().toISOString() }
   mkdirSync(path.dirname(file), { recursive: true })
-  writeFileSync(
-    file,
-    `${JSON.stringify({ version: CACHE_VERSION, hash, passedAt: new Date().toISOString() })}\n`
-  )
+  writeFileSync(file, `${JSON.stringify({ version: CACHE_VERSION, passes })}\n`)
 }
