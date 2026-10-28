@@ -14,7 +14,15 @@ import {
   encodeTerminalStreamText
 } from '../../../shared/terminal-stream-protocol'
 
-async function startStream(multiplex: boolean, explicitClaims = true, restoreOwner = false) {
+async function startStream({
+  multiplex,
+  explicitClaims = true,
+  restoreOwner = false
+}: {
+  multiplex: boolean
+  explicitClaims?: boolean
+  restoreOwner?: boolean
+}) {
   const processWrites: string[] = []
   const messages: { type?: string; streamId?: number }[] = []
   const handlers = new Map<
@@ -139,7 +147,7 @@ async function startStream(multiplex: boolean, explicitClaims = true, restoreOwn
 
 describe.each([true, false])('remote input after passive resize (multiplex=%s)', (multiplex) => {
   it.each(['refused', 'thrown'])('preserves typing after a %s passive resize', async (failure) => {
-    const stream = await startStream(multiplex, true, true)
+    const stream = await startStream({ multiplex, restoreOwner: true })
     const layout = Promise.withResolvers<{ ok: boolean }>()
     try {
       stream.type('before')
@@ -184,7 +192,7 @@ describe.each([true, false])('remote input after passive resize (multiplex=%s)',
   })
 
   it('retains implicit-claim refusal and recovery for older clients', async () => {
-    const stream = await startStream(multiplex, false)
+    const stream = await startStream({ multiplex, explicitClaims: false })
     try {
       stream.updateViewport.mockResolvedValueOnce(false)
       stream.resize()
