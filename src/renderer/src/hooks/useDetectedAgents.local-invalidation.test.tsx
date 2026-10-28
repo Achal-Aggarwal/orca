@@ -191,6 +191,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
   const measured: number[] = []
   for (const count of [10, 100]) {
     let projectRows = 0
+    let projectFixtureCopies = 0
     let workspaceRows = 0
     let folderRows = 0
     const repos = Array.from({ length: 1000 }, (_, index) => ({
@@ -201,38 +202,46 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     repos[0] = { ...repos[0], projectGroupId: 'folder-group' }
     const catalog = projectHostSetupProjectionFromRepos(repos)
     const projects = (rows: readonly Project[]) =>
-      rows.map(
-        (project) =>
-          new Proxy(project, {
-            get(row, key, receiver) {
-              if (key === 'id' || key === 'sourceRepoIds') {
-                projectRows += 1
-                if (indexing) {
-                  indexRows += 1
-                }
-              }
-              return Reflect.get(row, key, receiver)
+      rows.map((project) => {
+        projectFixtureCopies += 1
+        return {
+          ...project,
+          get id() {
+            projectRows += 1
+            if (indexing) {
+              indexRows += 1
             }
-          })
-      )
-    const worktrees = repos.slice(-count - 1).map(
-      (repo) =>
-        new Proxy(
-          makeWorktree({
-            id: `${repo.id}::${repo.path}`,
-            repoId: repo.id,
-            path: repo.path
-          }),
-          {
-            get(row, key, receiver) {
-              if (key === 'id') {
-                workspaceRows += 1
-              }
-              return Reflect.get(row, key, receiver)
+            return project.id
+          },
+          get sourceRepoIds() {
+            projectRows += 1
+            if (indexing) {
+              indexRows += 1
             }
+            return project.sourceRepoIds
           }
-        )
-    )
+        }
+      })
+    const worktrees = repos.slice(-count - 1).map((repo) => {
+      const worktree = makeWorktree({
+        id: `${repo.id}::${repo.path}`,
+        repoId: repo.id,
+        path: repo.path
+      })
+      return {
+        ...worktree,
+        get id() {
+          workspaceRows += 1
+          return worktree.id
+        }
+      }
+    })
+    const folderWorkspace = makeFolderWorkspace({
+      id: 'folder',
+      projectGroupId: 'folder-group',
+      folderPath: 'C:\\folder',
+      executionHostId: 'local'
+    })
     useAppStore.setState({
       repos,
       projects: projects(
@@ -242,22 +251,13 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
         }))
       ),
       folderWorkspaces: [
-        new Proxy(
-          makeFolderWorkspace({
-            id: 'folder',
-            projectGroupId: 'folder-group',
-            folderPath: 'C:\\folder',
-            executionHostId: 'local'
-          }),
-          {
-            get(row, key, receiver) {
-              if (key === 'id') {
-                folderRows += 1
-              }
-              return Reflect.get(row, key, receiver)
-            }
+        {
+          ...folderWorkspace,
+          get id() {
+            folderRows += 1
+            return folderWorkspace.id
           }
-        )
+        }
       ],
       projectGroups: [{ ...makeProjectGroup(), id: 'folder-group' }],
       projectHostSetups: [...catalog.setups],
@@ -275,9 +275,9 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     let reads = 0
     const failures = (entries: Record<string, boolean>) =>
       new Proxy(entries, {
-        get(target, key, receiver) {
+        get(target, key) {
           reads += 1
-          return Reflect.get(target, key, receiver)
+          return typeof key === 'string' ? target[key] : undefined
         }
       })
     useAppStore.setState({ localAgentInventoryFailedByContext: failures({}) })
@@ -298,6 +298,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     renders.fill(0)
     folderRenders = 0
     reads = projectRows = workspaceRows = indexRows = folderRows = 0
+    projectFixtureCopies = 0
     resolution.mockClear()
     selection.mockClear()
     candidates.mockClear()
@@ -326,6 +327,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
       expect(resolution).not.toHaveBeenCalled()
       expect(projectRows).toBe(0)
       expect(indexRows).toBe(0)
+      expect(projectFixtureCopies).toBe(0)
       expect(folderRows).toBe(0)
       expect(candidates).not.toHaveBeenCalled()
     }
@@ -371,6 +373,8 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     expect(projectRows).toBeLessThanOrEqual(8000)
     const rebuiltProjectRows = indexRows
     const catalogAndCopyRows = projectRows - indexRows
+    const rebuiltProjectFixtureCopies = projectFixtureCopies
+    expect(rebuiltProjectFixtureCopies).toBe(1000)
     expect(indexRows).toBeGreaterThan(0)
     expect(indexRows).toBeLessThanOrEqual(5000)
     expect(resolution).not.toHaveBeenCalled()
@@ -415,7 +419,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     resolution.mockClear()
     renders.fill(0)
     process.stdout.write(
-      `${JSON.stringify({ metric: 'context-selected-work', consumers: count, projects: 1000, inputReads, expensiveIrrelevant: 0, projectIndexRows: rebuiltProjectRows, catalogAndCopyRows, activityRows, folderIndexRows, unaffectedRenders: 0 })}\n`
+      `${JSON.stringify({ metric: 'context-selected-work', consumers: count, projects: 1000, inputReads, expensiveIrrelevant: 0, projectIndexRows: rebuiltProjectRows, catalogAndCopyRows, projectFixtureCopies: rebuiltProjectFixtureCopies, activityRows, folderIndexRows, unaffectedRenders: 0 })}\n`
     )
     await act(async () => {
       useAppStore.setState({
