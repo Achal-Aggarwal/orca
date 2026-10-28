@@ -35,16 +35,7 @@ export function useMarkdownPreviewSourceFoundation({
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const setSearchInputElement = useCallback((input: HTMLInputElement | null) => {
-    inputRef.current = input
-    if (!input) {
-      return
-    }
-    // Why: select the query once on open; match-count updates must not re-select it.
-    input.focus()
-    input.select()
-  }, [])
+  const { inputRef, setSearchInputElement } = useMarkdownPreviewSearchInput()
   const matchesRef = useRef<Range[]>([])
   const searchInstanceRef = useRef<MarkdownPreviewSearchInstance>({})
   const lastAppliedInitialAnchorRef = useRef<string | null>(null)
@@ -208,6 +199,20 @@ export function useMarkdownPreviewSourceFoundation({
     renderedContent,
     resolvedSourceRuntimeEnvironmentId
   }
+}
+
+function useMarkdownPreviewSearchInput() {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const setSearchInputElement = useCallback((input: HTMLInputElement | null) => {
+    inputRef.current = input
+    if (!input) {
+      return
+    }
+    // Why: select the query once on open; match-count updates must not re-select it.
+    input.focus()
+    input.select()
+  }, [])
+  return { inputRef, setSearchInputElement }
 }
 
 export type MarkdownPreviewSourceFoundation = ReturnType<typeof useMarkdownPreviewSourceFoundation>

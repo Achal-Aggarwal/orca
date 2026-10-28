@@ -25,7 +25,6 @@ export function useMarkdownPreviewReviewActions({
   viewport: MarkdownPreviewViewport
 }) {
   const {
-    rootRef,
     renderedContent,
     markdownReviewNotes,
     reviewNotesCopyMountedRef,
@@ -33,17 +32,10 @@ export function useMarkdownPreviewReviewActions({
     reviewNotesCopiedResetTimerRef,
     setCopiedReviewNoteId,
     copiedReviewNoteResetTimerRef,
-    attentionReviewCommentTimeoutRef,
-    pendingReviewActionFrameIdsRef,
-    pendingReviewActionTimeoutIdsRef,
-    reviewActionFrameGenerationRef,
-    setAttentionReviewCommentId,
-    setActiveReviewCommentId,
     markdownComments,
     activeReviewCommentId
   } = foundation
-  const { clearReviewNotesCopiedResetTimer, clearCopiedReviewNoteResetTimer, scrollToSourceLine } =
-    viewport
+  const { clearReviewNotesCopiedResetTimer, clearCopiedReviewNoteResetTimer } = viewport
 
   const handleCopyMarkdownReviewNotes = useCallback(async (): Promise<void> => {
     if (markdownReviewNotes.length === 0) {
@@ -76,7 +68,66 @@ export function useMarkdownPreviewReviewActions({
     setReviewNotesCopied
   ])
 
-  const handleCopyMarkdownReviewNote = useCallback(
+  const handleCopyMarkdownReviewNote = useMarkdownPreviewSingleNoteCopy({
+    copiedReviewNoteResetTimerRef,
+    renderedContent,
+    reviewNotesCopyMountedRef,
+    setCopiedReviewNoteId,
+    clearCopiedReviewNoteResetTimer
+  })
+
+  const { scrollRenderedMarkdownReviewNoteIntoView, scrollToReviewNote } =
+    useMarkdownPreviewReviewNavigation(foundation, viewport)
+
+  const getMarkdownCommentsForRange = useCallback(
+    (range: MarkdownPreviewBlockRange): DiffComment[] =>
+      markdownComments.filter(
+        (comment) => range.startLine <= comment.lineNumber && comment.lineNumber <= range.endLine
+      ),
+    [markdownComments]
+  )
+
+  const handleAnnotatedMarkdownBlockClick = useCallback(
+    (range: MarkdownPreviewBlockRange, event: React.MouseEvent<HTMLElement>): void => {
+      if (!isMarkdownAnnotationNavigationClick(event.target)) {
+        return
+      }
+      const commentsForBlock = getMarkdownCommentsForRange(range)
+      const comment =
+        commentsForBlock.find((candidate) => candidate.id !== activeReviewCommentId) ??
+        commentsForBlock[0]
+      if (!comment) {
+        return
+      }
+      scrollRenderedMarkdownReviewNoteIntoView(comment)
+    },
+    [activeReviewCommentId, getMarkdownCommentsForRange, scrollRenderedMarkdownReviewNoteIntoView]
+  )
+
+  return {
+    handleCopyMarkdownReviewNotes,
+    handleCopyMarkdownReviewNote,
+    scrollToReviewNote,
+    getMarkdownCommentsForRange,
+    handleAnnotatedMarkdownBlockClick
+  }
+}
+
+function useMarkdownPreviewSingleNoteCopy({
+  copiedReviewNoteResetTimerRef,
+  renderedContent,
+  reviewNotesCopyMountedRef,
+  setCopiedReviewNoteId,
+  clearCopiedReviewNoteResetTimer
+}: Pick<
+  MarkdownPreviewFoundation,
+  | 'copiedReviewNoteResetTimerRef'
+  | 'renderedContent'
+  | 'reviewNotesCopyMountedRef'
+  | 'setCopiedReviewNoteId'
+> &
+  Pick<MarkdownPreviewViewport, 'clearCopiedReviewNoteResetTimer'>) {
+  return useCallback(
     async (note: MarkdownReviewNote): Promise<void> => {
       try {
         const copied = await copyMarkdownReviewNotesForAgent({
@@ -105,7 +156,31 @@ export function useMarkdownPreviewReviewActions({
       setCopiedReviewNoteId
     ]
   )
+}
 
+function useMarkdownPreviewReviewNavigation(
+  {
+    rootRef,
+    reviewNotesCopyMountedRef,
+    attentionReviewCommentTimeoutRef,
+    pendingReviewActionFrameIdsRef,
+    pendingReviewActionTimeoutIdsRef,
+    reviewActionFrameGenerationRef,
+    setAttentionReviewCommentId,
+    setActiveReviewCommentId
+  }: Pick<
+    MarkdownPreviewFoundation,
+    | 'rootRef'
+    | 'reviewNotesCopyMountedRef'
+    | 'attentionReviewCommentTimeoutRef'
+    | 'pendingReviewActionFrameIdsRef'
+    | 'pendingReviewActionTimeoutIdsRef'
+    | 'reviewActionFrameGenerationRef'
+    | 'setAttentionReviewCommentId'
+    | 'setActiveReviewCommentId'
+  >,
+  { scrollToSourceLine }: Pick<MarkdownPreviewViewport, 'scrollToSourceLine'>
+) {
   const pulseRenderedMarkdownReviewNote = useCallback(
     (commentId: string, isCurrent: () => boolean): void => {
       if (attentionReviewCommentTimeoutRef.current !== null) {
@@ -232,38 +307,7 @@ export function useMarkdownPreviewReviewActions({
     [rootRef, scrollToSourceLine, setActiveReviewCommentId]
   )
 
-  const getMarkdownCommentsForRange = useCallback(
-    (range: MarkdownPreviewBlockRange): DiffComment[] =>
-      markdownComments.filter(
-        (comment) => range.startLine <= comment.lineNumber && comment.lineNumber <= range.endLine
-      ),
-    [markdownComments]
-  )
-
-  const handleAnnotatedMarkdownBlockClick = useCallback(
-    (range: MarkdownPreviewBlockRange, event: React.MouseEvent<HTMLElement>): void => {
-      if (!isMarkdownAnnotationNavigationClick(event.target)) {
-        return
-      }
-      const commentsForBlock = getMarkdownCommentsForRange(range)
-      const comment =
-        commentsForBlock.find((candidate) => candidate.id !== activeReviewCommentId) ??
-        commentsForBlock[0]
-      if (!comment) {
-        return
-      }
-      scrollRenderedMarkdownReviewNoteIntoView(comment)
-    },
-    [activeReviewCommentId, getMarkdownCommentsForRange, scrollRenderedMarkdownReviewNoteIntoView]
-  )
-
-  return {
-    handleCopyMarkdownReviewNotes,
-    handleCopyMarkdownReviewNote,
-    scrollToReviewNote,
-    getMarkdownCommentsForRange,
-    handleAnnotatedMarkdownBlockClick
-  }
+  return { scrollRenderedMarkdownReviewNoteIntoView, scrollToReviewNote }
 }
 
 export type MarkdownPreviewReviewActions = ReturnType<typeof useMarkdownPreviewReviewActions>

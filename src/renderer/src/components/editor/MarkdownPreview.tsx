@@ -55,9 +55,10 @@ export default function MarkdownPreview({
     largePreview: incomingLargePreview
   })
   const largePreview = exceedsMarkdownRichModeSizeLimit(foundation.renderedContent)
+  const { rootRef } = foundation
   const recordBeforeSwap = useCallback(() => {
-    foundation.rootRef.current?.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
-  }, [foundation.rootRef])
+    rootRef.current?.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
+  }, [rootRef])
   const documentState = useMarkdownPreviewDocument(
     foundation.renderedContent,
     largePreview,
