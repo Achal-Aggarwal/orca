@@ -1,5 +1,5 @@
 import { defineFixture } from '../../component-fixtures/component-fixture'
-import { CompactAgentRow } from './worktree-card-compact-agent-row'
+import WorktreeCardAgents from './WorktreeCardAgents'
 import { applyAgentRowLineage } from '../dashboard/agent-row-lineage'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -52,17 +52,10 @@ const rows = applyAgentRowLineage(
 
 export const nestedChatWorker = defineFixture({
   width: 380,
+  store: { agentActivityDisplayMode: 'compact' },
   render: () => (
     <div className="flex flex-col gap-0.5 bg-sidebar p-2 text-sidebar-foreground">
-      {rows.map((agent) => (
-        <CompactAgentRow
-          key={agent.paneKey}
-          agent={agent}
-          now={now}
-          onActivate={() => {}}
-          cacheTimerActive={false}
-        />
-      ))}
+      <WorktreeCardAgents worktreeId="fixture-workspace" agents={rows} />
     </div>
   )
 })
