@@ -95,7 +95,7 @@ describe('native host message framing', () => {
     const { reader, messages, errors } = collect()
     reader.push(bytes.subarray(0, 4))
     for (let index = 4; index < bytes.length - 1; index += 1) {
-      reader.push(Buffer.from([bytes[index]!]))
+      reader.push(Buffer.from([bytes.readUInt8(index)]))
     }
     expect(heap() - before).toBeLessThan(2 * 1024 * 1024)
     reader.push(bytes.subarray(-1))
