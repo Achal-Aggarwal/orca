@@ -169,7 +169,26 @@ function openEnum(value) {
   return `z.union([${known.map((alternative) => `z.literal(${JSON.stringify(alternative.const)})`).join(',')},otherString])`
 }
 
+const scalarValues = new Map([
+  ['z.string()', 'ScalarString'],
+  ['z.number()', 'ScalarNumber'],
+  ['z.boolean()', 'ScalarBoolean'],
+  ['z.null()', 'ScalarNull'],
+  ['z.unknown()', 'ScalarUnknown'],
+  ['ScalarString.optional()', 'ScalarOptionalString'],
+  ['ScalarNumber.optional()', 'ScalarOptionalNumber'],
+  ['ScalarBoolean.optional()', 'ScalarOptionalBoolean'],
+  ['ScalarUnknown.optional()', 'ScalarOptionalUnknown']
+])
+function scalarExpression(expression) {
+  return scalarValues.get(expression) ?? expression
+}
+
 function expression(value) {
+  return scalarExpression(schemaExpression(value))
+}
+
+function schemaExpression(value) {
   if (value === true) {
     return 'z.unknown()'
   }
@@ -221,7 +240,7 @@ function expression(value) {
     case 'object': {
       const properties = Object.entries(value.properties ?? {}).map(
         ([key, property]) =>
-          `${JSON.stringify(key)}:${expression(property)}${value.required?.includes(key) ? '' : '.optional()'}`
+          `${JSON.stringify(key)}:${scalarExpression(`${expression(property)}${value.required?.includes(key) ? '' : '.optional()'}`)}`
       )
       result = `z.${value.additionalProperties === false ? 'strictObject' : 'looseObject'}({${properties.join(',')}})`
       if (typeof value.additionalProperties === 'object') {
@@ -251,12 +270,15 @@ function expression(value) {
   return result
 }
 
-const source = `${header}/*\n${license.trim()}\n*/\nimport { z } from 'zod'\nexport const ACP_SCHEMA_RELEASE = '${release}'\nexport const ACP_LEGACY_MODEL_SCHEMA_RELEASE = '${legacyRelease}'\nexport const ACP_PROTOCOL_VERSION = 1\n// An enum value this schema release does not name; \`string & {}\` keeps the known literals narrowable.\nconst otherString = z.custom<string & {}>((value) => typeof value === 'string')\n${ordered
+const declarations = ordered
   .map(
     (name) =>
       `export const ${name}Schema = ${isStringEnum(definitions[name]) ? openEnum(definitions[name]) : expression(definitions[name])}\nexport type ${name} = z.infer<typeof ${name}Schema>\n`
   )
-  .join('\n')}`
+  .join('\n')
+const scalarImports = [...new Set(declarations.match(/\bScalar\w+\b/g) ?? [])].sort()
+
+const source = `${header}/*\n${license.trim()}\n*/\nimport { z } from 'zod'\nimport { ${scalarImports.join(', ')} } from '../../../shared/scalar-value-schemas'\nexport const ACP_SCHEMA_RELEASE = '${release}'\nexport const ACP_LEGACY_MODEL_SCHEMA_RELEASE = '${legacyRelease}'\nexport const ACP_PROTOCOL_VERSION = 1\n// An enum value this schema release does not name; \`string & {}\` keeps the known literals narrowable.\nconst otherString = z.custom<string & {}>((value) => typeof value === 'string')\n${declarations}`
 
 // Use the repository formatter without spawning a platform-dependent executable shim.
 const { format } = await import('oxfmt')

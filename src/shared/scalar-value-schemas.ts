@@ -1,0 +1,27 @@
+import { z } from 'zod'
+
+export const ScalarString = z.string()
+export const ScalarNumber = z.number()
+export const ScalarBoolean = z.boolean()
+export const ScalarUnknown = z.unknown()
+export const ScalarUndefined = z.undefined()
+export const ScalarNull = z.null()
+
+export const ScalarNullableNumber = ScalarNumber.nullable()
+export const ScalarNullableString = ScalarString.nullable()
+export const ScalarNullishString = ScalarString.nullish()
+export const ScalarOptionalBoolean = ScalarBoolean.optional()
+export const ScalarOptionalNullableString = ScalarString.nullable().optional()
+export const ScalarOptionalNumber = ScalarNumber.optional()
+export const ScalarOptionalString = ScalarString.optional()
+export const ScalarOptionalUnknown = ScalarUnknown.optional()
+
+export const ScalarNonemptyString = ScalarString.min(1)
+export const ScalarOptionalNonemptyString = ScalarNonemptyString.optional()
+export const ScalarPositiveInteger = ScalarNumber.int().positive()
+export const ScalarOptionalPositiveInteger = ScalarPositiveInteger.optional()
+export const ScalarOptionalNullablePositiveInteger = ScalarPositiveInteger.nullable().optional()
+export const ScalarNonnegativeInteger = ScalarNumber.int().nonnegative()
+export const ScalarOptionalNonnegativeInteger = ScalarNonnegativeInteger.optional()
+export const ScalarFiniteNumber = ScalarNumber.finite()
+export const ScalarOptionalFiniteNumber = ScalarFiniteNumber.optional()
