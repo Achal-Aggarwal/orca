@@ -95,7 +95,8 @@ test('context-menu paste keeps its original model while an unstaged diff refresh
     .locator('.view-line')
     .filter({ hasText: 'before clipboard read' })
     .click({ button: 'right' })
-  await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click()
+  // Monaco enables menu mouse-up 100 ms after opening.
+  await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click({ delay: 150 })
   await expect.poll(() => readGate.evaluate((gate) => gate.started())).toBe(true)
   await orcaPage.screenshot({ path: testInfo.outputPath('clipboard-read-pending.png') })
 
