@@ -2,11 +2,11 @@ import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }))
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }))
 
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal()),
-  execFile: execFileMock
+  spawn: spawnMock
 }))
 
 import { gitExecFileAsync } from './git-exec-file'
@@ -31,7 +31,7 @@ function mockChild(pid: number): ChildProcess {
 describe('worktree deletes and general git admission', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    execFileMock.mockReset()
+    spawnMock.mockReset()
     // The smallest general cap a host can have: deletes holding it would stall every status read.
     _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 2, generalHeadroom: 0 }))
   })
@@ -43,20 +43,20 @@ describe('worktree deletes and general git admission', () => {
 
   it('runs a status read while deletes that fill the general cap are still running', async () => {
     let pid = 100
-    execFileMock.mockImplementation(() => mockChild(pid++))
+    spawnMock.mockImplementation(() => mockChild(pid++))
 
     for (const path of ['/wt-a', '/wt-b', '/wt-c']) {
       void gitExecFileAsync(['worktree', 'remove', path], { cwd: '/repo', admissionExempt: true })
     }
     await vi.advanceTimersByTimeAsync(0)
-    expect(execFileMock).toHaveBeenCalledTimes(3)
+    expect(spawnMock).toHaveBeenCalledTimes(3)
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed ?? 0).toBe(0)
 
     void gitExecFileAsync(['status', '--porcelain'], { cwd: '/repo' })
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(execFileMock).toHaveBeenCalledTimes(4)
-    expect(execFileMock.mock.calls[3]?.[1]).toContain('status')
+    expect(spawnMock).toHaveBeenCalledTimes(4)
+    expect(spawnMock.mock.calls[3]?.[1]).toContain('status')
     expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
   })
 })

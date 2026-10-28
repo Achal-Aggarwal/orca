@@ -4,28 +4,29 @@ import { createFakeSpawnedChild } from '../../../shared/__fixtures__/fake-spawne
 import type * as GitFetchHeadLockModule from '../../../shared/git-fetch-head-lock'
 
 const {
-  execFileMock,
   spawnMock,
   killSpawnedCommandTreeMock,
   signalProcessTreeMock,
-  forceTerminateProcessTreeMock
+  forceTerminateProcessTreeMock,
+  liveGroupPids
 } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
   spawnMock: vi.fn(),
   killSpawnedCommandTreeMock: vi.fn().mockResolvedValue(undefined),
   signalProcessTreeMock: vi.fn().mockResolvedValue(false),
-  forceTerminateProcessTreeMock: vi.fn().mockResolvedValue(false)
+  forceTerminateProcessTreeMock: vi.fn().mockResolvedValue(false),
+  liveGroupPids: new Set<number>()
 }))
 
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal()),
-  execFile: execFileMock,
+  execFile: vi.fn(),
   spawn: spawnMock
 }))
 vi.mock('./spawned-command-tree-kill', () => ({
   killSpawnedCommandTree: killSpawnedCommandTreeMock
 }))
 vi.mock('@orca/process-host/process-tree-termination', () => ({
+  posixProcessGroupExists: (pid: number) => liveGroupPids.has(pid),
   signalProcessTree: signalProcessTreeMock,
   forceTerminateProcessTree: forceTerminateProcessTreeMock
 }))
@@ -54,18 +55,20 @@ import {
   _resetGitAdmissionForTests
 } from './git-subprocess-admission'
 
-type ExecCallback = (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => void
+let nextPid = 1234
+const childrenToClose: ChildProcess[] = []
 
-function mockChild(pid: number | undefined = 1234): ChildProcess {
-  return createFakeSpawnedChild(pid)
+function mockChild(pid = nextPid++): ChildProcess {
+  const child = createFakeSpawnedChild(pid)
+  childrenToClose.push(child)
+  liveGroupPids.add(pid)
+  child.once('close', () => liveGroupPids.delete(pid))
+  return child
 }
 
-function mockMissingSshConfig(callback: ExecCallback): ChildProcess {
+function mockMissingSshConfig(): ChildProcess {
   const child = mockChild()
-  queueMicrotask(() => {
-    callback(Object.assign(new Error('No SSH configuration'), { code: 1 }), '', '')
-    child.emit('close', 1, null)
-  })
+  queueMicrotask(() => child.emit('close', 1, null))
   return child
 }
 
@@ -76,13 +79,19 @@ async function settleAdmissionGrant(): Promise<void> {
 describe('git exec admission lifetime', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    execFileMock.mockReset()
+    liveGroupPids.clear()
+    nextPid = 1234
     spawnMock.mockReset()
     killSpawnedCommandTreeMock.mockClear()
     _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 1 }))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    for (const child of childrenToClose.splice(0)) {
+      child.emit('close', null, 'SIGKILL')
+    }
+    await Promise.resolve()
+    await Promise.resolve()
     vi.useRealTimers()
     vi.unstubAllEnvs()
     _resetGitAdmissionForTests()
@@ -104,7 +113,7 @@ describe('git exec admission lifetime', () => {
     await settleAdmissionGrant()
     await vi.advanceTimersByTimeAsync(10_000)
     expect(_gitAdmissionSnapshotForTests().queued).toBe(1)
-    expect(execFileMock).not.toHaveBeenCalled()
+    expect(spawnMock).not.toHaveBeenCalled()
     controller.abort()
     await rejection
     blocker.release()
@@ -132,7 +141,7 @@ describe('git exec admission lifetime', () => {
       blocker.release()
       await settleAdmissionGrant()
       await expect(preview).resolves.toEqual({ ok: false, errorKind: 'git_error' })
-      expect(execFileMock).not.toHaveBeenCalled()
+      expect(spawnMock).not.toHaveBeenCalled()
     }
   )
 
@@ -140,7 +149,7 @@ describe('git exec admission lifetime', () => {
     'retains the string-exec permit and mutation after %s until close',
     async (reason) => {
       const child = mockChild()
-      execFileMock.mockReturnValue(child)
+      spawnMock.mockReturnValue(child)
       const controller = new AbortController()
       const pending = gitExecFileAsync(['rebase', '--continue'], {
         cwd: '/repo',
@@ -151,7 +160,7 @@ describe('git exec admission lifetime', () => {
         reason === 'timeout' ? 'timed out' : 'aborted'
       )
       await settleAdmissionGrant()
-      expect(execFileMock).toHaveBeenCalledOnce()
+      expect(spawnMock).toHaveBeenCalledOnce()
       await expect(isGitWorktreeMutationInFlight('/repo', {})).resolves.toBe(true)
 
       if (reason === 'timeout') {
@@ -159,12 +168,13 @@ describe('git exec admission lifetime', () => {
       } else {
         controller.abort()
       }
+      await vi.advanceTimersByTimeAsync(12_000)
       await rejection
       expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)
       const mutationBeforeClose = await isGitWorktreeMutationInFlight('/repo', {})
 
       child.emit('close', null, 'SIGKILL')
-      await Promise.resolve()
+      await settleAdmissionGrant()
       expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
       expect(mutationBeforeClose).toBe(true)
       await expect(isGitWorktreeMutationInFlight('/repo', {})).resolves.toBe(false)
@@ -173,56 +183,45 @@ describe('git exec admission lifetime', () => {
 
   it('retains the buffer-exec permit after maxBuffer settlement until close', async () => {
     const child = mockChild()
-    let callback: ExecCallback | undefined
-    execFileMock.mockImplementation(
-      (_command: string, _args: string[], _options: unknown, received: ExecCallback) => {
-        callback = received
-        return child
-      }
-    )
+    spawnMock.mockReturnValue(child)
     const pending = gitExecFileAsyncBuffer(['show', 'HEAD:file'], { cwd: '/repo' })
-    await vi.waitFor(() => expect(callback).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
 
-    callback?.(new Error('maxBuffer exceeded'), Buffer.alloc(0), Buffer.alloc(0))
+    child.emit('error', new Error('maxBuffer exceeded'))
     await expect(pending).rejects.toThrow('maxBuffer exceeded')
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)
 
     child.emit('close', null, 'SIGTERM')
-    await Promise.resolve()
+    await settleAdmissionGrant()
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
   })
 
   it('does not admit a same-repo fetch while it waits for the FETCH_HEAD lock', async () => {
     _resetGitAdmissionForTests(new GitAdmissionScheduler({ networkCap: 2, networkHeadroom: 0 }))
     const children = [mockChild(1001), mockChild(1002)]
-    const callbacks: ExecCallback[] = []
-    execFileMock.mockImplementation(
-      (_command: string, args: string[], _options: unknown, callback: ExecCallback) => {
-        if (args[0] === 'config') {
-          return mockMissingSshConfig(callback)
-        }
-        callbacks.push(callback)
-        return children[callbacks.length - 1]
+    let fetchSpawns = 0
+    spawnMock.mockImplementation((_command: string, args: string[]) => {
+      if (args[0] === 'config') {
+        return mockMissingSshConfig()
       }
-    )
+      return children[fetchSpawns++]
+    })
 
     const first = gitExecFileAsync(['fetch', 'origin'], { cwd: '/same-repo' })
-    await vi.waitFor(() => expect(callbacks).toHaveLength(1))
+    await vi.waitFor(() => expect(fetchSpawns).toBe(1))
     const second = gitExecFileAsync(['fetch', 'origin'], { cwd: '/same-repo' })
     await Promise.resolve()
 
-    expect(execFileMock).toHaveBeenCalledTimes(2)
+    expect(spawnMock).toHaveBeenCalledTimes(2)
     expect(_gitAdmissionSnapshotForTests()).toMatchObject({
       queued: 0,
       budgets: { network: { baseUsed: 1, headroomUsed: 0 } }
     })
 
-    callbacks[0]?.(null, '', '')
     children[0].emit('close', 0, null)
     await expect(first).resolves.toEqual({ stdout: '', stderr: '' })
-    await vi.waitFor(() => expect(callbacks).toHaveLength(2))
-    expect(execFileMock).toHaveBeenCalledTimes(4)
-    callbacks[1]?.(null, '', '')
+    await vi.waitFor(() => expect(fetchSpawns).toBe(2))
+    expect(spawnMock).toHaveBeenCalledTimes(4)
     children[1].emit('close', 0, null)
     await expect(second).resolves.toEqual({ stdout: '', stderr: '' })
     expect(_gitAdmissionSnapshotForTests().budgets.network?.baseUsed).toBe(0)
@@ -239,7 +238,7 @@ describe('git exec admission lifetime', () => {
         onChildTerminated
       })
     ).rejects.toMatchObject({ name: 'AbortError' })
-    expect(execFileMock).not.toHaveBeenCalled()
+    expect(spawnMock).not.toHaveBeenCalled()
     expect(onChildTerminated).toHaveBeenCalledOnce()
   })
 
@@ -278,7 +277,7 @@ describe('git exec admission lifetime', () => {
     const mutationBeforeClose = await isGitWorktreeMutationInFlight('/repo', {})
 
     child.emit('close', null, 'SIGKILL')
-    await Promise.resolve()
+    await settleAdmissionGrant()
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
     expect(mutationBeforeClose).toBe(true)
     await expect(isGitWorktreeMutationInFlight('/repo', {})).resolves.toBe(false)
@@ -292,23 +291,19 @@ describe('git exec admission lifetime', () => {
       await settleAdmissionGrant()
       const blocker = await holding
       const child = mockChild()
-      let callback: ExecCallback | undefined
-      execFileMock.mockImplementation((_command, _args, _options, received: ExecCallback) => {
-        callback = received
-        return child
-      })
+      spawnMock.mockReturnValue(child)
       const pending = buffer
         ? gitExecFileAsyncBuffer(['status'], { cwd: '/repo', timeout: 50 })
         : gitExecFileAsync(['status'], { cwd: '/repo', timeout: 50 })
       await settleAdmissionGrant()
       await vi.advanceTimersByTimeAsync(500)
-      expect(execFileMock).not.toHaveBeenCalled()
+      expect(spawnMock).not.toHaveBeenCalled()
       expect(_gitAdmissionSnapshotForTests().queued).toBe(1)
       blocker.release()
       await settleAdmissionGrant()
-      expect(execFileMock).toHaveBeenCalledOnce()
+      expect(spawnMock).toHaveBeenCalledOnce()
       await vi.advanceTimersByTimeAsync(49)
-      callback?.(null, buffer ? Buffer.from('ok') : 'ok', buffer ? Buffer.alloc(0) : '')
+      child.stdout?.emit('data', Buffer.from('ok'))
       child.emit('close', 0, null)
       expect((await pending).stdout.toString()).toBe('ok')
       expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
@@ -320,15 +315,9 @@ describe('git exec admission lifetime', () => {
     vi.useRealTimers()
     _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
     const blocker = mockChild()
-    let finishBlocker: ExecCallback | undefined
-    execFileMock.mockImplementation(
-      (_command: string, _args: string[], _options: unknown, callback: ExecCallback) => {
-        finishBlocker = callback
-        return blocker
-      }
-    )
+    spawnMock.mockReturnValue(blocker)
     const holding = gitExecFileAsync(['status'], { cwd: '/repo' })
-    await vi.waitFor(() => expect(finishBlocker).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
 
     const controller = new AbortController()
     const queued = gitExecFileAsync(['rebase', '--continue'], {
@@ -341,10 +330,9 @@ describe('git exec admission lifetime', () => {
     controller.abort()
 
     await expect(queued).rejects.toMatchObject({ name: 'AbortError' })
-    expect(execFileMock).toHaveBeenCalledOnce()
+    expect(spawnMock).toHaveBeenCalledOnce()
     await expect(isGitWorktreeMutationInFlight('/repo', {})).resolves.toBe(false)
 
-    finishBlocker?.(null, '', '')
     blocker.emit('close', 0, null)
     await expect(holding).resolves.toEqual({ stdout: '', stderr: '' })
   })
@@ -352,25 +340,21 @@ describe('git exec admission lifetime', () => {
   it('serializes FETCH_HEAD callers before they enter admission', async () => {
     _resetGitAdmissionForTests(new GitAdmissionScheduler({ networkCap: 1, networkHeadroom: 1 }))
     const children = new Map<string, ChildProcess>()
-    const callbacks = new Map<string, ExecCallback>()
-    execFileMock.mockImplementation(
-      (_command: string, args: string[], _options: unknown, callback: ExecCallback) => {
-        if (args[0] === 'config') {
-          return mockMissingSshConfig(callback)
-        }
-        const label = args[1] ?? ''
-        const child = mockChild()
-        children.set(label, child)
-        callbacks.set(label, callback)
-        return child
+    spawnMock.mockImplementation((_command: string, args: string[]) => {
+      if (args[0] === 'config') {
+        return mockMissingSshConfig()
       }
-    )
+      const label = args[1] ?? ''
+      const child = mockChild()
+      children.set(label, child)
+      return child
+    })
 
     const first = gitExecFileAsync(['fetch', 'first'], {
       cwd: '/repo',
       admissionTier: 'background'
     })
-    await vi.waitFor(() => expect(callbacks.has('first')).toBe(true))
+    await vi.waitFor(() => expect(children.has('first')).toBe(true))
     const background = gitExecFileAsync(['fetch', 'background'], {
       cwd: '/repo',
       admissionTier: 'background'
@@ -382,24 +366,18 @@ describe('git exec admission lifetime', () => {
 
     await Promise.resolve()
     expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
-    expect([...callbacks.keys()]).toEqual(['first'])
-
-    callbacks.get('first')?.(null, '', '')
-    await expect(first).resolves.toEqual({ stdout: '', stderr: '' })
-    await vi.waitFor(() => expect(_gitAdmissionSnapshotForTests().queued).toBe(1))
-    expect([...callbacks.keys()]).toEqual(['first'])
+    expect([...children.keys()]).toEqual(['first'])
 
     children.get('first')?.emit('close', 0, null)
-    await vi.waitFor(() => expect(callbacks.has('background')).toBe(true))
-    expect([...callbacks.keys()]).toEqual(['first', 'background'])
-
-    callbacks.get('background')?.(null, '', '')
-    await expect(background).resolves.toEqual({ stdout: '', stderr: '' })
-    await vi.waitFor(() => expect(callbacks.has('interactive')).toBe(true))
+    await expect(first).resolves.toEqual({ stdout: '', stderr: '' })
+    await vi.waitFor(() => expect(children.has('background')).toBe(true))
+    expect([...children.keys()]).toEqual(['first', 'background'])
 
     children.get('background')?.emit('close', 0, null)
-    callbacks.get('interactive')?.(null, '', '')
-    await expect(interactive).resolves.toEqual({ stdout: '', stderr: '' })
+    await expect(background).resolves.toEqual({ stdout: '', stderr: '' })
+    await vi.waitFor(() => expect(children.has('interactive')).toBe(true))
+
     children.get('interactive')?.emit('close', 0, null)
+    await expect(interactive).resolves.toEqual({ stdout: '', stderr: '' })
   })
 })

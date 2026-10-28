@@ -45,8 +45,6 @@ import {
   _resetGitAdmissionForTests
 } from './git-subprocess-admission'
 
-type ExecCallback = (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => void
-
 function mockChild(): ChildProcess {
   const child = new EventEmitter() as EventEmitter & Record<string, unknown>
   child.pid = 1234
@@ -99,19 +97,13 @@ describe('git admission span coverage', () => {
   it('records queue wait for string exec inside its span', async () => {
     const blocker = await queueBehindBlocker()
     const child = mockChild()
-    let callback: ExecCallback | undefined
-    execFileMock.mockImplementation(
-      (_command: string, _args: string[], _options: unknown, received: ExecCallback) => {
-        callback = received
-        return child
-      }
-    )
+    spawnMock.mockReturnValue(child)
     const pending = gitExecFileAsync(['status'], { cwd: '/repo' })
     await releaseQueued(blocker)
-    await vi.waitFor(() => expect(callback).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
 
+    child.stdout?.emit('data', Buffer.from('ok'))
     child.emit('close', 0, null)
-    callback?.(null, 'ok', '')
     await expect(pending).resolves.toEqual({ stdout: 'ok', stderr: '' })
     expect(span.setAttribute).toHaveBeenCalledWith('git.queue_wait_ms', 37)
     expect(span.end).toHaveBeenCalledOnce()
@@ -120,19 +112,13 @@ describe('git admission span coverage', () => {
   it('records queue wait for buffer exec inside its span', async () => {
     const blocker = await queueBehindBlocker()
     const child = mockChild()
-    let callback: ExecCallback | undefined
-    execFileMock.mockImplementation(
-      (_command: string, _args: string[], _options: unknown, received: ExecCallback) => {
-        callback = received
-        return child
-      }
-    )
+    spawnMock.mockReturnValue(child)
     const pending = gitExecFileAsyncBuffer(['show', 'HEAD:file'], { cwd: '/repo' })
     await releaseQueued(blocker)
-    await vi.waitFor(() => expect(callback).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
 
+    child.stdout?.emit('data', Buffer.from('blob'))
     child.emit('close', 0, null)
-    callback?.(null, Buffer.from('blob'), Buffer.alloc(0))
     await expect(pending).resolves.toEqual({ stdout: Buffer.from('blob') })
     expect(span.setAttribute).toHaveBeenCalledWith('git.queue_wait_ms', 37)
     expect(span.end).toHaveBeenCalledOnce()

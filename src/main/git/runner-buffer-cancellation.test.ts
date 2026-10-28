@@ -1,11 +1,22 @@
-import { EventEmitter } from 'node:events'
+import { createFakeSpawnedChild } from '../../shared/__fixtures__/fake-spawned-child'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }))
+const { spawnMock, groupState } = vi.hoisted(() => ({
+  spawnMock: vi.fn(),
+  groupState: { live: true }
+}))
 vi.mock('node:child_process', () => ({
-  execFile: execFileMock,
+  execFile: vi.fn(),
   execFileSync: vi.fn(),
-  spawn: vi.fn()
+  spawn: spawnMock
+}))
+vi.mock('@orca/process-host/process-tree-termination', () => ({
+  posixProcessGroupExists: () => groupState.live,
+  signalProcessTree: async (child: { kill: () => void }) => {
+    child.kill()
+    return false
+  },
+  forceTerminateProcessTree: async () => false
 }))
 
 import { gitExecFileAsyncBuffer } from './runner'
@@ -15,7 +26,10 @@ import {
 } from './command-runner/git-subprocess-admission'
 import { configureWindowsHostGitEnvironmentReadiness } from './command-runner/windows-host-git-environment'
 
-beforeEach(() => execFileMock.mockReset())
+beforeEach(() => {
+  spawnMock.mockReset()
+  groupState.live = true
+})
 afterEach(() => {
   _resetGitAdmissionForTests()
   configureWindowsHostGitEnvironmentReadiness(null)
@@ -28,7 +42,7 @@ describe('buffered Git cancellation', () => {
     await expect(
       gitExecFileAsyncBuffer(['show', 'HEAD:file'], { cwd: '/repo', signal: controller.signal })
     ).rejects.toMatchObject({ name: 'AbortError' })
-    expect(execFileMock).not.toHaveBeenCalled()
+    expect(spawnMock).not.toHaveBeenCalled()
   })
 
   it('removes a canceled queued read without waiting for the active child', async () => {
@@ -46,7 +60,7 @@ describe('buffered Git cancellation', () => {
       controller.abort()
       await rejected
       expect(scheduler.snapshot().queued).toBe(0)
-      expect(execFileMock).not.toHaveBeenCalled()
+      expect(spawnMock).not.toHaveBeenCalled()
     } finally {
       grant.release()
     }
@@ -55,24 +69,23 @@ describe('buffered Git cancellation', () => {
   it('kills an active child while retaining its admission slot until close', async () => {
     const scheduler = new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 })
     _resetGitAdmissionForTests(scheduler)
-    const child = Object.assign(new EventEmitter(), {
-      stdout: new EventEmitter(),
-      stderr: new EventEmitter(),
-      kill: vi.fn()
+    const child = createFakeSpawnedChild()
+    child.once('close', () => {
+      groupState.live = false
     })
-    execFileMock.mockReturnValue(child)
+    spawnMock.mockReturnValue(child)
     const controller = new AbortController()
     const read = gitExecFileAsyncBuffer(['show', 'HEAD:file'], {
       cwd: '/repo',
       signal: controller.signal
     })
     const rejected = expect(read).rejects.toMatchObject({ name: 'AbortError' })
-    await vi.waitFor(() => expect(execFileMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
     controller.abort()
-    await rejected
-    expect(child.kill).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(child.kill).toHaveBeenCalledOnce())
     expect(scheduler.snapshot().budgets.general.baseUsed).toBe(1)
     child.emit('close', 0)
+    await rejected
     await vi.waitFor(() => expect(scheduler.snapshot().budgets.general.baseUsed).toBe(0))
   })
 
@@ -89,7 +102,7 @@ describe('buffered Git cancellation', () => {
       const rejected = expect(read).rejects.toMatchObject({ name: 'AbortError' })
       controller.abort()
       await rejected
-      expect(execFileMock).not.toHaveBeenCalled()
+      expect(spawnMock).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { configurable: true, value: platform })
     }

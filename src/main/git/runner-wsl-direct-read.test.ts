@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createFakeSpawnedChild } from '../../shared/__fixtures__/fake-spawned-child'
+import {
+  createFakeSpawnedChild,
+  fakeSpawnReturning
+} from '../../shared/__fixtures__/fake-spawned-child'
 
 const { execFileMock, execFileSyncMock, spawnMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(),
@@ -750,6 +753,7 @@ describe('WSL direct Git reads', () => {
     await withPlatform('linux', async () => {
       seedWslGitReadEnvironmentForTests(DISTRO, LOGIN_ENVIRONMENT)
       succeedExecFile()
+      spawnMock.mockImplementation(fakeSpawnReturning())
 
       await gitExecFileAsync(['status', '--short'], {
         cwd: '/repo',
@@ -757,7 +761,7 @@ describe('WSL direct Git reads', () => {
         wslDistro: DISTRO
       })
 
-      expect(execFileMock.mock.calls[0]?.[0]).toBe('git')
+      expect(spawnMock.mock.calls[0]?.[0]).toBe('git')
     })
   })
 

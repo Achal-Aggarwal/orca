@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeSpawnedChild as createMockChildProcess } from '../../shared/__fixtures__/fake-spawned-child'
+import { ownedPosixProcessGroup } from '@orca/process-host/owned-posix-process-group'
 
 const { execFileMock, execFileSyncMock, spawnMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(),
@@ -27,6 +28,11 @@ import { _resetGitAdmissionForTests } from './command-runner/git-subprocess-admi
 afterEach(() => _resetGitAdmissionForTests())
 
 type MockChildProcess = ReturnType<typeof createMockChildProcess>
+
+function watchStop(child: MockChildProcess) {
+  const group = ownedPosixProcessGroup(child)
+  return group ? vi.spyOn(group, 'stop') : child.kill
+}
 
 /** Hang the CLI while allowing its process-tree quiescence probes to answer. */
 function mockWedgedCliSpawn(child: MockChildProcess): void {
@@ -200,32 +206,41 @@ describe('runner execFile timeout handling', () => {
   it('rejects command executions when execFile never calls back after timeout', async () => {
     const child = createMockChildProcess(1234)
     execFileMock.mockReturnValue(child)
+    spawnMock.mockReturnValue(child)
 
     const promise = commandExecFileAsync('git', ['status'], {
       cwd: '/repo',
       timeout: 1000
     })
     const rejection = expect(promise).rejects.toThrow(/git(?:\.exe)? timed out\./i)
+    await vi.waitFor(() =>
+      expect(spawnMock.mock.calls.length + execFileMock.mock.calls.length).toBe(1)
+    )
+    const stop = watchStop(child)
     await vi.advanceTimersByTimeAsync(1000)
 
     await rejection
-    expect(child.kill).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
   })
 
   it('rejects git executions when execFile never calls back after timeout', async () => {
     const child = createMockChildProcess(1234)
     execFileMock.mockReturnValue(child)
+    spawnMock.mockReturnValue(child)
 
     const promise = gitExecFileAsync(['status'], {
       cwd: '/repo',
       timeout: 1000
     })
     const rejection = expect(promise).rejects.toThrow('git timed out.')
-    await vi.waitFor(() => expect(execFileMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() =>
+      expect(spawnMock.mock.calls.length + execFileMock.mock.calls.length).toBe(1)
+    )
+    const stop = watchStop(child)
     await vi.advanceTimersByTimeAsync(1000)
 
     await rejection
-    expect(child.kill).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
   })
 
   it.skipIf(process.platform === 'win32')(
@@ -416,6 +431,11 @@ describe('runner execFile timeout handling', () => {
       cb(null, '', '')
       return child
     })
+    spawnMock.mockImplementation((_cmd, _args, opts) => {
+      capturedEnv = opts.env
+      queueMicrotask(() => child.emit('close', 0, null))
+      return child
+    })
 
     await gitExecFileAsync(['worktree', 'list', '--porcelain', '-z'], {
       cwd: '/home5/Brian',
@@ -598,10 +618,11 @@ describe('gitStreamStdout', () => {
       }
     })
     await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
+    const stop = watchStop(child)
     child.stdout.emit('data', Buffer.from('? a.txt\n'))
 
     await expect(promise).resolves.toEqual({ stoppedEarly: true })
-    expect(child.kill).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
     expect(calls).toBe(1)
     child.emit('close', null, 'SIGTERM')
   })
@@ -617,10 +638,11 @@ describe('gitStreamStdout', () => {
     })
     const rejection = expect(promise).rejects.toThrow('git stdout exceeded maxBuffer.')
     await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
+    const stop = watchStop(child)
     child.stdout.emit('data', Buffer.from('way too much'))
 
     await rejection
-    expect(child.kill).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
     child.emit('close', null, 'SIGTERM')
   })
 
@@ -649,10 +671,11 @@ describe('gitStreamStdout', () => {
     })
     const rejection = expect(promise).rejects.toThrow('parser blew up')
     await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
+    const stop = watchStop(child)
     child.stdout.emit('data', Buffer.from('? a.txt\n'))
 
     await rejection
-    expect(child.kill).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
     child.emit('close', null, 'SIGTERM')
   })
 

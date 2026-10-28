@@ -44,7 +44,7 @@ export function signalProcessTree(child: ChildProcess, signal?: NodeJS.Signals):
     process.kill(-child.pid, signal)
     return Promise.resolve(true)
   } catch {
-    return Promise.resolve(!processGroupExists(child.pid))
+    return Promise.resolve(!posixProcessGroupExists(child.pid))
   }
 }
 
@@ -83,7 +83,9 @@ async function waitForPosixProcessGroupQuiescence(processGroupId: number): Promi
   while (true) {
     const states = await readPosixProcessGroupStates(processGroupId)
     if (
-      states ? states.every((state) => state.startsWith('Z')) : !processGroupExists(processGroupId)
+      states
+        ? states.every((state) => state.startsWith('Z'))
+        : !posixProcessGroupExists(processGroupId)
     ) {
       return true
     }
@@ -147,7 +149,7 @@ function readPosixProcessGroupStates(processGroupId: number): Promise<string[] |
   })
 }
 
-function processGroupExists(processGroupId: number): boolean {
+export function posixProcessGroupExists(processGroupId: number): boolean {
   try {
     process.kill(-processGroupId, 0)
     return true

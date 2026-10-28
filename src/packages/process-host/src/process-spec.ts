@@ -29,6 +29,8 @@ export type ProcessSpec = {
   signal?: AbortSignal
   /** Keep the child in its own POSIX process group for tree termination. */
   detached?: boolean
+  /** Own a detached POSIX group through descendant cleanup, including natural root exit. */
+  ownedProcessGroup?: boolean
   /** Preserve a caller-owned Windows command line such as a cmd.exe invocation. */
   windowsVerbatimArguments?: boolean
   stdio?: NodeSpawnOptions['stdio']

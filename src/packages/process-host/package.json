@@ -30,6 +30,11 @@
       "types": "./dist/process-tree-termination.d.ts",
       "default": "./dist/process-tree-termination.js"
     },
+    "./owned-posix-process-group": {
+      "orca-source": "./src/owned-posix-process-group.ts",
+      "types": "./dist/owned-posix-process-group.d.ts",
+      "default": "./dist/owned-posix-process-group.js"
+    },
     "./windows-tree-kill": {
       "orca-source": "./src/windows-tree-kill.ts",
       "types": "./dist/windows-tree-kill.d.ts",

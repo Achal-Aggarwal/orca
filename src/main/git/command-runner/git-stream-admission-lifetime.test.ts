@@ -57,8 +57,9 @@ describe('git stream admission lifetime', () => {
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)
 
     child.emit('close', null, 'SIGKILL')
-    await Promise.resolve()
-    expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+    await vi.waitFor(() =>
+      expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+    )
   })
 
   it('waits beyond the execution timeout before starting a stream', async () => {
@@ -98,7 +99,8 @@ describe('git stream admission lifetime', () => {
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)
 
     child.emit('close', null, 'SIGKILL')
-    await Promise.resolve()
-    expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+    await vi.waitFor(() =>
+      expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
+    )
   })
 })

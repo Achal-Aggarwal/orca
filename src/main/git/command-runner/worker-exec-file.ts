@@ -23,7 +23,8 @@ export function workerExecFile(
     program: command,
     args,
     cwd: options.cwd instanceof URL ? fileURLToPath(options.cwd) : options.cwd,
-    env: options.env
+    env: options.env,
+    ownedProcessGroup: process.platform !== 'win32'
   })
   const stdout = createOutputSink(options.maxBuffer)
   const stderr = createOutputSink(options.maxBuffer)

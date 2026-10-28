@@ -1,11 +1,16 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { admitSelfInitiatedTreeKill } from '../../own-chromium-tree-kill-guard'
+import { ownedPosixProcessGroup } from '@orca/process-host/owned-posix-process-group'
 
 const WINDOWS_TREE_KILL_WAIT_MS = 2_000
 
 export function killSpawnedCommandTree(
   child: Pick<ChildProcess, 'pid' | 'exitCode' | 'signalCode' | 'kill'>
 ): Promise<void> {
+  const group = ownedPosixProcessGroup(child)
+  if (group) {
+    return group.stop().then(() => {})
+  }
   const pid = child.pid
   if (!pid || process.platform !== 'win32') {
     child.kill()

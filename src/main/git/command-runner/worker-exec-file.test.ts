@@ -1,4 +1,8 @@
 import { setImmediate as nextTurn } from 'node:timers/promises'
+import { once } from 'node:events'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type * as WorkerChildModule from '../../worker-thread-child-process/worker-thread-child-process'
@@ -6,6 +10,7 @@ import type { WorkerThreadChildProcessHost } from '../../worker-thread-child-pro
 import { createWorkerThreadChildProcessTestEntry } from '../../worker-thread-child-process/worker-thread-child-process-worker.test-fixtures'
 import { workerExecFile } from './worker-exec-file'
 import { execFileCapture } from './exec-file-capture'
+import { writeOwnedDescendantProcess } from '../../../packages/process-host/src/__fixtures__/owned-descendant-process'
 
 const state = vi.hoisted(() => {
   const state: { host: WorkerThreadChildProcessHost | null } = { host: null }
@@ -72,6 +77,54 @@ function capture(script: string, maxBuffer = 1024 * 1024) {
 }
 
 describe('worker-owned Git capture', () => {
+  it.skipIf(process.platform === 'win32')(
+    'delays natural close until a redirected descendant that ignores SIGTERM is stopped',
+    async () => {
+      await createHost()
+      const directory = await mkdtemp(join(tmpdir(), 'orca-worker-group-'))
+      const fixture = await writeOwnedDescendantProcess(directory, true)
+      const pending = capture(`require(${JSON.stringify(fixture.script)})`)
+      let completed = false
+      void pending.result.then(() => {
+        completed = true
+      })
+      try {
+        await once(pending.child, 'exit')
+        expect(await fixture.running()).toBe(true)
+        expect(completed).toBe(false)
+        await expect(pending.result).resolves.toMatchObject({ error: null, stdout: '' })
+        expect(await fixture.running()).toBe(false)
+      } finally {
+        pending.child.kill('SIGKILL')
+        await fixture.dispose()
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the close receipt behind descendant cleanup after overflow',
+    async () => {
+      await createHost()
+      const directory = await mkdtemp(join(tmpdir(), 'orca-worker-overflow-'))
+      const fixture = await writeOwnedDescendantProcess(directory)
+      const pending = capture(`require(${JSON.stringify(fixture.script)})`, 16)
+      const closed = once(pending.child, 'close')
+      try {
+        await expect(pending.result).resolves.toMatchObject({
+          stdout: 'x'.repeat(16),
+          error: { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }
+        })
+        await closed
+        expect(await fixture.running()).toBe(false)
+      } finally {
+        pending.child.kill('SIGKILL')
+        await fixture.dispose()
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  )
+
   it('keeps the caller responsive while process creation is blocked on the worker', async () => {
     const gate = new SharedArrayBuffer(4)
     await createHost(gate)

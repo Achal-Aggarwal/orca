@@ -4,6 +4,7 @@ export type WorkerThreadChildSpec = {
   args: string[]
   cwd?: string
   env?: Record<string, string | undefined>
+  ownedProcessGroup?: boolean
 }
 
 export type WorkerThreadChildRequest =

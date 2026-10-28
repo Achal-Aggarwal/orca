@@ -67,11 +67,19 @@ export function fakeSpawnReturning(
 }
 
 export function fakeSpawnDispatch(
-  resolve: (program: string, args: readonly string[]) => FakeSpawnOutcome
-): (program: string, args: readonly string[]) => ChildProcessModule.ChildProcess {
-  return (program, args) => {
+  resolve: (
+    program: string,
+    args: readonly string[],
+    options: ChildProcessModule.SpawnOptions
+  ) => FakeSpawnOutcome
+): (
+  program: string,
+  args: readonly string[],
+  options?: ChildProcessModule.SpawnOptions
+) => ChildProcessModule.ChildProcess {
+  return (program, args, options = {}) => {
     const child = createFakeSpawnedChild()
-    const outcome = resolve(program, args)
+    const outcome = resolve(program, args, options)
     if ('spawnError' in outcome) {
       Object.defineProperty(child, 'pid', { value: undefined })
     }

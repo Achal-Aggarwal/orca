@@ -25,7 +25,9 @@ export function resolveSpawn(spec: ProcessSpec, platform: NodeJS.Platform): Reso
     windowsVerbatimArguments: spec.windowsVerbatimArguments,
     // shell:true loses argument escaping and disables windowsHide.
     shell: false,
-    ...(spec.terminationBarrier && platform !== 'win32' ? { detached: true } : {})
+    ...((spec.terminationBarrier || spec.ownedProcessGroup) && platform !== 'win32'
+      ? { detached: true }
+      : {})
   }
 
   if (platform !== 'win32' || !isCmdInterpretedProgram(spec.program)) {

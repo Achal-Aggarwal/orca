@@ -1,5 +1,6 @@
 import type { PipedChildProcess } from '@orca/process-host/process-spec'
 import { spawnProcess } from '@orca/process-host'
+import { ownedPosixProcessGroup } from '@orca/process-host/owned-posix-process-group'
 import type {
   WorkerThreadChildErrorPayload,
   WorkerThreadChildEvent,
@@ -59,8 +60,16 @@ export function serveWorkerThreadChildProcesses(port: WorkerThreadChildPort): vo
     child.on('error', postError)
     child.on('exit', (code, signal) => port.postMessage({ type: 'exit', id, code, signal }))
     child.on('close', (code, signal) => {
-      children.delete(id)
-      port.postMessage({ type: 'close', id, code, signal })
+      const reportClose = (): void => {
+        children.delete(id)
+        port.postMessage({ type: 'close', id, code, signal })
+      }
+      const group = ownedPosixProcessGroup(child)
+      if (group) {
+        void group.terminated.then(reportClose)
+      } else {
+        reportClose()
+      }
     })
   }
 
@@ -86,7 +95,12 @@ export function serveWorkerThreadChildProcesses(port: WorkerThreadChildPort): vo
       } else if (request.type === 'stdin-end') {
         child.stdin?.end()
       } else {
-        child.kill(request.signal)
+        const group = ownedPosixProcessGroup(child)
+        if (group) {
+          void group.stop(request.signal)
+        } else {
+          child.kill(request.signal)
+        }
       }
     } catch {
       // Races with exit; the exit/close events still reach the stand-in.

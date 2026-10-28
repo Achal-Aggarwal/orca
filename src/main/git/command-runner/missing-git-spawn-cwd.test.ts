@@ -4,12 +4,12 @@ import path from 'node:path'
 import type * as ChildProcessModule from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 
-const { execFileSpy } = vi.hoisted(() => ({ execFileSpy: vi.fn() }))
+const { spawnSpy } = vi.hoisted(() => ({ spawnSpy: vi.fn() }))
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcessModule>()
-  execFileSpy.mockImplementation(actual.execFile)
-  return { ...actual, execFile: execFileSpy }
+  spawnSpy.mockImplementation(actual.spawn)
+  return { ...actual, spawn: spawnSpy }
 })
 
 import { gitExecFileAsync } from './git-exec-file'
@@ -28,15 +28,15 @@ it('stops spawning Git in a deleted folder and resumes once it returns', async (
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 
   await expect(gitExecFileAsync(['status'], { cwd })).rejects.toMatchObject({ code: 'ENOENT' })
-  expect(execFileSpy).toHaveBeenCalledTimes(1)
+  expect(spawnSpy).toHaveBeenCalledTimes(1)
 
   await expect(gitExecFileAsync(['status'], { cwd })).rejects.toMatchObject({
     code: 'ENOENT',
     syscall: 'spawn git'
   })
-  expect(execFileSpy).toHaveBeenCalledTimes(1)
+  expect(spawnSpy).toHaveBeenCalledTimes(1)
 
   await mkdir(cwd)
   await gitExecFileAsync(['status'], { cwd }).catch(() => undefined)
-  expect(execFileSpy).toHaveBeenCalledTimes(2)
+  expect(spawnSpy).toHaveBeenCalledTimes(2)
 })

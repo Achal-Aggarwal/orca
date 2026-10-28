@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
+import { ownPosixProcessGroup } from '@orca/process-host/owned-posix-process-group'
 import { withGitSpan } from '../../observability/instrumentation'
 import { recordSubprocessSpawn } from '../../diagnostics/main-thread-churn-probe'
 import { createAbortError } from './abort-error'
@@ -100,6 +101,7 @@ export async function gitStreamStdout(
           env: nonInteractiveGitEnv(gitOptions.env),
           stdio,
           wslDistro: options.wslDistro,
+          ...(process.platform !== 'win32' ? { detached: true } : {}),
           windowsHide: true
         }
         let child: ChildProcess
@@ -109,12 +111,14 @@ export async function gitStreamStdout(
             cwd: command.cwd,
             env: untranslatedGitOutputEnv(spawnOptions.env),
             stdio: spawnOptions.stdio,
+            ...(process.platform !== 'win32' ? { detached: true } : {}),
             windowsHide: true
           })
           recordSubprocessSpawn(command.binary, command.args, performance.now() - spawnStartedAt)
         } else {
           child = gitSpawn(args, spawnOptions)
         }
+        const group = process.platform !== 'win32' ? ownPosixProcessGroup(child) : undefined
         let terminationReported = false
         terminationState.current = new Promise<void>((resolveTermination) => {
           const reportTermination = (): void => {
@@ -124,7 +128,11 @@ export async function gitStreamStdout(
             terminationReported = true
             resolveTermination()
           }
-          child.once('close', reportTermination)
+          if (group) {
+            void group.terminated.then(reportTermination)
+          } else {
+            child.once('close', reportTermination)
+          }
           child.once('error', () => {
             if (!child.pid) {
               reportTermination()
