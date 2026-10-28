@@ -54,6 +54,7 @@ export function markStructuredAgentSessionLaunchPublished(
     return false
   }
   state.hostListed = true
+  state.draftReceipt = undefined
   if (state.callers.outcome === 'published') {
     return true
   }

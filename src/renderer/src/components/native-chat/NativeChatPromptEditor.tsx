@@ -11,6 +11,7 @@ import {
 } from './native-chat-composer-draft-store'
 import { closeHistory } from '@tiptap/pm/history'
 import { Slice } from '@tiptap/pm/model'
+import { TextSelection } from '@tiptap/pm/state'
 import {
   useImperativeHandle,
   useLayoutEffect,
@@ -163,6 +164,13 @@ export function NativeChatPromptEditor({
     },
     []
   )
+
+  useLayoutEffect(() => {
+    if (editor) {
+      // Initial content needs the same end caret as text adopted into an empty editor.
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.atEnd(editor.state.doc)))
+    }
+  }, [editor])
 
   useLayoutEffect(() => {
     if (!editor || !scopeKey) {

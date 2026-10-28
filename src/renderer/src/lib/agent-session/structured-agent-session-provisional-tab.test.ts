@@ -11,6 +11,7 @@ import { useNativeChatProvisionalLaunch } from '@/components/native-chat/use-nat
 import {
   getStructuredAgentSessionLaunchFailure,
   getStructuredLaunchStateBySessionId,
+  hasStructuredAgentSessionLaunchCancellationTombstone,
   resetStructuredAgentLaunchRegistryForTests
 } from './launch/structured-agent-session-launch-registry'
 import { structuredSessionNotices } from '@/components/native-chat/native-chat-structured-session-notices'
@@ -66,6 +67,8 @@ import {
 import { restorePersistedStructuredLaunchState } from './launch/structured-agent-session-launch-reload'
 import { markStructuredLaunchDraftPresented } from '@/components/native-chat/use-structured-launch-draft-presentation'
 import { promptTextContent } from '@/components/native-chat/native-chat-prompt-document-text'
+import { useNativeChatDraft } from '@/components/native-chat/use-native-chat-draft'
+import { wasStructuredAgentLaunchClosedByLocalCancel } from '../structured-agent-session-local-launch-cancel'
 
 function terminalRecord(id: string): TerminalTab {
   return {
@@ -81,12 +84,16 @@ function terminalRecord(id: string): TerminalTab {
 }
 
 let refuse = (): void => {}
+let accept: (receipt: Awaited<ReturnType<typeof launchModule.launchStructuredAgentSession>>) => void
 
 function planSettlingAs(error: StructuredAgentSessionCreateRefusalError): AgentSessionLaunchPlan {
-  const refusal = new Promise<never>((_, reject) => {
+  const creation = new Promise<
+    Awaited<ReturnType<typeof launchModule.launchStructuredAgentSession>>
+  >((resolve, reject) => {
     refuse = () => reject(error)
+    accept = resolve
   })
-  mocks.launch.mockReturnValue(refusal)
+  mocks.launch.mockReturnValue(creation)
   return adoptAgentSessionLaunchVerdict({
     requestId: 'action',
     route: 'structured-native-chat',
@@ -186,6 +193,65 @@ function openChat(requestedSurface?: 'chat', signal?: AbortSignal) {
 }
 
 describe('a provisional structured chat tab', () => {
+  it('retains a host-published ordinary draft through close before create settles and reopen', async () => {
+    const { launch, chat } = openChat('chat')
+    await main.settle()
+    const scope = structuredAgentSessionDraftScopeKey(chat.entityId)
+    markStructuredLaunchDraftPresented(chat.entityId)
+    const pending = getStructuredLaunchStateBySessionId(chat.entityId)
+    expect(pending?.draftReceipt?.presented).toBe(true)
+    applyStructuredSessionTabSnapshots([
+      {
+        ...makeEmptyHostSnapshot('wt-1'),
+        publicationEpoch: chat.entityId,
+        tabs: [
+          {
+            type: 'agent-session',
+            id: structuredAgentSessionTabId(chat.entityId),
+            sessionId: chat.entityId,
+            agent: 'claude',
+            title: 'Chat',
+            isActive: true
+          }
+        ]
+      }
+    ])
+    await main.settle()
+    expect(pending?.hostListed).toBe(true)
+    expect(pending?.callers.outcome).toBe('pending')
+    expect(useAppStore.getState().getTab(chat.id)).not.toBeNull()
+
+    useAppStore.getState().closeUnifiedTab(chat.id)
+    await main.settle()
+    expect(
+      ORCA_LAYOUT_OWNER_IS_MAIN
+        ? wasStructuredAgentLaunchClosedByLocalCancel(chat.entityId)
+        : hasStructuredAgentSessionLaunchCancellationTombstone('wt-1', chat.entityId)
+    ).toBe(true)
+    accept({ sessionId: chat.entityId, fence: 1 })
+    expect(pending?.cancelled).toBe(true)
+    expect((await launch.settlement).kind).not.toBe('structured')
+    await main.settle()
+    expect(useAppStore.getState().getTab(chat.id)).toBeNull()
+    expect(getStructuredLaunchStateBySessionId(chat.entityId)).toBeUndefined()
+    await nativeChatComposerDraftWritesSettled()
+    expect(draftStorage.drafts.get(scope)?.text).toBe('hand-off context')
+    expect(draftStorage.drafts.get(scope)?.document).toEqual(promptTextContent('hand-off context'))
+
+    clearNativeChatComposerDraftsForTests()
+    setNativeChatComposerDraftStorageForTests(draftStorage)
+    await hydrateNativeChatComposerDrafts()
+    const reopened = useAppStore.getState().createUnifiedTab('wt-1', 'agent-session', {
+      entityId: chat.entityId
+    })
+    await main.settle()
+    const composer = renderHook(() =>
+      useNativeChatDraft(structuredAgentSessionDraftScopeKey(reopened.entityId), () => false)
+    )
+    expect(composer.result.current.draft).toBe('hand-off context')
+    composer.unmount()
+  })
+
   it.each(['cancel', 'abort', 'close', 'reloaded-close', 'silent'] as const)(
     'retires only owned initializer text during %s',
     async (action) => {
