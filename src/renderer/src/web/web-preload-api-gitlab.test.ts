@@ -4,6 +4,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { TaskSourceContext } from '../../../shared/task-source-context'
 import {
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -30,6 +31,7 @@ describe('web GitLab preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -274,6 +276,7 @@ describe('web GitLab preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -369,6 +372,7 @@ describe('web GitLab preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -402,6 +406,7 @@ describe('web GitLab preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'gitlab.listMRs') {
             return Promise.resolve({

@@ -5,6 +5,7 @@ import type { ManualRepoOrderEntry } from '../../../shared/ui-chrome-types'
 import {
   installApi,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -87,6 +88,7 @@ describe('web UI preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'settings.get') {
             return Promise.resolve({
@@ -127,6 +129,7 @@ describe('web UI preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'settings.get') {
             return Promise.resolve({
@@ -290,6 +293,7 @@ describe('web UI preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: method,
@@ -333,6 +337,7 @@ describe('web UI preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: method,
@@ -636,6 +641,7 @@ describe('web UI preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           calls.push({ method, params })
           if (method === 'skills.discover') {
             return Promise.resolve({

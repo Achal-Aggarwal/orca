@@ -3,6 +3,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   installApi,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -29,6 +30,7 @@ describe('web native chat preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           readCall = { method, params }
           return Promise.resolve({
             id: 'read-1',
@@ -222,6 +224,7 @@ describe('web AI Vault preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -266,6 +269,7 @@ describe('web AI Vault preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,

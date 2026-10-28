@@ -3,6 +3,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   installApi,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -80,6 +81,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -260,6 +262,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -349,6 +352,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           const sourcePreferences =
             method === 'settings.update'
@@ -524,6 +528,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -556,6 +561,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -589,6 +595,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -634,6 +641,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: 'call-1',
@@ -663,6 +671,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -706,6 +715,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -739,6 +749,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: `call-${runtimeCalls.length}`,
@@ -798,6 +809,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: 'call-1',
@@ -831,6 +843,7 @@ describe('web settings preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           return Promise.resolve({
             id: 'call-1',

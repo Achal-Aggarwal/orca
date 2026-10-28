@@ -7,6 +7,7 @@ import type { PersistedUIState } from '../../../shared/persisted-ui-state-types'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -83,6 +84,7 @@ describe('web UI preload API pairing-local fields', () => {
     async (field, method) => {
       const runtimeCalls: { method: string; params: unknown }[] = []
       runtimeClient.call.mockImplementation((method, params) => {
+        params = readWebRuntimeCallParams(params)
         runtimeCalls.push({ method, params })
         return Promise.resolve({
           id: method,

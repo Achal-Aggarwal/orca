@@ -3,6 +3,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   installApi,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -62,6 +63,7 @@ describe('web file preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'repo.list') {
             return Promise.resolve({

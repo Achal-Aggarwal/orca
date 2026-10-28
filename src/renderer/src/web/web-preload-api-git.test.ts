@@ -3,6 +3,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   TEST_COMMIT_OID,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -43,6 +44,7 @@ describe('web git preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'repo.list') {
             return Promise.resolve({
@@ -131,6 +133,7 @@ describe('web git preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           runtimeCalls.push({ method, params })
           if (method === 'repo.list') {
             return Promise.resolve({
@@ -187,31 +190,20 @@ describe('web git preload API', () => {
         method: 'git.status',
         params: {
           worktree: 'id:wt-1',
-          includeIgnored: undefined,
-          includeLineStats: undefined,
-          bypassEffectiveUpstreamNegativeCache: undefined,
-          reuseLineStats: undefined,
           branchLineTotalMergeBase: TEST_COMMIT_OID
         }
       },
       {
         method: 'git.status',
         params: {
-          worktree: 'id:wt-1',
-          includeIgnored: undefined,
-          includeLineStats: undefined,
-          bypassEffectiveUpstreamNegativeCache: undefined,
-          reuseLineStats: undefined
+          worktree: 'id:wt-1'
         }
       },
       {
         method: 'git.status',
         params: {
           worktree: 'id:wt-1',
-          includeIgnored: undefined,
-          includeLineStats: false,
-          bypassEffectiveUpstreamNegativeCache: undefined,
-          reuseLineStats: undefined
+          includeLineStats: false
         }
       }
     ])

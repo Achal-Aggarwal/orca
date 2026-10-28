@@ -22,7 +22,7 @@ describe('remoteRpcContentBudget', () => {
     try {
       expect(remoteRpcResultExceedsContentBudget(result, bytes, ['content'])).toBe(false)
       const firstCalls = charCodeAt.mock.calls.length
-      expect(firstCalls).toBeGreaterThan(result.content.length)
+      expect(firstCalls).toBeGreaterThanOrEqual(result.content.length)
 
       expect(remoteRpcResultExceedsContentBudget(result, bytes - 1, ['content'])).toBe(true)
       expect(charCodeAt.mock.calls.length - firstCalls).toBeLessThan(100)

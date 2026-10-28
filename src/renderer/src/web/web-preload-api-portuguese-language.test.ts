@@ -3,6 +3,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import {
   installApi,
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -91,6 +92,7 @@ describe('web Portuguese language migration', () => {
       vi.doMock('./web-runtime-client', () => ({
         WebRuntimeClient: class {
           call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+            params = readWebRuntimeCallParams(params)
             runtimeCalls.push({ method, params })
             if (offline) {
               return Promise.reject(new Error('offline'))

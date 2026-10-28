@@ -3,6 +3,21 @@ import type { PreloadApi } from '../../../preload/api-types'
 
 export const TEST_COMMIT_OID = '0123456789abcdef0123456789abcdef01234567'
 
+export function readWebRuntimeCallParams(params: unknown): unknown {
+  // Module resets replace the payload class, so inspect its reader contract.
+  if (
+    typeof params === 'object' &&
+    params !== null &&
+    'readParams' in params &&
+    typeof params.readParams === 'function' &&
+    'serializeRequest' in params &&
+    typeof params.serializeRequest === 'function'
+  ) {
+    return params.readParams()
+  }
+  return params
+}
+
 export class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
 

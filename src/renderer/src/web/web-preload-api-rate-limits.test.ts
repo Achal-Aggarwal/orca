@@ -4,6 +4,7 @@ import type { RateLimitState } from '../../../shared/rate-limit-types'
 import { createEmptyRateLimitState } from '../../../shared/rate-limit-state-factory'
 import {
   installBrowserGlobals,
+  readWebRuntimeCallParams,
   writeStoredRuntimeEnvironment
 } from './web-preload-api-test-harness'
 
@@ -76,6 +77,7 @@ describe('web rate limits and accounts preload API', () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
         call(method: string, params: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          params = readWebRuntimeCallParams(params)
           calls.push({ method, params })
           if (!(method in callResults)) {
             return Promise.resolve(notFound(method))
