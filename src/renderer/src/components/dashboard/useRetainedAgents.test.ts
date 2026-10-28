@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildWorktreeAgentRows } from '../sidebar/worktree-agent-rows'
 import { useAppStore } from '@/store'
 import { resetAgentPaneAuthorityAliasesForTests } from '@/store/slices/agent-pane-authority'
 import type { AgentStatusEntry, AgentStatusState } from '../../../../shared/agent-status-types'
@@ -8,7 +9,11 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { Repo } from '../../../../shared/repo-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { collectRetainedAgentsOnDisappear, useRetainedAgentsSync } from './useRetainedAgents'
+import {
+  buildRetainedAgentsSyncSnapshot,
+  collectRetainedAgentsOnDisappear,
+  useRetainedAgentsSync
+} from './useRetainedAgents'
 
 const initialAppState = useAppStore.getInitialState()
 
@@ -436,4 +441,50 @@ describe('useRetainedAgentsSync', () => {
     expect(state.retentionSuppressedPaneKeys[sourcePaneKey]).toBeUndefined()
     hook.unmount()
   })
+})
+
+it('keeps a wrapped-history completion in position through disappearance retention', () => {
+  const paneKey = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
+  const store = useAppStore.getState()
+  store.setAgentStatus(paneKey, { state: 'working', prompt: 'task', agentType: 'pi' }, undefined, {
+    updatedAt: 1000
+  })
+  for (let i = 0; i < 23; i++) {
+    store.setAgentStatus(
+      paneKey,
+      { state: i % 2 ? 'working' : 'done', prompt: 'task', agentType: 'pi' },
+      undefined,
+      { updatedAt: 3000 + i * 1000 }
+    )
+  }
+  const entry = useAppStore.getState().agentStatusByPaneKey[paneKey]
+  expect(entry.stateHistory[0].startedAt).toBeGreaterThan(2000)
+  const previous = buildRetainedAgentsSyncSnapshot({
+    repos: [makeRepo()],
+    worktreesByRepo: { 'repo-1': [makeWorktree()] },
+    folderWorkspaces: [],
+    tabsByWorktree: { 'wt-1': [makeTab({ id: 'tab-1' })] },
+    agentStatusByPaneKey: { [paneKey]: entry },
+    now: 30000
+  })
+  const result = collectRetainedAgentsOnDisappear({
+    previousAgents: previous.currentAgents,
+    currentAgents: new Map(),
+    retainedAgentsByPaneKey: {},
+    retentionSuppressedPaneKeys: {},
+    recentlyClosedAgentStatusTabIds: {},
+    recentlyRetiredAgentStatusPaneKeys: {}
+  })
+  expect(result.toRetain[0]?.startedAt).toBe(1000)
+  const quiet = makeAgentRow({
+    paneKey: makePaneKey('tab-2', '22222222-2222-4222-8222-222222222222'),
+    state: 'working'
+  }).entry
+  const rows = buildWorktreeAgentRows({
+    tabs: [makeTab({ id: 'tab-2' })],
+    entries: [{ ...quiet, stateStartedAt: 2000 }],
+    retained: result.toRetain,
+    now: 30000
+  })
+  expect(rows.map((row) => row.paneKey)).toEqual([paneKey, quiet.paneKey])
 })

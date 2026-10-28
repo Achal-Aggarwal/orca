@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildWorktreeAgentRows } from '../components/sidebar/worktree-agent-rows'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
 import type { WebSessionTabsSyncState } from './web-session-tabs-sync/state'
@@ -537,3 +538,58 @@ describe('applyWebSessionTabsSnapshot', () => {
     expect(patch.sortEpoch).toBe((initialState.sortEpoch ?? 0) + 1)
   })
 })
+
+it.each([false, true])(
+  'keeps paired rows stable with rolling history=%s and no host origin',
+  (history) => {
+    resetWebSessionTabsSyncTestState()
+    let state = makeState()
+    const order = () =>
+      buildWorktreeAgentRows({
+        tabs: state.tabsByWorktree[WT] ?? [],
+        entries: Object.values(state.agentStatusByPaneKey),
+        retained: [],
+        now: NOW
+      }).map((row) => row.paneKey)
+    const update = (at: number, tick: number) => {
+      const tabs = [1, 2].map((index) => ({
+        type: 'terminal' as const,
+        id: `host-tab-${index}::${LEAF_ID}`,
+        title: 'Claude',
+        parentTabId: `host-tab-${index}`,
+        leafId: LEAF_ID,
+        isActive: index === 1,
+        agentStatus: {
+          state: 'working' as const,
+          prompt: 'task',
+          updatedAt: NOW + tick,
+          stateStartedAt: NOW - (index === 1 ? 10000 - at : 8000),
+          agentType: 'claude',
+          paneKey: makePaneKey(`host-tab-${index}`, LEAF_ID),
+          stateHistory: history
+            ? [
+                {
+                  state: 'done' as const,
+                  prompt: '',
+                  startedAt: NOW - (index === 1 ? 10000 - at : 8000)
+                }
+              ]
+            : []
+        }
+      }))
+      state = {
+        ...state,
+        ...applyWebSessionTabsSnapshot(
+          state,
+          makeSnapshot(tabs, { snapshotVersion: tick + 1 }),
+          ENV,
+          NOW + tick
+        )
+      }
+    }
+    update(0, 0)
+    const before = order()
+    update(5000, 1)
+    expect(order()).toEqual(before)
+  }
+)
