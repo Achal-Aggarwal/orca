@@ -97,12 +97,56 @@ export type MarkdownDocLinkDecorationController = {
 
 export const MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS = 120
 
+const decorationsByModel = new WeakMap<
+  editor.ITextModel,
+  { version: number; decorations: editor.IModelDeltaDecoration[] }
+>()
+
+const decorationUsersByModel = new WeakMap<editor.ITextModel, number>()
+
+function getModelDecorations(model: editor.ITextModel): editor.IModelDeltaDecoration[] {
+  const version = model.getVersionId()
+  const cached = decorationsByModel.get(model)
+  if (cached?.version === version) {
+    return cached.decorations
+  }
+  const decorations = getMarkdownDocLinkDecorationRanges(model.getValue()).map((range) => ({
+    range,
+    options: {
+      inlineClassName: 'monaco-markdown-doc-link',
+      stickiness: 1
+    }
+  }))
+  decorationsByModel.set(model, { version, decorations })
+  return decorations
+}
+
 export function createMarkdownDocLinkDecorationController(
   editorInstance: editor.IStandaloneCodeEditor,
   getLanguage: () => string
 ): MarkdownDocLinkDecorationController {
   const collection = editorInstance.createDecorationsCollection()
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let decorationModel: editor.ITextModel | null = null
+
+  const setDecorationModel = (model: editor.ITextModel | null): void => {
+    if (model === decorationModel) {
+      return
+    }
+    if (decorationModel) {
+      const remaining = (decorationUsersByModel.get(decorationModel) ?? 1) - 1
+      if (remaining > 0) {
+        decorationUsersByModel.set(decorationModel, remaining)
+      } else {
+        decorationUsersByModel.delete(decorationModel)
+        decorationsByModel.delete(decorationModel)
+      }
+    }
+    decorationModel = model
+    if (model) {
+      decorationUsersByModel.set(model, (decorationUsersByModel.get(model) ?? 0) + 1)
+    }
+  }
 
   const cancelPendingRefresh = (): void => {
     if (refreshTimer === null) {
@@ -116,18 +160,12 @@ export function createMarkdownDocLinkDecorationController(
     cancelPendingRefresh()
     const model = editorInstance.getModel()
     if (!model || getLanguage() !== 'markdown') {
+      setDecorationModel(null)
       collection.clear()
       return
     }
-    collection.set(
-      getMarkdownDocLinkDecorationRanges(model.getValue()).map((range) => ({
-        range,
-        options: {
-          inlineClassName: 'monaco-markdown-doc-link',
-          stickiness: 1
-        }
-      }))
-    )
+    setDecorationModel(model)
+    collection.set(getModelDecorations(model))
   }
 
   const refresh = (): void => {
@@ -148,6 +186,7 @@ export function createMarkdownDocLinkDecorationController(
     dispose: () => {
       cancelPendingRefresh()
       listener.dispose()
+      setDecorationModel(null)
       collection.clear()
     }
   }

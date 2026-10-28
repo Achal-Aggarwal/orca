@@ -96,9 +96,10 @@ describe('createMarkdownDocLinkDecorationController', () => {
     const clear = vi.fn()
     const dispose = vi.fn()
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller only accesses the model, collection and subscription methods below.
     const editorInstance = {
       createDecorationsCollection: () => ({ set, clear }),
-      getModel: () => ({ getValue: () => modelValue }),
+      getModel: () => ({ getValue: () => modelValue, getVersionId: () => 1 }),
       onDidChangeModelContent: (listener: () => void) => {
         contentListener = listener
         return { dispose }
@@ -150,9 +151,10 @@ describe('createMarkdownDocLinkDecorationController', () => {
     const set = vi.fn()
     const clear = vi.fn()
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller only accesses the model, collection and subscription methods below.
     const editorInstance = {
       createDecorationsCollection: () => ({ set, clear }),
-      getModel: () => ({ getValue: () => '[[initial.md]]' }),
+      getModel: () => ({ getValue: () => '[[initial.md]]', getVersionId: () => 1 }),
       onDidChangeModelContent: (listener: () => void) => {
         contentListener = listener
         return { dispose: vi.fn() }
