@@ -69,6 +69,7 @@
   "browser": {
     "googleCookieClear": {
       "heading": "Google sign-in",
+      "signInKeyword": "sign-in",
       "unavailable": "Unavailable for this profile on the selected host.",
       "explanation": "Google ties sign-in to the original browser, so Google cookies aren’t imported—sign in directly in Orca. If sign-in is stuck or using the wrong account, clear the active profile’s Google cookies to sign out of Google only; other sites stay signed in.",
       "action": "Clear Google cookies…",

@@ -225,8 +225,8 @@ export function getBrowserPaneSearchEntries(
         'Import cookies from Chrome, Edge, or other browsers to use existing logins inside Orca.'
       ),
       keywords: [
-        'google',
-        'sign-in',
+        ...translateSearchKeyword('auto.components.settings.browser.search.8a489aab8d', 'google'),
+        ...translateSearchKeyword('browser.googleCookieClear.signInKeyword', 'sign-in'),
         ...translateSearchKeyword('auto.components.settings.browser.search.2d2d995c58', 'browser'),
         ...translateSearchKeyword('auto.components.settings.browser.search.29193a51d5', 'cookies'),
         ...translateSearchKeyword('auto.components.settings.browser.search.66dd641a47', 'session'),
