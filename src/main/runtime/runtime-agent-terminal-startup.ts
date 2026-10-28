@@ -36,11 +36,7 @@ import { resolveQoderTerminalCommand } from './qoder-terminal-command-resolution
 import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 import { resolveWslSessionContext } from '../daemon/wsl-session-context'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
-import {
-  checkWslHostAgentWindows,
-  applyWslHostSpawnEnv,
-  getWslHostAgentCommandOverride
-} from './wsl-host-agent-terminal-launch'
+import { resolveWslHostAgentLaunchInputs } from './wsl-host-agent-terminal-launch'
 
 /** No launch command could be built for a requested `startupAgent`. */
 export class AgentLaunchUnbuildableError extends Error {}
@@ -108,7 +104,6 @@ export async function resolveAgentTerminalCreateOptions(
     if (!isTuiAgentEnabled(opts.startupAgent, store.getSettings().disabledTuiAgents)) {
       throw new Error(`Agent ${opts.startupAgent} is disabled. Choose an enabled agent.`)
     }
-    checkWslHostAgentWindows(opts.startupAgent, opts.env?.PATH ?? process.env.PATH)
   }
   if (!launchAgent || !store) {
     return opts
@@ -171,30 +166,22 @@ async function buildRuntimeAgentTerminalStartupOptions(
   if (opts.startupPrompt && !forceLine && !agentPromptRidesLaunchCommand(agent)) {
     throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
   }
-  const cwd = resolveTerminalStartupCwd(workspace.path, opts.cwd) ?? workspace.path
-  const baseInputs = resolveAgentStartupPlanInputs({
-    agent,
-    settings,
-    platform: runtime.platform,
-    isRemote,
-    ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
-    shell: agentLaunchQuotingShell(runtime),
-    sessionOptions: host.toSessionOptions(opts.launchPreferences),
-    ...(opts.suppressStartupUpdatePrompt ? { suppressStartupUpdatePrompt: true } : {})
-  })
-  // If WSL host resolved an absolute path, use it as cmdOverride
-  const wslOverride = getWslHostAgentCommandOverride(
-    agent,
-    runtime.platform,
-    opts.env?.PATH ?? process.env.PATH
-  )
-  const inputs = wslOverride
-    ? { ...baseInputs, cmdOverrides: { ...baseInputs.cmdOverrides, [agent]: wslOverride } }
-    : baseInputs
   const scope = {
-    inputs,
+    inputs: resolveWslHostAgentLaunchInputs(
+      resolveAgentStartupPlanInputs({
+        agent,
+        settings,
+        platform: runtime.platform,
+        isRemote,
+        ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
+        shell: agentLaunchQuotingShell(runtime),
+        sessionOptions: host.toSessionOptions(opts.launchPreferences),
+        ...(opts.suppressStartupUpdatePrompt ? { suppressStartupUpdatePrompt: true } : {})
+      }),
+      opts.env?.PATH
+    ),
     prompt: opts.startupPrompt ?? '',
-    cwd,
+    cwd: resolveTerminalStartupCwd(workspace.path, opts.cwd) ?? workspace.path,
     hostIdentity: host.hostIdentity,
     signal: opts.signal
   }
@@ -235,11 +222,7 @@ async function buildRuntimeAgentTerminalStartupOptions(
   }
 
   // Account routing rides over the plan's own env, as a local launch's auth patch does.
-  let env = opts.accountEnv ? { ...startupPlan.env, ...opts.accountEnv } : startupPlan.env
-  // On WSL host, apply the cleaned PATH that excludes Windows drive mounts
-  if (env) {
-    env = applyWslHostSpawnEnv(env)
-  }
+  const env = opts.accountEnv ? { ...startupPlan.env, ...opts.accountEnv } : startupPlan.env
   return {
     ...opts,
     command: startupPlan.launchCommand,

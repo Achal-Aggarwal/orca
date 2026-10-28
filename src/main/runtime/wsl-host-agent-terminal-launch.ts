@@ -1,77 +1,57 @@
+import { isWslHostOrcadProcess } from '../ipc/wsl-guest-windows-drive-path'
+import { resolveGuestNativeAgentCommand } from '../codex-cli/command'
 import {
-  isWslHostOrcadProcess,
-  resolveGuestNativeProgram,
-  guestNativePathEnv,
-  guestNativeSpawnEnv
-} from '../ipc/wsl-guest-windows-drive-path'
-import { windowsOnlyCliMessage } from '../codex-cli/windows-only-agent-cli'
-import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
-import type { TuiAgent } from '../../shared/tui-agent'
+  isWindowsOnlyAgentCommand,
+  windowsOnlyCliMessage
+} from '../codex-cli/windows-only-agent-cli'
+import type { AgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
+import { quoteStartupArg, resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 
-/** On WSL host orcad, resolve agent command and reject if only Windows copy exists. */
-export function resolveWslHostAgentCommand(
-  bareCommand: string,
-  pathEnv?: string | null
-): string | null {
-  if (!isWslHostOrcadProcess()) {
-    return bareCommand
-  }
-  const cleanedPath = guestNativePathEnv(pathEnv)
-  const resolved = resolveGuestNativeProgram(
-    bareCommand,
-    { pathEnv: cleanedPath ?? undefined },
-    resolveCliCommand
-  )
-  if (resolved === null) {
-    return null
-  }
-  return resolved
+export type WslHostAgentProbe = {
+  isWslHost?: boolean
+  mounts?: readonly string[]
+  homePath?: string
 }
 
-/** Check if agent is Windows-only on WSL host and throw appropriate error. */
-export function checkWslHostAgentWindows(agent: TuiAgent, pathEnv?: string | null): void {
-  if (!isWslHostOrcadProcess()) {
-    return
+/**
+ * On a WSL-host orcad, launch the stock agent by its distro path, or refuse when only a Windows copy
+ * exists, as chat does; a bare name would reach the Windows shim through PATH interop. The PTY env is
+ * untouched. Unchanged off a WSL host, for remote launches, and under an explicit Command setting.
+ */
+export function resolveWslHostAgentLaunchInputs(
+  inputs: AgentStartupPlanInputs,
+  pathEnv: string | undefined,
+  probe: WslHostAgentProbe = {}
+): AgentStartupPlanInputs {
+  const { agent, platform } = inputs
+  if (
+    !(probe.isWslHost ?? isWslHostOrcadProcess()) ||
+    inputs.isRemote ||
+    hasExplicitTuiLaunchCommand({ agentCmdOverrides: inputs.cmdOverrides }, agent)
+  ) {
+    return inputs
   }
-  const bareCommand = getTuiAgentLaunchCommand(TUI_AGENT_CONFIG[agent], process.platform)
-  const resolved = resolveWslHostAgentCommand(bareCommand, pathEnv)
-  if (resolved === null) {
+  const config = TUI_AGENT_CONFIG[agent]
+  const [program, ...rest] = getTuiAgentLaunchCommand(config, platform).split(' ')
+  // Wrapper launches (Agent Teams runs Orca's own CLI) are not the agent's binary.
+  if (program !== config.detectCmd) {
+    return inputs
+  }
+  const resolved = resolveGuestNativeAgentCommand(
+    program,
+    { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) },
+    probe.mounts
+  )
+  if (isWindowsOnlyAgentCommand(resolved)) {
     throw new Error(
-      windowsOnlyCliMessage(`/proc/orca-agent-cli-installed-only-on-windows/${agent}`, agent) ||
-        `${agent} is installed only on Windows, not in this WSL distro.`
+      `${windowsOnlyCliMessage(resolved, agent)} Or set the ${agent} Command setting to a program inside the distro.`
     )
   }
-}
-
-/** Apply cleaned PATH to spawn environment on WSL host. */
-export function applyWslHostSpawnEnv(env: Record<string, string>): Record<string, string> {
-  if (!isWslHostOrcadProcess()) {
-    return env
+  if (resolved === program) {
+    return inputs
   }
-  const wslEnv = guestNativeSpawnEnv(env)
-  const filteredEnv: Record<string, string> = {}
-  for (const [key, value] of Object.entries(wslEnv)) {
-    if (value !== undefined) {
-      filteredEnv[key] = value
-    }
-  }
-  return filteredEnv
-}
-
-/** Get the command override for WSL host if agent resolves to absolute path. */
-export function getWslHostAgentCommandOverride(
-  agent: TuiAgent,
-  platform: NodeJS.Platform,
-  pathEnv?: string | null
-): string | null {
-  if (!isWslHostOrcadProcess()) {
-    return null
-  }
-  const bareCommand = getTuiAgentLaunchCommand(TUI_AGENT_CONFIG[agent], platform)
-  const resolved = resolveWslHostAgentCommand(bareCommand, pathEnv)
-  if (resolved && resolved !== bareCommand) {
-    return resolved
-  }
-  return null
+  const head = quoteStartupArg(resolved, resolveStartupShell(platform, inputs.shell))
+  return { ...inputs, cmdOverrides: { ...inputs.cmdOverrides, [agent]: [head, ...rest].join(' ') } }
 }
