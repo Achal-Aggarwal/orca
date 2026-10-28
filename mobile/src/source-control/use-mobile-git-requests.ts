@@ -20,10 +20,27 @@ export function useMobileGitRequests({ client, connState, worktreeId }: Params) 
       if (!client || connState !== 'connected') {
         throw new Error('Waiting for desktop...')
       }
-      const response = await client.sendRequest(method, {
+      let response = await client.sendRequest(method, {
         worktree: `id:${worktreeId}`,
         ...params
       })
+      if (
+        method === 'git.bulkUnstage' &&
+        !response.ok &&
+        response.error.code === 'method_not_found' &&
+        Array.isArray(params?.filePaths) &&
+        params.filePaths.every((filePath: unknown) => typeof filePath === 'string')
+      ) {
+        for (const filePath of params.filePaths) {
+          response = await client.sendRequest('git.unstage', {
+            worktree: `id:${worktreeId}`,
+            filePath
+          })
+          if (!response.ok) {
+            break
+          }
+        }
+      }
       if (!response.ok) {
         const error = new Error(
           response.error?.message || 'Source control action failed'

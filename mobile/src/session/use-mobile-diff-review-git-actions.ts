@@ -2,10 +2,13 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react'
 import type { ConnectionState } from '../transport/types'
 import type { RpcClient } from '../transport/rpc-client'
 import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message'
+import { isMethodNotFoundRefusal } from '../transport/rpc-acceptance-policies'
 import {
   MOBILE_DIFF_REVIEW_GIT_MUTATIONS,
+  reviewGitBulkUnstage,
   reviewGitStageRun
 } from './mobile-diff-review-git-operations'
+import { getUnstageAllPaths } from '../../../src/shared/source-control-discard-all-sequence'
 import { triggerError, triggerSuccess } from '../platform/haptics'
 import type { MobileDiffReviewQueueItem } from './mobile-diff-review-queue'
 import type { GitMutationMethod } from './mobile-diff-review-screen-model'
@@ -35,14 +38,49 @@ export function useMobileDiffReviewGitActions(input: GitActionsInput) {
       setActionError(null)
       try {
         const mutation = MOBILE_DIFF_REVIEW_GIT_MUTATIONS[method]
-        const response = await mutation.request(client, {
-          worktree: `id:${worktreeId}`,
-          filePath: item.filePath
-        })
-        interpretOrThrowRefusalMessage(
-          () => mutation.interpret(response),
-          'Source control action failed'
-        )
+        const filePaths =
+          method === 'git.unstage' && item.area === 'staged'
+            ? getUnstageAllPaths([
+                {
+                  path: item.filePath,
+                  oldPath: item.oldPath,
+                  status: item.status,
+                  area: item.area
+                }
+              ])
+            : [item.filePath]
+        if (filePaths.length > 1) {
+          const response = await reviewGitBulkUnstage.request(client, {
+            worktree: `id:${worktreeId}`,
+            filePaths
+          })
+          if (isMethodNotFoundRefusal(response)) {
+            for (const filePath of filePaths) {
+              const single = await mutation.request(client, {
+                worktree: `id:${worktreeId}`,
+                filePath
+              })
+              interpretOrThrowRefusalMessage(
+                () => mutation.interpret(single),
+                'Source control action failed'
+              )
+            }
+          } else {
+            interpretOrThrowRefusalMessage(
+              () => reviewGitBulkUnstage.interpret(response),
+              'Source control action failed'
+            )
+          }
+        } else {
+          const response = await mutation.request(client, {
+            worktree: `id:${worktreeId}`,
+            filePath: item.filePath
+          })
+          interpretOrThrowRefusalMessage(
+            () => mutation.interpret(response),
+            'Source control action failed'
+          )
+        }
         triggerSuccess()
         await loadReviewData()
       } catch (err) {
