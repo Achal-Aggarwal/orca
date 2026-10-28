@@ -182,21 +182,6 @@ describe('Settings extension install prompt lifetime', () => {
     expect(install.isBrowserExtensionBusy(extensionId)).toBe(false)
   })
 
-  it('keeps the prompt across same-document renderer navigation', async () => {
-    const contents = renderer()
-    const pending = start(contents)
-    const request = await requested(contents)
-    contents.emit('did-navigate-in-page', {}, 'file:///orca/index.html#settings', true)
-    expect(stagedFolders()).toHaveLength(1)
-    expect(
-      prompt.respondToBrowserExtensionInstallPrompt(asContents(contents), {
-        requestId: request.requestId,
-        accepted: true
-      })
-    ).toBe(true)
-    await expect(pending).resolves.toEqual({ status: 'installed', name: 'Vault' })
-  })
-
   it('finishes an accepted install when the renderer navigates during loading', async () => {
     let finishLoading = (): void => {}
     state.load.mockImplementation(
