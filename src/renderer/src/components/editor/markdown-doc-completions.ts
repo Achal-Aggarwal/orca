@@ -41,6 +41,30 @@ export function getMarkdownDocCompletionContext(
   return { partial }
 }
 
+type MarkdownDocCompletionEntry = {
+  document: MarkdownDocument
+  name: string
+  relativePath: string
+}
+
+const completionEntriesByDocuments = new WeakMap<MarkdownDocument[], MarkdownDocCompletionEntry[]>()
+
+function getCompletionEntries(documents: MarkdownDocument[]): MarkdownDocCompletionEntry[] {
+  const cached = completionEntriesByDocuments.get(documents)
+  if (cached) {
+    return cached
+  }
+  const entries = documents
+    .map((document) => ({
+      document,
+      name: normalizeCompletionText(document.name),
+      relativePath: normalizeCompletionText(document.relativePath)
+    }))
+    .sort((a, b) => a.document.relativePath.localeCompare(b.document.relativePath))
+  completionEntriesByDocuments.set(documents, entries)
+  return entries
+}
+
 export function getMarkdownDocCompletionDocuments(
   documents: MarkdownDocument[],
   partial: string
@@ -50,15 +74,15 @@ export function getMarkdownDocCompletionDocuments(
   }
 
   const normalizedPartial = normalizeCompletionText(partial)
-  return documents
-    .filter((document) => {
-      if (!normalizedPartial) {
-        return true
-      }
-      return (
-        normalizeCompletionText(document.name).startsWith(normalizedPartial) ||
-        normalizeCompletionText(document.relativePath).startsWith(normalizedPartial)
-      )
-    })
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+  const matches: MarkdownDocument[] = []
+  for (const entry of getCompletionEntries(documents)) {
+    if (
+      !normalizedPartial ||
+      entry.name.startsWith(normalizedPartial) ||
+      entry.relativePath.startsWith(normalizedPartial)
+    ) {
+      matches.push(entry.document)
+    }
+  }
+  return matches
 }

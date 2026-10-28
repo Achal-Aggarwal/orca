@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
 import {
   getMarkdownDocCompletionContext,
@@ -54,6 +54,30 @@ describe('getMarkdownDocCompletionDocuments', () => {
 
   it('normalizes Windows-style partial paths', () => {
     expect(getMarkdownDocCompletionDocuments(documents, 'docs\\se')).toEqual([documents[0]])
+  })
+
+  it('reuses catalog preprocessing across queries and rebuilds for a replacement catalog', () => {
+    const catalog = [
+      { ...documents[1], name: ' Plan ', relativePath: 'notes\\plan.md' },
+      { ...documents[0], name: ' SETUP ' }
+    ]
+    expect(getMarkdownDocCompletionDocuments(catalog, '')).toEqual([catalog[1], catalog[0]])
+    const compare = vi.spyOn(String.prototype, 'localeCompare')
+    const normalize = vi.spyOn(String.prototype, 'toLowerCase')
+    try {
+      expect(getMarkdownDocCompletionDocuments(catalog, 'se')).toEqual([catalog[1]])
+      expect(getMarkdownDocCompletionDocuments(catalog, 'notes/')).toEqual([catalog[0]])
+      expect(getMarkdownDocCompletionDocuments(catalog, 'missing')).toEqual([])
+      expect(compare).not.toHaveBeenCalled()
+      expect(normalize).toHaveBeenCalledTimes(3)
+    } finally {
+      compare.mockRestore()
+      normalize.mockRestore()
+    }
+    const replacement = [{ ...catalog[0], name: 'new-plan', relativePath: 'new/new-plan.md' }]
+    expect(getMarkdownDocCompletionDocuments(replacement, 'plan')).toEqual([])
+    expect(getMarkdownDocCompletionDocuments(replacement, 'new-')).toEqual(replacement)
+    expect(catalog.map((document) => document.name)).toEqual([' Plan ', ' SETUP '])
   })
 
   it('returns no documents for oversized pasted partials before reading documents', () => {
