@@ -42,7 +42,9 @@ export default function HostGroupLayout() {
   const pathname = usePathname()
   const overlayRoute = isOverlayPageRoute(pathname)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sidebarWidth, setSidebarWidth] = useState(HOST_SIDEBAR_DEFAULT_WIDTH)
+  // Keep the chosen width and clamp it per window, so a narrow pose (fold, rotation) never shrinks it for good.
+  const [chosenSidebarWidth, setSidebarWidth] = useState(HOST_SIDEBAR_DEFAULT_WIDTH)
+  const sidebarWidth = clampSidebarToWindow(chosenSidebarWidth, windowWidth)
 
   // Refs keep once-created PanResponder handlers reading current widths.
   const widthRef = useRef(sidebarWidth)
@@ -55,18 +57,13 @@ export default function HostGroupLayout() {
     let stale = false
     void loadHostSidebarWidth().then((saved) => {
       if (!stale) {
-        setSidebarWidth(clampSidebarToWindow(saved, windowWidthRef.current))
+        setSidebarWidth(saved)
       }
     })
     return () => {
       stale = true
     }
   }, [])
-
-  // Re-clamp on fold/rotation/split-screen to preserve MIN_DETAIL_WIDTH.
-  useEffect(() => {
-    setSidebarWidth((current) => clampSidebarToWindow(current, windowWidth))
-  }, [windowWidth])
 
   const hideSidebar = useCallback(() => setSidebarOpen(false), [])
   const revealSidebar = useCallback(() => setSidebarOpen(true), [])
