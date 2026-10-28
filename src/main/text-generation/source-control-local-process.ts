@@ -1,7 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { toLinuxPath } from '../../shared/wsl-paths'
+import { getUtf8ChunkEndIndex } from '../../shared/utf8-byte-limits'
+import { removeTree } from '../../shared/windows-transient-lock-removal'
 import { WindowsCmdLineBreakError } from '@orca/process-host'
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { commandLineLength, MAX_COMMAND_LINE_CHARS } from '../../shared/windows-command-line-budget'
@@ -55,6 +57,8 @@ export async function killSourceControlAgentProcess(
 
 // Linux caps each argv entry in bytes (128KiB on 4KiB pages), before total argv capacity; reserve headroom for single-prompt arguments.
 const LINUX_SINGLE_ARGUMENT_BYTE_BUDGET = 120 * 1024
+// Reserve the UTF-8 signature under OMP's native 5MiB cap to force lossless text decoding.
+const OMP_TEXT_ATTACHMENT_PAYLOAD_BYTES = 5 * 1024 * 1024 - 3
 
 /** Whether the plan's argv plus reserve fits this host's limit: UTF-16 units on Windows, bytes per argument on Linux. */
 export function fitsLocalCommandLine(plan: CommitMessagePlan, reserve = 0): boolean {
@@ -94,12 +98,11 @@ export function runLocalSourceControlPlan(input: {
   const processClosed = new Promise<void>((resolve) => {
     markProcessClosed = () => {
       if (promptDirectory) {
-        try {
-          rmSync(promptDirectory, { recursive: true, force: true })
-          promptDirectory = undefined
-        } catch (error) {
+        const directory = promptDirectory
+        promptDirectory = undefined
+        void removeTree(directory).catch((error: unknown) => {
           console.error('[commit-message] Failed to remove generation prompt:', error)
-        }
+        })
       }
       resolve()
     }
@@ -110,11 +113,19 @@ export function runLocalSourceControlPlan(input: {
     try {
       if (plan.promptFile) {
         promptDirectory = mkdtempSync(join(tmpdir(), 'orca-generation-'))
-        const promptPath = join(promptDirectory, 'prompt.txt')
-        writeFileSync(promptPath, plan.promptFile.content, { encoding: 'utf8', mode: 0o600 })
+        const content = plan.promptFile.content
+        const attachments: string[] = []
+        for (let start = 0; start < content.length;) {
+          const end = getUtf8ChunkEndIndex(content, start, OMP_TEXT_ATTACHMENT_PAYLOAD_BYTES)
+          const promptPath = join(promptDirectory, `prompt-${attachments.length + 1}.txt`)
+          writeFileSync(promptPath, `\uFEFF${content.slice(start, end)}`, {
+            mode: 0o600
+          })
+          attachments.push(`@${input.wslDistro ? toLinuxPath(promptPath) : promptPath}`)
+          start = end
+        }
         const args = [...plan.args]
-        args[plan.promptFile.argIndex] =
-          `@${input.wslDistro ? toLinuxPath(promptPath) : promptPath}`
+        args.splice(plan.promptFile.argIndex, 1, ...attachments)
         plan = { ...plan, args }
       }
       // Reject oversized argv before opaque E2BIG spawn failure so users can act on the prompt-size limit.

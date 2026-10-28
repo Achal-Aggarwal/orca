@@ -28,17 +28,23 @@ describe('planSourceControlCommitMessageGeneration', () => {
     ).toEqual({ ok: false, error: 'Command input is empty.' })
   })
 
-  it('plans known agents and includes renderer-only caveats', () => {
-    const result = planSourceControlCommitMessageGeneration({
-      agentId: 'codex',
-      model: 'gpt-5.5',
-      thinkingLevel: 'low'
-    })
+  it.each([
+    { agentId: 'codex', command: 'codex exec', delivery: 'stdin' },
+    { agentId: 'omp', command: 'omp --print', delivery: 'temporary file attachment' }
+  ] as const)(
+    'plans $agentId and includes renderer-only caveats',
+    ({ agentId, command, delivery }) => {
+      const result = planSourceControlCommitMessageGeneration({
+        agentId,
+        model: 'gpt-5.5',
+        thinkingLevel: 'low'
+      })
 
-    expect(result.ok && result.commandLabel).toContain('codex exec')
-    expect(result.ok && result.delivery).toContain('stdin')
-    expect(result.ok && result.caveat).toContain('Windows .cmd')
-  })
+      expect(result.ok && result.commandLabel).toContain(command)
+      expect(result.ok && result.delivery).toContain(delivery)
+      expect(result.ok && result.caveat).toContain('Windows .cmd')
+    }
+  )
 
   it('plans pull-request generation with pull-request variables', () => {
     const result = planSourceControlTextGeneration('pullRequest', {
