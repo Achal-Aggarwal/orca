@@ -68,6 +68,12 @@ describe.skipIf(process.platform === 'win32')('resolveWslHostAgentLaunchInputs',
     expect(inputs.cmdOverrides.claude).toBe(`'${native}'`)
   })
 
+  it('launches a native alias instead of refusing for a Windows-only primary name', () => {
+    fakeExecutable(windowsBin, 'qodercli')
+    const native = fakeExecutable(nativeBin, 'qoder')
+    expect(launch('qoder', `${windowsBin}:${nativeBin}`).cmdOverrides.qoder).toBe(`'${native}'`)
+  })
+
   it('keeps launch arguments that ride on the stock command', () => {
     const native = fakeExecutable(nativeBin, 'kiro-cli')
     expect(launch('kiro', nativeBin).cmdOverrides.kiro).toBe(`'${native}' chat --tui`)

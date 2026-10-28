@@ -5,7 +5,11 @@ import {
   windowsOnlyCliMessage
 } from '../codex-cli/windows-only-agent-cli'
 import type { AgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import {
+  getTuiAgentDetectCommands,
+  getTuiAgentLaunchCommand,
+  TUI_AGENT_CONFIG
+} from '../../shared/tui-agent-config'
 import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
 import { quoteStartupArg, resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 
@@ -39,17 +43,25 @@ export function resolveWslHostAgentLaunchInputs(
   if (program !== config.detectCmd) {
     return inputs
   }
-  const resolved = resolveGuestNativeAgentCommand(
-    program,
-    { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) },
-    probe.mounts
-  )
-  if (isWindowsOnlyAgentCommand(resolved)) {
-    throw new Error(
-      `${windowsOnlyCliMessage(resolved, agent)} Or set the ${agent} Command setting to a program inside the distro.`
-    )
+  const options = { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) }
+  let windowsOnly: string | null = null
+  let resolved: string | null = null
+  // A native alias (qoder for qodercli) beats a Windows-only primary name.
+  for (const name of getTuiAgentDetectCommands(config)) {
+    const candidate = resolveGuestNativeAgentCommand(name, options, probe.mounts)
+    if (isWindowsOnlyAgentCommand(candidate)) {
+      windowsOnly ??= candidate
+    } else if (candidate !== name) {
+      resolved = candidate
+      break
+    }
   }
-  if (resolved === program) {
+  if (!resolved) {
+    if (windowsOnly) {
+      throw new Error(
+        `${windowsOnlyCliMessage(windowsOnly, agent)} Or set the ${agent} Command setting to a program inside the distro.`
+      )
+    }
     return inputs
   }
   const head = quoteStartupArg(resolved, resolveStartupShell(platform, inputs.shell))
