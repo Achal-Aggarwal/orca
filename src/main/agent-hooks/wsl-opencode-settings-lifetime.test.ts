@@ -155,7 +155,9 @@ describe.skipIf(process.platform === 'win32')('WSL public-manager settings lifet
       managedHookSettings: () => settings,
       pluginSources: () => sources,
       warn: vi.fn(),
-      transientRetryDelayMs: 1
+      transientRetryDelayMs: 1,
+      // A bridge terminal stays open, so no relay idles out mid-test.
+      bridgePtyPresence: { count: () => 1, onChange: () => () => {} }
     })
   })
   afterEach(() => {
