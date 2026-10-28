@@ -7,13 +7,24 @@ import type { DiffCommentDeliverySnapshot } from '@/store/slices/diffComments'
 import { DiffCommentCard } from './DiffCommentCard'
 import { DiffCommentDraftCard } from './DiffCommentDraftCard'
 import type { DecoratedDiffComment } from './decorated-diff-comment'
-import { NotesSendMenu, type NotesSendMenuScope } from '../editor/NotesSendMenu'
+import {
+  buildNotesSendTargetModeId,
+  NotesSendMenu,
+  type NotesSendMenuScope
+} from '../editor/NotesSendMenu'
 import { translate } from '@/i18n/i18n'
 
 export function getRenderSignature(
   comment: DecoratedDiffComment,
-  formatCommentPrompt?: (comment: DecoratedDiffComment) => string
+  activeSendTargetModeId: string | null,
+  formatCommentPrompt: ((comment: DecoratedDiffComment) => string) | undefined
 ): string {
+  const menuIsOpen =
+    activeSendTargetModeId !== null &&
+    activeSendTargetModeId ===
+      buildNotesSendTargetModeId(
+        getDiffCommentSendModeIdParts(comment.worktreeId, comment.filePath, comment.id)
+      )
   return JSON.stringify({
     body: comment.body,
     sentAt: comment.sentAt ?? null,
@@ -23,13 +34,21 @@ export function getRenderSignature(
     url: comment.url ?? null,
     canDelete: comment.canDelete ?? null,
     canEdit: comment.canEdit ?? null,
-    sendPrompt: formatCommentPrompt ? formatCommentPrompt(comment) : null
+    openMenuPrompt: menuIsOpen && formatCommentPrompt ? formatCommentPrompt(comment) : null
   })
+}
+
+function getDiffCommentSendModeIdParts(
+  worktreeId: string,
+  filePath: string,
+  commentId: string
+): readonly string[] {
+  return ['diff-comment-note', worktreeId, filePath, commentId]
 }
 
 function getSingleCommentSendScopes(
   comment: DecoratedDiffComment,
-  formatCommentPrompt?: (comment: DecoratedDiffComment) => string
+  formatCommentPromptRef: DiffCommentZoneCardContext['formatCommentPromptRef']
 ): NotesSendMenuScope<DecoratedDiffComment>[] {
   return [
     {
@@ -39,8 +58,7 @@ function getSingleCommentSendScopes(
         'This note'
       ),
       notes: comment.sentAt ? [] : [comment],
-      formatPrompt: () =>
-        formatCommentPrompt ? formatCommentPrompt(comment) : formatDiffComments([comment])
+      formatPrompt: () => formatCommentPromptRef.current?.(comment) ?? formatDiffComments([comment])
     }
   ]
 }
@@ -50,7 +68,7 @@ export type DiffCommentZoneCardContext = {
   worktreeId: string
   filePath: string
   activeGroupId: string
-  formatCommentPrompt?: (comment: DecoratedDiffComment) => string
+  formatCommentPromptRef: RefObject<((comment: DecoratedDiffComment) => string) | undefined>
   resizeZone: (commentId: string) => void
   onDeleteCommentRef: RefObject<(commentId: string) => void>
   onUpdateCommentRef: RefObject<((commentId: string, body: string) => Promise<boolean>) | undefined>
@@ -67,7 +85,7 @@ export function renderDiffCommentZoneCard(
     worktreeId,
     filePath,
     activeGroupId,
-    formatCommentPrompt,
+    formatCommentPromptRef,
     resizeZone,
     onDeleteCommentRef,
     onUpdateCommentRef,
@@ -107,8 +125,8 @@ export function renderDiffCommentZoneCard(
             <NotesSendMenu
               worktreeId={worktreeId}
               groupId={activeGroupId}
-              modeIdParts={['diff-comment-note', worktreeId, filePath, comment.id]}
-              scopes={getSingleCommentSendScopes(comment, formatCommentPrompt)}
+              modeIdParts={getDiffCommentSendModeIdParts(worktreeId, filePath, comment.id)}
+              scopes={getSingleCommentSendScopes(comment, formatCommentPromptRef)}
               targetModeLabel="This note"
               triggerClassName="orca-diff-comment-edit"
               disabledTooltip="Note already sent"

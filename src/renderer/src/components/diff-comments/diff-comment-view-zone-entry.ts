@@ -9,6 +9,7 @@ export type ZoneEntry = {
   root: Root
   disposeMouseDownStopper: () => void
   lastRenderSignature: string
+  lastSendKey: string
   // Use the first onDomNodeTop as the layout signal for scroll-to-note instead of polling.
   laidOut: boolean
 }

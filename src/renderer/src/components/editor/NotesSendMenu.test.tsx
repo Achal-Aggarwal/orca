@@ -251,6 +251,18 @@ function renderMenu(
   )
 }
 
+function renderOpenMenu(
+  overrides: Partial<React.ComponentProps<typeof NotesSendMenu<TestNote>>> = {}
+): unknown {
+  const tree = renderMenu(overrides)
+  const open = findByType(tree, 'DropdownMenu').props.onOpenChange
+  if (typeof open !== 'function') {
+    throw new Error('Missing menu opening callback')
+  }
+  open(true)
+  return renderMenu(overrides)
+}
+
 describe('buildNotesSendTargetModeId', () => {
   it('keeps note-send target ids stable for the same parts', () => {
     expect(buildNotesSendTargetModeId(['markdown-notes', 'wt-1', 'README.md', 'rail'])).toBe(
@@ -280,9 +292,51 @@ describe('NotesSendMenu', () => {
   beforeEach(() => {
     resetHookRuntime()
     storeMocks.openAgentSendPopoverTargetMode.mockReset()
+    storeMocks.openAgentSendPopoverTargetMode.mockImplementation((mode: { id: string }) => {
+      storeMocks.state.agentSendPopoverTargetMode = mode
+    })
     storeMocks.closeAgentSendPopoverTargetMode.mockReset()
     storeMocks.state.agentSendPopoverTargetMode = null
     resetNotesInFlightForTests()
+  })
+
+  it('does not format closed menus and reads current prompts on opening, refresh and reopening', () => {
+    let document = 'initial document'
+    const formatPrompt = vi.fn(() => document)
+    const menuProps = {
+      scopes: [{ id: 'note', label: 'This note', notes: [note('note-1')], formatPrompt }]
+    }
+    for (let edit = 0; edit < 50; edit += 1) {
+      document = `document edit ${edit}`
+      renderMenu(menuProps)
+    }
+    expect(formatPrompt).not.toHaveBeenCalled()
+
+    let tree = renderOpenMenu(menuProps)
+    expect(storeMocks.openAgentSendPopoverTargetMode).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: 'document edit 49' })
+    )
+    expect(findByType(tree, 'ReviewNotesSendMenuContent').props.prompt).toBe('document edit 49')
+
+    document = 'changed with the menu open'
+    tree = renderMenu(menuProps)
+    expect(findByType(tree, 'ReviewNotesSendMenuContent').props.prompt).toBe(document)
+
+    const close = findByType(tree, 'DropdownMenu').props.onOpenChange
+    if (typeof close !== 'function') {
+      throw new Error('Missing menu closing callback')
+    }
+    close(false)
+    formatPrompt.mockClear()
+    document = 'changed with the menu closed'
+    renderMenu(menuProps)
+    expect(formatPrompt).not.toHaveBeenCalled()
+
+    tree = renderOpenMenu(menuProps)
+    expect(findByType(tree, 'ReviewNotesSendMenuContent').props.prompt).toBe(document)
+    expect(storeMocks.openAgentSendPopoverTargetMode).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: document })
+    )
   })
 
   it('disables the trigger when no scope has deliverable notes', () => {
@@ -335,7 +389,7 @@ describe('NotesSendMenu', () => {
   })
 
   it('passes the default scope to review note send content', () => {
-    const tree = renderMenu()
+    const tree = renderOpenMenu()
 
     expect(findByType(tree, 'ReviewNotesSendMenuContent').props).toMatchObject({
       worktreeId: 'wt-1',
@@ -488,6 +542,9 @@ describe('NotesSendMenu notes in flight', () => {
   beforeEach(() => {
     resetHookRuntime()
     storeMocks.openAgentSendPopoverTargetMode.mockReset()
+    storeMocks.openAgentSendPopoverTargetMode.mockImplementation((mode: { id: string }) => {
+      storeMocks.state.agentSendPopoverTargetMode = mode
+    })
     storeMocks.state.agentSendPopoverTargetMode = null
     resetNotesInFlightForTests()
   })
@@ -495,10 +552,10 @@ describe('NotesSendMenu notes in flight', () => {
   it('sends only a note added while an earlier send to a new agent is still on its way', async () => {
     const onDelivered = vi.fn()
     let deliverA!: (result: { delivered: boolean }) => void
-    const first = contentProps(renderMenu({ scopes: scopeOf([noteA]), onDelivered }))
+    const first = contentProps(renderOpenMenu({ scopes: scopeOf([noteA]), onDelivered }))
     first.onPromptHandedOff(new Promise((resolve) => (deliverA = resolve)))
 
-    const second = contentProps(renderMenu({ scopes: scopeOf([noteA, noteB]), onDelivered }))
+    const second = contentProps(renderOpenMenu({ scopes: scopeOf([noteA, noteB]), onDelivered }))
     expect(second.prompt).toBe('note-b')
     second.onPromptHandedOff(new Promise(() => undefined))
 
@@ -513,7 +570,7 @@ describe('NotesSendMenu notes in flight', () => {
   })
 
   it('leaves the notes out of the running-agent target mode too', () => {
-    contentProps(renderMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(
+    contentProps(renderOpenMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(
       new Promise(() => undefined)
     )
 
@@ -530,20 +587,21 @@ describe('NotesSendMenu notes in flight', () => {
     ['a failed start', () => Promise.reject(new Error('refused'))]
   ])('puts the notes back for the next send after %s', async (_name, deliver) => {
     const delivered = deliver()
-    contentProps(renderMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(delivered)
-    expect(contentProps(renderMenu({ scopes: scopeOf([noteA]) })).prompt).toBe('')
+    contentProps(renderOpenMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(delivered)
+    expect(contentProps(renderOpenMenu({ scopes: scopeOf([noteA]) })).prompt).toBe('')
 
     await delivered.catch(() => undefined)
     await Promise.resolve()
 
-    expect(contentProps(renderMenu({ scopes: scopeOf([noteA]) })).prompt).toBe('note-a')
+    expect(contentProps(renderOpenMenu({ scopes: scopeOf([noteA]) })).prompt).toBe('note-a')
   })
 
   it('offers no send once every note is on its way', () => {
-    contentProps(renderMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(
+    contentProps(renderOpenMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(
       new Promise(() => undefined)
     )
 
+    storeMocks.openAgentSendPopoverTargetMode.mockClear()
     const tree = renderMenu({ scopes: scopeOf([noteA]) })
     expect(findByType(tree, 'button').props.disabled).toBe(true)
     invoke(findByType(tree, 'DropdownMenu').props, 'onOpenChange', true)
@@ -552,7 +610,7 @@ describe('NotesSendMenu notes in flight', () => {
 
   it('says the notes are on their way, not sent, while every note is held', () => {
     contentProps(
-      renderMenu({ scopes: scopeOf([noteA]), disabledTooltip: 'Note already sent' })
+      renderOpenMenu({ scopes: scopeOf([noteA]), disabledTooltip: 'Note already sent' })
     ).onPromptHandedOff(new Promise(() => undefined))
 
     const tree = renderMenu({ scopes: scopeOf([noteA]), disabledTooltip: 'Note already sent' })
@@ -564,7 +622,9 @@ describe('NotesSendMenu notes in flight', () => {
   it('clears notes whose send reports delivery later', async () => {
     const onDelivered = vi.fn()
     const delivered = Promise.resolve({ delivered: true })
-    contentProps(renderMenu({ scopes: scopeOf([noteA]), onDelivered })).onPromptHandedOff(delivered)
+    contentProps(renderOpenMenu({ scopes: scopeOf([noteA]), onDelivered })).onPromptHandedOff(
+      delivered
+    )
 
     await delivered
     await Promise.resolve()

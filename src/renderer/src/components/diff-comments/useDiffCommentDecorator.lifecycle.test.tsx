@@ -6,6 +6,7 @@ import type { DecoratedDiffComment } from './decorated-diff-comment'
 import type * as ReactDomClientModule from 'react-dom/client'
 import type * as DiffCommentZoneCardModule from './diff-comment-zone-card'
 import type { NotesSendMenu } from '../editor/NotesSendMenu'
+import type * as NotesSendMenuModule from '../editor/NotesSendMenu'
 
 vi.mock('monaco-editor', () => import('monaco-editor/esm/vs/editor/editor.api.js'))
 
@@ -15,12 +16,22 @@ const notesMenuFixture = vi.hoisted(() => ({
   })
 }))
 
-vi.mock('../editor/NotesSendMenu', () => ({ NotesSendMenu: notesMenuFixture.NotesSendMenu }))
-
-const storeFixture = vi.hoisted(() => ({
-  activeGroupIdByWorktree: {},
-  clearDeliveredDiffComments: vi.fn()
+vi.mock('../editor/NotesSendMenu', async (importOriginal) => ({
+  ...(await importOriginal<typeof NotesSendMenuModule>()),
+  NotesSendMenu: notesMenuFixture.NotesSendMenu
 }))
+
+const storeFixture = vi.hoisted(
+  (): {
+    activeGroupIdByWorktree: Record<string, string>
+    agentSendPopoverTargetMode: { id: string } | null
+    clearDeliveredDiffComments: ReturnType<typeof vi.fn>
+  } => ({
+    activeGroupIdByWorktree: {},
+    agentSendPopoverTargetMode: null,
+    clearDeliveredDiffComments: vi.fn()
+  })
+)
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: typeof storeFixture) => unknown) => selector(storeFixture)
@@ -59,6 +70,9 @@ vi.mock('react-dom/client', async (importOriginal) => {
 })
 
 import { useDiffCommentDecorator } from './useDiffCommentDecorator'
+import { renderDiffCommentZoneCard } from './diff-comment-zone-card'
+import { formatMarkdownReviewNotes } from '@/lib/markdown-review-notes'
+import { buildNotesSendTargetModeId } from '../editor/NotesSendMenu'
 import {
   createFakeDiffCommentEditor,
   type FakeDiffCommentEditor
@@ -128,6 +142,7 @@ function renderDecorator(fake: FakeDiffCommentEditor, initialProps: DecoratorPro
 beforeEach(() => {
   rootCounts.created = 0
   rootCounts.unmounted = 0
+  storeFixture.agentSendPopoverTargetMode = null
 })
 
 afterEach(async () => {
@@ -158,6 +173,107 @@ function countingCommentableLines(length: number): {
 }
 
 describe('useDiffCommentDecorator commentable-line churn', () => {
+  it('does not format send prompts or rerender note cards while editing the document', () => {
+    const fake = createFakeDiffCommentEditor({ lineCount: 20_000 })
+    const comments = Array.from({ length: 20 }, (_, index) => ({
+      ...reviewNote(index),
+      source: 'markdown' as const,
+      lineNumber: 19_000 + index
+    }))
+    const formatPrompt = vi.fn((content: string, comment: DecoratedDiffComment) =>
+      formatMarkdownReviewNotes([{ ...comment, source: 'markdown' }], content)
+    )
+    const content = 'A line of the document\n'.repeat(20_000)
+    const hook = renderHook(
+      ({ content }) =>
+        useDiffCommentDecorator({
+          editor: fake.editor,
+          filePath: FILE_PATH,
+          worktreeId: REVIEW_SURFACE_ID,
+          comments,
+          onDeleteComment: vi.fn(),
+          formatCommentPrompt: (comment) => formatPrompt(content, comment)
+        }),
+      { initialProps: { content } }
+    )
+
+    for (let edit = 1; edit <= 50; edit += 1) {
+      hook.rerender({ content: `${content}${edit}` })
+    }
+
+    expect(formatPrompt.mock.calls.length).toBe(0)
+    expect(renderDiffCommentZoneCard).toHaveBeenCalledTimes(comments.length)
+    expect(fake.zones.size).toBe(comments.length)
+
+    const cardContext = vi.mocked(renderDiffCommentZoneCard).mock.calls[0]?.[2]
+    expect(cardContext?.formatCommentPromptRef.current?.(comments[0])).toContain('Excerpt:')
+    expect(formatPrompt).toHaveBeenLastCalledWith(`${content}50`, comments[0])
+  })
+
+  it('refreshes only the open note menu when its excerpt changes', () => {
+    const fake = createFakeDiffCommentEditor()
+    const comments = [reviewNote(1), reviewNote(2)]
+    const formatPrompt = vi.fn(
+      (content: string, comment: DecoratedDiffComment) => `${content}:${comment.id}`
+    )
+    const hook = renderHook(
+      ({ content }) =>
+        useDiffCommentDecorator({
+          editor: fake.editor,
+          filePath: FILE_PATH,
+          worktreeId: REVIEW_SURFACE_ID,
+          comments,
+          onDeleteComment: vi.fn(),
+          formatCommentPrompt: (comment) => formatPrompt(content, comment)
+        }),
+      { initialProps: { content: 'initial' } }
+    )
+    storeFixture.agentSendPopoverTargetMode = {
+      id: buildNotesSendTargetModeId([
+        'diff-comment-note',
+        REVIEW_SURFACE_ID,
+        FILE_PATH,
+        comments[0].id
+      ])
+    }
+    hook.rerender({ content: 'initial' })
+    vi.mocked(renderDiffCommentZoneCard).mockClear()
+    formatPrompt.mockClear()
+
+    hook.rerender({ content: 'updated' })
+
+    expect(formatPrompt).toHaveBeenCalledExactlyOnceWith('updated', comments[0])
+    expect(renderDiffCommentZoneCard).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(renderDiffCommentZoneCard).mock.calls[0]?.[1].id).toBe(comments[0].id)
+  })
+
+  it('refreshes closed cards when a same-id note changes its send content', () => {
+    const fake = createFakeDiffCommentEditor()
+    const comment = { ...reviewNote(1), selectedText: 'old selection' }
+    const formatPrompt = vi.fn((comment: DecoratedDiffComment) => comment.selectedText ?? '')
+    const hook = renderHook(
+      ({ comments }) =>
+        useDiffCommentDecorator({
+          editor: fake.editor,
+          filePath: FILE_PATH,
+          worktreeId: REVIEW_SURFACE_ID,
+          comments,
+          onDeleteComment: vi.fn(),
+          formatCommentPrompt: formatPrompt
+        }),
+      { initialProps: { comments: [comment] } }
+    )
+    vi.mocked(renderDiffCommentZoneCard).mockClear()
+
+    hook.rerender({ comments: [{ ...comment, selectedText: 'new selection', lineNumber: 20 }] })
+
+    expect(formatPrompt.mock.calls.length).toBe(0)
+    expect(renderDiffCommentZoneCard).toHaveBeenCalledTimes(1)
+    const rendered = vi.mocked(renderDiffCommentZoneCard).mock.calls[0]
+    expect(rendered?.[2].formatCommentPromptRef.current?.(rendered[1])).toBe('new selection')
+    expect(fake.zones.size).toBe(1)
+  })
+
   it('joins the commentable-line array once, not once per render, for a stable array', () => {
     const fake = createFakeDiffCommentEditor()
     const comments = [reviewNote(1)]

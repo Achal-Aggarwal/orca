@@ -33,10 +33,6 @@ export type NotesSendMenuScope<TNote> = {
   formatPrompt: (notes: readonly TNote[]) => string
 }
 
-type SendableNotesScope<TNote> = Omit<NotesSendMenuScope<TNote>, 'formatPrompt'> & {
-  prompt: string
-}
-
 export type NotesSendMenuProps<TNote> = {
   worktreeId: string
   groupId: string
@@ -91,11 +87,11 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const targetModeId = useMemo(() => buildNotesSendTargetModeId(modeIdParts), [modeIdParts])
   const inFlightVersion = useNotesInFlightVersion()
-  const sendableScopes = useMemo<SendableNotesScope<TNote>[]>(() => {
+  const sendableScopes = useMemo<NotesSendMenuScope<TNote>[]>(() => {
     void inFlightVersion
-    return scopes.map(({ formatPrompt, ...scope }) => {
+    return scopes.map((scope) => {
       const notes = scope.notes.filter((note) => !isNoteInFlight(diffCommentSendKey(note)))
-      return { ...scope, notes, prompt: notes.length > 0 ? formatPrompt(notes) : '' }
+      return { ...scope, notes }
     })
   }, [inFlightVersion, scopes])
   const enabledScopes = useMemo(
@@ -125,7 +121,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
   )
 
   const openTargetMode = useCallback(
-    (scope: SendableNotesScope<TNote>) => {
+    (scope: NotesSendMenuScope<TNote>) => {
       if (scope.notes.length === 0) {
         return
       }
@@ -133,7 +129,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
         id: targetModeId,
         worktreeId,
         source,
-        prompt: scope.prompt,
+        prompt: scope.formatPrompt(scope.notes),
         label: targetModeLabel ?? scope.label,
         launchSource: 'notes_send',
         onPromptDelivered: () => markDelivered(scope.notes),
@@ -268,7 +264,11 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                   <ReviewNotesSendMenuContent
                     worktreeId={worktreeId}
                     groupId={groupId}
-                    prompt={scope.prompt}
+                    prompt={
+                      effectiveSendMenuOpen && scope.notes.length > 0
+                        ? scope.formatPrompt(scope.notes)
+                        : ''
+                    }
                     promptDelivery="submit-after-ready"
                     launchSource="notes_send"
                     onPromptDelivered={() => markDelivered(scope.notes)}
@@ -282,7 +282,11 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
           <ReviewNotesSendMenuContent
             worktreeId={worktreeId}
             groupId={groupId}
-            prompt={defaultScope?.prompt ?? ''}
+            prompt={
+              effectiveSendMenuOpen && defaultScope
+                ? defaultScope.formatPrompt(defaultScope.notes)
+                : ''
+            }
             promptDelivery="submit-after-ready"
             launchSource="notes_send"
             onPromptDelivered={() => {

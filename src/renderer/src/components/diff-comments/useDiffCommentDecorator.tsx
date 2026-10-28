@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { editor as monacoEditor } from 'monaco-editor'
 import { createRoot, type Root } from 'react-dom/client'
 import { getCommentBodyLayoutLineCount } from '@/lib/comment-body-line-count'
 import { useAppStore } from '@/store'
+import { diffCommentSendKey } from '@/lib/notes-send-in-flight'
 import {
   installDiffCommentAddButtonOverlay,
   type DiffCommentAddButtonOverlayHandle
@@ -75,6 +76,7 @@ export function useDiffCommentDecorator({
   onPendingScrollConsumed
 }: DecoratorArgs): void {
   const clearDeliveredDiffComments = useAppStore((s) => s.clearDeliveredDiffComments)
+  const activeSendTargetModeId = useAppStore((s) => s.agentSendPopoverTargetMode?.id ?? null)
   const activeGroupId = useAppStore((s) =>
     worktreeId ? (s.activeGroupIdByWorktree[worktreeId] ?? worktreeId) : worktreeId
   )
@@ -97,9 +99,19 @@ export function useDiffCommentDecorator({
   const onDeleteCommentRef = useRef(onDeleteComment)
   const onUpdateCommentRef = useRef(onUpdateComment)
   const onPendingScrollConsumedRef = useRef(onPendingScrollConsumed)
+  const formatCommentPromptRef = useRef(formatCommentPrompt)
+  // Menu actions need the latest committed document without rebuilding every note on each edit.
+  useLayoutEffect(() => {
+    formatCommentPromptRef.current = formatCommentPrompt
+  }, [formatCommentPrompt])
   onDeleteCommentRef.current = onDeleteComment
   onUpdateCommentRef.current = onUpdateComment
   onPendingScrollConsumedRef.current = onPendingScrollConsumed
+
+  const commentSendKeys = useMemo(
+    () => new Map(comments.map((comment) => [comment.id, diffCommentSendKey(comment)])),
+    [comments]
+  )
 
   const { onAddCommentClickRef, isDraftOpen } = useDiffCommentDraftZone({
     editor,
@@ -285,7 +297,7 @@ export function useDiffCommentDecorator({
         worktreeId,
         filePath,
         activeGroupId,
-        formatCommentPrompt,
+        formatCommentPromptRef,
         resizeZone,
         onDeleteCommentRef,
         onUpdateCommentRef,
@@ -350,7 +362,8 @@ export function useDiffCommentDecorator({
           delegate,
           root,
           disposeMouseDownStopper,
-          lastRenderSignature: getRenderSignature(c, formatCommentPrompt),
+          lastRenderSignature: getRenderSignature(c, activeSendTargetModeId, formatCommentPrompt),
+          lastSendKey: commentSendKeys.get(c.id) ?? '',
           laidOut: false
         })
         renderCard(root, c)
@@ -361,11 +374,13 @@ export function useDiffCommentDecorator({
         if (!entry) {
           continue
         }
-        const renderSignature = getRenderSignature(c, formatCommentPrompt)
-        if (entry.lastRenderSignature === renderSignature) {
+        const signature = getRenderSignature(c, activeSendTargetModeId, formatCommentPrompt)
+        const sendKey = commentSendKeys.get(c.id) ?? ''
+        if (entry.lastRenderSignature === signature && entry.lastSendKey === sendKey) {
           continue
         }
-        entry.lastRenderSignature = renderSignature
+        entry.lastRenderSignature = signature
+        entry.lastSendKey = sendKey
         renderCard(entry.root, c)
       }
     })
@@ -380,8 +395,10 @@ export function useDiffCommentDecorator({
     // Teardown belongs to the editor-scoped effect; per-comment cleanup would wipe every zone and flicker.
   }, [
     activeGroupId,
+    activeSendTargetModeId,
     cancelScrollToZoneFrame,
     clearDeliveredDiffComments,
+    commentSendKeys,
     comments,
     editor,
     filePath,
