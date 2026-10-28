@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 import { app } from 'electron'
 import { z } from 'zod'
 import { SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE } from '../../shared/skill-install-capability'
@@ -74,7 +75,7 @@ async function previewBundleInstall(runtime: OrcaRuntimeService, input: BundlePr
             destination: input.destination
           }
           const response = await callRuntimeEnvironment(
-            app.getPath('userData'),
+            getRuntimeEnvironmentRegistryRoot(),
             environmentId,
             'skills.previewInstall',
             request,
@@ -107,7 +108,7 @@ export function registerSkillInstallManagementIpcHandlers(runtime: OrcaRuntimeSe
       return listWslDistrosAsync()
     }
     const response = await callRuntimeEnvironment(
-      app.getPath('userData'),
+      getRuntimeEnvironmentRegistryRoot(),
       environmentId,
       'host.wsl.listDistros',
       {},

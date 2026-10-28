@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { z } from 'zod'
@@ -253,7 +254,7 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
       return { cancelled: transferCancelled }
     }
     const response = await callRuntimeEnvironment(
-      app.getPath('userData'),
+      getRuntimeEnvironmentRegistryRoot(),
       input.environmentId,
       'skills.cancelInstall',
       { operationId: input.operationId },

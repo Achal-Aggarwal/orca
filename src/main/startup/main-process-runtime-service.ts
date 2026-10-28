@@ -2,6 +2,7 @@ import {
   applySessionSearchSettingsChange,
   installChildSessionSearchService
 } from '../ai-vault-search/session-search-enablement'
+import { getRuntimeEnvironmentRegistryRoot } from '../ipc/runtime-environments/runtime-environment-registry-root'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { sessionSearchScopeCatalogFromStore } from '../ai-vault-search/session-search-store-scope-catalog'
 import { getCanonicalUserDataPath } from '../persistence/loading-store/user-data-path'
@@ -65,7 +66,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   }
   const orchestrationEnvironmentTransport: OrchestrationEnvironmentTransport = {
     resolve: (selector) => {
-      const environment = resolveEnvironment(app.getPath('userData'), selector)
+      const environment = resolveEnvironment(getRuntimeEnvironmentRegistryRoot(), selector)
       const connection = getPreferredPairedRuntimeConnection(environment)
       return {
         environmentId: environment.id,
@@ -76,7 +77,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     },
     call: (selector, method, params, timeoutMs, envelope, expectedPairingRevision) =>
       callRuntimeEnvironment(
-        app.getPath('userData'),
+        getRuntimeEnvironmentRegistryRoot(),
         selector,
         method,
         params,
@@ -132,7 +133,13 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     orchestrationEnvironmentTransport,
     workspaceSleepPlatform: {
       callEnvironment: (environmentId, method, params, timeoutMs) =>
-        callRuntimeEnvironment(app.getPath('userData'), environmentId, method, params, timeoutMs),
+        callRuntimeEnvironment(
+          getRuntimeEnvironmentRegistryRoot(),
+          environmentId,
+          method,
+          params,
+          timeoutMs
+        ),
       suspendVm: (workspaceId) => suspendEphemeralVmWorkspace(store, workspaceId)
     },
     // Paired/local settings writes must reconcile the scanner child through the same path.
