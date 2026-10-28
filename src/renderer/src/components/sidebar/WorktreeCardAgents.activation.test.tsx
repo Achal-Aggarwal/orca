@@ -266,7 +266,12 @@ describe('WorktreeCardAgents activation', () => {
           first: { type: 'leaf', leafId: LEAF_A },
           second: { type: 'leaf', leafId: LEAF_B }
         }
-        mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'remote:host-B@@pty-1' }
+        mockLayouts['retained-tab'].activeLeafId = LEAF_B
+        mockLayouts['retained-tab'].ptyIdsByLeafId = {
+          [LEAF_A]: 'remote:host-B@@pty-1',
+          [LEAF_B]: 'remote:host-B@@pty-2'
+        }
+        mockPtyIds['retained-tab'].push('remote:host-B@@pty-2')
       }
       await clickRetained(mode)
       expect(activationMocks.activateAndRevealWorkspace).toHaveBeenCalledWith('wt-1', {
@@ -316,7 +321,7 @@ describe('WorktreeCardAgents activation', () => {
         },
         activeLeafId: LEAF_B,
         expandedLeafId: null,
-        ptyIdsByLeafId: { [LEAF_B]: 'live-pty' }
+        ptyIdsByLeafId: { [LEAF_A]: 'exited-pty', [LEAF_B]: 'live-pty' }
       }
     }
     if (shape === 'foreign-owner') {
