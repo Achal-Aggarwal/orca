@@ -8,6 +8,7 @@ import { FIRST_PANE_ID } from '../../../../shared/pane-key'
 import { isTerminalLeafId, makePaneKey } from '../../../../shared/stable-pane-id'
 import { normalizeCompatibleAgentTitleForOwner } from '../../../../shared/agent-title-owner'
 import { resolvePaneAgentOwnerRecord } from '../../../../shared/pane-agent-owner'
+import { findRegisteredTerminalTab } from '../mounted-terminal-tab-registry'
 import {
   isFencedClientAgentStatus,
   hostAgentStatusPiercesClientAuthority
@@ -32,6 +33,10 @@ export function buildMirroredRuntimePaneTitlePatch(
   if (!titles) {
     return null
   }
+  const titledTabs = tabs.filter(({ tab }) => titles[tab.id])
+  if (titledTabs.length === 0) {
+    return null
+  }
   const surfacesByTab = new Map<string, Map<string, TerminalSurface>>()
   for (const surface of surfaces) {
     const byLeaf = surfacesByTab.get(surface.parentTabId) ?? new Map<string, TerminalSurface>()
@@ -39,7 +44,7 @@ export function buildMirroredRuntimePaneTitlePatch(
     surfacesByTab.set(surface.parentTabId, byLeaf)
   }
   let nextTitles = titles
-  for (const { tab, hostTabId, layout, retainedSurfaceByPrunedLeafId } of tabs) {
+  for (const { tab, hostTabId, layout, retainedSurfaceByPrunedLeafId } of titledTabs) {
     const paneTitles = titles[tab.id]
     if (!paneTitles) {
       continue
@@ -52,6 +57,7 @@ export function buildMirroredRuntimePaneTitlePatch(
     const liveSlotsAreDense =
       liveSlotIds.length === leaves.size &&
       liveSlotIds.every((id, index) => id === FIRST_PANE_ID + index)
+    const manager = findRegisteredTerminalTab(tab.id, tab.worktreeId)?.tab.getManager()
     const hostSurfacesByLeaf = new Map(surfacesByTab.get(hostTabId))
     for (const [hostLeafId, retainedSurface] of retainedSurfaceByPrunedLeafId ?? []) {
       const surface = hostSurfacesByLeaf.get(hostLeafId)
@@ -61,15 +67,16 @@ export function buildMirroredRuntimePaneTitlePatch(
     }
     let nextPaneTitles: Record<string, string> = paneTitles
     for (const [runtimePaneId, title] of Object.entries(paneTitles)) {
-      const leafId =
-        isTerminalLeafId(runtimePaneId) || liveSlotsAreDense
-          ? resolveRuntimePaneTitleLeafId(layout, runtimePaneId)
-          : resolveRuntimePaneTitleLeafIdFromSparseSlots({
+      const leafId = isTerminalLeafId(runtimePaneId)
+        ? runtimePaneId
+        : manager
+          ? manager.getLeafId(Number(runtimePaneId))
+          : (resolveRuntimePaneTitleLeafIdFromSparseSlots({
               layout: state.terminalLayoutsByTabId[tab.id],
               paneId: Number(runtimePaneId),
               liveSlotIds,
               ptyIds: state.ptyIdsByTabId[tab.id] ?? []
-            })
+            }) ?? (liveSlotsAreDense ? resolveRuntimePaneTitleLeafId(layout, runtimePaneId) : null))
       const hostSurface = leafId && leaves.has(leafId) ? hostSurfacesByLeaf.get(leafId) : undefined
       let hostTitle: string | undefined
       if (leafId && hostSurface) {

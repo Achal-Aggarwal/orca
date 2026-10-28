@@ -56,6 +56,8 @@ import {
 import { useWebSessionTabsSync } from './web-session-tabs-sync/use-web-session-tabs-sync'
 import { WINDOW_VISIBILITY_SUBSCRIPTION_PARK_DELAY_MS } from './window-visibility-subscription-parking'
 
+const NOW = 1_000_000
+
 function agentSnapshot(
   worktree: string,
   parentTabId: string,
@@ -74,8 +76,8 @@ function agentSnapshot(
     state,
     agentType: 'pi',
     worktreeId: worktree,
-    updatedAt: Date.now(),
-    stateStartedAt: Date.now(),
+    updatedAt: NOW,
+    stateStartedAt: NOW,
     stateHistory: [],
     prompt: ''
   }
@@ -103,6 +105,7 @@ describe('remote completion after the client window is hidden', () => {
   installFrameOrderingHarness({ fakeTimers: true })
 
   it('resubscribes immediately on reveal and repairs completion in active and inactive workspaces', async () => {
+    vi.setSystemTime(NOW)
     renderHook(() => useWebSessionTabsSync())
     await act(settle)
     await publish(findSubscription('session.tabs.subscribeAll'), {

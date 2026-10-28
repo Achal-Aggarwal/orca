@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeMobileSessionTerminalClientTab } from '../../../shared/runtime-types'
+import type { TerminalLayoutSnapshot } from '../../../shared/terminal-tab-types'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { resolveTerminalTabActivityStatus } from '../components/tab-bar/terminal-tab-activity-status'
 import {
@@ -251,6 +252,58 @@ describe('remote completion repairs saved spinner titles', () => {
     expect(patch.runtimePaneTitlesByTabId?.[TAB_ID]).toEqual({ 1: 'Pi ready', 3: '⠋ Pi' })
   })
 
+  it.each([false, true])(
+    'keeps moved pane titles attached to their PTY with a fresh writer: %s',
+    (freshFirstWriter) => {
+      const sibling = {
+        ...hostPane(),
+        id: `host-tab-1::${SECOND_LEAF_ID}`,
+        leafId: SECOND_LEAF_ID,
+        isActive: false,
+        terminal: 'terminal-2',
+        title: 'Pi second ready'
+      }
+      const initial = makeState()
+      const mirrored = {
+        ...initial,
+        ...applyWebSessionTabsSnapshot(
+          initial,
+          makeSnapshot([hostPane('working'), sibling]),
+          ENV,
+          NOW
+        )
+      }
+      const layout: TerminalLayoutSnapshot = {
+        ...mirrored.terminalLayoutsByTabId[TAB_ID],
+        root: {
+          type: 'split',
+          direction: 'horizontal',
+          first: { type: 'leaf', leafId: SECOND_LEAF_ID },
+          second: { type: 'leaf', leafId: LEAF_ID }
+        }
+      }
+      const state = {
+        ...mirrored,
+        terminalLayoutsByTabId: { [TAB_ID]: layout },
+        runtimePaneTitlesByTabId: { [TAB_ID]: { 1: '⠋ Pi - first', 2: '⠋ Pi - second' } }
+      }
+      if (freshFirstWriter) {
+        registerRendererOwnedAgentStatusPane(PANE_KEY, ENV)
+        markRendererOwnedAgentStatusWrite(PANE_KEY)
+      }
+      const patch = applyWebSessionTabsSnapshot(
+        state,
+        makeSnapshot([hostPane(), sibling], { snapshotVersion: 2 }),
+        ENV,
+        NOW
+      )
+      expect(patch.runtimePaneTitlesByTabId?.[TAB_ID]).toEqual({
+        1: freshFirstWriter ? '⠋ Pi - first' : 'Pi ready',
+        2: 'Pi second ready'
+      })
+    }
+  )
+
   it('retains an unmapped numeric title until its pane ownership is known', () => {
     const state = restoredState()
     state.runtimePaneTitlesByTabId[TAB_ID] = { 3: '⠋ Pi', 7: '⠋ Pi' }
@@ -301,6 +354,7 @@ describe('remote completion repairs saved spinner titles', () => {
       throw new Error('Missing mirrored tab')
     }
     const orphanTitles = { [SECOND_LEAF_ID]: '⠋ Pi' }
+    const readyOrphanTitles = { [SECOND_LEAF_ID]: 'Pi ready' }
     expect(
       resolveTerminalTabActivityStatus({
         tab: { ...tab, title: 'Pi ready' },
@@ -312,7 +366,7 @@ describe('remote completion repairs saved spinner titles', () => {
     expect(
       resolveTerminalTabActivityStatus({
         tab: { ...tab, title: '⠋ Pi' },
-        runtimePaneTitlesByTabId: { [TAB_ID]: { [SECOND_LEAF_ID]: 'Pi ready' } },
+        runtimePaneTitlesByTabId: { [TAB_ID]: readyOrphanTitles },
         ptyIdsByTabId: state.ptyIdsByTabId,
         terminalLayout: state.terminalLayoutsByTabId[TAB_ID]
       })
