@@ -22,7 +22,79 @@ const serverSubscriptions = [
   ['runtime.clientEvents.subscribe', 'runtime.clientEvents.unsubscribe']
 ] as const
 
+async function collectCallbacks(): Promise<void> {
+  if (!globalThis.gc) {
+    throw new Error('The mobile test runner must enable --expose-gc')
+  }
+  for (let round = 0; round < 3; round++) {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    globalThis.gc()
+  }
+}
+
+function subscribeCapturedCallbacks(streams: MobileRelayRpcStreams) {
+  const listenerPayload = new Uint8Array(1024 * 1024)
+  const binaryPayload = new Uint8Array(1024 * 1024)
+  const cancel = streams.subscribe('browser.screencast', {}, () => listenerPayload.byteLength, {
+    onBinaryFrame: () => binaryPayload.byteLength
+  })
+  return {
+    cancel,
+    listener: new WeakRef(listenerPayload),
+    binary: new WeakRef(binaryPayload)
+  }
+}
+
 describe('mobile relay subscription cancellation', () => {
+  it.skipIf(!globalThis.gc).each(['cancel', 'clear'] as const)(
+    'releases callbacks on %s before their connection waiter settles',
+    async (action) => {
+      const wait = Promise.withResolvers<void>()
+      const { streams, sendFrame } = createStreams(() => wait.promise)
+      const captured = subscribeCapturedCallbacks(streams)
+      try {
+        await collectCallbacks()
+        expect(captured.listener.deref()).toBeDefined()
+        expect(captured.binary.deref()).toBeDefined()
+        if (action === 'cancel') {
+          captured.cancel()
+        } else {
+          streams.clear()
+        }
+        await collectCallbacks()
+        expect(captured.listener.deref() === undefined).toBe(true)
+        expect(captured.binary.deref() === undefined).toBe(true)
+        expect(sendFrame).not.toHaveBeenCalled()
+      } finally {
+        wait.resolve()
+        await wait.promise
+        streams.clear()
+      }
+      expect(sendFrame).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['resolve', 'reject'] as const)(
+    'does not notify a cancelled listener when its connection later %ss',
+    async (outcome) => {
+      const wait = Promise.withResolvers<void>()
+      const { streams, sendFrame } = createStreams(() => wait.promise)
+      const listener = vi.fn()
+      const cancel = streams.subscribe('accounts.subscribe', {}, listener)
+      cancel()
+      if (outcome === 'resolve') {
+        wait.resolve()
+      } else {
+        wait.reject(new Error('Connection timed out'))
+      }
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(listener).not.toHaveBeenCalled()
+      expect(sendFrame).not.toHaveBeenCalled()
+      expect(streams.handleResponse(response('request-1', { type: 'end' }))).toBe(false)
+    }
+  )
+
   it.each(serverSubscriptions)('cleans up ready %s exactly once', async (method, unsubscribe) => {
     const { streams, sendFrame } = createStreams()
     const listener = vi.fn()
