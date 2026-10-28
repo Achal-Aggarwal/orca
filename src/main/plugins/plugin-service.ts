@@ -75,10 +75,7 @@ export class PluginService {
       Boolean(this.options.getPluginKillListEntry?.(pluginKey))
     )
     this.audit = new PluginAuditLog(getPluginsDataDir(options.userDataPath))
-    const resolveApproved = (pluginKey: string) => {
-      const plugin = this.findValidPlugin(pluginKey)
-      return plugin && this.canStartPluginWork(plugin) ? plugin : null
-    }
+    const resolveApproved = (pluginKey: string) => this.findApprovedPlugin(pluginKey)
     this.panels = new PluginPanelController({
       resolveApprovedPlugin: resolveApproved,
       contentVerifier: this.contentVerifier,
@@ -201,6 +198,12 @@ export class PluginService {
 
   findValidPlugin(pluginKey: string): ValidDiscoveredPlugin | null {
     return this.installed.findValid(pluginKey)
+  }
+
+  /** Enabled, consented and not being removed: what may open frames or hand out its files. */
+  findApprovedPlugin(pluginKey: string): ValidDiscoveredPlugin | null {
+    const plugin = this.findValidPlugin(pluginKey)
+    return plugin && this.canStartPluginWork(plugin) ? plugin : null
   }
 
   activationState(plugin: ValidDiscoveredPlugin): PluginActivationState {
