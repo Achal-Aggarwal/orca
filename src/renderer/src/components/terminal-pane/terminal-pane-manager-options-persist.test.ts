@@ -65,7 +65,7 @@ describe('terminal pane manager recorded backend options', () => {
       const options = createOptions(worktreeId)
       const resolved =
         typeof options.terminalOptions === 'function'
-          ? options.terminalOptions()
+          ? options.terminalOptions(1)
           : options.terminalOptions
       expect(resolved?.windowsPty).toEqual(
         mirror ? undefined : { backend: 'conpty', buildNumber: 22631 }

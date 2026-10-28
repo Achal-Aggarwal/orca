@@ -1,4 +1,4 @@
-import './rpc/unused-default-rpc-methods.test-fixture'
+import '../../src/main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,23 +20,25 @@ const electronMocks = vi.hoisted(() => {
 vi.mock('electron', () => electronMocks)
 
 const scanLocalRepoWorktreesForResolution = vi.hoisted(() => vi.fn())
-vi.mock('./repo-worktree-resolution-scan', () => ({ scanLocalRepoWorktreesForResolution }))
+vi.mock('../../src/main/runtime/repo-worktree-resolution-scan', () => ({
+  scanLocalRepoWorktreesForResolution
+}))
 
-import { MIXED_FOLDER } from '../../shared/folder-workspace-host-routing.test-fixture'
-import { formatCliError } from '../../cli/cli-error'
-import { RuntimeRpcFailureError } from '../../cli/runtime/types'
-import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
-import { RpcDispatcher } from './rpc/dispatcher'
-import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
-import { OrchestrationDb } from './orchestration/db'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
-import type { FolderWorkspace } from '../../shared/folder-workspace-types'
-import type { ProjectGroup } from '../../shared/project-group-types'
-import type { Repo } from '../../shared/repo-types'
-import type { WorktreeMeta } from '../../shared/worktree/meta-types'
-import type { RuntimeStore } from './runtime-store-contract'
-import { OrcaRuntimeService } from './orca-runtime'
-import type { HostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
+import { MIXED_FOLDER } from '../../src/shared/folder-workspace-host-routing.test-fixture'
+import { formatCliError } from '../../src/cli/cli-error'
+import { RuntimeRpcFailureError } from '../../src/cli/runtime/types'
+import { ORCHESTRATION_CONTRACT_VERSION } from '../../src/shared/protocol-version'
+import { RpcDispatcher } from '../../src/main/runtime/rpc/dispatcher'
+import { ORCHESTRATION_METHODS } from '../../src/main/runtime/rpc/methods/orchestration'
+import { OrchestrationDb } from '../../src/main/runtime/orchestration/db'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../src/shared/constants'
+import type { FolderWorkspace } from '../../src/shared/folder-workspace-types'
+import type { ProjectGroup } from '../../src/shared/project-group-types'
+import type { Repo } from '../../src/shared/repo-types'
+import type { WorktreeMeta } from '../../src/shared/worktree/meta-types'
+import type { RuntimeStore } from '../../src/main/runtime/runtime-store-contract'
+import { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
+import type { HostWorktreeTarget } from '../../src/shared/worktree/host-qualified-identity'
 
 const REPO_ID = 'repo-1'
 const REPO_PATH = '/repo'
@@ -95,7 +97,7 @@ function makeStore(
     getAllWorkspaceLineage: () => ({}),
     removeWorktreeLineage: vi.fn(),
     removeWorkspaceLineage: vi.fn(),
-    getGitHubCache: () => undefined,
+    getGitHubCache: () => ({ pr: {}, issue: {} }),
     getSettings: () => ({
       workspaceDir: '/tmp/workspaces',
       nestWorkspaces: false,

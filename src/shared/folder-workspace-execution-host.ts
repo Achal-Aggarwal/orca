@@ -211,11 +211,19 @@ export type QualifiedFolderHostState<W extends FolderHostWorkspace = FolderHostW
   repos?: readonly FolderHostRepo[]
 }
 
+export type QualifiedFolderWorkspaceResult<W extends FolderHostWorkspace> =
+  | {
+      kind: 'selected'
+      value: { workspace: W; hostId: ExecutionHostId; connectionId: string | null }
+    }
+  | { kind: 'ambiguous' }
+  | { kind: 'missing' }
+
 export function resolveQualifiedFolderWorkspaceResult<W extends FolderHostWorkspace>(
   state: QualifiedFolderHostState<W>,
   folderWorkspaceId: string,
   requiredHostId?: ExecutionHostId
-) {
+): QualifiedFolderWorkspaceResult<W> {
   const rows =
     state.folderWorkspaces?.filter((workspace) => workspace.id === folderWorkspaceId) ?? []
   let underivable = false
@@ -242,7 +250,7 @@ export function resolveQualifiedFolderWorkspaceResult<W extends FolderHostWorksp
           },
           workspace
         )
-    const hostId =
+    const hostId: ExecutionHostId | null =
       host.kind === 'local'
         ? LOCAL_EXECUTION_HOST_ID
         : host.kind === 'ssh'

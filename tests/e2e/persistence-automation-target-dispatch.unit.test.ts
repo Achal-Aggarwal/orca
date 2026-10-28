@@ -1,17 +1,38 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
+  closeTestStores,
   testState,
   createStore,
   writeDataFile,
   makeRepo
-} from './persistence/persistence-test-harness'
-import { getDefaultPersistedState } from '../shared/constants'
-import { OrcaRuntimeService } from './runtime/orca-runtime'
-import { resolveAutomationRunTarget } from './automations/run-target-resolution'
-import { buildHeadlessAutomationWorktreeCreateArgs } from './automations/headless-workspace-create'
-import { makeWorktree } from '../renderer/src/components/automations/automations-page-fixtures'
+} from '../../src/main/persistence/persistence-test-harness'
+import { getDefaultPersistedState } from '../../src/shared/constants'
+import { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
+import { resolveAutomationRunTarget } from '../../src/main/automations/run-target-resolution'
+import { buildHeadlessAutomationWorktreeCreateArgs } from '../../src/main/automations/headless-workspace-create'
+import { makeWorktree } from '../../src/renderer/src/components/automations/automations-page-fixtures'
 
-export function registerAutomationTargetDispatchTests(): void {
+vi.mock('../../src/main/ssh/config/ssh-config-parser', () => ({
+  loadUserSshConfig: () => ({ hosts: [] }),
+  sshConfigHostsToTargets: () => []
+}))
+vi.mock('../../src/main/telemetry/client', () => ({ track: vi.fn() }))
+vi.mock('../../src/main/telemetry/cohort-classifier', () => ({
+  getCohortAtEmit: () => ({ nth_repo_added: 2 })
+}))
+
+beforeEach(() => {
+  testState.dir = mkdtempSync(join(tmpdir(), 'orca-target-dispatch-'))
+})
+afterEach(async () => {
+  await closeTestStores()
+  rmSync(testState.dir, { recursive: true, force: true })
+})
+
+describe('persisted automation target dispatch', () => {
   it.each([false, true])(
     'retains copied local and SSH targets through runtime writes, reload and dispatch, reversed=%s',
     async (reverse) => {
@@ -71,9 +92,9 @@ export function registerAutomationTargetDispatchTests(): void {
       }
       await store.flushPendingOrThrowAsync()
       const reloaded = await createStore()
-      const { useAppStore } = await import('../renderer/src/store')
+      const { useAppStore } = await import('../../src/renderer/src/store')
       const { resolveAutomationDispatchWorkspace, prepareAutomationDispatchWorkspace } =
-        await import('../renderer/src/hooks/automation-dispatch-workspace')
+        await import('../../src/renderer/src/hooks/automation-dispatch-workspace')
       const previous = useAppStore.getState()
       const previousWindow = globalThis.window
       try {
@@ -146,4 +167,4 @@ export function registerAutomationTargetDispatchTests(): void {
       }
     }
   )
-}
+})

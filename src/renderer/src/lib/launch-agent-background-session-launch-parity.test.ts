@@ -1,3 +1,4 @@
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type * as TransportFixtureModule from '@/runtime/layout-apply-test-transport.test-fixture'
 import {
@@ -5,6 +6,7 @@ import {
   perClientLoader,
   type LaunchStoreHolder
 } from '@/lib/launch-parity-renderer.test-fixture'
+import { projectHostSetupProjectionFromRepos } from '../../../shared/project-host-setup-projection'
 import { getDefaultSettings } from '../../../shared/constants'
 import { makeAutomation, makeRun } from '@/components/automations/automations-page-fixtures'
 import {
@@ -227,14 +229,36 @@ describe('row 5: desktop automation pty:spawn request', () => {
       const worktree = initial.worktreesByRepo[repo.id]![0]!
       const twinRepo = { ...repo, executionHostId: 'ssh:other' as const, connectionId: 'other' }
       const twinWorktree = { ...worktree, hostId: 'ssh:other' as const }
+      const catalog = projectHostSetupProjectionFromRepos([repo, twinRepo])
+      const localProjectIds = new Set(
+        catalog.setups.filter((setup) => setup.hostId === 'local').map((setup) => setup.projectId)
+      )
       store.setState({
+        endpointProjects: catalog.projects.map((project) => ({
+          ...project,
+          ...(localProjectIds.has(project.id)
+            ? { localWindowsRuntimePreference: { kind: 'wsl' as const, distro: 'ProjectDistro' } }
+            : {})
+        })),
+        endpointProjectHostSetups: catalog.setups,
         repos: reverse ? [twinRepo, repo] : [repo, twinRepo],
         worktreesByRepo: {
           [repo.id]: reverse ? [twinWorktree, worktree] : [worktree, twinWorktree]
         },
         activeWorktreeId: 'unrelated',
         activeWorkspaceExecutionHostId: 'ssh:other',
-        sshConnectionStates: new Map([['other', { status: 'connected', remotePlatform: 'linux' }]])
+        sshConnectionStates: new Map([
+          [
+            'other',
+            {
+              targetId: 'other',
+              status: 'connected',
+              remotePlatform: 'linux',
+              error: null,
+              reconnectAttempt: 0
+            }
+          ]
+        ])
       })
       const spawn = vi.fn(async () => ({ id: 'pty-selected' }))
       const kill = vi.fn()
@@ -303,7 +327,7 @@ describe('row 5: desktop automation pty:spawn request', () => {
       const initial = store.getState()
       const baseRepo = initial.repos[0]!
       const baseWorktree = initial.worktreesByRepo[baseRepo.id]![0]!
-      const hostId = kind === 'folder' ? 'local' : kind
+      const hostId: ExecutionHostId = kind === 'folder' ? 'local' : kind
       const repo = {
         ...baseRepo,
         executionHostId: hostId,
@@ -315,7 +339,18 @@ describe('row 5: desktop automation pty:spawn request', () => {
         repos: [baseRepo, repo].filter((_, index) => kind !== 'folder' || index === 1),
         worktreesByRepo: { [repo.id]: kind === 'folder' ? [worktree] : [baseWorktree, worktree] },
         activeWorktreeId: 'unrelated',
-        sshConnectionStates: new Map([['other', { status: 'connected', remotePlatform: 'linux' }]]),
+        sshConnectionStates: new Map([
+          [
+            'other',
+            {
+              targetId: 'other',
+              status: 'connected',
+              remotePlatform: 'linux',
+              error: null,
+              reconnectAttempt: 0
+            }
+          ]
+        ]),
         runtimeStatusByEnvironmentId: new Map([
           [
             'server',

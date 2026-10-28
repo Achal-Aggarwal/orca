@@ -85,7 +85,10 @@ export abstract class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreserv
 
   abstract requireStore(): RuntimeStore
 
-  protected abstract resolveWorktreeSelector(selector: string): Promise<ResolvedWorktree>
+  protected abstract resolveWorktreeSelector(
+    selector: string,
+    requiredHostId?: ExecutionHostId
+  ): Promise<ResolvedWorktree>
 
   protected abstract resolveRepoSelector(selector: RuntimeRepoSelector): Promise<Repo>
 

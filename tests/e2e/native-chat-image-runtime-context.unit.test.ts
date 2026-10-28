@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { AppState } from '@/store/types'
 import { useAppStore } from '@/store'
-import type { TerminalTab } from '../../../../shared/terminal-tab-types'
-import type { Tab } from '../../../../shared/tab-types'
-import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
+import type { TerminalTab } from '../../src/shared/terminal-tab-types'
+import type { Tab } from '../../src/shared/tab-types'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../src/shared/constants'
 import {
   createNativeChatImageOwnerSelector,
   resolveNativeChatImageRuntimeContext,
@@ -16,24 +16,24 @@ import {
   selectNativeChatImageOwnerState,
   useNativeChatImageRuntimeContext,
   type NativeChatImageRuntimeContext
-} from './native-chat-image-runtime-context'
+} from '../../src/renderer/src/components/native-chat/native-chat-image-runtime-context'
 import {
   makeFolderWorkspace,
   makeProjectGroup
-} from '../sidebar/folder-workspace-composer-submit-fixtures'
-import { resolveNativeChatFileLinkContext } from './native-chat-file-link'
+} from '../../src/renderer/src/components/sidebar/folder-workspace-composer-submit-fixtures'
+import { resolveNativeChatFileLinkContext } from '../../src/renderer/src/components/native-chat/native-chat-file-link'
 import {
   resolveNativeChatSkillDiscoveryContext,
   selectNativeChatSkillStateInputs
-} from './native-chat-skill-discovery-context'
+} from '../../src/renderer/src/components/native-chat/native-chat-skill-discovery-context'
 import { getEditorFileOperationContext } from '@/lib/editor-file-operation-owner'
 import { captureWorktreeSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
 import { adoptFromEndpoint } from '@/store/adopt-from-endpoint'
-import { assertRuntimeFileMutationExpectation } from '../../../../main/runtime/files/file-mutation-expectation'
+import { assertRuntimeFileMutationExpectation } from '../../src/main/runtime/files/file-mutation-expectation'
 import {
   resetSshConnectionGenerations,
   setSshConnectionGeneration
-} from '../../../../main/ssh/connection/ssh-connection-generation'
+} from '../../src/main/ssh/connection/ssh-connection-generation'
 import {
   agentSessionTabFixture,
   nativeChatFanoutFixture,
@@ -41,7 +41,7 @@ import {
   repoFixture,
   terminalTabFixture,
   worktreeFixture
-} from './native-chat-workspace-test-fixtures'
+} from '../../src/renderer/src/components/native-chat/native-chat-workspace-test-fixtures'
 
 const originalState = useAppStore.getState()
 afterEach(() => {
@@ -100,7 +100,7 @@ describe('resolveNativeChatImageRuntimeContext', () => {
           ? adoptFromEndpoint(target, {
               kind: 'folderWorkspace',
               row: original,
-              resolveOwnHostId: () => 'ssh:box'
+              resolveOwnHostId: () => 'ssh:box' as const
             })
           : { ...original, connectionId: null }
       const workspaceId = `folder:${folder.id}`

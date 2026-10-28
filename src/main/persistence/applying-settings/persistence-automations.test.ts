@@ -1,4 +1,3 @@
-import { registerAutomationTargetDispatchTests } from '../../persistence-automation-target-dispatch.spec'
 import {
   closeTestStores,
   testState,
@@ -67,7 +66,6 @@ describe('Store', () => {
     await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
-  registerAutomationTargetDispatchTests()
   it('can clear an automation back to the project default branch', async () => {
     const store = await createStore()
     store.addRepo(makeRepo({ worktreeBaseRef: 'origin/main' }))

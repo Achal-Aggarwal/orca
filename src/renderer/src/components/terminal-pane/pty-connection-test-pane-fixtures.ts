@@ -27,7 +27,7 @@ export type ConnectCallbacks = {
 
 export type MockTransport = {
   retryRecovery?: () => boolean
-  attach: ReturnType<typeof vi.fn>
+  attach: ReturnType<typeof vi.fn<(options: { existingPtyId: string }) => void>>
   connect: ReturnType<typeof vi.fn> & {
     mockImplementation: (
       impl: (opts: { callbacks?: ConnectCallbacks } & Record<string, unknown>) => Promise<unknown>

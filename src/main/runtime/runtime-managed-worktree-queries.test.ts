@@ -107,13 +107,17 @@ describe('RuntimeManagedWorktreeQueries.buildVisibilityMatchers', () => {
       const repos = reversed ? [remote, local] : [local, remote]
       const winner = repos[1]!
       const worktrees = ['/checkout/first', '/checkout/second'].map((path) =>
-        mergeWorktree(local.id, {
-          path,
-          head: 'abc',
-          branch: 'topic',
-          isBare: false,
-          isMainWorktree: false
-        })
+        mergeWorktree(
+          local.id,
+          {
+            path,
+            head: 'abc',
+            branch: 'topic',
+            isBare: false,
+            isMainWorktree: false
+          },
+          undefined
+        )
       )
       const defaults = { customSources: [{ id: 'default-source', rootPath: '/default-source' }] }
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the public matcher only reads repos and settings.

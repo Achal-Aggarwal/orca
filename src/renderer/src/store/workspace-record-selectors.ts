@@ -1,11 +1,15 @@
+import {
+  resolveQualifiedFolderWorkspaceResult,
+  type QualifiedFolderHostState,
+  type FolderHostWorkspace
+} from '../../../shared/folder-workspace-execution-host'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { Worktree } from '../../../shared/worktree/types'
 import type { HostWorktreeTarget } from '../../../shared/worktree/host-qualified-identity'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
-import {
-  findIndexedWorktreeOwnerForHost,
-  resolveQualifiedIndexedFolderWorkspace
-} from '@/lib/worktree-runtime-owner-index'
+import { findIndexedWorktreeOwnerForHost } from '@/lib/worktree-runtime-owner-index'
 import type { AppState } from './types'
+import type { WorktreeRuntimeOwnerState } from '@/lib/worktree-runtime-owner-state'
 import { getFolderWorkspaceWorktree } from './slices/worktrees/listing/detected-worktree-meta'
 
 // Route workspace readers here; check-workspace-record-read-ratchet.mjs enforces this boundary.
@@ -14,22 +18,22 @@ export type WorkspaceRecordState = Pick<AppState, 'worktreesByRepo' | 'folderWor
   Partial<Pick<AppState, 'repos' | 'projectGroups'>>
 
 /** Git worktrees per repo id, in listing order. */
-export function selectWorktreesByRepo(
-  state: Pick<AppState, 'worktreesByRepo'>
-): AppState['worktreesByRepo'] {
+export function selectWorktreesByRepo<T extends Pick<WorktreeRuntimeOwnerState, 'worktreesByRepo'>>(
+  state: T
+): T['worktreesByRepo'] {
   return state.worktreesByRepo
 }
 
-export function selectFolderWorkspaces(
-  state: Pick<AppState, 'folderWorkspaces'>
-): AppState['folderWorkspaces'] {
+export function selectFolderWorkspaces<
+  T extends Pick<WorktreeRuntimeOwnerState, 'folderWorkspaces'>
+>(state: T): T['folderWorkspaces'] {
   return state.folderWorkspaces
 }
 
 /** Checkouts git reports that Orca does not track, per repo id. */
-export function selectDetectedWorktreesByRepo(
-  state: Pick<AppState, 'detectedWorktreesByRepo'>
-): AppState['detectedWorktreesByRepo'] {
+export function selectDetectedWorktreesByRepo<
+  T extends Pick<WorktreeRuntimeOwnerState, 'detectedWorktreesByRepo'>
+>(state: T): T['detectedWorktreesByRepo'] {
   return state.detectedWorktreesByRepo
 }
 
@@ -57,4 +61,59 @@ export function selectWorkspaceByHostTarget(
   return (
     findIndexedWorktreeOwnerForHost(state.worktreesByRepo, target.id, target.hostId) ?? undefined
   )
+}
+
+const qualifiedFolderOwnerCache = new WeakMap<
+  readonly FolderHostWorkspace[],
+  {
+    groups: QualifiedFolderHostState['projectGroups']
+    repos: QualifiedFolderHostState['repos']
+    rows: ReadonlyMap<string, readonly FolderHostWorkspace[]>
+    positions: ReadonlyMap<FolderHostWorkspace, number>
+    results: Map<string, ReturnType<typeof resolveQualifiedFolderWorkspaceResult>>
+  }
+>()
+
+export function resolveQualifiedIndexedFolderWorkspace<W extends FolderHostWorkspace>(
+  state: QualifiedFolderHostState<W>,
+  folderWorkspaceId: string,
+  executionHostId?: ExecutionHostId
+): ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>> {
+  const folders = selectFolderWorkspaces(state)
+  if (!folders) {
+    return { kind: 'missing' }
+  }
+  let cache = qualifiedFolderOwnerCache.get(folders)
+  if (!cache || cache.groups !== state.projectGroups || cache.repos !== state.repos) {
+    const rows = new Map<string, FolderHostWorkspace[]>()
+    const positions = new Map<FolderHostWorkspace, number>()
+    for (const [index, folder] of folders.entries()) {
+      positions.set(folder, index)
+      const id = folder.id
+      const copies = rows.get(id) ?? []
+      copies.push(folder)
+      rows.set(id, copies)
+    }
+    cache = { groups: state.projectGroups, repos: state.repos, rows, positions, results: new Map() }
+    qualifiedFolderOwnerCache.set(folders, cache)
+  }
+  const key = executionHostId ? `${folderWorkspaceId}\0${executionHostId}` : folderWorkspaceId
+  let result = cache.results.get(key)
+  if (!result) {
+    result = resolveQualifiedFolderWorkspaceResult(
+      { ...state, folderWorkspaces: cache.rows.get(folderWorkspaceId) ?? [] },
+      folderWorkspaceId,
+      executionHostId
+    )
+    cache.results.set(key, result)
+  }
+  const positions = cache.positions
+  const isCallerResult = (
+    value: ReturnType<typeof resolveQualifiedFolderWorkspaceResult>
+  ): value is ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>> =>
+    value.kind !== 'selected' ||
+    folders[positions.get(value.value.workspace) ?? -1] === value.value.workspace
+  return isCallerResult(result)
+    ? result
+    : resolveQualifiedFolderWorkspaceResult(state, folderWorkspaceId, executionHostId)
 }

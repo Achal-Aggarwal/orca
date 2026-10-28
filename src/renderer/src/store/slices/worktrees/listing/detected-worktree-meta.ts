@@ -15,14 +15,12 @@ import {
   floatingWorkspaceToWorktree,
   isFloatingWorkspaceId
 } from '../../../../../../shared/floating-workspace-worktree'
-import {
-  resolveQualifiedIndexedFolderWorkspace,
-  findIndexedDetectedWorktrees
-} from '@/lib/worktree-runtime-owner-index'
+import { findIndexedDetectedWorktrees } from '@/lib/worktree-runtime-owner-index'
 import { findWorktreeById, withoutErasedRequiredWorktreeFields } from '../../worktree-helpers'
 import { worktreeMatchesHost } from './worktree-host-ownership'
 import { hostWorktreeTarget } from '../../../../../../shared/worktree/host-qualified-identity'
 import {
+  resolveQualifiedIndexedFolderWorkspace,
   selectFolderWorkspaces,
   selectWorkspaceByHostTarget,
   selectWorktreesByRepo

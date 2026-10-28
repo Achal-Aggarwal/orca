@@ -32,7 +32,7 @@ export function registerCapturedAutomationRunActionTests({
 }: {
   actionMocks: {
     rpc: ReturnType<typeof vi.fn>
-    interaction: ReturnType<typeof vi.fn>
+    interaction: ReturnType<typeof vi.fn<AppState['recordFeatureInteraction']>>
     error: ReturnType<typeof vi.fn>
     state: Partial<AppState>
   }
@@ -166,12 +166,22 @@ export function registerCapturedAutomationRunActionTests({
         ],
         sshConnectionStates: new Map(
           kind === 'runtime-ssh-offline'
-            ? [['box', { status: 'connected' }]]
+            ? [['box', { targetId: 'box', status: 'connected', error: null, reconnectAttempt: 0 }]]
             : isRuntime
               ? reverse
-                ? [['box', { status: 'auth-failed' }]]
+                ? [
+                    [
+                      'box',
+                      { targetId: 'box', status: 'auth-failed', error: null, reconnectAttempt: 0 }
+                    ]
+                  ]
                 : []
-              : [['box', { status: 'connected' }]]
+              : [
+                  [
+                    'box',
+                    { targetId: 'box', status: 'connected', error: null, reconnectAttempt: 0 }
+                  ]
+                ]
         ),
         sshStateByEnvironment: new Map([
           [
@@ -182,7 +192,15 @@ export function registerCapturedAutomationRunActionTests({
               targetGenerations: new Map([['box', 7]]),
               removedTargetLabels: new Map(),
               connectionStates: new Map([
-                ['box', { status: kind === 'runtime-ssh-offline' ? 'disconnected' : 'connected' }]
+                [
+                  'box',
+                  {
+                    targetId: 'box',
+                    status: kind === 'runtime-ssh-offline' ? 'disconnected' : 'connected',
+                    error: null,
+                    reconnectAttempt: 0
+                  }
+                ]
               ])
             }
           ]

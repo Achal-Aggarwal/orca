@@ -62,10 +62,10 @@ function harness(
       paneKey === 'tab-prev:leaf-1' ? 'term_prev' : null
     ),
     getTerminalPtyIdForHandle: vi.fn((_handle: string) => 'pty-prev'),
-    resolveTerminalContext: vi.fn(
-      (_handle: string): { worktreeId: string; connectionId: string | null } => ({
-        worktreeId: 'wt-1',
-        connectionId: null
+    getTerminalWorktreeIdForHandle: vi.fn((_handle: string) => 'wt-1'),
+    getPtyExecutionHostMetadata: vi.fn(
+      (_ptyId: string | null): { executionHostId: ExecutionHostId } => ({
+        executionHostId: 'local'
       })
     ),
     deliverStartupFollowup: vi.fn(
@@ -149,7 +149,7 @@ describe('headless automation agent launch', () => {
     expect(deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
     expect(runtime.launchAgentTerminal).toHaveBeenCalledTimes(1)
     runtime.launchAgentTerminal.mockClear()
-    runtime.resolveTerminalContext.mockReturnValue({ worktreeId: 'wt-1', connectionId: 'old' })
+    runtime.getPtyExecutionHostMetadata.mockReturnValue({ executionHostId: 'ssh:old' })
     await launch(runtime, { reuseSession: true }, [previousRun()])
     expect(deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
     expect(runtime.launchAgentTerminal).toHaveBeenCalledTimes(1)
@@ -186,10 +186,8 @@ describe('headless automation agent launch', () => {
 
   it('reuses a pinned SSH folder with local project history without fresh transport acquisition', async () => {
     const runtime = harness({ workspaceHostId: 'ssh:prod' })
-    runtime.resolveTerminalContext.mockReturnValue({
-      worktreeId: 'folder:fw-1',
-      connectionId: 'prod'
-    })
+    runtime.getTerminalWorktreeIdForHandle.mockReturnValue('folder:fw-1')
+    runtime.getPtyExecutionHostMetadata.mockReturnValue({ executionHostId: 'ssh:prod' })
     const runContext = {
       kind: 'workspace-run',
       projectId: 'project',

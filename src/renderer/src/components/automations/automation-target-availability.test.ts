@@ -24,7 +24,7 @@ const actionMocks = vi.hoisted(() => {
   const state: Partial<AppState> = {}
   return {
     rpc: vi.fn(),
-    interaction: vi.fn(),
+    interaction: vi.fn<AppState['recordFeatureInteraction']>(async () => {}),
     error: vi.fn(),
     state
   }
@@ -189,13 +189,13 @@ describe('automation target availability', () => {
       const refreshed = mergeFetchedReposForHost(merged, structuredClone(repos), 'runtime:gpu')
       expect(refreshed).toBe(merged)
       const changed = repos.map((repo) =>
-        repo.connectionId === 'box' ? { ...repo, name: 'Changed SSH' } : repo
+        repo.connectionId === 'box' ? { ...repo, displayName: 'Changed SSH' } : repo
       )
       const updated = mergeFetchedReposForHost(refreshed, changed, 'runtime:gpu')
       expect(updated.find((repo) => !repo.connectionId)).toBe(
         merged.find((repo) => !repo.connectionId)
       )
-      expect(updated.find((repo) => repo.connectionId === 'box')?.name).toBe('Changed SSH')
+      expect(updated.find((repo) => repo.connectionId === 'box')?.displayName).toBe('Changed SSH')
     }
   )
   registerCapturedAutomationRunActionTests({

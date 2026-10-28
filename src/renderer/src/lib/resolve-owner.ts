@@ -2,6 +2,11 @@
  * The owner of a workspace as a {@link HostAuthority}, decided from the rows alone.
  */
 import {
+  selectFolderWorkspaces,
+  selectWorktreesByRepo,
+  selectDetectedWorktreesByRepo
+} from '@/store/workspace-record-selectors'
+import {
   getRepoSshConnectionId,
   parseExecutionHostId,
   toRuntimeExecutionHostId,
@@ -62,7 +67,10 @@ function toOwnerMatch(
 
 /** Detect folder/project twins before unqualified route lookups collapse them into missing/local ownership. */
 function isFolderTwin(state: WorktreeOperationRouteState, folderWorkspaceId: string): boolean {
-  const folder = resolveIndexedFolderWorkspaceOwner(state.folderWorkspaces, folderWorkspaceId)
+  const folder = resolveIndexedFolderWorkspaceOwner(
+    selectFolderWorkspaces(state),
+    folderWorkspaceId
+  )
   if (folder.kind !== 'resolved') {
     return folder.kind === 'ambiguous'
   }
@@ -142,12 +150,15 @@ function nestedRepoTargetId(
   environmentId: string
 ): ExecutionHostOwnerMatch<string | null> {
   const hostId = toRuntimeExecutionHostId(environmentId)
-  const row = findIndexedWorktreeOwnerForHost(state.worktreesByRepo, worktreeId, hostId)
+  const row = findIndexedWorktreeOwnerForHost(selectWorktreesByRepo(state), worktreeId, hostId)
   const physical = parseExecutionHostId(row?.hostId)
   if (physical?.kind === 'ssh') {
     return { kind: 'resolved', owner: physical.targetId }
   }
-  const detected = findIndexedDetectedWorktrees(state.detectedWorktreesByRepo, worktreeId).filter(
+  const detected = findIndexedDetectedWorktrees(
+    selectDetectedWorktreesByRepo(state),
+    worktreeId
+  ).filter(
     (candidate) =>
       candidate.runtimeOwnerEnvironmentId === environmentId || candidate.hostId === hostId
   )
@@ -284,7 +295,7 @@ export function someWorktreeCopy(
   const repoId = getRepoIdFromWorktreeId(worktreeId)
   const copyMatches = (row: WorktreeCopy & { id: string }) => row.id === worktreeId && matches(row)
   return Boolean(
-    state.worktreesByRepo?.[repoId]?.some(copyMatches) ||
-    state.detectedWorktreesByRepo?.[repoId]?.worktrees.some(copyMatches)
+    selectWorktreesByRepo(state)?.[repoId]?.some(copyMatches) ||
+    selectDetectedWorktreesByRepo(state)?.[repoId]?.worktrees.some(copyMatches)
   )
 }

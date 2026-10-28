@@ -62,9 +62,7 @@ export function createOpenFileMutations(
             live.runtimeEnvironmentId,
             live.runtimeEnvironmentId !== undefined
           )
-        const accepted = live.operationProvenance
-          ? live
-          : { ...live, operationProvenance: provenance }
+        const accepted = { ...live, operationProvenance: provenance }
         captured = accepted
         return live.operationProvenance
           ? state

@@ -10,8 +10,11 @@ import {
   type ExecutionHostId
 } from '../../../shared/execution-host'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
-import { selectFolderWorkspaces, selectWorktreesByRepo } from '@/store/workspace-record-selectors'
-import { resolveQualifiedIndexedFolderWorkspace } from '@/lib/worktree-runtime-owner-index'
+import {
+  resolveQualifiedIndexedFolderWorkspace,
+  selectFolderWorkspaces,
+  selectWorktreesByRepo
+} from '@/store/workspace-record-selectors'
 
 type WatchTargetRowState = Pick<
   AppState,

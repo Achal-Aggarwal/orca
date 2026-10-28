@@ -1,5 +1,5 @@
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
-import { getRepoExecutionHostId, toSshExecutionHostId } from '../../shared/execution-host'
+import { getRepoExecutionHostId } from '../../shared/execution-host'
 // Automations observe PTYs, so launch terminal agents regardless of the chat default.
 
 import type {
@@ -197,9 +197,12 @@ async function sendToReusableSession(
         .toSorted((left, right) => right.receivedAt - left.receivedAt)[0],
     liveSession: (previous) => {
       const handle = runOwnHandle(runtime, previous)
-      const live = handle ? runtime.resolveTerminalContext(handle) : null
-      const liveHostId = live?.connectionId ? toSshExecutionHostId(live.connectionId) : 'local'
-      return handle && live?.worktreeId === worktreeId && liveHostId === physicalHostId
+      const liveWorktreeId = handle ? runtime.getTerminalWorktreeIdForHandle(handle) : null
+      const liveHostId = handle
+        ? runtime.getPtyExecutionHostMetadata(runtime.getTerminalPtyIdForHandle(handle))
+            .executionHostId
+        : undefined
+      return handle && liveWorktreeId === worktreeId && liveHostId === physicalHostId
         ? { handle, previous }
         : null
     }

@@ -5,10 +5,11 @@ import { acquireEditorFileOperation } from '@/lib/editor-file-operation-owner'
 import type { OpenFile } from '@/store/slices/editor'
 
 export function acquireCombinedDiffSectionOperation(file: OpenFile, sectionPath: string) {
-  return acquireEditorFileOperation(useAppStore.getState, file, {
+  const operation = acquireEditorFileOperation(useAppStore.getState, file, {
     filePath: joinPath(file.filePath, sectionPath),
     worktreePath: file.filePath
   })
+  return { ...operation, context: { ...operation.context, worktreePath: file.filePath } }
 }
 
 /** Mixed local/SSH folder workspaces need child-repo path ownership to route section reads to the correct host. */

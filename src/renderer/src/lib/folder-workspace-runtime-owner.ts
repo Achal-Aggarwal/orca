@@ -10,9 +10,9 @@ import type { ProjectGroup } from '../../../shared/project-group-types'
 import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   findIndexedFolderWorkspaceOwner,
-  resolveQualifiedIndexedFolderWorkspace,
   findIndexedProjectGroupOwner
 } from './worktree-runtime-owner-index'
+import { resolveQualifiedIndexedFolderWorkspace } from '@/store/workspace-record-selectors'
 import type { SingleRuntimeLegacyOwnerState } from './single-runtime-legacy-owner'
 import { getPairedWebClientEnvironmentId } from './paired-web-client-host'
 

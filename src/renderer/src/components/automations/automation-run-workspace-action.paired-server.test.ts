@@ -149,7 +149,7 @@ function seed(rows: Worktree[], authority: AutomationAuthorityRef = desktop) {
   }
   const local = {
     automations: [selected.automation],
-    failedAuthorityKeys: new Set(),
+    failedAuthorityKeys: new Set<string>(),
     listSearchQuery: '',
     listFilter: EMPTY_AUTOMATION_LIST_FILTER,
     listSort: null,
@@ -392,7 +392,7 @@ describe('historical affordance, physical owner, exact pane and serving authorit
     }
     mocks.state.sshTargetGenerations = new Map([['box', 7]])
     mocks.state.sshTargetsHydrated = true
-    const sshRun = { ...run, runContext: { ...run.runContext!, hostId: 'ssh:box' } }
+    const sshRun: AutomationRun = { ...run, runContext: { ...run.runContext!, hostId: 'ssh:box' } }
     input.local.selectedAutomationRuns.runs = [sshRun]
     pane(WT, 'ssh:box')
     const render = await mount(input, sshRun)

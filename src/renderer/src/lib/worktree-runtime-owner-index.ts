@@ -5,11 +5,6 @@ export {
   resolveQualifiedIndexedRepoOwnerForHost,
   type IndexedRepoOwnerResolution
 } from './repo-owner-index'
-import {
-  resolveQualifiedFolderWorkspaceResult,
-  type QualifiedFolderHostState,
-  type FolderHostWorkspace
-} from '../../../shared/folder-workspace-execution-host'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Worktree } from '../../../shared/worktree/types'
@@ -279,58 +274,4 @@ export function findIndexedProjectGroupOwner<T extends ProjectGroupOwnerRecord>(
   const resolution = resolveIndexedProjectGroupOwner(projectGroups, projectGroupId, executionHostId)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the index is built from and cached on this exact array, so its owner is one of the caller's T rows.
   return resolution.kind === 'resolved' ? (resolution.owner as T) : null
-}
-
-const qualifiedFolderOwnerCache = new WeakMap<
-  readonly FolderHostWorkspace[],
-  {
-    groups: QualifiedFolderHostState['projectGroups']
-    repos: QualifiedFolderHostState['repos']
-    rows: ReadonlyMap<string, readonly FolderHostWorkspace[]>
-    positions: ReadonlyMap<FolderHostWorkspace, number>
-    results: Map<string, ReturnType<typeof resolveQualifiedFolderWorkspaceResult>>
-  }
->()
-
-export function resolveQualifiedIndexedFolderWorkspace<W extends FolderHostWorkspace>(
-  state: QualifiedFolderHostState<W>,
-  folderWorkspaceId: string,
-  executionHostId?: ExecutionHostId
-): ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>> {
-  const folders = state.folderWorkspaces
-  if (!folders) {
-    return { kind: 'missing' }
-  }
-  let cache = qualifiedFolderOwnerCache.get(folders)
-  if (!cache || cache.groups !== state.projectGroups || cache.repos !== state.repos) {
-    const rows = new Map<string, FolderHostWorkspace[]>()
-    const positions = new Map<FolderHostWorkspace, number>()
-    for (const [index, folder] of folders.entries()) {
-      positions.set(folder, index)
-      const id = folder.id
-      const copies = rows.get(id) ?? []
-      copies.push(folder)
-      rows.set(id, copies)
-    }
-    cache = { groups: state.projectGroups, repos: state.repos, rows, positions, results: new Map() }
-    qualifiedFolderOwnerCache.set(folders, cache)
-  }
-  let result = cache.results.get(catalogOwnerKey(folderWorkspaceId, executionHostId))
-  if (!result) {
-    result = resolveQualifiedFolderWorkspaceResult(
-      { ...state, folderWorkspaces: cache.rows.get(folderWorkspaceId) ?? [] },
-      folderWorkspaceId,
-      executionHostId
-    )
-    cache.results.set(catalogOwnerKey(folderWorkspaceId, executionHostId), result)
-  }
-  const positions = cache.positions
-  const isCallerResult = (
-    value: ReturnType<typeof resolveQualifiedFolderWorkspaceResult>
-  ): value is ReturnType<typeof resolveQualifiedFolderWorkspaceResult<W>> =>
-    value.kind !== 'selected' ||
-    folders[positions.get(value.value.workspace) ?? -1] === value.value.workspace
-  return isCallerResult(result)
-    ? result
-    : resolveQualifiedFolderWorkspaceResult(state, folderWorkspaceId, executionHostId)
 }

@@ -71,7 +71,19 @@ describe('setActiveWorktree', () => {
           repos: reverse ? [remoteRepo, localRepo] : [localRepo, remoteRepo],
           folderWorkspaces: reverse ? [remoteFolder, localFolder] : [localFolder, remoteFolder],
           projectGroups: [MIXED_GROUP],
-          projects: [
+          endpointProjectHostSetups: [localRepo, remoteRepo].map((repo) => ({
+            id: `setup-${repo.executionHostId}`,
+            projectId: 'project',
+            repoId: repo.id,
+            hostId: repo.executionHostId,
+            path: repo.path,
+            displayName: repo.displayName,
+            setupState: 'ready',
+            setupMethod: 'legacy-repo',
+            createdAt: 0,
+            updatedAt: 0
+          })),
+          endpointProjects: [
             {
               id: 'project',
               displayName: 'Project',

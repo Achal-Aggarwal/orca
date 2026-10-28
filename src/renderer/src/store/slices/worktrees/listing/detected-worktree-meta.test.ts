@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { hostWorktreeTarget } from '../../../../../../shared/worktree/host-qualified-identity'
 import type { FolderWorkspace } from '../../../../../../shared/folder-workspace-types'
 import type { DetectedWorktreeListResult } from '../../../../../../shared/worktree/types'
 import {
@@ -55,9 +56,12 @@ describe('inherited folder consumer identity', () => {
       expect(findFolderWorkspaceOwner(state, 'same', 'ssh:box')).toBe(inherited)
       const projected = findKnownWorktreeById(state, 'folder:same', 'ssh:box')
       expect(projected).toMatchObject({ path: '/remote', hostId: 'ssh:box' })
-      expect(selectWorkspaceByHostTarget(state, { id: 'folder:same', hostId: 'ssh:box' })).toBe(
-        projected
-      )
+      expect(
+        selectWorkspaceByHostTarget(
+          state,
+          hostWorktreeTarget({ id: 'folder:same', hostId: 'ssh:box' })
+        )
+      ).toBe(projected)
       expect(resolveWorkspaceDirectory(state, 'folder:same', 'ssh:box')).toBe('/remote')
       expect(findKnownWorktreeById(state, 'folder:same')).toBeUndefined()
       expect(findIndexedFolderWorkspaceOwner(folderWorkspaces, 'same', 'ssh:box')).toBe(raw)

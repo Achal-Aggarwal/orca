@@ -1,36 +1,42 @@
-import { mockPanePtyArgs } from '../../renderer/src/components/terminal-pane/pty-connection-test-connect-mock-pane'
+import { mockPanePtyArgs } from '../../src/renderer/src/components/terminal-pane/pty-connection-test-connect-mock-pane'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as React from 'react'
-import type { PtyApi } from '../../preload/api/pty-api'
-import type { Project, ProjectHostSetup } from '../../shared/project-types'
-import { getDefaultSettings, getDefaultWorkspaceSession } from '../../shared/constants'
-import { MIXED_FOLDER, MIXED_GROUP } from '../../shared/folder-workspace-host-routing.test-fixture'
-import { setupPtyIpcSuite } from './pty/pty-ipc-test-harness'
-import { registerPtyHandlers } from './pty/register-handlers'
-import { createInitialStoreState } from '../../renderer/src/components/terminal-pane/pty-connection-test-store-fixtures'
+import type { PtyApi } from '../../src/preload/api/pty-api'
+import type { Project, ProjectHostSetup } from '../../src/shared/project-types'
+import { getDefaultSettings, getDefaultWorkspaceSession } from '../../src/shared/constants'
+import {
+  MIXED_FOLDER,
+  MIXED_GROUP
+} from '../../src/shared/folder-workspace-host-routing.test-fixture'
+import { setupPtyIpcSuite } from '../../src/main/ipc/pty/pty-ipc-test-harness'
+import { registerPtyHandlers } from '../../src/main/ipc/pty/register-handlers'
+import { createInitialStoreState } from '../../src/renderer/src/components/terminal-pane/pty-connection-test-store-fixtures'
 import {
   createMockTransport,
   createPane,
   createManager
-} from '../../renderer/src/components/terminal-pane/pty-connection-test-pane-fixtures'
-import { buildPaneConnectionDeps } from '../../renderer/src/components/terminal-pane/pty-connection-test-deps'
-import { flushAsyncTicks } from '../../renderer/src/components/terminal-pane/pty-connection-test-async'
+} from '../../src/renderer/src/components/terminal-pane/pty-connection-test-pane-fixtures'
+import { buildPaneConnectionDeps } from '../../src/renderer/src/components/terminal-pane/pty-connection-test-deps'
+import { flushAsyncTicks } from '../../src/renderer/src/components/terminal-pane/pty-connection-test-async'
 import {
   installTerminalTestGlobals,
   restoreTerminalTestGlobals
-} from '../../renderer/src/components/terminal-pane/pty-connection-test-environment'
-import type { StoreState } from '../../renderer/src/components/terminal-pane/pty-connection-test-store-state'
+} from '../../src/renderer/src/components/terminal-pane/pty-connection-test-environment'
+import type { StoreState } from '../../src/renderer/src/components/terminal-pane/pty-connection-test-store-state'
 import type {
   IpcPtyTransportOptions,
   PtyTransport
-} from '../../renderer/src/components/terminal-pane/pty-transport-types'
-import { createTestStore, makeTab } from '../../renderer/src/store/slices/store-test-helpers'
-import { existsSyncMock, wslUncDirectoryExistsAsyncMock } from './pty/pty-ipc-mock-registry'
-import { _setWslCachesForTests, _resetWslCachesForTests } from '../wsl'
+} from '../../src/renderer/src/components/terminal-pane/pty-transport-types'
+import { createTestStore, makeTab } from '../../src/renderer/src/store/slices/store-test-helpers'
+import {
+  existsSyncMock,
+  wslUncDirectoryExistsAsyncMock
+} from '../../src/main/ipc/pty/pty-ipc-mock-registry'
+import { _setWslCachesForTests, _resetWslCachesForTests } from '../../src/main/wsl'
 import {
   createSessionWriteSubscriber,
   type WorkspaceSessionWrite
-} from '../../renderer/src/lib/session-write-subscriber'
+} from '../../src/renderer/src/lib/session-write-subscriber'
 
 let state: StoreState
 let mountedOptions: IpcPtyTransportOptions | undefined
@@ -51,7 +57,7 @@ vi.mock('@/components/terminal-pane/pty-transport', () => ({
     const transport = createMockTransport()
     const connect = vi.fn<PtyTransport['connect']>(async (connectOptions) => {
       const { spawnIpcPty } =
-        await import('../../renderer/src/components/terminal-pane/ipc-pty-spawn-request')
+        await import('../../src/renderer/src/components/terminal-pane/ipc-pty-spawn-request')
       const result = await spawnIpcPty(
         options,
         connectOptions,
@@ -64,51 +70,75 @@ vi.mock('@/components/terminal-pane/pty-transport', () => ({
   }
 }))
 
-vi.mock('electron', () => import('./pty/pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
-vi.mock('fs', () => import('./pty/pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
-vi.mock('node-pty', () => import('./pty/pty-ipc-mock-registry').then((m) => m.nodePtyModuleMock()))
+vi.mock('electron', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.electronModuleMock())
+)
+vi.mock('fs', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.fsModuleMock())
+)
+vi.mock('node-pty', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.nodePtyModuleMock())
+)
 vi.mock('node:child_process', async (importOriginal) =>
-  (await import('./pty/pty-ipc-mock-registry')).childProcessModuleMock(await importOriginal())
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).childProcessModuleMock(
+    await importOriginal()
+  )
 )
-vi.mock('../opencode/hook-service', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.openCodeHookServiceModuleMock())
+vi.mock('../../src/main/opencode/hook-service', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.openCodeHookServiceModuleMock()
+  )
 )
-vi.mock('../mimo/hook-service', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.mimoHookServiceModuleMock())
+vi.mock('../../src/main/mimo/hook-service', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.mimoHookServiceModuleMock())
 )
-vi.mock('../agent-hooks/server', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.agentHookServerModuleMock())
+vi.mock('../../src/main/agent-hooks/server', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.agentHookServerModuleMock())
 )
-vi.mock('../pi/titlebar-extension-service', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.piTitlebarExtensionModuleMock())
+vi.mock('../../src/main/pi/titlebar-extension-service', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.piTitlebarExtensionModuleMock()
+  )
 )
-vi.mock('../pwsh', () => import('./pty/pty-ipc-mock-registry').then((m) => m.pwshModuleMock()))
-vi.mock('../wsl', async (importOriginal) =>
-  (await import('./pty/pty-ipc-mock-registry')).wslModuleMock(await importOriginal())
+vi.mock('../../src/main/pwsh', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.pwshModuleMock())
+)
+vi.mock('../../src/main/wsl', async (importOriginal) =>
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).wslModuleMock(
+    await importOriginal()
+  )
 )
 vi.mock('node:fs/promises', async (importOriginal) =>
-  (await import('./pty/pty-ipc-mock-registry')).fsPromisesModuleMock(await importOriginal())
+  (await import('../../src/main/ipc/pty/pty-ipc-mock-registry')).fsPromisesModuleMock(
+    await importOriginal()
+  )
 )
-vi.mock('../telemetry/client', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.telemetryClientModuleMock())
+vi.mock('../../src/main/telemetry/client', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.telemetryClientModuleMock())
 )
-vi.mock('../telemetry/classify-error', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.classifyErrorModuleMock())
+vi.mock('../../src/main/telemetry/classify-error', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.classifyErrorModuleMock())
 )
-vi.mock('../cli/linux-terminal-orca-cli-shim', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.linuxCliShimModuleMock())
+vi.mock('../../src/main/cli/linux-terminal-orca-cli-shim', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.linuxCliShimModuleMock())
 )
-vi.mock('../memory/pty-registry', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.ptyRegistryModuleMock())
+vi.mock('../../src/main/memory/pty-registry', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) => m.ptyRegistryModuleMock())
 )
-vi.mock('../agent-hooks/migration-unsupported-pty-state', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.migrationUnsupportedPtyModuleMock())
+vi.mock('../../src/main/agent-hooks/migration-unsupported-pty-state', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.migrationUnsupportedPtyModuleMock()
+  )
 )
-vi.mock('../codex/codex-pane-account-registry', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.codexPaneAccountRegistryModuleMock())
+vi.mock('../../src/main/codex/codex-pane-account-registry', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.codexPaneAccountRegistryModuleMock()
+  )
 )
-vi.mock('../codex/codex-state-db-backfill-recovery', () =>
-  import('./pty/pty-ipc-mock-registry').then((m) => m.codexBackfillRecoveryModuleMock())
+vi.mock('../../src/main/codex/codex-state-db-backfill-recovery', () =>
+  import('../../src/main/ipc/pty/pty-ipc-mock-registry').then((m) =>
+    m.codexBackfillRecoveryModuleMock()
+  )
 )
 
 describe('mounted folder plain-shell project runtime', () => {
@@ -125,7 +155,7 @@ describe('mounted folder plain-shell project runtime', () => {
     ) {
       throw new Error('PTY spawn did not return a terminal ID')
     }
-    return result
+    return { ...result, id: result.id }
   }
 
   beforeEach(async () => {
@@ -314,7 +344,7 @@ describe('mounted folder plain-shell project runtime', () => {
 
   it('starts an actual forced-host tab before its session publication settles', async () => {
     const { connectPanePty } =
-      await import('../../renderer/src/components/terminal-pane/pty-connection')
+      await import('../../src/renderer/src/components/terminal-pane/pty-connection')
     const renderer = createTestStore()
     const folder = {
       ...MIXED_FOLDER,
@@ -344,7 +374,7 @@ describe('mounted folder plain-shell project runtime', () => {
       folderWorkspaces: [folder, { ...folder, executionHostId: 'ssh:prod' }],
       repos: [{ ...repo, executionHostId: 'ssh:prod' }, repo],
       projectGroups: [MIXED_GROUP],
-      projects: [
+      endpointProjects: [
         {
           id: 'project',
           displayName: 'Project',
@@ -370,11 +400,14 @@ describe('mounted folder plain-shell project runtime', () => {
     const tab = renderer
       .getState()
       .createTab(worktreeId, undefined, undefined, { forceHostRuntime: true })
-    state = renderer.getState()
+    state = {
+      ...renderer.getState(),
+      runtimeEnvironments: [...renderer.getState().runtimeEnvironments]
+    }
     const providerSpawn = installDaemonTestProvider()
     const store = {
       getRepos: () => renderer.getState().repos,
-      getProjects: () => renderer.getState().projects,
+      getProjects: () => renderer.getState().endpointProjects,
       getSettings: () => settings,
       getProjectGroups: () => [MIXED_GROUP],
       getFolderWorkspaces: () => renderer.getState().folderWorkspaces,
@@ -429,7 +462,7 @@ describe('mounted folder plain-shell project runtime', () => {
     'keeps the local folder project through plain and cold startup with copied IDs (%s)',
     async (reverse) => {
       const { connectPanePty } =
-        await import('../../renderer/src/components/terminal-pane/pty-connection')
+        await import('../../src/renderer/src/components/terminal-pane/pty-connection')
       const localFolder = {
         ...MIXED_FOLDER,
         id: 'copied',

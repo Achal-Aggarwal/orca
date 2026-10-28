@@ -6,7 +6,6 @@ import type { HostAuthority } from '../../../shared/host-authority'
 import { findFolderWorkspaceOwner } from './folder-workspace-runtime-owner'
 import { resolveOwner } from './resolve-owner'
 import { captureDirectSshMutationExpectation } from './ssh-mutation-expectation'
-import { resolveQualifiedIndexedFolderWorkspace } from './worktree-runtime-owner-index'
 import {
   assertWorktreeOperationGenerationSnapshotCurrent,
   captureWorktreeOperationGenerationSnapshot,
@@ -21,6 +20,7 @@ import {
 } from './worktree-operation-route'
 import { resolveExplicitWorktreeOperationRouteResult } from './worktree-operation-catalog-route'
 import {
+  resolveQualifiedIndexedFolderWorkspace,
   selectDetectedWorktreesByRepo,
   selectWorktreesByRepo
 } from '@/store/workspace-record-selectors'

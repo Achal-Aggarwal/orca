@@ -223,8 +223,12 @@ export function useSelectedAutomationRunHistory(input: SelectedAutomationRunHist
         (event.selector &&
           (!selector ||
             !isSameStableAutomationHost(
-              { authority: rowAuthority, selector },
-              { authority: event.authority, selector: event.selector }
+              selector.kind === 'orphan'
+                ? { authority: rowAuthority, selector: { kind: 'orphan' } }
+                : { authority: rowAuthority, selector },
+              event.selector.kind === 'orphan'
+                ? { authority: event.authority, selector: { kind: 'orphan' } }
+                : { authority: event.authority, selector: event.selector }
             )))
       ) {
         return

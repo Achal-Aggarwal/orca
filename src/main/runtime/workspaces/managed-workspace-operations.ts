@@ -1,4 +1,5 @@
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
+import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree } from '../terminal/launch/terminal-workspace-scope'
 import { OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce } from '../session-tabs/structured-session-tab-restoration'
 import { DEFAULT_WORKTREE_LIST_LIMIT } from '../orca-runtime-postlude'
@@ -47,6 +48,11 @@ import { WorkspaceLifecycleQueue } from './workspace-lifecycle-queue'
 import { ORCA_SIDEBAR_INPUTS_IS_MAIN } from '../../../shared/sidebar-inputs-switch'
 
 export abstract class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce {
+  protected abstract resolveFolderWorkspaceSelector(
+    selector: string,
+    requiredHostId?: ExecutionHostId
+  ): FolderWorkspace | null
+
   protected abstract resolveTerminalWorkspaceLaunchTarget(
     ...args: Parameters<
       OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree['resolveTerminalWorkspaceLaunchTarget']

@@ -219,7 +219,7 @@ export function useEditorPanelFileContentLoader({
         }
         acquisition =
           liveAtStart && !isClientLocalTab
-            ? acquireEditorFileOperation(useAppStore.getState, restoredOpenFile)
+            ? acquireEditorFileOperation(useAppStore.getState, liveAtStart)
             : null
         if (acquisition) {
           readTarget = acquisition.context.target

@@ -109,12 +109,13 @@ describe('qualified discovery at the runtime RPC boundary', () => {
       },
       getTerminalHandleForPaneKey: { value: () => 'live-handle' },
       getTerminalPtyIdForHandle: { value: () => 'pty-old' },
-      resolveTerminalContext: { value: () => ({ worktreeId: 'folder:dup', connectionId: 'a/b' }) }
+      getTerminalWorktreeIdForHandle: { value: () => 'folder:dup' },
+      getPtyExecutionHostMetadata: { value: () => ({ executionHostId: 'ssh:a%2Fb' }) }
     })
     const request = {
       automation,
       run: { id: 'current', title: 'Current', scheduledFor: 2 },
-      target: { ok: true as const, repo },
+      target: { ok: true as const, repo, cwd: repo.path },
       runs: [previous]
     }
     deliver.mockClear()

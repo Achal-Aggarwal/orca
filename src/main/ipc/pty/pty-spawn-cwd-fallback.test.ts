@@ -226,7 +226,12 @@ describe('registerPtyHandlers', () => {
         () => {
           throw new Error('ambiguous spawn succeeded')
         },
-        (error: Error) => error
+        (error: unknown) => {
+          if (!(error instanceof Error)) {
+            throw error
+          }
+          return error
+        }
       )
       expect(failure.message).toContain('folder_workspace_connection_ambiguous:/selected')
       expect(getFolderWorkspacePathErrorCopy(failure.message)?.title).toBe(

@@ -111,7 +111,7 @@ async function render(file: OpenFile, viewMode: MarkdownViewMode): Promise<void>
           repoId: 'repo',
           path: '/repo',
           hostId: runtimeConnectionId ? `ssh:${runtimeConnectionId}` : executionHostId,
-          runtimeOwnerEnvironmentId: environmentId
+          runtimeOwnerEnvironmentId: environmentId ?? undefined
         })
       ]
     },

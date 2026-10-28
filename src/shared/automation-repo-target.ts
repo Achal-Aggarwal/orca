@@ -1,7 +1,7 @@
 import type { Automation } from './automations-types'
 import type { Repo } from './repo-types'
 import type { WorkspaceRunContext } from './task-source-context'
-import { getRepoExecutionHostId, parseExecutionHostId } from './execution-host'
+import { getRepoExecutionHostId, isRepoSshOnlyHost, parseExecutionHostId } from './execution-host'
 
 /** A captured target names a row; a legacy bare id must resolve uniquely. */
 export function findAutomationRepo(
@@ -54,7 +54,6 @@ export function automationRequiresHostReselection(
     automation.executionTargetGeneration === undefined &&
     automation.runContext !== undefined &&
     !!repo &&
-    !repo.connectionId?.trim() &&
-    parseExecutionHostId(repo.executionHostId)?.kind === 'ssh'
+    isRepoSshOnlyHost(repo)
   )
 }

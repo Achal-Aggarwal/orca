@@ -36,13 +36,14 @@ export function isEditorWritableView(view: OpenFile): boolean {
 export function firstEditorSaveWriter(
   state: AppState,
   viewIds: readonly string[],
-  trigger: EditorSaveTrigger
+  trigger: EditorSaveTrigger,
+  views: readonly OpenFile[] = state.openFiles
 ): OpenFile | null {
   // CSV previews and read-only views cannot serve as record writers.
   const mayWrite = (view: OpenFile): boolean =>
     trigger === 'autosave' ? canAutoSaveOpenFile(view) : isEditorWritableView(view)
   for (const viewId of viewIds) {
-    const view = state.openFiles.find((openFile) => openFile.id === viewId)
+    const view = views.find((openFile) => openFile.id === viewId)
     if (view && mayWrite(view) && hasCurrentProvenance(state, view)) {
       return view
     }
@@ -75,16 +76,12 @@ export function liveEditorSaveWriter(
 ): OpenFile | null {
   const entitled = state.openFiles.filter((file) => sameEditorSaveResource(state, source, file))
   if (trigger === 'autosave' || trigger === 'restart') {
-    return firstEditorSaveWriter(
-      { ...state, openFiles: entitled },
-      [viewId, ...recordViewIds],
-      trigger
-    )
+    return firstEditorSaveWriter(state, [viewId, ...recordViewIds], trigger, entitled)
   }
   const asked = entitled.find((file) => file.id === viewId)
   return (
     (asked && isEditorWritableView(asked) ? asked : null) ??
-    firstEditorSaveWriter({ ...state, openFiles: entitled }, recordViewIds, trigger)
+    firstEditorSaveWriter(state, recordViewIds, trigger, entitled)
   )
 }
 

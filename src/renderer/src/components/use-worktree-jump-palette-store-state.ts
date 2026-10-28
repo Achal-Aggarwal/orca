@@ -9,7 +9,6 @@ import { useAppStore } from '@/store'
 import { usePluginCommands } from '@/store/plugin-panels'
 import { useSettingsNavigationMetadata } from '@/hooks/useSettingsNavigationMetadata'
 import { dedupePaletteWorktrees } from '@/lib/palette-repo-resolution'
-import { resolveQualifiedIndexedFolderWorkspace } from '@/lib/worktree-runtime-owner-index'
 import { getFolderWorkspaceWorktree } from '@/store/slices/worktrees/listing/detected-worktree-meta'
 import {
   selectPaletteIndexStatusSnapshot,
@@ -17,6 +16,7 @@ import {
 } from './worktree-jump-palette-status-inputs'
 import { selectWorktreePaletteCacheInputs } from '@/components/cmd-j/worktree-palette-cache-inputs'
 import {
+  resolveQualifiedIndexedFolderWorkspace,
   selectDetectedWorktreesByRepo,
   selectFolderWorkspaces,
   selectWorktreesByRepo
