@@ -2,8 +2,13 @@ import { useAppStore } from '@/store'
 import { getRelativePathInsideRoot, joinPath } from '@/lib/path'
 import type { DirEntry } from '../../../../shared/filesystem-entry-types'
 import { sortDirEntries } from '../../../../shared/file-name-sort'
-import { readRuntimeDirectory } from '@/runtime/runtime-file-mutation-client'
-import type { DirCache, FileExplorerOperationOwner, TreeNode } from './file-explorer-types'
+import { readRuntimeDirectoryPage } from '@/runtime/runtime-directory-page-client'
+import type {
+  DirCache,
+  FileExplorerDirMore,
+  FileExplorerOperationOwner,
+  TreeNode
+} from './file-explorer-types'
 import { shouldIncludeFileExplorerEntry } from './file-explorer-entries'
 import { parentDirForWatchPath, resolveCachedDirPath } from './file-explorer-watch-path'
 import {
@@ -12,9 +17,13 @@ import {
   getFileExplorerOperationRoute
 } from './file-explorer-operation-owner'
 
+/** Entries per page from a remote server; a big folder lists its first page, then more on scroll. */
+export const FILE_EXPLORER_DIR_PAGE_ENTRIES = 1_000
+
 export type FileExplorerDirectoryListing = {
   entries: DirEntry[]
   operationOwner: FileExplorerOperationOwner
+  more?: FileExplorerDirMore
 }
 
 export function fileExplorerEntriesToTreeNodes(
@@ -93,35 +102,55 @@ export function clearFailedOpenedDirectoryLink(
   return changed ? { ...cache, [parentPath]: { ...parent, children } } : cache
 }
 
+/**
+ * Lists `dirPath` from `offset`, page by page, until at least `minEntries` are read or the folder
+ * ends; a refresh passes the count already shown so the tree does not shrink under the user.
+ */
 export async function readFileExplorerDirectory(
   activeWorktreeId: string | null | undefined,
   worktreePath: string | null,
   dirPath: string,
-  options: { wakeWslDistro?: boolean } = {}
+  options: { wakeWslDistro?: boolean; offset?: number; minEntries?: number } = {}
 ): Promise<FileExplorerDirectoryListing> {
   const operationOwner = getFileExplorerOperationOwner(activeWorktreeId)
   const route = getFileExplorerOperationRoute(operationOwner)
   if (!route) {
     throw new Error(getFileExplorerOwnerUnresolvedMessage())
   }
-  const entries = await readRuntimeDirectory(
-    {
-      target: route.target,
-      worktreeId: activeWorktreeId,
-      worktreePath,
-      connectionId: route.connectionId
-    },
-    dirPath,
-    {
-      ...(useAppStore.getState().settings?.followSymlinkedDirectories
-        ? { followSymlinks: true }
-        : {}),
-      ...options
+  const context = {
+    target: route.target,
+    worktreeId: activeWorktreeId,
+    worktreePath,
+    connectionId: route.connectionId
+  }
+  const readOptions = {
+    ...(useAppStore.getState().settings?.followSymlinkedDirectories
+      ? { followSymlinks: true }
+      : {}),
+    ...(options.wakeWslDistro === undefined ? {} : { wakeWslDistro: options.wakeWslDistro })
+  }
+  const offset = options.offset ?? 0
+  const wanted = Math.max(options.minEntries ?? 0, FILE_EXPLORER_DIR_PAGE_ENTRIES)
+  let entries: DirEntry[] = []
+  let total = 0
+  do {
+    const page = await readRuntimeDirectoryPage(
+      context,
+      dirPath,
+      { offset: offset + entries.length, limit: FILE_EXPLORER_DIR_PAGE_ENTRIES },
+      readOptions
+    )
+    entries = entries.length === 0 ? page.entries : entries.concat(page.entries)
+    total = page.total
+    if (page.entries.length === 0) {
+      break
     }
-  )
+  } while (entries.length < wanted && offset + entries.length < total)
+  const nextOffset = offset + entries.length
   // Older remote hosts may return lexical order; adaptive sorting keeps already-sorted local listings cheap.
   return {
     entries: sortDirEntries(entries),
-    operationOwner
+    operationOwner,
+    ...(nextOffset < total ? { more: { nextOffset, total } } : {})
   }
 }
