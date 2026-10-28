@@ -74,7 +74,7 @@ function stubRuntime(runtimeMethod: DiffRuntimeMethod) {
     [runtimeMethod]: methods[runtimeMethod]
   }
   return {
-    // SAFETY: each dispatch reaches only the selected, signature-checked diff method and runtime id.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: dispatch reaches only the selected, signature-checked diff method and runtime id.
     runtime: runtime as unknown as OrcaRuntimeService,
     enforceBudget
   }
