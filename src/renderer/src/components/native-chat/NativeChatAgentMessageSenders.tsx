@@ -86,8 +86,7 @@ function SenderName({
     <Button
       type="button"
       variant={queued ? 'link' : 'ghost'}
-      size="xs"
-      className={queued ? undefined : 'text-sm font-medium'}
+      size={queued ? 'xs' : 'sm'}
       title={
         queued ? label : translate('components.native-chat.agentMessage.goToAgent', 'Go to agent')
       }

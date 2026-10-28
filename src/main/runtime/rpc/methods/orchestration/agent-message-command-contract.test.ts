@@ -88,11 +88,19 @@ it.each(['worker-start', 'dispatch'] as const)(
       mode: args.mode,
       worktree: { id: 'workspace-1', repoId: 'repo' },
       terminalHandle: 'term_worker',
-      // SAFETY: delivery reads the real host and session identity; other placement-owned identity fields are not read.
       structuredSession: {
         host: current.host,
-        identity: { sessionId: WORKER, handle: 'term_worker' }
-      } as Awaited<ReturnType<typeof topology.createStructuredWorkerSessionForWorktree>>,
+        identity: {
+          sessionId: WORKER,
+          handle: 'term_worker',
+          agent: args.agent ?? null,
+          paneKey: 'tab:11111111-1111-4111-8111-111111111111',
+          processIncarnation: 'fixture:1',
+          worktreeId: 'workspace-1',
+          hostScope: { kind: 'local', hostId: 'local' }
+        },
+        fence: current.store.requireWritableRecord(WORKER).lease.runtimeFence
+      },
       setupReceipt: placement.EXISTING_WORKTREE_SETUP
     }))
     vi.spyOn(topology, 'monitorWorkerSetup').mockImplementation(() => {})
