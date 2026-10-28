@@ -7,7 +7,6 @@ import { RelayFrameBuffer } from '../../../shared/relay-frame-buffer'
  */
 
 const HEADER_BYTES = 4
-const MAX_PENDING_FRAME_CHUNKS = 1024
 /** Chrome refuses host → extension messages over 1 MB (kMaximumNativeMessageSize). */
 export const MAX_NATIVE_HOST_MESSAGE_BYTES = 1024 * 1024
 
@@ -60,10 +59,6 @@ export function createNativeHostMessageReader(
       }
       if (chunk.length === 0) {
         return true
-      }
-      if (pending.chunkCount >= MAX_PENDING_FRAME_CHUNKS) {
-        const buffered = pending.drain()
-        pending.append(buffered)
       }
       pending.append(chunk)
       while (pending.length >= HEADER_BYTES) {
