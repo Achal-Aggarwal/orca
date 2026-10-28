@@ -11424,14 +11424,6 @@
           "restartFailed": "Couldn't restart {{value0}}."
         },
         "PluginSettingsRow": {
-          "blocked": "Blocked",
-          "needsReview": "Needs review",
-          "restarting": "Restarting",
-          "invalid": "Invalid",
-          "error": "Error",
-          "disabled": "Disabled",
-          "running": "Running",
-          "enabled": "Enabled",
           "loadingLogs": "Loading logs…",
           "noLogs": "No logs yet",
           "logCount": "Last {{value0}} lines",
@@ -12509,9 +12501,6 @@
           "installName": "Install {{value0}}",
           "copied": "Plugin ID copied",
           "copyFailed": "Couldn't copy the plugin ID.",
-          "stopped": "Stopped",
-          "cantLoad": "Can’t load",
-          "on": "On",
           "details": "Details",
           "unverified": "Unverified",
           "crashedOnce": "Crashed once",
@@ -12519,7 +12508,6 @@
           "updateLabel": "Update {{value0}} to {{value1}}",
           "update": "Update {{value0}}",
           "needsOrca": "Needs Orca {{value0}}",
-          "off": "Off",
           "rollbackTo": "Roll back to {{value0}}…",
           "copyContentHash": "Copy content hash",
           "reviewUpdate": "Review update",
@@ -12704,6 +12692,16 @@
           "label": "Alpha:",
           "body": "The plugin interface may change. Expect nuances.",
           "dismiss": "Dismiss Alpha notice"
+        },
+        "PluginStatus": {
+          "needsReview": "Needs review",
+          "restarting": "Restarting",
+          "stopped": "Stopped",
+          "cantLoad": "Can’t load",
+          "off": "Off",
+          "running": "Running",
+          "on": "On",
+          "blocked": "Blocked"
         },
         "notification": {
           "settings": {
