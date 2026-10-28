@@ -12,7 +12,9 @@ export function getDiscardAllPaths(
       (entry) =>
         (entry.area === area || (area === 'unstaged' && entry.area === 'untracked')) &&
         entry.conflictStatus !== 'unresolved' &&
-        entry.conflictStatus !== 'resolved_locally'
+        entry.conflictStatus !== 'resolved_locally' &&
+        !entry.submodule &&
+        !entry.submoduleRoot
     )
     .flatMap((entry) =>
       area === 'staged' && entry.status === 'renamed' && entry.oldPath

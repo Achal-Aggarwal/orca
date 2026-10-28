@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { GitStatusEntry } from '../../../../../../shared/git-status-types'
+import type { DiscardAllArea } from '../../../../../../shared/source-control-discard-all-sequence'
 import { SourceControlUncommittedSections } from './uncommitted-sections'
 import type {
   SourceControlDisplaySection,
@@ -20,16 +21,24 @@ const UNSTAGED_ENTRY: GitStatusEntry = {
   status: 'modified',
   area: 'unstaged'
 }
+const SUBMODULE_ENTRY: GitStatusEntry = {
+  path: 'vendor',
+  status: 'modified',
+  area: 'unstaged',
+  submodule: { commitChanged: false, trackedChanges: true, untrackedChanges: false }
+}
 
 function renderUncommittedSections({
   sections = [{ id: 'unstaged', area: 'unstaged', items: [UNSTAGED_ENTRY] }],
-  handleStageSectionPaths = vi.fn()
+  handleStageSectionPaths = vi.fn(),
+  requestDiscardAllInArea = vi.fn()
 }: {
   sections?: SourceControlDisplaySection[]
   handleStageSectionPaths?: (
     sectionId: SourceControlDisplaySectionId,
     paths: readonly string[]
   ) => Promise<void>
+  requestDiscardAllInArea?: (area: DiscardAllArea, paths?: readonly string[]) => void
 } = {}): void {
   const unfilteredById = new Map<SourceControlDisplaySectionId, SourceControlDisplaySection>(
     sections.map((section) => [section.id, section])
@@ -44,7 +53,7 @@ function renderUncommittedSections({
         toggleSection={vi.fn()}
         onViewSection={vi.fn()}
         isExecutingBulk={false}
-        requestDiscardAllInArea={vi.fn()}
+        requestDiscardAllInArea={requestDiscardAllInArea}
         handleStageAllPaths={vi.fn()}
         handleStageSectionPaths={handleStageSectionPaths}
         handleUnstagePaths={vi.fn()}
@@ -76,6 +85,36 @@ function renderUncommittedSections({
 }
 
 describe('source control section header actions', () => {
+  it('offers no discard confirmation for a section containing only a dirty submodule', () => {
+    renderUncommittedSections({
+      sections: [{ id: 'unstaged', area: 'unstaged', items: [SUBMODULE_ENTRY] }]
+    })
+
+    expect(screen.queryByRole('button', { name: 'Discard all' })).not.toBeInTheDocument()
+  })
+
+  it('confirms only ordinary parent files when a dirty submodule is also listed', () => {
+    const requestDiscardAllInArea = vi.fn()
+    renderUncommittedSections({
+      sections: [
+        {
+          id: 'unstaged',
+          area: 'unstaged',
+          items: [
+            SUBMODULE_ENTRY,
+            UNSTAGED_ENTRY,
+            { path: 'new.ts', status: 'untracked', area: 'untracked' }
+          ]
+        }
+      ],
+      requestDiscardAllInArea
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard all' }))
+
+    expect(requestDiscardAllInArea).toHaveBeenCalledWith('unstaged', ['src/app.ts', 'new.ts'])
+  })
+
   it('includes untracked files in the Changes header Stage all', () => {
     const handleStageSectionPaths = vi.fn(async () => {})
     const changes: SourceControlDisplaySection = {

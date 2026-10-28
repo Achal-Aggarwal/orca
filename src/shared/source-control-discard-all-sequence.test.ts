@@ -7,6 +7,7 @@ import {
   runDiscardAllForArea
 } from './source-control-discard-all-sequence'
 import type { GitStatusEntry } from './git-status-types'
+import { canDiscardStatusEntry } from './source-control-entry-actions'
 
 function entry(partial: Partial<GitStatusEntry> & { path: string }): GitStatusEntry {
   return {
@@ -17,6 +18,39 @@ function entry(partial: Partial<GitStatusEntry> & { path: string }): GitStatusEn
 }
 
 describe('getDiscardAllPaths', () => {
+  it.each(['staged', 'unstaged', 'untracked'] as const)(
+    'excludes submodule roots and children from %s discard without excluding parent files',
+    (area) => {
+      const roots = [false, true].map((commitChanged) =>
+        entry({
+          path: commitChanged ? 'changed-gitlink' : 'dirty-submodule',
+          area,
+          submodule: { commitChanged, trackedChanges: true, untrackedChanges: true }
+        })
+      )
+      const child = entry({
+        path: 'dirty-submodule/file.ts',
+        area,
+        submoduleRoot: 'dirty-submodule'
+      })
+      const ordinary = entry({ path: 'parent.ts', area })
+
+      expect(getDiscardAllPaths([...roots, child, ordinary], area)).toEqual(['parent.ts'])
+      expect(getDiscardAllPaths([...roots, child], area)).toEqual([])
+      for (const submoduleEntry of [...roots, child]) {
+        expect(canDiscardStatusEntry(submoduleEntry)).toBe(false)
+      }
+      expect(canDiscardStatusEntry(ordinary)).toBe(area !== 'staged')
+      if (area === 'staged') {
+        expect(getUnstageAllPaths(roots)).toEqual(['dirty-submodule', 'changed-gitlink'])
+      } else {
+        expect(getStageAllPaths(roots, area)).toEqual(
+          area === 'unstaged' ? ['changed-gitlink'] : roots.map((root) => root.path)
+        )
+      }
+    }
+  )
+
   it('skips entries with an unresolved conflict', () => {
     const entries: GitStatusEntry[] = [
       entry({ path: 'clean.ts', area: 'unstaged' }),

@@ -9037,9 +9037,6 @@
               },
               "discard": {
                 "confirmation": {
-                  "2ae5a785b3": "Descartar todas as alterações unstaged?",
-                  "ddf36f291c": "Isso vai remover do stage e reverter todas as alterações staged. Novos arquivos staged serão excluídos. Isso não pode ser desfeito.",
-                  "5ddd8cac7f": "Descartar todas as alterações staged?",
                   "d4df3a61df": "Descartar alterações em \"{{value0}}\"?",
                   "5c0bdbc4cb": "Restaurar \"{{value0}}\"?",
                   "d97bf697c9": "Isso vai excluir este arquivo permanentemente. Isso não pode ser desfeito.",

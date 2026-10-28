@@ -13250,9 +13250,6 @@
               },
               "discard": {
                 "confirmation": {
-                  "2ae5a785b3": "Tüm stage edilmemiş değişiklikler geri alınsın mı?",
-                  "ddf36f291c": "Bu, tüm stage edilmiş değişiklikleri unstage edip geri alır. Stage edilmiş yeni dosyalar silinir. Bu geri alınamaz.",
-                  "5ddd8cac7f": "Tüm stage edilmiş değişiklikler geri alınsın mı?",
                   "d4df3a61df": "\"{{value0}}\" üzerindeki değişiklikler geri alınsın mı?",
                   "5c0bdbc4cb": "\"{{value0}}\" geri yüklensin mi?",
                   "d97bf697c9": "Bu, dosyayı kalıcı olarak siler. Bu geri alınamaz.",

@@ -13155,9 +13155,6 @@
               },
               "discard": {
                 "confirmation": {
-                  "2ae5a785b3": "Abandonner toutes les modifications non indexées ?",
-                  "ddf36f291c": "Cela désindexera et annulera toutes les modifications indexées. Les nouveaux fichiers indexés seront supprimés. Cette action est irréversible.",
-                  "5ddd8cac7f": "Abandonner toutes les modifications indexées ?",
                   "d4df3a61df": "Abandonner les modifications de « {{value0}} » ?",
                   "5c0bdbc4cb": "Restaurer « {{value0}} » ?",
                   "d97bf697c9": "Cela supprimera définitivement ce fichier. Cette action est irréversible.",

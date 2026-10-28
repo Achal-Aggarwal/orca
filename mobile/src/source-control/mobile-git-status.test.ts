@@ -33,6 +33,19 @@ describe('mobile source control status helpers', () => {
     expect(getUnstageablePaths(entries)).toEqual(['b.ts'])
   })
 
+  it('keeps submodule root discard unavailable while retaining ordinary file actions', () => {
+    const submodule: MobileGitStatusEntry = {
+      path: 'vendor',
+      status: 'modified',
+      area: 'unstaged',
+      submodule: { commitChanged: true, trackedChanges: true, untrackedChanges: true }
+    }
+    expect(isMobileGitDiscardableEntry(submodule)).toBe(false)
+    expect(isMobileGitStageableEntry(submodule)).toBe(true)
+    expect(isMobileGitDiscardableEntry(entries[1])).toBe(true)
+    expect(isMobileGitDiscardableEntry(entries[2])).toBe(true)
+  })
+
   it('keeps unresolved conflicts out of stage actions', () => {
     const conflictedEntries: MobileGitStatusEntry[] = [
       { path: 'ready.ts', status: 'modified', area: 'unstaged' },

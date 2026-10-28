@@ -15,6 +15,7 @@ export function canDiscardStatusEntry(entry: GitStatusEntry): boolean {
   return (
     entry.conflictStatus !== 'unresolved' &&
     entry.conflictStatus !== 'resolved_locally' &&
+    !entry.submodule &&
     !entry.submoduleRoot &&
     (entry.area === 'unstaged' || entry.area === 'untracked')
   )

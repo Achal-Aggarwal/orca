@@ -87,20 +87,20 @@ export function getDiscardAreaConfirmationCopy(
     case 'staged':
       return {
         title: translate(
-          'auto.components.right.sidebar.source.control.discard.confirmation.5ddd8cac7f',
-          'Discard all staged changes?'
+          'auto.components.right.sidebar.source.control.discard.dialog.1551c14668',
+          'Discard changes?'
         ),
         description: translate(
-          'auto.components.right.sidebar.source.control.discard.confirmation.ddf36f291c',
-          'This will unstage and revert all staged changes. Staged new files will be deleted. This cannot be undone.'
+          'sourceControl.discard.stagedSelectionDescription',
+          'This will unstage and revert the changes in this selection. Staged new files in this selection will be deleted. This cannot be undone.'
         ),
-        confirmLabel: 'Discard all'
+        confirmLabel: 'Discard'
       }
     case 'unstaged':
       return {
         title: translate(
-          'auto.components.right.sidebar.source.control.discard.confirmation.2ae5a785b3',
-          'Discard all unstaged changes?'
+          'auto.components.right.sidebar.source.control.discard.dialog.1551c14668',
+          'Discard changes?'
         ),
         description:
           count === 1
@@ -113,7 +113,7 @@ export function getDiscardAreaConfirmationCopy(
                 'This will revert unstaged changes and permanently delete any untracked files among these {{count}} files. This cannot be undone.',
                 { count }
               ),
-        confirmLabel: 'Discard all'
+        confirmLabel: 'Discard'
       }
   }
 }

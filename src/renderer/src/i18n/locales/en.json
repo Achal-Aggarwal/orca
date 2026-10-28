@@ -13298,9 +13298,6 @@
               },
               "discard": {
                 "confirmation": {
-                  "2ae5a785b3": "Discard all unstaged changes?",
-                  "ddf36f291c": "This will unstage and revert all staged changes. Staged new files will be deleted. This cannot be undone.",
-                  "5ddd8cac7f": "Discard all staged changes?",
                   "d4df3a61df": "Discard changes to \"{{value0}}\"?",
                   "5c0bdbc4cb": "Restore \"{{value0}}\"?",
                   "d97bf697c9": "This will permanently delete this file. This cannot be undone.",
@@ -19292,7 +19289,8 @@
       "restoreStagedVersionDescription": "This will restore the last staged version and discard the deletion. This cannot be undone.",
       "unstagedChangesDescription": "This will revert the unstaged changes to this file. This cannot be undone.",
       "unstagedSelectionIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files in this selection. This cannot be undone.",
-      "unstagedFilesIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files among these {{count}} files. This cannot be undone."
+      "unstagedFilesIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files among these {{count}} files. This cannot be undone.",
+      "stagedSelectionDescription": "This will unstage and revert the changes in this selection. Staged new files in this selection will be deleted. This cannot be undone."
     },
     "unlinkedPr": {
       "status": "PR #{{number}} unlinked"
