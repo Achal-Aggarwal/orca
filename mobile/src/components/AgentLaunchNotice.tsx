@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { AgentLaunchResult } from '../../../src/shared/agent-launch-intent'
 import { Pressable, Text, View, type StyleProp, type TextStyle } from 'react-native'
 import { useClipboardWriter } from '../platform/clipboard'
 import {
@@ -9,14 +10,12 @@ import type { MobileAgentLaunchAvailability } from '../session/mobile-agent-laun
 import { colors, spacing, typography } from '../theme/mobile-theme'
 import { themedStyleSheet } from '../theme/themed-styles'
 import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
+import { AgentLaunchButton } from './AgentLaunchButton'
 
 type Props = {
   availability: MobileAgentLaunchAvailability
-  /** The confirmation that the agent started with its prompt. */
-  success: string | null
+  launch: AgentLaunchResult | null
   error: string | null
-  /** The host's note on a launch that went ahead; secondary text, not an error. */
-  warning: string | null
   /** The prompt of an agent that started without it, offered for the user to paste in. */
   undeliveredPrompt: string | null
   errorStyle: StyleProp<TextStyle>
@@ -25,9 +24,8 @@ type Props = {
 /** The status line under an AI button that starts an agent with a prompt. */
 export function AgentLaunchNotice({
   availability,
-  success,
+  launch,
   error,
-  warning,
   undeliveredPrompt,
   errorStyle
 }: Props) {
@@ -41,18 +39,18 @@ export function AgentLaunchNotice({
         ? AGENT_LAUNCH_STATUS_UNREADABLE_MESSAGE
         : null
   const message = availabilityMessage ?? error
-  const note = availabilityMessage ? null : warning
-  const confirmation = message ? null : success
-  if (!message && !note && !confirmation) {
+  if (!message && !launch) {
     return null
   }
   const copyLabel =
     copyState && copyState.prompt === undeliveredPrompt ? copyState.label : 'Copy prompt'
   return (
     <View style={styles.notice}>
-      {confirmation ? <Text style={styles.successText}>{confirmation}</Text> : null}
       {message ? <Text style={errorStyle}>{message}</Text> : null}
-      {note ? <Text style={styles.warningText}>{note}</Text> : null}
+      {launch?.warning?.trim() ? (
+        <Text style={styles.warningText}>{launch.warning.trim()}</Text>
+      ) : null}
+      {launch ? <AgentLaunchButton launch={launch} /> : null}
       {undeliveredPrompt ? (
         <Pressable
           onPress={() => {
@@ -75,10 +73,6 @@ export function AgentLaunchNotice({
 const styles = themedStyleSheet(() => ({
   notice: {
     gap: spacing.xs
-  },
-  successText: {
-    color: colors.statusGreen,
-    fontSize: typography.metaSize
   },
   warningText: {
     color: colors.textSecondary,

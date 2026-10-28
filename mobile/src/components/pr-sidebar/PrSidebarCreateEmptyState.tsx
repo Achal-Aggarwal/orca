@@ -29,8 +29,6 @@ type Props = {
   gitBranch: string | null
   gitStatus: MobileGitStatusResult | null
   connState: ConnectionState
-  /** Named when the commit-recovery agent starts. */
-  workspaceLabel: string | null
   // Refetches the sidebar after create or an explicit empty-state refresh.
   onCreated: () => void
 }
@@ -44,7 +42,6 @@ export function PrSidebarCreateEmptyState({
   gitBranch,
   gitStatus,
   connState,
-  workspaceLabel,
   onCreated
 }: Props) {
   useMobileColorScheme()
@@ -59,7 +56,6 @@ export function PrSidebarCreateEmptyState({
     client,
     connState,
     worktreeId,
-    workspaceLabel,
     failure: commitFailureRecovery
   })
 

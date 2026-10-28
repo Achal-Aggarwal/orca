@@ -19,7 +19,6 @@ type Props = {
   isGithubRepo?: boolean
   branchContextLoaded?: boolean
   controller: MobilePrSidebarController
-  workspaceLabel: string | null
 }
 
 // Hub owns PR header/segments/load/controller; one fetch feeds branch chip and chromeless sidebar body.
@@ -32,8 +31,7 @@ export function MobilePrViewPanelBody({
   gitStatus,
   isGithubRepo = true,
   branchContextLoaded = true,
-  controller,
-  workspaceLabel
+  controller
 }: Props) {
   useMobileColorScheme()
   const insets = useSafeAreaInsets()
@@ -67,7 +65,6 @@ export function MobilePrViewPanelBody({
         bottomInset={insets.bottom}
         // Hub header already hosts open-on-web while this segment is active.
         showOpenOnWeb={false}
-        workspaceLabel={workspaceLabel}
       />
     </View>
   )

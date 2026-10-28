@@ -332,7 +332,6 @@ export function MobileSourceControlPanel({
             // Mid-probe false is still loading; do not flash unavailable.
             branchContextLoaded={ready && prController.prSidebarRepoProbeLoaded}
             controller={prController}
-            workspaceLabel={worktreeLabel}
           />
         </View>
       ) : activeTab === 'pr' ? (
