@@ -125,6 +125,7 @@ it.each(['worker-start', 'dispatch'] as const)(
               runtime,
               {
                 id: 'cli',
+                authToken: 'test-token',
                 method,
                 params,
                 orchestrationCompatibilityEvidence: { agentSessionId: COORD }

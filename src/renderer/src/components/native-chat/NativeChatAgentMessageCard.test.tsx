@@ -217,10 +217,14 @@ it.each([10, 100])(
     expect(screen.getByText('Task from your coordinator')).toBeInTheDocument()
     expect(screen.getByText('Build the cards')).toBeInTheDocument()
     expect(screen.queryByText(/Worker instructions/)).not.toBeInTheDocument()
+    const copy = screen.getByRole('button', { name: 'Copy message' })
     act(() => {
       height = 120
       resize()
     })
+    await act(async () => fireEvent.click(copy))
+    expect(writeClipboardText).toHaveBeenCalledWith('Build the cards')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBe(copy)
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
       'aria-expanded',
@@ -241,7 +245,8 @@ it.each([10, 100])(
       act(() => resize())
     }
     expect(measurements - before).toBe(notifications)
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+    writeClipboardText.mockClear()
+    await act(async () => fireEvent.click(copy))
     expect(writeClipboardText).toHaveBeenCalledWith('Build the cards')
     const task: NativeChatMessage = {
       id: 'task-copy',

@@ -33,12 +33,14 @@ export function NativeChatAgentMessageSenders({
   const worktreeId = owner?.worktreeId ?? chatWorktreeId
   return (
     <div
-      className={`flex min-w-0 max-w-full flex-wrap items-center ${queued ? 'text-xs text-chat-foreground-faint' : '-ml-2 text-sm text-foreground'}`}
+      className={`flex min-w-0 max-w-full flex-wrap items-center ${queued ? 'text-xs text-chat-foreground-faint' : '-ml-2.5 text-sm text-foreground'}`}
     >
       <span>
         {queued ? translate('components.native-chat.queuedMessages.fromSender', 'From') : null}
       </span>
-      {shown.length === 0 ? <span className="px-2">{unnamedSenderLabel()}</span> : null}
+      {shown.length === 0 ? (
+        <span className={queued ? 'px-2' : 'px-2.5'}>{unnamedSenderLabel()}</span>
+      ) : null}
       {shown.map((sender, index) => (
         <Fragment key={sender.party.address}>
           <SenderName
@@ -50,7 +52,7 @@ export function NativeChatAgentMessageSenders({
           />
           {/* Pulled back over the name's padding, so it reads "A, B". */}
           {index < shown.length - 1 ? (
-            <span aria-hidden className="-ml-2">
+            <span aria-hidden className={queued ? '-ml-2' : '-ml-2.5'}>
               ,
             </span>
           ) : null}
@@ -77,7 +79,7 @@ function SenderName({
   const label = useAgentMessageSenderLabel(sender, chatWorktreeId, target)
   if (!agentMessageSenderCanOpen(sender, Boolean(chatWorktreeId)) || !chatWorktreeId) {
     return (
-      <span className="max-w-48 truncate px-2" title={label}>
+      <span className={`max-w-48 truncate ${queued ? 'px-2' : 'px-2.5'}`} title={label}>
         {label}
       </span>
     )

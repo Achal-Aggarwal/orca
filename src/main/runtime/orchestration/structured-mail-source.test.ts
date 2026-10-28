@@ -370,7 +370,7 @@ it.each([
           id: `m${i}`,
           from_handle: `orca_session_id:${sessions[distinct ? i : 0]}`,
           run_id: run.id,
-          type: 'worker_done',
+          type: 'worker_done' as const,
           payload: JSON.stringify({ dispatchId: dispatches[distinct ? i : 0].id })
         })),
         {
@@ -622,7 +622,7 @@ it('keeps every Run/report disagreement, first nonempty report name, and cached 
       run_id: run.id,
       type: 'worker_done',
       payload: JSON.stringify({ dispatchId: worker.id })
-    }
+    } satisfies Omit<MailSourceMessage, 'id'>
     const notice = (batch: MailSourceMessage[]) =>
       structuredMailSource({ db, mailboxHandle: 'term_coord', dispatchId: null, batch, senderName })
     const good = { ...base, id: 'good' }

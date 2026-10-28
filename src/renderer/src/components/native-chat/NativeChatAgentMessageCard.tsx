@@ -3,6 +3,7 @@ import { AgentStateDot } from '@/components/AgentStateDot'
 import { AgentTypeIcon } from '@/lib/agent-type-icon'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { cn } from '@/lib/utils'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
@@ -87,7 +88,7 @@ export function NativeChatAgentMessageCard({
     return () => observer.disconnect()
   }, [text])
   return (
-    <div className="flex w-full gap-3 rounded-xl border border-border bg-card p-3 text-sm text-card-foreground">
+    <div className="group flex w-full gap-3 rounded-xl border border-border bg-card p-3 text-sm text-card-foreground">
       <AgentMessageAvatar
         sender={agentMessagePrimarySender(from)}
         worktreeId={worktreeId}
@@ -110,7 +111,10 @@ export function NativeChatAgentMessageCard({
         <div
           ref={clip}
           id={clipId}
-          className="overflow-hidden leading-6"
+          className={cn(
+            'overflow-hidden leading-6',
+            overflows && !disclosure.open && 'mask-b-from-[calc(100%-1.75rem)]'
+          )}
           style={disclosure.open ? undefined : { maxHeight: `${AGENT_MESSAGE_FOLDED_LINES}lh` }}
         >
           <NativeChatMarkdown
@@ -145,7 +149,12 @@ export function NativeChatAgentMessageCard({
           ) : (
             <span />
           )}
-          {agentMessageCanCopy(text) ? <NativeChatCopyButton text={text} /> : null}
+          {agentMessageCanCopy(text) ? (
+            <NativeChatCopyButton
+              text={text}
+              className="transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100"
+            />
+          ) : null}
         </div>
       </div>
     </div>
@@ -163,8 +172,8 @@ function AgentMessageAvatar({
 }): React.JSX.Element {
   const view = useAgentMessageSenderView(sender, worktreeId, target)
   return (
-    <div className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
-      <AgentTypeIcon agentType={view.agentType} size={24} />
+    <div className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted">
+      <AgentTypeIcon agentType={view.agentType} size={16} />
       {view.dot ? (
         <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-card ring-2 ring-card">
           <AgentStateDot state={view.dot} size="md" />

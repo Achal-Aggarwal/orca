@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import type { Tab } from '../../../../shared/tab-types'
 import * as structuredOwner from '@/runtime/structured-agent-session-owner'
 import * as chatIndex from '@/lib/structured-chat-tab-index'
 import { findAgentMessageSenderChatTab } from './native-chat-agent-message-sender-label'
@@ -20,7 +21,7 @@ afterEach(() => {
 it.each([100, 1000])(
   'shares host-qualified tab collision scans for %i distinct senders and repeated cards',
   (n) => {
-    const tab = (id: number, host: 'local' | 'runtime:remote') => ({
+    const tab = (id: number, host: 'local' | 'runtime:remote'): Tab => ({
       id: `${host}-${id}`,
       entityId: `session-${id}`,
       worktreeId: 'workspace',
@@ -28,6 +29,7 @@ it.each([100, 1000])(
       contentType: 'agent-session' as const,
       executionHostId: host,
       label: 'Chat',
+      customLabel: null,
       color: null,
       sortOrder: id,
       createdAt: 0

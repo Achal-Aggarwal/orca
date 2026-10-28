@@ -3,6 +3,8 @@ import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
+import { createGlobalSettingsFixture } from '../../../../shared/global-settings-test-fixture'
+import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
 import { readStoreListenerCount } from '@/store/store-listener-census'
 import { makeTab, makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
@@ -278,6 +280,8 @@ it.each([100, 1000])(
   'bounds actual publication work separately from renders at %i rows/cards',
   (n) => {
     populate(n)
+    const settings = createGlobalSettingsFixture()
+    useAppStore.setState({ settings })
     let entries = 0,
       rowInputs = 0,
       lineageInputs = 0,
@@ -357,12 +361,12 @@ it.each([100, 1000])(
       string,
       { source: number; keys: number; reads: number; calls: number }
     >()
-    function recordProbe<T extends object>(name: string) {
-      const proxies = new WeakMap<T, T>()
+    function recordProbe<Source extends object, Result extends object = Source>(name: string) {
+      const proxies = new WeakMap<Result, Result>()
       const metric = { source: 0, keys: 0, reads: 0, calls: 0 }
       recordWork.set(name, metric)
       return {
-        source(record: T): T {
+        source(record: Source): Source {
           return new Proxy(record, {
             get(target, key) {
               if (typeof key === 'string') {
@@ -373,7 +377,7 @@ it.each([100, 1000])(
             }
           })
         },
-        result(record: T): T {
+        result(record: Result): Result {
           metric.calls++
           let proxy = proxies.get(record)
           if (!proxy) {
@@ -399,8 +403,10 @@ it.each([100, 1000])(
     const titles =
       recordProbe<ReturnType<typeof inputs.selectRuntimePaneTitlesForWorktree>>('titles')
     const ptys = recordProbe<ReturnType<typeof inputs.selectLivePtyIdsForWorktree>>('ptys')
-    const layouts =
-      recordProbe<ReturnType<typeof selectors.selectTerminalLayoutsForWorktree>>('layouts')
+    const layouts = recordProbe<
+      AppState['terminalLayoutsByTabId'],
+      ReturnType<typeof selectors.selectTerminalLayoutsForWorktree>
+    >('layouts')
     const foreground =
       recordProbe<ReturnType<typeof inputs.selectPaneForegroundAgentsForWorktree>>('foreground')
     const titleSelect = inputs.selectRuntimePaneTitlesForWorktree
@@ -427,7 +433,12 @@ it.each([100, 1000])(
         Object.fromEntries(Array.from({ length: n }, (_, i) => [`tab-${i}`, [`pty-${i}`]]))
       ),
       terminalLayoutsByTabId: layouts.source(
-        Object.fromEntries(Array.from({ length: n }, (_, i) => [`tab-${i}`, undefined]))
+        Object.fromEntries(
+          Array.from({ length: n }, (_, i): [string, TerminalLayoutSnapshot] => [
+            `tab-${i}`,
+            { root: { type: 'leaf', leafId: LEAF }, activeLeafId: LEAF, expandedLeafId: null }
+          ])
+        )
       ),
       paneForegroundAgentByPaneKey: foreground.source(
         Object.fromEntries(
@@ -551,7 +562,7 @@ it.each([100, 1000])(
       expect(metric.reads).toBe(0)
     }
     reset()
-    act(() => useAppStore.setState({ settings: { ...useAppStore.getState().settings } }))
+    act(() => useAppStore.setState({ settings: { ...settings } }))
     expect(handleEntries).toBe(n) // Same status map, changed owner-input tuple: rebuild its shared index once.
     expect(builds).not.toHaveBeenCalled()
     expect(renders).toEqual(counts)

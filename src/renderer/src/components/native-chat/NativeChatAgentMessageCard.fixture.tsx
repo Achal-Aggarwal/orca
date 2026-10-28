@@ -24,13 +24,22 @@ function cards() {
       {(['task', 'coordinator', 'worker', 'generic'] as const).map((kind, i) => {
         const from: AgentMessageSource = {
           kind: 'agent',
-          senders: [
-            {
-              party: { address: 'term_sender', terminalHandle: 'term_sender', orcaSessionId: null },
-              name: 'Parser worker',
-              ...(kind === 'worker' || kind === 'coordinator' ? { relation: kind } : {})
-            }
-          ],
+          senders: (kind === 'generic'
+            ? ['A sender on another host with a long name', null, 'Parser worker', 'Fourth sender']
+            : ['Parser worker']
+          ).map((name, index) => ({
+            party: {
+              address:
+                kind === 'generic' && index === 0
+                  ? 'dispatch:missing'
+                  : `term_sender${index || ''}`,
+              terminalHandle:
+                kind === 'generic' && index === 0 ? null : `term_sender${index || ''}`,
+              orcaSessionId: null
+            },
+            name,
+            ...(kind === 'worker' || kind === 'coordinator' ? { relation: kind } : {})
+          })),
           orchestration:
             kind === 'task'
               ? { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
