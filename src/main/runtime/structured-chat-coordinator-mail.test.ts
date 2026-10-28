@@ -480,14 +480,19 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(chat.steers).toHaveLength(1)
   })
 
+  // Consuming checks hand their batch over, so only an older Orca leaves one outstanding.
+  const holdOutstandingBatch = (runId: string): string => {
+    const consumerGeneration = db.getRunRaw(runId)!.consumer_generation
+    return db.getOrCreateRunDelivery({ runId, consumerGeneration })!.delivery.id
+  }
+
   it('wakes a coordinator holding an unacked batch once, at turn end, for mail that came mid-turn', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     await finishWorker(taskId)
     await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
     await settleTurn(COORDINATOR, 0)
-    const held = await call('orchestration.check', { run: runId }, { sessionId: COORDINATOR })
-    const heldId = String(held.deliveryId)
+    const heldId = holdOutstandingBatch(runId)
 
     expect(await sendUserMessage(COORDINATOR, 'keep working')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
@@ -547,7 +552,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await finishWorker(taskId)
     await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
     await settleTurn(COORDINATOR, 0)
-    const held = await call('orchestration.check', { run: runId }, { sessionId: COORDINATOR })
+    const heldId = holdOutstandingBatch(runId)
     const task2 = await call('orchestration.taskCreate', { spec: 'b' }, { sessionId: COORDINATOR })
     const reading = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
@@ -585,7 +590,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await host.flushStreamedEvents(COORDINATOR)
     await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)
     expect(chat.steers).toHaveLength(0)
-    expect(turnText(chat.turns[2]!)).toContain(`--ack ${String(held.deliveryId)}`)
+    expect(turnText(chat.turns[2]!)).toContain(`--ack ${heldId}`)
   })
 })
 
