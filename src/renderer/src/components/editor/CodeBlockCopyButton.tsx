@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
+import { useClipboardCopyFeedback } from '@/hooks/use-clipboard-text-copy-feedback'
 
 type CodeBlockCopyButtonProps = React.HTMLAttributes<HTMLPreElement> & {
   children?: React.ReactNode
@@ -10,27 +11,8 @@ export default function CodeBlockCopyButton({
   children,
   ...props
 }: CodeBlockCopyButtonProps): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-  const copiedResetTimerRef = useRef<number | null>(null)
-  // Clipboard IPC may settle after unmount; do not start an orphan reset timer.
-  const isMountedRef = useRef(false)
-
-  const clearCopiedResetTimer = useCallback((): void => {
-    if (copiedResetTimerRef.current !== null) {
-      window.clearTimeout(copiedResetTimerRef.current)
-      copiedResetTimerRef.current = null
-    }
-  }, [])
-
-  const setCopyButtonRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      isMountedRef.current = node !== null
-      if (node === null) {
-        clearCopiedResetTimer()
-      }
-    },
-    [clearCopiedResetTimer]
-  )
+  const { feedback, copyText } = useClipboardCopyFeedback({ showFailure: false })
+  const copied = feedback?.status === 'copied'
 
   const handleCopy = useCallback(() => {
     // Extract raw text from react-markdown’s nested code children so the clipboard receives no markup.
@@ -44,29 +26,13 @@ export default function CodeBlockCopyButton({
       }
     })
 
-    void window.api.ui
-      .writeClipboardText(text)
-      .then(() => {
-        if (!isMountedRef.current) {
-          return
-        }
-        clearCopiedResetTimer()
-        setCopied(true)
-        copiedResetTimerRef.current = window.setTimeout(() => {
-          copiedResetTimerRef.current = null
-          setCopied(false)
-        }, 1500)
-      })
-      .catch(() => {
-        // Clipboard permission failures must not disrupt the preview.
-      })
-  }, [children, clearCopiedResetTimer])
+    void copyText(text)
+  }, [children, copyText])
 
   return (
     <div className="code-block-wrapper">
       <pre {...props}>{children}</pre>
       <button
-        ref={setCopyButtonRef}
         type="button"
         className="code-block-copy-btn"
         onClick={handleCopy}
