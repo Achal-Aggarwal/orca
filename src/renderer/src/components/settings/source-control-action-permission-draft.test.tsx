@@ -21,7 +21,7 @@ import { liftActionPermissionArgs } from '../../../../shared/source-control-acti
 import { sourceControlActionAgentArgs } from '../../../../shared/source-control-action-launch-preferences'
 import { agentPermissionArgsForLaunch } from '../../../../shared/tui-agent-launch-defaults'
 import { SourceControlActionArguments } from './SourceControlActionArguments'
-import { useRepositorySourceControlAiGlobalUx } from './repository-source-control-ai-global-ux'
+import { useRepositorySourceControlAiGlobalUx } from './repository/source-control/repository-source-control-ai-global-ux'
 import { useSourceControlActionRecipeDraftState } from './source-control-action-recipe-draft-state'
 import { TooltipProvider } from '../ui/tooltip'
 
