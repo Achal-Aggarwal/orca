@@ -1,5 +1,9 @@
 import { createCodexAtRestSkillCatalog } from '../../codex/codex-at-rest-skills-probe'
-import { refreshAtRestCommandContext } from './at-rest-command-context'
+import {
+  bindAtRestCommandContexts,
+  retireAtRestCommandSettings,
+  refreshAtRestCommandContext
+} from './at-rest-command-context'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -355,4 +359,130 @@ describe("a Claude chat whose Claude isn't running lists Claude's own `/` comman
       vi.useRealTimers()
     }
   })
+})
+
+it.each([3, 30])(
+  'keeps %i restored modern subscribers passive through republish, expiry and retirement',
+  async (count) => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const held = Promise.withResolvers<AgentSessionSlashCommand[]>()
+    let starts = 0,
+      active = 0,
+      peak = 0
+    const catalog = new ClaudeAtRestCommandCatalog({
+      resolveWorkspacePath: async () => workspace,
+      now: () => clock,
+      probe: async () => {
+        starts++
+        peak = Math.max(peak, ++active)
+        try {
+          return await held.promise
+        } finally {
+          active--
+        }
+      }
+    })
+    const unbind = bindAtRestCommandContexts([catalog])
+    const stops: (() => void)[] = []
+    try {
+      await openHost(catalog)
+      for (let index = 0; index < count; index++) {
+        const sessionId = index === 0 ? SESSION : crypto.randomUUID()
+        if (index) {
+          await host.attach(
+            caller,
+            hostTestAttachParams(null, {
+              envelope: { ...hostTestAttachParams(null).envelope, sessionId },
+              provider: 'claude',
+              agent: 'claude',
+              accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: account },
+              location: {
+                ...store.getRecord(SESSION)!.location,
+                workspaceId: `workspace-${index}`
+              },
+              providerHandle: { kind: 'claude', sessionId: crypto.randomUUID(), leafUuid: null }
+            })
+          )
+        }
+        stops.push(
+          await host.subscribe({
+            id: `modern-${index}`,
+            sessionId,
+            commandsOnRequest: true,
+            emit: () => {}
+          })
+        )
+      }
+      await vi.advanceTimersByTimeAsync(0)
+      expect(starts).toBe(0)
+      const requested = host.readCommands(SESSION, true)
+      await vi.waitFor(() => expect(starts).toBe(1))
+      expect(peak).toBe(1)
+      held.resolve([{ name: 'plugin:check', kind: 'command' }])
+      expect(await requested).toMatchObject({ commandsPending: false })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(starts).toBe(1)
+      clock += CLAUDE_AT_REST_COMMANDS_TTL_MS
+      retireAtRestCommandSettings(['activeClaudeManagedAccountId'])
+      await refreshAtRestCommandContext(async () => {})
+      await vi.advanceTimersByTimeAsync(0)
+      expect(starts).toBe(1)
+      expect(active).toBe(0)
+    } finally {
+      held.resolve([])
+      stops.forEach((stop) => stop())
+      unbind()
+      vi.useRealTimers()
+    }
+  }
+)
+
+it('returns pending after the phone budget and hints a later completion without starting closed contexts', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+  const held = Promise.withResolvers<AgentSessionSlashCommand[]>()
+  const entered = Promise.withResolvers<void>()
+  const catalog = new ClaudeAtRestCommandCatalog({
+    resolveWorkspacePath: async () => workspace,
+    probe: async () => {
+      entered.resolve()
+      return held.promise
+    }
+  })
+  const frames: AgentSessionSubscribeEvent[] = []
+  let stop = () => {}
+  try {
+    await openHost(catalog)
+    stop = await host.subscribe({
+      id: 'phone',
+      sessionId: SESSION,
+      boundedFrames: true,
+      commandsOnRequest: true,
+      emit: (event) => frames.push(event)
+    })
+    frames.length = 0
+    const reply = host.readCommands(SESSION, true)
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await reply).toEqual({ commands: undefined, commandsPending: true })
+    await vi.advanceTimersByTimeAsync(2_000)
+    held.resolve([{ name: 'plugin:check', kind: 'command' }])
+    await vi.waitFor(() =>
+      expect(frames.some((frame) => frame.type !== 'end' && frame.commandsChanged)).toBe(true)
+    )
+    expect(frames.every((frame) => !('commands' in frame))).toBe(true)
+    expect(await host.readCommands(SESSION, true)).toEqual({
+      commands: [{ name: 'plugin:check', kind: 'command' }],
+      commandsPending: false
+    })
+    frames.length = 0
+    catalog.retireContext()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(frames.some((frame) => frame.type !== 'end' && frame.commandsChanged)).toBe(true)
+    expect(catalog.snapshot(store.getRecord(SESSION)!).commandsPending).toBe(false)
+  } finally {
+    held.resolve([])
+    stop()
+    catalog.dispose()
+    vi.useRealTimers()
+  }
 })

@@ -1,3 +1,4 @@
+import { AtRestCommandDemand } from './at-rest-command-demand'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionSlashCommand } from '../../../shared/agent-session-wire'
 import {
@@ -36,7 +37,8 @@ export type AtRestCommandSource = {
     isCurrent: () => boolean,
     generation: number,
     signal: AbortSignal,
-    admitted: () => void
+    admitted: () => void,
+    demand: AtRestCommandDemand
   ) => Promise<AtRestCommandScan>
   scanTimeoutMs?: number
   maxFailedScans?: number | null
@@ -60,6 +62,7 @@ type Entry = {
   scannedAt: number
   failures: number
   scanning: boolean
+  demand?: AtRestCommandDemand
   attempt?: AbortController
   lastReadAt: number
   settled: Set<() => void>
@@ -102,10 +105,15 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
   read = (record: AgentSessionRecord): AgentSessionSlashCommand[] | undefined =>
     this.readEntry(record)?.commands
 
-  settled = async (record: AgentSessionRecord, budgetMs: number) => {
+  snapshot = (record: AgentSessionRecord) => {
+    const entry = this.source.accepts(record) ? this.entries.get(this.key(record)) : undefined
+    return { commands: entry?.commands, commandsPending: entry?.scanning ?? false }
+  }
+
+  settled = async (record: AgentSessionRecord, budgetMs: number, independent = false) => {
     const deadline = Date.now() + budgetMs
     for (;;) {
-      const entry = this.readEntry(record)
+      const entry = this.readEntry(record, independent)
       if (!entry) {
         return undefined
       }
@@ -136,12 +144,8 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
   }
 
   // Folder pins and accounts can expose different skills.
-  private readEntry(record: AgentSessionRecord): Entry | undefined {
-    if (this.disposed || !this.source.accepts(record)) {
-      return undefined
-    }
-    const now = this.now()
-    const key = JSON.stringify([
+  private key(record: AgentSessionRecord): string {
+    return JSON.stringify([
       record.provider,
       // A selected account changes through retireContext, not per chat.
       this.source.resolveAccountHome
@@ -150,6 +154,14 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
       record.location.workspaceId,
       agentSessionPinnedLaunchDirectory(record)
     ])
+  }
+
+  private readEntry(record: AgentSessionRecord, independent = false): Entry | undefined {
+    if (this.disposed || !this.source.accepts(record)) {
+      return undefined
+    }
+    const now = this.now()
+    const key = this.key(record)
     let entry = this.entries.get(key)
     if (!entry) {
       entry = {
@@ -167,7 +179,10 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
     entry.lastReadAt = now
     this.evictUnread(now)
     if (!entry.scanning && now - entry.scannedAt >= AT_REST_COMMANDS_TTL_MS) {
-      this.scanInto(entry, record)
+      this.scanInto(entry, record, independent)
+    }
+    if (independent) {
+      entry.demand?.request()
     }
     return entry
   }
@@ -185,7 +200,9 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
     }
   }
 
-  private scanInto(entry: Entry, record: AgentSessionRecord): void {
+  private scanInto(entry: Entry, record: AgentSessionRecord, independent: boolean): void {
+    const demand = new AtRestCommandDemand(independent)
+    entry.demand = demand
     const attempt = new AbortController()
     entry.attempt = attempt
     const owns = (): boolean => !this.disposed && this.entries.get(entry.key) === entry
@@ -223,7 +240,7 @@ export class AtRestCommandCatalog implements StructuredAgentSessionAtRestCommand
         return { commands: undefined, fromAgent: false }
       }
       const answer = await wait(
-        this.source.scan(chat, cwd, isCurrent, entry.generation, attempt.signal, admitted)
+        this.source.scan(chat, cwd, isCurrent, entry.generation, attempt.signal, admitted, demand)
       )
       attempt.signal.throwIfAborted()
       return answer

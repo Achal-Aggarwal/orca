@@ -6,7 +6,6 @@ import type { CurrentRequestsSubscriber } from './agent-session-current-requests
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionHistoryPage,
-  AgentSessionSlashCommand,
   AgentSessionSubscribeEvent,
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
@@ -33,27 +32,21 @@ import { refreshPublishedWork } from './agent-session-work-refresh'
 import type { StructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
 
 export type AgentSessionSubscriberEmit = (event: AgentSessionSubscribeEvent) => void
-export type Subscriber = CurrentRequestsSubscriber & {
-  id: string
-  sessionId: string
-  emit: AgentSessionSubscriberEmit
-  cursor: AgentJournalCursor
-  fence: number
-  boundedFrames: boolean
-  projectQueuePublication?: SubscriberFieldState['projectQueuePublication']
-  snapshotCatchUp?: boolean
-  commands?: AgentSessionSlashCommand[] | null
-  /** Last sent publication; withheld pages must not suppress the final replacement. */
-  queuePublication?: QueuePublication
-  backgroundTasks?: string
-  /** Last frame’s current-work key; row-free changes still require a frame. */
-  workView?: string
-  /** Semantic history baseline actually emitted, independent of token/row progress. */
-  historyView?: string
-}
+export type Subscriber = CurrentRequestsSubscriber &
+  SubscriberFieldState & {
+    id: string
+    emit: AgentSessionSubscriberEmit
+    cursor: AgentJournalCursor
+    fence: number
+    snapshotCatchUp?: boolean
+    /** Last frame’s current-work key; row-free changes still require a frame. */
+    workView?: string
+    /** Semantic history baseline actually emitted, independent of token/row progress. */
+    historyView?: string
+  }
 
 export type AgentSessionSubscribersHooks = {
-  readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
+  readCommands?: SubscriberFieldHooks['readCommands']
   /** Stable identity avoids serialization until queue changes. */
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   readBackgroundTasks?: SubscriberFieldHooks['readBackgroundTasks']
@@ -84,6 +77,7 @@ export class AgentSessionSubscribers {
   ): () => void {
     const liveCursor = input.journal.cursor()
     const subscriber: Subscriber = {
+      commandsOnRequest: input.commandsOnRequest,
       id: input.id,
       sessionId: input.sessionId,
       emit: input.emit,

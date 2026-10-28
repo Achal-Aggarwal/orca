@@ -29,6 +29,7 @@ import { useMobileOlderPageLoader, type OlderPagePhase } from './use-mobile-olde
 const MAX_RETAINED_SESSION_STATES = 32
 
 export function useMobileStructuredAgentState(args: {
+  onCommandsChanged?: () => void
   client: RpcClient | null
   sessionId: string | null
   sessionKey: string | null
@@ -45,6 +46,8 @@ export function useMobileStructuredAgentState(args: {
   loadEarlier: () => void
 } {
   const { client, connected, enabled, sessionId, sessionKey } = args
+  const commandsChanged = useRef(args.onCommandsChanged)
+  commandsChanged.current = args.onCommandsChanged
   // Bound synchronous per-session retention so offline tab switches cannot grow memory indefinitely.
   const [sessionStates, setSessionStates] = useState<Map<string, StructuredAgentSessionState>>(
     () => new Map()
@@ -104,6 +107,9 @@ export function useMobileStructuredAgentState(args: {
       applyRequests: apply,
       applyEvent: (event, options) => {
         apply({ type: 'event', event, ...options })
+        if (event.type !== 'end' && event.commandsChanged) {
+          commandsChanged.current?.()
+        }
       },
       applyError: (message, refusal) => {
         if (stateRef.current.epoch !== null && refusal === undefined) {

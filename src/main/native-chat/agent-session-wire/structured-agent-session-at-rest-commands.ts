@@ -6,11 +6,16 @@ export type StructuredAgentSessionAtRestCommands = {
   retireContext?(workspaceId?: string): void
   dispose?(): void
   closeAll?(): Promise<void>
+  snapshot?(record: AgentSessionRecord): {
+    commands?: AgentSessionSlashCommand[]
+    commandsPending: boolean
+  }
   read(record: AgentSessionRecord): AgentSessionSlashCommand[] | undefined
   onChange(listener: () => void): () => void
   /** Follow owner changes within one shared read deadline. */
   settled?(
     record: AgentSessionRecord,
-    budgetMs: number
+    budgetMs: number,
+    independent?: boolean
   ): Promise<AgentSessionSlashCommand[] | undefined>
 }

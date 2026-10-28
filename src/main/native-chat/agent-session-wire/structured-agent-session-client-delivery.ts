@@ -83,7 +83,8 @@ export class StructuredAgentSessionClientDelivery {
     )
     this.waitForSendSettlement = this.sendSettlement.wait
     this.subscribers = new AgentSessionSubscribers({
-      readCommands: (sessionId) => this.readCommands(sessionId),
+      readCommands: (sessionId, commandsOnRequest) =>
+        this.readCommands(sessionId, commandsOnRequest),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(
           sessions.get(sessionId)?.journal,
@@ -101,28 +102,46 @@ export class StructuredAgentSessionClientDelivery {
       (() => undefined)
   }
 
-  readCommands(sessionId: string) {
+  readCommands(sessionId: string, commandsOnRequest = false) {
     const { adapter, store } = this.deps()
     const live = adapter.readCommands?.(sessionId)
     if (live !== undefined) {
       return live
     }
     const record = store.getRecord(sessionId)
-    return record ? adapter.atRestCommands?.read(record) : undefined
+    return record
+      ? commandsOnRequest
+        ? adapter.atRestCommands?.snapshot?.(record).commands
+        : adapter.atRestCommands?.read(record)
+      : undefined
   }
 
   /** Wait briefly for scans because one-shot menu readers do not receive later updates. */
-  async readCommandsSettled(sessionId: string) {
+  async readCommandsSettled(sessionId: string, commandsOnRequest = false) {
     const { adapter, store } = this.deps()
     const live = adapter.readCommands?.(sessionId)
     const record = store.getRecord(sessionId)
     if (live !== undefined || !record) {
-      return live
+      return { commands: live, ...(commandsOnRequest ? { commandsPending: false } : {}) }
     }
     const commands = adapter.atRestCommands?.settled
-      ? await adapter.atRestCommands.settled(record, AT_REST_COMMANDS_READ_BUDGET_MS)
+      ? await adapter.atRestCommands.settled(
+          record,
+          AT_REST_COMMANDS_READ_BUDGET_MS,
+          commandsOnRequest
+        )
       : adapter.atRestCommands?.read(record)
-    return adapter.readCommands?.(sessionId) ?? commands
+    const current = adapter.readCommands?.(sessionId)
+    return {
+      commands: current ?? commands,
+      ...(commandsOnRequest
+        ? {
+            commandsPending:
+              current === undefined &&
+              (adapter.atRestCommands?.snapshot?.(record).commandsPending ?? false)
+          }
+        : {})
+    }
   }
 
   publishStatus = (sessionId: string): void => this.statusFeed.publish(sessionId)

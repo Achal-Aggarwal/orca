@@ -11,6 +11,7 @@ import type { QueuePublication } from './structured-agent-session-queued-publica
 import { boundedFrames } from './agent-session-bounded-frames'
 
 export type SubscriberFieldState = {
+  commandsOnRequest?: boolean
   sessionId: string
   boundedFrames: boolean
   projectQueuePublication?: (publication: QueuePublication) => QueuePublication
@@ -21,7 +22,10 @@ export type SubscriberFieldState = {
 }
 
 export type SubscriberFieldHooks = {
-  readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
+  readCommands?: (
+    sessionId: string,
+    commandsOnRequest?: boolean
+  ) => AgentSessionSlashCommand[] | undefined
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   /** Read expensive child-derived rosters only when a frame owes them. */
   readBackgroundTasks?: (sessionId: string) => AgentSessionBackgroundTaskState | null
@@ -30,7 +34,7 @@ export type SubscriberFieldHooks = {
 export type SubscriberFrame = {
   /** Bounded subscribers receive side lists after history. */
   frames: AgentSessionSubscribeEvent[]
-  /** Phones read commands through agentSession.options instead. */
+  /** Last observed inventory also deduplicates bounded command-change hints. */
   commands: AgentSessionSlashCommand[] | null | undefined
   attachedQueued: boolean
   queued: QueuePublication | undefined
@@ -48,10 +52,12 @@ export function buildSubscriberFrame(
   event: AgentSessionSubscribeEvent,
   withholdQueued: boolean
 ): SubscriberFrame {
-  const commands = subscriber.boundedFrames
-    ? undefined
-    : (hooks.readCommands?.(subscriber.sessionId) ?? null)
+  const commands =
+    subscriber.boundedFrames && !subscriber.commandsOnRequest
+      ? undefined
+      : (hooks.readCommands?.(subscriber.sessionId, subscriber.commandsOnRequest) ?? null)
   const includeCommands =
+    !subscriber.boundedFrames &&
     hooks.readCommands !== undefined &&
     event.type !== 'end' &&
     (event.type !== 'batch' || commands !== subscriber.commands)
@@ -66,7 +72,14 @@ export function buildSubscriberFrame(
     : undefined
   return {
     frames: subscriber.boundedFrames
-      ? boundedFrames(event, { queued: sideQueued, backgroundTasks })
+      ? boundedFrames(event, { queued: sideQueued, backgroundTasks }).map((frame, index) =>
+          index === 0 &&
+          frame.type !== 'end' &&
+          subscriber.commandsOnRequest &&
+          (event.type !== 'batch' || commands !== subscriber.commands)
+            ? { ...frame, commandsChanged: true }
+            : frame
+        )
       : [
           {
             ...event,
@@ -106,15 +119,16 @@ function subscriberBackgroundTasks(
     : undefined
 }
 
-/** Phones read commands through agentSession.options, so never owe this field. */
+/** Capable phones receive a small invalidation hint instead of the inventory. */
 export function subscriberCommandsChanged(
   hooks: SubscriberFieldHooks,
   subscriber: SubscriberFieldState
 ): boolean {
   return (
-    !subscriber.boundedFrames &&
+    (!subscriber.boundedFrames || subscriber.commandsOnRequest === true) &&
     hooks.readCommands !== undefined &&
-    (hooks.readCommands(subscriber.sessionId) ?? null) !== subscriber.commands
+    (hooks.readCommands(subscriber.sessionId, subscriber.commandsOnRequest) ?? null) !==
+      subscriber.commands
   )
 }
 
