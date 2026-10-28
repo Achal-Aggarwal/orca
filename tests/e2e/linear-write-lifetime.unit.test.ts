@@ -58,7 +58,7 @@ beforeEach(async () => {
   ]) {
     vi.stubEnv(name, '')
   }
-  process.exitCode = undefined
+  process.exitCode = 0
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
   runtime = new OrcaRuntimeService()
@@ -137,7 +137,7 @@ afterEach(async () => {
   await server.stop()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
-  process.exitCode = undefined
+  process.exitCode = 0
   rmSync(userDataPath, { recursive: true, force: true })
 })
 
@@ -193,7 +193,7 @@ it.each(verbs)(
     }
     expect(process.exitCode).toBe(1)
     vi.mocked(console.error).mockClear()
-    process.exitCode = undefined
+    process.exitCode = 0
     await main(['linear', ...argv], '/tmp')
     const stderr = vi
       .mocked(console.error)
@@ -240,7 +240,7 @@ it.each([...failureCases, ...diagnosticControls])(
     })
     expect(process.exitCode).toBe(1)
     vi.mocked(console.error).mockClear()
-    process.exitCode = undefined
+    process.exitCode = 0
     await main(['linear', ...argv], '/tmp')
     const stderr = vi
       .mocked(console.error)
@@ -267,7 +267,7 @@ it('returns a confirmed CLI write over the unchanged wire payload', async () => 
     result: { state: { id: 'done' } }
   })
   expect(mutations.updateIssueForAgent).toHaveBeenCalledTimes(1)
-  expect(process.exitCode).toBeUndefined()
+  expect(process.exitCode).toBe(0)
 })
 
 it('ends a stalled CLI preparation before its client timeout without a late write', async () => {
