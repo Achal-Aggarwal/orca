@@ -1,6 +1,11 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { harness, snapshots } from '../../workspace-review-subscription.test-fixture'
 import { WorktreeReviewSubscription } from '../../../../shared/rpc-contract/worktree-review-params'
+import {
+  WORKTREE_REVIEW_STATUS_RUNTIME_CAPABILITY,
+  WORKTREE_OPEN_EXISTING_BRANCH_RUNTIME_CAPABILITY
+} from '../../../../shared/worktree-runtime-capabilities'
+import type { RpcContext } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 
 const { mocks, modules } = await vi.hoisted(async () => {
@@ -35,7 +40,13 @@ async function rpcHarness() {
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these handlers use only the four runtime members supplied by the cache/real-subscription-registry fixture.
   const runtime = h.runtime as unknown as OrcaRuntimeService
-  const context = { runtime, connectionId: 'socket-a', requestId: 'request-a' }
+  const context = {
+    runtime,
+    connectionId: 'socket-a',
+    requestId: 'request-a',
+    clientKind: 'mobile' as const,
+    clientCapabilities: [WORKTREE_REVIEW_STATUS_RUNTIME_CAPABILITY]
+  }
   return { h, subscribe, renew, unsubscribe, context }
 }
 
@@ -110,4 +121,60 @@ it('releases an interest when ready delivery fails before starting GitHub work',
   expect(h.cleanups.size).toBe(0)
   expect(h.prepare).not.toHaveBeenCalled()
   expect(mocks.getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+})
+
+it.each(['mobile', 'runtime'] as const)(
+  'requires review support before any %s lifecycle operation',
+  async (clientKind) => {
+    for (const clientCapabilities of [
+      undefined,
+      [],
+      [WORKTREE_OPEN_EXISTING_BRANCH_RUNTIME_CAPABILITY]
+    ]) {
+      const { h, subscribe, renew, unsubscribe, context } = await rpcHarness()
+      const unsupported: RpcContext = { ...context, clientKind, clientCapabilities }
+      const emit = (frame: unknown): void => {
+        h.frames.push(frame)
+      }
+      await expect(subscribe.handler({ worktree: 'id:wt-1' }, unsupported, emit)).rejects.toThrow(
+        'worktree_review_status_capability_required'
+      )
+      expect(h.cleanups.size).toBe(0)
+      expect(h.prepare).not.toHaveBeenCalled()
+      expect(h.frames).toEqual([])
+      const supported = { ...context, clientKind }
+      await subscribe.handler({ worktree: 'id:wt-1' }, supported, emit)
+      const { subscriptionId } = WorktreeReviewSubscription.parse(h.frames[0])
+      const params = { subscriptionId }
+      const frames = [...h.frames]
+      const preparations = h.prepare.mock.calls.length
+      await expect(subscribe.handler({ worktree: 'id:wt-1' }, unsupported, emit)).rejects.toThrow(
+        'worktree_review_status_capability_required'
+      )
+      await expect(renew.handler(params, unsupported)).rejects.toThrow(
+        'worktree_review_status_capability_required'
+      )
+      await expect(unsubscribe.handler(params, unsupported)).rejects.toThrow(
+        'worktree_review_status_capability_required'
+      )
+      expect(h.cleanups.size).toBe(1)
+      expect(h.prepare).toHaveBeenCalledTimes(preparations)
+      expect(h.frames).toEqual(frames)
+      expect(await renew.handler(params, supported)).toEqual({ renewed: true })
+      expect(await unsubscribe.handler(params, supported)).toEqual({ unsubscribed: true })
+      expect(h.cleanups.size).toBe(0)
+      await vi.advanceTimersByTimeAsync(300_000)
+      expect(mocks.getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+    }
+  }
+)
+
+it('allows in-process lifecycle calls without a wire capability announcement', async () => {
+  const { h, subscribe, renew, unsubscribe, context } = await rpcHarness()
+  const local = { ...context, clientKind: undefined, clientCapabilities: undefined }
+  await subscribe.handler({ worktree: 'id:wt-1' }, local, (frame) => h.frames.push(frame))
+  const { subscriptionId } = WorktreeReviewSubscription.parse(h.frames[0])
+  expect(await renew.handler({ subscriptionId }, local)).toEqual({ renewed: true })
+  expect(await unsubscribe.handler({ subscriptionId }, local)).toEqual({ unsubscribed: true })
+  expect(h.cleanups.size).toBe(0)
 })

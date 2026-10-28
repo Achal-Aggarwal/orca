@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { defineMethod, defineStreamingMethod } from '../core'
+import { defineMethod, defineStreamingMethod, type RpcContext } from '../core'
+import { WORKTREE_REVIEW_STATUS_RUNTIME_CAPABILITY } from '../../../../shared/worktree-runtime-capabilities'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   WorktreeReviewSubscribe,
@@ -9,12 +10,23 @@ import { WorkspaceReviewSubscription } from '../../workspace-review-subscription
 
 const subscriptions = new WeakMap<OrcaRuntimeService, Map<string, WorkspaceReviewSubscription>>()
 
+function requireReviewStatusCapability(context: RpcContext): void {
+  if (
+    context.clientKind !== undefined &&
+    !context.clientCapabilities?.includes(WORKTREE_REVIEW_STATUS_RUNTIME_CAPABILITY)
+  ) {
+    throw new Error('worktree_review_status_capability_required')
+  }
+}
+
 export const WORKTREE_REVIEW_METHODS = [
   defineStreamingMethod({
     name: 'worktree.review.subscribe',
     permission: 'workspace',
     params: WorktreeReviewSubscribe,
-    handler: async (params, { runtime, connectionId, requestId, signal }, emit) => {
+    handler: async (params, context, emit) => {
+      requireReviewStatusCapability(context)
+      const { runtime, connectionId, requestId, signal } = context
       let registry = subscriptions.get(runtime)
       if (!registry) {
         registry = new Map()
@@ -57,7 +69,9 @@ export const WORKTREE_REVIEW_METHODS = [
     name: 'worktree.review.renew',
     permission: 'workspace',
     params: WorktreeReviewSubscription,
-    handler: async (params, { runtime, connectionId }) => {
+    handler: async (params, context) => {
+      requireReviewStatusCapability(context)
+      const { runtime, connectionId } = context
       const subscription = subscriptions.get(runtime)?.get(params.subscriptionId)
       return {
         renewed:
@@ -71,7 +85,9 @@ export const WORKTREE_REVIEW_METHODS = [
     name: 'worktree.review.unsubscribe',
     permission: 'workspace',
     params: WorktreeReviewSubscription,
-    handler: async (params, { runtime, connectionId }) => {
+    handler: async (params, context) => {
+      requireReviewStatusCapability(context)
+      const { runtime, connectionId } = context
       const subscription = subscriptions.get(runtime)?.get(params.subscriptionId)
       const unsubscribed = !!subscription && subscription.connectionId === connectionId
       if (unsubscribed) {
