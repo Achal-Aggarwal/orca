@@ -45,6 +45,7 @@ export declare function readFileWithDacl(
   path: string,
   maxBytes: number
 ): { data: Buffer; dacl: WindowsDacl | null } | null
+/** Missing returns null; native read failures carry syscall='CredReadW' and numeric win32Code. */
 export declare function readGenericCredential(target: string): Buffer | null
 export declare function writeGenericCredential(target: string, user: string, data: Uint8Array): void
 

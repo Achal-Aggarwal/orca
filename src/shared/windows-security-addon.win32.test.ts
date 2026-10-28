@@ -79,19 +79,37 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
     expect(() => addon.readFileWithDacl(root, 100)).toThrow()
   })
 
-  it('round-trips a disposable generic credential as counted UTF-8 and enforces the native cap', () => {
+  it('preserves disposable-item metadata, counted UTF-8/subarrays, and the native cap', () => {
     const target = `orca-sta11846-test:${randomUUID()}`
     expect(target).not.toBe('gemini:antigravity')
     expect(addon.readGenericCredential(target)).toBeNull()
+    const fixture = readFileSync(
+      new URL('./windows-generic-credential.test-fixture.py', import.meta.url),
+      'utf8'
+    )
+    const metadata = (phase: string) => {
+      const result = runProcessSync({
+        program: 'python',
+        args: ['-c', fixture, phase, target],
+        timeoutMs: 5000
+      })
+      expect(result.code, result.stderr).toBe(0)
+    }
     try {
+      metadata('seed')
       const bytes = Buffer.from('{"access_token":"fixture-only-テスト"}')
-      addon.writeGenericCredential(target, 'antigravity', bytes)
+      const backing = Buffer.concat([Buffer.from('prefix'), bytes, Buffer.from('suffix')])
+      addon.writeGenericCredential(target, 'antigravity', backing.subarray(6, 6 + bytes.length))
       expect(addon.readGenericCredential(target)).toEqual(bytes)
       addon.writeGenericCredential(target, 'antigravity', Buffer.from('replacement-fixture'))
       expect(addon.readGenericCredential(target)?.toString()).toBe('replacement-fixture')
+      metadata('verify')
       expect(() =>
         addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2561))
       ).toThrow()
+      expect(addon.readGenericCredential(target)?.toString()).toBe('replacement-fixture')
+      addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2560, 65))
+      expect(addon.readGenericCredential(target)).toEqual(Buffer.alloc(2560, 65))
     } finally {
       const result = runProcessSync({
         program: 'cmdkey.exe',
@@ -101,6 +119,13 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
       expect(result.code).toBe(0)
       expect(addon.readGenericCredential(target)).toBeNull()
     }
+  })
+
+  it('marks a native read failure with its syscall origin', () => {
+    const invalidTarget = `orca-sta11846-invalid:${'x'.repeat(32768)}`
+    expect(() => addon.readGenericCredential(invalidTarget)).toThrow(
+      expect.objectContaining({ syscall: 'CredReadW', win32Code: expect.any(Number) })
+    )
   })
 
   it('refuses to adopt an existing file, whose own DACL would survive', () => {

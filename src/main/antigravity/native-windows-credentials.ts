@@ -5,7 +5,7 @@ import { parseAntigravityNativeCredential } from './native-credential-codec'
 import {
   createAntigravityFileCredentialBackend,
   isAntigravityFileStorageHost
-} from './native-credential-backend'
+} from './native-file-credentials'
 import type { AntigravityCredentialBackend } from './native-account-service'
 
 const nativeTarget = 'gemini:antigravity'
@@ -26,13 +26,48 @@ function security() {
   return loaded.addon
 }
 
-export async function readAntigravityWindowsCredential(target = nativeTarget) {
+class NativeCredentialReadFailure extends Error {
+  constructor(readonly win32Code: number) {
+    super('The Antigravity Windows credential store could not be read.')
+  }
+}
+
+export async function readAntigravityWindowsCredentialContents(
+  target = nativeTarget
+): Promise<string | null> {
+  let bytes: Buffer | null
   try {
-    const bytes = security().readGenericCredential(target)
-    if (!bytes?.length) {
-      return null
+    bytes = security().readGenericCredential(target)
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'syscall' in error &&
+      error.syscall === 'CredReadW' &&
+      'win32Code' in error &&
+      typeof error.win32Code === 'number' &&
+      Number.isInteger(error.win32Code) &&
+      error.win32Code > 0 &&
+      error.win32Code !== 1168
+    ) {
+      throw new NativeCredentialReadFailure(error.win32Code)
     }
-    const contents = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    throw new Error('The Antigravity Windows credential store could not be read.')
+  }
+  try {
+    return bytes === null
+      ? null
+      : new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch {
+    throw new Error('The Antigravity Windows credential store could not be read.')
+  }
+}
+
+export async function readAntigravityWindowsCredential(target = nativeTarget) {
+  const contents = await readAntigravityWindowsCredentialContents(target)
+  if (contents === null || contents.length === 0) {
+    return null
+  }
+  try {
     const value: unknown = JSON.parse(contents)
     // agy's composite store treats an empty StoredToken as absent.
     if (
@@ -115,6 +150,9 @@ export function createAntigravityWindowsCredentialBackend(
         return { current, file: false }
       }
     } catch (error) {
+      if (!(error instanceof NativeCredentialReadFailure)) {
+        throw error
+      }
       nativeError = error
     }
     const current = await file.read()

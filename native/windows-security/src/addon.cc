@@ -373,7 +373,10 @@ Napi::Value ReadGenericCredential(const Napi::CallbackInfo& info) {
   if (!CredReadW(reinterpret_cast<LPCWSTR>(target.c_str()), CRED_TYPE_GENERIC, 0, &raw)) {
     DWORD error = GetLastError();
     if (error == ERROR_NOT_FOUND) return env.Null();
-    ToError(env, Fail("CredReadW", error)).ThrowAsJavaScriptException();
+    auto failure = ToError(env, Fail("CredReadW", error));
+    failure.Set("syscall", Napi::String::New(env, "CredReadW"));
+    failure.Set("win32Code", Napi::Number::New(env, error));
+    failure.ThrowAsJavaScriptException();
     return env.Undefined();
   }
   CredentialPtr owned(raw);
