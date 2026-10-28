@@ -63,6 +63,20 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
             c.lastActivationWorktreeIdRef.current === worktreeId
         })
         bumpRevision()
+      },
+      remainingHoldMs: (worktreeId) => {
+        const c = controllerRef.current
+        // Another mount's measurement ends with its own cool-down, during which tab parking is off.
+        if (
+          c.measurableBackgroundWorktreeIdsRef.current.has(worktreeId) ||
+          c.measuringTerminalWorktreeIdsRef.current.has(worktreeId)
+        ) {
+          return TERMINAL_TAB_COLD_PARK_DELAY_MS + NARROWING_UNDO_MARGIN_MS
+        }
+        const cooldownUntilMs = c.terminalWorktreeParkCooldownUntilRef.current.get(worktreeId)
+        return cooldownUntilMs === undefined
+          ? null
+          : cooldownUntilMs + NARROWING_UNDO_MARGIN_MS - Date.now()
       }
     })
     const bumpRevision = (): void =>
@@ -294,10 +308,11 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     return () => {
       unsubscribe()
       livenessChecks.clear()
-      narrowingUndo.cancelAll()
       for (const [worktreeId, existing] of Array.from(leases)) {
         release(worktreeId, existing)
       }
+      // After the releases above: they schedule undos against refs this unmount is discarding.
+      narrowingUndo.cancelAll()
       setHeldTerminalPrewarmWorktrees([])
     }
   }, [])

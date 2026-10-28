@@ -128,7 +128,11 @@ describe('createDeferredNarrowingUndo', () => {
     vi.useFakeTimers()
     try {
       const undo = vi.fn()
-      const undos = createDeferredNarrowingUndo({ delayMs: 31_000, undo })
+      const undos = createDeferredNarrowingUndo({
+        delayMs: 31_000,
+        undo,
+        remainingHoldMs: () => null
+      })
       undos.schedule('wt', narrowing)
       vi.advanceTimersByTime(30_000)
       expect(undo).not.toHaveBeenCalled()
@@ -139,11 +143,37 @@ describe('createDeferredNarrowingUndo', () => {
     }
   })
 
+  it('waits out a newer measurement cool-down that would still leave tab parking off', () => {
+    vi.useFakeTimers()
+    try {
+      const undo = vi.fn()
+      vi.setSystemTime(0)
+      // Another mount measured mid-delay, so its cool-down runs 22 s past the original deadline.
+      const holdUntil = 53_000
+      const undos = createDeferredNarrowingUndo({
+        delayMs: 31_000,
+        undo,
+        remainingHoldMs: () => holdUntil - Date.now()
+      })
+      undos.schedule('wt', narrowing)
+      vi.advanceTimersByTime(31_000)
+      expect(undo).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(22_000)
+      expect(undo).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('applies a pending undo at once when a new lease takes the worktree', () => {
     vi.useFakeTimers()
     try {
       const undo = vi.fn()
-      const undos = createDeferredNarrowingUndo({ delayMs: 31_000, undo })
+      const undos = createDeferredNarrowingUndo({
+        delayMs: 31_000,
+        undo,
+        remainingHoldMs: () => null
+      })
       undos.schedule('wt', narrowing)
       undos.flush('wt')
       expect(undo).toHaveBeenCalledTimes(1)

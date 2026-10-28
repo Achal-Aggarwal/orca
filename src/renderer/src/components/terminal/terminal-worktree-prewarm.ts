@@ -142,6 +142,8 @@ export function areTabSessionsConfirmed(
 export function createDeferredNarrowingUndo(args: {
   delayMs: number
   undo: (worktreeId: string, narrowing: TerminalPrewarmNarrowing) => void
+  /** Milliseconds to wait again when a newer measurement or its cool-down still holds tab parking off. */
+  remainingHoldMs: (worktreeId: string) => number | null
 }) {
   const pending = new Map<
     string,
@@ -159,11 +161,19 @@ export function createDeferredNarrowingUndo(args: {
   return {
     schedule(worktreeId: string, narrowing: TerminalPrewarmNarrowing): void {
       flush(worktreeId)
-      const timer = setTimeout(() => {
-        pending.delete(worktreeId)
-        args.undo(worktreeId, narrowing)
-      }, args.delayMs)
-      pending.set(worktreeId, { timer, narrowing })
+      const arm = (delayMs: number): void => {
+        const timer = setTimeout(() => {
+          const holdMs = args.remainingHoldMs(worktreeId)
+          if (holdMs !== null && holdMs > 0) {
+            arm(holdMs)
+            return
+          }
+          pending.delete(worktreeId)
+          args.undo(worktreeId, narrowing)
+        }, delayMs)
+        pending.set(worktreeId, { timer, narrowing })
+      }
+      arm(args.delayMs)
     },
     /** A new lease on the same worktree replaces the pending narrowing with its own. */
     flush,
