@@ -49,6 +49,26 @@
       "confirm": "Filter anpassen und anzeigen",
       "cancel": "Filter beibehalten"
     },
+    "wslMoved": {
+      "movedToHost": "Auf den {{distro}}-Host verschoben",
+      "useHere": "Wieder auf diesem Computer verwenden",
+      "useHereTitle": "{{name}} wieder auf diesem Computer verwenden?",
+      "useHereDescription": "Orca öffnet dieses Projekt hier im Zustand vor dem Verschieben. Der Code ist davon nicht betroffen: Er wurde nie verschoben. Seit dem Verschieben auf dem {{distro}}-Host vorgenommene Änderungen, etwa neue Tabs und Chats, bleiben auf dem Host und werden nicht zurückgeholt. Zusammen mit diesem Projekt verschobene Projekte werden ebenfalls zurückgeholt. Das Projekt bleibt auch auf dem {{distro}}-Host, bis es dort entfernt wird. Dieses Fenster wird neu geladen.",
+      "useHereConfirm": "Auf diesem Computer verwenden",
+      "useHereSuperseded": "Ein späterer Verschiebevorgang auf den {{distro}}-Host umfasst dieses Projekt. Diesen zuerst rückgängig machen.",
+      "useHereRefusedTitle": "{{name}} kann hier noch nicht verwendet werden",
+      "useHereRefusedOk": "OK",
+      "useHereSupersededBy": "{{names}} wurden nach diesem Projekt auf den {{distro}}-Host verschoben. Zuerst diese Projekte wieder auf diesem Computer verwenden, dann dieses Projekt.",
+      "useHereMoveRunning": "Ein Verschiebevorgang auf den {{distro}}-Host läuft noch. Nach dessen Abschluss erneut versuchen.",
+      "useHereHostUnreachable": "Der {{distro}}-Host antwortet nicht, daher kann Orca die dortige Kopie dieses Projekts nicht stoppen, und die zugehörigen Agenten laufen dort möglicherweise noch. Den Host in den Einstellungen verbinden oder entfernen und dann erneut versuchen.",
+      "useHereHostStillRunning": "In der Kopie dieses Projekts auf dem {{distro}}-Host laufen noch Terminals, sodass die zugehörigen Agenten doppelt ausgeführt werden könnten. Einen Moment warten und dann erneut versuchen.",
+      "useHereFailed": "Dieses Projekt konnte nicht auf diesen Computer zurückgeholt werden.",
+      "useHereHostRemovalPending": "Der {{distro}}-Host wird noch entfernt, daher nimmt Orca dort keine Änderungen vor. Das Entfernen in den Einstellungen abschließen und dann erneut versuchen.",
+      "useHereHostAutomations": "Orca konnte die Automatisierungen dieses Projekts auf dem {{distro}}-Host nicht deaktivieren, daher könnten sie doppelt ausgeführt werden. Den Host in den Einstellungen verbinden und dann erneut versuchen.",
+      "useHereUnsavedTitle": "Zuerst Dateien speichern",
+      "useHereUnsavedDescription": "Beim Zurückholen von {{name}} wird dieses Fenster neu geladen. Zuerst diese Dateien speichern oder schließen: {{files}}",
+      "automationRunsOnHost": "Wird auf dem {{distro}}-Host ausgeführt"
+    },
     "startupWorktreeRefresh": {
       "loading": "Arbeitsbereiche werden gesucht…",
       "description": "Während lokale und entfernte Projekte geladen werden, können weitere Arbeitsbereiche erscheinen."
@@ -258,6 +278,10 @@
     "fileLoad": {
       "hostUnresolved": "Der Host konnte den Arbeitsbereich dieser Datei nicht finden. Er wurde möglicherweise entfernt oder ist dem Host noch nicht bekannt. Erneut versuchen oder diesen Tab über die Tab-Leiste schließen.",
       "remoteTooLarge": "Diese Datei ist zu groß, um sie von ihrem Host aus zu öffnen."
+    },
+    "diffTooLarge": {
+      "title": "Datei zu groß für einen Diff",
+      "detail": "Eine Version dieser Datei ist größer als 10 MB, daher lädt Orca sie nicht für einen Text-Diff."
     }
   },
   "githubChecks": {
@@ -343,6 +367,10 @@
         "openManageSessions": "„Sitzungen verwalten“ öffnen",
         "administratorSearchDescription": "Windows-Berechtigungen von Orca anzeigen oder mit Administratorbestätigung neu starten.",
         "administratorApproval": "Windows bittet um Bestätigung. Das übliche Konto verwenden."
+      },
+      "wordSeparators": {
+        "description": "Zeichen, die bei der Auswahl per Doppelklick als Wortgrenzen gelten, einschließlich Leerzeichen.",
+        "noSpaceHint": "Kein Leerzeichen enthalten – per Doppelklick wird über Leerzeichen hinweg ausgewählt."
       }
     },
     "appearance": {
@@ -622,6 +650,20 @@
       },
       "actionPermissions": {
         "sameAsAgent": "Wie {{agent}}"
+      }
+    },
+    "general": {
+      "openInMenu": {
+        "keyword": {
+          "windsurf": "windsurf",
+          "devin": "devin",
+          "devinDesktop": "devin desktop"
+        }
+      }
+    },
+    "openInApp": {
+      "preset": {
+        "devinDesktop": "Devin Desktop"
       }
     }
   },
@@ -3522,9 +3564,12 @@
             "orcaBrowser": "Orca-Browser",
             "terminalLinkSettings": "Einstellungen für Terminal-Links",
             "copyLink": "Link kopieren",
+            "copyFilePath": "Dateipfad kopieren",
             "copied": "Kopiert",
             "copiedLink": "Link kopiert",
+            "copiedFilePath": "Dateipfad kopiert",
             "copyLinkFailed": "Link konnte nicht kopiert werden",
+            "copyFilePathFailed": "Kopieren des Dateipfads fehlgeschlagen",
             "downloadOpenWithDefaultApp": "Herunterladen und mit Standard-App öffnen",
             "downloadOpenFailed": "„{{value0}}“ konnte nicht heruntergeladen werden.",
             "openInThisGroup": "In dieser Gruppe öffnen",
@@ -8546,7 +8591,6 @@
           "a016ffbeed": "„Automatisch“ verwendet derzeit Windows PowerShell und wechselt zu PowerShell 7+, sobald diese installiert ist.",
           "5ed5c95344": "Zwischen Windows PowerShell und PowerShell 7+ für neue Terminalbereiche auswählen.",
           "3d88af864d": "Auswählen, ob die Shell-Option PowerShell für neue Terminal-Bereiche Windows PowerShell oder PowerShell 7+ startet.",
-          "8a956cc91e": "Zeichen, die bei der Auswahl per Doppelklick als Wortgrenzen gelten.",
           "4bebcc2b2c": "Worttrennzeichen",
           "12e06178fa": "Zeilen",
           "907b0b9d3e": "Benutzerdefiniert",
@@ -11982,7 +12026,8 @@
             "migration": "Nicht abgeschlossen: Eine Verschiebung auf diesen Server ist noch nicht abgeschlossen. Diese zuerst fortsetzen.",
             "deferred": "Noch nicht abgeschlossen: Der Server ist dafür noch nicht bereit. Später erneut versuchen.",
             "failed": "Orca konnte diesen Vorgang auf dem Server nicht abschließen. Erneut versuchen.",
-            "defaultServer": "Nicht abgeschlossen: Dieser Server ist der Standard-Host für neue Projekte. Vor dem Stoppen unter „Neue Projekte öffnen auf“ einen anderen Host auswählen."
+            "defaultServer": "Nicht abgeschlossen: Dieser Server ist der Standard-Host für neue Projekte. Vor dem Stoppen unter „Neue Projekte öffnen auf“ einen anderen Host auswählen.",
+            "wslMoveRunning": "Nicht abgeschlossen: Ein Projekt wird auf diesen Server verschoben. Orca aktualisiert ihn, sobald der Vorgang abgeschlossen ist."
           },
           "reassurance": "Läuft auf jedem Host, erreichbar über die eigene SSH-Verbindung. Code und Dateien bleiben an ihrem Ort. Nur die Liste der Projekte, Tabs und Terminals von Orca wird auf den Host verschoben."
         },
@@ -18406,7 +18451,6 @@
         "pausedSendFailedWaiting": "Senden fehlgeschlagen — zum Wiederholen auf „Senden“ drücken, sobald der Agent fertig ist.",
         "save": "Speichern",
         "editingMessage": "Nachricht wird bearbeitet",
-        "cancelEditing": "Bearbeitung abbrechen",
         "editChanged": "Diese Nachricht wurde während der Bearbeitung geändert. Die bearbeitete Fassung steht im Chat-Eingabefeld.",
         "editChangedPrompt": "Diese Nachricht wurde während der Bearbeitung geändert. Die bearbeitete Fassung steht nach der Antwort an den Agenten im Chat-Eingabefeld.",
         "editChangedNotSaved": "Diese Nachricht wurde während der Bearbeitung geändert. Die bearbeitete Fassung wurde nicht gespeichert.",
@@ -18420,8 +18464,8 @@
         "expand": "Ausklappen",
         "queued": "In der Warteschlange",
         "clearAll": "Warteschlange leeren",
-        "pasteOrDropImages": "Bilder einfügen oder ablegen",
-        "saveNeedsContent": "Zum Speichern Text oder ein Bild hinzufügen"
+        "editReturned": "Die bearbeitete Nachricht ist im Chat-Eingabefeld.",
+        "commandsUnsupported": "Befehle können nicht in einer Nachricht in der Warteschlange gespeichert werden."
       },
       "thought": "Gedanke",
       "thoughtForDuration": "{{duration}} nachgedacht",
@@ -18437,7 +18481,9 @@
       "hostOutage": {
         "offline": "{{hostName}} ist offline",
         "reconnecting": "{{hostName}} stellt die Verbindung wieder her…",
-        "reconnect": "Erneut verbinden"
+        "reconnect": "Erneut verbinden",
+        "stopped": "{{distro}} ist gestoppt",
+        "start": "Starten"
       },
       "interruptedContinue": {
         "continue": "Fortfahren",
@@ -19079,7 +19125,7 @@
       "subagents_other": "{{count}} Unteragenten"
     },
     "terminal": {
-      "closed": "Kein aktives Terminal – der Bereich dieses Agenten wurde geschlossen.",
+      "previewUnavailable": "Keine Vorschau verfügbar – zum Anzeigen dieses Agenten den Arbeitsbereich öffnen.",
       "remotePreviewUnavailable": "Keine Vorschau für diese entfernte Sitzung – den Arbeitsbereich öffnen, um das Terminal anzuzeigen.",
       "focusWorktree": "Worktree öffnen",
       "close": "Schließen"
@@ -20128,6 +20174,161 @@
       "unavailable": "Dieser Arbeitsbereich ist geschützt oder nicht verfügbar."
     },
     "rowActions": "Aktionen für {{name}}"
+  },
+  "wslMove": {
+    "entry": {
+      "hostRow": "Projekte aus dieser Distribution verschieben…",
+      "projectMenu": "Auf den {{distro}}-Host verschieben…"
+    },
+    "blockers": {
+      "title": "Bevor diese Projekte verschoben werden können",
+      "inProjects": "In {{names}}",
+      "skipOne": "{{name}} diesmal nicht verschieben",
+      "skipMany": "Diese {{n}} Projekte diesmal nicht verschieben"
+    },
+    "title": "Projekte auf den {{distro}}-Host verschieben",
+    "loading": "Projekte in {{distro}} werden geprüft…",
+    "runningTitle": "Verschieben auf den {{distro}}-Host",
+    "preview": {
+      "counts": "Projekte: {{projects}} · Arbeitsbereiche: {{workspaces}} · Terminals: {{terminals}} · Chats: {{chats}}",
+      "whatHappens": "Die Dateien bleiben an ihrem bisherigen Speicherort. Terminals starten im selben Ordner neu; ihre Ausgabe, der Shell-Verlauf und die Gespräche mit Agenten bleiben erhalten.",
+      "projects": "Projekte in {{distro}}",
+      "folderBadge": "Ordner",
+      "notMoving": "Wird nicht verschoben",
+      "checking": "Ausgewählte Projekte werden geprüft…",
+      "checkAgain": "Erneut prüfen",
+      "moveOne": "1 Projekt verschieben",
+      "moveMany": "{{n}} Projekte verschieben",
+      "heldByHost": "Bereits auf dem {{distro}}-Host.",
+      "changed": "Zuvor verschoben, dann hier durch eine ältere Version von Orca geändert. Es wird nicht erneut verschoben.",
+      "chatsStay": "Bestehende Chats bleiben auf diesem Computer. Neue Chats in diesem Projekt starten auf dem WSL-Host.",
+      "browserLoginsConflict": "Browser-Anmeldungen werden nicht übernommen, da das Browser-Profil des Hosts bereits verwendet wird. Nach dem Verschieben in den Browser-Tabs des Hosts erneut anmelden.",
+      "browserLoginsNotCarried": "Browser-Anmeldungen werden nicht auf diesen Host übernommen. Nach dem Verschieben in den Browser-Tabs des Hosts erneut anmelden."
+    },
+    "cancel": "Abbrechen",
+    "progress": {
+      "bytes": "{{sent}} von {{total}}",
+      "tooLate": "Für einen Abbruch ist es zu spät: Der Host wird bereits umgestellt. Orca bis zum Abschluss geöffnet lassen.",
+      "switching": "Die Umstellung kann nicht abgebrochen werden. Orca bis zum Abschluss geöffnet lassen.",
+      "readOnly": "Während des Verschiebens sind diese Projekte schreibgeschützt. Ein Abbruch ist bis zum Beginn der Umstellung möglich.",
+      "cancelUntilSwitch": "Ein Abbruch ist bis zum Beginn der Umstellung möglich.",
+      "closeKeepsGoing": "Das Schließen dieses Dialogs stoppt den Verschiebevorgang nicht. Der Dialog öffnet sich wieder, sobald der Vorgang endet.",
+      "cancelling": "Wird abgebrochen…",
+      "cancel": "Verschieben abbrechen"
+    },
+    "result": {
+      "movedTitle": "Auf den {{distro}}-Host verschoben",
+      "resetTitle": "Nichts wurde verschoben",
+      "waitingTitle": "Warten auf den {{distro}}-Host",
+      "earlierMoveTitle": "Ein früherer Verschiebevorgang wurde zuerst abgeschlossen",
+      "refusedTitle": "Projekte nicht verschoben",
+      "reloadCheckpointRefused": "Orca konnte ungespeicherte Dateien nicht sichern, daher wurde das Fenster nicht neu geladen. Diesen Dialog schließen, die betreffenden Dateien speichern oder schließen und anschließend im weiterhin geöffneten Hinweis „Jetzt neu laden“ auswählen.",
+      "reloadVetoed": "Etwas hat das Neuladen des Fensters verhindert. Diesen Dialog schließen, Änderungen speichern und anschließend im weiterhin geöffneten Hinweis „Jetzt neu laden“ auswählen.",
+      "reloadFailed": "Das Fenster wurde nicht neu geladen. Erneut versuchen.",
+      "moved": "Dieses Fenster neu laden, um die Projekte unter dem {{distro}}-Host anzuzeigen. Orca sichert ungespeicherte Dateien vor dem Neuladen.",
+      "automationsPendingOne": "Eine Automatisierung ist auf dem Host vorerst deaktiviert. Orca fordert den Host weiterhin auf, sie wieder zu aktivieren.",
+      "automationsPendingMany": "{{n}} Automatisierungen sind auf dem Host vorerst deaktiviert. Orca fordert den Host weiterhin auf, sie wieder zu aktivieren.",
+      "undoHint": "Doch anders entschieden? Nach dem Neuladen führt die Seitenleiste diese Projekte als „Auf den {{distro}}-Host verschoben“ auf. Dort „Wieder auf diesem Computer verwenden“ auswählen, um sie im Zustand vor dem Verschieben zurückzuholen.",
+      "reset": "Der Verschiebevorgang wurde gestoppt und alles wurde wiederhergestellt. Die Projekte funktionieren auf diesem Computer wie zuvor; pausierte Terminals starten beim Öffnen wieder.",
+      "resetReason": "Grund für den Abbruch: {{detail}}",
+      "waiting": "Der Verschiebevorgang hat den {{distro}}-Host möglicherweise erreicht, aber der Host antwortet nicht. Diese Projekte bleiben hier schreibgeschützt, bis der Host wieder antwortet. Den Host in den Einstellungen verbinden, dann diesen Dialog erneut öffnen und einen Verschiebevorgang starten: Orca schließt zuerst den bisherigen Vorgang ab oder macht ihn rückgängig.",
+      "reloading": "Wird neu geladen…",
+      "reload": "Jetzt neu laden",
+      "close": "Schließen",
+      "review": "Zurück zu den Projekten",
+      "browserLoginsHostUnknown": "Browser-Anmeldungen wurden nicht kopiert, da Orca das Browser-Profil des Hosts nicht ermitteln konnte. In den Browser-Tabs des Hosts erneut anmelden.",
+      "browserLoginsConflict": "Browser-Anmeldungen wurden nicht kopiert, da das Browser-Profil des Hosts bereits verwendet wird. In den Browser-Tabs des Hosts erneut anmelden.",
+      "browserLoginsNotCopied": "Browser-Anmeldungen wurden nicht auf den Host kopiert. In den Browser-Tabs des Hosts erneut anmelden."
+    },
+    "runtime": {
+      "label": "Projektlaufzeitumgebung",
+      "description": "Dieses Projekt läuft über diesen Computer in {{distro}}. Auf den {{distro}}-Host verschieben, um es dort auszuführen.",
+      "move": "Projekt verschieben"
+    },
+    "unfinished": {
+      "one": "Eine auf den {{distro}}-Host verschobene Automatisierung ist noch deaktiviert. Orca fordert den Host weiterhin auf, sie wieder zu aktivieren.",
+      "many": "{{n}} auf den {{distro}}-Host verschobene Automatisierungen sind noch deaktiviert. Orca fordert den Host weiterhin auf, sie wieder zu aktivieren."
+    },
+    "refusal": {
+      "previewFailed": "Orca konnte diese Projekte nicht prüfen. Erneut versuchen.",
+      "startFailed": "Orca hat die Verbindung zum Verschiebevorgang verloren. Diesen Dialog erneut öffnen, um den aktuellen Stand zu sehen.",
+      "unavailable": "Das Verschieben von Projekten auf einen WSL-Host ist in diesem Fenster nicht verfügbar.",
+      "alreadyRunning": "Ein Verschiebevorgang nach {{distro}} läuft bereits. Den Abschluss abwarten und dann erneut versuchen.",
+      "alreadyInFlightPreview": "Ein Verschiebevorgang für {{distro}} wird noch abgeschlossen. Beim Start dieses Verschiebevorgangs schließt Orca den vorherigen zunächst ab oder macht ihn rückgängig, soweit möglich.",
+      "alreadyInFlight": "Da ein Verschiebevorgang für {{distro}} noch abgeschlossen wird, wurde dieser Vorgang nicht gestartet. Den {{distro}}-Host verbunden lassen und später erneut versuchen.",
+      "nothingNew": "Diese Projekte befinden sich bereits auf dem {{distro}}-Host.",
+      "destinationChanged": "Frühere Projekte aus {{distro}} wurden auf einen anderen WSL-Host verschoben. Diesen Host verbinden, um weitere Projekte zu verschieben.",
+      "hostUnavailable": "Der {{distro}}-Host ist nicht verbunden. In den Einstellungen verbinden und dann erneut versuchen.",
+      "hostUpdateRequired": "Auf dem {{distro}}-Host läuft eine ältere Version von Orca. In den Einstellungen aktualisieren und dann erneut versuchen.",
+      "terminalsBlocked": "Einige Terminals, Agenten oder Automatisierungen in diesen Projekten sind beschäftigt. Es wurde nichts verschoben.",
+      "exportIncomplete": "Einige gespeicherte Zustandsdaten dieser Projekte können noch nicht übertragen werden, daher wurde nichts verschoben:",
+      "exportIncompletePreview": "Einige gespeicherte Zustandsdaten dieser Projekte können noch nicht übertragen werden:",
+      "tooLarge": "Diese Projekte haben zu viele gespeicherte Zustandsdaten für einen einzelnen Verschiebevorgang. Weniger Projekte auf einmal verschieben.",
+      "pauseFailed": "Orca konnte die Terminals in diesen Projekten nicht pausieren, daher wurde nichts verschoben. Pausierte Terminals starten beim Öffnen wieder. Erneut versuchen.",
+      "scopeChanged": "Ein Projekt wurde während der Vorbereitung des Verschiebevorgangs geändert, daher wurde nichts verschoben. Die Projekte prüfen und erneut versuchen.",
+      "cancelled": "Verschieben abgebrochen. Es wurde nichts verschoben.",
+      "finishedEarlierMove": "Orca hat zunächst einen früheren Verschiebevorgang nach {{distro}} abgeschlossen. Das Fenster neu laden und dann diesen Verschiebevorgang erneut starten."
+    },
+    "step": {
+      "preparing": "Vorbereiten",
+      "pausingTerminals": "Terminals pausieren",
+      "copying": "Kopieren",
+      "switching": "Umstellen",
+      "finishing": "Abschließen",
+      "done": "Fertig"
+    },
+    "blocker": {
+      "agentWorkingOne": "Ein Agent arbeitet oder wartet auf eine Antwort",
+      "agentWorkingMany": "{{n}} Agenten arbeiten oder warten auf eine Antwort",
+      "processRunningOne": "In einem Terminal läuft ein Programm",
+      "processRunningMany": "In {{n}} Terminals läuft ein Programm",
+      "agentNotResumableOne": "Ein Agent kann nach dem Verschieben nicht fortgesetzt werden",
+      "agentNotResumableMany": "{{n}} Agenten können nach dem Verschieben nicht fortgesetzt werden",
+      "unverifiableOne": "Orca kann derzeit ein Terminal nicht prüfen",
+      "unverifiableMany": "Orca kann derzeit {{n}} Terminals nicht prüfen",
+      "automationRunningOne": "Ein Automatisierungslauf ist aktiv",
+      "automationRunningMany": "{{n}} Automatisierungsläufe sind aktiv",
+      "dispatchRunningOne": "Eine Agentenaufgabe wird bearbeitet",
+      "dispatchRunningMany": "{{n}} Agentenaufgaben werden bearbeitet",
+      "scrollbackTooLargeOne": "Der Ausgabeverlauf eines Terminals ist zum Verschieben zu groß",
+      "scrollbackTooLargeMany": "Die Ausgabeverläufe von {{n}} Terminals sind zum Verschieben zu groß"
+    },
+    "blockerHint": {
+      "agentWorking": "Den Abschluss abwarten oder den Agenten in seinem Terminal stoppen und dann erneut prüfen.",
+      "processRunning": "Das Programm (zum Beispiel einen Entwicklungsserver oder Editor) stoppen und dann erneut prüfen.",
+      "agentNotResumable": "Den Agenten in seinem Terminal beenden und dann erneut prüfen.",
+      "unverifiable": "Einen Moment warten und dann erneut prüfen. Es wird nichts gestoppt, um das Verschieben zu ermöglichen.",
+      "wait": "Den Abschluss abwarten und dann erneut prüfen.",
+      "scrollbackTooLarge": "Die Ausgabe in diesen Terminals leeren und dann erneut prüfen."
+    },
+    "scopeRefused": {
+      "windowsDrive": "Sein Ordner liegt auf einem Windows-Laufwerk, daher bleibt es auf diesem Computer.",
+      "mixedLocations": "Einige seiner Ordner liegen außerhalb dieser Distribution, daher bleibt es auf diesem Computer.",
+      "notLocal": "Es läuft bereits auf einem anderen Host.",
+      "other": "Es kann nicht verschoben werden."
+    },
+    "reloadToast": {
+      "title": "Neu laden, um das Verschieben abzuschließen"
+    },
+    "orchestrator": {
+      "showTerminal": "Terminal anzeigen",
+      "moveAgain": "Erneut verschieben",
+      "checkAgain": "Erneut prüfen",
+      "deferred": "Das Verschieben auf den {{distro}}-Host wird abgeschlossen: Einige Terminals sind noch beschäftigt.",
+      "stuck": "Ein früherer Verschiebevorgang auf den {{distro}}-Host ist noch nicht vollständig abgeschlossen.",
+      "declined": "Das Verschieben ist pausiert, da diese Projekte auf diesen Computer zurückgeholt wurden.",
+      "doneToast": "Projekte auf den {{distro}}-Host verschoben",
+      "terminalGone": "Dieses Terminal ist in diesem Fenster nicht mehr geöffnet. Zum Aktualisieren erneut prüfen.",
+      "blocker": "{{title}}. {{hint}}",
+      "paused": "Das Verschieben von Projekten auf den {{distro}}-Host ist pausiert: {{reason}}.",
+      "pausedReason": {
+        "exportIncomplete": "Einige gespeicherte Zustandsdaten können noch nicht übernommen werden",
+        "manifestTooLarge": "Es gibt zu viele gespeicherte Zustandsdaten für einen einzelnen Verschiebevorgang",
+        "hostUpdate": "Der Host benötigt zunächst ein Update",
+        "attemptsExhausted": "Der Vorgang wurde nach mehreren Versuchen nicht abgeschlossen"
+      },
+      "finishPending": "Ein früherer Verschiebevorgang auf den {{distro}}-Host wurde dort abgeschlossen. Orca schließt ihn hier beim Neustart oder sofort über „Erneut prüfen“ ab."
+    }
   },
   "onboarding": {
     "language": {
