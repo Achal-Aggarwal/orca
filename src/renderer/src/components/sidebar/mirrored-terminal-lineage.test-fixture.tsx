@@ -1,5 +1,7 @@
 import { act } from 'react'
-import { expect } from 'vitest'
+import { expect, vi } from 'vitest'
+import type { RuntimeAgentLineageTestModule } from '../../../../shared/runtime-agent-lineage-consumer.test-fixture'
+import { isStructuredTab } from '../../../../shared/structured-agent-session-tab'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
 import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
@@ -23,8 +25,11 @@ export async function verifyMirroredTerminalLineage(
     getRows: () => DashboardAgentRow[]
   }
 ): Promise<void> {
-  const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =
-    await import('../../../../main/runtime/runtime-agent-lineage.test-fixture')
+  const {
+    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
+  )
   const { makeUnifiedTab, makeWorktree, TEST_REPO } =
     await import('@/store/slices/store-test-helpers')
   const { selectDashboardOrchestration } =
@@ -90,6 +95,9 @@ export async function verifyMirroredTerminalLineage(
           ],
       Date.now()
     )[0].unifiedTab
+    if (!isStructuredTab(native)) {
+      throw new Error('Expected the mirrored native session tab')
+    }
     const actualParent = pane(native.id, LINEAGE_PARENT)
     const tab = makeTab({
       id: toWebTerminalSurfaceTabId('host-terminal'),

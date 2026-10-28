@@ -254,7 +254,7 @@ it.each([20, 200])(
         insertHistory.run(n, `expired-handled-${i}-`, run.id, historyTask.id, `ordinary-${i}`)
       }
       let endpoint = n
-      const read = vi.fn((id: string) => {
+      const read = vi.fn((id: string): ReturnType<typeof agentSessionConversationView> | null => {
         const record = sessionRecord(id)
         const index = id === SESSION_X ? 0 : id.startsWith('edge-') ? Number(id.slice(5)) : endpoint
         return agentSessionConversationView(

@@ -13,6 +13,8 @@ import {
   type AgentStatusEntry
 } from '../../../../shared/agent-status-types'
 import { useWorktreeAgentRows } from './useWorktreeAgentRows'
+import type { RuntimeAgentLineageTestModule } from '../../../../shared/runtime-agent-lineage-consumer.test-fixture'
+import { isStructuredTab } from '../../../../shared/structured-agent-session-tab'
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
 
@@ -356,8 +358,8 @@ it.each([20, 200])(
       }
     })
     expect(
-      observed.get(0)?.find((row) => row.paneKey === pane('child-actual-0', 'child-0'))
-        ?.parentPaneKey
+      observed.get(0)?.find((row) => row.paneKey === pane('child-actual-0', 'child-0'))?.entry
+        .orchestration?.parentPaneKey
     ).not.toBe(pane('parent-actual-0', 'parent-0'))
     for (let i = 1; i < n; i++) {
       expect(observed.get(i)).toBe(initial.get(i))
@@ -369,6 +371,9 @@ it.each([20, 200])(
     const { projectStatus } =
       await import('@/components/native-chat/structured-agent-session-status-projection')
     const foreignTab = tabs[`lineage-${n - 1}`][1]
+    if (!isStructuredTab(foreignTab)) {
+      throw new Error('Expected the native session tab')
+    }
     act(() =>
       useAppStore.getState().transactAgentStatuses((transaction) =>
         projectStatus(
@@ -404,8 +409,11 @@ it.each([20, 200])(
 )
 
 it('joins production mirrored custom/collision rows locally and keeps canonical initial, graph, retained and consumer contexts', async () => {
-  const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =
-    await import('../../../../main/runtime/runtime-agent-lineage.test-fixture')
+  const {
+    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
+  )
   const { makeUnifiedTab, makeWorktree, TEST_REPO } =
     await import('@/store/slices/store-test-helpers')
   const { buildMirroredAgentTabs } =
@@ -636,8 +644,11 @@ it.each(['default', 'reserved', 'collision'] as const)(
 )
 
 it('settles the production graph subscription/scheduler/publication/receiver loop with at most one feedback flight', async () => {
-  const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =
-    await import('../../../../main/runtime/runtime-agent-lineage.test-fixture')
+  const {
+    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
+  )
   const { useRuntimeGraphSync } = await import('@/app-shell/use-runtime-graph-sync')
   const { setRuntimeGraphSyncEnabled, setRuntimeGraphStoreStateGetter } =
     await import('@/runtime/sync-runtime-graph')

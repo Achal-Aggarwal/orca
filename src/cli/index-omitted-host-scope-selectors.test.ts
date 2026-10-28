@@ -43,15 +43,10 @@ vi.mock('child_process', async (importOriginal) => {
 })
 
 import { main } from './index'
-import {
-  publicLineageFixture,
-  canonicalChatRow,
-  LINEAGE_PARENT,
-  LINEAGE_CHILD
-} from '../main/runtime/runtime-agent-lineage.test-fixture'
-import { OrcaRuntimeService } from '../main/runtime/orca-runtime'
-import { RpcDispatcher } from '../main/runtime/rpc/dispatcher'
-import { WORKTREE_CATALOG_METHODS } from '../main/runtime/rpc/methods/worktree-catalog-methods'
+import type {
+  RuntimeAgentLineageTestModule,
+  RuntimeAgentLineageCatalogTestModule
+} from '../shared/runtime-agent-lineage-consumer.test-fixture'
 import { COMMAND_SPECS } from './specs'
 import { okFixture, queueFixtures } from './test-fixtures'
 import { pairRuntimeEnvironment, useWorktreeAwarenessEnvironment } from './index-test-harness'
@@ -85,16 +80,19 @@ describe('omittedHostIds selector annotation', () => {
   it.each(['repo::/workspace', 'folder:lineage'])(
     'prints canonical production-built lineage through actual CLI and worktree RPC for %s',
     async (worktreeId) => {
+      const {
+        default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+      } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+        '../main/runtime/runtime-agent-lineage.test-fixture'
+      )
+      const {
+        default: { createLineageCatalogDispatcher }
+      } = await vi.importActual<{ default: RuntimeAgentLineageCatalogTestModule }>(
+        '../main/runtime/runtime-agent-lineage-catalog.test-fixture'
+      )
       const f = publicLineageFixture(worktreeId)
       try {
-        const runtime = new OrcaRuntimeService()
-        vi.spyOn(runtime, 'getRuntimeId').mockReturnValue('lineage-test')
-        vi.spyOn(runtime, 'getWorktreePs').mockImplementation(async () => ({
-          worktrees: [f.build()],
-          totalCount: 1,
-          truncated: false
-        }))
-        const dispatcher = new RpcDispatcher({ runtime, methods: WORKTREE_CATALOG_METHODS })
+        const dispatcher = createLineageCatalogDispatcher(f.build)
         const resultOf = (response: unknown) => JSON.parse(JSON.stringify(response)).result
         const request = (params = {}) =>
           dispatcher.dispatch({

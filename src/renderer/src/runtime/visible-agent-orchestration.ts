@@ -33,7 +33,7 @@ export type VisibleOrchestrationState = WorktreeRuntimeOwnerState &
   > & {
     tabsByWorktree?: Record<string, readonly { id: string; ptyId?: string | null }[]>
   }
-const EMPTY = {}
+const EMPTY: Record<string, never> = {}
 const producerByContext = new WeakMap<AgentStatusOrchestrationContext, string>()
 export function orchestrationProducer(context: AgentStatusOrchestrationContext): string {
   return producerByContext.get(context) ?? LOCAL_EXECUTION_HOST_ID
