@@ -102,8 +102,10 @@ export function registerSpeechHandlers(store: Store): void {
     }
   }
 
+  // Renderer run ids restart per document; a retired document's owner must not be reused by its successor.
+  const retiredDocumentCounts = new Map<number, number>()
   const getDesktopOwner = (senderId: number, sessionId: string): string =>
-    `desktop:${senderId}:${sessionId}`
+    `desktop:${senderId}:${retiredDocumentCounts.get(senderId) ?? 0}:${sessionId}`
 
   const dictationListeners = new Map<number, { owner: string; cleanup: () => void }>()
 
@@ -123,6 +125,9 @@ export function registerSpeechHandlers(store: Store): void {
       let sessionListenerRemoved = false
       let sessionReady = false
       const cleanupOnRendererGone = (): void => {
+        if (!rendererRetired && getDesktopOwner(senderId, sessionId) === owner) {
+          retiredDocumentCounts.set(senderId, (retiredDocumentCounts.get(senderId) ?? 0) + 1)
+        }
         rendererRetired = true
         cleanupSessionListener()
         void getSpeechSttService(store)

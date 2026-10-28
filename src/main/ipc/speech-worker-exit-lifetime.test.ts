@@ -171,7 +171,7 @@ describe('speech worker exit ownership', () => {
     const upload = vi.fn()
     vi.stubGlobal('fetch', upload)
     await handler('speech:startDictation')(sender, 'openai-gpt-4o-mini-transcribe', undefined, '2')
-    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:2')
+    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:0:2')
     window.webContents.send.mockClear()
     window.webContents.emit('render-process-gone')
     expect(upload).not.toHaveBeenCalled()
@@ -180,7 +180,7 @@ describe('speech worker exit ownership', () => {
     expect(service()['state'].eventSink).toBeNull()
     expect(window.webContents.send).not.toHaveBeenCalled()
     await start('1')
-    expect(service()['state'].activeOwner).toBe('desktop:9:1')
+    expect(service()['state'].activeOwner).toBe('desktop:9:1:1')
     await stop('1')
   })
 
@@ -193,7 +193,7 @@ describe('speech worker exit ownership', () => {
       return response.promise
     })
     await handler('speech:startDictation')(sender, 'openai-gpt-4o-mini-transcribe', undefined, '2')
-    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:2')
+    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:0:2')
     const pendingStop = stop('2')
     expect(uploads.at(-1)?.signal?.aborted).toBe(false)
     window.webContents.emit('did-navigate')
@@ -202,7 +202,7 @@ describe('speech worker exit ownership', () => {
     window.webContents.send.mockClear()
     response.resolve(new Response(JSON.stringify({ text: 'obsolete text' })))
     await pendingStop
-    expect(service()['state'].activeOwner).toBe('desktop:9:1')
+    expect(service()['state'].activeOwner).toBe('desktop:9:1:1')
     expect(service()['state'].eventSink).not.toBeNull()
     expect(window.webContents.send).not.toHaveBeenCalled()
     worker().emit('message', { type: 'partial', text: 'replacement text' })
@@ -219,11 +219,11 @@ describe('speech worker exit ownership', () => {
     const upload = vi.fn(() => response.promise)
     vi.stubGlobal('fetch', upload)
     await handler('speech:startDictation')(sender, 'openai-gpt-4o-mini-transcribe', undefined, '2')
-    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:2')
+    service().feedAudio(new Float32Array(16000), 16000, 'desktop:9:0:2')
     const firstStop = stop('2')
     const secondStop = stop('2')
     await expect(start('1')).rejects.toThrow('dictation_already_active')
-    expect(service()['state'].activeOwner).toBe('desktop:9:2')
+    expect(service()['state'].activeOwner).toBe('desktop:9:0:2')
     response.resolve(new Response(JSON.stringify({ text: 'completed text' })))
     await Promise.all([firstStop, secondStop])
     expect(upload).toHaveBeenCalledTimes(1)
@@ -247,11 +247,26 @@ describe('speech worker exit ownership', () => {
     expect(service()['state'].eventSink).toBeNull()
   })
 
+  it('does not let a successor document join a retired pending start with the same run id', async () => {
+    environment.readyOnInit = false
+    const retired = start('1')
+    await vi.waitFor(() => expect(environment.workers).toHaveLength(1))
+    window.webContents.emit('did-navigate')
+    await expect(start('1')).rejects.toThrow('dictation_already_active')
+    worker().emit('message', { type: 'ready' })
+    await expect(retired).rejects.toThrow('dictation_canceled')
+    window.webContents.send.mockClear()
+    await start('1')
+    expect(window.webContents.send).toHaveBeenCalledWith('speech:ready', { sessionId: '1' })
+    expect(service()['state'].activeOwner).toBe('desktop:9:1:1')
+    await stop('1')
+  })
+
   it('preserves same-document dictation and bounds native listeners across replacements', async () => {
     for (let index = 0; index < 10; index++) {
       await start(String(index))
       window.webContents.emit('did-navigate-in-page', {}, '#section', true)
-      expect(service()['state'].activeOwner).toBe(`desktop:9:${index}`)
+      expect(service()['state'].activeOwner).toBe(`desktop:9:${index}:${index}`)
       expect(window.webContents.listenerCount('did-navigate')).toBe(1)
       window.webContents.emit(index % 2 === 0 ? 'render-process-gone' : 'did-navigate')
       await vi.waitFor(() => expect(service()['state'].activeOwner).toBeNull())
@@ -288,7 +303,7 @@ describe('speech worker exit ownership', () => {
       await start('2')
       const state = service()['state']
       const originalWorker = worker()
-      expect(state.activeOwner).toBe('desktop:9:2')
+      expect(state.activeOwner).toBe('desktop:9:0:2')
       window.webContents.send.mockClear()
       window.webContents.emit(event)
       originalWorker.emit('message', { type: 'partial', text: 'retired text' })
@@ -298,7 +313,7 @@ describe('speech worker exit ownership', () => {
       expect(state.eventSink).toBeNull()
       expect(window.webContents.send).not.toHaveBeenCalled()
       await start('1')
-      expect(state.activeOwner).toBe('desktop:9:1')
+      expect(state.activeOwner).toBe('desktop:9:1:1')
       expect(worker()).toBe(originalWorker)
       await stop('1')
     }
