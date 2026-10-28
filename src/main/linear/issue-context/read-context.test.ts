@@ -102,6 +102,6 @@ describe('Linear issue context', () => {
         }
       }
     })
-    expect(getClients).toHaveBeenCalledWith('workspace-stably')
+    expect(getClients).toHaveBeenCalledWith('workspace-stably', undefined)
   })
 })

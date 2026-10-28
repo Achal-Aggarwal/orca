@@ -37,12 +37,7 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
 
     try {
       return await this.dispatcher.dispatch(request, {
-        signal:
-          longPoll ||
-          request.method === 'linear.commentEdit' ||
-          request.method === 'linear.commentDelete'
-            ? context?.signal
-            : undefined,
+        signal: longPoll || request.method.startsWith('linear.') ? context?.signal : undefined,
         callerScope
       })
     } finally {

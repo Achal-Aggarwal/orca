@@ -1,14 +1,18 @@
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
-import { linearError, type LinearAgentAccessError } from '../linear/issue-context/errors'
+import {
+  linearError,
+  sanitizeLinearErrorMessage,
+  type LinearAgentAccessError
+} from '../linear/issue-context/errors'
 import { LinearWriteFailure } from '../linear/linear-issue-write-support'
 
-export async function runLinearCommentAction<Owner, Result>(
+export async function runLinearWriteAction<Owner, Result>(
   resolveOwner: (signal: AbortSignal) => Promise<Owner>,
   write: (
     owner: Owner,
     options: { signal: AbortSignal; beforeInvoke: () => void }
   ) => Promise<Result>,
-  unconfirmed: (owner: Owner) => LinearAgentAccessError,
+  unconfirmed: (owner: Owner, cause?: string) => LinearAgentAccessError,
   mapFailure: (error: unknown) => LinearAgentAccessError,
   cancellation?: AbortSignal
 ): Promise<{ owner: Owner; result: Result }> {
@@ -17,10 +21,7 @@ export async function runLinearCommentAction<Owner, Result>(
   const action = new AbortController()
   const signal = cancellation ? AbortSignal.any([action.signal, cancellation]) : action.signal
   const timeout = (): LinearAgentAccessError =>
-    linearError(
-      'linear_timeout',
-      'The Linear comment action stopped before a change was attempted.'
-    )
+    linearError('linear_timeout', 'The Linear action stopped before a change was attempted.')
   const totalTimer = setTimeout(() => action.abort(timeout()), 55_000)
   const discovery = new AbortController()
   let discoveryExpired = false
@@ -63,15 +64,22 @@ export async function runLinearCommentAction<Owner, Result>(
       owner !== undefined &&
       (signal.aborted || (error instanceof LinearWriteFailure && error.kind === 'unconfirmed'))
     ) {
-      throw unconfirmed(owner)
+      const cause = error instanceof LinearWriteFailure ? (error.cause ?? error) : error
+      throw unconfirmed(
+        owner,
+        sanitizeLinearErrorMessage(cause instanceof Error ? cause.message : String(cause))
+      )
     }
     if (signal.aborted || discoveryExpired) {
       throw timeout()
     }
+    if (error instanceof LinearWriteFailure && error.kind === 'duplicate_id') {
+      throw error
+    }
     if (error instanceof LinearWriteFailure) {
       throw linearError(
         error.kind === 'network' ? 'linear_network_error' : 'linear_write_failed',
-        'Linear could not complete the comment change. Retry after checking the comment.'
+        sanitizeLinearErrorMessage(error.message)
       )
     }
     throw mapFailure(error)
