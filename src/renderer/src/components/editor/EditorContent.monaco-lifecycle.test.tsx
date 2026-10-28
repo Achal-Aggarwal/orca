@@ -6,6 +6,7 @@ import type { OpenFile } from '@/store/slices/editor'
 const lifecycle = vi.hoisted(() => ({
   events: [] as string[],
   diffModelKeys: [] as string[],
+  mermaidViewStateKeys: new Array<string | undefined>(),
   models: new Map<string, { content: string; undo: string[] }>(),
   notebookProps: [] as {
     fileId: string
@@ -58,6 +59,12 @@ vi.mock('@/lib/lazy-with-retry', async () => {
           props: (typeof lifecycle.richMarkdownProps)[number]
         ) {
           lifecycle.richMarkdownProps.push(props)
+          return null
+        }
+      }
+      if (factory.toString().includes('/MermaidViewer.tsx')) {
+        return function MockMermaidViewer(props: { scrollCacheKey?: string }) {
+          lifecycle.mermaidViewStateKeys.push(props.scrollCacheKey)
           return null
         }
       }
@@ -215,6 +222,7 @@ afterEach(() => {
   cleanup()
   lifecycle.events.length = 0
   lifecycle.diffModelKeys.length = 0
+  lifecycle.mermaidViewStateKeys.length = 0
   lifecycle.models.clear()
   lifecycle.mountedProps.length = 0
   lifecycle.notebookProps.length = 0
@@ -222,6 +230,28 @@ afterEach(() => {
 })
 
 describe('EditorContent Monaco lifecycle boundary', () => {
+  it('keeps diagram reading positions separate for sibling panes of the same file', () => {
+    const diagram = file('/repo/flow.mmd', { language: 'mermaid' })
+    const view = render(
+      <EditorContent
+        {...props(diagram, 'flowchart TD\nA --> B')}
+        isMermaid
+        viewStateScopeId="left-pane"
+      />
+    )
+    const firstKey = lifecycle.mermaidViewStateKeys.at(-1)
+    expect(firstKey).toBeTypeOf('string')
+    view.rerender(
+      <EditorContent
+        {...props(diagram, 'flowchart TD\nA --> B')}
+        isMermaid
+        viewStateScopeId="right-pane"
+      />
+    )
+    expect(lifecycle.mermaidViewStateKeys.at(-1)).toBeTypeOf('string')
+    expect(lifecycle.mermaidViewStateKeys.at(-1)).not.toBe(firstKey)
+  })
+
   it('unmounts the prior path before reconciling a stale retained target model', () => {
     const first = file('/repo/first.ts')
     const second = file('/repo/second.ts')
