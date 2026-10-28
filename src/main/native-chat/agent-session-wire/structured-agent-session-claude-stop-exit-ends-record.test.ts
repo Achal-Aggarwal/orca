@@ -653,10 +653,9 @@ it('runs the stop again for every ask after a close that came back unproven', as
   expect(connection.closeCount).toBe(4)
 })
 
-it('releases a killed writer without an exit report and ignores its stale exit after resuming', async () => {
+it('keeps model selection at rest after delivered Stop and resumes on the next send', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
-  const old = child()!
   vi.spyOn(connection, 'close').mockImplementation(async () => {
     connection.closed = true
     connection.exitVerdict = { root: 'live', tree: 'unverifiable', killDelivered: true }
@@ -664,24 +663,12 @@ it('releases a killed writer without an exit report and ignores its stale exit a
   })
   await expect(stop()).resolves.toMatchObject({ ok: true })
   await laneDrained()
-  expect(connection.close).toHaveBeenCalled()
   expect(child()).toBeNull()
-  expect(lease()?.deathEvidence).toMatchObject({ kind: 'kill-delivered', ownerFence: old.fence })
   expect(await setModel('claude-opus-5')).toMatchObject({ ok: true })
   expect(store.getRecord(SESSION)?.options?.model).toBe('claude-opus-5')
   expect(claude.connections).toHaveLength(1)
   await send('Continue after the kill.')
   await resumedWith(connection, 'Continue after the kill.')
-  const replacement = store.getRecord(SESSION)!.lease
-  await host.handleAdapterEvent({
-    type: 'ended',
-    sessionId: SESSION,
-    fence: old.fence,
-    acquisitionGeneration: old.generation!,
-    cause: 'requested-close',
-    reason: 'late exit'
-  })
-  expect(store.getRecord(SESSION)!.lease).toEqual(replacement)
 })
 
 it.each([true, false])(

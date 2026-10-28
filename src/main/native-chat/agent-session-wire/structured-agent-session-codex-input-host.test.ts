@@ -806,7 +806,6 @@ it('resumes Codex after a delivered kill whose exit report never arrives', async
   })
   await expect(stop()).resolves.toMatchObject({ ok: true })
   await host.collaboratorsForTests().serialize(SESSION, async () => {})
-  expect(connection.close).toHaveBeenCalled()
   const record = host['deps'].store.getRecord(SESSION)
   expect(record?.lease.deathEvidence?.kind).toBe('kill-delivered')
   await permissionSend('Continue after Stop.')

@@ -15,9 +15,15 @@ afterEach(async () => {
 it.each(['delivered', 'root-exited', 'unproven', 'error'] as const)(
   'owns detached lane/sink cleanup with old raw-stop outcome parity: %s',
   async (outcome) => {
-    for (const entry of ['raw-stop', 'sink-refusal'] as const) {
+    const entries =
+      outcome === 'error'
+        ? ['raw-stop', 'sink-refusal', 'sink-without-logger']
+        : ['raw-stop', 'sink-refusal']
+    for (const entry of entries) {
+      const fallback = entry === 'sink-without-logger'
+      const warn = fallback ? vi.spyOn(console, 'warn').mockImplementation(() => {}) : null
       const logger = { warn: vi.fn(), error: vi.fn() }
-      const rig = await openAcpAdapterRig({ deps: { logger } })
+      const rig = await openAcpAdapterRig({ deps: fallback ? {} : { logger } })
       let refuse = false
       const append = rig.rig.eventSink.tryAppendTransition!
       vi.spyOn(rig.rig.eventSink, 'tryAppendTransition').mockImplementation((transition) =>
@@ -61,7 +67,12 @@ it.each(['delivered', 'root-exited', 'unproven', 'error'] as const)(
         await vi.waitFor(() => expect(child.proveClose).toHaveBeenCalled())
         await rig.settle()
         await sending
-        if (outcome === 'error') {
+        if (outcome === 'error' && fallback) {
+          expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('acp-child-cleanup'),
+            expect.objectContaining({ error: failure })
+          )
+        } else if (outcome === 'error') {
           expect(logger.warn).toHaveBeenCalledWith(
             'ACP failed-child cleanup failed',
             expect.objectContaining({ error: failure })
@@ -100,22 +111,4 @@ it('keeps joined force-close typed delivery evidence', async () => {
   await expect(rig.adapter.forceCloseSession(SESSION)).rejects.toBeInstanceOf(
     AgentSessionAcquisitionRootExitObservedError
   )
-})
-
-it('logs genuine detached cleanup failure when no optional logger was supplied', async () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  const rig = await openAcpAdapterRig()
-  await rig.acquire()
-  rig.child().proveClose = async () => {
-    throw new Error('cleanup failed')
-  }
-  rig.adapter['children'].stopAfterFailure(SESSION)
-  await vi.waitFor(() =>
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('acp-child-cleanup'),
-      expect.objectContaining({ error: expect.any(Error) })
-    )
-  )
-  rig.child().proveClose = async () => true
-  await rig.adapter.closeAll()
 })

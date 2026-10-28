@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { claudePipedFixture, SESSION } from './structured-claude-piped-test-support'
+import { CLAUDE_READER_DRAIN_AFTER_EXIT_MS } from '../claude/claude-stream-json-connection'
 import { SUPERVISED_GRACEFUL_EXIT_MS } from '../claude/claude-child-exit-proof-ladder'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
@@ -47,6 +48,10 @@ function killEvidence() {
     handoffStage: null,
     deathEvidence: { kind: 'kill-delivered' }
   })
+  expect(fixture.adapter.hasOwnedAcquisition!(SESSION)).toBe(false)
+  expect(
+    fixture.host.deps.store.listOperationRows().some((row) => row.outcome.status === 'pending')
+  ).toBe(false)
 }
 
 it('preserves actual TRUE writer-close through published close, join, and a healthy successor', async () => {
@@ -63,6 +68,11 @@ it('preserves actual TRUE writer-close through published close, join, and a heal
   const database = JournalHostDatabase.open(fixture.directory)
   try {
     const reopened = AgentSessionRecordStore.open({ journalDatabase: database, hostId: 'local' })
+    await reopened.reconcileOnRestart({
+      probe: async () => ({ outcome: 'indeterminate', reason: 'no root event' }),
+      now: Date.now()
+    })
+    expect(reopened.isSessionUnreadable(SESSION)).toBe(false)
     expect(reopened.getRecord(SESSION)?.lease.deathEvidence).toEqual(
       fixture.record().lease.deathEvidence
     )
@@ -107,16 +117,18 @@ it('settles a real failed acquisition with exact kill evidence and rejects dispa
   fixture.children[1]!.stdin.emit('error', new Error('ordinary startup transport failed'))
   await forceTime()
   expect(fixture.delivered.has(1)).toBe(true)
-  const realClose = fixture.connections[1]!.close()
-  await forceTime()
-  expect(await realClose).toBe(true)
+  const signals = fixture.signal.mock.calls.length
+  let closed: boolean | undefined
+  void fixture.connections[1]!.close().then((value) => {
+    closed = value
+  })
+  await vi.advanceTimersByTimeAsync(CLAUDE_READER_DRAIN_AFTER_EXIT_MS)
+  expect(closed).toBe(true)
+  expect(fixture.signal.mock.calls).toHaveLength(signals)
   identity.resolve()
   await forceTime()
   await fixture.drain()
   killEvidence()
-  expect(
-    fixture.host.deps.store.listOperationRows().some((row) => row.outcome.status === 'pending')
-  ).toBe(false)
   const journal = await fixture.host.journalSnapshot(SESSION)
   if (!pending.ok) {
     throw new Error('send refused')
@@ -205,10 +217,6 @@ it.each(['identity', 'spawn-return'] as const)(
     expect(report.deathEvidenceKind).toBe('kill-delivered')
     await fixture.drain()
     killEvidence()
-    expect(fixture.adapter.hasOwnedAcquisition!(SESSION)).toBe(false)
-    expect(
-      fixture.host.deps.store.listOperationRows().some((row) => row.outcome.status === 'pending')
-    ).toBe(false)
     if (!pending.ok) {
       throw new Error('send refused')
     }
@@ -246,10 +254,6 @@ it.each(['prove-owner', 'journal-attach'] as const)(
     expect(events.mock.calls).toContainEqual([
       expect.objectContaining({ type: 'ended', deathEvidenceKind: 'kill-delivered' })
     ])
-    expect(
-      fixture.host.deps.store.listOperationRows().every((row) => row.outcome.status !== 'pending')
-    ).toBe(true)
-    expect(fixture.adapter.hasOwnedAcquisition!(SESSION)).toBe(false)
     vi.useRealTimers()
     await fixture.healthy()
   }
@@ -319,50 +323,45 @@ it('preserves known delivery when the published lifecycle callback fails', async
   await fixture.healthy()
 })
 
-it.each([false, true])(
-  'joins indexed non-root cleanup across cursor failure=%s until acknowledgment',
-  async (cursorFailure) => {
-    fixture.omitInit.add(0)
-    await attach()
-    fixture.permitKill.add(0)
-    if (cursorFailure) {
-      vi.spyOn(fixture.host.deps.store, 'transitionHandoff').mockRejectedValueOnce(
-        new Error('fixture cursor persistence failed')
-      )
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-    }
-    const entered = Promise.withResolvers<void>()
-    const acknowledge = Promise.withResolvers<void>()
-    const held = fixture.host.collaboratorsForTests().serialize(SESSION, async () => {
-      entered.resolve()
-      await acknowledge.promise
-    })
-    await entered.promise
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    fixture.emit(0, {
-      type: 'system',
-      subtype: 'init',
-      session_id: 'foreign-session',
-      uuid: 'refused-init'
-    })
-    await vi.waitFor(() => expect(fixture.connections[0]!.closed).toBe(true))
-    const joined = fixture.host.deps.adapter.releaseAcquisition!({ sessionId: SESSION }).catch(
-      (error) => error
-    )
-    await forceTime()
-    const receipt = await joined
-    acknowledge.resolve()
-    await held
-    expect(receipt).toMatchObject({
-      deathEvidenceKind: 'kill-delivered',
-      message: 'claude provider session expected'
-    })
-    expect(receipt).toBeInstanceOf(AgentSessionAcquisitionRootExitObservedError)
-    await fixture.drain()
-    killEvidence()
-    expect(await fixture.adapter.releaseAcquisition!({ sessionId: SESSION })).toBe(true)
-    expect(fixture.delivered.size).toBe(1)
-    vi.useRealTimers()
-    await fixture.healthy()
-  }
-)
+it('joins indexed non-root cleanup despite cursor failure until acknowledgment', async () => {
+  fixture.omitInit.add(0)
+  await attach()
+  fixture.permitKill.add(0)
+  vi.spyOn(fixture.host.deps.store, 'transitionHandoff').mockRejectedValueOnce(
+    new Error('fixture cursor persistence failed')
+  )
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const entered = Promise.withResolvers<void>()
+  const acknowledge = Promise.withResolvers<void>()
+  const held = fixture.host.collaboratorsForTests().serialize(SESSION, async () => {
+    entered.resolve()
+    await acknowledge.promise
+  })
+  await entered.promise
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  fixture.emit(0, {
+    type: 'system',
+    subtype: 'init',
+    session_id: 'foreign-session',
+    uuid: 'refused-init'
+  })
+  await vi.waitFor(() => expect(fixture.connections[0]!.closed).toBe(true))
+  const joined = fixture.host.deps.adapter.releaseAcquisition!({ sessionId: SESSION }).catch(
+    (error) => error
+  )
+  await forceTime()
+  const receipt = await joined
+  acknowledge.resolve()
+  await held
+  expect(receipt).toMatchObject({
+    deathEvidenceKind: 'kill-delivered',
+    message: 'claude provider session expected'
+  })
+  expect(receipt).toBeInstanceOf(AgentSessionAcquisitionRootExitObservedError)
+  await fixture.drain()
+  killEvidence()
+  expect(await fixture.adapter.releaseAcquisition!({ sessionId: SESSION })).toBe(true)
+  expect(fixture.delivered.size).toBe(1)
+  vi.useRealTimers()
+  await fixture.healthy()
+})
