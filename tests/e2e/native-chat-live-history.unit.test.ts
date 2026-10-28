@@ -83,6 +83,8 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
   })
 
   it('keeps the original watcher append after a real 300-to-500 loadEarlier', async () => {
+    // One budget shared by every step, just under the 30 s test timeout, so only the message changes.
+    const deadline = Date.now() + 27_000
     const { mkdtemp, writeFile, appendFile, rm } = await import('node:fs/promises')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
@@ -123,7 +125,7 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
       sessionId: SESSION,
       runtimeEnvironmentId: 'env-history'
     })
-    // A CI run hit the 30 s test timeout with no step named; each wait now names its own stall.
+    // A CI run hit the 30 s test timeout with no step named; each wait names its own stall.
     const delivered: string[] = []
     const within = async <T>(step: string, promise: Promise<T>): Promise<T> => {
       let settled = false
@@ -141,7 +143,7 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
             )
           }
         },
-        { timeout: 8_000 }
+        { timeout: Math.max(0, deadline - Date.now()) }
       )
       return promise
     }
