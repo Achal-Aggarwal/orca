@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as LocalCommandResolver from '../../src/main/ipc/command-path-resolver'
+import { getDefaultSettings } from '../../src/shared/constants'
+import type { GlobalSettings } from '../../src/shared/global-settings-types'
 
 const {
   handleMock,
@@ -142,13 +144,14 @@ describe('preflight', () => {
       }
     })
     try {
+      const settings: GlobalSettings = {
+        ...(initial.settings ?? getDefaultSettings('/tmp')),
+        localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' }
+      }
       useAppStore.setState(
         {
           ...useAppStore.getInitialState(),
-          settings: {
-            ...initial.settings,
-            localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' }
-          }
+          settings
         },
         true
       )

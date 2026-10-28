@@ -35,12 +35,18 @@ vi.mock('@/lib/chat-provider-agents', () => ({
 vi.mock('./AntigravityChatSignInRow', () => ({ useAntigravityChatSignIn: () => ({ flow: null }) }))
 const initial = useAppStore.getInitialState()
 const detectAgents = vi.fn()
-const refreshAgents = vi.fn()
+const refreshAgents = vi.fn<Window['api']['preflight']['refreshAgents']>()
 beforeEach(() => {
   useAppStore.setState(initial, true)
   useAppStore.getState().clearLocalDetectedAgents()
   detectAgents.mockReset().mockRejectedValue(new Error('probe failed'))
-  refreshAgents.mockReset().mockResolvedValue({ agents: ['claude'] })
+  refreshAgents.mockReset().mockResolvedValue({
+    agents: ['claude'],
+    addedPathSegments: [],
+    shellHydrationOk: true,
+    pathSource: 'shell_hydrate',
+    pathFailureReason: 'none'
+  })
   Object.assign(window, {
     api: {
       preflight: { detectAgents, refreshAgents },

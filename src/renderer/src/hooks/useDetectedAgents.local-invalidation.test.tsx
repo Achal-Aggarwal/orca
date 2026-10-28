@@ -28,14 +28,20 @@ import { useDetectedAgents, type AgentDetectionTarget } from './useDetectedAgent
 const initialState = useAppStore.getInitialState()
 const detectAgents = vi.fn()
 const updateProject = vi.fn()
-const refreshAgents = vi.fn()
+const refreshAgents = vi.fn<Window['api']['preflight']['refreshAgents']>()
 
 beforeEach(() => {
   resetWindowsTerminalCapabilitiesForTests()
   useAppStore.setState(initialState, true)
   useAppStore.getState().clearLocalDetectedAgents()
   detectAgents.mockReset().mockResolvedValue(['codex'])
-  refreshAgents.mockReset().mockResolvedValue({ agents: ['codex'] })
+  refreshAgents.mockReset().mockResolvedValue({
+    agents: ['codex'],
+    addedPathSegments: [],
+    shellHydrationOk: true,
+    pathSource: 'shell_hydrate',
+    pathFailureReason: 'none'
+  })
   updateProject.mockReset()
   Object.assign(window, {
     api: {

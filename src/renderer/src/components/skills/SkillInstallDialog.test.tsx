@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SkillCloudVersion } from '../../../../shared/skill-cloud-contract'
+import type { SkillBundleInstallResult } from '../../../../shared/skill-bundle-install-contract'
 import type { SkillInstallProgress } from '../../../../shared/skill-sharing-contract'
 import { useAppStore } from '@/store'
 import { SkillInstallDialog } from './SkillInstallDialog'
@@ -237,9 +238,17 @@ describe('SkillInstallDialog', () => {
           }))
         }
       })
+      const bundleResult: SkillBundleInstallResult = {
+        operationId: 'op_1',
+        packageId: 'pkg_1',
+        versionId: 'ver_1',
+        bundleDigest: 'c'.repeat(64),
+        status: 'complete',
+        skills: []
+      }
       skills.installBundleShare.mockResolvedValue({
         status: 'ok',
-        value: { operationId: 'op_1', status: 'complete', skills: [] }
+        value: bundleResult
       })
       const preflight = detectionApi([])
       preflight.detectAgents.mockRejectedValue(new Error('WSL environment unresolved'))

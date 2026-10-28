@@ -50,7 +50,7 @@ export const hostOptions: ProjectHostSetupOption[] = [
 
 export async function renderCard(
   overrides: Partial<React.ComponentProps<typeof NewWorkspaceComposerCard>> = {},
-  Wrapper: React.ComponentType<React.PropsWithChildren> = React.Fragment
+  Wrapper: React.ComponentType<{ children: React.ReactNode }> = React.Fragment
 ): Promise<HTMLDivElement> {
   const container = document.createElement('div')
   document.body.appendChild(container)
