@@ -193,13 +193,14 @@ async function syncFederatedDispatchPages(
     acknowledgmentCursor >
       Math.max(getFederationAckedThrough(ackLease, ackIdentity), durableAcknowledgedThrough)
   ) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unchanged ack receipt cast; the gate flags it only because this diff adds the autoRelease opt-in inside its span.
     const delivered = (await runtime.callOrchestrationWorkerServer(
       federated.environment_id,
       'orchestration.federationAck',
       {
         dispatchId,
         throughSequence: acknowledgmentCursor,
-        ...(settlements.length > 0 ? { settlements } : {})
+        ...(settlements.length > 0 ? { settlements, autoRelease: true } : {})
       },
       15_000,
       { orchestrationRequestId: `relay_ack_${dispatchId}_${cursor}` },

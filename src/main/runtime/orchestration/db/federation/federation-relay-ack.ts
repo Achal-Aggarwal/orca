@@ -53,6 +53,8 @@ export function acknowledgeFederationRelay(
     direction: FederationRelayDirection
     throughSequence: number
     settleRemoteReports?: { sequence: number; outcome?: WorkerReportOutcome }[]
+    // Only the home's acceptance proves settlement; arm after it, never at queue time.
+    armAutoRelease?: boolean
   }
 ): void {
   this.db.exec('BEGIN IMMEDIATE')
@@ -114,6 +116,9 @@ export function acknowledgeFederationRelay(
         terminalOutcome,
         'worker_report_settled'
       )
+      if (params.armAutoRelease) {
+        this.armWorkerTerminalAutoReleaseStatement(params.dispatchId)
+      }
     }
     this.db
       .prepare(

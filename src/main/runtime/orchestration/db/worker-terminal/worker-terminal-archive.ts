@@ -151,7 +151,7 @@ export function retainTerminalResourceInTransaction(
     .prepare(
       `UPDATE worker_terminal_resources
        SET release_state = 'retained', retained_reason = 'user_requested',
-           updated_at = datetime('now')
+           auto_release_at = NULL, updated_at = datetime('now')
        WHERE id = ? AND release_state IN ('not_requested', 'retained', 'requested')`
     )
     .run(resourceId)
@@ -163,16 +163,17 @@ export function retainTerminalResourceInTransaction(
   return changes > 0
 }
 
-export function retainWorkerTerminalResource(
-  this: OrchestrationDb,
-  dispatchId: string
-):
+type WorkerTerminalRetainResult =
   | { disposition: 'retained'; resource: WorkerTerminalResourceRow }
   | { disposition: 'already_released'; resource: WorkerTerminalResourceRow }
   | { disposition: 'release_committed'; resource: WorkerTerminalResourceRow }
-  | { disposition: 'no_owned_resource'; resource: null } {
-  this.db.exec('BEGIN IMMEDIATE')
-  try {
+  | { disposition: 'no_owned_resource'; resource: null }
+
+export function retainWorkerTerminalResource(
+  this: OrchestrationDb,
+  dispatchId: string
+): WorkerTerminalRetainResult {
+  return retainOwnedTerminalResource(this, dispatchId, () => {
     const dispatch = this.getDispatchContextById(dispatchId)
     if (!dispatch) {
       throw new OrchestrationError('dispatch_not_found', `Dispatch ${dispatchId} was not found.`)
@@ -184,25 +185,50 @@ export function retainWorkerTerminalResource(
         `Dispatch ${dispatchId} is ${dispatch.status}; only a settled dispatch can retain.`
       )
     }
-    const resource = this.getWorkerTerminalResourceByOwner(dispatchId)
+  })
+}
+
+/** The execution host's half of a forwarded worker-retain. */
+export function retainRemoteAttachmentTerminalResource(
+  this: OrchestrationDb,
+  dispatchId: string
+): WorkerTerminalRetainResult {
+  return retainOwnedTerminalResource(this, dispatchId, () => {
+    if (!this.getRemoteDispatchAttachment(dispatchId)) {
+      throw new OrchestrationError(
+        'dispatch_not_found',
+        `Remote Dispatch ${dispatchId} was not found.`
+      )
+    }
+  })
+}
+
+function retainOwnedTerminalResource(
+  database: OrchestrationDb,
+  dispatchId: string,
+  assertRetainable: () => void
+): WorkerTerminalRetainResult {
+  database.db.exec('BEGIN IMMEDIATE')
+  try {
+    assertRetainable()
+    const resource = database.getWorkerTerminalResourceByOwner(dispatchId)
     if (!resource) {
-      this.db.exec('COMMIT')
+      database.db.exec('COMMIT')
       return { disposition: 'no_owned_resource', resource: null }
     }
     if (resource.release_state === 'released') {
-      this.db.exec('COMMIT')
+      database.db.exec('COMMIT')
       return { disposition: 'already_released', resource }
     }
-    const retained = retainTerminalResourceInTransaction(this, resource.id, dispatchId)
-    const updated = this.getWorkerTerminalResource(resource.id) as WorkerTerminalResourceRow
-    if (!retained) {
-      this.db.exec('COMMIT')
-      return { disposition: 'release_committed', resource: updated }
-    }
-    this.db.exec('COMMIT')
-    return { disposition: 'retained', resource: updated }
+    const retained = retainTerminalResourceInTransaction(database, resource.id, dispatchId)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row was read under this transaction's write lock, so it still exists.
+    const updated = database.getWorkerTerminalResource(resource.id) as WorkerTerminalResourceRow
+    database.db.exec('COMMIT')
+    return retained
+      ? { disposition: 'retained', resource: updated }
+      : { disposition: 'release_committed', resource: updated }
   } catch (error) {
-    this.db.exec('ROLLBACK')
+    database.db.exec('ROLLBACK')
     throw error
   }
 }
@@ -215,6 +241,7 @@ export type WorkerTerminalArchiveMethods = {
   markWorkerTerminalReleaseUnknown: typeof markWorkerTerminalReleaseUnknown
   revertWorkerTerminalReleaseToRetained: typeof revertWorkerTerminalReleaseToRetained
   retainWorkerTerminalResource: typeof retainWorkerTerminalResource
+  retainRemoteAttachmentTerminalResource: typeof retainRemoteAttachmentTerminalResource
 }
 
 export function attachWorkerTerminalArchive(ctor: { prototype: object }): void {
@@ -225,6 +252,7 @@ export function attachWorkerTerminalArchive(ctor: { prototype: object }): void {
     settleWorkerTerminalRelease,
     markWorkerTerminalReleaseUnknown,
     revertWorkerTerminalReleaseToRetained,
-    retainWorkerTerminalResource
+    retainWorkerTerminalResource,
+    retainRemoteAttachmentTerminalResource
   })
 }

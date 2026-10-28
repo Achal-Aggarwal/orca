@@ -18,6 +18,7 @@ type LifecycleSendResult =
   | {
       action: 'completed' | 'failed'
       authority?: 'run_home' | 'worker_server_legacy'
+      autoReleaseAt?: string
     }
   | { action: 'settled'; outcome: 'succeeded' | 'failed'; duplicate?: boolean }
   | { action: 'rejected'; code: string; reason: string }
@@ -126,7 +127,12 @@ export const ORCHESTRATION_SEND_HANDLER: Record<string, CommandHandler> = {
           ? [line, ...warnings.map((warning) => `Warning: ${warning.message}`)].join('\n')
           : line
       if ('message' in value) {
-        return withWarnings(`Sent ${value.message.id}`)
+        const lifecycle = 'lifecycle' in value ? value.lifecycle : undefined
+        const autoRelease =
+          lifecycle && 'autoReleaseAt' in lifecycle && lifecycle.autoReleaseAt
+            ? ` (terminal auto-release at ${lifecycle.autoReleaseAt})`
+            : ''
+        return withWarnings(`Sent ${value.message.id}${autoRelease}`)
       }
       if ('relay' in value) {
         if (value.relay.destination === 'worker') {

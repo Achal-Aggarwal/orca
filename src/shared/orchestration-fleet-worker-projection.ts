@@ -129,6 +129,9 @@ export function projectFleetNextAction(
   if (worker.workerStage === 'released') {
     return { kind: 'none', argv: [] }
   }
+  if (worker.resource?.autoReleaseAt) {
+    return { kind: 'none', argv: [] }
+  }
   if (worker.terminalState === 'reclaimable') {
     return {
       kind: 'release',
@@ -249,6 +252,7 @@ export function projectOrchestrationFleetWorker(
       lastObservedAt: evidence ? evidence.clock.at : null
     },
     resource: projectResource(worker),
+    ...(worker.resource?.autoReleaseAt ? { autoReleaseAt: worker.resource.autoReleaseAt } : {}),
     nextAction: projectFleetNextAction(worker, liveness),
     attention: projectOrchestrationFleetAttention({
       isRoot: worker.parentTaskId === null,

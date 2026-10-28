@@ -19,6 +19,7 @@ export const ORCHESTRATION_WORKER_OBSERVATION_HANDLERS: Record<string, CommandHa
       worker: { state: string; stage: string; agentTerminalHandle: string | null }
       projection?: { liveness: { verdict: string }; nextAction: { argv: string[] } } | null
       observation?: { agentWait?: { source: string; reason?: string } | null }
+      autoReleaseAt?: string | null
     }>('orchestration.workerShow', {
       dispatch: getRequiredStringFlag(flags, 'dispatch')
     })
@@ -43,6 +44,9 @@ export const ORCHESTRATION_WORKER_OBSERVATION_HANDLERS: Record<string, CommandHa
         )
       } else {
         lines.push('Interactive wait: none')
+      }
+      if (value.autoReleaseAt) {
+        lines.push(`Auto-release: ${value.autoReleaseAt}`)
       }
       return lines.join('\n')
     })
