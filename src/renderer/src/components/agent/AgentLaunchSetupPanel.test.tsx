@@ -49,14 +49,14 @@ it('shows the Arguments-owned value in disabled Permissions; removing its chip e
   const permission = () => host.querySelector<HTMLButtonElement>('button[aria-label="Permissions"]')
   expect(permission()?.disabled).toBe(true)
   expect(permission()?.textContent).toContain('--permission-mode plan')
-  expect(host.querySelector('input[id^="agent-arguments-"]')?.value).toBe('--add-dir docs')
+  expect(host.querySelector('textarea[aria-label="Arguments"]')?.value).toBe('--add-dir docs')
   act(() =>
     host
       .querySelector<HTMLButtonElement>('button[aria-label="Remove --permission-mode plan"]')
       ?.click()
   )
   expect(permission()?.disabled).toBe(false)
-  expect(host.querySelector('input[id^="agent-arguments-"]')?.value).toBe('--add-dir docs')
+  expect(host.querySelector('textarea[aria-label="Arguments"]')?.value).toBe('--add-dir docs')
   act(() =>
     [...host.querySelectorAll('button')]
       .find((button) => button.textContent === 'Open terminal')
@@ -109,10 +109,8 @@ it('shows the remembered chat defaults while keeping an untouched configured lau
       </TooltipProvider>
     )
   )
-  const selections = [...host.querySelectorAll('[role="combobox"]')].map(
-    (control) => control.textContent
-  )
-  expect(selections).toEqual(['', 'Low', 'Ask'])
+  expect(host.querySelector('[role="radio"][data-state="on"]')?.textContent).toBe('Low')
+  expect(host.querySelector('button[aria-label="Permissions"]')?.textContent).toBe('Ask')
   expect(host.textContent).not.toMatch(/Agents? defaults?|Reset to default/)
   expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe('Astra')
   act(() =>
@@ -146,6 +144,7 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
       )
     )
   render(pending)
+  fireEvent.click(host.querySelector('button[aria-label="Toggle Arguments"]')!)
   expect(
     [...host.querySelectorAll('button')].find((button) => button.textContent === 'Open chat')
       ?.disabled
@@ -157,7 +156,9 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
     true
   )
   expect(host.querySelector('[cmdk-item][data-current="true"]')).toBeNull()
-  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.disabled).toBe(true)
+  expect(
+    host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Arguments"]')?.disabled
+  ).toBe(true)
   render({
     ...pending,
     defaultsPending: false,
@@ -167,10 +168,10 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
   expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
     true
   )
-  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.disabled).toBe(
-    false
-  )
-  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.value).toBe(
+  expect(
+    host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Arguments"]')?.disabled
+  ).toBe(false)
+  expect(host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Arguments"]')?.value).toBe(
     '--host-only'
   )
   const settled: AgentPickerEntry = {
@@ -200,7 +201,7 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
     false
   )
   expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe('Host model')
-  expect(host.querySelector('button[aria-label="Reasoning effort"]')?.textContent).toBe('Low')
+  expect(host.querySelector('[role="radio"][data-state="on"]')?.textContent).toBe('Low')
   expect(host.querySelector('button[aria-label="Permissions"]')?.textContent).toBe('Ask')
   expect(host.textContent).not.toMatch(/Agents? defaults?|Reset to default/)
   act(() =>
@@ -277,8 +278,16 @@ it('returns to concrete default model, effort and permission values by selecting
       )!
     )
   }
-  select('Reasoning effort', 'High')
-  select('Reasoning effort', 'Low')
+  fireEvent.click(
+    [...host.querySelectorAll<HTMLElement>('[role="radio"]')].find(
+      (row) => row.textContent === 'High'
+    )!
+  )
+  fireEvent.click(
+    [...host.querySelectorAll<HTMLElement>('[role="radio"]')].find(
+      (row) => row.textContent === 'Low'
+    )!
+  )
   select('Permissions', 'Full access')
   select('Permissions', 'Ask')
   act(() =>
@@ -321,7 +330,7 @@ it('searches current and supplied legacy models, keeps unknown explicit choices,
       </TooltipProvider>
     )
   )
-  expect(host.querySelector('input[id^="agent-arguments-"]')).toBeNull()
+  expect(host.querySelector('textarea[aria-label="Arguments"]')).toBeNull()
   expect(host.textContent).not.toContain('Applies only to CLI launches.')
   expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe('private-model')
   expect(host.textContent).toContain('Legacy models')
@@ -362,7 +371,10 @@ it.each(['chat', 'terminal'] as const)(
         </TooltipProvider>
       )
     )
-    const input = host.querySelector('input[id^="agent-arguments-"]')!
+    if (surface === 'chat') {
+      fireEvent.click(host.querySelector('button[aria-label="Toggle Arguments"]')!)
+    }
+    const input = host.querySelector('textarea[aria-label="Arguments"]')!
     fireEvent.change(input, { target: { value: '--model haiku --dangerously-skip-permissions' } })
     for (const way of ['chat', 'terminal'] as const) {
       onUse.mockClear()
@@ -386,3 +398,53 @@ it.each(['chat', 'terminal'] as const)(
     )
   }
 )
+
+it.each(['chat', 'terminal'] as const)(
+  'reuses the Arguments editor inside its %s-default disclosure, with permission badge in the input frame',
+  (surface) => {
+    act(() =>
+      root.render(
+        <TooltipProvider>
+          <AgentLaunchSetupPanel entry={{ ...entry, defaultSurface: surface }} onUse={onUse} />
+        </TooltipProvider>
+      )
+    )
+    const disclosure = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Toggle Arguments"]'
+    )!
+    expect(disclosure.getAttribute('aria-expanded')).toBe(String(surface === 'terminal'))
+    if (surface === 'chat') {
+      expect(host.querySelector('textarea')).toBeNull()
+      fireEvent.click(disclosure)
+    }
+    const text = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Arguments"]')!
+    const chip = host.querySelector('button[aria-label="Remove --permission-mode plan"]')!
+    expect(text.parentElement?.contains(chip)).toBe(true)
+    expect(text.value).toBe('--add-dir docs')
+    expect(host.textContent).not.toContain('Reset')
+    expect(host.textContent).not.toContain('Default from Agents settings')
+    fireEvent.click(disclosure)
+    expect(host.querySelector('textarea')).toBeNull()
+  }
+)
+
+it('keeps uncertain permission text literal instead of offering a badge that removes the whole Arguments field', () => {
+  const raw = '--unknown-option value --permission-mode auto --add-dir docs'
+  act(() =>
+    root.render(
+      <TooltipProvider>
+        <AgentLaunchSetupPanel entry={{ ...entry, arguments: raw }} onUse={onUse} />
+      </TooltipProvider>
+    )
+  )
+  expect(host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Arguments"]')?.value).toBe(
+    raw
+  )
+  expect(host.querySelector('button[aria-label^="Remove --unknown-option"]')).toBeNull()
+  act(() =>
+    [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Open terminal')
+      ?.click()
+  )
+  expect(onUse).toHaveBeenCalledExactlyOnceWith(agentPickerDraft(entry))
+})

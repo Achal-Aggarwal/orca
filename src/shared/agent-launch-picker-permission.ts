@@ -10,7 +10,7 @@ export function agentPickerArgumentPermission(entry: AgentPickerEntry, draft: Ag
     return undefined
   }
   const locked = draft.surface === 'terminal'
-  const opaque = { flag: text, remainingArguments: '', locked }
+  const opaque = { flag: text, remainingArguments: text, locked, opaque: true }
   const parsed = tokenizeStartupCommand(text, 'posix')
   if (!parsed.ok) {
     return opaque
@@ -39,6 +39,7 @@ export function agentPickerArgumentPermission(entry: AgentPickerEntry, draft: Ag
     : {
         flag: ranges.map(({ start, end }) => text.slice(start, end)).join(' '),
         remainingArguments,
-        locked
+        locked,
+        opaque: false
       }
 }

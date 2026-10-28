@@ -47,7 +47,7 @@ export function AgentLaunchSetupButton({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon-xs"
           disabled={disabled}
           aria-label={translate('agentPicker.configure', 'Configure {{agent}}', {
