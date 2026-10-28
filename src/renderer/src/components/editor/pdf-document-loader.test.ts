@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+type PdfOptions = Record<string, unknown> & {
+  range?: { requestDataRange: (begin: number, end: number) => void }
+}
 
 const { getDocument } = vi.hoisted(() => ({
-  getDocument: vi.fn((_options: Record<string, unknown>) => ({
+  getDocument: vi.fn((_options: PdfOptions) => ({
     promise: new Promise(() => {}),
     destroy: vi.fn(async () => {})
   }))
@@ -11,6 +15,7 @@ vi.mock('pdfjs-dist', () => ({
   getDocument,
   PDFDataRangeTransport: class {
     constructor(readonly length: number) {}
+    onDataRange(): void {}
   }
 }))
 
@@ -37,6 +42,25 @@ describe('PDF document loader sources', () => {
     expect(getDocument.mock.lastCall?.[0]).toMatchObject({
       data: new Uint8Array([0x25, 0x50, 0x44, 0x46])
     })
+    loader.dispose()
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('tears down the load whose range failed, not just its message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 502 }))
+    )
+    const onError = vi.fn()
+    const loader = createPdfDocumentLoader({ display: () => () => {}, onError })
+    loader.load({ url: 'orca-media://file/doc?revision=r1', length: 4096 })
+    const task = getDocument.mock.results.at(-1)?.value
+
+    getDocument.mock.lastCall?.[0].range?.requestDataRange(0, 1024)
+
+    await vi.waitFor(() => expect(onError).toHaveBeenLastCalledWith('Failed to load PDF preview'))
+    expect(task?.destroy).toHaveBeenCalledOnce()
     loader.dispose()
   })
 })

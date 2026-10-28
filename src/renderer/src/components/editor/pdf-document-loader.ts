@@ -57,10 +57,16 @@ export function createPdfDocumentLoader({
         }
       }
       onError(null)
+      // Bound to the task once it exists: a failed range tears down that load, not just its message.
+      let failRange: (error: unknown) => void = fail
       const documentSource =
         'url' in source
           ? source.length
-            ? { range: createOrcaMediaRangeTransport(source.url, source.length, fail) }
+            ? {
+                range: createOrcaMediaRangeTransport(source.url, source.length, (error) =>
+                  failRange(error)
+                )
+              }
             : { url: source.url }
           : decodePdfBase64(source.base64)
       if (typeof documentSource === 'string') {
@@ -76,6 +82,24 @@ export function createPdfDocumentLoader({
       }
       tasks.add(task)
       pending = task
+      failRange = (error) => {
+        if (disposed || !tasks.has(task)) {
+          return
+        }
+        if (pending === task) {
+          pending = null
+        }
+        const shown = displayed?.task === task ? displayed : null
+        try {
+          shown?.detach()
+        } finally {
+          if (shown) {
+            displayed = null
+          }
+          destroy(task)
+          fail(error)
+        }
+      }
       void task.promise.then(
         (doc) => {
           if (disposed || pending !== task) {

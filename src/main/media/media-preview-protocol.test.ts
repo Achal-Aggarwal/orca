@@ -169,6 +169,17 @@ describe('media preview protocol', () => {
     await expect(pending).rejects.toThrow()
   })
 
+  it('answers a Range preflight so pdf.js can fetch ranges in any Chromium', async () => {
+    const filePath = join(directory, 'doc.pdf')
+    await writeFile(filePath, '%PDF-1.4')
+    const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
+    const response = await handleMediaPreviewRequest(
+      new Request(result?.mediaUrl ?? '', { method: 'OPTIONS' })
+    )
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Range')
+  })
+
   it('checks the image it serves, not just the one it minted', async () => {
     const filePath = join(directory, 'swapped.png')
     await writeFile(filePath, png(4, 3))

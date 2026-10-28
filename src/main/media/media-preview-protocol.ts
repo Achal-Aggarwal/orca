@@ -52,6 +52,11 @@ type PreviewUrl = {
 }
 
 const REMOTE_STAT_REUSE_MS = 1_000
+const PREFLIGHT_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD',
+  'Access-Control-Allow-Headers': 'Range'
+}
 const grants = new Map<string, PreviewGrant>()
 const senders = new Map<number, Map<string, string>>()
 
@@ -286,6 +291,10 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
   const grant = grants.get(token)
   if (!grant) {
     return new Response(null, { status: 404 })
+  }
+  if (request.method === 'OPTIONS') {
+    // A browser that preflights pdf.js's Range header gets the answer it needs.
+    return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS })
   }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response(null, { status: 405 })
