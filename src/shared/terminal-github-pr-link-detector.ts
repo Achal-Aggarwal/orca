@@ -1,5 +1,6 @@
 /* eslint-disable no-control-regex -- ANSI SGR sequences are raw PTY input. */
 /** Share chunk carry and dedupe across main’s local/SSH fact scan and renderer remote-runtime/kill-switch byte scans. */
+import { ownRetainedString } from './own-retained-string'
 import type { RepoSlug } from './github/links'
 import { parseGitHubIssueOrPRLink } from './github/links'
 
@@ -148,7 +149,8 @@ export function createTerminalGitHubPRLinkDetector(): (data: string) => Terminal
 
     // Skip multi-pass normalization when the chunk cannot contain a PR URL.
     if (!rawCombined.includes(GITHUB_PR_PATH_MARKER)) {
-      carry = getPotentialGitHubPRCarry(rawCombined)
+      const nextCarry = getPotentialGitHubPRCarry(rawCombined)
+      carry = nextCarry === carry ? carry : ownRetainedString(nextCarry)
       return []
     }
     // Why: SGR styling has no screen width, so removing it is safe. Cursor
@@ -173,7 +175,8 @@ export function createTerminalGitHubPRLinkDetector(): (data: string) => Terminal
       links.push(parsed)
     }
 
-    carry = getPotentialGitHubPRCarry(rawCombined)
+    const nextCarry = getPotentialGitHubPRCarry(rawCombined)
+    carry = nextCarry === carry ? carry : ownRetainedString(nextCarry)
     return links
   }
 }
