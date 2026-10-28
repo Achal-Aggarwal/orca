@@ -1,3 +1,4 @@
+import { sessionCrewChanges } from './orchestration/crew/crew-changes'
 /** Early launch admission and the later chat host must share one record-store writer. */
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -6,7 +7,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
-import { openAgentSessionRecordStoreOnce } from './agent-session-record-store-slot'
+import {
+  openAgentSessionRecordStoreOnce,
+  peekOpenedAgentSessionRecordStore,
+  releaseAgentSessionRecordStore
+} from './agent-session-record-store-slot'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
@@ -93,4 +98,22 @@ describe('the record store slot', () => {
       store: expect.anything()
     })
   })
+})
+
+it('publishes source installation and release even when opening an empty record store', async () => {
+  const observed: unknown[] = []
+  const stop = sessionCrewChanges.subscribe(() =>
+    observed.push(peekOpenedAgentSessionRecordStore())
+  )
+  try {
+    const first = await openAgentSessionRecordStoreOnce(location())
+    expect(observed).toEqual([first.store])
+    await openAgentSessionRecordStoreOnce(location())
+    expect(observed).toEqual([first.store])
+    const released = await releaseAgentSessionRecordStore()
+    expect(observed).toEqual([first.store, null])
+    released?.journalDatabase.close()
+  } finally {
+    stop()
+  }
 })

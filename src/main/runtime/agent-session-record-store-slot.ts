@@ -1,3 +1,4 @@
+import { sessionCrewChanges } from './orchestration/crew/crew-changes'
 // Launch admission opens the single-writer store before chat-host installation; both must reuse this instance.
 // Quit-only edge: failed host teardown can leave its connection open after releasing the slot; a post-stop open lasts until exit.
 
@@ -44,6 +45,9 @@ export function openAgentSessionRecordStoreOnce(
     opened: openRecordStore(location).then(
       (opened) => {
         slot.store = opened.store
+        if (opening === slot) {
+          sessionCrewChanges.notify()
+        }
         return opened
       },
       (error: unknown) => {
@@ -82,6 +86,9 @@ async function openRecordStore(
 export async function releaseAgentSessionRecordStore(): Promise<OpenedAgentSessionRecordStore | null> {
   const released = opening
   opening = null
+  if (released) {
+    sessionCrewChanges.notify()
+  }
   return released ? released.opened.catch(() => null) : null
 }
 

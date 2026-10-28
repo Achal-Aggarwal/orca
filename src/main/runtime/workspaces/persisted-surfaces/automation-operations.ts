@@ -1,7 +1,9 @@
-import { buildCrewSnapshot } from '../../orchestration/crew/crew-read-model'
+import {
+  readCrewRuntimeInputs,
+  watchCrewRuntimeSources
+} from '../../orchestration/crew/crew-runtime-watch'
+import { CrewReadModel } from '../../orchestration/crew/crew-read-model'
 import { getPublishedHostDescriptor } from '../../host-descriptor'
-import { conversationRecordReader } from '../../orchestration/structured-session-lineage'
-import { peekOpenedAgentSessionRecordStore } from '../../agent-session-record-store-slot'
 import type { AutomationsChangedPayload } from '../../../../shared/runtime-client-events'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { OrcaRuntimeWithPtyForegroundProcessReads } from '../../client/runtime-client-state'
@@ -193,21 +195,31 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
     this.crewChanges.notify()
   }
 
+  private readonly crewReadModel = new CrewReadModel(
+    () =>
+      readCrewRuntimeInputs(
+        this,
+        this._orchestrationDb,
+        existsSync(this.orchestrationDbPath()),
+        getPublishedHostDescriptor(this.runtimeId)?.installationId ?? this.runtimeId
+      ),
+    (wake) =>
+      watchCrewRuntimeSources(
+        {
+          store: this.store,
+          watchChanges: this.crewChanges.subscribe,
+          watchTransitions: (listener) => this.agentTransitions.subscribe(listener),
+          watchClient: (listener) => this.onClientEvent(listener)
+        },
+        wake
+      )
+  )
+
   getOrchestrationCrewSnapshot(party: string) {
-    const store = peekOpenedAgentSessionRecordStore()
-    return buildCrewSnapshot(party, {
-      db: this._orchestrationDb,
-      retainedDbExists: existsSync(this.orchestrationDbPath()),
-      hostKey: getPublishedHostDescriptor(this.runtimeId)?.installationId ?? this.runtimeId,
-      records: store ? conversationRecordReader(store) : null,
-      liveHandle: (handle) => this.getTerminalWorktreeIdForHandle(handle) !== null,
-      handleForPane: (pane) => this.getTerminalHandleForPaneKey(pane),
-      paneForHandle: (handle) => this.getPaneKeyForTerminalHandle(handle),
-      name: (identity, taskName) =>
-        this.orchestrationSenderNames.nameOf(identity, undefined, taskName),
-      statuses: this.getOrchestrationFleetAgentStatusSnapshot()
-    })
+    return this.crewReadModel.read(party)
   }
+
+  watchOrchestrationCrew = (wake: () => void) => this.crewReadModel.subscribe(wake)
 
   private bindMailHandBack(db: OrchestrationDb): void {
     db.mailHandBackListener = (handBack) => this.offerHandedBackMail(db, handBack)

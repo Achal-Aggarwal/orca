@@ -1,3 +1,5 @@
+import type { RuntimeStore } from '../../runtime-store-contract'
+import type { RuntimeClientEvent } from '../../../../shared/runtime-client-events'
 import '../../rpc/unused-default-rpc-methods.test-fixture'
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -179,5 +181,173 @@ it('executes snapshot addresses through CLI send and the dispatcher into the pro
     ])
   } finally {
     h.close()
+  }
+})
+
+it('keeps crew as the only observer for title, settings and mirrored-name source changes', async () => {
+  const { OrcaRuntimeService } = await import('../../orca-runtime')
+  const { partialRuntimeStore } = await import('../../runtime-store-partial-fixture')
+  const { getDefaultWorkspaceSession } = await import('../../../../shared/constants')
+  const { makeTerminalTab } = await import('../../../persistence/persistence-session-fixtures')
+  const settingsListeners = new Set<Parameters<NonNullable<RuntimeStore['onSettingsChanged']>>[0]>()
+  const sessionListeners = new Set<
+    Parameters<NonNullable<RuntimeStore['onWorkspaceSessionWritten']>>[0]
+  >()
+  const worktreeId = 'repo-1::/workspace'
+  let session = {
+    ...getDefaultWorkspaceSession(),
+    tabsByWorktree: {
+      [worktreeId]: [
+        makeTerminalTab({
+          id: 'tab_worker',
+          worktreeId,
+          title: 'Initial worker',
+          customTitle: 'Initial worker'
+        })
+      ]
+    }
+  }
+  let generated = true
+  const store = partialRuntimeStore({
+    getSettings: () => ({ tabAutoGenerateTitle: generated }),
+    getWorkspaceSession: () => session,
+    getWorkspaceSessionHostIds: () => ['local'],
+    onSettingsChanged: (listener) => {
+      settingsListeners.add(listener)
+      return () => settingsListeners.delete(listener)
+    },
+    onWorkspaceSessionWritten: (listener) => {
+      sessionListeners.add(listener)
+      return () => sessionListeners.delete(listener)
+    }
+  })
+  const runtime = new OrcaRuntimeService(store)
+  const { OrchestrationDb } = await import('../db')
+  const { subscribeCrew } = await import('./crew-stream')
+  const db = new OrchestrationDb(':memory:')
+  runtime.setOrchestrationDb(db)
+  const workerPane = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const coordinatorPane = 'tab_coord:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  runtime.registerPty('pty_worker', worktreeId, null, {
+    tabId: 'tab_worker',
+    leafId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  })
+  runtime.registerPty('pty_coord', worktreeId, null, {
+    tabId: 'tab_coord',
+    leafId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  })
+  runtime.attachWindow(1)
+  runtime.syncWindowGraph(1, {
+    tabs: [
+      {
+        tabId: 'tab_worker',
+        worktreeId,
+        title: 'Initial worker',
+        activeLeafId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        layout: null
+      },
+      {
+        tabId: 'tab_coord',
+        worktreeId,
+        title: 'Coordinator',
+        activeLeafId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        layout: null
+      }
+    ],
+    leaves: [
+      {
+        tabId: 'tab_worker',
+        worktreeId,
+        leafId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        paneRuntimeId: 1,
+        ptyId: 'pty_worker'
+      },
+      {
+        tabId: 'tab_coord',
+        worktreeId,
+        leafId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        paneRuntimeId: 1,
+        ptyId: 'pty_coord'
+      }
+    ]
+  })
+  const workerHandle = runtime.getTerminalHandleForPaneKey(workerPane)!
+  const coordinatorHandle = runtime.getTerminalHandleForPaneKey(coordinatorPane)!
+  const run = db.createRun({
+    objective: 'Observed names',
+    coordinatorHandle,
+    coordinatorPaneKey: coordinatorPane
+  })
+  db.createDispatchContext({
+    taskId: db.createTask({ runId: run.id, spec: 'Worker' }).id,
+    assigneeHandle: workerHandle,
+    assigneePaneKey: workerPane,
+    creator: { kind: 'system' },
+    maxDepth: 10
+  })
+  const names = vi.spyOn(runtime.orchestrationSenderNames, 'nameOf')
+  const selection = vi.spyOn(db, 'listSessionDispatchesForPresentation')
+  const frames: unknown[] = []
+  const stop = subscribeCrew(
+    () => runtime.getOrchestrationCrewSnapshot(coordinatorHandle),
+    runtime.watchOrchestrationCrew,
+    (frame) => frames.push(frame)
+  )
+  try {
+    expect(runtime.getOrchestrationCrewSnapshot(coordinatorHandle).sections.managing[0].label).toBe(
+      'Initial worker'
+    )
+    selection.mockClear()
+    names.mockClear()
+    // RuntimeClientEventBus is the real production filter. Crew is its only enrolled consumer.
+    // SAFETY: the protected method is this class's client-event publication boundary, exercised without OS input.
+    const events = runtime as unknown as {
+      emitClientEvent(event: RuntimeClientEvent): void
+    }
+    events.emitClientEvent({
+      type: 'terminalSideEffects',
+      batch: { ptyId: 'pty', seq: 1, facts: [{ kind: 'bell' }] }
+    })
+    await Promise.resolve()
+    expect(selection).not.toHaveBeenCalled()
+    expect(names).not.toHaveBeenCalled()
+    events.emitClientEvent({
+      type: 'terminalSideEffects',
+      batch: {
+        ptyId: 'pty',
+        seq: 2,
+        facts: [{ kind: 'title', rawTitle: 'Working', normalizedTitle: 'Working' }]
+      }
+    })
+    generated = false
+    for (const listener of settingsListeners) {
+      listener({ tabAutoGenerateTitle: false }, store.getSettings())
+    }
+    session = {
+      ...session,
+      tabsByWorktree: {
+        [worktreeId]: [
+          makeTerminalTab({
+            id: 'tab_worker',
+            worktreeId,
+            title: 'Renamed tab',
+            customTitle: 'Renamed tab'
+          })
+        ]
+      }
+    }
+    for (const listener of sessionListeners) {
+      listener('local')
+    }
+    await Promise.resolve()
+    expect(selection).not.toHaveBeenCalled()
+    expect(names).toHaveBeenCalledTimes(1)
+    expect(runtime.getOrchestrationCrewSnapshot(coordinatorHandle).sections.managing[0].label).toBe(
+      'Renamed tab'
+    )
+    expect(frames).toHaveLength(6)
+  } finally {
+    stop()
+    db.close()
   }
 })

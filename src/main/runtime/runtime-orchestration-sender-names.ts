@@ -12,7 +12,10 @@ import {
   type TerminalSenderNaming
 } from './orchestration/orchestration-sender-name'
 import { agentMessageSender } from './orchestration/agent-message-sender'
-import { readAgentSessionRecordStore } from './orchestration/structured-session-lineage'
+import {
+  type AgentSessionRecordReader,
+  readAgentSessionRecordStore
+} from './orchestration/structured-session-lineage'
 import { terminalHostConnectionMatches } from './orchestration/worker-provider-session'
 
 type RuntimeSenderNameDeps = {
@@ -78,13 +81,14 @@ export class RuntimeOrchestrationSenderNames {
   nameOf(
     party: AgentMessageSender['party'],
     reportedDispatchId?: string,
-    taskName?: string | null
+    taskName?: string | null,
+    records: AgentSessionRecordReader | null = readAgentSessionRecordStore()
   ): string | null {
     return orchestrationSenderName(
       party,
       {
         db: this.deps.getDb(),
-        records: readAgentSessionRecordStore(),
+        records,
         chatTab: (worktreeId, sessionId) =>
           this.deps
             .getWorkspaceSession(worktreeId)

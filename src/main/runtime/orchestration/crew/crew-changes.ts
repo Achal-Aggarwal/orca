@@ -1,26 +1,19 @@
-export class CrewChanges {
-  private readonly listeners = new Set<() => void>()
-  private queued = false
+export type CrewFacet = 'topology' | 'records' | 'status' | 'names' | 'traffic'
+export type CrewInvalidation = ReadonlySet<CrewFacet> & { readonly recordIds?: readonly string[] }
 
-  subscribe = (listener: () => void): (() => void) => {
+/** Invalidation is synchronous; the existing stream scheduler reads only after the commit. */
+export class CrewChanges {
+  private readonly listeners = new Set<(facets: CrewInvalidation) => void>()
+
+  subscribe = (listener: (facets: CrewInvalidation) => void): (() => void) => {
     this.listeners.add(listener)
-    return () => {
-      this.listeners.delete(listener)
-    }
+    return () => this.listeners.delete(listener)
   }
 
-  notify = (): void => {
-    if (this.queued || this.listeners.size === 0) {
-      return
+  notify = (facets: CrewInvalidation = new Set(['topology'])): void => {
+    for (const listener of this.listeners) {
+      listener(facets)
     }
-    this.queued = true
-    // Database mutations are synchronous; readers run after their outer transaction finishes.
-    queueMicrotask(() => {
-      this.queued = false
-      for (const listener of this.listeners) {
-        listener()
-      }
-    })
   }
 }
 

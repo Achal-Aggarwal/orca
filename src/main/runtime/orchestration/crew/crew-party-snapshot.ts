@@ -1,0 +1,239 @@
+import type { AgentMessageSender } from '../../../../shared/agent-session/agent-session-message-source'
+import { AGENT_STATUS_STALE_AFTER_MS } from '../../../../shared/agent-status-freshness'
+import {
+  emptyCrew,
+  type OrchestrationCrewSnapshot,
+  type OrchestrationCrewRow
+} from '../../../../shared/orchestration-crew'
+import { parseOrcaSessionAddress } from '../../../../shared/orca-session-address'
+import type { FleetAgentStatusEvidence } from '../../../../shared/orchestration-fleet-agent-status-evidence'
+import { isPublicOrchestrationAddress } from '../../../../shared/orchestration-agent-reference'
+import type { OrchestrationDb } from '../db'
+import {
+  resolveLineageRunningSession,
+  type AgentSessionRecordReader
+} from '../structured-session-lineage'
+import { crewDisplayName, crewTaskDisplay } from './crew-rules'
+import {
+  readCrewProvenance,
+  readCrewOwnedRunAddresses,
+  readCrewQuestions,
+  readCrewRuns,
+  readCrewTraffic,
+  type CrewAssignmentRow
+} from './crew-query'
+
+import type { Party } from './crew-parties'
+import { createCrewHostDerivation } from './crew-host-derivation'
+import { statusForFleetWorker } from '../../../../shared/orchestration-fleet-status-index'
+import { projectLiveness } from '../../../../shared/orchestration-fleet-worker-projection'
+export type CrewReadDependencies = {
+  db: OrchestrationDb | null
+  retainedDbExists: boolean
+  hostKey: string
+  records: AgentSessionRecordReader | null
+  liveHandle: (handle: string) => boolean
+  handleForPane: (pane: string) => string | null
+  paneForHandle: (handle: string) => string | null
+  name: (
+    party: AgentMessageSender['party'],
+    taskName: string | null,
+    records: AgentSessionRecordReader | null
+  ) => string | null
+  statuses: readonly FleetAgentStatusEvidence[]
+  now?: number
+}
+
+function preview(body: string): string {
+  const bytes = Buffer.from(body)
+  return bytes.length <= 1024
+    ? body
+    : `${bytes
+        .subarray(0, 1021)
+        .toString('utf8')
+        .replace(/\uFFFD$/, '')}…`
+}
+
+export function buildCrewSnapshot(
+  address: string,
+  deps: CrewReadDependencies,
+  host = createCrewHostDerivation(deps, deps.now ?? Date.now())
+): OrchestrationCrewSnapshot {
+  const db = deps.db
+  if (!db) {
+    return emptyCrew(deps.retainedDbExists ? 'unknown' : 'ok')
+  }
+  const now = deps.now ?? Date.now()
+  const cutoff = new Date(now - AGENT_STATUS_STALE_AFTER_MS).toISOString()
+  const registry = host.registry.fork()
+  const { party, alias, addressOf, getParty, aliasesFor } = registry
+  const records = host.deps.records
+  const hydrate = (addresses: string[], panes: string[] = []) => {
+    const provenance = readCrewProvenance(db, addresses, panes)
+    for (const family of [provenance.local, provenance.remote]) {
+      for (const row of family) {
+        const worker = party(row.session, row.handle, row.pane, `dispatch:${row.id}`)
+        if (worker) {
+          alias(`dispatch:${row.id}`, worker.address)
+        }
+      }
+    }
+  }
+  const rawSession = parseOrcaSessionAddress(address)
+  let self = party(
+    rawSession,
+    rawSession ? null : address,
+    rawSession ? null : deps.paneForHandle(address),
+    address
+  )
+  if (!self) {
+    return emptyCrew('unknown')
+  }
+  hydrate(aliasesFor(self.address), self.paneKey ? [self.paneKey] : [])
+  self = getParty(addressOf(self.address) ?? self.address) ?? self
+  const ownedRunAddresses = readCrewOwnedRunAddresses(db, self)
+  for (const current of readCrewRuns(db, ownedRunAddresses)) {
+    const coordinator = party(current.session, current.handle, current.pane, `run:${current.id}`)
+    if (coordinator) {
+      alias(`run:${current.id}`, coordinator.address)
+    }
+  }
+  const selfAliases = () => aliasesFor(self.address)
+  const traffic = readCrewTraffic(db, selfAliases(), cutoff)
+  hydrate(traffic.map((message) => message.peer))
+  for (const run of readCrewRuns(
+    db,
+    traffic.map((message) => message.peer)
+  )) {
+    const coordinator = party(run.session, run.handle, run.pane, `run:${run.id}`)
+    if (coordinator) {
+      alias(`run:${run.id}`, coordinator.address)
+    }
+  }
+  const rows = new Map<string, OrchestrationCrewRow>()
+  const decorate = (
+    target: Party,
+    role: OrchestrationCrewRow['role'],
+    assignment?: CrewAssignmentRow,
+    sendAddress?: string
+  ): OrchestrationCrewRow => {
+    const display = crewTaskDisplay(assignment)
+    const title = display.taskTitle || display.displayName
+    const live = target.orcaSessionId
+      ? resolveLineageRunningSession(records, target.orcaSessionId)
+      : null
+    const worker = assignment ? host.workersById.get(assignment.id) : undefined
+    const evidence =
+      worker && !target.orcaSessionId
+        ? statusForFleetWorker(worker, host.statusIndex)
+        : target.paneKey
+          ? host.statusesByPane.get(target.paneKey)
+          : undefined
+    const bound =
+      evidence &&
+      (live?.kind === 'here' ||
+        Boolean(worker) ||
+        (evidence.binding.kind !== 'unresolved' &&
+          evidence.binding.terminalHandle === target.terminalHandle &&
+          evidence.binding.paneKey === target.paneKey &&
+          (evidence.binding.kind !== 'worker' || evidence.binding.dispatchId === assignment?.id)))
+    const fresh =
+      bound && projectLiveness({ resource: null }, evidence, now).verdict === 'live'
+        ? evidence
+        : undefined
+    const row: OrchestrationCrewRow = {
+      partyKey: JSON.stringify([deps.hostKey, target.address]),
+      role,
+      label: crewDisplayName(
+        deps.name(target, display.displayName || display.taskTitle || null, records),
+        title,
+        'Agent'
+      )!,
+      agentKind:
+        live?.kind === 'here'
+          ? live.record.provider
+          : (fresh?.activity.agentType ?? assignment?.agent ?? 'Agent'),
+      status:
+        fresh?.activity.state ??
+        (assignment
+          ? ['pending', 'dispatched'].includes(assignment.status)
+            ? 'working'
+            : 'done'
+          : 'unknown'),
+      ...(title && assignment ? { task: { title, state: assignment.task_status } } : {}),
+      ...(assignment?.stage && !['accepted', 'ready'].includes(assignment.stage)
+        ? { progress: assignment.stage.replaceAll('_', ' ') }
+        : {}),
+      ...(assignment?.host_label ? { hostLabel: assignment.host_label } : {}),
+      ...(sendAddress && isPublicOrchestrationAddress(sendAddress) ? { sendAddress } : {})
+    }
+    if (live?.kind === 'here') {
+      row.openTarget = {
+        kind: 'chat',
+        sessionId: live.sessionId,
+        worktreeId: live.record.location.workspaceId
+      }
+    } else if (target.terminalHandle) {
+      row.openTarget = { kind: 'terminal', handle: target.terminalHandle }
+    } else if (assignment && !assignment.host_label) {
+      row.openTarget = { kind: 'dispatch', address: `dispatch:${assignment.id}` }
+    }
+    rows.set(target.address, row)
+    return row
+  }
+  const snapshot = emptyCrew('ok')
+  for (const { assignment, worker, parent, parentAssignment, parentAddress } of host.relations.get(
+    self.address
+  ) ?? []) {
+    if (parent.address === self.address) {
+      snapshot.sections.managing.push(
+        decorate(worker, 'worker', assignment, `dispatch:${assignment.id}`)
+      )
+    } else if (!rows.has(parent.address)) {
+      snapshot.sections.managedBy.push(decorate(parent, 'manager', parentAssignment, parentAddress))
+    }
+  }
+  for (const message of traffic) {
+    let targetAddress = addressOf(message.peer)
+    if (!targetAddress) {
+      const parsed = parseOrcaSessionAddress(message.peer)
+      targetAddress = party(parsed, parsed ? null : message.peer, null, message.peer)?.address
+    }
+    if (!targetAddress || targetAddress === self.address) {
+      continue
+    }
+    const target = getParty(targetAddress)!
+    let row = rows.get(targetAddress)
+    if (!row) {
+      row = decorate(
+        target,
+        'peer',
+        undefined,
+        target.orcaSessionId
+          ? target.address
+          : (target.terminalHandle ??
+              (target.address.startsWith('dispatch:') || target.address.startsWith('run:')
+                ? target.address
+                : undefined))
+      )
+      snapshot.sections.talkingWith.push(row)
+    }
+    if (!row.latest || message.sequence > row.latest.sequence) {
+      row.latest = {
+        direction: message.direction,
+        preview: preview(message.body),
+        at: message.created_at,
+        sequence: message.sequence
+      }
+    }
+  }
+  const questions = readCrewQuestions(db, selfAliases())
+  for (const question of questions) {
+    const target = addressOf(`dispatch:${question.dispatch_id}`)
+    const row = target ? rows.get(target) : undefined
+    if (row && !row.pendingQuestion) {
+      row.pendingQuestion = { preview: preview(question.body), at: question.created_at }
+    }
+  }
+  return snapshot
+}

@@ -30,6 +30,20 @@ export function createMailboxDeliveryIndexesIfPossible(this: OrchestrationDb): v
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_dispatch_crew_recent
       ON dispatch_contexts(julianday(completed_at)) WHERE status NOT IN ('pending', 'dispatched');`)
   }
+  if (this.hasColumn('dispatch_contexts', 'assignee_pane_key')) {
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_crew_dispatch_pane
+      ON dispatch_contexts(assignee_pane_key) WHERE assignee_pane_key IS NOT NULL`)
+  }
+  if (this.hasColumn('remote_dispatch_attachments', 'terminal_handle')) {
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_crew_remote_handle ON remote_dispatch_attachments(terminal_handle);
+      CREATE INDEX IF NOT EXISTS idx_crew_remote_pane ON remote_dispatch_attachments(pane_key);
+    `)
+  }
+  if (this.hasColumn('question_threads', 'status')) {
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_crew_pending_questions
+      ON question_threads(message_id) WHERE status = 'pending'`)
+  }
   const hasDeliveredAt = this.hasColumn('messages', 'delivered_at')
   if (hasDeliveredAt) {
     this.db.exec(`

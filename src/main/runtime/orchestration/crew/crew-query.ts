@@ -27,7 +27,9 @@ export const CrewAssignment = z.object({
   coordinator_session: nullable,
   stage: nullable,
   agent: nullable,
-  host_label: nullable
+  host_label: nullable,
+  resource_incarnation: nullable,
+  resource_host_scope: nullable
 })
 export type CrewAssignmentRow = z.infer<typeof CrewAssignment>
 
@@ -37,10 +39,12 @@ const assignmentColumns = `d.rowid AS ordinal, d.id, d.run_id, d.task_id,
   d.status, d.completed_at, t.spec, t.task_title, t.display_name, t.status AS task_status,
   r.coordinator_handle, r.coordinator_pane_key,
   ${currentRunCoordinatorOrcaSessionIdSql('r')} AS coordinator_session,
-  w.stage, json_extract(w.start_options, '$.agent') AS agent, f.environment_name AS host_label`
+  w.stage, json_extract(w.start_options, '$.agent') AS agent, f.environment_name AS host_label, resource.process_incarnation AS resource_incarnation,
+  resource.host_scope AS resource_host_scope`
 const assignmentJoins = `JOIN tasks t ON t.id = d.task_id JOIN runs r ON r.id = d.run_id
   LEFT JOIN worker_dispatches w ON w.dispatch_id = d.id
-  LEFT JOIN federated_dispatches f ON f.dispatch_id = d.id`
+  LEFT JOIN federated_dispatches f ON f.dispatch_id = d.id
+  LEFT JOIN worker_terminal_resources resource ON resource.owner_dispatch_id = d.id`
 
 export function readCrewAssignments(db: OrchestrationDb, now: number): CrewAssignmentRow[] {
   const cutoff = new Date(now - AGENT_STATUS_STALE_AFTER_MS).toISOString()
@@ -65,23 +69,50 @@ export function readCrewAssignments(db: OrchestrationDb, now: number): CrewAssig
   )
 }
 
-export function readCrewMailboxAssignments(
-  db: OrchestrationDb,
-  addresses: string[]
-): CrewAssignmentRow[] {
-  const ids = addresses
-    .filter((address) => address.startsWith('dispatch:'))
-    .map((address) => address.slice(9))
-  return ids.length === 0
-    ? []
-    : CrewAssignment.array().parse(
-        db.db
-          .prepare(`
-    SELECT ${assignmentColumns} FROM dispatch_contexts d ${assignmentJoins}
-    WHERE d.id IN (SELECT value FROM json_each(?))
-  `)
-          .all(JSON.stringify(ids))
-      )
+const Provenance = z.object({
+  id: z.string(),
+  handle: nullable,
+  pane: nullable,
+  session: nullable
+})
+
+/** Retained aliases are narrow provenance, never eligible relationship membership. */
+export function readCrewProvenance(db: OrchestrationDb, addresses: string[], panes: string[] = []) {
+  const handles = JSON.stringify(addresses.filter((address) => address.startsWith('term_')))
+  const sessions = JSON.stringify(
+    addresses
+      .filter((address) => address.startsWith('orca_session_id:'))
+      .map((address) => address.slice('orca_session_id:'.length))
+  )
+  const ids = JSON.stringify(
+    addresses
+      .filter((address) => address.startsWith('dispatch:'))
+      .map((address) => address.slice(9))
+  )
+  const local = Provenance.array().parse(
+    db.db
+      .prepare(`SELECT d.id, d.assignee_handle AS handle,
+    d.assignee_pane_key AS pane, d.assignee_orca_session_id AS session
+    FROM dispatch_contexts d WHERE d.rowid IN (
+      SELECT rowid FROM dispatch_contexts WHERE assignee_handle IN (SELECT value FROM json_each(?))
+      UNION SELECT rowid FROM dispatch_contexts WHERE assignee_orca_session_id IN (SELECT value FROM json_each(?))
+      UNION SELECT rowid FROM dispatch_contexts WHERE assignee_pane_key IN (SELECT value FROM json_each(?))
+      UNION SELECT rowid FROM dispatch_contexts WHERE id IN (SELECT value FROM json_each(?)))
+    ORDER BY d.rowid DESC`)
+      .all(handles, sessions, JSON.stringify(panes), ids)
+  )
+  const remote = Provenance.array().parse(
+    db.db
+      .prepare(`SELECT dispatch_id AS id,
+    terminal_handle AS handle, pane_key AS pane, NULL AS session
+    FROM remote_dispatch_attachments WHERE rowid IN (
+      SELECT rowid FROM remote_dispatch_attachments WHERE terminal_handle IN (SELECT value FROM json_each(?))
+      UNION SELECT rowid FROM remote_dispatch_attachments WHERE pane_key IN (SELECT value FROM json_each(?))
+      UNION SELECT rowid FROM remote_dispatch_attachments WHERE dispatch_id IN (SELECT value FROM json_each(?)))
+    ORDER BY rowid DESC`)
+      .all(handles, JSON.stringify(panes), ids)
+  )
+  return { local, remote }
 }
 
 const Traffic = z.object({
@@ -103,16 +134,17 @@ export function readCrewTraffic(
     db.db
       .prepare(`
     WITH traffic AS (
-      SELECT to_handle AS peer, 'to' AS direction, sequence, body, created_at
+      SELECT to_handle AS peer, 'to' AS direction, sequence
       FROM messages WHERE from_handle IN (SELECT value FROM json_each(?))
         AND julianday(created_at) >= julianday(?) AND type <> 'heartbeat'
       UNION ALL
-      SELECT from_handle AS peer, 'from' AS direction, sequence, body, created_at
+      SELECT from_handle AS peer, 'from' AS direction, sequence
       FROM messages WHERE to_handle IN (SELECT value FROM json_each(?))
         AND julianday(created_at) >= julianday(?) AND type <> 'heartbeat'
     ), peers AS (SELECT peer, MAX(sequence) AS sequence FROM traffic GROUP BY peer)
-    SELECT traffic.peer, traffic.direction, traffic.sequence, traffic.body, traffic.created_at
+    SELECT traffic.peer, traffic.direction, traffic.sequence, winner.body, winner.created_at
     FROM peers JOIN traffic ON traffic.peer = peers.peer AND traffic.sequence = peers.sequence
+    JOIN messages winner ON winner.sequence = traffic.sequence
     ORDER BY traffic.sequence DESC
   `)
       .all(JSON.stringify(aliases), cutoff, JSON.stringify(aliases), cutoff)
@@ -125,9 +157,9 @@ export function readCrewQuestions(db: OrchestrationDb, aliases: string[]) {
     .array()
     .parse(
       db.db
-        .prepare(`SELECT q.dispatch_id, m.body, m.created_at FROM messages m
-      JOIN question_threads q ON q.message_id = m.id AND q.status = 'pending'
-      WHERE m.to_handle IN (SELECT value FROM json_each(?)) ORDER BY m.sequence DESC
+        .prepare(`SELECT q.dispatch_id, m.body, m.created_at FROM question_threads q INDEXED BY idx_crew_pending_questions
+      JOIN messages m ON m.id = q.message_id
+      WHERE q.status = 'pending' AND m.to_handle IN (SELECT value FROM json_each(?)) ORDER BY m.sequence DESC
     `)
         .all(JSON.stringify(aliases))
     )
@@ -149,16 +181,15 @@ export function readCrewRuns(db: OrchestrationDb, addresses: string[]) {
     )
 }
 
-export function readCrewSelfAssignments(
+export function readCrewOwnedRunAddresses(
   db: OrchestrationDb,
   party: { terminalHandle: string | null; paneKey: string | null; orcaSessionId: string | null }
-) {
-  return CrewAssignment.array().parse(
-    db.db
-      .prepare(`SELECT ${assignmentColumns}
-    FROM dispatch_contexts d ${assignmentJoins} WHERE d.assignee_handle = ?
-      OR d.assignee_pane_key = ? OR d.assignee_orca_session_id = ?
-  `)
-      .all(party.terminalHandle, party.paneKey, party.orcaSessionId)
+): string[] {
+  const ids = new Set(
+    party.terminalHandle ? db.getRunMailboxOwnerIdsForHandle(party.terminalHandle) : []
   )
+  for (const run of db.runsBoundToCoordinator(party)) {
+    ids.add(run.id)
+  }
+  return [...ids].map((id) => `run:${id}`)
 }

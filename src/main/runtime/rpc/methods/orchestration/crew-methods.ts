@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { CrewParty } from '../../../../../shared/orchestration-crew'
-import { sessionCrewChanges } from '../../../orchestration/crew/crew-changes'
 import { subscribeCrew } from '../../../orchestration/crew/crew-stream'
 import { defineStreamingMethod } from '../../core'
 
@@ -16,19 +15,7 @@ export const ORCHESTRATION_CREW_METHODS = [
         const release = () => runtime.cleanupSubscription(key)
         const stop = subscribeCrew(
           () => runtime.getOrchestrationCrewSnapshot(party),
-          (wake) => {
-            const disposers = [
-              runtime.crewChanges.subscribe(wake),
-              sessionCrewChanges.subscribe(wake),
-              runtime.agentTransitions.subscribe(wake),
-              runtime.onClientEvent((event) => {
-                if (event.type === 'terminalSideEffects' || event.type === 'workspaceViewChanged') {
-                  wake()
-                }
-              })
-            ]
-            return () => disposers.forEach((dispose) => dispose())
-          },
+          runtime.watchOrchestrationCrew,
           emit
         )
         runtime.registerSubscriptionCleanup(
