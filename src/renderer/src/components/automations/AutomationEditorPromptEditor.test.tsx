@@ -67,6 +67,7 @@ describe('AutomationEditorPromptEditor', () => {
   it('installs find and syncs an external rewrite after mount', () => {
     const editorInstance = {
       getContainerDomNode: () => document.createElement('div'),
+      onDidChangeModelContent: () => ({ dispose: vi.fn() }),
       onDidDispose: vi.fn()
     }
     const { rerender } = render(
@@ -101,6 +102,7 @@ describe('AutomationEditorPromptEditor', () => {
     const editorDom = document.createElement('div')
     const editorInstance = {
       getContainerDomNode: () => editorDom,
+      onDidChangeModelContent: () => ({ dispose: vi.fn() }),
       onDidDispose: vi.fn()
     }
     render(
@@ -186,8 +188,21 @@ describe('AutomationEditorPromptEditor', () => {
       />
     )
 
-    const handleChange = editorProps.current?.onChange as (value: string) => void
-    handleChange('typed prompt')
+    let handleChange = (): void => {}
+    const onMount = editorProps.current?.onMount
+    if (typeof onMount !== 'function') {
+      throw new Error('Expected Monaco mount callback')
+    }
+    onMount({
+      getContainerDomNode: () => document.createElement('div'),
+      getValue: () => 'typed prompt',
+      onDidChangeModelContent: (listener: () => void) => {
+        handleChange = listener
+        return { dispose: vi.fn() }
+      },
+      onDidDispose: vi.fn()
+    })
+    handleChange()
     expect(onChange).toHaveBeenCalledWith('typed prompt')
   })
 })

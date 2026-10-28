@@ -3,6 +3,7 @@ import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { installMonacoEditorFindShortcut } from '@/components/editor/editor-shortcuts'
 import { syncContentOnMount, syncContentUpdate } from '@/components/editor/monaco-content-sync'
+import { registerMonacoLargePasteLifecycle } from '@/components/editor/monaco-large-paste-lifecycle'
 import { isMonacoFindWidgetOpen } from '@/components/editor/monaco-find-widget'
 import { computeEditorFontSize, resolveEditorFontFamily } from '@/lib/editor-font-zoom'
 import { useDocumentDarkTheme } from '@/hooks/use-document-dark-theme'
@@ -65,11 +66,13 @@ export function AutomationEditorPromptEditor({
   const contentRef = useRef(value)
   const lastSyncedContentRef = useRef(value)
   const isApplyingProgrammaticContentRef = useRef(false)
+  const onChangeRef = useRef(onChange)
   const onDismissRef = useRef(onDismiss)
 
   useLayoutEffect(() => {
+    onChangeRef.current = onChange
     onDismissRef.current = onDismiss
-  }, [onDismiss])
+  }, [onChange, onDismiss])
 
   const fontSize = computeEditorFontSize(settings?.terminalFontSize ?? 13, editorFontZoomLevel)
   const fontFamily = resolveEditorFontFamily(settings)
@@ -85,23 +88,39 @@ export function AutomationEditorPromptEditor({
     [ariaLabel, fontFamily, fontSize, placeholder]
   )
 
-  const handleChange = useCallback(
-    (nextValue: string | undefined) => {
-      if (isApplyingProgrammaticContentRef.current) {
-        return
-      }
-      const next = nextValue ?? ''
-      lastSyncedContentRef.current = next
-      onChange(next)
-    },
-    [onChange]
-  )
-
   const handleMount = useCallback<OnMount>((editorInstance) => {
     editorRef.current = editorInstance
     const editorDomNode = editorInstance.getContainerDomNode()
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
     const cleanupEscapeDismiss = installPromptEditorEscapeDismiss(editorDomNode, onDismissRef)
+    let applyingLargePaste = false
+    const unregisterPasteLifecycle = registerMonacoLargePasteLifecycle(editorInstance, () => {
+      applyingLargePaste = true
+      const model = editorInstance.getModel()
+      const publish = onChangeRef.current
+      return (result) => {
+        applyingLargePaste = false
+        if (
+          (result.status === 'pasted' || result.status === 'cancelled') &&
+          model &&
+          !model.isDisposed()
+        ) {
+          const next = model.getValue()
+          if (editorRef.current === editorInstance && editorInstance.getModel() === model) {
+            lastSyncedContentRef.current = next
+          }
+          publish(next)
+        }
+      }
+    })
+    const contentListener = editorInstance.onDidChangeModelContent(() => {
+      if (isApplyingProgrammaticContentRef.current || applyingLargePaste) {
+        return
+      }
+      const next = editorInstance.getValue()
+      lastSyncedContentRef.current = next
+      onChangeRef.current(next)
+    })
     isApplyingProgrammaticContentRef.current = true
     try {
       if (syncContentOnMount(editorInstance, contentRef.current)) {
@@ -113,6 +132,8 @@ export function AutomationEditorPromptEditor({
     editorInstance.onDidDispose(() => {
       cleanupFindShortcut()
       cleanupEscapeDismiss()
+      unregisterPasteLifecycle()
+      contentListener.dispose()
       if (editorRef.current === editorInstance) {
         editorRef.current = null
       }
@@ -152,7 +173,6 @@ export function AutomationEditorPromptEditor({
           // Own post-mount syncing; a controlled value would wipe Monaco’s undo stack.
           defaultValue={value}
           theme={isDark ? 'vs-dark' : 'vs'}
-          onChange={handleChange}
           onMount={handleMount}
           options={options}
           loading={<div className="h-full w-full bg-editor-surface" aria-hidden="true" />}
