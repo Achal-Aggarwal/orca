@@ -1,12 +1,28 @@
 // @vitest-environment happy-dom
 
 import type * as LaunchErrors from '@/lib/structured-agent-session-launch-errors'
-import { beforeEach, vi } from 'vitest'
+import { beforeEach, vi, type Mock } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-session-contracts'
 import type * as RecoveryModule from '@/lib/agent-session/launch/structured-agent-session-launch-recovery'
 import type { StructuredAgentSessionLaunchIntent } from '@/lib/launch-structured-agent-session'
 
-const mocks = vi.hoisted(() => ({
+type LaunchMocks = Record<
+  | 'abandonIntent'
+  | 'callStructuredAgentSession'
+  | 'callRuntimeRpc'
+  | 'createIntent'
+  | 'retryIntent'
+  | 'restoreIntent'
+  | 'launch'
+  | 'seedDraft'
+  | 'clearDraft',
+  Mock
+> & {
+  rendererTabs: Record<string, unknown[]>
+  listeners: Set<(state: { unifiedTabsByWorktree: Record<string, unknown[]> }) => void>
+}
+
+const mocks: LaunchMocks = vi.hoisted(() => ({
   abandonIntent: vi.fn(),
   callStructuredAgentSession: vi.fn(),
   callRuntimeRpc: vi.fn(),
