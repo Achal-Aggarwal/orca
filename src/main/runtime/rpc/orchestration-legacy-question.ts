@@ -39,6 +39,7 @@ export async function handleLegacyAsk(args: {
       }
     }
     const principal = authority.attestWorker(request, dispatch)
+    runtime.observeMessageCheck(principal.terminal_handle, waitScope)
     const timeoutMs = clampOrchestrationAskTimeoutMs(params.timeoutMs)
     let questionId = params.resume
     let duplicate = true

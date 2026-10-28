@@ -86,6 +86,7 @@ export type RuntimeServiceCommandSurface = {
   getAllBrowserDrivers: RuntimeBrowserDriverController['getAll']
   reclaimBrowserForDesktop: RuntimeBrowserDriverController['reclaimForDesktop']
   notifyMessageArrived(handle: string, messageType?: string): void
+  observeMessageCheck: RuntimeMessageWaiters['observe']
   waitForMessage: RuntimeMessageWaiters['wait']
   cancelMessageWaiters: RuntimeMessageWaiters['cancel']
   disposeMessageWaiters: RuntimeMessageWaiters['dispose']
@@ -200,6 +201,7 @@ export function installRuntimeServiceCommandSurface(
     cancelMobileDictationForConnection: dictation.cancelForConnection.bind(dictation),
     getAllBrowserDrivers: browsers.getAll.bind(browsers),
     reclaimBrowserForDesktop: browsers.reclaimForDesktop.bind(browsers),
+    observeMessageCheck: waiters.observe.bind(waiters),
     waitForMessage: waiters.wait.bind(waiters),
     cancelMessageWaiters: waiters.cancel.bind(waiters),
     disposeMessageWaiters: waiters.dispose.bind(waiters),

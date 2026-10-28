@@ -239,7 +239,6 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
       this.handleByLeafKey.get(leafKey) ?? this.getPtyLaneMailboxTarget(leafKey)?.handle,
     getTerminalProcessIncarnation: (handle) => this.getTerminalProcessIncarnation(handle),
     onRoutedMessageTypes: (mailboxHandle, types) => {
-      this.orchestrationStructuredMailboxPointerDelivery.invalidateSource(mailboxHandle)
       this.messageWaiters.notifyRouted(mailboxHandle, types)
     },
     onForeignMailboxRouted: (mailboxHandle, messageType) =>
@@ -324,8 +323,8 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
       resolveMessageWaiter: (waiter) => this.messageWaiters.resolveNotified(waiter)
     })
 
-  protected readonly messageWaiters = new RuntimeMessageWaiters((handle) => {
-    if (!this.orchestrationStructuredMailboxPointerDelivery.onConsumerChange(handle)) {
+  protected readonly messageWaiters = new RuntimeMessageWaiters((handle, types) => {
+    if (!this.orchestrationStructuredMailboxPointerDelivery.onConsumerChange(handle, types)) {
       this.deliverPendingMessagesForHandle(handle)
     }
   })

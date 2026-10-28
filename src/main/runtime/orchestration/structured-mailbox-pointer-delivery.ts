@@ -1,64 +1,21 @@
-import { createHash } from 'node:crypto'
-import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { JournalMailSource } from '../../native-chat/agent-session-journal/journal-mail-boundary'
-import type { OrchestrationDb, MessageRow } from './db'
-import type { OrchestrationCliCommand } from './cli-command'
-import type { SenderNameResolver } from './agent-message-sender'
+import type { OrchestrationDb } from './db'
 import type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
-import type { MailCreationHistory } from './structured-mail-creation-history'
+import type { MailDeliveryDependencies } from './structured-mail-creation-contract'
+export { ordinaryMailCreationId } from './structured-mail-creation-contract'
+export type {
+  StructuredPointerTarget,
+  StructuredPointerSendOutcome,
+  StructuredMailboxPointerHost,
+  MailDeliveryDependencies
+} from './structured-mail-creation-contract'
 import { offerMailSource } from './structured-mail-source-offer'
-import {
-  discoverMailSources,
-  type Interest,
-  type MailAdmission
-} from './structured-mail-source-discovery'
+import { discoverMailSources, MailDebts, type Interest } from './structured-mail-source-discovery'
 export type { MailAdmission } from './structured-mail-source-discovery'
-
-export type StructuredPointerTarget = { sessionId: string; dispatchId: string | null }
-export type StructuredPointerSendOutcome = {
-  kind: 'queued' | 'unattached' | 'held' | 'capacity' | 'retry'
-}
-export type StructuredMailboxPointerHost = {
-  readCreation: (
-    operationId: string,
-    sessionId: string,
-    legacy?: true
-  ) => 'accepted' | 'absent' | 'unknown'
-  readHistory: (sessionId: string) => MailCreationHistory
-  admission: (sessionId: string) => MailAdmission | null
-  currentFence: (sessionId: string) => number | null
-  send: (input: {
-    sessionId: string
-    dispatchId: string | null
-    operationId: string
-    beforeRun: () => void
-    expectedRuntimeFence: number
-    body: AgentJournalMessageItem
-    mailSource: JournalMailSource
-  }) => Promise<StructuredPointerSendOutcome>
-}
-export function ordinaryMailCreationId(message: Pick<MessageRow, 'run_id' | 'id'>): string {
-  const hash = createHash('sha256')
-    .update(JSON.stringify(['ordinary-mail-v1', message.run_id, message.id]))
-    .digest('hex')
-  return `0000000000001-${hash.slice(0, 32)}`
-}
-
-export type MailDeliveryDependencies<T extends OrchestrationMessageWaiter> = {
-  getDb: () => OrchestrationDb | null
-  getMessageWaiters: (mailbox: string) => ReadonlySet<T> | undefined
-  resolveStructuredTarget: (mailbox: string) => StructuredPointerTarget | null
-  getCliCommand: () => OrchestrationCliCommand
-  senderName: SenderNameResolver
-  host: StructuredMailboxPointerHost
-  scheduleRetry?: (mailbox: string) => void
-  cancelRetry?: (mailbox: string) => void
-  onRetain?: (input: { mailboxHandle: string; sessionId: string; reason: string }) => void
-}
-
 /** Disposable finite discovery only; the ordinary queue is the sole executor. */
 export class OrchestrationStructuredMailboxPointerDelivery<T extends OrchestrationMessageWaiter> {
   private readonly interests = new Map<string, Interest>()
+  private unsubscribe: (() => void) | undefined
+  private readonly dirty = new Map<string, Set<string>>()
   private sourceDb: OrchestrationDb | null = null
   constructor(private readonly deps: MailDeliveryDependencies<T>) {
     const db = deps.getDb()
@@ -73,35 +30,45 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
     }
     this.resetForDatabaseChange()
     this.sourceDb = db
-    db.mailSourceInserted = (message) => {
-      try {
-        const interest = this.interest(message.to_handle)
-        if (interest && this.sourceDb === db) {
-          interest.newSources.add(message.id)
-          // Observe this insertion's rollback once, never the unresolved population on tokens.
-          queueMicrotask(() => {
-            try {
-              if (
-                this.sourceDb === db &&
-                this.deps.getDb() === db &&
-                !db.db.prepare('SELECT 1 FROM messages WHERE id = ?').get(message.id)
-              ) {
-                this.retire(interest, message.id)
-              }
-            } catch {
-              this.retire(interest, message.id)
-            }
-          })
-          if (interest.running) {
-            interest.pending = true
-          }
-          this.deps.scheduleRetry?.(message.to_handle)
+    this.unsubscribe = db.mailSourceMutations.subscribe(
+      (mutations) => {
+        if (this.sourceDb !== db || this.deps.getDb() !== db) {
+          return
         }
-      } catch (error) {
-        // Observation cannot roll back a valid source or human command.
-        console.warn('[orchestration] observing new mail identity failed', error)
+        const wake = new Set<string>()
+        for (const mutation of mutations) {
+          const classified =
+            mutation.mailbox && this.interests.get(mutation.mailbox)?.deferred.get(mutation.id)
+          if (!mutation.forced && classified && classified.state === mutation.state) {
+            continue
+          }
+          for (const mailbox of new Set([
+            ...mutation.previousMailboxes,
+            mutation.previousMailbox,
+            mutation.mailbox
+          ])) {
+            if (!mailbox) {
+              continue
+            }
+            const ids = this.dirty.get(mailbox) ?? new Set<string>()
+            this.dirty.set(mailbox, ids)
+            ids.add(mutation.id)
+            wake.add(mailbox)
+          }
+        }
+        for (const mailbox of wake) {
+          this.deliverForHandle(mailbox)
+        }
+      },
+      (mailboxes) => {
+        if (this.sourceDb !== db || this.deps.getDb() !== db) {
+          return
+        }
+        for (const mailbox of mailboxes) {
+          this.deps.scheduleRetry?.(mailbox)
+        }
       }
-    }
+    )
   }
 
   deliverForHandle(mailbox: string, _notificationTypes?: ReadonlySet<string>): boolean {
@@ -111,12 +78,19 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
     }
     const target = this.deps.resolveStructuredTarget(mailbox)
     if (!target) {
+      this.interests.delete(mailbox)
+      this.dirty.delete(mailbox)
+      this.deps.cancelRetry?.(mailbox)
       return false
     }
     const interest = this.interest(mailbox)
     if (!interest) {
       return true
     }
+    for (const id of this.dirty.get(mailbox) ?? []) {
+      interest.dirty.add(id)
+    }
+    this.dirty.delete(mailbox)
     interest.pending = true
     if (!interest.running) {
       interest.running = true
@@ -136,7 +110,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
           }),
         retire: (id) => this.retire(interest, id),
         finished: () => {
-          this.interests.delete(mailbox)
           this.deps.cancelRetry?.(mailbox)
         }
       })
@@ -147,7 +120,10 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
         })
         .finally(() => {
           interest.running = false
-          if (this.interests.get(mailbox) === interest && interest.pending) {
+          if (
+            this.interests.get(mailbox) === interest &&
+            (interest.pending || !this.current(mailbox, interest))
+          ) {
             queueMicrotask(() => this.deliverForHandle(mailbox))
           }
         })
@@ -155,22 +131,28 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
     return true
   }
 
-  onConsumerChange(mailbox: string): boolean {
+  onConsumerChange(mailbox: string, types?: readonly string[]): boolean {
     const interest = this.interests.get(mailbox)
     if (interest) {
+      if (!interest.consumersChanged || (interest.consumerTypes && types)) {
+        interest.consumerTypes = types
+          ? new Set([...(interest.consumerTypes ?? []), ...types])
+          : undefined
+      }
       interest.consumersChanged = true
     }
     return this.deliverForHandle(mailbox)
   }
-  invalidateSource(mailbox: string): void {
-    const interest = this.interests.get(mailbox)
-    if (interest) {
-      interest.frontier = 0
-      interest.consumersChanged = true
-      interest.history = undefined
+  nominateSources(mailbox: string, ids: readonly string[]): void {
+    const pending = this.dirty.get(mailbox) ?? new Set<string>()
+    this.dirty.set(mailbox, pending)
+    for (const id of ids) {
+      pending.add(id)
     }
+    this.deliverForHandle(mailbox)
   }
   retryForHandle(mailbox: string): void {
+    this.sourceDb?.mailSourceMutations.flushCommitted()
     const interest = this.interests.get(mailbox)
     if (interest) {
       interest.retry = true
@@ -178,9 +160,9 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
     this.deliverForHandle(mailbox)
   }
   resetForDatabaseChange(): void {
-    if (this.sourceDb) {
-      this.sourceDb.mailSourceInserted = undefined
-    }
+    this.unsubscribe?.()
+    this.unsubscribe = undefined
+    this.dirty.clear()
     this.sourceDb = null
     for (const mailbox of this.interests.keys()) {
       this.deps.cancelRetry?.(mailbox)
@@ -225,30 +207,39 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
       return null
     }
     let interest = this.interests.get(mailbox)
-    if (
-      !interest ||
-      interest.db !== db ||
-      interest.target.sessionId !== target.sessionId ||
-      interest.authority.owner !== authority.owner ||
-      interest.authority.generation !== authority.generation
-    ) {
+    if (!interest || interest.db !== db) {
       interest = {
         db,
         target,
         authority,
         frontier: 0,
-        deferred: new Map(),
-        newSources:
-          interest?.db === db &&
-          interest.target.sessionId === target.sessionId &&
-          interest.authority.owner === authority.owner
-            ? interest.newSources
-            : new Set(),
+        deferred: new MailDebts(),
+        dirty: new Set(),
         running: false,
         pending: false,
         consumersChanged: false,
         capacityImproved: false,
-        retry: false
+        retry: false,
+        authorityChanged: false
+      }
+      this.interests.set(mailbox, interest)
+    } else if (
+      interest.target.sessionId !== target.sessionId ||
+      interest.authority.owner !== authority.owner ||
+      interest.authority.generation !== authority.generation
+    ) {
+      interest = {
+        ...interest,
+        target,
+        authority,
+        running: false,
+        pending: true,
+        authorityChanged: true,
+        dirty: new Set(interest.dirty),
+        capacityImproved:
+          interest.capacityImproved ||
+          authority.queuedBytes < interest.authority.queuedBytes ||
+          interest.target.sessionId !== target.sessionId
       }
       this.interests.set(mailbox, interest)
     }
@@ -271,6 +262,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<T extends Orchestrati
 
   private retire(interest: Interest, id: string): void {
     interest.deferred.delete(id)
-    interest.newSources.delete(id)
+    interest.dirty.delete(id)
   }
 }

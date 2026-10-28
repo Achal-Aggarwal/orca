@@ -33,6 +33,11 @@ export async function handleLegacyCheck(args: {
     if (!principal) {
       return undefined
     }
+    runtime.observeMessageCheck(
+      principal.role === 'worker' ? `dispatch:${principal.dispatch_id}` : principal.terminal_handle,
+      waitScope,
+      typeFilter
+    )
     const db = runtime.getOrchestrationDb()
     if (params.compatibilityQuestionAck) {
       const answer = parseLegacyQuestionAck(params.compatibilityQuestionAck)

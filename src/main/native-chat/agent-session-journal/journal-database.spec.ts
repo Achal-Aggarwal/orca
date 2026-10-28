@@ -1,3 +1,4 @@
+import { readMailCreationAuthority } from './mail-creation-authority'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -68,6 +69,63 @@ export function registerJournalDatabaseTests(): void {
   })
 
   describe('the host journal database open', () => {
+    it('retains authority across reopen and rotates on actual receipt loss, rollback-safe cascades and missing enforcement', () => {
+      let database = openJournalDatabase(dbPath).db
+      const authority = readMailCreationAuthority(database)
+      expect(authority).not.toBeNull()
+      const insert = () => {
+        database
+          .prepare("INSERT OR IGNORE INTO agent_session_records VALUES ('source-record', '{}')")
+          .run()
+        database
+          .prepare(`INSERT INTO agent_session_command_receipts
+          (operation_id,session_id,caller_key,method,fingerprint,status,result_json,accepted_at)
+          VALUES ('report','source-record','trusted-local:orchestration:ordinary-mail','agentSession.send','fp','accepted','{"kind":"queued-draft","messageId":"report"}',1)`)
+          .run()
+      }
+      insert()
+      expect(readMailCreationAuthority(database)).toEqual(authority)
+      database.exec('BEGIN IMMEDIATE')
+      database.prepare("DELETE FROM agent_session_records WHERE session_id = 'source-record'").run()
+      expect(readMailCreationAuthority(database)?.coverageToken).not.toBe(authority?.coverageToken)
+      database.exec('ROLLBACK')
+      expect(readMailCreationAuthority(database)).toEqual(authority)
+      database
+        .prepare(
+          "UPDATE agent_session_command_receipts SET result_json = '{}' WHERE operation_id = 'report'"
+        )
+        .run()
+      const updated = readMailCreationAuthority(database)
+      expect(updated?.coverageToken).not.toBe(authority?.coverageToken)
+      database.prepare("DELETE FROM agent_session_records WHERE session_id = 'source-record'").run()
+      const deleted = readMailCreationAuthority(database)
+      expect(deleted?.coverageToken).not.toBe(updated?.coverageToken)
+      database.close()
+      database = openJournalDatabase(dbPath).db
+      expect(readMailCreationAuthority(database)).toEqual(deleted)
+      database.exec('DROP TRIGGER mail_creation_receipt_delete')
+      expect(readMailCreationAuthority(database)).toBeNull()
+      database.close()
+      database = openJournalDatabase(dbPath).db
+      expect(readMailCreationAuthority(database)?.storeId).toBe(authority?.storeId)
+      expect(readMailCreationAuthority(database)?.coverageToken).not.toBe(deleted?.coverageToken)
+      database.exec(
+        'ALTER TABLE mail_creation_authority RENAME COLUMN coverage_token TO opaque_future_token'
+      )
+      database.close()
+      database = openJournalDatabase(dbPath).db
+      expect(readMailCreationAuthority(database)).toBeNull()
+      insert()
+      expect(
+        database
+          .prepare(
+            "SELECT status FROM agent_session_command_receipts WHERE operation_id = 'report'"
+          )
+          .get()?.status
+      ).toBe('accepted')
+      database.close()
+    })
+
     it('creates every table and reads back every load-bearing pragma', () => {
       const db = openJournalDatabase(dbPath).db
       try {

@@ -1,3 +1,4 @@
+import { UNBOUND_MAIL_CREATION } from '../messages/mail-creation-proof'
 import type { RunRow } from '../../types'
 import { generateId } from '../generated-id'
 import type { OrchestrationDb } from '../orchestration-db'
@@ -27,15 +28,16 @@ export function createRun(
       .prepare(
         `INSERT INTO runs (
            id, objective, coordinator_handle, coordinator_pane_key, coordinator_orca_session_id,
-           coordinator_orca_session_id_generation, consumer_generation, legacy
-         ) VALUES (?, ?, ?, ?, ?, 1, 1, 0)`
+           coordinator_orca_session_id_generation, consumer_generation, legacy, mail_creation_domain
+         ) VALUES (?, ?, ?, ?, ?, 1, 1, 0, ?)`
       )
       .run(
         id,
         params.objective,
         coordinator.terminalHandle,
         coordinator.paneKey,
-        coordinator.orcaSessionId
+        coordinator.orcaSessionId,
+        UNBOUND_MAIL_CREATION
       )
     const address = mailboxAddressOf(coordinator)
     if (address !== null) {

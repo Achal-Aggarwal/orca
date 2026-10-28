@@ -34,7 +34,12 @@ export async function checkWorkerMailbox(args: {
 }) {
   const waitScope = new MessageWaitScope()
   let completionMailbox = args.handle
+  const opportunityTypes =
+    args.params.peek || args.params.all || args.params.unread === false
+      ? args.typeFilter
+      : undefined
   try {
+    args.runtime.observeMessageCheck(args.handle, waitScope, opportunityTypes)
     const {
       params,
       runtime,
@@ -67,6 +72,7 @@ export async function checkWorkerMailbox(args: {
     const mailboxIdentity = { runId: deliveryRunId, dispatchId: workerMailbox.dispatchId }
     const address = `dispatch:${workerMailbox.dispatchId}`
     completionMailbox = address
+    runtime.observeMessageCheck(address, waitScope, opportunityTypes)
     // Federated hosts keep consumer generations on remote_dispatch_attachments, without a dispatch_contexts row.
     const readCurrentGeneration = (): number | undefined =>
       activeDispatch
@@ -260,6 +266,7 @@ export async function checkWorkerMailbox(args: {
             timeoutMs: params.timeoutMs ?? undefined,
             signal
           })
+    runtime.observeMessageCheck(address, waitScope, opportunityTypes)
     await revalidateWorkerMailbox()
     if (readCurrentGeneration() !== workerMailbox.generation) {
       throw dispatchFenced()

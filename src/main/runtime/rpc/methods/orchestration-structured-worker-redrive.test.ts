@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
+import { MailDebts } from '../../orchestration/structured-mail-source-discovery'
 import { MessageWaitScope } from '../../runtime-message-waiters'
 import { ordinaryMailCreationId } from '../../orchestration/structured-mailbox-pointer-delivery'
 import { observeMailSqlWork } from '../../orchestration/mail-sql-work.test-support'
@@ -169,6 +170,22 @@ it.each([100, 1000])(
       ).toMatchObject({ ok: true, value: { queued: {} } })
       personal.push(envelope.clientOperationId)
     }
+    const compact = { command: 'compact' as const, delivery: 'queue-if-active' as const }
+    expect(
+      await host.conversationCommand(
+        { callerKey: 'real-client' },
+        {
+          ...compact,
+          envelope: command('agentSession.conversationCommand', compact)
+        }
+      )
+    ).toMatchObject({ ok: true, value: { queued: {} } })
+    const moved = state.db.insertMessage({
+      runId: state.db.getDispatchContextById(dispatchId)!.run_id,
+      from: 'term_coord',
+      to: 'unbound-direct-input',
+      subject: 'old-ID route'
+    })
     const scope = new MessageWaitScope()
     const waiting = state.runtime.waitForMessage(mailbox, { scope, timeoutMs: 60000 })
     const sourceWork = observeMailSqlWork(
@@ -246,6 +263,40 @@ it.each([100, 1000])(
       queueBodySerializations: queueBodyWork()
     }).toEqual(baseline)
     expect(queuedMessagesPublishedBytes(worker.journal)).toBe(beforeBytes)
+    const debtSelections = vi.spyOn(MailDebts.prototype, 'select')
+    for (let n = 0; n < 10; n++) {
+      expect(
+        await harness.call(
+          'orchestration.check',
+          {
+            terminal: identity.handle,
+            peek: true,
+            types: 'question'
+          },
+          state.ctx
+        )
+      ).toMatchObject({ messages: [], count: 0 })
+    }
+    expect(attempts).toHaveBeenCalledTimes(count)
+    expect(sourceWork.count()).toBe(baseline.visits)
+    expect(debtSelections.mock.calls.every(([reason]) => reason === 'check')).toBe(true)
+    expect(
+      debtSelections.mock.results.every(
+        (result) => result.type === 'return' && result.value.length === 0
+      )
+    ).toBe(true)
+    debtSelections.mockRestore()
+    // Real old-ID writer, observed by the installed source adapter; U unrelated capacity debt stays parked.
+    state.db.routeUnreadDirectMessagesToDispatchMailbox(
+      dispatchId,
+      moved.run_id,
+      'unbound-direct-input'
+    )
+    await vi.waitFor(() => expect(attempts).toHaveBeenCalledTimes(count + 1))
+    expect(attempts.mock.calls.at(-1)?.[1].envelope.clientOperationId).toBe(
+      ordinaryMailCreationId(moved)
+    )
+    expect(sourceWork.count()).toBe(baseline.visits)
     const tail = idOf(
       (
         await harness.call(
@@ -255,7 +306,7 @@ it.each([100, 1000])(
         )
       ).message
     )
-    await vi.waitFor(() => expect(attempts).toHaveBeenCalledTimes(count + 1))
+    await vi.waitFor(() => expect(attempts).toHaveBeenCalledTimes(count + 2))
     expect(sourceWork.count() - baseline.visits).toBe(1)
     const editing = worker.journal.queuedMessages.get(personal[0]!)!
     const edit = {
@@ -292,7 +343,36 @@ it.each([100, 1000])(
       receipt: { status: 'accepted' }
     })
     expect(dispatch).not.toHaveBeenCalled()
+    expect(
+      await host.cancel(
+        { callerKey: 'real-client' },
+        {
+          envelope: command('agentSession.cancel', {})
+        }
+      )
+    ).toMatchObject({ ok: true })
     await worker.journal.appendTombstone(turn, { fence: worker.fence })
+    const beforeClear = queuedMessagesPublishedBytes(worker.journal)
+    const clearing = { command: 'clear' as const }
+    expect(
+      await host.conversationCommand(
+        { callerKey: 'real-client' },
+        {
+          ...clearing,
+          envelope: command('agentSession.conversationCommand', clearing)
+        }
+      )
+    ).toMatchObject({ ok: true })
+    expect(queuedMessagesPublishedBytes(worker.journal)).toBeLessThan(beforeClear)
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(
+      await host.queuedMessagesResume(
+        { callerKey: 'real-client' },
+        {
+          envelope: command('agentSession.queuedMessagesResume', {})
+        }
+      )
+    ).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
     // The ordinary personal cards precede admitted reports; settlement, not token publication, advances them.
     const settle = async () => {

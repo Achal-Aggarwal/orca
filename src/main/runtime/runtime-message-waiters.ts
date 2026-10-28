@@ -29,7 +29,7 @@ export type RuntimeMessageWaiter = {
 }
 
 export class RuntimeMessageWaiters {
-  constructor(private readonly onRelease?: (handle: string) => void) {}
+  constructor(private readonly onRelease?: (handle: string, types?: readonly string[]) => void) {}
   private readonly waitersByHandle = new Map<string, Set<RuntimeMessageWaiter>>()
 
   notifyRouted(handle: string, types: readonly string[]): void {
@@ -47,6 +47,22 @@ export class RuntimeMessageWaiters {
         }
       }
     })
+  }
+
+  observe(handle: string, scope: MessageWaitScope, typeFilter?: string[]): void {
+    const waiter: RuntimeMessageWaiter = {
+      handle,
+      typeFilter,
+      scope,
+      resolve: () => {},
+      timeout: null,
+      abortCleanup: null,
+      notified: true
+    }
+    const waiters = this.waitersByHandle.get(handle) ?? new Set<RuntimeMessageWaiter>()
+    this.waitersByHandle.set(handle, waiters)
+    waiters.add(waiter)
+    scope.bind(() => this.remove(waiter))
   }
 
   wait(
@@ -104,9 +120,9 @@ export class RuntimeMessageWaiters {
     }
   }
 
-  consumerCompleted(handle: string): void {
+  consumerCompleted(handle: string, types?: readonly string[]): void {
     try {
-      this.onRelease?.(handle)
+      this.onRelease?.(handle, types)
     } catch (error) {
       console.warn('[orchestration] notifying completed mail consumer failed', error)
     }
@@ -152,7 +168,7 @@ export class RuntimeMessageWaiters {
       this.waitersByHandle.delete(waiter.handle)
     }
     if (notify) {
-      this.consumerCompleted(waiter.handle)
+      this.consumerCompleted(waiter.handle, waiter.typeFilter)
     }
   }
 }

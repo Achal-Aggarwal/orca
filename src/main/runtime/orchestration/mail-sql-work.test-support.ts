@@ -8,12 +8,13 @@ export function observeMailSqlWork(
   database: SyncDatabase,
   matches: (sql: string) => boolean,
   expression: string,
-  predicate = false
+  predicate: boolean | 'visits' = false
 ) {
   const native = z
     .instanceof(DatabaseSync)
     .parse(Object.getOwnPropertyDescriptor(database, 'db')?.value)
   let evaluations = 0
+  let evaluatedBytes = 0
   let observing = true
   const statements: {
     original: string
@@ -21,12 +22,13 @@ export function observeMailSqlWork(
     args: SQLInputValue[]
     rows: number
     bytes: number
-    method: 'all' | 'get'
+    method: 'all' | 'get' | 'iterate'
   }[] = []
   const seen = new WeakSet()
   native.function('observe_mail_work', { deterministic: true }, (value) => {
     if (observing) {
       evaluations++
+      evaluatedBytes += typeof value === 'string' ? Buffer.byteLength(value) : 0
     }
     return value
   })
@@ -36,13 +38,20 @@ export function observeMailSqlWork(
       return prepare(sql)
     }
     expect(sql).toContain(expression)
-    const instrumented = predicate
-      ? sql.replace('ORDER BY', `AND observe_mail_work(${expression}) IS NOT NULL ORDER BY`)
-      : sql.replace(expression, `observe_mail_work(${expression}) AS ${expression}`)
+    const instrumented =
+      predicate === 'visits'
+        ? sql.replace('WHERE', `WHERE observe_mail_work(${expression}) IS NOT NULL AND`)
+        : predicate
+          ? sql.replace('ORDER BY', `AND observe_mail_work(${expression}) IS NOT NULL ORDER BY`)
+          : sql.replace(expression, `observe_mail_work(${expression}) AS ${expression}`)
     const statement = prepare(instrumented)
     if (!seen.has(statement)) {
       seen.add(statement)
-      const record = <T>(method: 'all' | 'get', args: SQLInputValue[], result: T): T => {
+      const record = <T>(
+        method: 'all' | 'get' | 'iterate',
+        args: SQLInputValue[],
+        result: T
+      ): T => {
         statements.push({
           original: sql,
           instrumented,
@@ -57,14 +66,22 @@ export function observeMailSqlWork(
       const get = statement.get.bind(statement)
       vi.spyOn(statement, 'all').mockImplementation((...args) => record('all', args, all(...args)))
       vi.spyOn(statement, 'get').mockImplementation((...args) => record('get', args, get(...args)))
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+        for (const row of iterate(...args)) {
+          yield record('iterate', args, row)
+        }
+      })
     }
     return statement
   })
   return {
     count: () => evaluations,
+    evaluatedBytes: () => evaluatedBytes,
     calls: statements,
     reset: () => {
       evaluations = 0
+      evaluatedBytes = 0
       statements.length = 0
     },
     verify: () => {
@@ -72,14 +89,21 @@ export function observeMailSqlWork(
       observing = false
       try {
         return statements.map(({ original, instrumented, args, method }) => {
-          expect(native.prepare(`EXPLAIN QUERY PLAN ${instrumented}`).all(...args)).toEqual(
-            native.prepare(`EXPLAIN QUERY PLAN ${original}`).all(...args)
-          )
-          expect(native.prepare(instrumented)[method](...args)).toEqual(
-            native.prepare(original)[method](...args)
-          )
+          const plan = (sql: string) =>
+            native
+              .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+              .all(...args)
+              .map((row) => row.detail)
+          expect(plan(instrumented)).toEqual(plan(original))
+          const readRows = (sql: string) =>
+            method === 'iterate'
+              ? [...native.prepare(sql).iterate(...args)]
+              : method === 'all'
+                ? native.prepare(sql).all(...args)
+                : native.prepare(sql).get(...args)
+          expect(readRows(instrumented)).toEqual(readRows(original))
           const bytecode = native.prepare(`EXPLAIN ${original}`).all(...args)
-          if (predicate) {
+          if (predicate === true) {
             const opcodes = bytecode.map((row) => row.opcode)
             expect(opcodes).toContain('SeekGT')
             expect(opcodes).toContain('IdxGT')

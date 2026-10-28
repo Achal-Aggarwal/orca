@@ -96,7 +96,7 @@ export async function createQueuedMessageTestRig(
     return {
       sessionId,
       clientOperationId,
-      expectedRuntimeFence: 1,
+      expectedRuntimeFence: store.getConversation(sessionId)?.currentFence ?? 1,
       payloadFingerprint: computeAgentSessionPayloadFingerprint({ method, sessionId, fields })
     }
   }

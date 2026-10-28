@@ -1,5 +1,6 @@
 import { structuredMailBody } from './structured-mail-source'
 import { mailSourceIncarnation } from './db/messages/mail-source-order'
+import { parseMailCreationProof, sameMailAuthority } from './db/messages/mail-creation-proof'
 import { readSourceCreation } from './structured-mail-creation-history'
 import {
   messageTypeHasOrchestrationWaiter,
@@ -7,6 +8,7 @@ import {
 } from './mailbox-pointer-eligibility'
 import {
   sourceIdentity,
+  sourceState,
   SOURCE_COLUMNS,
   type Interest,
   type SourceIdentity,
@@ -37,13 +39,24 @@ export async function offerMailSource<T extends OrchestrationMessageWaiter>(inpu
   if (!current()) {
     return
   }
+  if (source.delivered_at !== null || source.to_handle !== mailbox) {
+    retire(source.id)
+    return
+  }
   const defer = (reason: Debt) =>
-    interest.deferred.set(source.id, { sequence: source.sequence, reason })
+    interest.deferred.set(source.id, {
+      sequence: source.sequence,
+      reason,
+      type: source.type,
+      state: sourceState(source)
+    })
   try {
     const receipt = readSourceCreation(deps.host, interest, source)
     if (receipt === 'accepted') {
       defer('stamp')
-      interest.db.markAsDelivered([source.id], mailbox)
+      if (source.delivered_at === null) {
+        interest.db.markAsDelivered([source.id], mailbox)
+      }
       retire(source.id)
       return
     }
@@ -83,6 +96,12 @@ export async function offerMailSource<T extends OrchestrationMessageWaiter>(inpu
       return
     }
     const operationId = ordinaryMailCreationId(source)
+    const proofValue = interest.db.db
+      .prepare('SELECT creation_proof FROM messages WHERE id = ?')
+      .get(source.id)?.creation_proof
+    source.creation_proof = typeof proofValue === 'string' ? proofValue : null
+    const bound = parseMailCreationProof(source.creation_proof)
+    defer('retry')
     const body = structuredMailBody({
       ...deps,
       db: interest.db,
@@ -103,18 +122,33 @@ export async function offerMailSource<T extends OrchestrationMessageWaiter>(inpu
       },
       beforeRun: () => {
         const raw = interest.db.db
-          .prepare(`SELECT ${SOURCE_COLUMNS} FROM messages WHERE id = ?`)
+          .prepare(
+            `SELECT ${SOURCE_COLUMNS}, from_handle, subject, body, payload FROM messages WHERE id = ?`
+          )
           .get(source.id)
         const latest = raw && sourceIdentity.parse(raw)
         if (
           !current() ||
           !latest ||
+          latest.run_id !== source.run_id ||
+          latest.sequence !== source.sequence ||
+          latest.type !== source.type ||
+          latest.ordering_origin !== source.ordering_origin ||
+          raw?.from_handle !== message.from_handle ||
+          raw?.subject !== message.subject ||
+          raw?.body !== message.body ||
+          raw?.payload !== message.payload ||
           latest.read !== 0 ||
           latest.delivered_at !== null ||
           latest.to_handle !== mailbox ||
           latest.delivery_contract !== 'current_delivery' ||
           latest.pointer_enter_pending !== 0 ||
-          checkOwns(latest)
+          checkOwns(latest) ||
+          deps.host.readCreation(operationId, interest.target.sessionId) !== 'absent' ||
+          latest.creation_proof !== JSON.stringify(bound) ||
+          !bound ||
+          bound.authority === 'unbound' ||
+          !sameMailAuthority(bound.authority, deps.host.creationAuthority?.() ?? null)
         ) {
           throw new MailSourceSuperseded()
         }
@@ -144,6 +178,9 @@ export async function offerMailSource<T extends OrchestrationMessageWaiter>(inpu
       }
     }
   } catch (error) {
+    if (!current()) {
+      return
+    }
     if (error instanceof MailSourceSuperseded) {
       if (!current()) {
         interest.pending = true
@@ -166,7 +203,22 @@ export async function offerMailSource<T extends OrchestrationMessageWaiter>(inpu
       }
       return
     }
-    defer('retry')
+    // A reply can fail after the ordinary receipt committed; recover that exact effect first.
+    if (
+      deps.host.readCreation(ordinaryMailCreationId(source), interest.target.sessionId) ===
+      'accepted'
+    ) {
+      defer('stamp')
+      try {
+        interest.db.markAsDelivered([source.id], mailbox)
+        retire(source.id)
+        return
+      } catch {
+        /* retain stamp phase */
+      }
+    } else {
+      defer('retry')
+    }
     interest.retry = true
     deps.scheduleRetry?.(mailbox)
     console.warn('[orchestration] unfinished ordinary mail phase', {

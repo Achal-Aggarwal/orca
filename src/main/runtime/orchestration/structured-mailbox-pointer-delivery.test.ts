@@ -1,3 +1,14 @@
+import { join } from 'node:path'
+import { statSync, existsSync } from 'node:fs'
+import { JournalHostDatabase } from '../../native-chat/agent-session-journal/journal-host-database'
+import {
+  readCommandReceipt,
+  insertCommandReceiptIfAbsent
+} from '../../native-chat/agent-session-journal/command-receipt-table'
+import {
+  commandReceiptFixture,
+  writeCommandReceiptTestRecord
+} from '../../native-chat/agent-session-journal/command-receipt-test-support'
 import { expect, it, vi } from 'vitest'
 import { OrchestrationDb } from './db'
 import { observeMailSqlWork } from './mail-sql-work.test-support'
@@ -10,16 +21,32 @@ import {
 import type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
 
 const resources = mailTestResources('ordinary-mail-discovery-')
-function harness() {
-  const db = resources.track(new OrchestrationDb(':memory:'))
+function harness(realReceipts = false) {
+  const directory = realReceipts ? resources.directory() : null
+  const sourcePath = directory ? join(directory, 'source.db') : ':memory:'
+  let db = new OrchestrationDb(sourcePath)
+  resources.track({ close: () => db.close() })
+  const receiptDatabase = directory ? resources.track(JournalHostDatabase.open(directory)) : null
+  receiptDatabase?.transaction((database) => writeCommandReceiptTestRecord(database))
   const receipts = new Set<string>()
   let capacity = true
   const waiters = new Set<OrchestrationMessageWaiter>()
   const owner = {}
   const host: StructuredMailboxPointerHost = {
+    creationAuthority: () => ({ storeId: 'test-store', coverageToken: 'retained-test-coverage' }),
     admission: () => ({ owner, generation: '1', queuedBytes: capacity ? 0 : 1000 }),
     readHistory: () => ({ members: new Set(), opaque: true }),
-    readCreation: vi.fn((id) => (receipts.has(id) ? 'accepted' : 'absent')),
+    readCreation: vi.fn((id) => {
+      if (!receiptDatabase) {
+        return receipts.has(id) ? 'accepted' : 'absent'
+      }
+      const read = readCommandReceipt(receiptDatabase.db, { kind: 'global' }, id)
+      return read.verdict === 'absent'
+        ? 'absent'
+        : read.verdict === 'readable' && read.receipt.status === 'accepted'
+          ? 'accepted'
+          : 'unknown'
+    }),
     currentFence: () => 1,
     send: vi.fn(async (input) => {
       input.beforeRun()
@@ -33,7 +60,8 @@ function harness() {
   const bridge = new OrchestrationStructuredMailboxPointerDelivery({
     getDb: () => db,
     getMessageWaiters: () => waiters,
-    resolveStructuredTarget: () => ({ sessionId: 'session', dispatchId: null }),
+    resolveStructuredTarget: (mailbox) =>
+      mailbox === 'consumer' ? { sessionId: 'session', dispatchId: null } : null,
     getCliCommand: () => 'orca',
     senderName: () => null,
     host
@@ -42,7 +70,60 @@ function harness() {
     db.insertMessage({ from: 'worker', to: 'consumer', subject })
   const idle = () => new Promise<void>((resolve) => setImmediate(resolve))
   return {
-    db,
+    get db() {
+      return db
+    },
+    receiptDatabase,
+    rebuildSourceIndex: () => {
+      if (!directory) {
+        throw new Error('file-backed corpus required')
+      }
+      bridge.resetForDatabaseChange()
+      db.db.exec('DROP INDEX idx_messages_undelivered_source')
+      db.close()
+      const sizes = () =>
+        Object.fromEntries(
+          ['', '-wal', '-shm'].map((suffix) => [
+            suffix || 'db',
+            existsSync(sourcePath + suffix) ? statSync(sourcePath + suffix).size : 0
+          ])
+        )
+      const before = sizes()
+      const started = performance.now()
+      db = new OrchestrationDb(sourcePath)
+      const firstOpenMs = performance.now() - started
+      const built = sizes()
+      const pages = db.db.pragma('page_count', { simple: true })
+      db.close()
+      const reopening = performance.now()
+      db = new OrchestrationDb(sourcePath)
+      return {
+        before,
+        built,
+        pages,
+        firstOpenMs,
+        reopenMs: performance.now() - reopening,
+        busyTimeout: db.db.pragma('busy_timeout', { simple: true })
+      }
+    },
+    accept: (row: { id: string; run_id: string }) => {
+      const id = ordinaryMailCreationId(row)
+      if (receiptDatabase) {
+        receiptDatabase.transaction((database) =>
+          insertCommandReceiptIfAbsent(
+            database,
+            { kind: 'global' },
+            commandReceiptFixture({
+              operationId: id,
+              callerKey: 'trusted-local:orchestration:ordinary-mail',
+              result: { kind: 'queued-draft', messageId: id }
+            })
+          )
+        )
+      } else {
+        receipts.add(id)
+      }
+    },
     host,
     bridge,
     receipts,
@@ -87,12 +168,12 @@ it('retries the same ordinary creation after capacity and waiter changes, withou
 it.each([100, 1000])(
   'cold read-inclusive indexed recovery examines only N=%i undelivered recipient entries and no payload bytes',
   async (count) => {
-    const h = harness()
+    const h = harness(true)
     const accepted = []
     for (let n = 0; n < count; n++) {
       const row = h.insert(`accepted-${n}`)
       accepted.push(row.id)
-      h.receipts.add(ordinaryMailCreationId(row))
+      h.accept(row)
       h.db.db.prepare('UPDATE messages SET read = ? WHERE id = ?').run(n % 3, row.id)
       const delivered = h.insert('delivered noise')
       h.db.markAsDelivered([delivered.id], 'consumer')
@@ -104,7 +185,13 @@ it.each([100, 1000])(
         payload: 'p'.repeat(10000)
       })
     }
-    h.bridge.resetForDatabaseChange()
+    const openCost = h.rebuildSourceIndex()
+    const receiptSql = observeMailSqlWork(
+      h.receiptDatabase!.db,
+      (sql) => sql.includes('FROM agent_session_command_receipts WHERE operation_id = ?'),
+      'result_json',
+      'visits'
+    )
     const bodies = vi.spyOn(h.db, 'getMessageById')
     const sql = observeMailSqlWork(
       h.db.db,
@@ -127,6 +214,10 @@ it.each([100, 1000])(
     expect(bodies).not.toHaveBeenCalled()
     expect(h.host.send).not.toHaveBeenCalled()
     expect(h.host.readCreation).toHaveBeenCalledTimes(count)
+    const receiptBytecode = receiptSql.verify()
+    expect(receiptSql.count()).toBe(count)
+    expect(receiptSql.calls.reduce((sum, call) => sum + call.rows, 0)).toBe(count)
+    expect(receiptSql.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeGreaterThan(count * 100)
     const bytecode = sql.verify()
     expect(sql.calls.every((call) => !/\bbody\b|\bpayload\b/.test(call.original))).toBe(true)
     expect(sql.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(count * 600)
@@ -134,6 +225,15 @@ it.each([100, 1000])(
       'cold source indexed candidate/bytes/receipt evidence',
       JSON.stringify({
         count,
+        openCost,
+        actualReceipts: {
+          visits: receiptSql.count(),
+          examinedResultJsonBytes: receiptSql.evaluatedBytes(),
+          calls: receiptSql.calls,
+          bytecode: [...new Set(receiptBytecode.map((row) => JSON.stringify(row.bytecode)))].map(
+            (row) => JSON.parse(row)
+          )
+        },
         visits: sql.count(),
         calls: sql.calls,
         receiptLookups: vi.mocked(h.host.readCreation).mock.calls.length,
@@ -145,6 +245,7 @@ it.each([100, 1000])(
         }))
       })
     )
+    receiptSql.restore()
     sql.reset()
     vi.mocked(h.host.readCreation).mockClear()
     for (let n = 0; n < 10; n++) {

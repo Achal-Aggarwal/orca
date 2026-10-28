@@ -22,6 +22,7 @@ export async function checkDirectMailbox(args: {
   const waitScope = new MessageWaitScope()
   let completionMailbox = args.handle
   try {
+    args.runtime.observeMessageCheck(args.handle, waitScope, args.typeFilter)
     const { params, runtime, db, handle, typeFilter, signal } = args
     // Honor legacy unread:false callers for compatibility (design doc §5).
     const showAll = params.all === true || (params.unread === false && params.peek !== true)

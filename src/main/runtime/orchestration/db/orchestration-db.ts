@@ -1,7 +1,8 @@
 import Database from '../../../sqlite/sync-database'
 import { ensureMailSourceOrder } from './messages/mail-source-order'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
-import type { MessageRow } from '../types'
+import { MailSourceMutations } from './messages/mail-source-mutations'
+import { ensureMailCreationProofColumns } from './messages/mail-creation-proof'
 import type { MailHandBack } from './messages/helper-mailbox-hand-back'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
 import { backfillFederatedStubHomeRuns } from './federation/federated-stub-home-run-backfill'
@@ -22,14 +23,13 @@ import { reconcileSettledWorkerDispatches } from './worker-dispatch/worker-dispa
 
 class OrchestrationDbCore {
   db: Database.Database
+  readonly mailSourceMutations: MailSourceMutations
 
   // Cache Dispatch emptiness to skip per-terminal queries on 16ms graph ticks for users without orchestration.
   hasAnyDispatchContextsCache: boolean | undefined
   localMutationCallerFingerprint: string | undefined
   // Restart recovery reads durable re-armed rows; only the post-transaction notification queue is in memory.
   pendingMailHandBacks: MailHandBack[] = []
-  /** A synchronous observation before a genuinely new local identity can be offered. */
-  mailSourceInserted: ((message: MessageRow) => void) | undefined
   /** The runtime's wake for mail a settlement handed to a Run, called once the transaction ends. */
   mailHandBackListener: ((handBack: MailHandBack) => void) | undefined
 
@@ -43,6 +43,7 @@ class OrchestrationDbCore {
     const removedWorkCaptureWasIntact = isRemovedWorkCaptureIntact(this.db)
     migrate.call(this as unknown as OrchestrationDb)
     ensureMailSourceOrder(this.db)
+    ensureMailCreationProofColumns(this.db)
     createRunCoordinatorAddressTriggers(this.db)
     backfillFederatedStubHomeRuns(this.db)
     // After every open step that creates Runs, before any step that deletes work.
@@ -51,10 +52,12 @@ class OrchestrationDbCore {
     reconcileSettledWorkerDispatches(this.db)
     createCoordinatorMailRoutingTrigger.call(this as unknown as OrchestrationDb)
     rememberCurrentRunCoordinatorHandles.call(this as unknown as OrchestrationDb)
+    this.mailSourceMutations = new MailSourceMutations(this.db)
     hardenOrchestrationDatabaseFiles(dbPath)
   }
 
   close(): void {
+    this.mailSourceMutations.dispose()
     this.db.close()
   }
 }

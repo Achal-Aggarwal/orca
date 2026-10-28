@@ -1,4 +1,6 @@
+import { readMailCreationAuthority } from '../../native-chat/agent-session-journal/mail-creation-authority'
 import { queuedMessagesPublishedBytes } from '../../native-chat/agent-session-wire/structured-agent-session-queued-published-bytes'
+import { mailHistoryRevision } from './structured-mail-history-revision'
 import { readMailCreationHistory } from './structured-mail-creation-history'
 import {
   conversationRecordReader,
@@ -15,7 +17,7 @@ const MAIL_CALLER = 'trusted-local:orchestration:ordinary-mail'
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   const readCreation: StructuredMailboxPointerHost['readCreation'] = (
     operationId,
-    sessionId,
+    _sessionId,
     legacy
   ) => {
     const host = getStructuredAgentSessionHost()
@@ -34,7 +36,6 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       conversationRecordReader(host.deps.store),
       receipt.sessionId
     )
-    const validTarget = target.kind === 'here' && target.sessionId === sessionId
     const validCaller = legacy
       ? receipt.callerKey.startsWith('trusted-local:orchestration:')
       : receipt.callerKey === MAIL_CALLER
@@ -42,7 +43,7 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       receipt.status === 'accepted' &&
       ((receipt.result.kind === 'queued-draft' && receipt.result.messageId === operationId) ||
         (legacy && receipt.result.kind === 'journal-row'))
-    return (legacy ? validTarget : target.kind === 'here') &&
+    return target.kind === 'here' &&
       validCaller &&
       receipt.method === 'agentSession.send' &&
       created
@@ -51,6 +52,10 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
   }
   return {
     readCreation,
+    creationAuthority: () => {
+      const host = getStructuredAgentSessionHost()
+      return host ? readMailCreationAuthority(host.deps.journalDatabase.db) : null
+    },
     readHistory: (sessionId) => {
       const host = getStructuredAgentSessionHost()
       return host ? readMailCreationHistory(host, sessionId) : { members: new Set(), opaque: true }
@@ -73,7 +78,9 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           record.sessionId,
           record.location,
           record.lease.runtimeFence,
-          journal?.epoch
+          journal?.epoch,
+          mailHistoryRevision(host.deps.journalDatabase.db),
+          readMailCreationAuthority(host.deps.journalDatabase.db)
         ]),
         queuedBytes: journal ? queuedMessagesPublishedBytes(journal) : 0
       }

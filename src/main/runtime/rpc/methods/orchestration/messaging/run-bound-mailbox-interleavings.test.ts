@@ -78,8 +78,18 @@ describe('Run binding during Dispatch checks', () => {
 
   it('keeps a notified worker check alive through real reservation and asynchronous inactive-mail routing, then retires it', async () => {
     const mailbox = `dispatch:${dispatch.id}`
+    const routeInitial = state.db.getLatestUnreadDirectMessageSequenceForRun.bind(state.db)
+    const initialScopes: boolean[] = []
+    vi.spyOn(state.db, 'getLatestUnreadDirectMessageSequenceForRun').mockImplementation(
+      (...args) => {
+        initialScopes.push(state.runtime.messageWaitersByHandle.has(mailbox))
+        return routeInitial(...args)
+      }
+    )
     const pending = check({ wait: true, timeoutMs: 10000 })
     await vi.waitFor(() => expect(state.runtime.messageWaitersByHandle.get(mailbox)?.size).toBe(1))
+    expect(initialScopes.length).toBeGreaterThan(0)
+    expect(initialScopes.every(Boolean)).toBe(true)
     const reserve = state.db.getOrCreateMailboxDelivery.bind(state.db)
     const opportunities: boolean[] = []
     vi.spyOn(state.db, 'getOrCreateMailboxDelivery').mockImplementation((input) => {

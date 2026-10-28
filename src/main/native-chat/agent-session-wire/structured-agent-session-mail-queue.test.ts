@@ -1,14 +1,8 @@
-import { observeMailSqlWork } from '../../runtime/orchestration/mail-sql-work.test-support'
 import { orchestrationInboxMethod } from '../../runtime/rpc/methods/orchestration/messaging/inbox-method'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import { OrchestrationDb } from '../../runtime/orchestration/db'
-import { OrchestrationStructuredMailboxPointerDelivery } from '../../runtime/orchestration/structured-mailbox-pointer-delivery'
-import { createStructuredMailboxPointerHost } from '../../runtime/orchestration/structured-mailbox-pointer-host'
 import { ordinaryMailCreationId } from '../../runtime/orchestration/structured-mailbox-pointer-delivery'
-import { sendAgentTurn } from '../../runtime/orchestration/send-agent-turn'
-import { structuredMailSource } from '../../runtime/orchestration/structured-mail-source'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { insertCommandReceiptIfAbsent } from '../agent-session-journal/command-receipt-table'
 import { observeMailSql } from '../../runtime/orchestration/mail-handoff.test-fixture'
@@ -17,106 +11,34 @@ import {
   QUEUED_MESSAGES_PUBLISHED_MAX_BYTES,
   QUEUED_MESSAGES_PERSON_RESERVE_BYTES
 } from './structured-agent-session-queued-published-bytes'
-import { captureSessionMailAtStop } from '../../runtime/orchestration/session-mail-stop-inventory'
 import { setStructuredAgentSessionHost } from './structured-agent-session-registry'
 import {
   QUEUED_RIG_CALLER,
-  createQueuedMessageTestRig,
-  eventually,
-  type QueuedMessageTestRig
+  eventually
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import {
   hostTestOperationId,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD
 } from './structured-agent-session-host-test-data'
-import { createStructuredSessionObservationClock } from './structured-agent-session-observation-clock.test-fixture'
 import {
   readQueuePublication,
   structuredQueueSendGate
 } from './structured-agent-session-queued-publication'
 
-let rig: QueuedMessageTestRig
-let db: OrchestrationDb
-let bridge: OrchestrationStructuredMailboxPointerDelivery<never>
-const clock = createStructuredSessionObservationClock(() => rig.host, SESSION)
-beforeEach(async () => {
-  clock.start()
-  rig = await createQueuedMessageTestRig({ restartable: true })
-  db = new OrchestrationDb(':memory:')
-  setStructuredAgentSessionHost(rig.host)
-  bridge = new OrchestrationStructuredMailboxPointerDelivery({
-    getDb: () => db,
-    getMessageWaiters: () => undefined,
-    resolveStructuredTarget: (address) =>
-      address === 'consumer' ? { sessionId: SESSION, dispatchId: null } : null,
-    getCliCommand: () => 'orca',
-    senderName: () => null,
-    host: createStructuredMailboxPointerHost()
-  })
-  installSourceCapture()
-})
-function installSourceCapture() {
-  rig.host.deps.captureSessionMail = () =>
-    captureSessionMailAtStop(db, () => {
-      throw new Error('source retirement')
-    })
-}
-afterEach(async () => {
-  setStructuredAgentSessionHost(null)
-  bridge.resetForDatabaseChange()
-  await clock.restoreBeforeCleanup(async () => {
-    await rig.dispose()
-    db.close()
-  })
-})
-function journal() {
-  const value = rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal
-  if (!value) {
-    throw new Error('journal missing')
-  }
-  return value
-}
-async function report(subject: string, notify = true) {
-  const row = db.insertMessage({ from: 'worker', to: 'consumer', subject })
-  if (notify) {
-    bridge.deliverForHandle('consumer')
-  }
-  return row
-}
-async function card(messageId: string) {
-  const message = db.getMessageById(messageId)
-  if (!message) {
-    throw new Error('source missing')
-  }
-  const id = ordinaryMailCreationId(message)
-  await eventually(() => {
-    expect(db.getMessageById(messageId)?.delivered_at, message.subject).not.toBeNull()
-    expect(journal().queuedMessages.get(id)).toBeTruthy()
-  })
-  return id
-}
-
-async function complete(id: string) {
-  await rig.settleAccepted(id, id)
-  await journal().appendItem(
-    { provider: 'codex', threadId: THREAD, turnId: `full-${id}`, ordinal: 0 },
-    {
-      kind: 'turn',
-      turnId: `full-${id}`,
-      state: 'completed',
-      outcome: 'success',
-      startedAt: Date.now(),
-      completedAt: Date.now(),
-      userItemId: agentJournalSubmissionKey(id)
-    },
-    {
-      fence: rig.store.getRecord(SESSION)?.lease.runtimeFence ?? 1,
-      turnScope: AGENT_JOURNAL_THREAD_SCOPE
-    }
-  )
-}
-
+import {
+  rig,
+  db,
+  bridge,
+  clock,
+  journal,
+  card,
+  report,
+  complete,
+  installMailQueueLifecycle,
+  installSourceCapture
+} from './structured-agent-session-mail-queue.test-fixture'
+installMailQueueLifecycle()
 it('enqueues busy reports before effects and runs the oldest attributed full turn, including an idle arrival', async () => {
   const working = await rig.workingSend()
   const approval = await journal().appendItem(
@@ -133,7 +55,13 @@ it('enqueues busy reports before effects and runs the oldest attributed full tur
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     }
   )
+  const noEffect = vi
+    .spyOn(journal().queuedMessages, 'insert')
+    .mockRejectedValueOnce(new Error('transient beforeInsert with no effect'))
   const first = await report('first')
+  await card(first.id)
+  expect(noEffect).toHaveBeenCalledTimes(2)
+  noEffect.mockRestore()
   const second = await report('second')
   const a = await card(first.id),
     b = await card(second.id)
@@ -341,17 +269,17 @@ it('delivers one bounded long report and recovers its exact independent full tex
 it('observed new source identities with missing or imported order become held ordinary cards, survive reopen, and release only on real Resume', async () => {
   await rig.workingSend()
   await rig.stop()
-  const rows = [await report('missing order', false), await report('imported order', false)]
-  db.db.prepare('UPDATE messages SET ordering_origin = NULL WHERE id = ?').run(rows[0].id)
-  db.db.prepare('UPDATE messages SET ordering_origin = ? WHERE id = ?').run('imported', rows[1].id)
-  bridge.deliverForHandle('consumer')
-  const ids = []
-  for (const row of rows) {
+  const ids: string[] = []
+  for (const origin of [null, 'imported']) {
+    const row = db.insertMessage({ from: 'worker', to: 'consumer', subject: `${origin} order` })
+    db.db.prepare('UPDATE messages SET ordering_origin = ? WHERE id = ?').run(origin, row.id)
+    bridge.deliverForHandle('consumer')
     ids.push(await card(row.id))
   }
   for (const id of ids) {
     expect(await rig.handoff(id)).toBeUndefined()
   }
+  bridge.resetForDatabaseChange()
   await rig.restartHostProcess()
   setStructuredAgentSessionHost(rig.host)
   bridge.resetForDatabaseChange()
@@ -418,6 +346,7 @@ it.each([100, 1000])(
     expect(await rig.host.send(QUEUED_RIG_CALLER, live)).toMatchObject({ ok: true, replayed: true })
     await rig.stop()
     expect(await rig.resume()).toMatchObject({ ok: true })
+    bridge.resetForDatabaseChange()
     await rig.restartHostProcess()
     installSourceCapture()
     setStructuredAgentSessionHost(rig.host)
@@ -456,10 +385,15 @@ it.each([100, 1000])(
   }
 )
 
-it('recovers only the original ordinary creation after a lost delivered stamp, edits, Move, Delete, epoch retirement, read and resetTasks', async () => {
+it('recovers only the original ordinary creation after ambiguous acceptance, a lost delivered stamp, edits, Move, Delete, epoch retirement, read and resetTasks', async () => {
   await rig.workingSend()
   const stamp = vi.spyOn(db, 'markAsDelivered').mockImplementation(() => {
     throw new Error('lost source stamp')
+  })
+  const send = rig.host.send.bind(rig.host)
+  const reply = vi.spyOn(rig.host, 'send').mockImplementationOnce(async (...args) => {
+    expect(await send(...args)).toMatchObject({ ok: true, value: { queued: {} } })
+    throw new Error('lost reply after ordinary acceptance')
   })
   const source = await report('original report')
   const id = ordinaryMailCreationId(source)
@@ -469,6 +403,8 @@ it('recovers only the original ordinary creation after a lost delivered stamp, e
       receipt: { status: 'accepted', result: { kind: 'queued-draft', messageId: id } }
     })
   )
+  expect(reply).toHaveBeenCalledOnce()
+  reply.mockRestore()
   const original = journal().queuedMessages.get(id)
   if (!original) {
     throw new Error('ordinary card missing after commit')
@@ -495,12 +431,17 @@ it('recovers only the original ordinary creation after a lost delivered stamp, e
     })
   ).toMatchObject({ ok: true })
   expect(await rig.deleteQueued(id)).toMatchObject({ ok: true })
-  await journal().replaceEpochItems('handle_forked', 1, [])
+  await journal().replaceEpochItems(
+    'handle_forked',
+    rig.store.getConversation(SESSION)?.currentFence ?? 1,
+    []
+  )
   db.markAsRead([source.id])
   db.resetTasks()
   db.db
     .prepare('UPDATE messages SET subject = ? WHERE id = ?')
     .run('changed source presentation', source.id)
+  bridge.resetForDatabaseChange()
   await rig.restartHostProcess()
   setStructuredAgentSessionHost(rig.host)
   stamp.mockRestore()
@@ -576,145 +517,4 @@ it('ordinary Edit and Delete capacity wakes skip a refused older report for a fr
     await complete(await rig.handoffId(waiting))
   }
   expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
-})
-
-it('reconciles a saved random batch through its original ordinary receipt after Delete and restart, without recreating either report', async () => {
-  await rig.workingSend()
-  const a = await report('old batch first', false),
-    b = await report('old batch second', false)
-  const oldId = hostTestOperationId()
-  const source = structuredMailSource({
-    db,
-    mailboxHandle: 'consumer',
-    dispatchId: null,
-    message: a,
-    senderName: () => null
-  })
-  if (source.orchestration?.message !== 'mail-notice') {
-    throw new Error('saved batch source missing')
-  }
-  const body = {
-    kind: 'message' as const,
-    role: 'user' as const,
-    blocks: [{ type: 'text' as const, text: 'saved ordinary batch content' }],
-    from: {
-      ...source,
-      orchestration: {
-        ...source.orchestration,
-        messages: [
-          ...source.orchestration.messages,
-          { messageId: b.id, runId: b.run_id, from: b.from_handle }
-        ]
-      }
-    }
-  }
-  expect(
-    await sendAgentTurn({
-      kind: 'structured-session',
-      host: rig.host,
-      sessionId: SESSION,
-      callerKey: 'trusted-local:orchestration:session:old',
-      turn: {
-        body,
-        operationId: oldId,
-        expectedRuntimeFence: 1,
-        delivery: 'queue',
-        queueAlways: true
-      }
-    })
-  ).toMatchObject({ kind: 'queued' })
-  expect(await rig.deleteQueued(oldId)).toMatchObject({ ok: true })
-  db.db.exec('ALTER TABLE messages ADD COLUMN handoff TEXT')
-  const hint = JSON.stringify({
-    version: 1,
-    kind: 'structured',
-    operationId: oldId,
-    manifest: { members: [a.id, b.id] }
-  })
-  for (const row of [a, b]) {
-    db.db
-      .prepare('UPDATE messages SET ordering_origin = NULL, handoff = ? WHERE id = ?')
-      .run(hint, row.id)
-  }
-  db.resetTasks()
-  // The historical helper hand-back cleared this hint independently of ordering provenance.
-  db.db.prepare('UPDATE messages SET handoff = NULL WHERE id IN (?, ?)').run(a.id, b.id)
-  db.db.prepare('UPDATE messages SET ordering_origin = ? WHERE id = ?').run('local', b.id)
-  db.markAsRead([a.id, b.id])
-  await rig.restartHostProcess()
-  setStructuredAgentSessionHost(rig.host)
-  bridge.resetForDatabaseChange()
-  const unobserved = db.insertMessage({
-    from: 'worker',
-    to: 'consumer',
-    subject: 'unobserved old source with no creation coverage'
-  })
-  db.db.prepare('UPDATE messages SET read = 0, handoff = ? WHERE id = ?').run(
-    JSON.stringify({
-      version: 1,
-      kind: 'structured',
-      operationId: hostTestOperationId(),
-      manifest: { members: [b.id] }
-    }),
-    b.id
-  )
-  const sends = vi.spyOn(rig.host, 'send')
-  const database = rig.host.deps.journalDatabase.db
-  const originals = database
-    .prepare(`SELECT * FROM journal_rows WHERE session_id = ?
-    AND json_extract(row_json, '$.messageId') = ? AND json_extract(row_json, '$.change.op') = 'queued'`)
-    .all(SESSION, oldId)
-  expect(originals).toHaveLength(1)
-  const saved = originals[0]!
-  await rig.host.history({ sessionId: SESSION, direction: 'tail' })
-  await journal().replaceEpochItems('handle_forked', 1, [])
-  expect(
-    database
-      .prepare('SELECT 1 FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq = ?')
-      .get(SESSION, saved.epoch, saved.seq)
-  ).toBeUndefined()
-  bridge.deliverForHandle('consumer')
-  await clock.observe(100)
-  expect(sends).not.toHaveBeenCalled()
-  expect([a, b, unobserved].every((row) => db.getMessageById(row.id)?.delivered_at === null)).toBe(
-    true
-  )
-  expect(await rig.resume()).toMatchObject({ ok: true })
-  await clock.observe(100)
-  expect(sends).not.toHaveBeenCalled()
-  // Recovery restores the actual original evidence; a human release never invents membership.
-  const columns = Object.keys(saved)
-  database
-    .prepare(
-      `INSERT INTO journal_rows (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`
-    )
-    .run(...columns.map((column) => saved[column]))
-  bridge.resetForDatabaseChange()
-  const membership = observeMailSqlWork(
-    database,
-    (sql) => sql.includes('SELECT row_json FROM journal_rows'),
-    'row_json'
-  )
-  const receiptReads = vi.spyOn(rig.store, 'readCommandReceipt')
-  bridge.deliverForHandle('consumer')
-  await eventually(() =>
-    expect([a, b].every((row) => db.getMessageById(row.id)?.delivered_at !== null)).toBe(true)
-  )
-  expect(membership.count()).toBe(1)
-  expect(membership.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeGreaterThan(0)
-  expect(membership.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(10000)
-  expect(receiptReads.mock.calls.filter(([, operation]) => operation === oldId)).toHaveLength(1)
-  membership.verify()
-  console.info(
-    'legacy original-domain membership rows/bytes/arguments',
-    JSON.stringify(membership.calls)
-  )
-  membership.restore()
-  expect(db.getMessageById(unobserved.id)).toMatchObject({ read: 0, delivered_at: null })
-  expect(journal().queuedMessages.get(ordinaryMailCreationId(unobserved))).toBeNull()
-  expect(sends).not.toHaveBeenCalled()
-  expect(rig.store.readCommandReceipt({ kind: 'global' }, oldId)).toMatchObject({
-    verdict: 'readable',
-    receipt: { status: 'accepted' }
-  })
 })

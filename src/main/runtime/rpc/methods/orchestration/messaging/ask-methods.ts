@@ -152,6 +152,7 @@ export const ORCHESTRATION_ASK_METHODS = [
       const deadline = Date.now() + timeoutMs
       const waitScope = new MessageWaitScope()
       try {
+        runtime.observeMessageCheck(`dispatch:${activeDispatch.id}`, waitScope)
         while (true) {
           const current = db.getQuestion(questionId)
           if (!current || current.status === 'closed') {

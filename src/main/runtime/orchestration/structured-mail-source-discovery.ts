@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import type { OrchestrationDb } from './db'
-import type { MailCreationHistory } from './structured-mail-creation-history'
 import type { StructuredPointerTarget } from './structured-mailbox-pointer-delivery'
 export type MailAdmission = { owner: object; generation: string; queuedBytes: number }
 export const sourceIdentity = z.object({
@@ -13,26 +12,85 @@ export const sourceIdentity = z.object({
   delivered_at: z.string().nullable(),
   pointer_enter_pending: z.number(),
   delivery_contract: z.string(),
-  ordering_origin: z.enum(['local', 'imported']).nullable()
+  ordering_origin: z.enum(['local', 'imported']).nullable(),
+  creation_proof: z.string().nullable()
 })
 export type SourceIdentity = z.infer<typeof sourceIdentity>
 export const SOURCE_COLUMNS = `id, run_id, sequence, type, to_handle, read, delivered_at,
-  pointer_enter_pending, delivery_contract, ordering_origin`
+  pointer_enter_pending, delivery_contract, ordering_origin, creation_proof`
 export type Debt = 'capacity' | 'check' | 'unknown' | 'stable' | 'retry' | 'stamp'
+export const sourceState = (source: SourceIdentity): string =>
+  JSON.stringify([
+    source.run_id,
+    source.to_handle,
+    source.type,
+    source.read,
+    source.delivered_at,
+    source.pointer_enter_pending,
+    source.delivery_contract,
+    source.creation_proof,
+    source.ordering_origin
+  ])
+export class MailDebts extends Map<
+  string,
+  { sequence: number; reason: Debt; type: string; state: string }
+> {
+  private readonly reasons = new Map<Debt, Map<string, Set<string>>>()
+  override set(
+    id: string,
+    value: { sequence: number; reason: Debt; type: string; state: string }
+  ): this {
+    this.delete(id)
+    const types = this.reasons.get(value.reason) ?? new Map<string, Set<string>>()
+    this.reasons.set(value.reason, types)
+    const ids = types.get(value.type) ?? new Set<string>()
+    types.set(value.type, ids)
+    ids.add(id)
+    return super.set(id, value)
+  }
+  override delete(id: string): boolean {
+    const previous = this.get(id)
+    if (previous) {
+      const types = this.reasons.get(previous.reason)
+      const ids = types?.get(previous.type)
+      ids?.delete(id)
+      if (!ids?.size) {
+        types?.delete(previous.type)
+      }
+      if (!types?.size) {
+        this.reasons.delete(previous.reason)
+      }
+    }
+    return super.delete(id)
+  }
+  select(reason: Debt, filter?: ReadonlySet<string>): string[] {
+    const types = this.reasons.get(reason)
+    if (!types) {
+      return []
+    }
+    const ids: string[] = []
+    for (const type of filter ?? types.keys()) {
+      for (const id of types.get(type) ?? []) {
+        ids.push(id)
+      }
+    }
+    return ids.sort((a, b) => (this.get(a)?.sequence ?? 0) - (this.get(b)?.sequence ?? 0))
+  }
+}
 export type Interest = {
   db: OrchestrationDb
   target: StructuredPointerTarget
   authority: MailAdmission
   frontier: number
-  deferred: Map<string, { sequence: number; reason: Debt }>
-  /** Only genuinely generated local insertions observed before any possible offer. */
-  newSources: Set<string>
-  history?: MailCreationHistory
+  deferred: MailDebts
+  dirty: Set<string>
   running: boolean
   pending: boolean
   consumersChanged: boolean
+  consumerTypes?: Set<string>
   capacityImproved: boolean
   retry: boolean
+  authorityChanged: boolean
 }
 
 /** One finite metadata pass; creation and lifecycle remain with the existing adapter/queue. */
@@ -59,27 +117,42 @@ export async function discoverMailSources(input: {
     interest.consumersChanged = false
     interest.retry = false
     interest.authority = now
-    const deferred =
-      improved || consumersChanged || retry
-        ? [...interest.deferred].sort((a, b) => a[1].sequence - b[1].sequence)
-        : []
-    for (const [id, debt] of deferred) {
-      if (
-        (debt.reason === 'capacity' && improved) ||
-        (debt.reason === 'check' && consumersChanged) ||
-        ((debt.reason === 'retry' || debt.reason === 'stamp') && retry)
-      ) {
-        const raw = interest.db.db
-          .prepare(`SELECT ${SOURCE_COLUMNS} FROM messages WHERE id = ?`)
-          .get(id)
-        if (!raw) {
-          retire(id)
-        } else {
-          await offer(sourceIdentity.parse(raw))
-        }
-        if (!current()) {
-          return
-        }
+    const selected = new Set(interest.dirty)
+    interest.dirty.clear()
+    const select = (reason: Debt, filter?: ReadonlySet<string>) => {
+      for (const id of interest.deferred.select(reason, filter)) {
+        selected.add(id)
+      }
+    }
+    if (improved) {
+      select('capacity')
+    }
+    if (consumersChanged) {
+      select('check', interest.consumerTypes)
+    }
+    interest.consumerTypes = undefined
+    if (retry) {
+      select('retry')
+      select('stamp')
+    }
+    if (interest.authorityChanged) {
+      interest.authorityChanged = false
+      select('stable')
+      select('unknown')
+      select('retry')
+      select('check')
+    }
+    for (const id of selected) {
+      const raw = interest.db.db
+        .prepare(`SELECT ${SOURCE_COLUMNS} FROM messages WHERE id = ?`)
+        .get(id)
+      if (!raw) {
+        retire(id)
+      } else {
+        await offer(sourceIdentity.parse(raw))
+      }
+      if (!current()) {
+        return
       }
     }
     const through = Number(
@@ -98,7 +171,9 @@ export async function discoverMailSources(input: {
       }
       for (const raw of rows) {
         const source = sourceIdentity.parse(raw)
-        await offer(source)
+        if (!selected.has(source.id)) {
+          await offer(source)
+        }
         interest.frontier = source.sequence
         if (!current()) {
           return
@@ -111,12 +186,7 @@ export async function discoverMailSources(input: {
       // Our own inserts reduce capacity, never an improvement that replays refused debt.
       interest.authority = capacity
     }
-    if (
-      !interest.pending &&
-      interest.deferred.size === 0 &&
-      interest.newSources.size === 0 &&
-      current()
-    ) {
+    if (!interest.pending && interest.deferred.size === 0 && current()) {
       finished()
     }
   }

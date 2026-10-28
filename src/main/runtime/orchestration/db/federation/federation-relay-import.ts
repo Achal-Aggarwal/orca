@@ -5,6 +5,7 @@ import type {
   WorkerReportOutcome,
   WorkerReportSettlement
 } from '../../types'
+import { homeImportCreationProof } from '../messages/mail-creation-proof'
 import { OrchestrationError } from '../../orchestration-error'
 import type { OrchestrationDb } from '../orchestration-db'
 
@@ -66,7 +67,11 @@ export function importFederatedRelayItem(
 
     let message = this.getMessageById(params.message.id)
     if (!message) {
-      message = this.insertMessage({ ...params.message, orderingOrigin: 'imported' })
+      message = this.insertMessage({
+        ...params.message,
+        orderingOrigin: 'imported',
+        creationProof: homeImportCreationProof(this, params.message.runId, params.dispatchId)
+      })
     } else if (
       message.run_id !== params.message.runId ||
       message.to_handle !== params.message.to ||

@@ -216,7 +216,10 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
         this.mailPointerRepointScheduler.schedule(handBack.mailbox)
         return
       }
-      this.orchestrationStructuredMailboxPointerDelivery.invalidateSource(handBack.mailbox)
+      this.orchestrationStructuredMailboxPointerDelivery.nominateSources(
+        handBack.mailbox,
+        handBack.messageIds
+      )
       // Re-read committed rows so rolled-back settlements wake nobody.
       for (const type of committedHandBackTypes(db, handBack)) {
         this.notifyMessageArrived(handBack.mailbox, type)

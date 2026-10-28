@@ -139,7 +139,7 @@ export function getUndeliveredUnreadMailboxHandles(this: OrchestrationDb): strin
     this.db
       .prepare(
         `SELECT DISTINCT to_handle FROM messages
-         WHERE read = 0 AND delivered_at IS NULL
+         WHERE delivered_at IS NULL
            AND pointer_enter_pending = 0
            AND delivery_contract = 'current_delivery'`
       )

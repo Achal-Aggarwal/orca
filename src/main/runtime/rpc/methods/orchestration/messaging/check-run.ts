@@ -31,7 +31,12 @@ export async function checkRunMailbox(args: {
 }): Promise<unknown> {
   const waitScope = new MessageWaitScope()
   let completionMailbox = args.handle
+  const opportunityTypes =
+    args.params.peek || args.params.all || args.params.unread === false
+      ? args.typeFilter
+      : undefined
   try {
+    args.runtime.observeMessageCheck(args.handle, waitScope, opportunityTypes)
     const {
       params,
       runtime,
@@ -67,6 +72,7 @@ export async function checkRunMailbox(args: {
     const generation = run.consumer_generation
     const address = `run:${run.id}`
     completionMailbox = address
+    runtime.observeMessageCheck(address, waitScope, opportunityTypes)
     runtime.ensureOrchestrationFederationRelay(run.id)
     await routeDirectSnapshot(run.id, handle, (throughSequence) =>
       db.routeUnreadDirectMessagesToRunMailbox(run.id, handle, throughSequence)
@@ -98,6 +104,7 @@ export async function checkRunMailbox(args: {
     revalidateConsumer()
 
     const pending = await checkRunPendingMail({ ...args, run, revalidateConsumer })
+    runtime.observeMessageCheck(address, waitScope, opportunityTypes)
     try {
       revalidateConsumer()
     } catch (error) {
@@ -182,6 +189,7 @@ export async function checkRunMailbox(args: {
       timeoutMs: params.timeoutMs ?? undefined,
       signal
     })
+    runtime.observeMessageCheck(address, waitScope, opportunityTypes)
     try {
       revalidateConsumer()
     } catch (error) {

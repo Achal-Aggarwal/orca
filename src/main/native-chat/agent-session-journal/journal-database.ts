@@ -1,6 +1,7 @@
 // Read user_version before persistent pragmas/DDL: even enabling WAL mutates newer databases.
 
 import Database from '../../sqlite/sync-database'
+import { ensureMailCreationAuthority } from './mail-creation-authority'
 import { hardenSqliteDatabaseFiles } from '../../sqlite/harden-database-files'
 import {
   createAgentSessionRecordTablesSql,
@@ -73,6 +74,7 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
     ensureQueuedMessagesTable(probe)
     ensureCommandReceiptsTable(probe)
     ensureAgentSessionAttachmentClaimTables(probe)
+    ensureMailCreationAuthority(probe)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
     return { db: probe, readOnly: false }
