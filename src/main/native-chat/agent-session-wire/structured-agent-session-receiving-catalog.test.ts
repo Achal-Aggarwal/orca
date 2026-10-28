@@ -4,6 +4,7 @@ import type { AgentModelCatalogProbe } from '../agent-model-catalog/agent-model-
 import { rm } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { agentSessionAccountHomePath } from '../../../shared/agent-session-account-home'
 import { REST_TEST_CALLER } from './structured-agent-session-rest-test-rig'
 import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
@@ -323,7 +324,9 @@ it.each([10, 100])(
         }
       })
       expect(external).not.toHaveBeenCalled()
-      expect(c.resolve.mock.calls.every(([home]) => home.path === HOME_A.path)).toBe(true)
+      expect(
+        c.resolve.mock.calls.every(([home]) => agentSessionAccountHomePath(home) === HOME_A.path)
+      ).toBe(true)
       const before = c.service.peek(PARENT, true)
       f.runtime
         .getOrchestrationDb()
@@ -338,7 +341,9 @@ it.each([10, 100])(
       })
       expect(external).toHaveBeenCalledTimes(1)
       expect(c.service.peek(PARENT, true)).not.toBe(before)
-      expect(c.resolve.mock.calls.every(([home]) => home.path === HOME_B.path)).toBe(true)
+      expect(
+        c.resolve.mock.calls.every(([home]) => agentSessionAccountHomePath(home) === HOME_B.path)
+      ).toBe(true)
     } finally {
       service?.stop()
       await f.dispose(
