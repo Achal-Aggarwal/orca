@@ -117,8 +117,10 @@ describe('detectWslCommandsOnPath', () => {
   })
 
   it.each([
-    { timedOut: true, code: 0 },
-    { timedOut: false, code: 1 }
+    { timedOut: true, code: 0, environmentResolved: true },
+    { timedOut: false, code: 1, environmentResolved: true },
+    { timedOut: false, code: null, environmentResolved: true },
+    { timedOut: false, code: 0, environmentResolved: false }
   ])('rejects an incomplete WSL probe: %j', async (result) => {
     runWslProcessMock.mockResolvedValue({
       ...result,
@@ -128,7 +130,12 @@ describe('detectWslCommandsOnPath', () => {
   })
 
   it('keeps a successful empty probe distinct from a failed probe', async () => {
-    runWslProcessMock.mockResolvedValue({ timedOut: false, code: 0, stdout: '' })
+    runWslProcessMock.mockResolvedValue({
+      timedOut: false,
+      code: 0,
+      stdout: '',
+      environmentResolved: true
+    })
     await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).resolves.toEqual(
       new Set()
     )
@@ -190,7 +197,7 @@ describe('the detection script itself, run by a real POSIX shell', () => {
 
   const runScript = async (): Promise<string> => {
     runWslProcessMock.mockResolvedValue({
-      environmentResolved: false,
+      environmentResolved: true,
       code: 0,
       stdout: '',
       stderr: '',

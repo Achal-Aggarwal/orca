@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAppStore } from '@/store'
+import { getCachedWindowsTerminalCapabilities } from '@/lib/windows-terminal-capabilities'
+import type { AppState } from '@/store/types'
+import { getProjectHostSetupProjectionFromState } from '@/store/project-host-setup-selector'
+import { getLocalAgentPreflightContext } from '@/lib/local-preflight-context'
+import { localAgentInventoryContextKey } from '@/lib/local-preflight-context-key'
 import { runtimeHostContactForEntry } from '../../../shared/runtime-host-contact'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
@@ -60,7 +65,39 @@ export function useDetectedAgents(
     targetKind === 'runtime' && targetId
       ? getRuntimeAgentInventoryKey(targetId, runtimeWorktreeId)
       : targetId
-  const localContextKey = target?.kind === 'local' ? target.contextKey : undefined
+  const suppliedLocalKey = target?.kind === 'local' ? target.contextKey : undefined
+  const selectLocalContextKey = useMemo(() => {
+    let previous: unknown[] = []
+    let key: string | undefined
+    return (s: AppState) => {
+      if (targetKind !== 'local' || suppliedLocalKey) {
+        return suppliedLocalKey
+      }
+      const catalog = getProjectHostSetupProjectionFromState(s)
+      // Context inputs change independently of inventory/store notifications.
+      const inputs = [
+        s.repos,
+        catalog,
+        s.worktreesByRepo,
+        s.detectedWorktreesByRepo,
+        s.folderWorkspaces,
+        s.projectGroups,
+        s.activeRepoId,
+        s.activeWorktreeId,
+        s.activeWorkspaceExecutionHostId,
+        s.settings,
+        getCachedWindowsTerminalCapabilities()
+      ]
+      if (inputs.some((value, index) => value !== previous[index])) {
+        previous = inputs
+        key = localAgentInventoryContextKey(
+          getLocalAgentPreflightContext(s, undefined, undefined, localWorktreeId)
+        )
+      }
+      return key
+    }
+  }, [targetKind, suppliedLocalKey, localWorktreeId])
+  const localContextKey = useAppStore(selectLocalContextKey)
   const remoteTargetKey =
     targetKind === 'ssh' && targetId
       ? `ssh:${targetId}`
@@ -139,11 +176,14 @@ export function useDetectedAgents(
       : false
   )
   const localDetectionFailed = useAppStore(
-    (s) => targetKind === 'local' && s.readLocalAgentInventory(localWorktreeId).state === 'failed'
+    (s) =>
+      targetKind === 'local' &&
+      localContextKey !== undefined &&
+      s.localAgentInventoryFailedByContext[localContextKey] === true
   )
   const detectionFailed =
     targetKind === 'local'
-      ? localDetectionFailed
+      ? localDetectionFailed && !isLoading && !isRefreshing
       : detectedIds === null &&
         !isLoading &&
         !isRefreshing &&

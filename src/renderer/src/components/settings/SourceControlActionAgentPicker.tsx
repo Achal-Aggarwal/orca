@@ -59,7 +59,11 @@ export function sourceControlActionAgentPreview(
   observation: ReturnType<typeof useAgentMenuObservation>,
   agent: TuiAgent | null
 ) {
-  return observation.preferencesPending || observation.detection.detectedIds === null
+  return observation.preferencesPending ||
+    (observation.detection.detectedIds === null &&
+      (!observation.detection.detectionFailed ||
+        observation.detection.isLoading ||
+        observation.detection.isRefreshing))
     ? { status: 'pending' as const }
     : {
         status: 'ready' as const,
@@ -67,7 +71,7 @@ export function sourceControlActionAgentPreview(
           savedAgent: agent,
           defaultAgent: observation.preferences.defaultTuiAgent,
           disabledAgents: observation.preferences.disabledTuiAgents,
-          detectedAgents: observation.detection.detectedIds
+          detectedAgents: observation.detection.detectedIds ?? []
         })
       }
 }

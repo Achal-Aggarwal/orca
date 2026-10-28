@@ -131,14 +131,28 @@ export function ensureDetectedAgentsForNewWorktree(
   worktreeId: string,
   repo: RepoHostFields
 ): Promise<TuiAgent[]> {
+  return ensureDetectedAgentsForTarget(
+    state,
+    detectionTargetForNewWorktree(state, worktreeId, repo)
+  )
+}
+
+/** Bind reads to the same workspace/repo fallback that supplied the attempt. */
+export function detectionTargetForNewWorktree(
+  state: AgentDetectionOwnerState,
+  worktreeId: string,
+  repo: RepoHostFields
+): AgentDetectionTarget {
   const target = detectionTargetForWorktree(state, worktreeId)
   if (target) {
-    return ensureDetectedAgentsForTarget(state, target)
+    return target
   }
   const host = parseExecutionHostId(getRepoExecutionHostId(repo))
   return host?.kind === 'runtime'
-    ? state.ensureRuntimeDetectedAgents(host.environmentId, worktreeId)
-    : (ensureDetectedAgentsForRepo(state, repo) ?? Promise.resolve([]))
+    ? { kind: 'runtime', environmentId: host.environmentId, worktreeId }
+    : host?.kind === 'ssh'
+      ? { kind: 'ssh', connectionId: host.targetId }
+      : { kind: 'local' }
 }
 
 /** Per-attempt project facts; older hosts retain their existing pre-create validation. */

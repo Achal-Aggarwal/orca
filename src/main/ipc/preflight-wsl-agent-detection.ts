@@ -47,8 +47,8 @@ export async function detectWslCommandsOnPath(
     shell: 'sh',
     timeoutMs: WSL_AGENT_DETECTION_TIMEOUT_MS
   })
-  // Timeout/nonzero results may contain partial stdout, not a complete inventory.
-  if (result.timedOut || result.code !== 0) {
+  // Failed login capture or partial output cannot establish a complete inventory.
+  if (result.timedOut || result.code !== 0 || !result.environmentResolved) {
     throw new Error('Could not check installed agents in WSL')
   }
   return parseWslDetectedCommands(result.stdout)

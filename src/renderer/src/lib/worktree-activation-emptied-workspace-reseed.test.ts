@@ -14,6 +14,8 @@ import {
   seedEmptyActivatableWorktree
 } from '@/lib/worktree-activation-created-agent.test-fixture'
 import { waitForWorktreeAgentActivationGateForTests } from './worktree-agent-activation-gate'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY as CHAT } from '../../../shared/protocol-version'
 
 // Main's answer to the window's layout commands, as a switch-on build sends them.
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) =>
@@ -25,6 +27,7 @@ vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) =>
 const initialAppStoreState = useAppStore.getState()
 
 afterEach(() => {
+  setLocalRuntimeCapabilitiesForTests(null)
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   useAppStore.setState(initialAppStoreState, true)
@@ -42,6 +45,40 @@ function seedClosedLastTerminal(worktreeId: string): void {
 }
 
 describe('activating a workspace whose last terminal was closed', () => {
+  it('re-seeds a usable shell after cold inventory rejection without inventing an installed agent', async () => {
+    const worktree = makeWorktree()
+    seedEmptyActivatableWorktree(worktree)
+    useAppStore.getState().clearLocalDetectedAgents()
+    setLocalRuntimeCapabilitiesForTests([CHAT])
+    useAppStore.setState((s) => ({
+      settings: s.settings && {
+        ...s.settings,
+        experimentalNativeChat: true,
+        defaultTuiAgent: 'claude'
+      },
+      sleepingAgentSessionsByPaneKey: { 'pane-1': { worktreeId: worktree.id } } as never
+    }))
+    vi.stubGlobal('window', {
+      api: {
+        preflight: {
+          detectAgents: vi.fn().mockRejectedValue(new Error('probe unavailable'))
+        }
+      }
+    })
+    await useAppStore.getState().ensureDetectedAgents(worktree.id)
+    expect(useAppStore.getState().readLocalAgentInventory(worktree.id)).toEqual({
+      ids: null,
+      state: 'failed'
+    })
+    vi.spyOn(activationGate, 'gateWorktreeAgentActivation').mockResolvedValue('empty')
+    activateAndRevealWorktree(worktree.id, { notifyHostRuntime: false })
+    await vi.waitFor(() =>
+      expect(useAppStore.getState().tabsByWorktree[worktree.id]).toHaveLength(1)
+    )
+    expect(useAppStore.getState().pendingStartupByTabId).toEqual({})
+    useAppStore.getState().clearLocalDetectedAgents()
+  })
+
   it.each([
     ['Blank Terminal', null, 1],
     ['an agent', 'codex' as const, 0]

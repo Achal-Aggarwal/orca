@@ -123,12 +123,83 @@ describe('preflight', () => {
     })
   })
 
-  it('propagates an incomplete WSL inventory through detect and refresh IPC', async () => {
+  it.each([true, false])(
+    'propagates incomplete WSL inventory through IPC (timeout=%s)',
+    async (timedOut) => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      runWslProcessMock.mockResolvedValue({
+        timedOut,
+        environmentResolved: false,
+        code: 0,
+        stdout: ''
+      })
+      registerPreflightHandlers()
+      for (const method of ['preflight:detectAgents', 'preflight:refreshAgents']) {
+        await expect(handlers[method](undefined, { wslDistro: 'Ubuntu' })).rejects.toThrow()
+      }
+    }
+  )
+
+  it('carries an unresolved login environment through production IPC/store failure and manual recovery', async () => {
+    const { useAppStore } = await import('@/store')
+    const initial = useAppStore.getState()
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    runWslProcessMock.mockResolvedValue({ timedOut: true, code: 0, stdout: '' })
     registerPreflightHandlers()
-    for (const method of ['preflight:detectAgents', 'preflight:refreshAgents']) {
-      await expect(handlers[method](undefined, { wslDistro: 'Ubuntu' })).rejects.toThrow()
+    vi.stubGlobal('window', {
+      api: {
+        platform: { get: () => ({ platform: 'win32' }) },
+        preflight: {
+          detectAgents: (context: unknown) =>
+            handlers['preflight:detectAgents'](undefined, context),
+          refreshAgents: (context: unknown) =>
+            handlers['preflight:refreshAgents'](undefined, context)
+        }
+      }
+    })
+    try {
+      useAppStore.setState(
+        {
+          ...useAppStore.getInitialState(),
+          settings: {
+            ...initial.settings,
+            localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' }
+          }
+        },
+        true
+      )
+      useAppStore.getState().clearLocalDetectedAgents()
+      runWslProcessMock.mockResolvedValue({
+        environmentResolved: false,
+        code: 0,
+        stdout: '',
+        timedOut: false
+      })
+      await useAppStore.getState().ensureDetectedAgents()
+      expect(useAppStore.getState().readLocalAgentInventory()).toEqual({
+        ids: null,
+        state: 'failed'
+      })
+      expect(useAppStore.getState().isDetectingAgents).toBe(false)
+      await useAppStore.getState().refreshDetectedAgents()
+      expect(useAppStore.getState().readLocalAgentInventory()).toEqual({
+        ids: null,
+        state: 'failed'
+      })
+      runWslProcessMock.mockResolvedValue({
+        environmentResolved: true,
+        code: 0,
+        stdout: '',
+        timedOut: false
+      })
+      await useAppStore.getState().refreshDetectedAgents()
+      expect(useAppStore.getState().readLocalAgentInventory()).toEqual({
+        ids: [],
+        state: 'successful'
+      })
+    } finally {
+      useAppStore.getState().clearLocalDetectedAgents()
+      useAppStore.setState(initial, true)
+      vi.unstubAllGlobals()
     }
   })
 

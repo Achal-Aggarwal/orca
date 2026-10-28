@@ -149,3 +149,103 @@ it.each(localTargets)(
     expect(result.current).toMatchObject({ detectedIds: ['codex'], detectionFailed: false })
   }
 )
+
+it('bounds repeated inventory work at N/10N and renders only the observed context', async () => {
+  const context = await import('@/lib/local-preflight-context')
+  const { localAgentInventoryContextKey } = await import('@/lib/local-preflight-context-key')
+  const resolution = vi.spyOn(context, 'getLocalAgentPreflightContext')
+  const measured: number[] = []
+  for (const count of [10, 100]) {
+    const repos = Array.from({ length: 1000 }, (_, index) => ({
+      ...TEST_REPO,
+      id: `repo-${index}`,
+      path: `C:\\project-${index}`
+    }))
+    const catalog = projectHostSetupProjectionFromRepos(repos)
+    const worktrees = repos.slice(-count).map((repo) =>
+      makeWorktree({
+        id: `${repo.id}::${repo.path}`,
+        repoId: repo.id,
+        path: repo.path
+      })
+    )
+    useAppStore.setState({
+      repos,
+      endpointProjects: catalog.projects.map((project) => ({
+        ...project,
+        localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+      })),
+      endpointProjectHostSetups: [...catalog.setups],
+      worktreesByRepo: Object.fromEntries(worktrees.map((wt) => [wt.repoId, [wt]])),
+      settings: getDefaultSettings('/tmp')
+    })
+    const keys = worktrees.map((wt) =>
+      localAgentInventoryContextKey(
+        context.getLocalAgentPreflightContext(useAppStore.getState(), undefined, undefined, wt.id)
+      )
+    )
+    useAppStore.setState({
+      localDetectedAgentIdsByContext: Object.fromEntries(keys.map((key) => [key, ['claude']]))
+    })
+    let reads = 0
+    const failures = (entries: Record<string, boolean>) =>
+      new Proxy(entries, {
+        get(target, key, receiver) {
+          reads += 1
+          return Reflect.get(target, key, receiver)
+        }
+      })
+    useAppStore.setState({ localAgentInventoryFailedByContext: failures({}) })
+    const renders = Array<number>(count).fill(0)
+    const mounted = worktrees.map((wt, index) =>
+      renderHook(() => {
+        renders[index] += 1
+        return useDetectedAgents({ kind: 'local', worktreeId: wt.id })
+      })
+    )
+    await act(async () => {})
+    renders.fill(0)
+    reads = 0
+    resolution.mockClear()
+    await act(async () => {
+      useAppStore.setState({ isDetectingAgents: false })
+    })
+    expect(renders).toEqual(Array(count).fill(0))
+    await act(async () => {
+      useAppStore.setState({
+        remoteDetectedAgentIds: { anotherHost: ['codex'] },
+        localAgentInventoryFailedByContext: failures({ anotherContext: true })
+      })
+    })
+    expect(renders).toEqual(Array(count).fill(0))
+    expect(resolution).not.toHaveBeenCalled()
+    measured.push(reads)
+    await act(async () => {
+      useAppStore.setState({
+        localAgentInventoryFailedByContext: failures({ [keys[0]]: true })
+      })
+    })
+    expect(renders[0]).toBeGreaterThan(0)
+    expect(renders.slice(1)).toEqual(Array(count - 1).fill(0))
+    expect(mounted[0].result.current).toMatchObject({
+      detectedIds: ['claude'],
+      detectionFailed: true
+    })
+    await act(async () => {
+      useAppStore.setState({ isRefreshingLocalAgentsByContext: { [keys[0]]: true } })
+    })
+    expect(mounted[0].result.current.detectionFailed).toBe(false)
+    await act(async () => {
+      useAppStore.setState({ isRefreshingLocalAgentsByContext: {} })
+    })
+    expect(mounted[0].result.current.detectionFailed).toBe(true)
+    expect(resolution).not.toHaveBeenCalled()
+    mounted.forEach((hook) => hook.unmount())
+  }
+  expect(measured[0]).toBeGreaterThanOrEqual(10)
+  expect(measured[1]).toBeLessThanOrEqual(10 * measured[0])
+  process.stdout.write(
+    `${JSON.stringify({ metric: 'inventory-notification-reads', populations: [10, 100], projectCount: 1000, reads: measured, contextResolutions: 0 })}\n`
+  )
+  resolution.mockRestore()
+})
