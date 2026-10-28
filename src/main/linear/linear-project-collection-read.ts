@@ -58,7 +58,8 @@ export async function readCollection<T>(
         hasMore: results.some((result) => result.hasMore)
       }
     },
-    force || signal !== undefined
+    force,
+    signal
   )
 }
 

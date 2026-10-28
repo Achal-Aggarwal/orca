@@ -74,6 +74,7 @@ export async function listProjectTeams(
         release()
       }
     },
-    force || signal !== undefined
+    force,
+    signal
   )
 }

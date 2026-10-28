@@ -121,7 +121,8 @@ export async function listProjectsByExactName(
         release()
       }
     },
-    force || signal !== undefined
+    force,
+    signal
   )
 }
 
@@ -164,7 +165,8 @@ export async function getProject(
         release()
       }
     },
-    force || signal !== undefined
+    force,
+    signal
   )
 }
 
