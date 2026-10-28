@@ -5,6 +5,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IpynbCellSource } from './IpynbCellEditor'
 import { parseIpynb } from './ipynb-parse'
+import { beginMonacoLargePasteLifecycle } from './monaco-large-paste-lifecycle'
+import type { MonacoPasteEditor } from './monaco-large-text-paste'
 import {
   getIpynbCellKey,
   hasIpynbSourceDraft,
@@ -14,6 +16,10 @@ import {
 const liveModels = vi.hoisted(() => {
   const models: editor.ITextModel[] = []
   return models
+})
+const liveEditors = vi.hoisted(() => {
+  const instances: (MonacoPasteEditor & { blur: () => void })[] = []
+  return instances
 })
 const widgetCalls = vi.hoisted(() => ({
   focus: vi.fn(),
@@ -57,25 +63,40 @@ vi.mock('@/lib/monaco-setup', async () => {
           liveModels.push(model)
           return model
         },
-        create: (_container: HTMLElement, { model }: { model: editor.ITextModel }) => ({
-          getModel: () => model,
-          getContentHeight: () => 28,
-          layout: widgetCalls.layout,
-          onDidContentSizeChange: () => ({ dispose: vi.fn() }),
-          restoreViewState: vi.fn(),
-          saveViewState: () => null,
-          getTargetAtClientPoint: () => null,
-          setPosition: vi.fn(),
-          focus: widgetCalls.focus,
-          onDidBlurEditorWidget: () => ({ dispose: vi.fn() }),
-          addCommand: vi.fn(),
-          updateOptions: widgetCalls.updateOptions,
-          pushUndoStop: () => {
-            model.pushStackElement()
-            return true
-          },
-          dispose: vi.fn()
-        })
+        create: (container: HTMLElement, { model }: { model: editor.ITextModel }) => {
+          const blurListeners = new Set<() => void>()
+          const instance = {
+            getModel: () => model,
+            getContainerDomNode: () => container,
+            hasTextFocus: () => true,
+            getSelections: () => null,
+            getSelection: () => null,
+            setSelection: () => {},
+            executeEdits: () => false,
+            getContentHeight: () => 28,
+            layout: widgetCalls.layout,
+            onDidContentSizeChange: () => ({ dispose: vi.fn() }),
+            restoreViewState: vi.fn(),
+            saveViewState: () => null,
+            getTargetAtClientPoint: () => null,
+            setPosition: vi.fn(),
+            focus: widgetCalls.focus,
+            onDidBlurEditorWidget: (listener: () => void) => {
+              blurListeners.add(listener)
+              return { dispose: () => blurListeners.delete(listener) }
+            },
+            blur: () => blurListeners.forEach((listener) => listener()),
+            addCommand: vi.fn(),
+            updateOptions: widgetCalls.updateOptions,
+            pushUndoStop: () => {
+              model.pushStackElement()
+              return true
+            },
+            dispose: vi.fn()
+          }
+          liveEditors.push(instance)
+          return instance
+        }
       }
     }
   }
@@ -121,10 +142,12 @@ function NotebookCells({
   })
   return (
     <div ref={editing.setRootRef}>
+      <button onClick={() => editing.flushSourceDrafts()}>Save snapshot</button>
       {notebook.cells.map((cell, index) => {
         const key = getIpynbCellKey(cell, index)
         return (
           <IpynbCellSource
+            registerSourceEditorFlush={editing.registerSourceEditorFlush}
             key={key}
             cell={cell}
             source={
@@ -169,12 +192,213 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  liveEditors.splice(0)
   for (const model of liveModels.splice(0)) {
     if (!model.isDisposed()) {
       model.dispose()
     }
   }
   vi.useRealTimers()
+})
+
+describe('notebook source large paste publication', () => {
+  it('does not release source deferral while an overlapping paste is still active', () => {
+    const onContentChange = vi.fn()
+    const onDirtyStateHint = vi.fn()
+    render(
+      <NotebookCells
+        content={notebookContent([{ id: 'a', source: 'base' }])}
+        {...{ onContentChange, onDirtyStateHint }}
+      />
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'base' }), { button: 0 })
+    const model = activeModel()
+    const instance = liveEditors.at(-1)
+    if (!instance) {
+      throw new Error('Missing active source editor')
+    }
+    const first = beginMonacoLargePasteLifecycle(instance)
+    appendText(model, '-one')
+    const second = beginMonacoLargePasteLifecycle(instance)
+    appendText(model, '-two')
+    act(() => second?.({ status: 'pasted', mode: 'chunked', byteLength: 100000, chunksWritten: 1 }))
+    appendText(model, '-three')
+    expect(onContentChange).not.toHaveBeenCalled()
+    act(() =>
+      first?.({
+        status: 'cancelled',
+        reason: 'target-unavailable',
+        byteLength: 100000,
+        chunksWritten: 2
+      })
+    )
+    act(() => vi.advanceTimersByTime(400))
+    expect(onContentChange).toHaveBeenCalledTimes(1)
+    expect(parseIpynb(onContentChange.mock.calls[0]?.[0] ?? '').cells[0]?.source).toBe(
+      'base-one-two-three'
+    )
+  })
+
+  it('keeps later chunks pending after a partial Save and publishes the remaining source at completion', () => {
+    const onContentChange = vi.fn()
+    const onDirtyStateHint = vi.fn()
+    render(
+      <NotebookCells
+        content={notebookContent([{ id: 'a', source: 'base' }])}
+        {...{ onContentChange, onDirtyStateHint }}
+      />
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'base' }), { button: 0 })
+    const model = activeModel()
+    const instance = liveEditors.at(-1)
+    if (!instance) {
+      throw new Error('Missing active source editor')
+    }
+    const finish = beginMonacoLargePasteLifecycle(instance)
+    appendText(model, '-first')
+    fireEvent.click(screen.getByRole('button', { name: 'Save snapshot' }))
+    expect(parseIpynb(onContentChange.mock.calls[0]?.[0] ?? '').cells[0]?.source).toBe('base-first')
+    appendText(model, '-second')
+    expect(onContentChange).toHaveBeenCalledTimes(1)
+    act(() => finish?.({ status: 'pasted', mode: 'chunked', byteLength: 100000, chunksWritten: 2 }))
+    act(() => vi.advanceTimersByTime(400))
+    expect(onContentChange).toHaveBeenCalledTimes(2)
+    expect(parseIpynb(onContentChange.mock.calls[1]?.[0] ?? '').cells[0]?.source).toBe(
+      'base-first-second'
+    )
+  })
+
+  it('settles source into its original cell after external reordering changes the callback index', () => {
+    const onContentChange = vi.fn()
+    const onDirtyStateHint = vi.fn()
+    const first = { id: 'a', source: 'base' }
+    const second = { id: 'b', source: 'other' }
+    const { rerender } = render(
+      <NotebookCells
+        content={notebookContent([first, second])}
+        {...{ onContentChange, onDirtyStateHint }}
+      />
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'base' }), { button: 0 })
+    const model = activeModel()
+    const instance = liveEditors.at(-1)
+    if (!instance) {
+      throw new Error('Missing active source editor')
+    }
+    const finish = beginMonacoLargePasteLifecycle(instance)
+    appendText(model, '-partial')
+    rerender(
+      <NotebookCells
+        content={notebookContent([second, first])}
+        {...{ onContentChange, onDirtyStateHint }}
+      />
+    )
+    act(() =>
+      finish?.({
+        status: 'cancelled',
+        reason: 'target-unavailable',
+        byteLength: 100000,
+        chunksWritten: 1
+      })
+    )
+    act(() => vi.advanceTimersByTime(400))
+    expect(
+      parseIpynb(onContentChange.mock.calls[0]?.[0] ?? '').cells.map(({ id, source }) => ({
+        id,
+        source
+      }))
+    ).toEqual([second, { ...first, source: 'base-partial' }])
+  })
+
+  for (const chunks of [5, 50]) {
+    it(`defers ${chunks} chunks before one source publication and preserves Undo`, async () => {
+      const onContentChange = vi.fn()
+      const onDirtyStateHint = vi.fn()
+      render(
+        <NotebookCells
+          content={notebookContent([{ id: 'a', source: 'base' }])}
+          {...{ onContentChange, onDirtyStateHint }}
+        />
+      )
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'base' }), { button: 0 })
+      const model = activeModel()
+      const instance = liveEditors.at(-1)
+      if (!instance) {
+        throw new Error('Missing active source editor')
+      }
+      const reads = vi.spyOn(model, 'getValue')
+      const finish = beginMonacoLargePasteLifecycle(instance)
+      model.pushStackElement()
+      for (let i = 0; i < chunks; i += 1) {
+        appendText(model, 'x'.repeat(16384))
+      }
+      expect(reads).not.toHaveBeenCalled()
+      expect(onContentChange).not.toHaveBeenCalled()
+      act(() =>
+        finish?.({
+          status: 'pasted',
+          mode: 'chunked',
+          byteLength: chunks * 16384,
+          chunksWritten: chunks
+        })
+      )
+      model.pushStackElement()
+      expect(reads).toHaveBeenCalledTimes(1)
+      act(() => vi.advanceTimersByTime(400))
+      expect(onContentChange).toHaveBeenCalledTimes(1)
+      expect(parseIpynb(onContentChange.mock.calls[0]?.[0] ?? '').cells[0]?.source).toBe(
+        `base${'x'.repeat(chunks * 16384)}`
+      )
+      await act(async () => model.undo())
+      act(() => vi.advanceTimersByTime(400))
+      expect(parseIpynb(onContentChange.mock.calls.at(-1)?.[0] ?? '').cells[0]?.source).toBe('base')
+    })
+  }
+
+  for (const boundary of ['save', 'deactivate', 'unmount'] as const) {
+    it(`drains partial source before ${boundary} and does not publish again after settlement`, () => {
+      const onContentChange = vi.fn()
+      const onDirtyStateHint = vi.fn()
+      const { unmount } = render(
+        <NotebookCells
+          content={notebookContent([{ id: 'a', source: 'base' }])}
+          {...{ onContentChange, onDirtyStateHint }}
+        />
+      )
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'base' }), { button: 0 })
+      const model = activeModel()
+      const instance = liveEditors.at(-1)
+      if (!instance) {
+        throw new Error('Missing active source editor')
+      }
+      const finish = beginMonacoLargePasteLifecycle(instance)
+      appendText(model, '-partial')
+      expect(onContentChange).not.toHaveBeenCalled()
+      if (boundary === 'save') {
+        fireEvent.click(screen.getByRole('button', { name: 'Save snapshot' }))
+      } else if (boundary === 'deactivate') {
+        act(() => instance.blur())
+      } else {
+        unmount()
+      }
+      act(() => vi.advanceTimersByTime(400))
+      expect(onContentChange).toHaveBeenCalledTimes(1)
+      expect(parseIpynb(onContentChange.mock.calls[0]?.[0] ?? '').cells[0]?.source).toBe(
+        'base-partial'
+      )
+      act(() =>
+        finish?.({
+          status: 'cancelled',
+          reason: 'target-unavailable',
+          byteLength: 100000,
+          chunksWritten: 1
+        })
+      )
+      act(() => vi.advanceTimersByTime(400))
+      expect(onContentChange).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+    })
+  }
 })
 
 describe('active notebook cell external reload', () => {

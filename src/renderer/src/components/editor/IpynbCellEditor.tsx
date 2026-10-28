@@ -6,6 +6,7 @@ import { computeEditorFontSize, resolveEditorFontStack } from '@/lib/editor-font
 import { useAppStore } from '@/store'
 import { installMonacoEditorFindShortcut } from './editor-shortcuts'
 import { syncContentUpdate } from './monaco-content-sync'
+import { registerMonacoLargePasteLifecycle } from './monaco-large-paste-lifecycle'
 import {
   IPYNB_CODE_CELL_PREVIEW_MAX_LINES,
   getIpynbCodeCellPreviewLines
@@ -43,6 +44,7 @@ type IpynbCellSourceProps = {
   onActivate: () => void
   onDeactivate: () => void
   onChange: (source: string) => void
+  registerSourceEditorFlush?: (flush: () => void) => () => void
 }
 
 type ClientPoint = { x: number; y: number }
@@ -50,6 +52,8 @@ type ClientPoint = { x: number; y: number }
 export function IpynbCellSource(props: IpynbCellSourceProps): React.JSX.Element {
   const { cell, source, active, onActivate } = props
   const [pressedAt, setPressedAt] = useState<ClientPoint | null>(null)
+  const sourceFlushRef = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => () => sourceFlushRef.current?.(), [])
   const activate = (point: ClientPoint | null): void => {
     setPressedAt(point)
     onActivate()
@@ -78,7 +82,7 @@ export function IpynbCellSource(props: IpynbCellSourceProps): React.JSX.Element 
   return (
     <div className="ipynb-code-surface overflow-hidden rounded-md border border-border bg-muted/60 focus-within:border-ring">
       {active ? (
-        <IpynbSourceEditor {...props} pressedAt={pressedAt} />
+        <IpynbSourceEditor {...props} pressedAt={pressedAt} sourceFlushRef={sourceFlushRef} />
       ) : (
         <div
           role="button"
@@ -143,9 +147,14 @@ function IpynbSourceEditor({
   cell,
   source,
   pressedAt,
+  sourceFlushRef,
+  registerSourceEditorFlush,
   onDeactivate,
   onChange
-}: IpynbCellSourceProps & { pressedAt: ClientPoint | null }): React.JSX.Element {
+}: IpynbCellSourceProps & {
+  pressedAt: ClientPoint | null
+  sourceFlushRef: React.RefObject<(() => void) | null>
+}): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const editorFontZoomLevel = useAppStore((s) => s.editorFontZoomLevel)
   const isDark = useDocumentDarkTheme()
@@ -155,6 +164,7 @@ function IpynbSourceEditor({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const callbacksRef = useRef({ onChange, onDeactivate })
   const syncingSourceRef = useRef(false)
+  const lastSyncedSourceRef = useRef<string | null>(null)
   const fitHeightRef = useRef<(() => void) | null>(null)
 
   useLayoutEffect(() => {
@@ -214,12 +224,58 @@ function IpynbSourceEditor({
       editorInstance.setPosition(target.position)
     }
     editorInstance.focus()
-    model.onDidChangeContent(() => {
-      if (!syncingSourceRef.current) {
-        callbacksRef.current.onChange(model.getValue())
+    let pendingPaste: {
+      changed: boolean
+      count: number
+      publish: (source: string) => void
+    } | null = null
+    const flushPendingPaste = (): void => {
+      if (!pendingPaste?.changed || model.isDisposed()) {
+        return
+      }
+      pendingPaste.changed = false
+      const value = model.getValue()
+      lastSyncedSourceRef.current = value
+      pendingPaste.publish(value)
+    }
+    sourceFlushRef.current = flushPendingPaste
+    const unregisterSourceFlush = registerSourceEditorFlush?.(flushPendingPaste)
+    const unregisterPasteLifecycle = registerMonacoLargePasteLifecycle(editorInstance, () => {
+      const pending = pendingPaste ?? {
+        changed: false,
+        count: 0,
+        publish: (value: string) => callbacksRef.current.onChange(value)
+      }
+      pendingPaste = pending
+      pending.count += 1
+      let finished = false
+      return () => {
+        if (finished) {
+          return
+        }
+        finished = true
+        pending.count -= 1
+        if (pendingPaste === pending && pending.count === 0) {
+          flushPendingPaste()
+          pendingPaste = null
+        }
       }
     })
-    editorInstance.onDidBlurEditorWidget(() => callbacksRef.current.onDeactivate())
+    model.onDidChangeContent(() => {
+      if (!syncingSourceRef.current) {
+        if (pendingPaste) {
+          pendingPaste.changed = true
+          return
+        }
+        const value = model.getValue()
+        lastSyncedSourceRef.current = value
+        callbacksRef.current.onChange(value)
+      }
+    })
+    editorInstance.onDidBlurEditorWidget(() => {
+      flushPendingPaste()
+      callbacksRef.current.onDeactivate()
+    })
     // Escape closes an open widget first; only a bare Escape leaves the cell.
     editorInstance.addCommand(
       monaco.KeyCode.Escape,
@@ -228,6 +284,12 @@ function IpynbSourceEditor({
     )
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
     return () => {
+      flushPendingPaste()
+      unregisterSourceFlush?.()
+      unregisterPasteLifecycle()
+      if (sourceFlushRef.current === flushPendingPaste) {
+        sourceFlushRef.current = null
+      }
       cleanupFindShortcut()
       editorInstance.dispose()
       model.dispose()
@@ -251,11 +313,14 @@ function IpynbSourceEditor({
       fontSize,
       wordWrap: cell.kind === 'code' ? 'off' : 'on'
     })
-    syncingSourceRef.current = true
-    try {
-      syncContentUpdate(editorInstance, source)
-    } finally {
-      syncingSourceRef.current = false
+    if (lastSyncedSourceRef.current !== source) {
+      syncingSourceRef.current = true
+      try {
+        syncContentUpdate(editorInstance, source)
+        lastSyncedSourceRef.current = source
+      } finally {
+        syncingSourceRef.current = false
+      }
     }
     fitHeightRef.current?.()
   }, [source, cell.language, cell.kind, fontFamily, fontSize])

@@ -76,6 +76,7 @@ export default function IpynbViewer({
     flushOnFocusLeave,
     sourceDrafts,
     flushSourceDrafts,
+    registerSourceEditorFlush,
     applyContent,
     updateCellSource,
     updateCellKind,
@@ -226,6 +227,7 @@ export default function IpynbViewer({
                 </div>
                 <div className="min-w-0 flex-1">
                   <IpynbCellSource
+                    registerSourceEditorFlush={registerSourceEditorFlush}
                     cell={cell}
                     source={source}
                     active={editingCellKey === cellKey}

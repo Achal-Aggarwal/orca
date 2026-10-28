@@ -89,6 +89,15 @@ export function useIpynbDocumentEditing({
   const draftEpochRef = useRef(0)
   const parsedContentRef = useRef(content)
   const structuralFrameIdsRef = useRef<number[]>([])
+  const sourceEditorFlushRef = useRef<(() => void) | null>(null)
+  const registerSourceEditorFlush = useCallback((flush: () => void): (() => void) => {
+    sourceEditorFlushRef.current = flush
+    return () => {
+      if (sourceEditorFlushRef.current === flush) {
+        sourceEditorFlushRef.current = null
+      }
+    }
+  }, [])
   useLayoutEffect(() => {
     contentRef.current = content
     parsedContentRef.current = content
@@ -109,6 +118,7 @@ export function useIpynbDocumentEditing({
   }, [])
 
   const flushSourceDrafts = useCallback((): string => {
+    sourceEditorFlushRef.current?.()
     const hadTimer = sourceCommitTimerRef.current !== null
     if (sourceCommitTimerRef.current !== null) {
       clearTimeout(sourceCommitTimerRef.current)
@@ -284,6 +294,7 @@ export function useIpynbDocumentEditing({
     flushOnFocusLeave,
     sourceDrafts,
     flushSourceDrafts,
+    registerSourceEditorFlush,
     applyContent,
     updateCellSource,
     updateCellKind,
