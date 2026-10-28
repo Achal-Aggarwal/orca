@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import nacl from 'tweetnacl'
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
 import {
   encodeMobileE2EEV2Transcript,
   validateMobileE2EEV2Handshake,
@@ -317,13 +319,17 @@ function nextInboundTurn(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
 }
 
+// Why: enabling the flag at runtime lets these retention checks run in every Node pool without --expose-gc.
+setFlagsFromString('--expose-gc')
+const collectGarbage: unknown = runInNewContext('gc')
+
 async function collectInboundPayloads(): Promise<void> {
-  if (!('gc' in globalThis) || typeof globalThis.gc !== 'function') {
-    throw new Error('Run retention tests with --expose-gc')
+  if (typeof collectGarbage !== 'function') {
+    throw new Error('Retention tests require V8 gc')
   }
   for (let round = 0; round < 3; round += 1) {
     await nextInboundTurn()
-    globalThis.gc()
+    collectGarbage()
   }
 }
 
@@ -336,7 +342,7 @@ function receiveRetainedPayload(socket: RetentionSocket): WeakRef<Uint8Array> {
 describe('relay inbound payload disposal', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it.skipIf(typeof globalThis.gc !== 'function').each([
+  it.each([
     ['link', 'close'],
     ['link', 'failure'],
     ['pairing', 'close'],
