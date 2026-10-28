@@ -170,6 +170,45 @@ describe('createMarkdownDocLinkDecorationController', () => {
     panes[0].controller.dispose()
   })
 
+  it.each([10_000, 100_000])(
+    'checks a %i-unit affected line once per model version across panes',
+    (lineLength) => {
+      vi.useFakeTimers()
+      for (const paneCount of [1, 10]) {
+        const { model, getLineContent, getValue, panes } = mountController(
+          `${'x'.repeat(lineLength)}\n[[Target]]`,
+          paneCount
+        )
+        const initialRanges = panes.map((pane) => pane.ranges())
+        for (let edit = 0; edit < 3; edit += 1) {
+          model.applyEdits([{ range: new monaco.Range(1, 1, 1, 1), text: 'x' }])
+          settleDecorations()
+        }
+        expect(getLineContent).toHaveBeenCalledTimes(6)
+        expect(getValue).not.toHaveBeenCalled()
+        expect(panes.map((pane) => pane.ranges())).toEqual(initialRanges)
+        panes.forEach((pane) => pane.controller.dispose())
+      }
+    }
+  )
+
+  it('checks a line once for multiple cursors and invalidates on the next edit', () => {
+    vi.useFakeTimers()
+    const { model, getLineContent, panes } = mountController('plain line\n[[Target]]', 10)
+    model.applyEdits([
+      { range: new monaco.Range(1, 1, 1, 1), text: 'a' },
+      { range: new monaco.Range(1, 3, 1, 3), text: 'b' },
+      { range: new monaco.Range(1, 5, 1, 5), text: 'c' }
+    ])
+    settleDecorations()
+    expect(getLineContent).toHaveBeenCalledTimes(4)
+
+    model.applyEdits([{ range: new monaco.Range(1, 1, 1, 1), text: '[[New]]' }])
+    settleDecorations()
+    expect(panes.every((pane) => pane.ranges().length === 2)).toBe(true)
+    panes.forEach((pane) => pane.controller.dispose())
+  })
+
   it('does not reuse a scan from a different actual model with the same version', () => {
     vi.useFakeTimers()
     const first = monaco.editor.createModel('first\n[[Old]]')

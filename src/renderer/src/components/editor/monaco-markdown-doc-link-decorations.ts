@@ -97,6 +97,39 @@ export type MarkdownDocLinkDecorationController = {
 
 export const MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS = 120
 
+const plainInsertionsByModel = new WeakMap<
+  editor.ITextModel,
+  { version: number; isPlain: boolean }
+>()
+
+function isPlainInsertion(
+  model: editor.ITextModel,
+  event: editor.IModelContentChangedEvent
+): boolean {
+  const previous = plainInsertionsByModel.get(model)
+  if (previous?.version === event.versionId) {
+    return previous.isPlain
+  }
+  const checkedLines = new Set<number>()
+  const isPlain = event.changes.every((change) => {
+    if (
+      change.rangeLength !== 0 ||
+      change.range.startLineNumber !== change.range.endLineNumber ||
+      /[\r\n[\]`~]/.test(change.text)
+    ) {
+      return false
+    }
+    const lineNumber = change.range.startLineNumber
+    if (checkedLines.has(lineNumber)) {
+      return true
+    }
+    checkedLines.add(lineNumber)
+    return !/[[\]`~]/.test(model.getLineContent(lineNumber))
+  })
+  plainInsertionsByModel.set(model, { version: event.versionId, isPlain })
+  return isPlain
+}
+
 export function createMarkdownDocLinkDecorationController(
   editorInstance: editor.IStandaloneCodeEditor,
   getLanguage: () => string
@@ -156,13 +189,7 @@ export function createMarkdownDocLinkDecorationController(
       scannedVersion === event.versionId - 1 &&
       !event.isFlush &&
       event.changes.length > 0 &&
-      event.changes.every(
-        (change) =>
-          change.rangeLength === 0 &&
-          change.range.startLineNumber === change.range.endLineNumber &&
-          !/[\r\n[\]`~]/.test(change.text) &&
-          !/[[\]`~]/.test(model.getLineContent(change.range.startLineNumber))
-      )
+      isPlainInsertion(model, event)
     ) {
       // Plain same-line insertions cannot change link or fence structure or move links on other lines.
       scannedVersion = event.versionId
