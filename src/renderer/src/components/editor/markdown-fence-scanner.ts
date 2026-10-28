@@ -138,12 +138,25 @@ export function isInsideMarkdownFenceRange(index: number, ranges: MarkdownFenceR
   return ranges.some(([start, end]) => index >= start && index < end)
 }
 
-/** Same test for callers that probe non-decreasing offsets, in linear total time. */
+/** Probe ordered ranges, seeking backwards when callers revisit earlier offsets. */
 export function createMarkdownFenceRangeCursor(
   ranges: MarkdownFenceRanges
 ): (index: number) => boolean {
   let cursor = 0
   return (index: number): boolean => {
+    if (cursor > 0 && index < ranges[cursor - 1][1]) {
+      let low = 0
+      let high = cursor
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2)
+        if (ranges[middle][1] <= index) {
+          low = middle + 1
+        } else {
+          high = middle
+        }
+      }
+      cursor = low
+    }
     while (cursor < ranges.length && index >= ranges[cursor][1]) {
       cursor += 1
     }

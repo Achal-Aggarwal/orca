@@ -1,5 +1,6 @@
 import type { MarkdownToken } from '@tiptap/core'
 import {
+  createMarkdownFenceRangeCursor,
   getMarkdownFenceRanges,
   isInsideMarkdownFenceRange,
   type MarkdownFenceRanges
@@ -93,18 +94,20 @@ export function renderDetailsAttributes(attrs: Record<string, unknown> | undefin
 export function createDetailsMatcher(content: string): (start: number) => DetailsHtmlBlock | null {
   let fenceRanges: MarkdownFenceRanges | undefined
   let unclosedStarts: Set<number> | undefined
+  let isInsideFence: ((index: number) => boolean) | undefined
   return (start) => {
-    if (unclosedStarts?.has(start)) {
+    if (unclosedStarts?.has(start) || !/^<details\b[^>]*>/i.test(content.slice(start))) {
       return null
     }
-    return /^<details\b[^>]*>/i.test(content.slice(start))
-      ? scanDetailsHtmlBlock(
-          content,
-          start,
-          (fenceRanges ??= getMarkdownFenceRanges(content)),
-          (unclosedStarts ??= new Set<number>())
-        )
-      : null
+    const ranges = (fenceRanges ??= getMarkdownFenceRanges(content))
+    isInsideFence ??= createMarkdownFenceRangeCursor(ranges)
+    return scanDetailsHtmlBlock(
+      content,
+      start,
+      ranges,
+      (unclosedStarts ??= new Set<number>()),
+      isInsideFence
+    )
   }
 }
 
@@ -120,7 +123,8 @@ function scanDetailsHtmlBlock(
   content: string,
   start: number,
   precomputedFenceRanges?: MarkdownFenceRanges,
-  unclosedStarts?: Set<number>
+  unclosedStarts?: Set<number>,
+  isInsideFence?: (index: number) => boolean
 ): DetailsHtmlBlock | null {
   const openingMatch = content.slice(start).match(/^<details\b[^>]*>/i)
   if (!openingMatch) {
@@ -130,6 +134,8 @@ function scanDetailsHtmlBlock(
   const detailsTagPattern = /<\/?details\b[^>]*>/gi
   detailsTagPattern.lastIndex = start
   const fenceRanges = precomputedFenceRanges ?? getMarkdownFenceRanges(content)
+  const containsFence =
+    isInsideFence ?? ((index: number) => isInsideMarkdownFenceRange(index, fenceRanges))
 
   let depth = 0
   const openingStarts: number[] | undefined = unclosedStarts ? [] : undefined
@@ -146,7 +152,7 @@ function scanDetailsHtmlBlock(
     }
 
     const tag = tagMatch[0]
-    if (tagMatch.index !== start && isInsideMarkdownFenceRange(tagMatch.index, fenceRanges)) {
+    if (tagMatch.index !== start && containsFence(tagMatch.index)) {
       continue
     }
 

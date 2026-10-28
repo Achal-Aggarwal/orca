@@ -1,6 +1,7 @@
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
+import { createDetailsMatcher, matchDetailsHtmlBlock } from './details-markdown-html'
 import { createRichMarkdownEditorCodec } from './rich-markdown-source-transport'
 import * as fenceScanner from './markdown-fence-scanner'
 
@@ -93,3 +94,48 @@ it.each(['', '\n```html\n</details>\n```\n'])(
     )
   }
 )
+
+it('checks sibling details fences without visiting every fence for each sibling', () => {
+  const codec = createRichMarkdownEditorCodec(key)
+  const content = '<details><summary>Toggle</summary>Body</details>\n\n```text\ncode\n```\n'.repeat(
+    40_000
+  )
+  const encoded = runInNewContext(
+    'encode(content, codec)',
+    { encode: encodeRawMarkdownHtmlForRichEditor, content, codec },
+    { timeout: 1500 }
+  )
+  expect(encoded).toBe(content)
+})
+
+it('rechecks earlier fences after an unfinished outer details scan reaches the end', () => {
+  const codec = createRichMarkdownEditorCodec(key)
+  const inner =
+    '<details><summary>Inner</summary>\n\n```html\n</details>\n```\n\nBody\n\n</details>'
+  expect(encodeRawMarkdownHtmlForRichEditor(`<details>\n${inner}`, codec)).toBe(
+    `${codec.transport.create('block-html', '<details>')}\n${codec.transport.create('block-html', inner)}`
+  )
+})
+
+it('keeps document details queries independent of their order', () => {
+  const inner =
+    '<details><summary>Inner</summary>\n\n```html\n</details>\n```\n\nBody\n\n</details>'
+  const content = `${inner}\n\n${inner}`
+  const match = createDetailsMatcher(content)
+  for (const start of [content.lastIndexOf('<details>'), 0, content.lastIndexOf('<details>')]) {
+    expect(match(start)?.raw).toBe(inner)
+  }
+})
+
+it('preserves standalone details matching with unordered supplied fence ranges', () => {
+  const content =
+    '<details><summary>Inner</summary>\n\n```html\n</details>\n```\n\nBody\n\n</details>'
+  const firstClose = content.indexOf('</details>')
+  const lastClose = content.lastIndexOf('</details>')
+  expect(
+    matchDetailsHtmlBlock(content, 0, [
+      [lastClose, lastClose + 1],
+      [firstClose, firstClose + 1]
+    ])
+  ).toBeNull()
+})
