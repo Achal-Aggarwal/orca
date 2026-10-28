@@ -111,8 +111,8 @@ export function useRuntimeFileListForWorktree({
     [operationOwnerState, worktreeId]
   )
   const operationOwnerKey = JSON.stringify(operationOwner)
-  const operationOwnerRef = useRef(operationOwner)
-  operationOwnerRef.current = operationOwner
+  const requestRef = useRef({ owner: operationOwner, paths: excludeRequest.paths })
+  requestRef.current = { owner: operationOwner, paths: excludeRequest.paths }
   const operationRoute = getFileExplorerOperationRoute(operationOwner)
   const operationRouteAvailable = operationRoute !== null
   const connectionId = operationRoute?.connectionId
@@ -177,16 +177,16 @@ export function useRuntimeFileListForWorktree({
     if (usesRuntimePathSearch && remoteQueryTooLarge) {
       setListing(NO_LISTING)
       setLoadingRequest({ requestKey, loading: false })
-      setListedOperationOwner(operationOwnerRef.current)
+      setListedOperationOwner(requestRef.current.owner)
       return
     }
 
     setLoadingRequest({ requestKey, loading: true })
 
-    const excludePaths = excludeRequest.paths.length > 0 ? excludeRequest.paths : undefined
+    const excludePaths = requestRef.current.paths.length > 0 ? requestRef.current.paths : undefined
     const requestToken = createBrowserUuid()
     const requestAbortController = new AbortController()
-    const requestOperationOwner = operationOwnerRef.current
+    const requestOperationOwner = requestRef.current.owner
     const requestContext = {
       target: runtimeTargetForOwnerEnvironment(runtimeEnvironmentId),
       worktreeId,
@@ -299,7 +299,7 @@ export function useRuntimeFileListForWorktree({
     eligibilityKey,
     includeIgnored,
     followSymlinks,
-    excludeRequest,
+    excludeRequest.key,
     connectionId,
     operationOwnerKey,
     operationRouteAvailable,
