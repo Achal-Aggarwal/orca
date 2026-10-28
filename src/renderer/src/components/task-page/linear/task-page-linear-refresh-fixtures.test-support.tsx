@@ -233,17 +233,27 @@ export function fixture(s: Store, rows: LinearIssue[], view: View = 'list') {
   }
 }
 
-export function display(s: Store, rows: LinearIssue[], view: View = 'list') {
+export function display(
+  s: Store,
+  rows: LinearIssue[],
+  view: View = 'list',
+  context: TaskSourceContext | null = null
+) {
   const base = { ...fixture(s, rows, view), ...s.getState() }
   const noop = vi.fn()
   return renderHook(() => {
     const [current, setRows] = useState(rows)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const model = {
       ...base,
+      linearTaskSourceContext: context,
       linearIssues: current,
       linearProjectIssuesResult: { items: current },
       linearCustomViewIssuesResult: { items: current },
       taskResumeApplied: true,
+      linearProjectSearchInput: '',
+      setAppliedLinearProjectSearch: noop,
       filteredLinearIssues: rows,
       clearSelectedLinearIssue: noop,
       linearConnected: true,
@@ -253,10 +263,10 @@ export function display(s: Store, rows: LinearIssue[], view: View = 'list') {
       setSelectedLinearProjectDetail: noop,
       setLinearProjectDetailLoading: noop,
       setLinearProjectDetailError: noop,
-      setLinearProjectIssuesLoading: noop,
-      setLinearProjectIssuesError: noop,
-      setLinearCustomViewContentsLoading: noop,
-      setLinearCustomViewContentsError: noop,
+      setLinearProjectIssuesLoading: setLoading,
+      setLinearProjectIssuesError: setError,
+      setLinearCustomViewContentsLoading: setLoading,
+      setLinearCustomViewContentsError: setError,
       setLinearCustomViewProjectsResult: noop,
       setLinearProjectIssuesResult: (update: React.SetStateAction<{ items: LinearIssue[] }>) =>
         setRows((items) => (typeof update === 'function' ? update({ items }) : update).items),
@@ -275,7 +285,8 @@ export function display(s: Store, rows: LinearIssue[], view: View = 'list') {
     useTaskPageLinearCustomViewEffects({ ...model, linearMode: 'issues' } as never)
     // List/search cache notifications are exercised with the real loader in loadingHook.
     // SAFETY: fixture supplies the selection prelude fields.
-    return useTaskPageLinearListSelectionPrelude(model as never)
+    const selection = useTaskPageLinearListSelectionPrelude(model as never)
+    return { ...selection, loading, error }
   })
 }
 

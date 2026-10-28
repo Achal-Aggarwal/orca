@@ -41,7 +41,7 @@ type IssueReadLifecycle = {
   edge: (id: string, confirmed?: boolean) => void
   patch: (id: string, patch: Delta) => void
   drain: () => void
-  invalidate: (identifier?: string) => void
+  invalidate: (identifier?: string, workspaceId?: string | null) => void
   abandon: () => void
 }
 const reads = new Map<string, Set<IssueReadLifecycle>>()
@@ -320,17 +320,14 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
   identifier?: string
   workspaces?: LinearWorkspace[]
   seed: T | null
-  cached?: boolean
-  dispatch: () => Promise<T>
+  cached?: T
+  dispatch: (force: boolean) => Promise<T>
   publish: (data: T) => void
   isCurrent: () => boolean
   remove: () => void
   onSettled?: (data: T | undefined, error?: unknown) => void
 }): LinearIssueRead<T> & { force: () => void; abandon: () => void; contextKey: string } {
-  let view: LinearIssueView<T> =
-    args.cached && args.seed !== null
-      ? { kind: 'data', data: args.seed }
-      : { kind: 'loading', data: args.seed }
+  let view: LinearIssueView<T> = { kind: 'loading', data: args.seed }
   let warm = args.seed
   let attempt: object | null = null
   let active = true
@@ -431,7 +428,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
     args.remove()
     notify()
   }
-  const start = () => {
+  const start = (force = true) => {
     if (!active || !args.isCurrent()) {
       abandon()
       return
@@ -441,7 +438,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
     needsReplacement = false
     view = { kind: 'loading', data: warm }
     notify()
-    void args.dispatch().then(
+    void args.dispatch(force).then(
       (data) => {
         if (!active || attempt !== token) {
           return
@@ -535,11 +532,14 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         }
       }
     },
-    invalidate: (identifier?: string) => {
+    invalidate: (identifier?: string, workspaceId?: string | null) => {
       if (identifier && args.identifier) {
         // The exact detail is forced by its caller; only proven aliases also need replacement.
+        const organization = workspaceId ? organizations.get(workspaceId) : undefined
         if (
-          args.identifier === identifier ||
+          (args.identifier === identifier &&
+            (args.workspaceId ?? null) === (workspaceId ?? null)) ||
+          (queryOrg && organization && queryOrg !== organization) ||
           !rows(warm).some((row) => row.id === identifier || row.identifier === identifier)
         ) {
           return
@@ -607,8 +607,16 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
       return lease
     }
   }
-  if (!args.cached) {
-    start()
+  if (args.cached === undefined) {
+    start(false)
+  } else {
+    const reconciled = reconcile(args.cached)
+    needsReplacement = hasCandidates()
+    warm = reconciled ?? args.cached
+    view =
+      reconciled === null && needsReplacement
+        ? { kind: 'loading', data: warm }
+        : { kind: 'data', data: reconciled ?? args.cached }
   }
   return read
 }
@@ -663,7 +671,8 @@ export function publishLinearIssuePatch(scope: LinearReadScope, id: string, patc
 export function invalidateLinearIssueReads(
   scope: LinearReadScope,
   identifier?: string,
-  allSources = false
+  allSources = false,
+  workspaceId?: string | null
 ) {
   const affected = allSources
     ? [...reads.values()].filter(
@@ -674,7 +683,7 @@ export function invalidateLinearIssueReads(
   for (const scoped of affected) {
     // oxlint-disable-next-line unicorn/no-useless-spread -- Why: refresh callbacks can replace demand.
     for (const read of [...scoped]) {
-      read.invalidate(identifier)
+      read.invalidate(identifier, workspaceId)
     }
   }
 }

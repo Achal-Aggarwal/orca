@@ -80,7 +80,7 @@ export function createLinearIssueDetailActions(
           linearCustomViewIssueCache: retain(state.linearCustomViewIssueCache)
         }))
       }
-      invalidateLinearIssueReads(scope, id)
+      invalidateLinearIssueReads(scope, id, false, workspaceId)
       return get().fetchLinearIssue(id, workspaceId, { ...options, scope, force: true })
     }
   }

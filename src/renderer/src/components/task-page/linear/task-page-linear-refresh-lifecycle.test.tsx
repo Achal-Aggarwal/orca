@@ -595,3 +595,41 @@ it('a shared read gives explicit-runtime consumers authority after default focus
   focused.release()
   pinned.release()
 })
+
+it.each([false, true])(
+  'a real pending write parks a cold null detail (cached=%s) only until its compatible actual drain',
+  async (cached) => {
+    const s = store()
+    const pending = deferred<{ ok: boolean }>()
+    if (cached) {
+      reads.detail.mockResolvedValueOnce(null)
+      expect(await s.getState().fetchLinearIssue('DAT-124', 'w')).toBeNull()
+      reads.detail.mockClear()
+    }
+    const saving = writeLinearIssue(
+      task(),
+      { priority: 4 },
+      defaultScopeSource(null),
+      () => pending.promise
+    )
+    if (!cached) {
+      reads.detail.mockResolvedValueOnce(null)
+    }
+    reads.detail.mockResolvedValueOnce(task('External'))
+    const lease = s.getState().fetchLinearIssue('DAT-124', 'w').acquire()
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(lease.currentView()).toMatchObject({ kind: 'loading', data: null })
+    expect(reads.detail).toHaveBeenCalledTimes(cached ? 0 : 1)
+    await act(async () => {
+      pending.resolve({ ok: false })
+      await saving
+    })
+    expect((await lease.waitForCurrentTerminal()).data?.state.name).toBe('External')
+    expect(reads.detail).toHaveBeenCalledTimes(cached ? 1 : 2)
+    expect(pendingLinearIssueWrites.size).toBe(0)
+    lease.release()
+  }
+)

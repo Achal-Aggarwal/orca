@@ -125,15 +125,18 @@ const repo: Repo = { ...referenceRepo, executionHostId: 'runtime:env-1' }
 // Stable identity: search effects depend on the repos array.
 const repos = [repo]
 const onSelect = vi.fn()
+const ignoreRetry = () => {}
 
 function LinearPicker({
   value,
   attachment = false,
-  defaultSource = false
+  defaultSource = false,
+  onRetry = ignoreRetry
 }: {
   value: string
   attachment?: boolean
   defaultSource?: boolean
+  onRetry?: () => void
 }): React.JSX.Element {
   const controller = useWorkItemSourceSearch({
     repos,
@@ -158,7 +161,7 @@ function LinearPicker({
           taskUrlProvider="linear"
           resolved={false}
           error={null}
-          onRetry={() => {}}
+          onRetry={onRetry}
         />
       ) : null}
     </Command>
@@ -447,3 +450,214 @@ afterEach(() => {
   cleanup()
   clearLinearRequestMaps()
 })
+
+it('attachment Retry reacquires terminal cached missing without another provider read', async () => {
+  pickerStore = createTestStore()
+  const status: LinearConnectionStatus = {
+    connected: true,
+    viewer: null,
+    selectedWorkspaceId: 'L',
+    workspaces: [
+      { id: 'L', organizationId: 'org', organizationName: 'Acme', organizationUrlKey: 'acme' }
+    ]
+  }
+  mocks.state.linearStatus = status
+  pickerStore.setState({
+    linearStatus: status,
+    linearStatusChecked: true,
+    linearStatusContextKey: 'local#0',
+    preflightStatusChecked: true,
+    preflightStatusContextKey: 'test',
+    refreshPreflightStatus: vi.fn()
+  })
+  mocks.state.detail.mockReset().mockResolvedValue(null)
+  function Attachment() {
+    const [attempt, retry] = React.useReducer((value: number) => value + 1, 0)
+    return (
+      <LinearPicker
+        key={attempt}
+        value="https://linear.app/acme/issue/ENG-1/missing"
+        defaultSource
+        attachment
+        onRetry={retry}
+      />
+    )
+  }
+  render(<Attachment />)
+  const missing = 'Couldn’t load this Linear issue. Check the URL and connected workspace.'
+  await waitFor(() => expect(screen.getByText(missing)).toBeTruthy())
+  expect(mocks.state.detail).toHaveBeenCalledTimes(1)
+  expect(pickerStore.getState().linearIssueCache['L::ENG-1']?.data).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
+  await waitFor(() => expect(screen.getByText(missing)).toBeTruthy())
+  expect(screen.queryByText('Loading Linear issue…')).toBeNull()
+  expect(mocks.state.detail).toHaveBeenCalledTimes(1)
+})
+
+it.each(['success', 'error', 'queued'])(
+  'runtime event retires a held same-literal URL alias observation: %s',
+  async (outcome) => {
+    pickerStore = createTestStore()
+    const status: LinearConnectionStatus = {
+      connected: true,
+      viewer: null,
+      selectedWorkspaceId: 'L',
+      workspaces: [
+        { id: 'L', organizationId: 'org', organizationName: 'Acme', organizationUrlKey: 'acme' },
+        { id: 'W', organizationId: 'org', organizationName: 'Acme', organizationUrlKey: 'acme' },
+        {
+          id: 'F',
+          organizationId: 'foreign',
+          organizationName: 'Foreign',
+          organizationUrlKey: 'foreign'
+        }
+      ]
+    }
+    const row = (title: string, workspaceId = 'L'): LinearIssue => ({
+      ...referenceLinearIssue(),
+      id: 'U',
+      identifier: 'ENG-1',
+      workspaceId,
+      title,
+      url: 'https://linear.app/acme/issue/ENG-1/task'
+    })
+    const old = Promise.withResolvers<LinearIssue | null>()
+    const fresh = Promise.withResolvers<LinearIssue | null>()
+    const control = Promise.withResolvers<LinearIssue | null>()
+    let aliasLoads = 0
+    mocks.state.detail.mockReset().mockImplementation((context, _id, workspaceId) => {
+      if (
+        context.kind === 'task-source' ||
+        context.environmentId === 'other' ||
+        workspaceId === 'F'
+      ) {
+        return control.promise
+      }
+      if (workspaceId === 'L') {
+        return ++aliasLoads === 1 ? old.promise : fresh.promise
+      }
+      return Promise.resolve(row('Exact W', 'W'))
+    })
+    mocks.state.linearStatus = status
+    pickerStore.setState({
+      // SAFETY: event bridge only needs the active host and the listed refresh methods.
+      settings: { activeRuntimeEnvironmentId: 'env-1' } as never,
+      linearStatus: status,
+      linearStatusChecked: true,
+      linearStatusContextKey: 'runtime:env-1#0',
+      preflightStatusChecked: true,
+      preflightStatusContextKey: 'test',
+      refreshPreflightStatus: vi.fn(),
+      linearIssueCache: { 'L::ENG-1': { data: row('Warm'), fetchedAt: 1 } },
+      fetchHostWorkspaceStatuses: vi.fn(async () => {}),
+      fetchRuntimeEnvironmentRepos: vi.fn(async () => []),
+      fetchProjectGroups: vi.fn(async () => []),
+      fetchFolderWorkspaces: vi.fn(async () => []),
+      fetchWorktreeLineage: vi.fn(async () => {}),
+      runtimeStatusByEnvironmentId: new Map(),
+      runtimeEnvironments: [],
+      sshStateByEnvironment: {}
+    })
+    const explicit = buildTaskSourceContextFromRepo({
+      provider: 'linear',
+      projectId: repo.id,
+      repo
+    })!
+    const controls = [
+      pickerStore
+        .getState()
+        .fetchLinearIssue('ENG-1', 'F', { seed: { ...row('Foreign', 'F'), id: 'other-U' } })
+        .acquire(),
+      pickerStore
+        .getState()
+        .fetchLinearIssue('ENG-1', 'L', {
+          scope: getLinearSourceScope(explicit),
+          seed: row('Explicit')
+        })
+        .acquire(),
+      pickerStore
+        .getState()
+        .fetchLinearIssue('ENG-1', 'L', {
+          scope: getLinearSourceScope({ kind: 'environment', environmentId: 'other' }),
+          seed: row('Other runtime')
+        })
+        .acquire()
+    ]
+    const controlViews = controls.map((lease) => lease.currentView())
+    const previousApi = window.api
+    restoreApi = () => Object.assign(window, { api: previousApi })
+    Object.assign(window, { api: { runtimeEnvironments: {} } })
+    const unsubs: VoidFunction[] = []
+    const stop = registerRuntimeClientIpcBridge(unsubs, {
+      worktreeChangeRefreshQueue: { enqueue: vi.fn(), dispose: vi.fn() },
+      activateNotifiedWorktree: vi.fn(async () => {})
+    })
+    stopBridge = () => {
+      stop()
+      unsubs.forEach((unsubscribe) => unsubscribe())
+    }
+    const mounted = render(
+      <LinearPicker value="https://linear.app/acme/issue/ENG-1/task" defaultSource />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Linear tab' }))
+    await waitFor(() => expect(aliasLoads).toBe(1))
+    queued.enabled = true
+    if (outcome === 'queued') {
+      await act(async () => {
+        old.resolve(row('Pre-event'))
+        await old.promise
+      })
+    }
+    const oldUpdates = queued.updates.splice(0)
+    const emit = () =>
+      events.emit({ type: 'linearLinkedIssueUpdated', identifier: 'ENG-1', workspaceId: 'W' })
+    act(emit)
+    const currentUpdates = queued.updates.splice(0)
+    queued.enabled = false
+    expect(aliasLoads).toBe(2)
+    expect(
+      mocks.state.detail.mock.calls.filter(([, , workspaceId]) => workspaceId === 'W')
+    ).toHaveLength(1)
+    expect(controls.map((lease) => lease.currentView())).toEqual(controlViews)
+    act(() => oldUpdates.forEach((update) => update()))
+    expect(screen.queryByText(/Pre-event/)).toBeNull()
+    act(() => currentUpdates.forEach((update) => update()))
+    if (outcome !== 'queued') {
+      await act(async () => {
+        if (outcome === 'success') {
+          old.resolve(row('Pre-event'))
+        } else {
+          old.reject(new Error('retired private diagnostic'))
+        }
+        await old.promise.catch(() => {})
+      })
+    }
+    if (outcome === 'queued') {
+      await act(async () => {
+        fresh.reject(new Error('current private diagnostic'))
+        await fresh.promise.catch(() => {})
+      })
+      await waitFor(() =>
+        expect(screen.getAllByText('Unable to load Linear issues. Try again.')).toHaveLength(1)
+      )
+    } else {
+      expect(screen.queryByText(/Pre-event/)).toBeNull()
+      await act(async () => {
+        fresh.resolve(row('External'))
+        await fresh.promise
+      })
+      await waitFor(() => expect(screen.getByText(/External/)).toBeTruthy())
+      expect(screen.queryByText(/Pre-event/)).toBeNull()
+    }
+    expect(
+      mocks.state.detail.mock.calls.filter(([, , workspaceId]) => workspaceId === 'W')
+    ).toHaveLength(1)
+    expect(aliasLoads).toBe(2)
+    control.resolve(row('Control'))
+    await Promise.all(controls.map((lease) => lease.waitForCurrentTerminal()))
+    controls.forEach((lease) => lease.release())
+    mounted.unmount()
+    act(emit)
+    expect(aliasLoads).toBe(2)
+  }
+)

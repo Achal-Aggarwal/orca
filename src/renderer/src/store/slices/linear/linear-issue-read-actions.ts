@@ -20,7 +20,7 @@ export function openStoreLinearIssueRead<T extends LinearIssueData>(args: {
   seed?: T
   force?: boolean
   get: LinearSliceGet
-  dispatch: () => Promise<T>
+  dispatch: (force: boolean) => Promise<T>
   publish: (data: T) => void
 }): LinearIssueRequest<T> {
   const { scope, requests, key, get } = args
@@ -57,7 +57,12 @@ export function openStoreLinearIssueRead<T extends LinearIssueData>(args: {
       args.seed ??
       (canPublishLinearScopeCache(scope, get().settings) ? (args.cached?.data ?? null) : null),
     cached:
-      !args.force && canPublishLinearScopeCache(scope, get().settings) && isFresh(args.cached),
+      !args.force &&
+      canPublishLinearScopeCache(scope, get().settings) &&
+      args.cached &&
+      isFresh(args.cached)
+        ? (args.seed ?? args.cached.data)
+        : undefined,
     dispatch: args.dispatch,
     publish: (data) => {
       if (canPublishLinearScopeCache(scope, get().settings)) {

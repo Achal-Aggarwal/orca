@@ -32,9 +32,9 @@ export function createLinearProjectIssueActions(
         force: options?.force,
         requests: inflightProjectIssueRequests,
         cached: get().linearProjectIssueCache[key],
-        dispatch: () =>
+        dispatch: (force) =>
           linearListProjectIssues(scope.settings, projectId, effectiveLimit, workspaceId, {
-            force: options?.force
+            force: force || options?.force
           }).catch((error: unknown) => {
             console.warn('[linear] listLinearProjectIssues failed:', error)
             const fallback =

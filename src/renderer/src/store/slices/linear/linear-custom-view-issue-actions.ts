@@ -32,9 +32,9 @@ export function createLinearCustomViewIssueActions(
         force: options?.force,
         requests: inflightCustomViewIssueRequests,
         cached: get().linearCustomViewIssueCache[key],
-        dispatch: () =>
+        dispatch: (force) =>
           linearListCustomViewIssues(scope.settings, viewId, effectiveLimit, workspaceId, {
-            force: options?.force
+            force: force || options?.force
           }).catch((error: unknown) => {
             console.warn('[linear] listLinearCustomViewIssues failed:', error)
             const fallback =
