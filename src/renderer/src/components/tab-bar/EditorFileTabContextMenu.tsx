@@ -23,8 +23,6 @@ import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
 import { CopyTabIdMenuItem } from './CopyTabIdMenuItem'
 import { isVirtualEditorFile } from '@/store/slices/editor/tabs/editor-tab-content-type'
 import { CloseSplitPaneMenuItem } from './CloseSplitPaneMenuItem'
-import { ReloadFromDiskMenuItem } from '@/components/editor/ReloadFromDiskMenuItem'
-import { canReloadEditorTabFromDisk } from '@/components/editor/editor-disk-reload'
 
 type EditorFileTabContextMenuProps = {
   open: boolean
@@ -196,12 +194,6 @@ export function EditorFileTabContextMenu({
           </>
         ) : null}
         {/* Why: virtual editor tabs use synthetic ids instead of on-disk paths. */}
-        {canReloadEditorTabFromDisk(file) ? (
-          <>
-            <ReloadFromDiskMenuItem file={file} />
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
         {!isVirtualEditorFile(file) && (
           <>
             <DropdownMenuItem
