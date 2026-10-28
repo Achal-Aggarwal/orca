@@ -1,3 +1,7 @@
+import {
+  workspaceReviewTarget,
+  type WorkspaceReviewTarget
+} from '../runtime-workspace-review-target'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import type { GitAdmissionTier } from '../../git/command-runner/git-exec-options'
 import type { LocalProjectGhExecOptions } from '../../project-runtime-git-options'
@@ -88,6 +92,19 @@ export abstract class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreserv
   protected abstract resolveWorktreeSelector(selector: string): Promise<ResolvedWorktree>
 
   protected abstract resolveRepoSelector(selector: RuntimeRepoSelector): Promise<Repo>
+
+  async prepareWorkspaceReviewRefresh(selector: string): Promise<WorkspaceReviewTarget> {
+    const fileTarget = await this.resolveRuntimeFileTarget(selector)
+    const store = this.requireStore()
+    if (
+      !store
+        .getRepos()
+        .some((repo) => repo.id === fileTarget.worktree.repoId && repo.kind !== 'folder')
+    ) {
+      return { worktreeId: fileTarget.worktree.id, branch: '', candidate: null }
+    }
+    return workspaceReviewTarget({ ...(await this.resolveRuntimeGitTarget(selector)), store })
+  }
 
   protected readonly fileCommands = new RuntimeFileCommands({
     getRuntimeId: () => this.runtimeId,
