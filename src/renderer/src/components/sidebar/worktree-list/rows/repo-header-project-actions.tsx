@@ -78,7 +78,8 @@ export type RepoHeaderProjectActions = {
   onCreateForRepo: (projectId: string) => void
 }
 
-export function RepoHeaderProjectActionsMenu({
+// Memoized: the sidebar re-renders every header row when the active workspace changes.
+export const RepoHeaderProjectActionsMenu = React.memo(function RepoHeaderProjectActionsMenu({
   repo,
   label,
   projectGroups,
@@ -184,9 +185,9 @@ export function RepoHeaderProjectActionsMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
+})
 
-export function RepoHeaderCreateWorkspaceButton({
+export const RepoHeaderCreateWorkspaceButton = React.memo(function RepoHeaderCreateWorkspaceButton({
   repo,
   label,
   onCreateForRepo
@@ -254,4 +255,4 @@ export function RepoHeaderCreateWorkspaceButton({
       </TooltipContent>
     </Tooltip>
   )
-}
+})
