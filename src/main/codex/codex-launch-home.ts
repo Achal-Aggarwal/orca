@@ -4,16 +4,14 @@ import {
   linkSync,
   mkdirSync,
   readFileSync,
-  readlinkSync,
   readdirSync,
-  realpathSync,
   renameSync,
   statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { safeRemoveTree } from '../pty/overlay-mirror'
 import { resolveHostCodexManagedHomeVerdict } from '../codex-accounts/host-codex-managed-home-ownership'
@@ -23,6 +21,9 @@ import {
   syncSystemCodexResourcesIntoManagedHome
 } from './codex-home-paths'
 import { syncSystemConfigIntoManagedCodexHome } from './codex-config-mirror'
+import { canonicalCodexHome, codexConversationStore } from './codex-conversation-store-path'
+
+export { canonicalCodexHome, codexConversationStore }
 
 export const CODEX_STORE_DIRECTORIES = [
   'sessions',
@@ -32,25 +33,6 @@ export const CODEX_STORE_DIRECTORIES = [
   'rollout-migrations'
 ] as const
 const AUTH_IDENTITY = '.orca-linked-auth'
-
-export function canonicalCodexHome(home: string): string {
-  try {
-    return realpathSync(home)
-  } catch (error) {
-    if (!isDefinitiveAbsence(error)) {
-      throw error
-    }
-    return resolve(home)
-  }
-}
-
-/** An overlay names its store through directory links; legacy homes remain stores themselves. */
-export function codexConversationStore(home: string): string {
-  if (basename(dirname(home)) !== 'overlays') {
-    return canonicalCodexHome(home)
-  }
-  return canonicalCodexHome(dirname(resolve(home, readlinkSync(join(home, 'sessions')))))
-}
 
 /** The login remains in its original account folder even when CODEX_HOME is an overlay. */
 export function codexLoginHome(home: string, systemHome = getSystemCodexHomePath()): string {

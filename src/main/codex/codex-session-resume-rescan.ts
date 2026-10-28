@@ -2,18 +2,18 @@ import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { lstat, realpath } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
-import { codexConversationStore } from './codex-launch-home'
+import { codexConversationStore } from './codex-conversation-store-path'
 import { readCodexSelectedRollout } from './codex-state-db'
 import {
   getRuntimePathBasename,
   normalizeRuntimePathForComparison
 } from '../../shared/cross-platform-path'
-import { listCodexSessionRolloutFilesIncrementally } from './codex-session-file-listing'
-import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import {
   codexDatedRolloutRelativePath,
-  type findTrustedCodexSessionResume
-} from './codex-session-resume-home'
+  listCodexSessionRolloutFilesIncrementally
+} from './codex-session-file-listing'
+import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
+import type { findTrustedCodexSessionResume } from './codex-session-resume-home'
 
 // The winning home selects credentials; never let settings order choose the account.
 function rankTrustedCodexHomesForRescan(

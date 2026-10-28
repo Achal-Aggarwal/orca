@@ -1,12 +1,12 @@
 import { lstatSync } from 'node:fs'
 import { join } from 'node:path'
-import { relativePathInsideRoot } from '../../shared/cross-platform-path'
+import { codexDatedRolloutRelativePath } from './codex-session-file-listing'
 import { rescanTrustedCodexSessionResume } from './codex-session-resume-rescan'
+
+export { codexDatedRolloutRelativePath }
 
 // Only the dated rollout layout may establish credential provenance.
 const CLAIMED_CODEX_ROLLOUT_TAIL = String.raw`\d{4}/\d{2}/\d{2}/rollout-[^/]+\.jsonl(?:\.zst)?`
-const TRUSTED_CODEX_ROLLOUT_TAIL = String.raw`\d{4}/\d{2}/\d{2}/rollout-[^/:]+\.jsonl(?:\.zst)?`
-const ROLLOUT_RELATIVE_PATH = new RegExp(`^${TRUSTED_CODEX_ROLLOUT_TAIL}$`)
 // Match the case folding used for trusted Windows homes.
 const CODEX_ROLLOUT_LAYOUT_PATH = new RegExp(`(?:^|/)sessions/${CLAIMED_CODEX_ROLLOUT_TAIL}$`, 'i')
 
@@ -14,32 +14,6 @@ const CODEX_ROLLOUT_LAYOUT_PATH = new RegExp(`(?:^|/)sessions/${CLAIMED_CODEX_RO
 export type CodexSessionResumePreparation =
   | { outcome: 'resume'; codexHomePath: string; reconcileSharedRuntimeAuth?: boolean }
   | { outcome: 'fresh'; claimedCodexProvenance: boolean }
-
-// Only fold extended drive paths; reject device namespaces and extended UNC paths.
-function toCodexTrustedPathComparisonCopy(filePath: string): string | null {
-  if (filePath.startsWith('\\\\.\\')) {
-    return null
-  }
-  if (!filePath.startsWith('\\\\?\\')) {
-    return filePath
-  }
-  return filePath.match(/^\\\\\?\\([A-Za-z]:[\\/][\s\S]*)$/)?.[1] ?? null
-}
-
-/** Returns the `YYYY/MM/DD/rollout-*.jsonl` tail, or null outside the dated layout. */
-export function codexDatedRolloutRelativePath(
-  sessionsRoot: string,
-  filePath: string
-): string | null {
-  const comparisonSessionsRoot = toCodexTrustedPathComparisonCopy(sessionsRoot)
-  const comparisonFilePath = toCodexTrustedPathComparisonCopy(filePath)
-  if (!comparisonSessionsRoot || !comparisonFilePath) {
-    return null
-  }
-  // Windows-syntax suffixes come back with `/` separators; POSIX keeps `\` as a name byte.
-  const relativePath = relativePathInsideRoot(comparisonSessionsRoot, comparisonFilePath)
-  return relativePath && ROLLOUT_RELATIVE_PATH.test(relativePath) ? relativePath : null
-}
 
 function isCodexRolloutInsideSessionsRoot(sessionsRoot: string, filePath: string): boolean {
   return codexDatedRolloutRelativePath(sessionsRoot, filePath) !== null
