@@ -1,3 +1,4 @@
+import { taskProviderErrorText } from '@/lib/task-provider-error-copy'
 import React from 'react'
 import { ArrowLeft, ArrowRight, ExternalLink, Layers3, LoaderCircle, RefreshCw } from 'lucide-react'
 
@@ -61,12 +62,12 @@ export function LinearCollectionNotice({
           {errors.map((error) => (
             <Badge key={`${error.workspaceId}-${error.type}`} variant="outline">
               {error.workspaceName ?? error.workspaceId}:{' '}
-              {isIntegrationCredentialDecryptionError(error.message)
+              {isIntegrationCredentialDecryptionError(taskProviderErrorText(error.message))
                 ? translate(
                     'auto.components.linear.project.view.surfaces.linearLoginUnreadable',
                     'Unable to read saved Linear login. Reconnect it in Settings.'
                   )
-                : error.message}
+                : taskProviderErrorText(error.message)}
             </Badge>
           ))}
         </div>

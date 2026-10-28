@@ -148,7 +148,9 @@ export function WorktreeCardStatusSlot({
       ? `${passiveStatusLabel} · ${translate('workspace.links.lastKnownStatus', 'Last known status')}`
       : passiveStatusLabel
   const passiveStatusAnnouncement =
-    newCardStyle && isUnread ? `${reviewLabel} · Unread` : reviewLabel
+    newCardStyle && isUnread
+      ? translate('workspace.activity.unreadLabel', '{{status}} · Unread', { status: reviewLabel })
+      : reviewLabel
   // Working/permission own the lane; retain unread in accessible copy and restore its dot afterward.
   const showNewCardUnreadAlert =
     newCardStyle && isUnread && showStatus && status !== 'working' && status !== 'permission'

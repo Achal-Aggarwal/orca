@@ -3520,6 +3520,7 @@
   },
   "settings": {
     "agents": {
+      "approveForMe": "approve for me",
       "loadingHost": "Loading agent settings…",
       "permissionChoiceDescription": "Applies where each agent supports this mode. Change one agent below.",
       "permissionEachOwnDescription": "Orca adds nothing; each CLI uses its own config",
@@ -3555,6 +3556,11 @@
     "finishEditing": "Save or cancel the preset to continue creating your workspace.",
     "pathHelp": "One repository-relative directory per line. Spaces within a path are preserved."
   },
+  "taskProviders": {
+    "linear": {
+      "fetchMore": "Fetch more"
+    }
+  },
   "terminal": {
     "newerDaemonBanner": {
       "reopenTerminal_one": "Reopen terminal",
@@ -3563,6 +3569,10 @@
       "reopened_other": "Reopened {{count}} terminals",
       "resumed_one": "{{count}} agent session resumed.",
       "resumed_other": "{{count}} agent sessions resumed."
+    },
+    "severedDaemonBanner": {
+      "count_one": "{{count}} running terminal",
+      "count_other": "{{count}} running terminals"
     }
   },
   "workspace": {

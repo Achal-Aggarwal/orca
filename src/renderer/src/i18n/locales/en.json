@@ -239,6 +239,15 @@
       "title": "History",
       "today": "Today",
       "yesterday": "Yesterday"
+    },
+    "viewport": {
+      "mobile-s": "Mobile S — 320 × 568",
+      "mobile-m": "Mobile M — 375 × 667",
+      "mobile-l": "Mobile L — 425 × 812",
+      "tablet": "Tablet — 768 × 1024",
+      "laptop": "Laptop — 1024 × 768",
+      "laptop-l": "Laptop L — 1440 × 900",
+      "desktop": "Desktop — 1920 × 1080"
     }
   },
   "editor": {
@@ -600,7 +609,8 @@
       "permissionOverrideMore": "and {{count}} more",
       "permissionOverrideMore_one": "and {{count}} more",
       "permissionOverrideMore_other": "and {{count}} more",
-      "permissionOverridesUse": "Use {{mode}}"
+      "permissionOverridesUse": "Use {{mode}}",
+      "approveForMe": "approve for me"
     },
     "followSymlinkedDirectoriesKeywords": {
       "symlink": "symlink",
@@ -632,6 +642,34 @@
       "actionPermissions": {
         "sameAsAgent": "Same as {{agent}}"
       }
+    },
+    "ssh": {
+      "status": {
+        "disconnected": "Disconnected",
+        "connecting": "Connecting…",
+        "auth-failed": "Auth failed",
+        "deploying-relay": "Deploying relay…",
+        "connected": "Connected",
+        "reconnecting": "Reconnecting…",
+        "reconnection-failed": "Reconnection failed"
+      }
+    },
+    "shortcuts": {
+      "parseFailed": "Unable to parse shortcut."
+    },
+    "mcp": {
+      "inspectFailed": "Unable to inspect {{directory}}.",
+      "unreadable": "Unreadable",
+      "notFound": "Not found",
+      "invalidJson": "Invalid JSON",
+      "noServers": "No servers",
+      "httpServer": "HTTP server",
+      "stdioServer": "stdio server",
+      "invalidServer": "Invalid server",
+      "serverCountOne": "{{count}} server",
+      "serverCountMany": "{{count}} servers",
+      "workspace": "Workspace",
+      "claudeWorkspace": "Claude workspace"
     }
   },
   "menu": {
@@ -2533,7 +2571,7 @@
         "untitled": "Untitled chat",
         "listLabel": "Chats that would be resumed",
         "dontAskAgain": "Don't ask again (resume automatically)",
-        "dontAskAgainHint": "You can turn this off in Settings → Experimental → Chat UI.",
+        "dontAskAgainHint": "You can turn this off in Settings → Chat → Behavior.",
         "continuedOne": "Resumed 1 chat",
         "continuedMany": "Resumed {{value0}} chats",
         "selectAgent": "Resume {{value0}} chat \"{{value1}}\" in {{value2}}",
@@ -20361,6 +20399,15 @@
         "settings": "Open settings in Terminal",
         "extensions": "Open the extension dashboard in Terminal",
         "hotkeys": "Show keyboard shortcuts in Terminal"
+      },
+      "modelDescriptions": {
+        "grok_4_7": "xAI's latest frontier model",
+        "grok_4_6": "xAI's previous frontier model",
+        "grok_4_5": "An earlier xAI frontier model",
+        "fable": "Most capable for the hardest, longest-running tasks",
+        "opus": "Best for everyday, complex tasks",
+        "sonnet": "Efficient for routine tasks",
+        "haiku": "Fastest for quick answers"
       }
     },
     "tab": {
@@ -21062,7 +21109,14 @@
       "restoreStagedVersionDescription": "This will restore the last staged version and discard the deletion. This cannot be undone.",
       "unstagedChangesDescription": "This will revert the unstaged changes to this file. This cannot be undone.",
       "unstagedSelectionIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files in this selection. This cannot be undone.",
-      "unstagedFilesIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files among these {{count}} files. This cannot be undone."
+      "unstagedFilesIncludingUntrackedDescription": "This will revert unstaged changes and permanently delete any untracked files among these {{count}} files. This cannot be undone.",
+      "delete": "Delete",
+      "restore": "Restore",
+      "discard": "Discard",
+      "discardAll": "Discard all",
+      "deleteUntrackedTitleOne": "Delete {{count}} untracked file?",
+      "deleteUntrackedTitleMany": "Delete {{count}} untracked files?",
+      "deleteCount": "Delete {{count}}"
     },
     "unlinkedPr": {
       "status": "PR #{{number}} unlinked"
@@ -21096,6 +21150,34 @@
       "creationUnconfirmed": "{{shortLabel}} creation may have completed. Refreshing branch review state...",
       "withDetail": "Create {{shortLabel}} failed: {{detail}}",
       "pushFailed": "Push failed. Resolve the push error, then try again."
+    },
+    "variables": {
+      "basePrompt": "Orca’s built-in prompt for this action, including the context Orca knows how to gather safely.",
+      "branch": "The current source-control branch name.",
+      "stagedFiles": "A newline-separated list of staged files for commit-message generation.",
+      "stagedPatch": "The staged git patch used for commit-message generation.",
+      "baseBranch": "The target branch selected in the Create PR composer.",
+      "currentTitle": "The PR title currently typed in the composer before generation starts.",
+      "currentBody": "The PR description currently typed in the composer before generation starts.",
+      "commitSummary": "A newline-separated list of commits on the branch compared to the base.",
+      "changedFiles": "A summary of files changed between the branch and the base branch.",
+      "patch": "The branch diff against the base branch used for PR-details generation.",
+      "firstPrompt": "The first user request for this workspace or chat.",
+      "assistantMessage": "The initial agent response, when Orca has one available.",
+      "linkedIssue": "The GitHub issue number linked to this workspace. Empty when no GitHub issue is linked (including GitLab-linked workspaces). Prefer instructional templates: a bare \"Fixes #{linkedIssue}\" becomes \"Fixes #\" when unlinked."
+    },
+    "model": {
+      "configDefault": "Config default",
+      "auto": "Auto"
+    },
+    "thinking": {
+      "off": "Off",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max"
     }
   },
   "agentsSidebarIntro": {
@@ -21366,7 +21448,9 @@
       "confirmTitle": "Restart the terminal daemon?",
       "confirmBody": "Restarting ends every process running in {{sessions}}. Agents that support resume can be resumed afterwards; shells and other jobs cannot and must be started again. Do this when your agents are idle.",
       "cancel": "Cancel",
-      "confirm": "Restart and end processes"
+      "confirm": "Restart and end processes",
+      "count_one": "{{count}} running terminal",
+      "count_other": "{{count}} running terminals"
     },
     "restartedInputNotSent": "The terminal restarted while you were typing, so some input may not have reached it. Check the new shell before typing it again."
   },
@@ -21653,7 +21737,11 @@
     "picker": {
       "pasteUnparseable": "Expected a project URL or owner/number",
       "ownerLoadFailed": "Couldn't load projects from {{owner}}.",
-      "organizationsLoadFailed": "Some organizations didn't load ({{failureCount}})."
+      "organizationsLoadFailed": "Some organizations didn't load ({{failureCount}}).",
+      "organizations": "Organizations",
+      "listFailed": "Failed to list projects",
+      "detailsFailed": "Failed to load details",
+      "viewFailed": "Failed to fetch project view"
     },
     "error": {
       "notFoundState": "Could not find this project or view.",
@@ -21688,6 +21776,9 @@
       "tooLargeUnknownCount": "This view has too many items to render in Orca. Narrow the view's filter on GitHub.",
       "tooLarge": "This view has {{itemCount}} items — too large to render in Orca. Narrow the view's filter on GitHub.",
       "schemaDriftDetail": "Could not read this project view: {{detail}}."
+    },
+    "columns": {
+      "type": "Type"
     }
   },
   "projectField": {
@@ -21771,6 +21862,18 @@
     "attachments": {
       "updateRuntime": "Update the remote runtime to change workspace links",
       "updateRuntimeSafely": "Update the remote runtime to safely change workspace links"
+    },
+    "activity": {
+      "active": "Active",
+      "working": "Working",
+      "monitoring": "Monitoring background tasks",
+      "permission": "Needs permission",
+      "failed": "Failed",
+      "interrupted": "Interrupted",
+      "unconfirmed": "Couldn’t confirm",
+      "done": "Done",
+      "inactive": "Inactive",
+      "unreadLabel": "{{status}} · Unread"
     }
   },
   "tabHoverCard": {
@@ -22328,5 +22431,130 @@
   },
   "startupFailure": {
     "title": "Orca could not start"
+  },
+  "runtime": {
+    "health": {
+      "mixed": "Mixed",
+      "local": "Local",
+      "available": "Connected",
+      "connecting": "Connecting",
+      "disconnected": "Disconnected",
+      "error": "Needs attention",
+      "repair": "Re-pair needed",
+      "update": "Update needed"
+    },
+    "compat": {
+      "compatible": "Runtime client and server are compatible.",
+      "clientTooOld": "This Orca client is too old for the selected server. Update Orca on this machine. Client protocol {{clientProtocol}}, server requires client protocol {{requiredProtocol}}.",
+      "serverTooOld": "The selected Orca server is too old for this client. Update Orca on the server. Server protocol {{serverProtocol}}, client requires server protocol {{requiredProtocol}}."
+    }
+  },
+  "files": {
+    "recycleBin": "Recycle Bin",
+    "trash": "Trash"
+  },
+  "native": {
+    "about": {
+      "gpu": {
+        "safeMode": "Disabled (Safe Graphics Mode)",
+        "unknownStatus": "Status unavailable",
+        "enabled": "Enabled",
+        "software": "Software rendering",
+        "disabled": "Disabled",
+        "unavailable": "Unavailable",
+        "unknown": "Unknown ({{status}})",
+        "summary": "GPU acceleration: {{status}}"
+      }
+    },
+    "dialog": {
+      "spaceTitle": "Orca Space Beta",
+      "dashboardTitle": "Orca Agent Dashboard",
+      "importCookies": "Import Cookies",
+      "cookieFiles": "Cookie Files",
+      "allFiles": "All Files",
+      "importPetBundle": "Pick a .codex-pet bundle",
+      "pickPet": "Pick pet",
+      "petImage": "Pet image",
+      "importWarpTheme": "Import Warp Theme",
+      "warpThemeYaml": "Warp theme YAML",
+      "importWarpFolder": "Import Warp Theme Folder",
+      "images": "Images",
+      "repoIconImages": "Repo icon images",
+      "audio": "Audio"
+    }
+  },
+  "taskProviders": {
+    "linear": {
+      "updateAccess": "Update access",
+      "addAccess": "Add Linear access",
+      "listLabel": "Linear list",
+      "fetchMore": "Fetch more",
+      "projectsLoadFailed": "Failed to load projects.",
+      "projectNotFound": "Project was not found.",
+      "projectLoadFailed": "Failed to load project.",
+      "projectIssuesLoadFailed": "Failed to load project issues.",
+      "viewsLoadFailed": "Failed to load views.",
+      "viewContentsLoadFailed": "Failed to load view contents.",
+      "issuesLoadFailed": "Failed to load Linear issues.",
+      "connectionFailed": "Connection failed",
+      "apiKeyHint": "Paste a Personal API key for the Linear workspace you want Orca to use. If that workspace is already connected, Orca replaces its stored key.",
+      "remoteKeyStorage": "This key is stored by the active remote runtime.",
+      "localKeyStorage": "Local runtime keys are stored on this device using Electron encrypted storage when available.",
+      "commentsLoadFailed": "Failed to load comments.",
+      "updateWorkspaceAccess": "Update Linear access for {{workspace}}",
+      "workspaceApiKeyHint": "Paste a Personal API key for {{workspace}}. If this workspace is already connected, Orca replaces its stored key."
+    },
+    "jira": {
+      "remoteTokenStorage": "Your token is sent to the selected remote runtime and stored there with runtime-supported encryption.",
+      "localTokenStorage": "Your token is stored locally and encrypted when local runtime storage supports it.",
+      "connectionFailed": "Connection failed"
+    },
+    "errors": {
+      "linear": {
+        "notConnected": "Not connected to Linear",
+        "createFailed": "Linear create failed",
+        "createdButUnavailable": "Issue was created but could not be retrieved",
+        "updateFailed": "Linear update failed",
+        "commentFailed": "Failed to create comment",
+        "projectCreateFailed": "Linear project create failed",
+        "noApiKey": "No API key stored.",
+        "workspaceAuthExpired": "Linear authentication expired for this workspace.",
+        "projectNameRequired": "Project name is required",
+        "projectIdRequired": "Project ID is required",
+        "projectNotFound": "Project was not found",
+        "viewIdRequired": "Custom view ID is required",
+        "viewHasNoIssues": "Custom view does not contain issues",
+        "viewHasNoProjects": "Custom view does not contain projects"
+      },
+      "jira": {
+        "notConnected": "Not connected to Jira.",
+        "titleRequired": "Title is required.",
+        "labelsConflict": "Pass labels or labelOperations, not both.",
+        "createFailed": "Failed to create issue.",
+        "updateFailed": "Failed to update issue.",
+        "commentFailed": "Failed to add comment.",
+        "credentialsRequired": "Site URL, email, and API token are required.",
+        "projectRequired": "Project is required.",
+        "issueTypeRequired": "Issue type is required.",
+        "issueKeyRequired": "Issue key is required.",
+        "updatesRequired": "Updates object is required.",
+        "commentBodyRequired": "Comment body is required.",
+        "invalidSiteUrl": "Enter a valid Jira site URL.",
+        "passwordRequired": "Password is required.",
+        "personalTokenRequired": "Personal access token is required.",
+        "apiTokenRequired": "API token is required.",
+        "connectionFailed": "Connection failed.",
+        "invalidSiteIdentity": "Enter an HTTP or HTTPS Jira site URL without credentials.",
+        "missingProjectIdentity": "Jira returned a project without an ID or key.",
+        "invalidIssuePage": "Jira returned an invalid issue page.",
+        "incompleteIssuePage": "Jira returned an incomplete issue page.",
+        "repeatedIssueToken": "Jira returned an invalid or repeated issue page token.",
+        "issueSearchLimit": "Jira issue search exceeded the page limit. Select a project with JQL instead.",
+        "invalidProjectPage": "Jira returned an invalid project page.",
+        "incompleteProjectPage": "Jira returned an incomplete project page.",
+        "projectListLimit": "Jira project list exceeded the page limit. Select a project with JQL instead.",
+        "invalidCloudId": "The site did not report a valid Atlassian cloud ID."
+      }
+    }
   }
 }

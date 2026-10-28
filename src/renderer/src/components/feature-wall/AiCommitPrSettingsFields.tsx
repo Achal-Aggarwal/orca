@@ -1,3 +1,4 @@
+import { sourceControlModelLabel, sourceControlThinkingLabel } from './source-control-model-label'
 import type { JSX } from 'react'
 import { Terminal } from 'lucide-react'
 import { CUSTOM_PROMPT_PLACEHOLDER } from '../../../../shared/commit-message-prompt'
@@ -137,7 +138,7 @@ export function AiCommitPrSettingsFields({
             <SelectContent portalContainer={selectPortalRoot} position="popper" align="start">
               {activeCapability.models.map((model) => (
                 <SelectItem key={model.id} value={model.id} className="cursor-pointer">
-                  {model.label}
+                  {sourceControlModelLabel(model)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -160,7 +161,7 @@ export function AiCommitPrSettingsFields({
             <SelectContent portalContainer={selectPortalRoot} position="popper" align="start">
               {activeModel.thinkingLevels.map((level) => (
                 <SelectItem key={level.id} value={level.id} className="cursor-pointer">
-                  {level.label}
+                  {sourceControlThinkingLabel(level)}
                 </SelectItem>
               ))}
             </SelectContent>

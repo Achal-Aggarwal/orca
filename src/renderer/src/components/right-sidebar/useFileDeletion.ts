@@ -257,7 +257,9 @@ export function useFileDeletion({
       const roots = selectDeletionRoots(nodes)
       // Mixed batches must distinguish permanent remote deletion from local Trash.
       const hasLocalDelete = roots.some(isLocalDeleteNode)
-      const trashName = isWindows ? 'Recycle Bin' : 'Trash'
+      const trashName = isWindows
+        ? translate('files.recycleBin', 'Recycle Bin')
+        : translate('files.trash', 'Trash')
       // Clear selection after the whole batch so concurrent completions cannot restore stale partial sets.
       void (async () => {
         const deletedRoots = await runBatchDeletion({

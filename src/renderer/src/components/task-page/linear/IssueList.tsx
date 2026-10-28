@@ -71,7 +71,13 @@ export function TaskPageLinearIssueList({
             label={translate('auto.components.TaskPage.67662ade50', 'project issues')}
             onLoadMore={handleLinearEmptyFilteredLoadMore}
             loading={activeLinearIssueLoading}
-            loadMoreLabel="Fetch more"
+            loadMoreLabel={translate(
+              'taskProviders.linear.fetchMore',
+              translate(
+                'taskProviders.linear.fetchMore',
+                translate('taskProviders.linear.fetchMore', 'Fetch more')
+              )
+            )}
           />
           {showLinearIssuePagination ? (
             <div className="flex-none border-t border-border/50 bg-muted/50">
@@ -93,7 +99,13 @@ export function TaskPageLinearIssueList({
             label={translate('auto.components.TaskPage.be8cf68d9f', 'view issues')}
             onLoadMore={handleLinearEmptyFilteredLoadMore}
             loading={activeLinearIssueLoading}
-            loadMoreLabel="Fetch more"
+            loadMoreLabel={translate(
+              'taskProviders.linear.fetchMore',
+              translate(
+                'taskProviders.linear.fetchMore',
+                translate('taskProviders.linear.fetchMore', 'Fetch more')
+              )
+            )}
           />
           {showLinearIssuePagination ? (
             <div className="flex-none border-t border-border/50 bg-muted/50">
@@ -114,7 +126,13 @@ export function TaskPageLinearIssueList({
             label={translate('auto.components.TaskPage.d1e243795c', 'issues')}
             onLoadMore={handleLinearEmptyFilteredLoadMore}
             loading={activeLinearIssueLoading}
-            loadMoreLabel="Fetch more"
+            loadMoreLabel={translate(
+              'taskProviders.linear.fetchMore',
+              translate(
+                'taskProviders.linear.fetchMore',
+                translate('taskProviders.linear.fetchMore', 'Fetch more')
+              )
+            )}
           />
           {showLinearIssuePagination ? (
             <div className="flex-none border-t border-border/50 bg-muted/50">

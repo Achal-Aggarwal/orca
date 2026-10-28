@@ -53,7 +53,7 @@ export function SourceControlDiscardDialog({
     }
     return getDiscardAreaConfirmationCopy(pendingDiscard.area, pendingDiscard.paths.length)
   }, [pendingDiscard])
-  const PendingDiscardIcon = pendingDiscardCopy?.confirmLabel.startsWith('Delete') ? Trash : Undo2
+  const PendingDiscardIcon = pendingDiscardCopy?.deleteAction ? Trash : Undo2
 
   return (
     <Dialog

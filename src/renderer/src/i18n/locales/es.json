@@ -356,7 +356,8 @@
       "permissionOverrideMore": "y {{count}} más",
       "permissionOverrideMore_one": "y {{count}} más",
       "permissionOverrideMore_other": "y {{count}} más",
-      "permissionOverridesUse": "Usar {{mode}}"
+      "permissionOverridesUse": "Usar {{mode}}",
+      "approveForMe": "aprobar por mí"
     },
     "followSymlinkedDirectoriesKeywords": {
       "symlink": "enlace simbólico",
@@ -388,6 +389,34 @@
       "actionPermissions": {
         "sameAsAgent": "Igual que {{agent}}"
       }
+    },
+    "ssh": {
+      "status": {
+        "disconnected": "Desconectado",
+        "connecting": "Conectando…",
+        "auth-failed": "Error de autenticación",
+        "connected": "Conectado",
+        "reconnection-failed": "Error de reconexión",
+        "deploying-relay": "Desplegando relay…",
+        "reconnecting": "Reconectando…"
+      }
+    },
+    "mcp": {
+      "workspace": "Espacio de trabajo",
+      "inspectFailed": "No se pudo inspeccionar {{directory}}.",
+      "unreadable": "No se puede leer",
+      "notFound": "No se encontró",
+      "invalidJson": "JSON no válido",
+      "noServers": "Sin servidores",
+      "httpServer": "Servidor HTTP",
+      "stdioServer": "Servidor stdio",
+      "invalidServer": "Servidor no válido",
+      "serverCountOne": "{{count}} servidor",
+      "serverCountMany": "{{count}} servidores",
+      "claudeWorkspace": "Espacio de trabajo de Claude"
+    },
+    "shortcuts": {
+      "parseFailed": "No se pudo interpretar el atajo."
     }
   },
   "menu": {
@@ -18818,7 +18847,7 @@
         "untitled": "Chat sin título",
         "listLabel": "Chats que se reanudarían",
         "dontAskAgain": "No volver a preguntar (reanudar automáticamente)",
-        "dontAskAgainHint": "Puedes desactivarlo en Ajustes → Experimental → Interfaz de chat.",
+        "dontAskAgainHint": "Puedes desactivarlo en Ajustes → Chat → Comportamiento.",
         "continuedOne": "Se reanudó 1 chat",
         "continuedMany": "Se reanudaron {{value0}} chats",
         "selectAgent": "Reanudar {{value0}} chat \"{{value1}}\" en {{value2}}",
@@ -19373,7 +19402,8 @@
         "compactAfterRetry": "Reintente su mensaje anterior y luego ejecute /compact.",
         "clearAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /clear cuando se haya enviado.",
         "compactAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /compact cuando se haya enviado.",
-        "pendingWork": "Espera a que terminen el trabajo y los mensajes pendientes antes de usar este comando."
+        "pendingWork": "Espera a que terminen el trabajo y los mensajes pendientes antes de usar este comando.",
+        "notDoneGoalChangeIncomplete": "No se pudo terminar de cambiar el objetivo. Revisa el chat."
       },
       "composer": {
         "imageUnavailable": "Vista previa no disponible",
@@ -20060,6 +20090,15 @@
         "settings": "Abrir la configuración en la terminal",
         "extensions": "Abrir el panel de extensiones en la terminal",
         "hotkeys": "Mostrar los atajos de teclado en la terminal"
+      },
+      "modelDescriptions": {
+        "grok_4_7": "El modelo de vanguardia más reciente de xAI",
+        "grok_4_6": "El modelo de vanguardia anterior de xAI",
+        "grok_4_5": "Un modelo de vanguardia anterior de xAI",
+        "fable": "El más capaz para las tareas más difíciles y largas",
+        "opus": "Ideal para tareas cotidianas y complejas",
+        "sonnet": "Eficiente para tareas rutinarias",
+        "haiku": "El más rápido para respuestas breves"
       }
     },
     "tab": {
@@ -20872,6 +20911,15 @@
       "empty": "No hay extensiones activadas para este perfil",
       "visitWebStore": "Visitar Chrome Web Store",
       "manage": "Administrar extensiones"
+    },
+    "viewport": {
+      "mobile-s": "Móvil S — 320 × 568",
+      "mobile-m": "Móvil M — 375 × 667",
+      "mobile-l": "Móvil L — 425 × 812",
+      "tablet": "Tableta — 768 × 1024",
+      "laptop": "Portátil — 1024 × 768",
+      "laptop-l": "Portátil L — 1440 × 900",
+      "desktop": "Escritorio — 1920 × 1080"
     }
   },
   "runtimeRpc": {
@@ -21453,7 +21501,9 @@
       "confirmTitle": "¿Reiniciar el daemon de terminal?",
       "confirmBody": "Reiniciar termina todos los procesos que se ejecutan en {{sessions}}. Los agentes que admiten reanudación pueden reanudarse después; los shells y otros trabajos no, y deben iniciarse de nuevo. Hazlo cuando tus agentes estén inactivos.",
       "cancel": "Cancelar",
-      "confirm": "Reiniciar y terminar procesos"
+      "confirm": "Reiniciar y terminar procesos",
+      "count_other": "{{count}} terminales en ejecución",
+      "count_one": "{{count}} terminal en ejecución"
     },
     "restartedInputNotSent": "El terminal se reinició mientras escribías, así que parte de la entrada puede no haberle llegado. Revisa el nuevo shell antes de volver a escribirla.",
     "stalledDaemonBanner": {
@@ -21486,7 +21536,14 @@
       "restoreStagedVersionDescription": "Esto restaurará la última versión preparada y descartará la eliminación. No se puede deshacer.",
       "unstagedChangesDescription": "Esto revertirá los cambios no preparados de este archivo. No se puede deshacer.",
       "unstagedSelectionIncludingUntrackedDescription": "Esto revertirá los cambios no preparados y eliminará permanentemente cualquier archivo sin seguimiento de esta selección. No se puede deshacer.",
-      "unstagedFilesIncludingUntrackedDescription": "Esto revertirá los cambios no preparados y eliminará permanentemente cualquier archivo sin seguimiento entre estos {{count}} archivos. No se puede deshacer."
+      "unstagedFilesIncludingUntrackedDescription": "Esto revertirá los cambios no preparados y eliminará permanentemente cualquier archivo sin seguimiento entre estos {{count}} archivos. No se puede deshacer.",
+      "delete": "Eliminar",
+      "restore": "Restaurar",
+      "discard": "Descartar",
+      "discardAll": "Descartar todo",
+      "deleteUntrackedTitleOne": "¿Eliminar {{count}} archivo sin seguimiento?",
+      "deleteUntrackedTitleMany": "¿Eliminar {{count}} archivos sin seguimiento?",
+      "deleteCount": "Eliminar {{count}}"
     },
     "unlinkedPr": {
       "status": "PR #{{number}} desvinculada"
@@ -21520,6 +21577,34 @@
       "creationUnconfirmed": "Puede que la creación de {{shortLabel}} se haya completado. Actualizando el estado de revisión de la rama...",
       "withDetail": "No se pudo crear {{shortLabel}}: {{detail}}",
       "pushFailed": "El push falló. Resuelve el error de push y vuelve a intentarlo."
+    },
+    "model": {
+      "auto": "Automático",
+      "configDefault": "Predeterminado de la configuración"
+    },
+    "thinking": {
+      "off": "Desactivado",
+      "minimal": "Mínimo",
+      "low": "Bajo",
+      "medium": "Medio",
+      "high": "Alto",
+      "max": "Máximo",
+      "xhigh": "Muy alto"
+    },
+    "variables": {
+      "basePrompt": "El prompt integrado de Orca para esta acción, incluido el contexto que Orca puede recopilar de forma segura.",
+      "branch": "El nombre de la rama actual del control de versiones.",
+      "stagedFiles": "Una lista de archivos en staging, separados por saltos de línea, para generar el mensaje de commit.",
+      "stagedPatch": "El parche de Git en staging usado para generar el mensaje de commit.",
+      "baseBranch": "La rama de destino seleccionada al crear el PR.",
+      "currentTitle": "El título del PR introducido en el editor antes de iniciar la generación.",
+      "currentBody": "La descripción del PR introducida en el editor antes de iniciar la generación.",
+      "commitSummary": "Una lista de commits de la rama respecto a la base, separados por saltos de línea.",
+      "changedFiles": "Un resumen de los archivos modificados entre la rama y su base.",
+      "patch": "El diff de la rama respecto a su base usado para generar los detalles del PR.",
+      "firstPrompt": "La primera solicitud del usuario en este espacio de trabajo o chat.",
+      "assistantMessage": "La respuesta inicial del agente, cuando Orca dispone de ella.",
+      "linkedIssue": "El número del issue de GitHub vinculado a este espacio de trabajo. Vacío si no hay un issue de GitHub vinculado (también en espacios vinculados a GitLab). Usa plantillas con instrucciones: \"Fixes #{linkedIssue}\" por sí solo se convierte en \"Fixes #\" si no hay vínculo."
     }
   },
   "aiVault": {
@@ -21696,7 +21781,11 @@
     "picker": {
       "pasteUnparseable": "Se esperaba una URL de proyecto o owner/number",
       "ownerLoadFailed": "No se pudieron cargar los proyectos de {{owner}}.",
-      "organizationsLoadFailed": "Algunas organizaciones no se cargaron ({{failureCount}})."
+      "organizationsLoadFailed": "Algunas organizaciones no se cargaron ({{failureCount}}).",
+      "organizations": "Organizaciones",
+      "listFailed": "No se pudieron listar los proyectos",
+      "detailsFailed": "No se pudieron cargar los detalles",
+      "viewFailed": "No se pudo obtener la vista del proyecto"
     },
     "error": {
       "notFoundState": "No se pudo encontrar este proyecto o vista.",
@@ -21731,6 +21820,9 @@
       "tooLargeUnknownCount": "Esta vista tiene demasiados elementos para mostrarla en Orca. Restringe el filtro de la vista en GitHub.",
       "tooLarge": "Esta vista tiene {{itemCount}} elementos, demasiados para mostrarla en Orca. Restringe el filtro de la vista en GitHub.",
       "schemaDriftDetail": "No se pudo leer esta vista del proyecto: {{detail}}."
+    },
+    "columns": {
+      "type": "Tipo"
     }
   },
   "projectField": {
@@ -21818,6 +21910,18 @@
     "attachments": {
       "updateRuntime": "Actualiza el tiempo de ejecución remoto para cambiar los enlaces del espacio de trabajo",
       "updateRuntimeSafely": "Actualiza el tiempo de ejecución remoto para cambiar de forma segura los enlaces del espacio de trabajo"
+    },
+    "activity": {
+      "active": "Activo",
+      "working": "Trabajando",
+      "monitoring": "Supervisando tareas en segundo plano",
+      "failed": "Fallido",
+      "interrupted": "Interrumpido",
+      "unconfirmed": "No se pudo confirmar",
+      "done": "Listo",
+      "inactive": "Inactivo",
+      "permission": "Necesita permiso",
+      "unreadLabel": "{{status}} · Sin leer"
     }
   },
   "tabHoverCard": {
@@ -22317,5 +22421,130 @@
     "math": {
       "scrollDisplayEquation": "Desplazar ecuación en bloque"
     }
+  },
+  "runtime": {
+    "health": {
+      "available": "Conectado",
+      "connecting": "Conectando",
+      "disconnected": "Desconectado",
+      "error": "Requiere atención",
+      "mixed": "Mixto",
+      "local": "Local",
+      "repair": "Requiere volver a emparejar",
+      "update": "Requiere actualización"
+    },
+    "compat": {
+      "compatible": "El cliente y el servidor del entorno de ejecución son compatibles.",
+      "clientTooOld": "Este cliente de Orca es demasiado antiguo para el servidor seleccionado. Actualiza Orca en este equipo. Protocolo del cliente: {{clientProtocol}}; el servidor requiere el protocolo de cliente {{requiredProtocol}}.",
+      "serverTooOld": "El servidor de Orca seleccionado es demasiado antiguo para este cliente. Actualiza Orca en el servidor. Protocolo del servidor: {{serverProtocol}}; el cliente requiere el protocolo de servidor {{requiredProtocol}}."
+    }
+  },
+  "native": {
+    "about": {
+      "gpu": {
+        "unknownStatus": "Estado no disponible",
+        "enabled": "Activado",
+        "disabled": "Desactivado",
+        "unavailable": "No disponible",
+        "safeMode": "Desactivada (modo gráfico seguro)",
+        "software": "Renderizado por software",
+        "unknown": "Desconocido ({{status}})",
+        "summary": "Aceleración GPU: {{status}}"
+      }
+    },
+    "dialog": {
+      "importCookies": "Importar cookies",
+      "spaceTitle": "Espacio de Orca (beta)",
+      "dashboardTitle": "Panel de agentes de Orca",
+      "cookieFiles": "Archivos de cookies",
+      "allFiles": "Todos los archivos",
+      "importPetBundle": "Seleccionar un paquete .codex-pet",
+      "pickPet": "Seleccionar mascota",
+      "petImage": "Imagen de mascota",
+      "importWarpTheme": "Importar tema de Warp",
+      "warpThemeYaml": "YAML de tema de Warp",
+      "importWarpFolder": "Importar carpeta de temas de Warp",
+      "images": "Imágenes",
+      "repoIconImages": "Imágenes de icono del repositorio",
+      "audio": "Audio"
+    }
+  },
+  "taskProviders": {
+    "linear": {
+      "updateAccess": "Actualizar acceso",
+      "addAccess": "Agregar acceso Linear",
+      "fetchMore": "Cargar más",
+      "connectionFailed": "La conexión falló",
+      "listLabel": "Lista de Linear",
+      "projectsLoadFailed": "No se pudieron cargar los proyectos.",
+      "projectNotFound": "No se encontró el proyecto.",
+      "projectLoadFailed": "No se pudo cargar el proyecto.",
+      "projectIssuesLoadFailed": "No se pudieron cargar los issues del proyecto.",
+      "viewsLoadFailed": "No se pudieron cargar las vistas.",
+      "viewContentsLoadFailed": "No se pudo cargar el contenido de la vista.",
+      "issuesLoadFailed": "No se pudieron cargar los issues de Linear.",
+      "apiKeyHint": "Pega una clave API personal del espacio de trabajo de Linear que quieras usar en Orca. Si ya está conectado, Orca sustituirá la clave guardada.",
+      "remoteKeyStorage": "Esta clave se guarda en el entorno de ejecución remoto activo.",
+      "localKeyStorage": "Las claves del entorno de ejecución local se guardan en este dispositivo con el almacenamiento cifrado de Electron cuando está disponible.",
+      "commentsLoadFailed": "No se pudieron cargar los comentarios.",
+      "updateWorkspaceAccess": "Actualizar el acceso a Linear para {{workspace}}",
+      "workspaceApiKeyHint": "Pega una clave API personal de {{workspace}}. Si ya está conectado, Orca sustituirá la clave guardada."
+    },
+    "jira": {
+      "connectionFailed": "La conexión falló",
+      "remoteTokenStorage": "Tu token se envía al entorno de ejecución remoto seleccionado y se almacena allí con el cifrado que admita.",
+      "localTokenStorage": "Tu token se almacena localmente y se cifra si el almacenamiento del entorno de ejecución local lo admite."
+    },
+    "errors": {
+      "jira": {
+        "createFailed": "No se pudo crear el issue.",
+        "commentFailed": "No se pudo agregar el comentario.",
+        "notConnected": "Sin conexión a Jira.",
+        "titleRequired": "El título es obligatorio.",
+        "labelsConflict": "Proporciona labels o labelOperations, pero no ambos.",
+        "updateFailed": "No se pudo actualizar el issue.",
+        "credentialsRequired": "La URL del sitio, el correo y el token de API son obligatorios.",
+        "projectRequired": "El proyecto es obligatorio.",
+        "issueTypeRequired": "El tipo de issue es obligatorio.",
+        "issueKeyRequired": "La clave del issue es obligatoria.",
+        "updatesRequired": "El objeto de actualización es obligatorio.",
+        "commentBodyRequired": "El contenido del comentario es obligatorio.",
+        "invalidSiteUrl": "Introduce una URL válida del sitio de Jira.",
+        "passwordRequired": "La contraseña es obligatoria.",
+        "personalTokenRequired": "El token de acceso personal es obligatorio.",
+        "apiTokenRequired": "El token de API es obligatorio.",
+        "connectionFailed": "Error de conexión.",
+        "invalidSiteIdentity": "Introduce una URL de Jira HTTP o HTTPS sin credenciales.",
+        "missingProjectIdentity": "Jira devolvió un proyecto sin ID o clave.",
+        "invalidIssuePage": "Jira devolvió una página de issues no válida.",
+        "incompleteIssuePage": "Jira devolvió una página de issues incompleta.",
+        "repeatedIssueToken": "Jira devolvió un token de página de issues no válido o repetido.",
+        "issueSearchLimit": "La búsqueda de issues de Jira superó el límite de páginas. Selecciona un proyecto mediante JQL.",
+        "invalidProjectPage": "Jira devolvió una página de proyectos no válida.",
+        "incompleteProjectPage": "Jira devolvió una página de proyectos incompleta.",
+        "projectListLimit": "La lista de proyectos de Jira superó el límite de páginas. Selecciona un proyecto mediante JQL.",
+        "invalidCloudId": "El sitio no proporcionó un ID válido de Atlassian Cloud."
+      },
+      "linear": {
+        "notConnected": "Sin conexión a Linear",
+        "createFailed": "Error al crear en Linear",
+        "createdButUnavailable": "El issue se creó, pero no se pudo recuperar",
+        "updateFailed": "Error al actualizar en Linear",
+        "commentFailed": "No se pudo crear el comentario",
+        "projectCreateFailed": "Error al crear el proyecto de Linear",
+        "noApiKey": "No hay ninguna clave API guardada.",
+        "workspaceAuthExpired": "La autenticación de Linear ha caducado para este espacio de trabajo.",
+        "projectNameRequired": "El nombre del proyecto es obligatorio",
+        "projectIdRequired": "El ID del proyecto es obligatorio",
+        "projectNotFound": "No se encontró el proyecto",
+        "viewIdRequired": "El ID de la vista personalizada es obligatorio",
+        "viewHasNoIssues": "La vista personalizada no contiene issues",
+        "viewHasNoProjects": "La vista personalizada no contiene proyectos"
+      }
+    }
+  },
+  "files": {
+    "recycleBin": "Papelera de reciclaje",
+    "trash": "Papelera"
   }
 }

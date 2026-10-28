@@ -13,7 +13,8 @@ import {
   type ExecutionHostHealth,
   type ExecutionHostRegistryEntry
 } from '../../../../shared/execution-host-registry'
-import { getExecutionHostHealthLabel } from '../../../../shared/execution-host-health'
+
+import { getExecutionHostHealthLabel } from '@/lib/runtime-host-copy'
 import { pickerExecutionHosts } from '../../../../shared/managed-orcad-execution-host'
 import { getCheckedHostRows } from '../../../../shared/workspace-view/workspace-host-visibility'
 import type { RuntimeCompatVerdict } from '../../../../shared/protocol-compat'
@@ -214,7 +215,9 @@ export function getSidebarHostHealthLabel(
   health: SidebarHostScopeOption['health'],
   blockedReason?: RuntimeHostBlockedReason
 ): string {
-  return health === 'mixed' ? 'Mixed' : getExecutionHostHealthLabel(health, blockedReason)
+  return health === 'mixed'
+    ? translate('runtime.health.mixed', 'Mixed')
+    : getExecutionHostHealthLabel(health, blockedReason)
 }
 
 // Diagnostics do not change host choices; retain every other exposed registry field.

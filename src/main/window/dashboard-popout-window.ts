@@ -1,3 +1,4 @@
+import { translateMain } from '../i18n/main-i18n'
 import { app, BrowserWindow, nativeTheme, type WebContents, type Event } from 'electron'
 import { join } from 'node:path'
 import type { Store } from '../persistence'
@@ -142,7 +143,7 @@ export function createOrFocusDashboardPopout(
     ...(savedBounds ? { x: savedBounds.x, y: savedBounds.y } : {}),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
-    title: 'Orca Agent Dashboard',
+    title: translateMain('native.dialog.dashboardTitle', 'Orca Agent Dashboard'),
     show: false,
     autoHideMenuBar: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#ffffff',

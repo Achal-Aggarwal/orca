@@ -1,3 +1,4 @@
+import { taskProviderFailure } from '../../shared/task-provider-failure'
 import { CredentialDecryptionError } from '../integration-credential-file'
 import type {
   JiraAuthType,
@@ -82,7 +83,7 @@ export async function connect(
   try {
     siteUrl = normalizeJiraSiteUrl(args.siteUrl)
   } catch {
-    return { ok: false, error: 'Enter a valid Jira site URL.' }
+    return taskProviderFailure('jira.invalidSiteUrl', 'Enter a valid Jira site URL.')
   }
 
   const authType: JiraAuthType = args.authType === 'server' ? 'server' : 'cloud'
@@ -92,13 +93,12 @@ export async function connect(
     if (!apiToken) {
       // A username present means classic Basic auth (password); its absence
       // means the credential is a personal access token sent as Bearer.
-      return {
-        ok: false,
-        error: email ? 'Password is required.' : 'Personal access token is required.'
-      }
+      return email
+        ? taskProviderFailure('jira.passwordRequired', 'Password is required.')
+        : taskProviderFailure('jira.personalTokenRequired', 'Personal access token is required.')
     }
   } else if (!apiToken) {
-    return { ok: false, error: 'API token is required.' }
+    return taskProviderFailure('jira.apiTokenRequired', 'API token is required.')
   }
 
   await acquire()
@@ -170,7 +170,7 @@ export async function testConnection(
     return { ok: false, error: error instanceof Error ? error.message : 'Connection failed.' }
   }
   if (!client) {
-    return { ok: false, error: 'Not connected to Jira.' }
+    return taskProviderFailure('jira.notConnected', 'Not connected to Jira.')
   }
   await acquire()
   try {

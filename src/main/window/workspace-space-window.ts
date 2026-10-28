@@ -1,3 +1,4 @@
+import { translateMain } from '../i18n/main-i18n'
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
 import { join } from 'node:path'
 import { isBackgroundLaunch, showWindowWithoutStealingFocus } from './foreground-activation-policy'
@@ -45,7 +46,7 @@ export function createOrFocusWorkspaceSpaceWindow(store: Store): BrowserWindow {
     height: 820,
     minWidth: 700,
     minHeight: 520,
-    title: 'Orca Space Beta',
+    title: translateMain('native.dialog.spaceTitle', 'Orca Space Beta'),
     show: false,
     autoHideMenuBar: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#ffffff',
