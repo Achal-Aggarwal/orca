@@ -52,18 +52,16 @@ afterEach(() => {
 
 describe('Windows native Antigravity credentials', () => {
   it('keeps live container detection by default while isolating an explicit native fixture', async () => {
-    const actual = await vi.importActual<typeof NodeFs>('node:fs')
-    vi.mocked(existsSync).mockImplementation(
-      (path) => path === '/.dockerenv' || actual.existsSync(path)
-    )
     fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('a')))
     const nativeReads = vi.spyOn(fake, 'readGenericCredential')
     const fileReads = vi.spyOn(fake, 'readFileWithDacl')
     const defaultBackend = createAntigravityWindowsCredentialBackend(home)
+    vi.mocked(existsSync).mockReturnValueOnce(true)
     expect(await defaultBackend.read()).toBeNull()
     expect(nativeReads).not.toHaveBeenCalled()
     const nativeBackend = createAntigravityWindowsCredentialBackend(home, () => false)
     expect((await nativeBackend.read())?.contents).toBe(credential('a'))
+    vi.mocked(existsSync).mockReturnValueOnce(true)
     expect(await defaultBackend.read()).toBeNull()
     expect(nativeReads).toHaveBeenCalledTimes(1)
     expect(fileReads).toHaveBeenCalledTimes(2)
