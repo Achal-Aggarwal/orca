@@ -14,6 +14,10 @@ import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 import { addedRepoRefreshOptions, resolveAddRepoRuntimeTarget } from './add-repo-runtime-owner'
 import { refreshWslRegistrationAfterFailure } from '@/store/repos/repo-owner-host-readiness'
 import { getWorktreeExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
+import {
+  readWslHostWindowsDriveRefusal,
+  type WslHostWindowsDriveRefusal
+} from '../../../../shared/wsl-host-windows-drive-refusal'
 
 export function useCreateRepo(
   fetchWorktrees: (
@@ -28,8 +32,10 @@ export function useCreateRepo(
   options: {
     hostId?: string | null
     runtimeEnvironmentId?: string | null
+    onWindowsDriveRefusal?: (refusal: WslHostWindowsDriveRefusal) => void
   } = {}
 ) {
+  const { onWindowsDriveRefusal } = options
   const [createName, setCreateName] = useState('')
   const [createParent, setCreateParent] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
@@ -91,7 +97,7 @@ export function useCreateRepo(
       const createKind = 'git' as const
       const result =
         target.kind === 'environment'
-          ? await callRuntimeRpc<{ repo: Repo } | { error: string }>(
+          ? await callRuntimeRpc<{ repo: Repo } | { error: string; windowsDriveRefusal?: unknown }>(
               target,
               'repo.create',
               {
@@ -110,7 +116,15 @@ export function useCreateRepo(
         return
       }
       if ('error' in result) {
-        setCreateError(result.error)
+        const refusal =
+          'windowsDriveRefusal' in result
+            ? readWslHostWindowsDriveRefusal(result.windowsDriveRefusal)
+            : null
+        if (refusal && onWindowsDriveRefusal) {
+          onWindowsDriveRefusal(refusal)
+        } else {
+          setCreateError(result.error)
+        }
         return
       }
       const { alreadyPresent: wasDeduped, repo } = await upsertAddedRepoWithProjectHostSetup(
@@ -183,6 +197,7 @@ export function useCreateRepo(
     mountedRef,
     closeModal,
     onGitRepoReady,
+    onWindowsDriveRefusal,
     options.hostId,
     options.runtimeEnvironmentId
   ])

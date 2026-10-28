@@ -18,6 +18,7 @@ import {
 } from '../project-groups/nested-repo-import'
 import { createNestedRepoImportTargetResolver } from '../project-groups/nested-repo-import-target'
 import type { RuntimeStore } from './runtime-store-contract'
+import { refuseWslHostWindowsDrivePath } from './wsl-host-windows-drive-guard'
 import { placeNestedImport } from '../wsl/wsl-nested-project-import'
 import {
   registrationDomain,
@@ -44,6 +45,7 @@ export class RuntimeNestedRepoImport {
     if (!isAbsolute(path)) {
       throw new Error('Project path must be an absolute path')
     }
+    await refuseWslHostWindowsDrivePath(path)
     await awaitWindowsHostGitEnvironmentReady({ cwd: path })
     return scanNestedRepos({ path, options: { timeoutMs: 15_000 } })
   }
@@ -57,6 +59,7 @@ export class RuntimeNestedRepoImport {
     },
     caller: RegistrationCaller = UNNAMED_REGISTRATION_CALLER
   ): Promise<ProjectGroupImportResult> {
+    await refuseWslHostWindowsDrivePath(args.parentPath)
     const store = this.deps.getStore()
     if (!store?.createProjectGroup || !store.moveProjectToGroup) {
       throw new Error('runtime_unavailable')

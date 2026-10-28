@@ -26,6 +26,11 @@ import {
 } from '../wsl/project-placement'
 import { requireSavedProject } from '../repository-checkout-admission'
 import { registerOnWslOwner } from '../wsl/wsl-project-registration'
+import { refuseWslHostWindowsDrivePath } from './wsl-host-windows-drive-guard'
+import {
+  WslHostWindowsDriveRefusalError,
+  type WslHostWindowsDriveRefusal
+} from '../../shared/wsl-host-windows-drive-refusal'
 
 type RuntimeRepositoryRegistrationDependencies = {
   getStore: () => RuntimeStore | null
@@ -138,7 +143,7 @@ export class RuntimeRepositoryRegistrationController {
     name: string,
     kind: 'git' | 'folder' = 'git',
     caller: RegistrationCaller = UNNAMED_REGISTRATION_CALLER
-  ): Promise<{ repo: Repo } | { error: string }> {
+  ): Promise<{ repo: Repo } | { error: string; windowsDriveRefusal?: WslHostWindowsDriveRefusal }> {
     const store = this.requireStore()
     const trimmedName = name.trim()
     const trimmedParentPath = parentPath.trim()
@@ -154,6 +159,14 @@ export class RuntimeRepositoryRegistrationController {
     }
     if (!isAbsolute(trimmedParentPath)) {
       return { error: 'Parent directory must be an absolute path' }
+    }
+    try {
+      await refuseWslHostWindowsDrivePath(trimmedParentPath)
+    } catch (error) {
+      // An optional field: older clients read only `error`.
+      return error instanceof WslHostWindowsDriveRefusalError
+        ? { error: error.message, windowsDriveRefusal: error.data }
+        : { error: error instanceof Error ? error.message : String(error) }
     }
     const targetPath = join(trimmedParentPath, trimmedName)
     const placement = await placeProject(store, {

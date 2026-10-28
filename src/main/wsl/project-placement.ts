@@ -11,6 +11,7 @@ import {
 } from '../repository-checkout-admission'
 import { wslHostsGateOpen } from './wsl-host-gate'
 import { getWslHostService } from './wsl-host-service-instance'
+import { refuseWslHostWindowsDrivePath } from '../runtime/wsl-host-windows-drive-guard'
 
 export type PlacementStore = {
   getRepos(): Repo[]
@@ -135,6 +136,9 @@ export async function placeProject(
   store: PlacementStore,
   context: PlacementContext
 ): Promise<ProjectPlacement> {
+  if (context.operation !== 'create') {
+    await refuseWslHostWindowsDrivePath(context.selectedPath)
+  }
   let target =
     context.operation === 'create' ? join(context.parentPath, context.name) : context.selectedPath
   const routingEnabled = wslProjectRoutingEnabled(store, context.domain)

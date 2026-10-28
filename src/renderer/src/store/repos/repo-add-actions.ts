@@ -34,6 +34,9 @@ import {
   clearPendingRuntimeRepoRemoval,
   runExclusiveForRuntimeEnvironment
 } from './pending-runtime-repo-removals'
+import { RuntimeRpcCallError } from '../../runtime/runtime-rpc-result'
+import { readWslHostWindowsDriveRefusal } from '../../../../shared/wsl-host-windows-drive-refusal'
+import { showWslHostWindowsDriveRefusal } from '@/lib/wsl-host-windows-drive-refusal-toast'
 
 export function createRepoAddActions(
   set: Parameters<StateCreator<AppState>>[0],
@@ -181,6 +184,18 @@ export function createRepoAddActions(
       } catch (err) {
         await refreshWslRegistrationAfterFailure(get, path)
         console.error('Failed to add project:', err)
+        const driveRefusal =
+          err instanceof RuntimeRpcCallError
+            ? readWslHostWindowsDriveRefusal(err.response.error.data)
+            : null
+        if (driveRefusal) {
+          if (options?.onWindowsDriveRefusal) {
+            options.onWindowsDriveRefusal(driveRefusal)
+          } else {
+            showWslHostWindowsDriveRefusal(driveRefusal)
+          }
+          return null
+        }
         const message = extractIpcErrorMessage(
           err,
           err instanceof Error ? err.message : String(err)

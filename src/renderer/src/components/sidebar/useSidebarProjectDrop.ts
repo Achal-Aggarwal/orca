@@ -17,6 +17,7 @@ import { translate } from '@/i18n/i18n'
 import { userNamedFileAccess } from '@/lib/local-file-access'
 import { listWslHostWindowsPathAccess } from '@/lib/windows-path-access'
 import { wslHostsAvailable, useWslHostsEnabled } from './use-wsl-hosts-enabled'
+import { addOnThisComputerLabel } from '@/lib/wsl-host-windows-drive-refusal-toast'
 import type { AppState } from '@/store/types'
 
 function getWslDropHosts(state: Pick<AppState, 'runtimeEnvironments' | 'settings'>) {
@@ -35,6 +36,12 @@ function refuseSidebarProjectDrop(route: SidebarProjectDropRoute): boolean {
         { value0: route.distro }
       ),
       {
+        action: {
+          label: addOnThisComputerLabel(),
+          // No modal is open during a sidebar drop, so this toast can take the click.
+          onClick: () =>
+            useAppStore.getState().openModal('add-repo', { addOnThisComputerPath: route.path })
+        },
         description: translate(
           'auto.components.sidebar.useSidebarProjectDrop.windowsDriveOnWslHostDescription',
           'Git in WSL is slow on Windows drives. Switch the host to this computer to add it, or drop a folder from \\\\wsl.localhost\\{{value0}}.',

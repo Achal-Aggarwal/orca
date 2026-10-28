@@ -5,6 +5,7 @@ import {
   classifyRejectedWindowsPath,
   normalizeWindowsWslPath
 } from '../../../../shared/windows-path-access'
+import { windowsPathOfWslDrvfsUncPath } from '../../../../shared/wsl-host-windows-drive-refusal'
 import type { WslHostWindowsPathAccess } from '@/lib/windows-path-access'
 import { translate } from '@/i18n/i18n'
 
@@ -42,7 +43,7 @@ export type SidebarProjectDropRoute =
   /** The dropped folder is inside a WSL host's distro: that host owns it, whatever is focused. */
   | { kind: 'wsl-host'; hostId: ExecutionHostId; linuxPath: string }
   /** D7: a Windows drive folder stays on this computer, never on the focused WSL host. */
-  | { kind: 'windows-drive-on-wsl-host'; distro: string }
+  | { kind: 'windows-drive-on-wsl-host'; distro: string; path: string }
   | { kind: 'runtime-focused' }
 
 export function routeSidebarProjectDrop(args: {
@@ -56,6 +57,11 @@ export function routeSidebarProjectDrop(args: {
   if (wslPath && parseWslUncPath(wslPath)) {
     return { kind: 'local', path: wslPath }
   }
+  // With WSL hosts on, a distro's drive mount routes as its Windows drive path.
+  const drivePath = args.wslHosts.length > 0 ? windowsPathOfWslDrvfsUncPath(args.path) : null
+  if (drivePath) {
+    return routeSidebarProjectDrop({ ...args, path: drivePath })
+  }
   for (const host of args.wslHosts) {
     const linuxPath = host.access.fromWindows(args.path)
     if (linuxPath) {
@@ -67,7 +73,11 @@ export function routeSidebarProjectDrop(args: {
   }
   const focusedWslHost = args.wslHosts.find((host) => host.environmentId === args.focusedRuntimeId)
   return focusedWslHost && classifyRejectedWindowsPath(args.path).kind === 'windows-drive'
-    ? { kind: 'windows-drive-on-wsl-host', distro: focusedWslHost.access.wslDistro }
+    ? {
+        kind: 'windows-drive-on-wsl-host',
+        distro: focusedWslHost.access.wslDistro,
+        path: args.path
+      }
     : { kind: 'runtime-focused' }
 }
 
