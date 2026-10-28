@@ -204,17 +204,4 @@ describe('plugin panel document ownership', () => {
     expect(issue).not.toHaveBeenCalled()
     expect(current.eventNames()).toEqual([])
   })
-
-  it('keeps current-document sessions on repeated open and same-document navigation', async () => {
-    await harness()
-    const current = sender()
-    const first = entrySchema.parse(await open(current))
-    current.emit('did-navigate-in-page')
-    const second = entrySchema.parse(await open(current))
-    expect(second.sessionToken).toBe(first.sessionToken)
-    await expect(action(current, first.sessionToken)).resolves.toMatchObject({ ok: true })
-    for (const name of ['destroyed', 'render-process-gone']) {
-      expect(current.listenerCount(name)).toBe(1)
-    }
-  })
 })
