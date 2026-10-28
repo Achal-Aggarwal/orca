@@ -10,6 +10,7 @@ const commentSchema = z.object({
     .nullable(),
   body: z.string().nullish(),
   createdAt: z.string(),
+  submittedAt: z.string().nullish(),
   url: z.string(),
   reactionGroups: z
     .array(
@@ -74,7 +75,7 @@ function mapGraphQLComment(
     author: comment.author?.login ?? 'ghost',
     authorAvatarUrl: comment.author?.avatarUrl ?? '',
     body: comment.body ?? '',
-    createdAt: comment.createdAt,
+    createdAt: comment.submittedAt ?? comment.createdAt,
     url: comment.url,
     isBot: comment.author?.__typename === 'Bot',
     reactionSubjectId: comment.id,

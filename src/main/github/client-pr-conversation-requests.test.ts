@@ -87,6 +87,32 @@ describe('PR conversation request reuse', () => {
     expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(1)
   })
 
+  it('orders submitted draft reviews by submission time while preserving comment creation time', async () => {
+    ghExecFileAsyncMock.mockResolvedValue(
+      response({
+        comments: { nodes: [comment] },
+        reviews: {
+          nodes: [
+            {
+              ...comment,
+              id: 'PRR_11',
+              databaseId: 11,
+              body: 'Submitted review',
+              createdAt: '2026-03-01T00:00:00Z',
+              submittedAt: '2026-04-02T00:00:00Z'
+            }
+          ]
+        },
+        reviewThreads: { nodes: [] }
+      })
+    )
+    await expect(getPRComments('/repo', 7, options)).resolves.toMatchObject([
+      { id: 10, createdAt: comment.createdAt },
+      { id: 11, createdAt: '2026-04-02T00:00:00Z' }
+    ])
+    expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(1)
+  })
+
   it.each([false, true])(
     'preserves quota failures when REST recovery is needed (GraphQL blocked: %s)',
     async (graphQLBlocked) => {
