@@ -359,14 +359,14 @@ describe('coalesced history removals', () => {
       const coalescer = createStructuredAgentSessionEventCoalescer((event) => {
         reductions++
         // Count retained input reads, including head lookup, without instrumenting production.
-        const items = new Proxy(state.items, {
-          get(target, property, receiver) {
-            if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
+        const items = [...state.items]
+        items.forEach((row, index) => {
+          Object.defineProperty(items, index, {
+            get() {
               inputVisits++
-              return target[Number(property)]
+              return row
             }
-            return Reflect.get(target, property, receiver)
-          }
+          })
         })
         state = reduceStructuredAgentSession({ ...state, items }, { type: 'event', event }, 0)
       })
