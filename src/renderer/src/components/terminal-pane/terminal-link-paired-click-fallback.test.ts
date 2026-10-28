@@ -369,6 +369,30 @@ describe('a modifier-click on a paired-server path followed by more paths', () =
     expect(asked).toEqual(opened)
   })
 
+  it('leaves a click on prose beside a path to the terminal', async () => {
+    setPlatform('Macintosh')
+    const line = '/tmp/report.md completed successfully'
+    const buffer = makeBuffer([makeBufferLine(line)])
+
+    const handled = openFilePathLinkAtBufferPosition(
+      buffer,
+      { x: line.indexOf('completed') + 1, y: 1 },
+      80,
+      {
+        startupCwd: '/srv/repo',
+        worktreeId: 'wt-1',
+        worktreePath: '/srv/repo',
+        runtimeEnvironmentId: 'env-1',
+        terminalHandle: 'term-1',
+        pathExistsCache: new Map()
+      }
+    )
+    await flushDoubleRaf()
+
+    expect(handled).toBe(false)
+    expect(runtimeEnvironmentCallMock).not.toHaveBeenCalled()
+  })
+
   it('opens a wrapped share path whole even when its prefix is a known file', async () => {
     setPlatform('Windows')
     runtimeEnvironmentCallMock.mockResolvedValue({

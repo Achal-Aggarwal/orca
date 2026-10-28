@@ -96,6 +96,10 @@ export function openFilePathLinkAtBufferPosition(
     })
   }
 
+  // Why: only a written path or a confirmed guess takes the click; prose beside a path stays ordinary text.
+  if (!links.some((link) => !link.guess || link.cachedExists === true)) {
+    return false
+  }
   // Why: a failure names the path the user sees, never a guess.
   const shown = shortestPath(links.filter((link) => !link.guess))
   const open = (link: ClickedFileLink, verified = link.cachedExists === true): void => {
