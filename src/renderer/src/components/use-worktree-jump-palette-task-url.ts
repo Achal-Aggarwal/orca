@@ -2,10 +2,6 @@ import {
   mapLinearIssueRead,
   type LinearIssueLease
 } from '@/store/slices/linear/linear-issue-publication'
-import {
-  selectCanonicalProjects,
-  selectCanonicalProjectHostSetups
-} from '@/store/project-host-setup-selector'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import {
@@ -47,8 +43,8 @@ function getComposerDefaultWorkspaceTarget(state: ReturnType<typeof useAppStore.
   const activeRepoId = resolveComposerActiveRepoId(state.repos, eligibleRepos, state.activeRepoId)
   const resolution = resolveWorkspaceCreationTarget({
     eligibleRepos,
-    projects: selectCanonicalProjects(state),
-    projectHostSetups: selectCanonicalProjectHostSetups(state),
+    projects: state.projects,
+    projectHostSetups: state.projectHostSetups,
     activeRepoId,
     focusedHostScope: state.workspaceHostScope
   })
