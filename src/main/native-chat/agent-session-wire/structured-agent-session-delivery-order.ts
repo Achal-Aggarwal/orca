@@ -1,5 +1,6 @@
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 
 export type StructuredAgentSessionDeliveryPlace = {
   before: Promise<void>
@@ -7,7 +8,7 @@ export type StructuredAgentSessionDeliveryPlace = {
 }
 
 type OptionsCycle = StructuredAgentSessionDeliveryPlace & {
-  child: object
+  child: StructuredAgentSessionProviderChild
   signal: AbortSignal
   ready: Promise<void>
   demand: 'refresh' | 'idle' | 'sealed'
@@ -73,7 +74,7 @@ export class StructuredAgentSessionDeliveryOrder {
     return place
   }
 
-  joinOptions(sessionId: string, child: object): boolean {
+  joinOptions(sessionId: string, child: StructuredAgentSessionProviderChild): boolean {
     const cycle = this.lanes.get(sessionId)?.options
     if (!cycle || cycle.child !== child || cycle.signal.aborted) {
       return false
@@ -85,7 +86,11 @@ export class StructuredAgentSessionDeliveryOrder {
   }
 
   /** One optional producer shares the send order and the prepared readers' completion. */
-  reserveOptions(sessionId: string, child: object, signal: AbortSignal): OptionsCycle {
+  reserveOptions(
+    sessionId: string,
+    child: StructuredAgentSessionProviderChild,
+    signal: AbortSignal
+  ): OptionsCycle {
     const place = this.reserve(sessionId)
     const lane = this.lanes.get(sessionId)!
     const cycle: OptionsCycle = {
