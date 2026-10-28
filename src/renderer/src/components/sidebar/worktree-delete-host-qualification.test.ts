@@ -231,7 +231,8 @@ describe('STA-4343 sidebar delete: the confirmed row decides the host', () => {
       { [SSH_HOST]: ssh.root },
       routedHostIds
     )
-    const store = storeRef.current as ReturnType<typeof createTestStore>
+    const store = createTestStore()
+    storeRef.current = store
     store.setState({
       repos: [
         {
