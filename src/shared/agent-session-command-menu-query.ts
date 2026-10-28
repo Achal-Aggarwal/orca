@@ -33,9 +33,6 @@ export function startAgentSessionCommandMenuQuery(
       failures = 0
       if (result.commandsPending) {
         delay = 10_000
-      } else {
-        deadline = Date.now() + 330_000
-        delay = 300_000
       }
     } catch {
       if (++failures < 3) {

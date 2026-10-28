@@ -47,7 +47,9 @@ export function useMobileStructuredAgentState(args: {
 } {
   const { client, connected, enabled, sessionId, sessionKey } = args
   const commandsChanged = useRef(args.onCommandsChanged)
-  commandsChanged.current = args.onCommandsChanged
+  useLayoutEffect(() => {
+    commandsChanged.current = args.onCommandsChanged
+  }, [args.onCommandsChanged])
   // Bound synchronous per-session retention so offline tab switches cannot grow memory indefinitely.
   const [sessionStates, setSessionStates] = useState<Map<string, StructuredAgentSessionState>>(
     () => new Map()

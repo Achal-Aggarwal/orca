@@ -1,6 +1,11 @@
 import type { AgentJournalMessageItem } from './agent-session-journal-types'
 import type { AgentSessionExecutionOptions } from './agent-session-execution-options'
-import type { AgentSessionQueuedMessage, AgentSessionSlashCommand } from './agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionSlashCommand,
+  AgentSessionCommandsResult,
+  AgentSessionSubscribeEvent
+} from './agent-session-wire'
 
 type StoredQueuedMessage = {
   messageId: string
@@ -30,4 +35,15 @@ export type AcpCommandOptionsFixtureModule = {
     adoptCommands: (commands: readonly { name: string; description: string }[]) => void
     readCommands: () => AgentSessionSlashCommand[] | undefined
   }
+}
+
+export type MobileCommandMenuHostFixtureModule = {
+  createMobileCommandMenuHostFixture: (provider: 'claude' | 'omp') => Promise<{
+    sessionId: string
+    starts: () => number
+    read: () => Promise<AgentSessionCommandsResult>
+    subscribe: (emit: (event: AgentSessionSubscribeEvent) => void) => Promise<() => void>
+    retire: (scoped: boolean) => Promise<void>
+    dispose: () => Promise<void>
+  }>
 }

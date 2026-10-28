@@ -61,3 +61,40 @@ it('coalesces invalidation, discards late answers and bounds failed recovery', a
     failed.dispose()
   }
 })
+
+it.each([undefined, [], [{ name: 'fast', kind: 'command' as const }]])(
+  'leaves settled %j demanded without a timer, then accepts a real wake',
+  async (commands) => {
+    vi.useFakeTimers()
+    const read = vi.fn(async () => ({ commands, commandsPending: false }))
+    const query = startAgentSessionCommandMenuQuery(read, vi.fn())
+    await vi.advanceTimersByTimeAsync(600_001)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+    query.invalidate()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+    query.dispose()
+  }
+)
+it('parks actual pending work at the deadline with one outstanding read and one dirty follow-up', async () => {
+  vi.useFakeTimers()
+  const held = Promise.withResolvers<{ commandsPending: boolean }>()
+  const read = vi.fn(() =>
+    read.mock.calls.length === 1 ? held.promise : Promise.resolve({ commandsPending: true })
+  )
+  const query = startAgentSessionCommandMenuQuery(read, vi.fn())
+  query.invalidate()
+  query.invalidate()
+  await vi.advanceTimersByTimeAsync(20_000)
+  expect(read).toHaveBeenCalledTimes(1)
+  held.resolve({ commandsPending: true })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(read).toHaveBeenCalledTimes(2)
+  expect(vi.getTimerCount()).toBe(1)
+  await vi.advanceTimersByTimeAsync(600_000)
+  expect(read).toHaveBeenCalledTimes(32)
+  expect(vi.getTimerCount()).toBe(0)
+  query.dispose()
+})

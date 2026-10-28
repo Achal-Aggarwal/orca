@@ -1,0 +1,316 @@
+// @vitest-environment happy-dom
+
+// @vitest-environment happy-dom
+import { PrioritySemaphore } from '../../../shared/priority-semaphore'
+import {
+  commandDiscoveryRig,
+  type CommandDiscoveryChild
+} from '../../acp/acp-command-discovery.test-fixture'
+
+import {
+  bindAtRestCommandContexts,
+  retireAtRestCommandSettings,
+  refreshAtRestCommandContext
+} from './at-rest-command-context'
+
+import { mkdir } from 'node:fs/promises'
+
+import { join } from 'node:path'
+import { expect, it, vi } from 'vitest'
+import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import {
+  CLAUDE_AT_REST_COMMANDS_TTL_MS,
+  ClaudeAtRestCommandCatalog
+} from '../../claude/claude-at-rest-commands'
+
+import {
+  directory,
+  workspace,
+  account,
+  clock,
+  host,
+  openHost,
+  attachContext,
+  advanceCatalogClock,
+  setCatalogAccount
+} from './structured-agent-session-at-rest-command-rig.test-fixture'
+it.each(['claude', 'omp'] as const)(
+  'bounds mixed real-host %s admission, retained reads and replacement roots at N/10N',
+  async (provider) => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      for (const count of [3, 30]) {
+        for (const legacy of [0, 1, 2, count]) {
+          let hold = true,
+            physical = 0,
+            peak = 0,
+            starts = 0,
+            preparations = 0,
+            permits = 0,
+            peakPermits = 0
+          const originalAcquire = PrioritySemaphore.prototype.acquire
+          const acquire = vi
+            .spyOn(PrioritySemaphore.prototype, 'acquire')
+            .mockImplementation(async function (this: PrioritySemaphore, priority, signal) {
+              const release = await originalAcquire.call(this, priority, signal)
+              peakPermits = Math.max(peakPermits, ++permits)
+              let released = false
+              return () => {
+                expect(released).toBe(false)
+                released = true
+                permits--
+                release()
+              }
+            })
+          let cleanup: Promise<void> | undefined
+          let releaseCleanup = () => {}
+          let selected = account,
+            cwd = workspace
+          const roots: CommandDiscoveryChild[] = []
+          let rootPeak = 0,
+            signals = 0
+          const gates: ReturnType<typeof Promise.withResolvers<void>>[] = []
+          const launches: { cwd: string; account: string }[] = []
+          const enter = async (launch: { cwd: string; account: string }) => {
+            starts++
+            peak = Math.max(peak, ++physical)
+            launches.push(launch)
+            const gate = Promise.withResolvers<void>()
+            gates.push(gate)
+            if (hold) {
+              await gate.promise
+            }
+            physical--
+          }
+          const omp =
+            provider === 'omp'
+              ? await commandDiscoveryRig(
+                  (child) => {
+                    roots.push(child)
+                    rootPeak = Math.max(rootPeak, roots.filter((root) => !root.exited).length)
+                    const prove = child.proveClose
+                    child.proveClose = async () => {
+                      await cleanup
+                      return prove()
+                    }
+                    const entering = enter({
+                      cwd: child.launch.cwd,
+                      account: child.launch.env!.PI_CODING_AGENT_DIR!
+                    })
+                    const initialize = child.initialize.bind(child)
+                    vi.spyOn(child, 'initialize').mockImplementation(async () => {
+                      await entering
+                      return initialize()
+                    })
+                  },
+                  {
+                    resolveWorkspacePath: async () => {
+                      preparations++
+                      return cwd
+                    }
+                  }
+                )
+              : undefined
+          const catalog =
+            omp?.catalog ??
+            new ClaudeAtRestCommandCatalog({
+              now: () => clock,
+              resolveWorkspacePath: async () => {
+                preparations++
+                return cwd
+              },
+              resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: selected }),
+              probe: async (input) => {
+                input.signal?.addEventListener('abort', () => signals++, { once: true })
+                await enter({ cwd: input.cwd, account: input.accountHomePath })
+                return [{ name: 'fast', kind: 'command' }]
+              }
+            })
+          const unbind = bindAtRestCommandContexts([catalog])
+          const stops: (() => void)[] = [],
+            legacyStops: (() => void)[] = []
+          let frames = 0,
+            hints = 0
+          const snapshot = vi.spyOn(catalog, 'snapshot')
+          const emit = (event: AgentSessionSubscribeEvent) => {
+            frames++
+            if (event.type !== 'end' && event.commandsChanged) {
+              hints++
+            }
+          }
+          try {
+            await openHost(catalog)
+            const ids = await Promise.all(
+              Array.from({ length: count + 1 }, (_, index) => attachContext(provider, index))
+            )
+            for (const [index, sessionId] of ids.entries()) {
+              stops.push(
+                await host.subscribe({
+                  id: `modern-${index}`,
+                  sessionId,
+                  commandsOnRequest: true,
+                  emit
+                })
+              )
+              if (index < legacy) {
+                legacyStops.push(await host.subscribe({ id: `legacy-${index}`, sessionId, emit }))
+              }
+            }
+            stops.push(
+              await host.subscribe({
+                id: 'duplicate',
+                sessionId: ids[0]!,
+                commandsOnRequest: true,
+                emit
+              })
+            )
+            await vi.waitFor(() => expect(starts).toBe(Math.min(2, legacy)), { interval: 0 })
+            const distinct = host.readCommands(ids[count]!, true)
+            const overlap = host.readCommands(ids[legacy > 2 ? 2 : 0]!, true)
+            const duplicate = host.readCommands(ids[legacy > 2 ? 2 : 0]!, true)
+            const admitted = Math.min(2, legacy) + 1 + (legacy === 0 || legacy > 2 ? 1 : 0)
+            await vi.waitFor(() => expect(starts).toBe(admitted), { interval: 0 })
+            expect(physical).toBe(admitted)
+            expect(peak).toBe(admitted)
+            expect(permits).toBe(Math.min(2, legacy))
+            expect(peakPermits).toBe(Math.min(2, legacy))
+            if (omp) {
+              expect(omp.children.filter((child) => !child.exited)).toHaveLength(admitted)
+              expect(rootPeak).toBe(admitted)
+            }
+            expect(preparations).toBe(
+              new Set([...ids.slice(0, legacy), ids[count], ids[legacy > 2 ? 2 : 0]]).size
+            )
+            hold = false
+            gates.forEach((gate) => gate.resolve())
+            await Promise.all([distinct, overlap, duplicate])
+            for (const sessionId of ids) {
+              await host.readCommands(sessionId, true)
+            }
+            await vi.waitFor(() => expect(physical).toBe(0), { interval: 0 })
+            if (omp) {
+              await vi.waitFor(
+                () => expect(omp.children.every((child) => child.exited)).toBe(true),
+                { interval: 0 }
+              )
+            }
+            await vi.waitFor(() => expect(permits).toBe(0), { interval: 0 })
+            const seeded = starts
+            expect(seeded).toBe(count + 1)
+            legacyStops.splice(0).forEach((stop) => stop())
+            frames = 0
+            hints = 0
+            snapshot.mockClear()
+            advanceCatalogClock(CLAUDE_AT_REST_COMMANDS_TTL_MS)
+            vi.setSystemTime(Date.now() + CLAUDE_AT_REST_COMMANDS_TTL_MS)
+            const passive = await host.subscribe({
+              id: 'expired-frame',
+              sessionId: ids[0]!,
+              commandsOnRequest: true,
+              emit
+            })
+            stops.push(passive)
+            expect(starts).toBe(seeded)
+            expect(snapshot).toHaveBeenCalled()
+            expect(frames).toBe(2)
+            frames = 0
+            hints = 0
+            selected = join(directory, 'replacement-account')
+            retireAtRestCommandSettings(['activeClaudeManagedAccountId'])
+            await vi.advanceTimersByTimeAsync(0)
+            expect(starts).toBe(seeded)
+            expect(hints).toBe(count + 3)
+            expect(frames).toBe(count + 3)
+            snapshot.mockClear()
+            frames = 0
+            expect(await host.readCommands(ids[0]!, true)).toMatchObject({ commandsPending: false })
+            expect(frames).toBe(3)
+            expect(snapshot).toHaveBeenCalledTimes(count + 7)
+            expect(launches.at(-1)?.account).toBe(provider === 'claude' ? selected : account)
+            frames = 0
+            hints = 0
+            cwd = join(directory, 'replacement-folder')
+            await mkdir(cwd, { recursive: true })
+            await refreshAtRestCommandContext(async () => {})
+            await vi.advanceTimersByTimeAsync(0)
+            expect(hints).toBe(count + 3)
+            expect(starts).toBe(seeded + 1)
+            await host.readCommands(ids[0]!, true)
+            expect(launches.at(-1)?.cwd).toBe(cwd)
+            // Retirement cancels logical ownership while old physical work is still held.
+            catalog.retireContext()
+            hold = true
+            const old = host.readCommands(ids[0]!, true)
+            await vi.waitFor(() => expect(physical).toBe(1), { interval: 0 })
+            const cleanupGate = Promise.withResolvers<void>()
+            cleanup = cleanupGate.promise
+            releaseCleanup = () => cleanupGate.resolve()
+            catalog.retireContext()
+            const replacement = host.readCommands(ids[0]!, true)
+            await vi.waitFor(() => expect(physical).toBe(2), { interval: 0 })
+            expect(peak).toBe(Math.max(admitted, 2))
+            if (!omp) {
+              expect(signals).toBe(1)
+            }
+            if (omp) {
+              expect(omp.children.filter((child) => !child.exited)).toHaveLength(2)
+              expect(rootPeak).toBeGreaterThanOrEqual(2)
+            }
+            hold = false
+            gates.forEach((gate) => gate.resolve())
+            cleanupGate.resolve()
+            cleanup = undefined
+            await Promise.all([old, replacement])
+            await vi.waitFor(() => expect(physical).toBe(0), { interval: 0 })
+            if (omp) {
+              const saved = account
+              setCatalogAccount(selected)
+              const pinned = await attachContext(provider, count + 2)
+              setCatalogAccount(saved)
+              await host.readCommands(pinned, true)
+              expect(launches.at(-1)?.account).toBe(selected)
+              await catalog.closeAll?.()
+              expect(omp.children.every((child) => child.exited)).toBe(true)
+            }
+          } finally {
+            releaseCleanup()
+            hold = false
+            gates.forEach((gate) => gate.resolve())
+            legacyStops.forEach((stop) => stop())
+            stops.forEach((stop) => stop())
+            unbind()
+            await omp?.dispose()
+            acquire.mockRestore()
+          }
+        }
+      }
+    } finally {
+      warned.mockRestore()
+      vi.useRealTimers()
+    }
+  },
+  30_000
+)
+it.each(['claude', 'omp'] as const)(
+  'uses the phone CI host fixture with actual %s dispatch and retirement',
+  async (provider) => {
+    const { createMobileCommandMenuHostFixture } =
+      await import('./mobile-queued-edit-host.test-fixture')
+    const fixture = await createMobileCommandMenuHostFixture(provider)
+    const frames: AgentSessionSubscribeEvent[] = []
+    const stop = await fixture.subscribe((event) => frames.push(event))
+    try {
+      expect(fixture.starts()).toBe(0)
+      expect((await fixture.read()).commands?.some((row) => row.name === 'fast')).toBe(true)
+      await fixture.retire(true)
+      expect(frames.some((event) => event.type !== 'end' && event.commandsChanged)).toBe(true)
+      expect(fixture.starts()).toBe(1)
+      await fixture.read()
+      expect(fixture.starts()).toBe(2)
+    } finally {
+      stop()
+      await fixture.dispose()
+    }
+  }
+)

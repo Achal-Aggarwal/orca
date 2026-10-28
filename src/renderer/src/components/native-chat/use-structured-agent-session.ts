@@ -75,8 +75,7 @@ export function useStructuredAgentSession(args: StructuredAgentSessionViewArgs) 
   const commandMenu = useStructuredAgentSessionCommandMenu(
     target,
     sessionId,
-    transportEnabled && args.isVisible !== false,
-    state.commands
+    transportEnabled && args.isVisible !== false
   )
   const commandPending = useRef(false)
   const legacyLaunchStop = useStructuredLegacyLaunchStop(sessionId)

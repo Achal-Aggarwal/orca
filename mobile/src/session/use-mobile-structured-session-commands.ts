@@ -100,7 +100,17 @@ export function useMobileStructuredSessionCommands(args: {
         return result.value
       },
       (result) => {
-        setReported({ client, hostId, sessionId, commands: result.commands ?? [] })
+        if (result.commands !== undefined) {
+          setReported({ client, hostId, sessionId, commands: result.commands })
+        } else if (!result.commandsPending) {
+          setReported((previous) =>
+            previous?.client === client &&
+            previous.hostId === hostId &&
+            previous.sessionId === sessionId
+              ? null
+              : previous
+          )
+        }
       }
     )
     query.current = owned

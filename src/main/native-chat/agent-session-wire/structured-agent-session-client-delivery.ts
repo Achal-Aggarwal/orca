@@ -98,8 +98,16 @@ export class StructuredAgentSessionClientDelivery {
 
   watchAtRestCommands(adapter: StructuredAgentSessionHostDeps['adapter']): void {
     this.stopAtRestCommandUpdates =
-      adapter.atRestCommands?.onChange(() => this.subscribers.republishCommands()) ??
-      (() => undefined)
+      adapter.atRestCommands?.onChange((change) =>
+        this.subscribers.republishCommands(
+          change
+            ? (sessionId) => {
+                const record = this.deps().store.getRecord(sessionId)
+                return record != null && change.retired(record)
+              }
+            : undefined
+        )
+      ) ?? (() => undefined)
   }
 
   readCommands(sessionId: string, commandsOnRequest = false) {
@@ -132,13 +140,15 @@ export class StructuredAgentSessionClientDelivery {
         )
       : adapter.atRestCommands?.read(record)
     const current = adapter.readCommands?.(sessionId)
+    const snapshot = commandsOnRequest ? adapter.atRestCommands?.snapshot?.(record) : undefined
+    if (current === undefined && snapshot?.retryableFailure) {
+      throw new Error('Command discovery unavailable')
+    }
     return {
-      commands: current ?? commands,
+      commands: current ?? (snapshot ? snapshot.commands : commands),
       ...(commandsOnRequest
         ? {
-            commandsPending:
-              current === undefined &&
-              (adapter.atRestCommands?.snapshot?.(record).commandsPending ?? false)
+            commandsPending: current === undefined && (snapshot?.commandsPending ?? false)
           }
         : {})
     }

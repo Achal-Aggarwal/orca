@@ -2,6 +2,7 @@ import type { AgentSessionPublishedWork } from './agent-session-published-work'
 import type { Subscriber } from './structured-agent-session-subscribers'
 // Deduplicate against last sent values only; withheld fields must not suppress final replacements.
 
+// Deduplicate against last sent values only; withheld fields must not suppress final replacements.
 import type {
   AgentSessionBackgroundTaskState,
   AgentSessionSlashCommand,
@@ -76,7 +77,7 @@ export function buildSubscriberFrame(
           index === 0 &&
           frame.type !== 'end' &&
           subscriber.commandsOnRequest &&
-          (event.type !== 'batch' || commands !== subscriber.commands)
+          (event.commandsChanged || event.type !== 'batch' || commands !== subscriber.commands)
             ? { ...frame, commandsChanged: true }
             : frame
         )
