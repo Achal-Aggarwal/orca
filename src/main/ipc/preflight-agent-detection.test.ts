@@ -88,6 +88,7 @@ import {
   detectInstalledAgents,
   detectInstalledAgentsWithShellPathHydration
 } from '../preflight/agent-detection'
+import * as guestEnvironment from '../wsl/wsl-guest-environment'
 import { registerPreflightHandlers } from './preflight'
 import { resetPreflightMocks, type HandlerMap } from './preflight-test-harness'
 
@@ -143,6 +144,7 @@ describe('preflight', () => {
   it('carries an unresolved login environment through production IPC/store failure and manual recovery', async () => {
     const { useAppStore } = await import('@/store')
     const initial = useAppStore.getState()
+    const invalidation = vi.spyOn(guestEnvironment, 'invalidateWslGuestEnvironment')
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     registerPreflightHandlers()
     vi.stubGlobal('window', {
@@ -180,7 +182,15 @@ describe('preflight', () => {
         state: 'failed'
       })
       expect(useAppStore.getState().isDetectingAgents).toBe(false)
+      invalidation.mockClear()
+      runWslProcessMock.mockClear()
       await useAppStore.getState().refreshDetectedAgents()
+      expect(invalidation).toHaveBeenCalledExactlyOnceWith('Ubuntu')
+      expect(runWslProcessMock).toHaveBeenCalledOnce()
+      expect(runWslProcessMock).toHaveBeenCalledWith(expect.objectContaining({ distro: 'Ubuntu' }))
+      expect(invalidation.mock.invocationCallOrder[0]).toBeLessThan(
+        runWslProcessMock.mock.invocationCallOrder[0]
+      )
       expect(useAppStore.getState().readLocalAgentInventory()).toEqual({
         ids: null,
         state: 'failed'
@@ -197,6 +207,7 @@ describe('preflight', () => {
         state: 'successful'
       })
     } finally {
+      invalidation.mockRestore()
       useAppStore.getState().clearLocalDetectedAgents()
       useAppStore.setState(initial, true)
       vi.unstubAllGlobals()
