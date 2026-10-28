@@ -2,6 +2,7 @@ import {
   acquiredAgentSessionAccount,
   type ClaudeAccountRecipe
 } from '../../../shared/agent-session-acquired-account'
+import { agentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionAccountHome } from '../../../shared/agent-session-account-home'
@@ -67,7 +68,7 @@ export async function structuredAgentSessionReceivingAccount(
   const native =
     deps.parentAccountWork?.(record, lineage[0].sessionId, evidence, {
       getRecord: deps.store.getConversation,
-      listRecords: () => lineage,
+      listRecords: () => lineage.map(agentSessionConversationView),
       getVisibleSessionTabIndex: deps.store.getVisibleSessionTabIndex
     }) ?? false
   if (mail || native) {

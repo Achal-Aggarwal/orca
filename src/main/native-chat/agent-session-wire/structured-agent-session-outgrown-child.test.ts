@@ -1,3 +1,4 @@
+import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { createReceivingAccountFixture } from './structured-agent-session-receiving-account.test-support'
 import { structuredAgentSessionReceivingAccount } from './structured-agent-session-receiving-account'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -440,7 +441,7 @@ describe('retireOutgrownStructuredAgentSessionChild', () => {
               party: {
                 address: 'structworker_e7f53907-0cde-40b9-81c5-d18eb66c07a4',
                 terminalHandle: 'structworker_e7f53907-0cde-40b9-81c5-d18eb66c07a4',
-                orcaSessionId: 'd93bb955-2f5f-4206-93e9-cbbc9460d7e3'
+                orcaSessionId: testOrcaSessionId('d93bb955-2f5f-4206-93e9-cbbc9460d7e3')
               },
               name: 'QA30955 wake-home child'
             }

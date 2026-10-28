@@ -4,6 +4,7 @@ import type { AgentSessionAcquisition } from '../../native-chat/agent-session-wi
 import { claudeProviderHandleLink } from './claude-structured-owner-identity'
 import type { ClaudePromptRegistry } from '../claude-prompt-registry'
 import type { ClaudeJournalTranslator } from '../claude-journal-translator-contract'
+import type { ClaudeStructuredLaunch } from '../claude-structured-launch-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { ClaudeBackgroundTaskTracker } from '../claude-background-task-tracker'
 import { ClaudeChildWorkDecoder } from '../claude-child-work-decoder'
@@ -90,9 +91,9 @@ export function createClaudeSessionPublication(input: {
 /** Pin successful launch inputs before publishing the host's fenced acquisition. */
 export function claudeSessionInitialization(
   launch: Pick<
-    ClaudeSession['initialization'],
-    'account' | 'accountRecipe' | 'resumesTranscript' | 'claudeConfigDir' | 'cwd'
-  > & { resumeLeafUuid: string | null },
+    ClaudeStructuredLaunch,
+    'account' | 'accountRecipe' | 'resumesTranscript' | 'claudeConfigDir' | 'cwd' | 'resumeLeafUuid'
+  >,
   proof: ClaudeSession['initialization']['proof'],
   contextActivity: number,
   onLateRefusal: (error: Error) => void

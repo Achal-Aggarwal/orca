@@ -1,4 +1,7 @@
-import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalMessageItem
+} from '../../../shared/agent-session-journal-types'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createReceivingAccountFixture,
@@ -128,7 +131,7 @@ describe('receiving account through native work and exact parent disposition', (
           kind: 'status',
           ...agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), { surface: 'row' })
         },
-        { fence: 2 }
+        { fence: 2, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
       expect(
         await structuredAgentSessionReceivingAccount(f.deps, f.record, f.session, next)
@@ -156,7 +159,7 @@ describe('receiving account through native work and exact parent disposition', (
           outcome: 'failure',
           userItemId: agentJournalSubmissionKey('limited')
         },
-        { fence: 2 }
+        { fence: 2, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
       await f.journal.appendItem(
         { provider: 'orca', clientMessageId: 'usage' },

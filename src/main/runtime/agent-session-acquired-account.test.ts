@@ -124,6 +124,7 @@ describe('actual acquired account receipt in the fenced record owner', () => {
         reservedSpawnToken: null,
         deathEvidence: {
           kind: 'exit-observed',
+          detail: 'observed process exit',
           observedAt: 50_000,
           ownerFence: reserved.lease.runtimeFence
         }

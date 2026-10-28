@@ -28,7 +28,7 @@ it.each([
         coordinatorPaneKey: null,
         coordinatorOrcaSessionId: PARENT
       })
-      const workers = []
+      const workers: Awaited<ReturnType<typeof f.createWorker>>[] = []
       for (let i = 0; i < n; i += 1) {
         workers.push(await f.createWorker(testOrcaSessionId(randomUUID())))
       }

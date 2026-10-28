@@ -5,15 +5,17 @@ import {
   agentSessionLeaseFixture
 } from '../../../shared/agent-session-record.test-fixture'
 import { withAcquiredAgentSessionAccount } from '../../../shared/agent-session-acquired-account'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalTurnLifecycle
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalMessageItem,
+  type AgentJournalTurnLifecycle
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalSubmissionKey,
   agentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
 import { isOrcaSessionId } from '../../../shared/orca-session-address'
+import { StructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import {
@@ -123,8 +125,9 @@ export async function createReceivingAccountFixture() {
       if (!body) {
         throw new Error('provider echo requires its actual submitted input')
       }
+      const turnScope = new StructuredAgentSessionCurrentWork(journal, 2).turnScope()
       if (submitted.handoverRecorded && submitted.handedOverAt === undefined) {
-        await journal.resolveDispatch({ clientMessageId, fence: 2, state: 'pending' })
+        await journal.resolveDispatch({ clientMessageId, fence: 2, state: 'pending', turnScope })
       }
       await journal.resolveDispatch({
         clientMessageId,
@@ -132,7 +135,7 @@ export async function createReceivingAccountFixture() {
         state: 'accepted',
         providerIdentity: echo
       })
-      await journal.appendItem(echo, body, { fence: 2 })
+      await journal.appendItem(echo, body, { fence: 2, turnScope })
       if (legacy) {
         userItemId = agentJournalItemKey(echo)
       }
@@ -149,7 +152,7 @@ export async function createReceivingAccountFixture() {
       legacy
         ? { kind: 'status', text: 'Done', turnLifecycle: lifecycle }
         : { kind: 'turn', ...lifecycle },
-      { fence: 2 }
+      { fence: 2, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     return agentJournalItemKey(identity)
   }

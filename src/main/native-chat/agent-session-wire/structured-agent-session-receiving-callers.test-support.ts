@@ -13,7 +13,7 @@ import type { AgentJournalMessageItem } from '../../../shared/agent-session-jour
 import type { OrchestrationSessionCaller } from '../../runtime/orchestration/orchestration-caller-identity'
 import { resolveOrcaSessionParty } from '../../runtime/orchestration/orchestration-party'
 import { OrcaRuntimeService } from '../../runtime/orca-runtime'
-import { eraseRpcMethods } from '../../runtime/rpc/core'
+import { eraseRpcMethods, isStreamingMethod } from '../../runtime/rpc/core'
 import { STRUCTURED_AGENT_SESSION_METHODS } from '../../runtime/rpc/methods/structured-agent-session'
 import { ORCHESTRATION_METHODS } from '../../runtime/rpc/methods/orchestration'
 import { resolveWorkerStartRun } from '../../runtime/rpc/methods/orchestration/worker/worker-start-authority'
@@ -129,7 +129,7 @@ export async function createReceivingCallerFixture(options: { reportsRecipe?: bo
     const method = eraseRpcMethods(STRUCTURED_AGENT_SESSION_METHODS).find(
       (m) => m.name === 'agentSession.ensure'
     )
-    if (!method?.params) {
+    if (!method?.params || isStreamingMethod(method)) {
       throw new Error('registered ensure missing')
     }
     return method.handler(method.params.parse(params(id)), { runtime: service })

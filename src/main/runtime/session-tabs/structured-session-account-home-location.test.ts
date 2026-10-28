@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { agentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
 import { OrcaRuntimeWithStructuredSessionAccountHome } from './structured-session-account-home'
 import { installClaudeProfileRouter } from '../../claude-accounts/claude-profile-installed-router'
@@ -23,9 +24,13 @@ it('without a router keeps the founding home through the real runtime and catalo
     Object.create(OrcaRuntimeWithStructuredSessionAccountHome.prototype),
     { requireStore: () => ({ getSettings }) }
   )
-  const record = agentSessionRecordFixture()
+  const writable = agentSessionRecordFixture()
+  const record = agentSessionConversationView(writable)
   const result = await onRunningAccount(
-    { launchAccountHome: runtime.resolveStructuredAgentLaunchAccountHome.bind(runtime) },
+    {
+      getRecord: () => writable,
+      launchAccountHome: runtime.resolveStructuredAgentLaunchAccountHome.bind(runtime)
+    },
     record
   )
   expect(result).toBe(record)
@@ -51,6 +56,7 @@ it.each([
     const service = createAgentModelCatalogService({
       store,
       getRecord: () => record,
+      getConversation: () => agentSessionConversationView(record),
       drivesRecord: (entry) => agentDrivesSession(claudeAndCodexAgents(), entry),
       resolveAccountHome,
       probes: { claude: probe }

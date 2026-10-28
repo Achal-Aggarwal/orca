@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { expect, it, vi } from 'vitest'
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { StructuredNativeResponses } from './structured-agent-session-native-responses'
@@ -33,7 +34,8 @@ it('retains queued pointer ownership across epoch replacement, then disposes onl
     await f.journal.resolveDispatch({
       clientMessageId: 'queued-native-response',
       fence: 2,
-      state: 'pending'
+      state: 'pending',
+      turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
     await f.turn('queued-native-response', 'running')
     f.db.markAsRead([message.id])
