@@ -6,3 +6,31 @@ export function isWslHostsInternalGateOpen(
 ): boolean {
   return env[WSL_HOSTS_INTERNAL_GATE_ENV] === '1'
 }
+
+/**
+ * `open`: everything. `serve-only`: the gate is closed, but a saved host or a committed move exists,
+ * so its projects stay reachable while nothing new is added or moved. `closed`: no WSL host surface.
+ */
+export type WslHostsGateState = 'open' | 'serve-only' | 'closed'
+
+export function resolveWslHostsGateState(facts: {
+  gateOpen: boolean
+  hasSavedWslHost: boolean
+  hasCommittedWslMove: boolean
+}): WslHostsGateState {
+  if (facts.gateOpen) {
+    return 'open'
+  }
+  return facts.hasSavedWslHost || facts.hasCommittedWslMove ? 'serve-only' : 'closed'
+}
+
+// Preload has no disk access, so main stamps the promoted state into the window's argv at birth.
+const SERVE_ONLY_ARGUMENT = '--orca-wsl-hosts-serve-only'
+
+export function formatWslHostsServeOnlyArgument(): string {
+  return SERVE_ONLY_ARGUMENT
+}
+
+export function hasWslHostsServeOnlyArgument(argv: readonly string[]): boolean {
+  return argv.includes(SERVE_ONLY_ARGUMENT)
+}

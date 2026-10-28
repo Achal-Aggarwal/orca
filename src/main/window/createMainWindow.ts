@@ -21,6 +21,8 @@ import { installMainWindowFocusLifecycle } from './main-window-focus-lifecycle'
 import { installMainWindowShortcutRouting } from './main-window-shortcut-routing'
 import { installMainWindowStateLifecycle } from './main-window-state-lifecycle'
 import { stopHiddenWindowFramePumpOnShow } from './hidden-window-frame-pump'
+import { wslHostsGateState } from '../wsl/wsl-host-gate'
+import { formatWslHostsServeOnlyArgument } from '../../shared/wsl-host-internal-gate'
 import {
   formatHiddenWindowFramePumpArgument,
   shouldPumpHiddenWindowFrames
@@ -143,7 +145,8 @@ export function createMainWindow(
       // Pass host identity at birth so the renderer has it before first snapshot, without waiting for IPC registration.
       additionalArguments: [
         formatBrowserClientHostIdArgument(getBrowserClientHostId()),
-        ...(pumpHiddenFrames ? [formatHiddenWindowFramePumpArgument()] : [])
+        ...(pumpHiddenFrames ? [formatHiddenWindowFramePumpArgument()] : []),
+        ...(wslHostsGateState() === 'serve-only' ? [formatWslHostsServeOnlyArgument()] : [])
       ]
     }
   })
