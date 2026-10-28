@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../../runtime-agent-workspace-retirement'
 import { requestVirtualizedScrollAnchorRecord } from '@/hooks/requestVirtualizedScrollAnchorRecord'
 import { getWorktreeOperationOwnerHostIds } from '@/lib/worktree-operation-route'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../../../../shared/execution-host'
@@ -120,6 +121,9 @@ export function dropConfirmedHostRow(
     const nextDeleteState = { ...state.deleteStateByWorktreeId }
     delete nextDeleteState[getWorktreeDeleteStateKey(state, worktreeId, requiredExecutionHostId)]
     return {
+      ...retireRuntimeAgentWorkspaceInventories(state, [
+        { id: worktreeId, hostId: requiredExecutionHostId }
+      ]),
       worktreesByRepo: nextWorktreesByRepo,
       ...(nextDetectedWorktreesByRepo !== state.detectedWorktreesByRepo
         ? { detectedWorktreesByRepo: nextDetectedWorktreesByRepo }

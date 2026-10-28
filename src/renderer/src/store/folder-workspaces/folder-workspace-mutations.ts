@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../slices/runtime-agent-workspace-retirement'
 import { assertWorkspaceAttachmentWriteCapability } from '../../runtime/runtime-workspace-attachment-capabilities'
 import { getWorkspaceAttachments } from '../../../../shared/workspace-attachments'
 import type { StateCreator } from 'zustand'
@@ -283,6 +284,7 @@ export function createFolderWorkspaceMutationActions(
           return false
         }
         set((s) => ({
+          ...retireRuntimeAgentWorkspaceInventories(s, [{ id: workspaceKey, hostId: ownerHostId }]),
           folderWorkspaces: s.folderWorkspaces.filter(
             (workspace) =>
               workspace.id !== folderWorkspaceId ||

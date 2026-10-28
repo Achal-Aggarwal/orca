@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../../runtime-agent-workspace-retirement'
 import type { AppState } from '../../../types'
 import { forgetCombinedDiffViewsForWorktrees } from '@/components/editor/combined-diff/remember-view/combined-diff-view-cache'
 import type { WorktreePurgeTarget, WorktreePurgeTargets } from '../../worktree-helpers'
@@ -63,6 +64,7 @@ export function buildWorktreePurgeState(
   const next = { ...s, ...patch }
   return {
     ...patch,
+    ...retireRuntimeAgentWorkspaceInventories(next, targets),
     lastVisitedAtByWorktreeId: removeWorktreeVisitEntriesForTargets(
       next.lastVisitedAtByWorktreeId,
       hostKeys
@@ -142,6 +144,10 @@ export function buildFullWorktreePurgeState(
   }
 
   return {
+    ...retireRuntimeAgentWorkspaceInventories(
+      s,
+      normalizedTargets.map(({ id }) => ({ id }))
+    ),
     editorBufferKeepRequest,
     ...removeWorktreeLayout(s, {
       worktreeIds: worktreeIdSet,

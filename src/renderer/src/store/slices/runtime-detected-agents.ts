@@ -1,3 +1,10 @@
+import {
+  runtimeDetectPromises,
+  runtimeRefreshPromises,
+  latestOutcome,
+  withoutKeys,
+  retireRuntimeAgentInventories
+} from './runtime-agent-inventory-cache'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   callRuntimeRpc,
@@ -35,11 +42,6 @@ export type RuntimeDetectedAgentsSlice = {
   /** Prune removed environments’ inventories via setRuntimeEnvironments. */
   retainRuntimeDetectedAgents: (environmentIds: Iterable<string>) => void
 }
-
-// Keep deduplicated promises outside serializable Zustand state.
-const runtimeDetectPromises = new Map<string, Promise<TuiAgent[]>>()
-const latestOutcome = new Map<string, 'pending' | 'successful' | 'failed'>()
-const runtimeRefreshPromises = new Map<string, Promise<TuiAgent[]>>()
 
 function isRuntimeMethodNotFoundError(error: unknown): boolean {
   return error instanceof RuntimeRpcCallError && error.code === 'method_not_found'
@@ -103,19 +105,6 @@ export function _getRuntimeDetectPromiseCountForTest(): number {
   return runtimeDetectPromises.size
 }
 
-function withoutKeys<T>(record: Record<string, T>, drop: (key: string) => boolean) {
-  let changed = false
-  const next: Record<string, T> = {}
-  for (const [key, value] of Object.entries(record)) {
-    if (drop(key)) {
-      changed = true
-    } else {
-      next[key] = value
-    }
-  }
-  return changed ? next : record
-}
-
 export type RuntimeDetectedAgentsStoreState = RuntimeDetectedAgentsSlice &
   Parameters<typeof getConnectionIdFromState>[0]
 
@@ -130,37 +119,10 @@ export const createRuntimeDetectedAgentsSlice: (
   get: () => RuntimeDetectedAgentsStoreState,
   store?: unknown
 ) => RuntimeDetectedAgentsSlice = (set, get) => {
-  // Drops every workspace's inventory for the environments `drop` selects.
   const dropEnvironments = (drop: (environmentId: string) => boolean): void => {
-    const dropKey = (key: string) => drop(getRuntimeAgentInventoryEnvironmentId(key))
-    for (const promises of [runtimeDetectPromises, runtimeRefreshPromises]) {
-      for (const key of promises.keys()) {
-        if (dropKey(key)) {
-          promises.delete(key)
-        }
-      }
-    }
-    ;[...latestOutcome.keys()].filter(dropKey).forEach((key) => latestOutcome.delete(key))
-    set((s) => {
-      const runtimeDetectedAgentIds = withoutKeys(s.runtimeDetectedAgentIds, dropKey)
-      const isDetectingRuntimeAgents = withoutKeys(s.isDetectingRuntimeAgents, dropKey)
-      const isRefreshingRuntimeAgents = withoutKeys(s.isRefreshingRuntimeAgents, dropKey)
-      const runtimeAgentDetectionNeedsServerUpdate = withoutKeys(
-        s.runtimeAgentDetectionNeedsServerUpdate,
-        dropKey
-      )
-      return runtimeDetectedAgentIds === s.runtimeDetectedAgentIds &&
-        isDetectingRuntimeAgents === s.isDetectingRuntimeAgents &&
-        isRefreshingRuntimeAgents === s.isRefreshingRuntimeAgents &&
-        runtimeAgentDetectionNeedsServerUpdate === s.runtimeAgentDetectionNeedsServerUpdate
-        ? s
-        : {
-            runtimeDetectedAgentIds,
-            isDetectingRuntimeAgents,
-            isRefreshingRuntimeAgents,
-            runtimeAgentDetectionNeedsServerUpdate
-          }
-    })
+    set((s) =>
+      retireRuntimeAgentInventories(s, (key) => drop(getRuntimeAgentInventoryEnvironmentId(key)))
+    )
   }
 
   const nestedSshDetection = (

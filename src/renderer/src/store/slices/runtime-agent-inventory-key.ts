@@ -12,3 +12,8 @@ export function getRuntimeAgentInventoryEnvironmentId(inventoryKey: string): str
   const separatorIndex = inventoryKey.indexOf(WORKSPACE_SEPARATOR)
   return separatorIndex === -1 ? inventoryKey : inventoryKey.slice(0, separatorIndex)
 }
+
+export function getRuntimeAgentInventoryWorktreeId(inventoryKey: string): string | null {
+  const separatorIndex = inventoryKey.indexOf(WORKSPACE_SEPARATOR)
+  return separatorIndex === -1 ? null : inventoryKey.slice(separatorIndex + 1)
+}

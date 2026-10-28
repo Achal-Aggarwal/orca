@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../slices/runtime-agent-workspace-retirement'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import { toRuntimeExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
@@ -45,7 +46,7 @@ export function createFolderWorkspaceCatalogActions(
           current.projectGroups
         )
       )
-      const { folderWorkspaces } = mergeFetchedFolderWorkspaceCatalog(
+      const { folderWorkspaces, removedWorkspaceTargets } = mergeFetchedFolderWorkspaceCatalog(
         catalog,
         current.folderWorkspaces,
         current.projectGroups
@@ -54,6 +55,7 @@ export function createFolderWorkspaceCatalogActions(
         return current
       }
       return {
+        ...retireRuntimeAgentWorkspaceInventories(current, removedWorkspaceTargets),
         folderWorkspaces,
         folderWorkspacePathStatuses: {}
       }

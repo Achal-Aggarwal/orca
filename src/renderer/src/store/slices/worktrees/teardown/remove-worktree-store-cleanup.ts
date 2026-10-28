@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../../runtime-agent-workspace-retirement'
 import { worktreeWorkspaceKey } from '../../../../../../shared/workspace-scope'
 import { forgetCombinedDiffViewsForWorktrees } from '@/components/editor/combined-diff/remember-view/combined-diff-view-cache'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
@@ -50,6 +51,7 @@ export function applyRemoveWorktreeSuccessState(
       : false
     const removedActiveWorktree = s.activeWorktreeId === worktreeId
     return {
+      ...retireRuntimeAgentWorkspaceInventories(s, [{ id: worktreeId }]),
       editorBufferKeepRequest,
       ...removeWorktreeLayout(s, {
         worktreeIds: new Set(worktreeIds),

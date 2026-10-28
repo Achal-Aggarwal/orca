@@ -1,3 +1,7 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../slices/runtime-agent-workspace-retirement'
+import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
+import { selectFolderWorkspaces } from '../workspace-record-selectors'
+import type { AppState } from '../types'
 import type { ProjectGroup } from '../../../../shared/project-group-types'
 import { getProjectGroupSubtreeIds } from '../../../../shared/project-groups'
 import { getRepoExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
@@ -36,4 +40,24 @@ export function applyProjectGroupDeleteCascade(
     ),
     folderWorkspacePathStatuses: {}
   }
+}
+
+export function retireProjectGroupState(
+  state: AppState,
+  groupId: string,
+  ownerHostId: ExecutionHostId | null
+): Partial<AppState> {
+  const patch = applyProjectGroupDeleteCascade(state, groupId, ownerHostId)
+  const kept = new Set(selectFolderWorkspaces(patch))
+  const targets = selectFolderWorkspaces(state).flatMap((workspace) =>
+    kept.has(workspace)
+      ? []
+      : [
+          {
+            id: folderWorkspaceKey(workspace.id),
+            hostId: getFolderWorkspaceHostId(workspace, state.projectGroups)
+          }
+        ]
+  )
+  return { ...patch, ...retireRuntimeAgentWorkspaceInventories(state, targets) }
 }

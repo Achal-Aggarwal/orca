@@ -1,3 +1,4 @@
+import type { WorktreePurgeTarget } from '../slices/worktree-purge-target'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type { FolderWorkspace } from '../../../../shared/folder-workspace-types'
@@ -101,25 +102,35 @@ function mergeFetchedFolderWorkspacesForHost({
   fetched: FolderWorkspace[]
   projectGroups: readonly ProjectGroup[]
   hostId: string
-}): readonly FolderWorkspace[] {
+}): {
+  folderWorkspaces: readonly FolderWorkspace[]
+  removedWorkspaceTargets: WorktreePurgeTarget[]
+} {
+  const removedWorkspaceTargets: WorktreePurgeTarget[] = []
   const resolveHostId = createFolderWorkspaceHostResolver(projectGroups)
   const fetchedIdentities = new Set(
     fetched.map((workspace) => getFolderWorkspaceHostIdentity(workspace, resolveHostId))
   )
   const preserved = previous.filter((workspace) => {
     const existingHostId = resolveHostId(workspace)
-    return (
+    const keep =
       !catalogOwnsHost(hostId, existingHostId) ||
       fetchedIdentities.has(getFolderWorkspaceHostIdentity(workspace, resolveHostId))
-    )
+    if (!keep) {
+      removedWorkspaceTargets.push({ id: folderWorkspaceKey(workspace.id), hostId: existingHostId })
+    }
+    return keep
   })
-  return unchangedMergeSource(
-    previous,
-    preserved,
-    mergeByIdentity(preserved, fetched, (workspace) =>
-      getFolderWorkspaceHostIdentity(workspace, resolveHostId)
-    )
-  )
+  return {
+    folderWorkspaces: unchangedMergeSource(
+      previous,
+      preserved,
+      mergeByIdentity(preserved, fetched, (workspace) =>
+        getFolderWorkspaceHostIdentity(workspace, resolveHostId)
+      )
+    ),
+    removedWorkspaceTargets
+  }
 }
 
 export function getFolderWorkspaceCatalogReplacementIdentities(
@@ -214,9 +225,13 @@ export function mergeFetchedFolderWorkspaceCatalog(
   catalog: FetchedFolderWorkspaceCatalog,
   currentFolderWorkspaces: readonly FolderWorkspace[],
   projectGroups: readonly ProjectGroup[]
-): { folderWorkspaces: readonly FolderWorkspace[]; hostId: ExecutionHostId } {
+): {
+  folderWorkspaces: readonly FolderWorkspace[]
+  removedWorkspaceTargets: WorktreePurgeTarget[]
+  hostId: ExecutionHostId
+} {
   return {
-    folderWorkspaces: mergeFetchedFolderWorkspacesForHost({
+    ...mergeFetchedFolderWorkspacesForHost({
       previous: currentFolderWorkspaces,
       fetched: catalog.folderWorkspaces,
       projectGroups,

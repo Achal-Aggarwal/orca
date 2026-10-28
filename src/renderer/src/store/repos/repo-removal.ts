@@ -1,3 +1,4 @@
+import { retireRuntimeAgentWorkspaceInventories } from '../slices/runtime-agent-workspace-retirement'
 import { runEnclosingWorktreeRemoval } from '@/store/active-worktree-deselection-intent'
 import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import type { StateCreator } from 'zustand'
@@ -188,12 +189,9 @@ export function createRepoRemovalActions(
         const { clearRepoSlugCacheEntry } = await import('../../lib/repo-slug-index')
         clearRepoSlugCacheEntry(projectId)
 
-        const worktreeIds = [
-          ...new Set([
-            ...knownWorktreeIds,
-            ...getKnownRepoWorktreeIds(get(), projectId, ownerHostId)
-          ])
-        ]
+        const worktreeIds = Array.from(
+          new Set(knownWorktreeIds.concat(getKnownRepoWorktreeIds(get(), projectId, ownerHostId)))
+        )
         // Why rechecked: a concurrent removal of the other copy leaves no survivor to share with.
         const twins = collectRemovedHostTwins(get(), worktreeIds, ownerHostId)
         const exclusiveWorktreeIds = worktreeIds.filter((id) => !twins.twinHostIds.has(id))
@@ -281,6 +279,7 @@ export function createRepoRemovalActions(
           const survivingRepoIds = new Set(nextRepos.map((r) => r.id))
           const removedRepoIds = s.repos.filter((r) => !survivingRepoIds.has(r.id)).map((r) => r.id)
           return {
+            ...retireRuntimeAgentWorkspaceInventories(s, purgeTargets),
             repos: nextRepos,
             // Why: drop removed repos' sparse-preset maps so they don't outlive the repo for the whole session.
             ...omitSparsePresetsForRepos(s, removedRepoIds),
