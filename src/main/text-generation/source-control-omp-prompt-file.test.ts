@@ -34,6 +34,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return { ...actual, rm: vi.fn(actual.rm) }
 })
 
+const actualFs = await vi.importActual<typeof FsPromises>('node:fs/promises')
+
 afterEach(() => vi.useRealTimers())
 
 // OMP 17.0.5 recorded stdin-only execution: exit 0, empty stdout/stderr, no submitted prompt.
@@ -367,7 +369,6 @@ it.each(['success', 'spawn failure', 'permanent failure'] as const)(
   'settles independently of bounded async cleanup after %s',
   async (outcome) => {
     const originalPlatform = process.platform
-    const actualFs = await vi.importActual<typeof FsPromises>('node:fs/promises')
     const rmMock = vi.mocked(rm)
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const locked = Object.assign(new Error('EPERM: prompt handle held'), { code: 'EPERM' })
