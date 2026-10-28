@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
+import { lstat, stat, mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
 import type * as FsPromisesModule from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -9,7 +9,7 @@ import { isGitRepoAsync } from '../git/repo'
 vi.mock('../git/repo', () => ({ isGitRepoAsync: vi.fn() }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromisesModule>()
-  return { ...actual, lstat: vi.fn(actual.lstat) }
+  return { ...actual, lstat: vi.fn(actual.lstat), stat: vi.fn(actual.stat) }
 })
 
 beforeEach(() => {
@@ -149,6 +149,28 @@ describe('scanNestedRepos', () => {
       'billing-service'
     ])
   })
+
+  it.each([10, 100])(
+    'uses one metadata read per ordinary nested repo at %i repos',
+    async (count) => {
+      const root = await tempRoot()
+      const childPrefix = join(root, 'repo-')
+      for (let index = 0; index < count; index++) {
+        const child = `${childPrefix}${index}`
+        await mkdir(child)
+        await (index % 2 === 0
+          ? makeGitRepo(child)
+          : writeFile(join(child, '.git'), 'gitdir: ../metadata\n'))
+      }
+
+      const result = await scanNestedRepos({ path: root, options: { maxRepos: count + 1 } })
+      const childReads = [...vi.mocked(lstat).mock.calls, ...vi.mocked(stat).mock.calls].filter(
+        ([path]) => String(path).startsWith(childPrefix)
+      )
+      expect(result.repos).toHaveLength(count)
+      expect(childReads).toHaveLength(count)
+    }
+  )
 
   it('returns repositories found before a stopped scan', async () => {
     const directories = new Map([['/workspace', ['api', 'web']]])

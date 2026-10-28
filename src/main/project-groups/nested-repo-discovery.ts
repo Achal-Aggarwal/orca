@@ -37,14 +37,14 @@ async function probeGitMarkers(dirPath: string): Promise<{
       return null
     }
   }
-  const [marker, head, objects, refs] = await Promise.all(
-    ['.git', 'HEAD', 'objects', 'refs'].map(readMarker)
-  )
+  const marker = await readMarker('.git')
+  if (marker?.isDirectory() === true || marker?.isFile() === true) {
+    return { hasGitMarker: true, possibleGitMarker: true }
+  }
+  const [head, objects, refs] = await Promise.all(['HEAD', 'objects', 'refs'].map(readMarker))
   return {
     hasGitMarker:
-      marker?.isDirectory() === true ||
-      marker?.isFile() === true ||
-      (head?.isFile() === true && objects?.isDirectory() === true && refs?.isDirectory() === true),
+      head?.isFile() === true && objects?.isDirectory() === true && refs?.isDirectory() === true,
     possibleGitMarker
   }
 }
