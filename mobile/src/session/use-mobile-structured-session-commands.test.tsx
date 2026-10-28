@@ -371,16 +371,20 @@ describe('useMobileStructuredSessionCommands', () => {
     expect(tokens().has('/review-pr')).toBe(true)
   })
 
-  it.each(['claude', 'omp'] as const)(
-    'recovers the parked %s phone menu through actual host retirement and dispatch',
-    async (provider) => {
+  it.each([
+    ['claude', false],
+    ['omp', false],
+    ['claude', true]
+  ] as const)(
+    'recovers the parked %s phone menu (pending preparation=%s) through actual host retirement and dispatch',
+    async (provider, pending) => {
       vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
       const { createMobileCommandMenuHostFixture } =
         await vi.importActual<MobileCommandMenuHostFixtureModule>(
           '../../../src/main/native-chat/agent-session-wire/mobile-queued-edit-host.test-fixture'
         )
-      const host = await createMobileCommandMenuHostFixture(provider)
-      let online = false,
+      const host = await createMobileCommandMenuHostFixture(provider, pending)
+      let online = pending,
         stop = () => {}
       const sendRequest = vi.fn<RpcClient['sendRequest']>(async (method) => {
         if (method !== 'agentSession.commands') {
@@ -422,9 +426,20 @@ describe('useMobileStructuredSessionCommands', () => {
         await act(async () => {
           await vi.advanceTimersByTimeAsync(330_000)
         })
+        const parked = sendRequest.mock.calls.filter(
+          ([method]) => method === 'agentSession.commands'
+        ).length
+        if (pending) {
+          expect(parked).toBeGreaterThan(3)
+        } else {
+          expect(parked).toBe(3)
+        }
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100_000)
+        })
         expect(
           sendRequest.mock.calls.filter(([method]) => method === 'agentSession.commands')
-        ).toHaveLength(3)
+        ).toHaveLength(parked)
         expect(host.starts()).toBe(0)
         online = true
         for (const scoped of [false, true]) {

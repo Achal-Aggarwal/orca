@@ -59,7 +59,7 @@ export const createMobileQueuedEditHostFixture: MobileQueuedEditHostFixtureModul
   }
 
 export const createMobileCommandMenuHostFixture: MobileCommandMenuHostFixtureModule['createMobileCommandMenuHostFixture'] =
-  async (provider) => {
+  async (provider, holdPreparation = false) => {
     const { mkdtemp, mkdir, rm } = await import('node:fs/promises')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
@@ -88,26 +88,36 @@ export const createMobileCommandMenuHostFixture: MobileCommandMenuHostFixtureMod
     const cwd = join(root, 'workspace')
     await mkdir(cwd)
     let starts = 0
+    const preparation = Promise.withResolvers<void>()
+    const resolveWorkspacePath = async () => {
+      if (holdPreparation) {
+        await preparation.promise
+      }
+      return cwd
+    }
     const omp =
       provider === 'omp'
-        ? await commandDiscoveryRig((child) => {
-            starts++
-            child.agent.on('session/new', (frame) => {
-              child.agent.notify('session/update', {
-                sessionId: DISCOVERY_SESSION,
-                update: {
-                  sessionUpdate: 'available_commands_update',
-                  availableCommands: [{ name: 'fast', description: 'Fast', input: { hint: '' } }]
-                }
+        ? await commandDiscoveryRig(
+            (child) => {
+              starts++
+              child.agent.on('session/new', (frame) => {
+                child.agent.notify('session/update', {
+                  sessionId: DISCOVERY_SESSION,
+                  update: {
+                    sessionUpdate: 'available_commands_update',
+                    availableCommands: [{ name: 'fast', description: 'Fast', input: { hint: '' } }]
+                  }
+                })
+                child.agent.reply(frame, { sessionId: DISCOVERY_SESSION })
               })
-              child.agent.reply(frame, { sessionId: DISCOVERY_SESSION })
-            })
-          })
+            },
+            { resolveWorkspacePath }
+          )
         : undefined
     const catalog =
       omp?.catalog ??
       new ClaudeAtRestCommandCatalog({
-        resolveWorkspacePath: async () => cwd,
+        resolveWorkspacePath,
         probe: async () => {
           starts++
           return [{ name: 'fast', kind: 'command' }]
@@ -173,6 +183,7 @@ export const createMobileCommandMenuHostFixture: MobileCommandMenuHostFixtureMod
           emit
         }),
       retire: async (scoped) => {
+        holdPreparation = false
         if (scoped) {
           retireAtRestCommandContext('menu-folder')
         } else {
@@ -182,6 +193,8 @@ export const createMobileCommandMenuHostFixture: MobileCommandMenuHostFixtureMod
       },
       dispose: async () => {
         unbind()
+        catalog.dispose()
+        preparation.resolve()
         await host.flushAllStreamedEvents()
         await omp?.dispose()
         closeTestJournalHostDatabase(root)
