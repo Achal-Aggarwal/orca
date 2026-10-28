@@ -3,6 +3,7 @@ import { readdirSync } from 'node:fs'
 import { scanAiVaultSessions } from './session-scanner'
 import { isolatedScanRoots, jsonLines } from './session-scanner-test-fixtures'
 import { parseSessionCandidates } from './session-scanner-candidate-parse'
+import type { SessionFileCandidate } from './session-scanner-types'
 import { createSessionParseStats } from './session-scanner-parse-cache'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { mkdtemp, mkdir, rm, writeFile, symlink, stat, appendFile } from 'node:fs/promises'
@@ -66,7 +67,7 @@ describe('codex session index title cache', () => {
     async (count) => {
       const root = process.env.ORCA_USER_DATA_PATH!
       const homes: string[] = []
-      const candidates = []
+      const candidates: SessionFileCandidate[] = []
       for (let index = 0; index < count; index++) {
         const home = join(root, 'codex-accounts', `a-${index}`, 'home')
         const overlay = join(root, 'codex-accounts', `a-${index}`, 'overlays', 'a'.repeat(32))

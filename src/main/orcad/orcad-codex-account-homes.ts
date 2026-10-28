@@ -10,8 +10,8 @@ import {
 import { reconcileCodexAccountHomeHook } from '../codex/codex-account-home-hook'
 import { stopCodexStateDbBackfillRecoveries } from '../codex/codex-state-db-backfill-recovery'
 import type { GetSelectedCodexHomePath } from '../ipc/pty/host-env/types'
-import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import { isWslHostOrcadProcess } from '../ipc/wsl-guest-windows-drive-path'
+import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 
 /** Keep host status hooks and session discovery in client-selected managed CODEX_HOME paths. */
 export function orcadCodexAccountHomes(

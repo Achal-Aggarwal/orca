@@ -4,6 +4,7 @@ import {
   prepareLegacySharedCodexSessionResume
 } from './codex-legacy-session-resume'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import type { AiVaultPrepareSessionResumeArgs } from '../../shared/ai-vault-resume-preparation'
 import { createCodexStructuredLaunchResolver } from '../runtime/structured-agent-launch-composition.test-support'
 import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
@@ -50,15 +51,15 @@ vi.mock('./codex-home-paths', async (importOriginal) => ({
   getCodexSessionBackfillStateDirPath: () => join(root, 'backfill')
 }))
 
+const originalFsPromises = await vi.importActual<typeof fsPromises>('node:fs/promises')
+
 let root: string
 let system: string
 let accounts: string
 let a: string
 let b: string
-beforeEach(async () => {
-  vi.mocked(fsPromises.link).mockImplementation(
-    (await vi.importActual<typeof fsPromises>('node:fs/promises')).link
-  )
+beforeEach(() => {
+  vi.mocked(fsPromises.link).mockImplementation(originalFsPromises.link)
   root = mkdtempSync(join(tmpdir(), 'codex-store-overlay-'))
   system = join(root, 'system')
   accounts = join(root, 'codex-accounts')
@@ -308,7 +309,7 @@ function targetRollout(): string {
 
 it('predicts without copying and awaits actual native preparation before returning launch inputs', async () => {
   const source = sourceRollout()
-  const { link } = await vi.importActual<typeof fsPromises>('node:fs/promises')
+  const { link } = originalFsPromises
   let entered!: () => void
   const began = new Promise<void>((done) => {
     entered = done
@@ -354,7 +355,15 @@ it('predicts without copying and awaits actual native preparation before returni
     })
   })
   let settled = false
-  const pending = resolver({ identity: { sessionId: 'native' } }).then((value) => {
+  const pending = resolver({
+    identity: {
+      sessionId: record.sessionId,
+      workspaceId: record.location.workspaceId,
+      hostId: record.location.executionHostId,
+      agent: record.provider,
+      providerHandle: codexProviderHandle(threadId)
+    }
+  }).then((value) => {
     settled = true
     return value
   })
@@ -371,7 +380,7 @@ it('predicts without copying and awaits actual native preparation before returni
 
 it('uses main no-overwrite copy fallback, matching-target retry and conflicting-target failure', async () => {
   const transcriptPath = sourceRollout()
-  const { link } = await vi.importActual<typeof fsPromises>('node:fs/promises')
+  const { link } = originalFsPromises
   vi.mocked(fsPromises.link).mockImplementation(async (from, to) => {
     if (from === transcriptPath) {
       throw Object.assign(new Error('different volume'), { code: 'EXDEV' })
@@ -391,7 +400,7 @@ it('uses main no-overwrite copy fallback, matching-target retry and conflicting-
 
 it('awaits History/adoption preparation and propagates materialization failure without fallback', async () => {
   const filePath = sourceRollout()
-  const args = {
+  const args: AiVaultPrepareSessionResumeArgs = {
     agent: 'codex' as const,
     executionHostId: LOCAL_EXECUTION_HOST_ID,
     codexHome: a,

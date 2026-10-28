@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { getDefaultSettings } from '../../shared/constants'
 
-const { prepareHooks, resolveHome, listHomes, launchHome, wslHost } = vi.hoisted(() => ({
-  wslHost: vi.fn(() => false),
+vi.mock('../codex/codex-launch-home', () => ({
+  resolveCodexLaunchHome: launchHome
+}))
+
+const { prepareHooks, resolveHome, listHomes, launchHome } = vi.hoisted(() => ({
   prepareHooks: vi.fn(
     async (_home: string, _isHooksEnabled: () => boolean, _launchesCodex: boolean) => {}
   ),
@@ -17,12 +20,8 @@ const { prepareHooks, resolveHome, listHomes, launchHome, wslHost } = vi.hoisted
   )
 }))
 
+const wslHost = vi.hoisted(() => vi.fn(() => false))
 vi.mock('../ipc/wsl-guest-windows-drive-path', () => ({ isWslHostOrcadProcess: wslHost }))
-
-vi.mock('../codex/codex-launch-home', () => ({
-  resolveCodexLaunchHome: launchHome
-}))
-
 vi.mock('../codex/codex-account-home-hook', () => ({
   reconcileCodexAccountHomeHook: prepareHooks
 }))

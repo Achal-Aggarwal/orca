@@ -2,6 +2,7 @@ import type * as NodeOs from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import type { AgentSessionAccountHome } from '../../shared/agent-session-account-home'
+import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { resolveCodexLaunchHome } from '../codex/codex-launch-home'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
@@ -113,14 +114,14 @@ describe('Codex catalog account key: picker read vs launch', () => {
     release = wired.release
     const read = await wired.resolve('read')
     const launched = await wired.resolve('launch')
-    expect(read.path).toBe(getSystemCodexHomePath())
+    expect(requireLegacyAgentSessionAccountHome(read).path).toBe(getSystemCodexHomePath())
     expect(launched).toEqual(read)
     const { createCodexModelCatalogProbe } = await import('../codex/codex-model-catalog-probe')
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({ CODEX_HOME: custom }),
       resolveCommand: () => 'codex',
       runSession: async (invocation, body) => {
-        expect(invocation.env.CODEX_HOME).toBe(launched.path)
+        expect(invocation.env?.CODEX_HOME).toBe(requireLegacyAgentSessionAccountHome(launched).path)
         return body({
           request: async () => ({
             data: [
