@@ -22,7 +22,8 @@ type NotificationCoordinatorDependencies<TWaiter extends OrchestrationMessageWai
   hasTerminalHandle: (handle: string) => boolean
   deliverForHandle: (handle: string, reservedTypes?: ReadonlySet<string>) => void
   notifyMessageArrived: (handle: string, messageType: string) => void
-  resolveMessageWaiter: (waiter: TWaiter) => void
+  /** Waiters resolved together share one wake, so they share the batch the first one takes. */
+  resolveMessageWaiters: (waiters: readonly TWaiter[]) => void
 }
 
 export class OrchestrationMailboxNotificationCoordinator<
@@ -69,9 +70,7 @@ export class OrchestrationMailboxNotificationCoordinator<
       queueMicrotask(() => this.deps.deliverForHandle(mailboxHandle, reservedTypes))
       return
     }
-    for (const waiter of consumers) {
-      this.deps.resolveMessageWaiter(waiter)
-    }
+    this.deps.resolveMessageWaiters(consumers)
   }
 
   wakeRoutedMessageWaiters(mailboxHandle: string, types: readonly string[]): void {
@@ -82,14 +81,13 @@ export class OrchestrationMailboxNotificationCoordinator<
     // Snapshot ownership before the routed rows wake and remove their waiters.
     queueMicrotask(() => {
       const liveWaiters = this.deps.getMessageWaiters(mailboxHandle)
-      for (const waiter of waiters) {
-        if (
-          liveWaiters?.has(waiter) &&
-          (!waiter.typeFilter || types.some((type) => waiter.typeFilter?.includes(type)))
-        ) {
-          this.deps.resolveMessageWaiter(waiter)
-        }
-      }
+      this.deps.resolveMessageWaiters(
+        waiters.filter(
+          (waiter) =>
+            liveWaiters?.has(waiter) &&
+            (!waiter.typeFilter || types.some((type) => waiter.typeFilter?.includes(type)))
+        )
+      )
     })
   }
 

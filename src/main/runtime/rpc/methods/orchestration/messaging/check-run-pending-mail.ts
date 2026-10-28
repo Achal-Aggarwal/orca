@@ -2,6 +2,7 @@ import type { MessageType, OrchestrationDb, RunRow } from '../../../../orchestra
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { interruptedAcknowledgedCheck } from '../routing'
 import { checkWorkerMailbox } from './check-worker'
+import { handsOverBatch } from './mailbox-message-receipt'
 import { currentDispatchAssigneeRun } from './recipient-routing'
 import { callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { orchestrationCallerIdentity } from '../runs/run-scope'
@@ -101,8 +102,12 @@ export async function checkRunPendingMail(args: {
           throw dispatchFenced()
         }
       },
-      recordMutationReceipt
+      recordMutationReceipt,
+      runAcknowledged: acknowledged?.delivery.id
     })
+    if (handsOverBatch(result)) {
+      return { acknowledged: result?.acknowledged ?? undefined, result }
+    }
     if (result?.acknowledged) {
       acknowledged = { delivery: { id: result.acknowledged } }
     }

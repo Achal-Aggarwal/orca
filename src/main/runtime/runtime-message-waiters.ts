@@ -1,6 +1,26 @@
 import { ORCHESTRATION_MESSAGE_WAIT_DEFAULT_TIMEOUT_MS } from '../../shared/orchestration-message-wait-timeout'
 
-export type MessageWaitResult = 'notified' | 'timed_out' | 'cancelled'
+import type { MailboxDeliveryBatch } from './orchestration/db/messages/role-mailbox-delivery'
+
+/** One notification: consuming checks it wakes share the batch the first of them takes. */
+export class MessageWake {
+  private readonly taken = new Map<string, MailboxDeliveryBatch>()
+
+  share(mailboxKey: string, take: () => MailboxDeliveryBatch | undefined) {
+    const shared = this.taken.get(mailboxKey)
+    if (shared) {
+      return { ...shared, replayed: true }
+    }
+    const batch = take()
+    if (batch) {
+      this.taken.set(mailboxKey, batch)
+    }
+    return batch
+  }
+}
+
+/** A notified wait resolves with its notification's wake. */
+export type MessageWaitResult = MessageWake | 'timed_out' | 'cancelled'
 
 export type RuntimeMessageWaiter = {
   handle: string
@@ -23,14 +43,13 @@ export class RuntimeMessageWaiters {
     }
     queueMicrotask(() => {
       const liveWaiters = this.waitersByHandle.get(handle)
-      for (const waiter of waiters) {
-        if (
-          liveWaiters?.has(waiter) &&
-          (!waiter.typeFilter || types.some((type) => waiter.typeFilter?.includes(type)))
-        ) {
-          this.resolve(waiter, 'notified')
-        }
-      }
+      this.resolveNotified(
+        waiters.filter(
+          (waiter) =>
+            liveWaiters?.has(waiter) &&
+            (!waiter.typeFilter || types.some((type) => waiter.typeFilter?.includes(type)))
+        )
+      )
     })
   }
 
@@ -95,9 +114,12 @@ export class RuntimeMessageWaiters {
     return this.waitersByHandle
   }
 
-  /** Resolve a waiter selected by mailbox routing. */
-  resolveNotified(waiter: RuntimeMessageWaiter): void {
-    this.resolve(waiter, 'notified')
+  /** Resolve the waiters one notification selected, sharing a single wake among them. */
+  resolveNotified(waiters: readonly RuntimeMessageWaiter[]): void {
+    const wake = new MessageWake()
+    for (const waiter of waiters) {
+      this.resolve(waiter, wake)
+    }
   }
 
   private resolve(waiter: RuntimeMessageWaiter, result: MessageWaitResult): void {

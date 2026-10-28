@@ -127,9 +127,9 @@ ${heartbeat}  # Ask the coordinator a question and block until it answers.
   # you send worker_done, so a redirect lands before the task settles.
   ${cli} orchestration check --terminal ${params.workerHandle} --json
 
-  # After processing every message, ack the returned deliveryId; this also reads
-  # the next batch. Repeat until count is 0, then resume. Unacked batches replay
-  # and hide newer mail.
+  # Each check marks the batch it returns as handled; repeat until count is 0,
+  # then resume. Only if a batch lacks "deliveryAcknowledged": true (an older
+  # Orca), ack its deliveryId so it does not replay and hide newer mail:
   ${cli} orchestration check --terminal ${params.workerHandle} --ack <delivery_id> --json
 \`\`\`
 

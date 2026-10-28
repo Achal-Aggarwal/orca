@@ -5,6 +5,7 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import { reconcileLifecycleMessage } from '../../../../orchestration/lifecycle-reconciliation'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { MessageWake } from '../../../../runtime-message-waiters'
 
 describe('orchestration RPC methods', () => {
   const h = createOrchestrationRpcHarness()
@@ -282,11 +283,6 @@ describe('orchestration RPC methods', () => {
         code: 'stale_delivery',
         message: `${queued.id} is a message id, not a delivery id. Acknowledge the batch with the deliveryId field from the check response; process the entire batch before acknowledging.`
       })
-      expect(db.getMessageById(queued.id)).toMatchObject({ id: queued.id, read: 0 })
-      expect(await call('orchestration.check', { terminal: 'term_coord' })).toMatchObject({
-        deliveryId,
-        messages: [{ id: queued.id }]
-      })
       expect(
         await call('orchestration.check', { terminal: 'term_coord', ack: deliveryId })
       ).toMatchObject({ acknowledged: deliveryId })
@@ -357,7 +353,7 @@ describe('orchestration RPC methods', () => {
           type: 'worker_done',
           runId: activeRunId
         }).id
-        return 'notified'
+        return new MessageWake()
       })
 
       const peeked = (await call('orchestration.check', {
@@ -386,7 +382,7 @@ describe('orchestration RPC methods', () => {
           dispatchId: dispatch.id,
           filesModified: ['src/file.ts']
         })
-        return 'notified'
+        return new MessageWake()
       })
 
       const result = (await call('orchestration.check', {
@@ -400,7 +396,7 @@ describe('orchestration RPC methods', () => {
       expect(result.messages[0].type).toBe('worker_done')
       expect(db.getTask(task.id)?.status).toBe('completed')
       expect(db.getDispatchContextById(dispatch.id)?.status).toBe('completed')
-      expect(db.getUnreadMessages(`run:${activeRunId}`)).toHaveLength(1)
+      expect(db.getUnreadMessages(`run:${activeRunId}`)).toHaveLength(0)
       const taskList = (await call('orchestration.taskList', {})) as {
         tasks: {
           id: string
@@ -420,18 +416,16 @@ describe('orchestration RPC methods', () => {
 
       const completedAt = db.getTask(task.id)?.completed_at
       const taskResult = db.getTask(task.id)?.result
-      const repeated = (await call('orchestration.check', {
-        terminal: 'term_coord',
-        types: 'worker_done'
-      })) as { count: number; deliveryId: string }
-      expect(repeated.count).toBe(1)
-      expect(repeated.deliveryId).toBe(result.deliveryId)
-      const acknowledged = (await call('orchestration.check', {
-        terminal: 'term_coord',
-        ack: repeated.deliveryId,
-        types: 'worker_done'
-      })) as { count: number }
-      expect(acknowledged.count).toBe(0)
+      expect(
+        await call('orchestration.check', { terminal: 'term_coord', types: 'worker_done' })
+      ).toMatchObject({ count: 0 })
+      expect(
+        await call('orchestration.check', {
+          terminal: 'term_coord',
+          ack: result.deliveryId,
+          types: 'worker_done'
+        })
+      ).toMatchObject({ count: 0 })
       expect(db.getTask(task.id)?.completed_at).toBe(completedAt)
       expect(db.getTask(task.id)?.result).toBe(taskResult)
     })

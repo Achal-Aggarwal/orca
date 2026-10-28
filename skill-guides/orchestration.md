@@ -21,7 +21,7 @@ which attempt is authoritative, and when supervised work has settled.
 **Result:** every in-scope Task has one explicit outcome and every settled worker
 terminal has a next owner or cleanup decision. **Next consumer:** the user who
 requested supervision. **Done:** all expected Dispatches have settled, every
-delivered message was processed before acknowledgment, each settled worker was
+delivered message was processed, each settled worker was
 reused, explicitly retained, or released, and the turn ends only when the report
 to that user names, per Task, its outcome, the evidence behind it, and any
 unresolved blocker.
@@ -87,9 +87,11 @@ The injected preamble is authoritative. A dispatched worker must:
 3. Read coordinator follow-ups at each natural checkpoint — before starting a
    new file, after a test run — and once more immediately before `worker_done`:
    `ORCA orchestration check --terminal <your_handle> --json`.
-   After processing every message, ack the batch, which returns the next one, and
-   repeat until `count` is 0; an unacked batch replays and hides newer mail:
-   `ORCA orchestration check --terminal <your_handle> --ack <delivery_id> --json`.
+   Each `check` marks the batch it returns handled; repeat until `count` is 0.
+   Only if a batch lacks `"deliveryAcknowledged": true` (an older Orca), ack its
+   `deliveryId` with `--ack`. If a `check` reply was lost, rerun it with the
+   `--retry-request <id>` it printed; after lost context, read handled mail with
+   `ORCA orchestration inbox --terminal dispatch:<dispatch_id> --limit 50 --full --json`.
 4. Send `worker_done` exactly once, from the dispatched terminal, with a
    three-sentence executive summary, both lifecycle IDs, and explicit
    `--outcome succeeded` or `--outcome failed`. Never encode failure only in prose.
@@ -132,15 +134,21 @@ it works for, without `run-create`; the helpers report to that worker.
 
 A consuming `check` names its caller with `--terminal <handle>`, never `--from`;
 omit it inside the coordinator's own Orca terminal. It returns the bound Run's
-oldest FIFO Delivery and replays that batch until acknowledged. Process every
-message: reply to questions, validate each `worker_done` against the expected
-active Dispatch, and decide each settled terminal's next owner before the ack:
+oldest FIFO Delivery and marks it handled; `--ack` is still accepted but not
+needed. Process every message: reply to questions, validate each `worker_done`
+against the expected active Dispatch, and decide each settled terminal's next
+owner before the next `check`:
 
 ```text
 ORCA orchestration reply --id <message_id> --body "<answer>" --json
 ORCA orchestration worker-release --dispatch <dispatch_id> --json
-ORCA orchestration check --ack <delivery_id> --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
+ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
 ```
+
+If a `check` reply was lost, rerun it with the `--retry-request <id>` it printed.
+If you lost context, read the handled mail with
+`ORCA orchestration inbox --terminal run:<run_id> --limit 50 --full --json`.
+Scripts that only watch the inbox must use `--peek`.
 
 Keep waiting until every expected Dispatch settles. A timeout or empty result is
 a checkpoint, not a failure. Do not stop, retry, release, or launch a duplicate
@@ -206,7 +214,7 @@ older CLI rejects `--full`, keep this kernel's safety floor, use that command's
 | Expanded DAG waves, launch model/effort, same-terminal reuse, or review ownership                             | `references/coordinator-loop.md`          |
 | You are a dispatched worker and the live preamble does not answer your question, or `check` returned an error | `references/worker-contract.md`           |
 | New worktree, exact workspace, SSH, WSL, or connected-server placement                                        | `references/placement-and-remote.md`      |
-| Inbox replay, follow-up messages, group addresses, or decision gates                                          | `references/messaging-and-gates.md`       |
+| Inbox recovery, follow-up messages, group addresses, or decision gates                                        | `references/messaging-and-gates.md`       |
 | Failed/stopped/unknown attempts, retry, stop, abandon, retain, or uncertain release                           | `references/recovery-and-cleanup.md`      |
 | Custom argv or terminal topology that `worker-start` cannot express                                           | `references/low-level-topology.md`        |
 | Any legacy label, adopted Run, compatibility receipt, or takeover                                             | `references/legacy-contract-migration.md` |

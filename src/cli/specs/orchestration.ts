@@ -89,10 +89,10 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
     summary: "Check this agent's messages",
     usage:
       'orca orchestration check [--terminal <handle>] [--run <run_id>] [--ack <delivery_id>] [--unread | --peek | --all] [--types <type,...>] [--format] [--wait] [--timeout-ms <n>] [--retry-request <id>] [--json]\n' +
-      "  default: return the bound Run's oldest unacknowledged FIFO batch.\n" +
-      '  --ack: acknowledge the prior whole batch before checking/waiting.\n' +
+      "  default: return the bound Run's oldest unread FIFO batch and mark it handled.\n" +
+      '  --ack: optional; acknowledges a batch from an older Orca that does not mark it.\n' +
       '  --peek: return only unread messages without marking them read.\n' +
-      '  --all: return every message for the handle; does not mark read.\n' +
+      '  --all: return recent messages for the handle; does not mark read.\n' +
       '  --wait: block until a matching message arrives or --timeout-ms expires.\n' +
       '          Emits JSON keepalive lines to stderr every 15s so the caller can\n' +
       '          tell the process is alive. `_keepalive` is unrelated to heartbeat\n' +
@@ -117,7 +117,7 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
       'On Windows PowerShell, quote comma-separated type filters, e.g. --types "worker_done,escalation".',
       '--types is the wake condition for --wait; a returned Delivery is always the whole FIFO batch, so it is never filtered by type. Without --wait it has no effect on consuming checks. Only --peek and --all filter their rows.',
       '--format renders the returned rows as local text only; it never writes to another terminal.',
-      'A bound Run replays the same Delivery until --ack or all its messages are marked read, even with --types; process every message before acknowledging. Several --wait calls may wait on one Run inbox; waiting reserves nothing, listeners woken together get the same Delivery, and a repeated --ack is a no-op. --peek and --all return no deliveryId, so they do not drain a mailbox on their own; --all and a Run --peek show at most 100 rows. To drain, repeat plain check with --ack <previous deliveryId> until deliveryId is null.'
+      "A consuming check marks the batch it returns as handled, so the next check returns newer mail; no --ack is needed. Several --wait calls may wait on one inbox; waiting reserves nothing, listeners woken by the same arrival get the same Delivery, and --ack of a handled Delivery is a no-op. Consuming checks belong to the agent itself. A script that only watches the inbox must use --peek (including --peek --wait) and must never --ack, or it takes mail the agent never sees. If a check response was lost, rerun it with the --retry-request it printed to get the same batch. To find mail after losing context, run orca orchestration inbox --terminal <mailbox> --limit <n> --full and name the mailbox: run:<run_id> for a coordinator's bound Run, or dispatch:<dispatch_id> for a worker, including mail it read before it bound a helper Run."
     ]
   },
   {

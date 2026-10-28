@@ -317,7 +317,7 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
       deliverForHandle: (handle, reservedTypes) =>
         this.deliverPendingMessagesForHandle(handle, reservedTypes),
       notifyMessageArrived: (handle, messageType) => this.notifyMessageArrived(handle, messageType),
-      resolveMessageWaiter: (waiter) => this.messageWaiters.resolveNotified(waiter)
+      resolveMessageWaiters: (waiters) => this.messageWaiters.resolveNotified(waiters)
     })
 
   protected readonly messageWaiters = new RuntimeMessageWaiters()

@@ -6,6 +6,7 @@ import { makePaneKey } from '../../../shared/stable-pane-id'
 import { getDefaultWorkspaceSession } from '../../../shared/constants'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { createRootDispatch } from './db/root-dispatch-test-fixture'
+import { MessageWake } from '../runtime-message-waiters'
 
 // Lightweight Runs lack coordinator_runs rows; worker exits must escalate through their own reachable Run mailbox (STA-4604).
 
@@ -313,7 +314,7 @@ describe('STA-4604 worker PTY exit escalation reaches the coordinator', () => {
       })
       runtime.onPtyExit(WORKER_PTY_ID, 137)
 
-      await expect(waiting).resolves.toBe('notified')
+      await expect(waiting).resolves.toBeInstanceOf(MessageWake)
       // A notification can wake waitForMessage without durable mail; assert the stored message too.
       expect(db.getUnreadRunMailbox(run.id, 100, ['escalation'])).toEqual([
         expect.objectContaining({
