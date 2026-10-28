@@ -32,7 +32,7 @@ const WSL_REPO = '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo'
 describe('PR refresh for a stopped WSL distro (E9)', () => {
   beforeEach(() => {
     moduleMocks.resetPRRefreshCoordinatorMocks(coordinatorMocks)
-    getPRForBranchOutcomeMock.mockResolvedValue({ kind: 'no-pr', fetchedAt: Date.now() })
+    getPRForBranchOutcomeMock.mockResolvedValue({ kind: 'no-pr', fetchedAt: 1 })
     gate.blockedWslDistroForPath.mockReset()
     gate.wslDistroForPath.mockReset()
     gate.wslDistroForPath.mockImplementation((path: string) =>
