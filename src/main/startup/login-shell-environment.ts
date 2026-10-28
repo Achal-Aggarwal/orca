@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
-import { win32 as pathWin32 } from 'node:path'
+import { basename, win32 as pathWin32 } from 'node:path'
+import { quotePosixShell } from '../../shared/shell-argument-quoting'
+import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { spawnProcess } from '@orca/process-host'
 import { resolveWindowsShellStartupFamily } from '../../shared/windows-terminal-shell'
 import {
@@ -10,10 +12,14 @@ import {
 const START_MARKER = '__ORCA_LOGIN_SHELL_ENV_START__'
 const END_MARKER = '__ORCA_LOGIN_SHELL_ENV_END__'
 const SPAWN_TIMEOUT_MS = 5000
+const EXECUTABLE_ENV = '__ORCA_CAPTURE_EXECUTABLE'
+const CWD_ENV = '__ORCA_CAPTURE_CWD'
 
 export type LoginShellEnvironmentCapture = {
   status: 'captured' | 'fallback'
   env: NodeJS.ProcessEnv
+  executablePath?: string | null
+  cwd?: string
 }
 
 type CachedEnvironment = {
@@ -58,22 +64,50 @@ const POWERSHELL_ENVIRONMENT_DUMP =
   `[Console]::Write(($values | ConvertTo-Json -Compress)); ` +
   `[Console]::Write('${END_MARKER}')`
 
-function shellProbe(shell: string): string[] | null {
+function shellProbe(shell: string, executable?: string): string[] | null {
   if (process.platform !== 'win32') {
+    let resolution = ''
+    if (executable) {
+      const name = quotePosixShell(executable)
+      if (basename(shell) === 'bash') {
+        resolution = `export ${EXECUTABLE_ENV}=; if [ "$(builtin type -t -- ${name})" = file ]; then export ${EXECUTABLE_ENV}="$(builtin command -v -- ${name})"; fi; `
+      } else if (basename(shell) === 'zsh') {
+        resolution = `export ${EXECUTABLE_ENV}=; if [ "$(builtin whence -w -- ${name})" = ${quotePosixShell(`${executable}: command`)} ]; then export ${EXECUTABLE_ENV}="$(builtin whence -- ${name})"; fi; `
+      } else {
+        return null
+      }
+    }
     const command =
-      `printf '\\0${START_MARKER}\\0'; /usr/bin/env -0; ` + `printf '\\0${END_MARKER}\\0'`
+      `${executable ? `export ${CWD_ENV}="$(builtin pwd -P)"; ` : ''}${resolution}` +
+      `printf '\\0${START_MARKER}\\0'; /usr/bin/env -0; ` +
+      `printf '\\0${END_MARKER}\\0'`
     return ['-ilc', command]
   }
   if (resolveWindowsShellStartupFamily(shell) === 'posix') {
+    if (executable) {
+      return null
+    }
     // Git Bash's own env holds MSYS paths (/c/..., TEMP=/tmp); a native child sees the converted values native agents get.
     const encoded = Buffer.from(POWERSHELL_ENVIRONMENT_DUMP, 'utf16le').toString('base64')
     return ['-ilc', `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`]
   }
-  const basename = pathWin32.basename(shell).toLowerCase()
-  if (basename !== 'powershell.exe' && basename !== 'pwsh.exe') {
+  const shellBasename = pathWin32.basename(shell).toLowerCase()
+  if (shellBasename !== 'powershell.exe' && shellBasename !== 'pwsh.exe') {
     return null
   }
-  return ['-NoLogo', '-Command', POWERSHELL_ENVIRONMENT_DUMP]
+  const resolution = executable
+    ? `$resolved = Microsoft.PowerShell.Core\\Get-Command -Name ${quotePowerShellLiteral(executable)} -ErrorAction SilentlyContinue; ` +
+      `$env:${EXECUTABLE_ENV} = ''; if ($resolved.CommandType -eq 'Application') { $env:${EXECUTABLE_ENV} = $resolved.Source }; `
+    : ''
+  return [
+    '-NoLogo',
+    '-Command',
+    (executable
+      ? `$env:${CWD_ENV} = (Microsoft.PowerShell.Management\\Get-Location).ProviderPath; `
+      : '') +
+      resolution +
+      POWERSHELL_ENVIRONMENT_DUMP
+  ]
 }
 
 function parsePosixEnvironment(output: Buffer): NodeJS.ProcessEnv | null {
@@ -118,16 +152,18 @@ function parsePowerShellEnvironment(output: Buffer): NodeJS.ProcessEnv | null {
 function spawnShellAndReadEnvironment(
   shell: string,
   env: NodeJS.ProcessEnv,
-  timeoutMs = SPAWN_TIMEOUT_MS
+  timeoutMs = SPAWN_TIMEOUT_MS,
+  cwd?: string,
+  executable?: string
 ): Promise<NodeJS.ProcessEnv | null> {
-  const args = shellProbe(shell)
+  const args = shellProbe(shell, executable)
   if (!args) {
     return Promise.resolve(null)
   }
   return new Promise((resolve) => {
     let settled = false
     const chunks: Buffer[] = []
-    const child = spawnProcess({ program: shell, args, env })
+    const child = spawnProcess({ program: shell, args, env, cwd })
     const finish = (value: NodeJS.ProcessEnv | null): void => {
       if (settled) {
         return
@@ -172,6 +208,9 @@ export type ResolveLoginShellEnvironmentOptions = {
   /** A captured env is kept for good; only a fallback is rerun after `refreshAfterMs`. */
   keepCaptured?: boolean
   shellOverride?: string | null
+  cwd?: string
+  /** Classify a command in this same profile/cwd invocation; opaque resolution stays unknown. */
+  resolveCommand?: string
   env?: NodeJS.ProcessEnv
   /** Per-shell probe budget; defaults to 5 s. */
   timeoutMs?: number
@@ -196,17 +235,36 @@ export function captureLoginShellEnvironment(
       : createHash('sha256')
           .update(JSON.stringify(Object.entries(env).sort(([a], [b]) => a.localeCompare(b))))
           .digest('hex')
-  const entry = cachedEnvironment(`${shell}\0${fallback ?? ''}\0${envKey}`)
+  const entry = cachedEnvironment(
+    `${shell}\0${fallback ?? ''}\0${options.cwd ?? ''}\0${options.resolveCommand ?? ''}\0${envKey}`
+  )
   const run = (): Promise<LoginShellEnvironmentCapture> => {
     const startedAt = Date.now()
     const spawner =
       options.spawner ??
       ((probeShell: string, probeEnv: NodeJS.ProcessEnv) =>
-        spawnShellAndReadEnvironment(probeShell, probeEnv, options.timeoutMs))
+        spawnShellAndReadEnvironment(
+          probeShell,
+          probeEnv,
+          options.timeoutMs,
+          options.cwd,
+          options.resolveCommand
+        ))
     const capture = spawner(shell, env)
       .then(async (environment): Promise<LoginShellEnvironmentCapture> => {
         const captured = environment ?? (fallback ? await spawner(fallback, env) : null)
-        return captured ? { status: 'captured', env: captured } : fellBack
+        if (!captured) {
+          return fellBack
+        }
+        const executablePath = options.resolveCommand ? captured[EXECUTABLE_ENV] || null : undefined
+        const cwd = options.resolveCommand ? captured[CWD_ENV] : undefined
+        delete captured[EXECUTABLE_ENV]
+        delete captured[CWD_ENV]
+        return {
+          status: 'captured',
+          env: captured,
+          ...(options.resolveCommand ? { executablePath, cwd } : {})
+        }
       })
       .catch(() => fellBack)
     entry.running = { capture, startedAt }

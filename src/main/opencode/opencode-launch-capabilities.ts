@@ -32,6 +32,7 @@ export async function probeOpenCodeLaunchCapabilities(options: {
   cwd?: string
   wsl?: { distro?: string }
   hostIdentity?: string
+  fresh?: boolean
   resolveExecutable?: (executable: string) => Promise<string | null>
 }): Promise<OpenCodeCliCapabilities | null> {
   const executable = getOpenCodeLaunchExecutable(options.command, options.agent)
@@ -92,6 +93,7 @@ export async function probeOpenCodeLaunchCapabilities(options: {
   return executablePath
     ? probeOpenCodeCliVersion({
         executablePath,
+        fresh: options.fresh,
         env: options.env,
         cwd: options.cwd,
         hostIdentity: options.hostIdentity

@@ -36,6 +36,7 @@ export async function chooseSavedResumeFreshLaunch(
     {
       ...args,
       assembledEnvironment,
+      cwd: options.cwd,
       command: options.command,
       shellOverride: options.shellOverride,
       env: options.env,

@@ -6,10 +6,9 @@ import { mainStartsPane } from './main-starts-pane'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { PtyConnectResult } from '../pty-transport-types'
+import type { ReattachPayloadSession } from './reattach-payload-session'
 
 import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
-
-type Outcomes = Record<string, TerminalPaneResumeOutcome>
 
 // Why session storage: a reload reattaches the same start, which showed its banner already.
 const SHOWN_STARTS_KEY = 'orca.mainPaneResumeBannersShown'
@@ -28,23 +27,51 @@ function readShownStarts(): string[] {
   }
 }
 
-/** Notes `start` as shown, keeping only starts main still publishes; false if it was already. */
-function noteShown(start: string, outcomes: Outcomes): boolean {
+/** Notes `start` as shown, keeping the latest start per pane; false if it was already. */
+function noteShown(start: string, scope: string): boolean {
   const shown = readShownStarts()
   if (shownHere.has(start) || shown.includes(start)) {
     return false
   }
+  for (const key of shownHere) {
+    if (key.startsWith(scope)) {
+      shownHere.delete(key)
+    }
+  }
   shownHere.add(start)
-  const live = new Set(Object.values(outcomes).map(startOf))
   try {
     globalThis.sessionStorage.setItem(
       SHOWN_STARTS_KEY,
-      JSON.stringify([...shown.filter((key) => live.has(key)), start])
+      JSON.stringify([...shown.filter((key) => !key.startsWith(scope)), start])
     )
   } catch {
     // Best effort: without storage a reload may show the banner once more.
   }
   return true
+}
+
+function startKey(session: ConnectPanePtySession | ReattachPayloadSession, start: string) {
+  const scope = `${JSON.stringify([session.runtimeEnvironmentId ?? '', session.cacheKey])}:`
+  return { scope, start: scope + start }
+}
+
+/** Both attach result and main's frame present the same start; neither owns another notice. */
+export function showResumeUnavailableBanner(
+  session: ConnectPanePtySession | ReattachPayloadSession,
+  result: Partial<PtyConnectResult>
+): void {
+  const id = result.id ?? session.transport?.getPtyId()
+  if (id) {
+    const found = useAppStore.getState().terminalPaneResumeOutcomesByPaneKey?.[session.cacheKey]
+    const key = startKey(
+      session,
+      found?.ptyId === id ? startOf(found) : `${id}#${result.incarnationId ?? ''}`
+    )
+    if (!noteShown(key.start, key.scope)) {
+      return
+    }
+  }
+  session.showSessionRestoredBanner(resumeUnavailableBannerReason(result))
 }
 
 /** Capture attach-time resume evidence: the window’s own result, or main’s restored outcome for the bound terminal published since attach began. */
@@ -82,7 +109,8 @@ export function showMainPaneResumeOutcome(
   }
   const outcomes = useAppStore.getState().terminalPaneResumeOutcomesByPaneKey
   const found = outcomes[session.cacheKey]
-  if (found?.ptyId === ptyId && noteShown(startOf(found), outcomes)) {
+  const key = found ? startKey(session, startOf(found)) : null
+  if (found?.ptyId === ptyId && key && noteShown(key.start, key.scope)) {
     session.showSessionRestoredBanner(
       found.outcome === 'resume-unavailable'
         ? resumeUnavailableBannerReason(result ?? undefined)

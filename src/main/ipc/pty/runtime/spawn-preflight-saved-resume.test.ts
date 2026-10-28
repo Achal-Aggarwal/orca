@@ -52,7 +52,8 @@ vi.mock('./spawn-options', () => ({
       rows: ctx.args.rows,
       command: ctx.args.command,
       env: ctx.args.env,
-      launchAgent: ctx.args.launchAgent
+      launchAgent: ctx.args.launchAgent,
+      agentSessionEnsure: ctx.args.agentSessionEnsure
     }
     return null
   })
@@ -315,73 +316,50 @@ describe('actual runtime saved-resume outcomes', () => {
   })
 })
 
-it.each(['claude', 'opencode'] as const)(
-  'unwinds the old %s claim before a replacement; missing-session joiners share one fresh agent',
-  async (agent) => {
-    const fresh = vi
-      .spyOn(opencodePresence, 'missingOpenCodeFreshLaunch')
-      .mockResolvedValue(agent === 'opencode' ? { command: 'opencode', env: {} } : null)
-    const runtime = chatHost()
-    const ctx = createRuntimePtySpawnState(deps(runtime), {
-      cols: 80,
-      rows: 24,
-      launchAgent: agent,
-      command: agent === 'claude' ? `claude --resume ${C}` : `opencode --session ${C}`,
-      resumeOrigin: 'saved',
-      resumeProviderSession: { key: 'session_id', id: C },
-      agentSessionEnsure: {
-        claim: {
-          agent,
-          digestVersion: 1,
-          keyId: 'key',
-          identityDigest: 'C',
-          worktreeScopeDigest: 'scope'
-        },
-        surface: { worktreeId: 'wt-1', tabId: 'tab-1', leafId: 'leaf', terminalHandle: 'terminal' }
-      }
-    })
-    const claim = ctx.args.agentSessionEnsure?.claim
-    if (!claim) {
-      throw new Error('missing fixture claim')
+it('unwinds a refused fresh claim before spawning an unclaimed shell', async () => {
+  const runtime = chatHost()
+  const ctx = createRuntimePtySpawnState(deps(runtime), {
+    cols: 80,
+    rows: 24,
+    launchAgent: 'claude',
+    command: `claude --resume ${C}`,
+    resumeOrigin: 'saved',
+    resumeProviderSession: { key: 'session_id', id: C },
+    agentSessionEnsure: {
+      claim: {
+        agent: 'claude',
+        digestVersion: 1,
+        keyId: 'key',
+        identityDigest: 'C',
+        worktreeScopeDigest: 'scope'
+      },
+      surface: { worktreeId: 'wt-1', tabId: 'tab-1', leafId: 'leaf', terminalHandle: 'terminal' }
     }
-    ctx.spawnOptions = {
-      cols: 80,
-      rows: 24,
-      command: ctx.args.command,
-      agentSessionEnsure: ctx.args.agentSessionEnsure
-    }
-    const inventory = vi.spyOn(owners, 'reconcileAgentSessionOwnerListings').mockResolvedValue()
-    const spawn = vi.spyOn(ctx.provider, 'spawn').mockResolvedValue({ id: 'refused-shell' })
-    try {
-      const other = createRuntimePtySpawnState(deps(runtime), {
-        ...ctx.args,
-        env: { PRIVATE: 'joiner' }
-      })
-      other.spawnOptions = { ...ctx.spawnOptions, env: other.args.env }
-      await Promise.all([
-        executePreparedSpawn(ctx),
-        ...(agent === 'opencode' ? [executePreparedSpawn(other)] : [])
-      ])
-      if (agent === 'opencode') {
-        expect(other.result.id).toBe(ctx.result.id)
-        expect(other.result.isReattach).toBe(true)
-        expect(other.spawnOptions.env).toEqual({ PRIVATE: 'joiner' })
-        expect(fresh).toHaveBeenCalledOnce()
-      }
-      expect(spawn).toHaveBeenCalledOnce()
-      expect(ctx.spawnOptions.command).toBe(agent === 'claude' ? undefined : 'opencode')
-      expect(ctx.result.agentSessionEnsure).toBeUndefined()
-      expect(owners.agentSessionOwners.find(claim)).toBeNull()
-      expect(ctx.resumeAdmission).toMatchObject({
-        verdict: agent === 'claude' ? 'chat-home' : 'unverifiable'
-      })
-    } finally {
-      fresh.mockRestore()
-      inventory.mockRestore()
-      spawn.mockRestore()
-    }
+  })
+  const claim = ctx.args.agentSessionEnsure?.claim
+  if (!claim) {
+    throw new Error('missing fixture claim')
   }
-)
+  ctx.spawnOptions = {
+    cols: 80,
+    rows: 24,
+    command: ctx.args.command,
+    agentSessionEnsure: ctx.args.agentSessionEnsure
+  }
+  const inventory = vi.spyOn(owners, 'reconcileAgentSessionOwnerListings').mockResolvedValue()
+  const spawn = vi.spyOn(ctx.provider, 'spawn').mockResolvedValue({ id: 'refused-shell' })
+  try {
+    await executePreparedSpawn(ctx)
+    expect(spawn).toHaveBeenCalledOnce()
+    expect(ctx.spawnOptions.command).toBeUndefined()
+    expect(ctx.result.agentSessionEnsure).toBeUndefined()
+    expect(owners.agentSessionOwners.find(claim)).toBeNull()
+    expect(ctx.resumeAdmission).toMatchObject({ verdict: 'chat-home' })
+  } finally {
+    inventory.mockRestore()
+    spawn.mockRestore()
+  }
+})
 
 it('returns the committed runtime shell when exact saved-record persistence fails', async () => {
   const runtime = {
@@ -494,6 +472,111 @@ it.each([undefined, 'automatic-restore'] as const)(
     } finally {
       source.mockRestore()
       spawn.mockRestore()
+    }
+  }
+)
+
+it.each(['present', 'unavailable', 'missing', 'provider-failure', 'registration-failure'] as const)(
+  'settles the full saved claim dispatch and commit (%s)',
+  async (kind) => {
+    const id = `full-claim-${kind}`
+    const runtime = {
+      ...chatHost(),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(() => {
+        if (kind === 'registration-failure') {
+          throw new Error('registration failed')
+        }
+      }),
+      noteTerminalSpawnCommand: vi.fn(),
+      reflowHeadlessTerminalToPtyGrid: vi.fn()
+    }
+    const source = vi
+      .spyOn(opencodePresence, 'missingOpenCodeFreshLaunch')
+      .mockResolvedValue(kind === 'missing' ? { command: 'opencode', env: {} } : null)
+    const inventory = vi.spyOn(owners, 'reconcileAgentSessionOwnerListings').mockResolvedValue()
+    const spawn = vi.spyOn(localProvider, 'spawn').mockImplementation(async () => {
+      if (kind === 'provider-failure') {
+        throw new Error('provider failed')
+      }
+      return { id, incarnationId: id }
+    })
+    const listing = vi
+      .spyOn(localProvider, 'listProcesses')
+      .mockResolvedValue([{ id, incarnationId: id, cwd: '/work', title: '' }])
+    const shutdown = vi.spyOn(localProvider, 'shutdown').mockResolvedValue()
+    const claim = {
+      agent: 'opencode' as const,
+      digestVersion: 1 as const,
+      keyId: 'key',
+      identityDigest: id,
+      worktreeScopeDigest: 'scope'
+    }
+    const request = {
+      cols: 80,
+      rows: 24,
+      worktreeId: 'wt-1',
+      tabId: 'tab-1',
+      command: `opencode --session ${C}`,
+      launchAgent: 'opencode' as const,
+      resumeOrigin: 'saved' as const,
+      resumeProviderSession: { key: 'session_id' as const, id: C },
+      agentSessionEnsure: {
+        claim,
+        surface: { worktreeId: 'wt-1', tabId: 'tab-1', leafId: 'leaf', terminalHandle: id }
+      }
+    }
+    try {
+      const result = await Promise.allSettled([
+        spawnPtyFromRuntimeController(deps(runtime), request),
+        ...(kind === 'missing'
+          ? [
+              spawnPtyFromRuntimeController(deps(runtime), {
+                ...request,
+                env: { PRIVATE: 'joiner' }
+              })
+            ]
+          : [])
+      ])
+      expect(spawn).toHaveBeenCalledOnce()
+      if (kind.endsWith('failure')) {
+        expect(result[0]).toMatchObject({
+          status: 'rejected',
+          reason: {
+            message: kind === 'provider-failure' ? 'provider failed' : 'registration failed'
+          }
+        })
+        if (kind === 'provider-failure') {
+          expect(owners.agentSessionOwners.find(claim)).toBeNull()
+        } else {
+          expect(owners.agentSessionOwners.find(claim)?.phase).toBe('live')
+          runtime.registerPty.mockImplementation(() => {})
+          await expect(
+            spawnPtyFromRuntimeController(deps(runtime), request)
+          ).resolves.toMatchObject({ id, isReattach: true })
+          expect(spawn).toHaveBeenCalledOnce()
+        }
+      } else {
+        expect(result[0]).toMatchObject({ status: 'fulfilled', value: { id } })
+        expect(runtime.registerPty).toHaveBeenCalled()
+        if (kind === 'missing') {
+          expect(result[0]).toMatchObject({
+            value: { agentResumeRefused: 'unverifiable', resumeProviderSession: undefined }
+          })
+          expect(result[1]).toMatchObject({ status: 'fulfilled', value: { id, isReattach: true } })
+          expect(owners.agentSessionOwners.find(claim)).toBeNull()
+          expect(spawn.mock.calls[0]?.[0].command).toBe('opencode')
+        } else {
+          expect(spawn.mock.calls[0]?.[0].command).toBe(request.command)
+        }
+      }
+    } finally {
+      owners.agentSessionOwners.release(id)
+      source.mockRestore()
+      inventory.mockRestore()
+      spawn.mockRestore()
+      shutdown.mockRestore()
+      listing.mockRestore()
     }
   }
 )

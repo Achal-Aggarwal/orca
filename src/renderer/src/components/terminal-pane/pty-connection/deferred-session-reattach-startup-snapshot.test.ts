@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerAgentStatusStartupSnapshot } from '@/hooks/ipc-events/agent-status-startup-snapshot'
 import { startDeferredSessionReattach } from './deferred-session-reattach-connect'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../shared/layout-owner-switch'
+import type { PtyTransport } from '../pty-transport-types'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 vi.mock('../terminal-lifecycle-diagnostics', () => ({ warnTerminalLifecycleAnomaly: vi.fn() }))
@@ -11,14 +12,20 @@ vi.mock('./pty-connect-limits', () => ({
   isSshSessionGoneError: () => false
 }))
 
-function createSession() {
+function createSession(
+  runtimeEnvironmentId?: string,
+  transport: Pick<PtyTransport, 'connect' | 'getPtyId'> = {
+    connect: vi.fn().mockResolvedValue(null),
+    getPtyId: () => 'restored-pty'
+  }
+) {
   let startup: {
     command: string
     agent: string
     resumeProviderSession: { key: string; id: string }
   } | null = null
-  const transport = { connect: vi.fn().mockResolvedValue(null), getPtyId: () => 'restored-pty' }
   const fixture = {
+    runtimeEnvironmentId,
     pane: { id: 1 },
     transport,
     disposed: false,
@@ -62,6 +69,57 @@ describe('cold reattach waits for host identity replay', () => {
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
+
+  it.each([false, true])(
+    'routes the actual status-only caller through remote owner ingress (modern %s)',
+    async (modern) => {
+      vi.resetModules()
+      const call = vi.fn(async ({ method }: { method: string }) =>
+        method === 'terminal.create'
+          ? {
+              ok: false,
+              error: {
+                code: 'terminal_spawn_deferred',
+                message: 'terminal_spawn_deferred:paused',
+                data: { reason: 'paused' }
+              }
+            }
+          : method === 'terminal.resolvePane'
+            ? { ok: false, error: { code: 'terminal_not_found', message: 'terminal_not_found' } }
+            : {
+                ok: true,
+                result:
+                  method === 'status.get'
+                    ? {
+                        runtimeProtocolVersion: 3,
+                        minCompatibleRuntimeClientVersion: 2,
+                        capabilities: modern ? ['terminal.spawn-intent.v1'] : []
+                      }
+                    : { terminal: null }
+              }
+      )
+      Object.assign(window.api, { runtimeEnvironments: { call, subscribe: vi.fn() } })
+      const { createRemoteRuntimePtyTransport } = await import('../remote-runtime-pty-transport')
+      const transport = createRemoteRuntimePtyTransport('env-1', {
+        worktreeId: 'repo::/work',
+        tabId: 'tab-1',
+        leafId: '11111111-1111-4111-8111-111111111111'
+      })
+      const attempt = createSession('env-1', transport)
+      startDeferredSessionReattach(attempt.session, 'lost-host-pty')
+      await vi.waitFor(() =>
+        expect(call.mock.calls.some(([args]) => args.method === 'terminal.create')).toBe(true)
+      )
+      const request = call.mock.calls.find(([args]) => args.method === 'terminal.create')?.[0]
+      expect(request).toMatchObject({ params: { tabId: 'tab-1' } })
+      if (modern) {
+        expect(request).toMatchObject({ params: { spawnIntent: 'automatic-restore' } })
+      } else {
+        expect(request).not.toMatchObject({ params: { spawnIntent: expect.anything() } })
+      }
+      transport.disconnect()
+    }
+  )
 
   it('connects synchronously when host replay already applied before pane registration', () => {
     const bridge = registerAgentStatusStartupSnapshot()

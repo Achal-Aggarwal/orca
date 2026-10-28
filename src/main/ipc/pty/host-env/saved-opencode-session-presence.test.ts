@@ -50,6 +50,7 @@ function args(): ResumeSpawnArgs {
   })!
   return {
     command: startup.launchCommand,
+    cwd: process.cwd(),
     launchConfig: startup.launchConfig,
     resumeProviderSession: session,
     resumeOrigin: 'saved',
@@ -61,16 +62,26 @@ function args(): ResumeSpawnArgs {
 beforeEach(() => {
   presence.mockResolvedValue('absent')
   project.mockImplementation((env) => env)
-  capture.mockImplementation(async ({ env }) => ({ status: 'captured', env }))
+  capture.mockImplementation(async ({ env, cwd }) => ({
+    status: 'captured',
+    env,
+    executablePath: process.execPath,
+    cwd
+  }))
 })
 afterEach(() => vi.clearAllMocks())
-it.each(['present', 'absent', 'unavailable'])(
-  '%s changes only a confirmed-missing automatic launch',
-  async (value) => {
+it.each([
+  ['present', false],
+  ['absent', false],
+  ['unavailable', false],
+  ['absent', true]
+] as const)(
+  '%s changes only a confirmed-missing automatic launch (assembled %s)',
+  async (value, assembled) => {
     presence.mockResolvedValue(value)
     const request = args(),
       options = { ...request }
-    const result = await chooseSavedResumeFreshLaunch(runtime, request, null, options)
+    const result = await chooseSavedResumeFreshLaunch(runtime, request, null, options, assembled)
     expect(options.command).toBe(value === 'absent' ? 'opencode' : args().command)
     expect(request.resumeProviderSession?.id).toBe(value === 'absent' ? undefined : 'ses_saved')
     expect(request.launchAgent).toBe('opencode')
@@ -84,6 +95,16 @@ it.each(['present', 'absent', 'unavailable'])(
         refusedResume: { providerSession: { id: 'ses_saved' } }
       })
     }
+    if (assembled) {
+      expect(project).not.toHaveBeenCalled()
+    }
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: options.cwd,
+        startedAfter: expect.any(Number),
+        resolveCommand: 'opencode'
+      })
+    )
     expect(forget).not.toHaveBeenCalled()
   }
 )
@@ -123,23 +144,29 @@ it.each(['explicit', 'ssh-client', 'wsl', 'typed'] as const)(
     expect(presence).not.toHaveBeenCalled()
   }
 )
-it('uses the assembled native-owner environment without selecting an account again', async () => {
-  const request = args()
-  request.env = { ...request.env, HOME: '/owner', XDG_DATA_HOME: '/owner/data' }
-  const options = { ...request }
-  await chooseSavedResumeFreshLaunch(runtime, request, null, options, true)
-  expect(project).not.toHaveBeenCalled()
-  expect(capture).toHaveBeenCalledWith(
-    expect.objectContaining({
-      env: expect.objectContaining({ HOME: '/owner', XDG_DATA_HOME: '/owner/data' })
-    })
-  )
-})
-it('keeps today’s attempt when shell capture or worker fails', async () => {
-  capture.mockResolvedValue({ status: 'fallback', env: {} })
-  const request = args(),
-    options = { ...request }
-  await chooseSavedResumeFreshLaunch(runtime, request, null, options)
-  expect(options.command).toBe(request.command)
-  expect(presence).not.toHaveBeenCalled()
-})
+it.each(['fallback', 'unresolved', 'worker'] as const)(
+  'keeps today’s attempt when %s is unknown',
+  async (kind) => {
+    if (kind === 'fallback') {
+      capture.mockResolvedValue({ status: 'fallback', env: {} })
+    }
+    if (kind === 'unresolved') {
+      capture.mockResolvedValue({
+        status: 'captured',
+        env: {},
+        cwd: process.cwd(),
+        executablePath: null
+      })
+    }
+    if (kind === 'worker') {
+      presence.mockRejectedValue(new Error('worker unavailable'))
+    }
+    const request = args(),
+      options = { ...request }
+    await chooseSavedResumeFreshLaunch(runtime, request, null, options)
+    expect(options.command).toBe(request.command)
+    if (kind !== 'worker') {
+      expect(presence).not.toHaveBeenCalled()
+    }
+  }
+)

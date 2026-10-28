@@ -142,7 +142,7 @@ it.each([
     const actualConfig = { agentCommand: 'codex', agentArgs: '--model actual', agentEnv: {} }
     const launchResult: TerminalAttachmentLaunchResult = {
       ptyId: 'physical-1',
-      incarnationId: 'incarnation-1',
+      incarnationId: `incarnation-${kind}`,
       ...(kind === 'adopted'
         ? {}
         : {

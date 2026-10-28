@@ -12,6 +12,7 @@ import {
 
 export type OpenCodeCliVersionProbe = {
   executablePath: string
+  fresh?: boolean
   env: NodeJS.ProcessEnv
   cwd?: string
   hostIdentity?: string
@@ -34,6 +35,9 @@ const PANE_IDENTITY_ENV_KEYS = new Set([
 export function probeOpenCodeCliVersion(
   options: OpenCodeCliVersionProbe
 ): Promise<OpenCodeCliCapabilities> {
+  if (options.fresh) {
+    return runVersionProbe(options)
+  }
   const identity = JSON.stringify([
     options.execute ? 'host-callback' : 'native-process',
     options.hostIdentity ?? process.platform,

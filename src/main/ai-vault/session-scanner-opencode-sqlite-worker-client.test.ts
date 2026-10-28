@@ -131,6 +131,44 @@ describe('OpenCodeSqliteWorkerClient', () => {
     }
   })
 
+  it('routes exact presence through the shared FIFO, aborts cleanly and keeps history reads usable', async () => {
+    const workers: FakeWorker[] = []
+    const client = new OpenCodeSqliteWorkerClient({ workerFactory: makeFactory(workers), log() {} })
+    const reply = (value: unknown) =>
+      workers[0].emit('message', { id: workers[0].lastId(), ok: true, value })
+    const args = {
+      source: {
+        root: '/root',
+        cwd: '/repo',
+        env: { PATH: '/bin' },
+        api: 'v1' as const,
+        storage: 'legacy' as const
+      },
+      sessionId: 'C'
+    }
+    try {
+      const presence = client.readSessionPresence(args)
+      expect(workers[0].postedRequests[0]).toMatchObject({
+        ...args,
+        kind: 'session-presence',
+        timeoutMs: 1000
+      })
+      const abort = new AbortController()
+      const cancelled = client.readSessionPresence(args, abort.signal)
+      const rejection = expect(cancelled).rejects.toThrow()
+      abort.abort()
+      await rejection
+      reply('absent')
+      expect(await presence).toBe('absent')
+      const history = client.list({ dbPaths: ['/history.db'], limit: 1, issues: [] })
+      reply({ candidates: [], issues: [] })
+      expect(await history).toEqual([])
+      expect(workers[0].terminated).toBe(false)
+    } finally {
+      client.dispose()
+    }
+  })
+
   it('correlates responses by id and ignores stale ids', async () => {
     const workers: FakeWorker[] = []
     const client = new OpenCodeSqliteWorkerClient({ workerFactory: makeFactory(workers), log() {} })

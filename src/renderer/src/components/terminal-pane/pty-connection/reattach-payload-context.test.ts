@@ -10,9 +10,13 @@ import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../shared/layout-owner-sw
 import { mainStartsPane } from './main-starts-pane'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { ReattachPayloadContext } from './reattach-payload-context'
-import type { ReattachPayloadSession } from './reattach-payload-session'
+import type { ConnectPanePtySession } from './connect-pane-pty-session'
+import { bindDeferredColdRestoreAndSnapshot } from './deferred-cold-restore-and-snapshot'
+import { bindHandleReattachResult } from './reattach-result-handler'
+import { pendingSpawnByPaneKey } from './pty-connect-limits'
+import { flushAsyncTicks } from '../pty-connection-test-async'
 
-function createSession(overrides: Record<string, unknown> = {}): ReattachPayloadSession {
+function createSession(overrides: Record<string, unknown> = {}): ConnectPanePtySession {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers under test read only these session members.
   return {
     pane: createPane(1),
@@ -31,7 +35,7 @@ function createSession(overrides: Record<string, unknown> = {}): ReattachPayload
       adoptSnapshot: vi.fn()
     },
     ...overrides
-  } as unknown as ReattachPayloadSession
+  } as unknown as ConnectPanePtySession
 }
 
 function createContext(replay: string, attemptGeneration: number): ReattachPayloadContext {
@@ -273,3 +277,197 @@ it.each(['missing', 'admitted', 'prepared'] as const)(
     }
   }
 )
+
+it.each([
+  'old-remote',
+  'checked-remote',
+  'adopted',
+  'input',
+  'local',
+  'hidden-local',
+  'failed-local'
+] as const)('runs late recovery through replay, dispatch and settlement (%s)', async (kind) => {
+  await installTerminalTestGlobals()
+  vi.useFakeTimers()
+  const startup: ColdRestoreAgentResumeStartup = {
+    command: 'opencode --session C',
+    agent: 'opencode',
+    resumeOrigin: 'saved',
+    resumeProviderSession: { key: 'session_id', id: 'C' },
+    launchToken: 'late-C',
+    launchConfig: { agentCommand: 'opencode', agentArgs: '', agentEnv: {} },
+    resumeSource: { cancelled: false },
+    useLiveEntry: false,
+    hasSleepingRecord: false,
+    sleepingRecordEntry: null
+  }
+  const remote = ['old-remote', 'checked-remote', 'adopted', 'input'].includes(kind)
+  let id: string | null = 'pty-1'
+  const transport = {
+    getPtyId: () => id,
+    disconnect: vi.fn(() => {
+      id = null
+    }),
+    sendInput: vi.fn(() => true),
+    sendInputImmediate: vi.fn(() => true),
+    connect: vi.fn(async () => {
+      if (kind === 'failed-local') {
+        throw new Error('provider failed')
+      }
+      id = 'fresh'
+      return {
+        id,
+        launchAgent: 'opencode' as const,
+        agentResumeUnavailable: true,
+        agentResumeRefused: 'unverifiable' as const,
+        refusedResume: {
+          agent: 'opencode' as const,
+          providerSession: { key: 'session_id' as const, id: 'C' }
+        }
+      }
+    })
+  }
+  const session = createSession({
+    cacheKey: 'tab-1:leaf',
+    pendingSpawnKey: 'r1-late',
+    transport,
+    runtimeEnvironmentId: remote ? 'host' : undefined,
+    mainPaneStartHandedBack: true,
+    disposed: false,
+    transportStreamGeneration: 1,
+    authoritativeReattachGeneration: 0,
+    tabGeneration: 0,
+    lastTerminalInputAt: 0,
+    pendingStartupCommand: null,
+    startupInjectTimer: null,
+    shouldDeliverStartupViaTerminalPaste: false,
+    buildColdRestoreAgentResumeStartup: () => startup,
+    deps: {
+      worktreeId: 'wt-1',
+      tabId: 'tab-1',
+      isVisibleRef: { current: true },
+      paneTransportsRef: { current: new Map([[1, transport]]) },
+      updateTabPtyId: vi.fn()
+    },
+    ...Object.fromEntries(
+      [
+        'registerEffectiveLaunchConfig cancelSavedResumeStartup showSessionRestoredBanner',
+        'setPanePtyFitBinding reportPanePtyVisibility registerSideEffectFactConsumerForPty',
+        'syncHiddenRendererPtyDelivery syncPanePtyLayoutBinding sampleVisiblePaneForegroundAgent',
+        'registerPaneSerializerFor scheduleReattachIdleAgentCursorReset settlePaneAttachAttempt',
+        'clearPaneMode2031State clearHiddenOutputRestoreState beginReattachLiveDataDeferral',
+        'finishReattachLiveDataDeferral clearRegisteredStartupLaunchConfig bindActivePanePty',
+        'reconcilePtySizeAfterSpawn releaseUnattemptedStartupDraftPasteDelivery',
+        'armStartupDraftReadinessObservation keepUnrunResumeHandle'
+      ].flatMap((names) => names.split(' ').map((name) => [name, vi.fn()]))
+    ),
+    agentCompletionCoordinator: { startProcessTracking: vi.fn() },
+    structuralReplayCoordinator: {
+      run: async (apply: () => Promise<void>) => {
+        await apply()
+      }
+    },
+    shouldDeclareHiddenAtSpawn: () => false,
+    terminalRecoveryInstance: { id: 'r1' },
+    deferredSpawn: kind === 'failed-local' ? {} : null
+  })
+  try {
+    session.pane.terminal.write = vi.fn((_data, done) => done?.())
+    bindDeferredColdRestoreAndSnapshot(session)
+    session.clearSleepingRecordAfterColdRestoreSpawn = vi.fn()
+    session.resetFreshSpawnFollowOutput = vi.fn()
+    session.writeReplayData = vi.fn()
+    session.writeInputModeGround = vi.fn()
+    session.writeFreshShellViewportBlanking = vi.fn()
+    session.consumeRestoredViewportBlankingMarker = vi.fn()
+    session.prepareFreshShellViewportForSpawn = vi.fn()
+    session.chooseReattachReplayReset = vi.fn(() => '')
+    session.captureTransportOutputCallbacks = () => ({
+      generation: 1,
+      callbacks: {},
+      launchContext: {
+        startup,
+        registration: undefined,
+        status: undefined,
+        paneStartup: session.paneStartup
+      }
+    })
+    bindHandleReattachResult(session)
+    const hidden = kind === 'hidden-local'
+    if (hidden) {
+      session.deps.isVisibleRef.current = false
+      startup.hasSleepingRecord = true
+      startup.sleepingRecordEntry = {
+        paneKey: session.cacheKey,
+        record: {
+          paneKey: session.cacheKey,
+          worktreeId: 'wt-1',
+          tabId: 'tab-1',
+          agent: 'opencode',
+          providerSession: { key: 'session_id', id: 'C' },
+          state: 'done',
+          prompt: '',
+          capturedAt: 1,
+          updatedAt: 1
+        }
+      }
+    }
+    const settled = session.handleReattachResult({
+      id: 'pty-1',
+      coldRestore: { scrollback: 'retained history', cwd: '/workspace' },
+      ...(kind === 'adopted' ? { isReattach: true } : {}),
+      ...(kind === 'old-remote'
+        ? {}
+        : {
+            savedResumeDecision: {
+              agent: 'opencode',
+              providerSession: { key: 'session_id', id: 'C' },
+              verdict: 'admitted'
+            }
+          })
+    })
+    if (kind === 'input') {
+      session.lastTerminalInputAt++
+    }
+    expect(await settled).toBe(true)
+    await flushAsyncTicks(20)
+    expect(window.api.pty.ackColdRestore).toHaveBeenCalledOnce()
+    if (hidden) {
+      expect(transport.connect).not.toHaveBeenCalled()
+      session.deps.isVisibleRef.current = true
+      await session.hibernatedWakeTarget?.wake()
+    }
+    if (remote) {
+      expect(transport.connect).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(50)
+      expect(transport.sendInput).toHaveBeenCalledTimes(
+        kind === 'adopted' || kind === 'input' ? 0 : 1
+      )
+      if (kind === 'old-remote' || kind === 'checked-remote') {
+        expect(session.pendingStartupCommand).toBeNull()
+      }
+    } else {
+      await pendingSpawnByPaneKey.get(session.pendingSpawnKey)
+      await flushAsyncTicks(20)
+      expect(transport.connect).toHaveBeenCalledOnce()
+      expect(transport.connect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: startup.command,
+          resumeProviderSession: startup.resumeProviderSession
+        })
+      )
+      expect(pendingSpawnByPaneKey.has(session.pendingSpawnKey)).toBe(false)
+      if (kind !== 'failed-local') {
+        expect(session.settlePaneAttachAttempt).toHaveBeenLastCalledWith('success')
+      } else {
+        expect(session.clearRegisteredStartupLaunchConfig).toHaveBeenCalled()
+      }
+      expect(transport.sendInput).not.toHaveBeenCalled()
+    }
+  } finally {
+    session.disposed = true
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    await restoreTerminalTestGlobals()
+  }
+})

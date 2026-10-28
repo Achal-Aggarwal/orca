@@ -128,4 +128,7 @@ it('separates native and host-callback backends even with the same host identity
   expect((await probeOpenCodeCliVersion({ ...options, execute })).pluginApi).toBe('v2')
   expect(execute).toHaveBeenCalledOnce()
   expect(runProcess).toHaveBeenCalledOnce()
+  execute.mockResolvedValue({ code: 0, timedOut: false, stdout: '1.1.1' })
+  expect((await probeOpenCodeCliVersion({ ...options, execute, fresh: true })).pluginApi).toBe('v1')
+  expect(execute).toHaveBeenCalledTimes(2)
 })

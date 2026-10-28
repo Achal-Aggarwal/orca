@@ -1,3 +1,6 @@
+import { open } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
+import { resolveUnixPaneShellPath, resolvePtyShellPath } from '../../../daemon/shell-ready'
 import { buildAgentResumeStartupPlan } from '../../../../shared/tui-agent-resume-startup'
 import { dropAgentResumeArgvFromCommand } from '../../../../shared/agent-resume-argv-drop'
 import {
@@ -5,7 +8,10 @@ import {
   SETUP_AGENT_SEQUENCE_STARTUP_SCRIPT_ENV
 } from '../../../../shared/setup-agent-sequencing'
 import { tokenizeStartupCommand } from '../../../../shared/tui-agent-startup-shell'
-import { getAgentLaunchExecutableName } from '../../../../shared/agent-command-line-intent'
+import {
+  getAgentLaunchExecutableName,
+  getAgentLaunchCommandToken
+} from '../../../../shared/agent-command-line-intent'
 import type { ResumeSpawnArgs } from './saved-resume-admission'
 import { getSharedClient } from '../../../ai-vault/session-scanner-opencode-sqlite-worker-spawn'
 import { waitForPromiseWithSignal } from '../../../../shared/abort-signal-reason'
@@ -31,6 +37,9 @@ export async function missingOpenCodeFreshLaunch(args: ResumeSpawnArgs) {
       args.launchConfig?.agentCommand ||
       (agent === 'opencode2' ? 'opencode2 --standalone' : 'opencode')
     if (!['opencode', 'opencode2'].includes(getAgentLaunchExecutableName(recipe))) {
+      return null
+    }
+    if (!args.cwd || !isAbsolute(args.cwd)) {
       return null
     }
     const env = args.env ?? {}
@@ -83,11 +92,45 @@ export async function missingOpenCodeFreshLaunch(args: ResumeSpawnArgs) {
     }
     const captured = await captureLoginShellEnvironment({
       env: projected,
-      shellOverride: args.shellOverride,
+      cwd: args.cwd,
+      startedAfter: Date.now(),
+      shellOverride:
+        process.platform === 'win32'
+          ? args.shellOverride || resolvePtyShellPath(projected)
+          : resolveUnixPaneShellPath(projected, args.shellOverride, undefined),
+      resolveCommand: getAgentLaunchCommandToken(recipe),
       timeoutMs: 1000
     })
-    if (captured.status !== 'captured') {
+    if (
+      captured.status !== 'captured' ||
+      !captured.executablePath ||
+      !isAbsolute(captured.executablePath) ||
+      !captured.cwd ||
+      !isAbsolute(captured.cwd)
+    ) {
       return null
+    }
+    const executable = await open(captured.executablePath, 'r')
+    try {
+      const header = Buffer.alloc(4)
+      await executable.read(header, 0, 4, 0)
+      // Script wrappers can select another store after the shell; their source is unknown.
+      if (
+        ![
+          '7f454c46',
+          'cffaedfe',
+          'cefaedfe',
+          'feedfacf',
+          'feedface',
+          'cafebabe',
+          'bebafeca'
+        ].includes(header.toString('hex')) &&
+        header.subarray(0, 2).toString() !== 'MZ'
+      ) {
+        return null
+      }
+    } finally {
+      await executable.close()
     }
     const effective = { ...captured.env }
     // Orca's shell integration pins the selected account after the profile runs.
@@ -105,14 +148,16 @@ export async function missingOpenCodeFreshLaunch(args: ResumeSpawnArgs) {
       command: recipe,
       agent,
       env: effective,
-      cwd: args.cwd
+      cwd: captured.cwd,
+      fresh: true,
+      resolveExecutable: async () => captured.executablePath ?? null
     })
     if (!capabilities?.version || capabilities.pluginApi === 'unknown') {
       return null
     }
     const source = await resolveOpenCodeSessionSource({
       env: effective,
-      cwd: args.cwd || process.cwd(),
+      cwd: captured.cwd,
       version: capabilities.version,
       api: capabilities.pluginApi,
       standalone: parsed.tokens.includes('--standalone'),

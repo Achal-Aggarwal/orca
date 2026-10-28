@@ -128,6 +128,9 @@ function connectDeferredSessionReattach(
     cols: session.cols,
     rows: session.rows,
     sessionId: deferredReattachSessionId,
+    ...(!attachOnlyView && session.runtimeEnvironmentId
+      ? { resumeSpawnIntent: 'automatic-restore' as const }
+      : {}),
     ...(coldRestoreStartup?.command ? { command: coldRestoreStartup.command } : {}),
     ...(coldRestoreStartup?.env
       ? { env: session.mergeStartupEnvWithPaneIdentity(coldRestoreStartup.env) }

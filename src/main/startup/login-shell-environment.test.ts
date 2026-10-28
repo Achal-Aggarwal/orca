@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, mkdir, symlink, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  captureLoginShellEnvironment,
   resetLoginShellEnvironmentCacheForTests,
   resolveLoginShellEnvironment
 } from './login-shell-environment'
@@ -79,3 +80,43 @@ describe('resolveLoginShellEnvironment', () => {
     }
   )
 })
+
+it
+  .skipIf(process.platform === 'win32')
+  .each(REAL_SHELL_CANDIDATES.filter((shell) => existsSync(shell.path)))(
+  'uses the launch cwd and a fresh profile, resolving only the actual external command (%j)',
+  async (shell) => {
+    testHome = await realpath(await mkdtemp(join(tmpdir(), 'orca-launch-source-')))
+    const cwd = join(testHome, 'pane'),
+      bin = join(testHome, 'bin')
+    await mkdir(cwd)
+    await mkdir(bin)
+    await symlink(process.execPath, join(bin, 'opencode'))
+    const profile = join(testHome, shell.path.endsWith('zsh') ? '.zshrc' : shell.profileFile)
+    const base = `export PATH='${bin}:/usr/bin:/bin'\nexport XDG_DATA_HOME="$PWD/first"\n`
+    await writeFile(profile, base)
+    const options = {
+      shellOverride: shell.path,
+      cwd,
+      resolveCommand: 'opencode',
+      env: { HOME: testHome, USERPROFILE: testHome, ZDOTDIR: testHome, PATH: '/usr/bin:/bin' }
+    }
+    const first = await captureLoginShellEnvironment({ ...options, startedAfter: Date.now() })
+    expect(first).toMatchObject({
+      status: 'captured',
+      cwd,
+      executablePath: join(bin, 'opencode'),
+      env: { XDG_DATA_HOME: join(cwd, 'first') }
+    })
+    await writeFile(profile, base.replace('/first', '/second'))
+    const changed = await captureLoginShellEnvironment({ ...options, startedAfter: Date.now() })
+    expect(changed.env.XDG_DATA_HOME).toBe(join(cwd, 'second'))
+    expect(changed.env.__ORCA_CAPTURE_EXECUTABLE).toBeUndefined()
+    for (const opaque of ["alias opencode='other'", 'opencode() { command other "$@"; }']) {
+      await writeFile(profile, `${base}${opaque}\n`)
+      const capture = await captureLoginShellEnvironment({ ...options, startedAfter: Date.now() })
+      expect(capture.status).toBe('captured')
+      expect(capture.executablePath).toBeNull()
+    }
+  }
+)

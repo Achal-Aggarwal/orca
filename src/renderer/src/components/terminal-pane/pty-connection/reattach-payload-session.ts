@@ -4,6 +4,7 @@ export type ReattachPayloadSession = Pick<
   ConnectPanePtySession,
   | 'lastTerminalInputAt'
   | 'pendingReplacedPtyId'
+  | 'pendingStartupCommand'
   | 'startFreshColdRestoreAgentResume'
   | 'runtimeEnvironmentId'
   | 'cacheKey'

@@ -50,7 +50,7 @@ function roots(env: NodeJS.ProcessEnv, cwd: string) {
   }
 }
 
-async function serviceConfig(path: string) {
+async function serviceConfig(path: string, knownSavedState: boolean) {
   const config = await readJson(join(path, 'service.json'))
   if (config?.disabled !== undefined && typeof config.disabled !== 'boolean') {
     throw new Error('Unknown service configuration')
@@ -62,12 +62,14 @@ async function serviceConfig(path: string) {
   ) {
     throw new Error('Unknown service environment')
   }
+  if (!knownSavedState && env?.XDG_STATE_HOME !== undefined) {
+    throw new Error('Unknown service environment dialect')
+  }
   return {
     disabled: config?.disabled === true,
     env: Object.fromEntries(
       Object.entries(env ?? {}).filter(
-        (entry): entry is [string, string] =>
-          entry[0] !== 'XDG_STATE_HOME' && typeof entry[1] === 'string'
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
       )
     )
   }
@@ -147,13 +149,20 @@ export async function resolveOpenCodeSessionSource(args: {
   sessionId: string
   signal: AbortSignal
 }): Promise<OpenCodeSessionSource | OpenCodeSessionPresence> {
+  const version = /^(1|2)\.(\d+)\.(\d+)$/.exec(args.version)
+  if (!version || `v${version[1]}` !== args.api) {
+    return 'unavailable'
+  }
+  const minor = Number(version[2]),
+    patch = Number(version[3])
+  const legacy = args.api === 'v1' && minor < 2
+  const customDb = args.api === 'v2' || minor >= 3
+  // The exact state-filter transition after 2.1.3 is unpinned; only affected configs are unknown.
+  const knownSavedState = minor === 0 || (minor === 1 && patch <= 3)
   let env = args.env
   let paths = roots(env, args.cwd)
   if (args.api === 'v2' && !args.standalone) {
-    if (!/^2\.\d+\.\d+$/.test(args.version)) {
-      return 'unavailable'
-    }
-    const config = await serviceConfig(paths.config)
+    const config = await serviceConfig(paths.config, knownSavedState)
     if (!config.disabled) {
       const present = await servicePresence(
         join(paths.state, 'service.json'),
@@ -166,14 +175,32 @@ export async function resolveOpenCodeSessionSource(args: {
       }
       env = { ...env, ...config.env }
       paths = roots(env, args.cwd)
-      const serverConfig = await serviceConfig(paths.config)
-      // Global roots are fixed before the server's second saved-env application.
-      env = { ...env, ...serverConfig.env }
+      if (minor > 0 || patch >= 31) {
+        const serverConfig = await serviceConfig(paths.config, knownSavedState)
+        // Global roots are fixed before the server's second saved-env application.
+        env = { ...env, ...serverConfig.env }
+      }
     }
   }
-  const selection = env.OPENCODE_DB ?? 'opencode.db'
-  if (!selection.trim() || selection === ':memory:') {
+  if (legacy) {
+    return { root: paths.data, cwd: args.cwd, env, api: 'v1', storage: 'legacy' }
+  }
+  if (args.api === 'v1' && minor === 2 && patch > 27 && env.OPENCODE_DB) {
     return 'unavailable'
   }
-  return { root: paths.data, dbPath: resolve(paths.data, selection), api: args.api }
+  // Stable release builds use the canonical channel; unpinned preview/custom dialects stay unknown.
+  const selection = customDb
+    ? args.api === 'v2'
+      ? (env.OPENCODE_DB ?? 'opencode.db')
+      : env.OPENCODE_DB || 'opencode.db'
+    : 'opencode.db'
+  if (selection === '' || selection === ':memory:') {
+    return 'unavailable'
+  }
+  return {
+    root: paths.data,
+    dbPath: resolve(paths.data, selection),
+    api: args.api,
+    storage: 'sqlite'
+  }
 }

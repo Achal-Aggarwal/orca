@@ -1,8 +1,9 @@
+import { scheduleLateReattachResume } from './reattach-late-resume'
 import {
   applyTerminalLaunchResult,
   captureTerminalLaunchContext
 } from './terminal-launch-result-policy'
-import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
+import { showResumeUnavailableBanner } from './main-pane-resume-banner'
 import { waitForTerminalReplayWritesParsed } from '../replay-guard'
 import {
   POST_REPLAY_MODE_RESET,
@@ -276,31 +277,20 @@ export function createReattachPayloadHandlers(
       const lateStartup = preparedStartup && !ctx.coldRestoreStartup ? preparedStartup : null
       const didPrepareResume = Boolean(
         preparedStartup &&
-        !lateStartup &&
+        (!lateStartup || session.runtimeEnvironmentId) &&
         ctx.connectResult.isReattach !== true &&
         session.applyColdRestoreAgentResumeStartup(preparedStartup)
       )
       if (resumeUnavailable) {
-        session.showSessionRestoredBanner(resumeUnavailableBannerReason(ctx.connectResult))
+        showResumeUnavailableBanner(session, ctx.connectResult)
       } else if (didPrepareResume && preparedStartup?.hasSleepingRecord) {
         session.showSessionRestoredBanner()
       }
       if (didPrepareResume) {
         session.clearSleepingRecordAfterColdRestoreSpawn(preparedStartup)
       }
-      if (lateStartup && !session.runtimeEnvironmentId) {
-        ctx.resumeAfterReplay = () => {
-          if (
-            !ctx.isCurrentReattachPayload() ||
-            session.transport.getPtyId() !== ctx.ptyId ||
-            session.lastTerminalInputAt !== inputAt
-          ) {
-            return
-          }
-          session.pendingReplacedPtyId = ctx.ptyId
-          session.transport.disconnect()
-          void session.startFreshColdRestoreAgentResume(lateStartup)
-        }
+      if (lateStartup && (!session.runtimeEnvironmentId || didPrepareResume)) {
+        scheduleLateReattachResume(session, ctx, lateStartup, inputAt)
       }
       // Why: cold-restore spawned a fresh shell; reset mode bytes a crashed TUI (e.g. Claude's \e[?1004h) left in scrollback that no live TUI now consumes.
       session.writeInputModeGround(POST_REPLAY_MODE_RESET)

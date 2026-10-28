@@ -3467,7 +3467,7 @@ export function createRemoteRuntimePtyTransport(
       const resumeProviderSessionToSend = options.resumeProviderSession ?? resumeProviderSession
       const launchTokenToSend = options.launchToken ?? launchToken
       const launchAgentToSend = options.launchAgent ?? launchAgent
-      const restoreSpawnIntent = resumeProviderSessionToSend ? options.resumeSpawnIntent : undefined
+      const restoreSpawnIntent = options.resumeSpawnIntent
       // Why only for a restore: an extra await would reorder every plain create against destroy.
       const spawnIntentParams = restoreSpawnIntent
         ? await remoteRestoreSpawnIntentParams(createEnvironmentId, restoreSpawnIntent)

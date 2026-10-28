@@ -72,39 +72,79 @@ it('does not read CLI disk after an incompatible or unreachable service', async 
   get.mockResolvedValueOnce(Response.json({ pid: process.pid + 1, version: '2.0.16' }))
   expect(await resolveOpenCodeSessionSource(args())).toBe('unavailable')
 })
-it('projects no-service saved env in CLI/child/server order, retaining established roots', async () => {
+it.each([
+  ['2.0.16', 'first.db'],
+  ['2.0.31', 'second.db'],
+  ['2.1.3', 'second.db']
+])('projects source-backed service env order for %s', async (version, db) => {
   file(join(root, 'config/opencode/service.json'), {
     env: {
       XDG_DATA_HOME: join(root, 'child'),
       OPENCODE_CONFIG_DIR: join(root, 'redirected'),
-      XDG_STATE_HOME: '/ignored'
+      XDG_STATE_HOME: join(root, 'child-state'),
+      OPENCODE_DB: 'first.db'
     }
   })
   file(join(root, 'redirected/service.json'), {
-    env: { OPENCODE_DB: join(root, 'custom-session.db'), XDG_DATA_HOME: '/too-late' }
+    env: {
+      OPENCODE_DB: 'second.db',
+      XDG_DATA_HOME: '/too-late'
+    }
   })
-  expect(await resolveOpenCodeSessionSource(args())).toEqual({
+  expect(await resolveOpenCodeSessionSource({ ...args(), version })).toEqual({
     root: join(root, 'child/opencode'),
-    dbPath: join(root, 'custom-session.db'),
-    api: 'v2'
+    dbPath: join(root, 'child/opencode', db),
+    api: 'v2',
+    storage: 'sqlite'
   })
   expect(get).not.toHaveBeenCalled()
 })
-it.each([':memory:', '', '   '])('never guesses disk authority for %j', async (selection) => {
-  expect(
-    await resolveOpenCodeSessionSource({
+it.each([
+  ['1.1.1', 'v1', 'ignored.db', 'legacy'],
+  ['1.2.0', 'v1', 'ignored.db', 'opencode.db'],
+  ['1.2.27', 'v1', 'ignored.db', 'opencode.db'],
+  ['1.2.28', 'v1', 'uncertain.db', 'unavailable'],
+  ['1.3.0', 'v1', 'custom.db', 'custom.db'],
+  ['1.3.0', 'v1', '', 'opencode.db'],
+  ['2.0.16', 'v2', '', 'unavailable'],
+  ['2.0.16', 'v2', ':memory:', 'unavailable'],
+  ['2.0.16', 'v2', '   ', '   '],
+  ['2.0.16-beta', 'v2', 'opencode.db', 'unavailable'],
+  ['3.0.0', 'v2', 'opencode.db', 'unavailable']
+] as const)(
+  'selects the %s storage dialect with DB %j',
+  async (version, api, selection, expected) => {
+    const input = {
       ...args(),
+      version,
+      api,
       standalone: true,
       env: { ...args().env, OPENCODE_DB: selection }
-    })
-  ).toBe('unavailable')
-})
-
-it('leaves malformed source-affecting configuration unavailable', async () => {
-  file(join(root, 'config/opencode/service.json'), {
-    disabled: 'true',
-    env: { OPENCODE_DB: '/wrong' }
+    }
+    const result = await resolveOpenCodeSessionSource(input)
+    expect(result).toEqual(
+      expected === 'unavailable'
+        ? expected
+        : expected === 'legacy'
+          ? { root: join(root, 'data/opencode'), cwd: root, env: input.env, api, storage: 'legacy' }
+          : {
+              root: join(root, 'data/opencode'),
+              dbPath: join(root, 'data/opencode', expected),
+              api,
+              storage: 'sqlite'
+            }
+    )
+  }
+)
+it('keeps unpinned or malformed source-affecting configuration unknown', async () => {
+  expect(await resolveOpenCodeSessionSource({ ...args(), version: '2.2.0' })).toMatchObject({
+    storage: 'sqlite'
   })
+  file(join(root, 'config/opencode/service.json'), { env: { XDG_STATE_HOME: '/uncertain' } })
+  await expect(resolveOpenCodeSessionSource({ ...args(), version: '2.2.0' })).rejects.toThrow(
+    'Unknown service environment dialect'
+  )
+  file(join(root, 'config/opencode/service.json'), { disabled: 'true' })
   await expect(resolveOpenCodeSessionSource(args())).rejects.toThrow(
     'Unknown service configuration'
   )

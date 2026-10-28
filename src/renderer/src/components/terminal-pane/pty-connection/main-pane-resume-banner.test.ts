@@ -1,4 +1,3 @@
-import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalPaneResumeOutcome } from '@/store/terminals/terminal-state'
 import type { TerminalLayoutSnapshot } from '../../../../../shared/terminal-tab-types'
@@ -15,7 +14,7 @@ const store = vi.hoisted(() => {
   let state: StoreState = { terminalPaneResumeOutcomesByPaneKey: {}, terminalLayoutsByTabId: {} }
   const listeners = new Set<(next: StoreState) => void>()
   return {
-    getState: () => state,
+    getState: () => ({ ...state, agentStatusByPaneKey: {}, agentLaunchConfigByPaneKey: {} }),
     subscribe: (listener: (next: StoreState) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -39,9 +38,12 @@ vi.mock('./main-starts-pane', () => ({ mainStartsPane: () => true }))
 
 const PANE_KEY = 'tab-1:leaf-1'
 
-function attachedView() {
+function attachedView(runtimeEnvironmentId?: string) {
   const view = {
     cacheKey: PANE_KEY,
+    runtimeEnvironmentId,
+    cancelSavedResumeStartup: vi.fn(),
+    registerEffectiveLaunchConfig: vi.fn(),
     disposed: false,
     deps: { tabId: 'tab-1' },
     pane: { leafId: 'leaf-1' },
@@ -146,6 +148,59 @@ describe("the window's banner for main's start of a pane", () => {
     expect(view.showSessionRestoredBanner).not.toHaveBeenCalled()
   })
 
+  it('deduplicates the real result policy across dismiss, remount, main frame and reload; a new start shows once', async () => {
+    vi.resetModules()
+    const run = async (id: string, incarnationId: string, remote?: string) => {
+      const { applyTerminalLaunchResult, captureTerminalLaunchContext } =
+        await import('./terminal-launch-result-policy')
+      const view = attachedView(remote)
+      const result = {
+        id,
+        incarnationId,
+        agentResumeUnavailable: true,
+        agentResumeRefused: 'unverifiable' as const,
+        launchAgent: 'opencode' as const,
+        refusedResume: {
+          agent: 'opencode' as const,
+          providerSession: { key: 'session_id' as const, id: 'C' }
+        }
+      }
+      applyTerminalLaunchResult(
+        view.session,
+        result,
+        captureTerminalLaunchContext(view.session, {
+          command: 'opencode --session C',
+          launchAgent: 'opencode'
+        }),
+        'creator'
+      )
+      return { view, result }
+    }
+    store.publish({
+      terminalPaneResumeOutcomesByPaneKey: {
+        [PANE_KEY]: { ptyId: 'local', ptyGeneration: 1, outcome: 'resume-unavailable' }
+      }
+    })
+    const local = await run('local', 'one')
+    const { showMainPaneResumeOutcome } = await import('./main-pane-resume-banner')
+    showMainPaneResumeOutcome(local.view.session, 'local', local.result)
+    expect(local.view.view.showSessionRestoredBanner).toHaveBeenCalledExactlyOnceWith(
+      'opencode-missing-fresh'
+    )
+    expect((await run('local', 'one')).view.view.showSessionRestoredBanner).not.toHaveBeenCalled()
+    const first = await run('remote', 'one', 'host')
+    expect(first.view.view.showSessionRestoredBanner).toHaveBeenCalledOnce()
+    vi.resetModules()
+    expect(
+      (await run('remote', 'one', 'host')).view.view.showSessionRestoredBanner
+    ).not.toHaveBeenCalled()
+    const next = await run('remote', 'two', 'host')
+    expect(next.view.view.showSessionRestoredBanner).toHaveBeenCalledOnce()
+    expect(
+      (await run('remote', 'two', 'host')).view.view.showSessionRestoredBanner
+    ).not.toHaveBeenCalled()
+  })
+
   it('subscribes to nothing: the outcome rides the frame the attach follows', async () => {
     const showMainPaneResumeOutcome = await loadBannerModule()
     const { view, session } = attachedView()
@@ -187,25 +242,4 @@ describe("a held pane's reopen count from main's outcome", () => {
     publish('pty-1', 2)
     expect(resumed('pty-1')).toBe(true)
   })
-})
-
-it('names OpenCode only for the committed fresh result retaining the rejected locator', () => {
-  const result = {
-    launchAgent: 'opencode' as const,
-    agentResumeRefused: 'unverifiable' as const,
-    refusedResume: {
-      agent: 'opencode' as const,
-      providerSession: { key: 'session_id' as const, id: 'deleted' }
-    }
-  }
-  expect(resumeUnavailableBannerReason(result)).toBe('opencode-missing-fresh')
-  expect(resumeUnavailableBannerReason({ ...result, launchAgent: undefined })).toBe(
-    'resume-unavailable'
-  )
-  expect(
-    resumeUnavailableBannerReason({
-      ...result,
-      resumeProviderSession: result.refusedResume.providerSession
-    })
-  ).toBe('resume-unavailable')
 })

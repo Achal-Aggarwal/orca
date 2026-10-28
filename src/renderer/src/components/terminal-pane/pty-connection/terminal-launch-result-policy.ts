@@ -8,7 +8,7 @@ import type { ReattachPayloadSession } from './reattach-payload-session'
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { PtyPaneStartup } from '../pty-connection-types'
 
-import { resumeUnavailableBannerReason } from '../session-restored-banner-pane-state'
+import { showResumeUnavailableBanner } from './main-pane-resume-banner'
 
 type SavedStartup = ColdRestoreAgentResumeStartup | PtyPaneStartup
 
@@ -29,7 +29,7 @@ export type TerminalLaunchContext = ReturnType<typeof captureTerminalLaunchConte
 
 export function applyTerminalLaunchResult(
   session: ConnectPanePtySession | ReattachPayloadSession,
-  result: TerminalLaunchResult & { isReattach?: boolean },
+  result: TerminalLaunchResult & { id?: string; incarnationId?: string; isReattach?: boolean },
   context: TerminalLaunchContext,
   kind: 'creator' | 'observer' | 'candidate'
 ): boolean {
@@ -46,7 +46,11 @@ export function applyTerminalLaunchResult(
       startup.resumeProviderSession
     )
   )
-  const candidateRejected = kind === 'candidate' && (!matches || decision?.verdict !== 'admitted')
+  // Older paired owners have no saved decision; retain their existing late delivery path.
+  const candidateRejected =
+    kind === 'candidate' &&
+    (!session.runtimeEnvironmentId || decision) &&
+    (!matches || decision?.verdict !== 'admitted')
   const rejected = Boolean(
     result.agentResumeRefused || result.agentResumeUnavailable || candidateRejected
   )
@@ -91,7 +95,7 @@ export function applyTerminalLaunchResult(
     console.warn('Terminal launch result bookkeeping failed', error)
   }
   if (rejected && !superseded) {
-    session.showSessionRestoredBanner(resumeUnavailableBannerReason(result))
+    showResumeUnavailableBanner(session, result)
   }
   return rejected
 }
