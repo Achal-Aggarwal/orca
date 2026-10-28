@@ -60,6 +60,7 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
     taskStateHydrated,
     tasksSupported
   } = model
+  const unsettledLoadRef = useRef(0)
   const loadTasks = useCallback(
     async (options: { silent?: boolean } = {}): Promise<void> => {
       if (!client || connState !== 'connected' || !tasksSupported || !taskStateHydrated) {
@@ -67,6 +68,7 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
       }
       const generation = loadGenerationRef.current + 1
       loadGenerationRef.current = generation
+      unsettledLoadRef.current = generation
       const requestClient = client
       const isCurrent = () =>
         loadGenerationRef.current === generation && clientRef.current === requestClient
@@ -261,6 +263,9 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
         resetGitHubItemsState()
         setError(err instanceof Error ? err.message : 'Failed to load tasks')
       } finally {
+        if (unsettledLoadRef.current === generation) {
+          unsettledLoadRef.current = 0
+        }
         if (isCurrent()) {
           setLoading(false)
           setRefreshing(false)
@@ -290,12 +295,15 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
       tasksSupported
     ]
   )
-  // Abandoning a load must also release its spinners; a successor load in the same commit re-sets them.
+  // Abandoning an in-flight load must release its spinners; a successor load in the same commit re-sets them.
   useEffect(
     () => () => {
       loadGenerationRef.current += 1
-      setLoading(false)
-      setRefreshing(false)
+      if (unsettledLoadRef.current !== 0) {
+        unsettledLoadRef.current = 0
+        setLoading(false)
+        setRefreshing(false)
+      }
     },
     [loadTasks, loadGenerationRef, setLoading, setRefreshing]
   )
