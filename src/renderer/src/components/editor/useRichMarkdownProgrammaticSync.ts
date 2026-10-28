@@ -5,6 +5,7 @@ import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
 import { syncDocLinkMenu, type DocLinkMenuState } from './rich-markdown-commands'
 import { normalizeEmptyListItems } from './rich-markdown-normalize'
+import { discardStaleRichMarkdownBlockSource } from './rich-markdown-block-source'
 import { syncSlashMenu, type SlashMenuState } from './rich-markdown-slash-commands'
 import {
   createRichMarkdownImageResolverContext,
@@ -132,6 +133,7 @@ export function useRichMarkdownProgrammaticSync({
       lastCommittedMarkdownRef.current = content
       originalSourceRef.current = content
       baseCanonicalRef.current = content
+      discardStaleRichMarkdownBlockSource(editor, content)
       if (pendingTimer !== null) {
         onContentChangeRef.current(content)
       }
@@ -203,6 +205,7 @@ function applyExternalRichMarkdownContent(
     // Adopt external source style so later edits cannot revive the pre-reload formatting.
     originalSourceRef.current = content
     baseCanonicalRef.current = editor.getMarkdown()
+    discardStaleRichMarkdownBlockSource(editor, content)
     if (hadFocus) {
       const docSize = editor.state.doc.content.size
       editor

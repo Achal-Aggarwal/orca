@@ -1,6 +1,9 @@
 import type { MutableRefObject } from 'react'
 import type { Editor } from '@tiptap/react'
-import { reconcileRichMarkdownBlockSource } from './rich-markdown-block-source'
+import {
+  discardStaleRichMarkdownBlockSource,
+  reconcileRichMarkdownBlockSource
+} from './rich-markdown-block-source'
 import {
   reconcileSerializedMarkdown,
   restoreMarkdownSourceEol
@@ -74,5 +77,8 @@ export function commitRichMarkdownSerialization(
   refs.baseCanonicalRef.current = edited
   // External-change guards need the exact reconciled output, not its canonical representation.
   refs.lastCommittedMarkdownRef.current = reconciled
+  if (editor) {
+    discardStaleRichMarkdownBlockSource(editor, reconciled)
+  }
   return { markdown: reconciled, didSerialize: true }
 }

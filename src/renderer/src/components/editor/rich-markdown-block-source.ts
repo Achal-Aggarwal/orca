@@ -28,6 +28,13 @@ export function registerRichMarkdownBlockSource(
   contexts.set(editor, { codec, htmlSuperscriptLinks })
 }
 
+export function discardStaleRichMarkdownBlockSource(editor: Editor, source: string): void {
+  const context = contexts.get(editor)
+  if (context?.baseline && context.baseline.source !== source) {
+    delete context.baseline
+  }
+}
+
 function parse(editor: Editor, context: SourceContext, source: string): ProseMirrorNode {
   return editor.schema.nodeFromJSON(
     editor.markdown!.parse(encodeRawMarkdownHtmlForRichEditor(source, context.codec, context))
