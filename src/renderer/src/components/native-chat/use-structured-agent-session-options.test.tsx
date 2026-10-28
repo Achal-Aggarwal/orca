@@ -29,6 +29,7 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 }))
 
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat/input/native-chat-session-options'
+import type { AgentSessionOptionsResult } from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 import { structuredAgentSessionSendSelection } from '../../../../shared/structured-agent-session-option-view'
@@ -80,7 +81,7 @@ type RenderProps = {
   launchSeedOptions?: Record<string, string>
   heldOptions?: Record<string, string>
   worktree?: string
-  agent?: 'claude' | 'codex'
+  agent?: 'claude' | 'codex' | 'antigravity'
   providerStarting?: boolean
   paired?: boolean
 }
@@ -189,6 +190,58 @@ describe('useStructuredAgentSessionOptions', () => {
     mocks.hold.mockReset()
     mocks.toastError.mockReset()
     resetHostModelCatalogSnapshotsForTests()
+  })
+
+  it('keeps the latest dependent menu after same-stamp receipts and an older delayed answer', async () => {
+    const menu = (model: string, effort?: string): AgentSessionOptionsResult => ({
+      models: ['family', 'newer'].map((id) => ({
+        id,
+        label: id,
+        isDefault: false,
+        effortsKnown: id === model && !!effort,
+        efforts: id === model && effort ? [{ value: effort, label: effort }] : []
+      })),
+      current: { model, ...(effort ? { effort } : {}) }
+    })
+    const initial = menu('family')
+    const older = Promise.withResolvers<AgentSessionOptionsResult>()
+    const latest = Promise.withResolvers<AgentSessionOptionsResult>()
+    let reads = 0
+    answer({
+      options: () =>
+        [Promise.resolve(initial), older.promise, latest.promise][reads++] ?? latest.promise
+    })
+    const { mutate, calls } = mutateWith(async () => null)
+    calls
+      .mockResolvedValueOnce({ options: { model: 'family' } })
+      .mockResolvedValue({ options: { model: 'newer' } })
+    const { result, rerender, unmount } = renderOptions(
+      { ...REOPENED, agent: 'antigravity' },
+      mutate
+    )
+    await waitFor(() => expect(currentValue(result.current.optionSnapshot, 'model')).toBe('family'))
+    expect(descriptor(result.current.optionSnapshot, 'effort')).toBeUndefined()
+    await act(async () => {
+      expect(await result.current.setStructuredOption('model', 'family')).toBe(true)
+    })
+    await waitFor(() => expect(reads).toBe(2))
+    await act(async () => {
+      expect(await result.current.setStructuredOption('model', 'newer')).toBe(true)
+    })
+    expect(descriptor(result.current.optionSnapshot, 'model')?.settable).toBe(true)
+    expect(descriptor(result.current.optionSnapshot, 'effort')).toBeUndefined()
+    // A normal turn refresh starts a reader while the superseded response is still in flight.
+    rerender({ ...REOPENED, agent: 'antigravity', turnId: 'turn-next' })
+    await waitFor(() => expect(reads).toBe(3))
+    await act(async () => latest.resolve(menu('newer', 'high')))
+    await waitFor(() => expect(currentValue(result.current.optionSnapshot, 'effort')).toBe('high'))
+    await act(async () => older.resolve(menu('family', 'low')))
+    expect(currentValue(result.current.optionSnapshot, 'model')).toBe('newer')
+    expect(descriptor(result.current.optionSnapshot, 'effort')).toMatchObject({
+      settable: true,
+      kind: { type: 'select', currentValue: 'high', choices: [{ value: 'high' }] }
+    })
+    unmount()
   })
 
   it('upgrades the seed with the host catalog while the live read is still pending', async () => {

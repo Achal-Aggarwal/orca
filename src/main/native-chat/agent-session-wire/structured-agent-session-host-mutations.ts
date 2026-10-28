@@ -236,7 +236,7 @@ export async function setStructuredAgentSessionOption(
       run: async (ctx) => {
         const picked = await recordStructuredAgentSessionOptionIntent(context.deps, ctx, params)
         if (picked.ok) {
-          await confirmIdleStructuredAgentSessionOption(context, ctx, params)
+          confirmIdleStructuredAgentSessionOption(context, ctx, params)
         }
         return picked
       }

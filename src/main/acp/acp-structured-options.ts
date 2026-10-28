@@ -49,10 +49,7 @@ function isSelect(option: SessionConfigOption): option is SelectOption {
 
 export class AcpStructuredOptions {
   constructor(
-    private readonly dialect: Pick<
-      AcpDialect,
-      'modelEfforts' | 'clampsUnlistedEffort' | 'withheldCommands'
-    > = {}
+    private readonly dialect: Pick<AcpDialect, 'modelEfforts' | 'withheldCommands'> = {}
   ) {}
 
   private configOptions: SessionConfigOption[] = []
@@ -97,8 +94,9 @@ export class AcpStructuredOptions {
     requestedModel?: string
   ): void {
     if (configOptions) {
+      const previousModel = this.currentModel()
       this.configOptions = configOptions
-      this.adoptOwnChoice()
+      this.adoptOwnChoice(previousModel)
       if (requestedModel !== undefined) {
         this.confirmModelSelection(requestedModel)
       } else if (this.modelSelection?.reported !== this.select('model')?.currentValue) {
@@ -109,7 +107,12 @@ export class AcpStructuredOptions {
 
   /** Until Orca writes a key, a later report is still the agent's own (OpenCode's start answers
    *  before its catalog loads); an effort belongs to its model, so it stops with either write. */
-  private adoptOwnChoice(): void {
+  private adoptOwnChoice(previousModel: string | undefined): void {
+    if (this.currentModel() !== previousModel) {
+      this.currentProof.delete('model')
+      this.currentProof.delete('effort')
+      this.modelSelection = null
+    }
     if (this.picked.has('model')) {
       return
     }
@@ -123,7 +126,9 @@ export class AcpStructuredOptions {
         this.currentProof.delete(key)
       } else {
         choice[key] = value
-        this.currentProof.add(key)
+        if (!this.applied.has('model') && !this.applied.has('effort')) {
+          this.currentProof.add(key)
+        }
       }
     }
     this.initialChoice = choice
@@ -139,12 +144,13 @@ export class AcpStructuredOptions {
   private confirmModelSelection(requested: string | undefined): void {
     const reported = this.select('model')?.currentValue
     this.modelSelection = requested && reported ? { requested, reported } : null
-
   }
 
   adoptModel(modelId: string): void {
     if (this.models) {
+      const previousModel = this.currentModel()
       this.models = { ...this.models, currentModelId: modelId }
+      this.adoptOwnChoice(previousModel)
     }
   }
 
@@ -190,7 +196,7 @@ export class AcpStructuredOptions {
           ...(choice.description ? { description: choice.description } : {})
         }))
       : []
-    const currentModel = (modelOption?.currentValue ?? this.models?.currentModelId) || undefined
+    const currentModel = this.currentModel()
     const listed: { id: string; label: string; description?: string }[] = modelOption
       ? selectChoices(modelOption).map((choice) => ({
           id: choice.value,
@@ -205,18 +211,20 @@ export class AcpStructuredOptions {
     const models: AgentSessionModelOption[] = listed.map((model) => {
       const info = this.models?.availableModels.find((entry) => entry.modelId === model.id)
       const advertised = info ? this.dialect.modelEfforts?.(info) : undefined
-      // A clamping agent's session menu says nothing about another model's menu: unknown, not none.
+      // A current-session menu supplies no negative evidence about an unobserved model.
       const sessionMenu =
         model.id === currentModel
           ? { efforts: sessionEfforts }
-          : this.dialect.clampsUnlistedEffort && effortOption && !advertised
+          : (modelOption || effortOption) && !advertised
             ? { efforts: [], effortsKnown: false as const }
             : { efforts: [] }
       return {
         ...model,
         isDefault: false,
         // Fall back to the running session's menu when the advertised menu is empty.
-        ...(advertised && advertised.efforts.length > 0 ? advertised : sessionMenu)
+        ...(advertised && (advertised.efforts.length > 0 || model.id !== currentModel)
+          ? advertised
+          : sessionMenu)
       }
     })
     const confirmed = [...(currentModel ? ['model'] : []), ...(effortOption ? ['effort'] : [])]
@@ -269,6 +277,10 @@ export class AcpStructuredOptions {
       : null
   }
 
+  private currentModel(): string | undefined {
+    return (this.select('model')?.currentValue ?? this.models?.currentModelId) || undefined
+  }
+
   // Match the mode category rather than assuming an agent's config ID.
   modeConfigId(): string {
     return this.select('mode')?.id ?? 'mode'
@@ -306,5 +318,4 @@ export async function readAcpLiveOptions(
     confirmedModelSelection: session.options.confirmedModelSelection(),
     acceptsImages
   }
-
 }

@@ -721,3 +721,46 @@ describe('useMobileStructuredAgentOptions after a lost pick reply', () => {
     await harness.unmount()
   })
 })
+
+it('joins the post-receipt menu read with an unchanged phone option stamp', async () => {
+  const initial: AgentSessionOptionsResult = {
+    models: [{ id: 'family', label: 'Family', isDefault: false, efforts: [], effortsKnown: false }],
+    current: { model: 'family' }
+  }
+  const ready = deferred<AgentSessionOptionsResult>()
+  let reads = 0
+  const client = optionsClient(() => (++reads === 1 ? Promise.resolve(initial) : ready.promise))
+  const { mutate } = recordingMutate(async () =>
+    accepted({ key: 'model', value: 'family', options: { model: 'family' } }, true)
+  )
+  const harness = await mountOptions({
+    ...BASE,
+    agent: 'antigravity',
+    client: client.client,
+    mutate,
+    optionStamp: 'family|own'
+  })
+  expect(descriptorFor(harness.current().optionSnapshot, 'effort')).toBeUndefined()
+  await act(async () => {
+    expect(await harness.current().setStructuredOption('model', 'family')).toBe(true)
+  })
+  expect(descriptorFor(harness.current().optionSnapshot, 'model')?.settable).toBe(true)
+  await act(async () => {
+    ready.resolve({
+      ...initial,
+      models: [
+        {
+          id: 'family',
+          label: 'Family',
+          isDefault: false,
+          efforts: [{ value: 'low', label: 'Low' }]
+        }
+      ],
+      current: { model: 'family', effort: 'low' }
+    })
+  })
+  await settle()
+  expect(currentValueOf(harness.current().optionSnapshot, 'effort')).toBe('low')
+  expect(descriptorFor(harness.current().optionSnapshot, 'effort')?.settable).toBe(true)
+  await harness.unmount()
+})

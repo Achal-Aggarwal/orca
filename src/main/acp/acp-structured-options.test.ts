@@ -104,38 +104,45 @@ describe('ACP session options', () => {
     }
   )
 
-  it('keeps the session’s picks out of the catalog facts', () => {
-    // OpenCode refuses an effort the selected model lacks, so another model's empty menu stays strict.
-    const options = new AcpStructuredOptions(OPENCODE_ACP_DIALECT)
-    options.adoptSession({ configOptions })
-    const { models, current } = options.read()
-    // Current values supply an effort menu, never a catalog default.
-    expect(models).toEqual([
-      { id: 'model-a', label: 'Model A', isDefault: false, efforts: [] },
-      {
-        id: 'model-b',
-        label: 'Model B',
-        isDefault: false,
-        efforts: [
-          { value: 'low', label: 'Low' },
-          { value: 'high', label: 'High' }
-        ]
+  it.each([OPENCODE_ACP_DIALECT, OMP_ACP_DIALECT])(
+    'keeps picks out of catalog facts and expires dependent application proof',
+    (dialect) => {
+      const options = new AcpStructuredOptions(dialect)
+      options.adoptSession({
+        configOptions,
+        models: { currentModelId: 'legacy', availableModels: [] }
+      })
+      const { models, current } = options.read()
+      // Current values supply an effort menu, never a catalog default.
+      expect(models).toEqual([
+        { id: 'model-a', label: 'Model A', isDefault: false, efforts: [], effortsKnown: false },
+        {
+          id: 'model-b',
+          label: 'Model B',
+          isDefault: false,
+          efforts: [
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' }
+          ]
+        }
+      ])
+      expect(current).toEqual({ model: 'model-b', effort: 'high', confirmed: ['model', 'effort'] })
+      options.notePick('model')
+      options.adoptModel('')
+      options.adoptConfigOptions(null)
+      options.adoptConfigOptions(configOptions)
+      expect([...options.currentProof]).toEqual(['model', 'effort'])
+      for (const next of [
+        [{ ...configOptions[0]!, currentValue: 'model-a' }],
+        configOptions,
+        [],
+        configOptions
+      ]) {
+        options.adoptConfigOptions(next)
+        expect([...options.currentProof]).toEqual([])
       }
-    ])
-    expect(current).toEqual({ model: 'model-b', effort: 'high', confirmed: ['model', 'effort'] })
-  })
-
-  it('leaves another model’s menu unknown for an agent that clamps unlisted efforts', () => {
-    const options = new AcpStructuredOptions(OMP_ACP_DIALECT)
-    options.adoptSession({ configOptions })
-    expect(options.read().models[0]).toEqual({
-      id: 'model-a',
-      label: 'Model A',
-      isDefault: false,
-      efforts: [],
-      effortsKnown: false
-    })
-  })
+    }
+  )
 
   it('reads each model’s own menu where the agent advertises one', () => {
     const options = new AcpStructuredOptions(GROK_ACP_DIALECT)

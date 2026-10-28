@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import {
   NewSessionResponseSchema,
+  ResumeSessionRequestSchema,
   SetSessionConfigOptionRequestSchema,
-  SessionModelStateSchema,
   SetSessionConfigOptionResponseSchema
 } from './generated/acp-protocol.generated'
 import { acpLaunchSpecFor } from './acp-launch-specs'
-import { openHostRig, framesOf, send, stop } from './acp-structured-host.test-support'
-import { waitFor } from './acp-structured-adapter.test-support'
+import { framesOf, launch, openHostRig, send, stop } from './acp-structured-host.test-support'
+import { PROVIDER_SESSION, waitFor } from './acp-structured-adapter.test-support'
 import type { AcpScriptedAgent, FakeFrame } from './acp-scripted-agent.test-support'
 import {
   CALLER,
@@ -19,241 +19,568 @@ import {
   hostTestAttachParams
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
-import { ANTIGRAVITY_SESSION_OPTION_CATALOG } from '../../shared/agent-session-option-catalog-antigravity'
-import {
-  applyStructuredAgentSessionOptions,
-  createStructuredAgentSessionOptionState,
-  structuredAgentSessionOptionSnapshot
-} from '../../shared/structured-agent-session-options'
+import { createAgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
+import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { withLiveCatalogListing } from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
+import { AcpStructuredOptions } from './acp-structured-options'
+import { seedOptionsAdmittedOnSavedListing } from '../runtime/agent-session-record-options'
+import { structuredAgentSessionHandingOver } from '../native-chat/agent-session-wire/structured-agent-session-handing-over'
 
 const recording = JSON.parse(
   readFileSync(new URL('./fixtures/antigravity-v1.4.3-options.json', import.meta.url), 'utf8')
 )
-const session = NewSessionResponseSchema.extend({ models: SessionModelStateSchema }).parse(
-  recording.session
-)
+const session = NewSessionResponseSchema.parse({
+  ...recording.session,
+  sessionId: PROVIDER_SESSION
+})
 const response = (key: string) => SetSessionConfigOptionResponseSchema.parse(recording[key])
-const ANTIGRAVITY = acpLaunchSpecFor('antigravity')!
+const SPEC = acpLaunchSpecFor('antigravity')!
 const FLASH = 'gemini-3.8-flash'
 const PRO = 'gemini-3.1-pro'
-afterEach(closeProviderTimelineRigs)
+afterEach(async () => {
+  vi.useRealTimers()
+  await closeProviderTimelineRigs()
+})
 
 async function openModels(
-  saved: Readonly<Record<string, string>>,
-  metadata: typeof session = { ...session, ...response('low') },
-  onModelWrite?: (agent: AcpScriptedAgent, frame: FakeFrame) => void
+  settings: {
+    saved?: Record<string, string>
+    flat?: boolean
+    noEffort?: boolean
+    timeoutMs?: number
+    control?: (agent: AcpScriptedAgent, frame: FakeFrame) => boolean
+  } = {}
 ) {
+  let records: AgentSessionRecordStore | undefined
+  const catalog = createAgentModelCatalogService({
+    store: new AgentModelCatalogStore(),
+    getRecord: (id) => records?.getRecord(id) ?? undefined,
+    getConversation: (id) => records?.getConversation(id) ?? undefined,
+    drivesRecord: () => true,
+    resolveAccountHome: async () => ({ variable: 'GEMINI_HOME', path: '/unused/antigravity' }),
+    recordWorkspacePath: async () => '/workspace/project',
+    agentReadsProjectModelConfig: () => false,
+    workspaceMayOverrideDefaultModel: async () => false
+  })
+  onTestFinished(() => catalog.stop())
+  let resumed = false
+  const spec = settings.flat ? { ...SPEC, permissionModeConfig: undefined } : SPEC
   const rig = await openHostRig({
-    spec: metadata.configOptions
-      ? ANTIGRAVITY
-      : { ...ANTIGRAVITY, permissionModeConfig: undefined },
+    spec,
+    modelCatalog: catalog,
+    initialize: recording.initialize,
+    deps: { resolveLaunch: launch(() => resumed, spec), optionWriteTimeoutMs: settings.timeoutMs },
     script: (agent) => {
-      agent.on('session/new', (frame) => agent.reply(frame, metadata))
+      let native = settings.flat ? [] : (session.configOptions ?? [])
+      if (settings.noEffort) {
+        native = native.filter((row) => row.category !== 'thought_level')
+      }
+      for (const method of ['session/new', 'session/load', 'session/resume']) {
+        agent.on(method, (frame) => {
+          if (method === 'session/resume') {
+            expect(ResumeSessionRequestSchema.parse(frame.params).sessionId).toBe(PROVIDER_SESSION)
+          }
+          const configOptions = method === 'session/load' || !settings.flat ? native : undefined
+          agent.reply(frame, { ...session, configOptions })
+        })
+      }
+      agent.on('session/set_model', (frame) => agent.reply(frame, {}))
       agent.on('session/set_config_option', (frame) => {
-        if (SetSessionConfigOptionRequestSchema.parse(frame.params).configId === 'mode') {
-          agent.reply(frame, { configOptions: metadata.configOptions })
-        } else if (onModelWrite) {
-          onModelWrite(agent, frame)
-        } else {
-          agent.reply(frame, response('pro'))
+        const { configId, value } = SetSessionConfigOptionRequestSchema.parse(frame.params)
+        if (configId !== 'mode' && settings.control?.(agent, frame)) {
+          return
         }
+        if (configId === 'model') {
+          native =
+            value === PRO
+              ? response('pro').configOptions
+              : value === FLASH
+                ? (session.configOptions ?? [])
+                : response('legacy').configOptions
+        } else if (configId === 'thinking_level') {
+          const pro = native?.some(
+            (row) => row.category === 'model' && row.type === 'select' && row.currentValue === PRO
+          )
+          if (pro && value === 'medium') {
+            agent.fail(frame, -32602, 'Unsupported effort')
+            return
+          }
+          native = native?.map((row) =>
+            row.category === 'thought_level' && row.type === 'select'
+              ? { ...row, currentValue: value }
+              : row
+          )
+        }
+        agent.reply(frame, { configOptions: native })
       })
     }
   })
-  expect(
-    await rig.host.attach(
+  records = rig.store
+  const attach = (fence: number | null) =>
+    rig.host.attach(
       CALLER,
-      hostTestAttachParams(null, {
+      hostTestAttachParams(fence, {
         provider: 'antigravity',
         agent: 'antigravity',
         accountHome: { variable: 'GEMINI_HOME', path: '/unused/antigravity' },
         providerHandle: undefined,
-        options: saved
+        options: fence === null ? (settings.saved ?? { model: FLASH }) : undefined
       })
     )
-  ).toMatchObject({ ok: true })
+  expect(await attach(null)).toMatchObject({ ok: true })
   await rig.ready()
-  return {
-    ...rig,
-    modelWrites: () =>
-      framesOf(rig.rig.child(), 'session/set_config_option').filter(
-        (frame) => SetSessionConfigOptionRequestSchema.parse(frame.params).configId === 'model'
-      ),
-    pick: (key: string, value: string) => {
-      const fields = { key, value }
-      return rig.host.setOption(CALLER, {
-        envelope: envelope('agentSession.setOption', fields),
-        ...fields
+  resumed = true
+  const journal = () => rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  const picks = (key: string, value: string) =>
+    rig.host.setOption(CALLER, {
+      envelope: envelope('agentSession.setOption', { key, value }),
+      key,
+      value
+    })
+  const writes = () =>
+    framesOf(rig.rig.child(), 'session/set_config_option').filter(
+      (frame) => SetSessionConfigOptionRequestSchema.parse(frame.params).configId !== 'mode'
+    )
+  const state = rig.host.collaboratorsForTests().runtimeState
+  const ownership = () => ({
+    tasks: rig.host['tasks']['attaching'].size,
+    handles: state.acquireAborts['inFlight'].get(SESSION)?.size ?? 0,
+    places: state.deliveryOrder['lanes'].get(SESSION)?.places.size ?? 0,
+    lanes: state.deliveryOrder['lanes'].size
+  })
+  const complete = async (id: string) => {
+    await waitFor(() =>
+      expect(journal().submission(id)?.dispatchState).toMatch(/admitted|accepted/)
+    )
+    const frame = framesOf(rig.rig.child(), 'session/prompt').at(-1)!
+    const turn = journal().runningTurn()?.turnId
+    rig.rig.child().agent.reply(frame, { stopReason: 'end_turn' })
+    await rig.rig.settle()
+    await rig.host.flushStreamedEvents(SESSION)
+    await waitFor(() => expect(journal().runningTurn()?.turnId).not.toBe(turn))
+    expect(structuredAgentSessionHandingOver(journal()).has(id)).toBe(false)
+  }
+  const defer = async (path: string | false) => {
+    const busy = path === 'busy' ? await send(rig.host, 'busy') : undefined
+    if (busy) {
+      await waitFor(() =>
+        expect(journal().submission(busy)?.dispatchState).toMatch(/admitted|accepted/)
+      )
+    }
+    if (path === 'held') {
+      await journal().queuedMessages.insert({
+        messageId: 'held',
+        holdReason: 'send_failed',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
       })
-    },
-    snapshot: async () => {
-      const answer = await rig.host.readOptions(SESSION)
-      return {
-        answer,
-        descriptors: structuredAgentSessionOptionSnapshot(
-          applyStructuredAgentSessionOptions(
-            createStructuredAgentSessionOptionState('antigravity'),
-            ANTIGRAVITY_SESSION_OPTION_CATALOG,
-            answer
-          )
-        )
+    }
+    return async () => {
+      if (busy) {
+        await complete(busy)
+      }
+      if (path === 'held') {
+        expect(
+          await rig.host.queuedMessageSend(CALLER, {
+            envelope: envelope('agentSession.queuedMessageSend', { messageId: 'held' }),
+            messageId: 'held'
+          })
+        ).toMatchObject({ ok: true })
+        await complete(journal().submissions().at(-1)!.clientMessageId)
       }
     }
+  }
+  const deliver = async (text: string) => {
+    const id = await send(rig.host, text)
+    await complete(id)
+    return id
+  }
+  return {
+    ...rig,
+    catalog,
+    journal,
+    picks,
+    writes,
+    complete,
+    deliver,
+    attach,
+    state,
+    ownership,
+    defer
   }
 }
 
-it('confirms a saved concrete model only from the same provider response and shares its exact menu', async () => {
-  const concrete = 'gemini-3.1-pro-low'
-  const rig = await openModels(
-    { model: concrete },
-    {
-      ...session,
-      ...response('pro'),
-      models: { ...session.models, currentModelId: concrete }
+it.each([
+  ['live', 10],
+  ['live', 100],
+  ['cold', 1],
+  ['restart', 1],
+  ['busy', 1],
+  ['held', 1]
+] as const)(
+  'retains Low through first Pro dispatch with bounded idle work (%s, history=%i)',
+  async (path, count) => {
+    const rig = await openModels()
+    expect(await rig.picks('effort', 'low')).toMatchObject({ ok: true })
+    await rig.deliver('apply Low')
+    for (let i = 1; i < count; i++) {
+      await rig.deliver(`history ${i}`)
     }
-  )
-  const { answer, descriptors } = await rig.snapshot()
-  expect(answer.current).toMatchObject({
-    model: PRO,
-    effort: 'low',
-    confirmed: ['model', 'effort']
-  })
-  expect(descriptors.find(({ id }) => id === 'effort')).toMatchObject({
-    kind: { currentValue: 'low', choices: [{ value: 'low' }, { value: 'high' }] },
-    settable: true
-  })
-  expect(answer.models.some(({ id }) => id === concrete)).toBe(false)
-  expect(rig.store.getRecord(SESSION)?.options).toEqual({ model: concrete })
-  expect(rig.modelWrites()).toEqual([])
-})
-
-it.each([FLASH, 'gemini-3.8-flash-low', 'opaque/foreign-model'])(
-  'keeps a different pending model %s over live confirmation',
-  async (model) => {
-    const rig = await openModels(
-      { model },
-      {
-        ...session,
-        ...response('pro'),
-        models: { ...session.models, currentModelId: 'gemini-3.1-pro-low' }
-      }
-    )
-    const { answer } = await rig.snapshot()
-    expect(answer.current.model).toBe(model)
-    expect(answer.current.confirmed).not.toContain('model')
-    expect(rig.store.getRecord(SESSION)?.options?.model).toBe(model)
+    const saved = await rig.catalog.read({
+      agent: 'antigravity',
+      sessionId: SESSION,
+      savedOnly: true
+    })
+    if (saved.origin === 'unknown') {
+      throw new Error('catalog missing')
+    }
+    expect(saved.models.find((row) => row.id === PRO)).toMatchObject({
+      efforts: [],
+      effortsKnown: false
+    })
+    expect(
+      seedOptionsAdmittedOnSavedListing(
+        'antigravity',
+        { model: PRO, effort: 'low' },
+        saved.models,
+        new Set()
+      )
+    ).toEqual({ model: PRO, effort: 'low' })
+    if (path === 'cold') {
+      await rig.host.close(SESSION, 'user-close')
+    }
+    const wake = await rig.defer(path)
+    const proWrites = rig.writes().length
+    const scans = vi.spyOn(rig.journal(), 'submissions')
+    expect(await rig.picks('model', PRO)).toMatchObject({ ok: true })
+    if (path === 'live') {
+      await rig.host.readOptions(SESSION)
+      const examined = scans.mock.results.reduce(
+        (total, result) => total + (result.type === 'return' ? result.value.length : 0),
+        0
+      )
+      expect(examined).toBeLessThanOrEqual(100 * count)
+      expect(
+        rig
+          .writes()
+          .filter(
+            ({ params }) => SetSessionConfigOptionRequestSchema.parse(params).configId === 'model'
+          )
+      ).toHaveLength(1)
+    }
+    expect(rig.store.getRecord(SESSION)?.options).toEqual({ model: PRO, effort: 'low' })
+    await wake()
+    if (path === 'restart') {
+      await rig.host.close(SESSION, 'user-close')
+      expect(await rig.attach(rig.fence())).toMatchObject({ ok: true })
+      await rig.ready()
+    }
+    const id = await rig.deliver('Pro without re-picking effort')
+    expect(rig.journal().submission(id)?.options).toMatchObject({ model: PRO, effort: 'low' })
+    expect(rig.writes().slice(proWrites).at(-1)?.params).toMatchObject({
+      configId: 'thinking_level',
+      value: 'low'
+    })
   }
 )
 
-it('writes ready idle model metadata and re-reads the new family menu before any prompt', async () => {
-  const rig = await openModels({ model: FLASH, effort: 'low' })
-  expect(await rig.pick('model', PRO)).toMatchObject({ ok: true })
-  const { answer, descriptors } = await rig.snapshot()
-  expect(rig.modelWrites().map(({ params }) => params)).toEqual([
-    { sessionId: session.sessionId, configId: 'model', value: PRO }
-  ])
-  expect(framesOf(rig.rig.child(), 'session/prompt')).toEqual([])
-  expect(rig.rig.spawned.filter((step) => step === 'spawn')).toHaveLength(1)
-  expect(answer.current).toMatchObject({
-    model: PRO,
-    effort: 'low',
-    confirmed: ['model', 'effort']
-  })
-  expect(descriptors.find(({ id }) => id === 'effort')).toMatchObject({
-    kind: { choices: [{ value: 'low' }, { value: 'high' }] },
-    settable: true
-  })
-})
+it.each([false, 'normal', 'live', 'busy', 'held'] as const)(
+  'scopes prior Medium through %s model application',
+  async (path) => {
+    const rig = await openModels({ saved: { model: FLASH, effort: 'medium' } })
+    await rig.deliver('Flash Medium')
+    const wake = await rig.defer(path)
+    if (path === 'normal') {
+      const target = new AcpStructuredOptions()
+      target.adoptSession({ ...session, ...response('pro') })
+      rig.catalog.recordLiveListing(SESSION, withLiveCatalogListing(target.read()).catalogListing)
+    } else if (path) {
+      rig.rig.child().agent.notify('session/update', {
+        sessionId: PROVIDER_SESSION,
+        update: { sessionUpdate: 'config_option_update', ...response('pro') }
+      })
+      await rig.rig.settle()
+      await rig.host.readOptions(SESSION)
+      expect(rig.rig.adapter['children'].sessions.get(SESSION)?.options.applied.get('effort')).toBe(
+        'medium'
+      )
+    }
+    await rig.picks('model', PRO)
+    await rig.host.readOptions(SESSION)
+    if (path) {
+      expect(rig.store.getRecord(SESSION)?.options).toEqual({ model: PRO })
+      const before = framesOf(rig.rig.child(), 'session/prompt').length
+      const parked = path === 'busy' ? await send(rig.host, 'provider effort on Pro') : undefined
+      if (parked) {
+        expect(rig.journal().submission(parked)?.options).toEqual({ model: PRO })
+        await rig.rig.settle()
+        expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(before)
+      }
+      await wake()
+      await (parked ? rig.complete(parked) : rig.deliver('provider effort on Pro'))
+      await rig.picks('model', FLASH)
+      await rig.deliver('opening default on Flash')
+      expect(rig.writes().at(-1)?.params).toMatchObject({
+        configId: 'thinking_level',
+        value: 'high'
+      })
+    } else {
+      const id = await send(rig.host, 'explicit Medium')
+      await waitFor(() => expect(rig.journal().submission(id)?.dispatchState).toBe('rejected'))
+      expect(rig.writes().at(-1)?.params).toMatchObject({
+        configId: 'thinking_level',
+        value: 'medium'
+      })
+      expect(rig.store.getRecord(SESSION)?.options).toEqual({ model: PRO, effort: 'medium' })
+      expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(1)
+    }
+  }
+)
 
-it('confirms a successful legacy model write from its returned config metadata', async () => {
-  const rig = await openModels({ model: FLASH }, undefined, (agent, frame) =>
-    agent.reply(frame, response('legacy'))
-  )
-  expect(await rig.pick('model', 'gemini-3.8-flash-medium')).toMatchObject({ ok: true })
-  expect((await rig.snapshot()).answer.current).toMatchObject({
-    model: FLASH,
-    effort: 'medium',
-    confirmed: ['model', 'effort']
-  })
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe('gemini-3.8-flash-medium')
-})
-
-it('retains intent after a rejected metadata write without confirming the old model as the pick', async () => {
-  const rig = await openModels({ model: FLASH, effort: 'low' }, undefined, (agent, frame) =>
-    agent.fail(frame, -32602, 'refused')
-  )
-  expect(await rig.pick('model', PRO)).toMatchObject({ ok: true })
-  const { answer } = await rig.snapshot()
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe(PRO)
-  expect(answer.current.model).toBe(PRO)
-  expect(answer.current.confirmed).not.toContain('model')
-  expect(rig.modelWrites()).toHaveLength(1)
-  expect(framesOf(rig.rig.child(), 'session/prompt')).toEqual([])
-})
-
-it('serializes different model intents while a metadata confirmation is pending', async () => {
-  const rig = await openModels({ model: FLASH }, undefined, () => {})
-  const first = rig.pick('model', PRO)
-  await waitFor(() => expect(rig.modelWrites()).toHaveLength(1))
-  const second = rig.pick('model', FLASH)
-  const [pro] = rig.modelWrites()
-  rig.rig.child().agent.reply(pro!, response('pro'))
-  expect(await first).toMatchObject({ ok: true })
-  await waitFor(() => expect(rig.modelWrites()).toHaveLength(2))
-  const flash = rig.modelWrites()[1]!
-  rig.rig.child().agent.reply(flash, response('low'))
-  expect(await second).toMatchObject({ ok: true })
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe(FLASH)
-  expect((await rig.snapshot()).answer.current.model).toBe(FLASH)
-  expect(framesOf(rig.rig.child(), 'session/prompt')).toEqual([])
-})
-
-it('lets Stop abort an idle metadata write and ignores its late confirmation', async () => {
-  const rig = await openModels({ model: FLASH }, undefined, () => {})
-  const picked = rig.pick('model', 'gemini-3.1-pro-low')
-  await waitFor(() => expect(rig.modelWrites()).toHaveLength(1))
-  const [pending] = rig.modelWrites()
-  expect(await stop(rig.host)).toMatchObject({ ok: true })
-  expect(await picked).toMatchObject({ ok: true })
-  rig.rig.child().agent.reply(pending!, response('pro'))
-  await rig.rig.settle()
-  const { answer } = await rig.snapshot()
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe('gemini-3.1-pro-low')
-  expect(answer.current.model).toBe('gemini-3.1-pro-low')
-  expect(answer.current.confirmed).not.toContain('model')
-  expect(framesOf(rig.rig.child(), 'session/prompt')).toEqual([])
-})
-
-it('leaves model picks deferred while the child is working', async () => {
-  const rig = await openModels({ model: FLASH, effort: 'low' })
-  await send(rig.host, 'hold this turn')
-  await rig.rig.frame('session/prompt')
-  expect(await rig.pick('model', PRO)).toMatchObject({ ok: true })
-  expect(rig.modelWrites()).toEqual([])
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe(PRO)
-})
-
-it('leaves model picks deferred while a queued card is held on an idle child', async () => {
-  const rig = await openModels({ model: FLASH, effort: 'low' })
-  await rig.host
-    .collaboratorsForTests()
-    .sessions.get(SESSION)!
-    .journal.queuedMessages.insert({
-      messageId: 'held-card',
-      holdReason: 'send_failed',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'queued' }] }
+it.each([false, true])(
+  'retains the same rejected model pick through actual Send (idle control=%s)',
+  async (idle) => {
+    const options = { model: 'opaque/rejected-model', effort: 'low' }
+    const request = { sessionId: PROVIDER_SESSION, configId: 'model', value: options.model }
+    const rig = await openModels({
+      saved: { model: FLASH, effort: options.effort },
+      control: (agent, frame) => {
+        agent.fail(frame, -32602, 'Model unavailable')
+        return true
+      }
     })
-  expect(await rig.pick('model', PRO)).toMatchObject({ ok: true })
-  expect(rig.store.getRecord(SESSION)?.options?.model).toBe(PRO)
-  expect(rig.modelWrites()).toEqual([])
-  expect(framesOf(rig.rig.child(), 'session/prompt')).toEqual([])
-})
+    if (!idle) {
+      vi.spyOn(rig.rig.adapter, 'canSetOptionWhileIdle').mockReturnValue(false)
+    }
+    expect(await rig.picks('model', options.model)).toMatchObject({ ok: true, value: { options } })
+    await rig.host.readOptions(SESSION)
+    expect(rig.writes()).toHaveLength(idle ? 1 : 0)
+    await waitFor(() =>
+      expect(rig.ownership()).toEqual({ tasks: 0, handles: 0, places: 0, lanes: 0 })
+    )
+    expect(rig.store.getRecord(SESSION)?.options).toEqual(options)
+    const id = await send(rig.host, 'same rejected selection')
+    await waitFor(() =>
+      expect(rig.journal().submission(id)).toMatchObject({
+        options,
+        dispatchState: 'rejected',
+        rejection: { kind: 'providerRejected' }
+      })
+    )
+    await waitFor(() =>
+      expect(structuredAgentSessionHandingOver(rig.journal()).has(id)).toBe(false)
+    )
+    expect(
+      rig.writes().map(({ params }) => SetSessionConfigOptionRequestSchema.parse(params))
+    ).toEqual(Array.from({ length: idle ? 2 : 1 }, () => request))
+    expect(rig.store.getRecord(SESSION)?.options).toEqual(options)
+    expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(0)
+  }
+)
 
-it('keeps the old flat-model runtime deferred and preserves its concrete identity', async () => {
-  const { configOptions: _config, ...flat } = session
-  const rig = await openModels({ model: session.models.currentModelId }, flat)
-  expect(await rig.pick('model', 'opaque/old-model')).toMatchObject({ ok: true })
-  expect((await rig.snapshot()).answer.current.model).toBe('opaque/old-model')
-  expect(rig.modelWrites()).toEqual([])
-  expect(framesOf(rig.rig.child(), 'session/set_model')).toEqual([])
-})
+it.each([10, 100, 'Send', 'rejection'] as const)(
+  'coalesces unanswered picks and settles captured FIFO delivery (%s)',
+  async (count) => {
+    let held: FakeFrame | undefined
+    const rig = await openModels({
+      saved: { model: FLASH, effort: 'low' },
+      control: (_agent, frame) => {
+        if (!held) {
+          held = frame
+          return true
+        }
+        return false
+      }
+    })
+    const begins = vi.spyOn(rig.state.acquireAborts, 'begin')
+    const places = vi.spyOn(rig.state.deliveryOrder, 'reserve')
+    await rig.picks('model', PRO)
+    await waitFor(() => expect(held).toBeDefined())
+    let readDone = false
+    const reading = rig.host.readOptions(SESSION).then((answer) => {
+      readDone = true
+      return answer
+    })
+    for (let i = 1; i < (typeof count === 'string' ? 4 : count); i++) {
+      expect(await rig.picks('model', i % 2 ? FLASH : PRO)).toMatchObject({ ok: true })
+      expect(rig.store.getRecord(SESSION)?.options).toEqual({
+        model: i % 2 ? FLASH : PRO,
+        effort: 'low'
+      })
+    }
+    await rig.rig.settle()
+    expect(rig.ownership()).toEqual({ tasks: 1, handles: 1, places: 1, lanes: 1 })
+    expect([begins.mock.calls.length, places.mock.calls.length, rig.writes().length]).toEqual([
+      1, 1, 1
+    ])
+    const first = typeof count === 'string' ? await send(rig.host, 'captured Flash') : null
+    if (first) {
+      await rig.picks('model', PRO)
+    }
+    const second = first ? await send(rig.host, 'captured Pro') : null
+    if (second) {
+      await rig.picks('model', FLASH)
+    }
+    expect(readDone).toBe(false)
+    expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(0)
+    if (count === 'rejection') {
+      rig.rig.child().agent.fail(held!, -32602, 'Optional model rejected')
+    } else {
+      rig.rig.child().agent.reply(held!, response('pro'))
+    }
+    const answer = await reading
+    if (first && second) {
+      for (const [id, model] of [
+        [first, FLASH],
+        [second, PRO]
+      ] as const) {
+        expect(rig.journal().submission(id)?.options).toEqual({ model, effort: 'low' })
+        await rig.complete(id)
+      }
+      expect(
+        rig.rig
+          .child()
+          .agent.frames.filter(
+            (frame) => rig.writes().includes(frame) || frame.method === 'session/prompt'
+          )
+          .map(({ method, params }) => ({ method, params }))
+      ).toMatchObject([
+        { method: 'session/set_config_option', params: { configId: 'model', value: PRO } },
+        { method: 'session/set_config_option', params: { configId: 'model', value: FLASH } },
+        {
+          method: 'session/set_config_option',
+          params: { configId: 'thinking_level', value: 'low' }
+        },
+        {
+          method: 'session/prompt',
+          params: { prompt: [{ type: 'text', text: 'captured Flash' }] }
+        },
+        { method: 'session/set_config_option', params: { configId: 'model', value: PRO } },
+        {
+          method: 'session/set_config_option',
+          params: { configId: 'thinking_level', value: 'low' }
+        },
+        { method: 'session/prompt', params: { prompt: [{ type: 'text', text: 'captured Pro' }] } }
+      ])
+    } else {
+      expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(0)
+      expect(answer.current.model).toBe(FLASH)
+      expect(
+        answer.models.find((row) => row.id === FLASH)?.efforts.map((row) => row.value)
+      ).toEqual(['low', 'medium', 'high'])
+      expect(
+        rig.writes().map(({ params }) => SetSessionConfigOptionRequestSchema.parse(params).value)
+      ).toEqual([PRO, FLASH])
+    }
+    await waitFor(() =>
+      expect(rig.ownership()).toEqual({ tasks: 0, handles: 0, places: 0, lanes: 0 })
+    )
+  }
+)
+
+it.each(['Stop', 'deadline', 'child close', 'unproven close'] as const)(
+  'retires an uncertain producer on %s without sending on its old channel',
+  async (ending) => {
+    const rig = await openModels({ timeoutMs: 100, control: () => true })
+    await rig.deliver('history before uncertainty')
+    if (ending === 'deadline' || ending === 'unproven close') {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    }
+    await rig.picks('model', PRO)
+    await waitFor(() => expect(rig.writes()).toHaveLength(1))
+    const child = rig.rig.child()
+    const native = rig.rig.adapter['children'].sessions.get(SESSION)!
+    if (ending === 'unproven close') {
+      child.proveClose = async () => false
+    }
+    const handles = rig.store.getRecord(SESSION)?.providerHandleChain.map(({ handle }) => handle)
+    expect(handles?.length).toBeGreaterThan(0)
+    const pending = rig.writes()[0]!
+    await rig.picks('model', FLASH)
+    await rig.picks('model', PRO)
+    const reading = rig.host.readOptions(SESSION)
+    const id = await send(rig.host, 'accepted while outstanding')
+    if (ending === 'Stop') {
+      await stop(rig.host)
+    } else if (ending === 'deadline' || ending === 'unproven close') {
+      await vi.advanceTimersByTimeAsync(100)
+    } else {
+      child.exit()
+    }
+    vi.useRealTimers()
+    await waitFor(() => expect(child.exited).toBe(ending !== 'unproven close'))
+    await reading
+    await rig.rig.settle()
+    expect(framesOf(child, 'session/prompt')).toHaveLength(1)
+    expect(await rig.messages()).toContain('history before uncertainty')
+    expect(rig.store.getRecord(SESSION)?.options?.model).toBe(PRO)
+    expect(rig.store.getRecord(SESSION)?.providerHandleChain.map(({ handle }) => handle)).toEqual(
+      handles
+    )
+    await waitFor(() => expect(rig.journal().submission(id)?.dispatchState).toBe('rejected'))
+    expect(rig.rig.spawned.filter((step) => step === 'spawn')).toHaveLength(1)
+    if (ending === 'child close') {
+      expect(await rig.attach(rig.fence())).toMatchObject({ ok: true })
+      await rig.ready()
+      await rig.picks('model', FLASH)
+      await waitFor(() => expect(rig.writes()).toHaveLength(1))
+      const completion = rig.state.deliveryOrder.optionsReady(SESSION)
+      const latest = rig.host.readOptions(SESSION)
+      child.agent.reply(pending, response('pro'))
+      await rig.rig.settle()
+      expect(rig.state.deliveryOrder.optionsReady(SESSION)).toBe(completion)
+      expect(rig.ownership()).toEqual({ tasks: 1, handles: 1, places: 1, lanes: 1 })
+      rig.rig.child().agent.reply(rig.writes()[0]!, { configOptions: session.configOptions })
+      expect((await latest).current.model).toBe(FLASH)
+      await rig.deliver('resumed history')
+    } else {
+      child.agent.reply(pending, response('pro'))
+    }
+    await waitFor(() =>
+      expect(rig.ownership()).toEqual({ tasks: 0, handles: 0, places: 0, lanes: 0 })
+    )
+    if (ending === 'unproven close') {
+      expect(rig.rig.adapter['children'].sessions.get(SESSION)).toBe(native)
+      expect(native.journalClosed).not.toBeNull()
+      child.exit()
+    }
+    await expect(rig.host.close(SESSION, 'user-close')).resolves.toBeUndefined()
+  }
+)
+
+it.each([
+  { flat: false, model: 'gemini-3.8-flash-medium', shown: FLASH, noEffort: false },
+  {
+    flat: true,
+    model: 'gemini-3.8-flash-medium',
+    shown: 'gemini-3.8-flash-medium',
+    noEffort: false
+  },
+  { flat: false, model: PRO, shown: PRO, noEffort: true }
+])(
+  'reads the target before prompt and delivers exact $model (flat=$flat, noEffort=$noEffort)',
+  async ({ flat, model, shown, noEffort }) => {
+    const rig = await openModels({ flat, noEffort })
+    await rig.picks('model', model)
+    const answer = await rig.host.readOptions(SESSION)
+    expect(answer.current.model).toBe(shown)
+    expect('confirmedModelSelection' in answer).toBe(false)
+    expect(framesOf(rig.rig.child(), 'session/prompt')).toHaveLength(0)
+    if (noEffort) {
+      expect(answer.models.find((row) => row.id === PRO)?.efforts.map((row) => row.value)).toEqual([
+        'low',
+        'high'
+      ])
+    }
+    await rig.deliver('saved identity')
+    expect(rig.store.getRecord(SESSION)?.options?.model).toBe(model)
+    expect(
+      framesOf(rig.rig.child(), flat ? 'session/set_model' : 'session/set_config_option').some(
+        ({ params }) =>
+          flat
+            ? JSON.stringify(params).includes(model)
+            : SetSessionConfigOptionRequestSchema.parse(params).value === model
+      )
+    ).toBe(true)
+  }
+)
