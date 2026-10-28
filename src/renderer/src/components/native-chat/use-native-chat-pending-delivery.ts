@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '../../store'
-import { hasAgentTurnStartHook } from '../../../../shared/agent-hook-listener/provider-turn-start'
+import {
+  hasAgentTurnStartHook,
+  resolveAgentHookSource
+} from '../../../../shared/agent-hook-listener/provider-turn-start'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   pendingSendsAsMessages,
@@ -38,7 +41,10 @@ export function useNativeChatPendingDelivery(args: {
   const { paneKey, agent } = args
   const hookState = useAppStore((store) => {
     const row = store.agentStatusByPaneKey[paneKey]
-    return !row?.agentType || row.agentType === agent ? row?.state : undefined
+    return !row?.agentType ||
+      resolveAgentHookSource(row.agentType) === resolveAgentHookSource(agent)
+      ? row?.state
+      : undefined
   })
   const turnStartedAt = useAppStore((store) => store.agentStatusByPaneKey[paneKey]?.turnStartedAt)
   const { messages } = args.session
@@ -75,7 +81,11 @@ export function useNativeChatPendingDelivery(args: {
       const sentAt = Date.now()
       const boundary = messages.at(-1)
       const candidate = useAppStore.getState().agentStatusByPaneKey[paneKey]
-      const row = !candidate?.agentType || candidate.agentType === agent ? candidate : undefined
+      const row =
+        !candidate?.agentType ||
+        resolveAgentHookSource(candidate.agentType) === resolveAgentHookSource(agent)
+          ? candidate
+          : undefined
       const entry: NativeChatPendingSend = {
         id: nextNativeChatPendingSendId(sentAt),
         text,

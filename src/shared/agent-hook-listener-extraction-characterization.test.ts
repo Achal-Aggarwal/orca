@@ -41,7 +41,7 @@ describe('agent hook extraction boundaries', () => {
     for (const source of ['opencode', 'opencode2', 'mimo-code', 'command-code', 'unknown']) {
       expect(hasAgentTurnStartHook(source)).toBe(false)
     }
-    for (const source of ['claude', 'codex', 'copilot', 'grok']) {
+    for (const source of ['claude', 'openclaude', 'zcode', 'codex', 'copilot', 'grok']) {
       expect(hasAgentTurnStartHook(source)).toBe(true)
     }
     expect(isNewTurnEvent('copilot', 'userPromptSubmitted')).toBe(true)

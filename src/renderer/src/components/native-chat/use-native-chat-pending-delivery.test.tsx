@@ -21,13 +21,17 @@ const args = { paneKey: 'pane', agent: 'claude' as const }
 function userRow(text: string): NativeChatMessage {
   return { ...boundary, id: `user:${text}`, role: 'user', blocks: [{ type: 'text', text }] }
 }
-function hookRow(state: AgentStatusEntry['state'], turnStartedAt?: number) {
+function hookRow(
+  state: AgentStatusEntry['state'],
+  turnStartedAt?: number,
+  agentType: AgentStatusEntry['agentType'] = 'claude'
+) {
   act(() =>
     useAppStore.setState({
       agentStatusByPaneKey: {
         pane: {
           paneKey: 'pane',
-          agentType: 'claude',
+          agentType,
           state,
           turnStartedAt,
           prompt: '',
@@ -62,6 +66,31 @@ afterEach(() => {
 })
 
 describe('terminal Chat pending delivery', () => {
+  it.each(['claude', 'openclaude'] as const)(
+    'uses %s hook rows for OpenClaude idle and working baselines',
+    async (source) => {
+      for (const state of ['waiting', 'working'] as const) {
+        hookRow(state, 10, source)
+        const chat = renderHook(() =>
+          useNativeChatPendingDelivery({
+            ...args,
+            agent: 'openclaude',
+            session: { messages: [boundary] }
+          })
+        )
+        act(() => chat.result.current.confirmWrite(chat.result.current.record(state)))
+        await tick(NATIVE_CHAT_UNCONFIRMED_SEND_HOLD_MS)
+        expect(chat.result.current.pending[0]?.delivery).toBe(
+          state === 'working' ? undefined : 'unconfirmed'
+        )
+        expect(chat.result.current.pending[0]?.writeUnconfirmedAt !== undefined).toBe(
+          state !== 'working'
+        )
+        chat.unmount()
+        clearPendingSendCacheForTests()
+      }
+    }
+  )
   it('records a send into a read empty transcript as after every row of that session', () => {
     const { result } = renderHook(() =>
       useNativeChatPendingDelivery({

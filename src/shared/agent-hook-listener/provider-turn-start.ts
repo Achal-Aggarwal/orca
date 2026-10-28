@@ -48,8 +48,15 @@ const SESSION_BOUNDARIES = new Set([
 // Session boundaries reset listener caches but cannot prove that a prompt was accepted.
 export function hasAgentTurnStartHook(agent: string): boolean {
   return Object.entries(NEW_TURN_EVENTS).some(
-    ([source, events]) => source === agent && events.some((event) => !SESSION_BOUNDARIES.has(event))
+    ([source, events]) =>
+      source === resolveAgentHookSource(agent) &&
+      events.some((event) => !SESSION_BOUNDARIES.has(event))
   )
+}
+
+// OpenClaude installs Claude hooks but keeps its own launch and UI identity.
+export function resolveAgentHookSource(agent: string): string {
+  return agent === 'openclaude' ? 'claude' : agent
 }
 
 export function isNewTurnEvent(source: AgentHookSource, eventName: unknown): boolean {
