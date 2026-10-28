@@ -21,6 +21,7 @@ export function projectFederatedFleetWorker(args: {
   dispatchId: string
   environmentId: string
   observation: { status?: string; exactWorker: boolean; reason?: string }
+  autoReleaseAt: string | null
 }): OrchestrationFleetWorker | null {
   const fleet = projectFleetWorkerPage(args.runtime, args.db, args.dispatchId)
   if (!fleet) {
@@ -40,7 +41,8 @@ export function projectFederatedFleetWorker(args: {
                 ? observed.status
                 : ('unverifiable' as const),
             exactWorker: observed.exactWorker,
-            ...(observed.reason ? { reason: observed.reason } : {})
+            ...(observed.reason ? { reason: observed.reason } : {}),
+            ...(args.autoReleaseAt ? { autoReleaseAt: args.autoReleaseAt } : {})
           }
         ]
       ]),
@@ -94,6 +96,8 @@ export async function showFederatedWorker(args: {
     )
   }
   const observation = exposeFederatedWorkerObservation(remote.observation, observationProjected)
+  // A deadline from an observation the fence rejected is as stale as the observation.
+  const autoReleaseAt = observationProjected ? (remote.autoReleaseAt ?? null) : null
   return {
     dispatch: exposeDispatchContext(db.getDispatchContextById(dispatchId) ?? args.dispatch),
     worker: exposeWorker(worker),
@@ -102,7 +106,8 @@ export async function showFederatedWorker(args: {
       db,
       dispatchId,
       environmentId: server.environmentId,
-      observation
+      observation,
+      autoReleaseAt
     }),
     server: { environmentId: server.environmentId, name: server.name },
     remoteRuntimeEpoch:
@@ -110,7 +115,7 @@ export async function showFederatedWorker(args: {
       (observationProjected ? remote.runtimeEpoch : null),
     terminal: observationProjected ? remote.terminal : null,
     observation,
-    autoReleaseAt: remote.autoReleaseAt ?? null
+    autoReleaseAt
   }
 }
 
