@@ -27,6 +27,7 @@ async function readPRComments(
     throw new Error(GITHUB_WORK_ITEMS_SSH_REMOTE_REQUIRED_MESSAGE)
   }
   await acquire()
+  let restBudgetFailed = false
   try {
     if (ownerRepo) {
       // Explicit refresh bypasses the polling cache.
@@ -75,8 +76,11 @@ async function readPRComments(
       const { issueComments, reviewSummaries, reviewComments } = conversation
 
       const readRestSource = async (endpoint: string): Promise<PRComment[]> => {
+        await assertRateLimitBudget('core', ownerRepo, ghOptions).catch((error: unknown) => {
+          restBudgetFailed = true
+          throw error
+        })
         try {
-          await assertRateLimitBudget('core', ownerRepo, ghOptions)
           noteRepositoryRateLimitSpend(ownerRepo, 'core', 1, ghOptions)
           const { stdout } = await ghExecFileAsync(['api', ...cacheArgs, endpoint], ghOptions)
           return parseRestPRComments(stdout, endpoint.includes('/reviews?'))
@@ -125,6 +129,9 @@ async function readPRComments(
       url: c.url ?? ''
     }))
   } catch (err) {
+    if (restBudgetFailed) {
+      throw err
+    }
     console.warn('getPRComments failed:', err)
     return []
   } finally {

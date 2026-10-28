@@ -87,6 +87,22 @@ describe('PR conversation request reuse', () => {
     expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(1)
   })
 
+  it.each([false, true])(
+    'preserves quota failures when REST recovery is needed (GraphQL blocked: %s)',
+    async (graphQLBlocked) => {
+      rateLimitGuardMock.mockImplementation((bucket) =>
+        bucket === 'core' || graphQLBlocked
+          ? { blocked: true, remaining: 0, limit: 5000, resetAt: 1800000000 }
+          : { blocked: false }
+      )
+      ghExecFileAsyncMock.mockResolvedValue(
+        response({ comments: { nodes: [comment] }, reviews: null, reviewThreads: { nodes: [] } })
+      )
+      await expect(getPRComments('/repo', 7, options)).rejects.toThrow('GitHub core rate limit')
+      expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(graphQLBlocked ? 0 : 1)
+    }
+  )
+
   it('keeps valid inline comments when another comment has no numeric database ID', async () => {
     ghExecFileAsyncMock.mockResolvedValue(
       response({
