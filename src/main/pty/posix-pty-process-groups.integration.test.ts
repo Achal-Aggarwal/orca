@@ -57,8 +57,10 @@ async function waitFor(
   }
 }
 
-function cleanupTaggedProcesses(tagged: TaggedProcess[], token: string): void {
-  for (const pgid of new Set(findSurvivors(tagged, token).map((process) => process.pgid))) {
+// Runs before the leader is killed, so a job discovery never captured is still on the terminal.
+function cleanupTaggedProcesses(tty: string, tagged: TaggedProcess[], token: string): void {
+  const remaining = [...findTaggedProcesses(['-t', tty], token), ...findSurvivors(tagged, token)]
+  for (const pgid of new Set(remaining.map((process) => process.pgid))) {
     try {
       process.kill(-pgid, 'SIGKILL')
     } catch {
@@ -106,11 +108,14 @@ itOnPosix(
       ])
       await waitFor(() => findSurvivors(tagged, token).length === 0)
     } finally {
-      cleanupTaggedProcesses(tagged, token)
       try {
-        proc.kill('SIGKILL')
-      } catch {
-        // node-pty may already have reaped and disposed the leader.
+        cleanupTaggedProcesses(tty, tagged, token)
+      } finally {
+        try {
+          proc.kill('SIGKILL')
+        } catch {
+          // node-pty may already have reaped and disposed the leader.
+        }
       }
     }
   },
