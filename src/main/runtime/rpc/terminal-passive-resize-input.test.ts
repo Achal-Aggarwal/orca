@@ -140,18 +140,23 @@ async function startStream(multiplex: boolean, explicitClaims = true, restoreOwn
 describe.each([true, false])('remote input after passive resize (multiplex=%s)', (multiplex) => {
   it.each(['refused', 'thrown'])('preserves typing after a %s passive resize', async (failure) => {
     const stream = await startStream(multiplex, true, true)
+    const layout = Promise.withResolvers<{ ok: boolean }>()
     try {
       stream.type('before')
       await vi.waitFor(() => expect(stream.processWrites).toEqual(['before']))
-      if (failure === 'thrown') {
-        stream.applyLayout.mockRejectedValueOnce(new Error('temporary geometry failure'))
-      } else {
-        stream.applyLayout.mockResolvedValueOnce({ ok: false })
-      }
+      stream.applyLayout.mockReturnValueOnce(layout.promise)
       stream.resize()
+      await vi.waitFor(() => expect(stream.applyLayout).toHaveBeenCalledTimes(1))
       stream.type('during')
       stream.resize()
       stream.type('after')
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(stream.processWrites).toEqual(['before'])
+      if (failure === 'thrown') {
+        layout.reject(new Error('temporary geometry failure'))
+      } else {
+        layout.resolve({ ok: false })
+      }
       await vi.waitFor(() => expect(stream.processWrites).toEqual(['before', 'during', 'after']))
       expect(stream.updateViewport).toHaveBeenLastCalledWith(
         'pty-1',
@@ -173,6 +178,7 @@ describe.each([true, false])('remote input after passive resize (multiplex=%s)',
         expect(stream.processWrites).toEqual(['before', 'during', 'after', 'reclaimed'])
       )
     } finally {
+      layout.resolve({ ok: false })
       await stream.close()
     }
   })
