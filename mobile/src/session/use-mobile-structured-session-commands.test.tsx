@@ -11,6 +11,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import { useMobileStructuredSessionCommands } from './use-mobile-structured-session-commands'
 
+const { createMobileCommandMenuHostFixture } =
+  await vi.importActual<MobileCommandMenuHostFixtureModule>(
+    '../../../src/main/native-chat/agent-session-wire/mobile-queued-edit-host.test-fixture'
+  )
+
 type Hook = ReturnType<typeof useMobileStructuredSessionCommands>
 
 describe('useMobileStructuredSessionCommands', () => {
@@ -379,10 +384,6 @@ describe('useMobileStructuredSessionCommands', () => {
     'recovers the parked %s phone menu (pending preparation=%s) through actual host retirement and dispatch',
     async (provider, pending) => {
       vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-      const { createMobileCommandMenuHostFixture } =
-        await vi.importActual<MobileCommandMenuHostFixtureModule>(
-          '../../../src/main/native-chat/agent-session-wire/mobile-queued-edit-host.test-fixture'
-        )
       const host = await createMobileCommandMenuHostFixture(provider, pending)
       let online = pending,
         stop = () => {}
