@@ -131,6 +131,7 @@ describe('terminal title classification memo', () => {
     'wrap200',
     'named',
     'barrier',
+    'ascii-barrier',
     'dense',
     'sparse',
     'qoder',
@@ -197,6 +198,9 @@ describe('terminal title classification memo', () => {
         }
         if (scenario === 'barrier') {
           return `tmux | ⠋ fix ${payload}`
+        }
+        if (scenario === 'ascii-barrier') {
+          return `${'x | '.repeat(200)}${id} | ${index % 2 ? '*' : '.'} | ${index % 2 ? ' Grok' : 'Droid'}`
         }
         if (scenario === 'dense') {
           return `${'x | '.repeat(200)}⠋ ${id}`
@@ -298,7 +302,14 @@ describe('terminal title classification memo', () => {
         expect(observedRaw).toEqual(tabs.map((_, index) => rawTitle(index)))
         const first = project()
         expect(first.icons).toEqual(Array(population).fill(expectedIcon))
-        expect(first.rows.map((row) => row.agentType)).toEqual(Array(population).fill(expectedRow))
+        expect(first.rows.map((row) => row.agentType)).toEqual(
+          Array(scenario === 'ascii-barrier' ? population / 2 : population).fill(expectedRow)
+        )
+        if (scenario === 'ascii-barrier') {
+          expect(tabs.map((tab) => resolveExplicitTerminalTitleAgentType(tab.title))).toEqual(
+            Array(population).fill(null)
+          )
+        }
         const cold = counts()
         expect(cold.strict).toBeLessThanOrEqual(3 * population + 10)
         expect(cold.normalize).toBeLessThanOrEqual(2 * population)

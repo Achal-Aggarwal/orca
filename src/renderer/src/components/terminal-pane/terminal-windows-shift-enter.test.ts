@@ -13,6 +13,19 @@ describe('resolveWindowsShiftEnterEncoding', () => {
     expect(resolveWindowsShiftEnterEncodingForPane(state, 'tab:pane', '⠋ Droid')).toBe('csi-u')
   })
 
+  it.each([
+    ['. | Droid', 'alt-enter'],
+    ['tmux | Droid', 'csi-u']
+  ] as const)('uses the actual marker boundary for Windows input in %j', (title, encoding) => {
+    expect(
+      resolveWindowsShiftEnterEncodingForPane(
+        { paneForegroundAgentByPaneKey: {}, agentLaunchConfigByPaneKey: {} },
+        'tab:pane',
+        title
+      )
+    ).toBe(encoding)
+  })
+
   it('does not expose a keyboard mode inside a wrapped task barrier', () => {
     expect(
       resolveWindowsShiftEnterEncodingForPane(

@@ -9,6 +9,8 @@ const panes = [
 
 describe('resolveNativeChatLeafTitleAgent', () => {
   it.each([
+    ['. | Droid', null],
+    ['tmux | Droid', 'droid'],
     ['⠋ - Codex: fix parser - grok', 'grok'],
     ['⠋ Codex: fix parser - grok', null],
     ['tmux | ⠋ fix | a | b | c | d | e | f | g | Codex', null],

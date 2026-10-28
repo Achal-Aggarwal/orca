@@ -49,7 +49,6 @@ describe('resolveExplicitTerminalTitleAgentType', () => {
     expect(resolveExplicitTerminalTitleAgentType('OC | Understand about the plugin')).toBe(
       'opencode'
     )
-    expect(resolveExplicitTerminalTitleAgentType('OC | Compare Codex and Claude')).toBe('opencode')
     // Why: Gemini glyphs inside OpenCode session text must not rebrand the tab.
     expect(resolveExplicitTerminalTitleAgentType('OC | ✦ Gemini CLI')).toBe('opencode')
     expect(getSharedAgentLabel('OC | Compare Codex and Claude')).toBe('OpenCode')
@@ -80,6 +79,55 @@ describe('resolveExplicitTerminalTitleAgentType', () => {
     expect(resolveExplicitTerminalTitleAgentType(title)).toBe(agent)
   })
 
+  it.each([0, 1, 8, 9, 200])('keeps ASCII marker barriers after %i wrappers', (depth) => {
+    for (const marker of ['.', '*']) {
+      for (const payload of ['Droid', 'Grok']) {
+        expect(
+          resolveExplicitTerminalTitleAgentType(`${'x | '.repeat(depth)}${marker} | ${payload}`)
+        ).toBeNull()
+      }
+    }
+  })
+
+  it.each([
+    [' . | Grok', null],
+    ['x |  * | Droid', null],
+    ['.  | Droid', null],
+    ['.\t | Grok', null],
+    ['*\u00a0 | Droid', null],
+    ['x | Grok', 'grok'],
+    ['  x | Grok', 'grok'],
+    [' | Grok', 'grok'],
+    ['   | Grok', 'grok'],
+    [' |  | Grok', 'grok'],
+    ['', null],
+    ...['...', './repo', '.venv', '*.ts'].map((header) => [`${header} | Grok`, 'grok'] as const),
+    ['.|Grok', null],
+    ['*|Droid', null],
+    ['.', null],
+    ['*', null],
+    ['. Grok', null],
+    ['* Grok', null],
+    ['. Claude Code', 'claude'],
+    ['. | Claude Code', null],
+    ['. | OC | ses_1', null],
+    ['OC | . | Droid', 'opencode'],
+    ['Codex: . | Droid', 'codex'],
+    ['⠋ | Grok', null],
+    ['⠋ | Droid', 'droid'],
+    ['. | Droid - grok', 'grok'],
+    ['. | Droid - droid', 'droid'],
+    ['. | fix parser - grok', 'grok'],
+    ['. | ✦ session | Thinking - grok', 'grok'],
+    ['Codex: task - grok', null],
+    ['OC | task - grok', null]
+  ] as const)(
+    'preserves lexical barrier and independent anchor semantics in %j',
+    (title, agent) => {
+      expect(resolveExplicitTerminalTitleAgentType(title)).toBe(agent)
+    }
+  )
+
   it.each([7, 8, 9, 200])('retains frames and barriers after %i actual wrappers', (depth) => {
     const wrappers = 'x | '.repeat(depth)
     const payload = 'a | b | c | d | e | f | g | h | Codex'
@@ -95,7 +143,6 @@ describe('resolveExplicitTerminalTitleAgentType', () => {
 
   it('does not find an OpenCode marker inside another agent task title', () => {
     expect(isOpenCodeNativeTitle('⠋ Fix foo | OC | bar')).toBe(false)
-    expect(resolveExplicitTerminalTitleAgentType('⠋ Fix foo | OC | bar')).toBeNull()
   })
 
   // Only explicit Claude identity may replace the owner; task-text mentions do not prove identity (#8940).

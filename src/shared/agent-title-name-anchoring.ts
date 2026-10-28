@@ -134,10 +134,12 @@ export function agentForNamedTitlePrefix(text: string): TerminalAgent | null {
 
 /** Inspect one disjoint header, preserving shell host/cwd syntax without admitting colon task prose. */
 export function isNeutralAgentTitleWrapper(header: string): boolean {
-  const trimmed = header.trim()
-  if (stripLeadingAgentTitleDecorationOrEmpty(trimmed) !== trimmed) {
+  // ASCII activity tokens include trailing whitespace, so classify before right trimming.
+  const lexical = header.trimStart()
+  if (stripLeadingAgentTitleDecorationOrEmpty(lexical) !== lexical) {
     return false
   }
+  const trimmed = lexical.trim()
   return (
     !trimmed.includes(':') ||
     /^(?:[^\s@:[\]]+@(?:\[[^\]]+\]|[^\s:]+)|\[[^\]\s]+@[^\]\s]+\]):\s*(?:[~/]|[A-Za-z]:[\\/])/.test(

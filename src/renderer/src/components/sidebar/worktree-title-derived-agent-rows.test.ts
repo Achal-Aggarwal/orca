@@ -57,6 +57,10 @@ function processRead(agent: TuiAgent): TitleDerivedPaneForeground {
 
 describe('buildTitleDerivedAgentRows', () => {
   it.each([
+    ['. | Droid', null, null, 'claude', 'claude', 'Claude'],
+    [`${'x | '.repeat(200)}* | Grok`, null, null, 'claude', 'claude', 'Claude'],
+    ['tmux | Grok', null, 'grok', 'grok', 'grok', 'Grok'],
+    ['OC | . | Droid', null, 'opencode', 'claude', 'opencode', 'OpenCode'],
     ['⠋ fix the gemini launcher', '⠋ fix the gemini launcher', null, 'claude', 'claude', 'Claude'],
     ['⠋ add ✦ icon to header', '⠋ add ✦ icon to header', null, 'claude', 'claude', 'Claude'],
     [
@@ -155,6 +159,12 @@ describe('buildTitleDerivedAgentRows', () => {
             launchAgent: 'claude'
           })
         ).toBe(agent)
+        if (raw === '. | Droid' || raw.endsWith('* | Grok')) {
+          expect(resolveTabAgentFromSignalSnapshot({ title, hookAgent: null })).toBeNull()
+          expect(
+            resolveTabAgentFromSignalSnapshot({ title, hookAgent: null, launchAgent: 'claude' })
+          ).toBe('claude')
+        }
         if (strict === 'opencode') {
           expect(resolveTabAgentFromSignalSnapshot({ title, hookAgent: null })).toBe('opencode')
           expect(
@@ -173,8 +183,7 @@ describe('buildTitleDerivedAgentRows', () => {
           terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
           now: 2000
         })
-        expect(rows).toHaveLength(1)
-        expect(rows[0]).toMatchObject({ agentType: rowAgent, entry: { prompt: label } })
+        expect(rows.map((row) => [row.agentType, row.entry.prompt])).toEqual([[rowAgent, label]])
       } finally {
         tracker.dispose()
       }

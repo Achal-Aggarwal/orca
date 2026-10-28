@@ -15,6 +15,8 @@ describe('hasCtrlEnterCsiUAuthorityForPane', () => {
   })
 
   it.each([
+    ['. | Droid', false],
+    ['tmux | Droid', true],
     ['⠋ - Codex: fix parser - grok', true],
     ['⠋ Codex: fix parser - grok', false],
     ['tmux | ⠋ fix | a | b | c | d | e | f | g | Grok', false],

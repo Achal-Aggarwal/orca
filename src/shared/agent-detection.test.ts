@@ -22,6 +22,9 @@ import { resolveExplicitTerminalTitleAgentType } from './terminal-title-agent-ty
 
 describe('normalization structural identity invariant', () => {
   it.each([
+    ['* | Grok', '* | Grok'],
+    ['. | ✦ session | Thinking', '. | ✦ session | Thinking'],
+    ['. | ✦ Analyze', '. | ✦ Analyze'],
     ['✦ session | Thinking - grok', '✦ session | Thinking - grok'],
     ['▲ session | Action Required - grok', '▲ session | Action Required - grok'],
     ['◇ Qoder CLI CN | Idle - grok', '◇ Qoder CLI CN | Idle - grok'],
@@ -45,6 +48,9 @@ describe('normalization structural identity invariant', () => {
     ['Fix Codex - grok', 'Fix Codex - grok'],
     ['⠴ - Review Codex - DeepSeek Build', '⠴ - Review Codex - DeepSeek Build']
   ])('preserves identity and idempotence for %j', (raw, expected) => {
+    if (raw.startsWith('. | ') || raw.startsWith('* | ')) {
+      expect(resolveExplicitTerminalTitleAgentType(raw)).toBeNull()
+    }
     const display = normalizeTerminalTitle(raw)
     expect(display).toBe(expected)
     expect(resolveExplicitTerminalTitleAgentType(display)).toBe(

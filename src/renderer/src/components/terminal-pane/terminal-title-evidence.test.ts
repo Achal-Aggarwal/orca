@@ -8,6 +8,7 @@ import { resolvePaneTitleDecision } from './terminal-title-evidence'
 import { installTitleSpawnBell } from './pty-connection/title-spawn-bell'
 import { clearStaleAgentTabTitleOnConfirmedShell } from './pty-connection/confirmed-shell-agent-title'
 
+import { resolveExplicitTerminalTitleAgentType } from '../../../../shared/terminal-title-agent-type'
 import { isNormalizedAgentTitleStamp } from '../../../../shared/agent-title-status'
 
 vi.mock('@/store', () => ({
@@ -38,6 +39,7 @@ describe('resolvePaneTitleDecision', () => {
     ['▲ Qoder CLI', '▲ session | Action Required - grok', '▲ session | Action Required - grok'],
     ['◇ Qoder CLI CN', '◇ Qoder CLI CN | Idle - grok', '◇ Qoder CLI CN | Idle - grok'],
     ['✦ Qoder CLI CN', '✦ Qoder CLI CN (Codex | Claude Code)', '✦ Qoder CLI CN'],
+    ['⠋ Grok', '* | Grok', '* | Grok'],
     ['⠋ Grok', '⠋ Codex: fix parser - grok', '⠋ Codex: fix parser - grok'],
     ['⠋ Grok', '⠋ - Codex: fix parser - grok', '⠋ Grok'],
     // Normalized-only history cannot recover the original task; title-only reuse remains supported.
@@ -52,6 +54,17 @@ describe('resolvePaneTitleDecision', () => {
     })
     expect(decision.displayTitle).toBe(displayTitle)
     expect(decision.rawTitle).toBe(rawTitle)
+    if (rawTitle === '* | Grok') {
+      const replay = resolvePaneTitleDecision({
+        normalizedTitle: displayTitle,
+        rawTitle: displayTitle,
+        displayOwnerAgentType: 'claude',
+        rendererOwnerAgentType: null,
+        userGpuMode: 'auto'
+      })
+      expect(resolveExplicitTerminalTitleAgentType(replay.displayTitle)).toBeNull()
+      expect(replay).toEqual(decision)
+    }
   })
 
   it.each([

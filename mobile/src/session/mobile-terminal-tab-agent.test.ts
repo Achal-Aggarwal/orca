@@ -49,6 +49,9 @@ function terminalTab(
 
 describe('resolveMobileTerminalTabAgentId', () => {
   it.each([
+    ['. | Droid', 'claude'],
+    ['tmux | Droid', 'droid'],
+    ['OC | . | Droid', 'claude'],
     ['⠋ fix the gemini launcher', 'claude'],
     ['⠋ add ✦ icon to header', 'claude'],
     ['⠋ Codex: fix Gemini terminal behavior', 'codex'],
@@ -61,14 +64,17 @@ describe('resolveMobileTerminalTabAgentId', () => {
     ['✦ Analyze Codex', 'gemini']
   ])('uses the production OSC normalization for %s', (raw, agent) => {
     let title = ''
+    let observedRaw = ''
     const tracker = createTerminalTitleTracker({
-      onTitle: (emitted) => {
+      onTitle: (emitted, rawTitle) => {
+        observedRaw = rawTitle
         title = emitted
       }
     })
     try {
       tracker.handleChunk(`\x1b]0;${raw}\x07`)
       expect(raw.length).toBeLessThanOrEqual(1024)
+      expect(observedRaw).toBe(raw)
       expect(
         resolveMobileTerminalTabAgentId(
           terminalTab(title, { agentType: 'claude', state: 'done', launchAgent: 'claude' })
