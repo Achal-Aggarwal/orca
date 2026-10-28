@@ -31,7 +31,18 @@ function findDocumentSubtree(root: ParentNode): Element | null {
 }
 
 /** Clone the panel’s rendered document without UI; return null for stale files or source-only views. */
-export async function getActiveMarkdownExportPayload({
+export function getActiveMarkdownExportPayload(options: {
+  fileId: string
+  root: ParentNode | null
+}): Promise<MarkdownExportPayload | null> {
+  try {
+    return prepareMarkdownExportPayload(options)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+function prepareMarkdownExportPayload({
   fileId,
   root
 }: {
@@ -39,21 +50,21 @@ export async function getActiveMarkdownExportPayload({
   root: ParentNode | null
 }): Promise<MarkdownExportPayload | null> {
   if (!root) {
-    return null
+    return Promise.resolve(null)
   }
   const state = useAppStore.getState()
   const activeFile = state.openFiles.find((f) => f.id === fileId)
   if (!activeFile || (activeFile.mode !== 'edit' && activeFile.mode !== 'markdown-preview')) {
-    return null
+    return Promise.resolve(null)
   }
   const language = detectLanguage(activeFile.filePath)
   if (language !== 'markdown') {
-    return null
+    return Promise.resolve(null)
   }
 
   const subtree = findDocumentSubtree(root)
   if (!subtree || subtree.hasAttribute('data-markdown-preview-incomplete')) {
-    return null
+    return Promise.resolve(null)
   }
 
   const clone = subtree.cloneNode(true) as Element
@@ -62,6 +73,14 @@ export async function getActiveMarkdownExportPayload({
       node.remove()
     }
   }
+  const title = basenameWithoutExt(activeFile.relativePath || activeFile.filePath)
+  return buildMarkdownExportPayload(clone, title)
+}
+
+async function buildMarkdownExportPayload(
+  clone: Element,
+  title: string
+): Promise<MarkdownExportPayload | null> {
   // Inline renderer-owned blob images because the hidden PDF window cannot resolve their URLs.
   await inlineBlobImageSources(clone)
 
@@ -70,7 +89,6 @@ export async function getActiveMarkdownExportPayload({
     return null
   }
 
-  const title = basenameWithoutExt(activeFile.relativePath || activeFile.filePath)
   const html = buildMarkdownExportHtml({ title, renderedHtml })
   return { title, html }
 }
