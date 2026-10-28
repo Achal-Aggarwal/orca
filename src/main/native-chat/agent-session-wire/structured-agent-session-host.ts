@@ -1,3 +1,4 @@
+import * as retry from './structured-agent-session-provider-retry-wiring'
 import { continuationContextReader as contextReader } from './structured-agent-session-continuation-context'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
@@ -6,16 +7,14 @@ import { StructuredConversationCommandController } from './structured-conversati
 
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
-import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
 import * as reveal from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { structuredAgentSessionEntryDelegates } from './structured-agent-session-create'
-import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import * as agentStart from './structured-agent-session-agent-start'
-import { createStructuredAgentSessionHostMutationContext } from './structured-agent-session-host-mutation-wiring'
+import * as mutationWiring from './structured-agent-session-host-mutation-wiring'
 import * as lifetime from './structured-agent-session-conversation-lifetime'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { createStructuredAgentSessionTabSurface as createTabs } from './structured-agent-session-host-tabs'
@@ -31,7 +30,7 @@ import { structuredAgentSessionRestartResumeSurfaces } from './structured-agent-
 import * as conversation from './structured-agent-session-host-delivery'
 import { wireStructuredAgentSessionQueuedMessages as wireQueuedMessages } from './structured-agent-session-queued-wiring'
 import * as sessionLogger from './structured-agent-session-logger'
-import { sleepStructuredAgentSessionWorkspace } from './structured-agent-session-workspace-sleep'
+import { createStructuredAgentSessionWorkspaceSleep as createWorkspaceSleep } from './structured-agent-session-workspace-sleep'
 export type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
 export class StructuredAgentSessionHost {
@@ -40,8 +39,14 @@ export class StructuredAgentSessionHost {
     this
   )
   private readonly sessions = new StructuredAgentSessionConversations({
-    observe: (id, journal, rows) => this.clientDelivery.requestFailures.observe(id, journal, rows),
-    forget: (id) => this.clientDelivery.requestFailures.forget(id),
+    observe: (id, journal, rows) => {
+      this.providerRetry.observe(id, journal, rows)
+      this.clientDelivery.requestFailures.observe(id, journal, rows)
+    },
+    forget: (id) => {
+      this.providerRetry.retire(id)
+      this.clientDelivery.requestFailures.forget(id)
+    },
     deliver: (sessionId, journal) => {
       this.subscribers.publish(sessionId, journal)
       this.conversationDelivery.afterCommit(sessionId, journal)
@@ -51,6 +56,7 @@ export class StructuredAgentSessionHost {
     onOpened: (sessionId) => this.queued.onOpened(sessionId),
     now: () => this.now()
   })
+  private readonly providerRetry = retry.createProviderRetry(() => this.mutationContext())
   private readonly queued = wireQueuedMessages(this.sessions, () => this.mutationContext())
   // Journal publication renews idle activity.
   private readonly clientDelivery = new StructuredAgentSessionClientDelivery(
@@ -66,7 +72,7 @@ export class StructuredAgentSessionHost {
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
-  private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
+  private readonly reconcileLeases: ReturnType<typeof mutationWiring.createHostRestartReconciler>
   private readonly restore: ReturnType<typeof reveal.createStructuredAgentSessionHostRestore>
   private readonly lifetime: lifetime.StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: conversation.StructuredAgentSessionConversationDelivery
@@ -92,12 +98,11 @@ export class StructuredAgentSessionHost {
       (id, e) => this.eventRecovery.recoverAfterSinkFailure(id, e),
       (expired) => this.lifetime.expireStartup(expired)
     )
-    this.reconcileLeases = createRestartReconciler({
-      store: deps.store,
-      probe: (record) => this.runtimeState.probeRecord(record),
-      ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      now: () => this.now()
-    })
+    this.reconcileLeases = mutationWiring.createHostRestartReconciler(
+      deps,
+      this.runtimeState,
+      this.now
+    )
     this.conversationDelivery = conversation.createStructuredAgentSessionConversationDelivery({
       deps,
       acquireAborts: this.runtimeState.acquireAborts,
@@ -169,21 +174,23 @@ export class StructuredAgentSessionHost {
   hasLoadedProviders = (): boolean => this.loadedSessionIds().length > 0
   sessionAgent = (sessionId: string) => this.deps.store.getConversation(sessionId)?.provider ?? null
 
-  handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
-    this.eventRecovery.handle(event)
+  handleAdapterEvent = retry.retryEventHandler(
+    this.providerRetry,
+    () => this.mutationContext(),
+    () => this.eventRecovery
+  )
 
   // Keep inference so publishStatus stays required in the attach-context spread.
   private lifetimeContext() {
-    return {
+    return mutationWiring.createStructuredAgentSessionLifetimeContext({
       deps: this.deps,
-      runtimeState: this.runtimeState,
       sessions: this.sessions,
-      now: () => this.now(),
-      publishStatus: this.clientDelivery.publishStatus,
-      generationEnded: this.clientDelivery.publishGenerationEnded,
-      wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId),
-      endExitedChild: this.eventRecovery.endExitedChildUnderSerialize
-    } satisfies StructuredAgentSessionLifetimeContext
+      now: this.now,
+      runtimeState: this.runtimeState,
+      clientDelivery: this.clientDelivery,
+      conversationDelivery: this.conversationDelivery,
+      eventRecovery: this.eventRecovery
+    })
   }
 
   private attachContext(): StructuredAgentSessionAttachContext {
@@ -198,26 +205,15 @@ export class StructuredAgentSessionHost {
     }
   }
   /** Release resources; user-close cancels cut turns, while eviction leaves their failure reportable. */
-  close: lifetime.StructuredAgentSessionConversationLifetime['close'] = (sessionId, cause) =>
-    this.lifetime.close(sessionId, cause)
+  close = retry.retryClose(this.providerRetry, () => this.lifetime)
 
   /** Stop hidden children too, using one bounded host snapshot. */
-  sleepWorkspace = (workspaceId: string, markAsleep?: boolean) =>
-    sleepStructuredAgentSessionWorkspace(
-      {
-        deps: this.deps,
-        tasks: this.tasks,
-        lifetime: this.lifetime,
-        sessions: this.sessions,
-        // Starts registered after Stop are newer work.
-        deliveryRunning: (id) =>
-          this.conversationDelivery.loop.isRunning(id) || this.runtimeState.startFlights.has(id),
-        childWorkIncomplete: this.clientDelivery.childWorkIncomplete,
-        publishRecordNotes: this.clientDelivery.publishRecordNotes
-      },
-      workspaceId,
-      markAsleep
-    )
+  sleepWorkspace = createWorkspaceSleep(() => ({
+    ...this.attachContext(),
+    lifetime: this.lifetime,
+    conversationDelivery: this.conversationDelivery,
+    clientDelivery: this.clientDelivery
+  }))
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
@@ -254,7 +250,10 @@ export class StructuredAgentSessionHost {
   flushStreamedEvents = (id: string): Promise<void> => this.runtimeState.flushEventSink(id)
 
   /** Quit stops delivery and queued-card handover. */
-  stopDelivery = () => [this.conversationDelivery, this.queued.drain].forEach((d) => d.dispose())
+  stopDelivery = () => {
+    this.providerRetry.dispose()
+    ;[this.conversationDelivery, this.queued.drain].forEach((d) => d.dispose())
+  }
 
   async flushAllStreamedEvents(options?: { trigger?: 'quit' | 'update' }): Promise<void> {
     this.stopDelivery()
@@ -269,7 +268,7 @@ export class StructuredAgentSessionHost {
   }
 
   private mutationContext = () =>
-    createStructuredAgentSessionHostMutationContext({
+    mutationWiring.createStructuredAgentSessionHostMutationContext({
       deps: this.deps,
       sessions: this.sessions,
       subscribers: this.subscribers,

@@ -1,3 +1,8 @@
+import {
+  structuredAgentSessionProviderRetryPending,
+  structuredAgentSessionStoppedFailure
+} from './structured-agent-session-provider-retry'
+import { latestNativeChatTurnSinceRequest } from '../../../shared/native-chat/native-chat-orca-stop-cut'
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
 import { agentTurnVerdict } from '../../../shared/agent-turn-outcome'
 import { isAgentSessionContextClear } from '../../../shared/agent-session-context-clear'
@@ -124,6 +129,18 @@ export class StructuredAgentSessionRequestFailures {
   generationEnded = (sessionId: string): void => {
     const baseline = this.baselines.get(sessionId)
     const session = this.deps.sessions.get(sessionId)
+    if (baseline && session) {
+      const snapshot = session.journal.snapshot()
+      const latest = latestNativeChatTurnSinceRequest(snapshot.items, snapshot.submissions)
+      if (latest) {
+        this.account(
+          sessionId,
+          baseline,
+          this.request(baseline, 'turn', latest.turnItem.itemId),
+          false
+        )
+      }
+    }
     const ended = session?.lastEndedChild
     if (!baseline || !session || baseline.journal !== session.journal || baseline.ended === ended) {
       return
@@ -194,7 +211,14 @@ export class StructuredAgentSessionRequestFailures {
     return {
       kind,
       id,
-      mark: verdict === 'interruption' && !unexpected ? turn.state : (verdict ?? turn.state)
+      mark:
+        structuredAgentSessionStoppedFailure(journal) === id
+          ? 'interrupted'
+          : verdict === 'failure' && structuredAgentSessionProviderRetryPending(journal)
+            ? 'running'
+            : verdict === 'interruption' && !unexpected
+              ? turn.state
+              : (verdict ?? turn.state)
     }
   }
 

@@ -1,3 +1,4 @@
+import { retireStructuredAgentSessionProviderRetry } from './structured-agent-session-provider-retry'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type {
   AgentSessionMutationEnvelope,
@@ -88,7 +89,16 @@ export function runStructuredAgentSessionMutation<TValue>(
     logger: context.deps.logger,
     callerKey: caller.callerKey,
     envelope,
-    plan,
+    plan: {
+      ...plan,
+      run: async (ctx) => {
+        const result = await plan.run(ctx)
+        if (result.ok && plan.conversationWrite) {
+          retireStructuredAgentSessionProviderRetry(ctx.journal)
+        }
+        return result
+      }
+    },
     journal: () => context.sessions.get(envelope.sessionId)?.journal,
     currentWork: () =>
       hostStructuredAgentSessionCurrentWork(

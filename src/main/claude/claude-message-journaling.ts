@@ -1,3 +1,4 @@
+import { claudeTransientFailure } from './claude-result-outcome'
 import { writeClaudeTerminalFailure } from './claude-terminal-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
@@ -102,8 +103,13 @@ export function journalClaudeMessage(
     openOutputTurn()
   }
   const usageLimit = ctx.usageLimits.assistant(message, ctx.turn)
+  const authentication = ctx.authenticationFailures.assistant(message)
+  if (envelope.role === 'assistant' && producerRef === null && !ctx.turn.command) {
+    ctx.turn.transientFailure =
+      !authentication && !usageLimit ? claudeTransientFailure(message) : undefined
+  }
   const body =
-    ctx.authenticationFailures.assistant(message) ??
+    authentication ??
     usageLimit ??
     ctx.threadGoal.report(message, claudeMessageIdentity(envelope), observedAt) ??
     messageBody ??

@@ -1,3 +1,5 @@
+import type { AgentSessionTransientFailure } from '../../shared/agent-session-provider-retry-policy'
+import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 import type {
   AgentJournalTurnLifecycle,
   AgentJournalTurnOutcome
@@ -146,6 +148,16 @@ export class CodexJournalTurnBoundaries {
       }
     }
     return admission
+  }
+
+  noteTransientFailure(event: TurnBoundaryEvent, category: AgentSessionTransientFailure): void {
+    const turnId = readCodexTurnId(event.params)
+    if (turnId && this.ownsRecord(event.threadId, turnId)) {
+      this.deps.sink.noteTransientFailure?.(
+        codexTurnLifecycleIdentity(event.sessionId, turnId),
+        category
+      )
+    }
   }
 
   /** Only turn/completed ends a live turn, including failures preceded by an error frame. */

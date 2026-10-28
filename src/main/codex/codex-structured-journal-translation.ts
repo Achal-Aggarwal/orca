@@ -1,3 +1,4 @@
+import { CodexTransientTurnFailures } from './codex-structured-turn-end-settlement'
 import { createCodexProviderActivityReader } from '../native-chat/agent-session-wire/provider-frame-activity'
 import { recordCodexContextUsage } from './codex-context-usage'
 import { CODEX_TOKEN_USAGE_METHOD } from './codex-subagent-activity'
@@ -57,6 +58,7 @@ export function createCodexJournalTranslator(
   } = createCodexJournalTranslatorWriters(deps)
   const flushStreams = (): CodexJournalTranslationAdmission =>
     items.streams.flush() ? CODEX_JOURNAL_ADMITTED : { accepted: false, reason: 'backpressure' }
+  const transientFailures = new CodexTransientTurnFailures()
   let readActivity = createCodexProviderActivityReader()
   const resetActivity = (threadId: string): void => {
     if (threadId === (deps.primaryThreadId?.() ?? null)) {
@@ -103,6 +105,7 @@ export function createCodexJournalTranslator(
 
   return {
     restoreThread: (threadId, thread) => {
+      transientFailures.clear()
       if (threadId === (deps.primaryThreadId?.() ?? null)) {
         readActivity = createCodexProviderActivityReader()
       }
@@ -145,6 +148,7 @@ export function createCodexJournalTranslator(
         )
       }
       if (event.type === 'ended') {
+        transientFailures.clear()
         const streamAdmission = flushStreams()
         if (!streamAdmission.accepted) {
           return streamAdmission
@@ -208,6 +212,10 @@ export function createCodexJournalTranslator(
       }
       if (event.type !== 'notification') {
         return CODEX_JOURNAL_ADMITTED
+      }
+      const transient = transientFailures.observe(event.method, event.params)
+      if (transient && event.threadId === primaryThreadId) {
+        turnBoundaries.noteTransientFailure(event, transient)
       }
       if (event.method === 'turn/started' || event.method === 'turn/completed') {
         return event.method === 'turn/started'
@@ -274,6 +282,7 @@ export function createCodexJournalTranslator(
       genericFrames.flush()
     },
     dispose: () => {
+      transientFailures.clear()
       items.dispose()
       prompts.dispose()
       genericFrames.dispose()

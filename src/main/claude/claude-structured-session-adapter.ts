@@ -11,7 +11,10 @@ import { releaseClaudeAcquisition } from './structured/claude-structured-acquisi
 import { acquireClaudeSession } from './structured/claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
 import * as claudeOptions from './claude-structured-options'
-import { dispatchClaudeMessage } from './claude-structured-message-options'
+import {
+  continueClaudeAfterTransientFailure,
+  dispatchClaudeMessage
+} from './claude-structured-message-options'
 import { readClaudeStructuredSessionOptions } from './claude-structured-session-options'
 import {
   ClaudeAcquisitionRegistry,
@@ -135,6 +138,15 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   bindPromptItemId(sessionId: string, journalItemId: string, promptKey: string): void {
     this.sessions.get(sessionId)?.prompts.bindJournalItemId(journalItemId, promptKey)
   }
+
+  continueAfterTransientFailure: NonNullable<
+    StructuredAgentSessionAdapter['continueAfterTransientFailure']
+  > = (input) =>
+    continueClaudeAfterTransientFailure(
+      this.session(input.sessionId),
+      input,
+      this.deps.requestTimeoutMs
+    )
 
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) => {
     const { requestTimeoutMs, logger } = this.deps

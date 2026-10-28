@@ -1,3 +1,6 @@
+import type { StructuredAgentSessionClientDelivery } from './structured-agent-session-client-delivery'
+import type { StructuredAgentSessionConversationDelivery } from './structured-agent-session-host-delivery'
+import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import type {
   AgentSessionExecutionLocation,
   AgentSessionRecord
@@ -134,4 +137,31 @@ async function settleWorkspaceSleepChat(
     host.publishRecordNotes(sessionId)
   }
   return marked ? { stopped: true } : null
+}
+
+export function createStructuredAgentSessionWorkspaceSleep(
+  context: () => Omit<
+    WorkspaceSleepHost,
+    'deliveryRunning' | 'childWorkIncomplete' | 'publishRecordNotes'
+  > & {
+    runtimeState: StructuredAgentSessionHostRuntimeState
+    conversationDelivery: StructuredAgentSessionConversationDelivery
+    clientDelivery: StructuredAgentSessionClientDelivery
+  }
+) {
+  return (workspaceId: string, markAsleep?: boolean) => {
+    const ctx = context()
+    return sleepStructuredAgentSessionWorkspace(
+      {
+        ...ctx,
+        // Starts registered after Stop are newer work.
+        deliveryRunning: (id) =>
+          ctx.conversationDelivery.loop.isRunning(id) || ctx.runtimeState.startFlights.has(id),
+        childWorkIncomplete: ctx.clientDelivery.childWorkIncomplete,
+        publishRecordNotes: ctx.clientDelivery.publishRecordNotes
+      },
+      workspaceId,
+      markAsleep
+    )
+  }
 }

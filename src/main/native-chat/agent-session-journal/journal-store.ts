@@ -255,6 +255,9 @@ export class AgentSessionJournal {
   receiptFor = (clientMessageId: string): AgentJournalAcceptanceReceipt | null =>
     this.state.receipts.get(clientMessageId) ?? null
 
+  turnEndedSequence = (itemId: string): number | undefined =>
+    this.state.turnEndedSequences.get(this.canonicalItemId(itemId))
+
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
 
   /** Read after all preceding writes and before later ones. */

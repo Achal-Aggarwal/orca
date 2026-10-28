@@ -1,3 +1,7 @@
+import {
+  structuredAgentSessionProviderRetryPending,
+  structuredAgentSessionStoppedFailure
+} from './structured-agent-session-provider-retry'
 import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import { isHistoricalProviderTimelineItem } from '../agent-session-timeline/provider-timeline-history'
 import { currentRequestsProjection } from './agent-session-current-requests'
@@ -27,7 +31,8 @@ import {
 export type StructuredAgentSessionCurrentWorkJournal = Pick<
   AgentSessionJournal,
   'runningTurn' | 'itemFence' | 'visitItems' | 'submissions' | 'wroteBeforeOpen' | 'item' | 'cursor'
->
+> &
+  Partial<Pick<AgentSessionJournal, 'snapshot' | 'stopMarks' | 'turnEndedSequence'>>
 
 export type StructuredAgentSessionWorkEvidence = {
   record: Pick<AgentSessionConversationView, 'ownerObservation' | 'currentFence'> | null
@@ -278,8 +283,12 @@ export class StructuredAgentSessionCurrentWork {
     return this.journal.submissions().some((submission) => this.owesSend(submission))
   }
 
-  working(): boolean {
+  hasTurnOrSend(): boolean {
     return this.activeTurnId() !== null || this.owesAnySend()
+  }
+
+  working(): boolean {
+    return this.hasTurnOrSend() || structuredAgentSessionProviderRetryPending(this.journal)
   }
 
   /** Project interrupted turns immediately from observed/replaced-runtime death, before settlement persists. */
@@ -298,6 +307,10 @@ export class StructuredAgentSessionCurrentWork {
 
   /** Hide ended-generation work; publish interruption or owner uncertainty without implying completion. */
   publishedLatestTurn(latest: AgentSessionLatestTurn | null): AgentSessionLatestTurn | null {
+    if (latest && structuredAgentSessionStoppedFailure(this.journal) === latest.itemId) {
+      const { outcome: _outcome, ...turn } = latest.turn
+      return { ...latest, turn: { ...turn, state: 'interrupted' } }
+    }
     if (latest?.turn.state !== 'running' || this.isCurrentItem(latest.itemId)) {
       return latest
     }

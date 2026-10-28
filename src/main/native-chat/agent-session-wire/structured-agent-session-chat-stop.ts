@@ -1,3 +1,7 @@
+import {
+  structuredAgentSessionProviderRetryPending,
+  retireStructuredAgentSessionProviderRetry
+} from './structured-agent-session-provider-retry'
 // Atomically accept Stop/withdrawals/receipt before acting on the captured target.
 // Queue session-ending wind-down in the mutation’s tick; saved failures answer from the receipt.
 
@@ -22,7 +26,7 @@ import {
 } from './structured-agent-session-send-preparation'
 import { acceptChatStop, acceptStopTarget } from './structured-agent-session-stop-acceptance'
 import {
-  noteStructuredAgentSessionStopUnconfirmed,
+  noteChatStopUnconfirmed,
   writeStructuredAgentSessionStopNote
 } from './structured-agent-session-stop-unconfirmed-note'
 import { STOP_NOTE_CANCELLATION_REQUESTED } from './structured-agent-session-turn-stop-notes'
@@ -31,7 +35,6 @@ import {
   type StructuredAgentSessionStopWindDown
 } from './structured-agent-session-stop-wind-down'
 import { performCancel, type AcceptedChatStop } from './structured-agent-session-turns-cancel'
-import { contextStructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import {
   isStructuredAgentSessionCommandTurnId,
@@ -215,6 +218,7 @@ export function mutateWithChatStop<TValue>(
   const stop = async (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> => {
     const operations = context.acquireAborts.captureOperations(sessionId)
     const flight = context.startFlights.get(sessionId)
+    const retrying = structuredAgentSessionProviderRetryPending(ctx.journal)
     const target = captureChatStopTarget(ctx, {
       child: context.sessions.get(ctx.sessionId)?.child ?? null,
       ...named,
@@ -233,6 +237,7 @@ export function mutateWithChatStop<TValue>(
     if (!accepted.ok) {
       return accepted
     }
+    retireStructuredAgentSessionProviderRetry(ctx.journal)
     for (const abort of operations) {
       abort()
       reached = true
@@ -262,19 +267,16 @@ export function mutateWithChatStop<TValue>(
       return await act(
         ctx,
         target,
-        accepted.value.settled || reached || flight !== undefined,
+        accepted.value.settled || reached || flight !== undefined || retrying,
         acceptedStop
       )
     } catch (error) {
       // Note post-commit failure on the most specific turn, then answer from the durable receipt.
-      const stoppedTurnId =
-        accepted.value.turnId ??
-        (target.named
-          ? target.turnId
-          : contextStructuredAgentSessionCurrentWork(ctx).activeTurnId())
-      await noteStructuredAgentSessionStopUnconfirmed(
+      await noteChatStopUnconfirmed(
         ctx,
-        { turnId: stoppedTurnId, operationId: envelope.clientOperationId },
+        target,
+        accepted.value.turnId,
+        envelope.clientOperationId,
         error
       )
       throw error

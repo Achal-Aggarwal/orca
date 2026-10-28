@@ -1,3 +1,5 @@
+import type { AgentSessionTransientFailure } from '../../../shared/agent-session-provider-retry-policy'
+import { noteStructuredAgentSessionTransientFailure } from './structured-agent-session-provider-retry'
 // Admit each event’s writes whole so producer state cannot advance after partial admission.
 // Execute against the latest fold in one queue turn; failure retains the written prefix and skips later steps.
 
@@ -59,6 +61,10 @@ export type StructuredAgentSessionTransition = {
 const STEP_OVERFLOW = 'structured agent-session transition step exceeded its reserved size'
 
 export type StructuredAgentSessionTransitionSink = {
+  noteTransientFailure?(
+    identity: AgentJournalItemIdentity,
+    category: AgentSessionTransientFailure
+  ): void
   tryAppendTransition?(
     transition: StructuredAgentSessionTransition
   ): StructuredAgentSessionSinkAdmission
@@ -69,7 +75,19 @@ export type StructuredAgentSessionTransitionSink = {
 export function createStructuredAgentSessionTransitionMembers(
   queue: StructuredAgentSessionSinkQueue
 ): Required<StructuredAgentSessionTransitionSink> {
-  return { tryAppendTransition: transitionAppend(queue), journalItems: queue.journalItems }
+  return {
+    noteTransientFailure: (identity, category) => {
+      queue.submit({
+        bytes: 1,
+        lifecycle: true,
+        run: (bound) => {
+          noteStructuredAgentSessionTransientFailure(bound.journal, identity, category)
+        }
+      })
+    },
+    tryAppendTransition: transitionAppend(queue),
+    journalItems: queue.journalItems
+  }
 }
 
 function transitionAppend(

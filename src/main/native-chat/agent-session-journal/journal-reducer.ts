@@ -50,6 +50,7 @@ export type JournalReducerState = {
   oldestSequence: number
   highestFence: number
   items: Map<string, AgentJournalRenderItem>
+  turnEndedSequences: Map<string, number>
   /** Creation provenance determines whether an item belongs to current execution. */
   itemFences: Map<string, number>
   /** Later runs may explicitly assume execution of reusable child items. */
@@ -91,6 +92,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     oldestSequence: 1,
     highestFence: 0,
     items: new Map(),
+    turnEndedSequences: new Map(),
     itemFences: new Map(),
     itemExecutionOwners: new Map(),
     providerActivityAt: new Map(),

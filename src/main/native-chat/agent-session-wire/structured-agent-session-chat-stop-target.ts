@@ -1,3 +1,4 @@
+import { structuredAgentSessionProviderRetryPending } from './structured-agent-session-provider-retry'
 // Capture once at acceptance; afterward only child identity can exclude the accepted target.
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
@@ -53,6 +54,12 @@ export function captureChatStopTarget(
     turnScope: contextStructuredAgentSessionCurrentWork(ctx).turnScope(),
     eventTurnId: input.endsSession ? null : (turnId ?? null),
     queued
+  }
+  if (
+    structuredAgentSessionProviderRetryPending(ctx.journal) &&
+    contextStructuredAgentSessionCurrentWork(ctx).activeTurnId() === null
+  ) {
+    return { ...target, reach: 'withdraw', marks: true }
   }
   if (child?.close) {
     return { ...target, reach: 'close', marks: queued }

@@ -1,3 +1,4 @@
+import { claudeTransientFailure } from './claude-result-outcome'
 import { writeClaudeTerminalFailure } from './claude-terminal-failure'
 import type { ClaudeContextFacts } from './claude-context-facts'
 import { claudeCommandResultEnd } from './claude-command-turn'
@@ -70,6 +71,25 @@ export function journalClaudeResult(
   if (usageLimit && endedTurnIdentity) {
     writeClaudeTerminalFailure(sink, endedTurnIdentity, usageLimit)
   }
+  const alreadyShown = authenticationFailures.resultAlreadyShown(message)
+  if (
+    settlesTurn &&
+    !commandEnd &&
+    !turn.command &&
+    !usageLimit &&
+    endedTurnIdentity &&
+    message.is_error === true &&
+    !alreadyShown
+  ) {
+    const category =
+      claudeTransientFailure(message) ??
+      (message.api_error_status == null && message.api_error == null && message.error == null
+        ? turn.transientFailure
+        : undefined)
+    if (category) {
+      sink.noteTransientFailure?.(endedTurnIdentity, category)
+    }
+  }
   if (settlesTurn) {
     turn.suppressReopenOnFailure(message.is_error === true)
     corrections.abandon()
@@ -95,7 +115,6 @@ export function journalClaudeResult(
   if (usageLimit && endedTurnIdentity) {
     return
   }
-  const alreadyShown = authenticationFailures.resultAlreadyShown(message)
   if ((failure || !isSettledClaudeResultKind(kind)) && !alreadyShown) {
     providerFallback.append(
       kind,

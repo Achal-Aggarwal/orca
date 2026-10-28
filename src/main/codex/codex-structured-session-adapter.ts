@@ -1,3 +1,4 @@
+import { continueCodexAfterTransientFailure } from './codex-structured-provider-retry'
 import { projectCodexSessionOptions } from './codex-structured-service-tier'
 import * as codexRewind from './codex-structured-rewind'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
@@ -226,6 +227,15 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
         promptKey,
         turnId
       )
+
+  continueAfterTransientFailure: NonNullable<
+    StructuredAgentSessionAdapter['continueAfterTransientFailure']
+  > = (input) =>
+    continueCodexAfterTransientFailure(
+      this.session(input.sessionId),
+      input,
+      this.deps.requestTimeoutMs
+    )
 
   async dispatch(
     input: Parameters<StructuredAgentSessionAdapter['dispatch']>[0]

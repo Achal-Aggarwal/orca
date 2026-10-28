@@ -1,3 +1,5 @@
+import { withTimeout } from '../../shared/promise-timeout-fallback'
+import { retireWaiter, type waitForReplay } from './claude-structured-dispatch-waiters'
 import { claudeStartedUnechoedSend } from './claude-command-lifecycle'
 import { claudeExecutionObservations } from './claude-structured-execution-observations'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
@@ -132,4 +134,55 @@ export async function dispatchClaudeMessage(
   return outcome.state === 'accepted' || outcome.state === 'admitted'
     ? { ...outcome, ranOptions }
     : outcome
+}
+
+export async function continueClaudeAfterTransientFailure(
+  session: ClaudeSession,
+  input: Parameters<NonNullable<StructuredAgentSessionAdapter['continueAfterTransientFailure']>>[0],
+  timeoutMs = 5_000
+): ReturnType<NonNullable<StructuredAgentSessionAdapter['continueAfterTransientFailure']>> {
+  if (session.fence !== input.fence || input.signal.aborted || session.translator?.currentTurnId) {
+    return { state: 'refused' }
+  }
+  let replay: ReturnType<typeof waitForReplay> | undefined
+  try {
+    const outcome = await waitForPromiseWithSignal(
+      dispatchClaudeTurn(
+        session,
+        {
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: 'Please continue.' }]
+          },
+          signal: input.signal,
+          onReplay: (value) => {
+            replay = value
+          }
+        },
+        async () => {
+          input.signal.throwIfAborted()
+          if (input.options) {
+            await applyClaudeMessageOptions(session, input.options, timeoutMs, input.signal)
+          }
+          input.signal.throwIfAborted()
+        }
+      ),
+      input.signal
+    )
+    if (outcome.state === 'rejected') {
+      return { state: 'refused' }
+    }
+    const uuid = replay
+      ? await waitForPromiseWithSignal(withTimeout(replay.promise, timeoutMs, null), input.signal)
+      : null
+    return uuid ? { state: 'started', providerTurnRef: uuid } : { state: 'unknown' }
+  } catch {
+    return { state: 'unknown' }
+  } finally {
+    if (replay && !replay.waiter.settledUuid) {
+      retireWaiter(session, replay.waiter)
+      replay.waiter.resolve(null)
+    }
+  }
 }

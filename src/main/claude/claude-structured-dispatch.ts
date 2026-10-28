@@ -123,6 +123,7 @@ export async function dispatchClaudeTurn(
     body: AgentJournalMessageItem
     requestedAt?: number
     sentUuid?: string
+    onReplay?: (replay: ReturnType<typeof waitForReplay>) => void
     signal?: AbortSignal
   },
   beforeDispatch?: () => Promise<void>
@@ -150,7 +151,7 @@ export async function dispatchClaudeTurn(
     ++session.dispatchSequence
     // Invalidate context reports requested before this send.
     session.translator?.markContextActivity()
-    return waitForReplay(
+    const replay = waitForReplay(
       session,
       acceptsResult,
       sentUuid,
@@ -158,6 +159,8 @@ export async function dispatchClaudeTurn(
       input.clientMessageId ?? null,
       input.requestedAt ?? null
     )
+    input.onReplay?.(replay)
+    return replay
   }
   const message = {
     type: 'user',

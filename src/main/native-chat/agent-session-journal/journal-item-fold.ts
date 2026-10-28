@@ -35,6 +35,11 @@ export function upsertJournalItem(
   if (existing && revision <= existing.revision) {
     return
   }
+  const turn = readAgentJournalTurn(next.body)
+  const priorTurn = readAgentJournalTurn(existing?.body)
+  if (turn && turn.state !== 'running' && (!priorTurn || priorTurn.state === 'running')) {
+    state.turnEndedSequences.set(itemId, next.sequence)
+  }
   state.derivedTurnScope.observe(itemId, isRootAgentJournalItem(next), existing?.body, next.body)
   if (fences.executionOwner !== undefined) {
     state.itemExecutionOwners.set(itemId, fences.executionOwner)
@@ -92,6 +97,7 @@ export function removeJournalItem(
   }
   state.tombstones.set(itemId, revision)
   state.items.delete(itemId)
+  state.turnEndedSequences.delete(itemId)
   state.itemFences.delete(itemId)
   state.itemExecutionOwners.delete(itemId)
 }
