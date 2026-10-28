@@ -63,6 +63,16 @@ function isForcedRefresh(params: unknown): boolean {
   )
 }
 
+function pendingSnapshot() {
+  let resolve: (value: unknown) => void = () => {
+    throw new Error('Usage read has not started')
+  }
+  const promise = new Promise<unknown>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 describe('web rate limits and accounts preload API', () => {
   let calls: { method: string; params: unknown }[]
   let callResults: Record<string, unknown>
@@ -80,7 +90,7 @@ describe('web rate limits and accounts preload API', () => {
           if (!(method in callResults)) {
             return Promise.resolve(notFound(method))
           }
-          return Promise.resolve(ok(callResults[method]))
+          return Promise.resolve(callResults[method]).then(ok)
         }
 
         subscribe(
@@ -154,6 +164,80 @@ describe('web rate limits and accounts preload API', () => {
 
     await expect(api.rateLimits.refresh()).resolves.toEqual(usageState(5))
   })
+
+  it.each(['get', 'refresh'] as const)(
+    'keeps newer streamed usage when a delayed %s snapshot arrives',
+    async (method) => {
+      const pending = pendingSnapshot()
+      callResults['accounts.list'] = pending.promise
+      const { api } = await install()
+      const received: RateLimitState[] = []
+      const unsubscribe = api.rateLimits.onUpdate((state) => received.push(state))
+      await vi.waitFor(() => expect(subscriptions).toHaveLength(1))
+
+      const read = api.rateLimits[method]()
+      await vi.waitFor(() =>
+        expect(calls).toContainEqual({
+          method: 'accounts.list',
+          params: { refreshUsage: method === 'refresh' }
+        })
+      )
+      subscriptions[0].callbacks.onResponse(
+        ok({ type: 'snapshot', snapshot: snapshot(usageState(5)) })
+      )
+      pending.resolve(snapshot(usageState(1)))
+
+      await expect(read).resolves.toEqual(usageState(5))
+      expect(received).toEqual([usageState(5)])
+      delete callResults['accounts.list']
+      await expect(api.rateLimits.get()).resolves.toEqual(usageState(5))
+      unsubscribe()
+    }
+  )
+
+  it('publishes a later read when no usage update arrives during its request', async () => {
+    callResults['accounts.list'] = snapshot(usageState(5))
+    const { api } = await install()
+    const received: RateLimitState[] = []
+    const unsubscribe = api.rateLimits.onUpdate((state) => received.push(state))
+    await vi.waitFor(() => expect(subscriptions).toHaveLength(1))
+    subscriptions[0].callbacks.onResponse(
+      ok({ type: 'snapshot', snapshot: snapshot(usageState(1)) })
+    )
+
+    await expect(api.rateLimits.refresh()).resolves.toEqual(usageState(5))
+    expect(received).toEqual([usageState(1), usageState(5)])
+    unsubscribe()
+  })
+
+  it.each(['older-first', 'newer-first'] as const)(
+    'keeps the newer refresh when overlapping reads complete %s',
+    async (order) => {
+      const older = pendingSnapshot()
+      const newer = pendingSnapshot()
+      callResults['accounts.list'] = older.promise
+      const { api } = await install()
+      const olderRead = api.rateLimits.get()
+      await vi.waitFor(() => expect(calls).toHaveLength(1))
+      callResults['accounts.list'] = newer.promise
+      const newerRead = api.rateLimits.refresh()
+      await vi.waitFor(() => expect(calls).toHaveLength(2))
+
+      if (order === 'older-first') {
+        older.resolve(snapshot(usageState(1)))
+        await expect(olderRead).resolves.toEqual(usageState(1))
+        newer.resolve(snapshot(usageState(5)))
+        await expect(newerRead).resolves.toEqual(usageState(5))
+      } else {
+        newer.resolve(snapshot(usageState(5)))
+        await expect(newerRead).resolves.toEqual(usageState(5))
+        older.resolve(snapshot(usageState(1)))
+        await expect(olderRead).resolves.toEqual(usageState(5))
+      }
+      delete callResults['accounts.list']
+      await expect(api.rateLimits.get()).resolves.toEqual(usageState(5))
+    }
+  )
 
   it('refuses to add or re-sign accounts with a reason instead of returning an empty roster', async () => {
     const { api } = await install()

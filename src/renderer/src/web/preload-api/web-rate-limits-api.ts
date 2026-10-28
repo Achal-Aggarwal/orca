@@ -23,9 +23,12 @@ let stream: { unsubscribe: () => void } | null = null
 let streamStarting = false
 let resubscribeTimer: ReturnType<typeof setTimeout> | null = null
 let lastState: RateLimitState | null = null
+let updateSequence = 0
+let publishedSequence = 0
 
-function publishRateLimits(state: RateLimitState): void {
+function publishRateLimits(state: RateLimitState, sequence = ++updateSequence): void {
   lastState = state
+  publishedSequence = sequence
   for (const listener of listeners) {
     listener(state)
   }
@@ -115,10 +118,12 @@ function stopStream(): void {
 }
 
 async function readRateLimits(refreshUsage: boolean): Promise<RateLimitState> {
+  const sequence = ++updateSequence
   try {
     const snapshot = await fetchAccountsSnapshot(refreshUsage)
-    if (snapshot.rateLimits) {
-      publishRateLimits(snapshot.rateLimits)
+    // A stream update or newer read supersedes snapshots from earlier requests.
+    if (snapshot.rateLimits && sequence > publishedSequence) {
+      publishRateLimits(snapshot.rateLimits, sequence)
       return snapshot.rateLimits
     }
   } catch {
