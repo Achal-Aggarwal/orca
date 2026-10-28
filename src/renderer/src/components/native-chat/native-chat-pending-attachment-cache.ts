@@ -28,15 +28,6 @@ export function nativeChatPendingAttachmentSnapshot(
   return pendingCache.get(scopeKey) ?? EMPTY
 }
 
-export function nativeChatComposerHasUserContent(scopeKey: string): boolean {
-  const draft = readNativeChatComposerDraft(scopeKey)
-  return (
-    draft.text.trim() !== '' ||
-    draft.images.length > 0 ||
-    nativeChatPendingAttachmentSnapshot(scopeKey).length > 0
-  )
-}
-
 function writePending(scopeKey: string, next: readonly NativeChatComposerImageAttachment[]): void {
   for (const chip of pendingCache.get(scopeKey) ?? []) {
     if (chipScopes.get(chip.id) === scopeKey) {

@@ -1,3 +1,4 @@
+import { useStructuredLaunchDraftPresentation } from './use-structured-launch-draft-presentation'
 import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../../store'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
@@ -54,6 +55,7 @@ export function useNativeChatLaunchDraftSignal(args: {
 
 /** Only the owning pane adopts a seed into an empty composer; resolution clears untouched copies even after ownership ends. */
 export function useNativeChatLaunchDraftAdoption(args: {
+  structuredSessionId?: string
   terminalTabId: string
   agent: string
   launchDraft: NativeChatLaunchDraft | null | undefined
@@ -64,6 +66,7 @@ export function useNativeChatLaunchDraftAdoption(args: {
   /** Splits remove ownership from every pane; gate pickup, never cleanup. */
   ownsTabWideLaunchDraft: boolean
 }): void {
+  useStructuredLaunchDraftPresentation(args.structuredSessionId, args.draft)
   const {
     terminalTabId,
     agent,

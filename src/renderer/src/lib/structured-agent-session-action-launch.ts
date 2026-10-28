@@ -23,7 +23,10 @@ import {
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
 import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
-import { nativeChatComposerHasUserContent } from '@/components/native-chat/native-chat-pending-attachment-cache'
+import {
+  clearStructuredAgentLaunchDraft,
+  structuredLaunchDraftHasUserContent
+} from './structured-agent-session-launch-draft'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 
 export function openDeclinedTerminal(
@@ -86,7 +89,7 @@ export async function openTerminalForDeclinedChat(
     return settlement
   }
   const scopeKey = structuredAgentSessionDraftScopeKey(tab.entityId)
-  const typed = nativeChatComposerHasUserContent(scopeKey)
+  const typed = structuredLaunchDraftHasUserContent(scopeKey, launchState?.draftReceipt)
   const attempt = launchState?.callers
   const terminal = await openDeclinedTerminal(args, worktreeId, target, false)
   const completed = terminal.completion
@@ -149,7 +152,7 @@ export async function openTerminalForDeclinedChat(
     !group ||
     group.tabOrder.indexOf(replacement.id) !== group.tabOrder.indexOf(current.id) + 1 ||
     typed ||
-    nativeChatComposerHasUserContent(scopeKey)
+    structuredLaunchDraftHasUserContent(scopeKey, launchState?.draftReceipt)
   ) {
     notifyHostDeclined(args.plan.agent, false)
     return settlement
@@ -176,6 +179,7 @@ export async function openTerminalForDeclinedChat(
   if (showsFirst) {
     showReplacement()
   }
+  clearStructuredAgentLaunchDraft(launchState?.draftReceipt)
   placed.closeUnifiedTab(tab.id, { recordInteraction: false })
   if (foreground && !showsFirst) {
     showReplacement()

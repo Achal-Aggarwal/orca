@@ -14,7 +14,6 @@ import {
   hasStructuredAgentSessionLaunchCancellationTombstone,
   shouldRetainStructuredAgentSessionLaunchTab
 } from '@/lib/agent-session/launch/structured-agent-session-launch-registry'
-import { structuredAgentSessionTabId } from '../../../../../shared/structured-agent-session-projection'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import { ownsGlobalSelection } from '../../global-selection-owner'
 import {
@@ -98,7 +97,6 @@ export function createTabsCloseActions(
           // Closing still removes the tab; no host can be named to stop its chat on.
           console.warn('[structured-agent-session] close found no owning host', tab.entityId)
         }
-        get().clearNativeChatLaunchDraft(structuredAgentSessionTabId(tab.entityId))
         // The unsent draft stays: it belongs to the conversation, which can be reopened from history.
       }
       const nextActiveTabId =
