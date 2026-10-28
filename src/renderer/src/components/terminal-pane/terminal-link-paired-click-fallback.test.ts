@@ -393,6 +393,28 @@ describe('a modifier-click on a paired-server path followed by more paths', () =
     expect(runtimeEnvironmentCallMock).not.toHaveBeenCalled()
   })
 
+  it('opens the joined path when its checks fail and the visible prefix is known missing', async () => {
+    setPlatform('Macintosh')
+    hostAnswers((path) => ({ exists: path === 'report.txt' }))
+    const answerOpen = runtimeEnvironmentCallMock.getMockImplementation()!
+    runtimeEnvironmentCallMock.mockImplementation((args) =>
+      args.method === 'files.pathsExist' ? Promise.reject(new Error('host busy')) : answerOpen(args)
+    )
+    const buffer = makeBuffer([
+      makeBufferLine('/srv/repo/report'),
+      makeBufferLine('.txt'),
+      makeBufferLine('.map')
+    ])
+
+    clickPairedPath(buffer, makeExistsCache([[runtimeKey('/srv/repo/report'), false]]))
+    await flushDoubleRaf()
+
+    expect(openFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ filePath: '/srv/repo/report.txt' }),
+      expect.anything()
+    )
+  })
+
   it('opens a wrapped share path whole even when its prefix is a known file', async () => {
     setPlatform('Windows')
     runtimeEnvironmentCallMock.mockResolvedValue({

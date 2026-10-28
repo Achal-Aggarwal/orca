@@ -63,14 +63,7 @@ export function openFilePathLinkAtBufferPosition(
     ...readings.links.map((link) => [link, false] as const),
     ...readings.guesses.map((link) => [link, true] as const)
   ]) {
-    const target = resolveFileLinkTarget(parsed, {
-      cwd: deps.startupCwd,
-      homePath: deps.terminalHomePath,
-      worktreeId: deps.worktreeId,
-      worktreePath: deps.worktreePath,
-      runtimeEnvironmentId: deps.runtimeEnvironmentId,
-      wslDistro: deps.wslDistro
-    })
+    const target = resolveFileLinkTarget(parsed, host)
     const cachedExists =
       target && deps.pathExistsCache
         ? readTerminalPathExistence(deps.pathExistsCache, target.cacheKey)
@@ -141,7 +134,7 @@ export function openFilePathLinkAtBufferPosition(
     return link !== undefined
   }
 
-  // Wait for hover probes before choosing longer hard-wrap guesses; otherwise a bad join can hide the real path.
+  // Probe before choosing a longer hard-wrap or spaced reading; otherwise a bad join can hide the real path.
   const isLatestOpen = reserveDetectedFilePathOpenTurn()
   const clickedHost = fileHostFingerprint(toProbe[0].fileContext)
   void probeClickedFileLinks(toProbe, deps).then((existing) => {
@@ -153,7 +146,8 @@ export function openFilePathLinkAtBufferPosition(
       return
     }
     const found = longestPath(existing)
-    const link = found ?? best ?? visible
+    // Without a verified reading, opening the shortest unchecked path reports the real failure.
+    const link = found ?? best ?? shortestPath(toProbe.filter((link) => !link.guess)) ?? visible
     if (link) {
       open(link, link === found || link.cachedExists === true)
     }
