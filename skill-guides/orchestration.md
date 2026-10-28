@@ -104,8 +104,9 @@ precedence over the idle rule. Do not reuse the settled lifecycle IDs.
 
 Confirm the runtime and start the full independent wave before waiting.
 `worker-start --spec` creates the Task and its attempt in one call; with no Run
-bound, it also creates one bound to you. Its receipt's `run` names the Run it
-created or joined; if that is an earlier goal's Run, `run-create` first:
+bound, it also creates one bound to you (an older Orca refuses instead; then
+`run-create` first). Its receipt's `run` names the Run it created or joined; if
+that is an earlier goal's Run, `run-create` first:
 
 ```text
 ORCA status --json

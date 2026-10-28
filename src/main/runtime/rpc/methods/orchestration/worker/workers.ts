@@ -48,6 +48,10 @@ export const ORCHESTRATION_WORKER_START_METHODS = [
         callerEvidence: orchestrationCompatibilityEvidence,
         callerSession: orchestrationCaller
       })
+      if (params.spec) {
+        // Before the Run resolves, so a refused spec cannot leave a new Run bound.
+        await assertWorkerStartTaskSpecWithinPromptBudget(params.spec)
+      }
       const { run, runCreated, helperCreator } = resolveWorkerStartRun(runtime, {
         coordinator,
         from: params.from,
@@ -86,7 +90,9 @@ export const ORCHESTRATION_WORKER_START_METHODS = [
           params
         })
       }
-      await assertWorkerStartTaskSpecWithinPromptBudget(params.spec ?? existingTask!.spec)
+      if (existingTask) {
+        await assertWorkerStartTaskSpecWithinPromptBudget(existingTask.spec)
+      }
       const mode = decideWorkerStartMode({
         params,
         settings: readWorkerStartModeSettings(runtime)
