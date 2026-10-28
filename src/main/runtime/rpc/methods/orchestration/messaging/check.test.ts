@@ -5,6 +5,7 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import { reconcileLifecycleMessage } from '../../../../orchestration/lifecycle-reconciliation'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { MessageWake } from '../../../../runtime-message-waiters'
 
 describe('orchestration RPC methods', () => {
   const h = createOrchestrationRpcHarness()
@@ -352,7 +353,7 @@ describe('orchestration RPC methods', () => {
           type: 'worker_done',
           runId: activeRunId
         }).id
-        return 'notified'
+        return new MessageWake()
       })
 
       const peeked = (await call('orchestration.check', {
@@ -381,7 +382,7 @@ describe('orchestration RPC methods', () => {
           dispatchId: dispatch.id,
           filesModified: ['src/file.ts']
         })
-        return 'notified'
+        return new MessageWake()
       })
 
       const result = (await call('orchestration.check', {

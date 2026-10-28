@@ -5,6 +5,7 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { ORCHESTRATION_ASK_MAX_TIMEOUT_MS } from '../../../../../../shared/orchestration-ask-timeout'
 import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
+import { MessageWake } from '../../../../runtime-message-waiters'
 
 describe('orchestration RPC methods', () => {
   const h = createOrchestrationRpcHarness()
@@ -122,7 +123,7 @@ describe('orchestration RPC methods', () => {
             body: 'go ahead'
           })
         }
-        return 'notified'
+        return new MessageWake()
       })
 
       const result = (await call('orchestration.ask', {
@@ -315,7 +316,7 @@ describe('orchestration RPC methods', () => {
             body: 'correct answer'
           })
         }
-        return 'notified'
+        return new MessageWake()
       })
 
       const result = (await call('orchestration.ask', {
@@ -348,7 +349,7 @@ describe('orchestration RPC methods', () => {
           consumerGeneration: db.getRun(activeRunId!)!.consumer_generation,
           body: 'ok'
         })
-        return 'notified'
+        return new MessageWake()
       })
 
       const result = (await call('orchestration.ask', {

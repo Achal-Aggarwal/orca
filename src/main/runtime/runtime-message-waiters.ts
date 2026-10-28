@@ -2,8 +2,6 @@ import { ORCHESTRATION_MESSAGE_WAIT_DEFAULT_TIMEOUT_MS } from '../../shared/orch
 
 import type { MailboxDeliveryBatch } from './orchestration/db/messages/role-mailbox-delivery'
 
-export type MessageWaitResult = 'notified' | 'timed_out' | 'cancelled'
-
 /** One notification: consuming checks it wakes share the batch the first of them takes. */
 export class MessageWake {
   private readonly taken = new Map<string, MailboxDeliveryBatch>()
@@ -21,11 +19,13 @@ export class MessageWake {
   }
 }
 
+/** A notified wait resolves with its notification's wake. */
+export type MessageWaitResult = MessageWake | 'timed_out' | 'cancelled'
+
 export type RuntimeMessageWaiter = {
   handle: string
   typeFilter: string[] | undefined
   resolve: (result: MessageWaitResult) => void
-  onWake: ((wake: MessageWake) => void) | undefined
   timeout: NodeJS.Timeout | null
   abortCleanup: (() => void) | null
 }
@@ -59,7 +59,6 @@ export class RuntimeMessageWaiters {
       typeFilter?: string[]
       timeoutMs?: number
       signal?: AbortSignal
-      onWake?: (wake: MessageWake) => void
     }
   ): Promise<MessageWaitResult> {
     return new Promise((resolve) => {
@@ -67,7 +66,6 @@ export class RuntimeMessageWaiters {
         handle,
         typeFilter: options?.typeFilter,
         resolve,
-        onWake: options?.onWake,
         timeout: null,
         abortCleanup: null
       }
@@ -120,8 +118,7 @@ export class RuntimeMessageWaiters {
   resolveNotified(waiters: readonly RuntimeMessageWaiter[]): void {
     const wake = new MessageWake()
     for (const waiter of waiters) {
-      waiter.onWake?.(wake)
-      this.resolve(waiter, 'notified')
+      this.resolve(waiter, wake)
     }
   }
 

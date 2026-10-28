@@ -10,6 +10,7 @@ import {
   store,
   syncSinglePty
 } from '../orca-runtime-test-fixtures.spec'
+import { MessageWake } from '../runtime-message-waiters'
 
 describe('OrcaRuntimeService', () => {
   it('leaves rows a live filtered waiter reserved out of the pushed batch', async () => {
@@ -54,7 +55,7 @@ describe('OrcaRuntimeService', () => {
       })
       runtime.notifyMessageArrived(terminal.handle, 'worker_done')
 
-      await expect(waitPromise).resolves.toBe('notified')
+      await expect(waitPromise).resolves.toBeInstanceOf(MessageWake)
       await vi.advanceTimersByTimeAsync(600)
       const payloads = write.mock.calls
         .map(([, data]) => data)
@@ -387,7 +388,7 @@ describe('OrcaRuntimeService', () => {
       const waitPromise = runtime.waitForMessage(mailbox, { timeoutMs: 5_000 })
       runtime.notifyMessageArrived(terminal.handle, 'status')
 
-      await expect(waitPromise).resolves.toBe('notified')
+      await expect(waitPromise).resolves.toBeInstanceOf(MessageWake)
       expect(write).not.toHaveBeenCalled()
       expect(message.delivered_at).toBeNull()
       db.close()
@@ -534,7 +535,7 @@ describe('OrcaRuntimeService', () => {
 
     const waitPromise = runtime.waitForMessage('term_abc', { timeoutMs: 5000 })
     runtime.notifyMessageArrived('term_abc')
-    await expect(waitPromise).resolves.toBe('notified')
+    await expect(waitPromise).resolves.toBeInstanceOf(MessageWake)
   })
 
   it('does not resolve type-filtered message waiters for unrelated message types', async () => {

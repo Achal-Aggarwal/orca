@@ -9,6 +9,7 @@ import {
   store,
   syncSinglePty
 } from '../orca-runtime-test-fixtures.spec'
+import { MessageWake } from '../runtime-message-waiters'
 
 describe('OrcaRuntimeService', () => {
   it('delivers pending mail via notifyMessageArrived when the recipient is already idle', async () => {
@@ -154,7 +155,7 @@ describe('OrcaRuntimeService', () => {
       })
       runtime.notifyMessageArrived('run:run_stale_waiter', 'worker_done')
 
-      await expect(staleWait).resolves.toBe('notified')
+      await expect(staleWait).resolves.toBeInstanceOf(MessageWake)
       expect(write).not.toHaveBeenCalled()
 
       db.insertMessage({

@@ -16,6 +16,7 @@ import {
   TERMINAL_HANDLE
 } from './orchestration-mailbox-notification-test-harness'
 import { createRootDispatch } from './orchestration/db/root-dispatch-test-fixture'
+import { MessageWake } from './runtime-message-waiters'
 
 describe('orchestration detached mailbox routing', () => {
   afterEach(() => {
@@ -86,7 +87,7 @@ describe('orchestration detached mailbox routing', () => {
     harness.runtime.notifyMessageArrived(TERMINAL_HANDLE, message.type)
     await Promise.resolve()
 
-    await expect(waiting).resolves.toBe('notified')
+    await expect(waiting).resolves.toBeInstanceOf(MessageWake)
     expect(pointerCount(harness.write)).toBe(0)
     expect(db.getMessageById(message.id)?.to_handle).toBe(`run:${runA.id}`)
     expect(db.getCurrentRunForPane(PANE_KEY)?.id).toBe(runB.id)
@@ -129,7 +130,7 @@ describe('orchestration detached mailbox routing', () => {
     })
 
     harness.runtime.notifyMessageArrived(TERMINAL_HANDLE, message.type)
-    await expect(waiting).resolves.toBe('notified')
+    await expect(waiting).resolves.toBeInstanceOf(MessageWake)
     expect(pointerCount(harness.write)).toBe(0)
     expect(db.getMessageById(message.id)?.to_handle).toBe(`dispatch:${dispatch.id}`)
 
@@ -240,7 +241,7 @@ describe('orchestration detached mailbox routing', () => {
 
     harness.runtime.notifyMessageArrived(detachedHandle, message.type)
 
-    await expect(waiting).resolves.toBe('notified')
+    await expect(waiting).resolves.toBeInstanceOf(MessageWake)
     expect(db.getMessageById(message.id)?.to_handle).toBe(detachedHandle)
     db.close()
   })
@@ -283,8 +284,8 @@ describe('orchestration detached mailbox routing', () => {
     harness.runtime.notifyMessageArrived(detachedHandle, 'status')
 
     await expect(Promise.all([canonicalWait, directWait])).resolves.toEqual([
-      'notified',
-      'notified'
+      expect.any(MessageWake),
+      expect.any(MessageWake)
     ])
     expect(db.getMessageById(owned.id)?.to_handle).toBe(`run:${ownedRun.id}`)
     expect(db.getMessageById(direct.id)?.to_handle).toBe(detachedHandle)
@@ -368,7 +369,7 @@ describe('orchestration detached mailbox routing', () => {
 
     harness.runtime.notifyMessageArrived(TERMINAL_HANDLE, message.type)
 
-    await expect(waiting).resolves.toBe('notified')
+    await expect(waiting).resolves.toBeInstanceOf(MessageWake)
     expect(db.getMessageById(message.id)?.to_handle).toBe(`dispatch:${dispatch.id}`)
     db.close()
   })

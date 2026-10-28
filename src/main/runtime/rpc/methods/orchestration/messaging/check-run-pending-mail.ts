@@ -2,6 +2,7 @@ import type { MessageType, OrchestrationDb, RunRow } from '../../../../orchestra
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { interruptedAcknowledgedCheck } from '../routing'
 import { checkWorkerMailbox } from './check-worker'
+import { handsOverBatch } from './mailbox-message-receipt'
 import { currentDispatchAssigneeRun } from './recipient-routing'
 import { callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { orchestrationCallerIdentity } from '../runs/run-scope'
@@ -21,7 +22,7 @@ export async function checkRunPendingMail(args: {
   signal: AbortSignal | undefined
   revalidateConsumer: () => void
   recordMutationReceipt: ((receipt: unknown) => void) | undefined
-}): Promise<{ acknowledged?: string; result?: unknown; consumed?: boolean }> {
+}): Promise<{ acknowledged?: string; result?: unknown }> {
   const {
     params,
     runtime,
@@ -103,6 +104,9 @@ export async function checkRunPendingMail(args: {
       },
       recordMutationReceipt
     })
+    if (handsOverBatch(result)) {
+      return { acknowledged: result?.acknowledged ?? undefined, result }
+    }
     if (result?.acknowledged) {
       acknowledged = { delivery: { id: result.acknowledged } }
     }
@@ -110,14 +114,6 @@ export async function checkRunPendingMail(args: {
     try {
       revalidateConsumer()
     } catch (error) {
-      // The batch is already handled and receipted; withholding it would lose it.
-      if (result && 'deliveryAcknowledged' in result && result.deliveryAcknowledged) {
-        return {
-          acknowledged: acknowledged?.delivery.id,
-          result: { ...result, acknowledged: acknowledged?.delivery.id ?? null },
-          consumed: true
-        }
-      }
       if (acknowledged) {
         return {
           acknowledged: acknowledged.delivery.id,

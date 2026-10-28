@@ -102,26 +102,61 @@ describe('consuming checks', () => {
     })
   })
 
-  it('returns and receipts residual mail it consumed when the Run is fenced afterwards', async () => {
-    const residual = insert({ address: `dispatch:${dispatch.id}`, runId: dispatch.run_id }, 'old')
-    const run = (await mailbox('run')).runId
+  it.each(['inside the take', 'after its next authority check'] as const)(
+    'returns and receipts residual mail it took when the Run is fenced %s',
+    async (when) => {
+      const residual = insert({ address: `dispatch:${dispatch.id}`, runId: dispatch.run_id }, 'old')
+      const run = (await mailbox('run')).runId
+      const record = vi.fn()
+      state.ctx.recordMutationReceipt = record
+      const fence = () =>
+        state.db.db
+          .prepare('UPDATE runs SET consumer_generation = consumer_generation + 1 WHERE id = ?')
+          .run(run)
+      const take = state.db.takeMailboxDelivery.bind(state.db)
+      const getRun = state.db.getRun.bind(state.db)
+      let fenceOnNextRead = false
+      vi.spyOn(state.db, 'takeMailboxDelivery').mockImplementationOnce((params) => {
+        const taken = take(params)
+        if (when === 'inside the take') {
+          fence()
+        } else {
+          fenceOnNextRead = true
+        }
+        return taken
+      })
+      // The takeover lands between an authority check that passes and the next one.
+      vi.spyOn(state.db, 'getRun').mockImplementation((id) => {
+        if (fenceOnNextRead) {
+          fenceOnNextRead = false
+          queueMicrotask(fence)
+        }
+        return getRun(id)
+      })
+
+      const result = await check()
+      expect(result).toMatchObject({ count: 1, messages: [{ subject: 'old' }] })
+      expect(record).toHaveBeenLastCalledWith(
+        expect.objectContaining({ deliveryId: result.deliveryId, messages: result.messages })
+      )
+      expect(state.db.getMessageById(residual.id)?.read).toBe(1)
+    }
+  )
+
+  it('keeps the receipt of residual mail taken alongside an explicit ack', async () => {
+    const box = { address: `dispatch:${dispatch.id}`, runId: dispatch.run_id }
+    insert(box, 'first')
+    const first = await check()
+    await mailbox('run')
+    insert(box, 'second')
     const record = vi.fn()
     state.ctx.recordMutationReceipt = record
-    const take = state.db.takeMailboxDelivery.bind(state.db)
-    vi.spyOn(state.db, 'takeMailboxDelivery').mockImplementationOnce((params) => {
-      const taken = take(params)
-      state.db.db
-        .prepare('UPDATE runs SET consumer_generation = consumer_generation + 1 WHERE id = ?')
-        .run(run)
-      return taken
-    })
 
-    const result = await check()
-    expect(result).toMatchObject({ count: 1, messages: [{ subject: 'old' }] })
-    expect(record).toHaveBeenCalledWith(
+    const result = await check({ ack: first.deliveryId })
+    expect(result).toMatchObject({ messages: [{ subject: 'second' }] })
+    expect(record).toHaveBeenLastCalledWith(
       expect.objectContaining({ deliveryId: result.deliveryId, messages: result.messages })
     )
-    expect(state.db.getMessageById(residual.id)?.read).toBe(1)
   })
 
   it('rolls the take back when its receipt cannot be recorded', () => {

@@ -1,10 +1,9 @@
 import type { MessageRow, MessageType, OrchestrationDb } from '../../../../orchestration/db'
 import type { MailboxDeliveryBatch } from '../../../../orchestration/db/messages/role-mailbox-delivery'
-import type { MessageWake } from '../../../../runtime-message-waiters'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { formatMessageBanner } from '../../../../orchestration/formatter'
-import { exposeMessages } from './mailbox-message-receipt'
+import { deliveryReceipt, exposeMessages } from './mailbox-message-receipt'
 import { routeAllMailboxPages } from '../schemas'
 import { asDispatchFence, callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { interruptedAcknowledgedCheck } from '../routing'
@@ -199,21 +198,15 @@ export async function checkWorkerMailbox(args: {
       : {}
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
   const readPeek = () => db.getUnreadMessages(address, typeFilter)
-  const deliveryResult = (current: MailboxDeliveryBatch | undefined) => ({
-    ...mailboxIdentity,
-    deliveryId: current?.delivery.id ?? null,
-    messages: exposeMessages(current?.messages ?? []),
-    count: current?.messages.length ?? 0,
-    replayed: current?.replayed ?? false,
-    ...(current ? { deliveryAcknowledged: true } : {}),
-    acknowledged: acknowledged?.delivery.id ?? null,
-    timedOut: false,
-    cancelled: false,
-    connectionLost: false,
-    ...formatted(current?.messages ?? [])
-  })
-  // The receipt commits with the take, so --retry-request can always replay a consumed batch.
-  const readDelivery = (wakeTypes?: MessageType[]) => {
+  const result = (batch: MailboxDeliveryBatch | undefined) =>
+    deliveryReceipt({
+      mailbox: mailboxIdentity,
+      batch,
+      acknowledged: acknowledged?.delivery.id,
+      format: params.format === true || params.inject === true
+    })
+  // The receipt commits with the take, so --retry-request can always replay a handed-over batch.
+  const takeDelivery = (wakeTypes?: MessageType[]) => {
     if (args.deferDelivery?.()) {
       return undefined
     }
@@ -224,7 +217,7 @@ export async function checkWorkerMailbox(args: {
         consumerGeneration: workerMailbox.generation,
         consumerSource: activeDispatch ? 'dispatch' : 'attachment',
         wakeTypes,
-        recordTaken: (taken) => args.recordMutationReceipt?.(deliveryResult(taken))
+        recordTaken: (taken) => args.recordMutationReceipt?.(result(taken))
       })
     } catch (error) {
       throw asDispatchFence(error)
@@ -252,12 +245,11 @@ export async function checkWorkerMailbox(args: {
       }
     }
   } else {
-    const current = readDelivery(params.wait ? typeFilter : args.wakeTypes)
+    const current = takeDelivery(params.wait ? typeFilter : args.wakeTypes)
     if (current || !params.wait) {
-      return deliveryResult(current)
+      return result(current)
     }
   }
-  const woken: { wake?: MessageWake } = {}
   // Binding can happen during recovery, before run-create/run-use can cancel this wait.
   const waitResult =
     activeDispatch && currentDispatchAssigneeRun(runtime, db, activeDispatch)
@@ -265,10 +257,7 @@ export async function checkWorkerMailbox(args: {
       : await runtime.waitForMessage(address, {
           typeFilter: typeFilter as string[] | undefined,
           timeoutMs: params.timeoutMs ?? undefined,
-          signal,
-          onWake: (wake) => {
-            woken.wake = wake
-          }
+          signal
         })
   await revalidateWorkerMailbox()
   if (readCurrentGeneration() !== workerMailbox.generation) {
@@ -276,10 +265,7 @@ export async function checkWorkerMailbox(args: {
   }
   if (waitResult === 'timed_out' || waitResult === 'cancelled') {
     return {
-      ...mailboxIdentity,
-      messages: [],
-      count: 0,
-      acknowledged: acknowledged?.delivery.id ?? null,
+      ...result(undefined),
       timedOut: waitResult === 'timed_out',
       cancelled: waitResult === 'cancelled',
       connectionLost: waitResult === 'cancelled' && signal?.aborted === true
@@ -295,7 +281,6 @@ export async function checkWorkerMailbox(args: {
       ...formatted(arrived)
     }
   }
-  const take = () => readDelivery(typeFilter)
   const key = `${address}:${workerMailbox.generation}`
-  return deliveryResult(woken.wake ? woken.wake.share(key, take) : take())
+  return result(waitResult.share(key, () => takeDelivery(typeFilter)))
 }
