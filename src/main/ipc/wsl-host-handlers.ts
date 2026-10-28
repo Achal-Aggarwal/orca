@@ -121,6 +121,14 @@ function createService(args: WslHostHandlerArgs): WslHostService | null {
   if (process.platform !== 'win32' && !fake) {
     return null
   }
+  // Before any bridge connects or the window lists servers: a crash mid-save must not hide a host.
+  try {
+    for (const environmentId of reconcileWslHostBridgePorts(args.getUserDataPath())) {
+      console.warn(`[wsl-hosts] Realigned ${environmentId}'s bridge port with its pairing.`)
+    }
+  } catch (error) {
+    console.warn('[wsl-hosts] Could not check WSL host records against their pairings:', error)
+  }
   let automationWake: WslHostAutomationWake | null = null
   const created = new WslHostService({
     userDataPath: args.getUserDataPath,
@@ -170,14 +178,6 @@ function startService(args: WslHostHandlerArgs): WslHostService | null {
   const created = createService(args)
   if (!created) {
     return null
-  }
-  // Before the window first lists its servers: a crash mid-pairing-save must not hide a host.
-  try {
-    for (const environmentId of reconcileWslHostBridgePorts(args.getUserDataPath())) {
-      console.warn(`[wsl-hosts] Realigned ${environmentId}'s bridge port with its pairing.`)
-    }
-  } catch (error) {
-    console.warn('[wsl-hosts] Could not check WSL host records against their pairings:', error)
   }
   setWslHostService(created)
   args.store.onSettingsChanged((updates, settings) => {
