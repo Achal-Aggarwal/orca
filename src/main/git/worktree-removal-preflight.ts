@@ -23,6 +23,7 @@ export async function assertWorktreeCleanForRemoval(
   const execution = {
     ...gitExecOptions(worktreePath, gitOptions),
     ...bound,
+    captureWslLoginShellOutput: true,
     timeout: gitOptions.timeout ?? WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS
   }
   if (adminDirectory) {
@@ -83,6 +84,7 @@ async function hasPopulatedSubmodule(
       ['config', '-z', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'],
       {
         ...gitExecOptions(worktreePath, gitOptions),
+        captureWslLoginShellOutput: true,
         timeout: gitOptions.timeout ?? WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS
       }
     )
