@@ -72,7 +72,11 @@ export function useNativeChatHostOutageNotice(
 /** Start is the user acting on the host, so it may boot the distro; then the chat reconnects. */
 async function startWslHostAndReloadProjects(environmentId: string): Promise<boolean> {
   try {
-    await window.api.runtimeEnvironments.wslHosts?.connect({ environmentId })
+    // A chat's Start must not quietly cancel a Remove the user started; that refusal says so.
+    await window.api.runtimeEnvironments.wslHosts?.connect({
+      environmentId,
+      withdrawPendingRemoval: false
+    })
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error))
     return false

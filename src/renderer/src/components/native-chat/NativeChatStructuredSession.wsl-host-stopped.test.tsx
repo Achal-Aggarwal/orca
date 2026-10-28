@@ -9,6 +9,8 @@ const { moduleFactories, resetStructuredSessionMocks } = await vi.hoisted(async 
   (await import('./NativeChatStructuredSession.test-harness')).createStructuredSessionMocks()
 )
 const reconnectHost = vi.hoisted(() => vi.fn<(environmentId: string) => Promise<boolean>>())
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 vi.mock('@/runtime/structured-agent-session-client', () =>
   moduleFactories.structuredAgentSessionClient()
@@ -29,7 +31,8 @@ import { useAppStore } from '@/store'
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 
 const initialState = useAppStore.getState()
-const startHost = vi.fn<(args: { environmentId: string }) => Promise<void>>()
+const startHost =
+  vi.fn<(args: { environmentId: string; withdrawPendingRemoval?: boolean }) => Promise<void>>()
 
 function setWslStatus(state: WslHostStatus['state']): void {
   act(() => {
@@ -67,6 +70,7 @@ afterEach(() => {
   resetStructuredSessionMocks()
   reconnectHost.mockReset()
   startHost.mockReset()
+  toastError.mockReset()
   useAppStore.setState({ wslHostStatuses: initialState.wslHostStatuses })
 })
 
@@ -83,20 +87,27 @@ it('names a stopped WSL distro above the composer and offers Start', async () =>
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
   })
   // Start is the explicit act that may boot the distro (E9); the chat then reconnects.
-  expect(startHost).toHaveBeenCalledWith({ environmentId: 'wsl:ubuntu' })
+  // Never cancels a Remove the user started: main refuses with its pending-removal words.
+  expect(startHost).toHaveBeenCalledWith({
+    environmentId: 'wsl:ubuntu',
+    withdrawPendingRemoval: false
+  })
   expect(reconnectHost).toHaveBeenCalledWith('wsl:ubuntu')
 
   setWslStatus('ready')
   expect(screen.queryByText('Ubuntu is stopped')).toBeNull()
 })
 
-it('does not reconnect when the distro could not be started', async () => {
+it('shows the refusal and does not reconnect when the distro could not be started', async () => {
   renderPane()
   setWslStatus('distro-stopped')
-  startHost.mockRejectedValue(new Error('WSL is turned off'))
+  // Main's refusal for a host whose Remove is pending, shown as main words it.
+  const pending = 'Orca didn’t finish removing the WSL host Ubuntu.'
+  startHost.mockRejectedValue(new Error(pending))
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
   })
+  expect(toastError).toHaveBeenCalledWith(pending)
   expect(reconnectHost).not.toHaveBeenCalled()
 })
 
