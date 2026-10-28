@@ -186,3 +186,18 @@ it('restarts opening-end lookup when an earlier block follows an unterminated qu
   expect(match(content.lastIndexOf('<details'))).toBeNull()
   expect(match(0)?.raw).toBe(block)
 })
+
+it.each(['<details\n', '</details\n'])(
+  'does not rescan incomplete inner details prefixes: %j',
+  (fragment) => {
+    const codec = createRichMarkdownEditorCodec(key)
+    const incomplete = fragment.repeat(40_000)
+    const content = `<details>\n${incomplete}`
+    const encoded = runInNewContext(
+      'encode(content, codec)',
+      { encode: encodeRawMarkdownHtmlForRichEditor, content, codec },
+      { timeout: 1500 }
+    )
+    expect(encoded).toBe(`${codec.transport.create('block-html', '<details>')}\n${incomplete}`)
+  }
+)

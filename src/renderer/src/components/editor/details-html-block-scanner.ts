@@ -31,7 +31,7 @@ export function scanDetailsHtmlBlock(
     openingLength = openingEnd - start + 1
   }
 
-  const detailsTagPattern = /<\/?details\b[^>]*>/gi
+  const detailsTagPattern = /<\/?details\b/gi
   detailsTagPattern.lastIndex = openingEnd === undefined ? start : openingEnd + 1
   const fenceRanges = precomputedFenceRanges ?? getMarkdownFenceRanges(content)
   const containsFence =
@@ -46,7 +46,8 @@ export function scanDetailsHtmlBlock(
 
   for (;;) {
     const tagMatch = detailsTagPattern.exec(content)
-    if (!tagMatch) {
+    const tagEnd = tagMatch ? content.indexOf('>', detailsTagPattern.lastIndex) : -1
+    if (!tagMatch || tagEnd === -1) {
       if (openingStarts && unclosedStarts) {
         for (const openingStart of openingStarts) {
           unclosedStarts.add(openingStart)
@@ -55,18 +56,18 @@ export function scanDetailsHtmlBlock(
       return null
     }
 
-    const tag = tagMatch[0]
+    detailsTagPattern.lastIndex = tagEnd + 1
     if (tagMatch.index !== start && containsFence(tagMatch.index)) {
       continue
     }
 
-    const isClosingTag = /^<\/details\b/i.test(tag)
+    const isClosingTag = content[tagMatch.index + 1] === '/'
 
     if (isClosingTag) {
       openingStarts?.pop()
       depth -= 1
       if (depth === 0) {
-        const closingEnd = tagMatch.index + tag.length
+        const closingEnd = tagEnd + 1
         return {
           raw: content.slice(start, closingEnd),
           openingAttributes: (openingTag ?? content.slice(start, start + openingLength))
