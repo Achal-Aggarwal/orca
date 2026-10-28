@@ -282,12 +282,9 @@ export function useMobileWebShellSession(args: {
 
   const reportShellFailure = useCallback(
     (reason: MobileWebShellReportedFailure) => {
-      if (reason === 'host-profile-unreadable') {
-        invalidate()
-      }
       dispatch(epochRef.current, { type: 'shell-failed', reason })
     },
-    [dispatch, invalidate]
+    [dispatch]
   )
 
   const reportDocumentStarted = useCallback(() => {

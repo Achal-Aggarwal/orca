@@ -165,7 +165,8 @@ function onShellFailed(session: MobileWebShellSession, reason: ShellFailure): Mo
   }
   const failed = { kind: 'failed', reason, retriedOnce: session.retriedOnce } as const
   if (reason === 'isolation-unavailable' || reason === 'host-profile-unreadable') {
-    return step(session, { state: failed })
+    // Terminal failures advance flow so pending startup work is cancelled and its completions rejected.
+    return step(session, { state: failed, flow: session.flow + 1 })
   }
   if (reason === 'render-process-gone') {
     return session.remountedOnce
