@@ -78,6 +78,18 @@ describe('activateAndRevealWorktree', () => {
     expect(state.worktreeNavHistory.at(-1)).toBe(worktree.id)
   })
 
+  it('keeps the fresh visit stamp when the history entry is de-duplicated', () => {
+    const worktree = makeWorktree()
+    seedAlreadyActiveWorktree(worktree, { activeView: 'tasks' })
+    useAppStore.setState({ worktreeNavHistory: [worktree.id], worktreeNavHistoryIndex: 0 })
+
+    activateAndRevealWorktree(worktree.id)
+
+    const state = useAppStore.getState()
+    expect(getWorktreeVisitTimestamp(state.lastVisitedAtByWorktreeId, worktree)).toBeDefined()
+    expect(state.worktreeNavHistory).toEqual([worktree.id])
+  })
+
   it('adds the activated project to an active project filter', () => {
     const worktree = makeWorktree()
     seedEmptyActivatableWorktree(worktree)

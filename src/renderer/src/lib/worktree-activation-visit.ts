@@ -73,6 +73,17 @@ function stampActivationVisits(
   return visitState.lastVisitedAtByWorktreeId
 }
 
+// A de-duplicated append returns the whole input state; spreading it would undo the fresh visit stamps.
+function historyPatch({
+  worktreeNavHistory,
+  worktreeNavHistoryIndex
+}: Pick<AppState, 'worktreeNavHistory' | 'worktreeNavHistoryIndex'>): Pick<
+  AppState,
+  'worktreeNavHistory' | 'worktreeNavHistoryIndex'
+> {
+  return { worktreeNavHistory, worktreeNavHistoryIndex }
+}
+
 /** Folds the repo follow, recency stamps and nav-history entry into the activation write: each store write re-runs every subscriber's selector. */
 export function buildActivationStateTransition(
   state: VisitState & Pick<AppState, 'activeRepoId' | 'isNavigatingHistory'>,
@@ -102,7 +113,7 @@ export function buildActivationStateTransition(
               )
             }
           : {}),
-        ...(recordsHistory ? appendHistoryEntry(current, worktreeId) : {})
+        ...(recordsHistory ? historyPatch(appendHistoryEntry(current, worktreeId)) : {})
       }
     })
   }
