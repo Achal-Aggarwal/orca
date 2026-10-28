@@ -98,7 +98,7 @@ export function EditorContent({
 }): React.JSX.Element {
   const editorViewStateKey =
     viewStateScopeId === activeFile.id
-      ? activeFile.filePath
+      ? activeFile.id
       : `${activeFile.filePath}::${viewStateScopeId}`
   const diffViewStateKey =
     viewStateScopeId === activeFile.id ? activeFile.id : `${activeFile.id}::${viewStateScopeId}`
