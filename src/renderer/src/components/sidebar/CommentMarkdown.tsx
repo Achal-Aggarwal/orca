@@ -234,6 +234,8 @@ const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkd
 /** Keep extensions stable per surface; new objects rebuild components and remount their contents. */
 export type CommentMarkdownExtension = {
   remarkPlugins: RemarkPlugins
+  /** Extra flow syntax requires one of these markers; omitted means unknown grammar. */
+  extraFlowSyntaxMarkers?: readonly string[]
   sanitizeAttributes: Record<string, readonly string[]>
   components: Components
 }
@@ -330,7 +332,7 @@ const CommentMarkdown = React.memo(
       const withExtension = extension ? [...withMath, ...extension.remarkPlugins] : withMath
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
     }, [extension, fileLinkExists, githubRepo, math, unknownHtmlAsText])
-    const blocks = useMarkdownBlocks(content, growing, math, activeRemarkPlugins)
+    const blocks = useMarkdownBlocks(content, growing, math, activeRemarkPlugins, extension)
     const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
     if (fadeWords && !hadWordFade) {
       setHadWordFade(true)

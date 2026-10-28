@@ -67,17 +67,17 @@ export function splitMarkdownTopLevelBlocks(
   source: string,
   previous: MarkdownBlockSplit | null,
   math = false,
-  parseTree?: (source: string) => Root
+  parseTree?: (source: string) => Root,
+  canReuse: (tail: string) => boolean = () => !source.includes('\uFEFF')
 ): MarkdownBlockSplit {
-  // Parsing a suffix strips an internal BOM and can change the following blocks.
-  const parse = source.includes('\uFEFF') ? undefined : parseTree
+  let parse = parseTree
   const grewFromPrevious = previous !== null && source.startsWith(previous.source)
   if (grewFromPrevious && previous.whole && !math) {
     return wholeDocument(source)
   }
   // A sliced, indented opener must retain the original discovery context.
   const last = grewFromPrevious ? previous.blocks.at(-1) : undefined
-  const unsettled =
+  let unsettled =
     parse &&
     grewFromPrevious &&
     previous.blocks.at(-UNSETTLED_BLOCKS)?.closedFence &&
@@ -85,6 +85,12 @@ export function splitMarkdownTopLevelBlocks(
     source[last.start - 1] === '\n'
       ? 1
       : UNSETTLED_BLOCKS
+  // Declining must restore the original discovery window before choosing any cuts.
+  const candidateBase = grewFromPrevious ? (previous.blocks.at(-unsettled)?.start ?? 0) : 0
+  if (parse && !canReuse(source.slice(candidateBase))) {
+    parse = undefined
+    unsettled = UNSETTLED_BLOCKS
+  }
   const settled = grewFromPrevious ? previous.blocks.slice(0, -unsettled) : []
   const reparsed = grewFromPrevious ? previous.blocks.at(-unsettled) : undefined
   const base = reparsed?.start ?? 0
@@ -121,7 +127,6 @@ export function splitMarkdownTopLevelBlocks(
     }
     const prior = grewFromPrevious ? previous.blocks[settled.length + index] : undefined
     if (
-      parse &&
       prior?.tree &&
       prior.start === block.start &&
       prior.text === text &&

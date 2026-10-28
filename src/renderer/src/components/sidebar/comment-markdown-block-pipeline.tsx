@@ -2,6 +2,7 @@ import React from 'react'
 import Markdown from 'react-markdown'
 import { unified, type Processor } from 'unified'
 import remarkParse from 'remark-parse'
+import type { CommentMarkdownExtension } from './CommentMarkdown'
 import { useChatMathRendering } from './chat-markdown-math-rendering'
 import { rehypeWordFade } from './comment-markdown-word-fade'
 import {
@@ -57,7 +58,8 @@ export function useMarkdownBlocks(
   content: string,
   growing: boolean,
   math: boolean,
-  plugins: RemarkPlugins
+  plugins: RemarkPlugins,
+  extension?: CommentMarkdownExtension
 ): readonly MarkdownBlock[] {
   const parser = React.useMemo(() => unified().use(remarkParse).use(plugins), [plugins])
   const [state, setState] = React.useState<{
@@ -81,8 +83,14 @@ export function useMarkdownBlocks(
   if (previous?.source === content) {
     return previous.blocks
   }
-  const next = splitMarkdownTopLevelBlocks(content, previous, math, (source) =>
-    parser.parse(source)
+  const markers = extension?.extraFlowSyntaxMarkers
+  const knownGrammar = !extension?.remarkPlugins.length || markers !== undefined
+  const next = splitMarkdownTopLevelBlocks(
+    content,
+    previous,
+    math,
+    knownGrammar ? (source) => parser.parse(source) : undefined,
+    (tail) => !content.includes('\uFEFF') && !markers?.some((marker) => tail.includes(marker))
   )
   setState({ parser, split: next })
   return next.blocks
