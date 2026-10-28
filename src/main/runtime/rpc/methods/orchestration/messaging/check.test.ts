@@ -5,13 +5,6 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import { reconcileLifecycleMessage } from '../../../../orchestration/lifecycle-reconciliation'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-test-fixture'
-import { selectTerminalMailHandoff } from '../../../../orchestration/terminal-mail-settlement'
-
-vi.mock('../../../../../node-runtime/pinned-zip-members', () => ({
-  extractPinnedZipMembers: () => {
-    throw new Error('Inbox fixtures must not install a runtime')
-  }
-}))
 
 describe('orchestration RPC methods', () => {
   const h = createOrchestrationRpcHarness()
@@ -215,7 +208,7 @@ describe('orchestration RPC methods', () => {
       expect(result.count).toBe(1)
     })
 
-    it('returns typed timeout and rejects a second actionable waiter', async () => {
+    it('returns a typed timeout', async () => {
       setup()
       vi.spyOn(runtime, 'waitForMessage').mockResolvedValueOnce('timed_out')
 
@@ -225,15 +218,28 @@ describe('orchestration RPC methods', () => {
         timeoutMs: 10
       })) as { timedOut: boolean; cancelled: boolean; count: number }
       expect(timedOut).toMatchObject({ timedOut: true, cancelled: false, count: 0 })
+    })
 
-      vi.mocked(runtime.waitForMessage).mockResolvedValueOnce('waiter_exists')
-      await expect(
-        call('orchestration.check', {
-          terminal: 'term_coord',
-          wait: true,
-          timeoutMs: 10
-        })
-      ).rejects.toMatchObject({ code: 'waiter_exists' })
+    it('lets a forgotten Run wait coexist with a new one that receives the same Delivery', async () => {
+      setup()
+      const waitSpy = vi.spyOn(runtime, 'waitForMessage')
+      const waitForRun = () =>
+        call('orchestration.check', { terminal: 'term_coord', wait: true, timeoutMs: 5000 })
+
+      const forgotten = waitForRun()
+      const recovery = waitForRun()
+      await vi.waitFor(() => expect(waitSpy).toHaveBeenCalledTimes(2))
+      await call('orchestration.send', {
+        from: 'term_coord',
+        to: `run:${activeRunId}`,
+        subject: 'first'
+      })
+
+      const [stale, fresh] = (await Promise.all([forgotten, recovery])).map((result) =>
+        result && typeof result === 'object' && 'deliveryId' in result ? result.deliveryId : null
+      )
+      expect(fresh).toMatch(/^delivery_/)
+      expect(stale).toBe(fresh)
     })
 
     it('rejects stale Delivery acknowledgment without consuming queued mail', async () => {
@@ -832,49 +838,6 @@ describe('orchestration RPC methods', () => {
   })
 
   describe('orchestration.inbox', () => {
-    it.each([{}, { terminal: 'b' }, { terminal: 'b', limit: 2 }])(
-      'preserves prior inbox fields while excluding private ownership for %j',
-      async (params) => {
-        setup()
-        db.insertMessage({ from: 'a', to: 'b', subject: 'read history' })
-        db.markAsRead(db.getInbox().map((row) => row.id))
-        const owned = db.insertMessage({ from: 'a', to: 'b', subject: 'owned' })
-        selectTerminalMailHandoff({
-          db,
-          mailbox: 'b',
-          target: null,
-          wasAbandoned: () => false,
-          waiters: undefined,
-          reservedTypes: undefined
-        })
-        db.db.prepare('UPDATE messages SET recovery_used = 1 WHERE id = ?').run(owned.id)
-        db.insertMessage({ from: 'a', to: 'b', subject: 'fresh' })
-        const rows = db.getAllMessagesForHandle('b', params.limit ?? 20)
-        expect(db.getMessageById(owned.id)).toMatchObject({
-          handoff: expect.any(String),
-          recovery_used: 1
-        })
-        const messages = rows.map(({ handoff, recovery_used, ...priorInboxFields }) => {
-          expect(handoff === null || typeof handoff === 'string').toBe(true)
-          expect(recovery_used).toBeTypeOf('number')
-          return priorInboxFields
-        })
-        expect(messages[0]).toMatchObject({
-          read: 0,
-          sequence: expect.any(Number),
-          sender_pane_key: null,
-          pointer_enter_pending: 0,
-          pointer_pty_id: null,
-          pointer_process_incarnation: null
-        })
-        expect(await call('orchestration.inbox', params)).toEqual({
-          messages,
-          count: messages.length
-        })
-        expect(db.getAllMessagesForHandle('b')).toEqual(db.getInbox())
-      }
-    )
-
     it('returns all messages', async () => {
       setup()
       db.insertMessage({ from: 'a', to: 'b', subject: 'one' })

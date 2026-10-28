@@ -34,6 +34,7 @@ import {
   performPrompt,
   performSend,
   type AgentSessionTurnContext,
+  type AgentSessionReplayContext,
   type TurnOutcome
 } from './structured-agent-session-turns'
 import {
@@ -59,11 +60,11 @@ export type MutationPlan<TValue> = {
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   /** receipt is the accepted command receipt result, when declared. */
   replay: (
-    ctx: AgentSessionTurnContext,
+    ctx: AgentSessionReplayContext,
     outcome: AgentSessionOperationOutcome,
     receipt?: CommandReceiptResult
   ) => TValue | null
-  rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
+  rerunWhenReplayMissing?: (ctx: AgentSessionReplayContext) => boolean
   recoverUnknownFromDurableState?: boolean
 } & (
   | {

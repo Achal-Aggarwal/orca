@@ -40,6 +40,8 @@ export type TerminalCreateOptions = {
   envToDelete?: string[]
   launchConfig?: WorktreeStartupLaunch['launchConfig']
   resumeProviderSession?: AgentProviderSessionMetadata
+  /** `saved`: built from a pane's saved facts, which the host refuses for a chat's conversation. */
+  resumeOrigin?: 'saved'
   launchToken?: string
   launchAgent?: TuiAgent
   startupAgent?: TuiAgent
@@ -260,6 +262,8 @@ export type RuntimeProviderSnapshotReadOptions = {
 export type RuntimeAgentPromptWriteOptions = Omit<RuntimeTerminalWriteOptions, 'inputKind'> & {
   /** `launch` for the prompt an agent starts with; `driving` for any prompt sent to a running one. */
   inputKind: Exclude<TerminalInputKind, 'query-reply'>
+  /** Caller observation may end without cancelling a paste already accepted by the host. */
+  observationSignal?: AbortSignal
   /** Raw prompt text for submit scheduling; not written, only used for line-aware delays. */
   promptForSchedule?: string
   /** Caller observed composer input acceptance; schedule Enter using desktop draft-paste timing instead of render settlement. */

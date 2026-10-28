@@ -11,13 +11,13 @@ import {
   structuredAgentSessionReadCoversSend,
   structuredAgentSessionSettledSends
 } from '../../../src/shared/structured-agent-session-send-settlement'
-import { mergeSentImagePreviews } from './mobile-native-chat-draft-reconcile'
-import type { MobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
-import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
+import { mergeSentImagePreviews } from './native-chat/composer/mobile-native-chat-draft-reconcile'
+import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
+import type { MobileNativeChatSendErrorReporter } from './native-chat/use-mobile-native-chat-send-error'
 import {
   UNCONFIRMED_SEND_DEADLINE_MS,
   UNCONFIRMED_SEND_MESSAGE
-} from './use-mobile-native-chat-unconfirmed-sends'
+} from './native-chat/use-mobile-native-chat-unconfirmed-sends'
 
 type MobileStructuredSend = StructuredAgentSessionOptimisticMessage & { unconfirmed?: true }
 
@@ -35,7 +35,7 @@ export function useMobileStructuredSends(args: {
   sessionKey: string
   cursor?: AgentJournalCursor | null
   submissions: readonly AgentJournalSubmission[]
-  queuedMessages: MobileQueuedMessageFeed
+  queuedMessages: readonly AgentSessionQueuedMessage[] | null
   onSendError: MobileNativeChatSendErrorReporter
 }): MobileStructuredSends {
   const { cursor, onSendError, queuedMessages, sessionKey, submissions } = args

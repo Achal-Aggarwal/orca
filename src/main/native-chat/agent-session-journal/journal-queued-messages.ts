@@ -1,8 +1,11 @@
-import { journalMailSourceEligible, type JournalMailSource } from './journal-mail-boundary'
 // Fold cards from journal rows, without a second mutable copy. Drafts never count as active work.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessageUpdateResult } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessageMoveAnchor,
+  AgentSessionQueuedMessageMoveResult,
+  AgentSessionQueuedMessageUpdateResult
+} from '../../../shared/agent-session-wire'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
 import {
   journalQueueRowBuilder,
@@ -15,7 +18,6 @@ import { composeJournalOperationReceipts, type JournalOperationReceipt } from '.
 import type { JournalQueuedMessagesDeps, JournalSubmissionConsume } from './journal-store-contracts'
 import {
   deriveQueuePauses,
-  journalQueueSelectionKey,
   journalUserStopInForce,
   nextSendableQueuedCard,
   type DerivedQueuePause,
@@ -30,6 +32,7 @@ import { QueuedMessageNotConsumableError } from './queued-message-consume-error'
 import { QueuedMessageEditLeases } from './queued-message-edit-leases'
 import { queuedMessageUpdateDecision, type QueuedMessageUpdate } from './queued-message-update'
 import type { JournalReducerState } from './journal-reducer'
+import { queuedMessageMovePlan } from './queued-message-move'
 
 export type JournalQueuePlan = {
   rows: ((seq: number, ts: number) => JournalQueueRow)[]
@@ -63,15 +66,6 @@ export class JournalQueuedMessages {
     return `${epoch}:${queue.revision}:${this.legacy.key()}`
   }
 
-  selectionRevision(): string {
-    return journalQueueSelectionKey(
-      this.deps.state(),
-      this.revision(),
-      this.editLeases.revision(),
-      this.deps.reopenFloor()
-    )
-  }
-
   list(): readonly QueuedMessageRow[] {
     const key = this.revision()
     if (this.viewed?.key !== key) {
@@ -95,7 +89,6 @@ export class JournalQueuedMessages {
       messageId: string
       body: AgentJournalMessageItem
       requireAttachments?: true
-      mailSource?: JournalMailSource
       holdReason?: QueuedMessageHoldReason
       options?: AgentSessionExecutionOptions
     },
@@ -118,7 +111,6 @@ export class JournalQueuedMessages {
           op: 'queued' as const,
           body,
           position,
-          ...(input.mailSource ? { mailSource: input.mailSource } : {}),
           queuedAt: { epoch, sequence: lastSequence },
           ...(input.holdReason ? { holdReason: input.holdReason } : {}),
           ...(input.options ? { options: input.options } : {})
@@ -199,6 +191,13 @@ export class JournalQueuedMessages {
     }, receipt)
   }
 
+  move(
+    input: { messageId: string } & AgentSessionQueuedMessageMoveAnchor,
+    receipt?: JournalOperationReceipt
+  ): Promise<AgentSessionQueuedMessageMoveResult> {
+    return this.write(() => queuedMessageMovePlan(this.list(), input), receipt)
+  }
+
   /** Plan on the journal lane; adopt/delete legacy cards in the same transaction before changing them. */
   plan(changes: readonly JournalQueueCardChange[]): JournalQueuePlan {
     const rows: JournalQueuePlan['rows'] = []
@@ -230,9 +229,7 @@ export class JournalQueuedMessages {
     if (consumable && input.yieldsToPause) {
       const cards = this.list()
       const held = this.editLeases.heldIds(cards)
-      const next = nextSendableQueuedCard(this.derivePauses(cards), cards, held, (card) =>
-        this.mailEligible(card)
-      )
+      const next = nextSendableQueuedCard(this.derivePauses(cards), cards, held)
       if (next?.messageId === input.messageId) {
         return
       }
@@ -257,10 +254,6 @@ export class JournalQueuedMessages {
 
   importAtOpen(): Promise<void> {
     return this.legacy.importAtOpen()
-  }
-
-  mailEligible(card: QueuedMessageRow): boolean {
-    return journalMailSourceEligible(this.deps.state().mailBoundary, card.mailSource)
   }
 
   pauses(): DerivedQueuePause[] {

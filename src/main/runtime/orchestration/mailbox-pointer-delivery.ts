@@ -1,6 +1,7 @@
 import type { PointerDeliveryDependencies } from './mailbox-pointer-delivery-contract'
 import {
   hasUnfilteredOrchestrationWaiter,
+  selectOrchestrationPointerBatch,
   type OrchestrationMessageWaiter
 } from './mailbox-pointer-eligibility'
 import type { OrchestrationMailboxLeaf } from './mailbox-owner'
@@ -14,7 +15,6 @@ import {
 } from './db/messages/mailbox-pointer-enter-state'
 import { resumePendingOrchestrationMailboxPointer } from './mailbox-pointer-resume'
 import { stageOrchestrationMailboxPointer } from './mailbox-pointer-stage'
-import { selectTerminalMailHandoff } from './terminal-mail-settlement'
 
 export type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
 
@@ -64,8 +64,7 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     if (!db || (!mailboxHandle.startsWith('run:') && !mailboxHandle.startsWith('dispatch:'))) {
       return
     }
-    const terminalHandle = this.deps.getTerminalHandleForLeafKey(this.leafKey(leaf))
-    if (!terminalHandle) {
+    if (!this.deps.getTerminalHandleForLeafKey(this.leafKey(leaf))) {
       return
     }
     // Gate settled-agent input at this shared commit point; refusal parks for recheck instead of dropping mail.
@@ -111,12 +110,9 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     ) {
       return
     }
-    const unread = selectTerminalMailHandoff({
+    const { messages: unread, heldDeliveryId } = selectOrchestrationPointerBatch({
       db,
-      mailbox: mailboxHandle,
-      target: this.deps.readMailTarget?.(leaf) ?? null,
-      route: [`${leaf.tabId}:${leaf.leafId}`, terminalHandle],
-      wasAbandoned: (target) => this.deps.mailTargetWasAbandoned?.(target) ?? false,
+      mailboxHandle,
       waiters,
       reservedTypes: options.reservedTypes
     })
@@ -154,6 +150,7 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
       leaf,
       mailboxHandle,
       messages: unread,
+      heldDeliveryId,
       newestSequence,
       enterDelayMs: pointerEnterDelayMs(),
       leafKey: this.leafKey(leaf),

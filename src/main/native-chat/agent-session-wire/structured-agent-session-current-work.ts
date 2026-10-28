@@ -1,5 +1,5 @@
-import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
+import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
+import { isHistoricalProviderTimelineItem } from '../agent-session-timeline/provider-timeline-history'
 import { currentRequestsProjection } from './agent-session-current-requests'
 // Derive operational work from lease, first-hand exit, replaced-runtime and journal evidence.
 // Cleanup writes never gate current work; readers share this projection rather than maintaining rules.
@@ -18,7 +18,11 @@ import type { StructuredAgentSessionWorkScope } from '../../../shared/structured
 import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
-import { structuredAgentSessionHandingOver } from './structured-agent-session-handing-over'
+import {
+  continuingStructuredAgentSessionInput,
+  finalizingStructuredAgentSessionInput,
+  structuredAgentSessionHandingOver
+} from './structured-agent-session-handing-over'
 
 export type StructuredAgentSessionCurrentWorkJournal = Pick<
   AgentSessionJournal,
@@ -26,7 +30,7 @@ export type StructuredAgentSessionCurrentWorkJournal = Pick<
 >
 
 export type StructuredAgentSessionWorkEvidence = {
-  record: Pick<AgentSessionRecord, 'lease'> | null
+  record: Pick<AgentSessionConversationView, 'ownerObservation' | 'currentFence'> | null
   ended?: StructuredAgentSessionSeenEnd
   revision?: number
   replaced?: StructuredAgentSessionReplacedEnd | undefined
@@ -47,7 +51,9 @@ type StructuredAgentSessionSeenEnd = {
 export function structuredAgentSessionLiveFence(
   evidence: StructuredAgentSessionWorkEvidence
 ): number | null {
-  const lease = evidence.record?.lease
+  const record = evidence.record
+  const lease = record?.ownerObservation
+  const fence = record?.currentFence
   if (!lease) {
     return 0
   }
@@ -55,22 +61,27 @@ export function structuredAgentSessionLiveFence(
     return null
   }
   if (
-    structuredAgentSessionReplacedRuntimeEnded(lease, evidence.replaced) ||
+    structuredAgentSessionReplacedRuntimeEnded(
+      { runtimeFence: fence ?? 0, claimStatus: lease.claimStatus },
+      evidence.replaced
+    ) ||
     structuredAgentSessionOwnerUnverifiable(evidence)
   ) {
     return null
   }
   const { ended } = evidence
-  return ended?.rootGone === true && ended.fence === lease.runtimeFence ? null : lease.runtimeFence
+  return ended?.rootGone === true && ended.fence === fence ? null : (fence ?? 0)
 }
 
 /** Unreconciled/recovering owners without a local child remain unverifiable, not current work. */
 function structuredAgentSessionOwnerUnverifiable(evidence: StructuredAgentSessionWorkEvidence) {
-  const lease = evidence.record?.lease
+  const record = evidence.record
+  const lease = record?.ownerObservation
+  const fence = record?.currentFence
   return (
     (lease?.unreconciled === true || lease?.handoffStage === 'recovering') &&
     evidence.child !== undefined &&
-    evidence.child?.fence !== lease.runtimeFence
+    evidence.child?.fence !== fence
   )
 }
 
@@ -152,9 +163,12 @@ export class StructuredAgentSessionCurrentWork {
 
   private unanswered(submission: AgentJournalSubmission): boolean {
     return (
-      !isQueuedAgentJournalSubmission(submission) &&
-      this.liveFence !== null &&
-      isUnansweredStructuredAgentSessionDispatch(submission, this.liveFence)
+      continuingStructuredAgentSessionInput(this.journal, submission.clientMessageId) ||
+      (submission.dispatchState === 'pending' &&
+        finalizingStructuredAgentSessionInput(this.journal, submission.clientMessageId)) ||
+      (!isQueuedAgentJournalSubmission(submission) &&
+        this.liveFence !== null &&
+        isUnansweredStructuredAgentSessionDispatch(submission, this.liveFence))
     )
   }
 
@@ -178,6 +192,10 @@ export class StructuredAgentSessionCurrentWork {
 
   isCurrentItem(itemId: string): boolean {
     if (this.liveFence === null) {
+      return false
+    }
+    const item = this.journal.item(itemId)
+    if (item && isHistoricalProviderTimelineItem(item, (key) => this.journal.item(key))) {
       return false
     }
     const provenance = this.journal.itemFence(itemId)
@@ -265,14 +283,8 @@ export class StructuredAgentSessionCurrentWork {
   }
 
   /** Project interrupted turns immediately from observed/replaced-runtime death, before settlement persists. */
-  diedTurn(itemId?: string): { item: AgentJournalRenderItem; turnId: string } | null {
-    const item = itemId ? this.journal.item(itemId) : null
-    const turn = item && isRootAgentJournalItem(item) ? readAgentJournalTurn(item.body) : null
-    const running = itemId
-      ? item && turn?.state === 'running'
-        ? { item, turnId: turn.turnId }
-        : null
-      : this.journal.runningTurn()
+  diedTurn(): { item: AgentJournalRenderItem; turnId: string } | null {
+    const running = this.journal.runningTurn()
     if (!running || this.isCurrentItem(running.item.itemId)) {
       return null
     }

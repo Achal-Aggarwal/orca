@@ -1,4 +1,5 @@
 import type { JiraQuickFilterState } from './jira/jira-quick-filters'
+import type { BrowserDevToolsDockLayout } from './browser-devtools-dock'
 import type { JiraSavedFilterState } from './jira/jira-saved-filters'
 import type { ReleaseChannel } from './release-channel'
 import type { WorkspaceCleanupUIState } from './workspace-cleanup'
@@ -27,8 +28,11 @@ import type {
 } from './ui-chrome-types'
 import type { WorkspaceStatusDefinition } from './worktree/types'
 import type { PersistedAutomationHostFilter } from './automation-host-filter'
+import type { PendingRuntimeRepoRemoval } from './pending-runtime-repo-removal'
 
 export type PersistedUIState = {
+  /** Paired-server project removals still owed to their server; optional so older builds ignore it. */
+  pendingRuntimeRepoRemovals?: PendingRuntimeRepoRemoval[]
   jiraSavedFilterState?: JiraSavedFilterState
   jiraQuickFilterState?: JiraQuickFilterState
   lastActiveRepoId: string | null
@@ -196,6 +200,8 @@ export type PersistedUIState = {
   browserDefaultZoomLevel?: number
   /** Optional Kagi private-session link used only when Kagi is the search engine. */
   browserKagiSessionLink?: string | null
+  /** Side and size of DevTools docked in a browser pane; one choice for every page, like Chrome. */
+  browserDevToolsDock?: BrowserDevToolsDockLayout
   /** Saved window bounds so the app restores last position/size instead of maximizing each launch. */
   windowBounds?: { x: number; y: number; width: number; height: number } | null
   /** Whether the window was maximized when it was last closed. */

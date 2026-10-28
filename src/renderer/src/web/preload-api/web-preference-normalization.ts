@@ -1,8 +1,5 @@
-import {
-  isAgentChatPermissionMode,
-  normalizeAgentNativeChatPermissionModes
-} from '../../../../shared/agent-chat-permission-mode'
-import { normalizeNativeChatAppearanceSettings } from '../../../../shared/native-chat-appearance-settings'
+import { isAgentChatPermissionMode } from '../../../../shared/agent-chat-permission-mode'
+import { normalizeNativeChatAppearanceSettings } from '../../../../shared/native-chat/native-chat-appearance-settings'
 import { normalizeAutoRenameBranchFromWorkDefaultOn } from '../../../../shared/auto-rename-branch-from-work-settings'
 import {
   getDefaultSettings,
@@ -230,18 +227,9 @@ export function mergeSettings(
 /** The host's new-chat permission default (the host seeds from it), kept only when a known mode. */
 export function runtimeChatPermissionSetting(
   settings: Partial<GlobalSettings>,
-  includeAgentOverrides = true
-): Pick<GlobalSettings, 'nativeChatPermissionMode' | 'agentNativeChatPermissionModes'> {
-  return {
-    ...(isAgentChatPermissionMode(settings.nativeChatPermissionMode)
-      ? { nativeChatPermissionMode: settings.nativeChatPermissionMode }
-      : {}),
-    ...(includeAgentOverrides
-      ? {
-          agentNativeChatPermissionModes: normalizeAgentNativeChatPermissionModes(
-            settings.agentNativeChatPermissionModes
-          )
-        }
-      : {})
-  }
+  _includeAgentOverrides = true
+): Pick<GlobalSettings, 'nativeChatPermissionMode'> {
+  return isAgentChatPermissionMode(settings.nativeChatPermissionMode)
+    ? { nativeChatPermissionMode: settings.nativeChatPermissionMode }
+    : {}
 }

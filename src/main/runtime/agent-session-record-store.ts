@@ -1,7 +1,4 @@
-/** Single-writer records/operation ledger in the host chat-journal database. */
-
 import { backfillAgentSessionPermissionModes } from './agent-session/ownership/agent-session-permission-backfill'
-import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import { createAgentSessionConversationReceipts } from './agent-session-conversation-receipts'
 import { pinAgentSessionRecordLaunchDirectory } from './agent-session-record-launch-directory'
 import {
@@ -60,7 +57,14 @@ import {
   type AgentSessionReserveRequest,
   type AgentSessionReserveResult
 } from './agent-session/ownership/agent-session-reservation-admission'
-import { heldAgentSessionIds, type AgentSessionStoreState } from './agent-session-store-state'
+import {
+  getAgentSessionConversation,
+  selectWritableAgentSessionRecord,
+  listAgentSessionConversations,
+  requireWritableAgentSessionRecord,
+  heldAgentSessionIds,
+  type AgentSessionStoreState
+} from './agent-session-store-state'
 import {
   agentSessionVisibleTabIndex,
   listVisibleAgentSessionIds,
@@ -73,25 +77,28 @@ import { agentSessionOperationOutcomeReceipt } from './agent-session-operation-r
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import { createAgentSessionFoundingStore } from './agent-session-founding-store'
-import { transactAgentSessionRecords } from './agent-session-record-transaction'
 import {
   compareAndSetAgentSessionRecordName,
+  type AgentSessionUserNameWrite,
   type CompareAndSetConversationName,
-  setAgentSessionRecordConversationName
+  setAgentSessionRecordConversationName,
+  setAgentSessionRecordUserNameThrough
 } from './agent-session-record-conversation-name'
+import { AgentSessionRecordPublication } from './agent-session-record-publication'
+
+/** Single-writer records/operation ledger in the host chat-journal database. */
 
 export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
 
-export class AgentSessionRecordStore {
-  private readonly deathEvidenceListeners = new Set<(sessionId: string) => void>()
-  private readonly firstRecordListeners = new Set<() => void>()
+export class AgentSessionRecordStore extends AgentSessionRecordPublication {
   readonly conversationReceipts: ReturnType<typeof createAgentSessionConversationReceipts>
 
   private constructor(
-    private readonly transactions: AgentSessionStoreTransactions,
+    transactions: AgentSessionStoreTransactions,
     readonly hostId: string
   ) {
+    super(transactions)
     this.founding = createAgentSessionFoundingStore(transactions, this.firstRecordListeners)
     this.conversationReceipts = createAgentSessionConversationReceipts(transactions)
   }
@@ -105,8 +112,6 @@ export class AgentSessionRecordStore {
     const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows, args.hostId)
     return new AgentSessionRecordStore(transactions, args.hostId)
   }
-
-  mailLineageScope = (sessionId: string) => this.transactions.mailLineageScope(sessionId)
 
   private get state(): AgentSessionStoreState {
     return this.transactions.state
@@ -123,13 +128,12 @@ export class AgentSessionRecordStore {
   getRecord = (sessionId: string): AgentSessionRecord | null =>
     this.state.records.get(sessionId) ?? null
 
-  get lineageRevision(): number {
-    return this.transactions.lineageRevision
-  }
-
-  get recordsRevision(): number {
-    return this.transactions.recordsRevision
-  }
+  getConversation = (sessionId: string) => getAgentSessionConversation(this.state, sessionId)
+  listConversations = () => listAgentSessionConversations(this.state)
+  selectWritableRecord = (sessionId: string) =>
+    selectWritableAgentSessionRecord(this.state, sessionId)
+  requireWritableRecord = (sessionId: string) =>
+    requireWritableAgentSessionRecord(this.state, sessionId)
 
   listRecords = (): AgentSessionRecord[] => [...this.state.records.values()]
 
@@ -151,8 +155,36 @@ export class AgentSessionRecordStore {
     this.state.sessionTabs?.tabIdFor(sessionId) ?? null
 
   /** Persist chat-tab identity separately from rollback-sensitive profile tabs; explicit tabId restores hidden tabs under their old ids. */
-  setSessionTabVisibility(sessionId: string, visible: boolean, tabId?: string): Promise<void> {
-    return this.transact((draft) => setAgentSessionTabVisibility(draft, sessionId, visible, tabId))
+  setSessionTabVisibility(
+    sessionId: string,
+    visible: boolean,
+    tabId?: string,
+    check?: () => void
+  ): Promise<void> {
+    return this.transact((draft) => {
+      check?.()
+      return setAgentSessionTabVisibility(draft, sessionId, visible, tabId)
+    })
+  }
+
+  setSwitchedSessionTabVisibility(
+    sessionId: string,
+    tabId: string,
+    visible: boolean,
+    admit: () => boolean
+  ): Promise<boolean> {
+    return this.transact((draft) => {
+      if (
+        (visible
+          ? draft.sessionTabs?.tabIdFor(sessionId) !== undefined
+          : draft.sessionTabs?.tabIdFor(sessionId) !== tabId) ||
+        !admit()
+      ) {
+        return false
+      }
+      setAgentSessionTabVisibility(draft, sessionId, visible, tabId)
+      return true
+    })
   }
 
   /** Publish the complete tab index in one write; a partial index would drop remaining chats on restart. */
@@ -171,8 +203,12 @@ export class AgentSessionRecordStore {
       setAgentSessionRecordConversationName(record, name, Date.now())
     )
 
-  compareAndSetConversationName: CompareAndSetConversationName = (sessionId, name, expected) =>
-    compareAndSetAgentSessionRecordName((apply) => this.mutate(sessionId, apply), name, expected)
+  /** The user's name for the conversation; see `AgentSessionUserNameWrite`. */
+  setUserConversationName = (sessionId: string, name: string, write: AgentSessionUserNameWrite) =>
+    setAgentSessionRecordUserNameThrough((apply) => this.mutate(sessionId, apply), name, write)
+
+  compareAndSetConversationName: CompareAndSetConversationName = (id, name, expected, context) =>
+    compareAndSetAgentSessionRecordName((apply) => this.mutate(id, apply), name, expected, context)
 
   /** Launch history is metadata and does not contend with the writer lease. */
   pinLaunchDirectory = (sessionId: string, launchDirectory: string): Promise<AgentSessionRecord> =>
@@ -193,15 +229,12 @@ export class AgentSessionRecordStore {
 
   reserveOwner = (
     request: AgentSessionReserveRequest,
-    newRoot?: true
+    check?: () => void
   ): Promise<AgentSessionReserveResult> =>
-    this.transact(
-      (draft) => commitAgentSessionReservation(draft, request, AGENT_SESSION_LEASE_TTL_MS),
-      undefined,
-      newRoot && !request.adoptedHandleLink
-        ? { sessionId: request.sessionId, created: (result) => result.disposition === 'created' }
-        : undefined
-    )
+    this.transact((draft) => {
+      check?.()
+      return commitAgentSessionReservation(draft, request, AGENT_SESSION_LEASE_TTL_MS)
+    })
 
   readonly founding: ReturnType<typeof createAgentSessionFoundingStore>
 
@@ -257,9 +290,7 @@ export class AgentSessionRecordStore {
   ): Promise<AgentSessionRecord> => this.mutate(sessionId, transition)
 
   /** Reconcile loaded leases before writer admission. Newer databases keep verdicts in memory only and cannot grant writers. */
-  async reconcileOnRestart(
-    args: AgentSessionRestartProbeArgs
-  ): Promise<Map<string, AgentSessionRecord>> {
+  async reconcileOnRestart(args: AgentSessionRestartProbeArgs) {
     const probes = await collectAgentSessionRestartProbes(this, args)
     return this.transact((draft) => applyAgentSessionRestartProbes(draft, probes, args.now), {
       inMemoryWhenReadOnly: true
@@ -303,6 +334,13 @@ export class AgentSessionRecordStore {
   submissionReceipt = (sessionId: string) =>
     this.transactions.receipt(() => {}, { submissionSessionId: sessionId })
 
+  onAcceptedSend = (listener: (sessionId: string) => void): (() => void) => {
+    this.transactions.acceptedSendListeners.add(listener)
+    return () => {
+      this.transactions.acceptedSendListeners.delete(listener)
+    }
+  }
+
   admittedSendCount = (sessionId: string) => this.transactions.admittedSendCount(sessionId)
 
   commitOperationReceipt = (receipt: JournalOperationReceipt) =>
@@ -329,41 +367,10 @@ export class AgentSessionRecordStore {
     apply: (record: AgentSessionRecord) => AgentSessionRecord
   ): Promise<AgentSessionRecord> {
     return this.transact((draft) => {
-      const record = draft.records.get(sessionId)
-      if (!record) {
-        throw draft.unreadableRecords.has(sessionId)
-          ? agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' })
-          : agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
-      }
+      const record = requireWritableAgentSessionRecord(draft, sessionId)
       const next = apply(record)
       draft.records.set(sessionId, next)
       return next
     })
   }
-
-  /** Notify committed death evidence from every transition; listeners must not throw. */
-  onDeathEvidence(listener: (sessionId: string) => void): () => void {
-    this.deathEvidenceListeners.add(listener)
-    return () => this.deathEvidenceListeners.delete(listener)
-  }
-
-  /** Notify first committed record; listeners must not throw. */
-  onFirstRecord(listener: () => void): () => void {
-    this.firstRecordListeners.add(listener)
-    return () => this.firstRecordListeners.delete(listener)
-  }
-
-  private transact = <T>(
-    apply: (draft: AgentSessionStoreState) => T,
-    options?: { inMemoryWhenReadOnly?: boolean },
-    freshRoot?: { sessionId: string; created: (result: T) => boolean }
-  ): Promise<T> =>
-    transactAgentSessionRecords(
-      this.transactions,
-      this.deathEvidenceListeners,
-      this.firstRecordListeners,
-      apply,
-      options,
-      freshRoot
-    )
 }

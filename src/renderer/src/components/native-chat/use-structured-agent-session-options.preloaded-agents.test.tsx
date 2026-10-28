@@ -11,10 +11,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
+  subscribeStructuredAgentSessionStatus: vi.fn(async () => ({ unsubscribe: vi.fn() })),
   callStructuredAgentSession: mocks.call
 }))
 vi.mock('@/runtime/local-structured-chats', () => ({ localStructuredChatsInUse: async () => true }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
+  subscribeLocalRuntimeCapabilityObservation: () => () => {},
   subscribeLocalRuntimeCapabilitiesKnown: () => () => {},
   ensureLocalRuntimeCapabilities: async () => ['agent-session.model-catalog.saved-only.v1'],
   readLocalRuntimeCapabilitiesOrUnknown: () => ['agent-session.model-catalog.saved-only.v1']
@@ -36,7 +38,7 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 }))
 
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
-import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
+import type { SessionOptionDescriptor } from '../../../../shared/native-chat/input/native-chat-session-options'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { useAppStore } from '@/store'
 import { resetHostModelCatalogSnapshotsForTests } from '@/runtime/host-model-catalog-snapshots'

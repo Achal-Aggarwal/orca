@@ -1,21 +1,11 @@
-import {
-  mailLineageValue,
-  readMailLineageScope
-} from '../native-chat/agent-session-journal/journal-mail-holds'
-// Every agent-session store mutation: draft the published state, apply, check and write exactly the
-// changed rows in one journal transaction, then publish the draft. A throw anywhere discards the
-// draft, so memory never holds a change the database does not.
-//
-// Why a promise queue although the body is synchronous: a store call must never run its BEGIN in
-// the caller's frame. A caller inside an open journal transaction on the same connection would nest
-// a BEGIN, which `runJournalTransaction` does not support. The queue also keeps the FIFO order and
-// the async boundary every awaiting caller was written against.
-
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import type { JournalOperationReceipt } from '../native-chat/agent-session-journal/journal-row-writer'
 import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { AgentSessionJournalError } from '../native-chat/agent-session-journal/journal-write-guards'
-import type { AgentSessionStoreState } from './agent-session-store-state'
+import {
+  requireWritableAgentSessionRecord,
+  type AgentSessionStoreState
+} from './agent-session-store-state'
 import {
   insertAgentSessionOperationRowsIfAbsent,
   writeAgentSessionStoreRows
@@ -39,6 +29,9 @@ import {
   draftAgentSessionStoreState,
   type AgentSessionStoreRowWrites
 } from './agent-session-store-draft'
+
+// Commit validated draft rows atomically before publication; failures discard the draft.
+// The promise queue preserves FIFO and defers BEGIN beyond the caller's open journal transaction.
 
 // Identity-based diffs miss in-place edits; freeze rows in dev/tests to catch them.
 const FREEZE_ROWS = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
@@ -93,15 +86,7 @@ export class AgentSessionStoreTransactions {
   private queue: Promise<unknown> = Promise.resolve()
   // Reads/reopens do not admit work; a count survives handle eviction without replaying history.
   private readonly admittedSends = new Map<string, number>()
-  mailLineageScope = (sessionId: string) =>
-    readMailLineageScope(
-      this.journalDatabase.db,
-      sessionId,
-      () => [...this.published.records.values()],
-      this.lineageRevision
-    )
-  recordsRevision = 0
-  lineageRevision = 0
+  readonly acceptedSendListeners = new Set<(sessionId: string) => void>()
   private published: AgentSessionStoreState
   /** Loaded takeover evidence; immutable for this runtime. */
   readonly replacedRuntimes: ReadonlyMap<string, AgentSessionReplacedRuntime>
@@ -168,7 +153,7 @@ export class AgentSessionStoreTransactions {
         // The ledger and wake share one draft as well as one commit.
         staged = this.stage((draft) => {
           apply(draft)
-          const record = admitted ? draft.records.get(admitted) : undefined
+          const record = admitted ? requireWritableAgentSessionRecord(draft, admitted) : undefined
           if (record?.sleptAt !== undefined) {
             const { sleptAt: _sleptAt, ...awake } = record
             draft.records.set(record.sessionId, {
@@ -195,6 +180,9 @@ export class AgentSessionStoreTransactions {
         staged?.adopt()
         if (admitted) {
           this.admittedSends.set(admitted, this.admittedSendCount(admitted) + 1)
+          for (const listener of this.acceptedSendListeners) {
+            listener(admitted)
+          }
         }
         staged = null
         admitted = undefined
@@ -239,20 +227,6 @@ export class AgentSessionStoreTransactions {
         if (writes) {
           freezeRows(draft, writes)
           this.published = draft
-          if (writes.records.upsert.length || writes.records.remove.length) {
-            this.recordsRevision++
-            const changed = [...writes.records.upsert.map(([id]) => id), ...writes.records.remove]
-            if (
-              changed.some(
-                (id) =>
-                  mailLineageValue(published.records.get(id)) !==
-                    mailLineageValue(draft.records.get(id)) ||
-                  published.unreadableRecords.has(id) !== draft.unreadableRecords.has(id)
-              )
-            ) {
-              this.lineageRevision++
-            }
-          }
         }
       }
     }

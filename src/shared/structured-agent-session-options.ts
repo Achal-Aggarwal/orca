@@ -8,14 +8,14 @@ import {
 import {
   STRUCTURED_LAUNCH_OPTION_IDS,
   STRUCTURED_LAUNCH_SEED_OPTION_IDS
-} from './native-chat-session-option-defaults'
+} from './native-chat/input/native-chat-session-option-defaults'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from './agent-chat-permission-mode'
 import { usesInstalledAgentModelCatalog } from './agent-model-catalog-ownership'
 import {
   structuredAgentSessionDescribedModel,
   structuredAgentSessionShownModel
 } from './structured-agent-session-option-snapshot'
-import type { SessionOptionValue } from './native-chat-session-options'
+import type { SessionOptionValue } from './native-chat/input/native-chat-session-options'
 import type {
   AgentSessionModelCatalogResult,
   AgentSessionOptionsResult
@@ -62,6 +62,8 @@ export type StructuredAgentSessionOptionState = {
   defaultsUnsent?: true
   /** The permission mode the host or launch last stated; null shows no picker. */
   permissionMode: string | null
+  reportedPermissionMode?: string | null
+  permissionOwnSupported?: boolean | null
   pendingId: string | null
   listingInProgress?: boolean
   fastModeRestricted?: boolean
@@ -196,7 +198,8 @@ export function applyStructuredAgentSessionOptions(
       : result.listedModelIds?.length
         ? result.listedModelIds
         : undefined,
-    permissionMode: result.current.permissionMode ?? null
+    permissionMode: result.current.permissionMode ?? null,
+    reportedPermissionMode: result.current.reportedPermissionMode
   }
 }
 
@@ -216,7 +219,7 @@ export function commitStructuredAgentSessionOption(
   value: string
 ): StructuredAgentSessionOptionState {
   if (id === AGENT_CHAT_PERMISSION_MODE_OPTION_ID) {
-    return { ...state, permissionMode: value, pendingId: null }
+    return { ...state, permissionMode: value, reportedPermissionMode: undefined, pendingId: null }
   }
   if (!state.catalog) {
     return state

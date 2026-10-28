@@ -1,5 +1,5 @@
 import './xterm-env-polyfill'
-import { Terminal } from '@xterm/headless'
+import { Terminal, type ITerminalOptions } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { activateOrcaTerminalUnicodeProvider } from '../../shared/terminal-unicode-provider'
@@ -8,6 +8,7 @@ import {
   serializeWithAbsoluteCursor
 } from '../../shared/terminal-serialize-absolute-cursor'
 import { advancePartialEscapeTail } from '../../shared/terminal-partial-escape-tail'
+import { resizeLikeOwnPty } from './conpty-reflow-viewport'
 import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from '../../shared/terminal-scrollback-policy'
 import type { TerminalViewAttributes } from '../../shared/terminal-view-attributes'
 import { collectHeadlessOscLinkRanges } from './headless-osc-link-ranges'
@@ -31,7 +32,8 @@ import {
   type HeadlessTerminalRow
 } from './headless-terminal-rows'
 
-export type HeadlessEmulatorOptions = {
+/** windowsPty: ConPTY repaints its own grid after a resize, so growing rows must not pull scrollback. */
+export type HeadlessEmulatorOptions = Pick<ITerminalOptions, 'windowsPty'> & {
   cols: number
   rows: number
   scrollback?: number
@@ -90,7 +92,8 @@ export class HeadlessEmulator {
       allowProposedApi: true,
       logLevel: 'off',
       // Match renderer kitty flag parsing and query responses.
-      vtExtensions: { kittyKeyboard: true }
+      vtExtensions: { kittyKeyboard: true },
+      windowsPty: opts.windowsPty ?? {}
     })
 
     this.serializer = new SerializeAddon()
@@ -225,15 +228,13 @@ export class HeadlessEmulator {
   }
 
   resize(cols: number, rows: number): void {
-    if (this.disposed) {
-      return
-    }
     // Preserve row-indexed restored links on same-size resizes; only real resizes invalidate them.
-    if (this.terminal.cols === cols && this.terminal.rows === rows) {
+    if (this.disposed || (this.terminal.cols === cols && this.terminal.rows === rows)) {
       return
     }
     this.restoredOscLinks = []
-    this.terminal.resize(cols, rows)
+    const writeSync = this.partialEscapeTail ? null : (data: string) => void this.writeSync(data)
+    resizeLikeOwnPty(this.terminal, cols, rows, writeSync)
   }
 
   // Report applied dimensions so the renderer can detect a dropped resize.

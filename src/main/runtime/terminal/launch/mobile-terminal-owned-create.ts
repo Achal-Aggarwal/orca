@@ -1,24 +1,19 @@
 import { OrcaRuntimeWithResolveMobileSessionTerminalCommand } from './mobile-terminal-startup'
-import type { WorktreeStartupLaunch } from '../../../../shared/worktree/launch-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import type {
-  AgentProviderSessionMetadata,
-  SleepingAgentLaunchConfig
-} from '../../../../shared/agent-session-resume'
-import type { SpawnIntent } from '../../../../shared/host-spawn-admission'
-import type { AgentLaunchRuntime } from '../../../../shared/agent-launch-runtime'
+import type { SleepingAgentLaunchConfig } from '../../../../shared/agent-session-resume'
 import type {
   RuntimeMobileSessionCreateTerminalResult,
   RuntimeMobileSessionTabsSnapshot,
-  RuntimeMobileSessionTerminalTab,
-  RuntimeTerminalPresentation
+  RuntimeMobileSessionTerminalTab
 } from '../../../../shared/runtime-types'
+import type { OwnedMobileTerminalCreateOptions } from './mobile-terminal-create'
 import { randomUUID } from 'node:crypto'
 import { copySleepingAgentLaunchConfig } from '../../runtime-agent-launch-resolution'
 import { deriveRemoteRuntimeTerminalCreateHandle } from '../../remote-runtime-terminal-create-identity'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { placeCreatedSessionTab } from '../../../../shared/session-tab-placement'
 import { insertTabIdIntoOrder } from '../../../../shared/workspace-layout/tab-order'
+import type { OrcaRuntimeWithBuildPtyTerminalSummary as PtyTerminalSummaryMethods } from '../query/pty-terminal-summary'
 import {
   buildHeadlessMobileSessionTabGroups,
   buildMaterializedHeadlessParentLayout,
@@ -27,35 +22,11 @@ import {
 
 const OWNED_MOBILE_DISPATCH_RECIPE_TTL_MS = 15 * 60_000
 
-export type OwnedMobileTerminalCreateOptions = {
-  command?: string
-  shellOverride?: string
-  cwd?: string
-  env?: Record<string, string>
-  envToDelete?: string[]
-  startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
-  identity?: { tabId: string; leafId: string; sessionId?: string }
-  createMutation?: { clientIdentity: string; id: string }
-  launchAgent?: TuiAgent
-  viewMode?: 'terminal' | 'chat'
-  targetGroupId?: string
-  afterDesktopTabId?: string
-  presentation?: RuntimeTerminalPresentation
-  supportsSplitGroupPlacement?: boolean
-  launchConfig?: SleepingAgentLaunchConfig
-  resumeProviderSession?: AgentProviderSessionMetadata
-  spawnIntent?: SpawnIntent
-  launchRuntime?: AgentLaunchRuntime
-  signal?: AbortSignal
-  refuseSleptWorktree?: boolean
-  resumesSleepingRecord?: true
-  /** See TerminalCreateOptions; a create that throws before it proves nothing spawned. */
-  onPtySpawnDispatched?: () => void
-  /** The PTY this create produced, reported before publication can fail. */
-  onPtyCreated?: (ptyId: string) => void
-}
-
 export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends OrcaRuntimeWithResolveMobileSessionTerminalCommand {
+  protected abstract getPtyManualTitle(
+    ...args: Parameters<PtyTerminalSummaryMethods['getPtyManualTitle']>
+  ): ReturnType<PtyTerminalSummaryMethods['getPtyManualTitle']>
+
   private readonly ownedMobileDispatchRecipes = new Map<
     string,
     {
@@ -132,6 +103,7 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
           ? { resumeProviderSession: opts.resumeProviderSession }
           : {}),
         ...(opts.spawnIntent ? { spawnIntent: opts.spawnIntent } : {}),
+        ...(opts.resumeOrigin ? { resumeOrigin: opts.resumeOrigin } : {}),
         ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
         ...(opts.launchRuntime ? { launchRuntime: opts.launchRuntime } : {}),
         ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
@@ -164,7 +136,7 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
         )
       : await create()
     if (terminal.ptyId) {
-      opts.onPtyCreated?.(terminal.ptyId)
+      opts.onPtyCreated?.(terminal.ptyId, terminal)
     }
     const livePty = this.getLivePtyForHandle(terminal.handle)
     if (!livePty) {
@@ -224,6 +196,11 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
       livePty.pty.ptyId,
       existingSurface?.parentLayout
     )
+    // A terminal restarted for a saved tab keeps the tab's saved name; a row's null stays cleared.
+    const customTitle =
+      existingSurface?.customTitle !== undefined
+        ? existingSurface.customTitle
+        : this.getPtyManualTitle(livePty.pty, false) || undefined
     const tab: RuntimeMobileSessionTerminalTab = {
       type: 'terminal',
       id: `${parentTabId}::${leafId}`,
@@ -232,12 +209,13 @@ export abstract class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal ext
       ptyId: livePty.pty.ptyId,
       incarnationId: livePty.pty.incarnationId,
       title: terminal.title ?? livePty.pty.title ?? 'Terminal',
+      ...(customTitle !== undefined ? { customTitle } : {}),
       // Omit only a proven root correction; an unverifiable fallback keeps its saved request.
       ...((terminal.savedStartupCwd ?? cwd) && (terminal.savedStartupCwd ?? cwd) !== workspace.path
         ? { startupCwd: terminal.savedStartupCwd ?? cwd }
         : {}),
-      ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
-      ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
+      ...(livePty.pty.launchAgent ? { launchAgent: livePty.pty.launchAgent } : {}),
+      ...(!terminal.agentResumeRefused && opts.viewMode ? { viewMode: opts.viewMode } : {}),
       parentLayout,
       isActive: activate
     }

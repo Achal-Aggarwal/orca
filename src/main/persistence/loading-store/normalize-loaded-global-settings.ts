@@ -1,4 +1,4 @@
-import { normalizeNativeChatAppearanceSettings } from '../../../shared/native-chat-appearance-settings'
+import { normalizeNativeChatAppearanceSettings } from '../../../shared/native-chat/native-chat-appearance-settings'
 import { getDefaultVoiceSettings } from '../../../shared/constants'
 import { normalizePRBotAuthorOverrides } from '../../../shared/pr-bot-author-overrides'
 import { normalizeTerminalQuickCommands } from '../../../shared/terminal-quick-commands'
@@ -8,11 +8,8 @@ import { normalizeAppIconId } from '../../../shared/app-icon'
 import { normalizeTerminalCustomThemes } from '../../../shared/terminal-custom-themes'
 import { normalizeTerminalDefaultShell } from '../../../shared/terminal-default-shell'
 import { projectSourceControlAiToLegacyCommitMessageAi } from '../../../shared/source-control-ai'
-import { normalizeNativeChatShellEnvironmentVariables } from '../../../shared/native-chat-shell-environment'
-import {
-  loadedChatPermissionSetting,
-  normalizeAgentNativeChatPermissionModes
-} from '../../../shared/agent-chat-permission-mode'
+import { normalizeNativeChatShellEnvironmentVariables } from '../../../shared/native-chat/native-chat-shell-environment'
+import { publishedLegacyChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import {
   savedChatUiWithTerminalDefaultView,
   stripRetiredGlobalSettings
@@ -134,17 +131,12 @@ export function normalizeLoadedGlobalSettings(
     nativeChatShellEnvironmentVariables: normalizeNativeChatShellEnvironmentVariables(
       parsed.settings?.nativeChatShellEnvironmentVariables
     ),
-    agentNativeChatPermissionModes: normalizeAgentNativeChatPermissionModes(
-      parsed.settings?.agentNativeChatPermissionModes
-    ),
-    nativeChatPermissionMode: loadedChatPermissionSetting(
-      parsed.settings?.nativeChatPermissionMode,
-      {
-        ...migratedAgentYoloDefaults,
-        terminalWindowsShell: parsed.settings?.terminalWindowsShell
-      },
-      process.platform
-    ),
+    // Old clients identify hosts with per-chat permissions through this valid value.
+    nativeChatPermissionMode: publishedLegacyChatPermissionMode({
+      ...parsed.settings,
+      ...migratedAgentYoloDefaults,
+      ...migratedAgentPermission
+    }),
     defaultTaskSource: taskProviderSettings.defaultTaskSource,
     visibleTaskProviders: taskProviderSettings.visibleTaskProviders,
     visibleTaskProvidersDefaultedForJira: true,

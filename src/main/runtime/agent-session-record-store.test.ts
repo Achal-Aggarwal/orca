@@ -726,6 +726,72 @@ describe('host and workspace isolation', () => {
 })
 
 describe('claim keys and unreadable rows', () => {
+  it.each(['bad', {}, null, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'preserves a damaged next-fence floor %j through refusal and unrelated writes',
+    async (minimumNextFence) => {
+      const first = await open()
+      await first.reserveOwner(reserveRequest())
+      await first.setSessionTabVisibility('session-alpha', true, 'tab-alpha')
+      let damaged: PersistedAgentSessionRecord | undefined
+      await editPersistedTestAgentSessionStore(directory, (persisted) => {
+        damaged = persisted.records['session-alpha']
+        Object.assign(damaged.lease, { minimumNextFence })
+      })
+      const reopened = await open()
+      expect(reopened.isSessionUnreadable('session-alpha')).toBe(true)
+      expect(reopened.getRecord('session-alpha')).toBeNull()
+      expect(reopened.getConversation('session-alpha')).toMatchObject({
+        currentFence: 1,
+        neverStarted: false,
+        ownerObservation: { unreconciled: true }
+      })
+      expect(reopened.getConversation('session-alpha')).not.toHaveProperty('lease')
+      expect(reopened.getVisibleSessionTabIndex().sessionIds).toEqual(['session-alpha'])
+      await expect(reopened.setConversationName('session-alpha', 'new')).rejects.toMatchObject({
+        refusal: { details: { reason: 'recordUnreadable' } }
+      })
+      await expect(
+        reopened.renewLease({ sessionId: 'session-alpha', fence: 1, childProbe: UNUSED, now: NOW })
+      ).rejects.toThrow('execution_owner_reconciling')
+      await expect(reopened.reserveOwner(reserveRequest())).rejects.toMatchObject({
+        refusal: { details: { reason: 'recordUnreadable' } }
+      })
+      await expect(reopened.founding.commit(reserveRequest())).rejects.toMatchObject({
+        refusal: { details: { reason: 'recordUnreadable' } }
+      })
+      await establishOwner(reopened, { sessionId: 'session-beta', claimKeyId: 'key-2' })
+      expect((await open()).isSessionUnreadable('session-alpha')).toBe(true)
+      const persisted = await readPersistedTestAgentSessionStore(directory)
+      expect(persisted.records['session-alpha']).toEqual(damaged)
+      expect(persisted.sessionTabs).toContainEqual({
+        tabId: 'tab-alpha',
+        sessionId: 'session-alpha'
+      })
+    }
+  )
+
+  it('uses a legacy floor for the next reservation after restarting a released chat', async () => {
+    const first = await open()
+    await first.reserveOwner(reserveRequest())
+    await editPersistedTestAgentSessionStore(directory, (persisted) => {
+      Object.assign(persisted.records['session-alpha'].lease, {
+        claimStatus: 'released',
+        reservedSpawnToken: null,
+        minimumNextFence: 9
+      })
+    })
+    const reopened = await open()
+    await reopened.reconcileOnRestart({ probe: async () => UNUSED, now: NOW + 1_000 })
+    const reserved = await reopened.reserveOwner(
+      reserveRequest({ expectedFence: 1, probe: UNUSED })
+    )
+    expect(reserved.record.lease.runtimeFence).toBe(9)
+    expect((await open()).getRecord('session-alpha')?.lease).toMatchObject({
+      runtimeFence: 9,
+      minimumNextFence: 9
+    })
+  })
+
   it('keeps a retired claim key verifiable for the retention window', async () => {
     const store = await open()
     await store.retireClaimKey('key-1', NOW)
@@ -803,63 +869,3 @@ describe('claim keys and unreadable rows', () => {
     })
   })
 })
-
-it.each(['founding', 'acquired'] as const)(
-  'co-writes only committed fresh %s witnesses, preserving replay, rollback and origin',
-  async (path) => {
-    const store = await open()
-    const database = openTestJournalHostDatabase(directory)
-    const rows = () =>
-      database.db.prepare('SELECT * FROM agent_session_mail_holds ORDER BY intent_order').all()
-    const request = reserveRequest()
-    let first = 0
-    store.onFirstRecord(() => {
-      first++
-    })
-    if (path === 'acquired') {
-      database.db.exec(
-        "CREATE TRIGGER refuse_fresh BEFORE INSERT ON agent_session_mail_holds BEGIN SELECT RAISE(ABORT, 'witness unavailable'); END"
-      )
-      await expect(store.reserveOwner(request, true)).rejects.toThrow('witness unavailable')
-      expect(store.getRecord(request.sessionId)).toBeNull()
-      expect(
-        store.getOperationRow(request.operation.callerKey, request.operation.operationId)
-      ).toBeNull()
-      expect(first).toBe(0)
-      database.db.exec('DROP TRIGGER refuse_fresh')
-    }
-    const commit = (owner: AgentSessionRecordStore) =>
-      path === 'founding' ? owner.founding.commit(request) : owner.reserveOwner(request, true)
-    expect((await commit(store)).disposition).toBe('created')
-    expect(first).toBe(1)
-    const fresh = rows()
-    expect(fresh).toEqual([
-      expect.objectContaining({
-        session_id: request.sessionId,
-        state_json: '{"version":1,"status":"released"}'
-      })
-    ])
-    expect((await commit(store)).disposition).toBe('replayed')
-    expect(rows()).toEqual(fresh)
-    const reopened = await open()
-    expect((await commit(reopened)).disposition).toBe('replayed')
-    expect(rows()).toEqual(fresh)
-    if (path === 'founding') {
-      const next = reserveRequest({ sessionId: 'session-next' })
-      const receipt = store.founding.receipt(next)
-      expect(() =>
-        database.transaction((db) => {
-          receipt.write(db)
-          throw new Error('rollback')
-        })
-      ).toThrow('rollback')
-      expect(store.getRecord(next.sessionId)).toBeNull()
-      expect(rows()).toEqual(fresh)
-      const accepted = store.founding.receipt(next)
-      database.transaction((db) => accepted.write(db))
-      accepted.committed()
-      expect(rows().map((row) => row.session_id)).toEqual([request.sessionId, next.sessionId])
-      expect(() => database.transaction((db) => store.founding.receipt(next).write(db))).toThrow()
-    }
-  }
-)

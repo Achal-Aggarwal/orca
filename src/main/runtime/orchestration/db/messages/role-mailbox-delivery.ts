@@ -186,6 +186,22 @@ export function hasOutstandingMailboxDelivery(
   )
 }
 
+export function getOutstandingMailboxDelivery(
+  this: OrchestrationDb,
+  mailboxHandle: string
+): { id: string; messageIds: string[] } | undefined {
+  const row = this.db
+    .prepare('SELECT id, message_ids FROM outstanding_deliveries WHERE mailbox_handle = ? LIMIT 1')
+    .get(mailboxHandle)
+  if (typeof row?.id !== 'string' || typeof row.message_ids !== 'string') {
+    return undefined
+  }
+  const messageIds: unknown = JSON.parse(row.message_ids)
+  return Array.isArray(messageIds) && messageIds.every((id): id is string => typeof id === 'string')
+    ? { id: row.id, messageIds }
+    : undefined
+}
+
 export function fenceUnacknowledgedMailboxDeliveries(
   this: OrchestrationDb,
   mailboxHandle: string
@@ -203,6 +219,7 @@ export type RoleMailboxDeliveryMethods = {
   getOrCreateMailboxDelivery: typeof getOrCreateMailboxDelivery
   acknowledgeMailboxDelivery: typeof acknowledgeMailboxDelivery
   hasOutstandingMailboxDelivery: typeof hasOutstandingMailboxDelivery
+  getOutstandingMailboxDelivery: typeof getOutstandingMailboxDelivery
   fenceUnacknowledgedMailboxDeliveries: typeof fenceUnacknowledgedMailboxDeliveries
 }
 
@@ -213,6 +230,7 @@ export function attachRoleMailboxDelivery(ctor: { prototype: object }): void {
     getOrCreateMailboxDelivery,
     acknowledgeMailboxDelivery,
     hasOutstandingMailboxDelivery,
+    getOutstandingMailboxDelivery,
     fenceUnacknowledgedMailboxDeliveries
   })
 }

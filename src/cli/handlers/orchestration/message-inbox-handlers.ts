@@ -3,6 +3,7 @@ import { printResult } from '../../format'
 import {
   getOptionalPositiveIntegerFlag,
   getOptionalStringFlag,
+  getPresentStringFlag,
   getRequiredStringFlag
 } from '../../flags'
 import {
@@ -32,14 +33,13 @@ export const ORCHESTRATION_INBOX_HANDLERS: Record<string, CommandHandler> = {
   'orchestration inbox': async ({ flags, client, json }) => {
     const full = flags.has('full')
     const id = getOptionalStringFlag(flags, 'id')
-    const terminal = getOptionalStringFlag(flags, 'terminal')
     const result = await client.call<{
       messages: MessageSummary[]
       count: number
     }>('orchestration.inbox', {
       id,
       limit: getOptionalPositiveIntegerFlag(flags, 'limit'),
-      terminal
+      terminal: getPresentStringFlag(flags, 'terminal')
     })
     // Older hosts ignore id; never print their unrelated history as an exact lookup.
     if (id) {

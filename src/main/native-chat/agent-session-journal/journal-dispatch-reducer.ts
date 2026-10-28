@@ -77,6 +77,7 @@ export function applyJournalDispatchRow(
   })
 }
 
+/** A rebind replaces coverage, including an empty set, before the new child receives input. */
 function foldStoppedHistoryCarried(
   state: JournalReducerState,
   row: Extract<JournalRow, { kind: 'dispatch' }>
@@ -86,6 +87,8 @@ function foldStoppedHistoryCarried(
     : []
   if (carried.length > 0) {
     state.stoppedHistoryCarried.set(row.clientMessageId, carried)
+  } else {
+    state.stoppedHistoryCarried.delete(row.clientMessageId)
   }
 }
 

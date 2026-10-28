@@ -12,8 +12,6 @@ import {
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
 import { sendAgentTurn, type StructuredSessionTurnOutcome } from './send-agent-turn'
-import { isAdmissibleAgentJournalMessageBody } from '../../../shared/agent-session-journal-schemas'
-import { structuredAgentSessionMessageSendMutation } from '../../../shared/structured-agent-session-send-mutation'
 
 /** Names the dispatch a nudge belongs to on the operation row it writes. */
 export function structuredPointerCallerKey(dispatchId: string): string {
@@ -42,12 +40,17 @@ export async function readStructuredSessionGateFacts(
 async function readPointerSessionFacts(
   sessionId: string
 ): Promise<StructuredPointerSessionFacts | null> {
-  const host = getStructuredAgentSessionHost()
-  const evidence = await host?.readMailHandoffEvidence(sessionId, '').catch(() => null)
-  if (!evidence) {
+  const snapshot = await readSessionJournal(sessionId)
+  if (!snapshot) {
     return null
   }
-  return { epoch: evidence.epoch, frontier: evidence.frontier, mailHold: evidence.mailHold }
+  const host = getStructuredAgentSessionHost()
+  const boundary = host?.deps.store.getConversation(sessionId)?.providerContextBoundary
+  return {
+    submissions: boundary
+      ? snapshot.submissions.filter((submission) => submission.fence > boundary.afterFence)
+      : snapshot.submissions
+  }
 }
 
 async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
@@ -69,92 +72,26 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
 
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readReceipt(reference) {
-      const unreadable = {
-        verdict: 'unreadable',
-        scope: { kind: 'global' },
-        operationId: reference.operationId
-      } as const
-      const host = getStructuredAgentSessionHost()
-      if (!host) {
-        return unreadable
-      }
-      const read = host.deps.store.readCommandReceipt({ kind: 'global' }, reference.operationId)
-      if (read.verdict !== 'readable') {
-        return read
-      }
-      const manifest = reference.manifest
-      const body: unknown = manifest && JSON.parse(manifest.body)
-      const caller = manifest?.dispatchId
-        ? structuredPointerCallerKey(manifest.dispatchId)
-        : structuredSessionPointerCallerKey(reference.sessionId)
-      if (
-        manifest &&
-        isAdmissibleAgentJournalMessageBody(body) &&
-        read.receipt.sessionId === reference.sessionId &&
-        read.receipt.method === 'agentSession.send' &&
-        read.receipt.callerKey === caller &&
-        [undefined, 'queue-if-active' as const].some(
-          (delivery) =>
-            read.receipt.fingerprint ===
-            structuredAgentSessionMessageSendMutation({
-              sessionId: reference.sessionId,
-              clientOperationId: reference.operationId,
-              expectedRuntimeFence: manifest.runtimeFence,
-              body,
-              ...(delivery ? { delivery } : {})
-            }).envelope.payloadFingerprint
-        )
-      ) {
-        return read
-      }
-      return unreadable
-    },
-    async readHandoffEvidence(reference) {
-      return (
-        (await getStructuredAgentSessionHost()?.readMailHandoffEvidence(
-          reference.sessionId,
-          reference.clientMessageId
-        )) ?? null
-      )
-    },
-
-    readHandoffEvidenceNow(reference) {
-      return (
-        getStructuredAgentSessionHost()?.readMailHandoffEvidenceNow(
-          reference.sessionId,
-          reference.clientMessageId
-        ) ?? null
-      )
-    },
     readSessionFacts(sessionId) {
       return readPointerSessionFacts(sessionId)
-    },
-
-    takesMailNow(sessionId) {
-      const work = getStructuredAgentSessionHost()?.currentWork(sessionId)
-      return work ? !holdsMail(work) : null
     },
 
     hasActionablePromptNow(sessionId) {
       return getStructuredAgentSessionHost()?.currentWork(sessionId)?.hasActionablePrompt() ?? null
     },
 
-    reconciliationKey(sessionId) {
-      return (
-        getStructuredAgentSessionHost()?.readMailHandoffEvidenceNow(sessionId, '')
-          ?.reconciliationKey ?? null
-      )
+    isWorkingNow(sessionId) {
+      return getStructuredAgentSessionHost()?.currentWork(sessionId)?.working() ?? false
     },
 
     currentFence(sessionId) {
       return (
-        getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? null
+        getStructuredAgentSessionHost()?.deps.store.getConversation(sessionId)?.currentFence ?? null
       )
     },
 
     currentContextClearOperationId(sessionId) {
-      return getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)
+      return getStructuredAgentSessionHost()?.deps.store.getConversation(sessionId)
         ?.providerContextBoundary?.operationId
     },
 
@@ -175,49 +112,38 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           turn: {
             body: input.body,
             // A person's plain send: every agent takes it the way it takes their own mid-turn message.
-            delivery: 'queue',
-            queueAlways: true,
-            ...(input.mailSource ? { mailSource: input.mailSource } : {}),
+            delivery: 'now',
             operationId: input.operationId,
             expectedRuntimeFence: input.expectedRuntimeFence,
             beforeRun: () => {
-              if (!input.beforeRun()) {
-                throw new StructuredMailSupersededError()
+              const work = host.currentWork(input.sessionId)
+              if (
+                input.body.from?.orchestration?.message === 'mail-notice' &&
+                (work?.hasActionablePrompt() || (input.holdWhileWorking && work?.working()))
+              ) {
+                throw new StructuredMailHeldError()
               }
             }
           }
         })
       } catch (error) {
-        if (error instanceof StructuredMailSupersededError) {
-          return { kind: 'superseded', noEffect: true }
+        if (error instanceof StructuredMailHeldError) {
+          return { kind: 'held' }
         }
         throw error
       }
       switch (outcome.kind) {
         case 'refused':
-          if (
-            outcome.refusal.code === 'agent_session_operation_invalid' &&
-            outcome.refusal.details?.reason === 'conversationCommandInFlight'
-          ) {
-            return { kind: 'held' }
-          }
           return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
             ? { kind: 'unattached' }
-            : {
-                kind: 'sent',
-                state: 'rejected',
-                ...(outcome.refusal.code === 'agent_session_operation_expired'
-                  ? { nonAdmission: 'expired' as const }
-                  : {})
-              }
+            : { kind: 'sent', state: 'rejected' }
         case 'queued':
-          return { kind: 'queued', clientMessageId: outcome.clientMessageId }
+          return { kind: 'queued' }
         case 'sent': {
           // Only accepted acknowledges mail; pending submissions park until the next journal edge.
           const state = outcome.submission?.dispatchState
           return {
             kind: 'sent',
-            clientMessageId: outcome.submission?.clientMessageId ?? outcome.clientMessageId,
             state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
           }
         }
@@ -226,8 +152,4 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
   }
 }
 
-class StructuredMailSupersededError extends Error {}
-
-function holdsMail(work: { working(): boolean; hasActionablePrompt(): boolean }): boolean {
-  return work.working() || work.hasActionablePrompt()
-}
+class StructuredMailHeldError extends Error {}

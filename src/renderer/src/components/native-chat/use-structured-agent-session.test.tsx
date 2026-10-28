@@ -17,6 +17,7 @@ let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
+  subscribeStructuredAgentSessionStatus: vi.fn(async () => ({ unsubscribe: vi.fn() })),
   callStructuredAgentSession: mocks.call,
   supportsStructuredAgentSessionQuietRepeatedStop: vi.fn(async () => false)
 }))
@@ -61,8 +62,8 @@ import type {
 import {
   applyNativeChatSessionOptionSettingsMutation,
   resolveStructuredLaunchSeedOptions
-} from '../../../../shared/native-chat-session-option-defaults'
-import type { PersistedNativeChatSessionOptions } from '../../../../shared/native-chat-session-options'
+} from '../../../../shared/native-chat/input/native-chat-session-option-defaults'
+import type { PersistedNativeChatSessionOptions } from '../../../../shared/native-chat/input/native-chat-session-options'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 /** Replay every host mutation in order, exactly as the runtime does. */
@@ -117,7 +118,6 @@ describe('useStructuredAgentSession working state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fence = 3
-    submissions = []
     mocks.call.mockResolvedValue(null)
   })
 

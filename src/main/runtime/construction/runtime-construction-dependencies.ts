@@ -1,3 +1,4 @@
+import type { AiVaultSessionSources } from '../../ai-vault/cached-session-list'
 import type { CliWriterObservation } from '../../agent-hooks/server/cli-writer-observation'
 import type { TerminalMailTarget } from '../../agent-hooks/server/terminal-mail-target'
 import type { ExecutionHostScope } from '../../../shared/execution-host'
@@ -61,6 +62,7 @@ export type RuntimeConstructionDependencies = {
   dropAgentStatusForRemovedWorktree?: (worktreeId: string, host?: ExecutionHostScope) => void
   canRecoverPersistentLocalPtys?: () => boolean
   getPairedDeviceName?: (pairedDeviceId: string) => string | null
+  getProjectOwnershipCatalog?: AiVaultSessionSources['getProjectOwnershipCatalog']
   getAdditionalAiVaultCodexHomePaths?: () => readonly string[]
   prepareAiVaultSessionResume?: (
     args: AiVaultPrepareSessionResumeArgs

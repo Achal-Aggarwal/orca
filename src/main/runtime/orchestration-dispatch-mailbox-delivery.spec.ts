@@ -81,6 +81,12 @@ describe('Dispatch mailbox Delivery', () => {
     const restarted = createRuntime(restartedDb)
     await driveToLiveIdle(restarted.runtime)
     await vi.advanceTimersByTimeAsync(2_500)
+    // The held batch defers the concurrent mail's nudge, and that nudge names the batch to ack.
+    expect(
+      restarted.write.mock.calls.filter(([, payload]) =>
+        String(payload).includes(`--ack ${issued.deliveryId}`)
+      )
+    ).toHaveLength(1)
     expect(pointerCount(restarted.write)).toBe(1)
 
     const replayed = await checkBoundMailbox(restarted.runtime)
