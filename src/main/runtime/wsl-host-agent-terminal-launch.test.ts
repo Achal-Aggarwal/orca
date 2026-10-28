@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveAgentTerminalCreateOptions } from './runtime-agent-terminal-startup'
-import { resolveWslHostAgentLaunchInputs } from './wsl-host-agent-terminal-launch'
+import {
+  resolveWslHostAgentLaunchInputs,
+  resolveWslHostAgentResumeInputs
+} from './wsl-host-agent-terminal-launch'
 
 let root: string
 let windowsMount: string
@@ -149,6 +152,38 @@ describe.skipIf(process.platform === 'win32')('resolveWslHostAgentLaunchInputs',
     expect(
       resolveWslHostAgentLaunchInputs(local, nativeBin, { isWslHost: false, homePath: home })
     ).toBe(local)
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('resolveWslHostAgentResumeInputs', () => {
+  const resume = (agentCommand: string, isWslHost = true) => {
+    const args = {
+      agent: 'claude' as const,
+      cmdOverrides: {},
+      platform: 'linux' as const,
+      agentCommand
+    }
+    return {
+      args,
+      out: resolveWslHostAgentResumeInputs(args, `${windowsBin}:${nativeBin}`, {
+        isWslHost,
+        mounts: [windowsMount],
+        homePath: home
+      })
+    }
+  }
+
+  it('pins a recorded stock command and keeps its arguments', () => {
+    const native = fakeExecutable(nativeBin, 'claude')
+    expect(resume('claude --verbose').out.agentCommand).toBe(`'${native}' --verbose`)
+  })
+
+  it('returns the same arguments off a WSL host or for an already pinned command', () => {
+    fakeExecutable(nativeBin, 'claude')
+    const offHost = resume('claude', false)
+    expect(offHost.out).toBe(offHost.args)
+    const pinned = resume(`'${nativeBin}/claude'`)
+    expect(pinned.out).toBe(pinned.args)
   })
 })
 
