@@ -27,20 +27,24 @@ function cachedOwnerKey(
 
 /** Keys stay valid until an owner input changes, so a tab edit re-resolves that tab, not every tab. */
 export function createEditorModelOwnerKeyCache(initialState: OwnerKeyState) {
-  let keyState = initialState
+  // The last editor can close without another lookup; do not pin its whole store snapshot.
+  let keyState = new WeakRef(initialState)
   let keys = new WeakMap<OpenFile, string>()
   const ownerKeyOf = (file: OpenFile, state: OwnerKeyState): string => {
-    if (state !== keyState) {
-      if (!ownerInputsEqual(state, keyState)) {
+    const previous = keyState.deref()
+    if (state !== previous) {
+      if (!previous || !ownerInputsEqual(state, previous)) {
         keys = new WeakMap()
       }
-      keyState = state
+      keyState = new WeakRef(state)
     }
     return cachedOwnerKey(keys, file, state)
   }
   /** Resolver for `state` that never evicts the current keys, for reading a superseded state. */
   const ownerKeyReaderFor = (state: OwnerKeyState): ((file: OpenFile) => string) => {
-    const stateKeys = ownerInputsEqual(state, keyState) ? keys : new WeakMap<OpenFile, string>()
+    const previous = keyState.deref()
+    const stateKeys =
+      previous && ownerInputsEqual(state, previous) ? keys : new WeakMap<OpenFile, string>()
     return (file) => cachedOwnerKey(stateKeys, file, state)
   }
   return { ownerKeyOf, ownerKeyReaderFor, ownerInputsEqual }
