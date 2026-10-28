@@ -134,10 +134,9 @@ import {
   type LocalPtyMockProcess
 } from './local-pty-provider-test-harness'
 
+const actual = await vi.importActual<typeof DescendantTermination>('../pty-descendant-termination')
+
 async function installActualShutdownSweep() {
-  const actual = await vi.importActual<typeof DescendantTermination>(
-    '../pty-descendant-termination'
-  )
   const capture = {
     capturedAtMs: Date.parse('Tue Jul 14 12:01:00 2026'),
     rows: [

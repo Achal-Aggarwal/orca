@@ -1,12 +1,39 @@
-import { vi } from 'vitest'
+import { vi, type Mock, type MockInstance } from 'vitest'
 import type { AgentJournalSnapshot } from '../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 
+export type AutomationChatRunMeasurement = {
+  measure: () => number[]
+  full: MockInstance<AgentSessionJournal['snapshot']>
+  observerReads: MockInstance<StructuredAgentSessionHost['journalSnapshot']>
+  registration: MockInstance<StructuredAgentSessionHost['observeConversationPublications']>
+  releases: Mock<() => void>[]
+  keys: [
+    MockInstance<AgentSessionJournal['item']>,
+    MockInstance<AgentSessionJournal['submission']>,
+    MockInstance<AgentSessionJournal['queuedMessages']['get']>,
+    MockInstance<AgentSessionJournal['canonicalItemId']>
+  ]
+  timers: MockInstance<(callback: (_: void) => void, delay?: number) => NodeJS.Timeout>
+  cleared: MockInstance<(timeout: NodeJS.Timeout | string | number | undefined) => void>
+  details: () => {
+    callbacks: number
+    committedRows: number
+    deltaReads: number
+    deltaRows: number
+    copied: number
+    iteratorYields: number
+    projections: number
+    projectedRows: number
+    scannedRows: number
+  }
+}
+
 export function measureAutomationChatRun(
   journal: AgentSessionJournal,
   host: StructuredAgentSessionHost
-) {
+): AutomationChatRunMeasurement {
   let itemReads = 0,
     submissionReads = 0,
     itemFinds = 0,
@@ -113,7 +140,7 @@ export function measureAutomationChatRun(
     const value = realSnapshot(...args)
     return value
   })
-  const releases: ReturnType<typeof vi.fn>[] = []
+  const releases: Mock<() => void>[] = []
   let callbacks = 0,
     committedRows = 0,
     copied = 0,
@@ -143,7 +170,7 @@ export function measureAutomationChatRun(
     'visitItemsWithLinkage'
   ] as const
   const calls = fullApis.map((name) => vi.spyOn(journal, name))
-  const keys = [
+  const keys: AutomationChatRunMeasurement['keys'] = [
     vi.spyOn(journal, 'item'),
     vi.spyOn(journal, 'submission'),
     vi.spyOn(journal.queuedMessages, 'get'),
