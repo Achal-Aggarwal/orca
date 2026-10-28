@@ -108,8 +108,8 @@ export default function ProjectCell({
     )
     const itemUrl = row.content.url
     return (
-      <div className="flex min-w-0 items-center text-xs text-muted-foreground">
-        <span className="overflow-hidden whitespace-nowrap">
+      <div className="flex min-w-0 max-w-full items-center text-xs text-muted-foreground">
+        <span className="min-w-0 overflow-hidden whitespace-nowrap">
           {linked.pullRequests.map((pr, index) => (
             <React.Fragment key={pr.url}>
               {index > 0 ? ', ' : null}
@@ -127,31 +127,31 @@ export default function ProjectCell({
               </button>
             </React.Fragment>
           ))}
-          {overflow > 0 && itemUrl ? (
-            <>
-              {' '}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={overflowLabel}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/40 px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onKeyDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void window.api.shell.openUrl(itemUrl)
-                    }}
-                  >
-                    +{overflow}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={4}>
-                  {overflowLabel}
-                </TooltipContent>
-              </Tooltip>
-            </>
-          ) : null}
         </span>
+        {overflow > 0 && itemUrl ? (
+          <>
+            {' '}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={overflowLabel}
+                  className="ml-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border/40 px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onKeyDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void window.api.shell.openUrl(itemUrl)
+                  }}
+                >
+                  +{overflow}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={4}>
+                {overflowLabel}
+              </TooltipContent>
+            </Tooltip>
+          </>
+        ) : null}
       </div>
     )
   }
