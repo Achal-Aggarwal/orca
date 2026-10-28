@@ -10,6 +10,7 @@ import {
   getTuiAgentLaunchCommand,
   TUI_AGENT_CONFIG
 } from '../../shared/tui-agent-config'
+import { getOrcaCliCommandNameForPlatform } from '../../shared/orca-cli-command-name'
 import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
 import { quoteStartupArg, resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 
@@ -39,11 +40,24 @@ export function resolveWslHostAgentLaunchInputs(
   }
   const config = TUI_AGENT_CONFIG[agent]
   const [program, ...rest] = getTuiAgentLaunchCommand(config, platform).split(' ')
-  // Wrapper launches (Agent Teams runs Orca's own CLI) are not the agent's binary.
-  if (program !== config.detectCmd) {
+  const options = { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) }
+  // A CLI the agent runs under its own command (Agent Teams' claude, dsh's dsh) can't be Windows-only either.
+  for (const name of config.detectRequiredCommands ?? []) {
+    const message = windowsOnlyCliMessage(
+      resolveGuestNativeAgentCommand(name, options, probe.mounts),
+      name
+    )
+    if (message) {
+      throw new Error(message)
+    }
+  }
+  // Wrapper launches (Agent Teams runs Orca's CLI as `orca` or `orca-ide`) keep their command.
+  if (
+    program !== config.detectCmd ||
+    getTuiAgentDetectCommands(config).includes(getOrcaCliCommandNameForPlatform(platform))
+  ) {
     return inputs
   }
-  const options = { pathEnv, platform, ...(probe.homePath ? { homePath: probe.homePath } : {}) }
   let windowsOnly: string | null = null
   let resolved: string | null = null
   // A native alias (qoder for qodercli) beats a Windows-only primary name.

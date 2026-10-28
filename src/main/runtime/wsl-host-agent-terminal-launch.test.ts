@@ -74,6 +74,34 @@ describe.skipIf(process.platform === 'win32')('resolveWslHostAgentLaunchInputs',
     expect(launch('qoder', `${windowsBin}:${nativeBin}`).cmdOverrides.qoder).toBe(`'${native}'`)
   })
 
+  it('refuses Agent Teams when the Claude it runs exists only on Windows', () => {
+    fakeExecutable(windowsBin, 'claude')
+    expect(() => launch('claude-agent-teams', `${nativeBin}:${windowsBin}`)).toThrow(
+      'claude is installed only on Windows, not in this WSL distro. Install it inside the distro.'
+    )
+  })
+
+  it('leaves the Agent Teams wrapper command alone when Claude is in the distro', () => {
+    fakeExecutable(windowsBin, 'claude')
+    fakeExecutable(nativeBin, 'claude')
+    const inputs = inputsFor('claude-agent-teams')
+    expect(
+      resolveWslHostAgentLaunchInputs(inputs, `${windowsBin}:${nativeBin}`, {
+        isWslHost: true,
+        mounts: [windowsMount],
+        homePath: home
+      })
+    ).toBe(inputs)
+  })
+
+  it('refuses an agent whose required companion CLI exists only on Windows', () => {
+    fakeExecutable(nativeBin, 'dsh-tui')
+    fakeExecutable(windowsBin, 'dsh')
+    expect(() => launch('dsh', `${nativeBin}:${windowsBin}`)).toThrow(
+      'dsh is installed only on Windows, not in this WSL distro.'
+    )
+  })
+
   it('keeps launch arguments that ride on the stock command', () => {
     const native = fakeExecutable(nativeBin, 'kiro-cli')
     expect(launch('kiro', nativeBin).cmdOverrides.kiro).toBe(`'${native}' chat --tui`)
