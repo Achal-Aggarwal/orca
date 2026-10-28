@@ -84,7 +84,7 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
 
   it('keeps the original watcher append after a real 300-to-500 loadEarlier', async () => {
     // One budget shared by every step, just under the 30 s test timeout, so only the message changes.
-    const deadline = Date.now() + 27_000
+    const budget = AbortSignal.timeout(27_000)
     const { mkdtemp, writeFile, appendFile, rm } = await import('node:fs/promises')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
@@ -127,26 +127,26 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
     })
     // A CI run hit the 30 s test timeout with no step named; each wait names its own stall.
     const delivered: string[] = []
-    const within = async <T>(step: string, promise: Promise<T>): Promise<T> => {
-      let settled = false
-      void promise.then(
-        () => (settled = true),
-        () => (settled = true)
-      )
-      await vi.waitFor(
-        () => {
-          if (!settled) {
+    const within = <T>(step: string, promise: Promise<T>): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          const stalled = (): void => {
             const rows = latest ? ids().length : null
             const limits = transport.readSession.mock.calls.map((call) => call[2])
-            throw new Error(
-              `Stalled at ${step}: ${JSON.stringify({ delivered, rows, readSessionLimits: limits })}`
+            reject(
+              new Error(
+                `Stalled at ${step}: ${JSON.stringify({ delivered, rows, readSessionLimits: limits })}`
+              )
             )
           }
-        },
-        { timeout: Math.max(0, deadline - Date.now()) }
-      )
-      return promise
-    }
+          if (budget.aborted) {
+            stalled()
+          } else {
+            budget.addEventListener('abort', stalled, { once: true })
+          }
+        })
+      ])
     const initialSnapshotCommitted = Promise.withResolvers<void>()
     const appendCommitted = Promise.withResolvers<void>()
     const subscription = await subscribeNativeChatTranscript({
