@@ -191,7 +191,7 @@ export function AddRepoHostSelector({
                       </button>
                     ) : null}
                     {!onAddWslHost && wslHostsPausedNote ? (
-                      <p className="px-2.5 py-2 text-[11px] text-muted-foreground">
+                      <p className="px-2.5 py-2 text-2xs text-muted-foreground">
                         {wslHostsPausedNote}
                       </p>
                     ) : null}
