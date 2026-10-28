@@ -1,3 +1,4 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalString } from './rpc-param-primitives'
 import { WorktreeCreate } from './worktree-create-params'
@@ -31,7 +32,7 @@ export const WorktreeAdoptProvisionedRoot = z.object({
   manualOrder: create.manualOrder,
   pushTarget: create.pushTarget,
   createdWithAgent: create.createdWithAgent,
-  name: z.string().min(1, 'Missing workspace name'),
-  expectedPath: z.string().min(1, 'Missing provisioned project root'),
+  name: RpcString.min(1, 'Missing workspace name'),
+  expectedPath: RpcString.min(1, 'Missing provisioned project root'),
   expectedRefHead: OptionalString
 })

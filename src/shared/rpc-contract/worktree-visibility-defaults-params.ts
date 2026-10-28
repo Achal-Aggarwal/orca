@@ -1,3 +1,4 @@
+import { RpcUnknown } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   normalizeCustomWorktreeVisibilitySources,
@@ -7,13 +8,11 @@ import {
 export const WorktreeVisibilityDefaultsUpdate = z
   .object({
     external: z.enum(['hide', 'show']).optional(),
-    customSources: z
-      .unknown()
-      .transform((value) => normalizeCustomWorktreeVisibilitySources(value))
-      .optional(),
-    sourcePreferences: z
-      .unknown()
-      .transform((value) => normalizeWorktreeVisibilitySourcePreferences(value))
-      .optional()
+    customSources: RpcUnknown.transform((value) =>
+      normalizeCustomWorktreeVisibilitySources(value)
+    ).optional(),
+    sourcePreferences: RpcUnknown.transform((value) =>
+      normalizeWorktreeVisibilitySourcePreferences(value)
+    ).optional()
   })
   .strict()

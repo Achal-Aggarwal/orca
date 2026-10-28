@@ -1,3 +1,4 @@
+import { RpcString } from './rpc-value-schemas'
 import { isUtf8ByteLengthWithinLimit } from '../utf8-byte-limits'
 import { z } from 'zod'
 import {
@@ -6,16 +7,14 @@ import {
   MAX_JIRA_SAVED_FILTER_JQL_LENGTH
 } from '../jira/jira-saved-filters'
 
-const FilterId = z.string().trim().min(1).max(MAX_JIRA_SAVED_FILTER_ID_LENGTH)
+const FilterId = RpcString.trim().min(1).max(MAX_JIRA_SAVED_FILTER_ID_LENGTH)
 export const JiraSavedFilterMutationParam = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('save'),
     filter: z.strictObject({
       id: FilterId,
-      name: z.string().trim().min(1).max(MAX_JIRA_SAVED_FILTER_NAME_LENGTH),
-      jql: z
-        .string()
-        .trim()
+      name: RpcString.trim().min(1).max(MAX_JIRA_SAVED_FILTER_NAME_LENGTH),
+      jql: RpcString.trim()
         .min(1)
         .max(MAX_JIRA_SAVED_FILTER_JQL_LENGTH)
         .refine((jql) => isUtf8ByteLengthWithinLimit(jql, MAX_JIRA_SAVED_FILTER_JQL_LENGTH))

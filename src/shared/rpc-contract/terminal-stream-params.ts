@@ -1,3 +1,4 @@
+import { RpcNumber } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
 import { TerminalViewport } from './terminal-unary-params'
@@ -8,8 +9,8 @@ export const TerminalResizeForClient = z.discriminatedUnion('mode', [
   z.object({
     terminal: requiredString('Missing terminal handle'),
     mode: z.literal('mobile-fit'),
-    cols: z.number().finite().positive(),
-    rows: z.number().finite().positive(),
+    cols: RpcNumber.finite().positive(),
+    rows: RpcNumber.finite().positive(),
     clientId: requiredString('Missing client ID')
   }),
   z.object({
@@ -37,7 +38,7 @@ export const TerminalSubscribe = TerminalHandle.extend({
     .optional(),
   /** Budget the JSON frame, not raw text: ESC expands sixfold and can push a 512 KiB snapshot past a 640 KiB bridge cap.
    * Optional for legacy raw-byte trimming; never infer from client.type because mobile socket clients have no frame cap. */
-  snapshotByteBudget: z.number().int().positive().optional()
+  snapshotByteBudget: RpcNumber.int().positive().optional()
 })
 
 export const TerminalMultiplex = z.object({})

@@ -1,3 +1,4 @@
+import { RpcNumber, RpcString } from './rpc-value-schemas'
 import { MAX_PROMPT_BYTES } from './structured-agent-session-message-params'
 import { Identifier } from './structured-agent-session-identifiers'
 import { z } from 'zod'
@@ -14,17 +15,15 @@ const MAX_QUESTION_ANSWER_OPTIONS = 64
 const QuestionAnswer = z
   .object({
     // Codex question ids are model-written and untrimmed; the host matches them exactly.
-    questionId: z
-      .string()
-      .min(1, 'Invalid question id')
-      .max(MAX_RESPONSE_OPTION_ID_LENGTH, 'Invalid question id'),
+    questionId: RpcString.min(1, 'Invalid question id').max(
+      MAX_RESPONSE_OPTION_ID_LENGTH,
+      'Invalid question id'
+    ),
     optionIds: z
       .array(Identifier('Invalid option id', MAX_RESPONSE_OPTION_ID_LENGTH))
       .max(MAX_QUESTION_ANSWER_OPTIONS),
     // Hashed verbatim by both peers, so no trim or transform here.
-    other: z
-      .string()
-      .max(AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES)
+    other: RpcString.max(AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES)
       .refine(
         (value) => Buffer.byteLength(value, 'utf8') <= AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES,
         'Answer is too large'
@@ -37,7 +36,7 @@ export const RespondToQuestionParams = z
   .object({
     envelope: MutationEnvelope,
     itemId: Identifier('Invalid item id'),
-    expectedRevision: z.number().int().positive(),
+    expectedRevision: RpcNumber.int().positive(),
     /** An answer packed into one id, from clients that predate `answers`. */
     optionId: Identifier('Invalid option id', MAX_RESPONSE_OPTION_ID_LENGTH).optional(),
     answers: z.array(QuestionAnswer).min(1).max(MAX_QUESTION_ANSWER_QUESTIONS).optional()

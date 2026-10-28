@@ -1,3 +1,4 @@
+import { RpcOptionalBoolean } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
 
@@ -8,10 +9,10 @@ export const ManagedServerSelector = z.object({
 
 export const ManagedServerRecover = ManagedServerSelector.extend({
   // Restores the prelaunch snapshot over state a rejected build changed.
-  acceptChangedState: z.boolean().optional()
+  acceptChangedState: RpcOptionalBoolean
 })
 
 export const ManagedServerUpdate = ManagedServerSelector.extend({
   // Restarts over live terminals when the update would otherwise defer.
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })

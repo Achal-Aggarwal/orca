@@ -1,3 +1,4 @@
+import { RpcNumber, RpcOptionalString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   OptionalBoolean,
@@ -12,9 +13,9 @@ import {
   computerUsePressKeyValidationMessage
 } from '../computer-use-key-spec'
 
-export const OptionalNonNegativeInt = z.number().int().nonnegative().optional()
+export const OptionalNonNegativeInt = RpcNumber.int().nonnegative().optional()
 
-export const OptionalPositiveInt = z.number().int().positive().optional()
+export const OptionalPositiveInt = RpcNumber.int().positive().optional()
 
 export const ComputerTarget = z.object({
   app: requiredString('Missing app'),
@@ -70,7 +71,7 @@ export const Click = ComputerObserveTargetBase.extend({
   y: OptionalFiniteNumber,
   clickCount: OptionalPositiveInt,
   mouseButton: z.enum(['left', 'right', 'middle']).optional(),
-  modifiers: z.string().optional()
+  modifiers: RpcOptionalString
 }).superRefine((value, ctx) => {
   validateComputerTarget(value, ctx)
   const hasElement = value.elementIndex !== undefined
@@ -117,7 +118,7 @@ export const Scroll = ComputerObserveTargetBase.extend({
   x: OptionalFiniteNumber,
   y: OptionalFiniteNumber,
   direction: z.enum(['up', 'down', 'left', 'right']),
-  pages: z.number().positive().optional()
+  pages: RpcNumber.positive().optional()
 }).superRefine((value, ctx) => {
   validateComputerTarget(value, ctx)
   const hasElement = value.elementIndex !== undefined

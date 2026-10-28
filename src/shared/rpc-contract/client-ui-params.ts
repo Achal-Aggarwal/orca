@@ -1,3 +1,12 @@
+import {
+  RpcBoolean,
+  RpcNullableString,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { isFeatureTipId } from '../feature-tips'
 import {
@@ -15,15 +24,15 @@ import { TaskResumeState } from './task-resume-state-params'
 import { WorkspaceCleanup } from './workspace-cleanup-ui-params'
 import { omitUndefinedValues, tolerateUnknownValues } from './ui-update-value-tolerance-params'
 
-export const NullableString = z.string().nullable()
+export const NullableString = RpcNullableString
 
-export const StringArray = z.array(z.string())
+export const StringArray = z.array(RpcString)
 
 export const FeatureTipIds = z.array(
   z.custom(isFeatureTipId, { message: 'Unknown feature tip id' })
 )
 
-export const UnknownRecord = z.record(z.string(), z.unknown())
+export const UnknownRecord = z.record(RpcString, RpcUnknown)
 
 export const UnknownRecordArray = z.array(UnknownRecord)
 
@@ -76,21 +85,21 @@ export const StatusBarItem = z.enum([
 ])
 
 export const WorkspaceStatusDefinition = z.object({
-  id: z.string(),
-  label: z.string(),
-  color: z.string().optional(),
-  icon: z.string().optional()
+  id: RpcString,
+  label: RpcString,
+  color: RpcOptionalString,
+  icon: RpcOptionalString
 })
 
 export const FeatureInteractionRecord = z
   .object({
-    firstInteractedAt: z.number().finite().nonnegative(),
-    interactionCount: z.number().int().positive().optional()
+    firstInteractedAt: RpcNumber.finite().nonnegative(),
+    interactionCount: RpcNumber.int().positive().optional()
   })
   .strict()
 
 export const FeatureInteractions = z
-  .record(z.string(), FeatureInteractionRecord)
+  .record(RpcString, FeatureInteractionRecord)
   .superRefine((value, ctx) => {
     for (const id of Object.keys(value)) {
       if (!isFeatureInteractionId(id)) {
@@ -125,144 +134,144 @@ export const UiUpdateFields = z
     lastActiveWorktreeId: NullableString.optional(),
     // Why: sync hydration ignores this persisted startup view, so paired windows stay put.
     activeView: TopLevelViewSchema.optional(),
-    sidebarWidth: z.number().finite().optional(),
-    sidebarOpen: z.boolean().optional(),
-    rightSidebarOpen: z.boolean().optional(),
+    sidebarWidth: RpcNumber.finite().optional(),
+    sidebarOpen: RpcOptionalBoolean,
+    rightSidebarOpen: RpcOptionalBoolean,
     rightSidebarTab: RightSidebarTabParam.optional(),
     rightSidebarExplorerView: z.enum(['files', 'search']).optional(),
-    rightSidebarWidth: z.number().finite().optional(),
-    markdownTocPanelWidth: z.number().finite().optional(),
-    combinedDiffFileTreeWidth: z.number().finite().optional(),
+    rightSidebarWidth: RpcNumber.finite().optional(),
+    markdownTocPanelWidth: RpcNumber.finite().optional(),
+    combinedDiffFileTreeWidth: RpcNumber.finite().optional(),
     groupBy: z.enum(['none', 'workspace-status', 'repo', 'pr-status']).optional(),
-    showWorkspaceLineage: z.boolean().optional(),
+    showWorkspaceLineage: RpcOptionalBoolean,
     sortBy: z.enum(['name', 'smart', 'recent', 'repo', 'manual']).optional(),
     projectOrderBy: z.enum(['manual', 'recent']).optional(),
-    showActiveOnly: z.boolean().optional(),
-    hideSleepingWorkspaces: z.boolean().optional(),
-    showSleepingWorkspaces: z.boolean().optional(),
-    showInactiveWorkspaces: z.boolean().optional(),
-    workspaceHostScope: z.string().optional(),
-    visibleWorkspaceHostIds: z.array(z.string()).nullable().optional(),
-    agentsVisibleHostIds: z.array(z.string()).nullable().optional(),
+    showActiveOnly: RpcOptionalBoolean,
+    hideSleepingWorkspaces: RpcOptionalBoolean,
+    showSleepingWorkspaces: RpcOptionalBoolean,
+    showInactiveWorkspaces: RpcOptionalBoolean,
+    workspaceHostScope: RpcOptionalString,
+    visibleWorkspaceHostIds: z.array(RpcString).nullable().optional(),
+    agentsVisibleHostIds: z.array(RpcString).nullable().optional(),
     agentsFilterRepoIds: StringArray.optional(),
-    agentsHideWorkspacesFromOtherDevices: z.boolean().optional(),
-    agentsHideAutomationGeneratedWorkspaces: z.boolean().optional(),
-    agentsHideCliCreatedWorkspaces: z.boolean().optional(),
-    agentsShowChildAgents: z.boolean().optional(),
-    agentsCompactMode: z.boolean().optional(),
-    agentsShowSearch: z.boolean().optional(),
+    agentsHideWorkspacesFromOtherDevices: RpcOptionalBoolean,
+    agentsHideAutomationGeneratedWorkspaces: RpcOptionalBoolean,
+    agentsHideCliCreatedWorkspaces: RpcOptionalBoolean,
+    agentsShowChildAgents: RpcOptionalBoolean,
+    agentsCompactMode: RpcOptionalBoolean,
+    agentsShowSearch: RpcOptionalBoolean,
     agentsReadFilter: z.enum(THREAD_READ_FILTER_VALUES).optional(),
     agentsGroupBy: z.enum(ACTIVITY_GROUP_BY_VALUES).optional(),
-    workspaceHostOrder: z.array(z.string()).optional(),
+    workspaceHostOrder: z.array(RpcString).optional(),
     automationHostFilter: z
       .union([
         z.object({ kind: z.literal('all') }).strict(),
-        z.object({ kind: z.literal('host'), hostKey: z.string().min(1) }).strict()
+        z.object({ kind: z.literal('host'), hostKey: RpcString.min(1) }).strict()
       ])
       .optional(),
     manualRepoOrder: z
-      .array(z.object({ hostId: z.string(), repoId: z.string() }).strict())
+      .array(z.object({ hostId: RpcString, repoId: RpcString }).strict())
       .optional(),
     ...ClientUiWorkspaceFilterFields,
     // Part of App.tsx’s debounced writer; missing fields reject the whole paired-client payload.
-    explorerDisplayRootByWorktree: z.record(z.string(), z.string()).optional(),
-    showDotfilesByWorktree: z.record(z.string(), z.boolean()).optional(),
+    explorerDisplayRootByWorktree: z.record(RpcString, RpcString).optional(),
+    showDotfilesByWorktree: z.record(RpcString, RpcBoolean).optional(),
     collapsedGroups: StringArray.optional(),
-    uiZoomLevel: z.number().finite().optional(),
-    editorFontZoomLevel: z.number().finite().optional(),
+    uiZoomLevel: RpcNumber.finite().optional(),
+    editorFontZoomLevel: RpcNumber.finite().optional(),
     worktreeCardProperties: WorktreeCardProperties.optional(),
-    _worktreeCardModeDefaulted: z.boolean().optional(),
+    _worktreeCardModeDefaulted: RpcOptionalBoolean,
     agentActivityDisplayMode: AgentActivityDisplayMode.optional(),
     workspaceStatuses: z.array(WorkspaceStatusDefinition).optional(),
-    workspaceBoardOpacity: z.number().finite().optional(),
-    workspaceBoardColumnWidth: z.number().finite().optional(),
-    syncTaskStatusFromWorkspaceBoard: z.boolean().optional(),
-    _workspaceStatusesDefaultOrderMigrated: z.boolean().optional(),
-    _workspaceStatusesReorderedDefaultRepaired: z.boolean().optional(),
-    _workspaceStatusesDefaultWorkflowMigrated: z.boolean().optional(),
-    _workspaceStatusesDefaultVisualsMigrated: z.boolean().optional(),
+    workspaceBoardOpacity: RpcNumber.finite().optional(),
+    workspaceBoardColumnWidth: RpcNumber.finite().optional(),
+    syncTaskStatusFromWorkspaceBoard: RpcOptionalBoolean,
+    _workspaceStatusesDefaultOrderMigrated: RpcOptionalBoolean,
+    _workspaceStatusesReorderedDefaultRepaired: RpcOptionalBoolean,
+    _workspaceStatusesDefaultWorkflowMigrated: RpcOptionalBoolean,
+    _workspaceStatusesDefaultVisualsMigrated: RpcOptionalBoolean,
     statusBarItems: z.array(StatusBarItem).optional(),
-    _portsStatusBarDefaultAdded: z.boolean().optional(),
-    _kimiStatusBarDefaultAdded: z.boolean().optional(),
-    _minimaxStatusBarDefaultAdded: z.boolean().optional(),
-    _antigravityStatusBarDefaultAdded: z.boolean().optional(),
-    _grokStatusBarDefaultAdded: z.boolean().optional(),
-    _cursorStatusBarDefaultAdded: z.boolean().optional(),
-    _zcodeStatusBarDefaultAdded: z.boolean().optional(),
-    statusBarVisible: z.boolean().optional(),
+    _portsStatusBarDefaultAdded: RpcOptionalBoolean,
+    _kimiStatusBarDefaultAdded: RpcOptionalBoolean,
+    _minimaxStatusBarDefaultAdded: RpcOptionalBoolean,
+    _antigravityStatusBarDefaultAdded: RpcOptionalBoolean,
+    _grokStatusBarDefaultAdded: RpcOptionalBoolean,
+    _cursorStatusBarDefaultAdded: RpcOptionalBoolean,
+    _zcodeStatusBarDefaultAdded: RpcOptionalBoolean,
+    statusBarVisible: RpcOptionalBoolean,
     usagePercentageDisplay: z.enum(['used', 'remaining']).optional(),
     statusBarUsageMode: z.enum(['verbose', 'compact']).optional(),
     dismissedUpdateVersion: NullableString.optional(),
     dismissedUnexpectedSignoutVersion: NullableString.optional(),
-    lastUpdateCheckAt: z.number().finite().nullable().optional(),
+    lastUpdateCheckAt: RpcNumber.finite().nullable().optional(),
     pendingUpdateNudgeId: NullableString.optional(),
     dismissedUpdateNudgeId: NullableString.optional(),
     // Share the release-channel predicate so new channel overrides cannot silently fail parsing.
     releaseChannelOverride: z.custom<ReleaseChannel>(isReleaseChannel).nullable().optional(),
-    notificationPermissionRequested: z.boolean().optional(),
-    updateReassuranceSeen: z.boolean().optional(),
-    osc52ClipboardDefaultOnNoticePending: z.boolean().optional(),
-    acknowledgedAgentsByPaneKey: z.record(z.string(), z.number().finite()).optional(),
-    activityClearedAtByPaneKey: z.record(z.string(), z.number().finite()).optional(),
-    manuallyUnreadTurnsByPaneKey: z.record(z.string(), z.number().finite()).optional(),
+    notificationPermissionRequested: RpcOptionalBoolean,
+    updateReassuranceSeen: RpcOptionalBoolean,
+    osc52ClipboardDefaultOnNoticePending: RpcOptionalBoolean,
+    acknowledgedAgentsByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
+    activityClearedAtByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
+    manuallyUnreadTurnsByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
     browserDefaultUrl: NullableString.optional(),
     browserDefaultSearchEngine: z
       .enum(['google', 'duckduckgo', 'bing', 'kagi'])
       .nullable()
       .optional(),
-    browserDefaultZoomLevel: z.number().finite().optional(),
+    browserDefaultZoomLevel: RpcNumber.finite().optional(),
     browserKagiSessionLink: NullableString.optional(),
     browserDevToolsDock: z
       .object({
         side: z.enum(['bottom', 'right']),
-        bottomFraction: z.number().finite(),
-        rightFraction: z.number().finite()
+        bottomFraction: RpcNumber.finite(),
+        rightFraction: RpcNumber.finite()
       })
       .optional(),
     windowBounds: z
       .object({
-        x: z.number().finite(),
-        y: z.number().finite(),
-        width: z.number().finite(),
-        height: z.number().finite()
+        x: RpcNumber.finite(),
+        y: RpcNumber.finite(),
+        width: RpcNumber.finite(),
+        height: RpcNumber.finite()
       })
       .nullable()
       .optional(),
-    windowMaximized: z.boolean().optional(),
-    _sortBySmartMigrated: z.boolean().optional(),
-    _inlineAgentsDefaultedForExperiment: z.boolean().optional(),
-    _inlineAgentsDefaultedForAllUsers: z.boolean().optional(),
-    trustedOrcaHooks: z.record(z.string(), z.unknown()).optional(),
+    windowMaximized: RpcOptionalBoolean,
+    _sortBySmartMigrated: RpcOptionalBoolean,
+    _inlineAgentsDefaultedForExperiment: RpcOptionalBoolean,
+    _inlineAgentsDefaultedForAllUsers: RpcOptionalBoolean,
+    trustedOrcaHooks: z.record(RpcString, RpcUnknown).optional(),
     setupScriptPromptDismissedRepoIds: StringArray.optional(),
     // Declare renderer one-shot dismissals to avoid whole-payload rejections for paired clients.
-    setupGuideSidebarDismissed: z.boolean().optional(),
-    setupGuideBrowserMilestoneMigrated: z.boolean().optional(),
-    setupGuideBrowserMilestoneLegacyComplete: z.boolean().optional(),
-    browserImportHintHidden: z.boolean().optional(),
-    mobileEmulatorTabIntroDismissed: z.boolean().optional(),
-    mobileEmulatorAgentSetupDismissed: z.boolean().optional(),
-    projectOrderManualDefaultNoticeDismissed: z.boolean().optional(),
-    usagePercentageDisplayChangeNoticeDismissed: z.boolean().optional(),
-    statusBarCompactChangeNoticeDismissed: z.boolean().optional(),
-    usageEmptyStateDismissed: z.boolean().optional(),
-    codexTerminalServerIsolationNoticeSeen: z.boolean().optional(),
-    codexSharedSettingsNoticeSeen: z.boolean().optional(),
-    claudeDiffPanelNoticeSeen: z.boolean().optional(),
-    claudeAccountSignInNoticeSeen: z.boolean().optional(),
-    petVisible: z.boolean().optional(),
-    petId: z.string().optional(),
+    setupGuideSidebarDismissed: RpcOptionalBoolean,
+    setupGuideBrowserMilestoneMigrated: RpcOptionalBoolean,
+    setupGuideBrowserMilestoneLegacyComplete: RpcOptionalBoolean,
+    browserImportHintHidden: RpcOptionalBoolean,
+    mobileEmulatorTabIntroDismissed: RpcOptionalBoolean,
+    mobileEmulatorAgentSetupDismissed: RpcOptionalBoolean,
+    projectOrderManualDefaultNoticeDismissed: RpcOptionalBoolean,
+    usagePercentageDisplayChangeNoticeDismissed: RpcOptionalBoolean,
+    statusBarCompactChangeNoticeDismissed: RpcOptionalBoolean,
+    usageEmptyStateDismissed: RpcOptionalBoolean,
+    codexTerminalServerIsolationNoticeSeen: RpcOptionalBoolean,
+    codexSharedSettingsNoticeSeen: RpcOptionalBoolean,
+    claudeDiffPanelNoticeSeen: RpcOptionalBoolean,
+    claudeAccountSignInNoticeSeen: RpcOptionalBoolean,
+    petVisible: RpcOptionalBoolean,
+    petId: RpcOptionalString,
     customPets: UnknownRecordArray.optional(),
-    petSize: z.number().finite().optional(),
-    sidekickVisible: z.boolean().optional(),
-    sidekickId: z.string().optional(),
+    petSize: RpcNumber.finite().optional(),
+    sidekickVisible: RpcOptionalBoolean,
+    sidekickId: RpcOptionalString,
     customSidekicks: UnknownRecordArray.optional(),
-    sidekickSize: z.number().finite().optional(),
+    sidekickSize: RpcNumber.finite().optional(),
     taskResumeState: TaskResumeState.optional(),
     workspaceCleanup: WorkspaceCleanup.optional(),
     featureTipsSeenIds: FeatureTipIds.optional(),
     featureInteractions: FeatureInteractions.optional(),
     contextualToursSeenIds: StringArray.optional(),
-    contextualToursAutoEligible: z.boolean().optional()
+    contextualToursAutoEligible: RpcOptionalBoolean
   })
   .strict()
 

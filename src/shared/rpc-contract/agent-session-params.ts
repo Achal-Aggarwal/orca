@@ -1,3 +1,4 @@
+import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isValidTerminalTabId } from '../terminal-tab-id'
 import {
@@ -26,9 +27,7 @@ export const MAX_AGENT_ARGS_BYTES = 16 * 1024
 export const MAX_LAUNCH_PREFERENCE_LENGTH = 512
 
 export const StrictNonEmptyString = (max: number, message: string) =>
-  z
-    .string()
-    .min(1, message)
+  RpcString.min(1, message)
     .max(max, message)
     .refine((value) => value === value.trim(), `${message}; surrounding whitespace is invalid`)
 
@@ -40,16 +39,14 @@ export const WorktreeSelector = StrictNonEmptyString(
 export const Presentation = z.enum(['background', 'focused'])
 
 /** A caller-chosen terminal tab id; the length bound is the one the PTY spawn reservation keys on. */
-export const TerminalTabIdParam = z
-  .string()
-  .min(1)
+export const TerminalTabIdParam = RpcString.min(1)
   .max(512)
   .refine(isValidTerminalTabId, 'Invalid terminal tab ID')
 
 export const Placement = z
   .object({
     tabId: TerminalTabIdParam.optional(),
-    leafId: z.string().min(1).max(128).optional()
+    leafId: RpcString.min(1).max(128).optional()
   })
   .strict()
   .refine((value) => value.tabId !== undefined || value.leafId !== undefined, {
@@ -75,17 +72,12 @@ export const PromptDelivery = z.enum(['auto-submit', 'draft'])
 /** Sent only to hosts advertising `terminal.spawn-intent.v1`; presence opts into deferral. */
 export const SpawnIntentParam = z.enum(RESTORE_SPAWN_INTENTS)
 
-export const AgentArgs = z
-  .string()
-  .refine(
-    (value) => Buffer.byteLength(value, 'utf8') <= MAX_AGENT_ARGS_BYTES,
-    'Agent arguments are too large'
-  )
-  .nullable()
+export const AgentArgs = RpcString.refine(
+  (value) => Buffer.byteLength(value, 'utf8') <= MAX_AGENT_ARGS_BYTES,
+  'Agent arguments are too large'
+).nullable()
 
-export const OmpResumeFilePath = z
-  .string()
-  .min(1)
+export const OmpResumeFilePath = RpcString.min(1)
   .refine((value) => value === value.trim(), 'Invalid OMP resume path')
   .refine(
     (value) =>
@@ -101,9 +93,7 @@ export const ProviderSession = z
       (value) => !value.startsWith('-') && !hasUnsafeProviderSessionIdChars(value),
       'Invalid provider session ID'
     ),
-    transcriptPath: z
-      .string()
-      .min(1)
+    transcriptPath: RpcString.min(1)
       .refine((value) => value === value.trim(), 'Invalid transcript path')
       .refine(
         (value) =>
@@ -112,16 +102,14 @@ export const ProviderSession = z
         'Invalid transcript path'
       )
       .optional(),
-    effort: z.string().regex(AGENT_EFFORT_LEVEL, 'Invalid effort level').optional()
+    effort: RpcString.regex(AGENT_EFFORT_LEVEL, 'Invalid effort level').optional()
   })
   .strict()
 
 export const AutomaticEnsure = z
   .object({
     kind: z.literal('automatic'),
-    sleepingCheckpointId: z
-      .string()
-      .min(32)
+    sleepingCheckpointId: RpcString.min(32)
       .max(128)
       .regex(/^[A-Za-z0-9_-]+$/),
     presentation: Presentation.optional()
@@ -136,7 +124,7 @@ export const ExplicitEnsure = z
     agent: z.enum(RESUMABLE_TUI_AGENTS),
     providerSession: ProviderSession,
     ompResumeFilePath: OmpResumeFilePath.optional(),
-    terminalKittyKeyboardProtocol: z.boolean().optional(),
+    terminalKittyKeyboardProtocol: RpcOptionalBoolean,
     agentArgs: AgentArgs.optional(),
     launchPreferences: LaunchPreferences.optional(),
     presentation: Presentation.optional(),
@@ -168,26 +156,21 @@ export const EnsureAgentSessionParams: z.ZodType<RuntimeEnsureAgentSessionReques
 
 export const CreateAgentSessionParams: z.ZodType<RuntimeCreateAgentSessionRequest> = z
   .object({
-    terminalKittyKeyboardProtocol: z.boolean().optional(),
-    clientOperationId: z
-      .string()
-      .refine(
-        (value) => parseAgentSessionOperationTimestamp(value) !== null,
-        'Invalid agent operation ID'
-      ),
+    terminalKittyKeyboardProtocol: RpcOptionalBoolean,
+    clientOperationId: RpcString.refine(
+      (value) => parseAgentSessionOperationTimestamp(value) !== null,
+      'Invalid agent operation ID'
+    ),
     worktree: WorktreeSelector,
-    agent: z.string().refine(isTuiAgent, 'Unknown agent preset'),
-    prompt: z
-      .string()
-      .refine(
-        (value) => Buffer.byteLength(value, 'utf8') <= MAX_PROMPT_BYTES,
-        'Prompt is too large'
-      )
-      .optional(),
+    agent: RpcString.refine(isTuiAgent, 'Unknown agent preset'),
+    prompt: RpcString.refine(
+      (value) => Buffer.byteLength(value, 'utf8') <= MAX_PROMPT_BYTES,
+      'Prompt is too large'
+    ).optional(),
     promptDelivery: PromptDelivery.optional(),
     agentArgs: AgentArgs.optional(),
     launchPreferences: LaunchPreferences.optional(),
-    startupCwd: z.string().min(1).max(MAX_WORKTREE_SELECTOR_LENGTH).optional(),
+    startupCwd: RpcString.min(1).max(MAX_WORKTREE_SELECTOR_LENGTH).optional(),
     presentation: Presentation.optional(),
     placement: Placement.optional(),
     viewMode: z.enum(['terminal', 'chat']).optional(),

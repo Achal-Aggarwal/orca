@@ -1,3 +1,4 @@
+import { RpcNull, RpcNumber, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   LINEAR_ISSUE_ATTRIBUTE_FILTER_ID_MAX_LENGTH,
@@ -6,9 +7,7 @@ import {
   LINEAR_ISSUE_ATTRIBUTE_FILTER_MAX_STATE_IDS
 } from '../linear/issue-attribute-filter'
 
-export const LinearAttributeFilterId = z
-  .string()
-  .trim()
+export const LinearAttributeFilterId = RpcString.trim()
   .min(1)
   .max(LINEAR_ISSUE_ATTRIBUTE_FILTER_ID_MAX_LENGTH)
 
@@ -16,7 +15,7 @@ export const LinearIssueAttributeFilterSchema = z
   .object({
     stateIds: z.array(LinearAttributeFilterId).max(LINEAR_ISSUE_ATTRIBUTE_FILTER_MAX_STATE_IDS),
     priorities: z
-      .array(z.number().int().min(0).max(4))
+      .array(RpcNumber.int().min(0).max(4))
       .max(LINEAR_ISSUE_ATTRIBUTE_FILTER_MAX_PRIORITIES),
     assignee: z.union([
       z.object({ kind: z.literal('unassigned') }).strict(),
@@ -26,7 +25,7 @@ export const LinearIssueAttributeFilterSchema = z
           id: LinearAttributeFilterId
         })
         .strict(),
-      z.null()
+      RpcNull
     ]),
     labelIds: z.array(LinearAttributeFilterId).max(LINEAR_ISSUE_ATTRIBUTE_FILTER_MAX_LABEL_IDS)
   })

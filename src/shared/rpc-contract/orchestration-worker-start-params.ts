@@ -1,9 +1,8 @@
+import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 
-export const OptionalWorkerLaunchPreference = z
-  .string()
-  .min(1)
+export const OptionalWorkerLaunchPreference = RpcString.min(1)
   .max(512)
   .refine((value) => value === value.trim(), 'Surrounding whitespace is invalid')
   .optional()
@@ -31,7 +30,7 @@ export const WorkerStartParams = z
     effort: OptionalWorkerLaunchPreference,
     retryOf: OptionalString,
     timeoutMs: OptionalFiniteNumber,
-    devMode: z.boolean().optional()
+    devMode: RpcOptionalBoolean
   })
   .superRefine((params, ctx) => {
     if (!params.task && !params.spec) {

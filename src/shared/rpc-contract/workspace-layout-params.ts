@@ -1,3 +1,4 @@
+import { RpcNull, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isTerminalLeafId } from '../stable-pane-id'
 import { SleepCommand, StartPaneCommand, WakeCommand } from './workspace-layout-sleep-wake-params'
@@ -13,25 +14,25 @@ import {
 export const LayoutSubscribeParams = z
   .object({
     /** Workspace keys to receive; every workspace when absent or 'all'. */
-    workspaces: z.union([z.literal('all'), z.array(z.string().min(1))]).optional()
+    workspaces: z.union([z.literal('all'), z.array(RpcString.min(1))]).optional()
   })
   .nullish()
 
 export const LayoutUnsubscribeParams = z.object({
-  subscriptionId: z.string().min(1, 'Missing subscriptionId')
+  subscriptionId: RpcString.min(1, 'Missing subscriptionId')
 })
 
 /** A paired desktop's view of the server's workspaces: each one's shown group, null for none. */
 export const LayoutReportViewParams = z.object({
-  activeGroupByWorkspace: z.record(z.string().min(1), z.string().min(1).nullable()),
+  activeGroupByWorkspace: z.record(RpcString.min(1), RpcString.min(1).nullable()),
   /** A re-send after a reconnect, not a change the user made: it never outranks a live report. */
   refresh: z.literal(true).optional()
 })
 
 const OnPane = {
-  workspace: z.string().min(1),
-  tabId: z.string().min(1),
-  leafId: z.string().min(1)
+  workspace: RpcString.min(1),
+  tabId: RpcString.min(1),
+  leafId: RpcString.min(1)
 }
 
 /** `newLeafId`: a pane the window already split under its own id (a tab's startup splits). */
@@ -39,7 +40,7 @@ const SplitPaneCommand = z.object({
   type: z.literal('splitPane'),
   ...OnPane,
   direction: z.enum(['horizontal', 'vertical']),
-  newLeafId: z.string().refine(isTerminalLeafId).optional()
+  newLeafId: RpcString.refine(isTerminalLeafId).optional()
 })
 
 /** Main marks a close as the user's; the window cannot send that mark. */
@@ -49,13 +50,13 @@ const ClosePaneCommand = z.object({ type: z.literal('closePane'), ...OnPane })
 const RenamePaneCommand = z.object({
   type: z.literal('renamePane'),
   ...OnPane,
-  title: z.union([z.string().trim().min(1), z.null()])
+  title: z.union([RpcString.trim().min(1), RpcNull])
 })
 
 const MovePaneCommand = z.object({
   type: z.literal('movePane'),
   ...OnPane,
-  targetLeafId: z.string().min(1),
+  targetLeafId: RpcString.min(1),
   side: z.enum(['left', 'right', 'top', 'bottom'])
 })
 
@@ -64,7 +65,7 @@ const SetChatPaneCommand = z.object({
   type: z.literal('setChatPane'),
   workspace: OnPane.workspace,
   tabId: OnPane.tabId,
-  leafId: z.union([z.string().min(1), z.null()])
+  leafId: z.union([RpcString.min(1), RpcNull])
 })
 
 const EqualizePanesCommand = z.object({
@@ -79,18 +80,18 @@ const OnTab = { workspace: OnPane.workspace, tabId: OnPane.tabId }
 const MoveTabCommand = z.object({
   type: z.literal('moveTab'),
   ...OnTab,
-  toGroupId: z.string().min(1),
-  index: z.number().int().nonnegative(),
+  toGroupId: RpcString.min(1),
+  index: RpcNumber.int().nonnegative(),
   // Optional so an older main still takes the move; it places by `index`.
-  afterTabId: z.union([z.string().min(1), z.null()]).optional(),
-  isPinned: z.boolean().optional()
+  afterTabId: z.union([RpcString.min(1), RpcNull]).optional(),
+  isPinned: RpcOptionalBoolean
 })
 
 /** Main mints the new group's id, or moves a lone tab's group whole. */
 const SplitGroupCommand = z.object({
   type: z.literal('splitGroup'),
   ...OnTab,
-  besideGroupId: z.string().min(1),
+  besideGroupId: RpcString.min(1),
   direction: z.enum(['left', 'right', 'up', 'down'])
 })
 
@@ -98,7 +99,7 @@ const SplitGroupCommand = z.object({
 const CloseTabsCommand = z.object({
   type: z.literal('closeTabs'),
   workspace: OnPane.workspace,
-  tabIds: z.tuple([z.string().min(1)]),
+  tabIds: z.tuple([RpcString.min(1)]),
   recordClose: z.enum(['user', 'cleanup']).optional()
 })
 
@@ -106,15 +107,15 @@ const CloseTabsCommand = z.object({
 const OpenEditorTabCommand = z.object({
   type: z.literal('openEditorTab'),
   ...OnTab,
-  fileId: z.string().min(1),
+  fileId: RpcString.min(1),
   contentType: z.enum(['editor', 'diff', 'conflict-review', 'check-details']),
   file: EditorFileRecord.optional(),
   view: EditorViewRecord.optional(),
-  groupId: z.string().min(1).optional(),
+  groupId: RpcString.min(1).optional(),
   /** Where in the group a reopened tab goes back to. */
-  index: z.number().int().nonnegative().optional(),
+  index: RpcNumber.int().nonnegative().optional(),
   preview: z.literal(true).optional(),
-  createdAt: z.number().int().nonnegative().optional(),
+  createdAt: RpcNumber.int().nonnegative().optional(),
   split: NewGroupSplit
 })
 
@@ -122,20 +123,20 @@ const OpenEditorTabCommand = z.object({
 const MovePaneToNewTabCommand = z.object({
   type: z.literal('movePaneToNewTab'),
   ...OnPane,
-  groupId: z.string().min(1),
-  index: z.number().int().nonnegative().optional(),
+  groupId: RpcString.min(1),
+  index: RpcNumber.int().nonnegative().optional(),
   /** The terminal the window's pane shows now, when it has one. */
   windowDetach: z.object({
-    ptyId: z.string().min(1).max(512).nullable(),
+    ptyId: RpcString.min(1).max(512).nullable(),
     /** The pane's folder, where an unbound pane's new shell starts. */
-    startupCwd: z.string().min(1).optional()
+    startupCwd: RpcString.min(1).optional()
   })
 })
 
 const AiVaultTitle = z.object({
   agent: z.enum(['claude', 'codex']),
-  sessionId: z.string(),
-  title: z.string()
+  sessionId: RpcString,
+  title: RpcString
 })
 
 /** A tab's rename: a title as the window stores it today; null clears it. */
@@ -144,24 +145,24 @@ const RenameTabCommand = z.discriminatedUnion('kind', [
     type: z.literal('renameTab'),
     ...OnTab,
     kind: z.enum(['custom', 'generated']),
-    title: z.union([z.string(), z.null()]),
+    title: z.union([RpcString, RpcNull]),
     expected: z
-      .object({ entityId: z.string(), executionHostId: z.string(), customTitle: z.string() })
+      .object({ entityId: RpcString, executionHostId: RpcString, customTitle: RpcString })
       .optional()
   }),
   z.object({
     type: z.literal('renameTab'),
     ...OnTab,
     kind: z.literal('aiVault'),
-    title: z.union([AiVaultTitle, z.null()])
+    title: z.union([AiVaultTitle, RpcNull])
   })
 ])
 
 const SetTabPropsCommand = z.object({
   type: z.literal('setTabProps'),
   ...OnTab,
-  color: z.union([z.string(), z.null()]).optional(),
-  isPinned: z.boolean().optional(),
+  color: z.union([RpcString, RpcNull]).optional(),
+  isPinned: RpcOptionalBoolean,
   viewMode: z.enum(['terminal', 'chat']).optional(),
   clearLaunchAgent: z.literal(true).optional()
 })
@@ -170,16 +171,16 @@ const SetTabPropsCommand = z.object({
 const OpenBrowserTabCommand = z.object({
   type: z.literal('openBrowserTab'),
   workspace: OnPane.workspace,
-  tabId: z.string().min(1),
-  browserTabId: z.string().min(1),
-  pageId: z.string().min(1),
-  profileId: z.string().min(1).nullable().optional(),
-  sessionPartition: z.string().min(1).nullable().optional(),
-  groupId: z.string().min(1).optional(),
-  afterTabId: z.string().min(1).optional(),
-  index: z.number().int().nonnegative().optional(),
-  createdAt: z.number().int().nonnegative().optional(),
-  browserCreatedAt: z.number().int().nonnegative().optional(),
+  tabId: RpcString.min(1),
+  browserTabId: RpcString.min(1),
+  pageId: RpcString.min(1),
+  profileId: RpcString.min(1).nullable().optional(),
+  sessionPartition: RpcString.min(1).nullable().optional(),
+  groupId: RpcString.min(1).optional(),
+  afterTabId: RpcString.min(1).optional(),
+  index: RpcNumber.int().nonnegative().optional(),
+  createdAt: RpcNumber.int().nonnegative().optional(),
+  browserCreatedAt: RpcNumber.int().nonnegative().optional(),
   split: NewGroupSplit
 })
 
@@ -187,19 +188,19 @@ const OpenBrowserTabCommand = z.object({
 const OpenAgentSessionTabCommand = z.object({
   type: z.literal('openAgentSessionTab'),
   ...OnTab,
-  sessionId: z.string().min(1),
-  agent: z.string().min(1),
-  groupId: z.string().min(1).optional(),
-  afterTabId: z.string().min(1).optional(),
-  index: z.number().int().nonnegative().optional(),
-  createdAt: z.number().int().nonnegative().optional(),
+  sessionId: RpcString.min(1),
+  agent: RpcString.min(1),
+  groupId: RpcString.min(1).optional(),
+  afterTabId: RpcString.min(1).optional(),
+  index: RpcNumber.int().nonnegative().optional(),
+  createdAt: RpcNumber.int().nonnegative().optional(),
   split: NewGroupSplit
 })
 
 const OnBrowserPage = {
   workspace: OnPane.workspace,
-  browserTabId: z.string().min(1),
-  pageId: z.string().min(1)
+  browserTabId: RpcString.min(1),
+  pageId: RpcString.min(1)
 }
 
 /** A page the window added to a browser tab, under its own id. */
@@ -211,15 +212,15 @@ const CloseBrowserPageCommand = z.object({ type: z.literal('closeBrowserPage'), 
 const ReplaceBrowserPageCommand = z.object({
   type: z.literal('replaceBrowserPage'),
   ...OnBrowserPage,
-  newPageId: z.string().min(1)
+  newPageId: RpcString.min(1)
 })
 
 const SetBrowserTabProfileCommand = z.object({
   type: z.literal('setBrowserTabProfile'),
   workspace: OnPane.workspace,
-  browserTabId: z.string().min(1),
-  profileId: z.string().min(1).nullable(),
-  sessionPartition: z.string().min(1).nullable()
+  browserTabId: RpcString.min(1),
+  profileId: RpcString.min(1).nullable(),
+  sessionPartition: RpcString.min(1).nullable()
 })
 
 const PromotePreviewTabCommand = z.object({ type: z.literal('promotePreviewTab'), ...OnTab })
@@ -234,10 +235,10 @@ const SetDefaultTabsAppliedCommand = z.object({
 const OpenSimulatorTabCommand = z.object({
   type: z.literal('openSimulatorTab'),
   ...OnTab,
-  groupId: z.string().min(1).optional(),
-  afterTabId: z.string().min(1).optional(),
-  index: z.number().int().nonnegative().optional(),
-  createdAt: z.number().int().nonnegative().optional(),
+  groupId: RpcString.min(1).optional(),
+  afterTabId: RpcString.min(1).optional(),
+  index: RpcNumber.int().nonnegative().optional(),
+  createdAt: RpcNumber.int().nonnegative().optional(),
   split: NewGroupSplit
 })
 
@@ -245,18 +246,18 @@ const OpenSimulatorTabCommand = z.object({
 const MoveTabToWorkspaceCommand = z.object({
   type: z.literal('moveTabToWorkspace'),
   workspace: OnPane.workspace,
-  toWorkspace: z.string().min(1),
+  toWorkspace: RpcString.min(1),
   tabs: z
     .array(
       z.object({
-        tabId: z.string().min(1),
-        newTabId: z.string().min(1),
-        newEntityId: z.string().min(1),
+        tabId: RpcString.min(1),
+        newTabId: RpcString.min(1),
+        newEntityId: RpcString.min(1),
         view: EditorViewRecord.optional()
       })
     )
     .min(1),
-  groupId: z.string().min(1),
+  groupId: RpcString.min(1),
   file: EditorFileRecord.optional()
 })
 
@@ -264,9 +265,9 @@ const MoveTabToWorkspaceCommand = z.object({
 const EditorFileRenames = z
   .array(
     z.object({
-      fileId: z.string().min(1),
-      newFileId: z.string().min(1),
-      record: z.object({ fromFilePath: z.string().min(1), file: EditorFileRecord }).optional(),
+      fileId: RpcString.min(1),
+      newFileId: RpcString.min(1),
+      record: z.object({ fromFilePath: RpcString.min(1), file: EditorFileRecord }).optional(),
       view: EditorViewRecord.optional()
     })
   )

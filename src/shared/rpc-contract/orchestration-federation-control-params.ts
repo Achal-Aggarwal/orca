@@ -1,3 +1,4 @@
+import { RpcNumber, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, requiredString } from './rpc-param-primitives'
 import { ORCHESTRATION_WORKER_READ_SOURCES } from '../orchestration-worker-output'
@@ -12,7 +13,7 @@ export const FederationReadParams = FederationDispatchParams.extend({
 })
 
 export const FederationOutputReadParams = FederationDispatchParams.extend({
-  cursor: z.union([z.number().int().nonnegative(), z.string().min(1).max(2_048)]).optional(),
+  cursor: z.union([RpcNumber.int().nonnegative(), RpcString.min(1).max(2_048)]).optional(),
   limit: OptionalFiniteNumber,
   source: z.enum(ORCHESTRATION_WORKER_READ_SOURCES).optional()
 })

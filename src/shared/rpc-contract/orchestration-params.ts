@@ -1,3 +1,4 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   OptionalBoolean,
@@ -114,7 +115,7 @@ export const SessionAddressParams = z.object({
 /** Resolve earlier-run mailbox handles through the message’s recorded sender pane. */
 export const PartyLocationParams = z.object({
   address: requiredString('Missing address'),
-  messageIds: z.array(z.string().min(1).max(256)).max(50).optional()
+  messageIds: z.array(RpcString.min(1).max(256)).max(50).optional()
 })
 
 export const DispatchShowParams = z.object({

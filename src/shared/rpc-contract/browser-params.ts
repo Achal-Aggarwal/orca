@@ -1,3 +1,12 @@
+import {
+  RpcBoolean,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalUnknown,
+  RpcString,
+  RpcUndefined,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   BrowserTarget,
@@ -37,27 +46,21 @@ export const Scroll = BrowserTarget.extend({
   direction: z.custom<'up' | 'down'>((v) => v === 'up' || v === 'down', {
     message: 'Missing required --direction (up or down)'
   }),
-  amount: z
-    .unknown()
-    .transform((v) => (typeof v === 'number' && v > 0 ? v : undefined))
-    .pipe(z.union([z.number(), z.undefined()]))
+  amount: RpcUnknown.transform((v) => (typeof v === 'number' && v > 0 ? v : undefined))
+    .pipe(z.union([RpcNumber, RpcUndefined]))
     .optional()
 })
 
 export const Screenshot = BrowserTarget.extend({
-  format: z
-    .unknown()
-    .transform((v) => (v === 'png' || v === 'jpeg' ? v : undefined))
-    .pipe(z.union([z.enum(['png', 'jpeg']), z.undefined()]))
+  format: RpcUnknown.transform((v) => (v === 'png' || v === 'jpeg' ? v : undefined))
+    .pipe(z.union([z.enum(['png', 'jpeg']), RpcUndefined]))
     .optional()
 })
 
 export const Screencast = BrowserTarget.extend({
-  format: z
-    .unknown()
-    .optional()
-    .transform((v) => (v === 'png' ? 'png' : 'jpeg'))
-    .pipe(z.enum(['png', 'jpeg'])),
+  format: RpcOptionalUnknown.transform((v) => (v === 'png' ? 'png' : 'jpeg')).pipe(
+    z.enum(['png', 'jpeg'])
+  ),
   quality: OptionalFiniteNumber,
   maxWidth: OptionalFiniteNumber,
   maxHeight: OptionalFiniteNumber,
@@ -70,11 +73,9 @@ export const Screencast = BrowserTarget.extend({
 })
 
 export const FullScreenshot = BrowserTarget.extend({
-  format: z
-    .unknown()
-    .optional()
-    .transform((v) => (v === 'jpeg' ? 'jpeg' : 'png'))
-    .pipe(z.enum(['png', 'jpeg']))
+  format: RpcOptionalUnknown.transform((v) => (v === 'jpeg' ? 'jpeg' : 'png')).pipe(
+    z.enum(['png', 'jpeg'])
+  )
 })
 
 export const Eval = BrowserTarget.extend({
@@ -86,12 +87,10 @@ export const TabList = z.object({ worktree: OptionalString })
 // Require exactly one of index/page. Opt-in focus reveals only within the current worktree;
 // other worktrees silently stage selection so parallel agents cannot steal the screen.
 export const TabSwitch = BrowserTarget.extend({
-  index: z
-    .unknown()
-    .transform((v) => (typeof v === 'number' ? v : undefined))
-    .pipe(z.union([z.number(), z.undefined()]))
+  index: RpcUnknown.transform((v) => (typeof v === 'number' ? v : undefined))
+    .pipe(z.union([RpcNumber, RpcUndefined]))
     .optional(),
-  focus: z.boolean().optional()
+  focus: RpcOptionalBoolean
 }).refine(
   (val) => {
     if (val.page !== undefined) {
@@ -110,10 +109,8 @@ export const TabShow = z.object({
 export const TabCurrent = z.object({ worktree: OptionalString })
 
 export const TabClose = z.object({
-  index: z
-    .unknown()
-    .transform((v) => (typeof v === 'number' ? v : undefined))
-    .pipe(z.union([z.number(), z.undefined()]))
+  index: RpcUnknown.transform((v) => (typeof v === 'number' ? v : undefined))
+    .pipe(z.union([RpcNumber, RpcUndefined]))
     .optional(),
   page: OptionalString,
   worktree: OptionalString
@@ -151,10 +148,8 @@ export const Upload = BrowserTarget.extend({
 
 export const Wait = BrowserTarget.extend({
   selector: OptionalPlainString,
-  timeout: z
-    .unknown()
-    .transform((v) => (typeof v === 'number' && v > 0 ? v : undefined))
-    .pipe(z.union([z.number(), z.undefined()]))
+  timeout: RpcUnknown.transform((v) => (typeof v === 'number' && v > 0 ? v : undefined))
+    .pipe(z.union([RpcNumber, RpcUndefined]))
     .optional(),
   text: OptionalPlainString,
   url: OptionalPlainString,
@@ -165,11 +160,7 @@ export const Wait = BrowserTarget.extend({
 
 export const Check = BrowserTarget.extend({
   element: requiredString('Missing required --element'),
-  checked: z
-    .unknown()
-    .optional()
-    .transform((v) => (v === undefined ? true : v))
-    .pipe(z.boolean())
+  checked: RpcOptionalUnknown.transform((v) => (v === undefined ? true : v)).pipe(RpcBoolean)
 })
 
 export const Keypress = BrowserTarget.extend({
@@ -265,10 +256,8 @@ export const Geolocation = BrowserTarget.extend({
 })
 
 export const InterceptEnable = BrowserTarget.extend({
-  patterns: z
-    .unknown()
-    .transform((v) => (Array.isArray(v) ? (v as string[]) : undefined))
-    .pipe(z.union([z.array(z.string()), z.undefined()]))
+  patterns: RpcUnknown.transform((v) => (Array.isArray(v) ? (v as string[]) : undefined))
+    .pipe(z.union([z.array(RpcString), RpcUndefined]))
     .optional()
 })
 

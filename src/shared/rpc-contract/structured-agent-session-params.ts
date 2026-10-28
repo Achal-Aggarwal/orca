@@ -1,3 +1,4 @@
+import { RpcBoolean, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import {
   SendBody,
   MAX_OPTION_LABEL,
@@ -57,11 +58,9 @@ export const ProviderHandle = z.discriminatedUnion('kind', [
 ])
 
 /** Host-registered agents; clients gate names beyond Claude/Codex on the registered-agents capability. */
-export const StructuredAgent = z.string().refine(isStructuredAgentId, 'Invalid agent')
+export const StructuredAgent = RpcString.refine(isStructuredAgentId, 'Invalid agent')
 
-export const ExecutionHostId = z
-  .string()
-  .max(MAX_ID_LENGTH)
+export const ExecutionHostId = RpcString.max(MAX_ID_LENGTH)
   .transform((value) => normalizeExecutionHostId(value))
   .refine((value): value is NonNullable<typeof value> => value !== null, {
     message: 'Invalid execution host id'
@@ -79,7 +78,7 @@ export const ExecutionLocation = z
 export const AccountHome = z
   .object({
     variable: z.enum(['CLAUDE_CONFIG_DIR', 'CODEX_HOME']),
-    path: z.string().min(1).max(4096)
+    path: RpcString.min(1).max(4096)
   })
   .strict()
 
@@ -164,7 +163,7 @@ export const CancelParams = z
     prompt: z
       .object({
         itemId: Identifier('Invalid item id'),
-        expectedRevision: z.number().int().positive()
+        expectedRevision: RpcNumber.int().positive()
       })
       .strict()
       .optional()
@@ -198,7 +197,7 @@ export const RespondParams = z
     envelope: MutationEnvelope,
     itemId: Identifier('Invalid item id'),
     /** Compare-and-set: the revision the client had on screen. */
-    expectedRevision: z.number().int().positive(),
+    expectedRevision: RpcNumber.int().positive(),
     optionId: Identifier('Invalid option id', MAX_RESPONSE_OPTION_ID_LENGTH)
   })
   .strict()
@@ -206,7 +205,7 @@ export const RespondParams = z
 export const SetOptionParams = z.strictObject({
   envelope: MutationEnvelope,
   key: Identifier('Invalid option key'),
-  value: z.string().max(MAX_OPTION_LABEL)
+  value: RpcString.max(MAX_OPTION_LABEL)
 })
 
 export const OptionsParams = z.object({ sessionId: SessionId }).strict()
@@ -214,13 +213,13 @@ export const SwitchToChatParams = OptionsParams.extend({
   execution: z
     .object({
       invocationId: Identifier('Invalid invocation'),
-      observe: z.boolean().optional(),
+      observe: RpcOptionalBoolean,
       receipt: z
         .object({
           generation: Identifier('Invalid generation'),
-          shown: z.boolean(),
-          retained: z.boolean().optional(),
-          converged: z.boolean().optional()
+          shown: RpcBoolean,
+          retained: RpcOptionalBoolean,
+          converged: RpcOptionalBoolean
         })
         .strict()
         .optional(),
@@ -234,27 +233,27 @@ export const SwitchToTerminalParams = OptionsParams.extend({
   execution: z
     .object({
       invocationId: Identifier('Invalid invocation'),
-      observe: z.boolean().optional(),
+      observe: RpcOptionalBoolean,
       receipt: z
         .object({
           generation: Identifier('Invalid generation'),
-          shown: z.boolean(),
-          retained: z.boolean().optional(),
-          converged: z.boolean().optional()
+          shown: RpcBoolean,
+          retained: RpcOptionalBoolean,
+          converged: RpcOptionalBoolean
         })
         .strict()
         .optional(),
       sourceTabId: Identifier('Invalid tab').optional(),
       groupId: Identifier('Invalid group').optional(),
-      commandOverride: z.string().max(8192).optional()
+      commandOverride: RpcString.max(8192).optional()
     })
     .strict()
     .optional()
 }).strict()
-export const ItemParams = OptionsParams.extend({ itemId: z.string().min(1) }).strict()
+export const ItemParams = OptionsParams.extend({ itemId: RpcString.min(1) }).strict()
 // Why optional: only a host advertising the workspace-sleep-mark capability is sent `markAsleep`.
 export const SleepWorkspaceParams = z
-  .object({ workspaceId: z.string().min(1), markAsleep: z.literal(true).optional() })
+  .object({ workspaceId: RpcString.min(1), markAsleep: z.literal(true).optional() })
   .strict()
 export const AcknowledgeAttentionParams = OptionsParams.extend({ observedCursor: JournalCursor })
 
@@ -268,9 +267,9 @@ export const ModelCatalogParams = z.strictObject({
   agent: StructuredAgent,
   sessionId: SessionId.optional(),
   worktree: Identifier('Invalid worktree selector').optional(),
-  waitForListing: z.boolean().optional(),
+  waitForListing: RpcOptionalBoolean,
   // Read saved data without starting a listing; gate on saved-only capability because older hosts refuse unknown keys.
-  savedOnly: z.boolean().optional()
+  savedOnly: RpcOptionalBoolean
 })
 
 export const ConversationCommandParams = z
@@ -290,10 +289,10 @@ export const ThreadGoalParams = z
       z
         .object({
           kind: z.literal('set'),
-          objective: z
-            .string()
-            .max(AGENT_SESSION_THREAD_GOAL_OBJECTIVE_MAX_LENGTH)
-            .refine((value) => value.trim().length > 0, 'Objective is empty')
+          objective: RpcString.max(AGENT_SESSION_THREAD_GOAL_OBJECTIVE_MAX_LENGTH).refine(
+            (value) => value.trim().length > 0,
+            'Objective is empty'
+          )
         })
         .strict(),
       z.object({ kind: z.literal('status'), status: z.enum(['active', 'paused']) }).strict(),
@@ -323,14 +322,14 @@ export const HistoryParams = z
     sessionId: SessionId,
     direction: z.enum(AGENT_SESSION_HISTORY_DIRECTIONS),
     cursor: JournalCursor.optional(),
-    limit: z.number().int().positive().max(AGENT_SESSION_HISTORY_MAX_LIMIT).optional()
+    limit: RpcNumber.int().positive().max(AGENT_SESSION_HISTORY_MAX_LIMIT).optional()
   })
   .strict()
 
 export const SubscribeParams = OptionsParams.extend({ cursor: JournalCursor.optional() }).strict()
 
 // Not strict: an older host ignores these params entirely, and this host must ignore a newer client's.
-export const SubscribeTurnCompletionsParams = z.object({ includePrompts: z.boolean().optional() })
+export const SubscribeTurnCompletionsParams = z.object({ includePrompts: RpcOptionalBoolean })
 
 export const UnsubscribeParams = z
   .object({

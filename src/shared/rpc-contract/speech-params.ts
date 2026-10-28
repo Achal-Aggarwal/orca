@@ -1,3 +1,4 @@
+import { RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalString, requiredString } from './rpc-param-primitives'
 
@@ -34,7 +35,7 @@ export const DictationChunk = z.object({
     )
     // Buffer.from silently discards malformed base64; refuse corrupt PCM instead.
     .refine(isValidAudioBase64, 'Audio chunk must be base64'),
-  sampleRate: z.number().finite().positive()
+  sampleRate: RpcNumber.finite().positive()
 })
 
 export const DictationHandle = z.object({
@@ -46,7 +47,7 @@ export const SpeechModelAction = z.object({
 })
 
 export const DictationSetup = z.object({
-  enabled: z.boolean().optional(),
+  enabled: RpcOptionalBoolean,
   modelId: OptionalString,
   dictationMode: z.enum(['toggle', 'hold']).optional()
 })
@@ -55,5 +56,5 @@ export const DictationSetup = z.object({
 export const OPENAI_SPEECH_KEY_MAX_LENGTH = 1024
 
 export const OpenAiSpeechKeySet = z.object({
-  apiKey: z.string().trim().min(1).max(OPENAI_SPEECH_KEY_MAX_LENGTH)
+  apiKey: RpcString.trim().min(1).max(OPENAI_SPEECH_KEY_MAX_LENGTH)
 })

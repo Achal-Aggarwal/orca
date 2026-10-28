@@ -1,3 +1,4 @@
+import { RpcNullableNumber, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   TERMINAL_VIEWPORT_MAX_COLS,
@@ -22,8 +23,8 @@ export const TerminalSetDisplayMode = TerminalHandle.extend({
   // Why: carries the measured viewport so an 'auto' toggle on a viewport-less record can phone-fit instead of no-op'ing.
   viewport: z
     .object({
-      cols: z.number().int().positive(),
-      rows: z.number().int().positive()
+      cols: RpcNumber.int().positive(),
+      rows: RpcNumber.int().positive()
     })
     .optional()
 })
@@ -37,7 +38,7 @@ export const TerminalUnsubscribe = z.object({
     })
     .optional(),
   // Address the exact subscribe frame so stale unsubscribe cannot end a replacement stream.
-  requestId: z.string().min(1).optional()
+  requestId: RpcString.min(1).optional()
 })
 
 // Update in place: resubscribe flashed lock banners and stranded phone dimensions (docs/mobile-presence-lock.md).
@@ -47,13 +48,13 @@ export const TerminalUpdateViewport = TerminalHandle.extend({
     type: z.enum(['mobile', 'desktop']).default('mobile').optional()
   }),
   viewport: z.object({
-    cols: z.number().int().min(TERMINAL_VIEWPORT_MIN_COLS).max(TERMINAL_VIEWPORT_MAX_COLS),
-    rows: z.number().int().min(TERMINAL_VIEWPORT_MIN_ROWS).max(TERMINAL_VIEWPORT_MAX_ROWS)
+    cols: RpcNumber.int().min(TERMINAL_VIEWPORT_MIN_COLS).max(TERMINAL_VIEWPORT_MAX_COLS),
+    rows: RpcNumber.int().min(TERMINAL_VIEWPORT_MIN_ROWS).max(TERMINAL_VIEWPORT_MAX_ROWS)
   }),
-  claim: z.boolean().optional()
+  claim: RpcOptionalBoolean
 })
 
 // Why: phone-fit auto-restore preference (docs/mobile-fit-hold.md); `null` = Indefinite, finite ms clamped to [5_000, 60min] server-side.
 export const TerminalSetAutoRestoreFit = z.object({
-  ms: z.number().nullable()
+  ms: RpcNullableNumber
 })

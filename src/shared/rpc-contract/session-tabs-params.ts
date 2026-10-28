@@ -1,7 +1,8 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const SessionTabsUnsubscribeAllParams = z
   .object({
-    subscriptionId: z.string().min(1).optional()
+    subscriptionId: RpcString.min(1).optional()
   })
   .nullish()

@@ -1,3 +1,11 @@
+import {
+  RpcNull,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcUndefined,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { WorkspaceAttachmentsSchema } from '../workspace-attachment-schema'
 import { WorkspaceLinkedItemSchema } from '../workspace-linked-item-schema'
@@ -23,24 +31,23 @@ import {
 
 export const WorktreeCreate = z
   .object({
-    repo: z
-      .unknown()
-      .transform((v) => (typeof v === 'string' ? v : ''))
-      .pipe(z.string().min(1, 'Missing repo selector')),
+    repo: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+      RpcString.min(1, 'Missing repo selector')
+    ),
     /** Scope same-ID repo copies by host; absent retains legacy selector lookup, which refuses ambiguous IDs. */
     repoHostId: OptionalExecutionHostId,
     name: OptionalString,
     /** Generated names may skip/retire candidates; absent means user-typed and bypasses that policy. */
-    nameWasGenerated: z.boolean().optional(),
+    nameWasGenerated: RpcOptionalBoolean,
     baseBranch: OptionalString,
     compareBaseRef: OptionalString,
     branchNameOverride: OptionalString,
     branchIntent: z.literal('open-existing').optional(),
     linkedIssue: TriStateLinkedIssue,
     linkedPR: TriStateLinkedIssue,
-    linkedLinearIssue: z.string().optional(),
-    linkedLinearIssueWorkspaceId: z.union([z.string(), z.null()]).optional(),
-    linkedLinearIssueOrganizationUrlKey: z.union([z.string(), z.null()]).optional(),
+    linkedLinearIssue: RpcOptionalString,
+    linkedLinearIssueWorkspaceId: z.union([RpcString, RpcNull]).optional(),
+    linkedLinearIssueOrganizationUrlKey: z.union([RpcString, RpcNull]).optional(),
     linkedGitLabMR: TriStateLinkedIssue,
     linkedGitLabIssue: TriStateLinkedIssue,
     linkedBitbucketPR: TriStateLinkedIssue,
@@ -52,30 +59,27 @@ export const WorktreeCreate = z
     comment: OptionalString,
     displayName: OptionalString,
     displayNameKind: z.enum(['generated', 'user']).optional(),
-    telemetrySource: z
-      .unknown()
-      .transform((value) => {
-        const parsed = workspaceSourceSchema.safeParse(value)
-        return parsed.success ? parsed.data : undefined
-      })
-      .optional(),
+    telemetrySource: RpcUnknown.transform((value) => {
+      const parsed = workspaceSourceSchema.safeParse(value)
+      return parsed.success ? parsed.data : undefined
+    }).optional(),
     workspaceStatus: OptionalString,
     manualOrder: OptionalFiniteNumber,
     // Why: the client's "Nest Workspaces" choice; absent (older clients) keeps the host's own setting.
-    nestWorkspaces: z.boolean().optional(),
+    nestWorkspaces: RpcOptionalBoolean,
     // Why: the client's Keep Local Main Up to Date choice; absent (older clients) keeps the host's.
-    refreshLocalBaseRefOnWorktreeCreate: z.boolean().optional(),
-    localBaseRefSuggestionDismissed: z.boolean().optional(),
+    refreshLocalBaseRefOnWorktreeCreate: RpcOptionalBoolean,
+    localBaseRefSuggestionDismissed: RpcOptionalBoolean,
     sparseCheckout: z
       .object({
-        directories: z.array(z.string()),
+        directories: z.array(RpcString),
         presetId: OptionalString
       })
       .optional(),
     pushTarget: z
       .object({
-        remoteName: z.string(),
-        branchName: z.string(),
+        remoteName: RpcString,
+        branchName: RpcString,
         remoteUrl: OptionalString
       })
       .optional(),
@@ -100,17 +104,15 @@ export const WorktreeCreate = z
         coordinatorHandle: OptionalString
       })
       .optional(),
-    setupOnly: z.boolean().optional(),
-    setupDecision: z
-      .unknown()
-      .transform((v) =>
-        typeof v === 'string' && (v === 'run' || v === 'skip' || v === 'inherit') ? v : undefined
-      )
-      .pipe(z.union([z.enum(['run', 'skip', 'inherit']), z.undefined()]))
+    setupOnly: RpcOptionalBoolean,
+    setupDecision: RpcUnknown.transform((v) =>
+      typeof v === 'string' && (v === 'run' || v === 'skip' || v === 'inherit') ? v : undefined
+    )
+      .pipe(z.union([z.enum(['run', 'skip', 'inherit']), RpcUndefined]))
       .optional(),
     // Desktop can prequote startup commands; clients unable to quote for the host send startupAgent.
     startupCommand: OptionalString,
-    startupEnv: z.record(z.string(), z.string()).optional(),
+    startupEnv: z.record(RpcString, RpcString).optional(),
     startupLaunchConfig: sleepingAgentLaunchConfigSchema,
     startupCommandDelivery: z.enum(['fast', 'shell-ready']).optional(),
     // Quote agent launches on the execution host because SSH shells can differ from the client’s.
@@ -120,14 +122,13 @@ export const WorktreeCreate = z
     launchSource: LaunchSourceParam.optional(),
     // Task-driven mobile creation uses desktop-equivalent host defaults and linked issue/PR draft URLs.
     startupDraft: OptionalString,
-    createdWithAgent: z
-      .unknown()
-      .transform((value) => (isTuiAgent(value) ? value : undefined))
-      .optional(),
+    createdWithAgent: RpcUnknown.transform((value) =>
+      isTuiAgent(value) ? value : undefined
+    ).optional(),
     // Reuse the mutation key after connection migration so retries cannot create duplicate worktrees.
-    clientMutationId: z.string().min(1).max(128).optional(),
+    clientMutationId: RpcString.min(1).max(128).optional(),
     /** The requesting window's pending creation, so the host's in-progress entry shares its id. */
-    creationId: z.string().min(1).max(128).optional(),
+    creationId: RpcString.min(1).max(128).optional(),
     automationProvenanceRequest: AutomationWorkspaceProvenanceRequest.optional(),
     cliProvenanceRequest: CliWorkspaceProvenanceRequest.optional()
   })
@@ -154,9 +155,8 @@ export const WorktreeCreate = z
   })
 
 export const WorktreePrefetchCreateBase = z.object({
-  repo: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing repo selector')),
+  repo: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing repo selector')
+  ),
   baseBranch: OptionalString
 })

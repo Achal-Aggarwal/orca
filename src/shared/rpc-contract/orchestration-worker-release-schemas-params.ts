@@ -1,3 +1,4 @@
+import { RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
 import { ORCHESTRATION_FLEET_PAGE_MAX } from '../orchestration-fleet-projection'
@@ -16,10 +17,10 @@ export const WORKER_TERMINAL_LIST_STATES = [
 ] as const
 
 export const WorkerListParams = z.object({
-  run: z.string().min(1).optional(),
+  run: RpcString.min(1).optional(),
   terminalState: z.enum(WORKER_TERMINAL_LIST_STATES).optional(),
-  cursor: z.string().min(1).max(2_048).optional(),
-  limit: z.number().int().min(1).max(ORCHESTRATION_FLEET_PAGE_MAX).optional(),
-  includeRemote: z.boolean().optional(),
-  paginate: z.boolean().optional()
+  cursor: RpcString.min(1).max(2_048).optional(),
+  limit: RpcNumber.int().min(1).max(ORCHESTRATION_FLEET_PAGE_MAX).optional(),
+  includeRemote: RpcOptionalBoolean,
+  paginate: RpcOptionalBoolean
 })

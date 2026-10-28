@@ -1,3 +1,11 @@
+import {
+  RpcNullableString,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { PATH_EXISTENCE_BATCH_MAX } from '../path-existence-batch'
 import { z } from 'zod'
 import { QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS } from '../quick-open-path-search'
@@ -5,42 +13,34 @@ import { RUNTIME_NAVIGATION_TARGETS } from '../runtime-navigation'
 import { FileOpen, WorktreeSelector } from './files-target-params'
 
 export const FilePathsExist = WorktreeSelector.extend({
-  relativePaths: z.array(z.string()).max(PATH_EXISTENCE_BATCH_MAX)
+  relativePaths: z.array(RpcString).max(PATH_EXISTENCE_BATCH_MAX)
 })
 
 export const FilePathSearch = WorktreeSelector.extend({
-  allowLegacyIncludeIgnored: z.boolean().optional(),
-  includeIgnored: z.boolean().optional(),
-  followSymlinks: z.boolean().optional(),
-  query: z.string().max(QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS).default(''),
-  limit: z.number().int().positive().max(32).default(16),
-  excludePaths: z.array(z.string()).optional(),
+  allowLegacyIncludeIgnored: RpcOptionalBoolean,
+  includeIgnored: RpcOptionalBoolean,
+  followSymlinks: RpcOptionalBoolean,
+  query: RpcString.max(QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS).default(''),
+  limit: RpcNumber.int().positive().max(32).default(16),
+  excludePaths: z.array(RpcString).optional(),
   mode: z.literal('quick-open').optional()
 })
 
 export const ResolveTerminalPath = WorktreeSelector.extend({
-  pathText: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing path text')),
-  terminal: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' && v.length > 0 ? v : null))
+  pathText: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing path text')
+  ),
+  terminal: RpcUnknown.transform((v) => (typeof v === 'string' && v.length > 0 ? v : null))
     .nullable()
     .optional(),
-  cwd: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' && v.length > 0 ? v : null))
+  cwd: RpcUnknown.transform((v) => (typeof v === 'string' && v.length > 0 ? v : null))
     .nullable()
     .optional(),
-  crossWorkspace: z
-    .unknown()
-    .transform((v) => v === true)
-    .optional(),
+  crossWorkspace: RpcUnknown.transform((v) => v === true).optional(),
   nativeChatContext: z
     .object({
-      tabId: z.string().min(1),
-      sessionId: z.string().min(1)
+      tabId: RpcString.min(1),
+      sessionId: RpcString.min(1)
     })
     .optional()
 })
@@ -51,75 +51,65 @@ const FileOpenTarget = FileOpen.extend({
 })
 
 export const FileOpenTab = FileOpenTarget.extend({
-  line: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
-  column: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional()
+  line: RpcNumber.int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  column: RpcNumber.int().positive().max(Number.MAX_SAFE_INTEGER).optional()
 }).refine((params) => params.column === undefined || params.line !== undefined, {
   message: 'column requires line',
   path: ['column']
 })
 
 export const FileOpenDiff = FileOpenTarget.extend({
-  staged: z.boolean().optional()
+  staged: RpcOptionalBoolean
 })
 
 export const DocPreviewFileRead = FileOpen.extend({
-  entryRelativePath: z.string().min(1),
-  implicitRootRelativePath: z.string().nullable(),
-  authorizedRootRelativePaths: z.array(z.string())
+  entryRelativePath: RpcString.min(1),
+  implicitRootRelativePath: RpcNullableString,
+  authorizedRootRelativePaths: z.array(RpcString)
 })
 
 export const FileTreePath = WorktreeSelector.extend({
-  followSymlinks: z.boolean().optional(),
-  relativePath: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string())
+  followSymlinks: RpcOptionalBoolean,
+  relativePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(RpcString)
 })
 
 export const ServerDirectoryBrowse = z.object({
-  path: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string())
+  path: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(RpcString)
 })
 
 export const FileReadChunk = FileOpen.extend({
-  offset: z.number().int().nonnegative(),
-  length: z
-    .number()
-    .int()
+  offset: RpcNumber.int().nonnegative(),
+  length: RpcNumber.int()
     .positive()
     .max(512 * 1024)
 })
 
 export const FileSearch = WorktreeSelector.extend({
-  query: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing search query')),
-  caseSensitive: z.boolean().optional(),
-  wholeWord: z.boolean().optional(),
-  useRegex: z.boolean().optional(),
-  includePattern: z.string().optional(),
-  excludePattern: z.string().optional(),
-  maxResults: z.number().int().positive().optional()
+  query: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing search query')
+  ),
+  caseSensitive: RpcOptionalBoolean,
+  wholeWord: RpcOptionalBoolean,
+  useRegex: RpcOptionalBoolean,
+  includePattern: RpcOptionalString,
+  excludePattern: RpcOptionalString,
+  maxResults: RpcNumber.int().positive().optional()
 })
 
 // Optional maxResults aligns remote callers with desktop caps; older hosts strip it and retain their defaults.
 export const FileListAll = WorktreeSelector.extend({
   candidatePaths: z
-    .array(z.string().max(64 * 1024))
+    .array(RpcString.max(64 * 1024))
     .max(100)
     .optional(),
-  includeIgnored: z.boolean().optional(),
-  followSymlinks: z.boolean().optional(),
-  excludePaths: z.array(z.string()).optional(),
-  maxResults: z.number().int().positive().optional()
+  includeIgnored: RpcOptionalBoolean,
+  followSymlinks: RpcOptionalBoolean,
+  excludePaths: z.array(RpcString).optional(),
+  maxResults: RpcNumber.int().positive().optional()
 })
 
 export const FileUnwatch = z.object({
-  subscriptionId: z
-    .unknown()
-    .transform((value) => (typeof value === 'string' && value.length > 0 ? value : ''))
-    .pipe(z.string().min(1, 'Missing subscriptionId'))
+  subscriptionId: RpcUnknown.transform((value) =>
+    typeof value === 'string' && value.length > 0 ? value : ''
+  ).pipe(RpcString.min(1, 'Missing subscriptionId'))
 })

@@ -1,13 +1,14 @@
+import { RpcOptionalNullableString, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import type { EditorTabView } from '../editor-tab-view-types'
 
 /** An edit-mode file's restorable record, as the window saves it. */
 export const EditorFileRecord = z.object({
-  filePath: z.string().min(1),
-  relativePath: z.string(),
-  language: z.string(),
-  runtimeEnvironmentId: z.string().nullable().optional(),
-  externalSshTargetId: z.string().min(1).optional(),
+  filePath: RpcString.min(1),
+  relativePath: RpcString,
+  language: RpcString,
+  runtimeEnvironmentId: RpcOptionalNullableString,
+  externalSshTargetId: RpcString.min(1).optional(),
   readOnly: z.literal(true).optional(),
   liveTail: z.literal(true).optional()
 })

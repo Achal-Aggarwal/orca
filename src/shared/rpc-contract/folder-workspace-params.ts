@@ -1,3 +1,9 @@
+import {
+  RpcOptionalBoolean,
+  RpcOptionalNullableString,
+  RpcOptionalString,
+  RpcString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { WorkspaceLinkedItemSchema } from '../workspace-linked-item-schema'
 import { WorkspaceAttachmentsSchema } from '../workspace-attachment-schema'
@@ -38,8 +44,8 @@ export const FolderWorkspaceCreate = z
     linkedItems: WorkspaceAttachmentsSchema.optional(),
 
     linkedTaskSourceContext: TaskSourceContextSchema.nullable().optional(),
-    createdWithAgent: z.string().refine(isTuiAgent).optional(),
-    pendingFirstAgentMessageRename: z.boolean().optional()
+    createdWithAgent: RpcString.refine(isTuiAgent).optional(),
+    pendingFirstAgentMessageRename: RpcOptionalBoolean
   })
   .superRefine(assertLinkedTaskSourceContextMatch)
 
@@ -52,18 +58,18 @@ export const FolderWorkspaceUpdate = z.object({
       linkedTask: FolderWorkspaceLinkedTask.optional(),
       linkedItems: WorkspaceAttachmentsSchema.optional(),
       linkedItemsBase: WorkspaceAttachmentsSchema.optional(),
-      linkedItemsSelectionChanged: z.boolean().optional(),
+      linkedItemsSelectionChanged: RpcOptionalBoolean,
       linkedTaskSourceContext: TaskSourceContextSchema.nullable().optional(),
-      comment: z.string().optional(),
-      isArchived: z.boolean().optional(),
-      isUnread: z.boolean().optional(),
-      isPinned: z.boolean().optional(),
+      comment: RpcOptionalString,
+      isArchived: RpcOptionalBoolean,
+      isUnread: RpcOptionalBoolean,
+      isPinned: RpcOptionalBoolean,
       sortOrder: OptionalFiniteNumber,
       manualOrder: OptionalFiniteNumber,
       workspaceStatus: OptionalString,
-      createdWithAgent: z.string().refine(isTuiAgent).optional(),
-      pendingFirstAgentMessageRename: z.boolean().optional(),
-      firstAgentMessageRenameError: z.string().nullable().optional(),
+      createdWithAgent: RpcString.refine(isTuiAgent).optional(),
+      pendingFirstAgentMessageRename: RpcOptionalBoolean,
+      firstAgentMessageRenameError: RpcOptionalNullableString,
       lastActivityAt: OptionalFiniteNumber,
       diffComments: z.array(DiffCommentSchema).optional()
     })

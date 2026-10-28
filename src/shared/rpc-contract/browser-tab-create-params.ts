@@ -1,3 +1,4 @@
+import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { RUNTIME_NAVIGATION_TARGETS } from '../runtime-navigation'
 import { BrowserPageCreationPlacement } from '../browser-client-host-placement'
@@ -8,8 +9,8 @@ export const BrowserTabCreateParams = z.object({
   worktree: OptionalString,
   page: OptionalString,
   profileId: OptionalString,
-  waitForRegistration: z.boolean().optional(),
-  activate: z.boolean().optional(),
+  waitForRegistration: RpcOptionalBoolean,
+  activate: RpcOptionalBoolean,
   // Why: `activate` says the caller wants the new tab selected; `navigation` says on whose screens.
   // Absent, a paired caller means 'caller' — one device's create must not steer every other UI.
   navigation: z.enum(RUNTIME_NAVIGATION_TARGETS).optional(),
@@ -19,5 +20,5 @@ export const BrowserTabCreateParams = z.object({
 
 export const BrowserOpenUrlParams = z.object({
   url: z.url(),
-  worktree: z.string().min(1)
+  worktree: RpcString.min(1)
 })

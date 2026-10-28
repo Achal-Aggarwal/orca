@@ -1,20 +1,21 @@
+import { RpcBoolean, RpcOptionalUnknown, RpcString, RpcUnknown } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isQualifiedPluginKey } from '../plugins/plugin-manifest'
 
 export const PluginSetEnabledParams = z.object({
-  pluginKey: z.string().refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
-  enabled: z.boolean()
+  pluginKey: RpcString.refine(isQualifiedPluginKey, 'invalid qualified plugin key'),
+  enabled: RpcBoolean
 })
 
 export const PluginReadPanelEntryParams = z.object({
-  pluginKey: z.string().min(1),
-  panelId: z.string().min(1)
+  pluginKey: RpcString.min(1),
+  panelId: RpcString.min(1)
 })
 
 export const PluginInvokeCommandParams = z.object({
-  pluginKey: z.string().min(1),
-  commandId: z.string().min(1),
-  args: z.unknown().optional()
+  pluginKey: RpcString.min(1),
+  commandId: RpcString.min(1),
+  args: RpcOptionalUnknown
 })
 
-export const PluginsPanelActionParams = z.unknown()
+export const PluginsPanelActionParams = RpcUnknown

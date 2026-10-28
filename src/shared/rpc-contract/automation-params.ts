@@ -1,3 +1,11 @@
+import {
+  RpcNull,
+  RpcOptionalNullableString,
+  RpcOptionalString,
+  RpcString,
+  RpcUndefined,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { isTuiAgent } from '../tui-agent-config'
 import {
@@ -51,14 +59,14 @@ export const AutomationPrecheck = z
   .nullable()
   .optional()
 
-export const OptionalNullablePlainString = z
-  .unknown()
-  .transform((value) => (value === null || typeof value === 'string' ? value : undefined))
-  .pipe(z.union([z.string(), z.null(), z.undefined()]))
+export const OptionalNullablePlainString = RpcUnknown.transform((value) =>
+  value === null || typeof value === 'string' ? value : undefined
+)
+  .pipe(z.union([RpcString, RpcNull, RpcUndefined]))
   .optional()
 
 // A GitHub identity is only usable with both fields present and non-blank.
-const GithubIdentityField = z.string().refine((value) => value.trim().length > 0, {
+const GithubIdentityField = RpcString.refine((value) => value.trim().length > 0, {
   message: 'Required'
 })
 
@@ -70,33 +78,33 @@ export const TaskProviderIdentity = z
         // Reject blank identity without trimming: normalization treats it as absent, but parsing must preserve nonblank bytes.
         owner: GithubIdentityField,
         repo: GithubIdentityField,
-        host: z.string().optional()
+        host: RpcOptionalString
       })
       .passthrough(),
     z
       .object({
         provider: z.literal('gitlab'),
-        projectId: z.string().nullable().optional(),
-        namespace: z.string().nullable().optional(),
-        project: z.string().nullable().optional(),
-        webUrl: z.string().nullable().optional()
+        projectId: RpcOptionalNullableString,
+        namespace: RpcOptionalNullableString,
+        project: RpcOptionalNullableString,
+        webUrl: RpcOptionalNullableString
       })
       .passthrough(),
     z
       .object({
         provider: z.literal('linear'),
-        workspaceId: z.string().nullable().optional(),
-        workspaceName: z.string().nullable().optional(),
-        teamId: z.string().nullable().optional(),
-        teamKey: z.string().nullable().optional()
+        workspaceId: RpcOptionalNullableString,
+        workspaceName: RpcOptionalNullableString,
+        teamId: RpcOptionalNullableString,
+        teamKey: RpcOptionalNullableString
       })
       .passthrough(),
     z
       .object({
         provider: z.literal('jira'),
-        siteId: z.string().nullable().optional(),
-        siteUrl: z.string().nullable().optional(),
-        projectKey: z.string().nullable().optional()
+        siteId: RpcOptionalNullableString,
+        siteUrl: RpcOptionalNullableString,
+        projectKey: RpcOptionalNullableString
       })
       .passthrough()
   ])

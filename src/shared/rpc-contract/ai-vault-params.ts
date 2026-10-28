@@ -1,3 +1,11 @@
+import {
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcUndefined,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { parseExecutionHostId } from '../execution-host'
 import { AI_VAULT_AGENTS, AI_VAULT_SCOPE_PATHS_MAX_COUNT } from '../ai-vault-types'
@@ -9,7 +17,7 @@ export const AI_VAULT_SCOPE_PATH_MAX_LENGTH = 4096
 
 export const AI_VAULT_LIMIT_MAX = 2000
 
-export const executionHostIdSchema = z.string().transform((value, ctx): `runtime:${string}` => {
+export const executionHostIdSchema = RpcString.transform((value, ctx): `runtime:${string}` => {
   const parsed = parseExecutionHostId(value)
   if (parsed?.kind === 'runtime') {
     return parsed.id
@@ -23,23 +31,19 @@ export const executionHostIdSchema = z.string().transform((value, ctx): `runtime
 
 export const AiVaultListSessionsParams = z
   .object({
-    limit: z
-      .unknown()
-      .transform((value) =>
-        typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
-      )
-      .pipe(z.union([z.number().int(), z.undefined()]))
+    limit: RpcUnknown.transform((value) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+    )
+      .pipe(z.union([RpcNumber.int(), RpcUndefined]))
       .optional(),
     includeAntigravityIdeSessions: OptionalBoolean,
     unlimited: OptionalBoolean,
     force: OptionalBoolean,
-    afterFingerprint: z
-      .string()
-      .regex(/^[0-9a-f]{64}$/)
+    afterFingerprint: RpcString.regex(/^[0-9a-f]{64}$/)
       .nullable()
       .optional(),
     scopePaths: z
-      .array(z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH))
+      .array(RpcString.min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH))
       // Clamp to preserve older uncapped clients; scopes only widen discovery.
       .transform((paths) => paths.slice(0, AI_VAULT_SCOPE_PATHS_MAX_COUNT))
       .optional(),
@@ -55,11 +59,11 @@ export const AiVaultListSessionsParams = z
 const AiVaultRowResumeParams = z
   .object({
     agent: z.enum(AI_VAULT_AGENTS),
-    sessionId: z.string().min(1).max(512).optional(),
-    filePath: z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH),
-    codexHome: z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH).nullable(),
-    executionHostId: z.string().optional(),
-    fork: z.boolean().optional()
+    sessionId: RpcString.min(1).max(512).optional(),
+    filePath: RpcString.min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH),
+    codexHome: RpcString.min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH).nullable(),
+    executionHostId: RpcOptionalString,
+    fork: RpcOptionalBoolean
   })
   .strict()
 
@@ -69,11 +73,11 @@ export const AiVaultPrepareSessionResumeParams = z.union([
     .object({
       sourceChat: z
         .object({
-          sessionId: z.string().min(1).max(512),
-          workspaceId: z.string().min(1).max(512)
+          sessionId: RpcString.min(1).max(512),
+          workspaceId: RpcString.min(1).max(512)
         })
         .strict(),
-      executionHostId: z.string().optional(),
+      executionHostId: RpcOptionalString,
       fork: z.literal(true)
     })
     .strict()
@@ -84,8 +88,8 @@ export const AiVaultSessionTitlesParams = z.object({
     .array(
       z.object({
         agent: z.enum(['claude', 'codex']),
-        sessionId: z.string().min(1).max(512),
-        transcriptPath: z.string().min(1).max(32_768).optional()
+        sessionId: RpcString.min(1).max(512),
+        transcriptPath: RpcString.min(1).max(32_768).optional()
       })
     )
     .max(AI_VAULT_SESSION_TITLE_REQUEST_MAX_COUNT)
@@ -94,6 +98,6 @@ export const AiVaultSessionTitlesParams = z.object({
 // The host revalidates the path against its own roots; no host id travels because the host deletes only its own files.
 export const AiVaultDeleteSessionParams = z.object({
   agent: z.enum(AI_VAULT_AGENTS),
-  sessionId: z.string().min(1).max(512).optional(),
-  filePath: z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH)
+  sessionId: RpcString.min(1).max(512).optional(),
+  filePath: RpcString.min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH)
 })

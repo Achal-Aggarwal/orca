@@ -1,3 +1,4 @@
+import { RpcNumber, RpcString, RpcUnknown } from './rpc-value-schemas'
 import { z } from 'zod'
 import type { TabGroupLayoutNode } from '../tab-types'
 import { OptionalString, requiredString } from './rpc-param-primitives'
@@ -48,19 +49,18 @@ export function parseOrphanGroupLayout(value: unknown): TabGroupLayoutNode | nul
   return value as TabGroupLayoutNode
 }
 
-export const TerminalOrphanGroupLayout = z
-  .unknown()
-  .transform(parseOrphanGroupLayout)
-  .pipe(z.custom<TabGroupLayoutNode>((value) => value !== null, 'Invalid orphan group layout'))
+export const TerminalOrphanGroupLayout = RpcUnknown.transform(parseOrphanGroupLayout).pipe(
+  z.custom<TabGroupLayoutNode>((value) => value !== null, 'Invalid orphan group layout')
+)
 
 export const TerminalOrphanTopology = z.object({
   tabs: z
     .array(
       z.object({
-        tabId: requiredString('Missing topology tab id').pipe(z.string().max(256)),
+        tabId: requiredString('Missing topology tab id').pipe(RpcString.max(256)),
         root: TerminalPaneLayoutNodeSchema,
-        activeLeafId: requiredString('Missing active leaf id').pipe(z.string().max(128)),
-        expandedLeafId: z.string().max(128).nullable()
+        activeLeafId: requiredString('Missing active leaf id').pipe(RpcString.max(128)),
+        expandedLeafId: RpcString.max(128).nullable()
       })
     )
     .min(1)
@@ -68,10 +68,10 @@ export const TerminalOrphanTopology = z.object({
   groups: z
     .array(
       z.object({
-        id: z.string().min(1).max(256),
-        activeTabId: z.string().min(1).max(256),
-        tabOrder: z.array(z.string().min(1).max(256)).min(1).max(64),
-        recentTabIds: z.array(z.string().min(1).max(256)).max(64).optional()
+        id: RpcString.min(1).max(256),
+        activeTabId: RpcString.min(1).max(256),
+        tabOrder: z.array(RpcString.min(1).max(256)).min(1).max(64),
+        recentTabIds: z.array(RpcString.min(1).max(256)).max(64).optional()
       })
     )
     .min(1)
@@ -85,21 +85,21 @@ export const TerminalOrphanIncarnationId = z.custom<PtyIncarnationId>(
 )
 
 export const TerminalAdoptOrphans = z.object({
-  worktree: requiredString('Missing worktree selector').pipe(z.string().max(32_768)),
-  expectedTopologyRevision: z.number().int().nonnegative(),
+  worktree: requiredString('Missing worktree selector').pipe(RpcString.max(32_768)),
+  expectedTopologyRevision: RpcNumber.int().nonnegative(),
   claims: z
     .array(
       z.object({
-        terminal: requiredString('Missing terminal handle').pipe(z.string().max(256)),
-        ptyId: requiredString('Missing PTY id').pipe(z.string().max(8_192)),
+        terminal: requiredString('Missing terminal handle').pipe(RpcString.max(256)),
+        ptyId: requiredString('Missing PTY id').pipe(RpcString.max(8_192)),
         incarnationId: TerminalOrphanIncarnationId,
-        tabId: requiredString('Missing tab id').pipe(z.string().max(256)),
-        leafId: requiredString('Missing leaf id').pipe(z.string().max(128))
+        tabId: requiredString('Missing tab id').pipe(RpcString.max(256)),
+        leafId: requiredString('Missing leaf id').pipe(RpcString.max(128))
       })
     )
     .min(1)
     .max(64),
-  activeTabId: OptionalString.pipe(z.string().max(256).optional()),
-  activeGroupId: OptionalString.pipe(z.string().max(256).optional()),
+  activeTabId: OptionalString.pipe(RpcString.max(256).optional()),
+  activeGroupId: OptionalString.pipe(RpcString.max(256).optional()),
   topology: TerminalOrphanTopology.optional()
 })

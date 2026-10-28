@@ -1,210 +1,205 @@
+import {
+  RpcBoolean,
+  RpcNullableString,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalNullableString,
+  RpcOptionalString,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalGitAdmissionTier } from './git-admission-tier-params'
 import { OptionalTuiAgent } from './worktree-params'
 
 export const WorktreeSelector = z.object({
-  worktree: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing worktree selector'))
+  worktree: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing worktree selector')
+  )
 })
 
 export const GitStatusParams = WorktreeSelector.extend({
   admissionTier: OptionalGitAdmissionTier,
-  includeIgnored: z.boolean().optional(),
-  includeLineStats: z.boolean().optional(),
-  bypassEffectiveUpstreamNegativeCache: z.boolean().optional(),
-  reuseLineStats: z.boolean().optional(),
+  includeIgnored: RpcOptionalBoolean,
+  includeLineStats: RpcOptionalBoolean,
+  bypassEffectiveUpstreamNegativeCache: RpcOptionalBoolean,
+  reuseLineStats: RpcOptionalBoolean,
   // Shape is re-validated host-side before it reaches a git argv.
-  branchLineTotalMergeBase: z.string().optional()
+  branchLineTotalMergeBase: RpcOptionalString
 })
 
 export const GitCheckIgnored = WorktreeSelector.extend({
-  paths: z.array(z.string().min(1, 'Missing path')).max(2000)
+  paths: z.array(RpcString.min(1, 'Missing path')).max(2000)
 })
 
 export const GitSubmoduleStatus = WorktreeSelector.extend({
-  submodulePath: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(
-      z
-        .string()
-        .min(1, 'Missing submodule path')
-        // Why: never let a submodule path be parsed as a git flag (arg injection).
-        .refine((value) => !value.startsWith('-'), 'Submodule path must not start with -')
-    ),
+  submodulePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing submodule path')
+      // Why: never let a submodule path be parsed as a git flag (arg injection).
+      .refine((value) => !value.startsWith('-'), 'Submodule path must not start with -')
+  ),
   // The Source Control row selects HEAD→index versus index→worktree gitlink ranges.
   area: z.enum(['staged', 'unstaged', 'untracked']).optional()
 })
 
 export const GitFilePath = WorktreeSelector.extend({
-  filePath: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing file path'))
+  filePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing file path')
+  )
 })
 
 export const GitDiff = GitFilePath.extend({
-  staged: z.boolean(),
-  compareAgainstHead: z.boolean().optional()
+  staged: RpcBoolean,
+  compareAgainstHead: RpcOptionalBoolean
 })
 
 export const GitBranchCompare = WorktreeSelector.extend({
   admissionTier: OptionalGitAdmissionTier,
-  baseRef: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(
-      z
-        .string()
-        .min(1, 'Missing base ref')
-        .refine((value) => !value.startsWith('-'), 'Base ref must not start with -')
+  baseRef: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing base ref').refine(
+      (value) => !value.startsWith('-'),
+      'Base ref must not start with -'
     )
+  )
 })
 
-export const FullGitObjectId = z
-  .string()
-  .regex(/^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/, 'Expected a full git object id')
+export const FullGitObjectId = RpcString.regex(
+  /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/,
+  'Expected a full git object id'
+)
 
 export const GitCommitCompare = WorktreeSelector.extend({
-  commitId: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(FullGitObjectId)
+  commitId: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(FullGitObjectId)
 })
 
 export const GitHistory = WorktreeSelector.extend({
-  limit: z.number().int().min(1).max(200).optional(),
-  baseRef: z.string().nullable().optional()
+  limit: RpcNumber.int().min(1).max(200).optional(),
+  baseRef: RpcOptionalNullableString
 })
 
 export const GitBranchDiff = GitFilePath.extend({
   compare: z.object({
-    baseRef: z.string().optional(),
+    baseRef: RpcOptionalString,
     baseOid: FullGitObjectId.optional(),
     headOid: FullGitObjectId,
     mergeBase: FullGitObjectId
   }),
-  oldPath: z.string().optional()
+  oldPath: RpcOptionalString
 })
 
 export const GitCommitDiff = GitFilePath.extend({
   commitOid: FullGitObjectId,
   parentOid: FullGitObjectId.nullable().optional(),
-  oldPath: z.string().optional()
+  oldPath: RpcOptionalString
 })
 
 export const GitCommit = WorktreeSelector.extend({
-  message: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing commit message'))
+  message: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing commit message')
+  )
 })
 
 export const CommitMessageModelCapability = z.object({
-  id: z.string(),
-  label: z.string(),
-  thinkingLevels: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
-  defaultThinkingLevel: z.string().optional()
+  id: RpcString,
+  label: RpcString,
+  thinkingLevels: z.array(z.object({ id: RpcString, label: RpcString })).optional(),
+  defaultThinkingLevel: RpcOptionalString
 })
 
 export const CommitMessageAiSettings = z.object({
-  enabled: z.boolean(),
-  agentId: z.string().nullable(),
-  selectedModelByAgent: z.record(z.string(), z.string()),
-  selectedModelByAgentByHost: z.record(z.string(), z.record(z.string(), z.string())).optional(),
-  discoveredModelsByAgent: z.record(z.string(), z.array(CommitMessageModelCapability)).optional(),
+  enabled: RpcBoolean,
+  agentId: RpcNullableString,
+  selectedModelByAgent: z.record(RpcString, RpcString),
+  selectedModelByAgentByHost: z.record(RpcString, z.record(RpcString, RpcString)).optional(),
+  discoveredModelsByAgent: z.record(RpcString, z.array(CommitMessageModelCapability)).optional(),
   discoveredModelsByAgentByHost: z
-    .record(z.string(), z.record(z.string(), z.array(CommitMessageModelCapability)))
+    .record(RpcString, z.record(RpcString, z.array(CommitMessageModelCapability)))
     .optional(),
-  selectedThinkingByModel: z.record(z.string(), z.string()),
-  customPrompt: z.string(),
-  customAgentCommand: z.string()
+  selectedThinkingByModel: z.record(RpcString, RpcString),
+  customPrompt: RpcString,
+  customAgentCommand: RpcString
 })
 
 export const SourceControlAiSettings = CommitMessageAiSettings.omit({ customPrompt: true }).extend({
   actions: z
     .record(
-      z.string(),
+      RpcString,
       z.object({
-        agentId: z.string().nullable().optional(),
-        commandInputTemplate: z.string().optional(),
-        agentArgs: z.string().optional()
+        agentId: RpcOptionalNullableString,
+        commandInputTemplate: RpcOptionalString,
+        agentArgs: RpcOptionalString
       })
     )
     .optional(),
-  instructionsByOperation: z.record(z.string(), z.string()).optional(),
+  instructionsByOperation: z.record(RpcString, RpcString).optional(),
   modelOverridesByOperation: z
     .record(
-      z.string(),
+      RpcString,
       z.object({
-        selectedModelByAgent: z.record(z.string(), z.string()).optional(),
-        selectedModelByAgentByHost: z
-          .record(z.string(), z.record(z.string(), z.string()))
-          .optional(),
-        selectedThinkingByModel: z.record(z.string(), z.string()).optional()
+        selectedModelByAgent: z.record(RpcString, RpcString).optional(),
+        selectedModelByAgentByHost: z.record(RpcString, z.record(RpcString, RpcString)).optional(),
+        selectedThinkingByModel: z.record(RpcString, RpcString).optional()
       })
     )
     .optional(),
   prCreationDefaults: z
     .object({
-      draft: z.boolean().optional(),
-      useTemplate: z.boolean().optional(),
-      generateDetailsOnOpen: z.boolean().optional(),
-      openAfterCreate: z.boolean().optional()
+      draft: RpcOptionalBoolean,
+      useTemplate: RpcOptionalBoolean,
+      generateDetailsOnOpen: RpcOptionalBoolean,
+      openAfterCreate: RpcOptionalBoolean
     })
     .optional(),
   launchActionDefaults: z
     .record(
-      z.string(),
+      RpcString,
       z.object({
-        agentId: z.string().nullable().optional(),
-        commandInputTemplate: z.string().optional(),
-        agentArgs: z.string().optional()
+        agentId: RpcOptionalNullableString,
+        commandInputTemplate: RpcOptionalString,
+        agentArgs: RpcOptionalString
       })
     )
     .optional()
 })
 
 export const ResolvedSourceControlAiGenerationParams = z.object({
-  agentId: z.string(),
-  model: z.string(),
-  thinkingLevel: z.string().optional(),
-  customPrompt: z.string().optional(),
-  commandInputTemplate: z.string().optional(),
-  agentArgs: z.string().optional(),
-  customAgentCommand: z.string().optional(),
-  agentCommandOverride: z.string().optional()
+  agentId: RpcString,
+  model: RpcString,
+  thinkingLevel: RpcOptionalString,
+  customPrompt: RpcOptionalString,
+  commandInputTemplate: RpcOptionalString,
+  agentArgs: RpcOptionalString,
+  customAgentCommand: RpcOptionalString,
+  agentCommandOverride: RpcOptionalString
 })
 
 export const GitGenerateCommitMessage = WorktreeSelector.extend({
   commitMessageAi: CommitMessageAiSettings.optional(),
   sourceControlAi: SourceControlAiSettings.optional(),
   sourceControlAiResolvedParams: ResolvedSourceControlAiGenerationParams.optional(),
-  agentCmdOverrides: z.record(z.string(), z.string()).optional(),
+  agentCmdOverrides: z.record(RpcString, RpcString).optional(),
   defaultTuiAgent: OptionalTuiAgent.nullable(),
-  commitMessageDiscoveryHostKey: z.string().optional()
+  commitMessageDiscoveryHostKey: RpcOptionalString
 })
 
 export const GitDiscoverCommitMessageModels = WorktreeSelector.extend({
-  agentId: z.string().min(1, 'Missing agent id'),
-  agentCmdOverrides: z.record(z.string(), z.string()).optional()
+  agentId: RpcString.min(1, 'Missing agent id'),
+  agentCmdOverrides: z.record(RpcString, RpcString).optional()
 })
 
 export const GitGeneratePullRequestFields = GitGenerateCommitMessage.extend({
-  base: z.string().min(1, 'Missing base branch'),
-  title: z.string(),
-  body: z.string(),
-  draft: z.boolean(),
+  base: RpcString.min(1, 'Missing base branch'),
+  title: RpcString,
+  body: RpcString,
+  draft: RpcBoolean,
   provider: z
     .enum(['github', 'gitlab', 'bitbucket', 'azure-devops', 'gitea', 'unsupported'])
     .optional(),
-  useTemplate: z.boolean().optional()
+  useTemplate: RpcOptionalBoolean
 })
 
 export const GitBulkPaths = WorktreeSelector.extend({
-  filePaths: z.array(z.string().min(1, 'Missing file path'))
+  filePaths: z.array(RpcString.min(1, 'Missing file path'))
 })
 
 // Why: optional so older hosts strip it and stage the listed `filePaths` instead.
@@ -213,15 +208,15 @@ export const GitBulkStage = GitBulkPaths.extend({
 })
 
 export const GitPushTargetParam = z.object({
-  remoteName: z.string(),
-  branchName: z.string(),
-  remoteUrl: z.string().optional(),
-  remoteCreated: z.boolean().optional()
+  remoteName: RpcString,
+  branchName: RpcString,
+  remoteUrl: RpcOptionalString,
+  remoteCreated: RpcOptionalBoolean
 })
 
 export const GitPush = WorktreeSelector.extend({
-  publish: z.boolean().optional(),
-  forceWithLease: z.boolean().optional(),
+  publish: RpcOptionalBoolean,
+  forceWithLease: RpcOptionalBoolean,
   pushTarget: GitPushTargetParam.optional()
 })
 
@@ -231,48 +226,36 @@ export const GitTargetedRemote = WorktreeSelector.extend({
 
 export const GitForkSync = WorktreeSelector.extend({
   expectedUpstream: z.object({
-    owner: z.string().trim().min(1),
-    repo: z.string().trim().min(1)
+    owner: RpcString.trim().min(1),
+    repo: RpcString.trim().min(1)
   })
 })
 
 export const GitRebaseFromBase = WorktreeSelector.extend({
-  baseRef: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(
-      z
-        .string()
-        .min(1, 'Missing base ref')
-        .refine((value) => !value.startsWith('-'), 'Base ref must not start with -')
+  baseRef: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing base ref').refine(
+      (value) => !value.startsWith('-'),
+      'Base ref must not start with -'
     )
+  )
 })
 
 export const GitCheckout = WorktreeSelector.extend({
-  branch: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(
-      z
-        .string()
-        .min(1, 'Missing branch')
-        // Why: never let a branch arg be parsed as a git flag (arg injection).
-        .refine((value) => !value.startsWith('-'), 'Branch must not start with -')
-    )
+  branch: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing branch')
+      // Why: never let a branch arg be parsed as a git flag (arg injection).
+      .refine((value) => !value.startsWith('-'), 'Branch must not start with -')
+  )
 })
 
 export const GitRemoteFileUrl = WorktreeSelector.extend({
-  relativePath: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(z.string().min(1, 'Missing relative path')),
-  line: z.number().int().min(1),
-  endLine: z.number().int().min(1).optional()
+  relativePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
+    RpcString.min(1, 'Missing relative path')
+  ),
+  line: RpcNumber.int().min(1),
+  endLine: RpcNumber.int().min(1).optional()
 })
 
 export const GitRemoteCommitUrl = WorktreeSelector.extend({
-  sha: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : ''))
-    .pipe(FullGitObjectId)
+  sha: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(FullGitObjectId)
 })

@@ -1,8 +1,9 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isAgentSessionOptions } from '../agent-session-record'
 import { measureUtf8ByteLength } from '../utf8-byte-limits'
 
-export const AgentSessionOptions = z.record(z.string(), z.string()).refine(isAgentSessionOptions)
+export const AgentSessionOptions = z.record(RpcString, RpcString).refine(isAgentSessionOptions)
 
 export const MAX_PROMPT_BYTES = 256 * 1024
 export const MAX_BLOCKS = 64
@@ -11,16 +12,16 @@ export const MAX_OPTION_LABEL = 512
 export const SendImageRefBlock = z
   .object({
     type: z.literal('image-ref'),
-    path: z.string().min(1).max(4096).optional(),
-    url: z.string().min(1).max(4096).optional(),
-    alt: z.string().max(MAX_OPTION_LABEL).optional()
+    path: RpcString.min(1).max(4096).optional(),
+    url: RpcString.min(1).max(4096).optional(),
+    alt: RpcString.max(MAX_OPTION_LABEL).optional()
   })
   .strict()
   .refine((value) => Boolean(value.path) !== Boolean(value.url), 'Provide exactly one of path/url')
 
 /** Clients may author only user turns; provider-owned assistant/tool content must never be forged into another client’s timeline. */
 export const SendBlock = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }).strict(),
+  z.object({ type: z.literal('text'), text: RpcString }).strict(),
   SendImageRefBlock
 ])
 
@@ -28,7 +29,7 @@ export const MAX_SKILL_REFS = 16
 
 /** A skill the user picked from the menu, by the file its agent selects it by. */
 export const SendSkillRef = z
-  .object({ name: z.string().min(1).max(MAX_OPTION_LABEL), path: z.string().min(1).max(4096) })
+  .object({ name: RpcString.min(1).max(MAX_OPTION_LABEL), path: RpcString.min(1).max(4096) })
   .strict()
 
 export const SendBodyStructure = z

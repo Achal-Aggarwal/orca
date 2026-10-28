@@ -1,12 +1,17 @@
+import {
+  RpcBoolean,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalNullableString,
+  RpcOptionalUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import type { GitHubPRRefreshReason } from '../github/pull-request-refresh-types'
 import { RepoSelector, SlugRepo } from './github-repo-target-params'
 import { OptionalString, requiredString } from './rpc-param-primitives'
 
-export const OptionalPRRefreshReason = z
-  .unknown()
-  .optional()
-  .transform((value): GitHubPRRefreshReason | undefined => {
+export const OptionalPRRefreshReason = RpcOptionalUnknown.transform(
+  (value): GitHubPRRefreshReason | undefined => {
     return value === 'visible' ||
       value === 'active' ||
       value === 'post-push' ||
@@ -14,27 +19,28 @@ export const OptionalPRRefreshReason = z
       value === 'swr'
       ? value
       : undefined
-  })
+  }
+)
 
 export const PrForBranch = RepoSelector.extend({
   branch: requiredString('Missing branch'),
   reason: OptionalPRRefreshReason,
-  linkedPRNumber: z.number().int().positive().nullable().optional(),
-  fallbackPRNumber: z.number().int().positive().nullable().optional(),
-  acceptMergedFallbackPR: z.boolean().optional(),
-  currentHeadOid: z.string().nullable().optional()
+  linkedPRNumber: RpcNumber.int().positive().nullable().optional(),
+  fallbackPRNumber: RpcNumber.int().positive().nullable().optional(),
+  acceptMergedFallbackPR: RpcOptionalBoolean,
+  currentHeadOid: RpcOptionalNullableString
 })
 
 export const PullRequest = RepoSelector.extend({
-  prNumber: z.number().int().positive(),
-  noCache: z.boolean().optional(),
+  prNumber: RpcNumber.int().positive(),
+  noCache: RpcOptionalBoolean,
   prRepo: SlugRepo.nullable().optional()
 })
 
 export const PRCommentReaction = RepoSelector.extend({
   reactionSubjectId: requiredString('Missing reaction subject ID'),
   content: z.enum(['+1', '-1', 'laugh', 'confused', 'heart', 'hooray', 'rocket', 'eyes']),
-  reacted: z.boolean(),
+  reacted: RpcBoolean,
   prRepo: SlugRepo.nullable().optional()
 })
 
@@ -43,8 +49,8 @@ export const PullRequestChecks = PullRequest.extend({
 })
 
 export const PullRequestCheckDetails = RepoSelector.extend({
-  checkRunId: z.number().int().positive().optional(),
-  workflowRunId: z.number().int().positive().optional(),
+  checkRunId: RpcNumber.int().positive().optional(),
+  workflowRunId: RpcNumber.int().positive().optional(),
   checkName: OptionalString,
   url: OptionalString.nullable().optional(),
   prRepo: SlugRepo.nullable().optional()
@@ -52,11 +58,11 @@ export const PullRequestCheckDetails = RepoSelector.extend({
 
 export const RerunPullRequestChecks = PullRequest.extend({
   headSha: OptionalString,
-  failedOnly: z.boolean().optional()
+  failedOnly: RpcOptionalBoolean
 })
 
 export const PullRequestFileContents = RepoSelector.extend({
-  prNumber: z.number().int().positive(),
+  prNumber: RpcNumber.int().positive(),
   prRepo: SlugRepo.nullable().optional(),
   path: requiredString('Missing file path'),
   oldPath: OptionalString,
@@ -69,11 +75,11 @@ export const PullRequestFileViewed = RepoSelector.extend({
   prRepo: SlugRepo.nullable().optional(),
   pullRequestId: requiredString('Missing pull request ID'),
   path: requiredString('Missing file path'),
-  viewed: z.boolean()
+  viewed: RpcBoolean
 })
 
 export const ReviewThread = RepoSelector.extend({
   prRepo: SlugRepo.nullable().optional(),
   threadId: requiredString('Missing thread ID'),
-  resolve: z.boolean()
+  resolve: RpcBoolean
 })

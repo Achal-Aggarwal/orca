@@ -1,3 +1,4 @@
+import { RpcOptionalBoolean } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalString, requiredString } from './rpc-param-primitives'
 import {
@@ -90,5 +91,5 @@ export const ProjectHostSetupUpdate = z.object({
 export const ProjectHostSetupDelete = z.object({
   setupId: requiredString('Missing setup ID'),
   hostId: RequestedHostId.optional(),
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })

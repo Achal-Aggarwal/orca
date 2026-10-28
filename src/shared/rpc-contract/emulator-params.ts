@@ -1,41 +1,42 @@
+import { RpcNumber, RpcOptionalBoolean, RpcOptionalString, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 
-export const WorktreeParam = z.object({ worktree: z.string().optional() }).partial()
+export const WorktreeParam = z.object({ worktree: RpcOptionalString }).partial()
 
 export const TapParams = z.object({
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  x: RpcNumber.min(0).max(1),
+  y: RpcNumber.min(0).max(1),
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const GesturePoint = z.object({
-  edge: z.number().int().min(0).max(4).optional(),
+  edge: RpcNumber.int().min(0).max(4).optional(),
   type: z.enum(['begin', 'move', 'end']),
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1)
+  x: RpcNumber.min(0).max(1),
+  y: RpcNumber.min(0).max(1)
 })
 
 export const GestureParams = z.object({
   points: z.array(GesturePoint).min(2).max(64),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const TypeParams = z.object({
-  text: z.string(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  text: RpcString,
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const ButtonParams = z.object({
-  name: z.string(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  name: RpcString,
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const RotateOrientation = z.enum([
@@ -47,34 +48,34 @@ export const RotateOrientation = z.enum([
 
 export const RotateParams = z.object({
   orientation: RotateOrientation,
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const ExecParams = z.object({
-  command: z.string(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  command: RpcString,
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const LaunchParams = z.object({
-  package: z.string(),
-  activity: z.string().optional(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  package: RpcString,
+  activity: RpcOptionalString,
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const PermissionsParams = z
   .object({
     op: z.enum(['grant', 'revoke', 'reset']),
-    package: z.string().optional(),
-    permission: z.string().optional(),
-    device: z.string().optional(),
-    emulator: z.string().optional(),
-    worktree: z.string().optional()
+    package: RpcOptionalString,
+    permission: RpcOptionalString,
+    device: RpcOptionalString,
+    emulator: RpcOptionalString,
+    worktree: RpcOptionalString
   })
   .superRefine((value, ctx) => {
     if (value.op === 'reset') {
@@ -111,43 +112,41 @@ export const PermissionsParams = z
   })
 
 export const AxParams = z.object({
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const LogcatParams = z.object({
-  lines: z.number().int().positive().optional(),
-  filters: z.array(z.string()).optional(),
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  lines: RpcNumber.int().positive().optional(),
+  filters: z.array(RpcString).optional(),
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const AttachParams = z.object({
-  device: z.string().optional(),
-  worktree: z.string().optional(),
-  focus: z.boolean().optional()
+  device: RpcOptionalString,
+  worktree: RpcOptionalString,
+  focus: RpcOptionalBoolean
 })
 
 export const KillParams = z.object({
-  device: z.string().optional(),
-  emulator: z.string().optional(),
-  worktree: z.string().optional()
+  device: RpcOptionalString,
+  emulator: RpcOptionalString,
+  worktree: RpcOptionalString
 })
 
 export const ShutdownParams = KillParams.extend({
-  managedOnly: z.boolean().optional()
+  managedOnly: RpcOptionalBoolean
 })
 
 export const ListParams = WorktreeParam
 
-export const EmulatorUnregisterActiveParams = z
-  .object({ worktree: z.string().optional() })
-  .partial()
+export const EmulatorUnregisterActiveParams = z.object({ worktree: RpcOptionalString }).partial()
 
-export const EmulatorListDevicesParams = z.object({ worktree: z.string().optional() }).partial()
+export const EmulatorListDevicesParams = z.object({ worktree: RpcOptionalString }).partial()
 
-export const EmulatorAvailabilityParams = z.object({ worktree: z.string().optional() }).partial()
+export const EmulatorAvailabilityParams = z.object({ worktree: RpcOptionalString }).partial()
 
-export const EmulatorListSimulatorsParams = z.object({ worktree: z.string().optional() }).partial()
+export const EmulatorListSimulatorsParams = z.object({ worktree: RpcOptionalString }).partial()

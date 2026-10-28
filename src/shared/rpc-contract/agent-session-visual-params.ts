@@ -1,3 +1,4 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isNativeChatVisualFileName } from '../native-chat/native-chat-visual-directive'
 import { SessionId } from './structured-agent-session-identifiers'
@@ -5,12 +6,12 @@ import { SessionId } from './structured-agent-session-identifiers'
 // Read visuals on their owning host; accept bare filenames, never another host’s paths.
 
 /** Content revision: hex digest of the file's bytes. */
-const Revision = z.string().regex(/^[0-9a-f]{16,64}$/)
+const Revision = RpcString.regex(/^[0-9a-f]{16,64}$/)
 
 export const ReadVisualParams = z
   .object({
     sessionId: SessionId,
-    file: z.string().refine(isNativeChatVisualFileName, 'Invalid visual file name'),
+    file: RpcString.refine(isNativeChatVisualFileName, 'Invalid visual file name'),
     // The revision the client already holds; a match answers `unchanged` without the bytes.
     knownRevision: Revision.optional()
   })

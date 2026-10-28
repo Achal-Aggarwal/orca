@@ -1,11 +1,19 @@
+import {
+  RpcBoolean,
+  RpcNull,
+  RpcNullishString,
+  RpcNumber,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const ManagedDataAccountProviderParams = z.object({
   provider: z.enum(['opencode', 'devin'])
 })
 export const AddDataAccountParams = ManagedDataAccountProviderParams.extend({
-  sourceDataHome: z.string().min(1),
-  label: z.string().trim().min(1).max(120)
+  sourceDataHome: RpcString.min(1),
+  label: RpcString.trim().min(1).max(120)
 })
 export const SelectDataAccountParams = ManagedDataAccountProviderParams.extend({
   accountId: z.uuid().nullable()
@@ -15,25 +23,25 @@ export const RemoveDataAccountParams = ManagedDataAccountProviderParams.extend({
 })
 
 export const CodexResetTarget = z.discriminatedUnion('runtime', [
-  z.object({ runtime: z.literal('host'), wslDistro: z.null() }).strict(),
+  z.object({ runtime: z.literal('host'), wslDistro: RpcNull }).strict(),
   // Why: reset scope must identify one exact WSL distro; null means all slots only for selection.
-  z.object({ runtime: z.literal('wsl'), wslDistro: z.string().trim().min(1).max(255) }).strict()
+  z.object({ runtime: z.literal('wsl'), wslDistro: RpcString.trim().min(1).max(255) }).strict()
 ])
 
 export const CodexSelectionTarget = z.discriminatedUnion('runtime', [
-  z.object({ runtime: z.literal('host'), wslDistro: z.null() }).strict(),
+  z.object({ runtime: z.literal('host'), wslDistro: RpcNull }).strict(),
   z
     .object({
       runtime: z.literal('wsl'),
       // A null distro intentionally means all WSL selection slots.
-      wslDistro: z.string().trim().min(1).max(255).nullable()
+      wslDistro: RpcString.trim().min(1).max(255).nullable()
     })
     .strict()
 ])
 
 export const SelectAccountParams = z.object({
   accountId: z
-    .union([z.string().min(1, 'Missing accountId'), z.null()])
+    .union([RpcString.min(1, 'Missing accountId'), RpcNull])
     .transform((v) => (v === null ? null : v))
 })
 
@@ -42,15 +50,15 @@ export const SelectCodexAccountForTargetParams = SelectAccountParams.extend({
 })
 
 export const RemoveAccountParams = z.object({
-  accountId: z.string().min(1, 'Missing accountId')
+  accountId: RpcString.min(1, 'Missing accountId')
 })
 
 export const CodexResetExpectedScope = z
   .object({
     target: CodexResetTarget,
-    accountId: z.string().min(1, 'Missing accountId').max(512),
-    accountRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    offerRevision: z.string().startsWith('v1:', 'Invalid offerRevision').max(4_096)
+    accountId: RpcString.min(1, 'Missing accountId').max(512),
+    accountRevision: RpcNumber.int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    offerRevision: RpcString.startsWith('v1:', 'Invalid offerRevision').max(4_096)
   })
   .strict()
 
@@ -63,60 +71,58 @@ export const ConsumeCodexResetCreditParams = z
   .strict()
 
 export const AddClaudeFromConfigDirParams = z.object({
-  configDir: z.string().min(1, 'Missing configDir'),
+  configDir: RpcString.min(1, 'Missing configDir'),
   runtime: z.enum(['host', 'wsl']).optional(),
-  wslDistro: z.string().nullish(),
-  previousLegacyCredentialsSha256: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/, 'Invalid legacy credential digest')
+  wslDistro: RpcNullishString,
+  previousLegacyCredentialsSha256: RpcString.regex(
+    /^[a-f0-9]{64}$/,
+    'Invalid legacy credential digest'
+  )
     .nullable()
     .optional()
 })
 
 export const AddCodexFromHomeParams = z.object({
-  sourceHome: z.string().min(1, 'Missing sourceHome'),
+  sourceHome: RpcString.min(1, 'Missing sourceHome'),
   runtime: z.enum(['host', 'wsl']).optional(),
-  wslDistro: z.string().nullish()
+  wslDistro: RpcNullishString
 })
 
 // Account list opts out: forced usage refresh bypasses throttle/Retry-After and costs a serial round trip per account.
 export const ListAccountsParams = z.object({
-  refreshUsage: z.boolean().default(true)
+  refreshUsage: RpcBoolean.default(true)
 })
 
 export const AccountsUnsubscribeParams = z.object({
-  subscriptionId: z
-    .unknown()
-    .transform((value) => (typeof value === 'string' && value.length > 0 ? value : ''))
-    .pipe(z.string().min(1, 'Missing subscriptionId'))
+  subscriptionId: RpcUnknown.transform((value) =>
+    typeof value === 'string' && value.length > 0 ? value : ''
+  ).pipe(RpcString.min(1, 'Missing subscriptionId'))
 })
 
 const ClaudeSignInTarget = {
   runtime: z.enum(['host', 'wsl']).optional(),
-  wslDistro: z.string().nullish()
+  wslDistro: RpcNullishString
 }
 
 export const BeginClaudeSignInParams = z
-  .object({ accountId: z.string().min(1).optional(), ...ClaudeSignInTarget })
+  .object({ accountId: RpcString.min(1).optional(), ...ClaudeSignInTarget })
   .strict()
 
 export const FinishClaudeSignInParams = z
-  .object({ accountId: z.string().min(1), ...ClaudeSignInTarget })
+  .object({ accountId: RpcString.min(1), ...ClaudeSignInTarget })
   .strict()
 
 export const HostAccountSignInStartParams = z.object({ provider: z.enum(['claude', 'codex']) })
 
 export const HostAccountSignInWaitParams = z.object({
-  flowId: z.string().min(1).max(64),
-  afterRevision: z.number().int().nonnegative().default(0)
+  flowId: RpcString.min(1).max(64),
+  afterRevision: RpcNumber.int().nonnegative().default(0)
 })
 
-export const HostAccountSignInFlowParams = z.object({ flowId: z.string().min(1).max(64) })
+export const HostAccountSignInFlowParams = z.object({ flowId: RpcString.min(1).max(64) })
 
 export const HostAccountSignInCodeParams = HostAccountSignInFlowParams.extend({
-  code: z
-    .string()
-    .trim()
+  code: RpcString.trim()
     .min(1, 'Paste the code from the sign-in page.')
     .max(4_096)
     // Why: the code becomes one line on the login's stdin; a newline inside it would answer twice.

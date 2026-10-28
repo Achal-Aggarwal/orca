@@ -1,3 +1,4 @@
+import { RpcNumber, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { TerminalPaneLayoutNodeSchema } from './session-tabs-schemas-params'
 import { TerminalOrphanGroupLayout } from './terminal-orphan-params'
@@ -6,14 +7,14 @@ import { TerminalOrphanGroupLayout } from './terminal-orphan-params'
 const SplitRatioIntents = z
   .array(
     z.object({
-      path: z.string().regex(/^((first|second)(\.(first|second))*)?$/),
-      ratio: z.number().gt(0).lt(1),
+      path: RpcString.regex(/^((first|second)(\.(first|second))*)?$/),
+      ratio: RpcNumber.gt(0).lt(1),
       // The split the window means: its direction and the first pane or group on each side.
       split: z
         .object({
           direction: z.enum(['horizontal', 'vertical']),
-          first: z.string().min(1),
-          second: z.string().min(1)
+          first: RpcString.min(1),
+          second: RpcString.min(1)
         })
         .optional()
     })
@@ -24,8 +25,8 @@ const SplitRatioIntents = z
 export const SetPaneRatiosCommand = z
   .object({
     type: z.literal('setPaneRatios'),
-    workspace: z.string().min(1),
-    tabId: z.string().min(1),
+    workspace: RpcString.min(1),
+    tabId: RpcString.min(1),
     root: TerminalPaneLayoutNodeSchema.optional(),
     ratios: SplitRatioIntents.optional()
   })
@@ -35,7 +36,7 @@ export const SetPaneRatiosCommand = z
 export const SetGroupRatiosCommand = z
   .object({
     type: z.literal('setGroupRatios'),
-    workspace: z.string().min(1),
+    workspace: RpcString.min(1),
     groupLayout: TerminalOrphanGroupLayout.optional(),
     ratios: SplitRatioIntents.optional()
   })

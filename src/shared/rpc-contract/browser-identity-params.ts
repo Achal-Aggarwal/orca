@@ -1,3 +1,4 @@
+import { RpcOptionalBoolean, RpcOptionalUnknown } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
 
@@ -6,7 +7,7 @@ export const ProfileCreate = z
     label: requiredString('Missing required --label'),
     // Reject unknown scopes rather than silently coercing to isolated (#1397).
     scope: z.enum(['isolated', 'imported']),
-    userAgentMode: z.unknown().optional()
+    userAgentMode: RpcOptionalUnknown
   })
   .superRefine((value, context) => {
     // Reject the retired field so older clients cannot mistake success for per-profile identity support.
@@ -23,5 +24,5 @@ export const ProfileCreate = z
 export const BrowserIdentitySet = z.object({
   mode: z.enum(['clean', 'native']),
   // Opt-in overwrite of corrupt or newer-version data; the host backs the old bytes up first.
-  reset: z.boolean().optional()
+  reset: RpcOptionalBoolean
 })

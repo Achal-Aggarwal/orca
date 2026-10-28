@@ -1,3 +1,4 @@
+import { RpcNumber, RpcOptionalBoolean } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 import { OptionalWorkerLaunchPreference } from './orchestration-worker-start-params'
@@ -9,7 +10,7 @@ export const FederationAttachStartParams = z.object({
   taskId: requiredString('Missing Task ID'),
   taskSpec: requiredString('Missing Task spec'),
   /** Depth stamped by the Run home; omitted by older clients and defaults to 1. */
-  depth: z.number().int().min(1).optional(),
+  depth: RpcNumber.int().min(1).optional(),
   protocolVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   worktree: requiredString('Missing remote worktree selector'),
   name: OptionalString,
@@ -25,5 +26,5 @@ export const FederationAttachStartParams = z.object({
   model: OptionalWorkerLaunchPreference,
   effort: OptionalWorkerLaunchPreference,
   timeoutMs: OptionalFiniteNumber,
-  devMode: z.boolean().optional()
+  devMode: RpcOptionalBoolean
 })

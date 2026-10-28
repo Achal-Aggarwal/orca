@@ -1,24 +1,33 @@
+import {
+  RpcBoolean,
+  RpcNull,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalNullableString,
+  RpcOptionalString,
+  RpcString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 
 export const LINEAR_DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
-export const LinearDueDate = z.string().refine((value) => LINEAR_DUE_DATE_PATTERN.test(value), {
+export const LinearDueDate = RpcString.refine((value) => LINEAR_DUE_DATE_PATTERN.test(value), {
   message: 'Linear due dates must use YYYY-MM-DD'
 })
 
 export const OptionalLinearDueDate = LinearDueDate.optional()
 
-export const OptionalLinearDueDateOrClear = z.union([LinearDueDate, z.null()]).optional()
+export const OptionalLinearDueDateOrClear = z.union([LinearDueDate, RpcNull]).optional()
 
 export const AgentSearchIssues = z.object({
   query: requiredString('Missing query'),
   limit: OptionalFiniteNumber,
-  workspaceId: z.union([z.string(), z.literal('all')]).optional()
+  workspaceId: z.union([RpcString, z.literal('all')]).optional()
 })
 
 export const LinearWorkspaceRead = z.object({
-  workspaceId: z.union([z.string(), z.literal('all')]).optional()
+  workspaceId: z.union([RpcString, z.literal('all')]).optional()
 })
 
 export const LinearTeamLookup = z.object({
@@ -32,21 +41,21 @@ export const LinearIssueList = z.object({
   filter: z.enum(['assigned', 'created', 'all', 'completed', 'open']).optional(),
   teamInput: OptionalString,
   limit: OptionalFiniteNumber,
-  workspaceId: z.union([z.string(), z.literal('all')]).optional()
+  workspaceId: z.union([RpcString, z.literal('all')]).optional()
 })
 
 export const LinearProjectList = z.object({
   query: OptionalString,
   limit: OptionalFiniteNumber,
-  workspaceId: z.union([z.string(), z.literal('all')]).optional()
+  workspaceId: z.union([RpcString, z.literal('all')]).optional()
 })
 
 export const LinearIncludeFlags = z.object({
-  comments: z.boolean(),
-  children: z.boolean(),
-  attachments: z.boolean(),
-  relations: z.boolean(),
-  activity: z.boolean().default(false)
+  comments: RpcBoolean,
+  children: RpcBoolean,
+  attachments: RpcBoolean,
+  relations: RpcBoolean,
+  activity: RpcBoolean.default(false)
 })
 
 export const LinearCurrentContext = z
@@ -54,13 +63,13 @@ export const LinearCurrentContext = z
     worktreeId: OptionalString,
     terminalHandle: OptionalString,
     cwd: OptionalString,
-    remote: z.boolean().optional()
+    remote: RpcOptionalBoolean
   })
   .optional()
 
 export const LinearWriteTarget = z.object({
   input: OptionalString,
-  current: z.boolean().optional(),
+  current: RpcOptionalBoolean,
   workspaceId: OptionalString.refine((value) => value !== 'all', {
     message: '--workspace all is not valid for Linear writes'
   }),
@@ -69,10 +78,10 @@ export const LinearWriteTarget = z.object({
 
 export const AgentIssueContext = z.object({
   input: OptionalString,
-  current: z.boolean().optional(),
+  current: RpcOptionalBoolean,
   workspaceId: OptionalString,
   include: LinearIncludeFlags,
-  depth: z.number().int().min(0).max(5),
+  depth: RpcNumber.int().min(0).max(5),
   context: LinearCurrentContext
 })
 
@@ -82,13 +91,13 @@ export const LinearIssueSetState = LinearWriteTarget.extend({
 
 export const LinearIssueUpdateTask = LinearWriteTarget.extend({
   operation: z.enum(['assignee', 'priority', 'estimate', 'dueDate', 'labels']),
-  assigneeId: z.string().nullable().optional(),
-  assigneeMe: z.boolean().optional(),
-  priority: z.number().int().min(0).max(4).optional(),
-  estimate: z.number().int().min(0).nullable().optional(),
+  assigneeId: RpcOptionalNullableString,
+  assigneeMe: RpcOptionalBoolean,
+  priority: RpcNumber.int().min(0).max(4).optional(),
+  estimate: RpcNumber.int().min(0).nullable().optional(),
   dueDate: OptionalLinearDueDateOrClear,
   labelMode: z.enum(['add', 'remove', 'set']).optional(),
-  labels: z.array(z.string()).optional()
+  labels: z.array(RpcString).optional()
 })
 
 export const LinearIssueAddComment = LinearWriteTarget.extend({
@@ -131,13 +140,13 @@ export const LinearIssueCreate = z.object({
   teamKey: OptionalString,
   state: OptionalString,
   assignee: OptionalString,
-  priority: z.number().int().min(0).max(4).optional(),
-  estimate: z.number().int().min(0).optional(),
+  priority: RpcNumber.int().min(0).max(4).optional(),
+  estimate: RpcNumber.int().min(0).optional(),
   dueDate: OptionalLinearDueDate,
-  labels: z.array(z.string()).optional(),
+  labels: z.array(RpcString).optional(),
   projectInput: OptionalString,
   parentInput: OptionalString,
-  parentCurrent: z.boolean().optional(),
+  parentCurrent: RpcOptionalBoolean,
   workspaceId: OptionalString.refine((value) => value !== 'all', {
     message: '--workspace all is not valid for Linear writes'
   }),
@@ -148,14 +157,14 @@ export const LinearIssueCreate = z.object({
 export const LinearSaveIssue = LinearWriteTarget.extend({
   team: OptionalString,
   title: OptionalString,
-  description: z.string().optional(),
+  description: RpcOptionalString,
   state: OptionalString,
-  assignee: z.string().nullable().optional(),
-  priority: z.number().int().min(0).max(4).optional(),
-  estimate: z.number().min(0).nullable().optional(),
+  assignee: RpcOptionalNullableString,
+  priority: RpcNumber.int().min(0).max(4).optional(),
+  estimate: RpcNumber.min(0).nullable().optional(),
   dueDate: OptionalLinearDueDateOrClear,
-  labels: z.array(z.string()).optional(),
-  project: z.string().nullable().optional(),
-  parentId: z.string().nullable().optional(),
+  labels: z.array(RpcString).optional(),
+  project: RpcOptionalNullableString,
+  parentId: RpcOptionalNullableString,
   writeId: OptionalString
 })

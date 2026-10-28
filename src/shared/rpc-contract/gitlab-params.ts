@@ -1,3 +1,11 @@
+import {
+  RpcBoolean,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcOptionalUnknown,
+  RpcString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 
@@ -9,7 +17,7 @@ export const EmptyParams = z.object({}).optional().default({})
 
 export const GitLabRateLimit = z
   .object({
-    force: z.boolean().optional(),
+    force: RpcOptionalBoolean,
     host: OptionalString
   })
   .optional()
@@ -31,7 +39,7 @@ export const WorkItemsList = RepoSelector.extend({
 })
 
 export const IssuesList = RepoSelector.extend({
-  state: z.unknown().optional(),
+  state: RpcOptionalUnknown,
   assignee: OptionalString,
   limit: OptionalFiniteNumber,
   page: OptionalFiniteNumber
@@ -39,74 +47,74 @@ export const IssuesList = RepoSelector.extend({
 
 export const CreateIssue = RepoSelector.extend({
   title: requiredString('Missing title'),
-  body: z.string()
+  body: RpcString
 })
 
 export const IssueUpdate = z.object({
   state: z.enum(['opened', 'closed']).optional(),
-  title: z.string().optional(),
-  body: z.string().optional(),
-  addLabels: z.array(z.string()).optional(),
-  removeLabels: z.array(z.string()).optional(),
-  addAssignees: z.array(z.string()).optional(),
-  removeAssignees: z.array(z.string()).optional()
+  title: RpcOptionalString,
+  body: RpcOptionalString,
+  addLabels: z.array(RpcString).optional(),
+  removeLabels: z.array(RpcString).optional(),
+  addAssignees: z.array(RpcString).optional(),
+  removeAssignees: z.array(RpcString).optional()
 })
 
 export const UpdateIssue = RepoSelector.extend({
-  number: z.number().int().positive(),
+  number: RpcNumber.int().positive(),
   updates: IssueUpdate,
   projectRef: GitLabProjectRef
 })
 
 export const UpdateMrState = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   state: z.enum(['opened', 'closed']),
   projectRef: GitLabProjectRef
 })
 
 export const UpdateMr = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   updates: z.object({
-    title: z.string().optional(),
-    body: z.string().optional(),
-    addLabels: z.array(z.string()).optional(),
-    removeLabels: z.array(z.string()).optional(),
+    title: RpcOptionalString,
+    body: RpcOptionalString,
+    addLabels: z.array(RpcString).optional(),
+    removeLabels: z.array(RpcString).optional(),
     readyForReview: z.literal(true).optional()
   }),
   projectRef: GitLabProjectRef
 })
 
 export const UpdateMrReviewers = RepoSelector.extend({
-  iid: z.number().int().positive(),
-  reviewerIds: z.array(z.number().int().nonnegative()),
+  iid: RpcNumber.int().positive(),
+  reviewerIds: z.array(RpcNumber.int().nonnegative()),
   projectRef: GitLabProjectRef
 })
 
 export const MergeMr = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   method: z.enum(['merge', 'squash', 'rebase']).optional(),
   projectRef: GitLabProjectRef
 })
 
 export const AddIssueComment = RepoSelector.extend({
-  number: z.number().int().positive(),
+  number: RpcNumber.int().positive(),
   body: requiredString('Comment body is required'),
   projectRef: GitLabProjectRef
 })
 
 export const AddMRComment = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   body: requiredString('Comment body is required'),
   projectRef: GitLabProjectRef
 })
 
 export const AddMRInlineComment = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   input: z.object({
     body: requiredString('Comment body is required'),
     path: requiredString('File path is required'),
-    oldPath: z.string().optional(),
-    line: z.number().int().positive(),
+    oldPath: RpcOptionalString,
+    line: RpcNumber.int().positive(),
     baseSha: requiredString('Base SHA is required'),
     startSha: requiredString('Start SHA is required'),
     headSha: requiredString('Head SHA is required')
@@ -115,34 +123,34 @@ export const AddMRInlineComment = RepoSelector.extend({
 })
 
 export const ResolveMRDiscussion = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   discussionId: requiredString('Discussion id is required'),
-  resolved: z.boolean(),
+  resolved: RpcBoolean,
   projectRef: GitLabProjectRef
 })
 
 export const JobTrace = RepoSelector.extend({
-  jobId: z.number().int().positive(),
+  jobId: RpcNumber.int().positive(),
   projectRef: GitLabProjectRef,
   // CI traces exceed the 1 MB frame cap; excerpt callers need the host to bound them before transport.
-  logExcerpt: z.boolean().optional()
+  logExcerpt: RpcOptionalBoolean
 })
 
 export const RetryJob = RepoSelector.extend({
-  jobId: z.number().int().positive(),
+  jobId: RpcNumber.int().positive(),
   projectRef: GitLabProjectRef
 })
 
 export const WorkItemDetails = RepoSelector.extend({
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   type: z.enum(['issue', 'mr']),
   projectRef: GitLabProjectRef,
-  includeReviewDetails: z.boolean().optional()
+  includeReviewDetails: RpcOptionalBoolean
 })
 
 export const WorkItemByPath = RepoSelector.extend({
   host: requiredString('Missing GitLab host'),
   path: requiredString('Missing GitLab project path'),
-  iid: z.number().int().positive(),
+  iid: RpcNumber.int().positive(),
   type: z.enum(['issue', 'mr'])
 })

@@ -1,3 +1,11 @@
+import {
+  RpcBoolean,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { isTaskProvider } from '../task-providers'
 import type { TaskProvider } from '../task-providers'
@@ -16,13 +24,11 @@ export const TaskProviderParam = z.custom<TaskProvider>(isTaskProvider, {
   message: 'Unknown task provider'
 })
 
-export const PRBotAuthorOverrideUpdate = z
-  .object({ author: z.string(), isBot: z.boolean() })
-  .strict()
+export const PRBotAuthorOverrideUpdate = z.object({ author: RpcString, isBot: RpcBoolean }).strict()
 
 export const NativeChatSessionOptionPickBase = {
-  modelId: z.string().trim().min(1).max(512),
-  adoptModelAsLaunchDefault: z.boolean().optional()
+  modelId: RpcString.trim().min(1).max(512),
+  adoptModelAsLaunchDefault: RpcOptionalBoolean
 }
 
 export const NativeChatSessionOptionPick = z.union([
@@ -30,20 +36,20 @@ export const NativeChatSessionOptionPick = z.union([
     .object({
       ...NativeChatSessionOptionPickBase,
       optionId: z.enum(['model', 'effort', 'serviceTier']),
-      value: z.string().trim().min(1).max(512)
+      value: RpcString.trim().min(1).max(512)
     })
     .strict(),
   z
     .object({
       ...NativeChatSessionOptionPickBase,
       optionId: z.enum(['fastMode', 'thinking']),
-      value: z.boolean()
+      value: RpcBoolean
     })
     .strict()
 ])
 
 // Any agent Orca launches: picks are keyed by agent id, and every native chat agent remembers them.
-const NativeChatSessionOptionAgent = z.string().refine(isTuiAgent, { message: 'Unknown agent' })
+const NativeChatSessionOptionAgent = RpcString.refine(isTuiAgent, { message: 'Unknown agent' })
 
 export const NativeChatSessionOptionsMutation = z.discriminatedUnion('type', [
   z
@@ -57,17 +63,17 @@ export const NativeChatSessionOptionsMutation = z.discriminatedUnion('type', [
     .object({
       type: z.literal('clear-model-if-missing'),
       agent: NativeChatSessionOptionAgent,
-      availableModelIds: z.array(z.string().trim().min(1).max(512)).min(1).max(256)
+      availableModelIds: z.array(RpcString.trim().min(1).max(512)).min(1).max(256)
     })
     .strict()
 ])
 
 export const GitHubProjectRef = z
   .object({
-    owner: z.string(),
+    owner: RpcString,
     ownerType: z.enum(['organization', 'user']),
-    number: z.number().int(),
-    host: z.string().optional()
+    number: RpcNumber.int(),
+    host: RpcOptionalString
   })
   .strict()
 
@@ -76,58 +82,49 @@ export const GitHubProjectSettings = z
     pinned: z.array(GitHubProjectRef),
     recent: z.array(
       GitHubProjectRef.extend({
-        lastOpenedAt: z.string()
+        lastOpenedAt: RpcString
       }).strict()
     ),
-    lastViewByProject: z.record(z.string(), z.object({ viewId: z.string() }).strict()),
+    lastViewByProject: z.record(RpcString, z.object({ viewId: RpcString }).strict()),
     activeProject: GitHubProjectRef.nullable()
   })
   .strict()
 
 export const SettingsUpdate = z
   .object({
-    machineName: z.string().trim().max(MACHINE_NAME_MAX_LENGTH).optional(),
+    machineName: RpcString.trim().max(MACHINE_NAME_MAX_LENGTH).optional(),
     worktreeVisibilityDefaults: WorktreeVisibilityDefaultsUpdate.optional(),
-    defaultTuiAgent: z
-      .unknown()
-      .transform((value) =>
-        value === null || value === 'blank' || isTuiAgent(value) ? value : undefined
-      )
-      .optional(),
-    disabledTuiAgents: z
-      .unknown()
-      .transform((value) => normalizeDisabledTuiAgents(value))
-      .optional(),
-    agentDefaultArgs: z
-      .unknown()
-      .transform((value) => normalizeTuiAgentArgsRecord(value))
-      .optional(),
-    agentDefaultEnv: z
-      .unknown()
-      .transform((value) => normalizeTuiAgentEnvRecord(value))
-      .optional(),
+    defaultTuiAgent: RpcUnknown.transform((value) =>
+      value === null || value === 'blank' || isTuiAgent(value) ? value : undefined
+    ).optional(),
+    disabledTuiAgents: RpcUnknown.transform((value) =>
+      normalizeDisabledTuiAgents(value)
+    ).optional(),
+    agentDefaultArgs: RpcUnknown.transform((value) =>
+      normalizeTuiAgentArgsRecord(value)
+    ).optional(),
+    agentDefaultEnv: RpcUnknown.transform((value) => normalizeTuiAgentEnvRecord(value)).optional(),
     defaultTaskSource: TaskProviderParam.optional(),
     visibleTaskProviders: z.array(TaskProviderParam).optional(),
     defaultTaskViewPreset: z
       .enum(['issues', 'my-issues', 'prs', 'my-prs', 'review', 'all'])
       .optional(),
-    experimentalNewWorktreeCardStyle: z.boolean().optional(),
+    experimentalNewWorktreeCardStyle: RpcOptionalBoolean,
     /** No UI: the host-side switch for connectors, so a headless server can be turned on. */
-    experimentalConnectors: z.boolean().optional(),
-    agentStatusHooksEnabled: z.boolean().optional(),
-    claudeSubagentNavigationEnabled: z.boolean().optional(),
-    defaultRepoSelection: z.array(z.string()).nullable().optional(),
-    defaultLinearTeamSelection: z.array(z.string()).nullable().optional(),
-    compactWorktreeCards: z.boolean().optional(),
-    minimaxGroupId: z.string().optional(),
-    minimaxUsageModels: z.string().optional(),
+    experimentalConnectors: RpcOptionalBoolean,
+    agentStatusHooksEnabled: RpcOptionalBoolean,
+    claudeSubagentNavigationEnabled: RpcOptionalBoolean,
+    defaultRepoSelection: z.array(RpcString).nullable().optional(),
+    defaultLinearTeamSelection: z.array(RpcString).nullable().optional(),
+    compactWorktreeCards: RpcOptionalBoolean,
+    minimaxGroupId: RpcOptionalString,
+    minimaxUsageModels: RpcOptionalString,
     minimaxEndpoint: z.enum(['overseas', 'cn']).optional(),
     zcodePlanSite: z.enum(['zai', 'bigmodel']).optional(),
     githubProjects: GitHubProjectSettings.optional(),
-    prBotAuthorOverrides: z
-      .unknown()
-      .transform((value) => normalizePRBotAuthorOverrides(value))
-      .optional(),
+    prBotAuthorOverrides: RpcUnknown.transform((value) =>
+      normalizePRBotAuthorOverrides(value)
+    ).optional(),
     nativeChatPermissionMode: z.enum(AGENT_CHAT_PERMISSION_MODES).optional()
   })
   .strict()

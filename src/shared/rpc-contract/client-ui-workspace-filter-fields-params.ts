@@ -1,11 +1,12 @@
+import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const ClientUiWorkspaceFilterFields = {
-  hideDefaultBranchWorkspace: z.boolean().optional(),
-  hideAutomationGeneratedWorkspaces: z.boolean().optional(),
-  hideCliCreatedWorkspaces: z.boolean().optional(),
-  hideDetachedHeadWorkspaces: z.boolean().optional(),
-  hideWorkspacesFromOtherDevices: z.boolean().optional(),
-  alwaysShowDefaultBranchWorkspace: z.boolean().optional(),
-  filterRepoIds: z.array(z.string()).optional()
+  hideDefaultBranchWorkspace: RpcOptionalBoolean,
+  hideAutomationGeneratedWorkspaces: RpcOptionalBoolean,
+  hideCliCreatedWorkspaces: RpcOptionalBoolean,
+  hideDetachedHeadWorkspaces: RpcOptionalBoolean,
+  hideWorkspacesFromOtherDevices: RpcOptionalBoolean,
+  alwaysShowDefaultBranchWorkspace: RpcOptionalBoolean,
+  filterRepoIds: z.array(RpcString).optional()
 }

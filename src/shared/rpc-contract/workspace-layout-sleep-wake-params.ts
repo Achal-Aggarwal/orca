@@ -1,9 +1,10 @@
+import { RpcString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { parsePaneKey } from '../stable-pane-id'
 import { sleepingAgentSessionRecordSchema } from '../workspace-session-sleeping-agents'
 
 // copied, not imported: import cycle
-const OnTab = { workspace: z.string().min(1), tabId: z.string().min(1) }
+const OnTab = { workspace: RpcString.min(1), tabId: RpcString.min(1) }
 
 /** Pane keys of the command's own tab only, so a sleep or wake never reaches past it. */
 function paneKeysNameTab(command: { tabId: string; paneKeys: string[] }): boolean {
@@ -15,7 +16,7 @@ export const SleepCommand = z
   .object({
     type: z.literal('sleep'),
     ...OnTab,
-    paneKeys: z.array(z.string().min(1)).min(1),
+    paneKeys: z.array(RpcString.min(1)).min(1),
     records: z.array(sleepingAgentSessionRecordSchema),
     recordOnly: z.literal(true).optional()
   })
@@ -32,7 +33,7 @@ export const WakeCommand = z
   .object({
     type: z.literal('wake'),
     ...OnTab,
-    paneKeys: z.array(z.string().min(1)).min(1),
+    paneKeys: z.array(RpcString.min(1)).min(1),
     recordOnly: z.literal(true).optional()
   })
   .refine((command) => command.recordOnly === true || command.paneKeys.length === 1)
@@ -40,5 +41,5 @@ export const WakeCommand = z
 
 /** The window's start of one pane it shows that has no live terminal; main starts it, never the window. */
 export const StartPaneCommand = z
-  .object({ type: z.literal('startPane'), ...OnTab, paneKey: z.string().min(1) })
+  .object({ type: z.literal('startPane'), ...OnTab, paneKey: RpcString.min(1) })
   .refine((command) => parsePaneKey(command.paneKey)?.tabId === command.tabId)

@@ -1,6 +1,7 @@
+import { RpcOptionalBoolean } from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const UpdaterCheckParams = z.object({
-  includePrerelease: z.boolean().optional(),
-  includePerfPrerelease: z.boolean().optional()
+  includePrerelease: RpcOptionalBoolean,
+  includePerfPrerelease: RpcOptionalBoolean
 })

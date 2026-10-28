@@ -1,3 +1,15 @@
+import {
+  RpcBoolean,
+  RpcNullableString,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalNumber,
+  RpcOptionalString,
+  RpcOptionalUnknown,
+  RpcString,
+  RpcUndefined,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { TERMINAL_KITTY_FILE_MAX_BYTES } from '../terminal-kitty-file'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
@@ -12,11 +24,9 @@ import { TERMINAL_PANE_SPLIT_SOURCES } from '../feature-education-telemetry'
 import { OptionalExecutionHostId } from './worktree-params'
 
 // Refuse at the authoritative host boundary instead of returning an opaque relay spawn failure.
-export const WindowsShellOverrideParam = z
-  .string()
-  .refine(isSupportedWindowsShellOverride, {
-    message: `shell must be one of: ${listSupportedWindowsShellOverrides().join(', ')}`
-  })
+export const WindowsShellOverrideParam = RpcString.refine(isSupportedWindowsShellOverride, {
+  message: `shell must be one of: ${listSupportedWindowsShellOverrides().join(', ')}`
+})
   // Canonicalize host-side to the .exe spellings exact-matched by spawn, even if the client did not.
   .transform((shell) => canonicalizeWindowsShellOverride(shell) ?? shell)
 
@@ -24,11 +34,11 @@ const TerminalSurfaceCloseIdentity = z.object({
   worktreeId: requiredString('Missing worktree id'),
   tabId: requiredString('Missing tab id'),
   leafId: requiredString('Missing leaf id'),
-  createdAt: z.number().finite().nullable(),
-  generation: z.number().int().nonnegative(),
-  hasLeaf: z.boolean(),
-  ptyId: z.string().nullable(),
-  incarnationId: z.string().nullable()
+  createdAt: RpcNumber.finite().nullable(),
+  generation: RpcNumber.int().nonnegative(),
+  hasLeaf: RpcBoolean,
+  ptyId: RpcNullableString,
+  incarnationId: RpcNullableString
 })
 const TerminalSurfaceCloseCapture = z.object({
   identity: TerminalSurfaceCloseIdentity,
@@ -53,13 +63,11 @@ export const TerminalClose = TerminalHandle.extend({
 })
 
 export const TerminalReadKittyFile = TerminalHandle.extend({
-  path: z
-    .string()
-    .min(1)
+  path: RpcString.min(1)
     .max(4096)
     .refine((path) => !path.includes('\0')),
-  offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-  length: z.number().int().nonnegative().max(TERMINAL_KITTY_FILE_MAX_BYTES).optional()
+  offset: RpcNumber.int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  length: RpcNumber.int().nonnegative().max(TERMINAL_KITTY_FILE_MAX_BYTES).optional()
 })
 
 export const TerminalFocus = TerminalHandle.extend({
@@ -67,44 +75,44 @@ export const TerminalFocus = TerminalHandle.extend({
 })
 
 export const TerminalViewClaudeAgent = TerminalHandle.extend({
-  sessionId: z.string().min(1).max(256),
-  agentId: z.string().min(1).max(256).optional(),
-  client: z.object({ id: z.string().min(1).max(256), type: z.literal('desktop') })
+  sessionId: RpcString.min(1).max(256),
+  agentId: RpcString.min(1).max(256).optional(),
+  client: z.object({ id: RpcString.min(1).max(256), type: z.literal('desktop') })
 })
 
 /** `terminal.reveal` takes no handle: a pane a paired server owns has none on this host. */
 export const TerminalReveal = z.object({
-  worktreeId: requiredString('Missing worktree id').pipe(z.string().max(1024)),
-  tabId: requiredString('Missing tab id').pipe(z.string().max(128)),
-  leafId: requiredString('Missing leaf id').pipe(z.string().max(128)).optional(),
+  worktreeId: requiredString('Missing worktree id').pipe(RpcString.max(1024)),
+  tabId: requiredString('Missing tab id').pipe(RpcString.max(128)),
+  leafId: requiredString('Missing leaf id').pipe(RpcString.max(128)).optional(),
   executionHostId: OptionalExecutionHostId
 })
 
 /** Only inspectProcess accepts the decision-bearing process scan; sibling handle methods must not acquire this option. */
 export const TerminalInspectProcess = TerminalHandle.extend({
   // Additive request member understood by newer hosts; legacy hosts safely ignore it.
-  scanChildProcesses: z.boolean().optional()
+  scanChildProcesses: RpcOptionalBoolean
 })
 
 export const TerminalListParams = z.object({
   worktree: OptionalString,
   limit: OptionalFiniteNumber,
   handles: z
-    .array(requiredString('Missing terminal handle').pipe(z.string().max(256)))
+    .array(requiredString('Missing terminal handle').pipe(RpcString.max(256)))
     .max(64)
     .optional(),
-  requireFreshPtyLiveness: z.boolean().optional(),
+  requireFreshPtyLiveness: RpcOptionalBoolean,
   // Only human CLI formatting needs the costly layouts; absent includes them for older clients.
-  includeVisualLayouts: z.boolean().optional(),
+  includeVisualLayouts: RpcOptionalBoolean,
   // Layout-owner hosts show the workspace's unshown live terminals before listing (a window's
   // activation sweep); other hosts drop it, as they did before it existed.
-  placeUnshownLiveTerminals: z.boolean().optional()
+  placeUnshownLiveTerminals: RpcOptionalBoolean
 })
 
 export const TerminalResolveActive = z.object({
   worktree: OptionalString,
   /** Refuse instead of guessing when several leaves could be the caller's own terminal. */
-  requireUnambiguous: z.boolean().optional()
+  requireUnambiguous: RpcOptionalBoolean
 })
 
 export const TerminalResolvePane = z.object({
@@ -119,24 +127,19 @@ export const TerminalRecoverPane = z.object({
 })
 
 export const TerminalRead = TerminalHandle.extend({
-  cursor: z
-    .unknown()
-    .transform((value) => {
-      if (value === undefined) {
-        return undefined
-      }
-      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-        return Number.NaN
-      }
-      return value
-    })
+  cursor: RpcUnknown.transform((value) => {
+    if (value === undefined) {
+      return undefined
+    }
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      return Number.NaN
+    }
+    return value
+  })
     .pipe(
-      z
-        .number()
-        .optional()
-        .refine((v) => v === undefined || Number.isFinite(v), {
-          message: 'Cursor must be a non-negative integer'
-        })
+      RpcOptionalNumber.refine((v) => v === undefined || Number.isFinite(v), {
+        message: 'Cursor must be a non-negative integer'
+      })
     )
     .optional(),
   limit: OptionalFiniteNumber,
@@ -156,23 +159,23 @@ export const TerminalRename = TerminalHandle.extend({
 
 // An explicit empty string clears the pane; an omitted title must not clear it.
 export const TerminalSetPaneTitle = TerminalHandle.extend({
-  title: z.string()
+  title: RpcString
 })
 
 export const TerminalSend = TerminalHandle.extend({
   text: OptionalString,
-  enter: z.unknown().optional(),
-  interrupt: z.unknown().optional(),
+  enter: RpcOptionalUnknown,
+  interrupt: RpcOptionalUnknown,
   // Why: older hosts strip this optional intent and retain their direct-send behavior.
   agentPrompt: z.literal(true).optional(),
   // Older hosts strip this and omit the proof; callers read their whole-write `accepted` verdict.
   requireWriteSettlement: z.literal(true).optional(),
   // Why: waiting observes the same prompt receipt; it never authorizes a second write.
-  waitSubmitMs: z.number().int().min(0).max(3_600_000).optional(),
+  waitSubmitMs: RpcNumber.int().min(0).max(3_600_000).optional(),
   resolvedLaunchDraft: z
     .object({
-      text: z.string(),
-      createdAt: z.number().finite()
+      text: RpcString,
+      createdAt: RpcNumber.finite()
     })
     .optional(),
   requireAgentStatus: z.enum(['sendable']).optional(),
@@ -187,16 +190,16 @@ export const TerminalSend = TerminalHandle.extend({
     .optional(),
   viewport: z
     .object({
-      cols: z.number().int().min(1).max(1000),
-      rows: z.number().int().min(1).max(500)
+      cols: RpcNumber.int().min(1).max(1000),
+      rows: RpcNumber.int().min(1).max(500)
     })
     .optional(),
   claimViewport: z.literal(true).optional()
 })
 
 export const TerminalViewport = z.object({
-  cols: z.number().int().min(1).max(1000),
-  rows: z.number().int().min(1).max(500)
+  cols: RpcNumber.int().min(1).max(1000),
+  rows: RpcNumber.int().min(1).max(500)
 })
 
 export const TerminalWait = TerminalHandle.extend({
@@ -207,8 +210,8 @@ export const TerminalWait = TerminalHandle.extend({
 })
 
 const TerminalColorQueryReplyColorsParam = z.object({
-  foreground: z.string().max(128).optional(),
-  background: z.string().max(128).optional()
+  foreground: RpcString.max(128).optional(),
+  background: RpcString.max(128).optional()
 })
 
 export const TerminalSetViewerColors = z.object({
@@ -218,26 +221,24 @@ export const TerminalSetViewerColors = z.object({
 /** The provider session a terminal's launch resumes. */
 export const ResumeProviderSessionParam = z.object({
   key: z.enum(['session_id', 'conversation_id']),
-  id: z.string().min(1).max(512),
-  transcriptPath: z.string().min(1).max(32_768).optional()
+  id: RpcString.min(1).max(512),
+  transcriptPath: RpcString.min(1).max(32_768).optional()
 })
 
 export const TerminalCreateParams = z.object({
   worktree: OptionalString,
-  clientMutationId: z.string().min(1).max(128).optional(),
-  reconcileExisting: z.boolean().optional(),
+  clientMutationId: RpcString.min(1).max(128).optional(),
+  reconcileExisting: RpcOptionalBoolean,
   command: OptionalString,
   startupCommandDelivery: z.enum(['fast', 'shell-ready']).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  envToDelete: z.array(z.string().min(1).max(256)).max(32).optional(),
+  env: z.record(RpcString, RpcString).optional(),
+  envToDelete: z.array(RpcString.min(1).max(256)).max(32).optional(),
   launchConfig: z
     .object({
-      agentCommand: z.string().optional(),
-      agentArgs: z.string(),
-      agentEnv: z.record(z.string(), z.string()),
-      ompResumeFilePath: z
-        .string()
-        .min(1)
+      agentCommand: RpcOptionalString,
+      agentArgs: RpcString,
+      agentEnv: z.record(RpcString, RpcString),
+      ompResumeFilePath: RpcString.min(1)
         .max(32 * 1024)
         .optional()
     })
@@ -246,14 +247,14 @@ export const TerminalCreateParams = z.object({
   // Older hosts drop it and resume as before.
   resumeOrigin: z.literal('saved').optional(),
   launchToken: OptionalString,
-  launchAgent: z.string().refine(isTuiAgent).optional(),
-  terminalKittyKeyboardProtocol: z.boolean().optional(),
+  launchAgent: RpcString.refine(isTuiAgent).optional(),
+  terminalKittyKeyboardProtocol: RpcOptionalBoolean,
   terminalColorQueryReplies: TerminalColorQueryReplyColorsParam.optional(),
   title: OptionalString,
-  focus: z.unknown().optional(),
+  focus: RpcOptionalUnknown,
   // Ignored here; the CLI still sends it for hosts before v1.4.211, which route on it.
-  rendererBacked: z.unknown().optional(),
-  activate: z.unknown().optional(),
+  rendererBacked: RpcOptionalUnknown,
+  activate: RpcOptionalUnknown,
   presentation: z.enum(['background', 'focused']).optional(),
   tabId: OptionalString,
   leafId: OptionalString,
@@ -269,16 +270,14 @@ export const TerminalSplit = z
     // Required unless `pane` names the source; the refinement keeps the handle's message.
     terminal: OptionalString,
     expectedIncarnationId: TerminalHandle.shape.expectedIncarnationId,
-    direction: z
-      .unknown()
-      .transform((v) => (v === 'vertical' || v === 'horizontal' ? v : undefined))
-      .pipe(z.union([z.enum(['vertical', 'horizontal']), z.undefined()]))
+    direction: RpcUnknown.transform((v) => (v === 'vertical' || v === 'horizontal' ? v : undefined))
+      .pipe(z.union([z.enum(['vertical', 'horizontal']), RpcUndefined]))
       .optional(),
     command: OptionalString,
-    env: z.record(z.string(), z.string()).optional(),
+    env: z.record(RpcString, RpcString).optional(),
     telemetrySource: z.enum(TERMINAL_PANE_SPLIT_SOURCES).optional(),
     // Timed-out split identity, gated on TERMINAL_SPLIT_RETRY_RUNTIME_CAPABILITY; reject blank rather than treating it as a fresh split.
-    retrySplit: z.string().min(1, 'Missing split id').optional(),
+    retrySplit: RpcString.min(1, 'Missing split id').optional(),
     // Layout-owner build: a window names its own pane; main writes the split and starts it.
     pane: z
       .object({
@@ -291,8 +290,8 @@ export const TerminalSplit = z
     cwd: OptionalString,
     initialSize: z
       .object({
-        cols: z.number().int().min(1).max(1000),
-        rows: z.number().int().min(1).max(500)
+        cols: RpcNumber.int().min(1).max(1000),
+        rows: RpcNumber.int().min(1).max(500)
       })
       .optional()
   })
@@ -312,8 +311,8 @@ export const TerminalSleep = TerminalStop
 
 export const TerminalStopExact = TerminalStop.extend({
   expectedPtyIds: z.array(requiredString('Missing PTY ID')).min(1),
-  keepHistory: z.boolean().optional(),
-  targetOnly: z.boolean().optional()
+  keepHistory: RpcOptionalBoolean,
+  targetOnly: RpcOptionalBoolean
 })
 
 export const AgentTeamsTmuxCompat = z.object({
@@ -321,11 +320,11 @@ export const AgentTeamsTmuxCompat = z.object({
   token: requiredString('Missing agent team token'),
   envPane: requiredString('Missing tmux pane identity'),
   cwd: OptionalString,
-  argv: z.array(z.string())
+  argv: z.array(RpcString)
 })
 
 export const AgentTeamsPrepareLaunch = z.object({
   paneKey: requiredString('Missing pane key'),
-  env: z.record(z.string(), z.string()).optional(),
-  prepareAuth: z.boolean().optional()
+  env: z.record(RpcString, RpcString).optional(),
+  prepareAuth: RpcOptionalBoolean
 })

@@ -1,9 +1,16 @@
+import {
+  RpcNull,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 
 export const VALID_CUSTOM_VIEW_MODELS = ['issue', 'project'] as const
 
-export const LinearPriority = z.number().int().min(0).max(4).optional()
+export const LinearPriority = RpcNumber.int().min(0).max(4).optional()
 
 export const LinearLabelIds = z.array(requiredString('Invalid label ID')).optional()
 
@@ -37,10 +44,10 @@ export const CreateIssue = z.object({
   description: OptionalString,
   workspaceId: OptionalString,
   parentIssueId: OptionalString,
-  projectId: z.union([z.string(), z.null()]).optional(),
+  projectId: z.union([RpcString, RpcNull]).optional(),
   stateId: OptionalString,
   priority: LinearPriority,
-  assigneeId: z.union([z.string(), z.null()]).optional(),
+  assigneeId: z.union([RpcString, RpcNull]).optional(),
   labelIds: LinearLabelIds
 })
 
@@ -60,42 +67,42 @@ export const ListProjects = z
     query: OptionalString,
     limit: OptionalFiniteNumber,
     workspaceId: OptionalString,
-    force: z.boolean().optional()
+    force: RpcOptionalBoolean
   })
   .optional()
 
 export const ProjectId = z.object({
   id: requiredString('Project ID is required'),
   workspaceId: ConcreteWorkspaceId,
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })
 
 export const ProjectIssues = z.object({
   projectId: requiredString('Project ID is required'),
   limit: OptionalFiniteNumber,
   workspaceId: ConcreteWorkspaceId,
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })
 
 export const ListCustomViews = z.object({
   model: z.enum(VALID_CUSTOM_VIEW_MODELS),
   limit: OptionalFiniteNumber,
   workspaceId: OptionalString,
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })
 
 export const CustomViewId = z.object({
   viewId: requiredString('Custom view ID is required'),
   model: z.enum(VALID_CUSTOM_VIEW_MODELS),
   workspaceId: ConcreteWorkspaceId,
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })
 
 export const CustomViewContents = z.object({
   viewId: requiredString('Custom view ID is required'),
   limit: OptionalFiniteNumber,
   workspaceId: ConcreteWorkspaceId,
-  force: z.boolean().optional()
+  force: RpcOptionalBoolean
 })
 
 export const TeamId = z.object({
@@ -109,12 +116,12 @@ export const IssueUpdate = z.object({
   updates: z.object({
     stateId: OptionalString,
     title: OptionalString,
-    description: z.string().optional(),
-    assigneeId: z.union([z.string(), z.null()]).optional(),
-    estimate: z.union([z.number().int().min(0), z.null()]).optional(),
-    priority: z.number().int().min(0).max(4).optional(),
-    labelIds: z.array(z.string()).optional(),
-    projectId: z.union([z.string(), z.null()]).optional()
+    description: RpcOptionalString,
+    assigneeId: z.union([RpcString, RpcNull]).optional(),
+    estimate: z.union([RpcNumber.int().min(0), RpcNull]).optional(),
+    priority: RpcNumber.int().min(0).max(4).optional(),
+    labelIds: z.array(RpcString).optional(),
+    projectId: z.union([RpcString, RpcNull]).optional()
   })
 })
 

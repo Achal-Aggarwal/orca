@@ -1,3 +1,10 @@
+import {
+  RpcOptionalBoolean,
+  RpcOptionalNullableString,
+  RpcOptionalString,
+  RpcString,
+  RpcUnknown
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
 import { createRepoUpdateSchema } from './repo-update-params'
@@ -29,15 +36,14 @@ export const RepoUpdate = createRepoUpdateSchema(RepoSelector.shape)
 
 export const RepoSearchRefs = z.object({
   repo: requiredString('Missing repo selector'),
-  query: z
-    .unknown()
-    .transform((v) => (typeof v === 'string' ? v : undefined))
-    .pipe(z.string({ message: 'Missing query' })),
+  query: RpcUnknown.transform((v) => (typeof v === 'string' ? v : undefined)).pipe(
+    z.string({ message: 'Missing query' })
+  ),
   limit: OptionalFiniteNumber
 })
 
 export const RepoReorder = z.object({
-  orderedIds: z.array(z.string())
+  orderedIds: z.array(RpcString)
 })
 
 export const ProjectGroupCreate = z.object({
@@ -52,7 +58,7 @@ export const ProjectGroupUpdate = z.object({
   groupId: requiredString('Missing group id'),
   updates: z.object({
     name: OptionalString,
-    isCollapsed: z.boolean().optional(),
+    isCollapsed: RpcOptionalBoolean,
     tabOrder: OptionalFiniteNumber,
     color: OptionalString.nullable().optional()
   })
@@ -67,7 +73,7 @@ export const ProjectGroupMoveProject = z.object({
   repo: requiredString('Missing repo selector'),
   groupId: OptionalString.nullable(),
   order: OptionalFiniteNumber,
-  connectionId: z.string().nullable().optional()
+  connectionId: RpcOptionalNullableString
 })
 
 export const ProjectGroupScanNested = z.object({
@@ -77,25 +83,25 @@ export const ProjectGroupScanNested = z.object({
 export const ProjectGroupImportNested = z.discriminatedUnion('mode', [
   z.object({
     parentPath: requiredString('Missing parent path'),
-    groupName: z.string().optional().default(''),
-    projectPaths: z.array(z.string()),
+    groupName: RpcOptionalString.default(''),
+    projectPaths: z.array(RpcString),
     mode: z.literal('group')
   }),
   z.object({
     parentPath: requiredString('Missing parent path'),
     // Blank group names use the scanned folder basename; separate imports share the payload but create no group.
-    groupName: z.string().optional().default(''),
-    projectPaths: z.array(z.string()),
+    groupName: RpcOptionalString.default(''),
+    projectPaths: z.array(RpcString),
     mode: z.literal('separate')
   })
 ])
 
 export const RepoIssueCommandWrite = RepoSelector.extend({
-  content: z.string()
+  content: RpcString
 })
 
 export const RepoSparsePresetSave = RepoSelector.extend({
   id: OptionalString,
   name: requiredString('Missing preset name'),
-  directories: z.array(z.string())
+  directories: z.array(RpcString)
 })

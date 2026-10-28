@@ -1,3 +1,4 @@
+import { RpcNumber, RpcOptionalBoolean } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, OptionalString } from './rpc-param-primitives'
 import { LinearIssueAttributeFilterSchema } from './linear-issue-attribute-filter-params'
@@ -17,7 +18,7 @@ export const McpListIssues = z
     team: OptionalString,
     cycle: OptionalString,
     label: OptionalString,
-    limit: z.number().int().min(1).max(250).optional(),
+    limit: RpcNumber.int().min(1).max(250).optional(),
     query: OptionalString,
     state: OptionalString,
     cursor: OptionalString,
@@ -27,10 +28,10 @@ export const McpListIssues = z
     assignee: OptionalString,
     delegate: OptionalString,
     parentId: OptionalString,
-    priority: z.number().int().min(0).max(4).optional(),
+    priority: RpcNumber.int().min(0).max(4).optional(),
     createdAt: OptionalString,
     updatedAt: OptionalString,
-    includeArchived: z.boolean().optional(),
+    includeArchived: RpcOptionalBoolean,
     workspaceId: OptionalString
   })
   .strict()
