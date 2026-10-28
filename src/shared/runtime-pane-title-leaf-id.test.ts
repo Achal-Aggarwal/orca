@@ -63,19 +63,14 @@ describe('resolveRuntimePaneTitleLeafResolution', () => {
 })
 
 describe('isRuntimePaneTitleOrphan', () => {
-  it('keeps ids the layout cannot place but that are not removed panes', () => {
-    expect(isRuntimePaneTitleOrphan(leafLayout.root, '0')).toBe(false)
-    expect(isRuntimePaneTitleOrphan(leafLayout.root, '-1')).toBe(false)
-    expect(isRuntimePaneTitleOrphan(leafLayout.root, '2')).toBe(false)
-    expect(isRuntimePaneTitleOrphan(splitLayout.root, '3')).toBe(false)
+  it('never treats numeric slots as removed panes', () => {
+    for (const runtimePaneId of ['0', '-1', '2', '3']) {
+      expect(isRuntimePaneTitleOrphan(runtimePaneId, new Set([LEAF_A]))).toBe(false)
+    }
   })
 
-  it('keeps a resolvable live pane', () => {
-    expect(isRuntimePaneTitleOrphan(splitLayout.root, '2')).toBe(false)
-    expect(isRuntimePaneTitleOrphan(splitLayout.root, LEAF_B)).toBe(false)
-  })
-
-  it('flags a durable leaf id the layout no longer has', () => {
-    expect(isRuntimePaneTitleOrphan(leafLayout.root, LEAF_B)).toBe(true)
+  it('flags only a durable leaf id the layout no longer has', () => {
+    expect(isRuntimePaneTitleOrphan(LEAF_B, new Set([LEAF_A, LEAF_B]))).toBe(false)
+    expect(isRuntimePaneTitleOrphan(LEAF_B, new Set([LEAF_A]))).toBe(true)
   })
 })

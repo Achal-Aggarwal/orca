@@ -17,7 +17,7 @@ import type {
 import {
   isClientOwnedAgentStatus,
   isMirroredAgentStatusOwnedBy,
-  isFencedClientAgentStatus,
+  clientAgentStatusFencesHost,
   hostAgentStatusPiercesClientAuthority,
   isMirroredAgentPaneKeyForTabs,
   batchAgentPaneKeysForTabs,
@@ -94,8 +94,7 @@ export function buildMirroredAgentStatusPatch(
       existing.stateStartedAt > entry.stateStartedAt
     // Cross-machine clocks cannot arbitrate live byte ownership; keep client state except host-only classes, adopting host identity below.
     const hostPiercesAuthority = hostAgentStatusPiercesClientAuthority(entry)
-    const clientOwnsEntry =
-      isFencedClientAgentStatus(entry.paneKey, existing, now) && !hostPiercesAuthority
+    const clientOwnsEntry = clientAgentStatusFencesHost(entry.paneKey, existing, entry, now)
     const nextEntry =
       existing &&
       (clientOwnsEntry ||

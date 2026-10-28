@@ -13,6 +13,8 @@ import {
   applyWebSessionTabsSnapshots
 } from './web-session-tabs-sync/snapshot-api'
 import type { WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+import type { PaneManager } from '@/lib/pane-manager/pane-manager'
+import { registerRuntimeTerminalTab } from './mounted-terminal-tab-registry'
 import { toWebTerminalSurfaceTabId } from '../../../shared/terminal-surface-id'
 import {
   ENV,
@@ -20,6 +22,7 @@ import {
   LEAF_ID,
   NOW,
   SECOND_LEAF_ID,
+  THIRD_LEAF_ID,
   WT,
   makeSnapshot,
   makeState,
@@ -174,7 +177,8 @@ describe('remote completion repairs saved spinner titles', () => {
       NOW
     )
     expect(patch.runtimePaneTitlesByTabId).toBeUndefined()
-    expect(patch.agentStatusByPaneKey?.[PANE_KEY]?.state ?? row.state).toBe('working')
+    const nextStatuses = patch.agentStatusByPaneKey ?? state.agentStatusByPaneKey
+    expect(nextStatuses[PANE_KEY]?.state).toBe('working')
   })
 
   it('preserves title repairs across a batched all-workspace inventory', () => {
@@ -327,6 +331,48 @@ describe('remote completion repairs saved spinner titles', () => {
     )
     expect(patch.runtimePaneTitlesByTabId).toBeUndefined()
     expect(state.runtimePaneTitlesByTabId[TAB_ID]).toEqual({ 3: '⠋ Pi', 7: '⠋ Pi' })
+  })
+
+  it('keeps titles of a client split the pre-split host snapshot does not have yet', () => {
+    const leafIdsBySlot = new Map([
+      [1, LEAF_ID],
+      [2, THIRD_LEAF_ID]
+    ])
+    const manager = {
+      getLeafId: (paneId: number) => leafIdsBySlot.get(paneId) ?? null,
+      getNumericIdForLeaf: (leafId: string) =>
+        [...leafIdsBySlot].find(([, id]) => id === leafId)?.[0] ?? null
+    }
+    const unregister = registerRuntimeTerminalTab({
+      tabId: TAB_ID,
+      worktreeId: WT,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the title patch reads only getLeafId/getNumericIdForLeaf.
+      getManager: () => manager as unknown as PaneManager,
+      getContainer: () => null,
+      getPtyIdForPane: () => null,
+      getTabWideAgentHintLeafId: () => null
+    })
+    try {
+      const state = restoredState()
+      state.runtimePaneTitlesByTabId[TAB_ID] = {
+        1: '⠋ Pi - saved session',
+        2: '⠋ Pi',
+        [THIRD_LEAF_ID]: '⠋ Pi'
+      }
+      const patch = applyWebSessionTabsSnapshot(
+        state,
+        makeSnapshot([hostPane()], { snapshotVersion: 2 }),
+        ENV,
+        NOW
+      )
+      expect(patch.runtimePaneTitlesByTabId?.[TAB_ID]).toEqual({
+        1: 'Pi ready',
+        2: '⠋ Pi',
+        [THIRD_LEAF_ID]: '⠋ Pi'
+      })
+    } finally {
+      unregister()
+    }
   })
 
   it('does not interpret a pending host placeholder as new title evidence', () => {

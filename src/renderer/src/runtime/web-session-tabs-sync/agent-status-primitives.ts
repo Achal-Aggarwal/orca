@@ -93,6 +93,19 @@ export function isFencedClientAgentStatus(
   return isClientOwnedAgentStatus(paneKey, existing) && isAgentStatusFresh(existing, now)
 }
 
+/** A fresh client byte writer keeps the pane unless the host carries a host-only state class. */
+export function clientAgentStatusFencesHost(
+  paneKey: string,
+  existing: AgentStatusEntry | undefined,
+  hostEntry: AgentStatusEntry | undefined,
+  now: number
+): existing is AgentStatusEntry {
+  return (
+    isFencedClientAgentStatus(paneKey, existing, now) &&
+    !(hostEntry && hostAgentStatusPiercesClientAuthority(hostEntry))
+  )
+}
+
 export function batchAgentPaneKeysForTabs(
   state: WebSessionTabsSyncState,
   tabIds: ReadonlySet<string>,

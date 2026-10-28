@@ -26,7 +26,8 @@ import { isMainTerminalSideEffectAuthorityForPty } from '../terminal-side-effect
 import { isRendererHiddenPtyDeliveryGateEnabled } from '../terminal-hidden-delivery-gate'
 import {
   markRendererOwnedAgentStatusWrite,
-  registerRendererOwnedAgentStatusPane
+  registerRendererOwnedAgentStatusPane,
+  resolveRendererOwnedAgentStatusTiming
 } from '../renderer-owned-agent-status-registry'
 
 import { resolveLatestAgentDoneStartedAt } from './agent-done-started-at'
@@ -138,11 +139,9 @@ export function installPaneHostCapabilityFlags(session: ConnectPanePtySession): 
       : resolvedStatusTitle
     // Only actual byte-derived status proves authority to fence out host mirroring.
     markRendererOwnedAgentStatusWrite(session.cacheKey)
-    // A fresh local byte write cannot be ordered against the host's clock.
-    const timing =
-      currentState.agentStatusByPaneKey[session.cacheKey]?.mirroredEvidenceReceivedAt !== undefined
-        ? { allowOlderTimestamp: true }
-        : undefined
+    const timing = resolveRendererOwnedAgentStatusTiming(
+      currentState.agentStatusByPaneKey[session.cacheKey]
+    )
     if (session.launchToken) {
       currentState.setAgentStatus(
         session.cacheKey,

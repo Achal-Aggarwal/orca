@@ -9,10 +9,7 @@ import { isTerminalLeafId, makePaneKey } from '../../../../shared/stable-pane-id
 import { normalizeCompatibleAgentTitleForOwner } from '../../../../shared/agent-title-owner'
 import { resolvePaneAgentOwnerRecord } from '../../../../shared/pane-agent-owner'
 import { findRegisteredTerminalTab } from '../mounted-terminal-tab-registry'
-import {
-  isFencedClientAgentStatus,
-  hostAgentStatusPiercesClientAuthority
-} from './agent-status-primitives'
+import { clientAgentStatusFencesHost } from './agent-status-primitives'
 import { writableWebSessionTabsRecord } from './state-equality-core'
 import type {
   MirroredTerminalTab,
@@ -33,7 +30,10 @@ export function buildMirroredRuntimePaneTitlePatch(
   if (!titles) {
     return null
   }
-  const titledTabs = tabs.filter(({ tab }) => titles[tab.id])
+  const titledTabs = tabs.flatMap((entry) => {
+    const paneTitles = titles[entry.tab.id]
+    return paneTitles ? [{ ...entry, paneTitles }] : []
+  })
   if (titledTabs.length === 0) {
     return null
   }
@@ -44,11 +44,7 @@ export function buildMirroredRuntimePaneTitlePatch(
     surfacesByTab.set(surface.parentTabId, byLeaf)
   }
   let nextTitles = titles
-  for (const { tab, hostTabId, layout, retainedSurfaceByPrunedLeafId } of titledTabs) {
-    const paneTitles = titles[tab.id]
-    if (!paneTitles) {
-      continue
-    }
+  for (const { tab, hostTabId, layout, retainedSurfaceByPrunedLeafId, paneTitles } of titledTabs) {
     const leaves = new Set(collectRuntimePaneLeafIds(layout.root))
     const liveSlotIds = Object.keys(paneTitles)
       .map(Number)
@@ -77,9 +73,13 @@ export function buildMirroredRuntimePaneTitlePatch(
               liveSlotIds,
               ptyIds: state.ptyIdsByTabId[tab.id] ?? []
             }) ?? (liveSlotsAreDense ? resolveRuntimePaneTitleLeafId(layout, runtimePaneId) : null))
-      const hostSurface = leafId && leaves.has(leafId) ? hostSurfacesByLeaf.get(leafId) : undefined
+      // Why: a slot the layout cannot place is not proof the pane was removed.
+      if (leafId === null) {
+        continue
+      }
+      const hostSurface = leaves.has(leafId) ? hostSurfacesByLeaf.get(leafId) : undefined
       let hostTitle: string | undefined
-      if (leafId && hostSurface) {
+      if (hostSurface) {
         // A pending handle's placeholder carries no new title evidence.
         if (
           !hostSurface.title.trim() ||
@@ -90,10 +90,11 @@ export function buildMirroredRuntimePaneTitlePatch(
         const paneKey = makePaneKey(tab.id, leafId)
         // Keep the existing byte-stream ownership fence while that writer is fresh.
         if (
-          isFencedClientAgentStatus(paneKey, state.agentStatusByPaneKey[paneKey], now) &&
-          !(
-            hostSurface.agentStatus &&
-            hostAgentStatusPiercesClientAuthority(hostSurface.agentStatus)
+          clientAgentStatusFencesHost(
+            paneKey,
+            state.agentStatusByPaneKey[paneKey],
+            hostSurface.agentStatus,
+            now
           )
         ) {
           continue
@@ -108,9 +109,11 @@ export function buildMirroredRuntimePaneTitlePatch(
         if (title === hostTitle) {
           continue
         }
-      }
-      // Why: a slot the layout cannot place is not proof the pane was removed.
-      if (leafId === null && !isRuntimePaneTitleOrphan(layout.root, runtimePaneId, leaves)) {
+      } else if (
+        !isRuntimePaneTitleOrphan(runtimePaneId, leaves) ||
+        manager?.getNumericIdForLeaf(runtimePaneId) != null
+      ) {
+        // Only a durable leaf absent from both the host layout and local panes proves removal.
         continue
       }
       if (nextPaneTitles === paneTitles) {

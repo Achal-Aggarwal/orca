@@ -94,7 +94,7 @@ function tabHasStatus(
           : freshPaneIds
       const leafId = resolveRuntimePaneTitleLeafIdFromRoot(tabLayoutRoot, runtimePaneId)
       // A removed pane's last title is no longer evidence for this tab.
-      if (layoutLeafIds && isRuntimePaneTitleOrphan(tabLayoutRoot, runtimePaneId, layoutLeafIds)) {
+      if (layoutLeafIds && isRuntimePaneTitleOrphan(runtimePaneId, layoutLeafIds)) {
         continue
       }
       hasCurrentPaneTitle = true

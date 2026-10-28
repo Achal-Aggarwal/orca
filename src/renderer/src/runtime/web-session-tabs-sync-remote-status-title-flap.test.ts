@@ -15,7 +15,8 @@ import { createTestStore, makeWorktree, seedStore } from '../store/slices/store-
 import {
   markRendererOwnedAgentStatusWrite,
   registerRendererOwnedAgentStatusPane,
-  resetRendererOwnedAgentStatusPanesForTests
+  resetRendererOwnedAgentStatusPanesForTests,
+  resolveRendererOwnedAgentStatusTiming
 } from '../components/terminal-pane/renderer-owned-agent-status-registry'
 import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
 import { resetWebSessionTabsSnapshotFreshnessForTests } from './web-session-tabs-sync/tracking-lifecycle'
@@ -105,8 +106,7 @@ function applyHostSnapshot(
   store.setState(patch as Partial<AppState>)
 }
 
-/** Replay paired pty-connection OSC handling with client Date.now(); return ownership release held until dispose. */
-/** Returns the pane's release, as pty-connection holds it for dispose(). */
+/** Replay paired pty-connection OSC handling with client Date.now(); returns the release pty-connection holds for dispose(). */
 function replayClientOscWorking(store: TestStore, clientNow: number): () => void {
   vi.setSystemTime(clientNow)
   // Claim on transport creation, then verify ownership on each byte-derived status.
@@ -118,10 +118,7 @@ function replayClientOscWorking(store: TestStore, clientNow: number): () => void
       MIRROR_PANE_KEY,
       { state: 'working', prompt: CLIENT_PROMPT, agentType: 'claude' },
       'claude',
-      store.getState().agentStatusByPaneKey[MIRROR_PANE_KEY]?.mirroredEvidenceReceivedAt !==
-        undefined
-        ? { allowOlderTimestamp: true }
-        : undefined,
+      resolveRendererOwnedAgentStatusTiming(store.getState().agentStatusByPaneKey[MIRROR_PANE_KEY]),
       { tabId: MIRROR_TAB_ID, worktreeId: WT }
     )
   return release

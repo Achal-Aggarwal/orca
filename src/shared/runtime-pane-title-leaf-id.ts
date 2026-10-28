@@ -127,9 +127,8 @@ export function resolveRuntimePaneTitleLeafIdFromRoot(
 
 /** Numeric slots survive pane closes with gaps, so only absent durable leaf ids prove removal. */
 export function isRuntimePaneTitleOrphan(
-  root: TerminalPaneLayoutNode | null | undefined,
   runtimePaneId: string,
-  layoutLeafIds: ReadonlySet<string> = new Set(collectRuntimePaneLeafIds(root))
+  layoutLeafIds: ReadonlySet<string>
 ): boolean {
   return isTerminalLeafId(runtimePaneId) && !layoutLeafIds.has(runtimePaneId)
 }
