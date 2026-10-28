@@ -4,6 +4,7 @@ import {
   linkSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   realpathSync,
   renameSync,
@@ -48,7 +49,7 @@ export function codexConversationStore(home: string): string {
   if (basename(dirname(home)) !== 'overlays') {
     return canonicalCodexHome(home)
   }
-  return dirname(realpathSync(join(home, 'sessions')))
+  return canonicalCodexHome(dirname(resolve(home, readlinkSync(join(home, 'sessions')))))
 }
 
 /** The login remains in its original account folder even when CODEX_HOME is an overlay. */
@@ -104,17 +105,17 @@ export function discoverCodexStoreHomes(
       continue
     }
     for (const overlay of codexAccountOverlayHomes(join(accountsRoot, id))) {
-      homes.push(overlay, codexConversationStore(overlay))
+      homes.push(overlay)
+      try {
+        homes.push(codexConversationStore(overlay))
+      } catch (error) {
+        if (!isDefinitiveAbsence(error)) {
+          throw error
+        }
+      }
     }
   }
   return [...new Set(homes)]
-}
-
-// Keep this policy in one place while the system-keyring product ruling is pending.
-function keyringOnlyCodexLaunch(_conversationStore: string): string | undefined {
-  throw new Error(
-    'Codex cannot use this conversation with a keyring-only login. Sign in to Codex with a file login, or select a managed Codex account in Settings.'
-  )
 }
 
 export type CodexLaunchHomeOptions = {
@@ -131,6 +132,9 @@ export type CodexLaunchHomeOptions = {
 /** Every local launch and record-aware read resolves login + store through this entry point. */
 export function resolveCodexLaunchHome(options: CodexLaunchHomeOptions): string | undefined {
   const systemHome = options.systemHome ?? getSystemCodexHomePath()
+  if (!options.selectedAccount && !existsSync(join(systemHome, 'auth.json'))) {
+    return undefined
+  }
   const loginHome = options.selectedAccount?.homePath ?? systemHome
   const store = codexConversationStore(options.conversationHome ?? options.storeHome ?? systemHome)
   const accountDirectory = options.selectedAccount
@@ -146,9 +150,6 @@ export function resolveCodexLaunchHome(options: CodexLaunchHomeOptions): string 
   const overlay = join(accountDirectory, 'overlays', hash)
   if (options.readOnly) {
     return overlay
-  }
-  if (!options.selectedAccount && !existsSync(join(loginHome, 'auth.json'))) {
-    return keyringOnlyCodexLaunch(store)
   }
   materializeCodexOverlay(overlay, store, loginHome, systemHome)
   return overlay

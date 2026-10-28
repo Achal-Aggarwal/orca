@@ -5,6 +5,7 @@ import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-instal
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { resolveOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { resolveAbsoluteDirOverride } from '../../shared/absolute-dir-override'
+import { codexLoginHome } from '../codex/codex-launch-home'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -76,8 +77,9 @@ export function resolveStructuredCodexAccountKind(
     >
   >
 ): AgentSessionAccountKind | undefined {
+  const loginHome = codexLoginHome(home)
   const same = (other: string): boolean =>
-    normalizeRuntimePathForComparison(home) === normalizeRuntimePathForComparison(other)
+    normalizeRuntimePathForComparison(loginHome) === normalizeRuntimePathForComparison(other)
   if (
     (settings.codexManagedAccounts ?? []).some(
       (account) => account.managedHomeRuntime !== 'wsl' && same(account.managedHomePath)

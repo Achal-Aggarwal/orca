@@ -199,13 +199,13 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     expect(service.prepareForCodexLaunch()).toBe(readOnlyHome)
   })
 
-  it('shared runtime home: answers the mirror with zero side effects, then matches launch prep', async () => {
+  it('custom launch home: pins system selection with zero read side effects, then matches launch prep', async () => {
     const { service, store, sideEffects } = await createServiceWithSpies(
       createSettings({ realHomeRoutable: false })
     )
 
     const readOnlyHome = service.resolveHostCodexHomePathForLaunchReadOnly()
-    expect(readOnlyHome).toBeNull()
+    expect(readOnlyHome).toBe(getSystemCodexHomePath())
     expectNoSideEffects(sideEffects, store)
 
     expect(service.prepareForCodexLaunch()).toBe(readOnlyHome)

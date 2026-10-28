@@ -1,4 +1,5 @@
-import { codexLoginHome, resolveCodexLaunchHome } from './codex-launch-home'
+import { prepareCodexLaunchHome } from './codex-legacy-session-resume'
+import { codexLoginHome } from './codex-launch-home'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { delimiter, isAbsolute, resolve } from 'node:path'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
@@ -87,11 +88,14 @@ export function codexStructuredLaunchPart(
     const { record } = basis
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const loginHome = codexLoginHome(accountHome.path)
+    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
+    const resumeThreadId = head?.handle.nativeId ?? null
     const codexHome =
-      resolveCodexLaunchHome({
+      (await prepareCodexLaunchHome({
         selectedAccount: loginHome === getSystemCodexHomePath() ? null : { homePath: loginHome },
-        conversationHome: accountHome.path
-      }) ?? getSystemCodexHomePath()
+        conversationHome: accountHome.path,
+        ...(resumeThreadId ? { sessionId: resumeThreadId } : {})
+      })) ?? getSystemCodexHomePath()
     const { command } = await resolveCodexStructuredInvocation({
       ...(deps.resolveCommand ? { resolveCommand: deps.resolveCommand } : {}),
       refreshEnvironmentAfterMiss: basis.refreshAfterMissingProgram,
@@ -100,8 +104,6 @@ export function codexStructuredLaunchPart(
     })
     const environment = await basis.environment()
     const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
-    const resumeThreadId = head?.handle.nativeId ?? null
     // Match the first turn's model to avoid duplicate prompt injection on a model switch.
     const model = record.options?.model
     const visuals = await basis.visuals()

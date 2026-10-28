@@ -1,13 +1,7 @@
-import { readCodexSelectedRollout } from './codex-state-db'
-import { lstatSync, statSync } from 'node:fs'
+import { lstatSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  getRuntimePathBasename,
-  normalizeRuntimePathForComparison,
-  relativePathInsideRoot
-} from '../../shared/cross-platform-path'
-import { listCodexSessionRolloutFilesIncrementally } from './codex-session-file-listing'
-import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
+import { relativePathInsideRoot } from '../../shared/cross-platform-path'
+import { rescanTrustedCodexSessionResume } from './codex-session-resume-rescan'
 
 // Only the dated rollout layout may establish credential provenance.
 const CLAIMED_CODEX_ROLLOUT_TAIL = String.raw`\d{4}/\d{2}/\d{2}/rollout-[^/]+\.jsonl(?:\.zst)?`
@@ -148,80 +142,6 @@ export async function resolveCodexSessionResumeProvenance(args: {
     : { outcome: 'fresh', claimedCodexProvenance: claimsCodexRolloutLayout(args.transcriptPath) }
 }
 
-// The winning home selects credentials; never let settings order choose the account.
-function rankTrustedCodexHomesForRescan(
-  args: {
-    trustedCodexHomes: readonly string[]
-    getSelectedAccountCodexHome: () => string | null
-    systemCodexHomePath: string | null
-    sharedRuntimeCodexHomePath: string | null
-  },
-  selectedAccountHome = args.getSelectedAccountCodexHome()
-): string[] {
-  const toComparisonHome = (value: string | null | undefined): string | null => {
-    const trimmed = value?.trim()
-    return trimmed ? normalizeRuntimePathForComparison(trimmed) : null
-  }
-  const selectedComparison = toComparisonHome(selectedAccountHome)
-  const systemComparison = toComparisonHome(args.systemCodexHomePath)
-  const sharedRuntimeComparison = toComparisonHome(args.sharedRuntimeCodexHomePath)
-  const rankOf = (comparisonHome: string): number => {
-    if (selectedComparison && comparisonHome === selectedComparison) {
-      return 0
-    }
-    // Codex refreshes the system home directly, so prefer it after the selected account.
-    if (systemComparison && comparisonHome === systemComparison) {
-      return 1
-    }
-    // Prefer the shared mirror so system-default resumes can migrate into the system home.
-    return sharedRuntimeComparison && comparisonHome === sharedRuntimeComparison ? 2 : 3
-  }
-  return args.trustedCodexHomes
-    .map((homePath) => ({ homePath, comparisonHome: normalizeRuntimePathForComparison(homePath) }))
-    .sort((left, right) => {
-      const rankDelta = rankOf(left.comparisonHome) - rankOf(right.comparisonHome)
-      if (rankDelta !== 0) {
-        return rankDelta
-      }
-      return left.comparisonHome < right.comparisonHome
-        ? -1
-        : left.comparisonHome > right.comparisonHome
-          ? 1
-          : 0
-    })
-    .map((entry) => entry.homePath)
-}
-
-function isSelectedAccountHome(selectedAccountHome: string | null, homePath: string): boolean {
-  return (
-    selectedAccountHome !== null &&
-    normalizeRuntimePathForComparison(selectedAccountHome) ===
-      normalizeRuntimePathForComparison(homePath)
-  )
-}
-
-// Only definitive absence may skip the selected account; transient errors risk wrong credentials.
-function sessionsTreeIsPresent(sessionsRoot: string, isSelectedAccount: boolean): boolean {
-  try {
-    statSync(sessionsRoot)
-    return true
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException | null)?.code
-    if (code === 'ENOENT' || code === 'ENOTDIR') {
-      return false
-    }
-    if (isSelectedAccount) {
-      throw new ManagedCodexHomeTemporarilyUnavailableError(undefined, { cause: error })
-    }
-    return false
-  }
-}
-
-function isDefinitiveSessionTreeAbsence(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException | null)?.code
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
-
 export async function findTrustedCodexSessionResume(args: {
   sessionId: string
   transcriptPath: string | undefined
@@ -244,70 +164,5 @@ export async function findTrustedCodexSessionResume(args: {
     return null
   }
 
-  const selectedAccountHome = args.getSelectedAccountCodexHome()
-  const selectedSessionsRoot = selectedAccountHome
-    ? normalizeRuntimePathForComparison(join(selectedAccountHome, 'sessions'))
-    : null
-  const listSessionFiles =
-    args.listSessionFiles ??
-    ((sessionsRoot: string) =>
-      listCodexSessionRolloutFilesIncrementally(
-        sessionsRoot,
-        { batchSize: 64, yieldMs: 0 },
-        (_directoryPath, error) => {
-          if (
-            selectedSessionsRoot === normalizeRuntimePathForComparison(sessionsRoot) &&
-            !isDefinitiveSessionTreeAbsence(error)
-          ) {
-            throw new ManagedCodexHomeTemporarilyUnavailableError(undefined, { cause: error })
-          }
-        }
-      ))
-  const matches: { homePath: string; transcriptPath: string; selectedRollout: string }[] = []
-  const expectedSuffix = `-${args.sessionId}.jsonl`.toLowerCase()
-  const seenHomes = new Set<string>()
-  for (const homePath of rankTrustedCodexHomesForRescan(args, selectedAccountHome)) {
-    const comparisonHome = normalizeRuntimePathForComparison(homePath)
-    if (seenHomes.has(comparisonHome)) {
-      continue
-    }
-    seenHomes.add(comparisonHome)
-    const sessionsRoot = join(homePath, 'sessions')
-    if (
-      !args.listSessionFiles &&
-      !sessionsTreeIsPresent(sessionsRoot, isSelectedAccountHome(selectedAccountHome, homePath))
-    ) {
-      continue
-    }
-    for await (const filePath of listSessionFiles(sessionsRoot)) {
-      const plainFilePath = filePath.endsWith('.jsonl.zst')
-        ? filePath.slice(0, -'.zst'.length)
-        : filePath
-      // The entry proves the compressed file exists; only probe its preferred plain sibling.
-      const preferredFilePath =
-        plainFilePath !== filePath && (args.fileIsRegular ?? isRegularFile)(plainFilePath)
-          ? plainFilePath
-          : filePath
-      const plainFileName = getRuntimePathBasename(preferredFilePath)
-        .toLowerCase()
-        .replace(/\.zst$/, '')
-      if (
-        isCodexRolloutInsideSessionsRoot(sessionsRoot, preferredFilePath) &&
-        plainFileName.endsWith(expectedSuffix)
-      ) {
-        matches.push({
-          homePath,
-          transcriptPath: preferredFilePath,
-          selectedRollout: readCodexSelectedRollout(homePath, args.sessionId) ?? preferredFilePath
-        })
-      }
-    }
-  }
-  matches.sort((left, right) =>
-    getRuntimePathBasename(right.selectedRollout).localeCompare(
-      getRuntimePathBasename(left.selectedRollout)
-    )
-  )
-  const best = matches[0]
-  return best ? { homePath: best.homePath, transcriptPath: best.transcriptPath } : null
+  return rescanTrustedCodexSessionResume(args)
 }

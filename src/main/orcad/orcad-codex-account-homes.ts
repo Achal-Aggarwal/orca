@@ -11,6 +11,7 @@ import { reconcileCodexAccountHomeHook } from '../codex/codex-account-home-hook'
 import { stopCodexStateDbBackfillRecoveries } from '../codex/codex-state-db-backfill-recovery'
 import type { GetSelectedCodexHomePath } from '../ipc/pty/host-env/types'
 import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
+import { isWslHostOrcadProcess } from '../ipc/wsl-guest-windows-drive-path'
 
 /** Keep host status hooks and session discovery in client-selected managed CODEX_HOME paths. */
 export function orcadCodexAccountHomes(
@@ -26,6 +27,9 @@ export function orcadCodexAccountHomes(
     const home = resolveGuestCodexAccountHome(env?.CODEX_HOME)
     if (!home) {
       return null
+    }
+    if (isWslHostOrcadProcess()) {
+      return home
     }
     const isOverlay = basename(dirname(home)) === 'overlays'
     const loginHome = isOverlay ? join(dirname(dirname(home)), 'home') : home

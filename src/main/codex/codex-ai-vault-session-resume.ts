@@ -3,6 +3,7 @@ import type {
   AiVaultPrepareSessionResumeResult
 } from '../../shared/ai-vault-resume-preparation'
 import type { CodexRuntimeHomeService } from '../codex-accounts/runtime-home-service'
+import { getSystemCodexHomePath } from './codex-home-paths'
 import { prepareLegacySharedCodexSessionResume } from './codex-legacy-session-resume'
 
 type CodexAiVaultRuntimeHome = Pick<
@@ -49,8 +50,8 @@ export async function prepareCodexAiVaultSessionResume(
       options.runtimeHome?.resolveSelectedHostAccountCodexHomePathForResume() ?? null,
     storeHomePath: options.storeHomePath
   })
-  if (result.substituteCodexHome) {
-    await options.preparePinnedLaunchHome(result.substituteCodexHome)
+  if (result.substituteCodexHome || result.useRealCodexHome) {
+    await options.preparePinnedLaunchHome(result.substituteCodexHome ?? getSystemCodexHomePath())
   }
   return result
 }

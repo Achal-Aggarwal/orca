@@ -1,36 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { join, posix as pathPosix, win32 as pathWin32 } from 'node:path'
-import {
-  createTomlLineScanState,
-  getTomlTableHeader,
-  isTomlStructuralLine,
-  parseTomlSingleLineStringValue,
-  updateTomlLineScanState
-} from './config-toml-line-scan'
+import { parse as parseToml } from 'smol-toml'
 
 export const CODEX_SQLITE_HOME_ENV = 'CODEX_SQLITE_HOME'
 
 /** The top-level `sqlite_home` in a Codex config.toml, resolved against its directory. */
 export function readConfiguredCodexSqliteHome(config: string, configDir: string): string | null {
-  let scanState = createTomlLineScanState()
-  for (const line of config.split('\n')) {
-    if (isTomlStructuralLine(scanState)) {
-      if (getTomlTableHeader(line)) {
-        // Top-level keys end at the first table.
-        return null
-      }
-      const equalsIndex = line.indexOf('=')
-      if (equalsIndex !== -1 && line.slice(0, equalsIndex).trim() === 'sqlite_home') {
-        const parsed = parseTomlSingleLineStringValue(line, equalsIndex + 1)
-        const value = parsed?.value.trim()
-        if (!value) {
-          return null
-        }
-        const path = configDir.startsWith('/') ? pathPosix : pathWin32
-        return path.isAbsolute(value) ? value : path.join(configDir, value)
-      }
+  try {
+    const value = parseToml(config).sqlite_home
+    if (typeof value === 'string' && value.length > 0) {
+      const path = configDir.startsWith('/') ? pathPosix : pathWin32
+      return path.isAbsolute(value) ? value : path.join(configDir, value)
     }
-    scanState = updateTomlLineScanState(scanState, line)
+  } catch {
+    return null
   }
   return null
 }

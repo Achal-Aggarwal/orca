@@ -6,11 +6,13 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  unlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { codexConversationStore, resolveCodexLaunchHome } from '../codex/codex-launch-home'
+import { prepareCodexLaunchHome } from '../codex/codex-legacy-session-resume'
+import { codexConversationStore } from '../codex/codex-launch-home'
 
 const homes = vi.hoisted(() => ({ original: '', selected: '', system: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => homes.system } }))
@@ -23,14 +25,15 @@ vi.mock('./main-process-state', () => ({
       prepareForCodexLaunchAsync: async (
         _target: unknown,
         _env: unknown,
-        options: { conversationHome: string }
+        options: { conversationHome: string; transcriptPath: string }
       ) =>
-        resolveCodexLaunchHome({
+        (await prepareCodexLaunchHome({
           selectedAccount: homes.selected ? { homePath: homes.selected } : null,
           conversationHome: options.conversationHome,
+          transcriptPath: options.transcriptPath,
           systemHome: homes.system,
           accountsRoot: join(homes.system, 'codex-accounts')
-        }) ?? null
+        })) ?? null
     },
     store: { getSettings: () => ({}) }
   }
@@ -118,4 +121,25 @@ it('leaves WSL preparation on the execution host', async () => {
       useSelectedAccount: true
     })
   ).toBeNull()
+})
+
+it('returns terminal System-default inputs only after the no-file rollout is ready', async () => {
+  homes.selected = ''
+  unlinkSync(join(homes.system, 'auth.json'))
+  const result = await prepareCodexSessionResumeForLaunch({
+    providerSession: { key: 'session_id', id: sessionId, transcriptPath },
+    target: { runtime: 'host' }
+  })
+  expect(result).toMatchObject({ outcome: 'resume', codexHomePath: homes.system })
+  const copied = join(homes.system, 'sessions', '2026', '10', '05', `rollout-${sessionId}.jsonl`)
+  expect(readFileSync(copied, 'utf8')).toBe(readFileSync(transcriptPath, 'utf8'))
+  unlinkSync(copied)
+  writeFileSync(copied, 'conflict')
+  await expect(
+    prepareCodexSessionResumeForLaunch({
+      providerSession: { key: 'session_id', id: sessionId, transcriptPath },
+      target: { runtime: 'host' }
+    })
+  ).rejects.toThrow('Retry resume')
+  expect(readFileSync(copied, 'utf8')).toBe('conflict')
 })

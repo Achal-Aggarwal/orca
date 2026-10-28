@@ -1,4 +1,6 @@
+import { prepareCodexLaunchHome } from '../codex/codex-legacy-session-resume'
 import { resolveCodexLaunchHome } from '../codex/codex-launch-home'
+import { getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import {
@@ -29,8 +31,12 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
   /** Prepare the launch home without waiting for background history bridging. */
   prepareForCodexLaunch(
     target?: CodexAccountSelectionTarget,
-    _launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
+    launchEnv?: NodeJS.ProcessEnv,
+    options?: {
+      unavailableManagedHomePath?: string
+      conversationHome?: string
+      transcriptPath?: string
+    }
   ): string | null {
     if (target?.runtime === 'wsl') {
       const wslTarget = this.resolveWslDefaultTarget(target)
@@ -39,6 +45,17 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
       this.finishWslLaunchPreparation(wslTarget, homePath)
       return homePath
     }
+    return (
+      resolveCodexLaunchHome(this.prepareHostLaunchOptions(options)) ??
+      (hasCustomCodexHomeOverrideForLaunch(launchEnv) ? getSystemCodexHomePath() : null)
+    )
+  }
+
+  private prepareHostLaunchOptions(options?: {
+    unavailableManagedHomePath?: string
+    conversationHome?: string
+    transcriptPath?: string
+  }) {
     const account = this.getSelfContainedManagedHostAccount()
     const loginHome = account
       ? this.prepareSelfContainedManagedHomeForLaunch(account, options?.unavailableManagedHomePath)
@@ -47,19 +64,18 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
       this.copyMirrorLoginIntoEmptySystemHome()
       this.reconcileLegacySharedHomeForRetainedPanes()
     }
-    return (
-      resolveCodexLaunchHome({
-        selectedAccount: loginHome ? { homePath: loginHome } : null,
-        conversationHome: options?.conversationHome,
-        storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings()),
-        accountsRoot: this.getManagedAccountsRoot()
-      }) ?? null
-    )
+    return {
+      selectedAccount: loginHome ? { homePath: loginHome } : null,
+      conversationHome: options?.conversationHome,
+      transcriptPath: options?.transcriptPath,
+      storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings()),
+      accountsRoot: this.getManagedAccountsRoot()
+    }
   }
 
   /** Catalog reads and launches derive the same path; reads never materialize it. */
   resolveHostCodexHomePathForLaunchReadOnly(
-    _launchEnv?: NodeJS.ProcessEnv,
+    launchEnv?: NodeJS.ProcessEnv,
     conversationHome?: string
   ): string | null {
     const account = this.getSelfContainedManagedHostAccount()
@@ -74,17 +90,24 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
         storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings()),
         accountsRoot: this.getManagedAccountsRoot(),
         readOnly: true
-      }) ?? null
+      }) ?? (hasCustomCodexHomeOverrideForLaunch(launchEnv) ? getSystemCodexHomePath() : null)
     )
   }
 
   async prepareForCodexLaunchAsync(
     target?: CodexAccountSelectionTarget,
     launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
+    options?: {
+      unavailableManagedHomePath?: string
+      conversationHome?: string
+      transcriptPath?: string
+    }
   ): Promise<string | null> {
     if (target?.runtime !== 'wsl') {
-      return this.prepareForCodexLaunch(target, launchEnv, options)
+      return (
+        (await prepareCodexLaunchHome(this.prepareHostLaunchOptions(options))) ??
+        (hasCustomCodexHomeOverrideForLaunch(launchEnv) ? getSystemCodexHomePath() : null)
+      )
     }
     const wslTarget = this.resolveWslDefaultTarget(target)
     const homePath = this.getWslCodexHomePathForSelection(wslTarget)

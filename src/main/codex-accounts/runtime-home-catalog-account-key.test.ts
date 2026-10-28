@@ -43,7 +43,10 @@ vi.mock('../codex/codex-account-session-bridge', () => ({
 }))
 
 // Use production wiring so catalog reads and launches cannot silently drift apart.
-async function wireCodexAccountKey(settings: ReturnType<typeof createSettings>) {
+async function wireCodexAccountKey(
+  settings: ReturnType<typeof createSettings>,
+  launchEnv: NodeJS.ProcessEnv = {}
+) {
   const { CodexRuntimeHomeService } = await import('./runtime-home-service')
   const { mainProcessState } = await import('../startup/main-process-state')
   const { codexStructuredLaunchHomeResolvers } = await import('../startup/codex-launch-preparation')
@@ -63,10 +66,7 @@ async function wireCodexAccountKey(settings: ReturnType<typeof createSettings>) 
     stateDirectory: '/orca-data'
   }
   const resolve = (purpose: 'launch' | 'read') =>
-    codex.resolveAccountHome(
-      { launchEnv: {}, location: null, purpose, workspacePath: null },
-      services
-    )
+    codex.resolveAccountHome({ launchEnv, location: null, purpose, workspacePath: null }, services)
   const key = (accountHome: AgentSessionAccountHome) =>
     agentModelCatalogFingerprint({ agent: 'codex', accountHome, wslDistro: null })
   return { resolve, key, release: () => (mainProcessState.codexRuntimeHome = null) }
@@ -103,6 +103,42 @@ describe('Codex catalog account key: picker read vs launch', () => {
 
   it('system account no longer routes through the legacy mirror', async () => {
     await expectOneKey(createSettings({ realHomeRoutable: false }), getSystemCodexHomePath())
+  })
+
+  it('pins read and actual launch inputs to system selection despite a custom CODEX_HOME', async () => {
+    const custom = '/fixture/custom-codex-home'
+    const wired = await wireCodexAccountKey(createSettings({ realHomeRoutable: true }), {
+      CODEX_HOME: custom
+    })
+    release = wired.release
+    const read = await wired.resolve('read')
+    const launched = await wired.resolve('launch')
+    expect(read.path).toBe(getSystemCodexHomePath())
+    expect(launched).toEqual(read)
+    const { createCodexModelCatalogProbe } = await import('../codex/codex-model-catalog-probe')
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({ CODEX_HOME: custom }),
+      resolveCommand: () => 'codex',
+      runSession: async (invocation, body) => {
+        expect(invocation.env.CODEX_HOME).toBe(launched.path)
+        return body({
+          request: async () => ({
+            data: [
+              {
+                model: 'gpt-live',
+                displayName: 'GPT Live',
+                hidden: false,
+                supportedReasoningEfforts: [{ reasoningEffort: 'high' }],
+                isDefault: true
+              }
+            ],
+            nextCursor: null
+          }),
+          notify: () => {}
+        })
+      }
+    })
+    expect((await probe(read)).models.map((model) => model.id)).toEqual(['gpt-live'])
   })
 
   it('a managed account overlay over the shared conversation store', async () => {

@@ -69,7 +69,8 @@ export function createCodexSessionResumeLaunchPreparation(deps: {
       resolveVerifiedResumeHome: async (sessionSource) => {
         const resumeHome =
           (await runtimeHome.prepareForCodexLaunchAsync(undefined, args.launchEnv, {
-            conversationHome: sessionSource.homePath
+            conversationHome: sessionSource.homePath,
+            transcriptPath: sessionSource.transcriptPath
           })) ?? systemHomePath
         await prepareCodexPinnedLaunchHome(resumeHome, systemHomePath)
         return resumeHome

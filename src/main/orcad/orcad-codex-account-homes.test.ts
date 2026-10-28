@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { getDefaultSettings } from '../../shared/constants'
 
-const { prepareHooks, resolveHome, listHomes, launchHome } = vi.hoisted(() => ({
+const { prepareHooks, resolveHome, listHomes, launchHome, wslHost } = vi.hoisted(() => ({
+  wslHost: vi.fn(() => false),
   prepareHooks: vi.fn(
     async (_home: string, _isHooksEnabled: () => boolean, _launchesCodex: boolean) => {}
   ),
@@ -15,6 +16,8 @@ const { prepareHooks, resolveHome, listHomes, launchHome } = vi.hoisted(() => ({
       `${selectedAccount.homePath}/overlay`
   )
 }))
+
+vi.mock('../ipc/wsl-guest-windows-drive-path', () => ({ isWslHostOrcadProcess: wslHost }))
 
 vi.mock('../codex/codex-launch-home', () => ({
   resolveCodexLaunchHome: launchHome
@@ -48,6 +51,7 @@ describe('orcadCodexAccountHomes', () => {
   beforeEach(() => {
     prepareHooks.mockClear()
     launchHome.mockClear()
+    wslHost.mockReturnValue(false)
   })
 
   it('puts the hook into a client-sent account home and launches on it', async () => {
@@ -104,6 +108,24 @@ describe('orcadCodexAccountHomes', () => {
     await expect(homes.selectLaunchHome(undefined, {})).resolves.toBe(null)
     await expect(homes.selectLaunchHome()).resolves.toBe(null)
     expect(prepareHooks).not.toHaveBeenCalled()
+  })
+
+  it('preserves the desktop-prepared WSL route for reads and actual PTY launch', async () => {
+    wslHost.mockReturnValue(true)
+    const homes = orcadCodexAccountHomes(() => settings({}), noCleanup)
+    expect(homes.readLaunchHome({ CODEX_HOME: ACCOUNT_HOME })).toBe(ACCOUNT_HOME)
+    await expect(
+      homes.selectLaunchHome(
+        undefined,
+        { CODEX_HOME: ACCOUNT_HOME },
+        {
+          launchesCodex: true,
+          conversationHome: '/desktop/chosen/source'
+        }
+      )
+    ).resolves.toBe(ACCOUNT_HOME)
+    expect(prepareHooks).toHaveBeenCalledWith(ACCOUNT_HOME, expect.any(Function), true)
+    expect(launchHome).not.toHaveBeenCalled()
   })
 
   it('lists the account homes for session discovery', () => {

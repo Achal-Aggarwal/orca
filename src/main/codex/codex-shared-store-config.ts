@@ -1,5 +1,6 @@
-import { basename, dirname, join } from 'node:path'
-import { realpathSync } from 'node:fs'
+import { basename, dirname } from 'node:path'
+import { codexConversationStore } from './codex-launch-home'
+import { parseTomlKeyPath } from './config-toml-key-path'
 import { resolveEffectiveCodexSqliteHome } from './codex-sqlite-home'
 import {
   createTomlLineScanState,
@@ -22,22 +23,29 @@ export function applyCodexSharedStoreConfig(config: string, homePath: string): s
   if (basename(dirname(homePath)) !== 'overlays') {
     return config
   }
-  const store = dirname(realpathSync(join(homePath, 'sessions')))
+  const store = codexConversationStore(homePath)
   let state = createTomlLineScanState()
   let topLevel = true
+  let removing = false
   const lines = stripCodexSharedStoreConfig(config)
     .split('\n')
     .filter((line) => {
       const structural = isTomlStructuralLine(state)
-      if (structural && getTomlTableHeader(line)) {
-        topLevel = false
+      if (structural) {
+        removing = false
+        if (getTomlTableHeader(line)) {
+          topLevel = false
+        }
+        const key = topLevel ? parseTomlKeyPath(line) : null
+        removing = !!(
+          key &&
+          key.segments.length === 1 &&
+          ['sqlite_home', 'cli_auth_credentials_store'].includes(key.segments[0]) &&
+          line[key.end] === '='
+        )
       }
       state = updateTomlLineScanState(state, line)
-      return !(
-        topLevel &&
-        structural &&
-        /^\s*(?:sqlite_home|cli_auth_credentials_store)\s*=/.test(line)
-      )
+      return !removing
     })
   return `sqlite_home = ${JSON.stringify(resolveEffectiveCodexSqliteHome(store))} ${CODEX_SHARED_STORE_MARKER}\ncli_auth_credentials_store = "file" ${CODEX_SHARED_STORE_MARKER}\n${lines.join('\n')}`
 }
