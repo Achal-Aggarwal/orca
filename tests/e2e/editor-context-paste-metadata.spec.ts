@@ -10,6 +10,7 @@ test('large in-app copy preserves distinct multicursor paste metadata', async ({
   electronApp,
   registerPostElectronShutdownCleanup
 }, testInfo) => {
+  // Native copy, multiple paste policies, and Undo share one Electron session.
   test.setTimeout(180_000)
   await waitForSessionReady(orcaPage)
   await waitForActiveWorktree(orcaPage)
