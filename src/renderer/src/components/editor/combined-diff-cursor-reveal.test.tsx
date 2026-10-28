@@ -5,6 +5,7 @@ import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { DiffOnMount } from '@monaco-editor/react'
 import type * as CursorReveal from './combined-diff-cursor-reveal'
+import { countPaneReads } from './combined-diff-operation-counts.test-fixture'
 import type * as HeightMeasurement from './diff-section-height-measurement'
 import { installDiffSectionHeightMeasurement } from './diff-section-height-measurement'
 import { DiffSectionBody } from './DiffSectionBody'
@@ -29,7 +30,7 @@ import {
   reviewHostFixture,
   reviewHostComponents,
   installReviewHostResizeObserver
-} from './combined-diff-review-host.fixture'
+} from './combined-diff-review-host.test-fixture'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useCombinedDiffScrollbar } from './combined-diff/scroll-viewport/use-combined-diff-scrollbar'
 import { useCombinedDiffDirectScrollInput } from './combined-diff/scroll-viewport/use-combined-diff-direct-scroll-input'
@@ -41,35 +42,6 @@ import {
 
 // Instrument only the installers' pane reads, excluding Monaco's own geometry/layout work.
 const operations = { bridge: 0, heightReads: 0, publications: 0 }
-function countPaneReads(
-  editor: monaco.editor.IStandaloneDiffEditor,
-  method: 'getScrolledVisiblePosition' | 'getContentHeight',
-  onRead: () => void
-): monaco.editor.IStandaloneDiffEditor {
-  return new Proxy(editor, {
-    get(target, key) {
-      if (key === 'getOriginalEditor' || key === 'getModifiedEditor') {
-        return () =>
-          new Proxy(target[key](), {
-            get(pane, property) {
-              const value = Reflect.get(pane, property, pane)
-              if (typeof value !== 'function') {
-                return value
-              }
-              return (...args: unknown[]) => {
-                if (property === method) {
-                  onRead()
-                }
-                return Reflect.apply(value, pane, args)
-              }
-            }
-          })
-      }
-      const value = Reflect.get(target, key, target)
-      return typeof value === 'function' ? value.bind(target) : value
-    }
-  })
-}
 vi.mock('./combined-diff-cursor-reveal', async (importOriginal) => {
   const actual = await importOriginal<typeof CursorReveal>()
   return {
