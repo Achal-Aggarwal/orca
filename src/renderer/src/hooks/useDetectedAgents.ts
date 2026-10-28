@@ -138,12 +138,17 @@ export function useDetectedAgents(
       ? s.runtimeAgentDetectionNeedsServerUpdate[recordKey] === true
       : false
   )
+  const localDetectionFailed = useAppStore(
+    (s) => targetKind === 'local' && s.readLocalAgentInventory(localWorktreeId).state === 'failed'
+  )
   const detectionFailed =
-    detectedIds === null &&
-    !isLoading &&
-    !isRefreshing &&
-    remoteTargetKey !== null &&
-    observedRemoteTargetKeysRef.current.has(remoteTargetKey)
+    targetKind === 'local'
+      ? localDetectionFailed
+      : detectedIds === null &&
+        !isLoading &&
+        !isRefreshing &&
+        remoteTargetKey !== null &&
+        observedRemoteTargetKeysRef.current.has(remoteTargetKey)
   const localProbePending = targetKind === 'local' && (isLoading || isRefreshing)
   // Refresh the inventory’s host; refreshing local PATH while showing remote agents would silently do nothing.
   const refresh = useCallback((): Promise<TuiAgent[]> => {
@@ -199,7 +204,7 @@ export function useDetectedAgents(
         void state.ensureRuntimeDetectedAgents(targetId, runtimeWorktreeId)
       }
     } else {
-      if (detectedIds === null && !localProbePending) {
+      if (detectedIds === null && !localProbePending && !localDetectionFailed) {
         void state.ensureDetectedAgents(localWorktreeId)
       }
     }
@@ -213,6 +218,7 @@ export function useDetectedAgents(
     runtimeContactEpoch,
     detectedIds,
     localProbePending,
+    localDetectionFailed,
     localWorktreeId,
     runtimeWorktreeId,
     localContextKey

@@ -12,15 +12,17 @@ import { useDetectedAgents, type AgentDetectionTarget } from './useDetectedAgent
 const initialState = useAppStore.getInitialState()
 const detectAgents = vi.fn()
 const updateProject = vi.fn()
+const refreshAgents = vi.fn()
 
 beforeEach(() => {
   useAppStore.setState(initialState, true)
   useAppStore.getState().clearLocalDetectedAgents()
   detectAgents.mockReset().mockResolvedValue(['codex'])
+  refreshAgents.mockReset().mockResolvedValue({ agents: ['codex'] })
   updateProject.mockReset()
   Object.assign(window, {
     api: {
-      preflight: { detectAgents },
+      preflight: { detectAgents, refreshAgents },
       projects: { update: updateProject },
       platform: { get: () => ({ platform: 'win32' }) }
     }
@@ -121,3 +123,29 @@ it('retargets a mounted first load when the project switches to WSL', async () =
   })
   expect(result.current.detection.detectedIds).toEqual(['codex'])
 })
+
+it.each(localTargets)(
+  'keeps a failed first inventory unknown until Retry for $worktreeId',
+  async (target) => {
+    detectAgents.mockRejectedValue(new Error('probe failed'))
+    const { result, rerender } = renderHook(() => useDetectedAgents(target))
+    await act(async () => {})
+    expect(result.current).toMatchObject({
+      detectedIds: null,
+      isLoading: false,
+      detectionFailed: true
+    })
+    expect(
+      useAppStore
+        .getState()
+        .readLocalAgentInventory(target.kind === 'local' ? target.worktreeId : undefined)
+    ).toEqual({ ids: null, state: 'failed' })
+    rerender()
+    await act(async () => {})
+    expect(detectAgents).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current).toMatchObject({ detectedIds: ['codex'], detectionFailed: false })
+  }
+)

@@ -111,12 +111,27 @@ describe('detectWslCommandsOnPath', () => {
     expect(found).toEqual(new Set(['claude']))
   })
 
-  it('returns an empty set when wsl.exe cannot be started', async () => {
+  it('rejects when wsl.exe cannot be started', async () => {
     runWslProcessMock.mockRejectedValue(new Error('spawn wsl.exe ENOENT'))
+    await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).rejects.toThrow()
+  })
 
-    const found = await detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])
+  it.each([
+    { timedOut: true, code: 0 },
+    { timedOut: false, code: 1 }
+  ])('rejects an incomplete WSL probe: %j', async (result) => {
+    runWslProcessMock.mockResolvedValue({
+      ...result,
+      stdout: '__ORCA_AGENT_PATH__claude\t/bin/claude\n'
+    })
+    await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).rejects.toThrow()
+  })
 
-    expect(found).toEqual(new Set())
+  it('keeps a successful empty probe distinct from a failed probe', async () => {
+    runWslProcessMock.mockResolvedValue({ timedOut: false, code: 0, stdout: '' })
+    await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).resolves.toEqual(
+      new Set()
+    )
   })
 
   it('skips the probe entirely when no commands are requested', async () => {

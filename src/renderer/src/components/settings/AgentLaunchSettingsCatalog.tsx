@@ -51,6 +51,8 @@ import { buildCodexSessionSourceHomeControl } from './codex-session-source-home-
 import { buildDefaultAgentOpensAs } from './native-chat-provider-choice'
 import { useHostStructuredAgentsVersion } from '@/lib/chat-provider-agents'
 import { readNativeDetectedAgents } from '@/store/slices/local-detected-agent-store-state'
+import { getLocalAgentPreflightContext } from '@/lib/local-preflight-context'
+import { projectRuntimeRepairSentence } from '../../../../shared/project-runtime-repair-message'
 import { translate } from '@/i18n/i18n'
 
 export type AgentPermissionsRenderer = (props: AgentPermissionsSettingProps) => React.ReactNode
@@ -88,6 +90,21 @@ export function AgentLaunchSettingsCatalog({
     isRefreshing,
     refresh
   } = useDetectedAgents(detectionTarget)
+  const projectRuntime = useAppStore((state) =>
+    detectionTarget.kind === 'local'
+      ? getLocalAgentPreflightContext(state, undefined, undefined, detectionTarget.worktreeId)
+          ?.projectRuntime
+      : undefined
+  )
+  const localDetectionFailure =
+    detectionTarget.kind !== 'local'
+      ? undefined
+      : projectRuntime?.status === 'repair-required'
+        ? `${projectRuntimeRepairSentence(projectRuntime.repair, translate)} ${translate('settings.agents.repairRuntime', 'Open project Settings → Project Runtime to change it.')}`
+        : translate(
+            'settings.agents.localDetectionRetry',
+            "Couldn't check which agents are installed on this computer. Try again."
+          )
   const detectedIds = useMemo(() => (detected ? new Set(detected) : null), [detected])
   useHostStructuredAgentsVersion()
   const installedHere = useAppStore(readNativeDetectedAgents)
@@ -289,6 +306,7 @@ export function AgentLaunchSettingsCatalog({
         undetectedAgents={undetectedAgents}
         detectionPending={detectedIds === null}
         detectionFailed={detectionFailed}
+        detectionFailureMessage={localDetectionFailure}
         isRefreshing={isRefreshing}
         activeServerEnvironmentId={
           detectionTarget.kind === 'runtime' ? detectionTarget.environmentId : null

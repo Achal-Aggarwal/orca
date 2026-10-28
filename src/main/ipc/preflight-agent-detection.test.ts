@@ -123,6 +123,15 @@ describe('preflight', () => {
     })
   })
 
+  it('propagates an incomplete WSL inventory through detect and refresh IPC', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    runWslProcessMock.mockResolvedValue({ timedOut: true, code: 0, stdout: '' })
+    registerPreflightHandlers()
+    for (const method of ['preflight:detectAgents', 'preflight:refreshAgents']) {
+      await expect(handlers[method](undefined, { wslDistro: 'Ubuntu' })).rejects.toThrow()
+    }
+  })
+
   it('only reports agents when which/where resolves to a real executable path', async () => {
     execFileAsyncMock.mockImplementation(async (command, args) => {
       if (command !== 'which') {

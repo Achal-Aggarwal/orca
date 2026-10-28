@@ -1,3 +1,4 @@
+import { useAppStore } from '@/store'
 import { useId, useState } from 'react'
 import { Check, ExternalLink } from 'lucide-react'
 import { getAgentCatalog, AgentIcon, type AgentCatalogEntry } from '@/lib/agent-catalog'
@@ -26,6 +27,7 @@ export function AgentStep({
   yoloPermissions = true,
   onYoloPermissionsChange
 }: AgentStepProps) {
+  const detectionFailed = useAppStore((s) => s.readLocalAgentInventory().state === 'failed')
   const agentCatalog = getAgentCatalog()
   const detected = agentCatalog.filter((agent) => detectedSet.has(agent.id))
   const rest = agentCatalog.filter((agent) => !detectedSet.has(agent.id))
@@ -33,7 +35,7 @@ export function AgentStep({
   const primary = hasDetected ? detected : agentCatalog.slice(0, 6)
   const fallbackRest = hasDetected ? rest : agentCatalog.slice(6)
   const selectedEntry =
-    selectedAgent && !detectedSet.has(selectedAgent)
+    selectedAgent && !detectedSet.has(selectedAgent) && !detectionFailed
       ? agentCatalog.find((a) => a.id === selectedAgent)
       : undefined
   const selectedEntryIsCollapsed =
@@ -60,7 +62,7 @@ export function AgentStep({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      {!hasDetected && !isDetecting && (
+      {!hasDetected && !isDetecting && !detectionFailed && (
         <div className="shrink-0 rounded-lg border border-border px-4 py-3 text-xs text-muted-foreground">
           {translate(
             'auto.components.onboarding.AgentStep.1eee1c7bd8',

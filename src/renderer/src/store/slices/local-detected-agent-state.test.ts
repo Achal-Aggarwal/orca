@@ -63,6 +63,20 @@ describe('local detected agent context lifecycle', () => {
     })
   })
 
+  it('evicts published failures with their project and clears all local failures', async () => {
+    const store = createTestStore([makeRepo('repo-a')])
+    detectAgents.mockRejectedValue(new Error('probe failed'))
+    await store.getState().ensureDetectedAgents()
+    expect(store.getState().readLocalAgentInventory()).toEqual({ ids: null, state: 'failed' })
+    expect(Object.keys(store.getState().localAgentInventoryFailedByContext)).toHaveLength(1)
+    store.getState().clearLocalDetectedAgentContextsForProjects(['repo-a'])
+    expect(store.getState().localAgentInventoryFailedByContext).toEqual({})
+    expect(store.getState().readLocalAgentInventory()).toEqual({ ids: null, state: 'pending' })
+    await store.getState().ensureNativeDetectedAgents()
+    store.getState().clearLocalDetectedAgents()
+    expect(store.getState().localAgentInventoryFailedByContext).toEqual({})
+  })
+
   it('deduplicates Floating-first callers without cached or settlement broadcast fanout', async () => {
     let resolveDetection: (agents: string[]) => void = () => {}
     detectAgents.mockReturnValueOnce(

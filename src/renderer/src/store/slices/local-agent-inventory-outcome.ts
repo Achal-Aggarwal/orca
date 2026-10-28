@@ -7,7 +7,6 @@ import { localAgentInventoryContextKey } from '@/lib/local-preflight-context-key
 export function readLocalAgentInventoryOutcome(
   state: AppState,
   worktreeId: string | null | undefined,
-  failedContextKeys: ReadonlySet<string>,
   keptThroughFailure: WeakSet<TuiAgent[]>
 ): { ids: TuiAgent[] | null; state: 'pending' | 'successful' | 'failed' } {
   const key = localAgentInventoryContextKey(
@@ -18,11 +17,13 @@ export function readLocalAgentInventoryOutcome(
     state.isDetectingLocalAgentsByContext[key] || state.isRefreshingLocalAgentsByContext[key]
   return {
     ids,
-    state:
-      ids === null || inFlight
-        ? 'pending'
-        : failedContextKeys.has(key) || keptThroughFailure.has(ids)
-          ? 'failed'
+    state: inFlight
+      ? 'pending'
+      : state.localAgentInventoryFailedByContext[key] ||
+          (ids !== null && keptThroughFailure.has(ids))
+        ? 'failed'
+        : ids === null
+          ? 'pending'
           : 'successful'
   }
 }

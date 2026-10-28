@@ -1,3 +1,5 @@
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { Button } from '../ui/button'
 import { useChatProgramFacts } from '@/lib/host-chat-program-acquisition'
 import { readHostStructuredAgents } from '@/runtime/host-structured-agents'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -34,11 +36,15 @@ const BUILT_IN_CHAT_AGENTS: readonly TuiAgent[] = ['claude', 'codex']
 function ProviderStatus({
   agent,
   installed,
-  enabledInAgents
+  enabledInAgents,
+  detectionFailed,
+  onRetry
 }: {
   agent: TuiAgent
   installed: readonly TuiAgent[] | null
   enabledInAgents: boolean
+  detectionFailed: boolean
+  onRetry: () => void
 }): React.JSX.Element | null {
   if (!enabledInAgents) {
     return (
@@ -48,7 +54,24 @@ function ProviderStatus({
     )
   }
   if (installed === null) {
-    return null
+    return detectionFailed ? (
+      <span>
+        {translate(
+          'settings.agents.localDetectionFailed',
+          "Couldn't check which agents are installed on this computer"
+        )}
+        {' · '}
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          className="h-auto p-0 text-xs"
+          onClick={onRetry}
+        >
+          {translate('auto.components.settings.AgentsPane.retryDetection', 'Retry')}
+        </Button>
+      </span>
+    ) : null
   }
   if (installed.includes(agent)) {
     return <span>{translate('settings.chat.providers.installed', 'Installed')}</span>
@@ -80,6 +103,8 @@ function ProviderDetail(props: {
   label: string
   installed: readonly TuiAgent[] | null
   enabledInAgents: boolean
+  detectionFailed: boolean
+  onRetry: () => void
   settings: GlobalSettings
   updateSettings: (updates: Partial<GlobalSettings>) => void | Promise<void>
 }): React.JSX.Element {
@@ -102,12 +127,13 @@ function ProviderDetail(props: {
     (props.installed === null ||
       runtime.kind === 'pending' ||
       (runtime.kind === 'active' && runtime.snapshot.kind !== 'known'))
-  const control = unsettled ? (
+  const showPlaceholder = unsettled && !props.detectionFailed
+  const control = showPlaceholder ? (
     <div className="h-5 w-9 shrink-0 rounded-full bg-muted/50 animate-pulse" aria-hidden="true" />
   ) : (
     <SettingsSwitch
       checked={on}
-      disabled={!props.enabledInAgents}
+      disabled={!props.enabledInAgents || unsettled}
       ariaLabel={translate('settings.chat.providers.toggleLabel', 'Open {{value0}} as a chat', {
         value0: props.label
       })}
@@ -135,6 +161,8 @@ function ProviderDetail(props: {
             agent={props.agent}
             installed={props.installed}
             enabledInAgents={props.enabledInAgents}
+            detectionFailed={props.detectionFailed}
+            onRetry={props.onRetry}
           />
         )}
         {control}
@@ -186,10 +214,15 @@ export function NativeChatProvidersSetting({
   useHostStructuredAgentsVersion()
   const agents = chatProviderAgents(LOCAL_EXECUTION_HOST_ID, undefined)
   const detectedIds = useAppStore(readNativeDetectedAgents)
+  const detectionFailed = useAppStore(
+    (s) => s.readLocalAgentInventory(FLOATING_TERMINAL_WORKTREE_ID).state === 'failed'
+  )
+  const refresh = useAppStore((s) => s.refreshDetectedAgents)
   const managed = readHostStructuredAgents(LOCAL_EXECUTION_HOST_ID, undefined)
   const visibleAgents = agents.filter(
     (agent) =>
       detectedIds !== null ||
+      detectionFailed ||
       BUILT_IN_CHAT_AGENTS.includes(agent) ||
       settings.nativeChatProviders?.[agent] !== undefined ||
       managed?.some((row) => row.agent === agent && row.managedRuntime)
@@ -218,6 +251,10 @@ export function NativeChatProvidersSetting({
                       agent={agent}
                       label={label}
                       installed={detectedIds}
+                      detectionFailed={detectionFailed}
+                      onRetry={() => {
+                        void refresh(FLOATING_TERMINAL_WORKTREE_ID)
+                      }}
                       enabledInAgents={enabledInAgents}
                       settings={settings}
                       updateSettings={updateSettings}
