@@ -1,7 +1,12 @@
-import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { StructuredLaunchSurfaceAddress } from './agent-session/launch/structured-agent-session-launch-record'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { TuiAgent } from '../../../shared/tui-agent'
-import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import {
+  isLocalExecutionHost,
+  parseExecutionHostId,
+  type ExecutionHostId
+} from '../../../shared/execution-host'
+import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { StructuredAgentSessionOwnerUnresolvedError } from '@/lib/launch-structured-agent-session'
@@ -12,11 +17,12 @@ import {
 } from '@/lib/agent-launch-route-input'
 import {
   resolveAgentLaunchRoute,
+  structuredAgentLaunchDowngrade,
   structuredAgentLaunchSupported,
   type AgentLaunchRoute,
   type AgentLaunchRoutingInput
 } from '@/lib/agent-launch-routing'
-import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-initial-view-mode'
+import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-launch-prompt-delivery'
 import {
   beginStructuredAgentLaunchSettlement,
   type StructuredAgentLaunchHandle,
@@ -25,57 +31,59 @@ import {
 } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-session-launch'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
+import { relearnHostStructuredAgents } from '@/runtime/host-structured-agents'
+import { awaitLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
+
+export type AgentLaunchSurface = 'chat' | 'terminal'
 
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
-  /** The user action this launch serves, minted where that action is handled. */
   requestId: AgentLaunchRequestId
+  requestedSurface?: AgentLaunchSurface
+  selectedExecutionHostId?: ExecutionHostId
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
+  /** The caller keeps the prompt's text if it does not go out (notes), so no composer gets it. */
+  promptKeptByCaller?: true
+  /** Options this launch asks for over the saved chat defaults, e.g. an action's model. */
+  launchOptions?: Readonly<Record<string, string>>
 }
 
-/**
- * A route decided once plus exactly what its structured launch delivers. The quick-create request
- * carries the data fields in renderer memory, so a launch that happens after the workspace exists
- * (or a retry within the same session) re-enters here without re-resolving.
- */
+/** Carry the decided route and delivery fields in memory so post-create launches and same-session retries reuse them without re-resolving. */
 export type AgentSessionLaunchVerdict = {
   route: AgentLaunchRoute
-  /** The user action this launch serves; a re-entry with this verdict is that same action. */
+  requestedSurface?: AgentLaunchSurface
   requestId: AgentLaunchRequestId
   agent: TuiAgent
   worktreeId?: string
-  /** The host the structured route was decided for; the chat is created there. */
   executionHostId?: ExecutionHostId
   prompt?: string
   promptDelivery?: NativeChatLaunchPromptDelivery
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
+  promptKeptByCaller?: true
+  launchOptions?: Readonly<Record<string, string>>
 }
 
 export type AgentSessionStructuredFeasibilityRequest = AgentLaunchRouteArgs & {
-  /** Named explicitly rather than read off the store, so a React caller's memo depends on the
-   *  settings this answer actually turns on. */
+  /** Name settings explicitly so React memo dependencies match the values this decision reads. */
   settings: AgentLaunchRoutingInput['settings']
 }
 
 export type AgentSessionLaunchTarget = {
+  surfaceAddress?: StructuredLaunchSurfaceAddress
   /** Overrides the verdict's workspace when it was created after planning. */
   worktreeId?: string
   /** The host that admitted the chat, when one was asked first; it is the host the chat is made on. */
   executionHostId?: ExecutionHostId
   /** The saved selection that host said create will seed. */
   seedOptions?: Readonly<Record<string, string>>
-  /** The tab group the chat opens in. */
-  groupId?: string
 }
 
 export type AgentSessionLaunchPlan = Readonly<AgentSessionLaunchVerdict> & {
-  /** Begins the launch and exposes its durable identity before host acquisition settles. */
   begin(
     hooks: StructuredAgentLaunchHooks,
     target?: AgentSessionLaunchTarget
   ): StructuredAgentLaunchHandle | null
-  /** Runs the structured settle loop for this plan. Null when the route is not structured. */
   launch(
     hooks: StructuredAgentLaunchHooks,
     target?: AgentSessionLaunchTarget
@@ -89,7 +97,9 @@ function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): Structured
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
     ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {}),
-    ...(verdict.executionHostId ? { executionHostId: verdict.executionHostId } : {})
+    ...(verdict.promptKeptByCaller ? { promptKeptByCaller: true as const } : {}),
+    ...(verdict.executionHostId ? { executionHostId: verdict.executionHostId } : {}),
+    ...(verdict.launchOptions ? { launchOptions: verdict.launchOptions } : {})
   }
 }
 
@@ -98,7 +108,7 @@ function beginStructuredPlanLaunch(
   hooks: StructuredAgentLaunchHooks,
   target?: AgentSessionLaunchTarget
 ): StructuredAgentLaunchHandle | null {
-  if (verdict.route !== 'structured-native-chat' || !isAgentSessionHandleProvider(verdict.agent)) {
+  if (verdict.route !== 'structured-native-chat') {
     return null
   }
   const worktreeId = target?.worktreeId ?? verdict.worktreeId
@@ -112,9 +122,9 @@ function beginStructuredPlanLaunch(
       verdict.agent,
       {
         ...structuredLaunchOptions(verdict),
+        ...(target?.surfaceAddress ? { surfaceAddress: target.surfaceAddress } : {}),
         ...(executionHostId ? { executionHostId } : {}),
-        ...(target?.seedOptions ? { hostSeedOptions: target.seedOptions } : {}),
-        ...(target?.groupId ? { targetGroupId: target.groupId } : {})
+        ...(target?.seedOptions ? { hostSeedOptions: target.seedOptions } : {})
       },
       hooks
     )
@@ -133,7 +143,6 @@ function beginStructuredPlanLaunch(
   }
 }
 
-/** Re-enter with a verdict decided earlier; the route is data here and is never re-resolved. */
 export function adoptAgentSessionLaunchVerdict(
   verdict: AgentSessionLaunchVerdict
 ): AgentSessionLaunchPlan {
@@ -145,23 +154,16 @@ export function adoptAgentSessionLaunchVerdict(
   }
 }
 
-/**
- * Can this pair open a structured session at all? A feasibility QUERY for enable/disable UI, not a
- * launch decision: it resolves no route and builds no plan, so a list may ask it per row.
- */
+/** Query structured feasibility for row enablement only; do not decide a route or build a launch plan. */
 export function structuredAgentSessionLaunchFeasible(
   store: AgentLaunchRouteStore,
   request: AgentSessionStructuredFeasibilityRequest
 ): boolean {
   const { settings, ...args } = request
-  // Why: the narrow settings ride on the built input, not the store, so a caller names the exact
-  // settings this answer turns on without having to hold a whole store-shaped object.
-  // The builder still reads launch customization off `store.settings`: safe only because the caller
-  // names the object the store already holds — a different one would split this answer's sources.
+  // Carry narrow settings on the built input so callers can name exact dependencies without a whole store object.
   return structuredAgentLaunchSupported({ ...buildAgentLaunchRouteInput(store, args), settings })
 }
 
-/** The route a launch would take, for a caller that only branches on it and launches nothing. */
 export function resolveAgentSessionLaunchRoute(
   store: AgentLaunchRouteStore,
   request: AgentLaunchRouteArgs
@@ -169,18 +171,117 @@ export function resolveAgentSessionLaunchRoute(
   return resolveAgentLaunchRoute(buildAgentLaunchRouteInput(store, request))
 }
 
-/** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
- *  later receives exactly the prompt and mode the route was decided on. */
+/** Log chat-to-terminal fallback and re-ask missing host agent lists for future launches. */
+function reportStructuredLaunchDowngrade(
+  store: AgentLaunchRouteStore,
+  input: AgentLaunchRoutingInput,
+  route: AgentLaunchRoute
+): void {
+  const downgrade = structuredAgentLaunchDowngrade(input, route)
+  if (!downgrade) {
+    return
+  }
+  console.warn(
+    `[agent-launch-route] ${input.agent} opens ${route}: ${downgrade} (host ${input.executionHostId}, ` +
+      `host agents ${input.hostStructuredAgents ? 'listed' : 'not learned'}, ` +
+      `host capabilities ${input.hostCapabilities ? 'known' : 'unknown'})`
+  )
+  if (downgrade === 'agent-without-structured-session' && !input.hostStructuredAgents) {
+    // Bookkeeping: a failed re-ask never touches this launch.
+    relearnHostStructuredAgents(
+      input.executionHostId,
+      input.hostCapabilities,
+      store.runtimeStatusByEnvironmentId
+    ).catch((error: unknown) => {
+      console.warn('[agent-launch-route] could not ask the host for its agents again', error)
+    })
+  }
+}
+
+/** Identify pending host-agent inventory or local startup capabilities that a chat route still needs. */
+function structuredRouteAwaits(
+  input: AgentLaunchRoutingInput
+): 'host-agents' | 'local-capabilities' | null {
+  const downgrade = structuredAgentLaunchDowngrade(input, resolveAgentLaunchRoute(input))
+  if (
+    downgrade === 'agent-without-structured-session' &&
+    !input.hostStructuredAgents &&
+    input.hostCapabilities?.includes(
+      STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
+    ) !== false
+  ) {
+    return 'host-agents'
+  }
+  return downgrade === 'runtime-capability-unknown' && isLocalExecutionHost(input.executionHostId)
+    ? 'local-capabilities'
+    : null
+}
+
+/** Await missing host-agent inventory or local startup capabilities up to waitMs, then let the caller resolve again; null when neither is pending. */
+export function awaitStructuredRouteHostAnswer(
+  store: AgentLaunchRouteStore,
+  request: AgentLaunchRouteArgs,
+  waitMs: number
+): Promise<void> | null {
+  const input = buildAgentLaunchRouteInput(store, request)
+  if (!structuredRouteAwaits(input)) {
+    return null
+  }
+  let stopCapabilitiesWait = (): void => {}
+  const timedOut = Symbol('host-answer-timeout')
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(timedOut), waitMs)
+  })
+  const ask = async (): Promise<void> => {
+    let capabilities = input.hostCapabilities
+    // Await the probe itself: startup failure can leave capabilities null without another pending answer.
+    if (capabilities === null && isLocalExecutionHost(input.executionHostId)) {
+      const wait = awaitLocalRuntimeCapabilities()
+      stopCapabilitiesWait = wait.stop
+      capabilities = await Promise.race([wait.known, deadline])
+    }
+    await Promise.race([
+      relearnHostStructuredAgents(
+        input.executionHostId,
+        capabilities,
+        store.runtimeStatusByEnvironmentId
+      ),
+      deadline
+    ])
+  }
+  const answered = ask().catch((error: unknown) => {
+    if (error !== timedOut) {
+      console.warn('[agent-launch-route] could not ask the host', error)
+    }
+  })
+  return answered.finally(() => {
+    clearTimeout(timer)
+    stopCapabilitiesWait()
+  })
+}
+
+/** Decide route and delivery mode together so settlement receives the exact prompt/mode the route admitted. */
 export function planAgentSessionLaunch(
   store: AgentLaunchRouteStore,
   request: AgentSessionLaunchRequest
 ): AgentSessionLaunchPlan {
   const input = buildAgentLaunchRouteInput(store, request)
-  const route = resolveAgentLaunchRoute(input)
+  const route = request.requestedSurface
+    ? request.requestedSurface === 'chat'
+      ? 'structured-native-chat'
+      : 'terminal-tui'
+    : resolveAgentLaunchRoute(input)
+  if (!request.requestedSurface) {
+    reportStructuredLaunchDowngrade(store, input, route)
+  }
   const executionHostId =
-    route === 'structured-native-chat' ? parseExecutionHostId(input.executionHostId)?.id : undefined
+    route === 'structured-native-chat'
+      ? (request.selectedExecutionHostId ?? parseExecutionHostId(input.executionHostId)?.id)
+      : undefined
   return adoptAgentSessionLaunchVerdict({
     route,
+    ...(request.requestedSurface ? { requestedSurface: request.requestedSurface } : {}),
     requestId: request.requestId,
     agent: request.agent,
     ...(executionHostId ? { executionHostId } : {}),
@@ -188,6 +289,8 @@ export function planAgentSessionLaunch(
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.promptDelivery ? { promptDelivery: request.promptDelivery } : {}),
     ...(request.resumeFrom ? { resumeFrom: request.resumeFrom } : {}),
-    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {})
+    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {}),
+    ...(request.promptKeptByCaller ? { promptKeptByCaller: true as const } : {}),
+    ...(request.launchOptions ? { launchOptions: request.launchOptions } : {})
   })
 }

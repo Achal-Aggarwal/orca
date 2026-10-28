@@ -25,10 +25,6 @@ type FloatingTerminalWindowControlsProps = {
 const controlButtonClassName =
   'border-border bg-secondary text-secondary-foreground shadow-xs hover:bg-accent hover:text-accent-foreground'
 
-// Why: matches the repo convention (e.g. ReviewPRViewAnimatedVisual) of
-// surfacing the live keybinding in a tooltip as "Label (shortcut)", while
-// degrading to a bare label when the action is unbound (default on Win/Linux,
-// and for minimize on every platform).
 function withShortcutHint(label: string, shortcutLabel: string | null): string {
   return shortcutLabel ? `${label} (${shortcutLabel})` : label
 }
@@ -39,6 +35,8 @@ export function FloatingTerminalWindowControls({
   onMinimize
 }: FloatingTerminalWindowControlsProps): React.JSX.Element {
   const defaultTuiAgent = useAppStore((s) => s.settings?.defaultTuiAgent ?? null)
+  const setActiveTabForWorktree = useAppStore((s) => s.setActiveTabForWorktree)
+  const activateTab = useAppStore((s) => s.activateTab)
   const maximizeShortcutLabel = useOptionalShortcutLabel('floatingWorkspace.maximize')
   const minimizeShortcutLabel = useOptionalShortcutLabel('floatingWorkspace.minimize')
 
@@ -63,15 +61,13 @@ export function FloatingTerminalWindowControls({
     if (!defaultAgent) {
       return
     }
-    // Why: the shared launcher owns the startup plan, the route and the tab identity, so this
-    // button stays one more caller of it rather than a second copy of new-agent-tab startup.
-    // Floating resolves the terminal-backed lane: a chat view over a PTY when the chat default is
-    // on, never a structured session.
     const result = launchAgentInNewTab({
       requestId: newAgentLaunchRequestId(),
       agent: defaultAgent,
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-      launchSource: 'shortcut'
+      launchSource: 'shortcut',
+      // Do not change global activeTabId or dismiss the main editor; select within the floating group below.
+      activate: false
     })
     if (!result) {
       toast.error(
@@ -86,8 +82,11 @@ export function FloatingTerminalWindowControls({
     if (result.surface.kind !== 'local-terminal') {
       return
     }
+    // Update both selection models; the unified group drives the visible tab, while the other call updates the legacy map.
+    setActiveTabForWorktree(FLOATING_TERMINAL_WORKTREE_ID, result.surface.tabId)
+    activateTab(result.surface.tabId)
     focusTerminalTabSurface(result.surface.tabId)
-  }, [defaultAgent, defaultAgentLabel])
+  }, [activateTab, defaultAgent, defaultAgentLabel, setActiveTabForWorktree])
 
   return (
     <div className="flex items-center gap-1 px-2" data-floating-terminal-no-drag>

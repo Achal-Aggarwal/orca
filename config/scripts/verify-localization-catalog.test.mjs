@@ -65,6 +65,30 @@ describe('verify-localization-catalog', () => {
     })
   })
 
+  it.each([
+    ['en', false],
+    ['en', true],
+    ['es', false]
+  ])('rejects dotted %s keys without rewriting them (fix: %s)', async (locale, fix) => {
+    const nested = { auto: { example: { greeting: 'Hello.world' } } }
+    const { root, localesDir } = makeProject({
+      sourceText: 'export {}\n',
+      enCatalog: locale === 'en' ? { 'auto.example.greeting': 'Hello.world' } : nested,
+      esCatalog: locale === 'es' ? { auto: { 'example.greeting': 'Hola.world' } } : {}
+    })
+    const catalogPath = path.join(localesDir, `${locale}.json`)
+    const before = readFileSync(catalogPath, 'utf8')
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      await expect(verifyLocalizationCatalog(root, { fix })).resolves.toBe(1)
+      expect(report).toHaveBeenCalledWith(expect.stringContaining(`${locale}.json`))
+      expect(report).toHaveBeenCalledWith('dotted: auto.example.greeting')
+      expect(readFileSync(catalogPath, 'utf8')).toBe(before)
+    } finally {
+      report.mockRestore()
+    }
+  })
+
   it('never overwrites mismatched translations or removes target-only entries', async () => {
     const { root, localesDir } = makeProject({
       sourceText:
@@ -126,18 +150,6 @@ describe('verify-localization-catalog', () => {
     expect(readJson(path.join(localesDir, 'en.json'))).toEqual({})
     expect(error.mock.calls.flat().join('\n')).toContain('auto.example.move')
     error.mockRestore()
-    log.mockRestore()
-  })
-
-  it('accepts one key repeated with the same sentence', async () => {
-    const { root } = makeProject({
-      sourceText:
-        "import { translate } from '@/i18n/i18n'\nexport const a = translate('auto.example.save', 'Save')\nexport const b = translate('auto.example.save', 'Save')\n",
-      enCatalog: { auto: { example: { save: 'Save' } } }
-    })
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-    await expect(verifyLocalizationCatalog(root, { fix: false })).resolves.toBe(0)
     log.mockRestore()
   })
 
@@ -222,5 +234,25 @@ describe('verify-localization-catalog', () => {
         'zh'
       )
     ).toEqual([])
+  })
+
+  it('fails when a target catalog repeats a key', async () => {
+    const { root, localesDir } = makeProject({
+      sourceText:
+        "import { translate } from '@/i18n/i18n'\nexport const label = translate('auto.example.greeting', 'Hello')\n",
+      enCatalog: { auto: { example: { greeting: 'Hello' } } }
+    })
+    writeFileSync(
+      path.join(localesDir, 'es.json'),
+      '{\n  "auto": {\n    "example": {\n      "greeting": "Hola",\n      "greeting": "Hola"\n    }\n  }\n}\n',
+      'utf8'
+    )
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expect(verifyLocalizationCatalog(root, { fix: false })).resolves.toBe(1)
+      expect(report).toHaveBeenCalledWith('- es.json:5 auto.example.greeting')
+    } finally {
+      report.mockRestore()
+    }
   })
 })

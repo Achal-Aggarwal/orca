@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { getConnectionIdForFile } from '@/lib/connection-context'
 import type { MarkdownViewMode, OpenFile, PendingEditorReveal } from '@/store/slices/editor'
 import type { GitDiffResult } from '../../../../shared/git-diff-compare-types'
 import type { GitStatusEntry } from '../../../../shared/git-status-types'
@@ -10,7 +11,8 @@ import {
   ImageViewer,
   IpynbViewer,
   MermaidViewer,
-  MonacoEditor
+  MonacoEditor,
+  MediaViewer
 } from './editor-lazy-views'
 import type { EditorConflictNavigation } from './useEditorConflictNavigation'
 import { EditorFileLoadErrorView } from './EditorFileLoadErrorView'
@@ -20,6 +22,9 @@ import { ExternalFileChangeBanner } from './ExternalFileChangeBanner'
 import type { useMarkdownDocuments } from './useMarkdownDocuments'
 import { EditorMarkdownFileSurface } from './EditorMarkdownFileSurface'
 import type { MarkdownRenderState } from './markdown-render-mode'
+
+// Retry is a user act: it may start a stopped WSL distro.
+const USER_RETRY = { wakeWslDistro: true }
 
 const noopEditorContentChange = (_content: string): void => {}
 const noopEditorSave = async (_content: string): Promise<boolean> => false
@@ -89,7 +94,7 @@ export function EditorEditFileSurface({
   handleContentChange: (content: string) => void
   handleDirtyStateHint: (dirty: boolean) => void
   handleSave: (content: string) => Promise<boolean>
-  reloadContent: (file: OpenFile) => void
+  reloadContent: (file: OpenFile, options?: { wakeWslDistro?: boolean }) => void
 }): React.JSX.Element {
   if (activeFile.conflict?.kind === 'conflict-placeholder') {
     return <ConflictPlaceholderView file={activeFile} />
@@ -117,11 +122,27 @@ export function EditorEditFileSurface({
       <EditorFileLoadErrorView
         message={fileContent.loadError}
         code={fileContent.loadErrorCode}
-        onRetry={() => reloadContent(activeFile)}
+        onRetry={() => reloadContent(activeFile, USER_RETRY)}
       />
     )
   }
   if (fileContent.isBinary) {
+    if (fileContent.mediaUrl) {
+      return (
+        <MediaViewer
+          key={fileContent.mediaUrl}
+          src={fileContent.mediaUrl}
+          mimeType={fileContent.mimeType ?? 'video/mp4'}
+          filePath={activeFile.filePath}
+          playbackCacheKey={pdfViewStateKey}
+          canOpenLocally={
+            !activeFile.externalSshTargetId &&
+            !activeFile.runtimeEnvironmentId &&
+            getConnectionIdForFile(activeFile.worktreeId, activeFile.filePath) === null
+          }
+        />
+      )
+    }
     if (fileContent.isImage) {
       return (
         <ImageViewer
@@ -179,11 +200,10 @@ export function EditorEditFileSurface({
     )
   }
 
-  // Why: without a key React reuses the instance and skips cleanup (scroll snapshot); key forces a remount per pane+path.
+  // Remount per pane/path so cleanup snapshots scroll instead of reusing an instance across files.
   const monacoRemountKey = `${viewStateScopeId}\u0000${activeFile.filePath}`
   const monacoEditor = (
-    // Why: Monaco's own create effect throws on a broken language/editor init, which would otherwise
-    // unmount the whole workbench; contain it to this pane and let the retry remount the editor.
+    // Contain Monaco initialization errors to this pane; retry remounts the editor.
     <RecoverableRenderErrorBoundary
       boundaryId="editor.monaco"
       surface="code-editor"
@@ -198,7 +218,6 @@ export function EditorEditFileSurface({
         relativePath={activeFile.relativePath}
         content={currentContent}
         language={monacoLanguage}
-        // Why: read-only tabs no-op the change/save callbacks so no draft, dirty state, or write can occur.
         readOnly={activeFile.readOnly === true}
         liveTail={activeFile.liveTail === true}
         onContentChange={
@@ -215,17 +234,17 @@ export function EditorEditFileSurface({
         markdownAnnotationsEnabled={markdownAnnotationsEnabled && isMarkdown}
         conflictDecorationsEnabled={activeFile.conflict?.conflictStatus === 'unresolved'}
         revealLine={
-          matchesPendingEditorReveal(pendingEditorReveal, activeFile)
+          matchesPendingEditorReveal(pendingEditorReveal, activeFile, viewStateScopeId)
             ? pendingEditorReveal.line
             : undefined
         }
         revealColumn={
-          matchesPendingEditorReveal(pendingEditorReveal, activeFile)
+          matchesPendingEditorReveal(pendingEditorReveal, activeFile, viewStateScopeId)
             ? pendingEditorReveal.column
             : undefined
         }
         revealMatchLength={
-          matchesPendingEditorReveal(pendingEditorReveal, activeFile)
+          matchesPendingEditorReveal(pendingEditorReveal, activeFile, viewStateScopeId)
             ? pendingEditorReveal.matchLength
             : undefined
         }
@@ -301,9 +320,10 @@ export function EditorEditFileSurface({
 
 function matchesPendingEditorReveal(
   reveal: PendingEditorReveal | null,
-  file: Pick<OpenFile, 'id' | 'filePath'>
+  file: Pick<OpenFile, 'id' | 'filePath'>,
+  viewStateId: string
 ): reveal is PendingEditorReveal {
-  if (!reveal) {
+  if (!reveal || (reveal.viewStateId && reveal.viewStateId !== viewStateId)) {
     return false
   }
   return reveal.fileId ? reveal.fileId === file.id : reveal.filePath === file.filePath

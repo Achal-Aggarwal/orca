@@ -6,12 +6,23 @@ const { childSpawnMock, readFileMock } = vi.hoisted(() => ({
   readFileMock: vi.fn()
 }))
 
+// Keep child-process assertions in this suite; worker transport is covered separately.
+vi.mock(
+  '../worker-thread-child-process/worker-thread-child-process',
+  () =>
+    import('../worker-thread-child-process/worker-thread-child-process-in-process.test-fixtures')
+)
 vi.mock('node:child_process', () => ({ spawn: childSpawnMock }))
 vi.mock('node:fs/promises', () => ({ readFile: readFileMock }))
 vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: () => 'codex' }))
 vi.mock('node-pty', () => ({ spawn: vi.fn() }))
 vi.mock('./codex-auth-presence', () => ({
   probeCodexAuthPresence: vi.fn(async () => 'present')
+}))
+
+// Mock recovery so its process-table import does not require real execFile.
+vi.mock('../codex/codex-state-db-backfill-recovery', () => ({
+  startCodexStateDbBackfillRecoveryInBackground: vi.fn()
 }))
 
 import { fetchCodexRateLimits } from './codex-fetcher'
@@ -27,7 +38,7 @@ function parseRpcRequest(line: string): { id?: number; method?: string } {
   }
 }
 
-// Like the real app-server, the fake dies on stdin EOF or a signal.
+// Model real app-server EOF/signal exit.
 class FakeRpcChild extends EventEmitter {
   readonly stdout = new EventEmitter()
   readonly stderr = new EventEmitter()

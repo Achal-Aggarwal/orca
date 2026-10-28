@@ -1,6 +1,4 @@
-// Per-cell grid descriptors for the serialize round-trip oracle
-// (serialize-grid-roundtrip.ts): visually effective state only, so a replay
-// is compared on what a user would see, not on internal attribute encoding.
+// Compare visible cell state while ignoring equivalent internal attribute encodings.
 import type { Terminal } from '@xterm/headless'
 
 export type GridDiff = { stage: string; row?: number; expected: unknown; actual: unknown }
@@ -19,7 +17,7 @@ function canonicalColorMode(mode: number, colorValue: number): number {
   return mode === COLOR_MODE_P256 && colorValue >= 0 && colorValue < 16 ? COLOR_MODE_P16 : mode
 }
 
-/** Visually effective cell state, same blank-cell policy as terminal-restore-parity-fixture. */
+/** Use the same visible blank-cell policy as terminal-restore-parity-fixture. */
 export function cellDescriptor(
   line: BufferLine | undefined,
   x: number,
@@ -77,7 +75,7 @@ function sameColor(
   )
 }
 
-// Equal public fields imply identical descriptors; differing fields still use the frozen policy.
+// Avoid descriptor allocation when public fields already prove visible equivalence.
 function sameCellFields(expected: Cell, actual: Cell): boolean {
   if (
     expected.getWidth() !== actual.getWidth() ||
@@ -132,6 +130,29 @@ function sameCellFields(expected: Cell, actual: Cell): boolean {
   )
 }
 
+// Trim default blanks without allocating a descriptor for every trailing cell.
+function isDefaultBlank(line: BufferLine | undefined, x: number, scratch: Cell): boolean {
+  if (!line || x >= line.length) {
+    return true
+  }
+  const cell = line.getCell(x, scratch)
+  if (!cell) {
+    return true
+  }
+  const chars = cell.getChars()
+  return (
+    cell.getWidth() === 1 &&
+    cell.getBgColorMode() === 0 &&
+    cell.getBgColor() === -1 &&
+    cell.isInverse() === 0 &&
+    (chars === '' ||
+      (chars === ' ' &&
+        cell.isUnderline() === 0 &&
+        cell.isStrikethrough() === 0 &&
+        cell.isOverline() === 0))
+  )
+}
+
 function trimmedEnd(
   buffer: Buffer,
   start: number,
@@ -143,7 +164,7 @@ function trimmedEnd(
     const line = buffer.getLine(end - 1)
     let blank = true
     for (let x = 0; x < cols; x++) {
-      if (cellDescriptor(line, x, cols, scratch) !== DEFAULT_BLANK) {
+      if (!isDefaultBlank(line, x, scratch)) {
         blank = false
         break
       }
@@ -186,7 +207,7 @@ function lineCellsMatch(
   return true
 }
 
-/** Compares in place and formats only the first differing row, preserving diagnostic bytes. */
+/** Format only the first differing row to keep comparisons cheap and diagnostics stable. */
 export function compareBufferRows(
   stage: string,
   expected: Buffer,

@@ -13,7 +13,8 @@ vi.mock('@/lib/agent-launch-route-input', () => ({
 }))
 vi.mock('@/lib/agent-launch-routing', () => ({
   resolveAgentLaunchRoute: mocks.resolveAgentLaunchRoute,
-  structuredAgentLaunchSupported: mocks.structuredAgentLaunchSupported
+  structuredAgentLaunchSupported: mocks.structuredAgentLaunchSupported,
+  structuredAgentLaunchDowngrade: () => null
 }))
 vi.mock('@/lib/structured-agent-launch-settlement', () => ({
   beginStructuredAgentLaunchSettlement: mocks.beginStructuredAgentLaunchSettlement
@@ -88,7 +89,6 @@ describe('planAgentSessionLaunch', () => {
         promptDelivery: 'submit-after-ready',
         resumeFrom,
         onPromptDelivered,
-        // The chat is created on the host the route was decided for.
         executionHostId: 'local'
       },
       hooks
@@ -111,10 +111,27 @@ describe('planAgentSessionLaunch', () => {
     )
   })
 
-  it('returns null for an agent that cannot hold a structured session even on the structured route', async () => {
+  it('launches any agent the structured route admitted', async () => {
     const plan = planAgentSessionLaunch(store, {
       requestId: 'request-4',
-      agent: 'gemini',
+      agent: 'grok',
+      workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
+    })
+
+    await expect(plan.launch(hooks)).resolves.toEqual(STRUCTURED)
+    expect(mocks.beginStructuredAgentLaunchSettlement).toHaveBeenCalledWith(
+      'wt-1',
+      'grok',
+      { requestId: 'request-4', executionHostId: 'local' },
+      hooks
+    )
+  })
+
+  it('opens nothing structured on a route that is not', async () => {
+    mocks.resolveAgentLaunchRoute.mockReturnValue('terminal-tui')
+    const plan = planAgentSessionLaunch(store, {
+      requestId: 'request-4b',
+      agent: 'grok',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
     })
 
@@ -167,7 +184,7 @@ describe('structuredAgentSessionLaunchFeasible', () => {
 
   it.each([true, false])('answers from feasibility alone (supported=%s)', (supported) => {
     mocks.structuredAgentLaunchSupported.mockReturnValue(supported)
-    const settings = { experimentalStructuredNativeChat: true } as never
+    const settings = { experimentalNativeChat: true }
 
     expect(
       structuredAgentSessionLaunchFeasible(store, {
@@ -181,7 +198,7 @@ describe('structuredAgentSessionLaunchFeasible', () => {
   })
 
   it('builds the input from the named settings, not the store copy', () => {
-    const settings = { experimentalStructuredNativeChat: true } as never
+    const settings = { experimentalNativeChat: true }
     structuredAgentSessionLaunchFeasible(store, {
       agent: 'codex',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' },
@@ -192,7 +209,6 @@ describe('structuredAgentSessionLaunchFeasible', () => {
       agent: 'codex',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
     })
-    // The builder's input carries no settings, so seeing them here proves the named copy won.
     expect(mocks.structuredAgentLaunchSupported).toHaveBeenCalledWith(
       expect.objectContaining({ ...ROUTE_INPUT, settings })
     )

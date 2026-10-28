@@ -69,7 +69,6 @@ function LinearCustomViewTableEmpty({ hasError }: { hasError?: boolean }): React
   )
 }
 
-/** Table of Linear custom views with loading, error and empty states. */
 export function LinearCustomViewTableContent({
   views,
   loading,
@@ -155,7 +154,7 @@ export function LinearCustomViewTableContent({
                       onOpenView(view)
                     }}
                     aria-label={translate(
-                      'auto.components.linear.project.view.surfaces.openInLinear',
+                      'auto.components.linear.project.view.surfaces.7616c986c6',
                       'Open {{value0}} in Linear',
                       { value0: view.name }
                     )}

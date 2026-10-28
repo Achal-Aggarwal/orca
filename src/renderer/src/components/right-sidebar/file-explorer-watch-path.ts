@@ -25,7 +25,7 @@ export function getExternalFileChangeRelativePath(
     return null
   }
 
-  // Why: EditorPanel reloads tabs only from a worktree-relative path, not the watcher's absolute one; normalize or contents go stale.
+  // Editor reloads need worktree-relative paths; normalize absolute watcher paths to prevent stale content.
   return normalizeRelativePath(relativePath, worktreePath)
 }
 
@@ -43,10 +43,11 @@ export function canonicalizeFileExplorerWatchPath(
 }
 
 export function createCachedDirPathIndex(
-  cache: Record<string, { children: unknown }>
+  cache: Record<string, { children: unknown }>,
+  keys: readonly string[] = Object.keys(cache)
 ): ReadonlyMap<string, string> {
   const index = new Map<string, string>()
-  for (const key of Object.keys(cache)) {
+  for (const key of keys) {
     const normalizedKey = normalizeRuntimePathForComparison(key)
     if (!index.has(normalizedKey)) {
       index.set(normalizedKey, key)
@@ -55,13 +56,7 @@ export function createCachedDirPathIndex(
   return index
 }
 
-/**
- * Map an event path to the dirCache key that should be refreshed.
- * Windows watchers often differ in drive-letter casing from the worktree key.
- *
- * Why the index is a thunk: the direct `dirPath in cache` hit answers nearly every lookup outside
- * Windows casing drift, so building it eagerly costs one normalize per cached dir for nothing.
- */
+/** Resolve Windows casing drift lazily; direct cache hits usually avoid normalizing every cached directory. */
 export function resolveCachedDirPath(
   cache: Record<string, { children: unknown }>,
   dirPath: string,

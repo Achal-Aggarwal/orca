@@ -8,8 +8,6 @@ import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent
 
 afterEach(cleanup)
 
-const NONE = new Set<string>()
-const NO_CARDS: readonly string[] = []
 const EMPTY: never[] = []
 
 function rejected(
@@ -56,17 +54,13 @@ function withdrawn(clientMessageId: string): AgentJournalSubmission {
   }
 }
 
-// A Stop's withdrawn message draws no row, so a chat that has one rebuilds no notice per batch.
 it('keeps the same notices across batches in a chat whose only rejection a Stop withdrew', () => {
   const { result, rerender } = renderHook(
     ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
       useStructuredAgentSessionDeliveryNotices({
-        outbox: EMPTY,
+        pending: EMPTY,
         submissions,
         journalItems: EMPTY,
-        failedHere: NONE,
-        queuedMessageIds: NO_CARDS,
-        retry: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions: [withdrawn('stopped')] } }
@@ -83,20 +77,15 @@ function renderNotices(submissions: readonly AgentJournalSubmission[]) {
   return renderHook(
     ({ submissions: current }: { submissions: readonly AgentJournalSubmission[] }) =>
       useStructuredAgentSessionDeliveryNotices({
-        outbox: EMPTY,
+        pending: EMPTY,
         submissions: current,
         journalItems: EMPTY,
-        failedHere: NONE,
-        queuedMessageIds: NO_CARDS,
-        retry: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions } }
   )
 }
 
-// A batch for another message rebuilds the journal's rows; the rows already marked not sent keep
-// the same notices, so no row wrapper re-renders.
 it('keeps the same notices when a batch leaves every not-sent message as it was', () => {
   const { result, rerender } = renderNotices([rejected('lost', 'hostRestarted')])
   const first = result.current

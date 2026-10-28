@@ -1,8 +1,20 @@
 import type { PathExistenceResult } from '../../shared/path-existence-batch'
-import { ipcRenderer } from 'electron'
+import { ipcRenderer, webUtils } from 'electron'
+import type {
+  PrepareDroppedPathsRequest,
+  PreparedDroppedPaths
+} from '../../shared/native-file-drop-preparation'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
 import type { LocalFileAccess } from '../../shared/local-file-access'
+import type {
+  FileWriteDiskPrecondition,
+  FileWriteResult
+} from '../../shared/file-write-disk-precondition'
 import type { RuntimeUploadFileStreamRequest } from '../../shared/runtime-upload-staging-contract'
+import type {
+  AgentSessionAttachmentPathUploadResult,
+  AgentSessionAttachmentUploadTarget
+} from '../../shared/agent-session-attachments'
 import type { SearchResult } from '../../shared/code-search-types'
 import type { FsChangedPayload } from '../../shared/filesystem-entry-types'
 import type {
@@ -19,16 +31,22 @@ import type {
 import type { PreloadApi } from '../api-types'
 
 export const fsApi = {
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  prepareDroppedPaths: (args: PrepareDroppedPathsRequest): Promise<PreparedDroppedPaths> =>
+    ipcRenderer.invoke('fs:prepareDroppedPaths', args),
   readFileChunk: (args: {
     filePath: string
     connectionId?: string
     access?: LocalFileAccess
     offset: number
     length: number
+    wakeWslDistro?: boolean
   }) => ipcRenderer.invoke('fs:readFileChunk', args),
   readDir: (args: {
     dirPath: string
     connectionId?: string
+    followSymlinks?: boolean
+    wakeWslDistro?: boolean
   }): Promise<{ name: string; isDirectory: boolean; isSymlink: boolean }[]> =>
     ipcRenderer.invoke('fs:readDir', args),
   readFile: (args: {
@@ -36,6 +54,7 @@ export const fsApi = {
     connectionId?: string
     includeLocalLogMetadata?: boolean
     access?: LocalFileAccess
+    wakeWslDistro?: boolean
   }): Promise<{
     content: string
     isBinary: boolean
@@ -101,13 +120,18 @@ export const fsApi = {
       content: string
       connectionId?: string
       access?: LocalFileAccess
+      diskPrecondition?: FileWriteDiskPrecondition
     } & SshMutationExpectation
-  ): Promise<void> => ipcRenderer.invoke('fs:writeFile', args),
+  ): Promise<FileWriteResult> => ipcRenderer.invoke('fs:writeFile', args),
   createFile: (
     args: { filePath: string; connectionId?: string } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:createFile', args),
   createDir: (
-    args: { dirPath: string; connectionId?: string } & SshMutationExpectation
+    args: {
+      dirPath: string
+      connectionId?: string
+      followSymlinks?: boolean
+    } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:createDir', args),
   rename: (
     args: {
@@ -129,12 +153,14 @@ export const fsApi = {
       targetPath: string
       connectionId?: string
       recursive?: boolean
+      permanent?: boolean
     } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:deletePath', args),
   stat: (args: {
     filePath: string
     connectionId?: string
     access?: LocalFileAccess
+    wakeWslDistro?: boolean
   }): Promise<{ size: number; isDirectory: boolean; mtime: number }> =>
     ipcRenderer.invoke('fs:stat', args),
   pathsExist: (args: {
@@ -153,11 +179,18 @@ export const fsApi = {
     requestToken?: string
     maxResults?: number
     searchQuery?: string
+    candidatePaths?: string[]
+    includeIgnored?: boolean
+    allowLegacyIncludeIgnored?: boolean
+    followSymlinks?: boolean
     nameFilter?: string
   }): Promise<string[]> => ipcRenderer.invoke('fs:listFiles', args),
   cancelListFiles: (args: { requestToken: string }): Promise<void> =>
     ipcRenderer.invoke('fs:cancelListFiles', args),
+  cancelSearch: (args: { requestToken: string }): Promise<void> =>
+    ipcRenderer.invoke('fs:cancelSearch', args),
   search: (args: {
+    requestToken?: string
     query: string
     rootPath: string
     caseSensitive?: boolean
@@ -179,6 +212,7 @@ export const fsApi = {
   ): Promise<{ results: ImportItemResult[] }> => ipcRenderer.invoke('fs:importExternalPaths', args),
   stageExternalPathsForRuntimeUpload: (args: {
     sourcePaths: string[]
+    nameExtensionlessImages?: boolean
   }): Promise<{ sources: StagedExternalImportSource[] }> =>
     ipcRenderer.invoke('fs:stageExternalPathsForRuntimeUpload', args),
   uploadExternalFileToRuntime: (
@@ -192,6 +226,10 @@ export const fsApi = {
     } & SshMutationExpectation
   ): Promise<ResolveDroppedPathsResult> =>
     ipcRenderer.invoke('fs:resolveDroppedPathsForAgent', args),
+  uploadPathsToAgentSessionAttachments: (
+    args: AgentSessionAttachmentUploadTarget & { paths: string[] }
+  ): Promise<AgentSessionAttachmentPathUploadResult> =>
+    ipcRenderer.invoke('fs:uploadPathsToAgentSessionAttachments', args),
   watchWorktree: (args: { worktreePath: string; connectionId?: string }): Promise<void> =>
     ipcRenderer.invoke('fs:watchWorktree', args),
   unwatchWorktree: (args: { worktreePath: string; connectionId?: string }): Promise<void> =>

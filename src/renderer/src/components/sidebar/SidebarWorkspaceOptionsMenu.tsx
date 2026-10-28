@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
+import { OptionsFilterCountBadge } from './options-filter-count-badge'
 import {
   useWorkspaceOptionsFilterBadge,
   WorkspaceOptionsMenuItems
@@ -18,7 +19,6 @@ type SidebarWorkspaceOptionsMenuProps = {
   onMenuOpenChange?: (open: boolean) => void
 }
 
-/** Sidebar workspace options menu whose trigger label reports the active filter count. */
 const SidebarWorkspaceOptionsMenu = React.memo(function SidebarWorkspaceOptionsMenu({
   preserveWorkspaceBoardOpen = false,
   onMenuOpenChange
@@ -47,7 +47,7 @@ const SidebarWorkspaceOptionsMenu = React.memo(function SidebarWorkspaceOptionsM
               aria-label={
                 hasAnyFilter
                   ? translate(
-                      'auto.components.sidebar.SidebarWorkspaceOptionsMenu.optionsWithActiveCount',
+                      'auto.components.sidebar.SidebarWorkspaceOptionsMenu.bc96dbd041',
                       'Workspace options ({{value0}} active)',
                       { value0: activeFilterLabel }
                     )
@@ -59,16 +59,7 @@ const SidebarWorkspaceOptionsMenu = React.memo(function SidebarWorkspaceOptionsM
               data-workspace-board-preserve-open={preserveWorkspaceBoardOpen ? '' : undefined}
             >
               <SlidersHorizontal className="size-3.5" strokeWidth={2.25} />
-              {hasAnyFilter && (
-                // Why: this combined options button now owns filtering, so it
-                // needs the same at-a-glance signal that the old filter button had.
-                <span
-                  aria-hidden
-                  className="absolute -top-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-medium leading-none text-primary-foreground"
-                >
-                  {activeFilterCount > 9 ? '9+' : activeFilterCount}
-                </span>
-              )}
+              <OptionsFilterCountBadge count={activeFilterCount} />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

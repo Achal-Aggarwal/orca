@@ -101,7 +101,10 @@ describe('callStructuredAgentSession rewind capability', () => {
       'env-1',
       AGENT_SESSION_REWIND_RUNTIME_CAPABILITY
     )
-    expect(mocks.call).toHaveBeenCalledExactlyOnceWith(target, 'agentSession.rewind', params)
+    // As long as a command's: the host may start an agent at rest first.
+    expect(mocks.call).toHaveBeenCalledExactlyOnceWith(target, 'agentSession.rewind', params, {
+      timeoutMs: 195_000
+    })
   })
 
   it('does not dispatch rewind when host capability cannot be verified', async () => {
@@ -118,7 +121,9 @@ describe('callStructuredAgentSession rewind capability', () => {
     await callStructuredAgentSession(target, 'agentSession.send', params)
 
     expect(mocks.supportsCapability).not.toHaveBeenCalled()
-    expect(mocks.call).toHaveBeenCalledWith({ kind: 'local' }, 'agentSession.rewind', params)
+    expect(mocks.call).toHaveBeenCalledWith({ kind: 'local' }, 'agentSession.rewind', params, {
+      timeoutMs: 195_000
+    })
     expect(mocks.call).toHaveBeenCalledWith(target, 'agentSession.send', params)
   })
 })
@@ -137,6 +142,21 @@ describe('callStructuredAgentSession timeouts', () => {
     await callStructuredAgentSession(target, 'agentSession.modelCatalog', params)
     const [, , , options] = mocks.call.mock.calls[0]!
     expect(options.timeoutMs).toBeGreaterThan(80_000)
+  })
+
+  it('allows restart dispatch settlement while preserving dispatch options', async () => {
+    const params = { sessionIds: ['a'] }
+    const options = { skipCompatibilityCheck: true as const, beforeSend: vi.fn() }
+    await callStructuredAgentSession(target, 'agentSession.restartContinue', params, options)
+    expect(mocks.call).toHaveBeenCalledExactlyOnceWith(
+      target,
+      'agentSession.restartContinue',
+      params,
+      {
+        timeoutMs: 600_000,
+        ...options
+      }
+    )
   })
 
   it('leaves other reads on the default timeout', async () => {

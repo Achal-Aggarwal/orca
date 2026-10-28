@@ -106,7 +106,6 @@ function LinearProjectTableEmpty({ hasError }: { hasError?: boolean }): React.JS
   )
 }
 
-/** Table of Linear projects with loading, error and empty states. */
 export function LinearProjectTableContent({
   projects,
   loading,
@@ -231,7 +230,7 @@ export function LinearProjectTableContent({
                       onOpenProject(project)
                     }}
                     aria-label={translate(
-                      'auto.components.linear.project.view.surfaces.openInLinear',
+                      'auto.components.linear.project.view.surfaces.7616c986c6',
                       'Open {{value0}} in Linear',
                       { value0: project.name }
                     )}

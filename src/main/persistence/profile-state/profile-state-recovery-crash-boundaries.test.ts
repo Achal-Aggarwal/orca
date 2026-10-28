@@ -40,6 +40,11 @@ import { createProfileStateStore } from './profile-state-store-factory'
 import { restoreProfileStateJsonExport } from './legacy-json/profile-state-recovery'
 import { restoreProfileStateDatabaseBackup } from './profile-state-database-recovery'
 import {
+  ensureProfileStateAuthorityMarker,
+  hasProfileStateAuthorityMarker,
+  profileStateAuthorityMarkerPath
+} from './profile-state-authority-marker'
+import {
   buildRecoveryCrashProcess,
   killRecoveryAt,
   type RecoveryCrashOptions
@@ -49,7 +54,7 @@ vi.mock('../../telemetry/client', () => ({ track: () => {} }))
 vi.mock('../../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: () => ({ nth_repo_added: 2 })
 }))
-vi.mock('../../ssh/ssh-config-parser', () => ({
+vi.mock('../../ssh/config/ssh-config-parser', () => ({
   loadUserSshConfig: () => ({ hosts: [] }),
   sshConfigHostsToTargets: () => []
 }))
@@ -85,7 +90,7 @@ const selectedJson = JSON.stringify(selectedState)
 const oldJson = JSON.stringify(oldState)
 
 beforeAll(() => {
-  bundle = buildRecoveryCrashProcess(suiteRoot)
+  bundle = buildRecoveryCrashProcess(suiteRoot).bundle
 })
 beforeEach(() => {
   setSecretStore({
@@ -147,6 +152,7 @@ async function seedFixture(kind: 'json' | 'sqlite', accepted: boolean): Promise<
     kind
   }
   const source = openProfileStateDatabase(databasePath, profileId)
+  ensureProfileStateAuthorityMarker(databasePath)
   try {
     importProfileStateJson(source.db, oldJson)
     importProfileStateJson(source.db, oldJson)
@@ -162,7 +168,7 @@ async function seedFixture(kind: 'json' | 'sqlite', accepted: boolean): Promise<
   await killRecoveryAt(bundle, options, 'seed', oldJson)
   expect(existsSync(`${databasePath}-wal`)).toBe(true)
   expect(existsSync(`${databasePath}-shm`)).toBe(true)
-  // An empty abandoned rollback journal is harmless, but must be removed before publication.
+  // Remove even empty abandoned rollback journals before publication.
   writeFileSync(`${databasePath}-journal`, '')
   if (accepted) {
     writeFileSync(dataFile, selectedJson)
@@ -212,7 +218,7 @@ async function fixture(kind: 'json' | 'sqlite', accepted: boolean): Promise<Fixt
   const key = `${kind}/${accepted}`
   let seed = seededFixtures.get(key)
   if (!seed) {
-    // The seed child's close event has fired before its WAL family is copied.
+    // Wait for child exit before copying the WAL family.
     seed = await seedFixture(kind, accepted)
     seededFixtures.set(key, seed)
   }
@@ -228,7 +234,7 @@ function readSqlite(path: string): unknown {
   }
 }
 
-function assertQuarantine(profile: Fixture): void {
+function assertQuarantine(profile: Fixture, hasMarker = true): void {
   const quarantine = readdirSync(dirname(profile.databasePath)).find((name) =>
     name.startsWith('profile-state-corrupt-')
   )
@@ -236,7 +242,15 @@ function assertQuarantine(profile: Fixture): void {
     throw new Error('Recovery did not preserve a quarantine')
   }
   const directory = join(dirname(profile.databasePath), quarantine)
-  // Check exact family bytes before opening the copied WAL snapshot.
+  const archivedMarker = join(
+    directory,
+    basename(profileStateAuthorityMarkerPath(profile.databasePath))
+  )
+  expect(existsSync(archivedMarker)).toBe(hasMarker)
+  if (hasMarker) {
+    expect(readFileSync(archivedMarker, 'utf8')).toBe('sqlite\n')
+  }
+  // Verify exact bytes before SQLite can change the copied WAL family.
   for (const [suffix, bytes] of profile.originalFamily) {
     expect(readFileSync(join(directory, `profile-state.db${suffix}`)).equals(bytes)).toBe(true)
   }
@@ -267,7 +281,7 @@ function assertRestart(profile: Fixture, expected: 'old' | 'selected' | 'refused
       storage === 'sqlite'
         ? readSqlite(profile.databasePath)
         : JSON.parse(readFileSync(profile.dataFile, 'utf8'))
-    // Full raw-state equality is checked before Store normalization can hide a lost domain.
+    // Check raw state before normalization can hide a lost domain.
     expect(raw).toEqual(expectedState)
     const reopened = open()
     try {
@@ -315,6 +329,7 @@ const JSON_BOUNDARIES = [
   'other-export',
   'first-export',
   'backup',
+  'authority-marker',
   'selected-export',
   'restore-returned',
   'marker-publish:before',
@@ -332,6 +347,7 @@ function stage(profile: Fixture, name: string): string {
     'first-export': profileStateJsonExportPath(profile.dataFile, 1),
     'marker-invalidated': profile.markerPath,
     backup: profile.backupPath,
+    'authority-marker': profileStateAuthorityMarkerPath(profile.databasePath),
     'selected-export': profile.exportPath,
     json: profile.dataFile
   }
@@ -360,6 +376,7 @@ describe.each([false, true])('JSON recovery process death, accepted prior JSON=%
           ? 'old'
           : 'refused'
       if (finished) {
+        expect(hasProfileStateAuthorityMarker(profile.databasePath)).toBe(false)
         expect(readFileSync(profile.dataFile, 'utf8')).toBe(selectedJson)
         expect(profileStateJsonExportPaths(profile.dataFile)).toEqual([])
         expect(profileStateDatabaseBackups(profile.databasePath)).toEqual([])
@@ -374,6 +391,22 @@ describe.each([false, true])('JSON recovery process death, accepted prior JSON=%
 })
 
 describe('SQLite recovery process death', () => {
+  it.each(['before', 'after'] as const)(
+    'preserves the original family through authority-marker publication %s rename',
+    async (boundary) => {
+      const profile = await fixture('sqlite', true)
+      rmSync(profileStateAuthorityMarkerPath(profile.databasePath))
+      await killRecoveryAt(bundle, profile, `authority-publish:${boundary}`)
+      assertQuarantine(profile, false)
+      expect(hasProfileStateAuthorityMarker(profile.databasePath)).toBe(boundary === 'after')
+      for (const [suffix, bytes] of profile.originalFamily) {
+        expect(readFileSync(`${profile.databasePath}${suffix}`)).toEqual(bytes)
+      }
+      assertRestart(profile, 'old')
+      retry(profile)
+    }
+  )
+
   it.each([
     'marker-invalidated',
     'selected-export',
@@ -393,6 +426,7 @@ describe('SQLite recovery process death', () => {
   ])('preserves full state and its immutable retry backup at %s', async (boundary) => {
     const profile = await fixture('sqlite', true)
     await killRecoveryAt(bundle, profile, stage(profile, boundary))
+    expect(hasProfileStateAuthorityMarker(profile.databasePath)).toBe(true)
     assertQuarantine(profile)
     expect(readFileSync(profile.backupPath).equals(profile.backupBytes)).toBe(true)
     const expected = [
@@ -454,10 +488,27 @@ describe('seeded recovery fixture copies', () => {
       expect(readFileSync(seed.exportPath, 'utf8')).toBe(selectedJson)
     }
   )
-
-  it('rejects an incomplete copied WAL family before a recovery child starts', async () => {
-    const incomplete = await fixture('json', false)
-    rmSync(`${incomplete.databasePath}-wal`)
-    expect(() => cloneFixture(incomplete)).toThrow(/ENOENT/)
-  })
 })
+
+it.each(['first-export', 'authority-marker'] as const)(
+  'keeps current-JSON rollback safe through %s removal',
+  async (boundary) => {
+    const seeded = await fixture('json', true)
+    const profile = { ...seeded, exportPath: seeded.dataFile }
+    await killRecoveryAt(bundle, profile, stage(profile, boundary))
+    assertQuarantine(profile)
+    expect(profileStateJsonExportPaths(profile.dataFile)).toEqual([])
+    expect(profileStateDatabaseBackups(profile.databasePath)).toEqual([])
+    expect(hasProfileStateAuthorityMarker(profile.databasePath)).toBe(boundary === 'first-export')
+    assertRestart(profile, boundary === 'first-export' ? 'refused' : 'selected')
+    if (boundary === 'first-export') {
+      const maintenance = acquireProfileStateMaintenance(profile.root)
+      try {
+        restoreProfileStateJsonExport({ ...profile, maintenance })
+      } finally {
+        maintenance.release()
+      }
+      assertRestart(profile, 'selected')
+    }
+  }
+)

@@ -2,38 +2,15 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionOptimisticMessage } from '../../../../shared/structured-agent-session-message-projection'
 import { projectStructuredAgentSessionMessages as projectMessages } from '../../../../shared/structured-agent-session-message-projection'
-import { projectStructuredQuestionMessages } from './structured-agent-question-projection'
+import { projectStructuredQuestionMessages } from '../../../../shared/structured-agent-question-projection'
 
-/** The desktop's transcript: a message the host accepted and then rejected stays where it was
- *  sent, as not sent, unless a queued card holds it. */
+/** Keep host-recorded rejections in place as not sent unless a queue card owns them. */
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
-  outbox: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[],
-  /** The queue's live cards; required, since a rejected message a card holds must not draw twice. */
-  queuedMessageIds: readonly string[]
+  optimistic: readonly StructuredAgentSessionOptimisticMessage[],
+  submissions: readonly AgentJournalSubmission[]
 ) {
-  return projectMessages(
-    items,
-    outbox,
-    submissions,
-    { rejectedInPlace: true, queuedMessageIds },
-    projectStructuredQuestionMessages
-  )
-}
-
-export type StructuredPromptItem = AgentJournalRenderItem & {
-  body: Extract<AgentJournalRenderItem['body'], { kind: 'approval' | 'question' }>
-}
-
-export function pendingStructuredSessionPrompts(
-  items: AgentJournalRenderItem[]
-): StructuredPromptItem[] {
-  return items.filter(
-    (item): item is StructuredPromptItem =>
-      (item.body.kind === 'approval' || item.body.kind === 'question') &&
-      item.body.resolution.state === 'pending'
-  )
+  return projectMessages(items, optimistic, submissions, projectStructuredQuestionMessages)
 }
