@@ -68,6 +68,7 @@ export function MobileFilePreviewScreen({ route }: Props) {
     [routePreviewSource]
   )
   const previewSourceKeyRef = useRef(previewSourceKey)
+  const previewLoadRevisionRef = useRef(0)
   const lineColumn = useMemo(
     () =>
       previewParams
@@ -94,7 +95,10 @@ export function MobileFilePreviewScreen({ route }: Props) {
   }, [savedContent])
 
   const loadPreview = useCallback(async () => {
+    const revision = ++previewLoadRevisionRef.current
     const loadSourceKey = previewSourceKey
+    const isCurrent = () =>
+      revision === previewLoadRevisionRef.current && previewSourceKeyRef.current === loadSourceKey
     if (!previewParams || !previewSource || loadSourceKey !== routePreviewSourceKey) {
       setPreview(previewError(route.ok ? 'Unable to load preview' : route.message))
       return
@@ -116,10 +120,15 @@ export function MobileFilePreviewScreen({ route }: Props) {
     setSaveError('')
     try {
       const result = await loadMobileFilePreview(client, previewSource, undefined, {
-        onTerminalArtifactSourceRefreshed: setPreviewSource,
+        isCurrent,
+        onTerminalArtifactSourceRefreshed: (source) => {
+          if (isCurrent()) {
+            setPreviewSource(source)
+          }
+        },
         refreshGrant: true
       })
-      if (previewSourceKeyRef.current !== loadSourceKey) {
+      if (!isCurrent()) {
         return
       }
       if (shouldKeepDirtyDraftOnPreviewLoadResult(preserveDirtyDraft, result)) {
@@ -141,6 +150,9 @@ export function MobileFilePreviewScreen({ route }: Props) {
       }
       setPreview(result)
     } catch (err) {
+      if (!isCurrent()) {
+        return
+      }
       const message = err instanceof Error ? err.message : 'Unable to load preview'
       if (preserveDirtyDraft) {
         setSaveError(message)
@@ -160,6 +172,9 @@ export function MobileFilePreviewScreen({ route }: Props) {
 
   useEffect(() => {
     void loadPreview()
+    return () => {
+      previewLoadRevisionRef.current += 1
+    }
   }, [loadPreview])
 
   const retry = useMemo(
