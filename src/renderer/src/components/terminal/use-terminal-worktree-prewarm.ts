@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
+import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { AppState } from '@/store/types'
 import { hasRegisteredRuntimeTerminalTab } from '../../runtime/mounted-terminal-tab-registry'
 import { canWatcherCoverParkedTerminalTab } from '../terminal-pane/terminal-parked-tab-watchers'
@@ -139,7 +140,15 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
       stopMeasuring(worktreeId)
     }
 
-    const lease = (worktreeId: string, hovered: boolean): void => {
+    // Liveness checks in flight; a newer request or a release for the worktree invalidates the older answer.
+    const livenessChecks = new Map<string, symbol>()
+
+    /** `confirmedTabIds` is undefined until the daemon has answered for the tabs this lease would reattach. */
+    const lease = (
+      worktreeId: string,
+      hovered: boolean,
+      confirmedTabIds?: ReadonlySet<string>
+    ): void => {
       const c = controllerRef.current
       if (
         // Without hidden-view parking nothing unmounts a released lease, so prewarm would pin every target.
@@ -152,6 +161,14 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
         return
       }
       const state = useAppStore.getState()
+      // Restricting the surface drops its emulator overlay and loses the simulator's local state.
+      if (
+        (state.unifiedTabsByWorktree[worktreeId] ?? []).some(
+          (tab) => tab.contentType === 'simulator'
+        )
+      ) {
+        return
+      }
       const mounted = c.mountedWorktreeIdsRef.current.has(worktreeId)
       const restrictions = c.backgroundMountTabIdsByWorktreeRef.current
       const parked = c.effectiveParkedTerminalWorktreeIds.has(worktreeId)
@@ -160,27 +177,38 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
         (tab) => !hasRegisteredRuntimeTerminalTab(tab.id, worktreeId)
       )
       const needsTabPlan = !mounted || restrictions.has(worktreeId) || parked || hasNonLiveTab
-      // Any restriction on an unrestricted mount drops its emulator overlay, so leave simulator workspaces alone.
-      const restrictsUnrestrictedMount = mounted && !restrictions.has(worktreeId) && needsTabPlan
       // Narrowing a live unrestricted mount is temporary (undone on release).
-      const narrowsLiveMount = restrictsUnrestrictedMount && !parked && hasNonLiveTab
-      if (
-        restrictsUnrestrictedMount &&
-        (state.unifiedTabsByWorktree[worktreeId] ?? []).some(
-          (tab) => tab.contentType === 'simulator'
-        )
-      ) {
-        return
-      }
+      const narrowsLiveMount = mounted && !restrictions.has(worktreeId) && !parked && hasNonLiveTab
       let narrowedLiveMount: PrewarmLease['narrowedLiveMount'] = null
       if (needsTabPlan) {
         const sleepingTabIds = selectSleepingTabIds(state, worktreeId)
+        const tabs = state.tabsByWorktree[worktreeId] ?? []
+        const revealTabIds = selectRevealTerminalTabIds(state, worktreeId)
+        const isTabLive = (tabId: string): boolean =>
+          hasRegisteredRuntimeTerminalTab(tabId, worktreeId)
+        const isTabRestorable = (tab: TerminalTab): boolean =>
+          canWatcherCoverParkedTerminalTab(worktreeId, tab)
+        if (confirmedTabIds === undefined) {
+          const reattachTabs = tabs.filter(
+            (tab) =>
+              revealTabIds.has(tab.id) &&
+              tab.ptyId !== null &&
+              !isTabLive(tab.id) &&
+              !sleepingTabIds.has(tab.id) &&
+              isTabRestorable(tab)
+          )
+          if (reattachTabs.length > 0) {
+            confirmSessionsThenLease(worktreeId, reattachTabs)
+            return
+          }
+        }
         const plan = planTerminalPrewarmTabMount({
-          tabs: state.tabsByWorktree[worktreeId] ?? [],
-          revealTabIds: selectRevealTerminalTabIds(state, worktreeId),
-          isTabLive: (tabId) => hasRegisteredRuntimeTerminalTab(tabId, worktreeId),
-          isTabRestorable: (tab) => canWatcherCoverParkedTerminalTab(worktreeId, tab),
-          isTabSleeping: (tabId) => sleepingTabIds.has(tabId)
+          tabs,
+          revealTabIds,
+          isTabLive,
+          isTabRestorable,
+          isTabSleeping: (tabId) => sleepingTabIds.has(tabId),
+          isSessionConfirmedLive: (tab) => confirmedTabIds?.has(tab.id) === true
         })
         if (!plan) {
           return
@@ -217,11 +245,45 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
       // A neighbor already holding revealable frames only needs the parking exemption.
     }
 
+    const confirmSessionsThenLease = (worktreeId: string, tabs: readonly TerminalTab[]): void => {
+      const token = Symbol(worktreeId)
+      livenessChecks.set(worktreeId, token)
+      void Promise.all(
+        tabs.map(async (tab) =>
+          // Only an authoritative true counts: null (unknown, remote runtime) must not authorize a reattach.
+          tab.ptyId && (await window.api.pty.hasPty(tab.ptyId).catch(() => null)) === true
+            ? tab.id
+            : null
+        )
+      ).then((confirmed) => {
+        if (livenessChecks.get(worktreeId) !== token) {
+          return
+        }
+        livenessChecks.delete(worktreeId)
+        const clients = getTerminalPrewarmWorktrees().get(worktreeId)
+        if (!clients || leases.has(worktreeId)) {
+          return
+        }
+        lease(
+          worktreeId,
+          clients.has('hover'),
+          new Set(confirmed.filter((tabId): tabId is string => tabId !== null))
+        )
+        setHeldTerminalPrewarmWorktrees(leases.keys())
+        controllerRef.current.setTerminalParkingRevision((revision) => revision + 1)
+      })
+    }
+
     const sync = (): void => {
       const wanted = getTerminalPrewarmWorktrees()
       for (const [worktreeId, existing] of Array.from(leases)) {
         if (!wanted.has(worktreeId)) {
           release(worktreeId, existing)
+        }
+      }
+      for (const worktreeId of Array.from(livenessChecks.keys())) {
+        if (!wanted.has(worktreeId)) {
+          livenessChecks.delete(worktreeId)
         }
       }
       for (const [worktreeId, clients] of wanted) {
@@ -245,6 +307,7 @@ export function useTerminalWorktreePrewarm(controller: TerminalColdActivationCon
     const unsubscribe = subscribeTerminalPrewarmWorktrees(sync)
     return () => {
       unsubscribe()
+      livenessChecks.clear()
       for (const [worktreeId, existing] of Array.from(leases)) {
         release(worktreeId, existing)
       }

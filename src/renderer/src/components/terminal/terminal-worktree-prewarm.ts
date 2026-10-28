@@ -71,6 +71,8 @@ export function planTerminalPrewarmTabMount(args: {
   isTabLive: (tabId: string) => boolean
   isTabRestorable: (tab: TerminalTab) => boolean
   isTabSleeping: (tabId: string) => boolean
+  /** Mounting reattaches the PTY, and a reattach to a lost session spawns a new one; admit only daemon-confirmed sessions. */
+  isSessionConfirmedLive: (tab: TerminalTab) => boolean
 }): TerminalPrewarmTabMountPlan | null {
   const allowedTabIds = new Set<string>()
   const deferredTabIds = new Set<string>()
@@ -79,7 +81,7 @@ export function planTerminalPrewarmTabMount(args: {
     const live = args.isTabLive(tab.id)
     // Prewarm must never spawn a shell or wake an agent: only reattach PTYs a snapshot can restore.
     const restorable = !live && args.isTabRestorable(tab) && !args.isTabSleeping(tab.id)
-    if (live || (restorable && args.revealTabIds.has(tab.id))) {
+    if (live || (restorable && args.revealTabIds.has(tab.id) && args.isSessionConfirmedLive(tab))) {
       allowedTabIds.add(tab.id)
       admitsRevealTab ||= args.revealTabIds.has(tab.id)
     } else if (restorable) {
