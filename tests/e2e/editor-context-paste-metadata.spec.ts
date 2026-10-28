@@ -140,7 +140,8 @@ test('large in-app copy preserves distinct multicursor paste metadata', async ({
     )
     await orcaPage.keyboard.press('Shift+F10')
     await expect(orcaPage.getByRole('menuitem', { name: /^Paste/ })).toBeVisible()
-    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click()
+    // Monaco enables menu mouse-up 100 ms after opening.
+    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click({ delay: 150 })
   }
   const small = ['// ALPHA_COPY_BEGIN\n//a', '// BETA_COPY_BEGIN\n//b']
   await copyAndPaste(small)
@@ -247,7 +248,8 @@ test('large in-app copy preserves distinct multicursor paste metadata', async ({
     await editor.evaluate((editor) => editor.setPosition({ lineNumber: 3, column: 9 }))
     await orcaPage.keyboard.press('Shift+F10')
     await expect(orcaPage.getByRole('menuitem', { name: /^Paste/ })).toBeVisible()
-    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click()
+    // Monaco enables menu mouse-up 100 ms after opening.
+    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click({ delay: 150 })
     await expect
       .poll(() => editor.evaluate((editor) => editor.getModel()?.getValueLength()))
       .toBe(wholeInitial.length + copied.length + 1)
