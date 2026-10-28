@@ -22,7 +22,8 @@ Don't post to Slack, GitHub, or other channels during the run; report through th
   # only when you produced a durable report. Always pass real values; do not
   # send the example placeholders literally.
   #
-  # Send worker_done exactly once. Use --outcome succeeded when the
+  # Send worker_done once. If it fails or its result is unknown, follow the
+  # recovery it prints; you are done only when it confirms. Use --outcome succeeded when the
   # requested work is done, or replace it with --outcome failed when it is not.
   # Never encode failure only in prose and never silently exit.
   # Include BOTH taskId and dispatchId in the payload so a late completion
@@ -112,7 +113,8 @@ Don't post to Slack, GitHub, or other channels during the run; report through th
   # only when you produced a durable report. Always pass real values; do not
   # send the example placeholders literally.
   #
-  # Send worker_done exactly once. Use --outcome succeeded when the
+  # Send worker_done once. If it fails or its result is unknown, follow the
+  # recovery it prints; you are done only when it confirms. Use --outcome succeeded when the
   # requested work is done, or replace it with --outcome failed when it is not.
   # Never encode failure only in prose and never silently exit.
   # Include BOTH taskId and dispatchId in the payload so a late completion

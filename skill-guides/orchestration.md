@@ -179,11 +179,13 @@ commands. It is authoritative: copy its commands and flags, never rebuild them.
 3. At natural checkpoints and right before `worker_done`, read coordinator
    mail with `ORCA orchestration check --terminal <your_handle> --json`, then
    ack each batch with `--ack <delivery_id>` until `count` is 0.
-4. Send `worker_done` exactly once, from your own terminal or chat: three
+4. Send `worker_done` once, from your own terminal or chat: three
    sentences (what changed, what you found, what remains), both IDs, and
    `--outcome succeeded` or `--outcome failed`. Add `--files-modified` and
-   `--report-path` only with real values.
-5. Then end your turn and idle. A later direct user instruction is new work;
+   `--report-path` only with real values. If it fails or its result is
+   unknown, follow the recovery it prints; you are done only when it confirms.
+5. Then end your turn and idle (a bare-shell worker exits, as its preamble
+   says). A later direct user instruction is new work;
    do not reuse the settled IDs.
 
 ## References

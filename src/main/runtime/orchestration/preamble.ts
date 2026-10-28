@@ -98,7 +98,8 @@ Don't post to Slack, GitHub, or other channels during the run; report through th
   # only when you produced a durable report. Always pass real values; do not
   # send the example placeholders literally.
   #
-  # Send worker_done exactly once. Use --outcome succeeded when the
+  # Send worker_done once. If it fails or its result is unknown, follow the
+  # recovery it prints; you are done only when it confirms. Use --outcome succeeded when the
   # requested work is done, or replace it with --outcome failed when it is not.
   # Never encode failure only in prose and never silently exit.
   # Include BOTH taskId and dispatchId in the payload so a late completion
@@ -231,7 +232,8 @@ report to you: their questions, escalations, and worker_done arrive in your own
   ${cli} orchestration reply --from ${workerHandle} --id <message_id> --body "<answer>"
 \`\`\`
 
-Wait for every helper's worker_done before reporting your own. Nesting is
+Wait until every helper has settled (worker_done, a failed start, stop, or
+abandon) before reporting your own, and name any that failed. Nesting is
 capped; your helpers may not be able to start helpers of their own.
 
 ---`
@@ -249,7 +251,8 @@ You may dispatch sub-workers for this task. Create your own Run first, then:
   ${cli} orchestration worker-start --task <task_id> --worktree current --agent <agent> --json
 \`\`\`
 
-Wait for every sub-worker's worker_done before reporting your own. Nesting is
+Wait until every sub-worker has settled (worker_done, a failed start, stop, or
+abandon) before reporting your own, and name any that failed. Nesting is
 capped; your sub-workers may not be able to dispatch further.
 
 ---`

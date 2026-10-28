@@ -83,8 +83,9 @@ ORCA orchestration reply --from <worker_handle> --id <message_id> --body "<answe
 ```
 
 Their questions, escalations, and `worker_done` arrive in your own `check`, next
-to your coordinator's mail. Answer their questions with `reply`, and wait for
-every helper's `worker_done` before sending yours. After you settle, a helper
+to your coordinator's mail. Answer their questions with `reply`, and wait until
+every helper has settled (`worker_done`, a failed start, stop, or abandon)
+before sending yours; name any that failed. After you settle, a helper
 still running reports to your coordinator's Run.
 
 ## Escalation
@@ -108,7 +109,7 @@ paths. Do not send documentation placeholders as metadata.
 ORCA orchestration send --from <worker_handle> --type worker_done --subject "<short status>" --body "<three sentences: work, findings, remaining>" --task-id <task_id> --dispatch-id <dispatch_id> --outcome succeeded
 ```
 
-After `worker_done`, end the dispatched turn and idle. Do not poll, close your
-own terminal, or begin unrelated work. A later direct user instruction is new
+After `worker_done`, end the dispatched turn and idle (a bare-shell worker
+exits, as its preamble says). Do not poll or begin unrelated work. A later direct user instruction is new
 user-owned work and must not reuse settled lifecycle IDs; a supervised follow-up
 arrives with a fresh preamble and Task block.
