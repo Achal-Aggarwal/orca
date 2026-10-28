@@ -63,8 +63,14 @@ describe('native dependency lock closure', () => {
 
   it('fails closed when a selected package or dependency is not locked', () => {
     expect(() => nativeDependencyClosure(lockfile({}), { packages: ['missing'] })).toThrow(
-      /locks none/
+      /locks none of missing/
     )
+    expect(() =>
+      nativeDependencyClosure(lockfile({}), { ...selection, packages: ['node-pty', 'node-gyp'] })
+    ).toThrow(/locks none of node-gyp$/)
+    expect(() =>
+      nativeDependencyClosure(lockfile({}), { ...selection, versionOnly: ['electron', 'nw'] })
+    ).toThrow(/locks none of nw$/)
     expect(() =>
       nativeDependencyClosure(lockfile({ addon: '9.9.9' }), { packages: ['node-pty'] })
     ).toThrow(/no snapshot for node-addon-api@9.9.9/)

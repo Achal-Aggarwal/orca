@@ -59,6 +59,12 @@ export function nativeDependencyClosure(
   { packages, versionOnly = [], workspaces = [] } = {}
 ) {
   const { importers, snapshots } = readLockfile(contents)
+  const names = Object.keys(snapshots).map(snapshotName)
+  const unlocked = [...packages, ...versionOnly].filter((name) => !names.includes(name))
+  if (unlocked.length > 0) {
+    // Fail closed: a package that silently stopped matching would drop out of the key.
+    throw new Error(`pnpm-lock.yaml locks none of ${unlocked.join(', ')}`)
+  }
   const pending = Object.keys(snapshots).filter((key) => packages.includes(snapshotName(key)))
   for (const workspace of workspaces) {
     const importer = importers[workspace]
@@ -73,9 +79,6 @@ export function nativeDependencyClosure(
         }
       }
     }
-  }
-  if (pending.length === 0) {
-    throw new Error(`pnpm-lock.yaml locks none of ${packages.join(', ')}`)
   }
   const visited = new Set()
   while (pending.length > 0) {
