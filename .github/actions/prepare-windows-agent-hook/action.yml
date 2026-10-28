@@ -7,7 +7,8 @@ runs:
     - name: Resolve the Windows Rust build scope
       id: rust-scope
       if: runner.os == 'Windows'
-      uses: ./.github/actions/resolve-windows-rust-build-scope
+      shell: bash
+      run: node config/scripts/windows-rust-build-scope.mjs >> "$GITHUB_OUTPUT"
 
     # Source globs, not crate/**: target/ and .build/ can already exist when this key is computed.
     # Real inputs only: older restores are safe because the build re-checks the exe's fingerprint.

@@ -12,7 +12,7 @@ on:
       - '.github/actions/prepare-native-runtime/**'
       - '.github/actions/prepare-windows-cli-launcher/**'
       - '.github/actions/prepare-windows-agent-hook/**'
-      - '.github/actions/resolve-windows-rust-build-scope/**'
+      - 'config/scripts/windows-rust-build-scope.mjs'
       - '.github/actions/prepare-orcad-prebuilds/**'
       - 'config/scripts/native-dependency-lock-digest.mjs'
       - 'config/scripts/orcad-windows-prebuild-cache.mjs'

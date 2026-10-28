@@ -98,7 +98,8 @@ jobs:
       - name: Resolve the Windows Rust build scope
         id: rust-scope
         if: runner.arch == 'X64' && matrix.os != 'windows-2025'
-        uses: ./.github/actions/resolve-windows-rust-build-scope
+        shell: bash
+        run: node config/scripts/windows-rust-build-scope.mjs >> "$GITHUB_OUTPUT"
 
       - name: Cache Windows CLI launcher
         if: runner.arch == 'X64' && matrix.os != 'windows-2025'
