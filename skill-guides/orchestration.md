@@ -1,14 +1,16 @@
 ---
 name: orchestration
 description: >-
-  Coordinate supervised Orca workers, or work as a dispatched worker
-  (heartbeats, ask, worker_done): threaded messages, blocking ask/reply, task
-  dispatch, worker_done/escalation waits, task DAGs, decision gates,
-  coordinator loops, and decomposing work across agents. Use `orca-cli` for full
-  ownership handoffs — "hand off", "handoff", "handover", "give this to another
-  agent", "another worktree" — unless asked to supervise, monitor, or coordinate
-  a DAG, and for terminal control, lightweight terminal prompts, shell commands,
-  Orca worktree management, and reading or waiting on terminals.
+  Run work in separate Orca worker agents and get their results back. Use when
+  the user asks for Orca workers or supervision (monitor, task DAGs, ask/reply,
+  decision gates), or when the work needs something your own subagents cannot
+  give: a different agent (such as Codex from Claude) or its own Orca workspace.
+  Also use when you are a dispatched worker (a prompt with Task and Dispatch
+  IDs: heartbeats, ask, worker_done). Otherwise prefer your own subagents,
+  including for long or parallel work. Use `orca-cli` to hand work off with
+  nothing expected back ("hand off", "handover", "give this to another agent",
+  "another worktree"), and for terminal control, shell commands, worktree
+  management, and reading or waiting on terminals.
 ---
 
 # Orca orchestration
