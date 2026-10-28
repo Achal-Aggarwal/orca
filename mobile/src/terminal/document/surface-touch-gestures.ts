@@ -135,14 +135,19 @@ export function attachSurfaceEventHandlers(
   targetSurface.addEventListener(
     'touchmove',
     function (e) {
-      if (targetSurface !== scope.surface || dispatcherShouldBlockSurface(scope)) {
+      if (
+        targetSurface !== scope.surface ||
+        scope.touchDispatch.mode === 'select-drag' ||
+        !scope.term
+      ) {
         return
       }
-      if (!scope.term || !scope.touchGesture.active) {
-        return
-      }
+      // Claim inactive and interrupted moves too, or xterm's own touch scroller moves the buffer.
       e.preventDefault()
       e.stopPropagation()
+      if (!scope.interactionActive || !scope.touchGesture.active) {
+        return
+      }
 
       const touches = touchesInRoot(scope.root, e.touches)
       if (touches.length === 2) {

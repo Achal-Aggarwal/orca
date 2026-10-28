@@ -58,6 +58,37 @@ describe('inactive terminal interaction ownership', () => {
     }
   )
 
+  it('keeps interrupted and inactive moves away from xterm', () => {
+    const scope = createTerminalDocumentScope()
+    const surface = document.createElement('div')
+    document.body.appendChild(surface)
+    scope.surface = surface
+    scope.term = terminalDocumentDouble().terminal
+    attachSurfaceEventHandlers(scope, surface)
+    const reachedDocument: string[] = []
+    const onDocument = (e: Event) => reachedDocument.push(e.type)
+    document.addEventListener('touchmove', onDocument)
+    document.addEventListener('wheel', onDocument)
+    const move = () => {
+      const event = new Event('touchmove', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', {
+        value: [{ identifier: 0, clientX: 10, clientY: 10, target: surface }]
+      })
+      surface.dispatchEvent(event)
+    }
+
+    handleMsg(scope, { type: 'set-interaction-active', active: false })
+    move()
+    surface.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40 }))
+    handleMsg(scope, { type: 'set-interaction-active', active: true })
+    move()
+
+    expect(reachedDocument).toEqual([])
+    document.removeEventListener('touchmove', onDocument)
+    document.removeEventListener('wheel', onDocument)
+    surface.remove()
+  })
+
   it('releases cancelled gesture frames across repeated hide/show cycles', () => {
     const scope = createTerminalDocumentScope()
     let nextFrame = 0
