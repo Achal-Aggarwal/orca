@@ -115,6 +115,8 @@ describe('screencast ownership', () => {
         })
     )
     startBrowserScreencast.mockResolvedValueOnce(session).mockResolvedValueOnce(replacementSession)
+    const guest = createStreamedGuest()
+    webContentsFromId.mockReturnValue(guest)
     const commands = new RuntimeBrowserCommands(createSinglePageBrowserCommandsHost())
     const first = await commands.browserScreencast(params, { sendBinary: () => true })
     const joining = commands.browserScreencast(
@@ -132,6 +134,8 @@ describe('screencast ownership', () => {
       await rejected
       expect(session.stop).toHaveBeenCalledOnce()
       await session.done
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(vi.mocked(guest.setBackgroundThrottling).mock.calls).toEqual([[false], [true]])
 
       const replacement = await commands.browserScreencast(params, { sendBinary: () => true })
       expect(startBrowserScreencast).toHaveBeenCalledTimes(2)
