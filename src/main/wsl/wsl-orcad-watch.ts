@@ -13,12 +13,14 @@ export type WslOrcadWatch = {
   /** Called once, with the bridge's exit code, when a `ready` watch ends on its own. */
   onExit(listener: (code: number | null) => void): void
   close(): void
+  /** Whether it currently proves orcad answers on its port (false while it holds no open path). */
+  proving(): boolean
 }
 
 const WATCH_OPEN_TIMEOUT_MS = 10_000
 
 function inertWatch(signal: 'refused' | 'unverifiable'): WslOrcadWatch {
-  return { signal, onExit: () => {}, close: () => {} }
+  return { signal, onExit: () => {}, close: () => {}, proving: () => false }
 }
 
 export async function openWslOrcadWatch(
@@ -86,7 +88,8 @@ export function watchChannel(
             listener(exitCode)
           }
         },
-        close
+        close,
+        proving: () => !ended && !closedByUs
       })
     }
     decoder.on('signal', (signal: OrcadStdioBridgeSignal) => settle(signal))

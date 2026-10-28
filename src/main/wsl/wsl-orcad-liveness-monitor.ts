@@ -1,3 +1,4 @@
+import type { WslOrcadConnection } from './wsl-orcad-connection'
 import type {
   Supervised,
   WslOrcadLivenessDependencies,
@@ -53,6 +54,18 @@ export async function ensureHolderQuietly(
   } catch (error) {
     console.warn(`[wsl] holder re-ensure for ${distro} failed:`, error)
   }
+}
+
+/** A held watch that proves the port answers for it; a fresh one probes; a retired listener proves nothing. */
+export async function probeOrcadPort(
+  entry: Supervised,
+  connection: WslOrcadConnection | null,
+  attach: (connection: WslOrcadConnection) => Promise<WslOrcadWatch['signal']>
+): Promise<WslOrcadWatch['signal']> {
+  if (!connection) {
+    return 'refused'
+  }
+  return entry.watch?.proving() ? 'ready' : attach(connection)
 }
 
 /** Holds a new watch unless a later connect superseded this one or already holds one. */

@@ -1,0 +1,152 @@
+import { connect, createServer, type Server, type Socket } from 'node:net'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { checkOrcadStdioBridge, openOrcadStdioBridgeChannel } from '../ssh/orcad-stdio-bridge'
+import type { StartedPortForward } from '../ssh/port-forwarding/ssh-port-forward-provider'
+import { probeThenWatchWslOrcadBridges, WslOrcadBridgeActivity } from './wsl-orcad-bridge-activity'
+import { fakeWslBridgeChildren, posixOrcadStdioBridge } from './wsl-orcad-bridge-test-child'
+import { createWslOrcadHostTransport } from './wsl-orcad-host-transport'
+import { listenWslOrcadStdioBridge } from './wsl-orcad-stdio-bridge'
+import type { WslOrcadWatch } from './wsl-orcad-watch'
+
+const ENV = 'wsl:ubuntu'
+const cleanups: (() => unknown)[] = []
+
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).toReversed()) {
+    await cleanup()
+  }
+})
+
+/** Stands in for orcad: keeps every accepted socket so a test can end it from the guest side. */
+async function fakeOrcad(): Promise<{ server: Server; port: number; accepted: Socket[] }> {
+  const accepted: Socket[] = []
+  const server = createServer((socket) => {
+    accepted.push(socket)
+    socket.on('error', () => {})
+    socket.resume()
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  cleanups.push(() => {
+    for (const socket of accepted) {
+      socket.destroy()
+    }
+    return new Promise((resolve) => server.close(resolve))
+  })
+  const address = server.address()
+  return { server, port: typeof address === 'object' && address ? address.port : 0, accepted }
+}
+
+async function bridgedHost(activity: WslOrcadBridgeActivity, remotePort: number) {
+  const children = fakeWslBridgeChildren()
+  const transport = createWslOrcadHostTransport({
+    target: { kind: 'wsl', id: ENV, distro: 'Ubuntu', label: 'Ubuntu' },
+    spawn: children.spawn
+  })
+  const forward: StartedPortForward = await listenWslOrcadStdioBridge(
+    transport,
+    {
+      environmentId: ENV,
+      remotePort,
+      localPort: 0,
+      label: 'Ubuntu',
+      events: activity.events(ENV)
+    },
+    {
+      resolveBridge: async (_conn, port) => posixOrcadStdioBridge(port),
+      checkBridge: checkOrcadStdioBridge,
+      openChannel: openOrcadStdioBridgeChannel
+    }
+  )
+  cleanups.push(() => forward.close())
+  return forward
+}
+
+function dial(port: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, '127.0.0.1', () => resolve(socket))
+    socket.once('error', reject)
+    cleanups.push(() => socket.destroy())
+  })
+}
+
+describe('the desktop’s bridged sockets as the liveness watch', () => {
+  it('fires once when orcad ends a socket, and proves liveness only while one is open', async () => {
+    const orcad = await fakeOrcad()
+    const activity = new WslOrcadBridgeActivity()
+    const forward = await bridgedHost(activity, orcad.port)
+    const watch = activity.watch(ENV)
+    const exits = vi.fn()
+    watch.onExit(exits)
+    expect(watch.proving()).toBe(false)
+
+    // The listener's start-up check already dialed orcad once.
+    const before = orcad.accepted.length
+    await dial(forward.entry.localPort)
+    await expect.poll(() => orcad.accepted.length).toBe(before + 1)
+    await expect.poll(() => watch.proving()).toBe(true)
+
+    // orcad exiting closes its end; the guest ends the bridge first.
+    orcad.accepted.at(-1)?.destroy()
+    await expect.poll(() => exits.mock.calls.length).toBe(1)
+    expect(exits).toHaveBeenCalledWith(null)
+    await expect.poll(() => watch.proving()).toBe(false)
+  })
+
+  it('stays quiet when the desktop closes its own socket', async () => {
+    const orcad = await fakeOrcad()
+    const activity = new WslOrcadBridgeActivity()
+    const forward = await bridgedHost(activity, orcad.port)
+    const watch = activity.watch(ENV)
+    const exits = vi.fn()
+    watch.onExit(exits)
+    const socket = await dial(forward.entry.localPort)
+    await expect.poll(() => watch.proving()).toBe(true)
+
+    socket.end()
+    await expect.poll(() => watch.proving()).toBe(false)
+    expect(exits).not.toHaveBeenCalled()
+  })
+
+  it('stops listening once closed, and keys hosts apart', () => {
+    const activity = new WslOrcadBridgeActivity()
+    const watch = activity.watch(ENV)
+    const other = vi.fn()
+    activity.watch('wsl:debian').onExit(other)
+    const exits = vi.fn()
+    watch.onExit(exits)
+    watch.close()
+    const events = activity.events(ENV)
+    events.opened()
+    events.ended(true)
+    expect(exits).not.toHaveBeenCalled()
+    expect(other).not.toHaveBeenCalled()
+  })
+})
+
+describe('probeThenWatchWslOrcadBridges', () => {
+  const inert = (signal: WslOrcadWatch['signal']): WslOrcadWatch => ({
+    signal,
+    onExit: () => {},
+    close: vi.fn(),
+    proving: () => false
+  })
+
+  it('reports a refused or unverifiable probe as before, holding nothing', async () => {
+    const activity = new WslOrcadBridgeActivity()
+    for (const signal of ['refused', 'unverifiable'] as const) {
+      const probe = inert(signal)
+      await expect(probeThenWatchWslOrcadBridges(async () => probe, activity, ENV)).resolves.toBe(
+        probe
+      )
+    }
+  })
+
+  it('closes the probe bridge once it proved the port, and watches the desktop’s sockets', async () => {
+    const activity = new WslOrcadBridgeActivity()
+    const probe = inert('ready')
+    const watch = await probeThenWatchWslOrcadBridges(async () => probe, activity, ENV)
+    expect(probe.close).toHaveBeenCalledOnce()
+    expect(watch).not.toBe(probe)
+    expect(watch.signal).toBe('ready')
+  })
+})

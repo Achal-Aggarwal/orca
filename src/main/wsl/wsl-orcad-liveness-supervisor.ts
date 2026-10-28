@@ -14,6 +14,7 @@ import {
   cancellableWait,
   defaultSchedule,
   ensureHolderQuietly,
+  probeOrcadPort,
   subscribeWake
 } from './wsl-orcad-liveness-monitor'
 import {
@@ -232,7 +233,7 @@ export class WslOrcadLivenessSupervisor {
         return
       }
     }
-    if (trigger === 'heartbeat' && entry.watch && confirmsRunning(running, entry.key)) {
+    if (trigger === 'heartbeat' && entry.watch?.proving() && confirmsRunning(running, entry.key)) {
       await ensureHolderQuietly(this.deps.ensureHolder, entry.distro)
       this.scheduleHeartbeat(entry)
       return
@@ -248,9 +249,7 @@ export class WslOrcadLivenessSupervisor {
     const connection = this.deps.manager.get(entry.distro)
     await gatherWslLivenessEvidence(evidence, {
       readIdentity: () => this.deps.readIdentity(entry.distro, connection?.pid ?? null),
-      // A held watch proves the port; a fresh one probes it; a retired listener proves nothing.
-      probePort: async () =>
-        !connection ? 'refused' : entry.watch ? 'ready' : this.attachWatch(entry, connection)
+      probePort: () => probeOrcadPort(entry, connection, (held) => this.attachWatch(entry, held))
     })
     if (entry.generation === generation) {
       await this.act(entry, classifyWslOrcadLiveness(evidence))

@@ -30,6 +30,7 @@ function harness(options: { visible?: boolean } = {}) {
     running: WslRunningDistrosRead
     identity: WslGuestIdentity | null
     watchSignal: WslOrcadWatch['signal']
+    watchProves: boolean
     ensureFails: number
     ensureError?: Error
   } = {
@@ -37,6 +38,7 @@ function harness(options: { visible?: boolean } = {}) {
     running: { status: 'confirmed', distros: ['Ubuntu'] },
     identity: { distroInstance: 'boot:1', orcad: 'orcad:100' },
     watchSignal: 'ready',
+    watchProves: true,
     ensureFails: 0
   }
   const deferred: (() => unknown)[] = []
@@ -90,7 +92,12 @@ function harness(options: { visible?: boolean } = {}) {
     readIdentity,
     openWatch: async () => {
       if (state.watchSignal !== 'ready') {
-        return { signal: state.watchSignal, onExit: () => {}, close: () => {} }
+        return {
+          signal: state.watchSignal,
+          onExit: () => {},
+          close: () => {},
+          proving: () => false
+        }
       }
       const record = { exit: (_code: number | null) => {}, closed: false }
       watches.push(record)
@@ -101,7 +108,8 @@ function harness(options: { visible?: boolean } = {}) {
         },
         close: () => {
           record.closed = true
-        }
+        },
+        proving: () => !record.closed && state.watchProves
       }
     },
     collectCensus,
@@ -459,6 +467,29 @@ describe('WslOrcadLivenessSupervisor', () => {
     expect(h.readRunning).toHaveBeenCalledTimes(1)
     expect(h.readIdentity).toHaveBeenCalledTimes(1)
     expect(h.ensureHolder).toHaveBeenCalledWith('Ubuntu')
+  })
+
+  it('verifies fully on a heartbeat while its watch holds no open socket to prove orcad', async () => {
+    const h = harness()
+    await h.supervisor.connect('Ubuntu')
+    // The desktop's sockets are all closed: the watch proves nothing, so ask the guest.
+    h.state.watchProves = false
+    await h.advance(WSL_ORCAD_HEARTBEAT_MS)
+    expect(h.readIdentity).toHaveBeenCalledTimes(2)
+    // Same orcad: still ready, no verdict change.
+    expect(h.statuses.filter((status) => status.state !== 'ready')).toEqual([])
+  })
+
+  it('treats a socket orcad closed for another reason as a verify, not a verdict', async () => {
+    const h = harness()
+    await h.supervisor.connect('Ubuntu')
+    // A watch riding the desktop's sockets reports no exit code.
+    h.lastWatch().exit(null)
+    await h.advance(5_000)
+    expect(h.readIdentity).toHaveBeenCalledTimes(2)
+    expect(h.statuses.filter((status) => status.state !== 'ready')).toEqual([])
+    expect(h.ensure).toHaveBeenCalledTimes(1)
+    expect(h.watches).toHaveLength(2)
   })
 
   it('treats a heartbeat far past due as a pause and verifies fully', async () => {
