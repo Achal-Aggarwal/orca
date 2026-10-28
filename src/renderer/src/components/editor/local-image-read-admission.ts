@@ -1,5 +1,7 @@
 import { PrioritySemaphore } from '../../../../shared/priority-semaphore'
 import { waitForPromiseWithSignal } from '../../../../shared/abort-signal-reason'
+import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
+import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import {
   cleanupLocalImageCacheKeyVersion,
   getLocalImageCacheGeneration,
@@ -11,7 +13,23 @@ const LOCAL_IMAGE_READ_CONCURRENCY = 4
 type ImageReadOwner = { admission: PrioritySemaphore; requests: number }
 const owners = new Map<string, ImageReadOwner>()
 
-async function runLocalImageRead<T>(
+export function getLocalImageReadOwnerKey(
+  connectionId?: string | null,
+  runtimeContext?: Omit<RuntimeFileOperationArgs, 'connectionId'> & {
+    connectionId?: string | null
+  }
+): string {
+  return [
+    runtimeContext ? (runtimeTargetEnvironmentId(runtimeContext.target) ?? 'client') : 'client',
+    runtimeContext?.connectionId ?? connectionId ?? 'local',
+    runtimeContext?.expectedExecutionHostId ?? 'local',
+    runtimeContext?.expectedSshTargetId ?? '',
+    runtimeContext?.expectedSshConnectionGeneration?.toString() ?? '',
+    runtimeContext?.expectedExternalSshTargetId ?? ''
+  ].join('\0')
+}
+
+export async function runLocalImageRead<T>(
   ownerKey: string,
   signal: AbortSignal,
   read: () => Promise<T>

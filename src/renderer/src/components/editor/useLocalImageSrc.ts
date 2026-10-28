@@ -32,6 +32,7 @@ import {
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import {
   createLocalImageRead,
+  getLocalImageReadOwnerKey,
   hasLocalImageReadOwner,
   ownLocalImageRead,
   resetLocalImageReadAdmissionForTests
@@ -253,14 +254,7 @@ export function loadLocalImageAbsolutePath(
 
   const readGeneration = getLocalImageCacheGeneration()
   const readLeaseVersion = getLocalImageCacheKeyVersion(cacheKey)
-  const readOwnerKey = [
-    runtimeContext ? (runtimeTargetEnvironmentId(runtimeContext.target) ?? 'client') : 'client',
-    runtimeContext?.connectionId ?? connectionId ?? 'local',
-    runtimeContext?.expectedExecutionHostId ?? 'local',
-    runtimeContext?.expectedSshTargetId ?? '',
-    runtimeContext?.expectedSshConnectionGeneration?.toString() ?? '',
-    runtimeContext?.expectedExternalSshTargetId ?? ''
-  ].join('\0')
+  const readOwnerKey = getLocalImageReadOwnerKey(connectionId, runtimeContext)
   const loadPromise = createLocalImageRead(cacheKey, readOwnerKey, async (readSignal) => {
     const result = await readLocalImagePreview(absolutePath, connectionId, runtimeContext, access)
     if (

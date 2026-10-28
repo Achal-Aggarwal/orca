@@ -1,6 +1,10 @@
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
 import { buildMarkdownExportHtml } from './markdown-export-html'
+import {
+  captureMarkdownExportLocalImages,
+  inlineMarkdownExportLocalImages
+} from './markdown-export-local-images'
 
 export type MarkdownExportPayload = {
   title: string
@@ -68,6 +72,7 @@ function prepareMarkdownExportPayload({
   }
 
   const clone = subtree.cloneNode(true) as Element
+  const localImages = captureMarkdownExportLocalImages(subtree, clone, UI_ONLY_SELECTORS.join(','))
   for (const image of clone.querySelectorAll('img')) {
     image.loading = 'eager'
   }
@@ -77,15 +82,24 @@ function prepareMarkdownExportPayload({
     }
   }
   const title = basenameWithoutExt(activeFile.relativePath || activeFile.filePath)
-  return buildMarkdownExportPayload(clone, title)
+  return buildMarkdownExportPayload(clone, title, localImages)
 }
 
 async function buildMarkdownExportPayload(
   clone: Element,
-  title: string
+  title: string,
+  localImages: ReturnType<typeof captureMarkdownExportLocalImages>
 ): Promise<MarkdownExportPayload | null> {
-  // Inline renderer-owned blob images because the hidden PDF window cannot resolve their URLs.
-  await inlineBlobImageSources(clone)
+  const controller = new AbortController()
+  try {
+    await Promise.all([
+      inlineBlobImageSources(clone),
+      inlineMarkdownExportLocalImages(localImages, controller)
+    ])
+  } catch (error) {
+    controller.abort(error)
+    throw error
+  }
 
   const renderedHtml = clone.innerHTML.trim()
   if (!renderedHtml) {

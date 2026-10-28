@@ -1,10 +1,14 @@
-import type { LocalFileAccess } from '../../../../shared/local-file-access'
 import { observeViewportVisibility } from '@/lib/viewport-visibility'
+import {
+  deleteDocumentImageSource,
+  setDocumentImageSource,
+  type DocumentImageSource
+} from './document-image-sources'
+export type { DocumentImageSource } from './document-image-sources'
 import {
   acquireLocalImageDisplayLease,
   type LocalImageDisplayLease
 } from './local-image-display-lease'
-import type { RichMarkdownImageRuntimeContext } from './rich-markdown-image-context'
 import {
   getLocalImageSrcCacheKey,
   loadLocalImageSrc,
@@ -16,14 +20,6 @@ import {
   isLocalImageCacheCapacityBlocked,
   subscribeToLocalImageCacheCapacity
 } from './local-image-src-cache'
-
-export type DocumentImageSource = {
-  src: string | undefined
-  filePath: string
-  runtimeContext?: RichMarkdownImageRuntimeContext | null
-  access?: LocalFileAccess
-  resolvedSrc?: string
-}
 
 type ImageSize = { width: number; height: number }
 
@@ -192,6 +188,7 @@ export function createDocumentImageDisplay(
       nextSource.runtimeContext === null ? 'unresolved' : ''
     ].join('\0')
     source = nextSource
+    setDocumentImageSource(image, source)
     if (identity === nextIdentity) {
       updateLayout()
       return
@@ -250,6 +247,7 @@ export function createDocumentImageDisplay(
     updateLayout,
     destroy: () => {
       destroyed = true
+      deleteDocumentImageSource(image)
       image.removeAttribute('src')
       stopRead(true)
       stopObserving?.()
