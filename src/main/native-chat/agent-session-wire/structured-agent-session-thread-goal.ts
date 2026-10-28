@@ -85,53 +85,60 @@ export async function performThreadGoalChange(
     // Read before the objective message lands; it is not a goal transition.
     replacesGoal = ctx.journal.threadGoal() !== null
   }
-  // Journal first: active goals start work immediately, which must follow the objective in the transcript.
-  throwIfSignalAborted(input.signal)
-  if (change.kind === 'set') {
-    try {
-      // An objective naming a pasted file keeps it for the chat, as a sent message does.
-      await ctx.journal.appendClaimingAttachments(
-        identity,
-        {
-          kind: 'message',
-          role: 'user',
-          blocks: [{ type: 'text', text: change.objective }],
-          sentAs: 'goal'
-        },
-        { fence: ctx.fence, turnScope: contextStructuredAgentSessionCurrentWork(ctx).turnScope() }
-      )
-    } catch (error) {
-      if (isAgentSessionAttachmentExpiredError(error)) {
-        return agentSessionAttachmentExpiredRefusal()
+  try {
+    // Journal first: active goals start work immediately, which must follow the objective in the transcript.
+    throwIfSignalAborted(input.signal)
+    if (change.kind === 'set') {
+      try {
+        // An objective naming a pasted file keeps it for the chat, as a sent message does.
+        await ctx.journal.appendClaimingAttachments(
+          identity,
+          {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: change.objective }],
+            sentAs: 'goal'
+          },
+          { fence: ctx.fence, turnScope: contextStructuredAgentSessionCurrentWork(ctx).turnScope() }
+        )
+      } catch (error) {
+        if (isAgentSessionAttachmentExpiredError(error)) {
+          return agentSessionAttachmentExpiredRefusal()
+        }
+        throw error
       }
+    }
+    const withdrawObjective = async (): Promise<void> => {
+      if (change.kind === 'set') {
+        await ctx.journal.withdrawGoalObjective(identity, { fence: ctx.fence })
+      }
+    }
+    try {
+      throwIfSignalAborted(input.signal)
+    } catch (error) {
+      await withdrawObjective()
       throw error
     }
-  }
-  const withdrawObjective = async (): Promise<void> => {
+    // A lost response cannot prove non-application; retain the objective for provider reconciliation.
+    const result = await ctx.adapter.changeThreadGoal({
+      sessionId: ctx.sessionId,
+      fence: ctx.fence,
+      change,
+      replacesGoal,
+      executionOptions: captured.options,
+      signal: input.signal
+    })
+    if (!result.ok) {
+      await withdrawObjective()
+      return refused('providerRejected', result.rejected)
+    }
+    return { ok: true, value: { change: change.kind } }
+  } finally {
     if (change.kind === 'set') {
-      await ctx.journal.appendTombstone(identity, { fence: ctx.fence })
+      // Unknown application retains protection; a closed handle has already lost its delete permission.
+      await ctx.journal.keepGoalAttachments(identity).catch(() => {})
     }
   }
-  try {
-    throwIfSignalAborted(input.signal)
-  } catch (error) {
-    await withdrawObjective()
-    throw error
-  }
-  // A lost response cannot prove non-application; retain the objective for provider reconciliation.
-  const result = await ctx.adapter.changeThreadGoal({
-    sessionId: ctx.sessionId,
-    fence: ctx.fence,
-    change,
-    replacesGoal,
-    executionOptions: captured.options,
-    signal: input.signal
-  })
-  if (!result.ok) {
-    await withdrawObjective()
-    return refused('providerRejected', result.rejected)
-  }
-  return { ok: true, value: { change: change.kind } }
 }
 
 export function threadGoalPlan(params: {

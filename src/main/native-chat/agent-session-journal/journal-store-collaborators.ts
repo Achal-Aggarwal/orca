@@ -13,7 +13,11 @@ import { JournalStopMarks } from './journal-stop-marks'
 import { JournalStopAcceptor } from './journal-stop-acceptance'
 import { journalQueuePauseRestatement } from './queued-message-pause'
 import type { JournalReducerState } from './journal-reducer'
-import { JournalRowWriter, type JournalOperationReceipt } from './journal-row-writer'
+import {
+  composeJournalOperationReceipts,
+  JournalRowWriter,
+  type JournalOperationReceipt
+} from './journal-row-writer'
 import { JournalStepWriter } from './journal-step-writer'
 import { restoreJournalStore } from './journal-store-restore'
 import { JournalSubmissionWriter } from './journal-submission-writer'
@@ -22,6 +26,7 @@ import type { AgentSessionJournal } from './journal-store'
 import type { JournalWriteBody } from './journal-write-queue'
 import type { JournalAttachmentClaim } from './journal-submission-hook'
 import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
+import { JournalGoalAttachmentInverse } from './journal-goal-attachment-inverse'
 import { isJournalStreamedTextRevision } from './journal-streamed-text-revision'
 
 export type JournalStoreHost = {
@@ -55,11 +60,26 @@ export type JournalStoreCollaborators = {
   stopMarks: JournalStopMarks
   context: JournalContextController
   stops: JournalStopAcceptor
+  goalAttachments: JournalGoalAttachmentInverse
   restore: () => Promise<void>
 }
 
 export function createJournalStoreCollaborators(host: JournalStoreHost): JournalStoreCollaborators {
+  const goalAttachments = new JournalGoalAttachmentInverse(host.identity.sessionId)
+  const claimAttachments: JournalAttachmentClaim = (db, body, required, previous, goalId) => {
+    const claim = claimAgentSessionAttachmentsInTransaction(db, {
+      stateDirectory: host.database().stateDirectory,
+      sessionId: host.identity.sessionId,
+      body,
+      required,
+      ...(previous ? { previous } : {}),
+      now: host.now()
+    })
+    return () => goalAttachments.acquired(claim.referenced, claim.inserted, goalId)
+  }
   const epochController = new JournalEpochController({
+    claimAttachments,
+    isLiveGoal: (id) => goalAttachments.isLive(id),
     identity: host.identity,
     now: host.now,
     mintEpoch: host.mintEpoch,
@@ -78,15 +98,6 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     cursor: host.cursor,
     adopt: host.adopt
   })
-  const claimAttachments: JournalAttachmentClaim = (db, body, required, previous) =>
-    claimAgentSessionAttachmentsInTransaction(db, {
-      stateDirectory: host.database().stateDirectory,
-      sessionId: host.identity.sessionId,
-      body,
-      required,
-      ...(previous ? { previous } : {}),
-      now: host.now()
-    })
   const rowWriter = new JournalRowWriter({
     sessionId: host.identity.sessionId,
     now: host.now,
@@ -98,6 +109,49 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     commit: host.commit,
     streamedTextRevision: (row) => isJournalStreamedTextRevision(host.state(), row)
   })
+  const withInputClaims = <Result>(
+    plan: () => readonly ((seq: number, ts: number) => JournalRow)[],
+    run: (
+      plan: () => readonly ((seq: number, ts: number) => JournalRow)[],
+      receipt?: JournalOperationReceipt,
+      receiptRow?: (rows: readonly JournalRow[]) => JournalRow | undefined
+    ) => Result,
+    receipt?: JournalOperationReceipt,
+    receiptRow?: (rows: readonly JournalRow[]) => JournalRow | undefined
+  ) => {
+    const rows: JournalRow[] = []
+    const commits: (() => void)[] = []
+    const claims: JournalOperationReceipt = {
+      write: (db) => {
+        for (const row of rows) {
+          const items = row.kind === 'lifecycle-batch' ? row.mutations : [row]
+          for (const item of items) {
+            if (item.kind !== 'item' || goalAttachments.isLive(item.itemId)) {
+              continue
+            }
+            if (item.body.kind !== 'message' || item.body.role !== 'user') {
+              continue
+            }
+            const commit = claimAttachments(db, item.body, false)
+            if (commit) {
+              commits.push(commit)
+            }
+          }
+        }
+      },
+      committed: () => commits.forEach((commit) => commit())
+    }
+    return run(
+      () =>
+        plan().map((build) => (seq, ts) => {
+          const row = build(seq, ts)
+          rows.push(row)
+          return row
+        }),
+      receipt ? composeJournalOperationReceipts(claims, receipt) : claims,
+      receiptRow
+    )
+  }
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
     serialize: host.serialize,
@@ -112,9 +166,10 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   const lifecycleBatchAppender = new JournalLifecycleBatchAppender({
     state: host.state,
     cursor: host.cursor,
-    enqueueRows: (plan) => rowWriter.enqueueRows(plan)
+    enqueueRows: (plan) => withInputClaims(plan, (p, r) => rowWriter.enqueueRows(p, r))
   })
   return {
+    goalAttachments,
     epochController,
     queuedMessages,
     stopMarks: new JournalStopMarks({ state: host.state }),
@@ -136,6 +191,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       claimAttachments
     }),
     itemAppender: new JournalItemAppender({
+      isLiveGoal: (id) => goalAttachments.isLive(id),
       state: host.state,
       enqueue: host.enqueue,
       claimAttachments
@@ -144,7 +200,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     stepWriter: new JournalStepWriter({
       serialize: host.serialize,
       state: host.state,
-      writeRows: (plan) => rowWriter.writeRows(plan),
+      writeRows: (plan) => withInputClaims(plan, (p, r) => rowWriter.writeRows(p, r)),
       planSettlement: (batch) => lifecycleBatchAppender.planResolved(batch)
     })
   }

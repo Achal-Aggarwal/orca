@@ -1,3 +1,10 @@
+import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
+import { nativeChatComposerDraftStorage } from './native-chat-composer-draft-storage'
+import {
+  readTerminalPasteSource,
+  rememberTerminalPasteSource,
+  retainTerminalPasteSources
+} from './native-chat-terminal-paste-sources'
 import { translate } from '@/i18n/i18n'
 import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import {
@@ -13,10 +20,66 @@ import {
   nativeChatPasteNotSavedNotice
 } from './native-chat-pasted-text-reference'
 
+const unavailableSources = new WeakMap<NativeChatComposerDraft, Set<string>>()
+const loadingSources = new Map<string, Promise<void>>()
+
+export function loadNativeChatTerminalPasteSources(
+  scope: string,
+  tokenId?: string | null
+): Promise<void> {
+  const draft = readNativeChatComposerDraft(scope)
+  const ids = tokenId
+    ? draft.pastedTextSourceIds?.includes(tokenId)
+      ? [tokenId]
+      : []
+    : (draft.pastedTextSourceIds ?? [])
+  return Promise.all(
+    ids.map((id) => {
+      if (readTerminalPasteSource(id) || unavailableSources.get(draft)?.has(id)) {
+        return
+      }
+      const key = `${scope}/${id}`
+      let loading = loadingSources.get(key)
+      if (!loading) {
+        loading = (async () => {
+          try {
+            const text = await nativeChatComposerDraftStorage().readSource?.(id)
+            if (
+              typeof text === 'string' &&
+              readNativeChatComposerDraft(scope).pastedTextSourceIds?.includes(id)
+            ) {
+              rememberTerminalPasteSource({ id, text })
+              retainTerminalPasteSources(scope, readNativeChatComposerDraft(scope).text)
+              unavailableSources.get(draft)?.delete(id)
+            } else {
+              unavailableSources.set(draft, new Set([...(unavailableSources.get(draft) ?? []), id]))
+            }
+          } catch {
+            unavailableSources.set(draft, new Set([...(unavailableSources.get(draft) ?? []), id]))
+          } finally {
+            loadingSources.delete(key)
+            notifyScope(scope)
+          }
+        })()
+        loadingSources.set(key, loading)
+      }
+      return loading
+    })
+  ).then(() => {})
+}
+
 export function nativeChatPastedTextState(scope: string, token: string): string | null {
   const id = nativeChatPastedTextId(token)
   if (!id) {
     return null
+  }
+  if (readNativeChatComposerDraft(scope).pastedTextSourceIds?.includes(id)) {
+    if (readTerminalPasteSource(id)) {
+      return 'staged'
+    }
+    return unavailableSources.get(readNativeChatComposerDraft(scope))?.has(id)
+      ? 'unsaved'
+      : 'saving'
   }
   return (
     readNativeChatComposerDraft(scope).pastedTextFiles?.[id] ??
@@ -25,19 +88,36 @@ export function nativeChatPastedTextState(scope: string, token: string): string 
 }
 
 /** Only completed paths need boundaries; copied source bytes remain literal. */
-export function resolveNativeChatPastedText(scope: string, text: string, copy = false): string {
+export function resolveNativeChatPastedText(
+  scope: string,
+  text: string,
+  copy = false,
+  paths?: Readonly<Record<string, string>>
+): string {
   let resolved = ''
   let pathBefore = false
   text.split(NATIVE_CHAT_PASTED_TEXT_TOKEN).forEach((part, index) => {
-    const state = index % 2 === 1 ? nativeChatPastedTextState(scope, part) : null
-    const path = state !== null && state !== 'saving' && state !== 'unsaved'
-    const piece = path
-      ? formatNativeChatFileReference(state)
-      : !copy || state === null
-        ? part
-        : state === 'saving'
-          ? (operations.get(nativeChatPastedTextId(part) ?? '')?.text ?? '')
-          : translate('components.native-chat.composer.pasteNotSavedLabel', 'Paste not saved')
+    const id = nativeChatPastedTextId(part)
+    const state =
+      paths && id && paths[id]
+        ? paths[id]
+        : index % 2 === 1
+          ? nativeChatPastedTextState(scope, part)
+          : null
+    const path = state !== null && state !== 'saving' && state !== 'unsaved' && state !== 'staged'
+    const piece =
+      state === 'staged'
+        ? copy
+          ? (readTerminalPasteSource(id ?? '')?.text ?? '')
+          : part
+        : path
+          ? formatNativeChatFileReference(state)
+          : !copy || state === null
+            ? part
+            : state === 'saving'
+              ? (operations.get(nativeChatPastedTextId(part) ?? '')?.text ??
+                translate('components.native-chat.composer.pasteNotSavedLabel', 'Paste not saved'))
+              : translate('components.native-chat.composer.pasteNotSavedLabel', 'Paste not saved')
     if (!piece) {
       return
     }

@@ -1,3 +1,8 @@
+import {
+  rememberTerminalPasteSource,
+  retainTerminalPasteSources
+} from './native-chat-terminal-paste-sources'
+import { persistNativeChatComposerDraft } from './native-chat-composer-draft-persistence'
 import { createUuidV4 } from '../../../../shared/uuid-v4'
 import {
   nativeChatPastedTextLabel,
@@ -91,6 +96,14 @@ export function useNativeChatPastedTextFile(args: {
       }
       input.focus()
       const id = createUuidV4()
+      if (owner.kind === 'local' && !owner.structuredSessionId) {
+        const source = { id, text }
+        rememberTerminalPasteSource(source)
+        input.stagePastedText(nativeChatPastedTextToken(id))
+        retainTerminalPasteSources(scopeKey, input.value)
+        persistNativeChatComposerDraft(scopeKey, 'immediate')
+        return true
+      }
       nativeChatPastedTextOperations.set(id, { scopeKey, text })
       input.stagePastedText(nativeChatPastedTextToken(id))
       const fail = (notice: string) => {

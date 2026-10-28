@@ -1,3 +1,7 @@
+import type {
+  NativeChatTerminalTextInput,
+  NativeChatTerminalTextRetirement
+} from '../../shared/native-chat-terminal-text-input'
 import type { AgentSessionAttachmentClipboardTarget } from '../../shared/agent-session-attachments'
 import { ipcRenderer, webFrame } from 'electron'
 import {
@@ -97,6 +101,12 @@ export const uiClipboardAndWindowControlsApi = {
     agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
     forStructuredChat?: boolean
   }): Promise<string> => ipcRenderer.invoke('clipboard:savePastedTextAsFile', args),
+  materializeTerminalTextInput: (
+    input: NativeChatTerminalTextInput
+  ): Promise<Record<string, string>> =>
+    ipcRenderer.invoke('clipboard:materializeTerminalTextInput', input),
+  retireTerminalTextInput: (input: NativeChatTerminalTextRetirement): Promise<void> =>
+    ipcRenderer.invoke('clipboard:retireTerminalTextInput', input),
   clipboardHasImage: (): Promise<boolean> => ipcRenderer.invoke('clipboard:hasImage'),
   readClipboardFilePaths: (): Promise<string[]> => ipcRenderer.invoke('clipboard:readFilePaths'),
   restoreNativeChatPastes: (

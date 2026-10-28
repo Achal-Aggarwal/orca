@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,12 +38,9 @@ describe('a long paste saved as a file', () => {
     expect(readFileSync(saved, 'utf8')).toBe('log line ✓\n')
   })
 
-  it("keeps a terminal-backed chat's paste in the paste folder, which is never swept", async () => {
-    const store = vi.fn()
-    const saved = await savePastedTextAsFile({ text: 'log line ✓\n' }, store)
-    expect(path.dirname(saved)).toBe(nativeChatPasteFolder())
-    expect(readFileSync(saved, 'utf8')).toBe('log line ✓\n')
-    expect(store).not.toHaveBeenCalled()
+  it('does not create an unmanaged permanent file without a chat store', async () => {
+    await expect(savePastedTextAsFile({ text: 'log line ✓\n' })).rejects.toThrow('not ready')
+    expect(existsSync(nativeChatPasteFolder())).toBe(false)
   })
 
   it("goes to the chat's store on its paired server, under a text paste's name", async () => {

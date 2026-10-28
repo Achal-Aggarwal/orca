@@ -1,3 +1,7 @@
+import {
+  retainTerminalPasteSources,
+  terminalPasteSourceBodies
+} from './native-chat-terminal-paste-sources'
 // Persist whole memory records, journal unconfirmed changes on unload, and adopt other windows’ confirmed writes.
 
 import { basename } from '@/lib/path'
@@ -101,7 +105,11 @@ function persist(scopeKey: string): void {
   const change: UnconfirmedDraftChange = { draft, at: draft?.savedAt ?? nextSavedAt() }
   unconfirmed.set(scopeKey, change)
   const storage = nativeChatComposerDraftStorage()
-  const written = (draft ? storage.write(scopeKey, draft) : storage.remove([scopeKey])).then(
+  const written = (
+    draft
+      ? storage.write(scopeKey, draft, terminalPasteSourceBodies(draft.pastedTextSourceIds))
+      : storage.remove([scopeKey])
+  ).then(
     () => {
       confirm(scopeKey, change)
       return true
@@ -258,6 +266,7 @@ function adoptForeignChange(message: unknown): void {
         records.delete(scopeKey)
         reconcileRestoredImageChecks(scopeKey, [])
       }
+      retainTerminalPasteSources(scopeKey, draft?.text ?? '')
       notifyScope(scopeKey)
     })
     .catch(() => {})

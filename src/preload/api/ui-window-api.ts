@@ -1,3 +1,7 @@
+import type {
+  NativeChatTerminalTextInput,
+  NativeChatTerminalTextRetirement
+} from '../../shared/native-chat-terminal-text-input'
 import type { AgentSessionAttachmentClipboardTarget } from '../../shared/agent-session-attachments'
 import type { ClipboardImageThumbnail } from '../../shared/clipboard-image'
 import type { ReadClipboardTextOptions } from '../../shared/clipboard-text'
@@ -25,6 +29,10 @@ export type UiWindowApi = {
     agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
     forStructuredChat?: boolean
   }) => Promise<string>
+  materializeTerminalTextInput: (
+    input: NativeChatTerminalTextInput
+  ) => Promise<Record<string, string>>
+  retireTerminalTextInput: (input: NativeChatTerminalTextRetirement) => Promise<void>
   clipboardHasImage: () => Promise<boolean | null>
   /** Empty if no files were copied or the host cannot list them. */
   readClipboardFilePaths: () => Promise<string[]>

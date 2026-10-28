@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => {
       sessionId: 'session-1'
     }
   }
-  return { state, prepare: vi.fn(), save: vi.fn() }
+  return { state, prepare: vi.fn(), save: vi.fn(), goal: vi.fn(async () => true) }
 })
 
 vi.mock('../../store', () => {
@@ -105,32 +105,42 @@ const STORED = '/srv/agent-session-attachments/0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8
 
 function composer(
   acceptsImages = true,
-  composerRef?: RefObject<NativeChatComposerHandle | null>
+  composerRef?: RefObject<NativeChatComposerHandle | null>,
+  mode: 'structured' | 'terminal' | 'goal' = 'structured'
 ): React.JSX.Element {
   return (
     <NativeChatComposer
       ref={composerRef}
       terminalTabId="tab-1"
       paneKey={PANE}
-      targetPtyId={null}
+      targetPtyId={mode === 'terminal' ? 'pty' : null}
       agent="claude"
-      structuredTransport={{
-        capturePresentation: () => () => true,
-        send: vi.fn(() => true),
-        dispatchCommand: vi.fn(async () => ({ handled: false, accepted: false, error: null })),
-        optionsSurface: {
-          getSnapshot: () => [],
-          setOption: vi.fn(),
-          invokeAction: vi.fn(),
-          subscribe: () => () => {}
-        },
-        optionSnapshot: [],
-        onError: vi.fn(),
-        runtime: 'remote',
-        acceptsImages,
-        sessionId: 'session-1',
-        runtimeEnvironmentId: 'env-1'
-      }}
+      structuredTransport={
+        mode === 'terminal'
+          ? undefined
+          : {
+              capturePresentation: () => () => true,
+              send: vi.fn(() => true),
+              dispatchCommand: vi.fn(async () => ({
+                handled: false,
+                accepted: false,
+                error: null
+              })),
+              optionsSurface: {
+                getSnapshot: () => [],
+                setOption: vi.fn(),
+                invokeAction: vi.fn(),
+                subscribe: () => () => {}
+              },
+              optionSnapshot: [],
+              onError: vi.fn(),
+              runtime: 'remote',
+              acceptsImages,
+              ...(mode === 'goal' ? { threadGoal: { setObjective: mocks.goal } } : {}),
+              sessionId: 'session-1',
+              runtimeEnvironmentId: 'env-1'
+            }
+      }
     />
   )
 }
@@ -436,7 +446,7 @@ it.each([false, true])(
     const storage = createMemoryNativeChatComposerDraftStorage()
     setNativeChatComposerDraftStorageForTests(storage)
     await hydrateNativeChatComposerDrafts()
-    mocks.state.owner = { kind: 'local' }
+    mocks.state.owner = { kind: 'local', structuredSessionId: 'session-1' }
     const pending = Promise.withResolvers<string>()
     installPreloadApi({ savePastedTextAsFile: () => pending.promise })
     writeNativeChatDraftCache(PANE, 'helloworldend')
@@ -512,5 +522,136 @@ it.each([false, true])(
     await act(async () => fireEvent(field(), imagePaste()))
     expect(mocks.state.fieldProps?.imageAttachments).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Image #1: Saving pasted image…' })).toBeTruthy()
+  }
+)
+
+it.each(['terminal', 'terminal-unsaved', 'goal'] as const)(
+  'takes an actual clipboard paste in %s mode, preserving copy/history and scoped persistence',
+  async (scenario) => {
+    const mode = scenario === 'goal' ? 'goal' : 'terminal'
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    setNativeChatComposerDraftStorageForTests(storage)
+    await hydrateNativeChatComposerDrafts()
+    mocks.state.owner =
+      mode === 'terminal' ? { kind: 'local' } : { kind: 'local', structuredSessionId: 'session-1' }
+    const save = vi.fn(async () => '/p/goal.txt')
+    installPreloadApi({ savePastedTextAsFile: save })
+    const view = render(composer(true, undefined, mode))
+    const field = () => screen.getByRole('textbox')
+    const editor = () => promptEditor(field())
+    if (mode === 'goal') {
+      act(() => writeNativeChatDraftCache(PANE, '/goal'))
+      act(() => mocks.state.fieldProps?.onSend())
+      await waitFor(() => expect(promptValue(field())).toBe(''))
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    storage.refuseWrites = scenario === 'terminal-unsaved'
+    const text = 'a'.repeat(100 * 1024)
+    const data = new DataTransfer()
+    data.setData('text/plain', text)
+    await act(async () =>
+      fireEvent(field(), new ClipboardEvent('paste', { clipboardData: data, cancelable: true }))
+    )
+    const raw = promptValue(field())
+    expect(raw.length).toBeLessThan(100)
+    expect(resolveNativeChatPastedText(PANE, raw, true)).toBe(
+      mode === 'terminal' ? text : '@/p/goal.txt'
+    )
+    if (mode === 'goal') {
+      expect(save).toHaveBeenCalledWith({ text, forStructuredChat: true })
+      act(() => mocks.state.fieldProps?.onSend())
+      await waitFor(() => expect(mocks.goal).toHaveBeenCalledWith('@/p/goal.txt'))
+    } else {
+      expect(save).not.toHaveBeenCalled()
+      expect(await nativeChatComposerDraftWriteSettled(PANE)).toBe(scenario !== 'terminal-unsaved')
+      expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
+      storage.refuseWrites = false
+      writeNativeChatDraftCache(PANE, raw)
+      await nativeChatComposerDraftWriteSettled(PANE)
+      expect([...storage.sources.values()]).toEqual([text])
+      act(() => editor().commands.clearContent())
+      await nativeChatComposerDraftWriteSettled(PANE)
+      expect(storage.sources.size).toBe(0)
+      act(() => editor().commands.undo())
+      expect(resolveNativeChatPastedText(PANE, promptValue(field()), true)).toBe(text)
+      await nativeChatComposerDraftWriteSettled(PANE)
+      expect([...storage.sources.values()]).toEqual([text])
+      view.unmount()
+      clearNativeChatComposerDraftsForTests()
+      setNativeChatComposerDraftStorageForTests(storage)
+      await hydrateNativeChatComposerDrafts()
+      render(composer(true, undefined, mode))
+      await waitFor(() =>
+        expect(resolveNativeChatPastedText(PANE, promptValue(field()), true)).toBe(text)
+      )
+      expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
+    }
+    warn.mockRestore()
+  }
+)
+
+it.each([100 * 1024, 1024 * 1024])(
+  'bounds actual terminal clipboard intake at %i bytes with N/10N actions and unrelated drafts',
+  async (bytes) => {
+    const measurements: unknown[] = []
+    for (const unrelated of [1, 10]) {
+      for (const count of [1, 10]) {
+        clearNativeChatComposerDraftsForTests()
+        const storage = createMemoryNativeChatComposerDraftStorage()
+        for (let i = 0; i < unrelated; i++) {
+          storage.drafts.set(`other-host:${i}`, { text: 'unrelated', images: [], savedAt: 1 })
+        }
+        const readSource = vi.spyOn(storage, 'readSource')
+        const writes = vi.spyOn(storage, 'write')
+        setNativeChatComposerDraftStorageForTests(storage)
+        await hydrateNativeChatComposerDrafts()
+        mocks.state.owner = { kind: 'local' }
+        const hostSave = vi.fn()
+        installPreloadApi({ savePastedTextAsFile: hostSave })
+        const view = render(composer(true, undefined, 'terminal'))
+        const field = screen.getByRole('textbox')
+        const editor = promptEditor(field)
+        const paste = (text: string) => {
+          const data = new DataTransfer()
+          data.setData('text/plain', text)
+          fireEvent(field, new ClipboardEvent('paste', { clipboardData: data, cancelable: true }))
+        }
+        await act(async () => paste('small paste'))
+        expect(promptValue(field)).toBe('small paste')
+        expect(storage.sources.size).toBe(0)
+        act(() => editor.commands.clearContent())
+        await nativeChatComposerDraftWriteSettled(PANE)
+        writes.mockClear()
+        const started = performance.now()
+        let inserted = 0
+        for (let i = 0; i < count; i++) {
+          await act(async () => paste('x'.repeat(bytes)))
+          inserted += promptValue(field).length
+          await nativeChatComposerDraftWriteSettled(PANE)
+          expect([...storage.sources.values()].reduce((sum, value) => sum + value.length, 0)).toBe(
+            bytes
+          )
+          act(() => editor.commands.clearContent())
+          await nativeChatComposerDraftWriteSettled(PANE)
+          expect(storage.sources.size).toBe(0)
+        }
+        measurements.push({
+          bytes,
+          count,
+          unrelated,
+          elapsedMs: performance.now() - started,
+          inserted,
+          writes: writes.mock.calls.length
+        })
+        expect(inserted).toBeLessThan(100 * count)
+        expect(writes).toHaveBeenCalledTimes(count)
+        expect(readSource).not.toHaveBeenCalled()
+        expect(hostSave).not.toHaveBeenCalled()
+        expect(nativeChatPastedTextOperations.size).toBe(0)
+        view.unmount()
+      }
+    }
+    // Handler/editor/IDB-fixture wall time; happy-dom has no native layout or real disk timing budget.
+    process.stdout.write(`terminal-paste-intake-benchmark ${JSON.stringify(measurements)}\n`)
   }
 )

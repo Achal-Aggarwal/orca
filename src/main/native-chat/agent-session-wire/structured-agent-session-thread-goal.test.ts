@@ -1,5 +1,11 @@
+import { AgentSessionAttachmentStore } from '../agent-session-attachments/agent-session-attachment-store'
+import {
+  sweepAgentSessionAttachments,
+  UNCLAIMED_ATTACHMENT_MAX_AGE_MS
+} from '../agent-session-attachments/agent-session-attachment-sweep'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +15,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
+  closeTestJournalHostDatabase,
   createTrackedJournalOpener,
   openTestJournalHostDatabase
 } from '../agent-session-journal/journal-host-database-test-support'
@@ -41,9 +48,13 @@ afterEach(async () => {
   }
 })
 
-async function openJournal(): Promise<AgentSessionJournal> {
+async function openJournal(onCommitted?: () => void): Promise<AgentSessionJournal> {
   root ??= await mkdtemp(join(tmpdir(), 'orca-thread-goal-'))
-  return journals.open({ identity: IDENTITY, stateDirectory: root })
+  const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+  if (onCommitted) {
+    journal.observeCommits(onCommitted)
+  }
+  return journal
 }
 
 const GOAL: AgentJournalThreadGoal = {
@@ -308,4 +319,266 @@ describe('threadGoalPlan replay', () => {
       change: 'set'
     })
   })
+})
+
+async function storedGoalFile() {
+  const uploadId = randomUUID()
+  const path = join(agentSessionAttachmentStoreRoot(root ?? ''), uploadId, 'spec.txt')
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, 'x'.repeat(100 * 1024))
+  return {
+    uploadId,
+    path,
+    body: {
+      kind: 'message' as const,
+      role: 'user' as const,
+      blocks: [{ type: 'text' as const, text: formatNativeChatFileReference(path) }]
+    }
+  }
+}
+
+it.each([1, 10])(
+  'retires %i refused objectives through real mutation, reopen and sweep, preserving retry',
+  async (count) => {
+    let journal = await openJournal()
+    const files = await Promise.all(Array.from({ length: count }, storedGoalFile))
+    const rejected = vi.fn(async () => ({
+      ok: false as const,
+      rejected: 'goals feature is disabled'
+    }))
+    const db = openTestJournalHostDatabase(root ?? '').db
+    const insertion = vi.spyOn(
+      db.prepare(
+        'INSERT OR IGNORE INTO agent_session_attachment_claims (upload_id, session_id, claimed_at) VALUES (?, ?, ?)'
+      ),
+      'run'
+    )
+    const retirement = vi.spyOn(
+      db.prepare(
+        'DELETE FROM agent_session_attachment_claims WHERE upload_id = ? AND session_id = ?'
+      ),
+      'run'
+    )
+    for (const file of files) {
+      expect(
+        await performThreadGoalChange(context(journal, { changeThreadGoal: rejected }), {
+          clientOperationId: randomUUID(),
+          change: { kind: 'set', objective: formatNativeChatFileReference(file.path) }
+        })
+      ).toMatchObject({ ok: false })
+    }
+    expect(insertion).toHaveBeenCalledTimes(count)
+    expect(retirement).toHaveBeenCalledTimes(count)
+    insertion.mockRestore()
+    retirement.mockRestore()
+    expect(journal.snapshot().items).toEqual([])
+    expect(db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()).toHaveLength(
+      0
+    )
+    // Retained retry source is still readable; a fresh user attempt can protect it.
+    await performThreadGoalChange(
+      context(journal, { changeThreadGoal: async () => ({ ok: true }) }),
+      {
+        clientOperationId: randomUUID(),
+        change: { kind: 'set', objective: formatNativeChatFileReference(files[0]!.path) }
+      }
+    )
+    await journal.close()
+    closeTestJournalHostDatabase(root ?? '')
+    journal = await openJournal()
+    const reopened = openTestJournalHostDatabase(root ?? '').db
+    const store = new AgentSessionAttachmentStore(agentSessionAttachmentStoreRoot(root ?? ''), {
+      hasSession: () => true
+    })
+    const swept = await sweepAgentSessionAttachments(
+      store,
+      { database: () => reopened, recordedSessionIds: () => new Set([IDENTITY.sessionId]) },
+      Date.now() + UNCLAIMED_ATTACHMENT_MAX_AGE_MS + 1000
+    )
+    expect(swept.removed).toHaveLength(count - 1)
+    expect(await readFile(files[0]!.path, 'utf8')).toHaveLength(100 * 1024)
+    expect(journal.snapshot().items).toHaveLength(1)
+  }
+)
+
+it.each([
+  'queue',
+  'queue-edit',
+  'host',
+  'submission',
+  'resolved',
+  'transition',
+  'batch',
+  'prior',
+  'epoch',
+  'live-goal-epoch',
+  'accepted-goal-import',
+  'unknown',
+  'other-chat',
+  'shared-refusal'
+] as const)('protects shared/uncertain uses: %s', async (kind) => {
+  const journal = await openJournal()
+  const file = await storedGoalFile()
+  const identity = { provider: 'orca', clientMessageId: 'thread-goal:first' }
+  const append = () =>
+    journal.appendClaimingAttachments(identity, { ...file.body, sentAs: 'goal' }, { fence: 1 })
+  if (kind === 'prior') {
+    await journal.appendItem({ provider: 'orca', clientMessageId: 'prior' }, file.body, {
+      fence: 1
+    })
+  }
+  await append()
+  if (kind === 'submission') {
+    await journal.appendSubmission({
+      clientMessageId: 'accepted',
+      payloadFingerprint: 'fp',
+      body: file.body,
+      fence: 1,
+      origin: 'host'
+    })
+  }
+  if (kind === 'resolved') {
+    await journal.appendResolvedItem(
+      () => ({ identity: { provider: 'orca', clientMessageId: 'resolved' }, body: file.body }),
+      { fence: 1 }
+    )
+  }
+  if (kind === 'transition') {
+    await journal.appendSteps([
+      {
+        kind: 'item',
+        resolve: () => ({
+          identity: { provider: 'orca', clientMessageId: 'transition' },
+          body: file.body
+        }),
+        options: { fence: 1 }
+      }
+    ])
+  }
+  if (kind === 'batch') {
+    await journal.appendLifecycleBatch({
+      settlementId: 'accepted-input',
+      fence: 1,
+      mutations: [
+        { kind: 'item', identity: { provider: 'orca', clientMessageId: 'batch' }, body: file.body }
+      ]
+    })
+  }
+  if (kind === 'live-goal-epoch') {
+    await journal.rollEpoch('legacy_import', 1)
+  }
+  const database = openTestJournalHostDatabase(root ?? '')
+  if (kind === 'queue') {
+    await journal.queuedMessages.insert({ messageId: 'queued', body: file.body })
+  }
+  if (kind === 'queue-edit') {
+    await journal.queuedMessages.insert({
+      messageId: 'queued',
+      body: { ...file.body, blocks: [{ type: 'text', text: 'before' }] }
+    })
+    await journal.queuedMessages.update({
+      messageId: 'queued',
+      text: formatNativeChatFileReference(file.path),
+      expectedBodyFingerprint: journal.queuedMessages.get('queued')!.fingerprint
+    })
+  }
+  if (kind === 'host') {
+    await journal.appendItem({ provider: 'orca', clientMessageId: 'ordinary' }, file.body, {
+      fence: 1
+    })
+  }
+  if (kind === 'epoch' || kind === 'accepted-goal-import') {
+    await journal.replaceEpochItems('legacy_import', 1, [
+      {
+        identity: { provider: 'orca', clientMessageId: 'imported' },
+        body: kind === 'accepted-goal-import' ? { ...file.body, sentAs: 'goal' } : file.body,
+        ownerFence: 1
+      }
+    ])
+  }
+  if (kind === 'other-chat') {
+    const other = await journals.open({
+      identity: { ...IDENTITY, sessionId: 'other' },
+      stateDirectory: root ?? ''
+    })
+    await other.appendClaimingAttachments(
+      { provider: 'orca', clientMessageId: 'ordinary' },
+      file.body,
+      { fence: 1 }
+    )
+  }
+  if (kind === 'shared-refusal') {
+    const second = { provider: 'orca', clientMessageId: 'thread-goal:second' }
+    await journal.appendClaimingAttachments(second, { ...file.body, sentAs: 'goal' }, { fence: 1 })
+    await journal.withdrawGoalObjective(identity, { fence: 1 })
+    expect(
+      database.db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()
+    ).toHaveLength(1)
+    await journal.withdrawGoalObjective(second, { fence: 1 })
+    expect(
+      database.db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()
+    ).toHaveLength(0)
+    return
+  }
+  if (kind === 'unknown') {
+    await journal.close()
+    closeTestJournalHostDatabase(root ?? '')
+    const reopened = await openJournal()
+    await expect(journal.withdrawGoalObjective(identity, { fence: 1 })).rejects.toThrow()
+    await reopened.withdrawGoalObjective(identity, { fence: 1 })
+  } else {
+    await journal.withdrawGoalObjective(identity, { fence: 1 })
+  }
+  const claims = openTestJournalHostDatabase(root ?? '')
+    .db.prepare('SELECT session_id FROM agent_session_attachment_claims')
+    .all()
+  expect(claims).toHaveLength(kind === 'live-goal-epoch' ? 0 : 1)
+  expect(
+    markUnclaimedUploadForSweep(openTestJournalHostDatabase(root ?? '').db, file.uploadId, 1)
+  ).toBe(kind === 'live-goal-epoch')
+})
+
+it('keeps inverse and SQL synchronized across failed COMMIT and failed post-COMMIT publication', async () => {
+  let failPublication = false
+  const journal = await openJournal(() => {
+    if (failPublication) {
+      throw new Error('publication failed')
+    }
+  })
+  const file = await storedGoalFile()
+  const identity = { provider: 'orca', clientMessageId: 'thread-goal:rollback' }
+  await journal.appendClaimingAttachments(identity, { ...file.body, sentAs: 'goal' }, { fence: 1 })
+  const database = openTestJournalHostDatabase(root ?? '')
+  const transaction = database.transaction.bind(database)
+  const spy = vi.spyOn(database, 'transaction')
+  spy.mockImplementationOnce((run) =>
+    transaction((db) => {
+      run(db)
+      throw new Error('commit failed')
+    })
+  )
+  await expect(journal.withdrawGoalObjective(identity, { fence: 1 })).rejects.toThrow(
+    'commit failed'
+  )
+  expect(journal.snapshot().items).toHaveLength(1)
+  expect(
+    database.db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()
+  ).toHaveLength(1)
+  await journal.withdrawGoalObjective(identity, { fence: 1 })
+  expect(
+    database.db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()
+  ).toHaveLength(0)
+  expect(journal.snapshot().items).toHaveLength(0)
+  // Once an ordinary row commits, fallible downstream publication cannot restore delete permission.
+  await journal.appendClaimingAttachments(identity, { ...file.body, sentAs: 'goal' }, { fence: 1 })
+  failPublication = true
+  await expect(
+    journal.appendItem({ provider: 'orca', clientMessageId: 'accepted' }, file.body, { fence: 1 })
+  ).rejects.toThrow('publication failed')
+  failPublication = false
+  await journal.withdrawGoalObjective(identity, { fence: 1 })
+  expect(
+    database.db.prepare('SELECT upload_id FROM agent_session_attachment_claims').all()
+  ).toHaveLength(1)
+  spy.mockRestore()
 })
