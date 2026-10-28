@@ -24,6 +24,9 @@ function readFolderWorkspaceHost(
   folderWorkspaceId: string
 ): FolderWorkspaceHost {
   const folders = selectFolderWorkspaces(state)
+  if (!folders || !state.projectGroups || !state.repos) {
+    return resolveFolderWorkspaceHost(state, folderWorkspaceId)
+  }
   let byGroups = folderConnections.get(folders)
   if (!byGroups) {
     byGroups = new WeakMap()
