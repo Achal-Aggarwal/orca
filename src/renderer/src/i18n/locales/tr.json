@@ -4269,7 +4269,7 @@
             "cabdc2a9e0": "Claude oturum açma kimlik bilgileri okunamadı.",
             "a7517cccb6": "Claude kullanımı şu anda kullanılamıyor.",
             "e2c6a4f917": "Yenilemek için Grok'u çalıştırın",
-            "d1b7f509ac": "Orca'yı çalıştıran bilgisayarda bir terminalde grok'u çalıştırın ve başlamasını bekleyin. İstenirse oturum açmayı tamamlayın, ardından kullanımı tekrar deneyin. Sohbet mesajı göndermenize gerek yok.",
+            "d1b7f509ac": "Orca'yı çalıştıran bilgisayarda bir terminalde grok komutunu çalıştırın ve başlamasını bekleyin. İstenirse oturum açmayı tamamlayın, ardından kullanım bilgilerini almayı yeniden deneyin. Sohbet mesajı göndermenize gerek yok.",
             "f90b3d7a16": "Yenilemek için Kimi'yi çalıştırın",
             "a37e8c15d4": "Orca'yı çalıştıran bilgisayarda bir terminalde kimi'yi çalıştırın, başlamasını bekleyin, ardından kullanımı tekrar deneyin.",
             "fbc80d8be2": "Zen bakiyesi",
@@ -5240,7 +5240,7 @@
           "6ed14c0281": "sunucu klasörü seçilmedi",
           "5e97f0c4b9": "Proje oluşturuldu",
           "2c12db1511": "Proje zaten eklendi",
-          "875dda0995": "Bir sunucu üst yolu girin.",
+          "875dda0995": "Sunucudaki üst klasörün yolunu girin.",
           "45b7c26034": "Proje oluştur",
           "85085d74d2": "Oluşturuluyor…"
         },
@@ -6402,10 +6402,10 @@
           "connectedName": "{{value0}} SSH sunucusundaki proje",
           "connectingName": "{{value0}} SSH sunucusuna bağlanılıyor",
           "authFailedName": "{{value0}} SSH sunucusuna yeniden bağlan; kimlik doğrulanamadı",
-          "retryName": "{{value0}} öğesine SSH bağlantısını yeniden dene",
+          "retryName": "{{value0}} için SSH bağlantısını yeniden dene",
           "connectName": "{{value0}} SSH sunucusuna bağlan",
           "authFailedTooltip": "{{value0}} · kimlik doğrulama başarısız oldu",
-          "failedTooltip": "{{value0}} · bağlantı başarısız oldu"
+          "failedTooltip": "{{value0}} · bağlantı kurulamadı"
         },
         "preserved": {
           "branch": {
@@ -10590,7 +10590,7 @@
               "6a3abb4338": "Dikte Modu",
               "e360027a65": "mikrofon",
               "698376a38d": "Sesli dikte özellikleri için ana anahtar.",
-              "20574cbc72": "Sesli Diktayı Etkinleştir",
+              "20574cbc72": "Sesli Yazmayı Etkinleştir",
               "322d457a0d": "yazıya dökme",
               "dcc7846641": "Bulut konuşmadan metne modelleri için kullanılan OpenAI API anahtarını yapılandırın.",
               "ebfd0b32e5": "OpenAI Yazıya Dökme",
@@ -12245,7 +12245,7 @@
           "addedInOrca": "Orca'da eklendi",
           "fromConfig": "~/.ssh/config kaynaklı",
           "filteredCount": "{{total}} öğeden {{count}}",
-          "selectManualGroup": "Orca'da eklenen tüm ana makineleri seç",
+          "selectManualGroup": "Orca'da eklenen tüm SSH sunucularını seç",
           "selectConfigGroup": "~/.ssh/config kaynaklı tüm ana makineleri seç"
         },
         "serverList": {
@@ -12818,8 +12818,8 @@
             "b75cb1fd0c": "Değişiklikler commit ediliyor…",
             "995c5e67ec": "İnceleme kurulumu dikkat gerektiriyor.",
             "d7492cafce": "Source Control yenilenemedi. PR Oluştur'u tekrar deneyin.",
-            "473f18758e": "Source Control AI ayarları",
-            "createPrIntentConfigureAi": "Bir commit mesajı ekleyin veya Source Control AI ayarlarını yapılandırın.",
+            "473f18758e": "Kaynak Kontrolü AI ayarları",
+            "createPrIntentConfigureAi": "Bir commit mesajı ekleyin veya Kaynak Kontrolü AI ayarlarını yapılandırın.",
             "createPrIntentGenerateFailed": "Commit mesajı oluşturulamadı. Bir tane ekleyip tekrar deneyin.",
             "createPrIntentCommitFailed": "Değişiklikler commit edilemedi. Sorunu düzeltip PR Oluştur'u tekrar deneyin.",
             "createPrIntentNeedsSync": "Bir inceleme oluşturmadan önce bu branch'i senkronize edin.",
@@ -12889,7 +12889,7 @@
             "013c9ac04a": "Şunun için kaydet",
             "23280cbab1": "Bu şablon {basePrompt} içermiyor, bu yüzden ajan Orca'nın varsayılan istemini almayacak.",
             "5421a96acb": "Kaydet ve ajanı başlat",
-            "6cefcdfba1": "Bunu daha sonra Source Control AI ayarlarından değiştirebilirsiniz.",
+            "6cefcdfba1": "Bunu daha sonra Kaynak Kontrolü AI ayarlarından değiştirebilirsiniz.",
             "c29f9cf266": "Bu istemi kaydet ve bir dahaki sefere bu incelemeyi gösterme",
             "ea4788705e": "İptal",
             "7ec6abbf2a": "Sıfırla",
@@ -13234,10 +13234,10 @@
                   "launch": {
                     "4f4e0418a0": "Ajan istemi oluşturulamadı.",
                     "push": {
-                      "empty": "Push hatası istemi boş. Source Control AI ayarlarını güncelleyin."
+                      "empty": "Push hatası istemi boş. Kaynak Kontrolü AI ayarlarını güncelleyin."
                     },
                     "commit": {
-                      "empty": "Commit hatası istemi boş. Source Control AI ayarlarını güncelleyin."
+                      "empty": "Commit hatası istemi boş. Kaynak Kontrolü AI ayarlarını güncelleyin."
                     },
                     "d481ab22f9": "Kaydedilmiş AI ajanı kullanılamıyor. Başka bir ajan seçmek için Başlatmayı Özelleştir'i kullanın.",
                     "9bbd9077a2": "Etkin AI ajanı yok. Ajanları Ayarlar'dan yapılandırın.",
@@ -13467,7 +13467,7 @@
                   "4cbd0cd9d2": "Commit devam ediyor…",
                   "e7876a2bde": "Mesaj oluşturmak için en az bir dosya stage edin.",
                   "0904be2505": "Yeniden oluşturmak için mesajı temizleyin.",
-                  "1ea9ba37aa": "Ayarlar -> Git -> Source Control AI'dan bir ajan seçin."
+                  "1ea9ba37aa": "Ayarlar -> Git -> Kaynak Kontrolü AI bölümünden bir ajan seçin."
                 }
               }
             }
@@ -16229,7 +16229,7 @@
               "page": {
                 "annotation": {
                   "tray": {
-                    "09a7c1df70": "{{value0}} ek açıklamasını düzenle",
+                    "09a7c1df70": "{{value0}} numaralı ek açıklamayı düzenle",
                     "c16f932cb3": "Kaydet",
                     "024467ceac": "İptal",
                     "449d2c2629": "Ek açıklama amacı",
@@ -19768,7 +19768,7 @@
       "description": "Bu işlem, \"{{name}}\" çalışma alanını, aşağıda listelenen tüm iç içe worktree'leri ve commit edilmemiş değişiklikler de dahil olmak üzere içlerindeki tüm dosyaları kalıcı olarak siler. Terminalleri ve ajanları durdurulacak.",
       "detached": "Ayrık HEAD",
       "loading": "İç içe worktree'ler kontrol ediliyor…",
-      "order": "Önce iç içe worktree'ler silinir. Birinin silinmesi başarısız olursa işlem durur ve üst çalışma alanı korunur. Branch'ler için mevcut silme ayarlarınız uygulanır.",
+      "order": "Önce iç içe worktree'ler silinir. Biri silinemezse silme işlemi durur ve üst worktree korunur. Branch'ler için mevcut silme ayarlarınız uygulanır.",
       "cancel": "İptal",
       "retry": "Yeniden incele",
       "deleting": "Siliniyor…",

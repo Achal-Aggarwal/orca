@@ -8,7 +8,7 @@ Catalog: `src/renderer/src/i18n/locales/tr.json`. Missing keys fall back to Engl
 - Buttons and menu items use the bare imperative: `Aç`, `Sil`, `Kaldır`, `Yeniden dene`, `İptal`.
 - Failures name the action with a passive inability form: `kaydedilemedi`, `açılamadı`. Use `başarısız` only as an adjective.
 - Confirmations are impersonal: `Pencere kapatılsın mı?`
-- Use sentence case (`Yeni tarayıcı sekmesi`, not `Yeni Tarayıcı Sekmesi`). Keep brand names and acronyms as written.
+- Follow the casing of the English source: title case for title-case labels (`Varsayılan Arama Motoru`), sentence case elsewhere. Keep brand names and acronyms as written.
 - Labels have no final period. Use `…`, not `...`.
 - A noun after a number stays singular: `{{count}} dosya`, `{{count}} commit`.
 
