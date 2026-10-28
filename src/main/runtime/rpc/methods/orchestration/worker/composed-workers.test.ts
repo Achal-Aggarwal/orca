@@ -165,6 +165,41 @@ describe('orchestration RPC methods', () => {
       )
     })
 
+    it('creates and binds a Run for an unbound coordinator, then names it on reuse', async () => {
+      setup(false)
+      mockCurrentWorkerStart()
+      const start = () =>
+        call('orchestration.workerStart', {
+          spec: 'Audit the parser\nCheck every branch.',
+          from: 'term_coord',
+          agent: 'codex'
+        })
+
+      const first = await start()
+      const bound = db.getCurrentRunForCoordinator({
+        terminalHandle: 'term_coord',
+        paneKey: coordinatorPaneKey,
+        orcaSessionId: null
+      })
+      const run = { id: bound?.id, objective: 'Audit the parser' }
+      expect(first).toMatchObject({ state: 'ready', run: { ...run, created: true } })
+      expect(await start()).toMatchObject({ run: { ...run, created: false } })
+    })
+
+    it('creates no Run when an unbound coordinator names an existing Task', async () => {
+      setup(false)
+      mockCurrentWorkerStart()
+
+      await expect(
+        call('orchestration.workerStart', {
+          task: 'task_missing',
+          from: 'term_coord',
+          agent: 'codex'
+        })
+      ).rejects.toMatchObject({ code: 'consumer_fenced' })
+      expect(db.listRuns().runs.filter((run) => run.legacy === 0)).toEqual([])
+    })
+
     it('applies and reports opaque per-invocation model preferences', async () => {
       setup()
       mockCurrentWorkerStart()

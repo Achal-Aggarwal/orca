@@ -7,8 +7,10 @@ import type {
 import type { DispatchContextRow, RunRow, TaskRow } from '../../../../orchestration/types'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { resolveDispatchCreator } from '../runs/dispatch-creator'
+import { createBoundRun } from '../runs/runs'
+import { ROOT_DISPATCH_DEPTH } from '../../../../../../shared/nested-worker-depth'
 
-/** Coordinators start workers in their Run; active workers start helpers as themselves so reports return to their Dispatch without moving its mailbox. */
+/** Coordinators start workers in their Run, creating one when none is bound; active workers start helpers as themselves so reports return to their Dispatch without moving its mailbox. */
 export function resolveWorkerStartRun(
   runtime: OrcaRuntimeService,
   args: {
@@ -16,8 +18,10 @@ export function resolveWorkerStartRun(
     from: string
     callerSession: OrchestrationSessionCaller | undefined
     runId: string | undefined
+    /** Objective for a Run this start may create; absent when it names an existing Task. */
+    objective: string | undefined
   }
-): { run: RunRow; helperCreator?: DispatchContextRow } {
+): { run: RunRow; runCreated: boolean; helperCreator?: DispatchContextRow } {
   const db = runtime.getOrchestrationDb()
   const coordinated = args.coordinator
     ? db.getCurrentRunForCoordinator(args.coordinator)
@@ -26,25 +30,36 @@ export function resolveWorkerStartRun(
     if (args.runId && args.runId !== coordinated.id) {
       throw fenced(`This caller coordinates Run ${coordinated.id}, not ${args.runId}.`)
     }
-    return { run: coordinated }
+    return { run: coordinated, runCreated: false }
   }
   // Use the same active delegated Dispatch for authority and creator/reporting identity; remote Dispatches have no local row.
-  const creatorId = db.resolveCreatorDispatchId(
-    resolveDispatchCreator(runtime, args.from, args.callerSession)
-  )
+  const dispatchCreator = resolveDispatchCreator(runtime, args.from, args.callerSession)
+  const creatorId = db.resolveCreatorDispatchId(dispatchCreator)
   const creator = creatorId ? db.getDispatchContextById(creatorId) : undefined
   const run = creator ? db.getRun(creator.run_id) : undefined
-  if (!creator || !run || run.legacy === 1) {
-    throw fenced(
-      'worker-start needs the coordinator bound to the Run, or a worker on an active Dispatch in it.'
-    )
+  if (creator && run && run.legacy !== 1) {
+    if (args.runId && args.runId !== run.id) {
+      throw fenced(
+        `This worker's Dispatch ${creator.id} is in Run ${run.id}; it starts helpers only there.`
+      )
+    }
+    return { run, runCreated: false, helperCreator: creator }
   }
-  if (args.runId && args.runId !== run.id) {
-    throw fenced(
-      `This worker's Dispatch ${creator.id} is in Run ${run.id}; it starts helpers only there.`
-    )
+  // Only a root caller gets a new Run, so a worker can never reset its depth this way.
+  if (
+    args.coordinator &&
+    args.objective &&
+    !args.runId &&
+    db.resolveCreatorDepth(dispatchCreator) === ROOT_DISPATCH_DEPTH
+  ) {
+    return {
+      run: createBoundRun(runtime, args.coordinator, args.from, args.objective),
+      runCreated: true
+    }
   }
-  return { run, helperCreator: creator }
+  throw fenced(
+    'worker-start needs the coordinator bound to the Run, or a worker on an active Dispatch in it.'
+  )
 }
 
 /** Workers may launch fresh local helpers or retry their own helper's latest Attempt, never coordinator Tasks or another party's pane. */
