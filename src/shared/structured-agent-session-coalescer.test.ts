@@ -1,6 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { AgentJournalRenderItem } from './agent-session-journal-types'
+import {
+  EMPTY_STRUCTURED_AGENT_SESSION,
+  reduceStructuredAgentSession,
+  type StructuredAgentSessionState
+} from './structured-agent-session-reducer'
 import type { AgentSessionSubscribeEvent } from './agent-session-wire'
-import { createStructuredAgentSessionEventCoalescer } from './structured-agent-session-coalescer'
+import {
+  STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS,
+  createStructuredAgentSessionEventCoalescer
+} from './structured-agent-session-coalescer'
 
 function batch(
   sequence: number,
@@ -213,5 +222,102 @@ describe('structured agent session event coalescer', () => {
 
     expect(events).toHaveLength(1)
     expect(events[0]).not.toHaveProperty('latestTurn')
+  })
+})
+
+describe('coalesced history removals', () => {
+  const roster = {
+    type: 'subagent-group' as const,
+    groupId: 'group',
+    agents: [{ id: 'helper', label: 'review', state: 'working' as const }]
+  }
+  const item = (withRoster = false): AgentJournalRenderItem => ({
+    itemId: 'answer',
+    revision: 1,
+    sequence: 1,
+    observedAt: 1,
+    body: {
+      kind: 'message',
+      role: 'assistant',
+      blocks: withRoster ? [roster] : [{ type: 'text', text: 'answer' }]
+    }
+  })
+  function history() {
+    let state: StructuredAgentSessionState = { ...EMPTY_STRUCTURED_AGENT_SESSION, epoch: 'epoch-1' }
+    const events: AgentSessionSubscribeEvent[] = []
+    const coalescer = createStructuredAgentSessionEventCoalescer((event) => {
+      events.push(event)
+      state = reduceStructuredAgentSession(state, { type: 'event', event }, 0)
+    })
+    const push = (
+      sequence: number,
+      items: AgentJournalRenderItem[],
+      removedItemIds: string[] = []
+    ) => {
+      const event = {
+        ...batch(sequence),
+        batch: { ...batch(sequence).batch, items, removedItemIds }
+      }
+      coalescer.push(event)
+      return event
+    }
+    return { coalescer, events, push, state: () => state }
+  }
+
+  it.each([
+    { name: 'assistant text', withRoster: false, replace: false },
+    { name: 'assistant roster', withRoster: true, replace: false },
+    { name: 'same-frame replacement', withRoster: false, replace: true }
+  ])(
+    'preserves removal order for $name, then permits a later reintroduction',
+    ({ withRoster, replace }) => {
+      vi.useFakeTimers()
+      const h = history()
+      try {
+        const original = item(withRoster)
+        h.push(1, [original])
+        h.push(2, [{ ...original, revision: 2 }])
+        expect(h.events).toHaveLength(0)
+        const replacement = { ...item(), revision: 3 }
+        const removal = h.push(3, replace ? [replacement] : [], ['answer'])
+        const immediateCursor = h.state().cursor
+        vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
+        expect(h.state().items).toEqual(replace ? [replacement] : [])
+        expect(immediateCursor).toEqual(removal.batch.cursor)
+        expect(h.events).toHaveLength(2)
+        expect(h.events[0]).toMatchObject({ batch: { items: [{ itemId: 'answer', revision: 2 }] } })
+        expect(h.events[1]).toBe(removal)
+        expect(h.state().items).toEqual(replace ? [replacement] : [])
+        expect(h.state().subagentRoster?.size).toBe(0)
+        expect(h.state().cursor).toEqual(removal.batch.cursor)
+        vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
+        expect(h.state().items).toEqual(replace ? [replacement] : [])
+        const reintroduced = { ...item(), revision: 4, sequence: 4 }
+        h.push(4, [reintroduced])
+        vi.advanceTimersByTime(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
+        expect(h.state().items).toEqual([reintroduced])
+      } finally {
+        h.coalescer.dispose()
+        vi.useRealTimers()
+      }
+    }
+  )
+
+  it('removes a system roster immediately after flushing an unrelated assistant update', () => {
+    const h = history()
+    try {
+      h.push(1, [
+        { ...item(), itemId: 'roster', body: { kind: 'message', role: 'system', blocks: [roster] } }
+      ])
+      expect(h.state().subagentRoster?.has('helper')).toBe(true)
+      const answer = { ...item(), sequence: 2 }
+      h.push(2, [answer])
+      const removal = h.push(3, [], ['roster'])
+      expect(h.state().cursor).toEqual(removal.batch.cursor)
+      expect(h.state().items).toEqual([answer])
+      expect(h.state().subagentRoster?.size).toBe(0)
+    } finally {
+      h.coalescer.dispose()
+    }
   })
 })
