@@ -1,14 +1,16 @@
 import type { ChildProcessHandle } from '@orca/process-host/process-spec'
 import type { SearchOptions, SearchResult } from '../../shared/code-search-types'
 import { RipgrepSearchDiagnostics } from '../../shared/ripgrep-search-diagnostics'
-import { SearchSubprocessLineAccumulator } from '../../shared/search-subprocess-lines'
+import { RipgrepJsonOutputDecoder } from '../../shared/ripgrep-json-output'
+import type { RipgrepMatchMessage } from '../../shared/ripgrep-dense-match-json'
+import { ingestRgMatchMessage } from '../../shared/ripgrep-match-ingestion'
 import { throwIfSignalAborted, abortSignalReason } from '../../shared/abort-signal-reason'
 import {
   buildRgArgs,
   createAccumulator,
   DEFAULT_SEARCH_MAX_RESULTS,
   finalize,
-  ingestRgJsonLine,
+  SEARCH_JSON_STRUCTURE_LIMITS,
   SEARCH_TIMEOUT_MS
 } from '../../shared/text-search'
 import {
@@ -54,7 +56,14 @@ export function runBundledRipgrepTextSearch({
     const rgArgs = buildRgArgs(options.query, '.', options)
 
     const acc = createAccumulator()
-    const lines = new SearchSubprocessLineAccumulator()
+    const lines = new RipgrepJsonOutputDecoder({
+      limits: SEARCH_JSON_STRUCTURE_LIMITS,
+      maxMatches: () => maxResults - acc.totalMatches,
+      onRecord: (message) => processMessage(message),
+      onInvalid: () => {
+        acc.truncated = true
+      }
+    })
     const diagnostics = new RipgrepSearchDiagnostics(
       process.platform === 'win32' && !wslDistroForOutput
         ? WINDOWS_UNOPENABLE_PATH_OS_ERRORS
@@ -109,11 +118,18 @@ export function runBundledRipgrepTextSearch({
       finish(error ? Promise.reject(error) : finalize(acc))
     }
     const rejectUnavailable = (): void => finish(Promise.reject(bundledRipgrepUnavailableError()))
-    const processLine = (line: string): void => {
-      const verdict = ingestRgJsonLine(line, resultRootPath, acc, maxResults, transformAbsPath)
+    const processMessage = (message: RipgrepMatchMessage): 'continue' | 'stop' => {
+      const verdict = ingestRgMatchMessage(
+        message,
+        resultRootPath,
+        acc,
+        maxResults,
+        transformAbsPath
+      )
       if (verdict === 'stop' && child) {
         stopBundledRipgrep(child, Boolean(wslDistroForOutput))
       }
+      return verdict
     }
 
     let nextChild: ReturnType<typeof spawnBundledRipgrep>
@@ -135,13 +151,7 @@ export function runBundledRipgrepTextSearch({
     releaseChild = onSpawn(nextChild)
 
     const handleStdoutData = (chunk: string): void => {
-      if (!lines.push(chunk, processLine)) {
-        acc.truncated = true
-        if (child) {
-          stopBundledRipgrep(child, Boolean(wslDistroForOutput))
-        }
-        resolveOnce()
-      }
+      lines.push(chunk)
     }
     const handleStderrData = (chunk: Buffer): void => {
       diagnostics.append(chunk)
@@ -192,9 +202,8 @@ export function runBundledRipgrepTextSearch({
         rejectUnavailable()
         return
       }
-      const tail = !signal && (code === 0 || code === 1) ? lines.finish() : null
-      if (tail !== null) {
-        processLine(tail)
+      if (!signal && (code === 0 || code === 1)) {
+        lines.finish()
       }
       resolveOnce(code ?? -1, signal)
     }

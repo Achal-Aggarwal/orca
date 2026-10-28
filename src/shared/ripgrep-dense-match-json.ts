@@ -50,6 +50,15 @@ export function parseDenseRipgrepMatchJson(
   maxMatches: number,
   nestingDepth: number
 ): RipgrepMatchMessage {
+  const reader = createDenseRipgrepMatchJsonReader(maxMatches, nestingDepth)
+  reader.write(line)
+  return reader.finish()
+}
+
+export function createDenseRipgrepMatchJsonReader(
+  maxMatches: number,
+  nestingDepth: number
+): { write(text: string): void; finish(): RipgrepMatchMessage } {
   const data: NonNullable<RipgrepMatchMessage['data']> = { submatches: [] }
   const result: RipgrepMatchMessage = { data }
   const frames: RipgrepJsonFrame[] = []
@@ -159,7 +168,11 @@ export function parseDenseRipgrepMatchJson(
       }
     }
   }, 8 * 1024)
-  parser.write(line)
-  parser.end()
-  return result
+  return {
+    write: (text) => parser.write(text),
+    finish: () => {
+      parser.end()
+      return result
+    }
+  }
 }
