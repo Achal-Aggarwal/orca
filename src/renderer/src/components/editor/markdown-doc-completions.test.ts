@@ -62,6 +62,7 @@ describe('getMarkdownDocCompletionDocuments', () => {
       { ...documents[0], name: ' SETUP ' }
     ]
     expect(getMarkdownDocCompletionDocuments(catalog, '')).toEqual([catalog[1], catalog[0]])
+    expect(getMarkdownDocCompletionDocuments(catalog, 'se')).toEqual([catalog[1]])
     const compare = vi.spyOn(String.prototype, 'localeCompare')
     const normalize = vi.spyOn(String.prototype, 'toLowerCase')
     try {
@@ -78,6 +79,16 @@ describe('getMarkdownDocCompletionDocuments', () => {
     expect(getMarkdownDocCompletionDocuments(replacement, 'plan')).toEqual([])
     expect(getMarkdownDocCompletionDocuments(replacement, 'new-')).toEqual(replacement)
     expect(catalog.map((document) => document.name)).toEqual([' Plan ', ' SETUP '])
+  })
+
+  it('does not normalize document names for an empty query', () => {
+    const document = { ...documents[0] }
+    Object.defineProperty(document, 'name', {
+      get() {
+        throw new Error('empty queries do not need document names')
+      }
+    })
+    expect(getMarkdownDocCompletionDocuments([document], '')).toEqual([document])
   })
 
   it('returns no documents for oversized pasted partials before reading documents', () => {
