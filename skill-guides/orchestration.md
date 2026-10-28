@@ -24,13 +24,13 @@ normally wakes you when a worker reports back. Terms:
 
 ## Your role
 
-| Situation                                                                                                             | Role              | What to do                                                                |
-| --------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------- |
-| The user asks you to supervise or monitor workers, wait for their results, coordinate a task DAG, or manage ask/reply | Coordinator       | Follow the main recipe below                                              |
-| Your prompt has a live preamble with Task and Dispatch IDs                                                            | Dispatched worker | Follow the preamble and "If you are a dispatched worker" below            |
-| The user asks to hand work off or start another agent or worktree, without supervising it                             | Handoff owner     | Use the `orca-cli` skill; create no Run, Task, or Dispatch                |
-| A message carries a legacy authority label                                                                            | Compatibility     | Load `references/legacy-contract-migration.md` before changing any state  |
-| None of the above                                                                                                     | Ordinary agent    | Send no lifecycle messages; use `orca-cli` for terminal and worktree work |
+| Situation                                                                                                                  | Role              | What to do                                                                |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| The user asks for another agent's result back ("have Codex review this and report"), supervision, a task DAG, or ask/reply | Coordinator       | Follow the main recipe below                                              |
+| Your prompt has a live preamble with Task and Dispatch IDs                                                                 | Dispatched worker | Follow the preamble and "If you are a dispatched worker" below            |
+| The user asks to hand work off or start another agent or worktree, and wants no result back                                | Handoff owner     | Use the `orca-cli` skill; create no Run, Task, or Dispatch                |
+| A message carries a legacy authority label                                                                                 | Compatibility     | Load `references/legacy-contract-migration.md` before changing any state  |
+| None of the above                                                                                                          | Ordinary agent    | Send no lifecycle messages; use `orca-cli` for terminal and worktree work |
 
 Choosing a model or effort does not make a handoff supervised: `orca-cli`'s
 `worktree create --agent` and `agent launch` take `--model` and `--effort` too.
@@ -71,7 +71,8 @@ wait inside this turn (below).
   mail, so Orca has nothing to wake you with, and Orca never wakes you while a
   `check --wait` is open.
 - To steer a running worker, use
-  `ORCA orchestration send --to dispatch:<dispatch_id>`; never type into its
+  `ORCA orchestration send --to dispatch:<dispatch_id> --subject "<topic>" --body "<guidance>"`;
+  never type into its
   terminal.
 - Let `worker-start` create a worker's workspace; never make its checkout
   yourself.
@@ -88,8 +89,11 @@ reason, run `check --run <run_id>` first. The loop:
 
 ```text
 ORCA orchestration check --run <run_id> --json
+# for each question:
 ORCA orchestration reply --id <message_id> --body "<answer>" --json
+# for each valid worker_done, once you no longer need that worker:
 ORCA orchestration worker-release --dispatch <dispatch_id> --json
+# then mark the batch handled and get the next:
 ORCA orchestration check --run <run_id> --ack <delivery_id> --json
 ```
 
@@ -124,6 +128,9 @@ Make each Task spec self-contained:
 - **Constraints:** rules to keep, and what not to touch.
 - **Ownership:** what this worker may edit.
 - **Acceptance:** the test, output, or evidence that proves it is done.
+
+A review-only worker's `worker_done` lets you summarize its findings, not edit
+files yourself. Send fixes to a worker unless the user gave them to you.
 
 ## Completion
 
@@ -189,7 +196,7 @@ If it rejects `--full` too, use `--help` and never guess newer flags.
 
 | Situation                                                                                           | Reference                                 |
 | --------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Task DAGs and dependencies, model/effort, reusing a settled worker, review-only work                | `references/coordinator-loop.md`          |
+| Task DAGs and dependencies, model/effort, reusing a settled worker, or who owns post-review fixes   | `references/coordinator-loop.md`          |
 | You are a worker and the preamble does not answer your question, or `check` errored                 | `references/worker-contract.md`           |
 | Child or exact workspaces, folder workspaces, SSH, WSL, or a connected Orca server                  | `references/placement-and-remote.md`      |
 | Batch replay, follow-ups to one worker, group addresses, or decision gates                          | `references/messaging-and-gates.md`       |
