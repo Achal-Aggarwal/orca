@@ -103,22 +103,46 @@ function changedTextblockRanges(transaction: Transaction): DocumentRange[] {
     // Unlocalized steps need a full rescan even when another step provides a range.
     return [{ from: 0, to: doc.content.size }]
   }
-  const ranges = changes.map(({ newRange }) => {
-    // Deletions and mark changes can join text nodes across the changed span.
-    let from = Math.max(0, newRange.from - 1)
-    let to = Math.min(doc.content.size, newRange.to + 1)
-    for (const position of [from, to]) {
-      const resolved = doc.resolve(position)
-      for (let depth = resolved.depth; depth > 0; depth -= 1) {
-        if (resolved.node(depth).isTextblock) {
-          from = Math.min(from, resolved.before(depth))
-          to = Math.max(to, resolved.after(depth))
-          break
-        }
+  // Deletions and mark changes can join text nodes across the changed span.
+  const ranges = changes.map(({ newRange }) => ({
+    from: Math.max(0, newRange.from - 1),
+    to: Math.min(doc.content.size, newRange.to + 1)
+  }))
+  const boundaries = ranges
+    .flatMap((range) => [
+      { position: range.from, range },
+      { position: range.to, range }
+    ])
+    .filter(({ position }) => position > 0 && position < doc.content.size)
+    .sort((left, right) => left.position - right.position)
+  const first = boundaries[0]
+  const last = boundaries.at(-1)
+  if (first && last) {
+    let index = 0
+    doc.nodesBetween(first.position - 1, last.position + 1, (node, pos) => {
+      while (index < boundaries.length && boundaries[index].position <= pos) {
+        index += 1
       }
-    }
-    return { from, to }
-  })
+      const boundary = boundaries[index]
+      if (!boundary) {
+        return false
+      }
+      const end = pos + node.nodeSize
+      if (boundary.position >= end) {
+        return false
+      }
+      if (!node.isTextblock) {
+        return true
+      }
+      while (index < boundaries.length && boundaries[index].position < end) {
+        const range = boundaries[index].range
+        range.from = Math.min(range.from, pos)
+        range.to = Math.max(range.to, end)
+        index += 1
+      }
+      return false
+    })
+  }
   ranges.sort((left, right) => left.from - right.from)
   const merged: DocumentRange[] = []
   for (const range of ranges) {
