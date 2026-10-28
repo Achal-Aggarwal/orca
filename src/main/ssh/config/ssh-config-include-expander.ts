@@ -168,7 +168,9 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
   const absolutePattern = resolveIncludePatternPath(withTokens, context)
   if (hasGlobPattern(absolutePattern)) {
     try {
-      const matches = globSync(absolutePattern).sort((left, right) => left.localeCompare(right))
+      const matches = globSync(absolutePattern).sort((left, right) =>
+        left.localeCompare(right, 'en')
+      )
       if (matches.length > MAX_INCLUDE_GLOB_MATCHES) {
         console.warn(
           `[ssh] Include pattern "${absolutePattern}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
