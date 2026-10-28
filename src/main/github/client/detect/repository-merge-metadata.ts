@@ -3,11 +3,14 @@ import { ghExecFileAsync } from '../../gh-utils'
 import { githubHostExecOptions, type GitHubApiRepository } from '../../github-api-repository'
 import { githubRepoIdentityKey } from '../../../../shared/github/repository-identity-key'
 import { noteRepositoryRateLimitSpend, repositoryRateLimitGuard } from '../../rate-limit'
+import { githubReadExecutionScope } from '../../github-read-execution-scope'
+import { runCoalescedProbe } from '../../../git/coalesced-probe'
 import type { GhExecOptions } from './../github-exec-scope'
 import {
   MERGE_QUEUE_CACHE_TTL_MS,
   MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS,
   repositoryMergeMetadataCache,
+  repositoryMergeMetadataReads,
   pruneRepositoryMergeMetadataCache,
   cacheRepositoryMergeMetadata,
   type GitHubRepositoryMergeMetadata
@@ -18,12 +21,30 @@ export async function detectRepositoryMergeMetadata(
   ghOptions: GhExecOptions,
   executionScope: string | undefined = 'default'
 ): Promise<GitHubRepositoryMergeMetadata> {
-  const cacheKey = `${executionScope ?? 'default'}\0${githubRepoIdentityKey(ownerRepo)}:${branchName ?? '__repo__'}`
+  const options = { ...ghOptions, ...githubHostExecOptions(ownerRepo) }
+  const cacheKey = JSON.stringify([
+    executionScope,
+    githubReadExecutionScope(options),
+    githubRepoIdentityKey(ownerRepo),
+    branchName ?? null
+  ])
   pruneRepositoryMergeMetadataCache()
   const cached = repositoryMergeMetadataCache.get(cacheKey)
   if (cached) {
     return cached.value
   }
+  return runCoalescedProbe(repositoryMergeMetadataReads, cacheKey, (ownsKey) =>
+    readRepositoryMergeMetadata(ownerRepo, branchName, options, cacheKey, ownsKey)
+  )
+}
+
+async function readRepositoryMergeMetadata(
+  ownerRepo: GitHubApiRepository,
+  branchName: string | undefined,
+  ghOptions: GhExecOptions,
+  cacheKey: string,
+  ownsKey: () => boolean
+): Promise<GitHubRepositoryMergeMetadata> {
   const guard = repositoryRateLimitGuard(ownerRepo, 'graphql', ghOptions)
   if (guard.blocked) {
     return { mergeQueueRequired: null, autoMergeAllowed: null }
@@ -103,11 +124,13 @@ export async function detectRepositoryMergeMetadata(
       ...(mergeMethodSettings ? { mergeMethodSettings } : {})
     }
     // Missing repository data remains unknown and retries on the short TTL.
-    cacheRepositoryMergeMetadata(
-      cacheKey,
-      value,
-      repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS
-    )
+    if (ownsKey()) {
+      cacheRepositoryMergeMetadata(
+        cacheKey,
+        value,
+        repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS
+      )
+    }
     return value
   } catch {
     // Cool down failed probes without treating unknown merge-queue state as false.
@@ -115,7 +138,9 @@ export async function detectRepositoryMergeMetadata(
       mergeQueueRequired: null,
       autoMergeAllowed: null
     }
-    cacheRepositoryMergeMetadata(cacheKey, value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
+    if (ownsKey()) {
+      cacheRepositoryMergeMetadata(cacheKey, value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
+    }
     return value
   }
 }
