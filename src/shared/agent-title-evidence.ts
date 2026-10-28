@@ -27,6 +27,7 @@ import type { TerminalAgent } from './terminal-agent'
 import {
   agentForNativeFrame,
   agentForOwnerSuffix,
+  agentForShellCommand,
   agentForWholeTitle,
   namesConsumedByAnchoredLabels,
   namesIn
@@ -128,8 +129,7 @@ function collectVendorMarkers(segments: readonly string[]): TerminalAgent[] {
 
 function collectAnchoredNames(
   segments: readonly string[],
-  vendorMarkers: readonly TerminalAgent[],
-  nativeFrames: boolean
+  vendorMarkers: readonly TerminalAgent[]
 ): TerminalAgent[] {
   const anchored = new Set<TerminalAgent>()
   // Why: a native owner's task text can end with DSB's product-name suffix, including inside wrappers.
@@ -145,37 +145,12 @@ function collectAnchoredNames(
       anchored.add('dsb')
     }
 
-    if (nativeFrames && !nativeOpenCode) {
-      const native = agentForNativeFrame(segment)
-      if (native) {
-        anchored.add(native)
-      }
-      if (
-        isDshTerminalTitle(segment) &&
-        stripLeadingAgentTitleDecorationOrEmpty(segment).startsWith('🐋')
-      ) {
-        anchored.add('dsh')
-      }
-      if (isQoderTerminalTitle(segment)) {
-        anchored.add(segment.includes('Qoder CLI CN') ? 'qoder-cn' : 'qoder')
-      }
-      const piBrand = getPiCompatibleTitleBrand(segment)
-      if (piBrand || isLegacyPiCompatibleTitle(segment)) {
-        anchored.add(piBrand === 'OMP' ? 'omp' : 'pi')
-      }
-    }
-
     const suffix = OWNER_SUFFIX_RE.exec(segment)
     if (suffix) {
       const agent = agentForOwnerSuffix(suffix[1])
       if (agent) {
         anchored.add(agent)
       }
-    }
-
-    // OpenCode owns its session envelope; only competing owner suffixes can conflict.
-    if (nativeFrames && nativeOpenCode) {
-      continue
     }
 
     // Strip the leading sigil to expose anchored names: in ✳ agy, the name outranks the inherited Claude glyph.
@@ -211,6 +186,67 @@ function collectAnchoredNames(
   return [...anchored]
 }
 
+/** An envelope consumes its payload before any inner wrapper or name can be interpreted. */
+function collectObserverAnchors(segments: readonly string[]): TerminalAgent[] {
+  const anchored = new Set<TerminalAgent>()
+  const suffix = OWNER_SUFFIX_RE.exec(segments[0])
+  const suffixAgent = suffix ? agentForOwnerSuffix(suffix[1]) : null
+  if (suffixAgent) {
+    anchored.add(suffixAgent)
+  }
+  // Inspect the outermost available frame first, retaining the existing bounded innermost window.
+  const ordered = [segments[0], ...segments.slice(1).toReversed()]
+  for (const segment of ordered) {
+    const undecorated = stripLeadingAgentTitleDecorationOrEmpty(segment).trim()
+    const piBrand = getPiCompatibleTitleBrand(segment)
+    const genericClaude =
+      segment === CLAUDE_IDLE ||
+      segment.startsWith(`${CLAUDE_IDLE} `) ||
+      segment.startsWith('. ') ||
+      segment.startsWith('* ')
+    let agent: TerminalAgent | null
+    if (
+      !genericClaude &&
+      isOpenCodeNativeTitle(segment) &&
+      (undecorated.startsWith('OC | ') || segment.startsWith('▣ OC | '))
+    ) {
+      agent = 'opencode'
+    } else if (isDshTerminalTitle(segment) && undecorated.startsWith('🐋')) {
+      agent = 'dsh'
+    } else if (isQoderTerminalTitle(segment)) {
+      agent = segment.includes('Qoder CLI CN') ? 'qoder-cn' : 'qoder'
+    } else if (piBrand || isLegacyPiCompatibleTitle(segment)) {
+      agent = piBrand === 'OMP' ? 'omp' : 'pi'
+    } else if (GEMINI_GLYPHS.some((glyph) => segment.startsWith(glyph))) {
+      agent = 'gemini'
+    } else if (genericClaude) {
+      agent = agentForNativeFrame(segment) === 'claude' ? 'claude' : null
+    } else {
+      agent =
+        (isDeepSeekBuildTerminalTitle(segment) ? 'dsb' : null) ??
+        agentForNativeFrame(segment) ??
+        agentForWholeTitle(segment) ??
+        agentForSyntheticTitle(segment) ??
+        (ANTIGRAVITY_MODEL_TITLE_RE.test(undecorated) ? 'antigravity' : null) ??
+        (getPiCompatibleSyntheticAgentLabel(segment) === 'OMP'
+          ? 'omp'
+          : getPiCompatibleSyntheticAgentLabel(segment) === 'Pi'
+            ? 'pi'
+            : null) ??
+        (!suffixAgent ? agentForShellCommand(segment) : null)
+    }
+    if (agent) {
+      anchored.add(agent)
+      break
+    }
+    // A decorated task or colon payload is not an outer multiplexer wrapper.
+    if (genericClaude || undecorated !== segment.trim() || /^[^|]*:/.test(segment)) {
+      break
+    }
+  }
+  return [...anchored]
+}
+
 /** Collects every identity signal in `title` and ranks them by class, never by declaration order. */
 function collectTitleEvidence(title: string, nativeFrames: boolean): AgentTitleEvidence {
   const empty = { vendorMarkers: [], anchoredNames: [], freeTextNames: [] } as const
@@ -221,7 +257,9 @@ function collectTitleEvidence(title: string, nativeFrames: boolean): AgentTitleE
 
   const segments = getEvidenceTitleSegments(title)
   const vendorMarkers = collectVendorMarkers(segments)
-  const anchoredNames = collectAnchoredNames(segments, vendorMarkers, nativeFrames)
+  const anchoredNames = nativeFrames
+    ? collectObserverAnchors(segments)
+    : collectAnchoredNames(segments, vendorMarkers)
   const anchoredSet = new Set(anchoredNames)
   const anchoredLabelNames = namesConsumedByAnchoredLabels(segments, anchoredSet)
   const freeTextNames = namesIn(title).filter(
@@ -236,10 +274,10 @@ function collectTitleEvidence(title: string, nativeFrames: boolean): AgentTitleE
   if (anchoredNames.length > 1) {
     return { ...evidence, agent: null, reason: 'conflicting-anchored-names' }
   }
-  if (vendorMarkers.length > 1) {
+  if (!nativeFrames && vendorMarkers.length > 1) {
     return { ...evidence, agent: null, reason: 'conflicting-vendor-markers' }
   }
-  if (vendorMarkers.length === 1 && (!nativeFrames || vendorMarkers[0] !== 'claude')) {
+  if (!nativeFrames && vendorMarkers.length === 1) {
     // Free-text names cannot veto a vendor glyph (✳ Fix Codex… is Claude); a conflicting anchored name already outranks it.
     return { ...evidence, agent: vendorMarkers[0], reason: 'vendor-marker' }
   }

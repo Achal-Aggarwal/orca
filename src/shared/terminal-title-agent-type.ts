@@ -276,10 +276,26 @@ export function resolveTerminalTitleAgentType(title: string): TerminalAgent | nu
 
 /** Activity and task mentions cannot establish identity for display or input routing. */
 function computeExplicitTerminalTitleAgentType(title: string): TerminalAgent | null {
-  const candidate = resolveTerminalTitleAgentType(title)
-  return collectExplicitAgentTitleEvidence(title).agent === candidate ? candidate : null
+  return collectExplicitAgentTitleEvidence(title).agent
 }
 
 /** Pure in `title` — memoized so repeated selector reads skip the canonical/title parse. */
 export const resolveExplicitTerminalTitleAgentType: (title: string) => TerminalAgent | null =
   memoizeTitleClassification(computeExplicitTerminalTitleAgentType)
+
+/** Readiness and confirmed-shell cleanup retain their pre-existing title policy. */
+function computeTerminalTitlePolicyAgentType(title: string): TerminalAgent | null {
+  const agent = resolveTerminalTitleAgentType(title)
+  const genericClaudeStatus =
+    containsAgentSpinnerGlyph(title) ||
+    title.startsWith(`${CLAUDE_IDLE} `) ||
+    title === CLAUDE_IDLE ||
+    title.startsWith('. ') ||
+    title.startsWith('* ')
+  return agent === 'claude' && genericClaudeStatus && !titleHasAgentName(title, 'claude')
+    ? null
+    : agent
+}
+
+export const resolveTerminalTitlePolicyAgentType: (title: string) => TerminalAgent | null =
+  memoizeTitleClassification(computeTerminalTitlePolicyAgentType)

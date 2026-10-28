@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createTerminalTitleTracker } from '../../../src/shared/terminal-output-side-effects'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import type { TuiAgent } from '../../../src/shared/tui-agent'
 import type { MobileSessionTab } from './mobile-session-route-types'
@@ -47,6 +48,30 @@ function terminalTab(
 }
 
 describe('resolveMobileTerminalTabAgentId', () => {
+  it.each([
+    ['⠋ fix the gemini launcher', 'claude'],
+    ['⠋ add ✦ icon to header', 'claude'],
+    ['⠋ Codex: fix Gemini terminal behavior', 'codex'],
+    ['Fix Codex terminal behavior… - grok', 'grok'],
+    ['✦ Analyze Codex', 'gemini']
+  ])('uses the production OSC normalization for %s', (raw, agent) => {
+    let title = ''
+    const tracker = createTerminalTitleTracker({
+      onTitle: (emitted) => {
+        title = emitted
+      }
+    })
+    try {
+      tracker.handleChunk(`\x1b]0;${raw}\x07`)
+      expect(
+        resolveMobileTerminalTabAgentId(
+          terminalTab(title, { agentType: 'claude', state: 'done', launchAgent: 'claude' })
+        )
+      ).toBe(agent)
+    } finally {
+      tracker.dispose()
+    }
+  })
   it('keeps completed Claude ownership when task text names another agent', () => {
     expect(
       resolveMobileTerminalTabAgentId(

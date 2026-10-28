@@ -4,7 +4,7 @@ import { resolveCompatibleAgentTypeForOwner } from '../../../../shared/agent-tit
 import { resolveExplicitTerminalTitleAgentType } from '../../../../shared/terminal-title-agent-type'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 
-const TITLE_AGENT_LABEL_TO_TYPE: Record<string, AgentType> = {
+export const TITLE_AGENT_LABEL_TO_TYPE: Record<string, AgentType> = {
   'Claude Code': 'claude',
   OpenClaude: 'openclaude',
   Codex: 'codex',
@@ -26,13 +26,13 @@ const TITLE_AGENT_LABEL_TO_TYPE: Record<string, AgentType> = {
 
 export function resolveTitleDerivedAgentType(
   title: string,
-  label: string,
+  _label: string,
   _ownerAgentType?: AgentType | null
 ): AgentType | null {
-  const agentType = TITLE_AGENT_LABEL_TO_TYPE[label] ?? 'unknown'
   const admittedAgent = resolveExplicitTerminalTitleAgentType(title)
-  return admittedAgent && (agentType === 'unknown' || admittedAgent === agentType)
-    ? agentType
+  return admittedAgent
+    ? (Object.values(TITLE_AGENT_LABEL_TO_TYPE).find((agent) => agent === admittedAgent) ??
+        'unknown')
     : null
 }
 

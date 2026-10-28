@@ -8,6 +8,9 @@ describe('hasCtrlEnterCsiUAuthorityForPane', () => {
     const state = { paneForegroundAgentByPaneKey: {} }
     expect(hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, '⠋ fix the grok launcher')).toBe(false)
     expect(hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, '⠋ Grok')).toBe(true)
+    expect(
+      hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, 'Fix Codex terminal behavior… - grok')
+    ).toBe(true)
   })
 
   it.each([

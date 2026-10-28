@@ -2,6 +2,7 @@ import { rmSync } from 'node:fs'
 import { stubWriteSettlement } from '../providers/settled-pty-write-stub'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { TuiIdleEvidenceSource } from './tui-idle-evidence-source'
 import {
   checkBoundMailbox,
   createBoundRun,
@@ -22,6 +23,44 @@ describe('orchestration mailbox cold-park idle continuation', () => {
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true })
     }
+  })
+
+  it('parks null-agent task-title mail through fresh output, then dispatches and settles once on quiet alone', async () => {
+    vi.useFakeTimers()
+    const db = createDatabase('orca-mailbox-null-title-policy-')
+    const { runtime, write } = createRuntime(db, { launchAgent: null })
+    await runtime.listTerminals()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: inspect the actual evaluator source; no method is replaced.
+    const source = Reflect.get(runtime, 'tuiIdleEvidenceSource') as TuiIdleEvidenceSource
+    expect(source.getPaneAgent(PTY_ID)).toBeNull()
+    const run = createBoundRun(db, 'Null-agent title policy Run')
+    const message = insertDirectRunMessage(db, run.id, 'Deliver after legitimate quiet')
+    runtime.onPtyData(PTY_ID, '\x1b]0;⠋ Fix the codex launcher\x07working\n', Date.now())
+    runtime.onPtyData(PTY_ID, '\x1b]0;Fix the codex launcher\x07output\n', Date.now())
+    await runtime.serializeMainTerminalBuffer(PTY_ID)
+    expect(source.getPaneAgent(PTY_ID)).toBeNull()
+    for (let tick = 0; tick < 5; tick += 1) {
+      runtime.onPtyData(PTY_ID, 'still outputting\n', Date.now())
+      await vi.advanceTimersByTimeAsync(500)
+      expect(write).not.toHaveBeenCalled()
+      expect(db.getMessageById(message.id)).toMatchObject({
+        delivered_at: null,
+        pointer_enter_pending: 0
+      })
+    }
+    // No new OSC/graph/mail edge: the production quiet recheck must wake and finish transport settlement.
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(pointerCount(write)).toBe(1)
+    expect(write.mock.calls.filter(([, payload]) => payload === '\r')).toHaveLength(1)
+    expect(db.getMessageById(message.id)).toMatchObject({
+      delivered_at: expect.any(String),
+      pointer_enter_pending: 0
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(pointerCount(write)).toBe(1)
+    expect(write.mock.calls.filter(([, payload]) => payload === '\r')).toHaveLength(1)
+    runtime.onPtyExit(PTY_ID, 0)
+    db.close()
   })
 
   it('submits the deferred Enter on same-incarnation idle while the PTY stays parked', async () => {

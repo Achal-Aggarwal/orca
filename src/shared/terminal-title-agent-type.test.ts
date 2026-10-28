@@ -6,7 +6,8 @@ import {
   isClaudeIdentityFrameTitle,
   isGrokRotatingWorkingTitle,
   resolveExplicitTerminalTitleAgentType,
-  resolveTerminalTitleAgentType
+  resolveTerminalTitleAgentType,
+  resolveTerminalTitlePolicyAgentType
 } from './terminal-title-agent-type'
 
 describe('isGrokRotatingWorkingTitle', () => {
@@ -144,12 +145,24 @@ describe('explicit identity admission shared by display and input readers', () =
   it.each([
     ['Claude Code', 'claude'],
     ['claude.bat working', 'claude'],
+    ['claude [working]', 'claude'],
+    ['claude ~/p/repo', 'claude'],
+    ['codex ~/p/repo', 'codex'],
+    ['codex.exe C:\\p\\repo', 'codex'],
     ['⠋ OpenClaude', 'openclaude'],
     ['openclaude.cmd', 'openclaude'],
     ['⠋ Codex: fix cursor offsets', 'codex'],
     ['codex.exe', 'codex'],
     ['✦ Analyzing the repository', 'gemini'],
     ['◇ Gemini CLI', 'gemini'],
+    ['✦ Claude Code', 'gemini'],
+    ['✦ Codex', 'gemini'],
+    ['✦ Codex: fix parser', 'gemini'],
+    ['✦ Codex: fix parser | Thinking', 'qoder'],
+    ['Codex: fix parser | OC | Claude Code', 'codex'],
+    ['⠂ 🐋 Codex: fix parser', 'dsh'],
+    ['⠂ 🐋 Codex | Claude Code', 'dsh'],
+    ['🐋 Claude Code', 'dsh'],
     ['GitHub Copilot', 'copilot'],
     ['copilot.exe - action required', 'copilot'],
     ['devin thinking', 'devin'],
@@ -165,6 +178,8 @@ describe('explicit identity admission shared by display and input readers', () =
     ['MiMo Code', 'mimo-code'],
     ['Cursor Agent', 'cursor'],
     ['⠋ Droid', 'droid'],
+    ['droid.exe', 'droid'],
+    ['tmux | claude - action required', 'claude'],
     ['hermes ready', 'hermes'],
     ['DeepSeek Build', 'dsb'],
     ['🐋 DeepSeek Harness', 'dsh'],
@@ -172,7 +187,14 @@ describe('explicit identity admission shared by display and input readers', () =
     ['OMP ready', 'omp'],
     ['Qoder CLI', 'qoder'],
     ['Qoder CLI CN', 'qoder-cn'],
-    ['Compare Antigravity with Gemini… - grok', 'grok']
+    ['Qoder CLI CN (Codex | Claude Code)', 'qoder-cn'],
+    ['Prime Agent', 'prime-agent'],
+    ['Command Code', 'command-code'],
+    ['⠋ ZCode', 'zcode'],
+    ['ZCode ready', 'zcode'],
+    ['Compare Antigravity with Gemini… - grok', 'grok'],
+    ['Fix Codex terminal behavior… - grok', 'grok'],
+    ['Codex parity fixes - grok', 'grok']
   ])('preserves the identity frame %j', (title, agent) => {
     expect(resolveExplicitTerminalTitleAgentType(title)).toBe(agent)
     expect(
@@ -190,8 +212,55 @@ describe('explicit identity admission shared by display and input readers', () =
     'claude | zsh',
     'codex | main | fix the parser',
     '⠋ grok > next steps',
+    'claude [banana]',
+    'codex [working',
+    '⠋ Fix foo | OC | bar',
+    '✳ Fix foo | OC | bar',
     'OC | session - grok'
   ])('rejects wrapper prefixes, breadcrumbs and competing identities in %j', (title) => {
     expect(resolveExplicitTerminalTitleAgentType(title)).toBeNull()
+  })
+
+  it.each(['Continue', 'Goose', 'Charm', 'Amp', 'CodeBuddy'])(
+    'keeps UI-only %s labels outside the producer grammar regardless of task nouns',
+    (label) => {
+      for (const title of [
+        label,
+        `⠋ ${label}`,
+        `${label} ready`,
+        `${label}: fix Codex`,
+        `⠋ ${label}: fix Gemini`
+      ]) {
+        expect(resolveExplicitTerminalTitleAgentType(title), title).toBeNull()
+      }
+    }
+  )
+
+  it.each([
+    '✳ Codex',
+    '. Codex',
+    '* Codex',
+    '✳ agy',
+    '. Codex: fix parser',
+    '✳ Codex | Claude Code'
+  ])('does not turn generic Claude activity into foreign identity: %s', (title) =>
+    expect(resolveExplicitTerminalTitleAgentType(title)).toBeNull()
+  )
+
+  it('separates identity from exact legacy policy, including the generic Claude exclusion', () => {
+    for (const [title, policy] of [
+      ['Fix the codex launcher', 'codex'],
+      ['⠋ fix the grok launcher', 'grok'],
+      ['⠋ fix the parser', null],
+      ['task ⠋', null],
+      ['✳', null],
+      ['. Review the parser', null],
+      ['* Review the parser', null]
+    ] as const) {
+      expect(resolveExplicitTerminalTitleAgentType(title), title).toBeNull()
+      expect(resolveTerminalTitlePolicyAgentType(title), title).toBe(policy)
+    }
+    expect(resolveTerminalTitlePolicyAgentType('claude ~/p/repo')).toBe('claude')
+    expect(resolveTerminalTitlePolicyAgentType('✳ Claude Code')).toBe('claude')
   })
 })

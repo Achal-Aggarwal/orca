@@ -4,6 +4,8 @@ import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/ter
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
+import { createTerminalTitleTracker } from '../../../../shared/terminal-output-side-effects'
+import { resolveTabAgentFromSignalSnapshot } from '../../../../shared/tab-agent-from-signals'
 import {
   resolveTitleDerivedAgentType,
   type TitleDerivedPaneForeground
@@ -52,6 +54,54 @@ function processRead(agent: TuiAgent): TitleDerivedPaneForeground {
 }
 
 describe('buildTitleDerivedAgentRows', () => {
+  it.each([
+    ['⠋ fix the gemini launcher', '⠋ fix the gemini launcher', 'claude', 'Claude'],
+    ['⠋ add ✦ icon to header', '⠋ add ✦ icon to header', 'claude', 'Claude'],
+    [
+      '⠋ Codex: fix Gemini terminal behavior',
+      '⠋ Codex: fix Gemini terminal behavior',
+      'codex',
+      'Codex'
+    ],
+    ['Fix Codex terminal behavior… - grok', 'Fix Codex terminal behavior… - grok', 'grok', 'Grok'],
+    ['✦ Analyze Codex', '✦ Gemini CLI', 'gemini', 'Gemini CLI'],
+    ['✦ Claude Code', '✦ Gemini CLI', 'gemini', 'Gemini CLI']
+  ])(
+    'projects actual OSC %s into the shared desktop/mobile icon and visible row',
+    (raw, normalized, agent, label) => {
+      let title = ''
+      const tracker = createTerminalTitleTracker({
+        onTitle: (emitted) => {
+          title = emitted
+        }
+      })
+      try {
+        tracker.handleChunk(`\x1b]0;${raw}\x07`)
+        expect(title).toBe(normalized)
+        expect(
+          resolveTabAgentFromSignalSnapshot({
+            title,
+            hookAgent: null,
+            focusedCompletedHookAgent: 'claude',
+            launchAgent: 'claude'
+          })
+        ).toBe(agent)
+        const rows = buildWorktreeAgentRows({
+          tabs: [makeTab('tab-1', { title, launchAgent: 'claude' })],
+          entries: [],
+          retained: [],
+          runtimePaneTitlesByTabId: { 'tab-1': { 1: title } },
+          ptyIdsByTabId: { 'tab-1': ['pty'] },
+          terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+          now: 2000
+        })
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({ agentType: agent, entry: { prompt: label } })
+      } finally {
+        tracker.dispose()
+      }
+    }
+  )
   it('labels a working DeepSeek Build title as dsb and does not claim a Claude mention', () => {
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1')],

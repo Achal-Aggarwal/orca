@@ -119,7 +119,7 @@ export function createRuntime(
     headless?: boolean
     getAgentStatusSnapshot?: () => AgentStatusIpcPayload[]
     checkHookAgentPresence?: (paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>
-    launchAgent?: TuiAgent
+    launchAgent?: TuiAgent | null
   } = {}
 ): MailboxNotificationHarness {
   const runtime = new OrcaRuntimeService(
@@ -151,10 +151,14 @@ export function createRuntime(
       tabId: TAB_ID,
       leafId: LEAF_ID,
       incarnationId: 'mailbox-incarnation',
-      agentLaunchAuthority: {
-        launchToken: LAUNCH_TOKEN,
-        launchAgent: options.launchAgent ?? 'codex'
-      }
+      ...(options.launchAgent === null
+        ? {}
+        : {
+            agentLaunchAuthority: {
+              launchToken: LAUNCH_TOKEN,
+              launchAgent: options.launchAgent ?? 'codex'
+            }
+          })
     },
     options.isWsl
   )

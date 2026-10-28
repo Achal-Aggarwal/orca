@@ -2,11 +2,12 @@ import {
   AGY_AGENT_NAME_RE,
   DROID_AGENT_NAME_RE,
   HERMES_AGENT_NAME_RE,
+  isCursorAgentTitle,
   titleHasAgentName
 } from './agent-title-core'
 import { stripLeadingAgentTitleDecorationOrEmpty } from './agent-title-decoration'
 import type { TerminalAgent } from './terminal-agent'
-import { ALL_TUI_AGENTS, TUI_AGENT_DISPLAY_NAMES } from './tui-agent-display-names'
+import { TUI_AGENT_DISPLAY_NAMES } from './tui-agent-display-names'
 
 /** Names matched as whole tokens, paired with the agent each identifies. */
 const NAME_TOKENS: readonly (readonly [string, TerminalAgent])[] = [
@@ -122,23 +123,42 @@ export function agentForOwnerSuffix(text: string): TerminalAgent | null {
 
 /** Native frames identify an agent by a complete name, a named status, or a name before task text. */
 export function agentForNativeFrame(text: string): TerminalAgent | null {
+  if (isCursorAgentTitle(text)) {
+    return 'cursor'
+  }
   const undecorated = stripLeadingAgentTitleDecorationOrEmpty(text).trim()
   const frameName = undecorated.replace(
-    /(?::\s+.*|\s*[\u2013\u2014]\s*.*|\s+(?:ready|idle|done|working|thinking|running|waiting|permission)|\s+-\s+action required)$/i,
+    /(?::\s+[\s\S]*|\s*[\u2013\u2014]\s*[\s\S]*|\s+(?:(?:ready|idle|done|working|thinking|running|waiting|permission)|\[(?:ready|idle|done|working|thinking|running|waiting|permission)\])|\s+-\s+action required)$/i,
     ''
   )
   if (!frameName || /[|>\\/]/.test(frameName)) {
     return null
   }
-  const normalized = frameName.replace(WINDOWS_LAUNCHER_SUFFIX_RE, '').toLowerCase()
-  const agent =
-    agentForBareName(frameName) ??
-    ALL_TUI_AGENTS.find(
-      (agent) => normalized === agent || normalized === TUI_AGENT_DISPLAY_NAMES[agent].toLowerCase()
-    ) ??
-    null
-  // Pi/OMP have their own separator grammar, including special spinner requirements.
-  return agent === 'pi' || agent === 'omp' ? null : agent
+  return agentForNativeName(frameName)
+}
+
+function agentForNativeName(text: string): TerminalAgent | null {
+  const normalized = text.replace(WINDOWS_LAUNCHER_SUFFIX_RE, '').toLowerCase()
+  if (normalized === 'jcode' || normalized === 'opencode2') {
+    return normalized
+  }
+  const agent = agentForBareName(text)
+  // Emitted aliases and Cursor/Pi/OMP use their own closed grammars, not arbitrary named tasks.
+  return agent &&
+    agent !== 'cursor' &&
+    (NAME_TOKENS.some(([, native]) => native === agent) ||
+      PATTERN_NAMES.some(([, native]) => native === agent))
+    ? agent
+    : null
+}
+
+/** Shell auto-titles keep arguments as content owned by the command-position name. */
+export function agentForShellCommand(text: string): TerminalAgent | null {
+  if (text.trim() !== stripLeadingAgentTitleDecorationOrEmpty(text) || /[|>]/.test(text)) {
+    return null
+  }
+  const command = /^(\S+)\s+(?!\[)\S[\s\S]*$/.exec(text.trim())
+  return command ? agentForNativeName(command[1]) : null
 }
 
 export function namesConsumedByAnchoredLabels(

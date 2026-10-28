@@ -22,7 +22,6 @@ import {
   containsLegacyAgentName,
   isClaudeManagementTitle,
   isDshTerminalTitle,
-  isGeminiTerminalTitle,
   isPiAgentTitle,
   isPiTerminalTitle,
   titleHasAgentName
@@ -35,7 +34,10 @@ import {
 } from './pi-compatible-synthetic-title'
 import { clearPiStateWorkingMarker, getPiStateTitleStatus } from './pi-state-title-marker'
 import { getWrapperTitleSegments } from './terminal-title-wrapper-segments'
-import { isGrokRotatingWorkingTitle } from './terminal-title-agent-type'
+import {
+  isGrokRotatingWorkingTitle,
+  resolveExplicitTerminalTitleAgentType
+} from './terminal-title-agent-type'
 import { memoizeTitleClassification } from './terminal-title-classification-memo'
 
 /**
@@ -170,7 +172,7 @@ export function normalizeTerminalTitle(title: string): string {
   }
 
   // Pi/OMP explicit markers outrank Gemini glyphs embedded in free-form session/cwd labels.
-  if (!getPiStateTitleStatus(title) && isGeminiTerminalTitle(title)) {
+  if (!getPiStateTitleStatus(title) && resolveExplicitTerminalTitleAgentType(title) === 'gemini') {
     const status = detectAgentStatusFromTitle(title)
     if (status === 'permission') {
       return `${GEMINI_PERMISSION} Gemini CLI`
