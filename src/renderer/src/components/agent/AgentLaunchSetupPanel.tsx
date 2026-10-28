@@ -59,16 +59,18 @@ export function AgentLaunchSetupPanel({
   const [legacy, setLegacy] = useState(false)
   const effective = agentPickerEffectiveChoices(entry, draft)
   const models = agentPickerModels(entry)
+  const defaultsPending =
+    entry.defaultsPending || (draft.surface === 'chat' && entry.structuredDefaultsPending)
   const seed = getAgentSessionOptionLaunchCatalog(entry.agent)
   const listedDefaultKnown =
     entry.catalog.origin !== 'unknown' &&
     (entry.catalog.listingNamesConfiguredModel ?? seed?.hostListingNamesConfiguredModel === true)
   const currentModel =
     effective.model ??
-    (!entry.defaultsPending && listedDefaultKnown
+    (!defaultsPending && listedDefaultKnown
       ? models.find((model) => model.isDefault)?.id
       : undefined)
-  const modelDisabled = disabled || entry.defaultsPending || !currentModel
+  const modelDisabled = disabled || defaultsPending || !currentModel
   const options = agentPickerEntryOptions(entry, currentModel, draft.surface)
   const argumentPermission = agentPickerArgumentPermission(entry, draft)
   const permissionOwnedByArguments = argumentPermission?.locked ? argumentPermission : undefined
@@ -172,7 +174,7 @@ export function AgentLaunchSetupPanel({
         const liveModel = models.find((model) => model.id === currentModel)
         const current =
           effective.options?.[option.id] ??
-          (currentModel && !entry.defaultsPending
+          (currentModel && !defaultsPending
             ? option.kind.type === 'boolean'
               ? String(option.kind.defaultValue)
               : option.id === 'effort'
@@ -192,7 +194,7 @@ export function AgentLaunchSetupPanel({
                 : ''}
             </Label>
             <Select
-              disabled={disabled || entry.defaultsPending || current === undefined}
+              disabled={disabled || defaultsPending || current === undefined}
               value={current ?? ''}
               onValueChange={(value) =>
                 setDraft(
@@ -224,7 +226,7 @@ export function AgentLaunchSetupPanel({
         <Select
           disabled={
             disabled ||
-            entry.defaultsPending ||
+            defaultsPending ||
             Boolean(permissionOwnedByArguments) ||
             !effective.permissionMode
           }
@@ -259,7 +261,7 @@ export function AgentLaunchSetupPanel({
           {argumentPermission ? (
             <div className="pb-5">
               <AgentArgsChoiceChips
-                disabled={disabled}
+                disabled={disabled || entry.defaultsPending}
                 chips={[
                   {
                     key: 'permissionMode',
@@ -278,7 +280,7 @@ export function AgentLaunchSetupPanel({
           <Input
             id={`agent-arguments-${entry.agent}`}
             className="font-mono text-xs"
-            disabled={disabled}
+            disabled={disabled || entry.defaultsPending}
             value={
               argumentPermission?.remainingArguments ??
               (draft.arguments === undefined ? (entry.arguments ?? '') : (draft.arguments ?? ''))

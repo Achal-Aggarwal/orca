@@ -191,6 +191,7 @@ it.each(['slow', 'failed'] as const)(
     await act(async () => {})
     expect(hook.result.current[0]).toMatchObject({
       defaultsPending: false,
+      structuredDefaultsPending: false,
       arguments: '--host-only',
       terminal: { permissionMode: 'ask' },
       catalog: { origin: 'unknown' }
@@ -232,13 +233,18 @@ it('keeps Chat default controls pending until their independent seed read settle
   )
   const hook = renderHook(() => useAgentLaunchPickerInventory('wt', model(), true))
   await act(async () => {})
-  expect(hook.result.current[0]).toMatchObject({ defaultsPending: true, catalog })
+  expect(hook.result.current[0]).toMatchObject({
+    defaultsPending: false,
+    structuredDefaultsPending: true,
+    catalog
+  })
   expect(hook.result.current[0].terminal.permissionMode).toBe('ask')
   await act(async () =>
     support.resolve({ seedOptions: { model: 'remembered', permissionMode: 'ask' } })
   )
   expect(hook.result.current[0]).toMatchObject({
     defaultsPending: false,
+    structuredDefaultsPending: false,
     structured: { model: 'remembered', permissionMode: 'ask' }
   })
 })

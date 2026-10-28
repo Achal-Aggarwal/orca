@@ -31,6 +31,7 @@ export type AgentPickerEntry = {
   arguments?: string | null
   catalog: AgentSessionModelCatalogResult
   defaultsPending?: boolean
+  structuredDefaultsPending?: boolean
 }
 export type AgentPickerDraft = {
   agent: TuiAgent

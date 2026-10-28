@@ -146,6 +146,10 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
       )
     )
   render(pending)
+  expect(
+    [...host.querySelectorAll('button')].find((button) => button.textContent === 'Open chat')
+      ?.disabled
+  ).toBe(false)
   expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
     true
   )
@@ -153,6 +157,22 @@ it('keeps unknown default controls disabled in place, then selects host-resolved
     true
   )
   expect(host.querySelector('[cmdk-item][data-current="true"]')).toBeNull()
+  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.disabled).toBe(true)
+  render({
+    ...pending,
+    defaultsPending: false,
+    structuredDefaultsPending: true,
+    arguments: '--host-only'
+  })
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
+    true
+  )
+  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.disabled).toBe(
+    false
+  )
+  expect(host.querySelector<HTMLInputElement>('input[id^="agent-arguments-"]')?.value).toBe(
+    '--host-only'
+  )
   const settled: AgentPickerEntry = {
     ...pending,
     defaultsPending: false,

@@ -140,7 +140,8 @@ export function useAgentLaunchPickerInventory(
       }
       entries = entries.map((entry) => ({
         ...entry,
-        defaultsPending: target.kind === 'environment' && entry.defaultSurface === 'chat'
+        defaultsPending: false,
+        structuredDefaultsPending: target.kind === 'environment' && entry.surfaces.includes('chat')
       }))
       publish(entries)
       const params = { worktree: `id:${worktreeId}` }
@@ -173,7 +174,7 @@ export function useAgentLaunchPickerInventory(
               parseStructuredLaunchSeedOptions(support?.seedOptions) ?? {}
             entries[index] = {
               ...entries[index],
-              defaultsPending: false,
+              structuredDefaultsPending: false,
               ...(support?.seedOptions
                 ? {
                     structured: {
