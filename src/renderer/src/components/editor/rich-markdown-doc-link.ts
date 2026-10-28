@@ -1,72 +1,20 @@
 import { Node } from '@tiptap/core'
-import { type EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import type { MarkdownDocumentIndex } from './markdown-doc-links'
-import { getDocIndex, type DocLinkStorage } from './rich-markdown-doc-link-storage'
-import {
-  formatMarkdownDocLink,
-  parseMarkdownDocLink,
-  resolveMarkdownDocLink
-} from './markdown-doc-links'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { isDocLinkResolved, type DocLinkStorage } from './rich-markdown-doc-link-storage'
+import { formatMarkdownDocLink, parseMarkdownDocLink } from './markdown-doc-links'
 import {
   isReservedRichMarkdownTransportBody,
   skipInlineTransportStartScan,
   type RichMarkdownSourceTransport
 } from './rich-markdown-source-transport'
 import { renderRichMarkdownDocLinkHtml } from './rich-markdown-doc-link-dom'
-import { canHoldDocLink, DOC_LINK_PATTERN } from './rich-markdown-doc-link-scan'
+import {
+  createDocLinkPreviewPlugin,
+  findPendingDocLinkConversions
+} from './rich-markdown-doc-link-decorations'
 
 const docLinkDissolveKey = new PluginKey('docLinkDissolve')
 const docLinkAutoConvertKey = new PluginKey('docLinkAutoConvert')
-const docLinkInlinePreviewKey = new PluginKey('docLinkInlinePreview')
-
-function buildPreviewDecorations(state: EditorState, storage: DocLinkStorage): DecorationSet {
-  const decorations: Decoration[] = []
-  const index = getDocIndex(storage)
-  const cursor = state.selection.from
-  state.doc.descendants((node, pos, parent) => {
-    if (node.type.name === 'markdownDocLink') {
-      const resolved = resolveAgainstIndex(getDocLinkTarget(node), index)
-      // A changed decoration refreshes the NodeView without editing the document.
-      decorations.push(
-        Decoration.node(pos, pos + node.nodeSize, {
-          'data-doc-link-resolved': String(resolved)
-        })
-      )
-      return
-    }
-    if (!canHoldDocLink(node, parent)) {
-      return
-    }
-    for (const match of node.text.matchAll(DOC_LINK_PATTERN)) {
-      const link = isReservedRichMarkdownTransportBody(match[1])
-        ? null
-        : parseMarkdownDocLink(match[1])
-      if (!link || match.index === undefined) {
-        continue
-      }
-      const from = pos + match.index
-      const to = from + match[0].length
-      // Decorate only the match under the cursor; others soon become atoms and would briefly flicker.
-      if (cursor <= from || cursor > to) {
-        continue
-      }
-      const resolved = resolveAgainstIndex(link.target, index)
-      const cls = resolved
-        ? 'rich-markdown-doc-link-preview'
-        : 'rich-markdown-doc-link-preview rich-markdown-doc-link-preview--missing'
-      decorations.push(Decoration.inline(from, to, { class: cls }))
-    }
-  })
-  return DecorationSet.create(state.doc, decorations)
-}
-
-function resolveAgainstIndex(target: string, index: MarkdownDocumentIndex | null): boolean {
-  if (!index) {
-    return false
-  }
-  return resolveMarkdownDocLink(target, index).status === 'resolved'
-}
 
 function getDocLinkTarget(node: { attrs: Record<string, unknown> }): string {
   return typeof node.attrs.target === 'string' ? node.attrs.target : ''
@@ -169,7 +117,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
         dom.textContent = getDocLinkDisplayText(node)
 
         const applyResolutionClass = (t: string): void => {
-          const resolved = resolveAgainstIndex(t, getDocIndex(storage))
+          const resolved = isDocLinkResolved(t, storage)
           dom.className = resolved
             ? 'rich-markdown-doc-link'
             : 'rich-markdown-doc-link rich-markdown-doc-link--missing'
@@ -250,58 +198,23 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
             const cursor = newState.selection.from
             let modified = false
 
-            newState.doc.descendants((node, pos, parent) => {
-              if (!canHoldDocLink(node, parent)) {
-                return
+            for (const candidate of findPendingDocLinkConversions(newState)) {
+              const { from, to, target, label } = candidate
+              // Keep cursor-owned link text editable until the cursor leaves.
+              if (cursor > from && cursor <= to) {
+                continue
               }
-
-              for (const match of node.text.matchAll(DOC_LINK_PATTERN)) {
-                const link = isReservedRichMarkdownTransportBody(match[1])
-                  ? null
-                  : parseMarkdownDocLink(match[1])
-                if (!link || match.index === undefined) {
-                  continue
-                }
-
-                const from = pos + match.index
-                const to = from + match[0].length
-
-                // Keep cursor-owned link text editable; preview decorations provide resolution feedback until the cursor leaves.
-                if (cursor > from && cursor <= to) {
-                  continue
-                }
-
-                const docLinkNode = nodeType.create({ target: link.target, label: link.alias })
-                tr.replaceWith(tr.mapping.map(from), tr.mapping.map(to), docLinkNode)
-                modified = true
-              }
-            })
+              const docLinkNode = nodeType.create({ target, label })
+              tr.replaceWith(tr.mapping.map(from), tr.mapping.map(to), docLinkNode)
+              modified = true
+            }
 
             return modified ? tr : null
           }
         }),
 
         // Show resolution feedback for link text under the cursor before it converts to an atom.
-        new Plugin({
-          key: docLinkInlinePreviewKey,
-          state: {
-            init(_, state) {
-              return buildPreviewDecorations(state, storage)
-            },
-            apply(tr, prev, oldState, newState) {
-              const selectionMoved = !oldState.selection.eq(newState.selection)
-              if (!tr.docChanged && !selectionMoved && !tr.getMeta('docLinksUpdated')) {
-                return prev
-              }
-              return buildPreviewDecorations(newState, storage)
-            }
-          },
-          props: {
-            decorations(state) {
-              return docLinkInlinePreviewKey.getState(state)
-            }
-          }
-        })
+        createDocLinkPreviewPlugin(storage)
       ]
     },
 

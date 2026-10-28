@@ -1,5 +1,9 @@
 import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
-import { createMarkdownDocumentIndex, type MarkdownDocumentIndex } from './markdown-doc-links'
+import {
+  createMarkdownDocumentIndex,
+  resolveMarkdownDocLink,
+  type MarkdownDocumentIndex
+} from './markdown-doc-links'
 
 export type DocLinkStorage = {
   documents: MarkdownDocument[]
@@ -26,4 +30,9 @@ export function getDocIndex(storage: DocLinkStorage): MarkdownDocumentIndex | nu
     storage._cachedDocs = storage.documents
   }
   return storage._cachedIndex
+}
+
+export function isDocLinkResolved(target: string, storage: DocLinkStorage): boolean {
+  const index = getDocIndex(storage)
+  return index !== null && resolveMarkdownDocLink(target, index).status === 'resolved'
 }
