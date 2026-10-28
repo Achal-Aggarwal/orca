@@ -10,6 +10,7 @@ import {
   BRIDGE_RPC_ENVELOPE_GRANT,
   readBridgeClientMessage,
   type BridgeClientMessage,
+  type BridgeColorScheme,
   type BridgeConnectionSnapshot,
   type BridgeInitRoute
 } from './bridge/bridge-envelope'
@@ -44,6 +45,7 @@ export type BridgeHost = {
   publishFoldDivision: (next: BridgeFoldDivision | null) => void
   /** Tells this session the shell's key rail shows or hides, over the same re-sent `init`. */
   publishTerminalKeyRail: (next: BridgeTerminalKeyRail) => void
+  publishColorScheme: (next: BridgeColorScheme) => void
   /**
    * Hands the page one press on the key rail. False when this session was not granted the rail,
    * which is every page older than it, or when no document holds the view.
@@ -87,7 +89,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     ...(options.keyboardInset === undefined ? {} : { keyboardInset: options.keyboardInset }),
     ...(options.pageGeometry === undefined ? {} : { pageGeometry: options.pageGeometry }),
     ...(options.foldDivision === undefined ? {} : { foldDivision: options.foldDivision }),
-    ...(options.terminalKeyRail === undefined ? {} : { terminalKeyRail: options.terminalKeyRail })
+    ...(options.terminalKeyRail === undefined ? {} : { terminalKeyRail: options.terminalKeyRail }),
+    ...(options.colorScheme === undefined ? {} : { colorScheme: options.colorScheme })
   })
   let closed = false
   // Close ends document service until the next ready. Native delivery preserves frame order, so stragglers remain between those markers without an epoch.
@@ -163,6 +166,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
           pageGeometry: routes.pageGeometry(),
           foldDivision: routes.foldDivision(),
           terminalKeyRail: routes.terminalKeyRail(),
+          colorScheme: routes.colorScheme(),
           pageRoutes,
           ...(parsedRouteGrants?.success === true
             ? { pageRouteGrants: parsedRouteGrants.data }
@@ -351,6 +355,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         inputOwner
       })
       return true
+    },
+    publishColorScheme: (next) => {
+      routes.publishColorScheme(next, deliverable())
     },
     sendBack: back.send,
     readSessionBack: () => ({

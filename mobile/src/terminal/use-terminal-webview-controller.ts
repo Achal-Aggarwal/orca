@@ -1,3 +1,4 @@
+import { parseTerminalKittyKeyboardFlags } from '../../../src/shared/terminal-kitty-keyboard-flags'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { readTerminalCellBox, type TerminalCellBox } from './terminal-cell-box'
 import { fitDimensionsFromCell } from './terminal-grid-fit'
@@ -237,7 +238,7 @@ export function useTerminalWebViewController(
       write(data: string) {
         writeCoalescer.write(data)
       },
-      init({ cols, rows, initialData, preserveScroll, oscLinks, frame }: TerminalInit) {
+      init({ cols, rows, initialData, preserveScroll, oscLinks, kittyFlags, frame }: TerminalInit) {
         // Arm ready before posting init so a synchronous reply cannot be lost.
         promises.armReady()
         // The init snapshot supersedes buffered chunks; replaying them afterward would duplicate old output.
@@ -248,6 +249,7 @@ export function useTerminalWebViewController(
           rows,
           initialData,
           oscLinks,
+          kittyKeyboardFlags: parseTerminalKittyKeyboardFlags(kittyFlags),
           terminalTheme,
           fontScale: textScale,
           preserveScroll,

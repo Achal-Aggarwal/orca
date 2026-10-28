@@ -5,6 +5,7 @@ import {
   BRIDGE_FAULT_GRANT,
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_RPC_ENVELOPE_GRANT,
+  type BridgeColorScheme,
   type BridgeConnectionSnapshot,
   type BridgeHostMessage,
   type BridgeInitHost,
@@ -38,8 +39,8 @@ export function createBridgeInitFrame(args: {
   foldDivision?: BridgeFoldDivision | null
   /** The keys the shell's rail shows beside the page; omitted while none does. */
   terminalKeyRail?: BridgeTerminalKeyRail
-  /** What each of those patterns declared, so the page can tell a hop it may keep from one it
-   *  must hand back. Omitted by a shell that has none, which leaves the page on its old rule. */
+  colorScheme?: BridgeColorScheme
+  // Omit absent manifest pairs so older routing behavior remains available.
   pageRouteGrants?: readonly { pathname: string; grants: readonly string[] }[]
   granted: readonly string[]
   host: BridgeInitHost
@@ -81,6 +82,8 @@ export function createBridgeInitFrame(args: {
     ...(args.terminalKeyRail === undefined || args.terminalKeyRail.length === 0
       ? {}
       : { terminalKeyRail: [...args.terminalKeyRail] }),
+    // Omit dark: it is what pages assume when an older shell sends nothing.
+    ...(args.colorScheme === 'light' ? { colorScheme: 'light' as const } : {}),
     pageRoutes: [...args.pageRoutes],
     // Copy entries so no frame retains access to the shell’s held route-grant objects.
     ...(args.pageRouteGrants === undefined

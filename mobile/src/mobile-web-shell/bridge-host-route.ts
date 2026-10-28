@@ -3,7 +3,11 @@ import {
   samePageGeometry,
   type BridgePageGeometry
 } from './bridge/bridge-page-geometry'
-import { BridgeInitRouteSchema, type BridgeInitRoute } from './bridge/bridge-envelope'
+import {
+  BridgeInitRouteSchema,
+  type BridgeColorScheme,
+  type BridgeInitRoute
+} from './bridge/bridge-envelope'
 import { readBridgeRouteUpdate } from './bridge/bridge-route-update'
 import {
   sameSafeAreaInsets,
@@ -33,6 +37,8 @@ export type BridgeHostRoute = {
   readonly terminalKeyRail: () => BridgeTerminalKeyRail
   /** Moves the rail's keys on the same lane as the insets. */
   readonly publishTerminalKeyRail: (next: BridgeTerminalKeyRail, deliverable: boolean) => void
+  readonly colorScheme: () => BridgeColorScheme
+  readonly publishColorScheme: (next: BridgeColorScheme, deliverable: boolean) => void
 }
 
 // Parse against the page’s route schema before init; interpolated host ids with query/hash/whitespace/dot segments could otherwise leave a blank page asking forever.
@@ -47,6 +53,7 @@ export function createBridgeHostRoute(args: {
   pageGeometry?: BridgePageGeometry
   foldDivision?: BridgeFoldDivision | null
   terminalKeyRail?: BridgeTerminalKeyRail
+  colorScheme?: BridgeColorScheme
 }): BridgeHostRoute {
   const parsed = BridgeInitRouteSchema.safeParse(args.opened)
   let route = parsed.success && !args.refused ? parsed.data : null
@@ -55,6 +62,7 @@ export function createBridgeHostRoute(args: {
   let geometry = args.pageGeometry ?? EMPTY_PAGE_GEOMETRY
   let fold = args.foldDivision ?? null
   let rail = args.terminalKeyRail ?? []
+  let scheme = args.colorScheme ?? 'dark'
   return {
     current: () => route,
     openIssue: () => (parsed.success ? 'unknown' : (parsed.error.issues[0]?.message ?? 'unknown')),
@@ -115,6 +123,16 @@ export function createBridgeHostRoute(args: {
         return
       }
       rail = next
+      if (deliverable) {
+        args.sendInit()
+      }
+    },
+    colorScheme: () => scheme,
+    publishColorScheme: (next, deliverable) => {
+      if (scheme === next) {
+        return
+      }
+      scheme = next
       if (deliverable) {
         args.sendInit()
       }

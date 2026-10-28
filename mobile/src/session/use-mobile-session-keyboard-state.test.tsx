@@ -76,7 +76,7 @@ function Harness(): null {
     clientRef: { current: null },
     deviceTokenRef: { current: null },
     showNativeChatRef: { current: false },
-    subscribeToTerminal: () => {},
+    subscribeToTerminal: () => true,
     terminalFrameRef: { current: null },
     terminalRefs: { current: new Map() },
     unsubscribeTerminal: () => {},

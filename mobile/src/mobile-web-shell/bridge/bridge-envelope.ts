@@ -103,6 +103,11 @@ export const BridgeInitHostSchema = z.object({
 
 export type BridgeInitHost = z.infer<typeof BridgeInitHostSchema>
 
+// The app's resolved light/dark scheme, so the page paints the same palette as the native chrome around it.
+export const BridgeColorSchemeSchema = z.enum(['light', 'dark'])
+
+export type BridgeColorScheme = z.infer<typeof BridgeColorSchemeSchema>
+
 export const BridgeInitStorageSchema = z
   .record(
     z.string().min(1).max(PAGE_STORAGE_MAX_KEY_CHARS).refine(isPageStorageKey),
@@ -260,6 +265,8 @@ const BridgeHostMessageSchema = z.union([
     route: BridgeInitRouteSchema.optional(),
     safeAreaInsets: BridgeSafeAreaInsetsSchema.optional(),
     keyboardInset: BridgeKeyboardInsetSchema.optional(),
+    // Older pages strip this key; salvage an unknown future scheme so it cannot invalidate the whole init.
+    colorScheme: salvagedOptional('colorScheme', BridgeColorSchemeSchema).optional(),
     /** The fold splitting the page on a partially folded device; absent reads as none. Salvaged so a
      *  value this page cannot read drops the field, not `init`. */
     pageGeometry: salvagedOptional('pageGeometry', BridgePageGeometrySchema).optional(),

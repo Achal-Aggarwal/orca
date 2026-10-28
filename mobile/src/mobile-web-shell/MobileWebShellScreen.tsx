@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useNavigationContainerRef, useRouter } from 'expo-router'
 import {
@@ -9,6 +9,8 @@ import {
 import { HostRouteNoticeBanner } from '../components/HostRouteNoticeBanner'
 import { ProtocolBlockScreen } from '../components/ProtocolBlockScreen'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import type { BridgeInitRoute } from './bridge/bridge-envelope'
 import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
 import type {
@@ -24,6 +26,7 @@ import { useMobileWebShellBridge } from './use-mobile-web-shell-bridge'
 import type { MobileWebShellRuntime } from './mobile-web-shell-runtime'
 import { useKeyboardOcclusion } from '../platform/keyboard-occlusion'
 import { useNativeDeviceVerbs } from '../platform/use-native-device-verbs'
+import { useNativePdfViewer } from '../platform/native-pdf-view'
 import { useShellPageBack } from './use-shell-page-back'
 import { useShellStackPop } from './use-shell-stack-pop'
 import { useMobileWebShellSession } from './use-mobile-web-shell-session'
@@ -69,6 +72,7 @@ function updateNoticeMessage(notice: MobileWebShellUpdateNotice): string {
 }
 
 function Centered({ children }: { children: ReactNode }) {
+  useMobileColorScheme()
   return <View style={styles.centered}>{children}</View>
 }
 
@@ -87,6 +91,7 @@ function Failed({
   state: Extract<MobileWebShellSessionState, { kind: 'failed' }>
   onRetry: () => void
 }) {
+  useMobileColorScheme()
   // Retry cannot change a settled isolation gate or give an unsupported WebView the missing fence.
   const retryable = state.reason !== 'isolation-unavailable' && state.reason !== 'status-unreadable'
   return (
@@ -128,6 +133,7 @@ export function MobileWebShellScreen({
   onOverlayLoad,
   runtime
 }: MobileWebShellScreenProps) {
+  const colorScheme = useMobileColorScheme()
   const insets = useSafeAreaInsets()
   const overlay = onOverlayLoad !== undefined
   const router = useRouter()
@@ -180,11 +186,14 @@ export function MobileWebShellScreen({
     usePageHostSnapshot(hostId, route.pathname, ownsHostArea)
   // Create the media registry before the bridge; staged files belong to this page session.
   const serveDeviceVerb = useNativeDeviceVerbs(readySessionId)
+  const servePdfView = useNativePdfViewer(hostId, readySessionId)
   // Read the shell's storage for this host.
   const serveNativeVerb = (verb: BridgeNativeVerb, params: unknown): Promise<unknown> =>
     verb === 'native.storage.read'
       ? readWorkspaceKey(storageReadParamsSchema.parse(params).key).then((value) => ({ value }))
-      : serveDeviceVerb(verb, params)
+      : verb === 'native.pdf.view'
+        ? servePdfView(params)
+        : serveDeviceVerb(verb, params)
   // Both externalLink and cancelled navigation use this filtered opener. Report device-handler failure without throwing from a native frame callback; neither path has a reply.
   const openUrlForPage = (url: string) => {
     void Linking.openURL(url).catch((error: unknown) => {
@@ -200,6 +209,7 @@ export function MobileWebShellScreen({
     pageGeometry: pageFold.geometry,
     foldDivision: pageFold.division,
     terminalKeyRail: keyRail.keys,
+    colorScheme,
     pageRoutes,
     pageRouteGrants,
     routeGrants,
@@ -233,8 +243,8 @@ export function MobileWebShellScreen({
       console.warn('[web-shell] refused to open this screen', issue)
       reportShellFailure('document-load-failed')
     },
-    // Push so Back reveals the mounted page without downloading or handshaking again.
-    onNavigate: (href: string) => {
+    // Push so Back reveals the mounted page without downloading or handshaking again, unless the page replaced itself.
+    onNavigate: (href: string, replace: boolean) => {
       if (overlay) {
         return void router.replace(href)
       }
@@ -258,7 +268,7 @@ export function MobileWebShellScreen({
         router.dismissTo(href)
         return
       }
-      router.push(href)
+      return void (replace ? router.replace(href) : router.push(href))
     },
     serveNativeVerb,
     onExternalLink: openUrlForPage,
@@ -285,6 +295,7 @@ export function MobileWebShellScreen({
   // Use navigation screen options to disable this stack entry’s gesture; the router has no such option.
   useShellPageBack({
     claimed: backClaimed,
+    isFocused: () => navigation.isFocused(),
     sendBack: bridge.sendBack,
     setOptions: navigation.setOptions
   })
@@ -401,7 +412,7 @@ export function MobileWebShellScreen({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   shellRoot: {
     flex: 1,
     backgroundColor: colors.bgBase
@@ -441,4 +452,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7
   }
-})
+}))

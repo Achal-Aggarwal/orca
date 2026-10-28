@@ -20,7 +20,7 @@ import {
 } from './wsl-hook-relay-launch'
 import { waitForWslRelaySentinel } from './wsl-hook-relay-sentinel'
 import { listWslDistrosAsync } from '../wsl'
-import { isWslDistroRunning } from '../wsl-background-distro-gate'
+import { deferUntilWslDistroRunning, isWslDistroRunning } from '../wsl-background-distro-gate'
 import { isWslAgentHookRelayEnabled } from '../../shared/agent-hook-relay'
 
 // Concurrent wsl.exe spawns can trigger transient E_UNEXPECTED failures.
@@ -49,10 +49,12 @@ export type WslHookRelayManagerDeps = {
   listDistros: () => Promise<string[]>
   /** Recovery must not boot a distro the user shut down. */
   isDistroRunning: typeof isWslDistroRunning
+  deferUntilRunning: typeof deferUntilWslDistroRunning
   spawnRelay: typeof spawnWslRelayProcess
   runInstall: typeof runWslInstallProcess
   waitForSentinel: typeof waitForWslRelaySentinel
   ingest: (envelope: Record<string, unknown>, connectionId: string) => void
+  beginRelaySession?: (connectionId: string) => void
   receiveClaudeAgentView?: (body: unknown) => unknown
   bindInterruptReconciliation?: (
     mux: Parameters<typeof bindRemoteClaudeInterruptReconciliation>[1],
@@ -91,6 +93,7 @@ export const defaultWslHookRelayDeps: WslHookRelayManagerDeps = {
   readBundle: (jsPath) => readFileSync(jsPath),
   listDistros: () => listWslDistrosAsync(),
   isDistroRunning: isWslDistroRunning,
+  deferUntilRunning: deferUntilWslDistroRunning,
   spawnRelay: spawnWslRelayProcess,
   runInstall: runWslInstallProcess,
   waitForSentinel: waitForWslRelaySentinel,
@@ -104,6 +107,7 @@ export const defaultWslHookRelayDeps: WslHookRelayManagerDeps = {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: envelope is the wire-deserialized notification; ingestRemote independently re-validates paneKey's type before trusting anything here.
     return agentHookServer.ingestRemote(capped as IngestEnvelope, connectionId)
   },
+  beginRelaySession: (connectionId) => agentHookServer.beginRemoteRelaySession(connectionId),
   bindInterruptReconciliation: (mux, connectionId, isCurrent) =>
     bindRemoteClaudeInterruptReconciliation(agentHookServer, mux, connectionId, isCurrent),
   installHooks: installRemoteManagedAgentHooks,

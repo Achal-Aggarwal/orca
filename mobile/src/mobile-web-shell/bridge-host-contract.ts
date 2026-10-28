@@ -4,7 +4,7 @@ import type { TerminalBacklogEnd, TerminalBacklogTimers } from './bridge-termina
 import type { RpcClient } from '../transport/rpc-client'
 import type { BridgeSessionBack } from './bridge-host-back'
 import type { BridgeRefusal } from './bridge/bridge-caps'
-import type { BridgeInitHost, BridgeInitRoute } from './bridge/bridge-envelope'
+import type { BridgeColorScheme, BridgeInitHost, BridgeInitRoute } from './bridge/bridge-envelope'
 import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
 import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
 import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
@@ -72,6 +72,8 @@ export type BridgeHostOptions = {
   safeAreaInsets?: BridgeSafeAreaInsets
   // Default to zero; publishKeyboardInset moves native keyboard height later.
   keyboardInset?: number
+  // Default to dark; publishColorScheme moves the app's resolved scheme later.
+  colorScheme?: BridgeColorScheme
   /** The fold splitting the page on a partially folded device. None when absent; moved later with
    *  `publishFoldDivision`. */
   pageGeometry?: BridgePageGeometry
@@ -79,18 +81,13 @@ export type BridgeHostOptions = {
   /** The keys the shell's rail shows beside the page. None when absent; moved later with
    *  `publishTerminalKeyRail`. */
   terminalKeyRail?: BridgeTerminalKeyRail
-  /**
-   * This device's identity to that host, as the native screens already send it, swapped in for the
-   * page's placeholder on the way out. Read at forward time rather than captured: the host outlives
-   * every render after the one that built it. Required, because `init` tells the page the swap
-   * happens and a page that believed it and was not served would have its sends refused as spoofs.
-   */
+  // Read identity at forward time because this host outlives renders; replace the page placeholder as init promised or the desktop refuses spoofed sends.
   readClientIdentity: () => string | null
   // Read allowlisted storage synchronously for every init so document reloads include writes made since mount.
   readStorage: () => PageStorageForInit
   onStorageWrite: (key: string, value: string | null) => void
-  // Required to honor navigate grants: open targets the page cannot render.
-  onNavigate: (href: string) => void
+  // Required to honor navigate grants: open targets the page cannot render, replacing this screen when asked.
+  onNavigate: (href: string, replace: boolean) => void
   // Serve native verbs only on-device; rejection becomes the page’s request error and never reaches the desktop.
   serveNativeVerb: (verb: BridgeNativeVerb, params: unknown) => Promise<unknown>
   // The envelope already checked URL schemes. Never throw from native frame handling; report device-open failure locally because notify has no reply.

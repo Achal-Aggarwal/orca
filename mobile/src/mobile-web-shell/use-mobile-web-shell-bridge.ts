@@ -13,7 +13,7 @@ import { useHostClient } from '../transport/host-client-hooks'
 import { createBridgeDiagnosticReporter } from './bridge-diagnostic-log'
 import { bridgeDiagnosticLine, frameWithoutHostLine } from './shell-bridge-log-lines'
 import { recordShellLifecycleLine } from './shell-lifecycle-line-recorder'
-import type { BridgeInitRoute } from './bridge/bridge-envelope'
+import type { BridgeColorScheme, BridgeInitRoute } from './bridge/bridge-envelope'
 import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
 import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
 import type { BridgeFoldDivision } from './bridge/bridge-fold-division'
@@ -82,13 +82,14 @@ export type MobileWebShellBridgeArgs = {
   foldDivision: BridgeFoldDivision | null
   /** What the first `init` of a new host carries; later moves go through `publishTerminalKeyRail`. */
   terminalKeyRail: BridgeTerminalKeyRail
+  colorScheme: BridgeColorScheme
   /** The route patterns the page keeps for itself; everything else comes back as `navigate`. */
   pageRoutes: readonly string[]
   pageRouteGrants: readonly { pathname: string; grants: readonly string[] }[]
   // Effective session grants include the served-route union when this page owns the host area.
   routeGrants: readonly string[]
   ownsHostArea?: boolean
-  onNavigate: (href: string) => void
+  onNavigate: (href: string, replace: boolean) => void
   onExternalLink: (url: string) => void
   onHaptic: (kind: BridgeHapticsKind) => void
   serveNativeVerb: (verb: BridgeNativeVerb, params: unknown) => Promise<unknown>
@@ -155,6 +156,7 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       pageGeometry: latest.pageGeometry,
       foldDivision: latest.foldDivision,
       terminalKeyRail: latest.terminalKeyRail,
+      colorScheme: latest.colorScheme,
       pageRoutes: latest.pageRoutes,
       pageRouteGrants: latest.pageRouteGrants,
       routeGrants: latest.routeGrants,
@@ -177,7 +179,7 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
           recordShellLifecycleLine(latest.hostId, line)
         }
       }),
-      onNavigate: (href) => argsRef.current.onNavigate(href),
+      onNavigate: (href, replace) => argsRef.current.onNavigate(href, replace),
       onNavigateBack: () => argsRef.current.onNavigateBack(),
       onExternalLink: (url) => argsRef.current.onExternalLink(url),
       onHaptic: (kind) => argsRef.current.onHaptic(kind),
@@ -211,6 +213,15 @@ export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileW
       mounted.host.publishPageGeometry(args.pageGeometry)
     }
   }, [buildId, client, sessionId, snapshot, args.pageGeometry])
+
+  // A rebuilt host already starts from the latest scheme; this re-sends init when it changes under a live page.
+  const colorScheme = args.colorScheme
+  useEffect(() => {
+    const mounted = hostRef.current
+    if (mounted !== null && mounted.sessionId === sessionId) {
+      mounted.host.publishColorScheme(colorScheme)
+    }
+  }, [colorScheme, sessionId])
 
   return {
     bridgeEnabled: ready !== null,

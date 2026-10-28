@@ -1,5 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { colors, typography } from '../theme/mobile-theme'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
+import { themedStyleSheet } from '../theme/themed-styles'
 
 type DictationStatus = {
   readonly isStarting: boolean
@@ -20,6 +22,7 @@ export function MobileTerminalLiveInputStatus({
   liveInputText,
   keyboardVisible = false
 }: MobileTerminalLiveInputStatusProps) {
+  useMobileColorScheme()
   const title = dictation.isRecording
     ? 'Listening'
     : dictation.isProcessing
@@ -49,7 +52,7 @@ export function MobileTerminalLiveInputStatus({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   status: {
     flex: 1,
     gap: 1
@@ -64,4 +67,4 @@ const styles = StyleSheet.create({
     fontSize: typography.metaSize,
     fontFamily: typography.monoFamily
   }
-})
+}))

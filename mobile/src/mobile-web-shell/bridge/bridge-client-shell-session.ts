@@ -14,6 +14,7 @@ import {
 import { sameFoldDivision, type BridgeFoldDivision } from './bridge-fold-division'
 import { sameTerminalKeyRail, type BridgeTerminalKeyRail } from './bridge-terminal-key'
 import type {
+  BridgeColorScheme,
   BridgeConnectionSnapshot,
   BridgeHostMessage,
   BridgeInitRoute
@@ -45,6 +46,7 @@ export type BridgeClientShellSession = {
   onFoldDivisionUpdate: (listener: (division: BridgeFoldDivision | null) => void) => () => void
   /** Fires when an `init` moved the keys the shell's rail shows, including a replacement's. */
   onTerminalKeyRailUpdate: (listener: (keys: BridgeTerminalKeyRail) => void) => () => void
+  onColorSchemeUpdate: (listener: (scheme: BridgeColorScheme) => void) => () => void
   /** Drops the session and every listener waiting on one, which `close` is the only caller of. */
   close: () => void
 }
@@ -57,6 +59,7 @@ export type BridgeShellSessionListeners = Pick<
   | 'onStorageUpdate'
   | 'onSafeAreaInsetsUpdate'
   | 'onKeyboardInsetUpdate'
+  | 'onColorSchemeUpdate'
   | 'onPageGeometryUpdate'
   | 'onFoldDivisionUpdate'
   | 'onTerminalKeyRailUpdate'
@@ -72,6 +75,7 @@ export function shellSessionListeners(
     onStorageUpdate: session.onStorageUpdate,
     onSafeAreaInsetsUpdate: session.onSafeAreaInsetsUpdate,
     onKeyboardInsetUpdate: session.onKeyboardInsetUpdate,
+    onColorSchemeUpdate: session.onColorSchemeUpdate,
     onPageGeometryUpdate: session.onPageGeometryUpdate,
     onFoldDivisionUpdate: session.onFoldDivisionUpdate,
     onTerminalKeyRailUpdate: session.onTerminalKeyRailUpdate
@@ -91,6 +95,7 @@ export function createBridgeClientShellSession(args: {
   const geometryListeners = new Set<(geometry: BridgePageGeometry) => void>()
   const foldListeners = new Set<(division: BridgeFoldDivision | null) => void>()
   const railListeners = new Set<(keys: BridgeTerminalKeyRail) => void>()
+  const schemeListeners = new Set<(scheme: BridgeColorScheme) => void>()
 
   return {
     current: () => session,
@@ -136,6 +141,8 @@ export function createBridgeClientShellSession(args: {
       const sentRail = message.terminalKeyRail ?? []
       const movedRail = held !== null && !sameTerminalKeyRail(held.terminalKeyRail, sentRail)
       const terminalKeyRail = held === null || movedRail ? sentRail : held.terminalKeyRail
+      const colorScheme = message.colorScheme ?? 'dark'
+      const movedScheme = held !== null && held.colorScheme !== colorScheme
       session =
         update === null
           ? {
@@ -154,7 +161,8 @@ export function createBridgeClientShellSession(args: {
               keyboardInset,
               pageGeometry,
               foldDivision,
-              terminalKeyRail
+              terminalKeyRail,
+              colorScheme
             }
       // Re-primed either way, because a second `init` is also how the page recovers a cache it has
       // refused a `state` frame into: the shell rebuilt under it publishes a generation the page's
@@ -193,6 +201,11 @@ export function createBridgeClientShellSession(args: {
       if (movedRail) {
         for (const listener of railListeners) {
           listener(terminalKeyRail)
+        }
+      }
+      if (movedScheme) {
+        for (const listener of schemeListeners) {
+          listener(colorScheme)
         }
       }
       // Only a route that moved is an update. The shell answers every `ready` with the route it
@@ -257,6 +270,12 @@ export function createBridgeClientShellSession(args: {
       railListeners.add(listener)
       return () => {
         railListeners.delete(listener)
+      }
+    },
+    onColorSchemeUpdate: (listener) => {
+      schemeListeners.add(listener)
+      return () => {
+        schemeListeners.delete(listener)
       }
     },
     close: () => {

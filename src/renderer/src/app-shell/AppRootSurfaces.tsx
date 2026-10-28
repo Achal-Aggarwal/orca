@@ -3,6 +3,7 @@ import { OnboardingLanguageLoading } from '../components/onboarding/OnboardingLa
 import { useLanguageReadiness } from '../i18n/language-readiness'
 import { NotificationCardStack } from '../components/NotificationCardStack'
 import { Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { translate } from '@/i18n/i18n'
 import { RecoverableRenderErrorBoundary } from '../components/error-boundaries/RecoverableRenderErrorBoundary'
@@ -17,6 +18,7 @@ import { StarNagAgentValueMomentObserver } from '../components/star-nag/StarNagA
 import { StarNagToastHost } from '../components/star-nag/StarNagToastHost'
 import { TelemetryFirstLaunchSurface } from '../components/TelemetryFirstLaunchSurface'
 import { ZoomOverlay } from '../components/ZoomOverlay'
+import { WslMoveDialogHost } from '../components/wsl-move/WslMoveDialog'
 import { shouldRenderPetOverlay } from '../components/pet/pet-overlay-visibility'
 import { useAppStore } from '../store'
 import type { UpdateStatus } from '../../../shared/update-status-types'
@@ -208,6 +210,8 @@ export function AppRootSurfaces(props: {
             <AiVaultSessionHistoryDialog />
           </ModalBoundary>
         ) : null}
+        {/* Own store, not activeModal: another modal must never evict a running move. */}
+        <WslMoveDialogHost />
         {/* Opened by toast, SSH host row and terminal pane. */}
         {activeModal === 'node-dist-mirror' ? (
           <ModalBoundary boundaryId="modal.node-dist-mirror" resetKey>
@@ -347,28 +351,32 @@ export function AppRootSurfaces(props: {
       >
         <CrashReportDialog />
       </RecoverableRenderErrorBoundary>
-      {onboardingGate.onboarding && onboardingGate.shouldRender ? (
-        <Suspense fallback={null}>
-          <RecoverableRenderErrorBoundary
-            boundaryId="modal.onboarding"
-            surface="modal"
-            title={translate('auto.App.f02d37278a', 'Onboarding hit an error.')}
-            description={translate(
-              'auto.App.221a95ba38',
-              'Retry onboarding or close it and continue in the app.'
-            )}
-          >
-            {languageReady ? (
-              <OnboardingFlow
-                onboarding={onboardingGate.onboarding}
-                onOnboardingChange={onboardingGate.setOnboarding}
-              />
-            ) : (
-              <OnboardingLanguageLoading />
-            )}
-          </RecoverableRenderErrorBoundary>
-        </Suspense>
-      ) : null}
+      {onboardingGate.onboarding && onboardingGate.shouldRender
+        ? createPortal(
+            <Suspense fallback={null}>
+              <RecoverableRenderErrorBoundary
+                boundaryId="modal.onboarding"
+                surface="modal"
+                className="fixed inset-0 z-40 bg-background"
+                title={translate('auto.App.f02d37278a', 'Onboarding hit an error.')}
+                description={translate(
+                  'auto.App.221a95ba38',
+                  'Retry onboarding or close it and continue in the app.'
+                )}
+              >
+                {languageReady ? (
+                  <OnboardingFlow
+                    onboarding={onboardingGate.onboarding}
+                    onOnboardingChange={onboardingGate.setOnboarding}
+                  />
+                ) : (
+                  <OnboardingLanguageLoading />
+                )}
+              </RecoverableRenderErrorBoundary>
+            </Suspense>,
+            document.body
+          )
+        : null}
       {shouldMountDictationController ? (
         <Suspense fallback={null}>
           <OverlayBoundary boundaryId="overlay.dictation" resetKey={activeView}>

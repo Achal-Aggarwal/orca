@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { StyleSheet, View, Text, Pressable } from 'react-native'
+import type { ParsedFileLinkLocation } from '../../../src/shared/file-link-location'
 import { terminalPaneKeyboardLayout } from './mobile-terminal-pane-layout'
 import { colors, spacing } from '../theme/mobile-theme'
 import type { TerminalFrame } from '../terminal/terminal-webview-messages'
@@ -38,7 +39,7 @@ type TerminalPaneViewProps = {
   onTerminalQueryReply: (handle: string, bytes: string) => void
   onTerminalInteraction: (handle: string) => void
   onTerminalTap: (handle: string) => void
-  onFileTap: (handle: string, pathText: string, line: number | null, column: number | null) => void
+  onFileTap: (handle: string, candidates: readonly ParsedFileLinkLocation[]) => void
   onOpenUrl: (handle: string, url: string) => void
   onTextScaleChange: (scale: number) => void
   onCellBoxChange: (handle: string) => void
@@ -75,6 +76,10 @@ export function TerminalPaneView({
   onTextScaleChange,
   onCellBoxChange
 }: TerminalPaneViewProps) {
+  const [visited, setVisited] = useState(visible)
+  if (visible && !visited) {
+    setVisited(true)
+  }
   const setRef = useCallback(
     (ref: TerminalWebViewHandle | null) => {
       onRef(handle, ref)
@@ -87,6 +92,10 @@ export function TerminalPaneView({
     splitIndex !== undefined && splitFrame && splitFrame.height > 0
       ? terminalPaneKeyboardLayout(splitFrame, splitDirection, splitIndex, keyboardInset)
       : null
+
+  if (!visible && !visited) {
+    return null
+  }
 
   return (
     <View
@@ -147,7 +156,7 @@ export function TerminalPaneView({
             onTerminalQueryReply={(bytes) => onTerminalQueryReply(handle, bytes)}
             onTerminalInteraction={() => onTerminalInteraction(handle)}
             onTerminalTap={() => onTerminalTap(handle)}
-            onFileTap={(pathText, line, column) => onFileTap(handle, pathText, line, column)}
+            onFileTap={(candidates) => onFileTap(handle, candidates)}
             onOpenUrl={(url) => onOpenUrl(handle, url)}
             onTextScaleChange={onTextScaleChange}
             onCellBoxChange={() => onCellBoxChange(handle)}

@@ -139,6 +139,7 @@ function Harness(props: {
     foldDivision: null,
     pageGeometry: { occlusions: [], sideRail: false },
     terminalKeyRail: [],
+    colorScheme: 'dark',
     pageRoutes: ['/h/[hostId]'],
     pageRouteGrants: [{ pathname: '/h/[hostId]', grants: ['navigate', 'storage'] }],
     routeGrants: [

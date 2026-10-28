@@ -2,6 +2,7 @@ import { ListChecks } from 'lucide-react-native'
 import { MobileAgentSessionHistoryIcon } from '../agent-history/MobileAgentSessionHistoryIcon'
 import { ActionSheetModal, type ActionSheetAction } from '../components/ActionSheetModal'
 import { colors } from '../theme/mobile-theme'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 
 type Props = {
   visible: boolean
@@ -22,6 +23,7 @@ export function MobileSessionHeaderMoreActionsSheet({
   onOpenChecks,
   onClose
 }: Props) {
+  useMobileColorScheme()
   return (
     <ActionSheetModal
       visible={visible}

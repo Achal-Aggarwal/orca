@@ -1,4 +1,5 @@
 import type {
+  BridgeColorScheme,
   BridgeGrants,
   BridgeHostMessage,
   BridgeInitHost,
@@ -19,6 +20,8 @@ export type BridgeShellSession = {
   pageRouteGrants: readonly { pathname: string; grants: readonly string[] }[] | null
   safeAreaInsets: BridgeSafeAreaInsets
   keyboardInset: number
+  // Older shells omit this and paint dark native chrome, so absent means dark.
+  colorScheme: BridgeColorScheme
   /** The fold splitting the page on a partially folded device; null when none does, which is
    *  every device that does not fold and every shell before the field. */
   pageGeometry: BridgePageGeometry
@@ -49,6 +52,7 @@ export function readShellSession(
     pageGeometry: message.pageGeometry ?? EMPTY_PAGE_GEOMETRY,
     foldDivision: message.foldDivision ?? null,
     terminalKeyRail: message.terminalKeyRail ?? [],
+    colorScheme: message.colorScheme ?? 'dark',
     host: message.host ?? null,
     storage: message.storage ?? {},
     storageOversize: message.storageOversize ?? [],
