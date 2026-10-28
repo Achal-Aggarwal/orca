@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, sep } from 'node:path'
 import { parseGitRevListAheadBehindCounts } from '../../shared/git-rev-list-output'
 import { buildHostedRemoteCommitUrl, buildHostedRemoteFileUrl } from './hosted-remote-url'
 import { getRemoteFileTarget } from './repo-remote-file-target'
@@ -185,7 +185,13 @@ export async function getRemoteFileUrl(
 ): Promise<string | null> {
   const target = await getRemoteFileTarget(repoPath, options)
   return target
-    ? buildHostedRemoteFileUrl(target.remoteUrl, relativePath, target.ref, line, endLine)
+    ? buildHostedRemoteFileUrl(
+        target.remoteUrl,
+        relativePath.split(sep).join('/'),
+        target.ref,
+        line,
+        endLine
+      )
     : null
 }
 

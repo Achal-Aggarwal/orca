@@ -92,11 +92,11 @@ function encodeRemotePath(path: string): string {
 }
 
 function encodeRelativePath(path: string): string {
-  return path.replaceAll('\\', '/').split('/').filter(Boolean).map(encodeURIComponent).join('/')
+  return path.split('/').filter(Boolean).map(encodeURIComponent).join('/')
 }
 
 function encodeBitbucketFileLineFragment(path: string, line: number, endLine?: number): string {
-  const fileName = path.replaceAll('\\', '/').split('/').findLast(Boolean)
+  const fileName = path.split('/').findLast(Boolean)
   const rangeSuffix = endLine === undefined ? '' : `:${endLine}`
   return fileName ? `#${encodeURIComponent(`${fileName}-${line}`)}${rangeSuffix}` : ''
 }
