@@ -6,6 +6,17 @@ import { getActiveWorktreeContext } from './helpers/markdown-editor-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import { parseIpynb } from '../../src/renderer/src/components/editor/ipynb-parse'
 
+async function savedCellSource(filePath: string): Promise<string | undefined> {
+  try {
+    return parseIpynb(await readFile(filePath, 'utf8')).cells[0]?.source
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return undefined
+    }
+    throw error
+  }
+}
+
 test('notebook menu paste batches publication and drains Save and tab teardown', async ({
   orcaPage,
   electronApp,
@@ -213,9 +224,7 @@ test('notebook menu paste batches publication and drains Save and tab teardown',
   }
   await beginHeldPaste()
   await orcaPage.keyboard.press(`${primary}+s`)
-  await expect
-    .poll(async () => parseIpynb(await readFile(filePath, 'utf8')).cells[0]?.source)
-    .toBe(partial)
+  await expect.poll(() => savedCellSource(filePath)).toBe(partial)
   expect(await probe.evaluate(({ stats }) => stats.events)).toBe(3)
   await orcaPage.screenshot({ path: testInfo.outputPath('notebook-mid-paste-saved.png') })
   await probe.evaluate(({ control }) => control.release())
@@ -228,9 +237,7 @@ test('notebook menu paste batches publication and drains Save and tab teardown',
     .poll(() => probe.evaluate(({ model }) => model.getValueLength()))
     .toBe(initial.length)
   await orcaPage.keyboard.press(`${primary}+s`)
-  await expect
-    .poll(async () => parseIpynb(await readFile(filePath, 'utf8')).cells[0]?.source)
-    .toBe(initial)
+  await expect.poll(() => savedCellSource(filePath)).toBe(initial)
 
   await beginHeldPaste()
   await orcaPage.locator('[data-tab-id]').filter({ hasText: otherRelativePath }).click()
@@ -240,9 +247,7 @@ test('notebook menu paste batches publication and drains Save and tab teardown',
   await orcaPage.locator('[data-tab-id]').filter({ hasText: relativePath }).click()
   await expect(orcaPage.locator('.ipynb-code-surface')).toHaveCount(1)
   await orcaPage.getByRole('button', { name: 'Save notebook', exact: true }).click()
-  await expect
-    .poll(async () => parseIpynb(await readFile(filePath, 'utf8')).cells[0]?.source)
-    .toBe(partial)
+  await expect.poll(() => savedCellSource(filePath)).toBe(partial)
   await orcaPage.screenshot({ path: testInfo.outputPath('notebook-paste-tab-return.png') })
   await writeFile(
     testInfo.outputPath(`${route}-counts.json`),
