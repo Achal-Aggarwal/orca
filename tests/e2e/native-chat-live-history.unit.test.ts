@@ -67,6 +67,8 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
   }
 
   beforeEach(() => {
+    // Without it React warns on every act() and may not flush updates inside it.
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     useAppStore.setState({ agentStatusByPaneKey: {} })
   })
 
@@ -76,6 +78,7 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
     }
     latest = null
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
     resetTransport()
   })
 
@@ -120,6 +123,28 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
       sessionId: SESSION,
       runtimeEnvironmentId: 'env-history'
     })
+    // A CI run hit the 30 s test timeout with no step named; each wait now names its own stall.
+    const delivered: string[] = []
+    const within = async <T>(step: string, promise: Promise<T>): Promise<T> => {
+      let settled = false
+      void promise.then(
+        () => (settled = true),
+        () => (settled = true)
+      )
+      await vi.waitFor(
+        () => {
+          if (!settled) {
+            const rows = latest ? ids().length : null
+            const limits = transport.readSession.mock.calls.map((call) => call[2])
+            throw new Error(
+              `Stalled at ${step}: ${JSON.stringify({ delivered, rows, readSessionLimits: limits })}`
+            )
+          }
+        },
+        { timeout: 8_000 }
+      )
+      return promise
+    }
     const initialSnapshotCommitted = Promise.withResolvers<void>()
     const appendCommitted = Promise.withResolvers<void>()
     const subscription = await subscribeNativeChatTranscript({
@@ -131,28 +156,34 @@ describe('useNativeChatLiveSession — file watcher pagination composition', () 
       debounceMs: 5,
       reconciliationIntervalMs: 20,
       onInitialSnapshot: (messages, hasMore) => {
+        delivered.push(`snapshot:${messages.length}`)
         void act(async () => {
           transport.emit({ type: 'snapshot', messages, hasMore })
         }).then(initialSnapshotCommitted.resolve, initialSnapshotCommitted.reject)
       },
       onAppend: (messages) => {
+        delivered.push(`append:${messages.length}`)
         void act(async () => {
           transport.emit({ type: 'appended', messages })
         }).then(appendCommitted.resolve, appendCommitted.reject)
       },
-      onReplace: (messages, hasMore) =>
-        act(() => transport.emit({ type: 'replacement', messages, hasMore }))
+      onReplace: (messages, hasMore) => {
+        delivered.push(`replace:${messages.length}`)
+        return act(() => transport.emit({ type: 'replacement', messages, hasMore }))
+      }
     })
     try {
-      await initialSnapshotCommitted.promise
+      await within('initial snapshot', initialSnapshotCommitted.promise)
       expect(ids()).toEqual(Array.from({ length: 300 }, (_, i) => String(i + 201).padStart(4, '0')))
       await act(async () => {
-        await expect(session().loadEarlier()).resolves.toBe('applied')
+        await expect(within('loadEarlier 300 to 500', session().loadEarlier())).resolves.toBe(
+          'applied'
+        )
       })
       expect(transport.readSession).toHaveBeenLastCalledWith(AGENT, SESSION, 500, undefined)
       expect(ids()).toEqual(Array.from({ length: 500 }, (_, i) => String(i + 1).padStart(4, '0')))
       await appendFile(filePath, line(501))
-      await appendCommitted.promise
+      await within('watcher append of line 501', appendCommitted.promise)
       expect(ids()).toEqual(Array.from({ length: 501 }, (_, i) => String(i + 1).padStart(4, '0')))
       expect(ids().at(-1)).toBe('0501')
       expect(transport.subscribe).toHaveBeenCalledOnce()
