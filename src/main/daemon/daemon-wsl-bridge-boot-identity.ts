@@ -22,16 +22,26 @@ function distroKey(distro: string): string {
 }
 
 export class WslBridgeBootIdentity {
-  // One read per distro while any of its panes lives; a reboot exits them all, which drops it.
+  // One read per distro boot, reused by later spawns; any bridge exit of the distro drops it.
   private readonly byDistro = new Map<string, Promise<string | null>>()
-  private readonly bySession = new Map<string, { distro: string; bootId: Promise<string | null> }>()
+  // A burst of exits (a terminate exits every pane) shares one read of the current id.
+  private readonly currentReads = new Map<string, Promise<string | null>>()
+  private readonly bySession = new Map<
+    string,
+    { distro: string; incarnationId: string | undefined; bootId: Promise<string | null> }
+  >()
 
   constructor(private readonly deps: WslBridgeBootIdentityDeps = PRODUCTION_DEPS) {}
 
-  noteSpawn(sessionId: string, distro: string): void {
+  /** A spawn or reattach of `sessionId`; a new incarnation takes the distro's current boot id. */
+  noteSpawn(sessionId: string, distro: string, incarnationId?: string): void {
     const key = distroKey(distro)
     const current = this.bySession.get(sessionId)
-    if (current?.distro === key) {
+    if (
+      current?.distro === key &&
+      incarnationId !== undefined &&
+      current.incarnationId === incarnationId
+    ) {
       return
     }
     let bootId = this.byDistro.get(key)
@@ -39,18 +49,24 @@ export class WslBridgeBootIdentity {
       bootId = this.read(distro)
       this.byDistro.set(key, bootId)
     }
-    this.bySession.set(sessionId, { distro: key, bootId })
+    this.bySession.set(sessionId, { distro: key, incarnationId, bootId })
+  }
+
+  /**
+   * Synchronous, as the exit arrives: it may be the first of a reboot's, so a spawn during its
+   * verdict must not inherit the old boot's id.
+   */
+  noteExit(distro: string): void {
+    this.byDistro.delete(distroKey(distro))
   }
 
   /** After a bridge exit the running list answered 'running': has the distro booted again since? */
   async rebootedSinceSpawn(sessionId: string, distro: string): Promise<boolean> {
-    // Any exit may be the first of a reboot's, so no later spawn reuses the old id.
-    this.byDistro.delete(distroKey(distro))
     const spawned = this.bySession.get(sessionId)
     if (!spawned) {
       return false
     }
-    const [before, now] = await Promise.all([spawned.bootId, this.read(distro)])
+    const [before, now] = await Promise.all([spawned.bootId, this.readCurrent(distro)])
     // An unreadable id on either side proves nothing: the exit stays an exit.
     return before !== null && now !== null && before !== now
   }
@@ -61,6 +77,16 @@ export class WslBridgeBootIdentity {
     if (spawned && ![...this.bySession.values()].some(({ distro }) => distro === spawned.distro)) {
       this.byDistro.delete(spawned.distro)
     }
+  }
+
+  private readCurrent(distro: string): Promise<string | null> {
+    const key = distroKey(distro)
+    let reading = this.currentReads.get(key)
+    if (!reading) {
+      reading = this.read(distro).finally(() => this.currentReads.delete(key))
+      this.currentReads.set(key, reading)
+    }
+    return reading
   }
 
   private async read(distro: string): Promise<string | null> {

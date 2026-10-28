@@ -110,7 +110,9 @@ describe('a WSL bridge pane exit', () => {
       await waitFor(() => exits.length > 0)
       expect(info).toHaveBeenLastCalledWith(
         expect.stringMatching(
-          new RegExp(`^\\[pty\\] WSL bridge exit: ${verdict} \\(distro Ubuntu, probe \\d+ms\\)$`)
+          new RegExp(
+            `^\\[pty\\] WSL bridge exit: ${verdict} \\(distro Ubuntu, code 1, probe \\d+ms\\)$`
+          )
         )
       )
     }
@@ -138,6 +140,32 @@ describe('a WSL bridge pane exit', () => {
     await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ id, code: -1, incarnationId: expect.any(String), hostLost: true }])
     expect(readBootId).toHaveBeenCalledTimes(2)
+  })
+
+  // #35050 review: a pane opened during another's exit verdict took the old boot's id.
+  it("lets a pane opened during another pane's exit verdict close on its own `exit`", async () => {
+    bootIds = ['boot-1', 'boot-2']
+    let answer: (read: WslRunningDistrosRead) => void = () => {}
+    running = () =>
+      new Promise((resolve) => {
+        answer = resolve
+      })
+    const exits = collectExits()
+    const first = await spawnBridgePane()
+    await waitFor(() => readBootId.mock.calls.length === 1)
+
+    subprocesses[0]!._simulateExit(1)
+    await waitFor(() => readRunning.mock.calls.length === 1)
+    const second = await spawnBridgePane()
+    answer({ status: 'confirmed', distros: ['Ubuntu'] })
+    await waitFor(() => exits.length === 1)
+    expect(exits[0]).toMatchObject({ id: first, code: -1, hostLost: true })
+
+    running = async () => ({ status: 'confirmed', distros: ['Ubuntu'] })
+    subprocesses[1]!._simulateExit(1)
+    await waitFor(() => exits.length === 2)
+    expect(exits[1]).toMatchObject({ id: second, code: 1 })
+    expect(exits[1]).not.toHaveProperty('hostLost')
   })
 
   it('stays a normal exit when the running list cannot answer', async () => {

@@ -49,13 +49,68 @@ describe('WslBridgeBootIdentity', () => {
   it('reads again for a spawn after an exit, or after its last pane went away', async () => {
     const { boot, readBootId } = identity({ ids: ['boot-1', 'boot-2', 'boot-3', 'boot-4'] })
     boot.noteSpawn('a', 'Ubuntu')
-    await boot.rebootedSinceSpawn('a', 'Ubuntu')
-    boot.forget('a')
     boot.noteSpawn('b', 'Ubuntu')
-    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledTimes(3))
-    boot.forget('b')
+    boot.noteExit('Ubuntu')
     boot.noteSpawn('c', 'Ubuntu')
-    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledTimes(2))
+    boot.forget('a')
+    boot.forget('b')
+    boot.forget('c')
+    boot.noteSpawn('d', 'Ubuntu')
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledTimes(3))
+  })
+
+  // Reviewers of #35050: a spawn during an earlier exit's verdict took the old boot's id.
+  it("gives a pane spawned during another's exit verdict the new boot, so its own exit is an exit", async () => {
+    const world = { boot: 'boot-1' }
+    const readBootId = vi.fn(async () => world.boot)
+    const boot = new WslBridgeBootIdentity({ isRunning: async () => true, readBootId })
+    boot.noteSpawn('a', 'Ubuntu', 'inc-a')
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledOnce())
+    // The distro is terminated and booted again; A's exit arrives, and C opens before A's verdict.
+    world.boot = 'boot-2'
+    boot.noteExit('Ubuntu')
+    boot.noteSpawn('c', 'Ubuntu', 'inc-c')
+    await expect(boot.rebootedSinceSpawn('a', 'Ubuntu')).resolves.toBe(true)
+    boot.forget('a')
+
+    boot.noteExit('Ubuntu')
+    await expect(boot.rebootedSinceSpawn('c', 'Ubuntu')).resolves.toBe(false)
+  })
+
+  it('gives a respawn of the same session into a rebooted distro the new boot id', async () => {
+    const world = { boot: 'boot-1' }
+    const readBootId = vi.fn(async () => world.boot)
+    const boot = new WslBridgeBootIdentity({ isRunning: async () => true, readBootId })
+    boot.noteSpawn('a', 'Ubuntu', 'inc-1')
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledOnce())
+    world.boot = 'boot-2'
+    boot.noteExit('Ubuntu')
+    boot.noteSpawn('a', 'Ubuntu', 'inc-2')
+
+    boot.noteExit('Ubuntu')
+    await expect(boot.rebootedSinceSpawn('a', 'Ubuntu')).resolves.toBe(false)
+  })
+
+  it('keeps the id across a reattach of the same incarnation', async () => {
+    const { boot, readBootId } = identity({ ids: ['boot-1', 'boot-2'] })
+    boot.noteSpawn('a', 'Ubuntu', 'inc-1')
+    boot.noteExit('Ubuntu')
+    boot.noteSpawn('a', 'Ubuntu', 'inc-1')
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledOnce())
+  })
+
+  it('shares one read of the current id across a burst of exits', async () => {
+    const { boot, readBootId } = identity({ ids: ['boot-1', 'boot-2'] })
+    for (const id of ['a', 'b', 'c']) {
+      boot.noteSpawn(id, 'Ubuntu')
+    }
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledOnce())
+    boot.noteExit('Ubuntu')
+    await expect(
+      Promise.all(['a', 'b', 'c'].map((id) => boot.rebootedSinceSpawn(id, 'Ubuntu')))
+    ).resolves.toEqual([true, true, true])
+    expect(readBootId).toHaveBeenCalledTimes(2)
   })
 
   it('treats a failing read as unreadable', async () => {

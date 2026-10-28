@@ -219,6 +219,9 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
           return
         }
         const wslDistro = this.wslDistrosBySessionId.get(event.sessionId)
+        if (wslDistro) {
+          this.wslBridgeBootIdentity.noteExit(wslDistro)
+        }
         if (wslDistro && isProvenProcessExit(event.payload.code)) {
           const exitAt = performance.now()
           void this.finishWslBridgeExit(event.sessionId, event.payload, wslDistro, exitAt)
@@ -247,8 +250,9 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
       this.wslBridgeBootIdentity.rebootedSinceSpawn(sessionId, wslDistro)
     )
     // Lost, or booted again since the spawn, keeps the tab; an unanswered check reads as an exit.
+    // The code lets a verify run show which codes a terminate yields (only 1 is on record).
     console.info(
-      `[pty] WSL bridge exit: ${verdict} (distro ${wslDistro}, probe ${Math.round(performance.now() - exitAt)}ms)`
+      `[pty] WSL bridge exit: ${verdict} (distro ${wslDistro}, code ${exit.code}, probe ${Math.round(performance.now() - exitAt)}ms)`
     )
     // A spawn that replaced this incarnation meanwhile owns the session now.
     const current = this.sessionIncarnations.get(sessionId)
