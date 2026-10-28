@@ -1,5 +1,6 @@
 // Snapshots serialize cells, not xterm’s pending parser bytes. Carry the incomplete escape after the screen so the next live chunk completes it instead of printing it (Bug E).
 
+import { ownRetainedString } from './own-retained-string'
 import { classifyTerminalEscapeIntroducer } from './terminal-escape-introducer'
 
 // Mirror xterm’s VT500 states; C0 controls except ESC/CAN/SUB execute without aborting the sequence.
@@ -239,5 +240,5 @@ export function advancePartialEscapeTail(pendingTail: string, chunk: string): st
     return ''
   }
   const tail = extractPartialEscapeTail(pendingTail + chunk)
-  return tail.length > MAX_PARTIAL_ESCAPE_TAIL_LENGTH ? '' : tail
+  return tail.length > MAX_PARTIAL_ESCAPE_TAIL_LENGTH ? '' : ownRetainedString(tail)
 }
