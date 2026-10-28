@@ -58,6 +58,7 @@ export function useWorktreeCardActivationActions({
     worktreeRef.current = worktree
   }, [worktree])
   const pressActivatedRef = useRef(false)
+  const focusBeforePressRef = useRef<Element | null>(null)
   const activate = useCallback(() => {
     onWorktreeCardClick?.()
     // Use shared activation so sidebar navigation participates in back/forward history.
@@ -152,6 +153,7 @@ export function useWorktreeCardActivationActions({
         return
       }
       pressActivatedRef.current = true
+      focusBeforePressRef.current = document.activeElement
       // Drag suppression can swallow this gesture's click; the flag must not outlive it and skip a later click.
       afterPointerGestureEnds(() => {
         pressActivatedRef.current = false
@@ -162,8 +164,8 @@ export function useWorktreeCardActivationActions({
   )
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    // The press already focused the new terminal; the native default would move focus to the list.
-    if (pressActivatedRef.current) {
+    // When the press already focused the new workspace, the native default would move focus to the list.
+    if (pressActivatedRef.current && document.activeElement !== focusBeforePressRef.current) {
       event.preventDefault()
     }
   }, [])

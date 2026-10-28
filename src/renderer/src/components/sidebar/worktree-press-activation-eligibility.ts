@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store'
+import type { AppState } from '@/store/types'
 import { workspaceHasSleepingAgentSessions } from '@/lib/worktree-agent-activation-gate'
 import { hasWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
 import { workspaceOwnerHostId } from '@/lib/workspace-row-owner-host'
@@ -24,9 +25,15 @@ export function canActivateWorktreeOnPress(args: {
     !hasWorktreeSleepIntent(args.worktreeId) &&
     !workspaceHasSleepingAgentSessions(state, args.worktreeId) &&
     !selectIsSleepingWorktree(state, args.worktreeId) &&
-    // A dead terminal respawns on activation, which can boot a WSL distro on a Windows local project.
-    (state.tabsByWorktree[args.worktreeId] ?? []).every((tab) =>
-      tabHasLivePty(state.ptyIdsByTabId, tab.id)
-    )
+    hasOnlyLiveTerminals(state, args.worktreeId)
   )
+}
+
+// Activation spawns a terminal for a dead or missing tab, which can boot a WSL distro on a Windows local project.
+function hasOnlyLiveTerminals(
+  state: Pick<AppState, 'tabsByWorktree' | 'ptyIdsByTabId'>,
+  worktreeId: string
+): boolean {
+  const tabs = state.tabsByWorktree[worktreeId] ?? []
+  return tabs.length > 0 && tabs.every((tab) => tabHasLivePty(state.ptyIdsByTabId, tab.id))
 }

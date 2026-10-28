@@ -40,8 +40,12 @@ describe('press activation hosts', () => {
     expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(false)
   })
 
-  it('keeps click activation when a terminal would respawn', () => {
-    state = { ...state, ptyIdsByTabId: { 'tab-1': [] } }
-    expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(false)
+  it('keeps click activation when a terminal would spawn', () => {
+    for (const terminals of [{ ptyIdsByTabId: { 'tab-1': [] } }, { tabsByWorktree: {} }]) {
+      state = { ...state, ...terminals }
+      expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(
+        false
+      )
+    }
   })
 })

@@ -36,8 +36,8 @@ vi.mock('@/store', () => {
     settings: { experimentalNewWorktreeCardStyle: true },
     sshConnectionStates: new Map(),
     sleepingAgentSessionsByPaneKey: {},
-    tabsByWorktree: {},
-    ptyIdsByTabId: {},
+    tabsByWorktree: { 'repo-1::/repo/worktrees/branch': [{ id: 'tab-1' }] },
+    ptyIdsByTabId: { 'tab-1': ['pty-1'] },
     sshTargetLabels: new Map(),
     updateWorktreeMeta,
     workspacePortScan: null,
@@ -173,6 +173,9 @@ describe('WorktreeCard press activation', () => {
 
   it('activates on a plain mouse press and skips the click that ends it', async () => {
     const surface = await renderCard({ activateOnPress: true })
+    const terminal = document.body.appendChild(document.createElement('textarea'))
+    terminal.className = 'xterm-helper-textarea'
+    activateWorktreeFromSidebar.mockImplementationOnce(() => terminal.focus())
     press(surface)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(1)
     // The press's native mousedown must not pull focus from the new terminal to the list.
@@ -183,6 +186,7 @@ describe('WorktreeCard press activation', () => {
     expect(mousedown.defaultPrevented).toBe(true)
     click(surface, 1)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(1)
+    terminal.remove()
   })
 
   it('keeps click activation for modified, touch, and keyboard-forwarded presses', async () => {
