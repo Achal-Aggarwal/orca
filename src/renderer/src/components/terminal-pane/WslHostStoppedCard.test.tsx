@@ -70,6 +70,15 @@ describe('a terminal on a stopped WSL distro', () => {
     expect(onStarted).not.toHaveBeenCalled()
   })
 
+  it('toasts and resolves false when reconnecting after the boot fails', async () => {
+    reloadProjects.mockRejectedValueOnce(new Error('Reload failed.'))
+    const onStarted = renderStoppedPane()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Start' }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Reload failed.'))
+    expect(onStarted).not.toHaveBeenCalled()
+  })
+
   it('starts the distro once for repeated clicks while it boots', async () => {
     let finish!: () => void
     connectWslHost.mockReturnValueOnce(

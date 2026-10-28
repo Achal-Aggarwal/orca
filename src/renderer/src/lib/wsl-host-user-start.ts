@@ -28,14 +28,14 @@ export function startWslHostAndReloadProjects(environmentId: string): Promise<bo
         environmentId,
         withdrawPendingRemoval: false
       })
+      // Why lazy: terminal creation imports this module, and most never start a host.
+      const { connectRuntimeHostAndReloadProjects } =
+        await import('@/components/status-bar/runtime-environment-explicit-connect')
+      return await connectRuntimeHostAndReloadProjects(environmentId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error))
       return false
     }
-    // Why lazy: terminal creation imports this module, and most never start a host.
-    const { connectRuntimeHostAndReloadProjects } =
-      await import('@/components/status-bar/runtime-environment-explicit-connect')
-    return connectRuntimeHostAndReloadProjects(environmentId)
   })().finally(() => starting.delete(environmentId))
   starting.set(environmentId, start)
   return start
