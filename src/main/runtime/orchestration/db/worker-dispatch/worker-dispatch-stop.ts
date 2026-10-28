@@ -32,6 +32,14 @@ export function isDispatchProcessCurrent(
   )
 }
 
+/** A `stopping` row whose stop belongs to a runtime that can no longer report its outcome. */
+export function isStopStrandedByAnotherRuntime(
+  worker: WorkerDispatchRow,
+  runtimeEpoch: string
+): boolean {
+  return worker.state === 'stopping' && worker.runtime_epoch !== runtimeEpoch
+}
+
 export function beginWorkerStop(
   this: OrchestrationDb,
   dispatchId: string,
@@ -59,7 +67,11 @@ export function beginWorkerStop(
       this.db.exec('COMMIT')
       return { disposition: 'already_settled', worker, dispatch }
     }
-    if (!['ready', 'start_unknown'].includes(worker.state)) {
+    // A different runtime epoch may retry a stranded stop; this epoch must preserve its in-flight stopping verdict for the exit event.
+    if (
+      !['ready', 'start_unknown'].includes(worker.state) &&
+      !isStopStrandedByAnotherRuntime(worker, runtimeEpoch)
+    ) {
       throw new OrchestrationError(
         'dispatch_inactive',
         `Dispatch ${dispatchId} cannot stop from ${worker.state}.`
@@ -124,6 +136,8 @@ export function settleWorkerStop(this: OrchestrationDb, dispatchId: string): Wor
       })
     }
     reconcileTaskAfterDispatchInterruption(this, dispatch.task_id, dispatchId)
+    // Move helper mail received while the creator was stopping.
+    this.closeQuestionsForDispatch(dispatchId)
     this.db.exec('COMMIT')
     return this.getWorkerDispatch(dispatchId) as WorkerDispatchRow
   } catch (error) {
@@ -180,6 +194,7 @@ export function reconcileFederatedWorkerStop(
       })
     }
     reconcileTaskAfterDispatchInterruption(this, dispatch.task_id, dispatchId)
+    this.closeQuestionsForDispatch(dispatchId)
     commitLifecycleWriteTransaction(this.db, transaction)
     return this.getWorkerDispatch(dispatchId) as WorkerDispatchRow
   } catch (error) {

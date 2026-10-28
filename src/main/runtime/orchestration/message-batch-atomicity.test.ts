@@ -68,7 +68,11 @@ describe('message batch atomicity', () => {
     }
     rejectLastMessageUpdate(sqlite)
 
-    expect(() => db?.[method](messageIds)).toThrow('blocked')
+    expect(() =>
+      method === 'markAsDelivered'
+        ? db?.markAsDelivered(messageIds, 'recipient')
+        : db?.[method](messageIds)
+    ).toThrow('blocked')
 
     const changed = sqlite.prepare(changedCountSql).get() as { count: number }
     expect(changed.count).toBe(0)
@@ -108,8 +112,20 @@ describe('message batch atomicity', () => {
 
     expect(() =>
       db?.insertMessages([
-        { id: 'inner_first', from: 'sender', to: 'recipient', subject: 'first' },
-        { id: 'inner_second', from: 'sender', to: 'recipient', subject: 'second' }
+        {
+          runId: 'run_legacy_local',
+          id: 'inner_first',
+          from: 'sender',
+          to: 'recipient',
+          subject: 'first'
+        },
+        {
+          runId: 'run_legacy_local',
+          id: 'inner_second',
+          from: 'sender',
+          to: 'recipient',
+          subject: 'second'
+        }
       ])
     ).toThrow('blocked')
     sqlite.exec('COMMIT')
@@ -133,6 +149,7 @@ describe('message batch atomicity', () => {
     expect(() =>
       db?.commitWorkerDoneMessageMutation(() => {
         db?.insertMessage({
+          runId: 'run_legacy_local',
           id: 'inner',
           from: 'worker',
           to: 'coordinator',

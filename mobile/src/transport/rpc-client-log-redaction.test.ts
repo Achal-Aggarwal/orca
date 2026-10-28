@@ -43,6 +43,7 @@ afterEach(() => {
 
 describe('mobile rpc-client connection logs', () => {
   it('never exposes endpoint query credentials', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This socket fixture supplies the constructor, states, handlers, send and close consumed by the real client.
     globalThis.WebSocket = NeverOpeningWebSocket as unknown as typeof WebSocket
     const logs: ConnectionLogEntry[] = []
     const endpoint = 'wss://desktop.example:7443/runtime?token=super-secret&route=private'
@@ -60,6 +61,7 @@ describe('mobile rpc-client connection logs', () => {
   })
 
   it('does not expose URL credentials in malformed legacy endpoints', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This socket fixture supplies the constructor, states, handlers, send and close consumed by the real client.
     globalThis.WebSocket = NeverOpeningWebSocket as unknown as typeof WebSocket
     const logs: ConnectionLogEntry[] = []
 
@@ -67,9 +69,7 @@ describe('mobile rpc-client connection logs', () => {
       onLog: (entry) => logs.push(entry)
     })
 
-    expect(logs).toContainEqual(
-      expect.objectContaining({ message: 'Opening WebSocket', detail: 'desktop.example:7443' })
-    )
+    expect(logs[0]?.detail).toBe('desktop.example:7443')
     expect(JSON.stringify(logs)).not.toContain('password')
     client.close()
   })

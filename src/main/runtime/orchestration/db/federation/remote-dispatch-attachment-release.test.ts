@@ -5,7 +5,6 @@ import type { WorkerTerminalOwnershipState } from '../../worker-terminal-ownersh
 
 const PANE_KEY = 'tab_remote:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
-// The federated guard used to be a hand-copied ladder; both entry points now read the one table.
 describe('the remote attachment release guard', () => {
   let db: OrchestrationDb
 
@@ -16,6 +15,7 @@ describe('the remote attachment release guard', () => {
 
   function settledAttachment(dispatchId: string): void {
     db.createRemoteDispatchAttachment({
+      runId: 'run-home',
       dispatchId,
       taskId: `task_${dispatchId}`,
       homePeerFingerprint: 'home-peer',

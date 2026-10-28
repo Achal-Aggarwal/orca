@@ -1,22 +1,9 @@
 import { StyleSheet } from 'react-native'
 
 import { colors, spacing, radii, typography } from '../theme/mobile-theme'
+import { themedStyleSheet } from '../theme/themed-styles'
 
-// Why one constant for the whole strip: the terminal frame is whatever the tab bar leaves behind,
-// and the engine pre-warm has to reserve exactly that much before the bar exists. Every row child
-// is pinned to this height so nothing can grow the bar without moving the reservation with it.
-//
-// The row deliberately has NO explicit height. React Native lays out border-box, so `height: 36`
-// with a 1 px top border would render a 36 px row over a 35 px content area and squeeze children
-// that are themselves 36 -- and it would leave this constant one pixel long, which is a whole row
-// of drift once a frame sits near a row boundary. Left to size itself the row takes its tallest
-// child and adds the border outside it, which is exactly the sum below.
-export const MOBILE_SESSION_TAB_BAR_CONTENT_HEIGHT = 36
-export const MOBILE_SESSION_TAB_BAR_BORDER_WIDTH = 1
-export const MOBILE_SESSION_TAB_BAR_HEIGHT =
-  MOBILE_SESSION_TAB_BAR_CONTENT_HEIGHT + MOBILE_SESSION_TAB_BAR_BORDER_WIDTH
-
-export const mobileSessionFrameStyles = StyleSheet.create({
+export const mobileSessionFrameStyles = themedStyleSheet(() => ({
   container: {
     flex: 1,
     backgroundColor: colors.bgBase
@@ -24,8 +11,6 @@ export const mobileSessionFrameStyles = StyleSheet.create({
   kavInner: {
     flex: 1
   },
-  // Master-detail content row below the header chrome (KTD2): the existing content is
-  // the flex-1 left child; the dock column (when present on wide) is the right child.
   sessionContentRow: {
     flex: 1,
     flexDirection: 'row'
@@ -46,35 +31,33 @@ export const mobileSessionFrameStyles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.xs
-  },
-  backButtonPressed: {
-    backgroundColor: colors.bgRaised
-  },
-  filesButton: {
+  // Each 36pt visual reserves 4pt per side for its 44pt touch area.
+  headerButton: {
     width: 36,
     height: 36,
     borderRadius: radii.button,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.xs
+    marginHorizontal: spacing.xs
   },
-  filesButtonPressed: {
+  headerButtonPressed: {
     backgroundColor: colors.bgRaised
   },
-  // Selected state for the active docked-panel icon on wide layouts (R2).
-  filesButtonActive: {
+  headerButtonActive: {
     backgroundColor: colors.bgRaised
+  },
+  headerButtonDisabled: {
+    opacity: 0.45
   },
   sessionTitleBlock: {
     flex: 1,
     minWidth: 0
+  },
+  // Landscape phone: the tab strip takes the row's spare width instead of the title.
+  sessionTitleBlockBesideTabs: {
+    // Use natural-width flex -1: web’s zero basis for flex 0 collapses the title.
+    flex: -1,
+    maxWidth: 160
   },
   sessionTitle: {
     color: colors.textPrimary,
@@ -84,6 +67,7 @@ export const mobileSessionFrameStyles = StyleSheet.create({
   sessionMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
     marginTop: 2
   },
   sessionMetaText: {
@@ -94,43 +78,91 @@ export const mobileSessionFrameStyles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: MOBILE_SESSION_TAB_BAR_BORDER_WIDTH,
+    borderTopWidth: 1,
     borderTopColor: colors.borderSubtle
+  },
+  // Cancels the top bar's vertical padding so tab borders run the bar's full height.
+  tabBarInTopBar: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginVertical: -spacing.xs,
+    marginLeft: spacing.md,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.borderSubtle
+  },
+  tabScrollFrame: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch'
+  },
+  tabEdgeHint: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    backgroundColor: colors.bgPanel
+  },
+  tabEdgeHintLeft: {
+    left: 0,
+    borderRightWidth: 1,
+    borderRightColor: colors.borderSubtle
+  },
+  tabEdgeHintRight: {
+    right: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.borderSubtle
   },
   tabScroll: {
     flex: 1,
-    maxHeight: MOBILE_SESSION_TAB_BAR_CONTENT_HEIGHT
+    maxHeight: 44
+  },
+  tabScrollInTopBar: {
+    alignSelf: 'stretch',
+    maxHeight: 44
   },
   tabContent: {
     paddingLeft: spacing.sm,
     paddingRight: spacing.sm
   },
+  tabContentInTopBar: {
+    paddingLeft: 0
+  },
   tab: {
-    width: 128,
+    minWidth: 44,
     maxWidth: 128,
-    minHeight: MOBILE_SESSION_TAB_BAR_CONTENT_HEIGHT,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderBottomWidth: 2,
-    borderBottomColor: 'transparent'
+    borderBottomColor: 'transparent',
+    borderRightWidth: 1,
+    borderRightColor: colors.borderSubtle
   },
-  // Why: a cached row is inert until the reconnect lands, so it carries the same de-emphasis as
-  // the disabled tab-bar buttons beside it rather than passing for a live tab.
-  tabPreview: {
-    opacity: 0.45
+  tabFirst: {
+    borderLeftWidth: 1,
+    borderLeftColor: colors.borderSubtle
   },
   tabActive: {
-    // Neutral grey underline, matching the desktop terminal tab's active
-    // indicator (a muted foreground/card mix), not a blue accent.
-    borderBottomColor: colors.textSecondary
+    borderBottomColor: colors.textSecondary,
+    backgroundColor: colors.bgRaised
   },
   tabLabelRow: {
     maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs
+  },
+  // Prevent web SVG shrink before the title ellipsizes.
+  tabIcon: {
+    flexShrink: 0
   },
   tabText: {
     flexShrink: 1,
@@ -140,26 +172,17 @@ export const mobileSessionFrameStyles = StyleSheet.create({
   tabTextActive: {
     color: colors.textPrimary
   },
-  newTerminalButton: {
-    width: 40,
-    height: MOBILE_SESSION_TAB_BAR_CONTENT_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent'
-  },
   newTerminalButtonPressed: {
     backgroundColor: colors.bgRaised
   },
-  newTerminalButtonDisabled: {
-    opacity: 0.45
-  },
-  // Divider between the + new-terminal button and the Quick Commands launcher,
-  // matching the tab strip's borderSubtle separators.
   tabActionDivider: {
     width: StyleSheet.hairlineWidth,
     height: 18,
     backgroundColor: colors.borderSubtle
+  },
+  contentFrame: {
+    flex: 1,
+    minHeight: 0
   },
   terminalFrame: {
     flex: 1,
@@ -201,4 +224,4 @@ export const mobileSessionFrameStyles = StyleSheet.create({
     color: colors.statusRed,
     fontSize: typography.bodySize
   }
-})
+}))

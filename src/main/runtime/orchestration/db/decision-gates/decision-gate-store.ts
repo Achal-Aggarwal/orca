@@ -1,11 +1,9 @@
 import type { DecisionGateRow, DispatchContextRow, GateStatus } from '../../types'
 import { OrchestrationError } from '../../orchestration-error'
-import { LEGACY_RUN_ID } from '../contract-constants'
 import { generateId } from '../generated-id'
 import type { OrchestrationDb } from '../orchestration-db'
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
-
-// ── Decision Gates ──
+import { DISPATCH_CONTEXT_COLUMN_LIST } from '../row-column-lists'
 
 export function createGate(
   this: OrchestrationDb,
@@ -18,13 +16,25 @@ export function createGate(
 ): DecisionGateRow {
   this.db.exec('SAVEPOINT create_gate')
   try {
-    const active = this.db
+    const task = this.getTask(gate.taskId)
+    if (!task) {
+      throw new OrchestrationError(
+        'lifecycle_not_found',
+        `Task ${gate.taskId} was not found while creating a decision gate.`,
+        { taskId: gate.taskId }
+      )
+    }
+    const runId = task.run_id
+    this.requireRun(runId)
+    const rawActive = this.db
       .prepare(
-        `SELECT * FROM dispatch_contexts
+        `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts
          WHERE task_id = ? AND status IN ('pending', 'dispatched')
          ORDER BY rowid DESC LIMIT 1`
       )
-      .get(gate.taskId) as DispatchContextRow | undefined
+      .get(gate.taskId)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The schema-pinned complete Dispatch projection returns one Dispatch row or undefined; the adapter exposes unknown.
+    const active = rawActive as DispatchContextRow | undefined
     if (
       gate.requester &&
       (!active ||
@@ -65,22 +75,8 @@ export function createGate(
       .prepare(
         'INSERT INTO decision_gates (id, run_id, task_id, question, options) VALUES (?, ?, ?, ?, ?)'
       )
-      .run(
-        id,
-        this.getTask(gate.taskId)?.run_id ?? LEGACY_RUN_ID,
-        gate.taskId,
-        gate.question,
-        optionsJson
-      )
+      .run(id, runId, gate.taskId, gate.question, optionsJson)
     this.completeActiveDispatchesForTask(gate.taskId)
-    const task = this.getTask(gate.taskId)
-    if (!task) {
-      throw new OrchestrationError(
-        'lifecycle_not_found',
-        `Task ${gate.taskId} was not found while creating a decision gate.`,
-        { taskId: gate.taskId }
-      )
-    }
     transitionLifecycleWithDb(this.db, {
       entity: 'task',
       id: gate.taskId,
@@ -134,7 +130,7 @@ export function resolveGate(
 export function timeoutGate(this: OrchestrationDb, gateId: string): DecisionGateRow | undefined {
   this.db
     .prepare(
-      // Why: without the status guard a late timeout overwrites a gate the user already resolved.
+      // A late timeout must not overwrite an already resolved gate.
       "UPDATE decision_gates SET status = 'timeout', resolved_at = datetime('now') WHERE id = ? AND status = 'pending'"
     )
     .run(gateId)

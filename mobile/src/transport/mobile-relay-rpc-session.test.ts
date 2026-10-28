@@ -3,7 +3,11 @@ import {
   BrowserScreencastOpcode,
   encodeBrowserScreencastFrame
 } from '../../../src/shared/browser-screencast-protocol'
-import { encodeTerminalStreamFrame, TerminalStreamOpcode } from './terminal-stream-protocol'
+import {
+  encodeTerminalStreamFrame,
+  TerminalStreamOpcode
+} from '../../../src/shared/terminal-stream-protocol'
+import { scopeRpcClientToExecutionHost } from './execution-host-scoped-rpc-client'
 import { isRpcDeliveryUnknown } from './rpc-delivery-ambiguity'
 
 const fakes = vi.hoisted(() => ({
@@ -18,13 +22,9 @@ const fakes = vi.hoisted(() => ({
     onBinary(value: Uint8Array): void
     onError(error: Error): void
   },
-  sendText: vi.fn(() => true),
+  sendText: vi.fn((_frame: string) => true),
   close: vi.fn()
 }))
-
-vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }))
-vi.mock('expo-secure-store', () => ({ WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'when-unlocked' }))
-vi.mock('expo-crypto', () => ({ getRandomBytes: (length: number) => new Uint8Array(length) }))
 
 vi.mock('./mobile-relay-e2ee-link', () => ({
   MobileRelayE2eeLink: class {
@@ -37,8 +37,6 @@ vi.mock('./mobile-relay-e2ee-link', () => ({
 }))
 
 import { connectMobileRelayRpcSession } from './mobile-relay-rpc-session'
-import { persistResumeConfirmation } from './mobile-relay-credential-rotation'
-import type { MobileRelayCredentialBundle } from './mobile-relay-credential-bundle'
 
 const relay = {
   v: 1 as const,
@@ -47,13 +45,6 @@ const relay = {
   assignmentEpoch: 7,
   relayHostId: 'AbCdEf0123_-xyZ9',
   e2eeFraming: 2 as const
-}
-
-type SentRequest = {
-  id: string
-  method: string
-  deviceToken: string
-  params: Record<string, unknown> | undefined
 }
 
 function openSession() {
@@ -68,11 +59,8 @@ function openSession() {
   })
 }
 
-function sentRequests(): SentRequest[] {
-  return fakes.sendText.mock.calls.map(([value]) => JSON.parse(value as string) as SentRequest)
-}
-
-function receiveHello(): void {
+async function confirmResume() {
+  const session = openSession()
   fakes.linkOptions!.onHello({
     type: 'relay-hello',
     ok: true,
@@ -82,31 +70,21 @@ function receiveHello(): void {
     acceptedAs: 'current',
     resumeExpiresAt: Date.now() + 300_000
   })
-}
-
-// E2EE authentication alone publishes 'connected'; the confirm and the capability
-// advisory are already on the wire by the time it returns.
-function authenticateSession() {
-  const session = openSession()
-  receiveHello()
   expect(session.getState()).toBe('handshaking')
   fakes.linkOptions!.onAuthenticated()
-  const [confirmationRequest, capabilityRequest] = sentRequests()
-  return {
-    session,
-    confirmationRequest: confirmationRequest!,
-    capabilityRequest: capabilityRequest!
-  }
-}
-
-function answerConfirm(request: SentRequest, relayHostId = relay.relayHostId): void {
+  await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
+  const request: {
+    id: string
+    method: string
+    params: unknown
+  } = JSON.parse(fakes.sendText.mock.calls[0]![0])
   fakes.linkOptions!.onText(
     JSON.stringify({
       id: request.id,
       ok: true,
       result: {
         v: 1,
-        relay: { ...relay, relayHostId },
+        relay,
         resumeConfirmation: {
           v: 1,
           reqId: 'confirm-1',
@@ -119,32 +97,39 @@ function answerConfirm(request: SentRequest, relayHostId = relay.relayHostId): v
       _meta: { runtimeId: 'runtime-1' }
     })
   )
+  await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledTimes(2))
+  const capabilityRequest: {
+    id: string
+    method: string
+    deviceToken: string
+    params: { clientCapabilities?: string[] }
+  } = JSON.parse(fakes.sendText.mock.calls[1]![0])
+  return { session, confirmationRequest: request, capabilityRequest }
 }
 
-function answerCapability(request: SentRequest, supported = true): void {
+async function authenticateSession(capabilitySupported = true) {
+  const { session, confirmationRequest, capabilityRequest } = await confirmResume()
+  expect(session.getState()).toBe('handshaking')
   fakes.linkOptions!.onText(
     JSON.stringify(
-      supported
-        ? { id: request.id, ok: true, result: request.params, _meta: { runtimeId: 'runtime-1' } }
+      capabilitySupported
+        ? {
+            id: capabilityRequest.id,
+            ok: true,
+            result: capabilityRequest.params,
+            _meta: { runtimeId: 'runtime-1' }
+          }
         : {
-            id: request.id,
+            id: capabilityRequest.id,
             ok: false,
             error: { code: 'method_not_found', message: 'Unknown method' },
             _meta: { runtimeId: 'runtime-1' }
           }
     )
   )
-}
-
-// Both advisories answered and the send log cleared, so a test can read its own frames.
-async function settledSession(capabilitySupported = true) {
-  const authenticated = authenticateSession()
-  answerConfirm(authenticated.confirmationRequest)
-  answerCapability(authenticated.capabilityRequest, capabilitySupported)
-  await authenticated.session.whenResumeConfirmed()
-  expect(authenticated.session.getState()).toBe('connected')
+  await vi.waitFor(() => expect(session.getState()).toBe('connected'))
   fakes.sendText.mockClear()
-  return authenticated
+  return { session, confirmationRequest, capabilityRequest }
 }
 
 describe('mobile relay RPC session', () => {
@@ -156,11 +141,11 @@ describe('mobile relay RPC session', () => {
   afterEach(() => vi.useRealTimers())
 
   it('releases stream listeners on failure even when close follows it', async () => {
-    const { session } = await settledSession()
+    const { session } = await authenticateSession()
     const listener = vi.fn()
     session.subscribe('runtime.clientEvents.subscribe', {}, listener)
     await Promise.resolve()
-    const request = JSON.parse(fakes.sendText.mock.calls[0]![0] as string) as { id: string }
+    const request: { id: string } = JSON.parse(fakes.sendText.mock.calls[0]![0])
     fakes.linkOptions!.onText(
       JSON.stringify({
         id: request.id,
@@ -185,8 +170,8 @@ describe('mobile relay RPC session', () => {
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
-  it('sends the resume confirm by request ID and the capability advisory concurrently', async () => {
-    const { session, confirmationRequest, capabilityRequest } = await settledSession()
+  it('requires exact resume observations and confirms by request ID before becoming connected', async () => {
+    const { session, confirmationRequest, capabilityRequest } = await authenticateSession()
 
     expect(fakes.linkOptions).toMatchObject({
       endpoint: relay,
@@ -211,106 +196,25 @@ describe('mobile relay RPC session', () => {
   })
 
   it('connects when an older runtime rejects capability negotiation', async () => {
-    const { session } = await settledSession(false)
+    const { session } = await authenticateSession(false)
 
     expect(session.getState()).toBe('connected')
     expect(session.getFailure()).toBeNull()
   })
 
   it('connects when the relay never answers capability negotiation', async () => {
-    const { session, confirmationRequest } = authenticateSession()
-    answerConfirm(confirmationRequest)
+    vi.useFakeTimers()
+    const { session } = await confirmResume()
+    expect(session.getState()).toBe('handshaking')
 
-    // Why: the advisory's own deadline used to fail the confirm, so a link too slow to
-    // answer within the request timeout never published 'connected' — it just redialled.
-    await session.whenResumeConfirmed()
+    await vi.advanceTimersByTimeAsync(1_000)
+
     expect(session.getState()).toBe('connected')
     expect(session.getFailure()).toBeNull()
-  })
-
-  it('publishes connected at authentication, ahead of the confirm answer', async () => {
-    const states: string[] = []
-    const session = openSession()
-    session.onStateChange((state) => states.push(state))
-    receiveHello()
-    fakes.linkOptions!.onAuthenticated()
-
-    // Why: the transport carries traffic from here; two serialized advisory round
-    // trips used to add ~200ms to every phone reconnect before anything rendered.
-    expect(session.getState()).toBe('connected')
-    expect(states).toEqual(['handshaking', 'connected'])
-    expect(session.getResumeConfirmation()).toBeNull()
-    expect(sentRequests().map(({ method }) => method)).toEqual([
-      'pairing.getEndpoints',
-      'runtime.clientCapabilities.update'
-    ])
-
-    const [confirmationRequest] = sentRequests()
-    answerConfirm(confirmationRequest!)
-    await session.whenResumeConfirmed()
-    expect(session.getResumeConfirmation()).toMatchObject({ reqId: 'confirm-1' })
     session.close()
   })
 
-  it('fails a session whose confirm answers for another relay host after connected', async () => {
-    const { session, confirmationRequest } = authenticateSession()
-    expect(session.getState()).toBe('connected')
-
-    answerConfirm(confirmationRequest, 'ZZZZZZZZZZZZZZZZ')
-    await session.whenResumeConfirmed()
-
-    // A late failure is fine; a lost one is not.
-    expect(session.getState()).toBe('disconnected')
-    expect(session.getFailure()?.message).toBe('relay resume confirmation missing')
-    expect(fakes.close).toHaveBeenCalledOnce()
-  })
-
-  it('fails a session whose confirm never answers', async () => {
-    vi.useFakeTimers()
-    try {
-      const { session } = authenticateSession()
-      expect(session.getState()).toBe('connected')
-
-      await vi.advanceTimersByTimeAsync(1_000)
-
-      expect(session.getState()).toBe('disconnected')
-      expect(session.getFailure()?.message).toBe('relay RPC timed out: pairing.getEndpoints')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('hands the landed confirmation to resume persistence', async () => {
-    const { session, confirmationRequest } = authenticateSession()
-    const bundle: MobileRelayCredentialBundle = {
-      v: 1,
-      hostId: 'host-1',
-      deviceToken: 'device-token',
-      current: { token: 'A'.repeat(43), hash: 'B'.repeat(43), version: 3, expiresAt: 1 }
-    }
-    const writeBundle = vi.fn(async () => {})
-    // Why: persistence runs right after the migration, while the confirm is still
-    // in flight — it must wait for the answer instead of reading a null.
-    const persisting = persistResumeConfirmation({
-      session,
-      bundle,
-      usedCredentialVersion: 3,
-      writeBundle
-    })
-    expect(writeBundle).not.toHaveBeenCalled()
-
-    answerConfirm(confirmationRequest)
-    const applied = await persisting
-
-    expect(writeBundle).toHaveBeenCalledOnce()
-    expect(applied.bundle.current.expiresAt).toBe(session.getResumeExpiresAt())
-    expect(applied.leaseExpiry).toBe(session.getResumeExpiresAt())
-    session.close()
-  })
-
-  // Why: ConnectionState stays 'connecting' until relay-hello, so the migration bound
-  // needs a separate signal to tell "cell never answered the upgrade" from "cell took
-  // relay-auth and is still resolving the assignment".
+  // Dial stages distinguish a missing upgrade from slow cell assignment while both report connecting.
   it('reports the dial stage as the link opens, receives hello, and authenticates', async () => {
     const session = openSession()
     const stages: string[] = []
@@ -332,7 +236,7 @@ describe('mobile relay RPC session', () => {
     expect(session.getDialStage()).toBe('handshaking')
     fakes.linkOptions!.onAuthenticated()
     expect(session.getDialStage()).toBe('confirming')
-    expect(fakes.sendText).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
     expect(stages).toEqual(['awaiting-hello', 'handshaking', 'confirming'])
     session.close()
   })
@@ -355,13 +259,13 @@ describe('mobile relay RPC session', () => {
   })
 
   it('routes terminal and browser binary streams after confirmation', async () => {
-    const { session } = await settledSession()
+    const { session } = await authenticateSession()
     const terminalListener = vi.fn()
     session.subscribe('terminal.subscribe', { terminal: 'term-1' }, terminalListener)
     await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
-    const terminalRequest = JSON.parse(fakes.sendText.mock.calls[0]![0] as string) as {
+    const terminalRequest: {
       id: string
-    }
+    } = JSON.parse(fakes.sendText.mock.calls[0]![0])
     fakes.linkOptions!.onText(
       JSON.stringify({
         id: terminalRequest.id,
@@ -388,7 +292,7 @@ describe('mobile relay RPC session', () => {
     const onBinaryFrame = vi.fn()
     session.subscribe('browser.screencast', {}, vi.fn(), { onBinaryFrame })
     await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
-    const browserRequest = JSON.parse(fakes.sendText.mock.calls[0]![0] as string) as { id: string }
+    const browserRequest: { id: string } = JSON.parse(fakes.sendText.mock.calls[0]![0])
     fakes.linkOptions!.onText(
       JSON.stringify({
         id: browserRequest.id,
@@ -412,19 +316,36 @@ describe('mobile relay RPC session', () => {
   })
 
   it('rejects pending RPC work when the physical link fails', async () => {
-    const { session } = await settledSession()
+    const { session } = await authenticateSession()
     const pending = session.sendRequest('status.get')
     await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
     fakes.linkOptions!.onError(new Error('relay transport error'))
 
     await expect(pending).rejects.toThrow('relay transport error')
-    // The frame reached the wire, so the failure must read as delivery-unknown.
     await expect(pending.catch((error: unknown) => isRpcDeliveryUnknown(error))).resolves.toBe(true)
     expect(session.getState()).toBe('disconnected')
   })
 
+  it('keeps a synchronous pre-write relay failure definite', async () => {
+    const { session } = await authenticateSession()
+    fakes.sendText.mockImplementationOnce(() => {
+      fakes.linkOptions!.onError(new Error('relay outbound overflow'))
+      return false
+    })
+
+    const error = await session
+      .sendRequest('terminal.send', { terminal: 'term', text: 'hi' })
+      .catch((cause: unknown) => cause)
+
+    if (!(error instanceof Error)) {
+      throw new Error('Expected the relay failure')
+    }
+    expect(error.message).toBe('relay outbound overflow')
+    expect(isRpcDeliveryUnknown(error)).toBe(false)
+  })
+
   it('marks in-flight requests delivery-unknown when the session closes', async () => {
-    const { session } = await settledSession()
+    const { session } = await authenticateSession()
     const pending = session.sendRequest('terminal.send', { terminal: 'term', text: 'hi' })
     await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledOnce())
     session.close()
@@ -434,76 +355,102 @@ describe('mobile relay RPC session', () => {
   })
 
   it('marks a relay RPC timeout delivery-unknown', async () => {
-    const { session } = await settledSession()
+    const { session } = await authenticateSession()
     vi.useFakeTimers()
     try {
       const pending = session.sendRequest('terminal.send', { terminal: 'term', text: 'hi' })
-      const outcome = pending.catch((error: unknown) => ({
-        message: (error as Error).message,
-        unknown: isRpcDeliveryUnknown(error)
-      }))
+      let settled = false
+      const outcome = pending.then(
+        (response) => {
+          settled = true
+          return response
+        },
+        (error: unknown) => {
+          settled = true
+          return error
+        }
+      )
       // Let sendRequest pass its connected-check microtask and register the timer.
       await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(1_000)
-      await expect(outcome).resolves.toEqual({
-        message: 'relay RPC timed out: terminal.send',
-        unknown: true
-      })
+      expect(fakes.sendText).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('"method":"terminal.send"')
+      )
+      await vi.advanceTimersByTimeAsync(999)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      const error = await outcome
+      if (!(error instanceof Error)) {
+        throw new Error('Expected the relay timeout')
+      }
+      expect(error.message).toBe('relay RPC timed out: terminal.send')
+      expect(isRpcDeliveryUnknown(error)).toBe(true)
+      session.close()
     } finally {
       vi.useRealTimers()
     }
   })
-  it('keeps whenResumeConfirmed() pending until the session has an answer', async () => {
-    // The contract callers rely on is "settles when the confirm has answered or the
-    // session is over". A promise already resolved during the dial would let a caller
-    // read getResumeConfirmation() as null and persist that as the answer.
-    const session = openSession()
-    const settled = vi.fn()
-    void session.whenResumeConfirmed().then(settled)
-    receiveHello()
-    await Promise.resolve()
-    expect(settled).not.toHaveBeenCalled()
 
-    fakes.linkOptions!.onAuthenticated()
-    await Promise.resolve()
-    expect(settled).not.toHaveBeenCalled()
-
-    answerConfirm(sentRequests()[0]!)
-    await session.whenResumeConfirmed()
-    expect(settled).toHaveBeenCalled()
-    expect(session.getResumeConfirmation()).toMatchObject({ reqId: 'confirm-1' })
+  it('sends requests and streams with no envelope byte for byte as before', async () => {
+    const { session } = await authenticateSession()
+    void session.sendRequest('status.get', { a: 1 })
+    session.subscribe('terminal.subscribe', { terminal: 't1' }, () => undefined)
+    await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledTimes(2))
+    expect(
+      fakes.sendText.mock.calls.map((call) => String(call[0]).replace(/"id":"[^"]+"/, ''))
+    ).toEqual([
+      '{,"method":"status.get","params":{"a":1},"deviceToken":"device-token"}',
+      '{,"method":"terminal.subscribe","params":{"terminal":"t1"},"deviceToken":"device-token"}'
+    ])
   })
 
-  it('settles whenResumeConfirmed() when the session dies before authenticating', async () => {
-    const session = openSession()
-    const settled = vi.fn()
-    void session.whenResumeConfirmed().then(settled)
+  it('sends a server workspace call as the same top-level executionHost frame as before the envelope', async () => {
+    const { session } = await authenticateSession()
+    const server = scopeRpcClientToExecutionHost(session, 'runtime:a')
+    void server.sendRequest('worktree.ps', { limit: 1 })
+    server.subscribe('terminal.subscribe', { terminal: 't1' }, () => undefined)
+    await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledTimes(2))
+    const frames = fakes.sendText.mock.calls.map((call) => JSON.parse(String(call[0])))
+    // Compare envelope routing independently of frame ids and JSON key order.
+    expect(frames.map(({ id: _id, ...frame }) => frame)).toStrictEqual([
+      {
+        method: 'worktree.ps',
+        params: { limit: 1 },
+        executionHost: 'runtime:a',
+        deviceToken: 'device-token'
+      },
+      {
+        method: 'terminal.subscribe',
+        params: { terminal: 't1' },
+        executionHost: 'runtime:a',
+        deviceToken: 'device-token'
+      }
+    ])
+  })
 
-    // A credential-version mismatch fails the session inside onHello, so no confirm
-    // is ever sent. Awaiting the answer must not hang a caller forever.
-    fakes.linkOptions!.onHello({
-      type: 'relay-hello',
-      ok: true,
-      credentialKind: 'resume',
-      leaseExpiresAt: Date.now() + 60_000,
-      acceptedCredentialVersion: 2,
-      acceptedAs: 'current',
-      resumeExpiresAt: Date.now() + 300_000
+  it('merges an envelope under the transport fields on requests, subscribes and unsubscribes', async () => {
+    const { session } = await authenticateSession()
+    const envelope = {
+      executionHost: 'runtime:a',
+      id: 'x',
+      method: 'x',
+      params: 'x',
+      deviceToken: 'x'
+    }
+    void session.sendRequest('status.get', { a: 1 }, { envelope })
+    const dispose = session.subscribe('terminal.subscribe', { terminal: 't1' }, () => undefined, {
+      envelope
     })
-
-    await session.whenResumeConfirmed()
-    expect(settled).toHaveBeenCalled()
-    expect(session.getState()).toBe('disconnected')
-  })
-
-  it('settles whenResumeConfirmed() when a caller closes an unconfirmed session', async () => {
-    const session = openSession()
-    const settled = vi.fn()
-    void session.whenResumeConfirmed().then(settled)
-
-    session.close()
-
-    await session.whenResumeConfirmed()
-    expect(settled).toHaveBeenCalled()
+    await vi.waitFor(() => expect(fakes.sendText).toHaveBeenCalledTimes(2))
+    dispose()
+    const frames = fakes.sendText.mock.calls.map((call) => JSON.parse(String(call[0])))
+    expect(frames).toEqual([
+      expect.objectContaining({ method: 'status.get', params: { a: 1 } }),
+      expect.objectContaining({ method: 'terminal.subscribe', params: { terminal: 't1' } }),
+      expect.objectContaining({ method: 'terminal.unsubscribe' })
+    ])
+    for (const frame of frames) {
+      expect(frame).toMatchObject({ executionHost: 'runtime:a', deviceToken: 'device-token' })
+      expect(frame.id).not.toBe('x')
+    }
   })
 })

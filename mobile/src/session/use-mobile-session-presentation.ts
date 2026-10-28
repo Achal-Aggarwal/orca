@@ -1,13 +1,16 @@
-import { Platform } from 'react-native'
-import { classifyConnection, verdictDisplayLabel } from '../transport/connection-health'
+import {
+  classifyConnection,
+  isConnectionOutage,
+  verdictDisplayLabel
+} from '../transport/connection-health'
 import { computeActiveTerminalKeyboardLift } from '../terminal/terminal-keyboard-avoidance-lift'
 import { useInitialSessionTerminalAutoCreate } from './use-initial-session-terminal-autocreate'
 import { MOBILE_SESSION_STATUS_LABELS } from './mobile-session-route-helpers'
-import { selectMobileSessionReconnectViewState } from './mobile-session-reconnect-view-state'
-import { getMobileSessionTabStripRows } from './mobile-session-tab-strip-entries'
-import type { MobileSessionTabStripCacheModel } from './use-mobile-session-tab-strip-cache'
+import type { MobileSessionBulkCloseModel } from './use-mobile-session-bulk-close'
+import { hostOs } from '../platform/host-os'
+import { useCalmConnectionState } from '../transport/calm-connection-state'
 
-export function useMobileSessionPresentation(scope: MobileSessionTabStripCacheModel) {
+export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel) {
   const {
     created,
     worktreeId,
@@ -26,18 +29,16 @@ export function useMobileSessionPresentation(scope: MobileSessionTabStripCacheMo
     terminalKeyboardMetrics,
     toastOpacityRef,
     hostEndpoint,
-    activeSessionTabId,
-    cachedTabStrip,
     initialSessionAutoCreateRef,
-    terminalFrameHeightRef,
+    terminalFrameRef,
     handleCreateTerminal,
-    visibleTabs
+    visibleTabs,
+    forceReconnectHost
   } = scope
   const showLoadingState = connState === 'connected' && !terminalsLoaded && visibleTabs.length === 0
   const showEmptyState =
     connState === 'connected' && terminalsLoaded && visibleTabs.length === 0 && !activeHandle
 
-  // Why: a newly created workspace can hydrate with zero tabs before its first terminal exists.
   useInitialSessionTerminalAutoCreate({
     client,
     newlyCreatedWorkspace: created === '1',
@@ -52,35 +53,20 @@ export function useMobileSessionPresentation(scope: MobileSessionTabStripCacheMo
     createTerminal: () => void handleCreateTerminal()
   })
 
-  // Why: reconnect trickles to 90s at its give-up cap; surface tap-to-retry so recovery needn't wait it out (issue #5049).
+  // Offer explicit retry after reconnect backoff reaches 90s so recovery need not wait for the next attempt.
   const connectionVerdict = classifyConnection({
     state: connState,
     reconnectAttempts,
     lastConnectedAt,
     endpoint: hostEndpoint
   })
-  const showConnectionRetry =
-    connectionVerdict.kind === 'warning' || connectionVerdict.kind === 'unreachable'
+  const connectionEscalated = isConnectionOutage(connectionVerdict)
+  const showConnectionRetry = connectionEscalated && forceReconnectHost !== null
 
-  // Why: a reconnect to a workspace this phone has already drawn should re-draw it, not blank
-  // the screen while the RPCs land. See mobile-session-reconnect-view-state.
-  const reconnectViewState = selectMobileSessionReconnectViewState({
-    connState,
-    verdictKind: connectionVerdict.kind,
-    terminalsLoaded,
-    liveTabCount: visibleTabs.length,
-    activeHandle,
-    cachedPreview: cachedTabStrip
-  })
-  const tabStripRows = getMobileSessionTabStripRows({
-    liveTabs: visibleTabs,
-    activeSessionTabId,
-    preview:
-      reconnectViewState.kind === 'reconnecting-with-cache' ? reconnectViewState.preview : null
-  })
-
+  // Delay reconnect header changes so brief self-healing drops cannot flicker the label.
+  const presentedConnState = useCalmConnectionState(connState, lastConnectedAt)
   const terminalSummary =
-    connState === 'connected'
+    presentedConnState === 'connected'
       ? showLoadingState
         ? 'Loading tabs'
         : visibleTabs.length === 1
@@ -88,29 +74,30 @@ export function useMobileSessionPresentation(scope: MobileSessionTabStripCacheMo
           : `${visibleTabs.length} tabs`
       : showConnectionRetry
         ? `${verdictDisplayLabel(connectionVerdict)} — tap to retry`
-        : MOBILE_SESSION_STATUS_LABELS[connState]
+        : connectionEscalated
+          ? verdictDisplayLabel(connectionVerdict)
+          : MOBILE_SESSION_STATUS_LABELS[presentedConnState]
 
   // Why: iOS keyboard height includes the home-indicator inset; Android IME height does not.
   const keyboardLift =
     keyboardHeight > 0
-      ? Platform.OS === 'ios'
+      ? hostOs() === 'ios'
         ? Math.max(0, keyboardHeight - insets.bottom)
         : keyboardHeight
       : 0
   const activeTerminalKeyboardLift = computeActiveTerminalKeyboardLift({
     keyboardLift,
     metrics: activeHandle ? terminalKeyboardMetrics.get(activeHandle) : undefined,
-    terminalFrameHeight: terminalFrameHeightRef.current
+    terminalFrameHeight: terminalFrameRef.current?.height ?? 0
   })
   const toastAnimatedStyle = {
     opacity: toastOpacityRef.current,
     transform: [{ translateY: -keyboardLift }]
   }
   return {
+    presentedConnState,
     showLoadingState,
     showEmptyState,
-    reconnectViewState,
-    tabStripRows,
     connectionVerdict,
     showConnectionRetry,
     terminalSummary,
@@ -120,5 +107,5 @@ export function useMobileSessionPresentation(scope: MobileSessionTabStripCacheMo
   }
 }
 
-export type MobileSessionPresentationModel = MobileSessionTabStripCacheModel &
+export type MobileSessionPresentationModel = MobileSessionBulkCloseModel &
   ReturnType<typeof useMobileSessionPresentation>

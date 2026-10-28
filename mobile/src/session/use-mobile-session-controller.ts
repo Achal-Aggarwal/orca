@@ -1,3 +1,4 @@
+import { useNotificationPaneNavigation } from './use-notification-pane-navigation'
 import { useMobileSessionFoundation } from './use-mobile-session-foundation'
 import { useMobileSessionScreenState } from './use-mobile-session-screen-state'
 import { useMobileSessionTerminalRuntime } from './use-mobile-session-terminal-runtime'
@@ -27,7 +28,6 @@ import { useMobileSessionTerminalCreateActions } from './use-mobile-session-term
 import { useMobileSessionContentCreateActions } from './use-mobile-session-content-create-actions'
 import { useMobileSessionCloseActions } from './use-mobile-session-close-actions'
 import { useMobileSessionBulkClose } from './use-mobile-session-bulk-close'
-import { useMobileSessionTabStripCache } from './use-mobile-session-tab-strip-cache'
 import { useMobileSessionPresentation } from './use-mobile-session-presentation'
 import { useMobileSessionPanelRouteActions } from './use-mobile-session-panel-route-actions'
 
@@ -81,8 +81,9 @@ export function useMobileSessionController() {
   const lifecycle = Object.assign(tabReconciliation, useMobileSessionLifecycle(tabReconciliation))
   const keyboardState = Object.assign(lifecycle, useMobileSessionKeyboardState(lifecycle))
   useMobileSessionStartup(keyboardState)
-  useMobileSessionPreferenceFocus(keyboardState)
+  const preferences = useMobileSessionPreferenceFocus(keyboardState)
   const tabSwitching = Object.assign(keyboardState, useMobileSessionTabSwitching(keyboardState))
+  useNotificationPaneNavigation(tabSwitching)
   const terminalWebview = Object.assign(tabSwitching, useMobileSessionTerminalWebview(tabSwitching))
   const terminalSendActions = Object.assign(
     terminalWebview,
@@ -114,13 +115,12 @@ export function useMobileSessionController() {
     useMobileSessionCloseActions(contentCreateActions)
   )
   const bulkClose = Object.assign(closeActions, useMobileSessionBulkClose(closeActions))
-  const tabStripCache = Object.assign(bulkClose, useMobileSessionTabStripCache(bulkClose))
-  const presentation = Object.assign(tabStripCache, useMobileSessionPresentation(tabStripCache))
+  const presentation = Object.assign(bulkClose, useMobileSessionPresentation(bulkClose))
   const panelRouteActions = Object.assign(
     presentation,
     useMobileSessionPanelRouteActions(presentation)
   )
-  return panelRouteActions
+  return Object.assign(panelRouteActions, preferences)
 }
 
 export type MobileSessionController = ReturnType<typeof useMobileSessionController>

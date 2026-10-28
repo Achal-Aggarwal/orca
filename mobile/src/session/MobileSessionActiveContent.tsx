@@ -2,12 +2,15 @@ import { Animated, View, Text, Pressable, ActivityIndicator } from 'react-native
 import { saveTerminalTextScale } from '../storage/preferences'
 import { MobileBrowserPane } from '../browser/MobileBrowserPane'
 import { TerminalPaneView } from './TerminalPaneView'
-import { TerminalEnginePrewarm } from './TerminalEnginePrewarm'
-import { MOBILE_SESSION_TAB_BAR_HEIGHT } from './mobile-session-frame-styles'
 import { MobileNativeChatOverlay } from './MobileNativeChatOverlay'
+import { resolveMobileNativeChatSessionId } from './native-chat/mobile-native-chat-eligibility'
 import { colors } from '../theme/mobile-theme'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { styles } from './mobile-session-styles'
 import type { MobileSessionController } from './use-mobile-session-controller'
+import { useWorkspaceExecutionHost } from '../navigation/workspace-execution-host'
+import { useHostProfile } from '../transport/use-host-profile'
+import { useHostDisplay } from '../transport/use-host-display'
 import { FileReader } from './MobileSessionFileReader'
 import { MarkdownReader } from './MobileSessionMarkdownReader'
 
@@ -16,7 +19,10 @@ export function MobileSessionActiveContent({
 }: {
   controller: MobileSessionController
 }) {
+  useMobileColorScheme()
+  const executionHost = useWorkspaceExecutionHost()
   const {
+    hostId,
     worktreeId,
     insets,
     connState,
@@ -24,6 +30,7 @@ export function MobileSessionActiveContent({
     terminals,
     terminalTextScale,
     setTerminalTextScale,
+    terminalTextScaleRevisionRef,
     activeHandle,
     markdownDocs,
     fileDocs,
@@ -33,9 +40,8 @@ export function MobileSessionActiveContent({
     setCreateError,
     setShowCreateTabDrawer,
     dictationMode,
+    dictationEnabled,
     toastMessage,
-    terminalFrameHeightRef,
-    setTerminalFrameWidth,
     handleTerminalTap,
     browserScreencastSupported,
     showToast,
@@ -51,13 +57,16 @@ export function MobileSessionActiveContent({
     deleteDiffCommentForFile,
     copyDiffCommentsToClipboard,
     sendDiffCommentsToAgent,
+    sendingDiffCommentIds,
     updateMarkdownLocalContent,
     copyMarkdownLocalContent,
+    copyMarkdownPath,
     discardMarkdownLocalContent,
     saveMarkdownTab,
-    notifyTerminalFrameHeight,
     setTerminalWebViewRef,
     handleTerminalWebReady,
+    notifyTerminalFrame,
+    notifyTerminalCellBoxChange,
     handleFileTap,
     handleNativeChatFileTap,
     handleTerminalOpenUrl,
@@ -66,48 +75,30 @@ export function MobileSessionActiveContent({
     handleSelectionMode,
     handleSelectionCopy,
     handleSelectionEvicted,
+    handleClipboardWrite,
     handleModesChanged,
     handleKeyboardAvoidanceMetrics,
     handleHaptic,
     nativeChatImages,
+    nativeChatStructuredComposer,
     activeMarkdownTab,
     activeFileTab,
     activeBrowserTab,
     activePendingTerminalTab,
     isPendingTerminalRecoveryParked,
     retryPendingTerminalRecovery,
-    reconnectViewState,
-    tabStripRows,
     showLoadingState,
-    measurePrewarmViewport,
     showEmptyState,
     keyboardLift,
     activeTerminalKeyboardLift,
     toastAnimatedStyle,
     createTabBusy
   } = controller
-  // Why the same list the header gates on: an unmounted tab bar gives the content row its band
-  // back, so the pre-warm would measure a taller box than the pane ever gets. Reading the header's
-  // own rows (live or cached preview) keeps the two from drifting.
-  const prewarmReservedTabBarHeight = tabStripRows.length > 0 ? 0 : MOBILE_SESSION_TAB_BAR_HEIGHT
-  // Why: the cached strip in the header is the content during a reconnect; the terminal body
-  // cannot be, because replaying stored scrollback into the WebView would double-render once the
-  // live stream replays the same rows. See mobile-session-reconnect-view-state. The engine still
-  // boots inside the real terminal frame while the startup RPCs are in flight, so the first pane
-  // inherits a warm WebView and a measured viewport (see prewarm).
-  return reconnectViewState.kind === 'reconnecting-with-cache' || showLoadingState ? (
-    <View style={styles.terminalFrame}>
-      <View style={styles.emptyState}>
-        <ActivityIndicator size="small" color={colors.textSecondary} />
-        {reconnectViewState.kind === 'reconnecting-with-cache' ? (
-          <Text style={styles.emptyText}>{reconnectViewState.label}</Text>
-        ) : null}
-      </View>
-      <TerminalEnginePrewarm
-        reservedTabBarHeight={prewarmReservedTabBarHeight}
-        textScale={terminalTextScale}
-        onEngineMeasured={measurePrewarmViewport}
-      />
+  const hostProfile = useHostProfile(hostId)
+  const hostTitle = useHostDisplay(hostProfile).title
+  const content = showLoadingState ? (
+    <View style={styles.emptyState}>
+      <ActivityIndicator size="small" color={colors.textSecondary} />
     </View>
   ) : showEmptyState ? (
     <View style={styles.emptyState}>
@@ -140,6 +131,7 @@ export function MobileSessionActiveContent({
         onChange={(content) => updateMarkdownLocalContent(activeMarkdownTab.id, content)}
         onSave={() => void saveMarkdownTab(activeMarkdownTab)}
         onCopy={() => void copyMarkdownLocalContent(activeMarkdownTab.id)}
+        onCopyPath={() => void copyMarkdownPath(activeMarkdownTab)}
         onDiscard={() => discardMarkdownLocalContent(activeMarkdownTab)}
         keyboardLift={keyboardLift}
       />
@@ -152,6 +144,8 @@ export function MobileSessionActiveContent({
   ) : activeFileTab ? (
     <View style={styles.markdownFrame}>
       <FileReader
+        documentId={JSON.stringify([hostId, executionHost, worktreeId, activeFileTab.id])}
+        client={client}
         doc={fileDocs.get(activeFileTab.id)}
         title={activeFileTab.title || 'File'}
         relativePath={activeFileTab.relativePath}
@@ -160,6 +154,7 @@ export function MobileSessionActiveContent({
           activeFileTab.diffSource === 'staged' || activeFileTab.diffSource === 'unstaged'
             ? {
                 comments: diffComments,
+                sendingCommentIds: sendingDiffCommentIds,
                 busy: diffCommentBusy,
                 onAdd: addDiffCommentForFile,
                 onDelete: deleteDiffCommentForFile,
@@ -195,48 +190,28 @@ export function MobileSessionActiveContent({
       )}
     </View>
   ) : activePendingTerminalTab ? (
-    <View style={styles.terminalFrame}>
-      <View style={styles.emptyState}>
-        {!isPendingTerminalRecoveryParked && (
-          <ActivityIndicator size="small" color={colors.textSecondary} />
-        )}
-        <Text style={styles.emptyText}>
-          {isPendingTerminalRecoveryParked
-            ? 'Terminal is taking longer than expected'
-            : activePendingTerminalTab.title || 'Loading terminal'}
-        </Text>
-        {isPendingTerminalRecoveryParked && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading terminal"
-            style={({ pressed }) => [
-              styles.createButton,
-              pressed && styles.newTerminalButtonPressed
-            ]}
-            onPress={() => void retryPendingTerminalRecovery()}
-          >
-            <Text style={styles.createButtonText}>Retry</Text>
-          </Pressable>
-        )}
-      </View>
-      <TerminalEnginePrewarm
-        reservedTabBarHeight={prewarmReservedTabBarHeight}
-        textScale={terminalTextScale}
-        onEngineMeasured={measurePrewarmViewport}
-      />
+    <View style={styles.emptyState}>
+      {!isPendingTerminalRecoveryParked && (
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      )}
+      <Text style={styles.emptyText}>
+        {isPendingTerminalRecoveryParked
+          ? 'Terminal is taking longer than expected'
+          : activePendingTerminalTab.title || 'Loading terminal'}
+      </Text>
+      {isPendingTerminalRecoveryParked && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading terminal"
+          style={({ pressed }) => [styles.createButton, pressed && styles.newTerminalButtonPressed]}
+          onPress={() => void retryPendingTerminalRecovery()}
+        >
+          <Text style={styles.createButtonText}>Retry</Text>
+        </Pressable>
+      )}
     </View>
   ) : (
-    <View
-      style={styles.terminalFrame}
-      onLayout={(e) => {
-        terminalFrameHeightRef.current = e.nativeEvent.layout.height
-        // Why: notify height imperatively so dock settling re-fits the PTY without rerendering SessionScreen.
-        const nextWidth = Math.round(e.nativeEvent.layout.width)
-        const nextHeight = Math.round(e.nativeEvent.layout.height)
-        setTerminalFrameWidth((prev) => (prev === nextWidth ? prev : nextWidth))
-        notifyTerminalFrameHeight(nextHeight)
-      }}
-    >
+    <View style={styles.terminalFrame}>
       {terminals.map((terminal) => (
         <TerminalPaneView
           key={terminal.handle}
@@ -247,14 +222,17 @@ export function MobileSessionActiveContent({
           textScale={terminalTextScale}
           onTextScaleChange={(scale) => {
             // Why: pinch-to-zoom reports a new preset; persist it so the size sticks across panes and launches.
+            terminalTextScaleRevisionRef.current += 1
             setTerminalTextScale(scale)
             void saveTerminalTextScale(scale)
           }}
           onRef={setTerminalWebViewRef}
           onWebReady={handleTerminalWebReady}
+          onCellBoxChange={notifyTerminalCellBoxChange}
           onSelectionMode={handleSelectionMode}
           onSelectionCopy={handleSelectionCopy}
           onSelectionEvicted={handleSelectionEvicted}
+          onClipboardWrite={handleClipboardWrite}
           onModesChanged={handleModesChanged}
           onKeyboardAvoidanceMetrics={handleKeyboardAvoidanceMetrics}
           onHaptic={handleHaptic}
@@ -267,9 +245,11 @@ export function MobileSessionActiveContent({
       ))}
       <MobileNativeChatOverlay
         controller={nativeChatController}
+        activeSessionTabId={controller.activeSessionTab?.id}
         onOpenFile={handleNativeChatFileTap}
         images={nativeChatImages}
-        onMicPress={handleDictationToggle}
+        structuredComposer={nativeChatStructuredComposer}
+        onMicPress={dictationEnabled ? handleDictationToggle : undefined}
         micActive={dictation.isRecording}
         dictationMode={dictationMode}
         onMicPressIn={handleDictationPressIn}
@@ -278,14 +258,29 @@ export function MobileSessionActiveContent({
         sendErrorMessage={nativeChatSendError.message}
         onClearSendError={nativeChatSendError.clear}
         sendSurfaceId={controller.nativeChatScopeKey ?? ''}
+        sessionId={resolveMobileNativeChatSessionId(controller.activeSessionTab)}
         getSendCompletionGeneration={controller.getSendCompletionGeneration}
         keyboardInset={keyboardLift}
+        // A workspace routed to another server stops with that server, whose name the phone lacks.
+        hostName={executionHost === undefined && hostProfile ? hostTitle : null}
       />
       {toastMessage && (
         <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
           <Text style={styles.toastText}>{toastMessage}</Text>
         </Animated.View>
       )}
+    </View>
+  )
+  return (
+    <View
+      // Why: one frame under every branch; react-native-web observes onLayout only on a View that mounts with it.
+      style={styles.contentFrame}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout
+        notifyTerminalFrame({ width, height })
+      }}
+    >
+      {content}
     </View>
   )
 }

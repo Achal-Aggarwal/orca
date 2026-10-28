@@ -19,16 +19,7 @@ export type LegacyWorkerTerminalRecoveryCandidate = {
   incarnationId: PtyIncarnationId
 }
 
-export type LegacyWorkerTerminalRecoveryBlockedPane = {
-  worktreeId: string
-  paneKey: string
-  contractVersion: number
-  /** The dispatch reported an outcome; its pane needs the fence but owns no process to recover. */
-  settled: boolean
-}
-
 export type LegacyWorkerTerminalRecoveryPlan = {
-  blockedPanes: LegacyWorkerTerminalRecoveryBlockedPane[]
   candidates: LegacyWorkerTerminalRecoveryCandidate[]
   ambiguousDispatchIds: string[]
 }
@@ -42,8 +33,7 @@ function parseProcessIncarnation(
   }
   const ptyId = value.slice(0, separator)
   const incarnationId = value.slice(separator + 1)
-  // A structured worker's incarnation names a session lineage, not a PTY; adopting it as one
-  // would hand a live chat session's dispatch to the PTY recovery path.
+  // Structured incarnations name session lineage; never adopt a live chat through PTY recovery.
   if (sessionIdFromStructuredWorkerIncarnation(value)) {
     return null
   }
@@ -65,26 +55,13 @@ function countCandidateKeys(
 export function planLegacyWorkerTerminalRecovery(
   rows: readonly LegacyWorkerTerminalRecoveryRow[]
 ): LegacyWorkerTerminalRecoveryPlan {
-  const blockedPanes = new Map<string, LegacyWorkerTerminalRecoveryBlockedPane>()
   const parsedCandidates: LegacyWorkerTerminalRecoveryCandidate[] = []
   for (const row of rows) {
     const worktreeId = row.worktree_id?.trim()
     const paneKey = row.assignee_pane_key?.trim()
     const pane = paneKey ? parsePaneKey(paneKey) : null
     const settled = WORKER_SETTLED_STATES.includes(row.worker_state)
-    if (worktreeId && paneKey && pane) {
-      const blockedKey = `${worktreeId}\0${paneKey}`
-      const alreadySettled = blockedPanes.get(blockedKey)?.settled
-      blockedPanes.set(blockedKey, {
-        worktreeId,
-        paneKey,
-        contractVersion: row.contract_version,
-        // A pane reused across dispatches is settled only once every dispatch holding it is.
-        settled: (alreadySettled ?? true) && settled
-      })
-    }
-    // A settled worker owns no live process to adopt or roll back, so its identity must never
-    // compete with a running worker's in the ambiguity count below.
+    // Settled Dispatches must not make an active worker identity ambiguous.
     if (settled) {
       continue
     }
@@ -134,7 +111,6 @@ export function planLegacyWorkerTerminalRecovery(
     return !ambiguous
   })
   return {
-    blockedPanes: [...blockedPanes.values()],
     candidates,
     ambiguousDispatchIds: [...ambiguousDispatchIds]
   }

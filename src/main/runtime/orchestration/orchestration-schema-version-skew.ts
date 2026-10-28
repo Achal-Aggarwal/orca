@@ -34,7 +34,7 @@ const VERSIONED_POST_V6_COLUMNS = [
   { version: 31, table: 'dispatch_contexts', column: 'host_scope' },
   { version: 31, table: 'worker_terminal_resources', column: 'endpoint_id' },
   { version: 31, table: 'worker_terminal_resources', column: 'endpoint_incarnation' },
-  // Why: unversioned, these made every shipped v30 database read as v6 and replay the whole chain.
+  // Version these probes or genuine v30 databases falsely replay from v6.
   { version: 32, table: 'worker_terminal_resources', column: 'recovery_attempt_count' },
   { version: 32, table: 'worker_terminal_resources', column: 'last_recovery_at' },
   { version: 33, table: 'messages', column: 'pointer_enter_pending' },
@@ -42,11 +42,15 @@ const VERSIONED_POST_V6_COLUMNS = [
   { version: 36, table: 'dispatch_contexts', column: 'consumer_generation' },
   { version: 36, table: 'remote_dispatch_attachments', column: 'consumer_generation' },
   { version: 37, table: 'dispatch_contexts', column: 'creator_handle' },
-  { version: 37, table: 'dispatch_contexts', column: 'creator_pane_key' }
+  { version: 37, table: 'dispatch_contexts', column: 'creator_pane_key' },
+  { version: 40, table: 'remote_dispatch_attachments', column: 'home_run_id' },
+  { version: 42, table: 'runs', column: 'coordinator_orca_session_id' },
+  { version: 42, table: 'runs', column: 'coordinator_orca_session_id_generation' },
+  { version: 42, table: 'dispatch_contexts', column: 'assignee_orca_session_id' },
+  { version: 42, table: 'dispatch_contexts', column: 'creator_orca_session_id' }
 ] as const
 
-// Why: v34 shipped without these two, so a v34 stamp proves nothing about them; v35 repairs both
-// and this list keeps a partially-written v35 from claiming the repair.
+// v34 stamps can lack these repairs; v35 probes must verify their stored defaults.
 const VERSIONED_POST_V6_COLUMN_DEFAULTS = [
   { version: 35, table: 'deliveries', column: 'mailbox_handle', defaultValue: "''" }
 ] as const
@@ -122,15 +126,22 @@ function messagesAllowQuestions(db: Database.Database): boolean {
 
 function hasConsistentLegacyAdoption(db: Database.Database): boolean {
   const sourceRunId = 'run_legacy_local'
+  // Misfiled federated mail is not evidence of a pre-Runs database.
+  const notFederatedMailbox = (handle: string): string =>
+    `NOT EXISTS (SELECT 1 FROM remote_dispatch_attachments AS attachment
+      WHERE 'dispatch:' || attachment.dispatch_id = ${handle})`
+  const deliveryFilter = hasOrchestrationColumn(db, 'deliveries', 'mailbox_handle')
+    ? ` AND ${notFederatedMailbox('mailbox_handle')}`
+    : ''
   const sourceGraph = db
     .prepare(
       `SELECT 1
        WHERE EXISTS(SELECT 1 FROM tasks WHERE run_id = ?)
           OR EXISTS(SELECT 1 FROM dispatch_contexts WHERE run_id = ?)
           OR EXISTS(SELECT 1 FROM decision_gates WHERE run_id = ?)
-          OR EXISTS(SELECT 1 FROM messages WHERE run_id = ?)
+          OR EXISTS(SELECT 1 FROM messages WHERE run_id = ? AND ${notFederatedMailbox('to_handle')})
           OR EXISTS(SELECT 1 FROM question_threads WHERE run_id = ?)
-          OR EXISTS(SELECT 1 FROM deliveries WHERE run_id = ?)`
+          OR EXISTS(SELECT 1 FROM deliveries WHERE run_id = ?${deliveryFilter})`
     )
     .get(sourceRunId, sourceRunId, sourceRunId, sourceRunId, sourceRunId, sourceRunId)
   const adoption = db
@@ -180,6 +191,6 @@ export function resolveOrchestrationMigrationStartVersion(
   if (hasCompletePostV6Schema(db, storedVersion)) {
     return storedVersion
   }
-  // Why: version-skewed pre-Run databases can claim the post-v6 range while retaining v6 tables.
+  // Pre-Run databases may claim post-v6 versions while retaining the old tables.
   return Math.min(storedVersion, schemaVersion, 6)
 }

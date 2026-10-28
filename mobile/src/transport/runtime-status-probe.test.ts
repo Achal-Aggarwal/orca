@@ -1,31 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  readRuntimeCapabilities,
-  startRuntimeCapabilityProbe,
-  startRuntimeStatusProbe
-} from './runtime-status-probe'
+import { startRuntimeStatusProbe } from './runtime-status-probe'
 import { LogicalClientCutoverError } from './stable-logical-rpc-client'
-import type { RpcClient } from './rpc-client'
+import type { HostStatusReply } from './host-status-reply-schema'
+import type { UnvalidatedRpcRequestPort } from './unvalidated-rpc-request-port'
 import type { RpcResponse } from './types'
 
 type ProbeOutcome = RpcResponse | Error
 
-function makeClient(outcomes: ProbeOutcome[]): { client: RpcClient; calls: () => number } {
+function makeClient(outcomes: ProbeOutcome[]): {
+  client: UnvalidatedRpcRequestPort
+  calls: () => number
+  requests: () => Parameters<UnvalidatedRpcRequestPort['sendRequest']>[]
+} {
   let calls = 0
   const client = {
-    sendRequest: () => {
-      const outcome = outcomes[Math.min(calls, outcomes.length - 1)]
+    sendRequest: vi.fn<UnvalidatedRpcRequestPort['sendRequest']>(() => {
+      const outcome = outcomes[Math.min(calls, outcomes.length - 1)]!
       calls += 1
       return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome)
-    }
-  } as unknown as RpcClient
-  return { client, calls: () => calls }
+    })
+  }
+  return { client, calls: () => calls, requests: () => client.sendRequest.mock.calls }
 }
 
-const ok = (capabilities: string[]): RpcResponse => ({
+const ok = (result: unknown): RpcResponse => ({
   ok: true,
   id: '1',
-  result: { capabilities },
+  result,
   _meta: { runtimeId: 'r1' }
 })
 
@@ -34,219 +35,120 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve()
 }
 
-describe('startRuntimeCapabilityProbe', () => {
+describe('startRuntimeStatusProbe', () => {
+  let cancelProbe: (() => void) | undefined
   beforeEach(() => {
     vi.useFakeTimers()
   })
   afterEach(() => {
+    cancelProbe?.()
+    cancelProbe = undefined
     vi.useRealTimers()
   })
 
-  it('delivers capabilities on first success', async () => {
-    const { client, calls } = makeClient([ok(['a.v1'])])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    expect(seen).toEqual([['a.v1']])
-    expect(calls()).toBe(1)
-    cancel()
-  })
-
-  it('treats malformed capabilities as unsupported', async () => {
-    const response: RpcResponse = {
-      ok: true,
-      id: '1',
-      result: { capabilities: 'a.v1' },
-      _meta: { runtimeId: 'r1' }
-    }
-    const { client, calls } = makeClient([response])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    expect(seen).toEqual([[]])
-    expect(calls()).toBe(1)
-    cancel()
-  })
-
-  it('rejects capability arrays containing non-string values', async () => {
-    const response: RpcResponse = {
-      ok: true,
-      id: '1',
-      result: { capabilities: ['a.v1', 42] },
-      _meta: { runtimeId: 'r1' }
-    }
-    const { client, calls } = makeClient([response])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    expect(seen).toEqual([[]])
-    expect(calls()).toBe(1)
-    cancel()
-  })
-
-  it('treats a malformed status result as unsupported', async () => {
-    const response: RpcResponse = {
-      ok: true,
-      id: '1',
-      result: null,
-      _meta: { runtimeId: 'r1' }
-    }
-    const { client, calls } = makeClient([response])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    expect(seen).toEqual([[]])
-    expect(calls()).toBe(1)
-    cancel()
-  })
-
-  it('retries promptly after a logical-client cutover rejection', async () => {
-    const { client, calls } = makeClient([new LogicalClientCutoverError(), ok(['a.v1'])])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    expect(seen).toEqual([])
-    await vi.advanceTimersByTimeAsync(250)
-    expect(seen).toEqual([['a.v1']])
-    expect(calls()).toBe(2)
-    cancel()
-  })
-
-  it('backs off on other failures and eventually recovers', async () => {
-    const { client, calls } = makeClient([
-      new Error('Request timed out: status.get'),
-      new Error('Request timed out: status.get'),
-      ok(['a.v1'])
+  it('delivers the parsed status once and stops', async () => {
+    const { client, calls, requests } = makeClient([
+      ok({ machineName: 'm4airs-Air', hostPlatform: 'darwin', capabilities: ['a.v1'] })
     ])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
+    const seen: (HostStatusReply | null)[] = []
+    cancelProbe = startRuntimeStatusProbe(client, (status) => seen.push(status))
     await flushMicrotasks()
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(seen).toEqual([])
-    await vi.advanceTimersByTimeAsync(2_000)
-    expect(seen).toEqual([['a.v1']])
-    expect(calls()).toBe(3)
-    cancel()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toEqual({
+      machineName: 'm4airs-Air',
+      hostPlatform: 'darwin',
+      capabilities: ['a.v1']
+    })
+    expect(requests()).toEqual([['status.get']])
+    expect(calls()).toBe(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls()).toBe(1)
+    cancelProbe()
   })
 
-  // Was: an ok:false response was retried like a timeout. The probe now backs the gate that sits
-  // above every /h/ route, so polling a host that already answered would run for the life of the
-  // connection. A reply is an answer; only an unanswered request is retried.
-  it('settles once on an ok:false response rather than polling the host', async () => {
-    const failure: RpcResponse = {
+  it('delivers null for an answer this build cannot decode, without retrying', async () => {
+    const { client, calls, requests } = makeClient([ok(null)])
+    const seen: (HostStatusReply | null)[] = []
+    const failed = vi.fn()
+    cancelProbe = startRuntimeStatusProbe(client, (status) => seen.push(status), failed)
+    await flushMicrotasks()
+    expect(seen).toEqual([null])
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(seen).toEqual([null])
+    expect(failed).not.toHaveBeenCalled()
+    expect(requests()).toEqual([['status.get']])
+    expect(vi.getTimerCount()).toBe(0)
+    expect(calls()).toBe(1)
+    cancelProbe()
+  })
+
+  it('retries a refusal and a cutover rejection until a status lands', async () => {
+    const refusal: RpcResponse = {
       ok: false,
       id: '1',
-      error: { code: 'internal', message: 'nope' },
+      error: { code: 'unavailable', message: 'no' },
       _meta: { runtimeId: 'r1' }
     }
-    const { client, calls } = makeClient([failure, ok(['a.v1'])])
-    const seen: (readonly string[])[] = []
-    const retrying: boolean[] = []
-    const cancel = startRuntimeStatusProbe(client, {
-      onStatus: (status) => seen.push(readRuntimeCapabilities(status)),
-      onUnavailable: (isRetrying) => retrying.push(isRetrying)
-    })
+    const { client, calls, requests } = makeClient([
+      refusal,
+      new LogicalClientCutoverError(),
+      ok({ machineName: 'Studio' })
+    ])
+    const seen: (HostStatusReply | null)[] = []
+    cancelProbe = startRuntimeStatusProbe(client, (status) => seen.push(status))
     await flushMicrotasks()
-    expect(retrying).toEqual([false])
     expect(seen).toEqual([])
-
-    await vi.advanceTimersByTimeAsync(60_000)
     expect(calls()).toBe(1)
-    expect(seen).toEqual([])
-    cancel()
-  })
-
-  it('still retries a request the host never answered', async () => {
-    const { client, calls } = makeClient([new Error('timeout'), ok(['a.v1'])])
-    const seen: (readonly string[])[] = []
-    const retrying: boolean[] = []
-    const cancel = startRuntimeStatusProbe(client, {
-      onStatus: (status) => seen.push(readRuntimeCapabilities(status)),
-      onUnavailable: (isRetrying) => retrying.push(isRetrying)
-    })
+    await vi.advanceTimersByTimeAsync(999)
+    expect(calls()).toBe(1)
+    await vi.advanceTimersByTimeAsync(1)
     await flushMicrotasks()
-    expect(retrying).toEqual([true])
-
-    await vi.advanceTimersByTimeAsync(1_000)
     expect(calls()).toBe(2)
-    expect(seen).toEqual([['a.v1']])
-    cancel()
-  })
-
-  it('caps the failure backoff', async () => {
-    const outcomes: ProbeOutcome[] = Array.from({ length: 10 }, () => new Error('timeout'))
-    outcomes.push(ok(['a.v1']))
-    const { client, calls } = makeClient(outcomes)
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    // Why: 1s+2s+4s+8s then 15s cap; ten failures fit well inside 8 capped waits.
-    await vi.advanceTimersByTimeAsync(15_000 * 10)
-    expect(seen).toEqual([['a.v1']])
-    expect(calls()).toBe(11)
-    cancel()
-  })
-
-  it('stops retrying and dropping results once cancelled', async () => {
-    const { client, calls } = makeClient([new Error('timeout'), ok(['a.v1'])])
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    await flushMicrotasks()
-    cancel()
-    await vi.advanceTimersByTimeAsync(60_000)
     expect(seen).toEqual([])
-    expect(calls()).toBe(1)
+    await vi.advanceTimersByTimeAsync(249)
+    expect(calls()).toBe(2)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushMicrotasks()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ machineName: 'Studio' })
+    expect(calls()).toBe(3)
+    expect(requests()).toEqual([['status.get'], ['status.get'], ['status.get']])
+    expect(vi.getTimerCount()).toBe(0)
+    cancelProbe()
   })
 
-  it('ignores a success that resolves after cancellation', async () => {
-    let resolveRequest: ((response: RpcResponse) => void) | null = null
-    const client = {
-      sendRequest: () =>
-        new Promise<RpcResponse>((resolve) => {
-          resolveRequest = resolve
-        })
-    } as unknown as RpcClient
-    const seen: (readonly string[])[] = []
-    const cancel = startRuntimeCapabilityProbe(client, (capabilities) => seen.push(capabilities))
-    cancel()
-    resolveRequest?.(ok(['a.v1']))
+  it('reports failed attempts after scheduling retries and cancels pending work', async () => {
+    const { client, calls, requests } = makeClient([
+      new Error('request timed out'),
+      new LogicalClientCutoverError()
+    ])
+    const seen: (HostStatusReply | null)[] = []
+    let failed = 0
+    const failedTimerCounts: number[] = []
+    cancelProbe = startRuntimeStatusProbe(
+      client,
+      (status) => seen.push(status),
+      () => {
+        failed += 1
+        failedTimerCounts.push(vi.getTimerCount())
+      }
+    )
     await flushMicrotasks()
-    expect(seen).toEqual([])
-  })
-
-  it('reports the full status, not just capabilities', async () => {
-    const response: RpcResponse = {
-      ok: true,
-      id: '1',
-      result: { appVersion: '1.4.0', protocolVersion: 7, capabilities: ['a.v1'] },
-      _meta: { runtimeId: 'r1' }
-    }
-    const { client } = makeClient([response])
-    const seen: Record<string, unknown>[] = []
-    const cancel = startRuntimeStatusProbe(client, { onStatus: (status) => seen.push(status) })
-    await flushMicrotasks()
-    expect(seen).toEqual([{ appVersion: '1.4.0', protocolVersion: 7, capabilities: ['a.v1'] }])
-    cancel()
-  })
-
-  // Why: the gate needs to release its pending cover on the first miss rather than wait out the
-  // retries, so a wedged status.get cannot hold the whole host UI behind a spinner.
-  it('announces each failed attempt while the retry is still pending', async () => {
-    const { client, calls } = makeClient([new Error('boom'), ok(['a.v1'])])
-    const misses: number[] = []
-    const seen: Record<string, unknown>[] = []
-    const cancel = startRuntimeStatusProbe(client, {
-      onStatus: (status) => seen.push(status),
-      onUnavailable: () => misses.push(calls())
-    })
-    await flushMicrotasks()
-    expect(misses).toEqual([1])
-    expect(seen).toEqual([])
-
+    expect(failed).toBe(1)
+    expect(failedTimerCounts).toEqual([1])
+    expect(vi.getTimerCount()).toBe(1)
     await vi.advanceTimersByTimeAsync(1_000)
     await flushMicrotasks()
-    expect(seen).toEqual([{ capabilities: ['a.v1'] }])
-    expect(misses).toEqual([1])
-    cancel()
+    expect(failed).toBe(2)
+    expect(failedTimerCounts).toEqual([1, 1])
+    expect(vi.getTimerCount()).toBe(1)
+    cancelProbe()
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(seen).toEqual([])
+    expect(failed).toBe(2)
+    expect(failedTimerCounts).toEqual([1, 1])
+    expect(calls()).toBe(2)
+    expect(requests()).toEqual([['status.get'], ['status.get']])
   })
 })

@@ -5,15 +5,39 @@ import {
   GEMINI_SILENT_WORKING,
   GEMINI_WORKING
 } from './agent-title-core'
-import { collectAgentTitleEvidence, titlePresentsAgent } from './agent-title-evidence'
+import { collectAgentTitleEvidence } from './agent-title-evidence'
+import { resolveCanonicalPaneAgentIdentity } from './pane-agent-identity-adapter'
+import { resolvePublishedPaneAgentIdentity } from './published-pane-agent-identity'
 
 const agentFor = (title: string) => collectAgentTitleEvidence(title).agent
 const reasonFor = (title: string) => collectAgentTitleEvidence(title).reason
 
 describe('collectAgentTitleEvidence', () => {
+  it.each([
+    ['✦ Review Codex - DeepSeek Build', 'gemini'],
+    ['⏲ Review Codex - DeepSeek Build', 'gemini'],
+    ['◇ Review Codex - DeepSeek Build', 'gemini'],
+    ['✋ Review Codex - DeepSeek Build', 'gemini'],
+    ['✳ Review Codex - DeepSeek Build', 'claude'],
+    ['. Review Codex - DeepSeek Build', 'claude'],
+    ['* Review Codex - DeepSeek Build', 'claude'],
+    ['Wrapper | ✦ Review Codex - DeepSeek Build', 'gemini'],
+    ['Wrapper | ✳ Review Codex - DeepSeek Build', 'claude'],
+    ['OC | Review Codex - DeepSeek Build', 'opencode'],
+    ['Wrapper | OC | Review Codex - DeepSeek Build', 'opencode'],
+    ['⠋ - Review Codex - DeepSeek Build', 'dsb'],
+    ['DeepSeek Build', 'dsb']
+  ] as const)(
+    'preserves the native owner of %j through canonical and published identity',
+    (title, agent) => {
+      expect(collectAgentTitleEvidence(title).agent).toBe(agent)
+      expect(resolveCanonicalPaneAgentIdentity({ title }).agent).toBe(agent)
+      expect(resolvePublishedPaneAgentIdentity({ title })).toBe(agent)
+    }
+  )
+
   describe('an anchored name outranks a name in task text', () => {
-    // Minimized from real recorded titles that resolve to the wrong agent on the ordered chain:
-    // the pane owner is named by Orca's `- <agent>` suffix, the competitor only by task text.
+    // Recorded failures name the owner in Orca's suffix and a competitor only in task text.
     it.each([
       'Switch Claude and Codex off the load balancer… - grok',
       'Codex structured chat revalidation… - grok',
@@ -24,8 +48,7 @@ describe('collectAgentTitleEvidence', () => {
     })
 
     it('does not read a hyphenated worktree name as an owner suffix', () => {
-      // `review-14600-codex` is a directory, not an owner declaration. The suffix grammar
-      // requires whitespace before the dash precisely to keep these apart.
+      // Require whitespace before the owner-suffix dash so directory names such as review-14600-codex do not claim ownership.
       expect(agentFor('review-14600-codex')).toBeNull()
       expect(agentFor('codex-split-core')).toBeNull()
     })
@@ -39,8 +62,7 @@ describe('collectAgentTitleEvidence', () => {
   })
 
   describe('order independence', () => {
-    // The defect this replaces is that chain position decides between two names. Swapping the
-    // two names in a title must not change the answer.
+    // Swapping name order must not let detector-list position choose the owner.
     it.each([
       ['codex', 'grok'],
       ['gemini', 'antigravity'],
@@ -85,7 +107,7 @@ describe('collectAgentTitleEvidence', () => {
       expect(reasonFor('✳ Consolidate Codex subagent sidebar rows')).toBe('vendor-marker')
     })
 
-    it('lets an anchored name outrank a foreign vendor marker', () => {
+    it('keeps the Claude marker when the remaining bare name is unanchored', () => {
       expect(agentFor('✳ agy')).toBe('claude')
       expect(reasonFor('✳ agy')).toBe('vendor-marker')
       expect(agentFor('✳ codex')).toBe('claude')
@@ -104,8 +126,7 @@ describe('collectAgentTitleEvidence', () => {
     })
 
     it('declines a bare model name rather than guessing Gemini CLI', () => {
-      // No identity segment, no vendor glyph — only a name in free text. Antigravity and Gemini
-      // CLI are equally consistent with it, so the title cannot answer.
+      // Without identity grammar/vendor evidence, free-text agy/Gemini names are ambiguous.
       expect(agentFor('Gemini 3.7 Flash · high')).toBeNull()
     })
 
@@ -273,8 +294,7 @@ describe('collectAgentTitleEvidence', () => {
   })
 
   it('produces no name evidence for an agent outside the token set', () => {
-    // The token set is deliberately narrower than the agent union: short names like `omp` would
-    // classify ordinary shell text. Such a title yields no evidence at all rather than a guess.
+    // Keep the evidence token set narrow: short names such as omp would classify ordinary shell text.
     expect(reasonFor('Review PR for OMP transcript rendering')).toBe('no-evidence')
   })
 
@@ -282,8 +302,7 @@ describe('collectAgentTitleEvidence', () => {
     it.each(['◐ Rebase PR #14624 onto main', '⠂ Fix SSH fallback', '⠋ Thinking'])(
       'declines the spinner-only title %j',
       (title) => {
-        // Braille and quarter-circle spinners are emitted by many agents, so they prove the pane
-        // is busy and nothing about who it is. Callers that want busy-ness use activity parsing.
+        // Shared braille/quarter-circle spinners prove activity only; identity requires other evidence.
         expect(agentFor(title)).toBeNull()
         expect(reasonFor(title)).toBe('no-evidence')
       }
@@ -351,80 +370,5 @@ describe('collectAgentTitleEvidence', () => {
 
   it('terminates when a wrapper title starts with a separator', () => {
     expect(agentFor(' | ')).toBeNull()
-  })
-})
-
-describe('titlePresentsAgent', () => {
-  // #14937/#14938: the gate a title must pass before it may take a pane from a known owner.
-  it('rejects a name that only appears inside task text', () => {
-    expect(titlePresentsAgent('⠋ Fix the codex plugin launcher', 'codex')).toBe(false)
-    expect(titlePresentsAgent('⠙ Investigate why codex hangs on Windows', 'codex')).toBe(false)
-    expect(titlePresentsAgent('⠋ add grok support to the tab bar', 'grok')).toBe(false)
-    expect(titlePresentsAgent('⠋ port the gemini status parser', 'gemini')).toBe(false)
-    expect(titlePresentsAgent('⠋ review copilot suggestions', 'copilot')).toBe(false)
-    expect(titlePresentsAgent('⠋ refactor the aider bridge', 'aider')).toBe(false)
-  })
-
-  it('accepts a name in the identity position', () => {
-    expect(titlePresentsAgent('⠋ Codex', 'codex')).toBe(true)
-    expect(titlePresentsAgent('⠋ Codex: fix cursor offsets', 'codex')).toBe(true)
-    expect(titlePresentsAgent('Codex ready', 'codex')).toBe(true)
-    expect(titlePresentsAgent('Codex - action required', 'codex')).toBe(true)
-    expect(titlePresentsAgent('⠋ Claude Code', 'claude')).toBe(true)
-    expect(titlePresentsAgent('zsh | ⠋ Claude Code', 'claude')).toBe(true)
-  })
-
-  it('answers only for the agent asked about', () => {
-    expect(titlePresentsAgent('⠋ Codex', 'claude')).toBe(false)
-    expect(titlePresentsAgent('⠋ Claude Code', 'codex')).toBe(false)
-  })
-
-  // The one intentional divergence from collectAgentTitleEvidence, pinned so it cannot re-drift.
-  // The parser files '⠋ Codex' as free text because codex sets synthesizeWorkingTitle: false in
-  // synthetic-agent-title.ts — Codex emits its own working titles, so Orca never synthesizes one
-  // for the parser to anchor against. This predicate is asked about ONE named agent rather than
-  // inferring it, so a name in the identity position is enough. Keeping the two in agreement here
-  // would break the pinned '⠋ Codex: fix cursor offsets' => codex assertion in
-  // terminal-title-agent-type.test.ts, and would demote real Codex frames on hookless SSH panes.
-  it('diverges from the evidence parser only for a bare frame it files as free text', () => {
-    expect(collectAgentTitleEvidence('⠋ Codex').reason).toBe('free-text-only')
-    expect(collectAgentTitleEvidence('⠋ Codex').agent).toBeNull()
-    expect(titlePresentsAgent('⠋ Codex', 'codex')).toBe(true)
-  })
-
-  // The OTHER direction of the divergence. The parser resolves a lone vendor marker to its agent,
-  // including Claude's generic status decorations; this predicate must not, or a '. '-prefixed
-  // OpenCode task title would reclaim the pane #8940 exists to protect. Pinned because leaving
-  // this direction unguarded is exactly how the first cut of this change shipped a regression.
-  it('diverges the other way: a generic Claude status prefix is not identity', () => {
-    for (const title of [
-      '. port the claude prompt',
-      '. ship it with claude',
-      '\u2733 investigating startup'
-    ]) {
-      expect(collectAgentTitleEvidence(title).agent).toBe('claude')
-      expect(collectAgentTitleEvidence(title).reason).toBe('vendor-marker')
-      expect(titlePresentsAgent(title, 'claude')).toBe(false)
-    }
-  })
-
-  // But an agent's OWN sigil is identity, and must survive: these are the titles a real Gemini or
-  // Cursor pane paints, and refusing them stranded the pane on its previous owner.
-  it('accepts a vendor marker that is the agent own sigil', () => {
-    for (const title of [
-      '\u2726 Analyzing the repository',
-      '\u23f2 thinking',
-      '\u25c7 waiting',
-      '\u270b approve this edit'
-    ]) {
-      expect(titlePresentsAgent(title, 'gemini')).toBe(true)
-    }
-    expect(titlePresentsAgent('cursor agent', 'cursor')).toBe(true)
-  })
-
-  // Task text that merely opens with a name is still task text: the colon is the frame marker.
-  it('rejects a name trailed by task text with no frame separator', () => {
-    expect(titlePresentsAgent('. Claude Code compare Opencode', 'claude')).toBe(false)
-    expect(titlePresentsAgent('⠋ Codex plugin launcher rewrite', 'codex')).toBe(false)
   })
 })

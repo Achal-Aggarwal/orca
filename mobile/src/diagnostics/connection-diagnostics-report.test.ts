@@ -1,35 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildConnectionDiagnosticsReport } from './connection-diagnostics-report'
-import type { ConnectionLogEntry } from '../transport/types'
 
 const NOW = Date.UTC(2026, 6, 9, 22, 0, 0)
-
-function stageEntry(
-  id: string,
-  ts: number,
-  name: string,
-  ms: number,
-  complete: boolean
-): ConnectionLogEntry {
-  return {
-    id,
-    ts,
-    level: complete ? 'info' : 'warn',
-    path: 'relay',
-    message: `Relay dial stage ${name} ${complete ? 'finished' : 'did not finish'}`,
-    timing: { kind: 'relay-dial-stage', name, ms, complete }
-  }
-}
-
-function stateEntry(id: string, ts: number, name: string, ms: number): ConnectionLogEntry {
-  return {
-    id,
-    ts,
-    level: 'info',
-    message: `Connection state ${name} → connected`,
-    timing: { kind: 'connection-state', name, ms, complete: true }
-  }
-}
 
 describe('buildConnectionDiagnosticsReport', () => {
   it('summarizes a failing Tailscale host with its log', () => {
@@ -41,6 +13,7 @@ describe('buildConnectionDiagnosticsReport', () => {
       lastConnectedAt: NOW - 5 * 60_000,
       platform: 'ios 26.5.1',
       appVersion: '0.0.29',
+      bridgeProtocolVersion: 1,
       desktopAppVersion: '1.4.191',
       entries: [
         {
@@ -55,7 +28,8 @@ describe('buildConnectionDiagnosticsReport', () => {
     })
 
     expect(report).toContain('App: Orca Mobile 0.0.29 · ios 26.5.1')
-    expect(report).toContain('Host Orca version: 1.4.191')
+    expect(report).toContain('Host Orca version: unknown (not currently connected)')
+    expect(report).not.toContain('1.4.191')
     expect(report).toContain('Endpoint: 100.65.9.106:6768 (Tailscale)')
     expect(report).toContain('State: reconnecting (reconnect attempts: 12)')
     expect(report).toContain('(5m 0s ago)')
@@ -73,6 +47,7 @@ describe('buildConnectionDiagnosticsReport', () => {
       lastConnectedAt: null,
       platform: 'android 15',
       appVersion: '0.0.29',
+      bridgeProtocolVersion: 1,
       entries: [],
       nowMs: NOW
     })
@@ -84,6 +59,24 @@ describe('buildConnectionDiagnosticsReport', () => {
     expect(report).toContain('No connection events recorded.')
   })
 
+  it('names the bridge version under the app line', () => {
+    const lines = buildConnectionDiagnosticsReport({
+      hostName: 'Host 3',
+      endpoint: 'ws://192.168.1.50:6768',
+      state: 'connected',
+      reconnectAttempts: 0,
+      lastConnectedAt: null,
+      platform: 'ios 26',
+      appVersion: '0.0.60',
+      desktopAppVersion: '1.4.197',
+      bridgeProtocolVersion: 1,
+      entries: [],
+      nowMs: NOW
+    }).split('\n')
+    expect(lines.slice(2, 4)).toEqual(['App: Orca Mobile 0.0.60 · ios 26', 'Bridge protocol: 1'])
+    expect(lines).toContain('Host Orca version: 1.4.197')
+  })
+
   it('explains the most likely cause and redacts credentials before copying', () => {
     const report = buildConnectionDiagnosticsReport({
       hostName: 'Host 3',
@@ -93,31 +86,17 @@ describe('buildConnectionDiagnosticsReport', () => {
       lastConnectedAt: null,
       platform: 'android 36',
       appVersion: '0.0.46',
+      bridgeProtocolVersion: 1,
       activePath: 'tailscale',
       pendingPath: 'relay',
       entries: [
-        {
-          id: 'relay-stage-opening',
-          ts: NOW - 6_000,
-          level: 'info',
-          path: 'relay',
-          message: 'Relay dial stage opening finished',
-          detail: '118ms — resumeToken=secret-resume-token',
-          timing: { kind: 'relay-dial-stage', name: 'opening', ms: 118, complete: true }
-        },
         {
           id: 'relay-failure',
           ts: NOW - 5_000,
           level: 'error',
           message: 'Relay: relay dial failed',
           detail:
-            'RelayDirectorHttpError: relay director resolve failed (503); retry after 30000ms; resumeToken=secret-resume-token',
-          timing: {
-            kind: 'relay-dial-stage',
-            name: 'awaiting-hello',
-            ms: 9_100,
-            complete: false
-          }
+            'RelayDirectorHttpError: relay director resolve failed (503); retry after 30000ms; resumeToken=secret-resume-token'
         }
       ],
       nowMs: NOW
@@ -130,9 +109,6 @@ describe('buildConnectionDiagnosticsReport', () => {
     expect(report).toContain('Next step: Keep Orca open; recovery should retry automatically.')
     expect(report).toContain('resumeToken=[redacted]')
     expect(report).not.toContain('secret-resume-token')
-    expect(report).toContain(
-      'Relay dial stages: opening 118ms · awaiting-hello 9.1s (did not finish) — total 9.2s'
-    )
   })
 
   it('redacts quoted JSON credentials and never echoes an invalid endpoint', () => {
@@ -144,6 +120,7 @@ describe('buildConnectionDiagnosticsReport', () => {
       lastConnectedAt: null,
       platform: 'android 36',
       appVersion: '0.0.47',
+      bridgeProtocolVersion: 1,
       entries: [
         {
           id: 'json-secret',
@@ -162,52 +139,6 @@ describe('buildConnectionDiagnosticsReport', () => {
     expect(report).not.toContain('bearer-secret')
   })
 
-  it('breaks a slow connect down by dial stage and connection state', () => {
-    const report = buildConnectionDiagnosticsReport({
-      hostName: 'Host 6',
-      endpoint: 'ws://192.168.1.50:6768',
-      state: 'connected',
-      reconnectAttempts: 2,
-      lastConnectedAt: NOW,
-      platform: 'ios 26.5.1',
-      appVersion: '0.0.47',
-      entries: [
-        stageEntry('a1', NOW - 30_000, 'opening', 90, false),
-        stateEntry('s1', NOW - 29_000, 'connecting', 12_000),
-        stageEntry('b1', NOW - 20_000, 'opening', 120, true),
-        stageEntry('b2', NOW - 19_000, 'awaiting-hello', 6_400, true),
-        stageEntry('b3', NOW - 13_000, 'handshaking', 240, true),
-        stageEntry('b4', NOW - 12_000, 'confirming', 1_180, true),
-        stateEntry('s2', NOW - 11_000, 'connecting', 8_000)
-      ],
-      nowMs: NOW
-    })
-
-    // Only the latest dial is broken out, so a reconnect loop cannot average away
-    // the attempt the reporter is complaining about.
-    expect(report).toContain(
-      'Relay dial stages (latest of 2): opening 120ms · awaiting-hello 6.4s · handshaking 240ms · confirming 1.2s — total 7.9s'
-    )
-    expect(report).toContain('Connection state dwell: connecting 20.0s ×2')
-  })
-
-  it('omits the timing lines when nothing recorded a phase duration', () => {
-    const report = buildConnectionDiagnosticsReport({
-      hostName: 'Host 7',
-      endpoint: 'ws://192.168.1.50:6768',
-      state: 'connected',
-      reconnectAttempts: 0,
-      lastConnectedAt: NOW,
-      platform: 'ios 26.5.1',
-      appVersion: '0.0.47',
-      entries: [{ id: 'plain', ts: NOW, level: 'info', message: 'Authenticated' }],
-      nowMs: NOW
-    })
-
-    expect(report).not.toContain('Relay dial stages')
-    expect(report).not.toContain('Connection state dwell')
-  })
-
   it('bounds a single event line before submission while preserving its identity', () => {
     const report = buildConnectionDiagnosticsReport({
       hostName: 'Host 5',
@@ -217,6 +148,7 @@ describe('buildConnectionDiagnosticsReport', () => {
       lastConnectedAt: null,
       platform: 'android 36',
       appVersion: '0.0.47',
+      bridgeProtocolVersion: 1,
       entries: [
         {
           id: 'oversized',
@@ -234,4 +166,66 @@ describe('buildConnectionDiagnosticsReport', () => {
       2048
     )
   })
+
+  it.each([2047, 2048, 2049])('keeps the existing event boundary at %i bytes', (bytes) => {
+    const prefix = `${new Date(NOW).toISOString()} [error] `
+    const marker = ' … [truncated]'
+    const message = 'a'.repeat(bytes - prefix.length)
+    const report = buildConnectionDiagnosticsReport({
+      hostName: 'fixture',
+      endpoint: 'ws://192.168.1.2:6768',
+      state: 'connected',
+      reconnectAttempts: 0,
+      lastConnectedAt: null,
+      platform: 'ios',
+      appVersion: 'fixture',
+      bridgeProtocolVersion: 1,
+      entries: [{ id: 'boundary', ts: NOW, level: 'error', message }],
+      nowMs: NOW
+    })
+    const available = 2048 - prefix.length - new TextEncoder().encode(marker).byteLength
+    expect(report.split('\n').at(-1)).toBe(
+      bytes <= 2048 ? `${prefix}${message}` : `${prefix}${'a'.repeat(available)}${marker}`
+    )
+  })
+
+  it.each(['a', 'é', '界', '😀', '\ud800', '\udc00'])(
+    'truncates %j without per-character encoding',
+    (token) => {
+      const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+      const entry = Object.freeze({
+        id: 'bounded',
+        ts: NOW,
+        level: 'error' as const,
+        message: token.repeat(3000)
+      })
+      let report: string
+      let calls: number
+      try {
+        report = buildConnectionDiagnosticsReport({
+          hostName: 'fixture',
+          endpoint: 'ws://192.168.1.2:6768',
+          state: 'reconnecting',
+          reconnectAttempts: 1,
+          lastConnectedAt: null,
+          platform: 'android',
+          appVersion: 'fixture',
+          bridgeProtocolVersion: 1,
+          entries: Object.freeze([entry]),
+          nowMs: NOW
+        })
+        calls = encode.mock.calls.length
+      } finally {
+        encode.mockRestore()
+      }
+      const prefix = `${new Date(NOW).toISOString()} [error] `
+      const marker = ' … [truncated]'
+      const available = 2048 - new TextEncoder().encode(prefix + marker).byteLength
+      const tokenBytes = new TextEncoder().encode(token).byteLength
+      expect(report.split('\n').at(-1)).toBe(
+        `${prefix}${token.repeat(Math.floor(available / tokenBytes))}${marker}`
+      )
+      expect(calls).toBeLessThanOrEqual(2)
+    }
+  )
 })

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { OrchestrationDb } from './db'
+import { DROP_REMOVED_WORK_TRIGGERS_SQL } from './db/reset/removed-orchestration-work-store'
 import { SCHEMA_VERSION } from './db/contract-constants'
 
 const DISPATCH_IDENTITY_COLUMNS = [
@@ -27,7 +28,7 @@ describe('R1 identity migration', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-r1-identity-'))
     const dbPath = join(tempDir, 'orchestration.db')
     db = new OrchestrationDb(dbPath)
-    const task = db.createTask({ spec: 'legacy supervised worker' })
+    const task = db.createTask({ runId: 'run_legacy_local', spec: 'legacy supervised worker' })
     const started = db.createStartingWorkerDispatch({
       taskId: task.id,
       startOptions: { worktree: 'folder:/workspace' },
@@ -51,6 +52,7 @@ describe('R1 identity migration', () => {
     db = undefined
 
     const v30 = new Database(dbPath)
+    v30.exec(DROP_REMOVED_WORK_TRIGGERS_SQL)
     v30.exec(
       'DROP INDEX IF EXISTS idx_dispatch_retry_of; DROP INDEX IF EXISTS idx_dispatch_resource;'
     )
