@@ -62,7 +62,7 @@ export function benchmarkPresentationCorpus(
     }
     if (nullAddress) {
       db.db.exec(
-        "UPDATE dispatch_contexts SET assignee_handle = NULL, assignee_pane_key = NULL WHERE status = 'pending'"
+        "UPDATE dispatch_contexts SET assignee_handle = NULL, assignee_pane_key = NULL WHERE status IN ('pending', 'dispatched')"
       )
     }
     const task = db.createTask({ runId: run.id, spec: 'history' })
@@ -77,8 +77,11 @@ export function benchmarkPresentationCorpus(
       insert.run(terminalHistory, 'terminal-history-', run.id, task.id, 0, 0, 0)
     }
     const active = db.db
-      .prepare("SELECT id, task_id FROM dispatch_contexts WHERE status = 'pending' ORDER BY rowid")
+      .prepare(
+        "SELECT id, task_id FROM dispatch_contexts WHERE status IN ('pending', 'dispatched') ORDER BY rowid"
+      )
       .all()
+    expect(active.map((row) => row.id)).toEqual([...expected.values()])
     const insertFact = db.db.prepare(
       `INSERT INTO attempt_observation_facts(id, dispatch_id, task_id, sequence, authority_id, authority_clock, facet, payload, home_received_at) VALUES (?, ?, ?, ?, 'home', 'home', 'process_turn', '{"process":"running","turn":"working"}', ?)`
     )
