@@ -23,6 +23,7 @@ export type SparseCheckoutChangeListener = (
 ) => void
 
 const sparseCheckoutStateCache = new Map<string, SparseCheckoutCacheEntry>()
+const coldSparseCheckoutProbes = new Map<string, object>()
 let changeListener: SparseCheckoutChangeListener | undefined
 
 function retainSparseCheckoutCacheEntry(key: string, entry: SparseCheckoutCacheEntry): void {
@@ -51,9 +52,11 @@ function worktreeKeyPrefix(repoPath: string, worktreePath: string): string {
 }
 
 function deleteKeysWithPrefix(prefix: string): void {
-  for (const key of sparseCheckoutStateCache.keys()) {
-    if (key.startsWith(prefix)) {
-      sparseCheckoutStateCache.delete(key)
+  for (const cache of [sparseCheckoutStateCache, coldSparseCheckoutProbes]) {
+    for (const key of cache.keys()) {
+      if (key.startsWith(prefix)) {
+        cache.delete(key)
+      }
     }
   }
 }
@@ -73,9 +76,19 @@ export async function detectSparseCheckoutCached(
   const key = cacheKey(repoPath, worktreePath, options)
   const cached = sparseCheckoutStateCache.get(key)
   if (!cached) {
-    const isSparse = await detectSparseCheckout(worktreePath, options)
-    retainSparseCheckoutCacheEntry(key, { isSparse, cachedAt: Date.now() })
-    return isSparse
+    const probe = {}
+    coldSparseCheckoutProbes.set(key, probe)
+    try {
+      const isSparse = await detectSparseCheckout(worktreePath, options)
+      if (coldSparseCheckoutProbes.get(key) === probe) {
+        retainSparseCheckoutCacheEntry(key, { isSparse, cachedAt: Date.now() })
+      }
+      return isSparse
+    } finally {
+      if (coldSparseCheckoutProbes.get(key) === probe) {
+        coldSparseCheckoutProbes.delete(key)
+      }
+    }
   }
   if (Date.now() - cached.cachedAt < SPARSE_CHECKOUT_CACHE_RECONCILE_INTERVAL_MS) {
     retainSparseCheckoutCacheEntry(key, cached)
@@ -123,10 +136,11 @@ export function clearSparseCheckoutStateCacheForRepo(repoPath: string): void {
 /** Clear all entries when a change notification cannot be resolved to a repo path. */
 export function clearSparseCheckoutStateCache(): void {
   sparseCheckoutStateCache.clear()
+  coldSparseCheckoutProbes.clear()
 }
 
 export function __resetSparseCheckoutStateCacheForTests(): void {
-  sparseCheckoutStateCache.clear()
+  clearSparseCheckoutStateCache()
   changeListener = undefined
 }
 
