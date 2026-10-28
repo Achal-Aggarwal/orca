@@ -66,8 +66,21 @@ export function noteWslDistroLaunched(distro: string): void {
   }
 }
 
-// The earliest start a running read may have: after `startedAfter` and any stop's settle window.
-async function settledStartedAfter(
+// The earliest start a read may have to count as running: after any stop's settle, or a wake.
+function settledRunningFloor(distro: string): number {
+  const stoppedAt = mayHaveStoppedAt.get(distroKey(distro))
+  const woken = wokenAt.get(distroKey(distro))
+  return Math.max(
+    stoppedAt === undefined ? -Infinity : stoppedAt + WSL_STOP_SETTLE_MS,
+    woken ?? -Infinity
+  )
+}
+
+/**
+ * The earliest start a running read may have: after `startedAfter` and any stop's settle window.
+ * Waits until that moment has passed, so a probe started on return qualifies.
+ */
+export async function settledWslRunningReadAnchor(
   distro: string,
   startedAfter: number | undefined
 ): Promise<number | undefined> {
@@ -76,12 +89,7 @@ async function settledStartedAfter(
       noteWslDistroMayHaveStopped(candidate)
     }
   })
-  const stoppedAt = mayHaveStoppedAt.get(distroKey(distro))
-  const woken = wokenAt.get(distroKey(distro))
-  const floor = Math.max(
-    stoppedAt === undefined ? -Infinity : stoppedAt + WSL_STOP_SETTLE_MS,
-    woken ?? -Infinity
-  )
+  const floor = settledRunningFloor(distro)
   const anchor = floor === -Infinity ? startedAfter : Math.max(startedAfter ?? -Infinity, floor)
   // Timers truncate to whole ms on a ms clock and can wake ~2ms short; sleep until the anchor has passed.
   const settled = anchor ?? -Infinity
@@ -97,7 +105,7 @@ export async function readSettledConfirmedRunningWslDistros(
   startedAfter?: number
 ): Promise<WslRunningDistrosRead> {
   return readConfirmedRunningWslDistros({
-    startedAfter: await settledStartedAfter(distro, startedAfter)
+    startedAfter: await settledWslRunningReadAnchor(distro, startedAfter)
   })
 }
 
@@ -108,7 +116,7 @@ export async function readWslDistroRunningState(
   distro: string,
   options: { startedAfter?: number; retryUnverifiable?: boolean } = {}
 ): Promise<WslDistroRunningState> {
-  const startedAfter = await settledStartedAfter(distro, options.startedAfter)
+  const startedAfter = await settledWslRunningReadAnchor(distro, options.startedAfter)
   let read = await readConfirmedRunningWslDistros({ startedAfter })
   if (read.status === 'unavailable' && options.retryUnverifiable) {
     read = await readConfirmedRunningWslDistros({ startedAfter, bypassFailureBackoff: true })
@@ -150,8 +158,13 @@ export function deferUntilWslDistroRunning(
     return () => {}
   }
   // A probe started inside a user act must not hand its boot allowance to the drain it causes.
-  unsubscribeObservations ??= onConfirmedRunningWslDistros((distros) =>
-    outsideWslUserAct(() => noteWslDistrosRunning(distros))
+  // A list probed while a distro was still stopping names it too: only a settled one may drain it.
+  unsubscribeObservations ??= onConfirmedRunningWslDistros((distros, probeStartedAt) =>
+    outsideWslUserAct(() =>
+      noteWslDistrosRunning(
+        distros.filter((distro) => probeStartedAt >= settledRunningFloor(distro))
+      )
+    )
   )
   let tasks = deferredTasksByDistro.get(keyForDistro)
   if (!tasks) {
