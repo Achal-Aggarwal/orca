@@ -1,4 +1,4 @@
-import { getRepoRoutingConnectionId } from '../../shared/execution-host'
+import { getRepoRoutingConnectionId, LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { hostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 import { CLEARED_HOSTED_REVIEW_SELECTION_UPDATES } from '../../shared/worktree/hosted-review-links'
 import { gitExecFileAsync } from '../git/runner'
@@ -96,7 +96,8 @@ export async function workspaceReviewTarget(args: {
   const cached = store.getGitHubCache().pr[cacheKey]
   const latestMeta = store.getWorktreeMetaForHost?.(worktree.id, executionHostId)
   const selection = { ...worktree, ...latestMeta, branch }
-  const cachedPR = readWorkspaceReviewPR(selection, repo, store.getGitHubCache().pr)
+  const reviewRepo = { ...repo, executionHostId }
+  const cachedPR = readWorkspaceReviewPR(selection, reviewRepo, store.getGitHubCache().pr)
   const staleLinked =
     shouldClearBranchMismatchedLinkedOpenPR({
       pr: cachedPR,
@@ -127,7 +128,11 @@ export async function workspaceReviewTarget(args: {
     )
     const cache = store.getGitHubCache()
     const pr = { ...cache.pr }
-    for (const key of getGitHubPRCacheKeyCandidates(repo, branch)) {
+    const keys =
+      executionHostId === LOCAL_EXECUTION_HOST_ID
+        ? getGitHubPRCacheKeyCandidates(reviewRepo, branch)
+        : [cacheKey]
+    for (const key of keys) {
       delete pr[key]
     }
     store.setGitHubCache?.({ ...cache, pr })

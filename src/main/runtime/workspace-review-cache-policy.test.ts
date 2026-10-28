@@ -155,3 +155,23 @@ it('bounds host PR writes by age without changing the issue cache', async () => 
     subscription.close()
   }
 })
+
+it('publishes from the explicit executing host instead of the local repo bucket', async () => {
+  const h = await harness()
+  h.candidate = {
+    ...h.candidate,
+    executionHostId: 'runtime:server',
+    cacheKey: 'runtime:server::repo-1::feature/test'
+  }
+  h.cache = {
+    pr: {
+      [h.candidate.cacheKey]: { data: makePR({ number: 13 }), fetchedAt: Date.now() },
+      'repo-1::feature/test': { data: makePR({ number: 99 }), fetchedAt: Date.now() }
+    },
+    issue: {}
+  }
+  const subscription = h.open()
+  await subscription.renew()
+  expect(snapshots(h.frames)).toMatchObject([{ review: { number: 13 }, stale: false }])
+  subscription.close()
+})

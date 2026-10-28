@@ -103,6 +103,47 @@ describe('workspace review target uses host identity and existing review selecti
     })
   })
 
+  it('reads and clears the executing host cache when fallback repo metadata belongs elsewhere', async () => {
+    const h = target()
+    const repo = { ...h.args.repo, executionHostId: 'ssh:other' as const, connectionId: 'other' }
+    const otherKey = getGitHubPRCacheKey(repo.path, repo.id, 'current-branch', undefined, 'other')
+    const legacyPathKey = getGitHubPRCacheKey(repo.path, undefined, 'current-branch')
+    const runtimeKey = getGitHubPRCacheKey(
+      repo.path,
+      repo.id,
+      'current-branch',
+      undefined,
+      null,
+      'runtime:other'
+    )
+    const stale = {
+      data: makePR({ headSha: 'old-head', headRefName: 'previous-branch' }),
+      fetchedAt: 500
+    }
+    const other = { data: makePR({ number: 99 }), fetchedAt: 600 }
+    h.cache = {
+      pr: { [h.key]: stale, [legacyPathKey]: stale, [otherKey]: other, [runtimeKey]: other },
+      issue: {}
+    }
+    const args = { ...h.args, repo }
+    expect(await workspaceReviewTarget(args)).toMatchObject({
+      linkedPR: null,
+      candidate: {
+        cacheKey: h.key,
+        linkedPRNumber: null,
+        fallbackPRNumber: null,
+        cachedFetchedAt: null
+      }
+    })
+    expect(h.args.store.getWorktreeMetaForHost().linkedPR).toBeNull()
+    expect(h.args.store.getGitHubCache().pr).toEqual({ [otherKey]: other, [runtimeKey]: other })
+    expect(await workspaceReviewTarget(args)).toMatchObject({
+      linkedPR: null,
+      candidate: { linkedPRNumber: null, fallbackPRNumber: null, cachedFetchedAt: null }
+    })
+    expect(h.args.store.getGitHubCache().pr[otherKey]).toBe(other)
+  })
+
   it('does not re-adopt an old durable PR after branch discovery replaces the cache', async () => {
     const h = target()
     h.cache = {

@@ -1,3 +1,4 @@
+import { normalizeExecutionHostId } from '../../shared/execution-host'
 import { readWorkspaceReviewPR } from '../../shared/sidebar-list/workspace-review-facts'
 import {
   shouldClearBranchMismatchedLinkedOpenPR,
@@ -48,17 +49,15 @@ export class WorkspaceReviewSubscription {
       signal?: AbortSignal
     }
   ) {
-    const { subscriptionId, connectionId, requestId, signal } = options
-    runtime.registerSubscriptionCleanup(
-      subscriptionId,
-      () => this.dispose(),
-      connectionId,
-      requestId
-    )
+    const { subscriptionId: id, connectionId, requestId, signal } = options
+    runtime.registerSubscriptionCleanup(id, () => this.dispose(), connectionId, requestId)
     this.stopListening = subscribePRRefreshEvents((event) => {
+      const version = this.generation
       void this.apply(event).catch(() => {
-        this.lastError = 'Review status unavailable'
-        this.publish()
+        if (!this.released && version === this.generation && event.sequence === this.sequence) {
+          this.lastError = 'Review status unavailable'
+          this.publish()
+        }
       })
     })
     if (signal?.aborted) {
@@ -84,9 +83,7 @@ export class WorkspaceReviewSubscription {
     if (this.released) {
       return
     }
-    if (this.timer) {
-      clearTimeout(this.timer)
-    }
+    clearTimeout(this.timer)
     this.timer = setTimeout(this.close, WORKTREE_REVIEW_LEASE_MS)
     this.timer.unref?.()
   }
@@ -105,9 +102,7 @@ export class WorkspaceReviewSubscription {
     }
     this.released = true
     this.generation += 1
-    if (this.timer) {
-      clearTimeout(this.timer)
-    }
+    clearTimeout(this.timer)
     this.options.signal?.removeEventListener('abort', this.close)
     this.stopListening()
     clearVisiblePRRefreshWindow(this.subscriptionId)
@@ -165,7 +160,12 @@ export class WorkspaceReviewSubscription {
             linkedPR: this.target.linkedPR ?? null,
             suppressedGitHubPR: this.target.suppressedGitHubPR
           },
-          { id: candidate.repoId, path: candidate.repoPath, connectionId: candidate.connectionId },
+          {
+            id: candidate.repoId,
+            path: candidate.repoPath,
+            connectionId: candidate.connectionId,
+            executionHostId: normalizeExecutionHostId(candidate.executionHostId)
+          },
           this.runtime.requireStore().getGitHubCache().pr
         )
       : null
@@ -245,6 +245,7 @@ export class WorkspaceReviewSubscription {
       return
     }
     const version = this.generation
+    this.sequence = event.sequence
     const current = await this.runtime.prepareWorkspaceReviewRefresh(this.options.selector)
     if (
       this.released ||
@@ -276,7 +277,6 @@ export class WorkspaceReviewSubscription {
       return
     }
     this.target = current
-    this.sequence = event.sequence
     const outcome = event.outcome
     this.lastError = outcome.kind === 'upstream-error' ? outcome.message : undefined
     if (outcome.kind !== 'upstream-error') {

@@ -54,6 +54,85 @@ describe('workspace review asynchronous ownership', () => {
     subscription.close()
   })
 
+  it.each(['target-change', 'same-target-renewal', 'newer-result', 'release'] as const)(
+    'ignores an old event preparation failure after %s',
+    async (replacement) => {
+      const h = await harness()
+      mocks.getPRForBranchOutcomeMock.mockImplementation(async () => ({
+        kind: 'found',
+        pr: makePR({ number: 12 }),
+        fetchedAt: Date.now()
+      }))
+      const subscription = h.open()
+      await subscription.renew()
+      let fail: (error: Error) => void = () => {}
+      h.prepare.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject
+          })
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      expect(h.prepare).toHaveBeenCalledTimes(2)
+      if (replacement === 'target-change') {
+        h.candidate = { ...h.candidate, branch: 'next', cacheKey: '/repo::next' }
+      }
+      if (replacement === 'release') {
+        subscription.close()
+      } else if (replacement === 'newer-result') {
+        mocks.getPRForBranchOutcomeMock.mockResolvedValueOnce({
+          kind: 'found',
+          pr: makePR({ number: 13 }),
+          fetchedAt: Date.now()
+        })
+        await h.coordinator.refreshPRNow(h.candidate)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(snapshots(h.frames).at(-1)).toMatchObject({ review: { number: 13 }, stale: false })
+      } else {
+        await subscription.renew()
+      }
+      const before = [...h.frames]
+      fail(new Error('superseded preparation failed'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(snapshots(h.frames).every((frame) => frame.error === undefined)).toBe(true)
+      if (replacement !== 'target-change') {
+        expect(h.frames).toEqual(before)
+      }
+      subscription.close()
+    }
+  )
+
+  it('publishes a current event preparation failure and recovers on the next result', async () => {
+    const h = await harness()
+    mocks.getPRForBranchOutcomeMock.mockImplementation(async () => ({
+      kind: 'found',
+      pr: makePR(),
+      fetchedAt: Date.now()
+    }))
+    const subscription = h.open()
+    await subscription.renew()
+    h.prepare.mockRejectedValueOnce(new Error('current preparation failed'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(snapshots(h.frames)).toMatchObject([
+      { type: 'snapshot' },
+      { type: 'updated', stale: true, error: 'Review status unavailable' }
+    ])
+    const before = [...h.frames]
+    await h.coordinator.refreshPRNow({
+      ...h.candidate,
+      branch: 'irrelevant',
+      cacheKey: '/repo::irrelevant'
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.frames).toEqual(before)
+    expect(h.prepare).toHaveBeenCalledTimes(2)
+    await h.coordinator.refreshPRNow(h.candidate)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: { number: 12 }, stale: false })
+    expect(snapshots(h.frames).at(-1)?.error).toBeUndefined()
+    subscription.close()
+  })
+
   it('reconciles suppression changed while a same-identity lookup was running', async () => {
     const h = await harness()
     let finish: (outcome: PRRefreshOutcome) => void = () => {}
