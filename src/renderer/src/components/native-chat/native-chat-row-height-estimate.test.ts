@@ -179,7 +179,9 @@ describe('transcript row height estimate', () => {
             start = 0
           ) {
             const found = indexOf.call(this, value, start)
-            if (value === '\n') searched += (found === -1 ? this.length : found + 1) - start
+            if (value === '\n') {
+              searched += (found === -1 ? this.length : found + 1) - start
+            }
             return found
           })
           let metrics: ReturnType<typeof nativeChatRowContentMetrics>
