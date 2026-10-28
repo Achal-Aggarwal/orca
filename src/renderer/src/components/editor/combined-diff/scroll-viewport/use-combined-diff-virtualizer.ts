@@ -5,7 +5,10 @@ import type { ProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
 import { measureVirtualRowRetainingHiddenSize } from '@/hooks/virtualized-hidden-row-measurement'
 import type { DiffSection } from '../../diff-section-types'
 import { getDiffSectionRowEstimatedHeight } from '../../diff-section-layout'
-import { getCombinedDiffRenderRange } from './combined-diff-render-range'
+import {
+  getCombinedDiffRenderRange,
+  getFocusedCombinedDiffSectionIndex
+} from './combined-diff-render-range'
 
 const COMBINED_DIFF_OVERSCAN = 5
 
@@ -45,7 +48,8 @@ export function useCombinedDiffVirtualizer({
       getCombinedDiffRenderRange(
         range,
         estimateSize,
-        scrollContainerRef.current?.clientHeight ?? 0
+        scrollContainerRef.current?.clientHeight ?? 0,
+        getFocusedCombinedDiffSectionIndex(scrollContainerRef.current)
       ),
     overscan: COMBINED_DIFF_OVERSCAN,
     initialOffset: () => scrollOffsetRef.current,

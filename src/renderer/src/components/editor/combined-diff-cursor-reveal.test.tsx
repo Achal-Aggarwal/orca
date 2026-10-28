@@ -4,9 +4,13 @@ import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { DiffOnMount } from '@monaco-editor/react'
+import { installDiffSectionHeightMeasurement } from './diff-section-height-measurement'
 import { DiffSectionBody } from './DiffSectionBody'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { getCombinedDiffRenderRange } from './combined-diff/scroll-viewport/combined-diff-render-range'
+import {
+  getCombinedDiffRenderRange,
+  getFocusedCombinedDiffSectionIndex
+} from './combined-diff/scroll-viewport/combined-diff-render-range'
 import { useCombinedDiffScrollPersistence } from './combined-diff/scroll-viewport/use-combined-diff-scroll-persistence'
 import { createProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
 import {
@@ -76,13 +80,13 @@ async function fixture(sideBySide: boolean) {
   let height = 500
   Object.defineProperties(outer, {
     clientHeight: { value: 300 },
-    scrollHeight: { get: () => 1000 + height + 30 },
+    scrollHeight: { get: () => 49_500 + height + 30 },
     offsetHeight: { value: 300 },
     offsetWidth: { value: 1000 },
     scrollTop: {
       get: () => scrollTop,
       set: (value: number) => {
-        scrollTop = Math.max(0, Math.min(value, 1000 + height + 30 - 300))
+        scrollTop = Math.max(0, Math.min(value, 49_500 + height + 30 - 300))
         cancelAnimationFrame(scrollFrame)
         scrollFrame = requestAnimationFrame(() => outer.dispatchEvent(new Event('scroll')))
       }
@@ -107,12 +111,18 @@ async function fixture(sideBySide: boolean) {
     const [bodyHeight, setBodyHeight] = useState(500)
     const estimateSize = (index: number): number => (index === 2 ? bodyHeight + 30 : 500)
     const virtualizer = useVirtualizer({
-      count: 3,
+      count: 100,
       getScrollElement: () => outer,
       estimateSize,
       initialOffset: 1000,
       initialRect: { width: 1000, height: 300 },
-      rangeExtractor: (range) => getCombinedDiffRenderRange(range, estimateSize, 300)
+      rangeExtractor: (range) =>
+        getCombinedDiffRenderRange(
+          range,
+          estimateSize,
+          300,
+          getFocusedCombinedDiffSectionIndex(outer)
+        )
     })
     useLayoutEffect(() => {
       height = bodyHeight
@@ -120,22 +130,10 @@ async function fixture(sideBySide: boolean) {
       diff?.layout({ width: 1000, height })
     }, [bodyHeight, virtualizer])
     const mount: DiffOnMount = (editor) => {
-      let pending = 0
-      const updateHeight = (): void => {
-        cancelAnimationFrame(pending)
-        pending = requestAnimationFrame(() =>
-          setBodyHeight(editor.getModifiedEditor().getContentHeight())
-        )
-      }
-      const sub = editor.getModifiedEditor().onDidContentSizeChange(updateHeight)
-      disposers.push(() => {
-        sub.dispose()
-        cancelAnimationFrame(pending)
-      })
-      updateHeight()
+      disposers.push(installDiffSectionHeightMeasurement(editor, setBodyHeight))
     }
     return virtualizer.getVirtualItems().some((item) => item.index === 2) ? (
-      <div data-combined-diff-section-row>
+      <div data-index={2} data-combined-diff-section-row>
         <div data-combined-diff-section-header />
         <DiffSectionBody
           section={section}
@@ -149,6 +147,7 @@ async function fixture(sideBySide: boolean) {
           modelPathBase="cursor-reveal"
           isEditable={false}
           diffEditorFontSize={13}
+          diffWordWrap
           onRetrySection={() => {}}
           onLoadDeferredSection={() => {}}
           onSaveLimitedDiff={() => {}}
@@ -160,7 +159,7 @@ async function fixture(sideBySide: boolean) {
   const view = render(<Rows />, { container: outer })
   const header = outer.querySelector<HTMLElement>('[data-combined-diff-section-header]')!
   header.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 30)
-  const lines = Array.from({ length: 300 }, (_, i) => `line ${i}`)
+  const lines = Array.from({ length: 300 }, (_, i) => `line ${i} ${'wrapped content '.repeat(20)}`)
   const original = monaco.editor.createModel(lines.join('\n'))
   lines[10] = 'changed'
   const modified = monaco.editor.createModel(lines.join('\n'))
@@ -174,24 +173,23 @@ async function fixture(sideBySide: boolean) {
     host.getClientRects = () =>
       Object.assign([host.getBoundingClientRect()], { item: () => host.getBoundingClientRect() })
   }
+  const root = diff.getContainerDomNode()
+  root.getClientRects = () =>
+    Object.assign([new DOMRect(0, 1030 - scrollTop, 1000, height)], { item: () => null })
   diff.setModel({ original, modified })
   await vi.waitFor(() => expect(diff.getLineChanges()).not.toBeNull())
   disposers.push(() => cancelAnimationFrame(scrollFrame))
-  await act(async () => {
-    await frame()
-    await frame()
-    await frame()
-  })
+  for (let index = 0; index < 4; index++) {
+    await act(frame)
+  }
   return {
     outer,
     view,
+    measuredHeight: () => height,
     settle: async () => {
-      await act(async () => {
-        await frame()
-        await frame()
-        await frame()
-        await frame()
-      })
+      for (let index = 0; index < 4; index++) {
+        await act(frame)
+      }
     }
   }
 }
@@ -206,6 +204,7 @@ it.each(modes)(
     diff.updateOptions({ hideUnchangedRegions: { enabled: false } })
     await settle()
     for (const pane of [original ? diff.getOriginalEditor() : diff.getModifiedEditor()]) {
+      pane.focus()
       pane.setPosition({ lineNumber: 12, column: 1 })
       outer.scrollTop = 1000
       for (let i = 0; i < 30; i++) {
@@ -247,15 +246,29 @@ it.each(modes)(
 )
 
 it.each(modes)(
-  'keeps the final cursor visible after hidden-tail settlement (split=$split, original=$original)',
+  'retains the focused nonfinal section before hidden-tail geometry settles (split=$split, original=$original)',
   async ({ split, original }) => {
-    const { outer, settle } = await fixture(split)
+    const { outer, measuredHeight, settle } = await fixture(split)
     for (const pane of [original ? diff.getOriginalEditor() : diff.getModifiedEditor()]) {
+      pane.focus()
       pane.setPosition({ lineNumber: 12, column: 1 })
       outer.scrollTop = 1000
       const before = pane.getContentHeight()
+      const extent = measuredHeight()
       const mounted = diff
-      pane.trigger('keyboard', 'cursorBottom', null)
+      const disposed = vi.fn()
+      pane.onDidDispose(disposed)
+      expect(outer.contains(document.activeElement)).toBe(true)
+      await act(async () => {
+        pane.trigger('keyboard', 'cursorBottom', null)
+        expect(measuredHeight()).toBe(extent)
+        if (original) {
+          expect(outer.scrollTop).toBeGreaterThan(1030 + extent)
+        }
+        // Scroll reaches the real virtualizer before its deferred section-height commit.
+        outer.dispatchEvent(new Event('scroll'))
+      })
+      expect(disposed).not.toHaveBeenCalled()
       await settle()
       expect(pane.getPosition()?.lineNumber).toBe(300)
       expect(pane.getContentHeight()).toBeGreaterThan(before)
@@ -304,6 +317,7 @@ it('records a delayed, coalesced keyboard reveal as a new user scroll anchor', a
     })
   )
   const pane = diff.getModifiedEditor()
+  pane.focus()
   pane.trigger('keyboard', 'cursorBottom', null)
   await settle()
   expect(outer.scrollTop).toBeGreaterThan(1000)
@@ -318,6 +332,7 @@ it('yields settled visibility to manual scrolling, and cancels work when dispose
   diff.updateOptions({ hideUnchangedRegions: { enabled: false } })
   await settle()
   const pane = diff.getModifiedEditor()
+  pane.focus()
   pane.trigger('keyboard', 'cursorBottom', null)
   await settle()
   outer.dispatchEvent(new WheelEvent('wheel'))
@@ -335,4 +350,17 @@ it('yields settled visibility to manual scrolling, and cancels work when dispose
   const offset = outer.scrollTop
   await settle()
   expect(outer.scrollTop).toBe(offset)
+})
+
+it('measures an original-only content-height change after settlement', async () => {
+  const { measuredHeight, settle } = await fixture(true)
+  diff.updateOptions({ hideUnchangedRegions: { enabled: false } })
+  await settle()
+  const original = diff.getOriginalEditor()
+  const modifiedHeight = diff.getModifiedEditor().getContentHeight()
+  original.updateOptions({ padding: { bottom: 40_000 } })
+  await settle()
+  expect(diff.getModifiedEditor().getContentHeight()).toBe(modifiedHeight)
+  expect(original.getContentHeight()).toBeGreaterThan(modifiedHeight)
+  expect(measuredHeight()).toBe(original.getContentHeight())
 })

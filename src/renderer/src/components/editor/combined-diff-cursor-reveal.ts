@@ -58,11 +58,11 @@ export function installCombinedDiffCursorReveal(diff: editor.IStandaloneDiffEdit
       }
     }),
     // Hidden-region expansion and deferred section sizing can change visibility after the cursor event.
-    pane.onDidContentSizeChange(scheduleReveal),
     pane.onDidLayoutChange(scheduleReveal),
     pane.onDidScrollChange(scheduleReveal),
     pane.onDidBlurEditorText(clear)
   ])
+  subscriptions.push(diff.onDidContentSizeChange(scheduleReveal))
   const directInputs = ['pointerdown', 'wheel', 'touchmove'] as const
   for (const event of directInputs) {
     viewport.addEventListener(event, clear, { capture: true, passive: true })
