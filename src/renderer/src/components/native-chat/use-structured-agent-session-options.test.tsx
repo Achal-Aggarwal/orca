@@ -198,7 +198,7 @@ describe('useStructuredAgentSessionOptions', () => {
         id,
         label: id,
         isDefault: false,
-        effortsKnown: id === model && !!effort,
+        effortsKnown: id === model && !!effort ? undefined : (false as const),
         efforts:
           id === model && effort ? [effort, 'off'].map((value) => ({ value, label: value })) : []
       })),

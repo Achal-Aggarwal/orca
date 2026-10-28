@@ -4,6 +4,7 @@ import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import {
   NewSessionResponseSchema,
   ResumeSessionRequestSchema,
+  SessionConfigValueIdSchema,
   SetSessionConfigOptionRequestSchema,
   SetSessionConfigOptionResponseSchema
 } from './generated/acp-protocol.generated'
@@ -117,7 +118,7 @@ async function openModels(
           }
           native = native?.map((row) =>
             row.category === 'thought_level' && row.type === 'select'
-              ? { ...row, currentValue: value }
+              ? { ...row, currentValue: SessionConfigValueIdSchema.parse(value) }
               : row
           )
         }
