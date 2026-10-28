@@ -11,7 +11,7 @@ const state = vi.hoisted(() => {
   })
   return {
     dark: false,
-    colorize: vi.fn(async (code: string) => code.replaceAll('\n', '<br/>') + '<br/>'),
+    colorize: vi.fn(async (code: string) => `${code.replaceAll('\n', '<br/>')}<br/>`),
     languageReady,
     releaseLanguage
   }
