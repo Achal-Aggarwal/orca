@@ -274,13 +274,6 @@ function createMailHost() {
   })
 }
 
-export async function restartHostAndRuntime(): Promise<void> {
-  await stopStructuredAgentSessionRuntime()
-  restartRuntime()
-  host = await createMailHost()
-  await host.restoreReadableSessions([COORDINATOR])
-}
-
 /** The runtime over the shared database; a second call is what an Orca restart leaves behind. */
 export function startRuntime(): OrcaRuntimeService {
   const started = new OrcaRuntimeService()
@@ -326,11 +319,6 @@ export function turnText(turn: { text: string }): string {
 export function restartRuntime(): void {
   runtime = startRuntime()
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
-}
-
-export function replaceMailDatabase(replacement: OrchestrationDb): void {
-  db = replacement
-  runtime.setOrchestrationDb(db)
 }
 
 /** The text of every card the chat lists in its queue, as the person sees it. */

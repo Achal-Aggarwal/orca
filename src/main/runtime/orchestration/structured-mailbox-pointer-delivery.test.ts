@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { OrchestrationDb } from './db'
-import { mailTestResources, observeMailSql } from './mail-handoff.test-fixture'
+import { observeMailSqlWork } from './mail-sql-work.test-support'
+import { mailTestResources } from './mail-handoff.test-fixture'
 import {
   OrchestrationStructuredMailboxPointerDelivery,
   ordinaryMailCreationId,
@@ -14,13 +15,16 @@ function harness() {
   const receipts = new Set<string>()
   let capacity = true
   const waiters = new Set<OrchestrationMessageWaiter>()
+  const owner = {}
   const host: StructuredMailboxPointerHost = {
+    admission: () => ({ owner, generation: '1', queuedBytes: capacity ? 0 : 1000 }),
+    readHistory: () => ({ members: new Set(), opaque: true }),
     readCreation: vi.fn((id) => (receipts.has(id) ? 'accepted' : 'absent')),
     currentFence: () => 1,
     send: vi.fn(async (input) => {
       input.beforeRun()
       if (!capacity) {
-        return { kind: 'held' }
+        return { kind: 'capacity' }
       }
       receipts.add(input.operationId)
       return { kind: 'queued' }
@@ -69,7 +73,7 @@ it('retries the same ordinary creation after capacity and waiter changes, withou
   await h.idle()
   expect(h.receipts.size).toBe(0)
   h.waiters.clear()
-  h.bridge.deliverForHandle('consumer')
+  h.bridge.onConsumerChange('consumer')
   await vi.waitFor(() => expect(h.receipts.size).toBe(2))
   expect(h.db.getMessageById(b.id)?.delivered_at).not.toBeNull()
   const calls = vi.mocked(h.host.send).mock.calls.slice(-2)
@@ -81,50 +85,71 @@ it('retries the same ordinary creation after capacity and waiter changes, withou
 })
 
 it.each([100, 1000])(
-  'cold stamp reconciliation includes read rows and live queries do not walk N=%i delivered history',
+  'cold read-inclusive indexed recovery examines only N=%i undelivered recipient entries and no payload bytes',
   async (count) => {
     const h = harness()
-    const rows = Array.from({ length: count }, () => h.insert())
-    h.db.markAsDelivered(
-      rows.map((row) => row.id),
-      'consumer'
-    )
-    const lost = h.insert('accepted then independently checked')
-    h.receipts.add(ordinaryMailCreationId(lost))
-    h.db.markAsRead([lost.id])
-    const observed: { sql: string; rows: number }[] = []
-    const sql = observeMailSql(
+    const accepted = []
+    for (let n = 0; n < count; n++) {
+      const row = h.insert(`accepted-${n}`)
+      accepted.push(row.id)
+      h.receipts.add(ordinaryMailCreationId(row))
+      h.db.db.prepare('UPDATE messages SET read = ? WHERE id = ?').run(n % 3, row.id)
+      const delivered = h.insert('delivered noise')
+      h.db.markAsDelivered([delivered.id], 'consumer')
+      h.db.insertMessage({
+        from: 'worker',
+        to: 'other',
+        subject: 'other recipient',
+        body: 'b'.repeat(10000),
+        payload: 'p'.repeat(10000)
+      })
+    }
+    h.bridge.resetForDatabaseChange()
+    const bodies = vi.spyOn(h.db, 'getMessageById')
+    const sql = observeMailSqlWork(
       h.db.db,
-      /SELECT id, sequence FROM messages|SELECT \* FROM messages.*|FROM messages\s+WHERE/s,
-      'all',
-      (call) => {
-        observed.push({ sql: call.sql, rows: call.rows.length })
-        if (call.sql.includes('ORDER BY sequence')) {
-          expect(sql.explain(call.sql, call.args)).toContain('SEARCH')
-        }
-      }
+      (query) =>
+        query.includes('ORDER BY sequence LIMIT 50') && query.includes('delivered_at IS NULL'),
+      'sequence',
+      true
     )
     h.bridge.deliverForHandle('consumer')
-    await h.idle()
-    expect(h.db.getMessageById(lost.id)?.delivered_at).not.toBeNull()
+    await vi.waitFor(() =>
+      expect(
+        h.db.db
+          .prepare(
+            'SELECT count(*) AS n FROM messages WHERE to_handle = ? AND delivered_at IS NULL'
+          )
+          .get('consumer')?.n
+      ).toBe(0)
+    )
+    expect(sql.count()).toBe(count)
+    expect(bodies).not.toHaveBeenCalled()
     expect(h.host.send).not.toHaveBeenCalled()
-    expect(observed.reduce((sum, call) => sum + call.rows, 0)).toBe(1)
-    observed.length = 0
+    expect(h.host.readCreation).toHaveBeenCalledTimes(count)
+    const bytecode = sql.verify()
+    expect(sql.calls.every((call) => !/\bbody\b|\bpayload\b/.test(call.original))).toBe(true)
+    expect(sql.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(count * 600)
+    console.info('cold source indexed candidate/bytes/receipt evidence', {
+      count,
+      visits: sql.count(),
+      calls: sql.calls,
+      bytecode
+    })
+    sql.reset()
+    vi.mocked(h.host.readCreation).mockClear()
     for (let n = 0; n < 10; n++) {
       h.bridge.onJournalActivity('session')
       await h.idle()
     }
-    expect(observed.every((call) => call.rows === 0)).toBe(true)
+    expect(sql.count()).toBe(0)
+    expect(h.host.readCreation).not.toHaveBeenCalled()
     const fresh = h.insert('new local')
     h.bridge.deliverForHandle('consumer')
     await vi.waitFor(() => expect(h.receipts.has(ordinaryMailCreationId(fresh))).toBe(true))
-    expect(observed.reduce((sum, call) => sum + call.rows, 0)).toBe(1)
-    console.info('ordinary source work', {
-      count,
-      rows: observed,
-      receipts: vi.mocked(h.host.readCreation).mock.calls
-    })
-    sql.trace.mockRestore()
+    expect(sql.count()).toBe(1)
+    expect(bodies).toHaveBeenCalledExactlyOnceWith(fresh.id)
+    sql.restore()
     h.bridge.resetForDatabaseChange()
   }
 )

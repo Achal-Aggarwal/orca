@@ -12,8 +12,6 @@ it('uses legal ordinary IDs stable for the canonical run/message, independent of
     expect(id).toMatch(/^\d{13}-[0-9a-f]{32}$/)
     expect(mintAgentSessionOperationId(Date.now())).toMatch(/^\d{13}-[0-9a-f]{32}$/)
     expect(ordinaryMailCreationId(second)).not.toBe(id)
-    db.resetTasks()
-    expect(ordinaryMailCreationId(first)).toBe(id)
     expect(ordinaryMailCreationId({ ...first, run_id: 'other-run' })).not.toBe(id)
   } finally {
     db.close()

@@ -1,3 +1,11 @@
+import { OrchestrationDb } from '../../runtime/orchestration/db'
+import {
+  OrchestrationStructuredMailboxPointerDelivery,
+  ordinaryMailCreationId
+} from '../../runtime/orchestration/structured-mailbox-pointer-delivery'
+import { createStructuredMailboxPointerHost } from '../../runtime/orchestration/structured-mailbox-pointer-host'
+import { setStructuredAgentSessionHost } from './structured-agent-session-registry'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -27,6 +35,7 @@ beforeEach(async () => {
   rig = await createRestTestRig({ idleSweep: { intervalMs: 60_000 } })
 })
 afterEach(async () => {
+  setStructuredAgentSessionHost(null)
   await rig.dispose()
   vi.restoreAllMocks()
 })
@@ -259,24 +268,82 @@ it.each(['adopted', 'blank'] as const)(
   }
 )
 
-it('co-commits fresh origin without a first message, omits it publicly, and reopens that positive proof', async () => {
-  const params = createTestParams()
-  const result = await rig.host.create(CALLER, params, {
-    publishTab: async () => {
-      throw new Error('lost postcommit notification')
+it.each(['fresh', 'adopted'] as const)(
+  'persists %s no-first-message origin through lost notify and reopen into actual report eligibility and human release',
+  async (origin) => {
+    const params =
+      origin === 'fresh'
+        ? createTestParams()
+        : await adoptedParams('provider-only existing history')
+    const result = await rig.host.create(CALLER, params, {
+      publishTab: async () => {
+        throw new Error('lost postcommit notification')
+      }
+    })
+    expect(result).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_unknown' }
+    })
+    expect(await rig.host.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
+    expect(rig.store.getRecord(SESSION)?.queueOrigin).toBe(origin === 'fresh' ? 'fresh' : undefined)
+    expect(rig.store.getConversation(SESSION)).not.toHaveProperty('queueOrigin')
+    if (origin === 'fresh') {
+      expect(rig.host.queuedMailJournal(SESSION)?.cursor().sequence).toBe(1)
     }
-  })
-  expect(result).toMatchObject({ ok: false, refusal: { code: 'agent_session_operation_unknown' } })
-  expect(await rig.host.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
-  expect(rig.store.getRecord(SESSION)?.queueOrigin).toBe('fresh')
-  expect(rig.store.getConversation(SESSION)).not.toHaveProperty('queueOrigin')
-  const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
-  expect(journal.cursor().sequence).toBe(1)
-  expect(journal.mailHoldFacts().held).toBe(false)
-  const { openTestAgentSessionRecordStore } =
-    await import('../../runtime/agent-session-record-store-test-harness')
-  const reopened = await openTestAgentSessionRecordStore(rig.root)
-  expect(reopened.getRecord(SESSION)?.queueOrigin).toBe('fresh')
-  await stopCreatedChat(rig.host)
-  expect(journal.mailHoldFacts().held).toBe(true)
-})
+    await rig.restart()
+    setStructuredAgentSessionHost(rig.host)
+    expect(rig.store.getRecord(SESSION)?.queueOrigin).toBe(origin === 'fresh' ? 'fresh' : undefined)
+    const db = new OrchestrationDb(':memory:')
+    const bridge = new OrchestrationStructuredMailboxPointerDelivery({
+      getDb: () => db,
+      getMessageWaiters: () => undefined,
+      resolveStructuredTarget: () => ({ sessionId: SESSION, dispatchId: null }),
+      getCliCommand: () => 'orca',
+      senderName: () => null,
+      host: createStructuredMailboxPointerHost()
+    })
+    try {
+      const report = db.insertMessage({
+        from: 'worker',
+        to: 'consumer',
+        subject: 'ordinary report after persisted origin'
+      })
+      const id = ordinaryMailCreationId(report)
+      bridge.deliverForHandle('consumer')
+      await vi.waitFor(() => expect(db.getMessageById(report.id)?.delivered_at).not.toBeNull())
+      const journal = rig.host.queuedMailJournal(SESSION)!
+      if (origin === 'adopted') {
+        expect(journal.queuedMessages.get(id)?.state).toBe('waiting')
+        expect(journal.mailHoldFacts().held).toBe(true)
+        expect(rig.adapter.dispatch).not.toHaveBeenCalled()
+        await rig.restart()
+        setStructuredAgentSessionHost(rig.host)
+        await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+        expect(rig.host.queuedMailJournal(SESSION)?.mailHoldFacts().held).toBe(true)
+        const envelope = {
+          sessionId: SESSION,
+          clientOperationId: hostTestOperationId(),
+          expectedRuntimeFence: rig.store.getRecord(SESSION)!.lease.runtimeFence,
+          payloadFingerprint: computeAgentSessionPayloadFingerprint({
+            method: 'agentSession.queuedMessagesResume',
+            sessionId: SESSION,
+            fields: {}
+          })
+        }
+        expect(await rig.host.queuedMessagesResume(CALLER, { envelope })).toMatchObject({
+          ok: true
+        })
+      }
+      await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledOnce())
+      expect(rig.adapter.dispatch.mock.calls[0]?.[0].body.from?.orchestration).toMatchObject({
+        messages: [{ messageId: report.id }]
+      })
+      expect(db.getMessageById(report.id)?.read).toBe(0)
+      await stopCreatedChat(rig.host)
+      expect(rig.host.queuedMailJournal(SESSION)?.mailHoldFacts().held).toBe(true)
+    } finally {
+      bridge.resetForDatabaseChange()
+      db.close()
+    }
+  }
+)

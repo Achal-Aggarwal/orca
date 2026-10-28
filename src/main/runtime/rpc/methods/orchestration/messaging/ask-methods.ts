@@ -1,3 +1,4 @@
+import { MessageWaitScope } from '../../../../runtime-message-waiters'
 import { defineMethod } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { clampOrchestrationAskTimeoutMs } from '../../../../../../shared/orchestration-ask-timeout'
@@ -149,53 +150,59 @@ export const ORCHESTRATION_ASK_METHODS = [
         timeoutMs
       })
       const deadline = Date.now() + timeoutMs
-      while (true) {
-        const current = db.getQuestion(questionId)
-        if (!current || current.status === 'closed') {
-          throw new OrchestrationError(
-            'dispatch_inactive',
-            `Question ${questionId} closed because its Dispatch is inactive.`
-          )
-        }
-        if (current.status === 'answered') {
-          return {
-            answer: current.answer_body,
-            messageId: questionId,
-            answerMessageId: current.answer_message_id,
-            threadId: questionId,
-            timedOut: false,
-            cancelled: false,
-            connectionLost: false,
-            timeoutMs
+      const waitScope = new MessageWaitScope()
+      try {
+        while (true) {
+          const current = db.getQuestion(questionId)
+          if (!current || current.status === 'closed') {
+            throw new OrchestrationError(
+              'dispatch_inactive',
+              `Question ${questionId} closed because its Dispatch is inactive.`
+            )
           }
-        }
-        if (signal?.aborted) {
-          return {
-            answer: null,
-            messageId: questionId,
-            threadId: questionId,
-            timedOut: false,
-            cancelled: true,
-            connectionLost: true,
-            timeoutMs
+          if (current.status === 'answered') {
+            return {
+              answer: current.answer_body,
+              messageId: questionId,
+              answerMessageId: current.answer_message_id,
+              threadId: questionId,
+              timedOut: false,
+              cancelled: false,
+              connectionLost: false,
+              timeoutMs
+            }
           }
-        }
-        const remainingMs = deadline - Date.now()
-        if (remainingMs <= 0) {
-          return {
-            answer: null,
-            messageId: questionId,
-            threadId: questionId,
-            timedOut: true,
-            cancelled: false,
-            connectionLost: false,
-            timeoutMs
+          if (signal?.aborted) {
+            return {
+              answer: null,
+              messageId: questionId,
+              threadId: questionId,
+              timedOut: false,
+              cancelled: true,
+              connectionLost: true,
+              timeoutMs
+            }
           }
+          const remainingMs = deadline - Date.now()
+          if (remainingMs <= 0) {
+            return {
+              answer: null,
+              messageId: questionId,
+              threadId: questionId,
+              timedOut: true,
+              cancelled: false,
+              connectionLost: false,
+              timeoutMs
+            }
+          }
+          await runtime.waitForMessage(`dispatch:${activeDispatch.id}`, {
+            scope: waitScope,
+            timeoutMs: remainingMs,
+            signal
+          })
         }
-        await runtime.waitForMessage(`dispatch:${activeDispatch.id}`, {
-          timeoutMs: remainingMs,
-          signal
-        })
+      } finally {
+        waitScope.complete()
       }
     }
   })

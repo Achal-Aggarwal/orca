@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentSessionRecord } from '../../shared/agent-session-record'
-import type { MailLineageScope } from '../native-chat/agent-session-journal/journal-mail-holds'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const installed = vi.hoisted(() => {
@@ -53,18 +51,10 @@ describe('structured status sink wiring', () => {
     await runtime.ensureStructuredAgentSessionHost()
 
     expect(installed.deps?.['statusSink']).toBe(sink)
-    const records: AgentSessionRecord[] = []
-    const scope: MailLineageScope = { root: 'session', aliases: ['session'] }
     const capture = vi.spyOn(runtime, 'captureSessionMail').mockImplementation(function (
-      this: OrcaRuntimeService,
-      sessionId,
-      actualRecords,
-      actualScope
+      this: OrcaRuntimeService
     ) {
       expect(this).toBe(runtime)
-      expect(sessionId).toBe('session')
-      expect(actualRecords).toBe(records)
-      expect(actualScope).toBe(capture.mock.calls.length === 1 ? scope : null)
       return {}
     })
     const installedDeps = (): Record<string, unknown> | null => installed.deps
@@ -72,8 +62,9 @@ describe('structured status sink wiring', () => {
     if (typeof installedCapture !== 'function') {
       throw new Error('missing Stop capture installer')
     }
-    installedCapture('session', records, scope)
-    installedCapture('session', records, null)
+    installedCapture()
+    installedCapture()
+    expect(capture.mock.calls).toEqual([[], []])
     expect(capture).toHaveBeenCalledTimes(2)
   })
 
@@ -115,7 +106,7 @@ describe('structured status sink wiring', () => {
 describe('mail dispatch through the current runtime', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('uses runtime journal and delivery overrides on the idle edge', () => {
+  it('uses runtime overrides for the selected queue callback and actual idle edge, never descriptive repeats', async () => {
     const target = new OrcaRuntimeService()
     vi.spyOn(structuredMailTarget, 'structuredSessionIdleEdgeMailboxes').mockReturnValue([
       'term_mailbox'
@@ -138,11 +129,18 @@ describe('mail dispatch through the current runtime', () => {
       }
     })
 
-    target.onStructuredSessionStatusForMail({ sessionId: 'session-mailbox', status: 'working' })
+    await target.ensureStructuredAgentSessionHost()
+    installed.deps?.onSessionMailActivity?.('session-mailbox')
     expect(events).toEqual(['journal:session-mailbox'])
     events.length = 0
+    target.onStructuredSessionStatusForMail({ sessionId: 'session-mailbox', status: 'working' })
+    expect(events).toEqual([])
+    events.length = 0
     target.onStructuredSessionStatusForMail({ sessionId: 'session-mailbox', status: 'idle' })
-    expect(events).toEqual(['journal:session-mailbox', 'delivery:term_mailbox'])
+    expect(events).toEqual(['delivery:term_mailbox'])
+    events.length = 0
+    target.onStructuredSessionStatusForMail({ sessionId: 'session-mailbox', status: 'idle' })
+    expect(events).toEqual([])
   })
 
   it('uses the runtime delivery override during repoint repair', () => {

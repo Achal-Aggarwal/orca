@@ -60,9 +60,13 @@ export function insertMessage(this: OrchestrationDb, msg: MessageInsert): Messag
     msg.senderPaneKey ?? null,
     msg.orderingOrigin ?? 'local'
   )
-  return exposeMessageTimestamps(
+  const inserted = exposeMessageTimestamps(
     this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow
   )
+  if (msg.id === undefined && inserted.ordering_origin === 'local') {
+    this.mailSourceInserted?.(inserted)
+  }
+  return inserted
 }
 
 export function insertMessages(this: OrchestrationDb, messages: MessageInsert[]): MessageRow[] {

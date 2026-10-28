@@ -37,7 +37,6 @@ export class StructuredAgentSessionClientDelivery {
   private readonly turnCompletionFeed
   readonly requestFailures
   private readonly sendSettlement
-  private readonly journalObservers = new Map<string, Set<() => void>>()
 
   constructor(
     private readonly sessions: Map<string, StructuredAgentSessionHostSession>,
@@ -202,19 +201,6 @@ export class StructuredAgentSessionClientDelivery {
     this.turnCompletionFeed.observe(sessionId, undefined, { historical: true })
   }
 
-  /** Observe every journal publication, including row-free wakes, without opening a client stream. */
-  observeJournalPublications = (sessionId: string, observer: () => void): (() => void) => {
-    const observers = this.journalObservers.get(sessionId) ?? new Set<() => void>()
-    observers.add(observer)
-    this.journalObservers.set(sessionId, observers)
-    return () => {
-      observers.delete(observer)
-      if (observers.size === 0 && this.journalObservers.get(sessionId) === observers) {
-        this.journalObservers.delete(sessionId)
-      }
-    }
-  }
-
   subscribeStatus = (subscriber: StructuredAgentSessionStatusSubscriber): (() => void) =>
     this.statusFeed.subscribe(subscriber)
   forgetStatus = (sessionId: string): void => this.statusFeed.forget(sessionId)
@@ -244,7 +230,6 @@ export class StructuredAgentSessionClientDelivery {
     this.requestFailures.clear()
     this.stopAtRestCommandUpdates()
     this.sendSettlement.closeAll()
-    this.journalObservers.clear()
     this.mailQueueKeys.clear()
   }
 
@@ -269,17 +254,6 @@ export class StructuredAgentSessionClientDelivery {
         this.mailQueueKeys.delete(sessionId)
         this.deps().logger.warn('notifying ordinary mail discovery failed', {
           scope: 'queue-source-notification',
-          sessionId,
-          error
-        })
-      }
-    }
-    for (const observer of this.journalObservers.get(sessionId) ?? []) {
-      try {
-        observer()
-      } catch (error) {
-        this.deps().logger.warn('observing a journal publication failed', {
-          scope: 'journal-delivery',
           sessionId,
           error
         })

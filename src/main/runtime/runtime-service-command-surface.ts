@@ -88,6 +88,8 @@ export type RuntimeServiceCommandSurface = {
   notifyMessageArrived(handle: string, messageType?: string): void
   waitForMessage: RuntimeMessageWaiters['wait']
   cancelMessageWaiters: RuntimeMessageWaiters['cancel']
+  disposeMessageWaiters: RuntimeMessageWaiters['dispose']
+  notifyMessageConsumerCompleted: RuntimeMessageWaiters['consumerCompleted']
 }
 
 type RuntimeServiceCommandOwners = {
@@ -199,6 +201,8 @@ export function installRuntimeServiceCommandSurface(
     getAllBrowserDrivers: browsers.getAll.bind(browsers),
     reclaimBrowserForDesktop: browsers.reclaimForDesktop.bind(browsers),
     waitForMessage: waiters.wait.bind(waiters),
-    cancelMessageWaiters: waiters.cancel.bind(waiters)
+    cancelMessageWaiters: waiters.cancel.bind(waiters),
+    disposeMessageWaiters: waiters.dispose.bind(waiters),
+    notifyMessageConsumerCompleted: waiters.consumerCompleted.bind(waiters)
   })
 }

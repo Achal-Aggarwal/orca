@@ -132,8 +132,7 @@ describe("a dead generation's leftovers, its settlement refused and its lease re
     if (!original) {
       throw new Error('Missing exact died root')
     }
-    expect(work.diedTurn(original.item.itemId)).toEqual(original)
-    expect(work.diedTurn(APPROVAL_ID)).toBeNull()
+    expect(work.diedTurn()).toEqual(original)
   })
 
   it('gives Stop nothing to stop: the dead turn is not touched', async () => {

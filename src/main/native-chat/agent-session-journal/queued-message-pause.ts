@@ -134,9 +134,11 @@ export function journalQueuePauseRestatement(
   return {
     lifted: latestAcceptedTurnSequence > 0 || marks.resumedSequence > 0,
     liveStop:
-      boundary?.status === 'held' && boundary.stop
-        ? (marks.personalStop?.event ?? null)
-        : (journalUserStopInForce(marks, latestAcceptedTurnSequence)?.event ?? null),
+      boundary?.status === 'released'
+        ? null
+        : boundary?.status === 'held' && boundary.stop
+          ? (marks.personalStop?.event ?? null)
+          : (journalUserStopInForce(marks, latestAcceptedTurnSequence)?.event ?? null),
     reopened: pauses.some((pause) => pause.reason === 'restarted'),
     ...(marks.cleared
       ? {

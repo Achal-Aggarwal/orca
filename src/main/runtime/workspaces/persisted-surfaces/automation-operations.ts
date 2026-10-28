@@ -153,6 +153,7 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
   getOrchestrationDb(): OrchestrationDb {
     if (!this._orchestrationDb) {
       this._orchestrationDb = new OrchestrationDb(this.orchestrationDbPath())
+      this.orchestrationStructuredMailboxPointerDelivery.attachDatabase(this._orchestrationDb)
       this.bindMailHandBack(this._orchestrationDb)
       this.ensureOrchestrationFederationRelay()
       this.scheduleRestoredMessageRepoints()
@@ -172,6 +173,7 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
       if (this._orchestrationDb !== db) {
         return
       }
+      this.messageWaiters.dispose()
       this.orchestrationStructuredMailboxPointerDelivery.resetForDatabaseChange()
       this.orchestrationFederation.resetForDatabaseChange()
       this.mailPointerRepointScheduler.clear()
@@ -188,10 +190,12 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
   }
 
   setOrchestrationDb(db: OrchestrationDb): void {
+    this.messageWaiters.dispose()
     this.orchestrationStructuredMailboxPointerDelivery.resetForDatabaseChange()
     this.orchestrationFederation.resetForDatabaseChange()
     this.mailPointerRepointScheduler.clear()
     this._orchestrationDb = db
+    this.orchestrationStructuredMailboxPointerDelivery.attachDatabase(db)
     this.bindMailHandBack(db)
     this.ensureOrchestrationFederationRelay()
     this.scheduleRestoredMessageRepoints()
@@ -212,6 +216,7 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
         this.mailPointerRepointScheduler.schedule(handBack.mailbox)
         return
       }
+      this.orchestrationStructuredMailboxPointerDelivery.invalidateSource(handBack.mailbox)
       // Re-read committed rows so rolled-back settlements wake nobody.
       for (const type of committedHandBackTypes(db, handBack)) {
         this.notifyMessageArrived(handBack.mailbox, type)

@@ -1,4 +1,3 @@
-import { subscribeForRedrive } from '../runtime/rpc/methods/orchestration-structured-worker-session'
 import '../runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
@@ -411,7 +410,6 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
       expect(response).toMatchObject({ ok: true })
       return resultOf(response)
     }
-    let disposeRedrive = () => {}
     let delivery: InstanceType<typeof OrchestrationStructuredMailboxPointerDelivery> | undefined
     try {
       const runId = idOf((await call('orchestration.runCreate', { objective: 'backlog' })).run)
@@ -428,6 +426,7 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         senderName: () => null,
         host: pointerHost
       })
+      f.host.deps.onSessionMailActivity = (id) => delivery?.onJournalActivity(id)
       const body = message('working before mail')
       const personal = envelope('agentSession.send', { body })
       expect(await f.host.send(CALLER, { envelope: personal, body, userSend: true })).toMatchObject(
@@ -470,9 +469,6 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         await f.host.flushStreamedEvents(SESSION)
         held.mockRestore()
         const priorEpoch = journal.epoch
-        disposeRedrive = await subscribeForRedrive(f.host, SESSION, (id) =>
-          delivery?.onJournalActivity(id)
-        )
         await journal.replaceEpochItems('handle_forked', f.fence(), [])
         expect(journal.epoch).not.toBe(priorEpoch)
       }
@@ -548,7 +544,6 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         ).length
       ).toBe(owned.length + Number(variant === 'invalidation'))
     } finally {
-      disposeRedrive()
       delivery?.resetForDatabaseChange()
       await f.host.close(SESSION, 'user-close')
       setStructuredAgentSessionHost(null)

@@ -26,13 +26,11 @@ import {
   structuredWorkerProcessIncarnation,
   type StructuredWorkerIdentity
 } from '../../structured-worker-identity'
-import { createKeyedTrailingEdgeCoalescer } from '../../keyed-trailing-edge-coalescer'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
 
 type StructuredWorkerBinding = {
   sessionId: string
   handle: string
-  disposeSubscription: () => void
 }
 
 const bindingsByDispatchId = new Map<string, StructuredWorkerBinding>()
@@ -46,7 +44,6 @@ export function releaseStructuredWorkerSession(
   const binding = bindingsByDispatchId.get(dispatchId)
   if (binding) {
     bindingsByDispatchId.delete(dispatchId)
-    binding.disposeSubscription()
     structuredWorkerIdentities.forget(binding.handle)
   }
   const rootSessionId = binding?.sessionId ?? workerSessionId
@@ -65,8 +62,6 @@ export async function createStructuredWorkerSession(args: {
   dispatchId: string
   /** The dispatch's own `--model`/`--effort`, already narrowed to the seedable string subset. */
   options?: Readonly<Record<string, string>>
-  /** Retried whenever the session's journal moves, which is the structured idle edge. */
-  onJournalActivity: (sessionId: string) => void
 }): Promise<{
   identity: StructuredWorkerIdentity
   host: StructuredAgentSessionHost
@@ -124,11 +119,9 @@ export async function createStructuredWorkerSession(args: {
         'A structured worker must run on the local execution host outside WSL.'
       )
     }
-    const disposeSubscription = await subscribeForRedrive(host, sessionId, args.onJournalActivity)
     bindingsByDispatchId.set(args.dispatchId, {
       sessionId,
-      handle: identity.handle,
-      disposeSubscription
+      handle: identity.handle
     })
     return { identity, host, fence: created.value.fence }
   } catch (error) {
@@ -265,49 +258,4 @@ function requireInstalledHost(): StructuredAgentSessionHost {
     )
   }
   return host
-}
-
-/** Coalesce streaming batches until quiet; settled turns stop emitting, so the final nudge still lands promptly. */
-const REDRIVE_FLUSH_MS = 300
-
-/** A turn that streams without pause still gets re-evaluated this often. */
-const REDRIVE_MAX_WAIT_MS = 2_000
-
-/**
- * Any journal movement is the redrive edge, coalesced.
- *
- * A settled turn is TOMBSTONED rather than rewritten, so watching for a completed lifecycle row
- * would miss the common case — every batch has to be a candidate. Running the gate on each one is
- * not free once mail IS parked on the session: the edge re-resolves the dispatch, queries unread
- * mail and reads the host's gate facts, only to re-park because the turn is still running. A
- * streaming turn paid that per batch.
- *
- * Coalescing costs nothing in delivery terms. The pointer body names only HOW MANY messages are
- * waiting, so the edge is inherently batch-shaped, and this is not the path fresh mail takes to an
- * idle worker — that is `deliverForHandle`, called when the message is enqueued and untouched
- * here. This is only the retry for mail already parked because the worker was busy.
- */
-export async function subscribeForRedrive(
-  host: StructuredAgentSessionHost,
-  sessionId: string,
-  onJournalActivity: (sessionId: string) => void
-): Promise<() => void> {
-  const coalescer = createKeyedTrailingEdgeCoalescer(onJournalActivity, {
-    flushMs: REDRIVE_FLUSH_MS,
-    maxWaitMs: REDRIVE_MAX_WAIT_MS
-  })
-  try {
-    const unsubscribe = host.observeJournalPublications(sessionId, () => {
-      coalescer.schedule(sessionId)
-    })
-    // Discard pending redrive on settlement so it cannot nudge a session no dispatch owns.
-    return () => {
-      coalescer.dispose()
-      unsubscribe()
-    }
-  } catch (error) {
-    console.warn('[orchestration] structured worker redrive subscription failed', sessionId, error)
-    coalescer.dispose()
-    return () => {}
-  }
 }

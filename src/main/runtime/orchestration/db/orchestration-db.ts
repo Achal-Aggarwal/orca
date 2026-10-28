@@ -1,6 +1,7 @@
 import Database from '../../../sqlite/sync-database'
 import { ensureMailSourceOrder } from './messages/mail-source-order'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
+import type { MessageRow } from '../types'
 import type { MailHandBack } from './messages/helper-mailbox-hand-back'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
 import { backfillFederatedStubHomeRuns } from './federation/federated-stub-home-run-backfill'
@@ -27,6 +28,8 @@ class OrchestrationDbCore {
   localMutationCallerFingerprint: string | undefined
   // Restart recovery reads durable re-armed rows; only the post-transaction notification queue is in memory.
   pendingMailHandBacks: MailHandBack[] = []
+  /** A synchronous observation before a genuinely new local identity can be offered. */
+  mailSourceInserted: ((message: MessageRow) => void) | undefined
   /** The runtime's wake for mail a settlement handed to a Run, called once the transaction ends. */
   mailHandBackListener: ((handBack: MailHandBack) => void) | undefined
 

@@ -238,8 +238,10 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
     getTerminalHandleForLeafKey: (leafKey) =>
       this.handleByLeafKey.get(leafKey) ?? this.getPtyLaneMailboxTarget(leafKey)?.handle,
     getTerminalProcessIncarnation: (handle) => this.getTerminalProcessIncarnation(handle),
-    onRoutedMessageTypes: (mailboxHandle, types) =>
-      this.messageWaiters.notifyRouted(mailboxHandle, types),
+    onRoutedMessageTypes: (mailboxHandle, types) => {
+      this.orchestrationStructuredMailboxPointerDelivery.invalidateSource(mailboxHandle)
+      this.messageWaiters.notifyRouted(mailboxHandle, types)
+    },
     onForeignMailboxRouted: (mailboxHandle, messageType) =>
       this.notifyMessageArrived(mailboxHandle, messageType)
   })
@@ -284,7 +286,9 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
       getCliCommand: localOrchestrationCliCommand,
       senderName: (party, reportedDispatchId) =>
         this.orchestrationSenderNames.nameOf(party, reportedDispatchId),
-      host: createStructuredMailboxPointerHost()
+      host: createStructuredMailboxPointerHost(),
+      scheduleRetry: (mailbox) => this.mailPointerRepointScheduler.schedule(mailbox),
+      cancelRetry: (mailbox) => this.mailPointerRepointScheduler.cancel(mailbox)
     })
 
   readonly orchestrationSenderNames = new RuntimeOrchestrationSenderNames({
@@ -320,7 +324,11 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
       resolveMessageWaiter: (waiter) => this.messageWaiters.resolveNotified(waiter)
     })
 
-  protected readonly messageWaiters = new RuntimeMessageWaiters()
+  protected readonly messageWaiters = new RuntimeMessageWaiters((handle) => {
+    if (!this.orchestrationStructuredMailboxPointerDelivery.onConsumerChange(handle)) {
+      this.deliverPendingMessagesForHandle(handle)
+    }
+  })
 
   protected readonly skillCommands!: RuntimeSkillCommands
 

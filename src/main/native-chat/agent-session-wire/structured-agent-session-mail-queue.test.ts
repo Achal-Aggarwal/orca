@@ -1,3 +1,5 @@
+import { observeMailSqlWork } from '../../runtime/orchestration/mail-sql-work.test-support'
+import { orchestrationInboxMethod } from '../../runtime/rpc/methods/orchestration/messaging/inbox-method'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
@@ -10,6 +12,11 @@ import { structuredMailSource } from '../../runtime/orchestration/structured-mai
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { insertCommandReceiptIfAbsent } from '../agent-session-journal/command-receipt-table'
 import { observeMailSql } from '../../runtime/orchestration/mail-handoff.test-fixture'
+import {
+  queuedMessagesPublishedBytes,
+  QUEUED_MESSAGES_PUBLISHED_MAX_BYTES,
+  QUEUED_MESSAGES_PERSON_RESERVE_BYTES
+} from './structured-agent-session-queued-published-bytes'
 import { captureSessionMailAtStop } from '../../runtime/orchestration/session-mail-stop-inventory'
 import { setStructuredAgentSessionHost } from './structured-agent-session-registry'
 import {
@@ -84,7 +91,7 @@ async function card(messageId: string) {
   }
   const id = ordinaryMailCreationId(message)
   await eventually(() => {
-    expect(db.getMessageById(messageId)?.delivered_at).not.toBeNull()
+    expect(db.getMessageById(messageId)?.delivered_at, message.subject).not.toBeNull()
     expect(journal().queuedMessages.get(id)).toBeTruthy()
   })
   return id
@@ -241,6 +248,125 @@ it('fresh mail passes a stopped personal queue and old admitted/missed mail with
   expect((await rig.submission(working))?.source?.kind).toBe('user')
 })
 
+it('accepted composer queued Send during fresh C releases Stop for the complete C/P/A/U ordinary iteration', async () => {
+  await rig.workingSend()
+  const personal = rig.send('P before Stop', 'queue-if-active')
+  expect(await personal.result).toMatchObject({ ok: true, value: { queued: {} } })
+  const old = await report('A before Stop')
+  const oldId = await card(old.id)
+  expect(await rig.stop()).toMatchObject({ ok: true })
+  const fresh = await report('C after Stop')
+  const freshId = await card(fresh.id)
+  const freshTurn = await rig.handoffId(freshId)
+  expect(await rig.handoff(personal.id)).toBeUndefined()
+  expect(await rig.handoff(oldId)).toBeUndefined()
+  const composer = rig.send('U actual composer command', 'queue-if-active')
+  expect(await composer.result).toMatchObject({ ok: true, value: { queued: {} } })
+  expect(journal().mailBoundary()?.status).toBe('released')
+  expect(await rig.handoff(personal.id)).toBeUndefined()
+  expect(await rig.handoff(oldId)).toBeUndefined()
+  await complete(freshTurn)
+  for (const id of [personal.id, oldId, composer.id]) {
+    const turn = await rig.handoffId(id)
+    await eventually(() =>
+      expect(
+        rig.dispatch.mock.calls.find(([input]) => input.clientMessageId === turn)?.[0].body.blocks
+      ).toEqual(journal().queuedMessages.get(id)?.body.blocks)
+    )
+    const following = [personal.id, oldId, composer.id].slice(
+      [personal.id, oldId, composer.id].indexOf(id) + 1
+    )
+    for (const waiting of following) {
+      expect(await rig.handoff(waiting)).toBeUndefined()
+    }
+    await complete(turn)
+  }
+  expect(
+    journal()
+      .queuedMessages.list()
+      .filter((row) => row.state === 'waiting')
+  ).toEqual([])
+})
+
+it('delivers one bounded long report and recovers its exact independent full text without changing read state', async () => {
+  const working = await rig.workingSend()
+  const subject = 's'.repeat(400),
+    body = 'b'.repeat(1200),
+    payload = `\`\`\`\`\`\`\n${'payload'.repeat(1000)}`
+  const row = db.insertMessage({ from: 'worker', to: 'consumer', subject, body, payload })
+  bridge.deliverForHandle('consumer')
+  const id = await card(row.id)
+  const text = journal()
+    .queuedMessages.get(id)!
+    .body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('')
+  expect(text).toContain(subject)
+  expect(text).toContain(body)
+  expect(text).toContain(`\`\`\`\`\`\`\`\n${payload.slice(0, 2400)}\n\`\`\`\`\`\`\``)
+  expect(text).not.toContain(payload)
+  expect(text).toContain(`orchestration inbox --id ${row.id} --full`)
+  expect(text).toContain(`orchestration inbox --terminal consumer --full --limit 100`)
+  for (let n = 0; n < 21; n++) {
+    db.insertMessage({ from: 'other', to: 'other', subject: 'new history' })
+  }
+  // SAFETY: this real handler reads only getOrchestrationDb; no other runtime operation is reachable.
+  const context = { runtime: { getOrchestrationDb: () => db } } as never
+  const exact = await orchestrationInboxMethod.handler(
+    orchestrationInboxMethod.params.parse({ id: row.id, terminal: 'consumer' }),
+    context
+  )
+  expect(exact).toMatchObject({
+    count: 1,
+    messages: [{ id: row.id, subject, body, payload, read: 0 }]
+  })
+  expect(
+    await orchestrationInboxMethod.handler(
+      orchestrationInboxMethod.params.parse({ id: row.id, terminal: 'other' }),
+      context
+    )
+  ).toMatchObject({ count: 0 })
+  expect(db.getMessageById(row.id)).toMatchObject({ read: 0, delivered_at: expect.any(String) })
+  await complete(working)
+  await eventually(async () => expect(await rig.handoff(id)).toBeDefined())
+  const attempt = await rig.handoffId(id)
+  await eventually(() =>
+    expect(
+      rig.dispatch.mock.calls.find(([input]) => input.clientMessageId === attempt)?.[0].body.blocks
+    ).toEqual(journal().queuedMessages.get(id)?.body.blocks)
+  )
+  await complete(attempt)
+  expect(db.getUnreadMessages('consumer').map((row) => row.id)).toEqual([row.id])
+})
+
+it('observed new source identities with missing or imported order become held ordinary cards, survive reopen, and release only on real Resume', async () => {
+  await rig.workingSend()
+  await rig.stop()
+  const rows = [await report('missing order', false), await report('imported order', false)]
+  db.db.prepare('UPDATE messages SET ordering_origin = NULL WHERE id = ?').run(rows[0].id)
+  db.db.prepare('UPDATE messages SET ordering_origin = ? WHERE id = ?').run('imported', rows[1].id)
+  bridge.deliverForHandle('consumer')
+  const ids = []
+  for (const row of rows) {
+    ids.push(await card(row.id))
+  }
+  for (const id of ids) {
+    expect(await rig.handoff(id)).toBeUndefined()
+  }
+  await rig.restartHostProcess()
+  setStructuredAgentSessionHost(rig.host)
+  bridge.resetForDatabaseChange()
+  await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+  expect(journal().mailHoldFacts().held).toBe(true)
+  expect(await rig.resume()).toMatchObject({ ok: true })
+  for (const id of ids) {
+    await eventually(async () => expect(await rig.handoff(id)).toBeDefined())
+    await complete(await rig.handoffId(id))
+  }
+  expect(
+    ids.every((id) => rig.store.readCommandReceipt({ kind: 'global' }, id).verdict === 'readable')
+  ).toBe(true)
+})
+
 it.each([100, 1000])(
   'does not rescan a paused N=%i prefix on token publication and retires obsolete source interest',
   async (count) => {
@@ -390,7 +516,7 @@ it('recovers only the original ordinary creation after a lost delivered stamp, e
   })
 })
 
-it('uses a real queue Delete publication to retry the same source creation after ordinary byte pressure', async () => {
+it('ordinary Edit and Delete capacity wakes skip a refused older report for a fresh admissible full turn without releasing Stop', async () => {
   await rig.workingSend()
   const personal = []
   for (let n = 0; n < 4; n++) {
@@ -400,16 +526,56 @@ it('uses a real queue Delete publication to retry the same source creation after
   }
   rig.host.deps.onSessionMailActivity = (id) => bridge.onJournalActivity(id)
   const sends = vi.spyOn(rig.host, 'send')
-  const source = await report('waiting for ordinary queue space')
+  const source = db.insertMessage({
+    from: 'worker',
+    to: 'consumer',
+    subject: 'older large report',
+    body: '🚀'.repeat(5000)
+  })
+  bridge.deliverForHandle('consumer')
   const id = ordinaryMailCreationId(source)
   await eventually(() => expect(sends).toHaveBeenCalled())
-  await clock.observe(100)
   expect(db.getMessageById(source.id)?.delivered_at).toBeNull()
   expect(rig.store.readCommandReceipt({ kind: 'global' }, id).verdict).toBe('absent')
-  expect(await rig.deleteQueued(personal[0])).toMatchObject({ ok: true })
+  expect(await rig.stop()).toMatchObject({ ok: true })
+  const fresh = await report('fresh small after Stop')
+  await clock.observe(100)
+  expect(db.getMessageById(fresh.id)?.delivered_at).toBeNull()
+  const row = journal().queuedMessages.get(personal[0]!)!
+  const shrink =
+    queuedMessagesPublishedBytes(journal()) -
+    (QUEUED_MESSAGES_PUBLISHED_MAX_BYTES - QUEUED_MESSAGES_PERSON_RESERVE_BYTES - 3000)
+  const fields = {
+    messageId: row.messageId,
+    expectedBodyFingerprint: row.fingerprint,
+    text: 'p'.repeat(200000 - shrink)
+  }
+  expect(
+    await rig.host.queuedMessageUpdate(QUEUED_RIG_CALLER, {
+      ...fields,
+      envelope: rig.envelope(fields, 'agentSession.queuedMessageUpdate', hostTestOperationId())
+    })
+  ).toMatchObject({ ok: true, value: { status: 'updated' } })
+  const freshId = await card(fresh.id)
+  await eventually(async () =>
+    expect(await rig.handoff(freshId)).toMatchObject({ source: { kind: 'agent' } })
+  )
+  expect(db.getMessageById(source.id)?.delivered_at).toBeNull()
+  expect(await rig.handoff(personal[1]!)).toBeUndefined()
+  expect(journal().mailBoundary()?.status).toBe('held')
+  await complete(await rig.handoffId(freshId))
+  expect(await rig.deleteQueued(personal[0]!)).toMatchObject({ ok: true })
   await card(source.id)
-  expect(sends.mock.calls.every(([, input]) => input.envelope.clientOperationId === id)).toBe(true)
+  const attempts = sends.mock.calls.filter(([, input]) => input.envelope.clientOperationId === id)
+  expect(attempts.length).toBeGreaterThan(1)
   expect(journal().queuedMessages.get(id)?.state).toBe('waiting')
+  expect(await rig.handoff(id)).toBeUndefined()
+  expect(await rig.resume()).toMatchObject({ ok: true })
+  for (const waiting of [...personal.slice(1), id]) {
+    await eventually(async () => expect(await rig.handoff(waiting)).toBeDefined())
+    await complete(await rig.handoffId(waiting))
+  }
+  expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
 })
 
 it('reconciles a saved random batch through its original ordinary receipt after Delete and restart, without recreating either report', async () => {
@@ -470,15 +636,79 @@ it('reconciles a saved random batch through its original ordinary receipt after 
       .prepare('UPDATE messages SET ordering_origin = NULL, handoff = ? WHERE id = ?')
       .run(hint, row.id)
   }
+  db.resetTasks()
+  // The historical helper hand-back cleared this hint independently of ordering provenance.
+  db.db.prepare('UPDATE messages SET handoff = NULL WHERE id IN (?, ?)').run(a.id, b.id)
+  db.db.prepare('UPDATE messages SET ordering_origin = ? WHERE id = ?').run('local', b.id)
   db.markAsRead([a.id, b.id])
   await rig.restartHostProcess()
   setStructuredAgentSessionHost(rig.host)
-  const sends = vi.spyOn(rig.host, 'send')
   bridge.resetForDatabaseChange()
+  const unobserved = db.insertMessage({
+    from: 'worker',
+    to: 'consumer',
+    subject: 'unobserved old source with no creation coverage'
+  })
+  db.db.prepare('UPDATE messages SET read = 0, handoff = ? WHERE id = ?').run(
+    JSON.stringify({
+      version: 1,
+      kind: 'structured',
+      operationId: hostTestOperationId(),
+      manifest: { members: [b.id] }
+    }),
+    b.id
+  )
+  const sends = vi.spyOn(rig.host, 'send')
+  const database = rig.host.deps.journalDatabase.db
+  const originals = database
+    .prepare(`SELECT * FROM journal_rows WHERE session_id = ?
+    AND json_extract(row_json, '$.messageId') = ? AND json_extract(row_json, '$.change.op') = 'queued'`)
+    .all(SESSION, oldId)
+  expect(originals).toHaveLength(1)
+  const saved = originals[0]!
+  await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+  await journal().replaceEpochItems('handle_forked', 1, [])
+  expect(
+    database
+      .prepare('SELECT 1 FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq = ?')
+      .get(SESSION, saved.epoch, saved.seq)
+  ).toBeUndefined()
+  bridge.deliverForHandle('consumer')
+  await clock.observe(100)
+  expect(sends).not.toHaveBeenCalled()
+  expect([a, b, unobserved].every((row) => db.getMessageById(row.id)?.delivered_at === null)).toBe(
+    true
+  )
+  expect(await rig.resume()).toMatchObject({ ok: true })
+  await clock.observe(100)
+  expect(sends).not.toHaveBeenCalled()
+  // Recovery restores the actual original evidence; a human release never invents membership.
+  const columns = Object.keys(saved)
+  database
+    .prepare(
+      `INSERT INTO journal_rows (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`
+    )
+    .run(...columns.map((column) => saved[column]))
+  bridge.resetForDatabaseChange()
+  const membership = observeMailSqlWork(
+    database,
+    (sql) => sql.includes('SELECT row_json FROM journal_rows'),
+    'row_json'
+  )
+  const receiptReads = vi.spyOn(rig.store, 'readCommandReceipt')
   bridge.deliverForHandle('consumer')
   await eventually(() =>
     expect([a, b].every((row) => db.getMessageById(row.id)?.delivered_at !== null)).toBe(true)
   )
+  expect(membership.count()).toBe(1)
+  expect(membership.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeGreaterThan(0)
+  expect(membership.calls.reduce((sum, call) => sum + call.bytes, 0)).toBeLessThan(10000)
+  expect(receiptReads.mock.calls.filter(([, operation]) => operation === oldId)).toHaveLength(1)
+  membership.verify()
+  console.info('legacy original-domain membership rows/bytes/arguments', membership.calls)
+  membership.restore()
+  expect(db.getMessageById(unobserved.id)).toMatchObject({ read: 0, delivered_at: null })
+  expect(journal().queuedMessages.get(ordinaryMailCreationId(unobserved))).toBeNull()
   expect(sends).not.toHaveBeenCalled()
   expect(rig.store.readCommandReceipt({ kind: 'global' }, oldId)).toMatchObject({
     verdict: 'readable',

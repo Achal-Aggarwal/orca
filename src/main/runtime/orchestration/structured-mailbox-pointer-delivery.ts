@@ -1,26 +1,31 @@
-import { z } from 'zod'
 import { createHash } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { JournalMailSource } from '../../native-chat/agent-session-journal/journal-mail-boundary'
 import type { OrchestrationDb, MessageRow } from './db'
 import type { OrchestrationCliCommand } from './cli-command'
 import type { SenderNameResolver } from './agent-message-sender'
-import { structuredMailBody } from './structured-mail-source'
+import type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
+import type { MailCreationHistory } from './structured-mail-creation-history'
+import { offerMailSource } from './structured-mail-source-offer'
 import {
-  messageTypeHasOrchestrationWaiter,
-  selectOrchestrationPointerBatch,
-  type OrchestrationMessageWaiter
-} from './mailbox-pointer-eligibility'
-import { mailSourceIncarnation } from './db/messages/mail-source-order'
+  discoverMailSources,
+  type Interest,
+  type MailAdmission
+} from './structured-mail-source-discovery'
+export type { MailAdmission } from './structured-mail-source-discovery'
 
 export type StructuredPointerTarget = { sessionId: string; dispatchId: string | null }
-export type StructuredPointerSendOutcome = { kind: 'queued' | 'unattached' | 'held' }
+export type StructuredPointerSendOutcome = {
+  kind: 'queued' | 'unattached' | 'held' | 'capacity' | 'retry'
+}
 export type StructuredMailboxPointerHost = {
   readCreation: (
     operationId: string,
     sessionId: string,
     legacy?: true
   ) => 'accepted' | 'absent' | 'unknown'
+  readHistory: (sessionId: string) => MailCreationHistory
+  admission: (sessionId: string) => MailAdmission | null
   currentFence: (sessionId: string) => number | null
   send: (input: {
     sessionId: string
@@ -39,260 +44,233 @@ export function ordinaryMailCreationId(message: Pick<MessageRow, 'run_id' | 'id'
   return `0000000000001-${hash.slice(0, 32)}`
 }
 
-type Dependencies<T extends OrchestrationMessageWaiter> = {
+export type MailDeliveryDependencies<T extends OrchestrationMessageWaiter> = {
   getDb: () => OrchestrationDb | null
   getMessageWaiters: (mailbox: string) => ReadonlySet<T> | undefined
   resolveStructuredTarget: (mailbox: string) => StructuredPointerTarget | null
   getCliCommand: () => OrchestrationCliCommand
   senderName: SenderNameResolver
   host: StructuredMailboxPointerHost
+  scheduleRetry?: (mailbox: string) => void
+  cancelRetry?: (mailbox: string) => void
   onRetain?: (input: { mailboxHandle: string; sessionId: string; reason: string }) => void
 }
-type Interest = {
-  sessionId: string
-  reservedTypes?: ReadonlySet<string>
-  running: boolean
-  again: boolean
-}
 
-/** The adapter ends at ordinary creation. Only the journal queue executes reports. */
+/** Disposable finite discovery only; the ordinary queue is the sole executor. */
 export class OrchestrationStructuredMailboxPointerDelivery<T extends OrchestrationMessageWaiter> {
-  private recovered = new WeakMap<OrchestrationDb, Set<string>>()
   private readonly interests = new Map<string, Interest>()
-  constructor(private readonly deps: Dependencies<T>) {}
+  private sourceDb: OrchestrationDb | null = null
+  constructor(private readonly deps: MailDeliveryDependencies<T>) {
+    const db = deps.getDb()
+    if (db) {
+      this.attachDatabase(db)
+    }
+  }
 
-  deliverForHandle(mailbox: string, reservedTypes?: ReadonlySet<string>): boolean {
+  attachDatabase(db: OrchestrationDb): void {
+    if (this.sourceDb === db) {
+      return
+    }
+    this.resetForDatabaseChange()
+    this.sourceDb = db
+    db.mailSourceInserted = (message) => {
+      try {
+        const interest = this.interest(message.to_handle)
+        if (interest && this.sourceDb === db) {
+          interest.newSources.add(message.id)
+          // Observe this insertion's rollback once, never the unresolved population on tokens.
+          queueMicrotask(() => {
+            try {
+              if (
+                this.sourceDb === db &&
+                this.deps.getDb() === db &&
+                !db.db.prepare('SELECT 1 FROM messages WHERE id = ?').get(message.id)
+              ) {
+                this.retire(interest, message.id)
+              }
+            } catch {
+              this.retire(interest, message.id)
+            }
+          })
+          if (interest.running) {
+            interest.pending = true
+          }
+          this.deps.scheduleRetry?.(message.to_handle)
+        }
+      } catch (error) {
+        // Observation cannot roll back a valid source or human command.
+        console.warn('[orchestration] observing new mail identity failed', error)
+      }
+    }
+  }
+
+  deliverForHandle(mailbox: string, _notificationTypes?: ReadonlySet<string>): boolean {
+    const db = this.deps.getDb()
+    if (db && this.sourceDb !== db) {
+      this.attachDatabase(db)
+    }
     const target = this.deps.resolveStructuredTarget(mailbox)
     if (!target) {
       return false
     }
-    let interest = this.interests.get(mailbox)
-    if (!interest || interest.sessionId !== target.sessionId) {
-      interest = { sessionId: target.sessionId, reservedTypes, running: false, again: false }
-      this.interests.set(mailbox, interest)
-    }
-    interest.reservedTypes = reservedTypes
-    if (interest.running) {
-      interest.again = true
+    const interest = this.interest(mailbox)
+    if (!interest) {
       return true
     }
-    interest.running = true
-    const current = interest
-    void this.deliver(mailbox, target, current)
-      .catch((error) => {
-        const db = this.deps.getDb()
-        if (db) {
-          this.recovered.get(db)?.delete(mailbox)
+    interest.pending = true
+    if (!interest.running) {
+      interest.running = true
+      void discoverMailSources({
+        mailbox,
+        interest,
+        current: () => this.current(mailbox, interest),
+        admission: () => this.deps.host.admission(interest.target.sessionId),
+        offer: (source) =>
+          offerMailSource({
+            mailbox,
+            interest,
+            source,
+            deps: this.deps,
+            current: () => this.current(mailbox, interest),
+            retire: (id) => this.retire(interest, id)
+          }),
+        retire: (id) => this.retire(interest, id),
+        finished: () => {
+          this.interests.delete(mailbox)
+          this.deps.cancelRetry?.(mailbox)
         }
-        console.warn('[orchestration] ordinary mail creation failed', { mailbox, error })
       })
-      .finally(() => {
-        current.running = false
-        if (this.interests.get(mailbox) === current && current.again) {
-          current.again = false
-          queueMicrotask(() => this.deliverForHandle(mailbox, current.reservedTypes))
-        }
-      })
+        .catch((error) => {
+          console.warn('[orchestration] ordinary mail creation failed', { mailbox, error })
+          interest.retry = true
+          this.deps.scheduleRetry?.(mailbox)
+        })
+        .finally(() => {
+          interest.running = false
+          if (this.interests.get(mailbox) === interest && interest.pending) {
+            queueMicrotask(() => this.deliverForHandle(mailbox))
+          }
+        })
+    }
     return true
   }
 
-  resetForDatabaseChange(): void {
-    this.interests.clear()
-    this.recovered = new WeakMap()
+  onConsumerChange(mailbox: string): boolean {
+    const interest = this.interests.get(mailbox)
+    if (interest) {
+      interest.consumersChanged = true
+    }
+    return this.deliverForHandle(mailbox)
   }
-
+  invalidateSource(mailbox: string): void {
+    const interest = this.interests.get(mailbox)
+    if (interest) {
+      interest.frontier = 0
+      interest.consumersChanged = true
+      interest.history = undefined
+    }
+  }
+  retryForHandle(mailbox: string): void {
+    const interest = this.interests.get(mailbox)
+    if (interest) {
+      interest.retry = true
+    }
+    this.deliverForHandle(mailbox)
+  }
+  resetForDatabaseChange(): void {
+    if (this.sourceDb) {
+      this.sourceDb.mailSourceInserted = undefined
+    }
+    this.sourceDb = null
+    for (const mailbox of this.interests.keys()) {
+      this.deps.cancelRetry?.(mailbox)
+    }
+    this.interests.clear()
+  }
   onJournalActivity(sessionId: string): void {
     for (const [mailbox, interest] of this.interests) {
-      if (interest.sessionId === sessionId) {
-        this.deliverForHandle(mailbox, interest.reservedTypes)
+      if (interest.target.sessionId === sessionId) {
+        try {
+          const now = this.deps.host.admission(sessionId)
+          if (
+            now?.owner === interest.authority.owner &&
+            now.generation === interest.authority.generation
+          ) {
+            interest.capacityImproved ||= now.queuedBytes < interest.authority.queuedBytes
+            interest.authority = now
+          }
+          this.deliverForHandle(mailbox)
+        } catch (error) {
+          interest.retry = true
+          this.deps.scheduleRetry?.(mailbox)
+          console.warn('[orchestration] unfinished semantic mail notification', { mailbox, error })
+        }
       }
     }
   }
   forgetSession(sessionId: string): void {
     for (const [mailbox, interest] of this.interests) {
-      if (interest.sessionId === sessionId) {
+      if (interest.target.sessionId === sessionId) {
         this.interests.delete(mailbox)
+        this.deps.cancelRetry?.(mailbox)
       }
     }
   }
 
-  private readCreation(
-    db: OrchestrationDb,
-    mailbox: string,
-    target: StructuredPointerTarget,
-    message: MessageRow,
-    batchIds: string[]
-  ): 'accepted' | 'absent' | 'unknown' {
-    const canonical = this.deps.host.readCreation(ordinaryMailCreationId(message), target.sessionId)
-    if (canonical !== 'absent') {
-      return canonical
-    }
-    const old = 'handoff' in message ? message.handoff : undefined
-    if (old != null) {
-      try {
-        const hint = z
-          .object({
-            version: z.literal(1),
-            kind: z.literal('structured'),
-            operationId: z.string(),
-            manifest: z.object({ members: z.array(z.string()) }).optional()
-          })
-          .parse(JSON.parse(String(old)))
-        if (hint.manifest && !hint.manifest.members.includes(message.id)) {
-          return 'unknown'
-        }
-        const receipt = this.deps.host.readCreation(hint.operationId, target.sessionId, true)
-        return receipt === 'accepted' ? 'accepted' : 'unknown'
-      } catch {
-        return 'unknown'
-      }
-    }
-    if (message.ordering_origin != null) {
-      return 'absent'
-    }
-    const hint = db.getStructuredPointerOperation(mailbox)
-    if (hint) {
-      const fingerprint = createHash('sha256')
-        .update(JSON.stringify([hint.session_id, batchIds]))
-        .digest('base64url')
-      if (
-        hint.batch_fingerprint === fingerprint &&
-        this.deps.host.readCreation(hint.operation_id, target.sessionId, true) === 'accepted'
-      ) {
-        return 'accepted'
-      }
-    }
-    // An unidentifiable old effect is not permission to create a second card.
-    return 'unknown'
-  }
-
-  private async deliver(
-    mailbox: string,
-    target: StructuredPointerTarget,
-    interest: Interest
-  ): Promise<void> {
+  private interest(mailbox: string): Interest | null {
     const db = this.deps.getDb()
-    if (!db) {
-      return
+    const target = this.deps.resolveStructuredTarget(mailbox)
+    const authority = target && this.deps.host.admission(target.sessionId)
+    if (!db || !target || !authority) {
+      return null
     }
-    const current = () =>
-      this.deps.getDb() === db &&
-      this.interests.get(mailbox) === interest &&
-      this.deps.resolveStructuredTarget(mailbox)?.sessionId === target.sessionId
-    // Recovery includes read rows: an independent check cannot erase accepted creation.
-    let recovered = this.recovered.get(db)
-    if (!recovered) {
-      recovered = new Set()
-      this.recovered.set(db, recovered)
-    }
-    let after = 0
-    while (!recovered.has(mailbox)) {
-      const rows = db.db
-        .prepare(`SELECT id, sequence FROM messages WHERE to_handle = ?
-        AND delivered_at IS NULL AND sequence > ? ORDER BY sequence LIMIT 50`)
-        .all(mailbox, after)
-      if (!rows.length) {
-        recovered.add(mailbox)
-        break
-      }
-      for (const row of rows) {
-        after = Number(row.sequence)
-        if (typeof row.id !== 'string') {
-          throw new Error('unreadable source identity')
-        }
-        const message = db.getMessageById(row.id)
-        if (
-          message &&
-          this.readCreation(db, mailbox, target, message, [message.id]) === 'accepted'
-        ) {
-          db.markAsDelivered([message.id], mailbox)
-        }
-      }
-    }
-    after = 0
-    while (current()) {
-      const batch = selectOrchestrationPointerBatch({
+    let interest = this.interests.get(mailbox)
+    if (
+      !interest ||
+      interest.db !== db ||
+      interest.target.sessionId !== target.sessionId ||
+      interest.authority.owner !== authority.owner ||
+      interest.authority.generation !== authority.generation
+    ) {
+      interest = {
         db,
-        mailboxHandle: mailbox,
-        waiters: this.deps.getMessageWaiters(mailbox),
-        reservedTypes: interest.reservedTypes,
-        afterSequence: after
-      }).messages
-      if (!batch.length) {
-        return
+        target,
+        authority,
+        frontier: 0,
+        deferred: new Map(),
+        newSources:
+          interest?.db === db &&
+          interest.target.sessionId === target.sessionId &&
+          interest.authority.owner === authority.owner
+            ? interest.newSources
+            : new Set(),
+        running: false,
+        pending: false,
+        consumersChanged: false,
+        capacityImproved: false,
+        retry: false
       }
-      for (const message of batch) {
-        after = message.sequence
-        if (!current()) {
-          return
-        }
-        const operationId = ordinaryMailCreationId(message)
-        const receipt = this.readCreation(
-          db,
-          mailbox,
-          target,
-          message,
-          batch.map((row) => row.id)
-        )
-        if (receipt === 'unknown') {
-          continue
-        }
-        if (receipt === 'accepted') {
-          db.markAsDelivered([message.id], mailbox)
-          continue
-        }
-        const fence = this.deps.host.currentFence(target.sessionId)
-        if (fence === null) {
-          return
-        }
-        const body = structuredMailBody({
-          ...this.deps,
-          db,
-          mailboxHandle: mailbox,
-          dispatchId: target.dispatchId,
-          message,
-          cliCommand: this.deps.getCliCommand()
-        })
-        const outcome = await this.deps.host.send({
-          ...target,
-          operationId,
-          expectedRuntimeFence: fence,
-          beforeRun: () => {
-            const latest = db.getMessageById(message.id)
-            const held = db.getOutstandingMailboxDelivery(mailbox)
-            if (
-              !current() ||
-              !latest ||
-              latest.read !== 0 ||
-              latest.delivered_at !== null ||
-              latest.to_handle !== mailbox ||
-              held?.messageIds.includes(message.id) ||
-              messageTypeHasOrchestrationWaiter(
-                this.deps.getMessageWaiters(mailbox),
-                latest.type
-              ) ||
-              interest.reservedTypes?.has(latest.type)
-            ) {
-              throw new Error('source creation superseded')
-            }
-          },
-          body,
-          mailSource: {
-            incarnation: mailSourceIncarnation(db.db),
-            sequence: message.sequence,
-            origin: message.ordering_origin ?? null
-          }
-        })
-        if (!current()) {
-          return
-        }
-        if (
-          outcome.kind === 'queued' ||
-          this.deps.host.readCreation(operationId, target.sessionId) === 'accepted'
-        ) {
-          db.markAsDelivered([message.id], mailbox)
-        }
-      }
+      this.interests.set(mailbox, interest)
     }
+    return interest
+  }
+  private current(mailbox: string, interest: Interest): boolean {
+    if (
+      this.deps.getDb() !== interest.db ||
+      this.interests.get(mailbox) !== interest ||
+      this.deps.resolveStructuredTarget(mailbox)?.sessionId !== interest.target.sessionId
+    ) {
+      return false
+    }
+    const authority = this.deps.host.admission(interest.target.sessionId)
+    return (
+      authority?.owner === interest.authority.owner &&
+      authority.generation === interest.authority.generation
+    )
+  }
+
+  private retire(interest: Interest, id: string): void {
+    interest.deferred.delete(id)
+    interest.newSources.delete(id)
   }
 }

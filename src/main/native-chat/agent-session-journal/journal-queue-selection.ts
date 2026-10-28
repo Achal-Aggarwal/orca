@@ -23,16 +23,18 @@ export function journalQueueSelection(deps: JournalQueuedMessagesDeps) {
       const pauses = deriveQueuePauses({
         epoch: state.epoch,
         marks: { ...state.queuePauseMarks, latestStop: state.queuePauseMarks.personalStop ?? null },
-        latestAcceptedTurnSequence: state.latestAcceptedPersonalTurnSequence,
+        latestAcceptedTurnSequence: state.latestAcceptedTurnSequence,
         cards,
         reopenFloor: deps.reopenFloor()
       })
       const intent = state.mailBoundary
-      if (intent?.status === 'held' && intent.stop) {
+      if (intent) {
         const stopped = pauses.findIndex((pause) => pause.reason === 'stopped')
         if (stopped !== -1) {
           pauses.splice(stopped, 1)
         }
+      }
+      if (intent?.status === 'held' && intent.stop) {
         pauses.unshift({
           reason: 'stopped',
           since: intent.stop && {

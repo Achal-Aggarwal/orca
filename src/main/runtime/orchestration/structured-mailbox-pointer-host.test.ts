@@ -50,7 +50,7 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it('reads exact ordinary creation independently of card/provider lifetime and refuses contradictory targets', () => {
+  it('reads exact ordinary creation at its original authority across route/card/provider changes and refuses invalid callers', () => {
     const record = agentSessionConversationView(agentSessionRecordFixture())
     let receipt: unknown = {
       operationId: 'op1',
@@ -74,7 +74,8 @@ describe('structured mailbox pointer host', () => {
     const host = createStructuredMailboxPointerHost()
     expect(host.readCreation('op1', record.sessionId)).toBe('accepted')
     expect(read).toHaveBeenCalledWith({ kind: 'global' }, 'op1')
-    expect(host.readCreation('op1', 'unrelated')).toBe('unknown')
+    expect(host.readCreation('op1', 'unrelated')).toBe('accepted')
+    expect(host.readCreation('op1', 'unrelated', true)).toBe('unknown')
     receipt = {
       status: 'accepted',
       method: 'agentSession.send',

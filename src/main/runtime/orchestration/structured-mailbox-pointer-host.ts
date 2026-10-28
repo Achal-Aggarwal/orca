@@ -1,3 +1,5 @@
+import { queuedMessagesPublishedBytes } from '../../native-chat/agent-session-wire/structured-agent-session-queued-published-bytes'
+import { readMailCreationHistory } from './structured-mail-creation-history'
 import {
   conversationRecordReader,
   resolveLineageRunningSession
@@ -40,12 +42,42 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       receipt.status === 'accepted' &&
       ((receipt.result.kind === 'queued-draft' && receipt.result.messageId === operationId) ||
         (legacy && receipt.result.kind === 'journal-row'))
-    return validTarget && validCaller && receipt.method === 'agentSession.send' && created
+    return (legacy ? validTarget : target.kind === 'here') &&
+      validCaller &&
+      receipt.method === 'agentSession.send' &&
+      created
       ? 'accepted'
       : 'unknown'
   }
   return {
     readCreation,
+    readHistory: (sessionId) => {
+      const host = getStructuredAgentSessionHost()
+      return host ? readMailCreationHistory(host, sessionId) : { members: new Set(), opaque: true }
+    },
+    admission: (sessionId) => {
+      const host = getStructuredAgentSessionHost()
+      const record = host?.deps.store.getRecord(sessionId)
+      if (
+        !host ||
+        !record ||
+        resolveLineageRunningSession(conversationRecordReader(host.deps.store), sessionId).kind !==
+          'here'
+      ) {
+        return null
+      }
+      const journal = host.queuedMailJournal(sessionId)
+      return {
+        owner: host,
+        generation: JSON.stringify([
+          record.sessionId,
+          record.location,
+          record.lease.runtimeFence,
+          journal?.epoch
+        ]),
+        queuedBytes: journal ? queuedMessagesPublishedBytes(journal) : 0
+      }
+    },
     currentFence: (sessionId) =>
       getStructuredAgentSessionHost()?.deps.store.getConversation(sessionId)?.currentFence ?? null,
     send: async (input) => {
@@ -75,7 +107,21 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           beforeRun: input.beforeRun
         }
       })
-      return { kind: outcome.kind === 'queued' ? 'queued' : 'held' }
+      if (outcome.kind === 'queued') {
+        return { kind: 'queued' }
+      }
+      if (outcome.kind === 'refused') {
+        if (outcome.refusal.details?.reason === 'queueTooLarge') {
+          return { kind: 'capacity' }
+        }
+        if (
+          outcome.refusal.code === 'agent_session_operation_unknown' ||
+          outcome.refusal.code === 'execution_owner_reconciling'
+        ) {
+          return { kind: 'retry' }
+        }
+      }
+      return { kind: 'held' }
     }
   }
 }

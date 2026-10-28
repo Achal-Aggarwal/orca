@@ -240,7 +240,7 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     expect(dispatchCount()).toEqual({ n: 0 })
   })
 
-  it("sends the chat its coordinator's mail to the Dispatch whole, which its own check then skips", async () => {
+  it("sends the chat its coordinator's mail whole while independent check replays until ack", async () => {
     await openChat(COORDINATOR)
     const worker = await openChat(PEER_CHAT)
     const { taskId } = await coordinatorRunAndTask()
@@ -264,13 +264,16 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     )
     expect(await queuedCardTexts(PEER_CHAT)).toEqual([])
     await settleTurn(PEER_CHAT, 0, 'completed')
-    await vi.waitFor(
-      async () =>
-        expect(await call('orchestration.check', {}, { sessionId: PEER_CHAT })).toMatchObject({
-          messages: []
-        }),
-      WAIT
-    )
+    const check = await call('orchestration.check', {}, { sessionId: PEER_CHAT })
+    expect(check).toMatchObject({ count: 1, messages: [{ subject: 'also check the tests' }] })
+    expect(await call('orchestration.check', {}, { sessionId: PEER_CHAT })).toMatchObject({
+      deliveryId: check.deliveryId,
+      count: 1,
+      replayed: true
+    })
+    expect(
+      await call('orchestration.check', { ack: check.deliveryId }, { sessionId: PEER_CHAT })
+    ).toMatchObject({ count: 0 })
   })
 
   it("counts a chat worker's own Dispatch as depth 2, under the nesting cap", async () => {

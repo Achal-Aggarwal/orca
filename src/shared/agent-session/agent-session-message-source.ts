@@ -22,8 +22,6 @@ export type OrchestrationMailNotice = Readonly<{
   mailbox: string
   dispatchId: string | null
   messages: readonly OrchestrationMailMessage[]
-  /** Absent on legacy pointers, which do not acknowledge receipt of the mail itself. */
-  carriesMailContent?: boolean
 }>
 
 /** A Dispatch's task, sent as the assignee's turn: the records it joins back to while they exist. */
@@ -65,8 +63,7 @@ const mailNoticeSchema = z.object({
   message: z.literal('mail-notice'),
   mailbox: z.string(),
   dispatchId: z.string().nullable(),
-  messages: z.array(z.object({ messageId: z.string(), runId: z.string(), from: z.string() })),
-  carriesMailContent: z.boolean().optional()
+  messages: z.array(z.object({ messageId: z.string(), runId: z.string(), from: z.string() }))
 })
 
 const taskSchema = z.object({
