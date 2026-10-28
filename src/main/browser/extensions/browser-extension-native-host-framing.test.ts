@@ -79,6 +79,30 @@ describe('native host message framing', () => {
     expect(joinedBytes).toBeLessThanOrEqual(bytes.length)
   })
 
+  it('bounds retained storage for a body arriving one byte at a time', () => {
+    const gc = globalThis.gc
+    if (!gc) {
+      throw new Error('Retention checks require --expose-gc')
+    }
+    const heap = (): number => {
+      gc()
+      gc()
+      return process.memoryUsage().heapUsed
+    }
+    const json = JSON.stringify('x'.repeat(64 * 1024 - 2))
+    const bytes = frame(json)
+    const before = heap()
+    const { reader, messages, errors } = collect()
+    reader.push(bytes.subarray(0, 4))
+    for (let index = 4; index < bytes.length - 1; index += 1) {
+      reader.push(Buffer.from([bytes[index]!]))
+    }
+    expect(heap() - before).toBeLessThan(2 * 1024 * 1024)
+    reader.push(bytes.subarray(-1))
+    expect(messages).toEqual([json])
+    expect(errors).toEqual([])
+  })
+
   it('takes a message of exactly 1 MB and refuses one byte more without waiting for it', () => {
     const exact = collect()
     const body = `"${'x'.repeat(MAX_NATIVE_HOST_MESSAGE_BYTES - 2)}"`
