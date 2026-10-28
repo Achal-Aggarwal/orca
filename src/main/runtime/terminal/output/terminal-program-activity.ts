@@ -9,9 +9,6 @@ export abstract class OrcaRuntimeWithApplyPtyProgramActivity extends OrcaRuntime
     if (!entry) {
       return
     }
-    if (entry.programActivity !== activity) {
-      entry.programActivitySince = Date.now()
-    }
     entry.programActivity = activity
     this.observeClaudeTerminalEvidence(ptyId, { kind: 'activity', status: activity })
     const pty = this.ptysById.get(ptyId)

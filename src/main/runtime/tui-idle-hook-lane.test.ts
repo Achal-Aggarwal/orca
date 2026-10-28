@@ -178,34 +178,33 @@ describe('readTuiIdleHookTurn', () => {
     ).toEqual({ state: 'permission', blockedReason: null })
   })
 
-  it("marks a done newer than the program's working report, and joins Agent Teams to claude's row", () => {
-    const hookRow = row({ agentType: 'claude' })
-    const { receivedAt } = hookRow
-    const read = (programWorkingSince: number | null) =>
+  it("marks a live turn end under program work, and joins Agent Teams to claude's row", () => {
+    const transition = (kind: 'transition' | 'snapshot', launchToken = 'launch-1') =>
+      row({
+        agentType: 'claude',
+        launchToken,
+        observation: {
+          origin: 'hook',
+          authorityId: 'local',
+          incarnation: 1,
+          revision: 1,
+          observedAt: 1,
+          kind
+        }
+      })
+    const read = (hookRow: AgentStatusIpcPayload, programWorking = true) =>
       readTuiIdleHookTurn({
         ...base,
         agent: 'claude-agent-teams',
+        launchToken: 'launch-1',
         hookRows: [hookRow],
-        programWorkingSince
+        programWorking
       })
-    expect(read(receivedAt - 1000)).toEqual({ ...DONE, endedUnderProgramWork: true })
-    // A child's hook restamps the row, but the lead's turn still ended before the program's report.
-    const childChurn = row({
-      agentType: 'claude',
-      state: 'working',
-      mainAgent: { state: 'done', stateStartedAt: receivedAt - 2000 }
-    })
-    expect(
-      readTuiIdleHookTurn({
-        ...base,
-        agent: 'claude',
-        hookRows: [childChurn],
-        programWorkingSince: receivedAt - 1000
-      })
-    ).toEqual(DONE)
-    // Work the program reported after the turn end, or no working report at all, is not outlasted.
-    expect(read(receivedAt + 1)).toEqual(DONE)
-    expect(read(null)).toEqual(DONE)
+    expect(read(transition('transition'))).toEqual({ ...DONE, endedUnderProgramWork: true })
+    // A replayed done restates an old turn; another launch's done speaks for its predecessor.
+    expect(read(transition('snapshot'))).toEqual(DONE)
+    expect(read(transition('transition', 'launch-0'))).toEqual(DONE)
+    expect(read(transition('transition'), false)).toEqual(DONE)
   })
 
   it('takes the newest joined row', () => {

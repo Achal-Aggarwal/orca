@@ -190,7 +190,6 @@ export abstract class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission 
       return null
     }
     const { handles, paneKeys, hookRows } = join
-    const tracker = this.ptyTitleTrackersByPtyId.get(ptyId)
     return readTuiIdleHookTurn({
       agent,
       handles,
@@ -201,8 +200,7 @@ export abstract class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission 
       launchToken: pty.launchToken,
       titleObservedAtEpochMs: pty.lastOscTitleEpochMs,
       hasExplicitIdleTitle: hasExplicitIdleTitle(pty),
-      programWorkingSince:
-        tracker?.programActivity === 'working' ? tracker.programActivitySince : null,
+      programWorking: this.ptyTitleTrackersByPtyId.get(ptyId)?.programActivity === 'working',
       respawnedAt: this.agentPromptExplicitStatusFloorByPtyId.get(ptyId),
       lastInputAt: this.terminalRunFacts.readLastInputAt(ptyId),
       tailIncludes: (text) => retainedTailIncludes(pty.tailBuffer, pty.tailPartialLine, text),

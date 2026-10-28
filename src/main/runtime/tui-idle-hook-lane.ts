@@ -14,8 +14,8 @@ export type TuiIdleHookTurn = {
   taskWakeupPending?: true
   /** When a fresh `done`'s turn has had time to paint its last frame. */
   finalFrameAt?: number
-  /** A clear turn end newer than the program's ongoing `working` report, which then covers work
-   *  beyond the lead's turn (e.g. live teammates) rather than the turn itself. */
+  /** A live turn end while the program still reports `working`, which then covers work beyond
+   *  the lead's turn (e.g. live teammates) rather than the turn itself. */
   endedUnderProgramWork?: true
 }
 
@@ -28,13 +28,6 @@ const CODEX_PROPOSED_PLAN_HEADER = 'Proposed Plan'
 function hookReportingAgent(agent: TuiAgent | null | undefined): TuiAgent | null | undefined {
   // Why: Agent Teams runs the same Claude binary, so its hooks report as `claude`.
   return agent === 'claude-agent-teams' ? 'claude' : agent
-}
-
-/** When the lead's own turn ended, on this runtime's clock: child events restamp `receivedAt`, and
- *  a remote host stamps the turn on its own clock. */
-function leadTurnEndedAt(row: AgentStatusIpcPayload): number {
-  const ended = row.turnEndedAt ?? row.mainAgent?.stateStartedAt ?? row.stateStartedAt
-  return ended + row.receivedAt - (row.evidenceObservedAt ?? row.receivedAt)
 }
 
 /** Scans newest-first so the common hit (this turn's plan) returns early. */
@@ -86,8 +79,8 @@ export type TuiIdleHookTurnRead = {
    *  the turn that input may have started (or the agent it restarted), whose first hook can still
    *  be in flight. */
   lastInputAt?: number | null
-  /** When the program's current OSC 7501 `working` report began; null while it reports none. */
-  programWorkingSince?: number | null
+  /** Whether the program currently reports OSC 7501 `working`. */
+  programWorking?: boolean
   /** Whether the pane's retained output holds `text`; read only while a fresh `done` may precede a menu. */
   tailIncludes?: (text: string) => boolean
   /** The existing permission arbiter, given the turn as the pane's explicit status. */
@@ -110,6 +103,11 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
     return null
   }
   const blockedReason = read.resolveBlockedText(state, row)
+  // Why: an older host or launch's late hook speaks for its predecessor, not this process.
+  const ownHook =
+    row.observation?.origin === 'hook' &&
+    terminalHostConnectionMatches(row.connectionId, read.connectionId ?? null, read.wslDistro) &&
+    (!read.launchToken || row.launchToken === read.launchToken)
   // Why the hook alone blocks: a question or custom modal paints no dialog text the arbiter knows,
   // and these hooks report its answer. Input since may have answered it before the hook arrived.
   const taskWakeupPending =
@@ -122,23 +120,23 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
           typeof read.titleObservedAtEpochMs === 'number' &&
           read.titleObservedAtEpochMs > (row.turnStartedAt ?? row.receivedAt)
         ))) &&
-    row.observation?.origin === 'hook' &&
-    row.providerSession?.key === 'session_id' &&
-    terminalHostConnectionMatches(row.connectionId, read.connectionId ?? null, read.wslDistro) &&
-    (!read.launchToken || row.launchToken === read.launchToken)
+    ownHook &&
+    row.providerSession?.key === 'session_id'
   const finalFrameAt = row.receivedAt + TURN_END_FINAL_FRAME_MS
   const finalFramePending =
     state === 'done' &&
     hookAuthority(read.agent) === 'turn-end' &&
     Date.now() < finalFrameAt &&
     read.tailIncludes?.(CODEX_PROPOSED_PLAN_HEADER) === true
+  // Why a transition: a replay or snapshot restates an old turn end and cannot prove this one ended.
   const endedUnderProgramWork =
     state === 'done' &&
+    read.programWorking === true &&
+    ownHook &&
+    row.observation?.kind === 'transition' &&
     !taskWakeupPending &&
     !finalFramePending &&
-    blockedReason === null &&
-    typeof read.programWorkingSince === 'number' &&
-    leadTurnEndedAt(row) > Math.max(read.programWorkingSince, read.lastInputAt ?? -1)
+    blockedReason === null
   return {
     state,
     ...(taskWakeupPending ? { taskWakeupPending: true as const } : {}),

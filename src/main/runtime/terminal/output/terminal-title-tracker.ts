@@ -198,7 +198,6 @@ export abstract class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends Or
         ? this.createTerminalSideEffectCommandCodeDetector(ptyId)
         : null,
       programActivity: null,
-      programActivitySince: null,
       // The persisted title is already normalized, so it stands for both forms.
       lastTitle: initialTitle !== null ? { raw: initialTitle, normalized: initialTitle } : null
     }

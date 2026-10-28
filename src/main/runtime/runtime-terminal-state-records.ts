@@ -149,8 +149,6 @@ export type RuntimePtyTitleTrackerEntry = {
   commandCodeDetector: { observe: (data: string) => boolean } | null
   /** The program's OSC 7501 activity; while set it, not the title glyph, is the PTY's status. */
   programActivity: AgentStatus | null
-  /** Wall clock of the last programActivity change. */
-  programActivitySince: number | null
   /** The last observed title, so a program's activity change can re-classify it. */
   lastTitle: { raw: string; normalized: string } | null
 }
