@@ -20184,7 +20184,6 @@
       "editDeliveryNotice": "Edit",
       "addSelectionToChat": "Add to chat",
       "messageNotSent": "Message not sent",
-      "deliveryUnconfirmed": "Couldn't confirm whether this was sent. It hasn't been resent.",
       "messageSending": "Sending…",
       "userMessage": {
         "showFull": "Show full message",

@@ -3101,7 +3101,6 @@
         "imageUnsupported": "Image paste is not supported for this agent.",
         "placeholder": "Ask anything, @ to mention files, / for commands"
       },
-      "deliveryUnconfirmed": "Couldn't confirm whether this was sent. It hasn't been resent.",
       "failureWords": {
         "accountSwitchInProgress": "{{agent}}'s setup is changing on this host. Try again after it finishes.",
         "agentCommandNotRunnable": "{{agent}}'s Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it.",
