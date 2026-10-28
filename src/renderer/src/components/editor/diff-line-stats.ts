@@ -1,37 +1,58 @@
+export type DiffLineStats = { added: number; removed: number }
+
 /** Approximate added/removed counts by matching line multiplicities, without computing an ordered diff. */
 export function computeLineStats(
   original: string,
   modified: string,
   status: string
-): { added: number; removed: number } | null {
-  // Avoid large render-time split allocations that would block the UI.
-  if (original.length + modified.length > 500_000) {
-    return null
-  }
-  if (status === 'added') {
-    return { added: modified ? countLinesWithoutAllocation(modified) : 0, removed: 0 }
-  }
-  if (status === 'deleted') {
-    return { added: 0, removed: original ? countLinesWithoutAllocation(original) : 0 }
-  }
+): DiffLineStats | null {
+  return createDiffLineStatsCalculator(original)(modified, status)
+}
 
-  const origMap = new Map<string, number>()
-  const originalLineCount = countDiffLinesIntoMultiset(original, origMap)
-  let modifiedLineCount = 0
-  let matched = 0
+export function createDiffLineStatsCalculator(
+  original: string
+): (modified: string, status: string) => DiffLineStats | null {
+  let originalLineCounts: Map<string, number> | null = null
+  let originalLineCount = 0
 
-  forEachDiffLine(modified, (line) => {
-    modifiedLineCount += 1
-    const count = origMap.get(line) ?? 0
-    if (count > 0) {
-      origMap.set(line, count - 1)
-      matched += 1
+  return (modified, status) => {
+    // Keep original preprocessing behind the same render-time size and status gates.
+    if (original.length + modified.length > 500_000) {
+      return null
     }
-  })
+    if (status === 'added') {
+      return { added: modified ? countLinesWithoutAllocation(modified) : 0, removed: 0 }
+    }
+    if (status === 'deleted') {
+      return { added: 0, removed: original ? countLinesWithoutAllocation(original) : 0 }
+    }
 
-  return {
-    added: modifiedLineCount - matched,
-    removed: originalLineCount - matched
+    if (!originalLineCounts) {
+      originalLineCounts = new Map<string, number>()
+      originalLineCount = countDiffLinesIntoMultiset(original, originalLineCounts)
+    }
+    const originalCounts = originalLineCounts
+    const matchedLineCounts = new Map<string, number>()
+    let modifiedLineCount = 0
+    let matched = 0
+
+    forEachDiffLine(modified, (line) => {
+      modifiedLineCount += 1
+      const available = originalCounts.get(line) ?? 0
+      if (available === 0) {
+        return
+      }
+      const consumed = matchedLineCounts.get(line) ?? 0
+      if (consumed < available) {
+        matchedLineCounts.set(line, consumed + 1)
+        matched += 1
+      }
+    })
+
+    return {
+      added: modifiedLineCount - matched,
+      removed: originalLineCount - matched
+    }
   }
 }
 

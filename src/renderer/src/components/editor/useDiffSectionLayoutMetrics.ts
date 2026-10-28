@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { computeLineStats } from './diff-line-stats'
+import { createDiffLineStatsCalculator, type DiffLineStats } from './diff-line-stats'
 import {
   getDiffSectionBodyHeight,
   getLargeDiffFallbackBodyHeight,
@@ -15,22 +15,26 @@ export function useDiffSectionLayoutMetrics({
   section: DiffSection
   sectionHeight: number | undefined
 }): {
-  lineStats: ReturnType<typeof computeLineStats> | null
+  lineStats: DiffLineStats | null
   sectionBodyHeight: number | undefined
   useIntrinsicImageHeight: boolean
   isLargeDiffLimited: boolean
 } {
   const renderLimit = section.largeDiffRenderLimit
   const isLargeDiffLimited = usesLargeDiffFallbackHeight(section)
+  const computeLineStats = useMemo(
+    () => createDiffLineStatsCalculator(section.originalContent),
+    [section.originalContent]
+  )
   const lineStats = useMemo(
     () =>
       section.loading || section.error || isLargeDiffLimited
         ? null
-        : computeLineStats(section.originalContent, section.modifiedContent, section.status),
+        : computeLineStats(section.modifiedContent, section.status),
     [
       section.error,
       section.loading,
-      section.originalContent,
+      computeLineStats,
       section.modifiedContent,
       section.status,
       isLargeDiffLimited
