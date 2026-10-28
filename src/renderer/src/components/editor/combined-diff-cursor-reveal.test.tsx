@@ -4,6 +4,8 @@ import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { DiffOnMount } from '@monaco-editor/react'
+import type * as CursorReveal from './combined-diff-cursor-reveal'
+import type * as HeightMeasurement from './diff-section-height-measurement'
 import { installDiffSectionHeightMeasurement } from './diff-section-height-measurement'
 import { DiffSectionBody } from './DiffSectionBody'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -18,6 +20,65 @@ import {
   readCombinedDiffViewMemory,
   releaseCombinedDiffView
 } from './combined-diff/remember-view/combined-diff-view-cache'
+
+// Instrument only the installers' pane reads, excluding Monaco's own geometry/layout work.
+const operations = { bridge: 0, heightReads: 0, publications: 0 }
+function countPaneReads(
+  editor: monaco.editor.IStandaloneDiffEditor,
+  method: 'getScrolledVisiblePosition' | 'getContentHeight',
+  onRead: () => void
+): monaco.editor.IStandaloneDiffEditor {
+  return new Proxy(editor, {
+    get(target, key) {
+      if (key === 'getOriginalEditor' || key === 'getModifiedEditor') {
+        return () =>
+          new Proxy(target[key](), {
+            get(pane, property) {
+              const value = Reflect.get(pane, property, pane)
+              if (typeof value !== 'function') {
+                return value
+              }
+              return (...args: unknown[]) => {
+                if (property === method) {
+                  onRead()
+                }
+                return Reflect.apply(value, pane, args)
+              }
+            }
+          })
+      }
+      const value = Reflect.get(target, key, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
+}
+vi.mock('./combined-diff-cursor-reveal', async (importOriginal) => {
+  const actual = await importOriginal<typeof CursorReveal>()
+  return {
+    ...actual,
+    installCombinedDiffCursorReveal: (editor: monaco.editor.IStandaloneDiffEditor) =>
+      actual.installCombinedDiffCursorReveal(
+        countPaneReads(editor, 'getScrolledVisiblePosition', () => operations.bridge++)
+      )
+  }
+})
+vi.mock('./diff-section-height-measurement', async (importOriginal) => {
+  const actual = await importOriginal<typeof HeightMeasurement>()
+  return {
+    ...actual,
+    installDiffSectionHeightMeasurement: (
+      editor: monaco.editor.IStandaloneDiffEditor,
+      onHeight: (height: number) => void
+    ) =>
+      actual.installDiffSectionHeightMeasurement(
+        countPaneReads(editor, 'getContentHeight', () => operations.heightReads++),
+        (height) => {
+          operations.publications++
+          onHeight(height)
+        }
+      )
+  }
+})
 
 // Happy DOM has no canvas adapter; drawing does not participate in cursor geometry.
 const canvasContext = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, 'getContext')!
@@ -71,7 +132,7 @@ afterEach(() => {
 })
 const frame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()))
 
-async function fixture(sideBySide: boolean) {
+async function fixture(sideBySide: boolean, rowCount = 100) {
   const outer = document.createElement('div')
   outer.className = 'combined-diff-scroll-container'
   document.body.append(outer)
@@ -80,18 +141,20 @@ async function fixture(sideBySide: boolean) {
   let height = 500
   Object.defineProperties(outer, {
     clientHeight: { value: 300 },
-    scrollHeight: { get: () => 49_500 + height + 30 },
+    scrollHeight: { get: () => (rowCount - 1) * 500 + height + 30 },
     offsetHeight: { value: 300 },
     offsetWidth: { value: 1000 },
     scrollTop: {
       get: () => scrollTop,
       set: (value: number) => {
-        scrollTop = Math.max(0, Math.min(value, 49_500 + height + 30 - 300))
+        scrollTop = Math.max(0, Math.min(value, (rowCount - 1) * 500 + height + 30 - 300))
         cancelAnimationFrame(scrollFrame)
         scrollFrame = requestAnimationFrame(() => outer.dispatchEvent(new Event('scroll')))
       }
     }
   })
+  const added = vi.spyOn(outer, 'addEventListener')
+  const removed = vi.spyOn(outer, 'removeEventListener')
   outer.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 300)
   outer.getClientRects = () =>
     Object.assign([outer.getBoundingClientRect()], { item: () => outer.getBoundingClientRect() })
@@ -111,7 +174,8 @@ async function fixture(sideBySide: boolean) {
     const [bodyHeight, setBodyHeight] = useState(500)
     const estimateSize = (index: number): number => (index === 2 ? bodyHeight + 30 : 500)
     const virtualizer = useVirtualizer({
-      count: 100,
+      count: rowCount,
+      overscan: 5,
       getScrollElement: () => outer,
       estimateSize,
       initialOffset: 1000,
@@ -130,7 +194,9 @@ async function fixture(sideBySide: boolean) {
       diff?.layout({ width: 1000, height })
     }, [bodyHeight, virtualizer])
     const mount: DiffOnMount = (editor) => {
-      disposers.push(installDiffSectionHeightMeasurement(editor, setBodyHeight))
+      const disposeHeight = installDiffSectionHeightMeasurement(editor, setBodyHeight)
+      editor.getModifiedEditor().onDidDispose(disposeHeight)
+      disposers.push(disposeHeight)
     }
     return virtualizer.getVirtualItems().some((item) => item.index === 2) ? (
       <div data-index={2} data-combined-diff-section-row>
@@ -186,6 +252,8 @@ async function fixture(sideBySide: boolean) {
     outer,
     view,
     measuredHeight: () => height,
+    added,
+    removed,
     settle: async () => {
       for (let index = 0; index < 4; index++) {
         await act(frame)
@@ -363,4 +431,92 @@ it('measures an original-only content-height change after settlement', async () 
   expect(diff.getModifiedEditor().getContentHeight()).toBe(modifiedHeight)
   expect(original.getContentHeight()).toBeGreaterThan(modifiedHeight)
   expect(measuredHeight()).toBe(original.getContentHeight())
+})
+
+it.each([100, 1000])('bounds keyboard, extent and disposed work with %i rows', async (rowCount) => {
+  const { outer, view, measuredHeight, settle, added, removed } = await fixture(true, rowCount)
+  const pane = diff.getOriginalEditor()
+  pane.focus()
+  pane.setPosition({ lineNumber: 12, column: 1 })
+  await settle()
+  let keyboardEvents = 0
+  const cursorEvents = pane.onDidChangeCursorPosition((event) => {
+    if (event.source === 'keyboard') {
+      keyboardEvents++
+    }
+  })
+  disposers.push(() => cursorEvents.dispose())
+  operations.bridge = 0
+  for (let index = 0; index < 30; index++) {
+    pane.trigger('keyboard', 'cursorDown', null)
+  }
+  expect(keyboardEvents).toBeGreaterThan(0)
+  expect(keyboardEvents).toBeLessThanOrEqual(30)
+  expect(operations.bridge).toBe(keyboardEvents)
+  await act(frame)
+  expect(operations.bridge).toBe(keyboardEvents + 1)
+  await settle()
+  expect(operations.bridge).toBe(keyboardEvents + 1)
+
+  pane.setPosition({ lineNumber: 12, column: 1 })
+  await settle()
+  operations.bridge = 0
+  const mounted = diff
+  const disposed = vi.fn()
+  pane.onDidDispose(disposed)
+  await act(async () => {
+    pane.trigger('keyboard', 'cursorBottom', null)
+    outer.dispatchEvent(new Event('scroll'))
+  })
+  await settle()
+  expect(disposed).not.toHaveBeenCalled()
+  expect(diff).toBe(mounted)
+  expect(operations.bridge).toBeGreaterThan(0)
+  expect(operations.bridge).toBeLessThanOrEqual(5)
+  const cursor = pane.getScrolledVisiblePosition(pane.getPosition()!)!
+  const top = pane.getContainerDomNode().getBoundingClientRect().top + cursor.top
+  expect(top).toBeGreaterThanOrEqual(30)
+  expect(top + cursor.height).toBeLessThanOrEqual(300)
+
+  outer.dispatchEvent(new WheelEvent('wheel'))
+  operations.bridge = 0
+  operations.heightReads = 0
+  operations.publications = 0
+  const modifiedHeight = diff.getModifiedEditor().getContentHeight()
+  act(() => {
+    for (const bottom of [30_000, 35_000, 40_000]) {
+      pane.updateOptions({ padding: { bottom } })
+    }
+  })
+  expect(operations.publications).toBe(0)
+  await act(frame)
+  expect(operations.publications).toBe(1)
+  expect(operations.heightReads).toBe(2)
+  await settle()
+  expect(operations.publications).toBe(1)
+  expect(operations.bridge).toBe(0)
+  expect(diff.getModifiedEditor().getContentHeight()).toBe(modifiedHeight)
+  expect(measuredHeight()).toBe(pane.getContentHeight())
+  expect(measuredHeight()).toBeGreaterThan(modifiedHeight)
+
+  // Leave both installers with pending work, then dispose before their frames execute.
+  act(() => {
+    pane.trigger('keyboard', 'cursorTop', null)
+    pane.updateOptions({ padding: { bottom: 45_000 } })
+  })
+  const beforeDispose = { ...operations }
+  view.unmount()
+  await settle()
+  outer.dispatchEvent(new WheelEvent('wheel'))
+  expect(operations).toEqual(beforeDispose)
+  for (const type of ['pointerdown', 'wheel', 'touchmove']) {
+    const listeners = added.mock.calls.filter(
+      ([event, , options]) =>
+        event === type && typeof options === 'object' && options.capture === true
+    )
+    expect(listeners).toHaveLength(1)
+    for (const [event, listener] of listeners) {
+      expect(removed).toHaveBeenCalledWith(event, listener, true)
+    }
+  }
 })
