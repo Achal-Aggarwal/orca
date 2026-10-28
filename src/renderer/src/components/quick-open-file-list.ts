@@ -157,6 +157,7 @@ export function useRuntimeFileListForWorktree({
 
   useEffect(() => {
     if (!enabled) {
+      setListing(NO_LISTING)
       setCappedLocalListing(null)
       setLoadingRequest({ requestKey, loading: false })
       setListedOperationOwner({ kind: 'unresolved' })
