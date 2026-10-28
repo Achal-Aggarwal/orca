@@ -72,12 +72,16 @@ export function hostAgentStatusPiercesClientAuthority(entry: AgentStatusEntry): 
   )
 }
 
-/** Byte-derived ownership requires transport claim plus a write; teardown releases it back to host. */
+/** Only the current byte-derived row can fence host snapshots; adopting a host row yields authority. */
 export function isClientOwnedAgentStatus(
   paneKey: string,
   existing: AgentStatusEntry | undefined
 ): existing is AgentStatusEntry {
-  return existing !== undefined && isClientAuthoritativeAgentStatusPane(paneKey)
+  return (
+    existing !== undefined &&
+    existing.mirroredEvidenceReceivedAt === undefined &&
+    isClientAuthoritativeAgentStatusPane(paneKey)
+  )
 }
 
 /** When host and client compete, stale client status yields to host; ownership alone still protects against host omission. */

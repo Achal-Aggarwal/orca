@@ -138,12 +138,17 @@ export function installPaneHostCapabilityFlags(session: ConnectPanePtySession): 
       : resolvedStatusTitle
     // Only actual byte-derived status proves authority to fence out host mirroring.
     markRendererOwnedAgentStatusWrite(session.cacheKey)
+    // A fresh local byte write cannot be ordered against the host's clock.
+    const timing =
+      currentState.agentStatusByPaneKey[session.cacheKey]?.mirroredEvidenceReceivedAt !== undefined
+        ? { allowOlderTimestamp: true }
+        : undefined
     if (session.launchToken) {
       currentState.setAgentStatus(
         session.cacheKey,
         observedStatusPayload,
         statusTitle,
-        undefined,
+        timing,
         routing,
         {
           launchToken: session.launchToken
@@ -154,7 +159,7 @@ export function installPaneHostCapabilityFlags(session: ConnectPanePtySession): 
         session.cacheKey,
         observedStatusPayload,
         statusTitle,
-        undefined,
+        timing,
         routing
       )
     }

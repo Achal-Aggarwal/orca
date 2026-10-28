@@ -160,7 +160,11 @@ describe('remote completion repairs saved spinner titles', () => {
     if (!row) {
       throw new Error('Missing mirrored status')
     }
-    state.agentStatusByPaneKey[PANE_KEY] = { ...row, mirroredEvidenceReceivedAt: NOW }
+    state.agentStatusByPaneKey[PANE_KEY] = {
+      ...row,
+      updatedAt: NOW,
+      mirroredEvidenceReceivedAt: undefined
+    }
     registerRendererOwnedAgentStatusPane(PANE_KEY, ENV)
     markRendererOwnedAgentStatusWrite(PANE_KEY)
     const patch = applyWebSessionTabsSnapshot(
@@ -288,6 +292,14 @@ describe('remote completion repairs saved spinner titles', () => {
         runtimePaneTitlesByTabId: { [TAB_ID]: { 1: '⠋ Pi - first', 2: '⠋ Pi - second' } }
       }
       if (freshFirstWriter) {
+        const row = state.agentStatusByPaneKey[PANE_KEY]
+        if (!row) {
+          throw new Error('Missing mirrored status')
+        }
+        state.agentStatusByPaneKey[PANE_KEY] = {
+          ...row,
+          mirroredEvidenceReceivedAt: undefined
+        }
         registerRendererOwnedAgentStatusPane(PANE_KEY, ENV)
         markRendererOwnedAgentStatusWrite(PANE_KEY)
       }

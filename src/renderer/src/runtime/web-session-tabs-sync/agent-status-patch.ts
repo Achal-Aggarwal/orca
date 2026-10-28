@@ -93,13 +93,15 @@ export function buildMirroredAgentStatusPatch(
       existing.state !== 'done' &&
       existing.stateStartedAt > entry.stateStartedAt
     // Cross-machine clocks cannot arbitrate live byte ownership; keep client state except host-only classes, adopting host identity below.
+    const hostPiercesAuthority = hostAgentStatusPiercesClientAuthority(entry)
     const clientOwnsEntry =
-      isFencedClientAgentStatus(entry.paneKey, existing, now) &&
-      !hostAgentStatusPiercesClientAuthority(entry)
+      isFencedClientAgentStatus(entry.paneKey, existing, now) && !hostPiercesAuthority
     const nextEntry =
       existing &&
       (clientOwnsEntry ||
-        (isAgentStatusFresh(existing, now) && existing.updatedAt > entry.updatedAt))
+        (!hostPiercesAuthority &&
+          isAgentStatusFresh(existing, now) &&
+          existing.updatedAt > entry.updatedAt))
         ? {
             ...normalizeCompatibleAgentStatusEntryForOwner(existing, entry.agentType),
             ...(clientOwnsEntry && existing.state === 'working' && entry.state === 'working'
