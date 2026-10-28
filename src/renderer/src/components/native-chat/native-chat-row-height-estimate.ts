@@ -69,11 +69,13 @@ export function estimateNativeChatTextLines(
   if (markdown.length === 0) {
     return 0
   }
+  // Each display line consumes at most a wrap width plus one hard break, including empty lines.
+  const text = markdown.slice(0, Math.ceil(maxLines) * (Math.ceil(charsPerLine) + 1))
   let lines = 0
   let lineStart = 0
   while (lines < maxLines) {
-    const newline = markdown.indexOf('\n', lineStart)
-    const lineEnd = newline === -1 ? markdown.length : newline
+    const newline = text.indexOf('\n', lineStart)
+    const lineEnd = newline === -1 ? text.length : newline
     lines += Math.max(PROSE_MIN_LINES, Math.ceil((lineEnd - lineStart) / charsPerLine))
     if (newline === -1) {
       break

@@ -1,9 +1,10 @@
 import { nativeChatAppearanceStyle } from './native-chat-appearance-style'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   estimateNativeChatRowHeight,
   estimateNativeChatTextLines,
+  DEFAULT_ROW_TYPOGRAPHY,
   NATIVE_CHAT_ROW_GAP_PX,
   nativeChatRowContentMetrics
 } from './native-chat-row-height-estimate'
@@ -118,6 +119,9 @@ describe('transcript row height estimate', () => {
       'x'.repeat(7000),
       'line\n'.repeat(72),
       'line\n'.repeat(73),
+      '\n'.repeat(73),
+      `${'x'.repeat(96)}\n`.repeat(72),
+      `${'x'.repeat(96)}\n`.repeat(73),
       'y\n'.repeat(20000)
     ]
     for (const fontSize of [10, 14, 24]) {
@@ -129,10 +133,70 @@ describe('transcript row height estimate', () => {
       }
       for (const text of texts) {
         for (const role of ['assistant', 'user'] as const) {
-          const uncapped = estimateNativeChatTextLines(text, typography.charsPerLine)
+          const uncapped = text.length
+            ? text
+                .split('\n')
+                .reduce(
+                  (sum, line) =>
+                    sum + Math.max(1, Math.ceil(line.length / typography.charsPerLine)),
+                  0
+                )
+            : 0
+          expect(estimateNativeChatTextLines(text, typography.charsPerLine)).toBe(uncapped)
+          expect(estimateNativeChatTextLines(text, typography.charsPerLine, 2.5)).toBe(
+            Math.min(uncapped, 2.5)
+          )
           const metrics = nativeChatRowContentMetrics(message(text, role), typography)
           expect(estimateNativeChatRowHeight(metrics, NO_CHROME, typography)).toBe(
             estimateNativeChatRowHeight({ ...metrics, textLines: uncapped }, NO_CHROME, typography)
+          )
+        }
+      }
+    }
+  })
+
+  it('bounds searched characters at N and 10N while preserving exact newline-aware heights', () => {
+    const indexOf = String.prototype.indexOf
+    for (const charsPerLine of [96, 2.5, 0.5]) {
+      const typography = { ...DEFAULT_ROW_TYPOGRAPHY, charsPerLine, lineHeightPx: 22.5 }
+      const cap = Math.ceil(1600 / typography.lineHeightPx)
+      const bound = cap * (Math.ceil(charsPerLine) + 1)
+      for (const size of [100_000, 1_000_000]) {
+        for (const text of [
+          'x'.repeat(size),
+          'x\n'.repeat(10) + 'x'.repeat(size),
+          '\n'.repeat(size),
+          'x\n'.repeat(size / 2),
+          `${'x'.repeat(Math.floor(charsPerLine))}\n`.repeat(cap - 1) + 'x'.repeat(size)
+        ]) {
+          const exactLines = text
+            .split('\n')
+            .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0)
+          let searched = 0
+          const search = vi.spyOn(String.prototype, 'indexOf').mockImplementation(function (
+            this: string,
+            value,
+            start = 0
+          ) {
+            const found = indexOf.call(this, value, start)
+            if (value === '\n') searched += (found === -1 ? this.length : found + 1) - start
+            return found
+          })
+          let metrics: ReturnType<typeof nativeChatRowContentMetrics>
+          try {
+            metrics = nativeChatRowContentMetrics(message(text), typography)
+          } finally {
+            search.mockRestore()
+          }
+          expect(searched).toBeGreaterThan(0)
+          expect(searched).toBeLessThanOrEqual(bound)
+          expect(metrics.textLines).toBe(Math.min(exactLines, cap))
+          expect(estimateNativeChatRowHeight(metrics, NO_CHROME, typography)).toBe(
+            estimateNativeChatRowHeight(
+              { ...metrics, textLines: exactLines },
+              NO_CHROME,
+              typography
+            )
           )
         }
       }
