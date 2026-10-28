@@ -6,7 +6,7 @@ import {
 import { FENCED_TERMINATION_PROTOCOL_VERSION } from './daemon-protocol-version'
 import { emitPtyListeners, createPtyExitPayload } from './daemon-pty-listener-emission'
 import type { DaemonPtyRouterExitEvent } from './daemon-pty-router-events'
-import { checkWslBridgeDistro, WSL_DISTRO_LOSS_EXIT_CODE } from './daemon-wsl-bridge-exit'
+import { classifyWslBridgeExit, WSL_DISTRO_LOSS_EXIT_CODE } from './daemon-wsl-bridge-exit'
 import { isProvenProcessExit } from '../../shared/terminal-exit-cause'
 import { DaemonPtyDaemonRecovery } from './daemon-pty-daemon-recovery'
 import type { DaemonPtyAdapterOptions } from './daemon-pty-runtime-state'
@@ -243,8 +243,10 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
     wslDistro: string,
     exitAt: number
   ): Promise<void> {
-    const verdict = await checkWslBridgeDistro(wslDistro, exitAt, this.readRunningWslDistros)
-    // Only 'lost' keeps the tab; a reboot (or slow wsl.exe) racing the probe reads as an exit.
+    const verdict = await classifyWslBridgeExit(wslDistro, exitAt, this.readRunningWslDistros, () =>
+      this.wslBridgeBootIdentity.rebootedSinceSpawn(sessionId, wslDistro)
+    )
+    // Lost, or booted again since the spawn, keeps the tab; an unanswered check reads as an exit.
     console.info(
       `[pty] WSL bridge exit: ${verdict} (distro ${wslDistro}, probe ${Math.round(performance.now() - exitAt)}ms)`
     )
@@ -253,7 +255,7 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
     if (current !== undefined && current !== exit.incarnationId) {
       return
     }
-    if (verdict !== 'lost') {
+    if (verdict !== 'lost' && verdict !== 'rebooted') {
       this.finishExit(sessionId, exit)
       return
     }
