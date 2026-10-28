@@ -49,6 +49,7 @@ describe('useNativeChatMentionFiles', () => {
     const history = vi
       .spyOn(fileHistory, 'useQuickOpenHistory')
       .mockReturnValue(['src/new.ts', added, needles[24], needles[23], 'missing.ts'])
+    const initialProps: { query: string | null } = { query: null }
     const { result, rerender, unmount } = renderHook(
       ({ query }: { query: string | null }) =>
         useNativeChatMentionFiles({
@@ -56,7 +57,7 @@ describe('useNativeChatMentionFiles', () => {
           terminalTabId: 'tab-1',
           structuredWorktreeId: 'wt-remote'
         }),
-      { initialProps: { query: null } }
+      { initialProps }
     )
     expect(result.current.files).toEqual([])
     rerender({ query: 'n' })
