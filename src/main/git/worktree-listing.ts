@@ -2,7 +2,7 @@ import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../shared/abo
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { resolveGitMetadataPath } from '../../shared/git-metadata-path'
+import { resolveGitDirectoryPath, resolveGitMetadataPath } from '../../shared/git-metadata-path'
 import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
 import { isWorktreeCreatePreparation } from '../../shared/worktree/create-preparation'
 import { toWslExecutionSpace } from '../../shared/wsl-paths'
@@ -175,7 +175,7 @@ async function resolveRepoCommonDirFromDisk(
     if (!pointer) {
       return undefined
     }
-    gitDir = resolveGitMetadataPath(repoPath, pointer) ?? dotGit
+    gitDir = resolveGitDirectoryPath(repoPath, pointer) ?? dotGit
     await assertGitDirIsDirectory(gitDir)
   }
 

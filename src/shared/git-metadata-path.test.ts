@@ -1,6 +1,10 @@
 import { posix, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolveGitMetadataPath, resolveWorktreeHostPath } from './git-metadata-path'
+import {
+  resolveGitDirectoryPath,
+  resolveGitMetadataPath,
+  resolveWorktreeHostPath
+} from './git-metadata-path'
 
 const hostIsWindows = process.platform === 'win32'
 
@@ -154,6 +158,27 @@ describe('resolveGitMetadataPath', () => {
     expect(resolveGitMetadataPath('/repo/worktree', '../.git/worktrees/feature')).toBe(
       (hostIsWindows ? win32 : posix).resolve('/repo/worktree', '../.git/worktrees/feature')
     )
+  })
+})
+
+describe('parsed Git directory paths', () => {
+  it('preserves a relative payload including leading and trailing filename spaces', () => {
+    expect(resolveGitDirectoryPath('/repo', ' metadata ', { platform: 'linux' })).toBe(
+      '/repo/ metadata '
+    )
+    expect(resolveGitDirectoryPath('C:\\repo', ' metadata ', { platform: 'win32' })).toBe(
+      'C:\\repo\\ metadata '
+    )
+  })
+
+  it('keeps a guest payload exact while mapping it through the base distro', () => {
+    expect(
+      resolveGitDirectoryPath(
+        String.raw`\\wsl.localhost\Debian\home\me\repo`,
+        '/home/me/metadata\nwith space ',
+        { platform: 'win32', wslDistro: 'Ubuntu' }
+      )
+    ).toBe('\\\\wsl.localhost\\Debian\\home\\me\\metadata\nwith space ')
   })
 })
 

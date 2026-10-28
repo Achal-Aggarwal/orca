@@ -17,8 +17,16 @@ export function resolveGitMetadataPath(
   rawPath: string,
   options: GitMetadataPathOptions = {}
 ): string | null {
+  return resolveGitDirectoryPath(basePath, rawPath.trim(), options)
+}
+
+/** Resolve an already parsed Git directory path without changing filename whitespace. */
+export function resolveGitDirectoryPath(
+  basePath: string,
+  value: string,
+  options: GitMetadataPathOptions = {}
+): string | null {
   const platform = options.platform ?? process.platform
-  const value = rawPath.trim()
   if (!value) {
     return null
   }

@@ -1,4 +1,7 @@
-/** Match Git read_gitfile_gently: gitdir: must start the file, payload padding is stripped, and dot excludes newlines so later lines cannot match. */
+/** Git keeps the complete payload and removes only terminal CR/LF bytes. */
 export function parseGitdirMarkerPayload(content: string): string | null {
-  return content.match(/^gitdir:(.*)/i)?.[1].trim() || null
+  const prefix = 'gitdir: '
+  return content.startsWith(prefix)
+    ? content.slice(prefix.length).replace(/[\r\n]+$/, '') || null
+    : null
 }

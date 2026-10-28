@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { runProcess } from '@orca/process-host'
+import { mkdtemp, mkdir, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import * as gitOperationLock from './git-operation-lock'
@@ -194,48 +195,84 @@ describe('runWithGitFetchHeadLock', () => {
     }
   )
 
-  it('serializes linked worktrees through their shared Git directory', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'fetch-head-linked-lock-'))
-    const main = path.join(root, 'main')
-    const linked = path.join(root, 'linked')
-    const commonGitDir = path.join(main, '.git')
-    const linkedGitDir = path.join(commonGitDir, 'worktrees', 'linked')
-    await Promise.all([mkdir(linkedGitDir, { recursive: true }), mkdir(linked)])
-    await Promise.all([
-      writeFile(path.join(linked, '.git'), `gitdir: ${linkedGitDir}\n`),
-      writeFile(path.join(linkedGitDir, 'commondir'), '../..\n')
-    ])
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    let markFirstStarted!: () => void
-    const firstStarted = new Promise<void>((resolve) => {
-      markFirstStarted = resolve
-    })
-    const observation = observeLockEntries(2)
-    const order: string[] = []
-    const first = runWithGitFetchHeadLock(main, undefined, async () => {
-      order.push('main')
-      markFirstStarted()
-      await gate
-    })
-    await firstStarted
-    const second = runWithGitFetchHeadLock(linked, undefined, async () => {
-      order.push('linked')
-    })
+  it.each(process.platform === 'win32' ? ['main'] : ['main', 'main\nrepo'])(
+    'serializes real linked worktrees through the shared Git directory at %j',
+    async (mainName) => {
+      const root = await mkdtemp(path.join(tmpdir(), 'fetch-head-linked-lock-'))
+      const main = path.join(root, mainName)
+      const linked = path.join(root, 'linked')
+      try {
+        for (const args of [
+          ['init', '-q', main],
+          [
+            '-C',
+            main,
+            '-c',
+            'commit.gpgsign=false',
+            '-c',
+            'core.hooksPath=',
+            'commit',
+            '--allow-empty',
+            '-qm',
+            'initial'
+          ],
+          ['-C', main, 'worktree', 'add', '-q', '-b', 'linked', linked]
+        ]) {
+          const result = await runProcess({
+            program: 'git',
+            args,
+            cwd: root,
+            timeoutMs: 10_000,
+            env: {
+              ...process.env,
+              GIT_CONFIG_NOSYSTEM: '1',
+              GIT_CONFIG_GLOBAL: path.join(root, 'missing-config'),
+              GIT_AUTHOR_NAME: 'Fetch Lock Test',
+              GIT_AUTHOR_EMAIL: 'fetch@example.invalid',
+              GIT_COMMITTER_NAME: 'Fetch Lock Test',
+              GIT_COMMITTER_EMAIL: 'fetch@example.invalid'
+            }
+          })
+          if (result.code !== 0) {
+            throw new Error(result.stderr)
+          }
+        }
+      } catch (error) {
+        await rm(root, { recursive: true, force: true })
+        throw error
+      }
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let markFirstStarted!: () => void
+      const firstStarted = new Promise<void>((resolve) => {
+        markFirstStarted = resolve
+      })
+      const observation = observeLockEntries(2)
+      const order: string[] = []
+      const first = runWithGitFetchHeadLock(main, undefined, async () => {
+        order.push('main')
+        markFirstStarted()
+        await gate
+      })
+      await firstStarted
+      const second = runWithGitFetchHeadLock(linked, undefined, async () => {
+        order.push('linked')
+      })
 
-    try {
-      await observation.entered
-      expect(order).toEqual(['main'])
-      release()
-      await Promise.all([first, second])
-      expect(order).toEqual(['main', 'linked'])
-    } finally {
-      observation.restore()
-      release()
-      await Promise.allSettled([first, second])
-      await rm(root, { recursive: true, force: true })
+      try {
+        await observation.entered
+        expect(order).toEqual(['main'])
+        release()
+        await Promise.all([first, second])
+        expect(order).toEqual(['main', 'linked'])
+      } finally {
+        observation.restore()
+        release()
+        await Promise.allSettled([first, second])
+        await rm(root, { recursive: true, force: true })
+      }
     }
-  })
+  )
 })

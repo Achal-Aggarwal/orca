@@ -22,16 +22,16 @@ describe('resolveGitDir', () => {
     await expect(resolveGitDir('/repo/feature')).resolves.toBe(linkedGitDir)
   })
 
-  it('drops padding around the marker payload', async () => {
+  it('keeps spaces belonging to the marker path', async () => {
     readFileMock.mockResolvedValue('gitdir: ../main/.git/worktrees/feature  \r\n')
 
-    await expect(resolveGitDir('/repo/feature')).resolves.toBe(linkedGitDir)
+    await expect(resolveGitDir('/repo/feature')).resolves.toBe(`${linkedGitDir}  `)
   })
 
-  it('does not treat a whitespace-only gitdir payload as a metadata directory', async () => {
+  it('retains an all-space directory name after the required separator', async () => {
     readFileMock.mockResolvedValue('gitdir:   \n')
 
-    await expect(resolveGitDir('/repo/feature')).resolves.toBe(ownDotGit)
+    await expect(resolveGitDir('/repo/feature')).resolves.toBe(path.resolve('/repo/feature', '  '))
   })
 
   it('ignores a gitdir line that is not the first line of the marker file', async () => {

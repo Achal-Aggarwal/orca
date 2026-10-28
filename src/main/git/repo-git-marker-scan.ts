@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative } from 'node:path'
 import { normalizeRuntimePathSeparators } from '../../shared/cross-platform-path'
-import { resolveGitMetadataPath } from '../../shared/git-metadata-path'
+import { resolveGitDirectoryPath, resolveGitMetadataPath } from '../../shared/git-metadata-path'
 import { parseGitdirMarkerPayload } from '../../shared/gitdir-marker-payload'
 
 export type GitMarkerScanResult =
@@ -129,7 +129,7 @@ function scanWorktreeMarkerSync(worktreePath: string): GitMarkerScanResult {
 
 function parseGitdirFile(basePath: string, content: string): string | null {
   const payload = parseGitdirMarkerPayload(content)
-  return payload === null ? null : resolveGitMetadataPath(basePath, payload)
+  return payload === null ? null : resolveGitDirectoryPath(basePath, payload)
 }
 
 function hasValidGitDirectorySync(gitDir: string): boolean {

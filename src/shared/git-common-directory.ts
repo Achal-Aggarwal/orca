@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { waitForPromiseWithSignal } from './abort-signal-reason'
-import { resolveGitMetadataPath, type GitMetadataPathOptions } from './git-metadata-path'
+import { resolveGitDirectoryPath, type GitMetadataPathOptions } from './git-metadata-path'
 import { parseGitdirMarkerPayload } from './gitdir-marker-payload'
 
 export type GitAdminReadOptions = GitMetadataPathOptions & { signal?: AbortSignal }
@@ -47,7 +47,7 @@ export async function resolveGitCommonDirectory(
     statPath: (file) => waitForPromiseWithSignal(stat(file), options.signal),
     readPath: (file) => readGitAdminFile(file, options.signal),
     join: path.join,
-    resolvePath: (base, pointer) => resolveGitMetadataPath(base, pointer, options),
+    resolvePath: (base, pointer) => resolveGitDirectoryPath(base, pointer, options),
     parseMarker: parseGitdirMarkerPayload,
     isMissing: isMissingGitAdminEntry
   }

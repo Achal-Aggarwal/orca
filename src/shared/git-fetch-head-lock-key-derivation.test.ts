@@ -99,7 +99,7 @@ describe('FETCH_HEAD lock key derivation', () => {
     expect(keys[0]).toBe(path.join(String.raw`\\wsl$\Ubuntu\home\me\repo`, '.git', 'FETCH_HEAD'))
   })
 
-  it('puts a padded gitfile pointer in the same lane as its bare spelling', async () => {
+  it('keeps terminal CRLF out of the gitfile path identity', async () => {
     usePlatform('darwin')
     mocks.stat.mockResolvedValue(GIT_FILE_ENTRY)
     const gitfile = (payload: string): void => {
@@ -107,14 +107,13 @@ describe('FETCH_HEAD lock key derivation', () => {
         if (String(target).endsWith('commondir')) {
           throw new Error('no commondir')
         }
-        return `gitdir:${payload}\n`
+        return `gitdir: ${payload}`
       })
     }
 
-    gitfile(' ../repo/.git/worktrees/wt')
+    gitfile('../repo/.git/worktrees/wt\n')
     await runWithGitFetchHeadLock('/work/wt', undefined, async () => 0)
-    // git's own read_gitfile_gently strips the padding, so both spellings name one repo.
-    gitfile('\t../repo/.git/worktrees/wt  ')
+    gitfile('../repo/.git/worktrees/wt\r\n\n')
     await runWithGitFetchHeadLock('/work/wt', undefined, async () => 0)
 
     const keys = lockKeys()
