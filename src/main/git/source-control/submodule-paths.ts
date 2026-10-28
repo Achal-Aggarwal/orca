@@ -122,7 +122,7 @@ export async function listSubmodulePaths(
 }
 
 export function findContainingSubmodule(submodulePaths: string[], filePath: string): string | null {
-  const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '')
+  const normalized = filePath.split(path.sep).join('/').replace(/\/+$/, '')
   let best: string | null = null
   for (const sub of submodulePaths) {
     if (normalized === sub || normalized.startsWith(`${sub}/`)) {

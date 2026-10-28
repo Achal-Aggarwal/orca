@@ -95,7 +95,7 @@ async function loadDiff(
     if (matchedSubmodule) {
       // Validate .gitmodules paths so crafted entries cannot escape the worktree.
       const submoduleWorktreePath = resolveSubmoduleWorktreePath(worktreePath, matchedSubmodule)
-      const normalizedFilePath = filePath.replace(/\\/g, '/').replace(/\/+$/, '')
+      const normalizedFilePath = filePath.split(path.sep).join('/').replace(/\/+$/, '')
       if (normalizedFilePath === matchedSubmodule) {
         return notReusable(
           await buildSubmodulePointerDiff(
