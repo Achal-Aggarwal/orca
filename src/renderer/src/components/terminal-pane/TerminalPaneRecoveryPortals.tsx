@@ -16,7 +16,7 @@ import { RemoteServerOutageNotice } from './RemoteServerOutageNotice'
 import { WslHostStoppedCard } from './WslHostStoppedCard'
 import { useCalmStatusReveal } from '@/hooks/use-calm-status-reveal'
 import { useAppStore } from '@/store'
-import { selectStoppedWslDistro } from '@/lib/wsl-host-stopped-status'
+import { paneShowsWslHostStoppedCard, selectStoppedWslDistro } from '@/lib/wsl-host-stopped-status'
 import type { TerminalPaneController } from './use-terminal-pane-controller'
 
 /** Reconnect pairs refused servers, signs in SSH hosts awaiting credentials, or otherwise retries the pane. */
@@ -125,13 +125,16 @@ export function TerminalPaneRecoveryPortals({
           pairingRefusedEnvironmentId,
           awaitingSignIn
         )
-        // Why with or without a recovery: a stopped distro's pane is dead either way, and only Start
-        // revives it. A pane whose create failed has no server yet; it is still the workspace's.
+        // Why with or without a recovery: a stopped distro's pane is dead either way, and only Start revives it.
         if (
-          !wslHostUnavailable &&
           stoppedWslDistro !== null &&
           ownerEnvironmentId !== null &&
-          (paneEnvironmentId === null || paneEnvironmentId === ownerEnvironmentId)
+          paneShowsWslHostStoppedCard({
+            wslHostUnavailable: wslHostUnavailable !== null,
+            stoppedWslDistro,
+            ownerEnvironmentId,
+            paneEnvironmentId
+          })
         ) {
           return createPortal(
             <WslHostStoppedCard
