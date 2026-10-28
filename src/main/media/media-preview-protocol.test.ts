@@ -16,6 +16,9 @@ vi.mock('../ipc/local-file-access-resolution', () => ({
   resolveLocalFileRequestPath: authorize
 }))
 
+vi.mock('../ipc/runtime-environments/runtime-environment-registry-root', () => ({
+  readRegisteredPairingRevision: vi.fn(() => 9)
+}))
 vi.mock('./remote-file-preview-reader', async (importOriginal) => ({
   ...(await importOriginal<typeof RemoteFilePreviewReader>()),
   statRemotePreviewFile: vi.fn(),
@@ -156,6 +159,18 @@ describe('media preview protocol', () => {
       expect(statRemotePreviewFile).toHaveBeenCalledTimes(1)
       await expect(grantRemoteFilePreview(event, addr('notes.txt'), store)).resolves.toBeNull()
       expect(statRemotePreviewFile).toHaveBeenCalledTimes(1)
+    })
+
+    it('pins a grant the renderer sent unpinned to the pairing it was minted on', async () => {
+      const { expectedEnvironmentPairingRevision: _revision, ...unpinned } = addr('out/clip.mp4')
+      const result = await grantRemoteFilePreview(event, unpinned, store)
+      if (!result) {
+        throw new Error('Missing preview')
+      }
+      await (await range(result.mediaUrl)).arrayBuffer()
+      const pinned = { ...unpinned, expectedEnvironmentPairingRevision: 9 }
+      expect(statRemotePreviewFile).toHaveBeenCalledWith(pinned, expect.any(AbortSignal))
+      expect(readRemotePreviewChunk).toHaveBeenCalledWith(pinned, 2, 3, expect.any(AbortSignal))
     })
 
     it('fails the mint, not the player, when the host cannot serve chunk reads', async () => {
