@@ -60,11 +60,12 @@ async function snapshotGitCommon(
   forceFullScan = false,
   statusRefPaths = new Set<string>(),
   statInPlaceLeaves = false,
-  onDirGateMiss?: () => void
+  onDirGateMiss?: () => void,
+  onRootMissing?: () => void
 ): Promise<GitCommonSnapshot> {
   const worktreesDir = join(commonDirPath, 'worktrees')
   const [worktreesDirSignature, primarySignatures, statusRefSignatures] = await Promise.all([
-    gitCommonDirectorySignature(worktreesDir),
+    gitCommonDirectorySignature(worktreesDir, previous?.worktreesDirSignature, onRootMissing),
     includePrimary ? snapshotPrimaryCheckoutSignatures(commonDirPath) : new Map<string, string>(),
     snapshotStatusRefSignatures(statusRefPaths)
   ])
@@ -113,6 +114,8 @@ async function snapshotGitCommon(
 export type GitCommonPollingOptions = {
   /** Reconciliation directly probes in-place leaves each tick and forces a full sweep every N ticks. */
   reconciliationFullScanEveryTicks?: number
+  /** An existing native owner must retire even when the first snapshot observes root loss. */
+  onInitialRootMissing?: () => void
 }
 
 // Require misses on separate ticks before distrusting the directory gate for the whole catalog.
@@ -141,7 +144,10 @@ export async function startGitCommonPolling(
     undefined,
     includePrimary,
     false,
-    new Set(getStatusRefPaths())
+    new Set(getStatusRefPaths()),
+    false,
+    undefined,
+    options.onInitialRootMissing
   )
   let timer: ReturnType<typeof setTimeout> | null = null
   let parkedWhileHidden = false
