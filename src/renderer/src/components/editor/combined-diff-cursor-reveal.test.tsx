@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import React, { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
