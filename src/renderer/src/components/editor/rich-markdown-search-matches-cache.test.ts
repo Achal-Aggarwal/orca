@@ -30,7 +30,7 @@ describe('rich markdown search match reuse', () => {
       expect(find(doc, 'beta')).toBe(highlighted)
       expect(find(doc, 'betas')).toBe(live)
     }
-    expect(walk).toHaveBeenCalledTimes(2)
+    expect(walk).toHaveBeenCalledTimes(1)
   })
 
   it('keys by document and both matching options', () => {

@@ -8,6 +8,7 @@ import {
 } from './markdown-preview-search'
 import {
   createRichMarkdownVisibleTextMap,
+  type RichMarkdownVisibleTextMap,
   type RichMarkdownVisibleTextSegment
 } from './rich-markdown-visible-text-map'
 
@@ -49,8 +50,21 @@ export function findRichMarkdownSearchMatches(
     return []
   }
 
+  return findRichMarkdownSearchMatchesInVisibleText(
+    createRichMarkdownVisibleTextMap(doc),
+    query,
+    options,
+    stats
+  )
+}
+
+export function findRichMarkdownSearchMatchesInVisibleText(
+  visibleMap: RichMarkdownVisibleTextMap,
+  query: string,
+  options?: TextMatchOptions,
+  stats?: RichMarkdownSearchStats
+): RichMarkdownSearchMatch[] {
   const matches: RichMarkdownSearchMatch[] = []
-  const visibleMap = createRichMarkdownVisibleTextMap(doc)
   const ranges = findTextMatchRanges(visibleMap.text, query, options)
   let segmentIndex = 0
   for (const range of ranges) {

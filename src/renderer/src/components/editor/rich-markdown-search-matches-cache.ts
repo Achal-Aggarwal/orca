@@ -1,6 +1,17 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import type { TextMatchOptions } from './markdown-preview-search'
-import { findRichMarkdownSearchMatches, type RichMarkdownSearchMatch } from './rich-markdown-search'
+import {
+  isMarkdownPreviewSearchQueryTooLarge,
+  type TextMatchOptions
+} from './markdown-preview-search'
+import {
+  findRichMarkdownSearchMatchesInVisibleText,
+  type findRichMarkdownSearchMatches,
+  type RichMarkdownSearchMatch
+} from './rich-markdown-search'
+import {
+  createRichMarkdownVisibleTextMap,
+  type RichMarkdownVisibleTextMap
+} from './rich-markdown-visible-text-map'
 
 type CachedMatches = {
   query: string
@@ -9,18 +20,23 @@ type CachedMatches = {
   matches: RichMarkdownSearchMatch[]
 }
 
+type CachedSearchDocument = {
+  visibleMap?: RichMarkdownVisibleTextMap
+  entries: CachedMatches[]
+}
+
 export function createRichMarkdownSearchMatchesCache(): typeof findRichMarkdownSearchMatches {
-  let previousDoc: ProseMirrorNode | undefined
-  let entries: CachedMatches[] = []
+  let documents = new WeakMap<ProseMirrorNode, CachedSearchDocument>()
 
   return (doc, query, options: TextMatchOptions = {}, stats) => {
-    if (doc !== previousDoc) {
-      previousDoc = doc
-      entries = []
+    let cached = documents.get(doc)
+    if (!cached) {
+      cached = { entries: [] }
+      documents = new WeakMap([[doc, cached]])
     }
     const matchCase = options.matchCase ?? false
     const wholeWord = options.wholeWord ?? false
-    const existing = entries.find(
+    const existing = cached.entries.find(
       (entry) =>
         entry.query === query && entry.matchCase === matchCase && entry.wholeWord === wholeWord
     )
@@ -28,9 +44,17 @@ export function createRichMarkdownSearchMatchesCache(): typeof findRichMarkdownS
       return existing.matches
     }
 
-    const matches = findRichMarkdownSearchMatches(doc, query, options, stats)
+    const matches =
+      !query || isMarkdownPreviewSearchQueryTooLarge(query)
+        ? []
+        : findRichMarkdownSearchMatchesInVisibleText(
+            (cached.visibleMap ??= createRichMarkdownVisibleTextMap(doc)),
+            query,
+            options,
+            stats
+          )
     // The live replacement guard and debounced highlights can have different queries.
-    entries = [...entries.slice(-1), { query, matchCase, wholeWord, matches }]
+    cached.entries = [...cached.entries.slice(-1), { query, matchCase, wholeWord, matches }]
     return matches
   }
 }
