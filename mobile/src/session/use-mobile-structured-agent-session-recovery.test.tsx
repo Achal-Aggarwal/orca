@@ -352,14 +352,13 @@ describe('current recovery publication and normal Resume', () => {
         let reads = 0
         const messages = Array.from({ length: n }, (_, i) => {
           const message = queuedDraft({ messageId: `W${i}`, position: i })
-          return new Proxy(message, {
-            get(target, property, receiver) {
-              if (property === 'messageId') {
-                reads++
-              }
-              return Reflect.get(target, property, receiver)
+          return {
+            ...message,
+            get messageId() {
+              reads++
+              return message.messageId
             }
-          })
+          }
         })
         act(() => listener?.(batchEvent(messages, [], { reason: 'stopped' })))
         expect(hook!.queued.cards).toHaveLength(n)
