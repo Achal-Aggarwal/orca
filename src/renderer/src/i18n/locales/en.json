@@ -12520,9 +12520,7 @@
           "dataLoadFailed": "Couldn’t load its files"
         },
         "PluginSettingsOverview": {
-          "offTitle": "Plugins are off",
-          "turnOn": "Turn on plugins",
-          "pausedCount": "{{value0}} paused"
+          "offTitle": "Plugins are off"
         },
         "PluginFilterPopover": {
           "label": "Filter plugins",
