@@ -495,6 +495,28 @@ describe('orchestration federated worker output', () => {
     })
   })
 
+  it('stops saying to end the turn once the remote host proves the worker exited', async () => {
+    await startRemoteWorker()
+    const check = (id: string) =>
+      homeDispatcher.dispatch({
+        id,
+        authToken: 'coordinator-token',
+        orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
+        orchestrationRequestId: id,
+        method: 'orchestration.check',
+        params: { terminal: 'term_coord' }
+      })
+
+    expect(await check('rpc_check_live')).toMatchObject({
+      ok: true,
+      result: { count: 0, next: expect.stringContaining('end your turn') }
+    })
+    vi.spyOn(workerRuntime, 'checkTerminalAgentPresence').mockResolvedValue('exited')
+    const exited = await check('rpc_check_exited')
+    expect(exited).toMatchObject({ ok: true, result: { count: 0 } })
+    expect(exited.ok && exited.result).not.toHaveProperty('next')
+  })
+
   it('negotiates release on the execution host and never treats relay loss as exit', async () => {
     const dispatchId = await startSettledRemoteWorker()
     workerReleaseUnavailable = true

@@ -13,7 +13,11 @@ import {
   chatAssigneeSessionId,
   type ChatAssigneeObservation
 } from '../../../../orchestration/chat-assignee'
-import { refreshFleetWorkerVerdict } from '../federation/federated-fleet-snapshot'
+import {
+  applyFederatedFleetObservations,
+  readFederatedFleetSnapshots,
+  refreshFleetWorkerVerdict
+} from '../federation/federated-fleet-snapshot'
 import { chatAssigneeObserver } from './session-worker-observation'
 
 export type WorkerListPageParams = {
@@ -118,15 +122,15 @@ function applyChatAssigneeLiveness(
   }
 }
 
-/** Project rows from local evidence only; host verdicts are layered on by --include-remote. */
-export async function projectLocalWorkerFleet(
+/** worker-list's projection of these rows; includeRemote layers on execution-host verdicts. */
+export async function projectWorkerListFleet(
   runtime: OrcaRuntimeService,
   rows: ReturnType<OrchestrationDb['listWorkerTerminalResources']>,
-  options: { limit: number; completeProjection?: boolean }
+  options: { limit: number; completeProjection?: boolean; includeRemote?: boolean }
 ) {
   const db = runtime.getOrchestrationDb()
   const now = Date.now()
-  return projectWorkerFleet({
+  const fleet = projectWorkerFleet({
     rows,
     attentionFacts: db.getWorkerAttentionFactsForDispatches(
       rows.map((row) => row.dispatchId),
@@ -138,4 +142,15 @@ export async function projectLocalWorkerFleet(
     completeProjection: options.completeProjection,
     observeChat: await chatAssigneeObserver(runtime, db, rows)
   })
+  const federated = options.includeRemote
+    ? await readFederatedFleetSnapshots({
+        runtime,
+        db,
+        dispatchIds: rows.map((row) => row.dispatchId)
+      })
+    : null
+  if (federated) {
+    applyFederatedFleetObservations(fleet, federated, fleet.durable)
+  }
+  return { ...fleet, hostErrors: federated?.errors ?? [] }
 }
