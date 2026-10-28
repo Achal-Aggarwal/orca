@@ -81,6 +81,15 @@ const trafficMutations: ReadonlySet<keyof OrchestrationDb> = new Set([
 export function attachCrewMutationNotifications(ctor: { prototype: object }): void {
   // SAFETY: the database installer invokes this after installing the domain methods.
   const prototype = ctor.prototype as OrchestrationDb
+  const sourceIdentity = prototype.getOrCreateLocalMutationCallerFingerprint
+  prototype.getOrCreateLocalMutationCallerFingerprint = function () {
+    const known = this.localMutationCallerFingerprint
+    const result = sourceIdentity.call(this)
+    if (!known) {
+      this.crewChanges.notify()
+    }
+    return result
+  }
   const insert = prototype.insertMessage
   prototype.insertMessage = function (message) {
     const result = insert.call(this, message)

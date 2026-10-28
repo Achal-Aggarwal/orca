@@ -285,7 +285,7 @@ it('keeps crew as the only observer for title, settings and mirrored-name source
     creator: { kind: 'system' },
     maxDepth: 10
   })
-  const names = vi.spyOn(runtime.orchestrationSenderNames, 'nameOf')
+  const names = vi.spyOn(runtime.orchestrationSenderNames, 'captureCrewInputs')
   const selection = vi.spyOn(db, 'listSessionDispatchesForPresentation')
   const frames: unknown[] = []
   const stop = subscribeCrew(

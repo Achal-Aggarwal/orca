@@ -1,5 +1,9 @@
 import type { OrchestrationDb } from '../orchestration-db'
 import { OUTSTANDING_MAILBOX_INDEX_SQL } from './migrate-v41'
+import {
+  DISPATCH_PANE_KEY_MATCH_SUFFIX_SQL,
+  REMOTE_ATTACHMENT_PANE_KEY_MATCH_SUFFIX_SQL
+} from '../pane-key-match'
 
 export function hasColumn(this: OrchestrationDb, table: string, column: string): boolean {
   const rows = this.db.pragma(`table_info(${table})`) as { name: string }[]
@@ -32,13 +36,20 @@ export function createMailboxDeliveryIndexesIfPossible(this: OrchestrationDb): v
   }
   if (this.hasColumn('dispatch_contexts', 'assignee_pane_key')) {
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_crew_dispatch_pane
-      ON dispatch_contexts(assignee_pane_key) WHERE assignee_pane_key IS NOT NULL`)
+      ON dispatch_contexts(assignee_pane_key) WHERE assignee_pane_key IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_crew_dispatch_leaf
+      ON dispatch_contexts(${DISPATCH_PANE_KEY_MATCH_SUFFIX_SQL}) WHERE assignee_pane_key IS NOT NULL`)
   }
   if (this.hasColumn('remote_dispatch_attachments', 'terminal_handle')) {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_crew_remote_handle ON remote_dispatch_attachments(terminal_handle);
       CREATE INDEX IF NOT EXISTS idx_crew_remote_pane ON remote_dispatch_attachments(pane_key);
+      CREATE INDEX IF NOT EXISTS idx_crew_remote_leaf ON remote_dispatch_attachments(${REMOTE_ATTACHMENT_PANE_KEY_MATCH_SUFFIX_SQL}) WHERE pane_key IS NOT NULL;
     `)
+  }
+  if (this.hasColumn('worker_terminal_resources', 'pane_key')) {
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_crew_resource_leaf
+      ON worker_terminal_resources(${REMOTE_ATTACHMENT_PANE_KEY_MATCH_SUFFIX_SQL}) WHERE pane_key IS NOT NULL`)
   }
   if (this.hasColumn('question_threads', 'status')) {
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_crew_pending_questions

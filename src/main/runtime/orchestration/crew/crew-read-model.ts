@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import type { CrewFacet, CrewInvalidation } from './crew-changes'
 import { buildCrewSnapshot, type CrewReadDependencies } from './crew-party-snapshot'
 import type { OrchestrationCrewSnapshot } from '../../../../shared/orchestration-crew'
@@ -73,7 +74,16 @@ export class CrewReadModel {
       const previous = this.host
       this.host = undefined
       const deps = this.readDependencies()
-      this.host = dirty.has('status') ? refreshCrewStatuses(previous, deps.statuses) : previous
+      if (dirty.has('status')) {
+        const statuses = deps.statuses
+        const identities = (rows: typeof statuses) =>
+          new Map(rows.map((row) => [row.activity.paneKey, row.binding]))
+        this.host = isDeepStrictEqual(identities(previous.deps.statuses), identities(statuses))
+          ? refreshCrewStatuses(previous, statuses)
+          : createCrewHostDerivation({ ...deps, statuses }, now)
+      } else {
+        this.host = previous
+      }
       let records = this.host.deps.records
       if (renamed.size && records) {
         const captured = new Map(records.listRecords().map((record) => [record.sessionId, record]))
