@@ -57,7 +57,7 @@ Only if a batch lacks `"deliveryAcknowledged": true` (an older Orca), ack its
 `--retry-request <id>` it printed; after lost context, read handled mail with
 `ORCA orchestration inbox --terminal dispatch:<dispatch_id> --limit 50 --full --json`.
 
-Do not use `run-use` to check your Dispatch's mail or bind the Run you work for.
+Do not use `run-use` to check your Dispatch's mail or bind the Run you work for or any ancestor Run.
 You may resume a separate Run when your coordinator directs a handoff, but you
 cannot use `--takeover-legacy`. Plain `check` returns your Dispatch's mail
 unless you are coordinating a Run; report to your coordinator with `send`.
@@ -71,8 +71,9 @@ party's terminal (a coordinator or another worker); run it from your own termina
 
 ## Helper workers
 
-When the preamble has a SUB-DISPATCH section, start helpers on your own
-Dispatch's Run. Do not `run-create` or `run-use` for them.
+Follow the preamble's SUB-DISPATCH section. For helpers on your own
+Dispatch's Run, use the commands below, without `run-create` or `run-use`; a
+remote preamble may instead tell you to create your own Run.
 
 ```text
 ORCA orchestration worker-start --from <worker_handle> --spec "<sub-task>" --worktree current --agent <agent> --json
@@ -80,8 +81,9 @@ ORCA orchestration reply --from <worker_handle> --id <message_id> --body "<answe
 ```
 
 Their questions, escalations, and `worker_done` arrive in your own `check`, next
-to your coordinator's mail. Answer their questions with `reply`, and wait for
-every helper's `worker_done` before sending yours. After you settle, a helper
+to your coordinator's mail. Answer their questions with `reply`, and wait until
+every helper has settled (`worker_done`, a failed start, stop, or abandon)
+before sending yours; name any that failed. After you settle, a helper
 still running reports to your coordinator's Run.
 
 ## Escalation
@@ -105,7 +107,7 @@ paths. Do not send documentation placeholders as metadata.
 ORCA orchestration send --from <worker_handle> --type worker_done --subject "<short status>" --body "<three sentences: work, findings, remaining>" --task-id <task_id> --dispatch-id <dispatch_id> --outcome succeeded
 ```
 
-After `worker_done`, end the dispatched turn and idle. Do not poll, close your
-own terminal, or begin unrelated work. A later direct user instruction is new
+After `worker_done`, end the dispatched turn and idle (a bare-shell worker
+exits, as its preamble says). Do not poll or begin unrelated work. A later direct user instruction is new
 user-owned work and must not reuse settled lifecycle IDs; a supervised follow-up
 arrives with a fresh preamble and Task block.

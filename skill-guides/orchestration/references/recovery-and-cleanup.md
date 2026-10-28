@@ -3,6 +3,9 @@
 Load this reference only after a failed/stopped/unknown attempt, explicit retry
 decision, stop/abandon request, retention request, or uncertain release.
 
+When evidence is missing, preserve work and authority and report the state as
+unknown or `unverifiable`.
+
 | Proven state            | Safe action                                                        |
 | ----------------------- | ------------------------------------------------------------------ |
 | `ready` or active       | Keep waiting; optionally read bounded output                       |
@@ -25,8 +28,9 @@ ORCA orchestration worker-read --dispatch <dispatch_id> --limit 50 --json
 `worker-list` is the enumerating command and the authority on agent liveness:
 each row carries `projection.liveness`, `projection.attention.categories`,
 `projection.attention.requiresAction`, and a literal `projection.nextAction`
-argv to run. Always scope it with `--run <run_id>`; an unscoped list reports
-every Dispatch this runtime has ever recorded and buries the live ones.
+argv to run. Always scope it with `--run <run_id>`. Without it, the CLI uses the
+caller's bound Run, or all Runs if no binding resolves; read `scope` in the
+receipt.
 `worker-show`'s `observation.status` is PTY liveness only, so a `live` terminal
 whose agent died at a trust prompt still reads `live` there.
 
@@ -51,9 +55,9 @@ verdict. Rows come newest first and past 100 the response pages, so follow
 
 ## Stall needs positive evidence
 
-Leave the wait only on positive proof the agent stopped: `exited` liveness, the
-worker's own observation of process exit, or a transcript whose final agent turn
-sent no `worker_done`. Only then choose `worker-stop` or `worker-abandon`.
+Choose `worker-stop` or `worker-abandon` only on positive proof the agent
+stopped: `exited` liveness, the worker's own observation of process exit, or a
+transcript whose final agent turn sent no `worker_done`.
 
 `unverifiable` is always absence — `missing_status`, `stale_status`,
 `restored_unconfirmed`, or a remote worker with no connection — and a null
@@ -100,12 +104,12 @@ long and, on timeout, returns the input-accepted receipt without resending.
 as the exact recovery text. Older hosts may omit `data`, so treat every field as
 optional.
 
-| Code                 | Meaning                                                                                                               | Recovery                                                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `task_not_found`     | No Task with that id, or not in the bound Run (`data.taskId`, `data.runId`)                                           | Check `task-list --json`; create the Task with `task-create` if it does not exist                                              |
-| `task_not_startable` | Task cannot start now: not `ready`, or invalid `--retry-of` (`data.status`, `data.unmetDependencies`, `data.retryOf`) | Wait for running dependencies with `check --wait`; retry or unblock failed ones; inspect `dispatch-show` if already dispatched |
-| `inject_rejected`    | `--inject` refused because no recognized agent runs in the target (`data.terminal`, `data.reason`)                    | Start a recognized agent there or pick another terminal; or dispatch without `--inject` and use `terminal send`                |
-| `runtime_error`      | Any other failure, including a target terminal that already owns an active Dispatch                                   | Read the message, inspect state, and do not retry unchanged                                                                    |
+| Code                 | Meaning                                                                                                               | Recovery                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `task_not_found`     | No Task with that id, or not in the bound Run (`data.taskId`, `data.runId`)                                           | Check `task-list --json`; create the Task with `task-create` if it does not exist                                    |
+| `task_not_startable` | Task cannot start now: not `ready`, or invalid `--retry-of` (`data.status`, `data.unmetDependencies`, `data.retryOf`) | Wait for running dependencies to report; retry or unblock failed ones; inspect `dispatch-show` if already dispatched |
+| `inject_rejected`    | `--inject` refused because no recognized agent runs in the target (`data.terminal`, `data.reason`)                    | Start a recognized agent there or pick another terminal; or dispatch without `--inject` and use `terminal send`      |
+| `runtime_error`      | Any other failure, including a target terminal that already owns an active Dispatch                                   | Read the message, inspect state, and do not retry unchanged                                                          |
 
 ## Retry, stop, and abandon
 

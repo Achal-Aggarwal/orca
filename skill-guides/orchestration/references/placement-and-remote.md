@@ -14,12 +14,16 @@ sharing unsafe.
 # Current workspace; setup is not rerun.
 ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
 
-# Stacked child worktree.
+# Stacked child of the current worktree.
 ORCA orchestration worker-start --task <task_id> --worktree new-child --name <name> --agent codex --setup run --json
 
-# Independent top-level worktree.
-ORCA orchestration worker-start --task <task_id> --worktree new-top-level --name <name> --agent codex --setup run --json
+# Independent top-level worktree. --repo is required when you are not inside that project.
+ORCA orchestration worker-start --task <task_id> --worktree new-top-level --repo id:<repoId> --name <name> --agent codex --setup run --json
 ```
+
+`--worktree` takes workspace placement on `worker-start` only; `run-create`
+takes no placement. `new-child`, and `new-top-level` without `--repo`, need the
+caller to be inside a Git worktree Orca manages.
 
 Current and exact existing workspaces create a fresh terminal unless
 `--terminal` is explicit. Folder workspaces are first-class; do not invoke Git
@@ -67,8 +71,8 @@ ORCA orchestration worker-list --run <run_id> --include-remote --json
 
 `worker-list` reads local fleet state only; enumerate remote workers with
 `--include-remote` or every one of them reads `unverifiable`. Scope every list
-with `--run <run_id>`: unscoped, it reports every Dispatch this runtime has
-recorded, and the workers you are waiting on are lost in that history.
+with `--run <run_id>`. Without it, the CLI uses the caller's bound Run, or all
+Runs if no binding resolves; read `scope` in the receipt.
 
 ## Execution-host and mixed-version floor
 
