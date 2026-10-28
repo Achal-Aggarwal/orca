@@ -1,24 +1,34 @@
 import type { editor, ISelection } from 'monaco-editor'
 
-// Twenty entries covers typical recent files; eviction only loses scroll position, not correctness.
+// Twenty entries covers typical recent files.
 const CACHE_MAX_ENTRIES = 20
 
-/** Bound module-scoped maps with insertion-order LRU, evicting one oldest entry after each set. Consumers may supply their own limit. */
+/** Evict the oldest eligible entry after a write; protected owners may keep a cache above its limit. */
 export function setWithLRU<K, V>(
   map: Map<K, V>,
   key: K,
   value: V,
-  maxEntries: number = CACHE_MAX_ENTRIES
+  maxEntries: number = CACHE_MAX_ENTRIES,
+  canEvict?: (value: V, key: K) => boolean
 ): void {
   map.delete(key)
   map.set(key, value)
   if (map.size > maxEntries) {
-    // Use iterator.done: undefined can be a valid generic Map key and must still be evicted.
-    const first = map.keys().next()
-    if (!first.done) {
-      map.delete(first.value)
+    evictOldestLRUEntry(map, canEvict)
+  }
+}
+
+export function evictOldestLRUEntry<K, V>(
+  map: Map<K, V>,
+  canEvict?: (value: V, key: K) => boolean
+): boolean {
+  for (const [key, value] of map) {
+    if (!canEvict || canEvict(value, key)) {
+      map.delete(key)
+      return true
     }
   }
+  return false
 }
 
 // Module maps preserve positions across remount without broadcasting store updates on every scroll.
