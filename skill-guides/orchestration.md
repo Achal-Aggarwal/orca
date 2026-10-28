@@ -102,12 +102,13 @@ precedence over the idle rule. Do not reuse the settled lifecycle IDs.
 
 ## Canonical supervised loop
 
-Confirm the runtime, bind one Run, and start the full independent wave before
-waiting. `worker-start --spec` creates the Task and its attempt in one call:
+Confirm the runtime and start the full independent wave before waiting.
+`worker-start --spec` creates the Task and its attempt in one call; with no Run
+bound, it also creates one bound to you. Its receipt's `run` names the Run it
+created or joined; if that is an earlier goal's Run, `run-create` first:
 
 ```text
 ORCA status --json
-ORCA orchestration run-create --objective "<objective>" --json
 ORCA orchestration worker-start --spec "<worker A task>" --worktree current --agent codex --json
 ORCA orchestration worker-start --spec "<worker B task>" --worktree current --agent claude --json
 ORCA orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
@@ -123,8 +124,9 @@ If `worker-start` exits non-zero, do not relaunch. Read the receipt's
 `failedStage` and `residualResources`, then load
 `references/recovery-and-cleanup.md`.
 
-Use `task-create` plus `worker-start --task <task_id>` for planned fan-out with
-dependencies or a retry of a known Task. Use dependencies only for real ordering
+Use `run-create --objective "<objective>"`, then `task-create` plus
+`worker-start --task <task_id>`, for planned fan-out with dependencies or a
+retry of a known Task. Use dependencies only for real ordering
 and prefer parallel waves over chains deeper than three or four steps; nested
 workers obey the depth limit, and a new Run does not reset the caller's depth.
 A dispatched worker starts its own helpers with `worker-start --spec` on the Run

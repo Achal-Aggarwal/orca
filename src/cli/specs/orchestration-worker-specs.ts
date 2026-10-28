@@ -33,6 +33,7 @@ export const ORCHESTRATION_WORKER_COMMAND_SPECS: CommandSpec[] = [
     ],
     identityFlagRoles: { from: 'caller', terminal: 'target' },
     notes: [
+      'With --spec and no bound Run, a coordinator gets a new Run bound to it, named after the Task title; the receipt names the Run it created or joined.',
       'Current and existing worktrees never rerun setup; a fresh agent terminal is created unless --terminal is explicit.',
       'When reusing --terminal, pass --worktree for that terminal; current means the coordinator worktree.',
       '--agent takes an Orca agent id enabled on the worker server, such as claude, codex, cursor, antigravity, muse, zcode, opencode, or opencode2.',

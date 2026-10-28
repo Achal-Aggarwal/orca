@@ -5,6 +5,7 @@ import { assertCallerHandleMatchesEvidence, resolveOrchestrationCaller } from '.
 import { exposeRun } from './run-receipt'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { OrchestrationCallerIdentity } from '../../../../orchestration/orchestration-caller-identity'
+import type { RunRow } from '../../../../orchestration/types'
 import { currentDispatchAssigneeRun } from '../messaging/recipient-routing'
 import {
   RunCreateParams,
@@ -26,6 +27,29 @@ function cancelBoundDispatchWaiters(
   }
 }
 
+/** Create a Run and bind it to the caller, as `run-create` does; one-step `worker-start` reuses it. */
+export function createBoundRun(
+  runtime: OrcaRuntimeService,
+  caller: OrchestrationCallerIdentity,
+  from: string,
+  objective: string
+): RunRow {
+  const db = runtime.getOrchestrationDb()
+  const priorRun = db.getCurrentRunForCoordinator(caller)
+  const run = db.createRun({
+    objective,
+    coordinatorHandle: caller.terminalHandle,
+    coordinatorPaneKey: caller.paneKey,
+    coordinatorOrcaSessionId: caller.orcaSessionId
+  })
+  runtime.cancelMessageWaiters(from)
+  cancelBoundDispatchWaiters(runtime, caller, run.id)
+  if (priorRun) {
+    runtime.cancelMessageWaiters(`run:${priorRun.id}`)
+  }
+  return run
+}
+
 export const ORCHESTRATION_RUN_METHODS = [
   defineMethod({
     name: 'orchestration.runCreate',
@@ -38,20 +62,7 @@ export const ORCHESTRATION_RUN_METHODS = [
         callerSession: orchestrationCaller,
         requireStablePane: true
       })
-      const db = runtime.getOrchestrationDb()
-      const priorRun = db.getCurrentRunForCoordinator(caller)
-      const run = db.createRun({
-        objective: params.objective,
-        coordinatorHandle: caller.terminalHandle,
-        coordinatorPaneKey: caller.paneKey,
-        coordinatorOrcaSessionId: caller.orcaSessionId
-      })
-      runtime.cancelMessageWaiters(params.from)
-      cancelBoundDispatchWaiters(runtime, caller, run.id)
-      if (priorRun) {
-        runtime.cancelMessageWaiters(`run:${priorRun.id}`)
-      }
-      return { run: exposeRun(run) }
+      return { run: exposeRun(createBoundRun(runtime, caller, params.from, params.objective)) }
     }
   }),
   defineMethod({
