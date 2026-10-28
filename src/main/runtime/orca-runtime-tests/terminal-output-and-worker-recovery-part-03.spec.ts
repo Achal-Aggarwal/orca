@@ -47,6 +47,7 @@ describe('OrcaRuntimeService', () => {
       { canRecoverPersistentLocalPtys: () => true }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getActiveDispatchForTerminal: () => undefined,
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
@@ -462,6 +463,7 @@ describe('OrcaRuntimeService', () => {
       { canRecoverPersistentLocalPtys: () => true }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
           dispatch_id: 'dispatch-persistence-failure',

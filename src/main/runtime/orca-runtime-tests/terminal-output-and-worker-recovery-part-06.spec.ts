@@ -96,6 +96,7 @@ describe('OrcaRuntimeService', () => {
       { canRecoverPersistentLocalPtys: () => true }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
           dispatch_id: 'dispatch-ssh',
@@ -229,6 +230,7 @@ describe('OrcaRuntimeService', () => {
       { canRecoverPersistentLocalPtys: () => true }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
           dispatch_id: 'dispatch-wsl',

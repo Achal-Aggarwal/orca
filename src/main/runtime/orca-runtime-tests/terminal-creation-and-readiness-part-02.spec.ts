@@ -113,6 +113,7 @@ describe('OrcaRuntimeService', () => {
       }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getActiveDispatchForTerminal: (handle: string) =>
         handle === 'term_ssh_retained'
           ? { id: 'dispatch-ssh', task_id: 'task-ssh', status: 'dispatched' }

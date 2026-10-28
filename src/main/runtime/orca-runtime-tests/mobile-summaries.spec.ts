@@ -457,6 +457,7 @@ describe('OrcaRuntimeService', () => {
     })
     const workerHandle = runtime.preAllocateHandleForPty('pty-1')
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getActiveDispatchForTerminal: vi.fn((handle: string) =>
         handle === workerHandle
           ? {

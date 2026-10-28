@@ -279,6 +279,7 @@ describe('OrcaRuntimeService', () => {
     )
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This isolated recovery path reaches only the supplied planner and missing-terminal settlement methods.
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       reconcileMissingWorkerTerminal: vi.fn(),
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
@@ -391,6 +392,7 @@ describe('OrcaRuntimeService', () => {
       { canRecoverPersistentLocalPtys: () => true }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       listLegacyWorkerTerminalRecoveryRows: () => [
         {
           dispatch_id: 'dispatch-inventory-unavailable',

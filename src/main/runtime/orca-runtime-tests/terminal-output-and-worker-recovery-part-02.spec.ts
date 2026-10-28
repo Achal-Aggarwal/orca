@@ -470,6 +470,7 @@ describe('OrcaRuntimeService', () => {
       }
     )
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getActiveDispatchForTerminal: () => undefined,
       listLegacyWorkerTerminalRecoveryRows: () => [
         {

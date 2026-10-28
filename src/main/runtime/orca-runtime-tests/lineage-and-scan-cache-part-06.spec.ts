@@ -33,6 +33,7 @@ describe('OrcaRuntimeService', () => {
         coordinator_handle: 'term_unrelated'
       }))
       runtime.setOrchestrationDb({
+        listSessionDispatchesForPresentation: () => [],
         getActiveDispatchForTerminal: vi.fn(() => undefined),
         getLatestDispatchForTerminal: vi.fn(() => ({
           id: 'ctx-settled',
@@ -81,6 +82,7 @@ describe('OrcaRuntimeService', () => {
     const workerLeafId = '77777777-7777-4777-8777-777777777777'
     const workerHandle = runtime.preAllocateHandleForPty('pty-worker')
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getActiveDispatchForTerminal: vi.fn(() => undefined),
       getLatestDispatchForTerminal: vi.fn((handle: string) =>
         handle === workerHandle
@@ -258,6 +260,7 @@ describe('OrcaRuntimeService', () => {
     const runtime = new OrcaRuntimeService(runtimeStore as never)
     const workerHandle = runtime.preAllocateHandleForPty('pty-worker')
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getDispatchContext: vi.fn(() => ({
         task_id: 'task_abc123',
         assignee_handle: workerHandle,
@@ -356,6 +359,7 @@ describe('OrcaRuntimeService', () => {
     const runtime = new OrcaRuntimeService(runtimeStore as never)
     const parentHandle = runtime.preAllocateHandleForPty('pty-parent')
     runtime.setOrchestrationDb({
+      listSessionDispatchesForPresentation: () => [],
       getDispatchContext: vi.fn(() => undefined),
       getTask: vi.fn(() => ({
         id: 'task_creator123',
