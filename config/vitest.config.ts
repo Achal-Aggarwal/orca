@@ -160,7 +160,6 @@ export default defineConfig({
   ...transforms,
   test: {
     ...testOptions,
-    experimental: { recordDependencies: !process.env.CI },
     forceRerunTriggers: [
       ...configDefaults.forceRerunTriggers,
       '**/pnpm-lock.yaml',
