@@ -15,12 +15,12 @@ import {
   type MobileWebShellUpdateFailureFacts
 } from './mobile-web-shell-update-failure'
 import { updateFailureOutcomeOf } from './mobile-web-shell-update-failure-outcome'
+import { reduceGateEvent, reduceUncachedDownloadFailed } from './mobile-web-shell-link-retry'
 import {
   cachedGenerationWall,
   CHECKING,
   gateState,
   gateVerdict,
-  reduceGateEvent,
   ROUTE_UNAVAILABLE
 } from './mobile-web-shell-gates'
 import { pageRouteRefusalVerdict, routeViewOf, sameRouteView } from './page-route-policy'
@@ -209,11 +209,7 @@ function decideDownloadFailed(
   const cached = session.cached
   const gates = session.gates
   if (cached === null || gates === null) {
-    return step(session, {
-      state: { kind: 'failed', reason: 'download-failed', retriedOnce: session.retriedOnce },
-      // Only link loss: a host refusal would refuse the retry too.
-      retryOnReconnect: readFailureSide(cause.reason) === 'transport'
-    })
+    return reduceUncachedDownloadFailed(session, cause, startFlow)
   }
   // Read current gates because they can change while fetching without restarting the flow.
   const verdict = gateVerdict(gates)
