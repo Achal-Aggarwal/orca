@@ -1,5 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
+import { toast } from 'sonner'
+import { extractIpcErrorMessage } from '@/lib/ipc-error'
+import {
+  assertEditorFileOperationCurrent,
+  captureEditorFileOperationProvenance
+} from '@/lib/editor-file-operation-owner'
 import { getConnectionId } from '@/lib/connection-context'
 import { detectLanguage } from '@/lib/language-detect'
 import { canShowWorkspaceFileBrowserAction, openFilePreviewToSide } from '@/lib/file-preview'
@@ -233,6 +239,20 @@ function EditorPanelInner({
 
   const handleOpenPreviewToSide = (): void => {
     const state = useAppStore.getState()
+    try {
+      const provenance =
+        activeFile.operationProvenance ??
+        captureEditorFileOperationProvenance(
+          state,
+          activeFile.worktreeId,
+          activeFile.runtimeEnvironmentId,
+          activeFile.runtimeEnvironmentId !== undefined
+        )
+      assertEditorFileOperationCurrent(state, activeFile.worktreeId, provenance)
+    } catch (error) {
+      toast.error(extractIpcErrorMessage(error, 'Failed to open preview.'))
+      return
+    }
     const sourceGroupId = activeViewStateId
       ? ((state.unifiedTabsByWorktree[activeFile.worktreeId] ?? []).find(
           (t) => t.id === activeViewStateId
