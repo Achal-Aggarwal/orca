@@ -28,6 +28,7 @@ vi.mock('./remote-file-preview-reader', async (importOriginal) => ({
 }))
 
 import {
+  MEDIA_PREVIEW_CUSTOM_SCHEME,
   grantRemoteFilePreview,
   handleMediaPreviewRequest,
   readLocalFilePreview,
@@ -142,8 +143,8 @@ describe('media preview protocol', () => {
     const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
     expect(result).toMatchObject({ isImage: true, mimeType: 'image/png', size: 33 })
     const response = await handleMediaPreviewRequest(new Request(result?.mediaUrl ?? ''))
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
-    expect(response.headers.get('Access-Control-Expose-Headers')).toContain('Content-Range')
+    // No CORS: no other origin can read these bytes with fetch.
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull()
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(png(4, 3))
   })
 
@@ -169,15 +170,26 @@ describe('media preview protocol', () => {
     await expect(pending).rejects.toThrow()
   })
 
-  it('answers a Range preflight so pdf.js can fetch ranges in any Chromium', async () => {
+  it('gives another origin no CORS answer, preflight or not', async () => {
     const filePath = join(directory, 'doc.pdf')
     await writeFile(filePath, '%PDF-1.4')
     const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
-    const response = await handleMediaPreviewRequest(
-      new Request(result?.mediaUrl ?? '', { method: 'OPTIONS' })
+    const url = result?.mediaUrl ?? ''
+    const fromPage = await handleMediaPreviewRequest(
+      new Request(url, { headers: { origin: 'https://example.com' } })
     )
-    expect(response.status).toBe(204)
-    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Range')
+    expect(fromPage.headers.get('Access-Control-Allow-Origin')).toBeNull()
+    const preflight = await handleMediaPreviewRequest(new Request(url, { method: 'OPTIONS' }))
+    expect(preflight.status).toBe(405)
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBeNull()
+  })
+
+  it('claims only the element-load privileges, never fetch or CORS', () => {
+    expect(MEDIA_PREVIEW_CUSTOM_SCHEME.privileges).toEqual({
+      standard: true,
+      secure: true,
+      stream: true
+    })
   })
 
   it('checks the image it serves, not just the one it minted', async () => {

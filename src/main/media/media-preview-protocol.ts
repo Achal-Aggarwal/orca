@@ -1,13 +1,10 @@
-import { randomUUID } from 'node:crypto'
-import { protocol, type WebContents } from 'electron'
+import { protocol } from 'electron'
 import type { Store } from '../persistence'
-import type { LocalFileAccess } from '../../shared/local-file-access'
 import { MEDIA_PREVIEW_SCHEME } from '../../shared/media-file-extensions'
 import {
   filePreviewForPath,
   isDocumentPreview,
-  streamsPreviewByRange,
-  type FilePreview
+  streamsPreviewByRange
 } from '../../shared/file-preview-kind'
 import {
   assertLocalPreviewRasterHeader,
@@ -27,113 +24,23 @@ import {
   type RemotePreviewFileSnapshot
 } from './remote-file-preview-reader'
 import { readRegisteredPairingRevision } from '../ipc/runtime-environments/runtime-environment-registry-root'
+import {
+  grants,
+  mintPreviewUrl,
+  remoteSnapshot,
+  revokeGrant,
+  type LocalPreviewTarget,
+  type PreviewGrant,
+  type PreviewSender,
+  type PreviewUrl
+} from './preview-grant-registry'
 
-type LocalPreviewTarget = { filePath: string; connectionId?: string; access?: LocalFileAccess }
-type RemotePreviewTarget = { remote: RemoteFilePreviewAddress }
-type PreviewTarget = LocalPreviewTarget | RemotePreviewTarget
-type PreviewGrant = {
-  target: PreviewTarget
-  store: Store
-  preview: FilePreview
-  mimeType: string
-  senderId: number
-  key: string
-  // Why: a seek or prefetch burst opens several ranges at once; one stat answers all of them.
-  stat?: { at: number; snapshot: Promise<RemotePreviewFileSnapshot> }
-}
-type PreviewUrl = {
-  content: string
-  isBinary: true
-  mimeType: string
-  mediaUrl: string
-  // Images and PDFs: the editor's selector for its document viewers, as base64 previews set it.
-  isImage?: true
-  size?: number
-}
-
-const REMOTE_STAT_REUSE_MS = 1_000
-const PREFLIGHT_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, HEAD',
-  'Access-Control-Allow-Headers': 'Range'
-}
-const grants = new Map<string, PreviewGrant>()
-const senders = new Map<number, Map<string, string>>()
+export { revokeRemoteFilePreviewGrants } from './preview-grant-registry'
 
 export const MEDIA_PREVIEW_CUSTOM_SCHEME: Electron.CustomScheme = {
   scheme: MEDIA_PREVIEW_SCHEME,
-  // fetch + CORS let pdf.js read a PDF by range, like a <video> already does.
-  privileges: {
-    standard: true,
-    secure: true,
-    stream: true,
-    supportFetchAPI: true,
-    corsEnabled: true
-  }
-}
-
-type PreviewSender = Pick<WebContents, 'id' | 'on' | 'removeListener'>
-
-function mintPreviewUrl(
-  sender: PreviewSender,
-  target: PreviewTarget,
-  store: Store,
-  preview: FilePreview,
-  snapshot?: RemotePreviewFileSnapshot,
-  size?: number
-): PreviewUrl {
-  const { mimeType } = preview
-  let owned = senders.get(sender.id)
-  if (!owned) {
-    owned = new Map()
-    senders.set(sender.id, owned)
-    const lifetime = abortWhenRendererGone(sender)
-    const entries = owned
-    lifetime.signal.addEventListener(
-      'abort',
-      () => {
-        for (const token of entries.values()) {
-          grants.delete(token)
-        }
-        senders.delete(sender.id)
-        lifetime.dispose()
-      },
-      { once: true }
-    )
-  }
-  const key = JSON.stringify(target)
-  let token = owned.get(key)
-  if (!token || !grants.has(token)) {
-    token = randomUUID()
-    owned.set(key, token)
-    grants.set(token, { target, store, preview, mimeType, senderId: sender.id, key })
-  }
-  const grant = grants.get(token)
-  if (grant && snapshot) {
-    // A reload re-mints the same token; its fresh stat must replace a cached older size.
-    grant.stat = { at: Date.now(), snapshot: Promise.resolve(snapshot) }
-  }
-  const byteSize = snapshot?.size ?? size
-  return {
-    content: '',
-    isBinary: true,
-    mimeType,
-    mediaUrl: `${MEDIA_PREVIEW_SCHEME}://file/${token}?revision=${randomUUID()}`,
-    ...(isDocumentPreview(preview) ? { isImage: true as const } : {}),
-    ...(byteSize !== undefined ? { size: byteSize } : {})
-  }
-}
-
-function revokeGrant(token: string): void {
-  const grant = grants.get(token)
-  if (!grant) {
-    return
-  }
-  grants.delete(token)
-  const owned = senders.get(grant.senderId)
-  if (owned?.get(grant.key) === token) {
-    owned.delete(grant.key)
-  }
+  // No fetch or CORS: only <img>/<video>/<audio> elements load these URLs; PDF ranges go over IPC.
+  privileges: { standard: true, secure: true, stream: true }
 }
 
 /**
@@ -222,31 +129,6 @@ export async function grantRemoteFilePreview(
   return mintPreviewUrl(event.sender, { remote: pinned }, store, preview, snapshot)
 }
 
-/** Removing a paired runtime ends every preview it backs. */
-export function revokeRemoteFilePreviewGrants(environmentId: string): void {
-  for (const [token, grant] of grants) {
-    if ('remote' in grant.target && grant.target.remote.environmentId === environmentId) {
-      revokeGrant(token)
-    }
-  }
-}
-
-function remoteSnapshot(grant: PreviewGrant, remote: RemoteFilePreviewAddress) {
-  const now = Date.now()
-  if (!grant.stat || now - grant.stat.at > REMOTE_STAT_REUSE_MS) {
-    // Not tied to one request's abort: other ranges in the burst may be waiting on it.
-    const snapshot = statRemotePreviewFile(remote, new AbortController().signal)
-    const stat = { at: now, snapshot }
-    grant.stat = stat
-    snapshot.catch(() => {
-      if (grant.stat === stat) {
-        grant.stat = undefined
-      }
-    })
-  }
-  return grant.stat.snapshot
-}
-
 async function handleRemotePreviewRequest(
   request: Request,
   token: string,
@@ -291,10 +173,6 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
   const grant = grants.get(token)
   if (!grant) {
     return new Response(null, { status: 404 })
-  }
-  if (request.method === 'OPTIONS') {
-    // A browser that preflights pdf.js's Range header gets the answer it needs.
-    return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS })
   }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response(null, { status: 405 })

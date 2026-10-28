@@ -15,27 +15,34 @@ import { createOrcaMediaRangeTransport } from './pdf-orca-media-range-transport'
 
 afterEach(() => vi.unstubAllGlobals())
 
+function stubRangeReads(
+  readPreviewRange: (args: { url: string; offset: number; length: number }) => Promise<Uint8Array>
+) {
+  vi.stubGlobal('window', { ...window, api: { fs: { readPreviewRange } } })
+}
+
 describe('orca-media range transport for pdf.js', () => {
-  it('fetches each range pdf.js asks for and hands back its bytes', async () => {
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array([7, 8, 9]), { status: 206 }))
-    vi.stubGlobal('fetch', fetchMock)
+  it('reads each range pdf.js asks for over IPC and hands back its bytes', async () => {
+    const readPreviewRange = vi.fn(async () => new Uint8Array([7, 8, 9]))
+    stubRangeReads(readPreviewRange)
     const transport = createOrcaMediaRangeTransport('orca-media://file/doc', 100, vi.fn())
     const onDataRange = vi.spyOn(transport, 'onDataRange')
 
     transport.requestDataRange(10, 13)
 
     await vi.waitFor(() => expect(onDataRange).toHaveBeenCalledWith(10, new Uint8Array([7, 8, 9])))
-    expect(fetchMock).toHaveBeenCalledWith(
-      'orca-media://file/doc',
-      expect.objectContaining({ headers: { Range: 'bytes=10-12' } })
-    )
-    expect(transport.length).toBe(100)
+    expect(readPreviewRange).toHaveBeenCalledWith({
+      url: 'orca-media://file/doc',
+      offset: 10,
+      length: 3
+    })
   })
 
   it('reports a failed range instead of leaving pdf.js waiting', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(null, { status: 502 }))
+    stubRangeReads(
+      vi.fn(async () => {
+        throw new Error('Preview is no longer available')
+      })
     )
     const onFailure = vi.fn()
     createOrcaMediaRangeTransport('orca-media://file/doc', 100, onFailure).requestDataRange(0, 10)

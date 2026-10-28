@@ -18,10 +18,7 @@ export async function createMediaRangeResponse(
   const headers = new Headers({
     'Content-Type': mimeType,
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'no-store',
-    // pdf.js fetches ranges from the renderer's own origin; a grant token is the only key.
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range'
+    'Cache-Control': 'no-store'
   })
   const range = request.headers.get('range')
   let start = 0

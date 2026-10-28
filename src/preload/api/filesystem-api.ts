@@ -87,6 +87,8 @@ export type FilesystemApi = {
       mimeType?: string
       fileIdentity?: string
     }>
+    /** A PDF preview's bytes, for the renderer that minted its orca-media URL only. */
+    readPreviewRange: (args: { url: string; offset: number; length: number }) => Promise<Uint8Array>
     grantRuntimeFilePreview: (args: RemoteFilePreviewAddress) => Promise<{
       content: string
       isBinary: true

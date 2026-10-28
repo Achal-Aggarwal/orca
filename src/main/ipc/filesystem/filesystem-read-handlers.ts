@@ -24,6 +24,7 @@ import { buildReadDirErrorBreadcrumb, type ReadDirThrowSite } from '../readdir-e
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 import { registerFilesystemChunkReadHandler } from './filesystem-chunk-read-handler'
 import { grantRemoteFilePreview, readLocalFilePreview } from '../../media/media-preview-protocol'
+import { readPreviewGrantRange } from '../../media/preview-grant-range-read'
 import { windowsFsPath } from '../../wsl/wsl-unc-drive-fs-path'
 import { assertWslUncPathRunning, guardWslUncPathAccess } from '../../wsl/wsl-unc-access-gate'
 import { parseRemoteFilePreviewAddress } from '../../../shared/remote-file-preview-address'
@@ -122,6 +123,12 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
         { wake: args.wakeWslDistro === true }
       )
     }
+  )
+
+  ipcMain.handle(
+    'fs:readPreviewRange',
+    (event, args: { url: string; offset: number; length: number }) =>
+      readPreviewGrantRange(event.sender.id, String(args?.url), args?.offset, args?.length)
   )
 
   ipcMain.handle('fs:grantRuntimeFilePreview', (event, args: unknown) => {

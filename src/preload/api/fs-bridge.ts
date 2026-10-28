@@ -66,6 +66,8 @@ export const fsApi = {
     mimeType?: string
     fileIdentity?: string
   }> => ipcRenderer.invoke('fs:readFile', args),
+  readPreviewRange: (args: { url: string; offset: number; length: number }): Promise<Uint8Array> =>
+    ipcRenderer.invoke('fs:readPreviewRange', args),
   grantRuntimeFilePreview: (
     args: RemoteFilePreviewAddress
   ): Promise<{

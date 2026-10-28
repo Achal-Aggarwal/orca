@@ -48,10 +48,16 @@ describe('PDF document loader sources', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('tears down the load whose range failed, not just its message', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(null, { status: 502 }))
-    )
+    vi.stubGlobal('window', {
+      ...window,
+      api: {
+        fs: {
+          readPreviewRange: vi.fn(async () => {
+            throw new Error('gone')
+          })
+        }
+      }
+    })
     const onError = vi.fn()
     const loader = createPdfDocumentLoader({ display: () => () => {}, onError })
     loader.load({ url: 'orca-media://file/doc?revision=r1', length: 4096 })
