@@ -270,6 +270,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
         // Stream cleanup is socket-scoped; disconnect state spans all transports for that device.
         this.runtime.cleanupSubscriptionsForConnection(socket.connectionId)
         this.runtime.cancelMobileDictationForConnection(socket.connectionId)
+        void this.runtime.stagedFileSaves.abortConnection(socket.connectionId)
         this.binaryMessageRouter.deleteConnection(socket.connectionId)
         this.declaredDesktopClients.forget(socket.connectionId)
         if (!hasOtherConnections) {

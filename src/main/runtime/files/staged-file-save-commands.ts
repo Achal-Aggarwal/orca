@@ -10,11 +10,10 @@ import { assertRuntimeFileMutationExpectation } from './file-mutation-expectatio
 import { requireLocalRuntimeFileRoute, resolveFileExplorerPath } from './file-target'
 import { StagedFileSaves } from './staged-file-saves'
 
-const JOURNAL_FILE = 'staged-file-saves.json'
-
-function profileJournalPath(): string | null {
+// Private to this host's profile: a staged save never puts a file in the user's folders.
+function profileStagingDir(): string | null {
   try {
-    return join(getProfileUserDataPath(), JOURNAL_FILE)
+    return join(getProfileUserDataPath(), 'staged-saves')
   } catch {
     return null
   }
@@ -36,7 +35,7 @@ export class RuntimeStagedFileSaves {
       RuntimeFileCommandHost,
       'requireStore' | 'resolveRuntimeFileTarget'
     >,
-    private readonly saves = new StagedFileSaves({ journalPath: profileJournalPath })
+    private readonly saves = new StagedFileSaves({ stagingDir: profileStagingDir })
   ) {}
 
   async begin(owner: string, params: StagedSaveTarget): Promise<{ saveId: string }> {
@@ -48,8 +47,8 @@ export class RuntimeStagedFileSaves {
       params.expectedSshConnectionGeneration
     )
     requireLocalRuntimeFileRoute(target)
-    const path = await resolveRuntimeAuthorizedPath(target.path, this.host.requireStore())
-    return this.saves.begin(owner, path, params.totalBytes)
+    const realPath = await this.authorize(target.path)
+    return this.saves.begin(owner, { requestedPath: target.path, realPath }, params.totalBytes)
   }
 
   append(owner: string, saveId: string, offset: number, bytes: Buffer): Promise<void> {
@@ -61,14 +60,23 @@ export class RuntimeStagedFileSaves {
     saveId: string,
     precondition: FileWriteDiskPrecondition | undefined
   ): Promise<FileWriteResult> {
-    return this.saves.commit(owner, saveId, precondition)
+    return this.saves.commit(owner, saveId, precondition, (path) => this.authorize(path))
   }
 
   abort(owner: string, saveId: string): Promise<void> {
     return this.saves.abort(owner, saveId)
   }
 
+  abortConnection(owner: string): Promise<void> {
+    return this.saves.abortConnection(owner)
+  }
+
+  /** Host start, in the background: a hung mount must not hold the host up. */
   sweepOrphans(): void {
-    this.saves.sweepOrphans()
+    void this.saves.sweepOrphans()
+  }
+
+  private authorize(path: string): Promise<string> {
+    return resolveRuntimeAuthorizedPath(path, this.host.requireStore())
   }
 }

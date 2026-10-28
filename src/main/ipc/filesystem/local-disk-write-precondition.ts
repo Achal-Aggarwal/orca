@@ -151,27 +151,12 @@ export async function writeLocalTextFileWithDiskPrecondition(
   content: string,
   precondition: FileWriteDiskPrecondition | undefined
 ): Promise<FileWriteResult> {
-  return writeLocalFileGuarded(requestedPath, content, precondition, (filePath) =>
-    writeFile(filePath, content, 'utf-8')
-  )
-}
-
-/**
- * The same guarded save, landing bytes already staged beside the target: `write` replaces the
- * target (a rename) under the same locks and compare, so a staged save can't race an editor save.
- */
-export async function writeLocalFileGuarded(
-  requestedPath: string,
-  content: string,
-  precondition: FileWriteDiskPrecondition | undefined,
-  write: (filePath: string) => Promise<void>
-): Promise<FileWriteResult> {
   // A UNC drive-mount file opens only through its drive path; locks key on that one spelling.
   const filePath = windowsFsPath(requestedPath)
   // Unguarded writes bypass locks held by stalled guarded saves.
   if (!precondition) {
     await assertLocalWriteTargetIsRegularFile(filePath)
-    await write(filePath)
+    await writeFile(filePath, content, 'utf-8')
     return FILE_WRITE_OK
   }
   const compareAndWrite = async (): Promise<FileWriteResult> => {
@@ -183,7 +168,7 @@ export async function writeLocalFileGuarded(
       return { ok: false, diskConflict }
     }
     await assertLocalWriteTargetIsRegularFile(filePath)
-    await write(filePath)
+    await writeFile(filePath, content, 'utf-8')
     return FILE_WRITE_OK
   }
   const pathKey = await editorWritePathKey(filePath)

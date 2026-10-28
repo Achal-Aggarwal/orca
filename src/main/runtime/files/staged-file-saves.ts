@@ -1,51 +1,60 @@
 /**
- * A text save too large for one remote request: the client sends it in chunks to a temp file the
- * host makes beside the target, and the commit replaces the target by rename under the same locks
- * and disk precondition as `files.writeIfUnchanged`. Bounded per save, per connection and per host;
- * an idle save is dropped, and a journal lets the next host start remove temps a crash left.
+ * A text save too large for one remote request: the client sends it in chunks to a temp in this
+ * host's private staging folder, and the commit hands the whole text to the same guarded write a
+ * one-request save uses, so the result on disk is identical. Bounded per save, per connection and
+ * per host; idle saves and a closed socket's saves are dropped, and host start empties the folder.
  */
 import { randomUUID } from 'node:crypto'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { appendFile, chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
   FileWriteDiskPrecondition,
   FileWriteResult
 } from '../../../shared/file-write-disk-precondition'
 import { STAGED_FILE_SAVE_LIMITS } from '../../../shared/staged-file-save'
-import { writeLocalFileGuarded } from '../../ipc/filesystem/local-disk-write-precondition'
-import { windowsFsPath } from '../../wsl/wsl-unc-drive-fs-path'
-
-const TEMP_NAME = /^\..+\.orca-save-[0-9a-f-]{36}\.tmp$/
-const JOURNAL_VERSION = 1
+import { writeLocalTextFileWithDiskPrecondition } from '../../ipc/filesystem/local-disk-write-precondition'
 
 type StagedSave = {
   owner: string
+  /** The target as the client named it, authorized again at commit. */
+  requestedPath: string
+  /** Its authorized real path at begin. */
   targetPath: string
   tempPath: string
   totalBytes: number
   written: number
+  // Every op on a save waits for the one before, so a temp is never removed or read mid-append.
+  pending: Promise<void>
   idleTimer: ReturnType<typeof setTimeout>
 }
 
 export type StagedFileSavesDeps = {
-  /** Where the temps this host has open are listed; null keeps no journal. */
-  journalPath: () => string | null
+  /** This host's private staging folder; null refuses staged saves. */
+  stagingDir: () => string | null
   limits?: typeof STAGED_FILE_SAVE_LIMITS
 }
 
 export class StagedFileSaves {
   private readonly saves = new Map<string, StagedSave>()
   private readonly limits: typeof STAGED_FILE_SAVE_LIMITS
-  private swept = false
+  private sweep: Promise<void> | null = null
 
   constructor(private readonly deps: StagedFileSavesDeps) {
     this.limits = deps.limits ?? STAGED_FILE_SAVE_LIMITS
   }
 
-  /** `targetPath` is already authorized and local; the temp goes in its (real) folder. */
-  async begin(owner: string, targetPath: string, totalBytes: number): Promise<{ saveId: string }> {
-    this.sweepOrphans()
+  /** `target.realPath` is `target.requestedPath` authorized now, and local. */
+  async begin(
+    owner: string,
+    target: { requestedPath: string; realPath: string },
+    totalBytes: number
+  ): Promise<{ saveId: string }> {
+    const dir = this.deps.stagingDir()
+    if (!dir) {
+      throw new Error('staged_save_unavailable')
+    }
+    // Before the first save of this run, so the sweep never takes a temp this run made.
+    await this.sweepOrphans()
     const { maxBytesPerSave, maxSavesPerConnection, maxBytesPerConnection, maxSavesPerHost } =
       this.limits
     const mine = [...this.saves.values()].filter((save) => save.owner === owner)
@@ -57,106 +66,98 @@ export class StagedFileSaves {
     ) {
       throw new Error('staged_save_limit')
     }
-    const fsTarget = windowsFsPath(targetPath)
     const saveId = randomUUID()
-    const tempPath = join(dirname(fsTarget), `.${basename(fsTarget)}.orca-save-${saveId}.tmp`)
-    // Exclusive create: a name collision never truncates someone else's file.
+    const tempPath = join(dir, `${saveId}.tmp`)
+    await mkdir(dir, { recursive: true })
     await writeFile(tempPath, Buffer.alloc(0), { flag: 'wx' })
-    const mode = await stat(fsTarget).then(
-      (stats) => stats.mode & 0o7777,
-      () => null
-    )
-    if (mode !== null) {
-      await chmod(tempPath, mode).catch(() => {})
-    }
     this.saves.set(saveId, {
       owner,
-      targetPath,
+      requestedPath: target.requestedPath,
+      targetPath: target.realPath,
       tempPath,
       totalBytes,
       written: 0,
-      idleTimer: this.idleTimer(saveId)
+      pending: Promise.resolve(),
+      idleTimer: this.idleTimer(owner, saveId)
     })
-    this.writeJournal()
     return { saveId }
   }
 
   async append(owner: string, saveId: string, offset: number, bytes: Buffer): Promise<void> {
     const save = this.require(owner, saveId)
-    // In order only: a retried or reordered chunk can't land twice or leave a gap.
-    if (offset !== save.written || save.written + bytes.length > save.totalBytes) {
-      throw new Error('staged_save_out_of_order')
-    }
-    this.touch(saveId, save)
-    save.written += bytes.length
-    try {
+    this.touch(owner, saveId, save)
+    return this.queue(save, async () => {
+      // In order only: a retried or reordered chunk can't land twice or leave a gap.
+      if (offset !== save.written || save.written + bytes.length > save.totalBytes) {
+        throw new Error('staged_save_out_of_order')
+      }
       await appendFile(save.tempPath, bytes)
-    } catch (error) {
-      await this.abort(owner, saveId)
-      throw error
-    }
+      save.written += bytes.length
+    })
   }
 
+  /** The target is authorized again now; a different real path (a swapped link) refuses the save. */
   async commit(
     owner: string,
     saveId: string,
-    precondition: FileWriteDiskPrecondition | undefined
+    precondition: FileWriteDiskPrecondition | undefined,
+    authorize: (requestedPath: string) => Promise<string>
   ): Promise<FileWriteResult> {
     const save = this.require(owner, saveId)
-    if (save.written !== save.totalBytes) {
-      throw new Error('staged_save_incomplete')
-    }
-    clearTimeout(save.idleTimer)
-    this.saves.delete(saveId)
-    try {
-      const content = (await readFile(save.tempPath)).toString('utf8')
-      // Same locks and compare as a one-request save; the rename keeps the target whole.
-      return await writeLocalFileGuarded(save.targetPath, content, precondition, (path) =>
-        rename(save.tempPath, path)
-      )
-    } finally {
-      await rm(save.tempPath, { force: true })
-      this.writeJournal()
-    }
+    this.release(saveId, save)
+    return this.queue(save, async () => {
+      try {
+        if (save.written !== save.totalBytes) {
+          throw new Error('staged_save_incomplete')
+        }
+        if ((await authorize(save.requestedPath)) !== save.targetPath) {
+          throw new Error('staged_save_target_moved')
+        }
+        const content = (await readFile(save.tempPath)).toString('utf8')
+        // The same write a one-request save makes: same locks, compare, and file kept in place.
+        return await writeLocalTextFileWithDiskPrecondition(save.targetPath, content, precondition)
+      } finally {
+        await rm(save.tempPath, { force: true })
+      }
+    })
   }
 
+  /** The temp goes once any append in flight settles. */
   async abort(owner: string, saveId: string): Promise<void> {
     const save = this.saves.get(saveId)
     if (!save || save.owner !== owner) {
       return
     }
-    clearTimeout(save.idleTimer)
-    this.saves.delete(saveId)
-    await rm(save.tempPath, { force: true })
-    this.writeJournal()
+    this.release(saveId, save)
+    await this.queue(save, () => rm(save.tempPath, { force: true })).catch(() => {})
   }
 
-  /** Host start: temps a crashed run left are removed, never a file this run did not name. */
-  sweepOrphans(): void {
-    if (this.swept) {
-      return
-    }
-    this.swept = true
-    const journal = this.deps.journalPath()
-    if (!journal) {
-      return
-    }
-    let listed: unknown
-    try {
-      listed = JSON.parse(readFileSync(journal, 'utf8'))
-    } catch {
-      return
-    }
-    const temps =
-      listed && typeof listed === 'object' && 'temps' in listed && Array.isArray(listed.temps)
-        ? listed.temps
-        : []
-    for (const temp of temps) {
-      if (typeof temp === 'string' && TEMP_NAME.test(basename(temp))) {
-        rmSync(temp, { force: true })
+  /** A closed socket can't finish its saves. */
+  async abortConnection(owner: string): Promise<void> {
+    const ids = [...this.saves].filter(([, save]) => save.owner === owner).map(([id]) => id)
+    await Promise.all(ids.map((id) => this.abort(owner, id)))
+  }
+
+  /** Host start: whatever a previous run left in the staging folder is an unfinished save. */
+  sweepOrphans(): Promise<void> {
+    this.sweep ??= (async () => {
+      const dir = this.deps.stagingDir()
+      if (dir) {
+        await rm(dir, { recursive: true, force: true }).catch((error: unknown) => {
+          console.warn('[files] Could not clear staged saves:', error)
+        })
       }
-    }
-    this.writeJournal()
+    })()
+    return this.sweep
+  }
+
+  private queue<TResult>(save: StagedSave, op: () => Promise<TResult>): Promise<TResult> {
+    const run = save.pending.then(op)
+    save.pending = run.then(
+      () => {},
+      () => {}
+    )
+    return run
   }
 
   private require(owner: string, saveId: string): StagedSave {
@@ -168,36 +169,19 @@ export class StagedFileSaves {
     return save
   }
 
-  private touch(saveId: string, save: StagedSave): void {
+  private release(saveId: string, save: StagedSave): void {
     clearTimeout(save.idleTimer)
-    save.idleTimer = this.idleTimer(saveId)
+    this.saves.delete(saveId)
   }
 
-  private idleTimer(saveId: string): ReturnType<typeof setTimeout> {
-    const timer = setTimeout(() => {
-      const save = this.saves.get(saveId)
-      if (save) {
-        void this.abort(save.owner, saveId)
-      }
-    }, this.limits.idleMs)
+  private touch(owner: string, saveId: string, save: StagedSave): void {
+    clearTimeout(save.idleTimer)
+    save.idleTimer = this.idleTimer(owner, saveId)
+  }
+
+  private idleTimer(owner: string, saveId: string): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => void this.abort(owner, saveId), this.limits.idleMs)
     timer.unref?.()
     return timer
-  }
-
-  private writeJournal(): void {
-    const journal = this.deps.journalPath()
-    if (!journal) {
-      return
-    }
-    const temps = [...this.saves.values()].map((save) => save.tempPath)
-    try {
-      if (temps.length === 0) {
-        rmSync(journal, { force: true })
-      } else {
-        writeFileSync(journal, JSON.stringify({ version: JOURNAL_VERSION, temps }))
-      }
-    } catch (error) {
-      console.warn('[files] Could not record staged saves:', error)
-    }
   }
 }

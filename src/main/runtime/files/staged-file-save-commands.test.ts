@@ -31,7 +31,7 @@ function commands(executionHostId = 'local') {
         executionHostId: executionHostId as ResolvedRuntimeFileTarget['executionHostId']
       })
     },
-    new StagedFileSaves({ journalPath: () => null })
+    new StagedFileSaves({ stagingDir: () => join(root, 'profile', 'staged-saves') })
   )
 }
 
