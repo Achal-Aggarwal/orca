@@ -33,6 +33,7 @@ import {
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useCombinedDiffScrollbar } from './combined-diff/scroll-viewport/use-combined-diff-scrollbar'
 import { useCombinedDiffDirectScrollInput } from './combined-diff/scroll-viewport/use-combined-diff-direct-scroll-input'
+import { verifyWorktreeTreeTakeover } from './combined-diff-worktree-tree.fixture'
 import {
   COMBINED_DIFF_DIRECT_INPUT_EVENT,
   notifyCombinedDiffDirectInput
@@ -178,6 +179,9 @@ async function fixture(
   let scrollTop = host === 'worktree' ? 1000 : 0
   let scrollFrame = 0
   let height = 500
+  let scrollToIndex = (_index: number): void => {
+    throw new Error('Worktree virtualizer not mounted')
+  }
   let added = vi.spyOn(outer, 'addEventListener')
   let removed = vi.spyOn(outer, 'removeEventListener')
   const totalHeight = () =>
@@ -257,6 +261,7 @@ async function fixture(
           getFocusedCombinedDiffSectionIndex(outer)
         )
     })
+    scrollToIndex = (index) => virtualizer.scrollToIndex(index, { align: 'start' })
     useLayoutEffect(() => {
       height = bodyHeight
       virtualizer.measure()
@@ -370,6 +375,8 @@ async function fixture(
   return {
     outer,
     view,
+    section,
+    scrollToIndex: (index: number) => scrollToIndex(index),
     measuredHeight: () => (host === 'worktree' ? height : editorHeight() - 19),
     added,
     removed,
@@ -703,6 +710,11 @@ it('yields pending and re-armed reveal to production scrollbar press and capture
   expect(document.activeElement).toBe(focused)
   fireEvent.pointerUp(window, { pointerId: 7 })
   expect(captured.size).toBe(0)
+})
+
+it('yields pending reveal to real worktree tree navigation before delegate scroll', async () => {
+  const view = await fixture(true)
+  await verifyWorktreeTreeTakeover({ ...view, diff, operations })
 })
 
 const reviewHosts = (['page', 'dialog'] as const).flatMap((host) => [
