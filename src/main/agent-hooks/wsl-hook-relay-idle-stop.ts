@@ -56,9 +56,11 @@ export class WslRelayIdleStop {
 
   /** A bridge terminal count changed for this distro (state key). */
   presenceChanged(key: string): void {
-    const state = this.deps.states.get(key)
-    if (state) {
-      this.update(state)
+    const changed = key ? [this.deps.states.get(key)] : [...this.deps.states.values()]
+    for (const state of changed) {
+      if (state) {
+        this.update(state)
+      }
     }
   }
 

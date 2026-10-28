@@ -73,6 +73,20 @@ describe('the WSL hook relay idle stop', () => {
     expect(states.has('debian')).toBe(true)
   })
 
+  // Review of #35173: a WSL shell whose distro the spawn didn't report still uses a relay.
+  it('keeps every relay while a WSL terminal of unknown distro is open', async () => {
+    const ubuntu = running()
+    states.set('ubuntu', ubuntu)
+    presence.noteLive('pty-1', null)
+    idle.update(ubuntu)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(states.has('ubuntu')).toBe(true)
+
+    presence.noteExited('pty-1')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(states.has('ubuntu')).toBe(false)
+  })
+
   it('brings a stopped relay back with its config, and a quit forgets it', async () => {
     const state = running()
     states.set('ubuntu', state)
