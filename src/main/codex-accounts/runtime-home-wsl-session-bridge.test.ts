@@ -7,6 +7,7 @@ import type * as CodexConfigMirror from '../codex/codex-config-mirror'
 import type * as CodexHomePaths from '../codex/codex-home-paths'
 import type * as LegacyWslRuntimeAuthDrain from './legacy-wsl-runtime-auth-drain'
 import type * as WslCodexAuthBatchReader from './wsl-codex-auth-batch-reader'
+import type * as WslCodexSessionBridge from '../codex/wsl-codex-session-bridge'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAuthJson,
@@ -262,79 +263,6 @@ describe('CodexRuntimeHomeService', () => {
     }
   })
 
-  it('bridges sibling WSL account homes into the selected account home', async () => {
-    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
-    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    const startWslCodexSessionBridgeInBackground = vi.fn(() => Promise.resolve())
-    vi.doMock('../codex/wsl-codex-session-bridge', () => ({
-      startWslCodexSessionBridgeInBackground
-    }))
-    const wslHome = join(testState.userDataDir, 'ubuntu-home')
-    vi.doMock('../wsl', () => ({
-      getDefaultWslDistro: () => 'Ubuntu',
-      getWslHome: () => wslHome
-    }))
-    const accountsRoot = join(wslHome, '.local', 'share', 'orca', 'codex-accounts')
-    const wslAccount = (id: string, distro: string) => ({
-      id,
-      email: `${id}@example.com`,
-      managedHomePath: join(accountsRoot, id, 'home'),
-      managedHomeRuntime: 'wsl' as const,
-      wslDistro: distro,
-      wslLinuxHomePath: join(accountsRoot, id, 'home'),
-      providerAccountId: null,
-      workspaceLabel: null,
-      workspaceAccountId: null,
-      createdAt: 1,
-      updatedAt: 1,
-      lastAuthenticatedAt: 1
-    })
-    const store = createStore(
-      createSettings({
-        codexManagedAccounts: [
-          wslAccount('a', 'Ubuntu'),
-          wslAccount('b', 'Ubuntu'),
-          wslAccount('other-distro', 'Debian')
-        ],
-        activeCodexManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'b' } }
-      })
-    )
-
-    try {
-      const { CodexRuntimeHomeService } = await import('./runtime-home-service')
-      const service = new CodexRuntimeHomeService(store as never)
-      const selectedHome = join(accountsRoot, 'b', 'home')
-
-      expect(service.prepareForCodexLaunch({ runtime: 'wsl', wslDistro: 'Ubuntu' })).toBe(
-        selectedHome
-      )
-      await vi.waitFor(() =>
-        expect(startWslCodexSessionBridgeInBackground.mock.calls).toEqual([
-          [
-            {
-              distro: 'Ubuntu',
-              systemCodexHomePath: join(wslHome, '.codex'),
-              managedCodexHomePath: selectedHome
-            }
-          ],
-          [
-            {
-              distro: 'Ubuntu',
-              systemCodexHomePath: join(accountsRoot, 'a', 'home'),
-              managedCodexHomePath: selectedHome
-            }
-          ]
-        ])
-      )
-    } finally {
-      vi.doUnmock('../codex/wsl-codex-session-bridge')
-      vi.doUnmock('../wsl')
-      if (originalPlatform) {
-        Object.defineProperty(process, 'platform', originalPlatform)
-      }
-    }
-  })
-
   it('does not rescan retired sessions after the launch drain bridges them', async () => {
     const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
@@ -498,6 +426,11 @@ describe('CodexRuntimeHomeService', () => {
         ...(await importOriginal<typeof CodexConfigMirror>()),
         syncSystemConfigIntoManagedCodexHome: vi.fn()
       }))
+      // Launch-time sibling bridging is covered elsewhere; this pins only the drain's own target.
+      vi.doMock('../codex/wsl-codex-session-bridge', async (importOriginal) => ({
+        ...(await importOriginal<typeof WslCodexSessionBridge>()),
+        startWslCodexSessionBridgeInBackground: vi.fn(() => Promise.resolve())
+      }))
       const retiredHome = join(guestHome, '.local', 'share', 'orca', 'codex-runtime-home', 'home')
       const relativeSessionPath = join('sessions', '2026', '08', '26', 'retired.jsonl')
       const retiredSessionPath = join(retiredHome, relativeSessionPath)
@@ -560,6 +493,7 @@ describe('CodexRuntimeHomeService', () => {
         await Promise.all(drainTasks)
         expect(readFileSync(linkedSessionPath, 'utf-8')).toBe('{"session":"retired"}\n')
         expect(statSync(linkedSessionPath).ino).toBe(statSync(retiredSessionPath).ino)
+        expect(existsSync(join(selectedHome, relativeSessionPath))).toBe(false)
 
         rmSync(linkedSessionPath)
         rmSync(retiredHome, { recursive: true })
