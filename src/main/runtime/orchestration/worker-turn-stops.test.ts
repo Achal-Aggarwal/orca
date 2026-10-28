@@ -1,0 +1,186 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { AgentPaneChange } from '../../agent-hooks/agent-transition-detector'
+import type { AgentStatusIpcPayload } from '../../../shared/agent-status-ipc-payload'
+import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
+import { makePaneKey } from '../../../shared/stable-pane-id'
+import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
+import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
+import { chatWorkerTurnStopReporter } from './chat-worker-turn-stops'
+import { OrchestrationDb } from './db'
+import { createRootDispatch } from './db/root-dispatch-test-fixture'
+import { TerminalWorkerTurnStops } from './terminal-worker-turn-stops'
+import type { RemoteDispatchAttachmentRow } from './types'
+import { reportWorkerTurnStop } from './worker-turn-stop-report'
+
+const PANE = makePaneKey('tab-worker', '11111111-1111-4111-8111-111111111111')
+const HANDLE = 'term_worker'
+
+const CHAT_SESSION = testOrcaSessionId('9a4e7c1b-3d2f-4b6a-8e5c-7f1d0b2a6c93')
+
+function setup(assignee = HANDLE) {
+  const db = new OrchestrationDb(':memory:')
+  const run = db.createRun({
+    objective: 'stop reports',
+    coordinatorHandle: 'term_coordinator',
+    coordinatorPaneKey: makePaneKey('tab-coordinator', '22222222-2222-4222-8222-222222222222')
+  })
+  const task = db.createTask({ spec: 'do the work', runId: run.id })
+  const dispatch = createRootDispatch(db, task.id, assignee, assignee === HANDLE ? PANE : undefined)
+  const waiting = new Set<string>()
+  const notify = vi.fn()
+  const deps = { getDb: () => db, isWaitingForMail: (m: string) => waiting.has(m), notify }
+  const mail = () => db.getUnreadRunMailbox(run.id, 100, ['escalation'])
+  return { db, dispatch, waiting, notify, deps, mail }
+}
+
+function hookRow(overrides: Partial<AgentStatusIpcPayload>): AgentStatusIpcPayload {
+  return {
+    state: 'done',
+    prompt: '',
+    agentType: 'codex',
+    paneKey: PANE,
+    connectionId: null,
+    receivedAt: 1,
+    stateStartedAt: 200,
+    ...overrides
+  }
+}
+
+function moved(from: 'working' | 'done', to: 'done' | 'needs-you'): AgentPaneChange {
+  return {
+    kind: 'moved',
+    paneKey: PANE,
+    workspace: { worktreeId: 'repo::/tmp/wt', sshHostId: null },
+    from,
+    to,
+    at: 1,
+    transition: to === 'needs-you' ? 'needs-input' : 'turn-finished'
+  }
+}
+
+function terminal(ctx: ReturnType<typeof setup>, current: { row: AgentStatusIpcPayload }) {
+  return new TerminalWorkerTurnStops({
+    ...ctx.deps,
+    readHookRow: () => current.row,
+    setTimer: () => ({ cancel: () => {} }),
+    getHandle: () => HANDLE,
+    getProcessIncarnation: () => null,
+    readScreen: async () => ({
+      handle: HANDLE,
+      status: 'running',
+      tail: ['■ Selected model is at capacity. Please try a different model.'],
+      truncated: false,
+      nextCursor: null
+    })
+  })
+}
+
+const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+describe('terminal worker turn stops', () => {
+  it('tells the Run once, with the last output, when a worker turn ends without worker_done', async () => {
+    const ctx = setup()
+    const current = { row: hookRow({ mainAgent: { state: 'done', outcome: 'failure' } }) }
+    const stops = terminal(ctx, current)
+    stops.observe(moved('working', 'done'))
+    await settle()
+    stops.observe(moved('working', 'done'))
+    await settle()
+    const [message, ...rest] = ctx.mail()
+    expect(rest).toHaveLength(0)
+    expect(message).toMatchObject({
+      type: 'escalation',
+      priority: 'high',
+      subject: 'Worker stopped on an error without reporting'
+    })
+    expect(message.body).toContain('Selected model is at capacity')
+    expect(message.body).toContain(`worker-read --dispatch ${ctx.dispatch.id}`)
+    expect(ctx.notify).toHaveBeenCalledWith(message.to_handle, 'escalation')
+
+    // The coordinator's reply starts a new turn; its stop is reported again.
+    current.row = hookRow({ stateStartedAt: 300 })
+    stops.observe(moved('working', 'done'))
+    await settle()
+    expect(ctx.mail().map((m) => m.subject)).toContain('Worker stopped without reporting')
+    expect(ctx.mail()).toHaveLength(2)
+  })
+
+  it('reports a worker stopped at an approval prompt', async () => {
+    const ctx = setup()
+    const stops = terminal(ctx, { row: hookRow({ state: 'blocked' }) })
+    stops.observe(moved('working', 'needs-you'))
+    await settle()
+    expect(ctx.mail()[0]?.subject).toBe('Worker is waiting on a prompt')
+  })
+
+  it('stays quiet for a resumed turn, a settled Dispatch, or a deliberate wait', async () => {
+    const resumed = setup()
+    const current = { row: hookRow({}) }
+    const stops = terminal(resumed, current)
+    stops.observe(moved('working', 'done'))
+    current.row = hookRow({ state: 'working', stateStartedAt: 250 })
+    await settle()
+    expect(resumed.mail()).toHaveLength(0)
+
+    const settled = setup()
+    settled.db.completeDispatch(settled.dispatch.id)
+    terminal(settled, { row: hookRow({}) }).observe(moved('working', 'done'))
+    await settle()
+    expect(settled.mail()).toHaveLength(0)
+
+    const waiting = setup()
+    waiting.waiting.add(`dispatch:${waiting.dispatch.id}`)
+    terminal(waiting, { row: hookRow({}) }).observe(moved('working', 'done'))
+    await settle()
+    expect(waiting.mail()).toHaveLength(0)
+  })
+})
+
+describe('chat worker turn stops', () => {
+  const completion = (outcome: 'success' | 'failure'): AgentSessionTurnCompletionEvent => ({
+    type: 'completion',
+    completion: {
+      scope: { kind: 'local' } as never,
+      sessionId: CHAT_SESSION,
+      turnId: 'turn-1',
+      outcome,
+      completedAt: 1
+    }
+  })
+
+  it('reports a finished turn and leaves failures to the chat error escalation', () => {
+    const ctx = setup(formatOrcaSessionAddress(CHAT_SESSION))
+    const report = chatWorkerTurnStopReporter(ctx.deps)
+    const status = () => ({ status: 'idle', lastAssistantMessage: 'Read the files.' }) as never
+    report(completion('failure'), status)
+    expect(ctx.mail()).toHaveLength(0)
+    report(completion('success'), status)
+    report(completion('success'), status)
+    expect(ctx.mail()).toHaveLength(1)
+    expect(ctx.mail()[0].body).toContain('Read the files.')
+  })
+})
+
+describe('remote worker turn stops', () => {
+  it('relays the report to the Run home under a stable id', () => {
+    const enqueueFederationRelay = vi.fn()
+    const db = { enqueueFederationRelay } as unknown as OrchestrationDb
+    const attachment = { dispatch_id: 'dsp_remote', task_id: 'task_remote' }
+    const stop = { from: HANDLE, stopKey: 'k', reason: 'finished' as const, lastOutput: 'bye' }
+    const deps = { getDb: () => db, isWaitingForMail: () => false, notify: vi.fn() }
+    const target = {
+      kind: 'remote' as const,
+      attachment: attachment as RemoteDispatchAttachmentRow
+    }
+    reportWorkerTurnStop(db, target, stop, deps)
+    reportWorkerTurnStop(db, target, stop, deps)
+    const [first, second] = enqueueFederationRelay.mock.calls.map(([params]) => params)
+    expect(first).toMatchObject({
+      dispatchId: 'dsp_remote',
+      direction: 'to_home',
+      kind: 'escalation'
+    })
+    expect(first.messageId).toBe(second.messageId)
+    expect(JSON.parse(first.payload)).toMatchObject({ type: 'escalation', priority: 'high' })
+  })
+})
