@@ -155,13 +155,21 @@ function createOwner(target: RuntimeClientTarget, key: string): OwnedTurnComplet
   }
 
   const flush = (): void => {
-    if (pendingFlush) return
+    if (pendingFlush) {
+      return
+    }
     pendingFlush = true
     queueMicrotask(() => {
       pendingFlush = false
-      if (owners.get(key) !== owner) return
-      if (activations.size === 0) stop()
-      if (activations.size === 0 && listeners.size === 0) owners.delete(key)
+      if (owners.get(key) !== owner) {
+        return
+      }
+      if (activations.size === 0) {
+        stop()
+      }
+      if (activations.size === 0 && listeners.size === 0) {
+        owners.delete(key)
+      }
     })
   }
   const owner: OwnedTurnCompletionFeed = {
@@ -173,14 +181,18 @@ function createOwner(target: RuntimeClientTarget, key: string): OwnedTurnComplet
         open()
       }
       return () => {
-        if (activations.delete(token) && activations.size === 0) flush()
+        if (activations.delete(token) && activations.size === 0) {
+          flush()
+        }
       }
     },
     subscribe: (listener) => {
       const registration = listeners.get(listener) ?? Symbol('turn-completion-listener')
       listeners.set(listener, registration)
       return () => {
-        if (listeners.get(listener) !== registration) return
+        if (listeners.get(listener) !== registration) {
+          return
+        }
         listeners.delete(listener)
         flush()
       }

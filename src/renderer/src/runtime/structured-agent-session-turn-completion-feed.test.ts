@@ -395,12 +395,14 @@ describe('structured turn completion feed (renderer)', () => {
         resetStructuredAgentSessionTurnCompletionFeedsForTests()
         const probe = deferred<boolean>()
         const opening = deferred<{ unsubscribe: () => void }>()
-        if (phase === 'capability') mocks.supportsCapability.mockReturnValueOnce(probe.promise)
-        else
+        if (phase === 'capability') {
+          mocks.supportsCapability.mockReturnValueOnce(probe.promise)
+        } else {
           mocks.subscribe.mockImplementationOnce((_target, emit, fail, close) => {
             subscriptions.push({ emit, fail, close, unsubscribe: vi.fn() })
             return opening.promise
           })
+        }
         const feed = getStructuredAgentSessionTurnCompletionFeed({
           kind: 'environment',
           environmentId: 'queued'
@@ -408,16 +410,24 @@ describe('structured turn completion feed (renderer)', () => {
         let release = feed.activate()
         const seen: string[] = []
         feed.subscribe((edge) => seen.push(label(edge)))
-        if (phase === 'open') await vi.advanceTimersByTimeAsync(0)
+        if (phase === 'open') {
+          await vi.advanceTimersByTimeAsync(0)
+        }
         const start = subscriptions.length
         const opened = { unsubscribe: vi.fn() }
         if (reject) {
-          if (phase === 'capability') probe.reject(new Error('probe failed'))
-          else opening.reject(new Error('open failed'))
+          if (phase === 'capability') {
+            probe.reject(new Error('probe failed'))
+          } else {
+            opening.reject(new Error('open failed'))
+          }
           // The rejection propagates through then before catch becomes continuation C.
           await Promise.resolve()
-        } else if (phase === 'capability') probe.resolve(true)
-        else opening.resolve(opened)
+        } else if (phase === 'capability') {
+          probe.resolve(true)
+        } else {
+          opening.resolve(opened)
+        }
         // Continuation C, renewal N, then final-release flush F.
         queueMicrotask(() => {
           release = feed.activate()
@@ -436,7 +446,9 @@ describe('structured turn completion feed (renderer)', () => {
         expect(seen).toEqual(['turn-live', 'prompt:approval-live'])
         release()
         await vi.advanceTimersByTimeAsync(0)
-        if (!reject && phase === 'open') expect(opened.unsubscribe).toHaveBeenCalledTimes(1)
+        if (!reject && phase === 'open') {
+          expect(opened.unsubscribe).toHaveBeenCalledTimes(1)
+        }
         expect(vi.getTimerCount()).toBe(0)
       }
     }
