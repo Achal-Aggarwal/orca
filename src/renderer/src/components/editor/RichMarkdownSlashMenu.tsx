@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { runSlashCommand } from './rich-markdown-slash-commands'
 import type { SlashCommand, SlashMenuState } from './rich-markdown-slash-commands'
 import { translate } from '@/i18n/i18n'
+import { RichMarkdownCompletionPopover } from './RichMarkdownCompletionPopover'
 import { useRichMarkdownCompletionScroll } from './useRichMarkdownCompletionScroll'
 
 type RichMarkdownSlashMenuProps = {
@@ -14,6 +15,7 @@ type RichMarkdownSlashMenuProps = {
   selectedIndex: number
   onImagePick: () => void
   onEmojiPick: () => void
+  onClose: () => void
 }
 
 export function RichMarkdownSlashMenu({
@@ -22,7 +24,8 @@ export function RichMarkdownSlashMenu({
   filteredCommands,
   selectedIndex,
   onImagePick,
-  onEmojiPick
+  onEmojiPick,
+  onClose
 }: RichMarkdownSlashMenuProps): React.JSX.Element {
   const { viewportRef, activeItemRef } = useRichMarkdownCompletionScroll(
     selectedIndex,
@@ -31,11 +34,13 @@ export function RichMarkdownSlashMenu({
   let currentGroup: SlashCommand['group'] | null = null
 
   return (
-    <div
+    <RichMarkdownCompletionPopover
+      editor={editor}
+      position={slashMenu.to}
+      onClose={onClose}
       className="rich-markdown-slash-menu"
-      style={{ left: slashMenu.left, top: slashMenu.top }}
       role="dialog"
-      aria-label={translate(
+      ariaLabel={translate(
         'auto.components.editor.RichMarkdownSlashMenu.2e0400b958',
         'Slash commands'
       )}
@@ -103,6 +108,6 @@ export function RichMarkdownSlashMenu({
           })
         )}
       </div>
-    </div>
+    </RichMarkdownCompletionPopover>
   )
 }
