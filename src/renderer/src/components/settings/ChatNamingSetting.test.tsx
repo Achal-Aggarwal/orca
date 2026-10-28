@@ -6,6 +6,10 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { SourceControlAiSettingsPatch } from '../../../../shared/source-control-ai-types'
 import { normalizeSourceControlAiSettings } from '../../../../shared/source-control-ai'
 import { ChatNamingSetting } from './ChatNamingSetting'
+import {
+  savedChatNamingCatalog,
+  observeChatNamingCatalogWork
+} from '../../../../shared/chat-naming-catalog-work.test-fixture'
 import { toast } from 'sonner'
 import { startTransition, StrictMode, Suspense } from 'react'
 
@@ -68,6 +72,60 @@ function changeAgentArgs(value: string): void {
 }
 
 describe('Chat names setting', () => {
+  it.each([100, 1000])(
+    'bounds actual edit, clear, collapsed and off catalog work for %i rows',
+    (size) => {
+      const source = savedChatNamingCatalog(size)
+      const { work, reset } = observeChatNamingCatalogWork()
+      const samples: Record<string, typeof work> = {}
+      const check = (phase: string, passes: number, reads: number) => {
+        expect(work.copiedRows).toBeLessThanOrEqual(passes * size)
+        expect(work.copiedRows).toBeGreaterThanOrEqual(size)
+        expect(work.copiedBytes).toBeLessThanOrEqual(passes * 64 * size)
+        expect(work.copiedBytes).toBeGreaterThanOrEqual(32 * size)
+        expect(work.selectedRowReads).toBeLessThanOrEqual(reads)
+        if (reads) {
+          expect(work.selectedRowReads).toBeGreaterThanOrEqual(size)
+        }
+        samples[phase] = { ...work }
+        reset()
+      }
+      const view = renderSetting({ defaultTuiAgent: 'claude', sourceControlAi: source })
+      reset()
+      changeAgentArgs('--model fast')
+      check('edit', 2, size + 1)
+      expect(screen.getByRole('combobox').textContent).toContain(
+        'Use configured CLI agent (Claude)'
+      )
+      changeAgentArgs('')
+      check('clear', 1, 0)
+      expect(screen.getByRole('combobox').textContent).toContain('Use chat agent')
+      view.unmount()
+      source.actions = { conversationName: { agentId: null, agentArgs: '--model fast' } }
+      for (const enabled of [true, false]) {
+        reset()
+        const hidden = renderSetting(
+          { defaultTuiAgent: 'claude', nativeChatAutoName: enabled, sourceControlAi: source },
+          false
+        )
+        expect(screen.queryByRole('combobox')).toBeNull()
+        if (enabled) {
+          expect(
+            screen.getByRole('button', { name: 'Advanced' }).getAttribute('aria-expanded')
+          ).toBe('false')
+        }
+        expect(
+          screen
+            .getByRole('switch', { name: 'Name chats automatically' })
+            .getAttribute('aria-checked')
+        ).toBe(String(enabled))
+        check(enabled ? 'collapsed' : 'off', 2, size + 1)
+        hidden.unmount()
+      }
+      console.log(JSON.stringify({ metric: 'chat-naming-settings-catalog', size, samples }))
+    }
+  )
+
   it('keeps alternate-agent setup in Advanced and opens it for search', () => {
     const { element, rerender } = renderSetting({}, false)
     expect(screen.queryByRole('combobox')).toBeNull()

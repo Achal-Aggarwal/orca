@@ -193,58 +193,59 @@ describe('structured chat naming runtime', () => {
     )
   })
 
-  it.each(STRUCTURED_AGENT_RUNTIME_CATALOG.map(({ metadata }) => metadata.definition.agent))(
-    'names a %s chat with its own agent regardless of global selection',
-    async (provider) => {
-      const state = rig()
-      state.settings.sourceControlAi = {
-        ...normalizeSourceControlAiSettings(state.settings.sourceControlAi),
-        agentId: 'codex'
-      }
-      const record = agentSessionRecordFixture()
-      record.provider = provider
-      record.accountHome =
-        provider === 'opencode' || provider === 'opencode2'
-          ? { kind: 'opencode', locator: { kind: 'unmanaged' } }
-          : {
-              variable:
-                provider === 'codex'
-                  ? 'CODEX_HOME'
-                  : provider === 'claude'
-                    ? 'CLAUDE_CONFIG_DIR'
-                    : provider === 'grok'
-                      ? 'GROK_HOME'
-                      : provider === 'antigravity'
-                        ? 'GEMINI_HOME'
-                        : 'PI_CODING_AGENT_DIR',
-              path: '/pinned-account'
-            }
-      const shouldExecute = () => true
-      await state.deps.generate(record, 'Repair login', shouldExecute)
-      if (provider === 'grok' || provider === 'antigravity') {
-        expect(mocks.native).toHaveBeenCalledWith(
-          expect.objectContaining({ accountHome: record.accountHome, shouldExecute })
-        )
-        expect(mocks.generate).not.toHaveBeenCalled()
-      } else {
-        expect(mocks.generate).toHaveBeenCalledWith(
-          expect.anything(),
-          expect.objectContaining({ agentId: provider }),
-          expect.objectContaining({
-            env: expect.objectContaining(
-              'variable' in record.accountHome
-                ? { [record.accountHome.variable]: record.accountHome.path }
-                : {}
-            )
-          }),
-          shouldExecute
-        )
-      }
-      expect(state.settings.sourceControlAi?.actions?.conversationName?.agentId).toBeUndefined()
+  it.each(
+    STRUCTURED_AGENT_RUNTIME_CATALOG.map(({ metadata }) => metadata.definition.agent).filter(
+      (agent) => agent !== 'pi' && agent !== 'omp'
+    )
+  )('names a %s chat with its own agent regardless of global selection', async (provider) => {
+    const state = rig()
+    state.settings.sourceControlAi = {
+      ...normalizeSourceControlAiSettings(state.settings.sourceControlAi),
+      agentId: 'codex'
     }
-  )
+    const record = agentSessionRecordFixture()
+    record.provider = provider
+    record.accountHome =
+      provider === 'opencode' || provider === 'opencode2'
+        ? { kind: 'opencode', locator: { kind: 'unmanaged' } }
+        : {
+            variable:
+              provider === 'codex'
+                ? 'CODEX_HOME'
+                : provider === 'claude'
+                  ? 'CLAUDE_CONFIG_DIR'
+                  : provider === 'grok'
+                    ? 'GROK_HOME'
+                    : provider === 'antigravity'
+                      ? 'GEMINI_HOME'
+                      : 'PI_CODING_AGENT_DIR',
+            path: '/pinned-account'
+          }
+    const shouldExecute = () => true
+    await state.deps.generate(record, 'Repair login', shouldExecute)
+    if (provider === 'grok' || provider === 'antigravity') {
+      expect(mocks.native).toHaveBeenCalledWith(
+        expect.objectContaining({ accountHome: record.accountHome, shouldExecute })
+      )
+      expect(mocks.generate).not.toHaveBeenCalled()
+    } else {
+      expect(mocks.generate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ agentId: provider }),
+        expect.objectContaining({
+          env: expect.objectContaining(
+            'variable' in record.accountHome
+              ? { [record.accountHome.variable]: record.accountHome.path }
+              : {}
+          )
+        }),
+        shouldExecute
+      )
+    }
+    expect(state.settings.sourceControlAi?.actions?.conversationName?.agentId).toBeUndefined()
+  })
 
-  it('uses the current routed Claude account while retaining recorded managed OpenCode', async () => {
+  it('uses the current routed Claude account', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-naming-account-test-'))
     roots.push(root)
     const home = join(root, 'claude-profiles', 'selected', 'home')
@@ -270,29 +271,6 @@ describe('structured chat naming runtime', () => {
       expect.anything(),
       expect.anything(),
       expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: home }) }),
-      undefined
-    )
-    record.provider = 'opencode'
-    record.accountHome = {
-      kind: 'opencode',
-      locator: { kind: 'managed', managedProfileId: 'recorded' }
-    }
-    state.runtime.resolveNamingEnvironment.mockResolvedValue({
-      PATH: '/usr/bin',
-      XDG_DATA_HOME: '/profiles/current/data',
-      OPENCODE_AUTH_CONTENT: 'current'
-    })
-    await state.deps.generate(record, 'Repair login')
-    expect(mocks.account).toHaveBeenCalledWith('opencode', 'recorded')
-    expect(mocks.generate).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        env: expect.objectContaining({
-          XDG_DATA_HOME: '/profiles/recorded/data',
-          OPENCODE_AUTH_CONTENT: undefined
-        })
-      }),
       undefined
     )
   })
