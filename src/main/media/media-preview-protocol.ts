@@ -9,7 +9,10 @@ import {
   streamsPreviewByRange,
   type FilePreview
 } from '../../shared/file-preview-kind'
-import { assertPreviewableRasterHeader, localPrefixReader } from './preview-raster-header-check'
+import {
+  assertLocalPreviewRasterHeader,
+  assertRemotePreviewRasterHeader
+} from './preview-raster-header-check'
 import type { RemoteFilePreviewAddress } from '../../shared/remote-file-preview-address'
 import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
 import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
@@ -20,7 +23,6 @@ import {
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
-  readRemotePreviewPrefix,
   statRemotePreviewFile,
   type RemotePreviewFileSnapshot
 } from './remote-file-preview-reader'
@@ -155,7 +157,7 @@ export async function readLocalFilePreview(
     const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
     const { handle, stats } = await openLocalRegularFile(filePath)
     try {
-      await assertPreviewableRasterHeader(preview, localPrefixReader(handle, stats.size))
+      await assertLocalPreviewRasterHeader(preview, handle, stats.size)
     } finally {
       await handle.close()
     }
@@ -206,9 +208,7 @@ export async function grantRemoteFilePreview(
     throw error
   }
   try {
-    await assertPreviewableRasterHeader(preview, (bytes) =>
-      readRemotePreviewPrefix(pinned, Math.min(bytes, snapshot.size), lifetime.signal)
-    )
+    await assertRemotePreviewRasterHeader(preview, pinned, snapshot.size, lifetime.signal)
     // A renderer gone mid-mint would leave a grant no teardown ever drops.
     lifetime.signal.throwIfAborted()
   } finally {
@@ -260,9 +260,7 @@ async function handleRemotePreviewRequest(
     // Re-stat (at most once a second) like a local file re-opens per request, so a growing recording keeps playing.
     const { size } = await remoteSnapshot(grant, remote)
     // The file can change after mint; check the bytes this response serves.
-    await assertPreviewableRasterHeader(grant.preview, (bytes) =>
-      readRemotePreviewPrefix(remote, Math.min(bytes, size), controller.signal)
-    )
+    await assertRemotePreviewRasterHeader(grant.preview, remote, size, controller.signal)
     return await createMediaRangeResponse(request, grant.mimeType, {
       size,
       read: (offset, length) => readRemotePreviewChunk(remote, offset, length, controller.signal),
@@ -305,7 +303,7 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
     const { handle, stats } = await openLocalRegularFile(filePath)
     try {
       // The file can change after mint; check the handle this response serves.
-      await assertPreviewableRasterHeader(grant.preview, localPrefixReader(handle, stats.size))
+      await assertLocalPreviewRasterHeader(grant.preview, handle, stats.size)
     } catch (error) {
       await handle.close()
       throw error

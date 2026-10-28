@@ -23,7 +23,7 @@ vi.mock('./remote-file-preview-reader', async (importOriginal) => ({
   ...(await importOriginal<typeof RemoteFilePreviewReader>()),
   statRemotePreviewFile: vi.fn(),
   readRemotePreviewChunk: vi.fn(),
-  readRemotePreviewPrefix: vi.fn(),
+  readRemotePreviewRange: vi.fn(),
   assertRemoteChunkReadsSupported: vi.fn()
 }))
 
@@ -38,7 +38,7 @@ import {
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
-  readRemotePreviewPrefix,
+  readRemotePreviewRange,
   statRemotePreviewFile
 } from './remote-file-preview-reader'
 import type * as RemoteFilePreviewReader from './remote-file-preview-reader'
@@ -240,7 +240,7 @@ describe('media preview protocol', () => {
     })
 
     it('streams a remote image or PDF to its viewer, refusing a proven-oversized image', async () => {
-      vi.mocked(readRemotePreviewPrefix).mockResolvedValue(png(4, 3))
+      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(4, 3))
       await expect(
         grantRemoteFilePreview(event, addr('docs/shot.png'), store)
       ).resolves.toMatchObject({
@@ -254,10 +254,22 @@ describe('media preview protocol', () => {
         isImage: true,
         mimeType: 'application/pdf'
       })
-      vi.mocked(readRemotePreviewPrefix).mockResolvedValue(png(100_000, 100_000))
+      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(100_000, 100_000))
       await expect(grantRemoteFilePreview(event, addr('docs/bomb.png'), store)).rejects.toThrow(
         'Image dimensions exceed the preview safety limit'
       )
+      vi.mocked(readRemotePreviewRange).mockResolvedValue(png(4, 3))
+      vi.mocked(statRemotePreviewFile).mockResolvedValueOnce({ size: 60 * 1024 * 1024, mtime: 1 })
+      // An <img> decodes the whole file, so images keep the 50 MB cap; PDFs read by range don't.
+      await expect(grantRemoteFilePreview(event, addr('docs/huge.png'), store)).rejects.toThrow(
+        'File too large'
+      )
+      vi.mocked(statRemotePreviewFile).mockResolvedValueOnce({ size: 60 * 1024 * 1024, mtime: 1 })
+      await expect(
+        grantRemoteFilePreview(event, addr('docs/huge.pdf'), store)
+      ).resolves.toMatchObject({
+        size: 60 * 1024 * 1024
+      })
     })
 
     it("leaves an older host's images and PDFs on files.readPreview, and refuses a swapped image", async () => {
@@ -266,9 +278,9 @@ describe('media preview protocol', () => {
       )
       await expect(grantRemoteFilePreview(event, addr('docs/spec.pdf'), store)).resolves.toBeNull()
 
-      vi.mocked(readRemotePreviewPrefix).mockResolvedValueOnce(png(4, 3))
+      vi.mocked(readRemotePreviewRange).mockResolvedValueOnce(png(4, 3))
       const minted = await grantRemoteFilePreview(event, addr('docs/shot.png'), store)
-      vi.mocked(readRemotePreviewPrefix).mockResolvedValueOnce(png(100_000, 100_000))
+      vi.mocked(readRemotePreviewRange).mockResolvedValueOnce(png(100_000, 100_000))
       expect((await range(minted?.mediaUrl ?? '')).status).not.toBe(206)
     })
 

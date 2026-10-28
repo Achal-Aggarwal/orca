@@ -145,26 +145,29 @@ export async function assertRemoteChunkReadsSupported(
   chunkReadVerdicts.add(key)
 }
 
-/** The file's first `bytes` bytes, in chunks the host accepts; fewer at EOF. */
-export async function readRemotePreviewPrefix(
+/** `length` bytes from `offset` (clipped to `size`), in chunks the host accepts; fewer at EOF. */
+export async function readRemotePreviewRange(
   address: RemoteFilePreviewAddress,
-  bytes: number,
+  offset: number,
+  length: number,
+  size: number,
   signal: AbortSignal
 ): Promise<Uint8Array> {
-  const prefix = new Uint8Array(bytes)
-  let offset = 0
-  while (offset < bytes) {
+  const end = Math.min(offset + length, size)
+  const range = new Uint8Array(Math.max(0, end - offset))
+  let read = 0
+  while (offset + read < end) {
     const chunk = await readRemotePreviewChunk(
       address,
-      offset,
-      Math.min(MAX_FILE_RANGE_READ_BYTES, bytes - offset),
+      offset + read,
+      Math.min(MAX_FILE_RANGE_READ_BYTES, end - offset - read),
       signal
     )
     if (chunk.byteLength === 0) {
       break
     }
-    prefix.set(chunk, offset)
-    offset += chunk.byteLength
+    range.set(chunk, read)
+    read += chunk.byteLength
   }
-  return prefix.subarray(0, offset)
+  return range.subarray(0, read)
 }

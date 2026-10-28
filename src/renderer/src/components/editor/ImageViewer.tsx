@@ -64,8 +64,8 @@ export default function ImageViewer({
 
   const filename = useMemo(() => filePath.split(/[/\\]/).pop() || filePath, [filePath])
   const cleanedContent = useMemo(() => content.replace(/\s/g, ''), [content])
-  // A remint changes only the URL's revision; keep zoom unless the grant or the bytes changed.
-  const imageStateKey = `${filePath}\n${mimeType}\n${src?.split('?')[0] ?? cleanedContent}`
+  // A remint changes only the URL's revision; keep zoom unless the grant or the file's size changed.
+  const imageStateKey = `${filePath}\n${mimeType}\n${src ? `${src.split('?')[0]}\n${byteSize ?? ''}` : cleanedContent}`
   const [lastImageStateKey, setLastImageStateKey] = useState(imageStateKey)
   if (lastImageStateKey !== imageStateKey) {
     setLastImageStateKey(imageStateKey)
