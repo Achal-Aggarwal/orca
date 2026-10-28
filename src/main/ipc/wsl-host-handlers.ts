@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron'
+import { noteWslHostUserAction } from '../wsl/wsl-host-user-actions'
 import {
   WSL_HOST_STATUS_CHANNEL,
   type WslHostAddResult,
@@ -32,6 +33,7 @@ import {
   pushWslOrcadHostAccountEnv
 } from '../wsl/wsl-orcad-host-account-push'
 import { wslOrcadHostSupports } from '../wsl/wsl-orcad-host-environments'
+import { wslHostConnectOptions } from '../wsl/wsl-host-connect-request'
 
 export const WSL_HOST_HANDLER_CHANNELS = [
   'wslHosts:listDistros',
@@ -218,8 +220,16 @@ export function registerWslHostHandlers(args: WslHostHandlerArgs): void {
   ipcMain.handle('wslHosts:listDistros', () => wsl.listDistros())
   ipcMain.handle(
     'wslHosts:add',
-    (_event, request: { distro: string; startIfStopped?: boolean }): Promise<WslHostAddResult> =>
-      wsl.add(request)
+    async (
+      _event,
+      request: { distro: string; startIfStopped?: boolean }
+    ): Promise<WslHostAddResult> => {
+      const result = await wsl.add(request)
+      if (result.ok) {
+        noteWslHostUserAction({ kind: 'added', distro: request.distro })
+      }
+      return result
+    }
   )
   ipcMain.handle('wslHosts:remove', async (_event, request: { environmentId: string }) => {
     if (args.store.getSettings().activeRuntimeEnvironmentId === request.environmentId) {
@@ -231,14 +241,10 @@ export function registerWslHostHandlers(args: WslHostHandlerArgs): void {
   })
   ipcMain.handle(
     'wslHosts:connect',
-    (_event, request: { environmentId: string; intent?: unknown }) =>
-      // The Settings Connect is the user's own: it keeps a host whose Remove didn't finish.
-      wsl.connect(request.environmentId, {
-        withdrawPendingRemoval: true,
-        ...(request.intent === 'update' || request.intent === 'force'
-          ? { intent: request.intent }
-          : {})
-      })
+    (
+      _event,
+      request: { environmentId: string; intent?: unknown; withdrawPendingRemoval?: unknown }
+    ) => wsl.connect(request.environmentId, wslHostConnectOptions(request))
   )
   ipcMain.handle('wslHosts:getCapability', (): WslHostCapability => ({
     serverFiles: wsl.hasServerFiles()

@@ -52,7 +52,7 @@ function launchKeys(settings: AgentLaunchSettings): Map<string, string> {
     ...envs.keys(),
     ...Object.keys(settings.agentDefaultArgs ?? {})
   ])) {
-    const env = Object.entries(envs.get(agent) ?? {}).sort(([a], [b]) => a.localeCompare(b))
+    const env = Object.entries(envs.get(agent) ?? {}).sort(([a], [b]) => a.localeCompare(b, 'en'))
     keys.set(
       agent,
       JSON.stringify([commands.get(agent) ?? null, env, settings.agentDefaultArgs?.[agent]])
