@@ -115,6 +115,8 @@ export class CdpWsProxy {
       this.wss.on('connection', (ws) => {
         this.closeClient()
         this.client = ws
+        // Keep errors contained even after a replaced client's message listeners are detached.
+        ws.on('error', () => ws.terminate())
         const onMessage = (data: WebSocket.RawData): void => {
           runUnderRemoteCliPageAdmission(this.webContents.id, () =>
             this.handleClientMessage(ws, data.toString())
