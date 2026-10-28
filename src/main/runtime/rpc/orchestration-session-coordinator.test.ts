@@ -311,11 +311,9 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
       )
     ).toMatchObject({ ok: false, error: { code: 'consumer_fenced' } })
     expect(acknowledge).not.toHaveBeenCalled()
-    expect(h.db.getDeliveryRaw(ack)?.acknowledged_at).toBeNull()
     expect(await as(SESSION_Y, 'orchestration.check', {})).toMatchObject({
-      deliveryId: ack,
-      replayed: true,
-      messages: [{ id: idOf(message) }]
+      deliveryId: null,
+      count: 0
     })
     expect(await as(SESSION_Y, 'orchestration.check', { ack })).toMatchObject({
       acknowledged: ack,

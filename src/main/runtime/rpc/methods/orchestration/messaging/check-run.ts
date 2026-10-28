@@ -133,7 +133,7 @@ export async function checkRunMailbox(args: {
   })
   const readPeek = () => db.getUnreadRunMailbox(run.id, 100, typeFilter)
   const readDelivery = (wakeTypes?: MessageType[]) =>
-    db.getOrCreateRunDelivery({ runId: run.id, consumerGeneration: generation, wakeTypes })
+    db.takeRunDelivery({ runId: run.id, consumerGeneration: generation, wakeTypes })
   let peeked = params.peek ? readPeek() : []
   if (params.peek && peeked.length > 0) {
     return peekResult(peeked)
@@ -146,6 +146,7 @@ export async function checkRunMailbox(args: {
       messages: exposeMessages(current.messages),
       count: current.messages.length,
       replayed: current.replayed,
+      deliveryAcknowledged: true,
       acknowledged: acknowledged ?? null,
       timedOut: false,
       cancelled: false,
@@ -171,6 +172,7 @@ export async function checkRunMailbox(args: {
     }
   }
 
+  const deliveryCursor = db.getDeliveryCursor()
   const waitResult = await runtime.waitForMessage(address, {
     typeFilter: typeFilter as string[] | undefined,
     timeoutMs: params.timeoutMs ?? undefined,
@@ -233,13 +235,15 @@ export async function checkRunMailbox(args: {
     peeked = readPeek()
     return { ...peekResult(peeked), timedOut: false, cancelled: false, connectionLost: false }
   }
-  current = readDelivery(typeFilter)
+  current =
+    readDelivery(typeFilter) ?? db.getMailboxDeliveryTakenAfter(address, generation, deliveryCursor)
   return {
     runId: run.id,
     deliveryId: current?.delivery.id ?? null,
     messages: exposeMessages(current?.messages ?? []),
     count: current?.messages.length ?? 0,
     replayed: current?.replayed ?? false,
+    ...(current ? { deliveryAcknowledged: true } : {}),
     acknowledged: acknowledged ?? null,
     timedOut: false,
     cancelled: false,

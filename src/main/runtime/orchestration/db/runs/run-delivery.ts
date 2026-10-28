@@ -36,6 +36,22 @@ export function getOrCreateRunDelivery(
   })
 }
 
+export function takeRunDelivery(
+  this: OrchestrationDb,
+  params: {
+    runId: string
+    consumerGeneration: number
+    wakeTypes?: MessageType[]
+  }
+): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
+  return this.takeMailboxDelivery({
+    runId: params.runId,
+    mailboxHandle: `run:${params.runId}`,
+    consumerGeneration: params.consumerGeneration,
+    wakeTypes: params.wakeTypes
+  })
+}
+
 export function acknowledgeRunDelivery(
   this: OrchestrationDb,
   params: {
@@ -119,6 +135,7 @@ export function hasOutstandingRunDelivery(this: OrchestrationDb, runId: string):
 export type RunDeliveryMethods = {
   requireCurrentConsumer: typeof requireCurrentConsumer
   getOrCreateRunDelivery: typeof getOrCreateRunDelivery
+  takeRunDelivery: typeof takeRunDelivery
   acknowledgeRunDelivery: typeof acknowledgeRunDelivery
   getRunMailboxHistory: typeof getRunMailboxHistory
   getUnreadRunMailbox: typeof getUnreadRunMailbox
@@ -129,6 +146,7 @@ export function attachRunDelivery(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
     requireCurrentConsumer,
     getOrCreateRunDelivery,
+    takeRunDelivery,
     acknowledgeRunDelivery,
     getRunMailboxHistory,
     getUnreadRunMailbox,

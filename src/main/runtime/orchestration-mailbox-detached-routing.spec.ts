@@ -55,11 +55,9 @@ describe('orchestration detached mailbox routing', () => {
     expect(checked.messages).toEqual([expect.objectContaining({ id: message.id })])
     expect(db.getMessageById(message.id)).toMatchObject({
       to_handle: `dispatch:${dispatch.id}`,
-      read: 0,
+      read: 1,
       delivered_at: expect.any(String)
     })
-    await checkBoundMailbox(harness.runtime, { ack: checked.deliveryId! })
-    expect(db.getMessageById(message.id)?.read).toBe(1)
     db.close()
   })
 

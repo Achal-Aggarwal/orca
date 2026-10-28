@@ -52,10 +52,24 @@ describe('formatted delivery acknowledgment', () => {
           messages: [{ id: 'msg_one', from_handle: 'worker' }],
           count: 1,
           deliveryId: 'delivery_one',
+          deliveryAcknowledged: true,
           formatted: 'Message body'
         },
         'term_coord'
       )
     ).toBe('Delivery delivery_one\nMessage body')
+  })
+
+  it('tells the caller to ack when an older runtime did not', () => {
+    expect(
+      formatOrchestrationCheckText(
+        {
+          messages: [{ id: 'msg_one', from_handle: 'worker', subject: 'done' }],
+          count: 1,
+          deliveryId: 'delivery_one'
+        },
+        'term_coord'
+      )
+    ).toContain('rerun this check with --ack delivery_one.')
   })
 })

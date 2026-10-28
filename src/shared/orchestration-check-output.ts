@@ -37,6 +37,8 @@ export type OrchestrationCheckOutput = {
   count: number
   formatted?: string
   deliveryId?: string | null
+  // Older runtimes omit it and replay the batch until an explicit --ack.
+  deliveryAcknowledged?: boolean
   timedOut?: boolean
   cancelled?: boolean
   connectionLost?: boolean
@@ -80,7 +82,11 @@ export function formatOrchestrationCheckText(
         ? '[LEGACY RECOVERY REPLAY — MAY HAVE BEEN SEEN]\n'
         : '[LEGACY COMPATIBILITY]\n'
     : ''
-  const deliveryNotice = formatCurrentDeliveryNotice(prepared.legacyCompatibility?.currentDelivery)
+  const deliveryNotice =
+    formatCurrentDeliveryNotice(prepared.legacyCompatibility?.currentDelivery) +
+    (prepared.deliveryId && prepared.deliveryAcknowledged !== true
+      ? `\nThis Orca version does not acknowledge batches automatically. After handling every message, rerun this check with --ack ${prepared.deliveryId}.`
+      : '')
   if (prepared.formatted) {
     return `${legacyHeader}${prepared.deliveryId ? `Delivery ${prepared.deliveryId}\n` : ''}${prepared.formatted}${deliveryNotice}`
   }

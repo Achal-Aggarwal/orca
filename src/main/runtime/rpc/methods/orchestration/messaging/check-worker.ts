@@ -1,4 +1,4 @@
-import type { MessageType, OrchestrationDb } from '../../../../orchestration/db'
+import type { MessageRow, MessageType, OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { formatMessageBanner } from '../../../../orchestration/formatter'
@@ -191,6 +191,10 @@ export async function checkWorkerMailbox(args: {
       interruptedAcknowledgedCheck(deliveryRunId, acknowledged.delivery.id, 'outcome_unknown')
     )
   }
+  const formatted = (messages: MessageRow[]) =>
+    params.format || params.inject
+      ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
+      : {}
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
   const readPeek = () => db.getUnreadMessages(address, typeFilter)
   const readDelivery = (wakeTypes?: MessageType[]) => {
@@ -198,7 +202,7 @@ export async function checkWorkerMailbox(args: {
       return undefined
     }
     try {
-      return db.getOrCreateMailboxDelivery({
+      return db.takeMailboxDelivery({
         runId: deliveryRunId,
         mailboxHandle: address,
         consumerGeneration: workerMailbox.generation,
@@ -216,9 +220,7 @@ export async function checkWorkerMailbox(args: {
       messages: exposeMessages(messages),
       count: messages.length,
       acknowledged: acknowledged?.delivery.id ?? null,
-      ...(params.format || params.inject
-        ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
-        : {})
+      ...formatted(messages)
     }
   }
   if (params.peek) {
@@ -229,9 +231,7 @@ export async function checkWorkerMailbox(args: {
         messages: exposeMessages(messages),
         count: messages.length,
         acknowledged: acknowledged?.delivery.id ?? null,
-        ...(params.format || params.inject
-          ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
-          : {})
+        ...formatted(messages)
       }
     }
   } else {
@@ -243,16 +243,16 @@ export async function checkWorkerMailbox(args: {
         messages: exposeMessages(current?.messages ?? []),
         count: current?.messages.length ?? 0,
         replayed: current?.replayed ?? false,
+        ...(current ? { deliveryAcknowledged: true } : {}),
         acknowledged: acknowledged?.delivery.id ?? null,
         timedOut: false,
         cancelled: false,
         connectionLost: false,
-        ...(params.format || params.inject
-          ? { formatted: current?.messages.map(formatMessageBanner).join('\n\n') ?? '' }
-          : {})
+        ...formatted(current?.messages ?? [])
       }
     }
   }
+  const deliveryCursor = db.getDeliveryCursor()
   // Binding can happen during recovery, before run-create/run-use can cancel this wait.
   const waitResult =
     activeDispatch && currentDispatchAssigneeRun(runtime, db, activeDispatch)
@@ -284,21 +284,20 @@ export async function checkWorkerMailbox(args: {
       messages: exposeMessages(arrived),
       count: arrived.length,
       acknowledged: acknowledged?.delivery.id ?? null,
-      ...(params.format || params.inject
-        ? { formatted: arrived.map(formatMessageBanner).join('\n\n') }
-        : {})
+      ...formatted(arrived)
     }
   }
-  const arrived = readDelivery(typeFilter)
+  const arrived =
+    readDelivery(typeFilter) ??
+    db.getMailboxDeliveryTakenAfter(address, workerMailbox.generation, deliveryCursor)
   return {
     ...mailboxIdentity,
     deliveryId: arrived?.delivery.id ?? null,
     messages: exposeMessages(arrived?.messages ?? []),
     count: arrived?.messages.length ?? 0,
     replayed: arrived?.replayed ?? false,
+    ...(arrived ? { deliveryAcknowledged: true } : {}),
     acknowledged: acknowledged?.delivery.id ?? null,
-    ...(params.format || params.inject
-      ? { formatted: arrived?.messages.map(formatMessageBanner).join('\n\n') ?? '' }
-      : {})
+    ...formatted(arrived?.messages ?? [])
   }
 }

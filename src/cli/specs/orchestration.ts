@@ -89,8 +89,8 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
     summary: "Check this agent's messages",
     usage:
       'orca orchestration check [--terminal <handle>] [--run <run_id>] [--ack <delivery_id>] [--unread | --peek | --all] [--types <type,...>] [--format] [--wait] [--timeout-ms <n>] [--retry-request <id>] [--json]\n' +
-      "  default: return the bound Run's oldest unacknowledged FIFO batch.\n" +
-      '  --ack: acknowledge the prior whole batch before checking/waiting.\n' +
+      "  default: return the bound Run's oldest unread FIFO batch and mark it handled.\n" +
+      '  --ack: optional; acknowledges a batch from an older Orca that does not mark it.\n' +
       '  --peek: return only unread messages without marking them read.\n' +
       '  --all: return every message for the handle; does not mark read.\n' +
       '  --wait: block until a matching message arrives or --timeout-ms expires.\n' +
@@ -117,7 +117,7 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
       'On Windows PowerShell, quote comma-separated type filters, e.g. --types "worker_done,escalation".',
       '--types is the wake condition for --wait; a returned Delivery is always the whole FIFO batch, so it is never filtered by type. Without --wait it has no effect on consuming checks. Only --peek and --all filter their rows.',
       '--format renders the returned rows as local text only; it never writes to another terminal.',
-      'A bound Run replays the same Delivery until --ack or all its messages are marked read, even with --types; process every message before acknowledging. Several --wait calls may wait on one Run inbox; waiting reserves nothing, listeners woken together get the same Delivery, and a repeated --ack is a no-op.'
+      'A consuming check marks the batch it returns as handled, so the next check returns newer mail; no --ack is needed. If the response was lost, rerun with the --retry-request it printed to see the same batch, or use --all to see every message. Several --wait calls may wait on one inbox; waiting reserves nothing, listeners woken together get the same Delivery, and --ack of a handled Delivery is a no-op.'
     ]
   },
   {

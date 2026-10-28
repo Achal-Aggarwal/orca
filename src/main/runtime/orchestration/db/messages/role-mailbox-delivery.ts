@@ -173,6 +173,54 @@ export function acknowledgeMailboxDelivery(
   }
 }
 
+// A consuming read hands over the batch it returns; a lost response replays from its request receipt.
+export function takeMailboxDelivery(
+  this: OrchestrationDb,
+  params: Parameters<OrchestrationDb['getOrCreateMailboxDelivery']>[0]
+): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
+  const current = this.getOrCreateMailboxDelivery(params)
+  if (!current) {
+    return undefined
+  }
+  const { delivery } = this.acknowledgeMailboxDelivery({
+    ...params,
+    deliveryId: current.delivery.id
+  })
+  return { ...current, delivery }
+}
+
+// Global rather than per-mailbox so reading it is a rowid lookup, not a table scan.
+export function getDeliveryCursor(this: OrchestrationDb): number {
+  const row = this.db.prepare('SELECT MAX(rowid) AS cursor FROM deliveries').get() as {
+    cursor: number | null
+  }
+  return row.cursor ?? 0
+}
+
+// Waiters woken by the same arrival share its batch, so a forgotten waiter cannot swallow it.
+export function getMailboxDeliveryTakenAfter(
+  this: OrchestrationDb,
+  mailboxHandle: string,
+  consumerGeneration: number,
+  cursor: number
+): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
+  const delivery = this.db
+    .prepare(
+      `SELECT * FROM deliveries
+       WHERE rowid > ? AND mailbox_handle = ? AND consumer_generation = ?
+         AND status = 'acknowledged'
+       ORDER BY rowid ASC LIMIT 1`
+    )
+    .get(cursor, mailboxHandle, consumerGeneration) as DeliveryRow | undefined
+  return delivery
+    ? {
+        delivery: exposeDeliveryTimestamps(delivery),
+        messages: this.getDeliveryMessages(delivery),
+        replayed: true
+      }
+    : undefined
+}
+
 export function hasOutstandingMailboxDelivery(
   this: OrchestrationDb,
   mailboxHandle: string
@@ -216,6 +264,9 @@ export type RoleMailboxDeliveryMethods = {
   getDeliveryMessages: typeof getDeliveryMessages
   getOrCreateMailboxDelivery: typeof getOrCreateMailboxDelivery
   acknowledgeMailboxDelivery: typeof acknowledgeMailboxDelivery
+  takeMailboxDelivery: typeof takeMailboxDelivery
+  getDeliveryCursor: typeof getDeliveryCursor
+  getMailboxDeliveryTakenAfter: typeof getMailboxDeliveryTakenAfter
   hasOutstandingMailboxDelivery: typeof hasOutstandingMailboxDelivery
   getOutstandingMailboxDelivery: typeof getOutstandingMailboxDelivery
   fenceUnacknowledgedMailboxDeliveries: typeof fenceUnacknowledgedMailboxDeliveries
@@ -227,6 +278,9 @@ export function attachRoleMailboxDelivery(ctor: { prototype: object }): void {
     getDeliveryMessages,
     getOrCreateMailboxDelivery,
     acknowledgeMailboxDelivery,
+    takeMailboxDelivery,
+    getDeliveryCursor,
+    getMailboxDeliveryTakenAfter,
     hasOutstandingMailboxDelivery,
     getOutstandingMailboxDelivery,
     fenceUnacknowledgedMailboxDeliveries

@@ -447,17 +447,13 @@ describe('Run-bound lead mailbox boundaries', () => {
     expect(state.db.getMessageById(privateMail.id)).toMatchObject({ read: 0, run_id: foreign.id })
   })
 
-  it('treats types as a wake condition and replays the entire residual FIFO batch', async () => {
+  it('treats types as a wake condition and returns the entire residual FIFO batch', async () => {
     residual('older status')
     residual('decision needed', 'question')
     runMail()
     const first = await check({ wait: true, types: 'question' })
     expect(first).toMatchObject({
       messages: [{ subject: 'older status' }, { subject: 'decision needed' }]
-    })
-    expect(await check({ wait: true, types: 'worker_done' })).toMatchObject({
-      deliveryId: deliveryId(first),
-      replayed: true
     })
     expect(await check({ ack: deliveryId(first) })).toMatchObject({
       runId: leadRun.id,
@@ -484,16 +480,12 @@ describe('Run-bound lead mailbox boundaries', () => {
     }
   )
 
-  it('replays an outstanding Run batch before exposing older nonmatching residual mail', async () => {
+  it('hands older nonmatching residual mail to the check after a filtered Run wait', async () => {
     residual('status')
     runMail()
     const first = await check({ wait: true, types: 'question' })
     expect(first).toMatchObject({ runId: leadRun.id })
-    expect(await check()).toMatchObject({ deliveryId: deliveryId(first), replayed: true })
-    expect(await check({ ack: deliveryId(first) })).toMatchObject({
-      acknowledged: deliveryId(first),
-      messages: [{ subject: 'status' }]
-    })
+    expect(await check()).toMatchObject({ messages: [{ subject: 'status' }] })
   })
 
   it('keeps explicit Run checks scoped and refuses the parent Run', async () => {

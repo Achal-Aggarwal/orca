@@ -64,9 +64,9 @@ Don't post to Slack, GitHub, or other channels during the run; report through th
   # you send worker_done, so a redirect lands before the task settles.
   orca orchestration check --terminal orca_session_id:WORKER --json
 
-  # After processing every message, ack the returned deliveryId; this also reads
-  # the next batch. Repeat until count is 0, then resume. Unacked batches replay
-  # and hide newer mail.
+  # Each check marks the batch it returns as handled; repeat until count is 0,
+  # then resume. Only if a batch lacks "deliveryAcknowledged": true (an older
+  # Orca), ack its deliveryId so it does not replay and hide newer mail:
   orca orchestration check --terminal orca_session_id:WORKER --ack <delivery_id> --json
 \`\`\`
 
@@ -154,9 +154,9 @@ Don't post to Slack, GitHub, or other channels during the run; report through th
   # you send worker_done, so a redirect lands before the task settles.
   orca orchestration check --terminal term_WORKER --json
 
-  # After processing every message, ack the returned deliveryId; this also reads
-  # the next batch. Repeat until count is 0, then resume. Unacked batches replay
-  # and hide newer mail.
+  # Each check marks the batch it returns as handled; repeat until count is 0,
+  # then resume. Only if a batch lacks "deliveryAcknowledged": true (an older
+  # Orca), ack its deliveryId so it does not replay and hide newer mail:
   orca orchestration check --terminal term_WORKER --ack <delivery_id> --json
 \`\`\`
 

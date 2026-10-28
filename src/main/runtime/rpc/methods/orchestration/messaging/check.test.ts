@@ -282,11 +282,6 @@ describe('orchestration RPC methods', () => {
         code: 'stale_delivery',
         message: `${queued.id} is a message id, not a delivery id. Acknowledge the batch with the deliveryId field from the check response; process the entire batch before acknowledging.`
       })
-      expect(db.getMessageById(queued.id)).toMatchObject({ id: queued.id, read: 0 })
-      expect(await call('orchestration.check', { terminal: 'term_coord' })).toMatchObject({
-        deliveryId,
-        messages: [{ id: queued.id }]
-      })
       expect(
         await call('orchestration.check', { terminal: 'term_coord', ack: deliveryId })
       ).toMatchObject({ acknowledged: deliveryId })
@@ -400,7 +395,7 @@ describe('orchestration RPC methods', () => {
       expect(result.messages[0].type).toBe('worker_done')
       expect(db.getTask(task.id)?.status).toBe('completed')
       expect(db.getDispatchContextById(dispatch.id)?.status).toBe('completed')
-      expect(db.getUnreadMessages(`run:${activeRunId}`)).toHaveLength(1)
+      expect(db.getUnreadMessages(`run:${activeRunId}`)).toHaveLength(0)
       const taskList = (await call('orchestration.taskList', {})) as {
         tasks: {
           id: string
@@ -423,12 +418,11 @@ describe('orchestration RPC methods', () => {
       const repeated = (await call('orchestration.check', {
         terminal: 'term_coord',
         types: 'worker_done'
-      })) as { count: number; deliveryId: string }
-      expect(repeated.count).toBe(1)
-      expect(repeated.deliveryId).toBe(result.deliveryId)
+      })) as { count: number }
+      expect(repeated.count).toBe(0)
       const acknowledged = (await call('orchestration.check', {
         terminal: 'term_coord',
-        ack: repeated.deliveryId,
+        ack: result.deliveryId,
         types: 'worker_done'
       })) as { count: number }
       expect(acknowledged.count).toBe(0)
