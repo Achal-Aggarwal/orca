@@ -109,7 +109,7 @@ export default function ProjectCell({
     const itemUrl = row.content.url
     return (
       <div className="flex min-w-0 items-center text-xs text-muted-foreground">
-        <span className="truncate">
+        <span className="overflow-hidden whitespace-nowrap">
           {linked.pullRequests.map((pr, index) => (
             <React.Fragment key={pr.url}>
               {index > 0 ? ', ' : null}
