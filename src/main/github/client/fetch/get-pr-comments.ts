@@ -148,11 +148,14 @@ export function getPRComments(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<PRComment[]> {
+  // Forced refreshes often follow a mutation, so they must not join a read that started before it.
+  if (options?.noCache) {
+    return readPRComments(repoPath, prNumber, options, connectionId, localGitOptions)
+  }
   const key = JSON.stringify([
     repoPath,
     prNumber,
     options?.prRepo ?? null,
-    Boolean(options?.noCache),
     connectionId ?? null,
     githubReadExecutionScope(localGitOptions)
   ])

@@ -235,10 +235,11 @@ describe('PR conversation request reuse', () => {
     expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps explicit refresh, host, environment, and execution runtimes separate', async () => {
+  it('never shares explicit refreshes and keeps host, environment, and execution runtimes separate', async () => {
     ghExecFileAsyncMock.mockResolvedValue(completeResponse())
     const reads = [
       getPRComments('/repo', 7, options),
+      getPRComments('/repo', 7, { ...options, noCache: true }),
       getPRComments('/repo', 7, { ...options, noCache: true }),
       getPRComments('/repo', 7, { prRepo: { ...repository, host: 'github.example.com' } }),
       getPRComments('/repo', 7, options, null, { wslDistro: 'Ubuntu' }),
@@ -249,7 +250,7 @@ describe('PR conversation request reuse', () => {
     try {
       const results = await Promise.all(reads)
       expect(results.every((comments) => comments[0]?.id === 10)).toBe(true)
-      expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(6)
+      expect(ghExecFileAsyncMock).toHaveBeenCalledTimes(7)
     } finally {
       vi.unstubAllEnvs()
     }
