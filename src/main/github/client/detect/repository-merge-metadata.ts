@@ -30,10 +30,14 @@ export async function detectRepositoryMergeMetadata(
   const wslDistro = options.wslDistro ?? (cwd ? parseWslUncPath(cwd)?.distro : undefined)
   const configPaths = wslDistro || process.platform !== 'win32' ? posix : win32
   const environment = options.env ?? process.env
+  const configEnvironment =
+    configPaths === win32 ? mergeCommandEnvironment(environment, {}, 'win32') : environment
   const configDir =
-    configPaths === win32
-      ? mergeCommandEnvironment(environment, {}, 'win32')?.GH_CONFIG_DIR
-      : environment.GH_CONFIG_DIR
+    configEnvironment?.GH_CONFIG_DIR ||
+    configEnvironment?.XDG_CONFIG_HOME ||
+    (configPaths === win32
+      ? configEnvironment?.APPDATA || configEnvironment?.USERPROFILE
+      : configEnvironment?.HOME)
   const configNeedsCwd =
     configDir &&
     (!configPaths.isAbsolute(configDir) ||

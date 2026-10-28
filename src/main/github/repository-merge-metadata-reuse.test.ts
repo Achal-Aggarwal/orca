@@ -24,6 +24,7 @@ function response(autoMergeAllowed: boolean): { stdout: string } {
 beforeEach(() => {
   vi.resetAllMocks()
   vi.stubEnv('GH_CONFIG_DIR', undefined)
+  vi.stubEnv('XDG_CONFIG_HOME', undefined)
   _resetMergeQueueCacheForTests()
   guard.mockReturnValue({ blocked: false })
 })
@@ -99,19 +100,65 @@ describe('repository merge metadata reuse', () => {
     expect(exec).toHaveBeenCalledTimes(1)
   })
 
-  it.each([false, true])(
-    'isolates relative config directories (inherited: %s)',
-    async (inherited) => {
-      vi.stubEnv('GH_CONFIG_DIR', '.gh')
-      const env = inherited ? undefined : { GH_CONFIG_DIR: '.gh' }
+  it.each([
+    ['GH_CONFIG_DIR', false],
+    ['GH_CONFIG_DIR', true],
+    ['XDG_CONFIG_HOME', false],
+    ['XDG_CONFIG_HOME', true]
+  ] as const)('isolates relative %s directories (inherited: %s)', async (variable, inherited) => {
+    vi.stubEnv(variable, '.gh')
+    const env = inherited ? undefined : { [variable]: '.gh' }
+    exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
+
+    await detectRepositoryMergeMetadata(repository, 'main', { ...options, env }, 'local:host')
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { cwd: '/another-worktree', env },
+        'local:host'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('honors an absolute config override above a relative XDG directory', async () => {
+    const env = {
+      GH_CONFIG_DIR: process.platform === 'win32' ? 'C:\\gh' : '/home/gh',
+      XDG_CONFIG_HOME: '.xdg'
+    }
+    exec.mockResolvedValueOnce(response(true))
+
+    await detectRepositoryMergeMetadata(repository, 'main', { ...options, env }, 'local:host')
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { cwd: '/another-worktree', env },
+        'local:host'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: true })
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([undefined, 'Ubuntu'])(
+    'isolates a relative default config directory in %s',
+    async (wslDistro) => {
+      const env =
+        !wslDistro && process.platform === 'win32' ? { APPDATA: '.gh' } : { HOME: '.home' }
       exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
 
-      await detectRepositoryMergeMetadata(repository, 'main', { ...options, env }, 'local:host')
+      await detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { ...options, env, wslDistro },
+        'local:host'
+      )
       await expect(
         detectRepositoryMergeMetadata(
           repository,
           'main',
-          { cwd: '/another-worktree', env },
+          { cwd: '/another-worktree', env, wslDistro },
           'local:host'
         )
       ).resolves.toMatchObject({ autoMergeAllowed: false })
