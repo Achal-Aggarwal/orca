@@ -326,18 +326,34 @@ describe('PDF export requesting document lifetime', () => {
   it('releases listeners and resources across repeated successful and retired exports', async () => {
     const sender = new EventEmitter()
     for (let index = 0; index < 10; index++) {
+      const retired = index % 2 === 0
+      const filePath = `/chosen/${index}.pdf`
       const images = Promise.withResolvers<void>()
       fake.images.mockReturnValueOnce(images.promise)
+      if (!retired) {
+        fake.dialog.mockResolvedValueOnce({ canceled: false, filePath })
+      }
+      const prints = fake.print.mock.calls.length
+      const dialogs = fake.dialog.mock.calls.length
       const result = exportFrom(sender)
       await flush()
-      if (index % 2 === 0) {
+      if (retired) {
         sender.emit('render-process-gone')
       } else {
         images.resolve()
       }
       await flush()
       expectReleased(sender)
-      await expect(result).resolves.toEqual({ success: false, cancelled: true })
+      if (retired) {
+        await expect(result).resolves.toEqual({ success: false, cancelled: true })
+        expect(fake.print.mock.calls.length).toBe(prints)
+        expect(fake.dialog.mock.calls.length).toBe(dialogs)
+        expect(fake.savedFiles.has(filePath)).toBe(false)
+      } else {
+        await expect(result).resolves.toEqual({ success: true, filePath })
+        expect(fake.print.mock.calls.length).toBe(prints + 1)
+        expect(fake.savedFiles.get(filePath)).toEqual(PDF)
+      }
       images.reject(new Error('late image failure'))
       await flush()
       expectReleased(sender)
