@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../shared/constants'
 import { useAppStore } from '@/store'
+import { getWorktreeVisitTimestamp } from './worktree-visit-recency'
 import { activateAndRevealWorktree } from './worktree-activation'
 import { ensureWebRuntimeWorktreeTerminalAfterWake } from './web-runtime-worktree-terminal-after-wake'
 import { resetWebSessionTabsSnapshotFreshnessForTests } from '@/runtime/web-session-tabs-sync/tracking-lifecycle'
@@ -54,28 +55,27 @@ afterEach(() => {
 describe('activateAndRevealWorktree', () => {
   it('does not restamp focus recency when reselecting the already-active terminal worktree', () => {
     const worktree = makeWorktree()
-    const { markWorktreeVisited, recordWorktreeVisit, revealWorktreeInSidebar } =
-      seedAlreadyActiveWorktree(worktree)
+    const { revealWorktreeInSidebar } = seedAlreadyActiveWorktree(worktree)
+    const before = useAppStore.getState()
 
     const result = activateAndRevealWorktree(worktree.id)
 
     expect(result).toEqual({ primaryTabId: null })
-    expect(markWorktreeVisited).not.toHaveBeenCalled()
-    expect(recordWorktreeVisit).not.toHaveBeenCalled()
+    expect(useAppStore.getState().lastVisitedAtByWorktreeId).toBe(before.lastVisitedAtByWorktreeId)
+    expect(useAppStore.getState().worktreeNavHistory).toBe(before.worktreeNavHistory)
     expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
   })
 
   it('records a visit when activating the same worktree changes the current view', () => {
     const worktree = makeWorktree()
-    const { markWorktreeVisited, recordWorktreeVisit } = seedAlreadyActiveWorktree(worktree, {
-      activeView: 'tasks'
-    })
+    seedAlreadyActiveWorktree(worktree, { activeView: 'tasks' })
 
     const result = activateAndRevealWorktree(worktree.id)
 
     expect(result).toEqual({ primaryTabId: null })
-    expect(markWorktreeVisited).toHaveBeenCalledWith(worktree.id)
-    expect(recordWorktreeVisit).toHaveBeenCalledWith(worktree.id)
+    const state = useAppStore.getState()
+    expect(getWorktreeVisitTimestamp(state.lastVisitedAtByWorktreeId, worktree)).toBeDefined()
+    expect(state.worktreeNavHistory.at(-1)).toBe(worktree.id)
   })
 
   it('adds the activated project to an active project filter', () => {
