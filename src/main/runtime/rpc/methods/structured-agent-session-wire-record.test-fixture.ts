@@ -124,16 +124,17 @@ export function createQueuedImageWireRecord(
     records,
     witnesses,
     verify() {
+      const tuples = new Map(Object.entries(recorded.tuples))
       const expected = new Map(Object.entries(recorded.tests)).get(
         expect.getState().currentTestName ?? ''
       )
       expect(expected, 'missing deliberately recorded released-reader class').toBeDefined()
       expect(
         records.map((value) => createHash('sha256').update(JSON.stringify(value)).digest('hex'))
-      ).toStrictEqual(expected?.map((row) => row.inputSha256))
+      ).toStrictEqual(expected?.map((row) => tuples.get(row)?.inputSha256))
       expect(
         witnesses.map((value) => createHash('sha256').update(JSON.stringify(value)).digest('hex'))
-      ).toStrictEqual(expected?.map((row) => row.canonicalSha256))
+      ).toStrictEqual(expected?.map((row) => tuples.get(row)?.canonicalSha256))
     }
   }
 }
