@@ -29,7 +29,11 @@ export async function applyAcpMessageOptions(
       }
       if (error instanceof AcpAgentError) {
         throw withProviderDiagnostic(
-          new AgentSessionOptionRejectedError(error),
+          new AgentSessionOptionRejectedError(
+            error,
+            'optionRejected',
+            key === 'model' ? value : undefined
+          ),
           providerDiagnostic(acpPromptErrorDetail(session.spec.dialect, error), 'person')
         )
       }

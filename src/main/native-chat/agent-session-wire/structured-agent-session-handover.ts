@@ -6,6 +6,7 @@ import { StructuredAgentSessionInputNotAdmitted } from './structured-agent-sessi
 import type { AgentSessionHandoverContext } from './structured-agent-session-host-types'
 import {
   agentSessionFailureFact,
+  providerDiagnostic,
   providerDiagnosticOf
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
@@ -260,8 +261,12 @@ async function dispatchSafely(
       return {
         state: 'rejected',
         ...agentSessionFailureWords(
-          agentSessionFailureFact('providerRejected', { detail: providerDiagnosticOf(error) }),
-          { surface: 'rejection' }
+          agentSessionFailureFact(error.rejectedModel ? 'modelUnavailable' : 'providerRejected', {
+            detail: error.rejectedModel
+              ? providerDiagnostic(error.rejectedModel, 'log')
+              : providerDiagnosticOf(error)
+          }),
+          { ...ctx.failureTextContext, surface: 'rejection' }
         )
       }
     }
