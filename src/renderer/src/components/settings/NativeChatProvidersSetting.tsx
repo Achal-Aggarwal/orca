@@ -61,13 +61,7 @@ function ProviderStatus({
           "Couldn't check which agents are installed on this computer"
         )}
         {' · '}
-        <Button
-          type="button"
-          variant="link"
-          size="xs"
-          className="h-auto p-0 text-xs"
-          onClick={onRetry}
-        >
+        <Button type="button" variant="link" size="xs" className="h-auto" onClick={onRetry}>
           {translate('auto.components.settings.AgentsPane.retryDetection', 'Retry')}
         </Button>
       </span>

@@ -16,6 +16,7 @@ import {
 import { waitForWorktreeAgentActivationGateForTests } from './worktree-agent-activation-gate'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY as CHAT } from '../../../shared/protocol-version'
+import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 
 // Main's answer to the window's layout commands, as a switch-on build sends them.
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) =>
@@ -50,13 +51,23 @@ describe('activating a workspace whose last terminal was closed', () => {
     seedEmptyActivatableWorktree(worktree)
     useAppStore.getState().clearLocalDetectedAgents()
     setLocalRuntimeCapabilitiesForTests([CHAT])
+    const sleepingSession: SleepingAgentSessionRecord = {
+      paneKey: 'pane-1',
+      worktreeId: worktree.id,
+      agent: 'claude',
+      providerSession: { key: 'session_id', id: 'session-1' },
+      prompt: 'continue the task',
+      state: 'working',
+      capturedAt: 1,
+      updatedAt: 1
+    }
     useAppStore.setState((s) => ({
       settings: s.settings && {
         ...s.settings,
         experimentalNativeChat: true,
         defaultTuiAgent: 'claude'
       },
-      sleepingAgentSessionsByPaneKey: { 'pane-1': { worktreeId: worktree.id } } as never
+      sleepingAgentSessionsByPaneKey: { 'pane-1': sleepingSession }
     }))
     vi.stubGlobal('window', {
       api: {
