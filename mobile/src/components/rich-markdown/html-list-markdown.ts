@@ -9,7 +9,32 @@ export function listItemText(item: Element): string {
   }
   clone.querySelectorAll('label').forEach((label) => label.remove())
   clone.querySelectorAll('ul, ol').forEach((list) => list.remove())
-  return inlineChildren(clone).trim()
+  let last = clone.lastChild
+  while (last) {
+    if (
+      last.nodeType === Node.COMMENT_NODE ||
+      (last instanceof Element && /^(ul|ol|label)$/i.test(last.tagName))
+    ) {
+      last = last.previousSibling
+      continue
+    }
+    break
+  }
+  let previous = last?.previousSibling
+  while (previous instanceof Element && previous.lastChild) {
+    previous = previous.lastChild
+  }
+  if (
+    last instanceof Element &&
+    last.tagName.toLowerCase() === 'br' &&
+    !(previous instanceof Element && previous.tagName.toLowerCase() === 'br')
+  ) {
+    last.remove()
+  }
+  const markdown = inlineChildren(clone, '<br />')
+    .replace(/\r\n?|\n/g, ' ')
+    .trim()
+  return markdown === '<br />' ? '' : markdown
 }
 
 /** The lists directly inside an item, rather than every list anywhere beneath it. */
