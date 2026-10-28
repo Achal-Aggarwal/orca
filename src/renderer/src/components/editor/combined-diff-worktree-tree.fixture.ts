@@ -27,8 +27,10 @@ export async function verifyWorktreeTreeTakeover({
   const pane = diff.getModifiedEditor()
   pane.focus()
   const focused = document.activeElement
+  const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame')
   const delegateScroll = vi.fn((index: number) => {
     expect(notified).toHaveBeenCalledTimes(1)
+    expect(cancelFrame).toHaveBeenCalledTimes(1)
     expect(document.activeElement).toBe(focused)
     scrollToIndex(index)
   })
@@ -51,6 +53,7 @@ export async function verifyWorktreeTreeTakeover({
     pane.trigger('keyboard', 'cursorBottom', null)
     expect(operations.bridge).toBeGreaterThan(0)
     const before = outer.scrollTop
+    cancelFrame.mockClear()
     operations.bridge = 0
     // No pointer event or blur: only the real semantic hook can relinquish this pending reveal.
     act(() =>
@@ -71,6 +74,7 @@ export async function verifyWorktreeTreeTakeover({
     expect(operations.bridge).toBe(0)
     expect(document.activeElement).toBe(focused)
   } finally {
+    cancelFrame.mockRestore()
     navigation.unmount()
     outer.removeEventListener(COMBINED_DIFF_DIRECT_INPUT_EVENT, notified)
   }
