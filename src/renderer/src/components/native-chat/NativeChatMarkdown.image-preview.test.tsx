@@ -706,6 +706,7 @@ describe('native chat Markdown image preview', () => {
     const { rerender } = render(<Transcript owner={owner} />)
     fireEvent.click(screen.getByRole('button', { name: 'View image: Chart' }))
     expect(screen.getByRole('dialog', { name: 'Chart' })).toBeInTheDocument()
+    await act(async () => {})
     expect(mocks.readRuntimeFilePreview).toHaveBeenCalledWith(
       expect.objectContaining({ target: { kind: 'environment', environmentId: 'remote-a' } }),
       '/repo/worktree/screenshots/chart.png',
