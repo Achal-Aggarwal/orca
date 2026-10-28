@@ -1,3 +1,5 @@
+import { escapeMarkdownText } from './markdown-escaping'
+
 /** A node's text with non-breaking spaces turned back into the spaces the source wrote. */
 export function textContent(node: Node): string {
   return (node.textContent ?? '').replace(/ /g, ' ')
@@ -9,7 +11,7 @@ export function inlineMarkdown(node: Node | null | undefined): string {
     return ''
   }
   if (node.nodeType === Node.TEXT_NODE) {
-    return textContent(node)
+    return escapeMarkdownText(textContent(node))
   }
   if (!(node instanceof Element)) {
     return ''

@@ -40,6 +40,16 @@ export function decodeMarkdownEntities(value: string): string {
   })
 }
 
+// Existing readers decode entities after recognizing syntax, keeping prose literal across versions.
+export function escapeMarkdownText(value: string): string {
+  return value
+    .replace(/[\\&<>"'`*_~[\]#|:]/g, (char) => HTML_ESCAPES[char] ?? `&#${char.charCodeAt(0)};`)
+    .replace(
+      /(^|[\r\n])([ \t]*(?:\d+)?)([-+.)])/g,
+      (_match, newline, prefix, marker: string) => `${newline}${prefix}&#${marker.charCodeAt(0)};`
+    )
+}
+
 export function escapeHtml(value: string): string {
   return decodeMarkdownEntities(value).replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char)
 }

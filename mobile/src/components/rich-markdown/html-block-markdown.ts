@@ -38,7 +38,7 @@ function blocksAroundLists(element: Element): string {
 // Unknown block elements serialize inline content so browser-created tags cannot lose user text.
 export function blockMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) {
-    return textContent(node).trim()
+    return inlineMarkdown(node).trim()
   }
   if (!(node instanceof Element)) {
     return ''

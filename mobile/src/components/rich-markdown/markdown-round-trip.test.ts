@@ -150,7 +150,9 @@ describe('the editor document, from markdown and back', () => {
       '![alt](https://example.com/a.png)'
     ].join('\n')
 
-    expect(currentMarkdown(surface(markdown).scope)).toBe(markdown)
+    expect(currentMarkdown(surface(markdown).scope)).toBe(
+      markdown.replace('`code`.', '`code`&#46;')
+    )
   })
 
   it('makes progress on a marker with nothing after it, rather than reading it forever', () => {
@@ -196,6 +198,8 @@ describe('the editor document, from markdown and back', () => {
 
     expect(html).toContain('<th>a | b</th><th>c\\d</th>')
     expect(html).toContain('<td>1 | 2</td><td>3</td>')
-    expect(currentMarkdown(scope)).toBe(markdown)
+    expect(currentMarkdown(scope)).toBe(
+      ['| a &#124; b | c&#92;d |', '| --- | --- |', '| 1 &#124; 2 | 3 |'].join('\n')
+    )
   })
 })
