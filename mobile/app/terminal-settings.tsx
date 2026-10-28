@@ -144,14 +144,24 @@ export default function TerminalSettingsScreen() {
 
   const [textScale, setTextScale] = useState(1)
   const [textSizePickerOpen, setTextSizePickerOpen] = useState(false)
+  const userSelectedTextSizeRef = useRef(false)
   useEffect(() => {
-    void loadTerminalTextScale().then(setTextScale)
+    let stale = false
+    void loadTerminalTextScale().then((scale) => {
+      if (!stale && !userSelectedTextSizeRef.current) {
+        setTextScale(scale)
+      }
+    })
+    return () => {
+      stale = true
+    }
   }, [])
   const selectTextSize = useCallback((value: TextSizeValue) => {
     const opt = TEXT_SIZE_OPTIONS.find((o) => o.value === value)
     if (!opt) {
       return
     }
+    userSelectedTextSizeRef.current = true
     setTextScale(opt.scale)
     void saveTerminalTextScale(opt.scale)
   }, [])
