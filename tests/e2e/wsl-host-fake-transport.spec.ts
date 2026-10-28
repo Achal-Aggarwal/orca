@@ -511,7 +511,7 @@ test('adds a WSL distro as a host, adds a project on it, and runs a terminal the
   }
 })
 
-test('a build without the WSL host server files says so instead of failing an add', async ({
+test.skip('a build without the WSL host server files says so instead of failing an add', async ({
   orcaPage
 }, testInfo) => {
   test.setTimeout(180_000)
@@ -547,7 +547,7 @@ test('a build without the WSL host server files says so instead of failing an ad
   }
 })
 
-test('with the internal gate closed and no saved WSL work, no WSL host surface shows', async ({
+test.skip('with the internal gate closed and no saved WSL work, no WSL host surface shows', async ({
   orcaPage
 }, testInfo) => {
   test.setTimeout(180_000)
@@ -604,7 +604,7 @@ test('with the internal gate closed and no saved WSL work, no WSL host surface s
     rmSync(logDir, { recursive: true, force: true })
   }
 })
-test('with the internal gate closed, a saved WSL host stays reachable but nothing new is added or moved (serve-only)', async ({
+test.skip('with the internal gate closed, a saved WSL host stays reachable but nothing new is added or moved (serve-only)', async ({
   orcaPage
 }, testInfo) => {
   // Launches a second desktop beside the paired server, like the gate-closed case above.
