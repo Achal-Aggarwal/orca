@@ -4,6 +4,7 @@ import {
   sanitizeBracketedPasteText,
   wrapTerminalBracketedPasteText
 } from './terminal-bracketed-paste-text'
+import { getTerminalInputByteLength } from './terminal-input'
 
 // PTY Enter is carriage return, not newline.
 const SUBMIT = '\r'
@@ -16,11 +17,12 @@ export function isMultilineDraft(text: string): boolean {
 /** Write Enter separately from the framed body; see buildNativeChatPasteBytes. */
 export const NATIVE_CHAT_SUBMIT = SUBMIT
 
-/** Build sanitized body bytes, bracket-framed for multiline input, without submit.
+/** Build sanitized body bytes, bracket-framed for multiline or long input, without submit.
  * Agent TUIs treat CR in the same PTY write as pasted body, leaving text unsent. Write NATIVE_CHAT_SUBMIT separately after a short delay,
  * matching orca-runtime writeTerminalAction Enter handling. */
 export function buildNativeChatPasteBytes(text: string): string {
-  if (isMultilineDraft(text)) {
+  // Unframed input over 1 KiB can lose every agent read except the last (#13332).
+  if (isMultilineDraft(text) || getTerminalInputByteLength(text) > 1024) {
     return wrapTerminalBracketedPasteText(text)
   }
   // Sanitize unframed text too so pasted scrollback cannot inject terminal escapes.
