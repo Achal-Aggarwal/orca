@@ -4,7 +4,8 @@ import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import type { GitCommitCompareResult } from '../../../../shared/git-diff-compare-types'
-import type { GitHistoryItem } from '../../../../shared/git-history'
+import type { GitHistoryItem, GitHistoryResult } from '../../../../shared/git-history'
+import type { GitHistoryPanelState } from './source-control/sync/git-history-panel'
 import { deferred, mountProbe, unmountProbes } from './source-control-hook-test-harness'
 
 const mocks = vi.hoisted(() => ({
@@ -48,6 +49,14 @@ const COMMIT: GitHistoryItem = {
   subject: 'Update tracked file',
   message: 'Update tracked file'
 }
+const HISTORY: GitHistoryResult = {
+  items: [COMMIT],
+  hasIncomingChanges: false,
+  hasOutgoingChanges: false,
+  hasMore: false,
+  limit: 50
+}
+const READY_HISTORY_STATE: GitHistoryPanelState = { status: 'ready', result: HISTORY }
 const COMPARE: GitCommitCompareResult = {
   summary: {
     commitOid: COMMIT.id,
@@ -70,11 +79,18 @@ const SHALLOW_COMPARE: GitCommitCompareResult = {
 let latest: Actions
 const splitTarget = () => undefined
 
-function Probe({ owner }: { owner: Owner }): null {
+function Probe({
+  owner,
+  historyState = READY_HISTORY_STATE
+}: {
+  owner: Owner
+  historyState?: GitHistoryPanelState
+}): null {
   latest = useGitHistoryCommitActions({
     activeWorktreeId: owner.worktreeId,
     worktreePath: owner.path,
     activeRepoTarget: owner.target,
+    historyResult: historyState.result,
     resolveSplitTargetGroupId: splitTarget
   })
   return null
@@ -204,5 +220,85 @@ describe('Git history comparison owner', () => {
       COMMIT.subject,
       COMMIT.message
     )
+  })
+
+  it('reloads a same-commit comparison after a successful history refresh changes ancestry', async () => {
+    const root = await mountProbe(<Probe owner={OWNER} />)
+    await latest.loadCommitFiles(COMMIT)
+    mocks.compare.mockResolvedValue(SHALLOW_COMPARE)
+    const refreshed = { ...HISTORY, items: [{ ...COMMIT, parentIds: [] }] }
+    await act(async () =>
+      root.render(<Probe owner={OWNER} historyState={{ status: 'ready', result: refreshed }} />)
+    )
+
+    await latest.openHistoryCommitDiff(refreshed.items[0])
+    expect(mocks.compare).toHaveBeenCalledTimes(2)
+    expect(mocks.openAll).toHaveBeenCalledWith(
+      OWNER.worktreeId,
+      OWNER.path,
+      SHALLOW_COMPARE.summary,
+      SHALLOW_COMPARE.entries,
+      COMMIT.subject,
+      COMMIT.message
+    )
+  })
+
+  it('shares comparison data through refreshing and error states retaining the same result', async () => {
+    const root = await mountProbe(<Probe owner={OWNER} />)
+    await latest.loadCommitFiles(COMMIT)
+    await act(async () =>
+      root.render(<Probe owner={OWNER} historyState={{ status: 'refreshing', result: HISTORY }} />)
+    )
+    await latest.loadCommitFiles(COMMIT)
+    await act(async () =>
+      root.render(
+        <Probe
+          owner={OWNER}
+          historyState={{ status: 'error', result: HISTORY, error: 'History read disconnected' }}
+        />
+      )
+    )
+    await latest.openHistoryCommitDiff(COMMIT)
+
+    expect(mocks.compare).toHaveBeenCalledTimes(1)
+    expect(mocks.openAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('retires pending diff navigation and cache writes when the history page refreshes', async () => {
+    const old = deferred<GitCommitCompareResult>()
+    mocks.compare.mockReturnValueOnce(old.promise).mockResolvedValue(SHALLOW_COMPARE)
+    const root = await mountProbe(<Probe owner={OWNER} />)
+    const pendingOpen = latest.openHistoryCommitDiff(COMMIT)
+    await act(async () =>
+      root.render(
+        <Probe owner={OWNER} historyState={{ status: 'ready', result: { ...HISTORY } }} />
+      )
+    )
+    expect(await latest.loadCommitFiles(COMMIT)).toEqual(SHALLOW_COMPARE.entries)
+    old.resolve(COMPARE)
+    await pendingOpen
+
+    expect(mocks.openAll).not.toHaveBeenCalled()
+    expect(await latest.loadCommitFiles(COMMIT)).toEqual(SHALLOW_COMPARE.entries)
+  })
+
+  it('does not load commits outside the current page or reuse retired row callbacks', async () => {
+    const root = await mountProbe(<Probe owner={OWNER} />)
+    await latest.loadCommitFiles(COMMIT)
+    const retired = latest
+    await act(async () =>
+      root.render(
+        <Probe
+          owner={OWNER}
+          historyState={{ status: 'ready', result: { ...HISTORY, items: [] } }}
+        />
+      )
+    )
+
+    expect(await latest.loadCommitFiles(COMMIT)).toEqual([])
+    expect(await retired.loadCommitFiles(COMMIT)).toEqual([])
+    retired.openCommitFile(COMMIT, COMPARE.entries[0])
+    expect(mocks.compare).toHaveBeenCalledTimes(1)
+    expect(mocks.openFile).not.toHaveBeenCalled()
   })
 })

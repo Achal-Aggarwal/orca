@@ -143,6 +143,7 @@ export function useSourceControlPanelModel() {
     activeWorktreeId,
     worktreePath,
     activeRepoTarget,
+    historyResult: foundation.gitHistoryState.result,
     resolveSplitTargetGroupId
   })
   const noteOpening = useSourceControlNoteOpening({

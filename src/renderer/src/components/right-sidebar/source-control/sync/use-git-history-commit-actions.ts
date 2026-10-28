@@ -12,7 +12,7 @@ import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { resolveDefaultAgentForWorktreeNewTab } from '@/lib/agent-tab-shortcuts'
 import { getDetectionTargetIdentityForWorktree } from '@/lib/agent-detection-target-inventory'
 import { translate } from '@/i18n/i18n'
-import type { GitHistoryItem } from '../../../../../../shared/git-history'
+import type { GitHistoryItem, GitHistoryResult } from '../../../../../../shared/git-history'
 import type {
   GitBranchChangeEntry,
   GitCommitCompareResult
@@ -26,28 +26,19 @@ import { openWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-open'
 
 const EMPTY_BRANCH_CHANGE_ENTRIES: GitBranchChangeEntry[] = []
 
-type GitHistoryCommitActions = {
-  loadCommitFiles: (item: GitHistoryItem) => Promise<GitBranchChangeEntry[]>
-  openHistoryCommitDiff: (item: GitHistoryItem) => Promise<void>
-  openCommitFile: (
-    item: GitHistoryItem,
-    entry: GitBranchChangeEntry,
-    event?: SourceControlRowOpenEvent
-  ) => void
-  handleCommitAction: (action: GitHistoryCommitAction, item: GitHistoryItem) => void
-}
-
 export function useGitHistoryCommitActions({
   activeWorktreeId,
   worktreePath,
   activeRepoTarget,
+  historyResult,
   resolveSplitTargetGroupId
 }: {
   activeWorktreeId: string | null | undefined
   worktreePath: string | null
   activeRepoTarget: RuntimeClientTarget | null
+  historyResult: GitHistoryResult | undefined
   resolveSplitTargetGroupId: (event?: SourceControlRowOpenEvent) => string | undefined
-}): GitHistoryCommitActions {
+}) {
   const openCommitAllDiffs = useAppStore((s) => s.openCommitAllDiffs)
   const openCommitDiff = useAppStore((s) => s.openCommitDiff)
 
@@ -58,7 +49,7 @@ export function useGitHistoryCommitActions({
   const targetKind = activeRepoTarget?.kind
   const environmentId =
     activeRepoTarget?.kind === 'environment' ? activeRepoTarget.environmentId : undefined
-  // Capture the owner so late reads cannot populate a successor's comparison cache.
+  // A fresh history result can change ancestry even when commit IDs and repository owner match.
   const commitCompareOwner = useMemo(() => {
     const target: RuntimeClientTarget | null =
       targetKind === 'environment' && environmentId !== undefined
@@ -69,9 +60,10 @@ export function useGitHistoryCommitActions({
     return {
       active: false,
       cache: new Map<string, GitCommitCompareResult>(),
+      commitIds: new Set(historyResult?.items.map((item) => item.id)),
       context: { target, worktreeId: activeWorktreeId, worktreePath, connectionId }
     }
-  }, [activeWorktreeId, worktreePath, targetKind, environmentId, connectionId])
+  }, [activeWorktreeId, worktreePath, targetKind, environmentId, connectionId, historyResult])
   useLayoutEffect(() => {
     commitCompareOwner.active = true
     return () => {
@@ -83,7 +75,12 @@ export function useGitHistoryCommitActions({
   const loadCommitFiles = useCallback(
     async (item: GitHistoryItem): Promise<GitBranchChangeEntry[]> => {
       const { context } = commitCompareOwner
-      if (!context.worktreeId || !context.worktreePath || !commitCompareOwner.active) {
+      if (
+        !context.worktreeId ||
+        !context.worktreePath ||
+        !commitCompareOwner.active ||
+        !commitCompareOwner.commitIds.has(item.id)
+      ) {
         return EMPTY_BRANCH_CHANGE_ENTRIES
       }
       const cached = commitCompareOwner.cache.get(item.id)
