@@ -24,11 +24,12 @@ export async function prepareLegacySharedCodexSessionResume(
   ) {
     return { useRealCodexHome: false }
   }
+  const systemHome = options.systemCodexHomePath ?? getSystemCodexHomePath()
   const selectedHome = options.getSelectedHostAccountCodexHomePath?.()
   const home = resolveCodexLaunchHome({
     selectedAccount: selectedHome ? { homePath: selectedHome } : null,
-    conversationHome: args.codexHome ?? getSystemCodexHomePath(),
-    systemHome: getSystemCodexHomePath()
+    conversationHome: args.codexHome ?? systemHome,
+    systemHome
   })
   return home ? { useRealCodexHome: false, substituteCodexHome: home } : { useRealCodexHome: true }
 }

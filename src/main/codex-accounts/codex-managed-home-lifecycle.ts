@@ -79,7 +79,12 @@ export class CodexManagedHomeLifecycle {
     if (error instanceof ManagedCodexHomeTemporarilyUnavailableError) {
       return
     }
-    this.safeRemove(managedHomePath, accountId)
+    // This attempt created the unregistered home; rollback has no retained conversation store.
+    try {
+      safeRemoveTree(dirname(this.paths.assert(managedHomePath, accountId)))
+    } catch (cleanupError) {
+      console.warn('[codex-accounts] Failed to roll back the new managed home:', cleanupError)
+    }
   }
 
   safeRemove(candidatePath: string, expectedAccountId: string): void {

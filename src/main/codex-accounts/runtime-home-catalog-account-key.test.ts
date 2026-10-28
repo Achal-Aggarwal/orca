@@ -2,13 +2,13 @@ import type * as NodeOs from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import type { AgentSessionAccountHome } from '../../shared/agent-session-account-home'
+import { resolveCodexLaunchHome } from '../codex/codex-launch-home'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAccountRecord,
   createCodexAuthJson,
   createManagedAuth,
   createStore,
-  getRuntimeCodexHomePath,
   getSystemCodexHomePath,
   setupRuntimeHomeTest,
   teardownRuntimeHomeTest,
@@ -101,11 +101,11 @@ describe('Codex catalog account key: picker read vs launch', () => {
     await expectOneKey(createSettings({ realHomeRoutable: true }), getSystemCodexHomePath())
   })
 
-  it("system account on Orca's shared runtime home", async () => {
-    await expectOneKey(createSettings({ realHomeRoutable: false }), getRuntimeCodexHomePath())
+  it('system account no longer routes through the legacy mirror', async () => {
+    await expectOneKey(createSettings({ realHomeRoutable: false }), getSystemCodexHomePath())
   })
 
-  it('a managed account in its own home', async () => {
+  it('a managed account overlay over the shared conversation store', async () => {
     const managedHomePath = createManagedAuth(
       testState.userDataDir,
       'account-1',
@@ -120,7 +120,7 @@ describe('Codex catalog account key: picker read vs launch', () => {
         activeCodexManagedAccountId: 'account-1',
         activeCodexManagedAccountIdsByRuntime: { host: 'account-1', wsl: {} }
       }),
-      managedHomePath
+      resolveCodexLaunchHome({ selectedAccount: { homePath: managedHomePath }, readOnly: true })!
     )
   })
 })
