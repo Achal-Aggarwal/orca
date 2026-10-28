@@ -188,3 +188,22 @@ it.each(['界', '𐐀'])(
     expect(normalized).toBe(`${prefix}\n\n`)
   }
 )
+
+it.each([' ', '\uFEFF'])(
+  'folds a shared nested reference whitespace tail once for %j',
+  (whitespace) => {
+    const count = 2_000_000
+    const prefix = `${'['.repeat(count)}${whitespace.repeat(count)}]`
+    const definitions = Array.from(
+      { length: Math.floor(Math.sqrt(count)) },
+      (_, index) => `[${'['.repeat(index)}missing]: url`
+    ).join('\n')
+    const source = `${prefix}\n\n${definitions}\n`
+    const normalized = runInNewContext(
+      'normalize(source)',
+      { normalize: normalizeMarkdownReferenceLinks, source },
+      { timeout: 1500 }
+    )
+    expect(normalized).toBe(`${prefix}\n\n`)
+  }
+)

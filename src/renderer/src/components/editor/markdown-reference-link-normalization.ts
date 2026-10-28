@@ -1,4 +1,8 @@
 import {
+  createReferenceTextDefinitionLookup,
+  normalizeReferenceLabel
+} from './markdown-reference-labels'
+import {
   createMarkdownFenceRangeCursor,
   createMarkdownFenceTracker,
   getMarkdownFenceRanges
@@ -12,41 +16,6 @@ type ReferenceLinkDefinition = {
 
 const REFERENCE_DEFINITION_PATTERN =
   /^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]+>|[^\s]+)(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/
-
-function normalizeReferenceLabel(label: string): string {
-  let normalized = ''
-  let pendingWhitespace = false
-  for (let index = 0; index < label.length; index += 1) {
-    const code = label.charCodeAt(index)
-    if (isMarkdownReferenceLabelWhitespace(code)) {
-      pendingWhitespace = normalized.length > 0
-      continue
-    }
-    if (pendingWhitespace) {
-      normalized += ' '
-      pendingWhitespace = false
-    }
-    normalized += label.charAt(index)
-  }
-  return normalized.toLowerCase()
-}
-
-// Large labels only need collapsed reference whitespace; avoid scanning them again with a full-string regex.
-function isMarkdownReferenceLabelWhitespace(code: number): boolean {
-  return (
-    code === 32 ||
-    (code >= 9 && code <= 13) ||
-    code === 160 ||
-    code === 5760 ||
-    (code >= 8192 && code <= 8202) ||
-    code === 8232 ||
-    code === 8233 ||
-    code === 8239 ||
-    code === 8287 ||
-    code === 12288 ||
-    code === 65279
-  )
-}
 
 function unwrapReferenceUrl(rawUrl: string): string {
   return rawUrl.startsWith('<') && rawUrl.endsWith('>') ? rawUrl.slice(1, -1) : rawUrl
@@ -130,77 +99,6 @@ function createClosingBracketCursor(content: string): (start: number) => number 
     }
     closingIndex = -1
     return closingIndex
-  }
-}
-
-type ReferenceTextCharacterCounts = {
-  openingBrackets: number
-  nonWhitespaceCodePoints: number
-}
-
-function countReferenceTextCharacters(
-  content: string,
-  start: number,
-  end: number
-): ReferenceTextCharacterCounts {
-  let openingBrackets = 0
-  let nonWhitespaceCodePoints = 0
-  for (let index = start; index < end; index += 1) {
-    const code = content.charCodeAt(index)
-    if (code === 91) {
-      openingBrackets += 1
-    }
-    if (!isMarkdownReferenceLabelWhitespace(code)) {
-      nonWhitespaceCodePoints += 1
-      const next = content.charCodeAt(index + 1)
-      if (code >= 0xd800 && code <= 0xdbff && index + 1 < end && next >= 0xdc00 && next <= 0xdfff) {
-        index += 1
-      }
-    }
-  }
-  return { openingBrackets, nonWhitespaceCodePoints }
-}
-
-function createReferenceTextDefinitionLookup(
-  markdown: string,
-  definitions: Map<string, ReferenceLinkDefinition>
-): (text: string, start: number, end: number) => ReferenceLinkDefinition | undefined {
-  let definitionBracketCounts: Set<number> | undefined
-  let previousStart = 0
-  let previousEnd = -1
-  let textCounts: ReferenceTextCharacterCounts | null = null
-  let maximumDefinitionLength = 0
-  return (text, start, end) => {
-    const lastStart = previousStart
-    previousStart = start
-    if (end === previousEnd) {
-      if (!definitionBracketCounts) {
-        definitionBracketCounts = new Set<number>()
-        for (const label of definitions.keys()) {
-          definitionBracketCounts.add(
-            countReferenceTextCharacters(label, 0, label.length).openingBrackets
-          )
-          maximumDefinitionLength = Math.max(maximumDefinitionLength, label.length)
-        }
-      }
-      if (textCounts === null) {
-        textCounts = countReferenceTextCharacters(markdown, start, end)
-      } else {
-        const removed = countReferenceTextCharacters(markdown, lastStart, start)
-        textCounts.openingBrackets -= removed.openingBrackets
-        textCounts.nonWhitespaceCodePoints -= removed.nonWhitespaceCodePoints
-      }
-      if (
-        !definitionBracketCounts.has(textCounts.openingBrackets) ||
-        textCounts.nonWhitespaceCodePoints > maximumDefinitionLength
-      ) {
-        return undefined
-      }
-    } else {
-      previousEnd = end
-      textCounts = null
-    }
-    return definitions.get(normalizeReferenceLabel(text))
   }
 }
 
