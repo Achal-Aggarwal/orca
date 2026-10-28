@@ -69,8 +69,9 @@ function typesetFormula(
     typesetCache.delete(key)
   } else {
     result = run()
-    if (typesetCache.size >= TYPESET_CACHE_LIMIT) {
-      typesetCache.delete(typesetCache.keys().next().value as string)
+    const oldest = typesetCache.keys().next()
+    if (typesetCache.size >= TYPESET_CACHE_LIMIT && !oldest.done) {
+      typesetCache.delete(oldest.value)
     }
   }
   typesetCache.set(key, result)
