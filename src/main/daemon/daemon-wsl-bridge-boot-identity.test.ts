@@ -92,6 +92,24 @@ describe('WslBridgeBootIdentity', () => {
     await expect(boot.rebootedSinceSpawn('a', 'Ubuntu')).resolves.toBe(false)
   })
 
+  // #35050 review, case 1b: a respawn into a rebooted distro beat the dead process's exit event.
+  it('re-reads the boot id of a respawn that beat its old incarnation’s exit', async () => {
+    const world = { boot: 'boot-1' }
+    const readBootId = vi.fn(async () => world.boot)
+    const boot = new WslBridgeBootIdentity({ isRunning: async () => true, readBootId })
+    boot.noteSpawn('a', 'Ubuntu', 'inc-1')
+    await vi.waitFor(() => expect(readBootId).toHaveBeenCalledOnce())
+    world.boot = 'boot-2'
+    // The respawn lands first and takes the cached (old) id; then the stale exit arrives.
+    boot.noteSpawn('a', 'Ubuntu', 'inc-2')
+    boot.noteStaleExit('a', 'Ubuntu')
+    boot.noteSpawn('b', 'Ubuntu', 'inc-b')
+
+    boot.noteExit('Ubuntu')
+    await expect(boot.rebootedSinceSpawn('a', 'Ubuntu')).resolves.toBe(false)
+    await expect(boot.rebootedSinceSpawn('b', 'Ubuntu')).resolves.toBe(false)
+  })
+
   it('keeps the id across a reattach of the same incarnation', async () => {
     const { boot, readBootId } = identity({ ids: ['boot-1', 'boot-2'] })
     boot.noteSpawn('a', 'Ubuntu', 'inc-1')

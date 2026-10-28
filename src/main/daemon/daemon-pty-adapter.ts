@@ -211,14 +211,18 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
           )
           operation.exitsBySessionId.set(event.sessionId, exits)
         }
+        const wslDistro = this.wslDistrosBySessionId.get(event.sessionId)
         // Retain raced exits for pending spawns; only this adapter's published incarnation may clear state or notify.
         if (
           currentIncarnationId !== undefined &&
           event.payload.incarnationId !== currentIncarnationId
         ) {
+          // A stale exit may still be a reboot's; the respawn that beat it re-reads its boot id.
+          if (wslDistro) {
+            this.wslBridgeBootIdentity.noteStaleExit(event.sessionId, wslDistro)
+          }
           return
         }
-        const wslDistro = this.wslDistrosBySessionId.get(event.sessionId)
         if (wslDistro) {
           this.wslBridgeBootIdentity.noteExit(wslDistro)
         }

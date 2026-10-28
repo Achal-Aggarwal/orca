@@ -44,12 +44,7 @@ export class WslBridgeBootIdentity {
     ) {
       return
     }
-    let bootId = this.byDistro.get(key)
-    if (!bootId) {
-      bootId = this.read(distro)
-      this.byDistro.set(key, bootId)
-    }
-    this.bySession.set(sessionId, { distro: key, incarnationId, bootId })
+    this.bySession.set(sessionId, { distro: key, incarnationId, bootId: this.distroBootId(distro) })
   }
 
   /**
@@ -58,6 +53,18 @@ export class WslBridgeBootIdentity {
    */
   noteExit(distro: string): void {
     this.byDistro.delete(distroKey(distro))
+  }
+
+  /**
+   * An exit of an incarnation the session already replaced: the respawn that beat it took the
+   * cached id, which may be the old boot's, so the current incarnation reads it again.
+   */
+  noteStaleExit(sessionId: string, distro: string): void {
+    this.noteExit(distro)
+    const current = this.bySession.get(sessionId)
+    if (current?.distro === distroKey(distro)) {
+      current.bootId = this.distroBootId(distro)
+    }
   }
 
   /** After a bridge exit the running list answered 'running': has the distro booted again since? */
@@ -77,6 +84,16 @@ export class WslBridgeBootIdentity {
     if (spawned && ![...this.bySession.values()].some(({ distro }) => distro === spawned.distro)) {
       this.byDistro.delete(spawned.distro)
     }
+  }
+
+  private distroBootId(distro: string): Promise<string | null> {
+    const key = distroKey(distro)
+    let bootId = this.byDistro.get(key)
+    if (!bootId) {
+      bootId = this.read(distro)
+      this.byDistro.set(key, bootId)
+    }
+    return bootId
   }
 
   private readCurrent(distro: string): Promise<string | null> {
