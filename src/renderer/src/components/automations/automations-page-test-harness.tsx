@@ -1,5 +1,4 @@
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
-import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
 /** Record child props to test page orchestration rather than presentation. Import this harness first so shared vi.mock registrations precede AutomationsPage loading. */
 
 import { act, createElement, StrictMode, type ReactNode } from 'react'
@@ -91,10 +90,7 @@ export type DeleteDialogProps = {
 }
 
 type AutomationsPageMocks = {
-  state: Record<string, unknown> & {
-    endpointProjects: Project[]
-    endpointProjectHostSetups: ProjectHostSetup[]
-  }
+  state: AutomationsPageFixtureState
   repoMap: Map<string, unknown>
   worktreeMap: Map<string, unknown>
   listPanel: ListPanelProps | null
@@ -112,7 +108,7 @@ type AutomationsPageMocks = {
 
 // Mock factories only close over this exported binding; vi.hoisted bindings cannot be exported.
 export const mocks: AutomationsPageMocks = {
-  state: { endpointProjects: [], endpointProjectHostSetups: [] },
+  state: { repos: [], projectHostSetups: [], worktreesByRepo: {} },
   repoMap: new Map<string, unknown>(),
   worktreeMap: new Map<string, unknown>(),
   listPanel: null,
@@ -249,7 +245,12 @@ vi.mock('./AutomationDeleteDialogs', () => ({
 }))
 
 import AutomationsPage from './AutomationsPage'
-import { makeAutomation, makeRun, makeStoreState } from './automations-page-fixtures'
+import {
+  makeAutomation,
+  makeRun,
+  makeStoreState,
+  type AutomationsPageFixtureState
+} from './automations-page-fixtures'
 
 function mockGroup<K extends string>(...names: K[]): Record<K, Mock> {
   return Object.fromEntries(names.map((name) => [name, vi.fn()])) as Record<K, Mock>
