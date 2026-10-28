@@ -24,6 +24,7 @@ import type { DescendantSnapshot } from '../pty-descendant-termination'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import type { AgentSessionStopOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
 import { agentVerdictDisplayMark } from '../../shared/agent-main-agent-verdict'
+import { activeProviderContext } from '../../shared/agent-session-provider-context'
 
 const os = vi.hoisted(() => ({
   capture: vi.fn<(pid: number) => Promise<DescendantSnapshot | null>>(),
@@ -217,7 +218,7 @@ async function pipedChat() {
             workspaceId: 'workspace-1',
             hostId: 'local',
             agent: 'codex',
-            providerHandle: record().providerHandle
+            providerHandle: activeProviderContext(record()).head?.handle ?? null
           }
         })
         await journal.open()
