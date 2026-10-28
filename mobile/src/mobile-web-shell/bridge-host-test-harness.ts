@@ -132,7 +132,6 @@ export function harness(
       pageReadies += 1
     },
     onPageBackClaim: (claimed) => backClaims.push(claimed),
-    onPageLocation: () => {},
     onPagePainted: () => {
       pagePaints += 1
     },

@@ -14,6 +14,7 @@ import { createBridgeInitHandshake, createPageReadyFrame } from './bridge-client
 import {
   BridgeClientCapExceededError,
   BridgeClientClosedError,
+  BridgeClientNotNativeVerbError,
   BridgeClientNotReadyError,
   BridgeRequestOversizedError,
   BridgeSendFailedError,
@@ -27,8 +28,7 @@ import { createPageBackConsumers, type PageBackConsumer } from './page-back-cons
 import { BridgeClientRequests } from './bridge-client-requests'
 import { readBridgeRequestFrameOptions, readBridgeRpcEnvelope } from './bridge-client-rpc-envelope'
 import { BridgeClientSubscriptions } from './bridge-client-subscriptions'
-import type { BridgeNativeVerb } from './bridge-native-verbs'
-import { callBridgeNativeVerb } from './bridge-native-verb-call'
+import { isBridgeNativeMethod, type BridgeNativeVerb } from './bridge-native-verbs'
 import { BRIDGE_ROUTE_PARAM_CLEAR, type BridgeClearableRouteParam } from './bridge-route-update'
 import {
   BRIDGE_PROTOCOL_VERSION,
@@ -80,8 +80,6 @@ export type BridgeRpcClient = RpcClient & {
   callNativeVerb: (verb: BridgeNativeVerb, params: unknown) => Promise<RpcSuccess>
   // Only the page can report a painted tree; WebView commit and ready happen before that proof exists.
   notifyPagePainted: () => void
-  // Older shells refuse the frame with a diagnostic only; they reopen the host route after a fold.
-  notifyPageLocation: (href: string) => void
   // Claim Back until disposal; invoke consumers newest-first with false fallthrough. Return unhandled presses to the shell so a race with sheet closure cannot swallow navigation.
   claimBack: (consumer: PageBackConsumer) => () => void
   notifyStorageWrite: (key: string, value: string | null) => boolean
@@ -321,12 +319,23 @@ export function createBridgeRpcClient(options: BridgeRpcClientOptions): BridgeRp
     notifyNavigate: notifications.notifyNavigate,
     notifyNavigateBack: notifications.notifyNavigateBack,
     notifyExternalLink: notifications.notifyExternalLink,
-    callNativeVerb: (verb, params) => callBridgeNativeVerb(sendRequest, verb, params),
+    callNativeVerb: (verb, params) => {
+      // Validate the typed verb at runtime too; widened callers must not turn this into an untracked raw desktop RPC port.
+      if (!isBridgeNativeMethod(verb)) {
+        return Promise.reject(new BridgeClientNotNativeVerbError(verb))
+      }
+      return sendRequest(verb, params).then((reply) => {
+        // Native refusals reject as error frames and never forward to desktop, so the return has no RpcFailure arm.
+        if (!reply.ok) {
+          throw new Error(reply.error.message)
+        }
+        return reply
+      })
+    },
     notifyStorageWrite: notifications.notifyStorageWrite,
     notifyHaptics: notifications.notifyHaptics,
     notifyPageFault: notifications.notifyPageFault,
     notifyPagePainted: notifications.notifyPagePainted,
-    notifyPageLocation: notifications.notifyPageLocation,
     claimBack: back.claim,
     close,
     onReady: shellSession.onReady,

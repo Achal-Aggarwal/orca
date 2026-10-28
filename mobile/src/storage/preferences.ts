@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { persistMirrored } from './mirrored-storage-keys'
 import { TERMINAL_TEXT_SCALES } from '../terminal/terminal-text-scales'
-import { HOST_SIDEBAR_MIN_WIDTH } from '../layout/responsive-layout-metrics'
 
 const PINS_PREFIX = 'orca:pins:'
 // Push-service consent is independent of legacy socket notifications.
@@ -159,20 +158,26 @@ export async function saveDisabledTerminalLiveInputHandles(
 const SIDEBAR_WIDTH_KEY = 'orca:hostSidebarWidth'
 
 // Caller also caps this tablet/foldable sidebar against the window to preserve detail space.
-export { HOST_SIDEBAR_MIN_WIDTH }
+export const HOST_SIDEBAR_MIN_WIDTH = 280
 export const HOST_SIDEBAR_MAX_WIDTH = 560
+export const HOST_SIDEBAR_DEFAULT_WIDTH = 340
 
 export function clampHostSidebarWidth(width: number): number {
+  if (!Number.isFinite(width)) {
+    return HOST_SIDEBAR_DEFAULT_WIDTH
+  }
   return Math.min(HOST_SIDEBAR_MAX_WIDTH, Math.max(HOST_SIDEBAR_MIN_WIDTH, Math.round(width)))
 }
 
-// Null until the user drags the sidebar; the layout then sizes it from the window.
-export async function loadHostSidebarWidth(): Promise<number | null> {
+export async function loadHostSidebarWidth(): Promise<number> {
   try {
-    const width = Number((await AsyncStorage.getItem(SIDEBAR_WIDTH_KEY)) ?? Number.NaN)
-    return Number.isFinite(width) ? clampHostSidebarWidth(width) : null
+    const raw = await AsyncStorage.getItem(SIDEBAR_WIDTH_KEY)
+    if (raw === null) {
+      return HOST_SIDEBAR_DEFAULT_WIDTH
+    }
+    return clampHostSidebarWidth(Number(raw))
   } catch {
-    return null
+    return HOST_SIDEBAR_DEFAULT_WIDTH
   }
 }
 

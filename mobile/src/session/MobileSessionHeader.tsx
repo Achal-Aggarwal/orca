@@ -10,13 +10,7 @@ import { useHostSidebarReveal } from '../layout/host-sidebar-reveal'
 import { useResponsiveLayout } from '../layout/responsive-layout'
 import type { MobileSessionController } from './use-mobile-session-controller'
 
-export function MobileSessionHeader({
-  controller,
-  backInRail
-}: {
-  controller: MobileSessionController
-  backInRail: boolean
-}) {
+export function MobileSessionHeader({ controller }: { controller: MobileSessionController }) {
   useMobileColorScheme()
   const {
     hostId,
@@ -51,13 +45,11 @@ export function MobileSessionHeader({
             onPress={revealSidebar}
           />
         ) : null}
-        {backInRail ? null : (
-          <MobileSessionHeaderIconButton
-            accessibilityLabel="Back to worktrees"
-            icon={ChevronLeft}
-            onPress={requestLeaveSession}
-          />
-        )}
+        <MobileSessionHeaderIconButton
+          accessibilityLabel="Back to worktrees"
+          icon={ChevronLeft}
+          onPress={requestLeaveSession}
+        />
 
         <View
           style={[styles.sessionTitleBlock, tabsInTopBar && styles.sessionTitleBlockBesideTabs]}

@@ -98,16 +98,9 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
       Paths: { cache: 'file:///cache' }
     }),
     'lucide-react-native': () => ({ X: 'Icon' }),
-    'react-native-safe-area-context': async () => {
-      const { createContext } = await import('react')
-      return {
-        useSafeAreaInsets: () => ({ bottom: 8, left: 0, right: 0, top: 44 }),
-        useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
-        SafeAreaFrameContext: createContext(null),
-        SafeAreaInsetsContext: createContext(null),
-        SafeAreaProvider: ({ children }: { children: unknown }) => children
-      }
-    },
+    'react-native-safe-area-context': () => ({
+      useSafeAreaInsets: () => ({ bottom: 8, left: 0, right: 0, top: 44 })
+    }),
     'expo-router': () => ({
       router: { replace: vi.fn() },
       useRouter: () => ({
@@ -118,8 +111,7 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
       usePathname: () => dependencies.pathname,
       useNavigation: () => ({
         setOptions: dependencies.setScreenOptions,
-        dispatch: dependencies.dispatch,
-        isFocused: () => dependencies.screenFocused
+        dispatch: dependencies.dispatch
       }),
       useNavigationContainerRef: () => ({ getRootState: () => dependencies.rootState }),
       useFocusEffect: (effect: () => undefined | (() => void)) => React.useEffect(effect, [effect])
@@ -192,8 +184,7 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
         reportPageBackClaim: dependencies.reportPageBackClaim,
         pageReady: dependencies.pageReady,
         pageFrame: dependencies.pageFrame,
-        backClaimed: dependencies.backClaimed,
-        ownsHostArea: dependencies.ownsHostArea
+        backClaimed: dependencies.backClaimed
       })
     })
   }
