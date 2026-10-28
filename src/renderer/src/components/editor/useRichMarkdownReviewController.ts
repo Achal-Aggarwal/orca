@@ -3,7 +3,6 @@ import type { MutableRefObject } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { AppState } from '@/store'
 import { richMarkdownAnnotationHighlightPluginKey } from './rich-markdown-annotation-highlight'
-import { updateRichMarkdownAnnotationHighlightsAfterSubmit } from './rich-markdown-annotation-submit-highlights'
 import {
   clampRichMarkdownAnnotationTarget,
   getRichMarkdownAnnotationTarget,
@@ -12,6 +11,7 @@ import {
 } from './rich-markdown-review-annotations'
 import { shouldExpandRichMarkdownReviewRail } from './rich-markdown-review-note-layout'
 import { flushPendingProseMirrorSelection } from './rich-markdown-selection-flush'
+import { useRichMarkdownAnnotationSubmission } from './useRichMarkdownAnnotationSubmission'
 import { useRichMarkdownReviewData } from './useRichMarkdownReviewData'
 import { useRichMarkdownReviewCopyFeedback } from './useRichMarkdownReviewCopyFeedback'
 import { useRichMarkdownReviewRailController } from './useRichMarkdownReviewRailController'
@@ -121,7 +121,23 @@ export function useRichMarkdownReviewController({
 
   const clearAnnotationTarget = useCallback((): void => setAnnotationTarget(null), [])
 
+  const { clearPendingAnnotationSubmissions, submitAnnotation } =
+    useRichMarkdownAnnotationSubmission({
+      addDiffComment,
+      annotationPopover,
+      annotationPopoverRef,
+      clearAnnotationHighlight,
+      editorRef,
+      markdownCommentsRef,
+      markdownSourceLineOffset,
+      rootRef,
+      setAnnotationPopover,
+      sourceRelativePath,
+      worktreeId
+    })
+
   const clearTransientReviewState = useCallback((): void => {
+    clearPendingAnnotationSubmissions()
     clearAttentionTimers()
     clearReviewCopyTimers()
     clearAllAnnotationHighlights()
@@ -131,6 +147,7 @@ export function useRichMarkdownReviewController({
     cancelNotePositionFrame,
     clearAllAnnotationHighlights,
     clearAttentionTimers,
+    clearPendingAnnotationSubmissions,
     clearReviewCopyTimers
   ])
 
@@ -156,65 +173,6 @@ export function useRichMarkdownReviewController({
       })
     },
     [rootRef]
-  )
-
-  const submitAnnotation = useCallback(
-    async (body: string): Promise<void> => {
-      if (!annotationPopover || sourceRelativePath === null) {
-        return
-      }
-      const submittedEditor = editorRef.current
-      const submittedRoot = rootRef.current
-      const result = await addDiffComment({
-        worktreeId,
-        filePath: sourceRelativePath,
-        source: 'markdown',
-        startLine:
-          annotationPopover.startLine === undefined
-            ? undefined
-            : annotationPopover.startLine + markdownSourceLineOffset,
-        lineNumber: annotationPopover.lineNumber + markdownSourceLineOffset,
-        selectedText: annotationPopover.selectedText,
-        body,
-        side: 'modified'
-      })
-      if (!result) {
-        console.error('Failed to add markdown comment — draft preserved')
-        return
-      }
-      if (
-        !submittedEditor ||
-        submittedEditor.isDestroyed ||
-        editorRef.current !== submittedEditor ||
-        !submittedRoot ||
-        rootRef.current !== submittedRoot ||
-        annotationPopoverRef.current !== annotationPopover
-      ) {
-        return
-      }
-      const currentComments = markdownCommentsRef.current
-      updateRichMarkdownAnnotationHighlightsAfterSubmit({
-        annotationPopover,
-        comments: currentComments.some((comment) => comment.id === result.id)
-          ? currentComments
-          : [...currentComments, result],
-        editor: submittedEditor,
-        markdownSourceLineOffset
-      })
-      setAnnotationPopover(null)
-      clearAnnotationHighlight()
-      window.getSelection()?.removeAllRanges()
-    },
-    [
-      addDiffComment,
-      annotationPopover,
-      clearAnnotationHighlight,
-      editorRef,
-      markdownSourceLineOffset,
-      rootRef,
-      sourceRelativePath,
-      worktreeId
-    ]
   )
 
   // Report opened/retained composers so keyboard callers consume only handled chords.

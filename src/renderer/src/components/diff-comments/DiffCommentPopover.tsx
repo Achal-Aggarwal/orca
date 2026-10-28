@@ -29,6 +29,10 @@ type Props = {
   onSubmit: (body: string) => Promise<void>
 }
 
+type PendingDiffCommentPopoverSubmission = {
+  complete: (() => void) | null
+}
+
 function hasDraftText(body: string): boolean {
   return /\S/u.test(body)
 }
@@ -53,6 +57,20 @@ export function DiffCommentPopover({
   // Why: block duplicate note rows from double-click/Enter during the async submit; state (not a ref) so the button shows in-flight.
   const [submitting, setSubmitting] = useState(false)
   const mountedRef = useMountedRef()
+  const pendingSubmissionsRef = useRef<Set<PendingDiffCommentPopoverSubmission> | null>(null)
+  useEffect(
+    () => () => {
+      const pending = pendingSubmissionsRef.current
+      if (pending) {
+        for (const submission of pending) {
+          submission.complete = null
+        }
+        pending.clear()
+        pendingSubmissionsRef.current = null
+      }
+    },
+    []
+  )
   const popoverRef = useRef<HTMLDivElement | null>(null)
   // Why: keep onCancel in a ref so the mousedown listener reads it fresh without re-attaching when parents pass a new callback each render.
   const onCancelRef = useRef(onCancel)
@@ -141,13 +159,13 @@ export function DiffCommentPopover({
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`
   }
 
-  const handleSubmit = async (): Promise<void> => {
+  const handleSubmit = (): Promise<void> => {
     if (submitting) {
-      return
+      return Promise.resolve()
     }
     const bodyState = getCommentBodySubmitState(body)
     if (bodyState.status === 'empty') {
-      return
+      return Promise.resolve()
     }
     if (bodyState.status === 'too-large-leading-whitespace') {
       toast.error(
@@ -156,15 +174,24 @@ export function DiffCommentPopover({
           'Comment is too large to submit safely.'
         )
       )
-      return
+      return Promise.resolve()
     }
     setSubmitting(true)
-    try {
-      await onSubmit(bodyState.body)
-    } finally {
-      if (mountedRef.current) {
-        setSubmitting(false)
+    const submission: PendingDiffCommentPopoverSubmission = {
+      complete: () => {
+        if (mountedRef.current) {
+          setSubmitting(false)
+        }
       }
+    }
+    const pending = pendingSubmissionsRef.current ?? new Set<PendingDiffCommentPopoverSubmission>()
+    pendingSubmissionsRef.current = pending
+    pending.add(submission)
+    try {
+      return finishDiffCommentPopoverSubmission(onSubmit(bodyState.body), submission, pending)
+    } catch (error) {
+      settleDiffCommentPopoverSubmission(submission, pending)
+      return Promise.reject(error)
     }
   }
   const canSubmitComment = hasBoundedCommentBodyText(body)
@@ -234,4 +261,26 @@ export function DiffCommentPopover({
       </div>
     </div>
   )
+}
+
+async function finishDiffCommentPopoverSubmission(
+  save: Promise<void>,
+  submission: PendingDiffCommentPopoverSubmission,
+  pending: Set<PendingDiffCommentPopoverSubmission>
+): Promise<void> {
+  try {
+    await save
+  } finally {
+    settleDiffCommentPopoverSubmission(submission, pending)
+  }
+}
+
+function settleDiffCommentPopoverSubmission(
+  submission: PendingDiffCommentPopoverSubmission,
+  pending: Set<PendingDiffCommentPopoverSubmission>
+): void {
+  pending.delete(submission)
+  const complete = submission.complete
+  submission.complete = null
+  complete?.()
 }
