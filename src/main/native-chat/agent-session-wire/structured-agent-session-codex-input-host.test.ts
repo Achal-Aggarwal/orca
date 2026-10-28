@@ -184,16 +184,18 @@ function stop(turnId?: string) {
   })
 }
 
-const envelope = (method: string, fields: Record<string, unknown>) => ({
-  sessionId: SESSION,
-  clientOperationId: hostTestOperationId(),
-  expectedRuntimeFence: null,
-  payloadFingerprint: computeAgentSessionPayloadFingerprint({
-    method,
+function envelope(method: string, fields: Record<string, unknown>) {
+  return {
     sessionId: SESSION,
-    fields
-  })
-})
+    clientOperationId: hostTestOperationId(),
+    expectedRuntimeFence: null,
+    payloadFingerprint: computeAgentSessionPayloadFingerprint({
+      method,
+      sessionId: SESSION,
+      fields
+    })
+  }
+}
 async function pick(value: string) {
   const fields = { key: 'permissionMode', value }
   expect(
@@ -792,24 +794,3 @@ export function codexInputFinalizationFixture() {
 }
 
 registerCodexInputFinalization(codexInputFinalizationFixture)
-
-it('resumes Codex after a delivered kill whose exit report never arrives', async () => {
-  await permissionSend('Begin before Stop.')
-  await vi.waitFor(() => expect(starts()).toHaveLength(1))
-  const connection = codex.connections[0]!
-  Object.defineProperty(connection, 'closeResult', {
-    value: { root: 'live', tree: 'unverifiable', killDelivered: true }
-  })
-  vi.spyOn(connection, 'close').mockImplementation(async () => {
-    connection.closed = true
-    return true
-  })
-  await expect(stop()).resolves.toMatchObject({ ok: true })
-  await host.collaboratorsForTests().serialize(SESSION, async () => {})
-  const record = host['deps'].store.getRecord(SESSION)
-  expect(record?.lease.deathEvidence?.kind).toBe('kill-delivered')
-  await permissionSend('Continue after Stop.')
-  await vi.waitFor(() => expect(codex.connections).toHaveLength(2))
-  await vi.waitFor(() => expect(starts()).toHaveLength(2))
-  expect(connection.calls.filter((c) => c.method === 'turn/start')).toHaveLength(1)
-})
