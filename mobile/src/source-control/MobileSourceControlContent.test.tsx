@@ -98,6 +98,7 @@ function initialState(): MobileSourceControlContentState {
     client: null,
     connState: 'connected',
     forceReconnect: null,
+    rebaseBaseRef: 'main',
     insets: { top: 0, bottom: 0, left: 0, right: 0 },
     router: {
       back: noop,
@@ -162,7 +163,6 @@ function initialState(): MobileSourceControlContentState {
     stagedCount: 1,
     unstagedCount: 0,
     branchLabel: 'fixture',
-    upstream: undefined,
     upstreamKnown: false,
     syncLabel: null,
     primaryAction: {
@@ -261,7 +261,7 @@ describe('committed branch files during commit-message typing', () => {
   it.each(['clean', 'dirty'])('keeps the list without revisiting rows in %s', (layout) => {
     const initial = initialState()
     if (layout === 'dirty') {
-      initial.sections = [{ area: 'staged', title: 'Staged Changes', data: [] }]
+      initial.sections = [{ id: 'staged', area: 'staged', title: 'Staged Changes', data: [] }]
     }
     const format = vi.spyOn(branchFormat, 'formatMobileBranchEntryMeta')
     render(initial)
@@ -296,7 +296,7 @@ describe('committed branch files during commit-message typing', () => {
         path: `file-${index}.ts`
       }))
       if (dirty) {
-        initial.sections = [{ area: 'staged', title: 'Staged Changes', data: [] }]
+        initial.sections = [{ id: 'staged', area: 'staged', title: 'Staged Changes', data: [] }]
       }
       render(initial)
       expect(rows().length).toBeGreaterThan(0)

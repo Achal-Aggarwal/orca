@@ -7,6 +7,7 @@ import { readLocalGitConfigSignature } from '../github/local-git-config-signatur
 import { clearProjectRefInFlight, runProjectRefProbeOnce } from './project-ref-inflight'
 import {
   _resetGlabUnauthenticatedHosts,
+  getGlabPartialHosts,
   isGlabHostKnownUnauthenticated,
   parseGlabAuthStatusHosts,
   rememberGlabHostUnauthenticated,
@@ -170,6 +171,15 @@ async function resolveProjectRefForRemote(
       rememberGlabKnownHost(remoteCandidate.host, connectionId, localGitOptions)
       publish(remoteCandidate)
       return remoteCandidate
+    }
+    const partial = parseGitLabProjectRef(
+      stdout,
+      getGlabPartialHosts(connectionId, localGitOptions)
+    )
+    if (partial) {
+      // Evidence from an unsettled discovery uses the same finite expiry and never remembers auth.
+      publish(partial)
+      return partial
     }
   } catch (error) {
     // Failed SSH and transient probes do not establish a stable non-GitLab remote.

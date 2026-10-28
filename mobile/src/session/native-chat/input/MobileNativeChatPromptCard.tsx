@@ -1,11 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors, radii, spacing, typography } from '../../../theme/mobile-theme'
+import { themedStyleSheet } from '../../../theme/themed-styles'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 import type { AskAnswerSelection } from '../../../../../src/shared/native-chat-ask-answer'
-import type { AskPrompt } from '../../../../../src/shared/native-chat-ask-types'
+import type { AskPrompt } from '../../../../../src/shared/native-chat/input/native-chat-ask-types'
 import { MobileNativeChatAsk } from './MobileNativeChatAsk'
 import { MobileNativeChatPermission } from './MobileNativeChatPermission'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import { MobileNativeChatQuestion } from './MobileNativeChatQuestion'
+import { MobileNativeChatStructuredAsk } from './MobileNativeChatStructuredAsk'
 import { mobileChatQuestionKey, type MobileChatQuestion } from './mobile-native-chat-question'
 import { MobileNativeChatPromptStrip } from './MobileNativeChatPromptStrip'
 
@@ -41,8 +44,9 @@ export function MobileNativeChatPromptCard({
   permission?: MobileChatPermission | null
   onRespondPermission?: (send: string) => Promise<boolean>
   question?: MobileChatQuestion | null
-  onAnswerQuestion?: (text: string) => Promise<boolean>
+  onAnswerQuestion?: (text: string, prompt?: MobileChatQuestion['prompt']) => Promise<boolean>
 }): React.JSX.Element | null {
+  useMobileColorScheme()
   const card =
     ask && requiresTerminal ? (
       <View style={styles.terminalCard}>
@@ -87,6 +91,13 @@ export function MobileNativeChatPromptCard({
         onCancel={onCancelPrompt}
         onCollapse={onCollapsePrompt}
       />
+    ) : question?.questions ? (
+      <MobileNativeChatStructuredAsk
+        key={mobileChatQuestionKey(question)}
+        questions={question.questions}
+        onAnswer={async (answers) => (await onAnswerQuestion?.(answers, question.prompt)) ?? false}
+        onCancel={onCancelPrompt && (() => onCancelPrompt(question.prompt))}
+      />
     ) : question ? (
       <MobileNativeChatQuestion
         key={mobileChatQuestionKey(question)}
@@ -109,7 +120,7 @@ export function MobileNativeChatPromptCard({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   collapsed: { display: 'none' },
   terminalCard: {
     backgroundColor: colors.bgPanel,
@@ -132,4 +143,4 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySize,
     fontWeight: '600'
   }
-})
+}))
