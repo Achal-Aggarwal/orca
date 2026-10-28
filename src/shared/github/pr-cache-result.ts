@@ -34,6 +34,20 @@ export function applyPRCacheResult(
   return next
 }
 
+export function mergedPRMatchesHead(
+  pr: PRInfo | null | undefined,
+  currentHeadOid?: string | null
+): pr is PRInfo & { state: 'merged'; headSha: string } {
+  return (
+    pr?.state === 'merged' &&
+    typeof pr.headSha === 'string' &&
+    pr.headSha.length > 0 &&
+    typeof currentHeadOid === 'string' &&
+    currentHeadOid.length > 0 &&
+    (pr.headSha === currentHeadOid || pr.confirmedContainedHeadOid === currentHeadOid)
+  )
+}
+
 export function shouldPreserveMergedPRForFallbackMiss(args: {
   currentPR: PRInfo | null | undefined
   nextPR: PRInfo | null
@@ -45,12 +59,7 @@ export function shouldPreserveMergedPRForFallbackMiss(args: {
   return (
     args.nextPR === null &&
     args.linkedPRNumber == null &&
-    currentPR?.state === 'merged' &&
-    !args.rejectedPRUrls?.includes(currentPR.url) &&
-    typeof currentPR.headSha === 'string' &&
-    currentPR.headSha.length > 0 &&
-    typeof currentHeadOid === 'string' &&
-    currentHeadOid.length > 0 &&
-    (currentPR.headSha === currentHeadOid || currentPR.confirmedContainedHeadOid === currentHeadOid)
+    mergedPRMatchesHead(currentPR, currentHeadOid) &&
+    !args.rejectedPRUrls?.includes(currentPR.url)
   )
 }

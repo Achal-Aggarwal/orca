@@ -62,7 +62,10 @@ export class PRRefreshVisibility {
         continue
       }
       selected ||= candidate.isSelected === true
-      if ((candidate.cachedFetchedAt ?? 0) > (latest.cachedFetchedAt ?? 0)) {
+      if (
+        candidate.cachedFetchedAt != null &&
+        candidate.cachedFetchedAt >= (latest.cachedFetchedAt ?? 0)
+      ) {
         latest = { ...fallback, ...this.cachedFields(candidate) }
       }
     }

@@ -41,11 +41,149 @@ it.each(['head-sha', 'contained-head'])(
       await subscription.renew()
       await vi.advanceTimersByTimeAsync(0)
       expect(h.cache.pr[h.candidate.cacheKey]).toBe(cached)
-      expect(snapshots(h.frames).at(-1)?.review?.state).toBe('merged')
+      expect(snapshots(h.frames).at(-1)).toMatchObject({
+        review: { state: 'merged' },
+        stale: false
+      })
       expect(mocks.getPRForBranchOutcomeMock.mock.calls[0]?.[4]).toBe(12)
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
     } finally {
       subscription.close()
     }
+  }
+)
+
+it.each([undefined, 'contained-head', 'previous-fetch'])(
+  'publishes contained merged heads as fresh without changing fetch provenance (%s)',
+  async (fetchedHeadOid) => {
+    const h = await harness()
+    h.candidate = { ...h.candidate, currentHeadOid: 'contained-head' }
+    const cached = {
+      data: makePR({
+        state: 'merged',
+        checksStatus: 'success',
+        confirmedContainedHeadOid: 'contained-head'
+      }),
+      fetchedAt: Date.now(),
+      ...(fetchedHeadOid ? { fetchedHeadOid } : {})
+    }
+    h.cache = { pr: { [h.candidate.cacheKey]: cached }, issue: {} }
+    const subscription = h.open()
+    await subscription.renew()
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: { state: 'merged' }, stale: false })
+    expect(h.cache.pr[h.candidate.cacheKey]).toBe(cached)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+    h.candidate = { ...h.candidate, currentHeadOid: 'changed-head' }
+    mocks.getPRForBranchOutcomeMock.mockImplementation(async () => ({
+      kind: 'no-pr',
+      fetchedAt: Date.now()
+    }))
+    await subscription.renew()
+    expect(snapshots(h.frames).at(-1)?.stale).toBe(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: null, stale: false })
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledTimes(2)
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: null, stale: false })
+    subscription.close()
+  }
+)
+
+it.each(['success', 'failure', 'pending'] as const)(
+  'uses retained merged %s cadence immediately after a manual fallback miss',
+  async (checksStatus) => {
+    const h = await harness()
+    const cached = {
+      data: makePR({ state: 'merged', checksStatus }),
+      fetchedAt: Date.now(),
+      fetchedHeadOid: 'head-sha'
+    }
+    h.cache = { pr: { [h.candidate.cacheKey]: cached }, issue: {} }
+    mocks.getPRForBranchOutcomeMock.mockImplementation(async () => ({
+      kind: 'no-pr',
+      fetchedAt: Date.now()
+    }))
+    const subscription = h.open()
+    await subscription.renew()
+    await vi.advanceTimersByTimeAsync(0)
+    const target = await h.prepare()
+    expect(target.candidate).not.toBeNull()
+    if (!target.candidate) {
+      throw new Error('Missing test candidate')
+    }
+    await h.coordinator.refreshPRNow(target.candidate)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
+    expect(snapshots(h.frames).at(-1)).toMatchObject({
+      review: { state: 'merged', checksStatus },
+      stale: false
+    })
+    expect(h.cache.pr[h.candidate.cacheKey]).toBe(cached)
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledTimes(
+      checksStatus === 'pending' ? 2 : 1
+    )
+    await vi.advanceTimersByTimeAsync(49_000)
+    expect(h.cleanups.size).toBe(1)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(h.cleanups.size).toBe(0)
+    const starts = mocks.getPRForBranchOutcomeMock.mock.calls.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledTimes(starts)
+  }
+)
+
+it.each([false, true])(
+  'retains settled cadence across renewals with desktop reported last=%s',
+  async (desktopLast) => {
+    const h = await harness()
+    mocks.getAllWebContentsMock.mockReturnValue([{ id: 1, isDestroyed: () => false }])
+    h.candidate = { ...h.candidate, currentHeadOid: 'contained-head' }
+    const cached = {
+      data: makePR({
+        state: 'merged',
+        checksStatus: 'success',
+        confirmedContainedHeadOid: 'contained-head'
+      }),
+      fetchedAt: Date.now()
+    }
+    h.cache = { pr: { [h.candidate.cacheKey]: cached }, issue: {} }
+    const target = await h.prepare()
+    if (!target.candidate) {
+      throw new Error('Missing test candidate')
+    }
+    const candidate = target.candidate
+    const desktop = () => h.coordinator.reportVisiblePRRefreshCandidates([candidate], 1, 1)
+    mocks.getPRForBranchOutcomeMock.mockImplementation(async () => ({
+      kind: 'no-pr',
+      fetchedAt: Date.now()
+    }))
+    const subscription = h.open()
+    if (!desktopLast) {
+      desktop()
+    }
+    await subscription.renew()
+    if (desktopLast) {
+      desktop()
+    }
+    await vi.advanceTimersByTimeAsync(20_000)
+    await h.coordinator.refreshPRNow(target.candidate)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.prepare).toHaveBeenCalledTimes(3)
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: { state: 'merged' }, stale: false })
+    for (let renewal = 0; renewal < 3; renewal += 1) {
+      await vi.advanceTimersByTimeAsync(50_000)
+      await subscription.renew()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(mocks.getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
+      expect(snapshots(h.frames).at(-1)?.stale).toBe(false)
+    }
+    expect(h.cache.pr[h.candidate.cacheKey]).toBe(cached)
+    subscription.close()
+    h.coordinator.clearVisiblePRRefreshWindow(1)
   }
 )
 

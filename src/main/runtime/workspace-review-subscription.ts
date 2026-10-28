@@ -8,16 +8,18 @@ import type { RuntimeStore } from './runtime-store-contract'
 import type { OrcaRuntimeService } from './orca-runtime'
 import type { WorkspaceReviewTarget } from './runtime-workspace-review-target'
 import type { GitHubPRRefreshEvent } from '../../shared/github/pull-request-refresh-types'
-import {
-  applyPRCacheResult,
-  shouldPreserveMergedPRForFallbackMiss
-} from '../../shared/github/pr-cache-result'
+import { cachedPRCandidateFields } from '../../shared/github/pr-refresh-selection'
+import { applyWorkspaceReviewCacheResult } from './workspace-review-cache-result'
 import {
   WORKTREE_REVIEW_LEASE_MS,
   type WorktreeReviewStatus
 } from '../../shared/worktree-review-status'
 import { reviewRefreshIntervalMs } from '../../shared/review-refresh-policy'
-import { aliasFromCandidate, sameAliasRequestIdentity } from '../github/pr-refresh-candidate-policy'
+import {
+  aliasFromCandidate,
+  hasStaleHead,
+  sameAliasRequestIdentity
+} from '../github/pr-refresh-candidate-policy'
 import {
   clearVisiblePRRefreshWindow,
   reportVisiblePRRefreshCandidates,
@@ -196,11 +198,9 @@ export class WorkspaceReviewSubscription {
       hasReview: cached ? pr != null : null,
       selected: true
     })
-    const cachedHead = cached?.fetchedHeadOid ?? pr?.headSha
-    const staleHead =
-      candidate?.currentHeadOid != null &&
-      cachedHead != null &&
-      candidate.currentHeadOid !== cachedHead
+    const staleHead = candidate
+      ? hasStaleHead({ ...candidate, ...cachedPRCandidateFields(cached, candidate.currentHeadOid) })
+      : false
     const type = this.hasPublished ? 'updated' : 'snapshot'
     this.hasPublished = true
     this.send({
@@ -279,31 +279,13 @@ export class WorkspaceReviewSubscription {
     this.target = current
     const outcome = event.outcome
     this.lastError = outcome.kind === 'upstream-error' ? outcome.message : undefined
-    if (outcome.kind !== 'upstream-error') {
-      const store = this.runtime.requireStore()
-      const cache = store.getGitHubCache()
-      const existing = cache.pr[candidate.cacheKey]
-      if (!existing || existing.fetchedAt <= outcome.fetchedAt) {
-        const pr = outcome.kind === 'found' ? outcome.pr : null
-        const next = applyPRCacheResult(
-          cache.pr,
-          candidate.cacheKey,
-          pr,
-          outcome.fetchedAt,
-          true,
-          shouldPreserveMergedPRForFallbackMiss({
-            currentPR: existing?.data,
-            nextPR: pr,
-            currentHeadOid: current.candidate.currentHeadOid,
-            linkedPRNumber: current.candidate.linkedPRNumber,
-            rejectedPRUrls: outcome.kind === 'no-pr' ? outcome.rejectedPRUrls : undefined
-          }),
-          candidate.currentHeadOid
-        )
-        if (next !== cache.pr) {
-          store.setGitHubCache?.({ ...cache, pr: next })
-        }
-      }
+    const retained = applyWorkspaceReviewCacheResult(
+      this.runtime.requireStore(),
+      current.candidate,
+      outcome
+    )
+    if (retained) {
+      reportVisiblePRRefreshCandidates([retained], this.generation, this.subscriptionId)
     }
     this.publish()
   }

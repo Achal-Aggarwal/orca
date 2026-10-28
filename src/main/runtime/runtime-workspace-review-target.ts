@@ -165,7 +165,7 @@ export async function workspaceReviewTarget(args: {
         currentHeadOid: head
       }),
       isSelected: true,
-      ...cachedPRCandidateFields(usableCached)
+      ...cachedPRCandidateFields(usableCached, head)
     }
   }
 }

@@ -119,6 +119,9 @@ export function reportVisiblePRRefreshCandidates(
   if (!visibility.report(candidates, generation, ownerId)) {
     return
   }
+  for (const candidate of candidates) {
+    visibility.update(candidate)
+  }
   removeInvisibleVisibleRefreshes()
   queue.retimeVisible((key, candidate) => visibility.candidate(key, candidate))
   for (const candidate of candidates) {

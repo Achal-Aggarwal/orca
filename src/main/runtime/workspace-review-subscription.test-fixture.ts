@@ -35,7 +35,7 @@ export async function harness() {
           cachedPR: cached?.data,
           currentHeadOid: candidate.currentHeadOid
         }),
-        ...cachedPRCandidateFields(cached)
+        ...cachedPRCandidateFields(cached, candidate.currentHeadOid)
       }
     }
   })
