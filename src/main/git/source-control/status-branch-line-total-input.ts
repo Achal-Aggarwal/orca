@@ -40,6 +40,7 @@ export function createBranchLineTotalInput(
         runDiffNumstat: (args, signal) =>
           gitExecFileAsync(args, {
             ...gitReadOptionsForWorktree(worktreePath, options),
+            captureWslLoginShellOutput: true,
             // The shared lease owns cancellation, not this individual caller.
             signal,
             env: gitOptionalLocksDisabledEnv(),

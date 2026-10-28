@@ -31,6 +31,7 @@ async function runNumstat(
       ],
       {
         ...gitReadOptionsForWorktree(worktreePath, options),
+        captureWslLoginShellOutput: true,
         env: gitOptionalLocksDisabledEnv()
       }
     )
