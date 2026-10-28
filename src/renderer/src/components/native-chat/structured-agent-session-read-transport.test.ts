@@ -172,7 +172,7 @@ describe('structured agent-session read transport generations', () => {
     expect(attempts[0].unsubscribe).toHaveBeenCalledOnce()
 
     attempts[1].onEvent(snapshot(2))
-    expect(applyEvent).toHaveBeenCalledExactlyOnceWith(snapshot(2))
+    expect(applyEvent).toHaveBeenCalledExactlyOnceWith(snapshot(2), { opensSubscription: true })
     replacement.dispose()
   })
 
@@ -196,7 +196,7 @@ describe('structured agent-session read transport generations', () => {
       expect(applyError).not.toHaveBeenCalled()
 
       attempts[1].onEvent(snapshot(2))
-      expect(applyEvent).toHaveBeenCalledExactlyOnceWith(snapshot(2))
+      expect(applyEvent).toHaveBeenCalledExactlyOnceWith(snapshot(2), { opensSubscription: true })
       attempts[1].closed.resolve({ unsubscribe: attempts[1].unsubscribe })
       await flushPromises()
       transport.dispose()
@@ -547,7 +547,9 @@ describe('structured agent-session read transport unattached refusals', () => {
       expect(attempts).toHaveLength(2)
       attempts[1].onEvent(snapshot(1))
       await flushPromises()
-      expect(applyEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot' }))
+      expect(applyEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot' }), {
+        opensSubscription: true
+      })
       transport.dispose()
     } finally {
       vi.useRealTimers()
