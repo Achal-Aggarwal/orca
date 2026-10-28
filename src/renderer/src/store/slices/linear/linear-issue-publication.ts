@@ -534,13 +534,14 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
     },
     invalidate: (identifier?: string, workspaceId?: string | null) => {
       if (identifier && args.identifier) {
-        // The exact detail is forced by its caller; only proven aliases also need replacement.
+        // Cold equal lookups can be affected too; the exact detail is forced by its caller.
         const organization = workspaceId ? organizations.get(workspaceId) : undefined
         if (
           (args.identifier === identifier &&
             (args.workspaceId ?? null) === (workspaceId ?? null)) ||
           (queryOrg && organization && queryOrg !== organization) ||
-          !rows(warm).some((row) => row.id === identifier || row.identifier === identifier)
+          (args.identifier !== identifier &&
+            !rows(warm).some((row) => row.id === identifier || row.identifier === identifier))
         ) {
           return
         }
