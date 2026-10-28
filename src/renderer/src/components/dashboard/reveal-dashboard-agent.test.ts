@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   focusGroup: vi.fn(),
   activateTab: vi.fn(),
   setActiveTabType: vi.fn(),
-  tabs: [] as Tab[]
+  tabs: new Array<Tab>()
 }))
 const getState = () => ({
   unifiedTabsByWorktree: { 'wt-1': mocks.tabs },
