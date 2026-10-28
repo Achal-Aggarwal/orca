@@ -74,7 +74,6 @@ export function useSmartWorkspaceSecondarySearches({
   // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
   linearReadMethodsRef.current = foundation
   const failedLinearReadRef = useRef<readonly unknown[] | null>(null)
-  const linearConnected = linearStatus.connected === true
   const linearScopeSignature = linearWorkspaceScopeSignature(linearStatus)
   const branchSearchRequest = useMemo(
     () =>
@@ -154,7 +153,7 @@ export function useSmartWorkspaceSecondarySearches({
     // Why: the status refresh after a failure re-runs this same read; don't blink its error.
     const rereadOfFailure =
       failedLinearReadRef.current?.every((part, index) => part === readKey[index]) === true
-    const canQuery = !disabled && shouldQueryLinear && linearConnected
+    const canQuery = !disabled && shouldQueryLinear && linearStatus.connected === true
     if (!rereadOfFailure || !canQuery) {
       failedLinearReadRef.current = null
       setLinearReadError(null)
@@ -208,6 +207,9 @@ export function useSmartWorkspaceSecondarySearches({
       request,
       () => !stale,
       (lease, view) => {
+        if (view.kind === 'abandoned') {
+          return setLinearLoading((previous) => (!stale ? false : previous))
+        }
         setLinearIssues((current) =>
           lease.commit(view, current, (_, data) =>
             data ? (Array.isArray(data) ? data : data.items) : view.kind === 'error' ? current : []
@@ -240,7 +242,7 @@ export function useSmartWorkspaceSecondarySearches({
     }
   }, [
     disabled,
-    linearConnected,
+    linearStatus.connected,
     linearQuery,
     linearScopeSignature,
     linearSourceContext,

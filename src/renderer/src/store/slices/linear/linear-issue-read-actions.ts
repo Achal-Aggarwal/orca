@@ -1,12 +1,10 @@
 import type { LinearIssueData, LinearIssueRequest } from './linear-issue-publication'
 import { openLinearIssueRead } from './linear-issue-publication'
 import {
-  canWriteLinearReadResult,
   canPublishLinearScopeCache,
   isCurrentLinearRuntimeContext,
   type LinearReadScope
 } from './linear-slice-scope'
-import { getLinearCacheGeneration, getLinearMutationGeneration } from './linear-slice-request-state'
 import type { LinearSliceGet } from './linear-slice-contract'
 import { isFresh, looksLikeAuthError, shouldRefreshStatusAfterRead } from './linear-cache'
 import type { CacheEntry } from '../../github/cache-model'
@@ -45,8 +43,6 @@ export function openStoreLinearIssueRead<T extends LinearIssueData>(args: {
     return expose(existing)
   }
   existing?.abandon()
-  const generation = getLinearCacheGeneration()
-  const mutationGeneration = getLinearMutationGeneration()
   let read: LinearIssueRequest<T> | undefined
   read = openLinearIssueRead({
     scope,
@@ -68,16 +64,7 @@ export function openStoreLinearIssueRead<T extends LinearIssueData>(args: {
         args.publish(data)
       }
     },
-    isCurrent: () =>
-      scope.isCurrentRuntime() &&
-      (!read || requests.get(requestKey) === read) &&
-      canWriteLinearReadResult(
-        scope.contextKey,
-        generation,
-        mutationGeneration,
-        get().settings,
-        true
-      ),
+    isCurrent: () => scope.isCurrentRuntime() && (!read || requests.get(requestKey) === read),
     remove: () => {
       if (requests.get(requestKey) === read) {
         requests.delete(requestKey)

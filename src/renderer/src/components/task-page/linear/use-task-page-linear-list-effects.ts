@@ -222,6 +222,16 @@ export function useTaskPageLinearListEffects(model: TaskPageGlobalEffectsModel) 
         lastLinearRequestRef.current?.signature === requestSignature &&
         lastLinearRequestRef.current?.nonce === linearRefreshNonce,
       (lease, view) => {
+        if (view.kind === 'abandoned') {
+          setLinearLoading((previous) =>
+            !cancelled &&
+            lastLinearRequestRef.current?.signature === requestSignature &&
+            lastLinearRequestRef.current?.nonce === linearRefreshNonce
+              ? false
+              : previous
+          )
+          return
+        }
         if (view.data === null && view.kind === 'loading') {
           setLinearIssues((current) => lease.commit(view, current, () => []))
         }

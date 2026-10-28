@@ -73,6 +73,7 @@ const reads = vi.hoisted(() => ({
 
 vi.mock('@/runtime/runtime-linear-client', async (original) => ({
   ...(await original<Record<string, unknown>>()),
+  linearTestConnection: async () => ({ ok: true }),
   linearDisconnect: async () => {},
   linearConnect: async () => ({ ok: true }),
   linearStatus: async () => ({ connected: true, viewer: null, selectedWorkspaceId: 'w' }),

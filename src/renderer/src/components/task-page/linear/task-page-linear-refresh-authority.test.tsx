@@ -17,6 +17,10 @@ import { TaskPageLinearIssueTable } from './IssueTable'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { TaskPageComposerActionsModel } from '../use-task-page-composer-actions'
 import { useState } from 'react'
+import { writeLinearIssue } from '@/lib/linear-issue-write'
+import { defaultScopeSource } from '@/lib/default-creation-host'
+import { getLinearSourceScope } from '@/store/slices/linear/linear-slice-scope'
+import { pendingLinearIssueWrites } from '@/store/slices/linear/linear-issue-publication'
 import { PaginationBar } from '../PaginationBar'
 import { useTaskPageLinearListProjectionPrelude } from './use-task-page-linear-list-projection'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
@@ -493,3 +497,119 @@ it.each([20, 200])(
     console.info('linked identity reads N', n, patchOperations)
   }
 )
+
+it.each([20, 200])('bounds real write-edge and read reconciliation work at Q=P=W=%i', async (n) => {
+  const s = store()
+  let workspaceKeys = 0,
+    candidates = 0,
+    foreignScopes = 0,
+    foreignCandidates = 0
+  const workspaces = Array.from({ length: n }, (_, i) => ({
+    get id() {
+      workspaceKeys++
+      return `w${i}`
+    },
+    name: `Workspace ${i}`
+  }))
+  // SAFETY: only credential IDs/name and absent optional organization metadata are consumed.
+  s.setState({
+    linearStatus: { connected: true, viewer: null, selectedWorkspaceId: 'w0', workspaces } as never
+  })
+  const rows = Array.from({ length: n }, (_, i) => ({
+    ...task(),
+    id: `U${i}`,
+    workspaceId: `w${i}`
+  }))
+  const pending = rows.map(() => deferred<{ ok: boolean }>())
+  const saves = rows.map((row, i) =>
+    writeLinearIssue(row, { priority: 1 }, defaultScopeSource(null), () => pending[i].promise)
+  )
+  const owners = pendingLinearIssueWrites.get(
+    getLinearSourceScope(defaultScopeSource(null)).contextKey
+  )!
+  for (const owner of owners.values()) {
+    Object.defineProperty(owner, 'organizationId', {
+      get() {
+        candidates++
+        return undefined
+      }
+    })
+  }
+  const transport = deferred<LinearIssue[]>()
+  reads.search.mockReturnValue(transport.promise)
+  const leases = rows.map((_, i) => s.getState().searchLinearIssues(`query${i}`, n).acquire())
+  expect(reads.search).toHaveBeenCalledTimes(n)
+  const foreign = getLinearSourceScope(source('runtime:foreign'))
+  const foreignPending = rows.map(() => deferred<{ ok: boolean }>())
+  const foreignSaves = rows.map((row, i) =>
+    writeLinearIssue(
+      row,
+      { priority: 3 },
+      source('runtime:foreign'),
+      () => foreignPending[i].promise
+    )
+  )
+  for (const owner of pendingLinearIssueWrites.get(foreign.contextKey)!.values()) {
+    Object.defineProperty(owner, 'organizationId', {
+      get() {
+        foreignCandidates++
+        return undefined
+      }
+    })
+  }
+  const foreignKey = foreign.contextKey
+  Object.defineProperty(foreign, 'contextKey', {
+    get() {
+      foreignScopes++
+      return foreignKey
+    }
+  })
+  reads.detail.mockReturnValue(new Promise(() => {}))
+  const foreignLeases = rows.map((row) =>
+    s.getState().fetchLinearIssue(row.id, row.workspaceId, { scope: foreign }).acquire()
+  )
+  workspaceKeys = 0
+  candidates = 0
+  foreignScopes = 0
+  transport.resolve(rows)
+  await Promise.all(leases.map((lease) => lease.waitForCurrentTerminal()))
+  const reconciliation = { workspaceKeys, candidates }
+  expect(workspaceKeys).toBe(0)
+  expect(candidates).toBeLessThanOrEqual(n * (n + 2))
+  expect(leases.every((lease) => lease.currentView().data?.[0].priority === 1)).toBe(true)
+  candidates = 0
+  workspaceKeys = 0
+  foreignScopes = 0
+  const edit = deferred<{ ok: boolean }>()
+  const mutate = vi.fn(() => edit.promise)
+  const saving = writeLinearIssue(rows[0], { priority: 4 }, defaultScopeSource(null), mutate)
+  expect(mutate).toHaveBeenCalledTimes(1)
+  expect(leases.every((lease) => lease.currentView().data?.[0].priority === 4)).toBe(true)
+  edit.resolve({ ok: false })
+  await saving
+  const edge = { workspaceKeys, candidates, foreignScopes }
+  expect(workspaceKeys).toBeLessThanOrEqual(n)
+  expect(candidates).toBeLessThanOrEqual(3 * n)
+  expect(foreignScopes).toBe(0)
+  expect(foreignCandidates).toBe(0)
+  expect(reads.search).toHaveBeenCalledTimes(n)
+  expect(leases.every((lease) => lease.currentView().data?.[0].priority === 1)).toBe(true)
+  reads.search.mockResolvedValue(rows.map((row) => ({ ...row, priority: 2, title: 'External' })))
+  pending.forEach((operation) => operation.resolve({ ok: false }))
+  await Promise.all(saves)
+  await Promise.all(leases.map((lease) => lease.waitForCurrentTerminal()))
+  expect(reads.search).toHaveBeenCalledTimes(2 * n)
+  expect(leases.every((lease) => lease.currentView().data?.[0].priority === 2)).toBe(true)
+  leases.forEach((lease) => lease.release())
+  foreignLeases.forEach((lease) => lease.release())
+  foreignPending.forEach((operation) => operation.resolve({ ok: false }))
+  await Promise.all(foreignSaves)
+  expect(reads.detail).toHaveBeenCalledTimes(n)
+  expect(pendingLinearIssueWrites.size).toBe(0)
+  console.info('write/reconciliation operations', {
+    n,
+    reconciliation,
+    edge,
+    dispatches: reads.search.mock.calls.length
+  })
+})

@@ -8,17 +8,16 @@ import {
   linearStatus,
   linearTestConnection
 } from '@/runtime/runtime-linear-client'
-import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import { translate } from '@/i18n/i18n'
 import {
   beginLinearMutation,
   invalidateLinearCaches,
+  evictLinearScopeCaches,
   isCurrentLinearMutation
 } from './linear-slice-request-state'
 import { detachLinearIssuePublication } from './linear-issue-publication'
 import { getLinearReadScope, isCurrentLinearRuntimeContext } from './linear-slice-scope'
 import { linearStatusScopeSignature } from './linear-cache'
-import { defaultScopeSource } from '@/lib/default-creation-host'
 
 export function createLinearConnectionActions(
   set: LinearSliceSet,
@@ -33,37 +32,28 @@ export function createLinearConnectionActions(
 > {
   return {
     testLinearConnection: async (workspaceId) => {
+      const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
-      const contextKey = getProviderRuntimeContextKey(get().settings)
+      const contextKey = scope.runtimeContextKey
       try {
-        const result = await linearTestConnection(defaultScopeSource(get().settings), workspaceId)
+        const result = await linearTestConnection(scope.settings, workspaceId)
         if (
           !isCurrentLinearMutation(requestGeneration) ||
           !isCurrentLinearRuntimeContext(contextKey, get().settings)
         ) {
           return result
         }
-        const status = await linearStatus(defaultScopeSource(get().settings))
+        const status = await linearStatus(scope.settings)
         if (
           isCurrentLinearMutation(requestGeneration) &&
           isCurrentLinearRuntimeContext(contextKey, get().settings)
         ) {
           const prev = get().linearStatus
           if (linearStatusScopeSignature(prev) !== linearStatusScopeSignature(status)) {
-            invalidateLinearCaches()
+            invalidateLinearCaches(scope)
             set({
               linearStatus: status,
-              linearIssueCache: {},
-              linearSearchCache: {},
-              linearListCache: {},
-              linearTeamCache: {},
-              linearProjectCache: {},
-              linearProjectDetailCache: {},
-              linearProjectIssueCache: {},
-              linearCustomViewCache: {},
-              linearCustomViewDetailCache: {},
-              linearCustomViewIssueCache: {},
-              linearCustomViewProjectCache: {},
+              ...evictLinearScopeCaches(get(), scope),
               linearStatusChecked: true,
               linearStatusContextKey: contextKey
             })
@@ -80,30 +70,21 @@ export function createLinearConnectionActions(
     },
 
     connectLinear: async (apiKey: string) => {
+      const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
-      const contextKey = getProviderRuntimeContextKey(get().settings)
+      const contextKey = scope.runtimeContextKey
       try {
-        const result = await linearConnect(defaultScopeSource(get().settings), apiKey)
+        const result = await linearConnect(scope.settings, apiKey)
         if (
           result.ok &&
           isCurrentLinearMutation(requestGeneration) &&
           isCurrentLinearRuntimeContext(contextKey, get().settings)
         ) {
-          invalidateLinearCaches()
+          invalidateLinearCaches(scope)
           set({
-            linearIssueCache: {},
-            linearSearchCache: {},
-            linearListCache: {},
-            linearTeamCache: {},
-            linearProjectCache: {},
-            linearProjectDetailCache: {},
-            linearProjectIssueCache: {},
-            linearCustomViewCache: {},
-            linearCustomViewDetailCache: {},
-            linearCustomViewIssueCache: {},
-            linearCustomViewProjectCache: {}
+            ...evictLinearScopeCaches(get(), scope)
           })
-          const status = await linearStatus(defaultScopeSource(get().settings))
+          const status = await linearStatus(scope.settings)
           if (
             !isCurrentLinearMutation(requestGeneration) ||
             !isCurrentLinearRuntimeContext(contextKey, get().settings)
@@ -138,29 +119,20 @@ export function createLinearConnectionActions(
     },
 
     selectLinearWorkspace: async (workspaceId) => {
+      const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
-      const contextKey = getProviderRuntimeContextKey(get().settings)
-      const status = await linearSelectWorkspace(defaultScopeSource(get().settings), workspaceId)
+      const contextKey = scope.runtimeContextKey
+      const status = await linearSelectWorkspace(scope.settings, workspaceId)
       if (
         !isCurrentLinearMutation(requestGeneration) ||
         !isCurrentLinearRuntimeContext(contextKey, get().settings)
       ) {
         return
       }
-      invalidateLinearCaches()
+      invalidateLinearCaches(scope)
       set({
         linearStatus: status,
-        linearIssueCache: {},
-        linearSearchCache: {},
-        linearListCache: {},
-        linearTeamCache: {},
-        linearProjectCache: {},
-        linearProjectDetailCache: {},
-        linearProjectIssueCache: {},
-        linearCustomViewCache: {},
-        linearCustomViewDetailCache: {},
-        linearCustomViewIssueCache: {},
-        linearCustomViewProjectCache: {},
+        ...evictLinearScopeCaches(get(), scope),
         linearStatusChecked: true,
         linearStatusContextKey: contextKey
       })
@@ -169,7 +141,7 @@ export function createLinearConnectionActions(
     disconnectLinear: async () => {
       const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
-      const contextKey = getProviderRuntimeContextKey(get().settings)
+      const contextKey = scope.runtimeContextKey
       detachLinearIssuePublication(scope, true)
       await linearDisconnect(scope.settings)
       if (
@@ -178,56 +150,37 @@ export function createLinearConnectionActions(
       ) {
         return
       }
-      invalidateLinearCaches()
+      invalidateLinearCaches(scope)
       set({
         linearStatus: { connected: false, viewer: null },
-        linearIssueCache: {},
-        linearSearchCache: {},
-        linearListCache: {},
-        linearTeamCache: {},
-        linearProjectCache: {},
-        linearProjectDetailCache: {},
-        linearProjectIssueCache: {},
-        linearCustomViewCache: {},
-        linearCustomViewDetailCache: {},
-        linearCustomViewIssueCache: {},
-        linearCustomViewProjectCache: {},
+        ...evictLinearScopeCaches(get(), scope),
         linearStatusChecked: true,
         linearStatusContextKey: contextKey
       })
     },
 
     disconnectLinearWorkspace: async (workspaceId) => {
+      const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
-      const contextKey = getProviderRuntimeContextKey(get().settings)
-      await linearDisconnectWorkspace(defaultScopeSource(get().settings), workspaceId)
+      const contextKey = scope.runtimeContextKey
+      await linearDisconnectWorkspace(scope.settings, workspaceId)
       if (
         !isCurrentLinearMutation(requestGeneration) ||
         !isCurrentLinearRuntimeContext(contextKey, get().settings)
       ) {
         return
       }
-      const status = await linearStatus(defaultScopeSource(get().settings))
+      const status = await linearStatus(scope.settings)
       if (
         !isCurrentLinearMutation(requestGeneration) ||
         !isCurrentLinearRuntimeContext(contextKey, get().settings)
       ) {
         return
       }
-      invalidateLinearCaches()
+      invalidateLinearCaches(scope)
       set({
         linearStatus: status,
-        linearIssueCache: {},
-        linearSearchCache: {},
-        linearListCache: {},
-        linearTeamCache: {},
-        linearProjectCache: {},
-        linearProjectDetailCache: {},
-        linearProjectIssueCache: {},
-        linearCustomViewCache: {},
-        linearCustomViewDetailCache: {},
-        linearCustomViewIssueCache: {},
-        linearCustomViewProjectCache: {},
+        ...evictLinearScopeCaches(get(), scope),
         linearStatusChecked: true,
         linearStatusContextKey: contextKey
       })

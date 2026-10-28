@@ -135,6 +135,10 @@ export function useLinearIssueWorkspaceDetail({
         }),
       current,
       (lease, view) => {
+        if (view.kind === 'abandoned') {
+          setIssueLoading((previous) => (current() ? false : previous))
+          return
+        }
         const seed = initial && view.kind === 'loading'
         initial = false
         if ((view.kind === 'data' || seed) && view.data) {

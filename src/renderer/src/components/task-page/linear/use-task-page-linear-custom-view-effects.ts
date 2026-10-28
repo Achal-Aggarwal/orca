@@ -123,6 +123,10 @@ export function useTaskPageLinearCustomViewEffects(model: TaskPageLinearInOrcaEf
         ),
         () => !cancelled,
         (lease, view) => {
+          if (view.kind === 'abandoned') {
+            setLinearCustomViewContentsLoading((previous) => (!cancelled ? false : previous))
+            return
+          }
           if (view.data) {
             setLinearCustomViewIssuesResult((current) =>
               lease.commit(view, current, (_, data) => data ?? current)

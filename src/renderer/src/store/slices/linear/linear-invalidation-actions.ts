@@ -6,7 +6,7 @@ import type {
   LinearSliceSet
 } from './linear-slice-contract'
 import { patchLinearIssueCollectionCache } from './linear-cache'
-import { publishLinearIssuePatch, invalidateLinearIssueReads } from './linear-issue-publication'
+import { publishLinearIssuePatch } from './linear-issue-publication'
 import { getLinearReadScope, canPublishLinearScopeCache } from './linear-slice-scope'
 
 export function createLinearInvalidationActions(
@@ -16,7 +16,6 @@ export function createLinearInvalidationActions(
   return {
     invalidateLinearIssueLists: (options?: Pick<LinearFetchOptions, 'sourceContext' | 'scope'>) => {
       const scope = options?.scope ?? getLinearReadScope(get().settings, options?.sourceContext)
-      invalidateLinearIssueReads(scope)
       if (!canPublishLinearScopeCache(scope, get().settings)) {
         return
       }

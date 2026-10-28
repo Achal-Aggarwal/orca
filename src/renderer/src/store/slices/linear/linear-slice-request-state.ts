@@ -1,4 +1,11 @@
-import { abandonLinearIssueReads, type LinearIssueRequest } from './linear-issue-publication'
+import {
+  abandonLinearIssueReads,
+  invalidateLinearIssueReads,
+  type LinearIssueRequest
+} from './linear-issue-publication'
+import { rowLessSourceTarget } from '@/lib/default-creation-host'
+import type { LinearSlice } from './linear-slice-contract'
+import type { LinearReadScope } from './linear-slice-scope'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
 import type {
   LinearCustomViewSummary,
@@ -73,23 +80,23 @@ export const inflightCustomViewProjectRequests = linearRequestState.customViewPr
 
 export function clearLinearRequestMaps(): void {
   abandonLinearIssueReads()
-  linearRequestState.issueRequests.clear()
-  linearRequestState.searchRequests.clear()
-  linearRequestState.listRequests.clear()
+  clearLinearMetadataRequests()
+}
+
+function clearLinearMetadataRequests(): void {
   linearRequestState.teamRequests.clear()
   linearRequestState.projectRequests.clear()
   linearRequestState.projectDetailRequests.clear()
-  linearRequestState.projectIssueRequests.clear()
   linearRequestState.customViewRequests.clear()
   linearRequestState.customViewDetailRequests.clear()
-  linearRequestState.customViewIssueRequests.clear()
   linearRequestState.customViewProjectRequests.clear()
 }
 
-export function invalidateLinearCaches(): void {
+export function invalidateLinearCaches(scope: LinearReadScope): void {
   linearRequestState.cacheGeneration += 1
-  clearLinearRequestMaps()
+  clearLinearMetadataRequests()
   clearLinearMetadataCache()
+  invalidateLinearIssueReads(scope, undefined, true)
 }
 
 export function beginLinearMutation(): number {
@@ -130,4 +137,27 @@ export function setInflightStatusRequest(
   request: { contextKey: string; promise: Promise<void> } | null
 ): void {
   linearRequestState.inflightStatusRequest = request
+}
+
+export function evictLinearScopeCaches(state: LinearSlice, scope: LinearReadScope) {
+  const target = rowLessSourceTarget(scope.settings)
+  const host = target.kind === 'environment' ? `runtime:${target.environmentId}` : 'local'
+  const prefix = `linear:${encodeURIComponent(host)}:`
+  const retain = <T>(cache: Record<string, T>) =>
+    Object.fromEntries(
+      Object.entries(cache).filter(([key]) => key.startsWith('linear:') && !key.startsWith(prefix))
+    )
+  return {
+    linearIssueCache: retain(state.linearIssueCache),
+    linearSearchCache: retain(state.linearSearchCache),
+    linearListCache: retain(state.linearListCache),
+    linearTeamCache: retain(state.linearTeamCache),
+    linearProjectCache: retain(state.linearProjectCache),
+    linearProjectDetailCache: retain(state.linearProjectDetailCache),
+    linearProjectIssueCache: retain(state.linearProjectIssueCache),
+    linearCustomViewCache: retain(state.linearCustomViewCache),
+    linearCustomViewDetailCache: retain(state.linearCustomViewDetailCache),
+    linearCustomViewIssueCache: retain(state.linearCustomViewIssueCache),
+    linearCustomViewProjectCache: retain(state.linearCustomViewProjectCache)
+  }
 }

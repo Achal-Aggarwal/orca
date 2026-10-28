@@ -36,15 +36,18 @@ type LocalConsumer = {
   publish: (apply: LinearIssuePublication) => void
 }
 const localConsumers = new Map<string, Map<string, Set<LocalConsumer>>>()
-const reads = new Set<{
+type IssueReadLifecycle = {
   scope: LinearReadScope
-  identifier?: string
   edge: (id: string, confirmed?: boolean) => void
   patch: (id: string, patch: Delta) => void
   drain: () => void
-  invalidate: () => void
+  invalidate: (identifier?: string) => void
   abandon: () => void
-}>()
+}
+const reads = new Map<string, Set<IssueReadLifecycle>>()
+function scopedReads(scope: LinearReadScope) {
+  return reads.get(scope.contextKey) ?? []
+}
 function notifyPublication(publish: () => void) {
   try {
     publish()
@@ -145,10 +148,8 @@ function publishLocal(scope: LinearReadScope, id: string, patch: Delta) {
 }
 
 function retire(scope: LinearReadScope, id: string, confirmed = false) {
-  for (const read of reads) {
-    if (read.scope.contextKey === scope.contextKey) {
-      notifyPublication(() => read.edge(id, confirmed))
-    }
+  for (const read of scopedReads(scope)) {
+    notifyPublication(() => read.edge(id, confirmed))
   }
 }
 
@@ -170,10 +171,8 @@ export function confirmLinearIssueWrite(args: {
       publishLocal(args.scope, args.id, args.patch)
     }
   } finally {
-    for (const read of reads) {
-      if (read.scope.contextKey === args.scope.contextKey) {
-        notifyPublication(() => read.drain())
-      }
+    for (const read of scopedReads(args.scope)) {
+      notifyPublication(() => read.drain())
     }
   }
 }
@@ -264,8 +263,8 @@ export async function runLinearIssueWrite<T extends { ok: boolean }>(args: {
         publishLocal(scope, issue.id, delta)
       }
     } finally {
-      for (const read of reads) {
-        if (attached && read.scope.contextKey === scope.contextKey) {
+      if (attached) {
+        for (const read of scopedReads(scope)) {
           notifyPublication(() => read.drain())
         }
       }
@@ -343,28 +342,43 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
       notifyPublication(listener)
     }
   }
-  const candidates = () => {
-    const all = ownerMap(args.scope)
-    if (!all) {
-      return []
+  const organizations = new Map(
+    args.workspaces?.map((workspace) => [workspace.id, knownLinearOrganization(workspace)])
+  )
+  const queryOrg = args.workspaceId ? organizations.get(args.workspaceId) : undefined
+  const knownId = () => (args.identifier ? rows(warm)[0]?.id : undefined)
+  const compatible = (owner: IssueOwner) => {
+    const detailId = knownId()
+    if (detailId) {
+      return owner.id === detailId
     }
-    const org = (id?: string | null) =>
-      knownLinearOrganization(args.workspaces?.find((workspace) => workspace.id === id))
-    const queryOrg = org(args.workspaceId)
-    const knownDetail = args.identifier ? rows(warm)[0]?.id : undefined
-    return [...all.values()].filter((owner) => {
-      if (knownDetail) {
-        return owner.id === knownDetail
-      }
-      if (args.identifier && owner.id === args.identifier) {
-        return true
-      }
-      const ownerOrg = owner.organizationId ?? org(owner.workspaceId)
-      return !queryOrg || !ownerOrg || queryOrg === ownerOrg
-    })
+    if (args.identifier && owner.id === args.identifier) {
+      return true
+    }
+    const ownerOrg =
+      owner.organizationId ?? (owner.workspaceId ? organizations.get(owner.workspaceId) : undefined)
+    return !queryOrg || !ownerOrg || queryOrg === ownerOrg
   }
+  function* candidates(): Generator<IssueOwner> {
+    const all = ownerMap(args.scope)
+    const detailId = knownId()
+    if (detailId) {
+      const owner = all?.get(detailId)
+      if (owner) {
+        yield owner
+      }
+    } else if (all) {
+      for (const owner of all.values()) {
+        if (compatible(owner)) {
+          yield owner
+        }
+      }
+    }
+  }
+  const hasCandidates = () => !candidates().next().done
   const reconcile = (data: T): T | null => {
-    if (!candidates().length) {
+    const pending = [...candidates()]
+    if (!pending.length) {
       return data
     }
     const returned = rows(data)
@@ -380,7 +394,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
       (row) => !present.has(occurrence(row)) && ownerMap(args.scope)?.has(row.id)
     )
     const known = new Set([...returned, ...previous].map((row) => row.id))
-    const uncertain = candidates().some((owner) => !known.has(owner.id))
+    const uncertain = pending.some((owner) => !known.has(owner.id))
     if (uncertain && !(data && !Array.isArray(data) && 'errors' in data && data.errors?.length)) {
       return null
     }
@@ -409,7 +423,11 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
     active = false
     attempt = null
     view = { kind: 'abandoned', data: null }
-    reads.delete(lifecycle)
+    const scoped = reads.get(args.scope.contextKey)
+    scoped?.delete(lifecycle)
+    if (!scoped?.size) {
+      reads.delete(args.scope.contextKey)
+    }
     args.remove()
     notify()
   }
@@ -434,7 +452,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         }
         const reconciled = reconcile(data)
         attempt = null
-        if (reconciled === null && candidates().length) {
+        if (reconciled === null && hasCandidates()) {
           needsReplacement = true
           view = { kind: 'loading', data: warm }
           notify()
@@ -442,7 +460,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         }
         const published = reconciled ?? data
         warm = published
-        needsReplacement = candidates().length > 0
+        needsReplacement = hasCandidates()
         view = { kind: 'data', data: published }
         notifyPublication(() => args.publish(published))
         notify()
@@ -466,7 +484,6 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
   }
   const lifecycle = {
     scope: args.scope,
-    identifier: args.identifier,
     patch: (id: string, patch: Delta) => {
       if (view.kind === 'abandoned' || warm === null || !rows(warm).some((row) => row.id === id)) {
         return
@@ -487,8 +504,11 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         if (known && known.id !== id) {
           return
         }
-      } else if (!candidates().some((candidate) => candidate.id === id)) {
-        return
+      } else {
+        const owner = ownerMap(args.scope)?.get(id)
+        if (!owner || !compatible(owner)) {
+          return
+        }
       }
       attempt = null
       needsReplacement = true
@@ -507,7 +527,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
       notify()
     },
     drain: () => {
-      if (needsReplacement && !candidates().length) {
+      if (needsReplacement && !hasCandidates()) {
         if ([...consumers.values()].some((current) => current())) {
           start()
         } else {
@@ -515,16 +535,30 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         }
       }
     },
-    invalidate: () => {
-      if (attempt) {
-        return
+    invalidate: (identifier?: string) => {
+      if (identifier && args.identifier) {
+        // The exact detail is forced by its caller; only proven aliases also need replacement.
+        if (
+          args.identifier === identifier ||
+          !rows(warm).some((row) => row.id === identifier || row.identifier === identifier)
+        ) {
+          return
+        }
       }
-      needsReplacement = true
-      lifecycle.drain()
+      if ([...consumers.values()].some((current) => current())) {
+        start()
+      } else {
+        abandon()
+      }
     },
     abandon
   }
-  reads.add(lifecycle)
+  let scoped = reads.get(args.scope.contextKey)
+  if (!scoped) {
+    scoped = new Set()
+    reads.set(args.scope.contextKey, scoped)
+  }
+  scoped.add(lifecycle)
   const read = {
     contextKey: args.scope.contextKey,
     force: start,
@@ -600,34 +634,47 @@ export function detachLinearIssuePublication(scope: LinearReadScope, allSources 
     }
   }
   // oxlint-disable-next-line unicorn/no-useless-spread -- Why: abandonment callbacks can replace demand while old scopes are removed.
-  for (const read of [...reads]) {
-    if (affected(read.scope.contextKey)) {
-      read.abandon()
+  for (const [key, scoped] of [...reads]) {
+    if (affected(key)) {
+      // oxlint-disable-next-line unicorn/no-useless-spread -- Why: abandon can synchronously replace demand.
+      for (const read of [...scoped]) {
+        read.abandon()
+      }
     }
   }
 }
 
-export function abandonLinearIssueReads(scope?: LinearReadScope) {
-  // oxlint-disable-next-line unicorn/no-useless-spread -- Why: callbacks can release or acquire demand during notification.
-  for (const read of [...reads]) {
-    if (!scope || read.scope.contextKey === scope.contextKey) {
+export function abandonLinearIssueReads() {
+  // oxlint-disable-next-line unicorn/no-useless-spread -- Why: callbacks can synchronously register replacement scopes.
+  for (const scoped of [...reads.values()]) {
+    // oxlint-disable-next-line unicorn/no-useless-spread -- Why: callbacks can synchronously register replacement demand.
+    for (const read of [...scoped]) {
       read.abandon()
     }
   }
 }
 
 export function publishLinearIssuePatch(scope: LinearReadScope, id: string, patch: Delta) {
-  for (const read of reads) {
-    if (read.scope.contextKey === scope.contextKey) {
-      read.patch(id, patch)
-    }
+  for (const read of scopedReads(scope)) {
+    read.patch(id, patch)
   }
 }
 
-export function invalidateLinearIssueReads(scope: LinearReadScope) {
-  for (const read of reads) {
-    if (read.scope.contextKey === scope.contextKey && !read.identifier) {
-      read.invalidate()
+export function invalidateLinearIssueReads(
+  scope: LinearReadScope,
+  identifier?: string,
+  allSources = false
+) {
+  const affected = allSources
+    ? [...reads.values()].filter(
+        (scoped) =>
+          scoped.values().next().value?.scope.runtimeContextKey === scope.runtimeContextKey
+      )
+    : [scopedReads(scope)]
+  for (const scoped of affected) {
+    // oxlint-disable-next-line unicorn/no-useless-spread -- Why: refresh callbacks can replace demand.
+    for (const read of [...scoped]) {
+      read.invalidate(identifier)
     }
   }
 }

@@ -333,3 +333,53 @@ it('drawer null-state enrollment survives its deferred initial setters and actua
   })
   expect(pendingLinearIssueWrites.size).toBe(0)
 })
+
+it.each(['probe', 'disconnect'] as const)(
+  'foreign mounted hydration completes after local %s without another render edge',
+  async (edge) => {
+    const s = store()
+    const foreign = source('runtime:foreign')
+    const transport = deferred<LinearIssue | null>()
+    reads.detail.mockReturnValue(transport.promise)
+    const local = renderHook(() =>
+      useLinearIssueWorkspaceDetail({
+        issue: task(),
+        providerSettings: defaultScopeSource(null),
+        requestKey: 'local-U'
+      })
+    )
+    const foreignKey = `${getLinearSourceScope(foreign).cachePrefix}::w::other`
+    const foreignCache = { data: task('Foreign cache'), fetchedAt: 1 }
+    s.setState({ linearIssueCache: { [foreignKey]: foreignCache } })
+    const detail = renderHook(() =>
+      useLinearIssueWorkspaceDetail({
+        issue: task(),
+        providerSettings: foreign,
+        requestKey: 'foreign-U'
+      })
+    )
+    expect(detail.result.current.issueLoading).toBe(true)
+    await act(async () => {
+      await (edge === 'probe'
+        ? s.getState().testLinearConnection('w')
+        : s.getState().disconnectLinear())
+    })
+    await act(async () => {
+      transport.resolve(task('Foreign provider'))
+      await transport.promise
+    })
+    expect(detail.result.current.displayed.state.name).toBe('Foreign provider')
+    expect(detail.result.current.issueLoading).toBe(false)
+    expect(reads.detail).toHaveBeenCalledTimes(2)
+    expect(s.getState().linearIssueCache[foreignKey]).toBe(foreignCache)
+    if (edge === 'disconnect') {
+      expect(local.result.current.issueLoading).toBe(false)
+      expect(local.result.current.displayed.state.name).toBe('In Review')
+    } else {
+      expect(local.result.current.displayed.state.name).toBe('Foreign provider')
+      expect(local.result.current.issueLoading).toBe(false)
+    }
+    local.unmount()
+    detail.unmount()
+  }
+)

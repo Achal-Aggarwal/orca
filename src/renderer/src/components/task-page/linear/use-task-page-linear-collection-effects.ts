@@ -167,6 +167,10 @@ export function useTaskPageLinearCollectionEffectsPrelude(model: TaskPageLinearI
       request,
       () => !cancelled,
       (lease, view) => {
+        if (view.kind === 'abandoned') {
+          setLinearProjectIssuesLoading((previous) => (!cancelled ? false : previous))
+          return
+        }
         if (view.data) {
           setLinearProjectIssuesResult((current) =>
             lease.commit(view, current, (_, data) => data ?? current)

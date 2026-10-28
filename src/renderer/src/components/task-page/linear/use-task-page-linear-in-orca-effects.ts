@@ -78,6 +78,15 @@ export function useTaskPageLinearInOrcaEffects(model: TaskPageLinearListEffectsM
         !cancelled &&
         isCurrentLinearRequest(lastLinearRequestRef, requestSignature, linearRefreshNonce),
       (lease, view) => {
+        if (view.kind === 'abandoned') {
+          setLinearLoading((previous) =>
+            !cancelled &&
+            isCurrentLinearRequest(lastLinearRequestRef, requestSignature, linearRefreshNonce)
+              ? false
+              : previous
+          )
+          return
+        }
         if (view.data) {
           setLinearIssues((current) =>
             lease.commit(view, current, (_, results) =>

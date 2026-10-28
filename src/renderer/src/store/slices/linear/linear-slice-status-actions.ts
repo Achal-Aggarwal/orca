@@ -1,18 +1,17 @@
 import type { LinearConnectionStatus } from '../../../../../shared/linear/workspace-types'
 import type { LinearSlice, LinearSliceGet, LinearSliceSet } from './linear-slice-contract'
 import { linearStatus } from '@/runtime/runtime-linear-client'
-import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
   getInflightStatusRequest,
   getLinearMutationGeneration,
   invalidateLinearCaches,
+  evictLinearScopeCaches,
   isCurrentLinearStatusRead,
   nextLinearStatusReadGeneration,
   setInflightStatusRequest
 } from './linear-slice-request-state'
 import { linearStatusScopeSignature } from './linear-cache'
-import { isCurrentLinearRuntimeContext } from './linear-slice-scope'
-import { defaultScopeSource } from '@/lib/default-creation-host'
+import { getLinearReadScope, isCurrentLinearRuntimeContext } from './linear-slice-scope'
 
 export function createLinearStatusActions(
   set: LinearSliceSet,
@@ -20,7 +19,8 @@ export function createLinearStatusActions(
 ): Pick<LinearSlice, 'checkLinearConnection'> {
   return {
     checkLinearConnection: async (force = false) => {
-      const contextKey = getProviderRuntimeContextKey(get().settings)
+      const scope = getLinearReadScope(get().settings)
+      const contextKey = scope.runtimeContextKey
       const inflightStatusRequest = getInflightStatusRequest()
       if (inflightStatusRequest && !force && inflightStatusRequest.contextKey === contextKey) {
         return inflightStatusRequest.promise
@@ -31,7 +31,7 @@ export function createLinearStatusActions(
 
       const mutationGeneration = getLinearMutationGeneration()
       const statusReadGeneration = nextLinearStatusReadGeneration()
-      const request = linearStatus(defaultScopeSource(get().settings))
+      const request = linearStatus(scope.settings)
         .then((status) => {
           if (
             mutationGeneration !== getLinearMutationGeneration() ||
@@ -45,20 +45,10 @@ export function createLinearStatusActions(
           const prevScopeSignature = linearStatusScopeSignature(prev)
           const nextScopeSignature = linearStatusScopeSignature(typedStatus)
           if (prevScopeSignature !== nextScopeSignature) {
-            invalidateLinearCaches()
+            invalidateLinearCaches(scope)
             set({
               linearStatus: typedStatus,
-              linearIssueCache: {},
-              linearSearchCache: {},
-              linearListCache: {},
-              linearTeamCache: {},
-              linearProjectCache: {},
-              linearProjectDetailCache: {},
-              linearProjectIssueCache: {},
-              linearCustomViewCache: {},
-              linearCustomViewDetailCache: {},
-              linearCustomViewIssueCache: {},
-              linearCustomViewProjectCache: {},
+              ...evictLinearScopeCaches(get(), scope),
               linearStatusChecked: true,
               linearStatusContextKey: contextKey
             })
@@ -77,20 +67,10 @@ export function createLinearStatusActions(
             return
           }
           if (get().linearStatus.connected) {
-            invalidateLinearCaches()
+            invalidateLinearCaches(scope)
             set({
               linearStatus: { connected: false, viewer: null },
-              linearIssueCache: {},
-              linearSearchCache: {},
-              linearListCache: {},
-              linearTeamCache: {},
-              linearProjectCache: {},
-              linearProjectDetailCache: {},
-              linearProjectIssueCache: {},
-              linearCustomViewCache: {},
-              linearCustomViewDetailCache: {},
-              linearCustomViewIssueCache: {},
-              linearCustomViewProjectCache: {},
+              ...evictLinearScopeCaches(get(), scope),
               linearStatusChecked: true,
               linearStatusContextKey: contextKey
             })
