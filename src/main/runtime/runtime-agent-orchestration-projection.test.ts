@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs'
-import { hostname, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { seedTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
@@ -34,6 +34,15 @@ import {
   structuredAgentSessionTabId
 } from '../../shared/structured-agent-session-projection'
 import { RuntimeAgentOrchestrationProjection } from './runtime-agent-orchestration-projection'
+import {
+  installSqlVisitCounters,
+  latestStatementMetrics,
+  dispatchQueryPlans,
+  seedCoarsePresentationDispatches,
+  traceDispatchPredicateVisits
+} from './dispatch-predicate-visits.test-fixture'
+import { benchmarkPresentationCorpus } from './runtime-agent-orchestration-benchmark.test-fixture'
+import { MIRROR_LEAVES_STEP_1 } from './runtime-leaf-record-projection.test-fixture'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import { OrchestrationDb } from './orchestration/db'
 import {
@@ -46,6 +55,8 @@ const COORDINATOR_CHAT = testOrcaSessionId('1b6f0c3a-7d2e-4a91-8c55-2e9d4b7a0f13
 const WORKER_CHAT = testOrcaSessionId('9c3e5a17-4b2d-4f60-8e91-0d7a6c2b5e48')
 const TERMINAL_WORKER_HANDLE = 'term_worker'
 const TERMINAL_WORKER_PANE = 'tab_w:11111111-1111-4111-8111-111111111111'
+
+afterEach(() => vi.restoreAllMocks())
 
 function chatRow(sessionId: string): string {
   return structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId)
@@ -89,7 +100,7 @@ describe('RuntimeAgentOrchestrationProjection chat lineage', () => {
       creator,
       maxDepth: Number.MAX_SAFE_INTEGER
     })
-    const leaf = { ptyId: 'pty_w' } as unknown as RuntimeLeafRecord
+    const leaf: RuntimeLeafRecord = { ...MIRROR_LEAVES_STEP_1[0], ptyId: 'pty_w' }
     const projection = new RuntimeAgentOrchestrationProjection({
       getDb: () => db,
       getLeaves: () => [leaf],
@@ -210,6 +221,8 @@ it('publishes ordinary RPC assignments without registering display authority and
 it.each([20, 200])(
   'shares forward lineage and DB/attention work across %i workers; each build rederives facts',
   (n) => {
+    const now = Date.parse('2026-10-27T12:00:00Z')
+    vi.spyOn(Date, 'now').mockReturnValue(now)
     const db = new OrchestrationDb(':memory:')
     try {
       const run = db.createRun({
@@ -231,8 +244,17 @@ it.each([20, 200])(
           )
           .run(`worker-${i}`, `ordinary-${i}`)
       }
+      seedCoarsePresentationDispatches(db, run.id, 2 * n, now)
+      const historyTask = db.createTask({ runId: run.id, spec: 'newer inactive handle history' })
+      const insertHistory = db.db.prepare(`INSERT INTO dispatch_contexts
+        (id, run_id, task_id, assignee_handle, status, completed_at)
+        WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n < ?)
+        SELECT ? || n, ?, ?, ?, 'completed', '2020-01-01T00:00:00Z' FROM seq`)
+      for (let i = 0; i < n; i++) {
+        insertHistory.run(n, `expired-handled-${i}-`, run.id, historyTask.id, `ordinary-${i}`)
+      }
       let endpoint = n
-      const read = vi.fn((id: string) => {
+      const read = vi.fn((id: string): ReturnType<typeof agentSessionConversationView> | null => {
         const record = sessionRecord(id)
         const index = id === SESSION_X ? 0 : id.startsWith('edge-') ? Number(id.slice(5)) : endpoint
         return agentSessionConversationView(
@@ -260,32 +282,20 @@ it.each([20, 200])(
       const roster = vi.spyOn(db, 'listSessionDispatchesForPresentation')
       let candidateVisits = 0
       let latestVisits = 0
-      db.db.function('lineage_candidate_visit', {}, (_rowid: unknown) => {
-        candidateVisits++
-        return 1
+      const native = installSqlVisitCounters({
+        lineage_candidate_visit: () => {
+          candidateVisits++
+          return 1
+        },
+        lineage_latest_visit: () => {
+          latestVisits++
+          return 1
+        }
       })
-      db.db.function('lineage_latest_visit', {}, (_rowid: unknown) => {
-        latestVisits++
-        return 1
+      const sql = traceDispatchPredicateVisits(db.db, {
+        candidate: 'lineage_candidate_visit',
+        latest: 'lineage_latest_visit'
       })
-      const prepare = db.db.prepare.bind(db.db)
-      const sql = vi
-        .spyOn(db.db, 'prepare')
-        .mockImplementation((query) =>
-          prepare(
-            query
-              .replaceAll(
-                'WHERE assignee_orca_session_id IS NOT NULL',
-                'WHERE assignee_orca_session_id IS NOT NULL AND lineage_candidate_visit(rowid)'
-              )
-              .replace(
-                'ORDER BY rowid DESC LIMIT 1',
-                query.includes('rowid AS n')
-                  ? 'AND lineage_latest_visit(rowid) ORDER BY rowid DESC LIMIT 1'
-                  : 'ORDER BY rowid DESC LIMIT 1'
-              )
-          )
-        )
       const output = projection.buildByPaneKey()
       expect(Object.keys(output ?? {})).toHaveLength(n)
       expect(
@@ -297,8 +307,15 @@ it.each([20, 200])(
       expect(tasks).toHaveBeenCalledTimes(n)
       expect(runs).toHaveBeenCalledTimes(1)
       expect(roster).toHaveBeenCalledTimes(1)
-      expect(candidateVisits).toBe(n)
+      expect(candidateVisits).toBe(3 * n)
       expect(latestVisits).toBe(n)
+      expect(latestStatementMetrics(sql, native)).toEqual({
+        cachedPrepareCalls: 1,
+        executedStatements: 1,
+        nativeCompilations: 1,
+        addressEntries: n,
+        returnedVerificationRows: n
+      })
       expect(
         sql.mock.calls.filter(([query]) => query.includes('d.id AS dispatch_id'))
       ).toHaveLength(1)
@@ -315,6 +332,20 @@ it.each([20, 200])(
         )
       ).toBe(true)
       expect(read.mock.calls.length).toBeLessThanOrEqual(n + endpoint + 1)
+      expect(latestStatementMetrics(sql, native)).toEqual({
+        cachedPrepareCalls: 2,
+        executedStatements: 2,
+        nativeCompilations: 1,
+        addressEntries: 2 * n,
+        returnedVerificationRows: 2 * n
+      })
+      expect(candidateVisits).toBe(6 * n)
+      expect(latestVisits).toBe(2 * n)
+      const plans = dispatchQueryPlans(db.db, sql)
+      expect(JSON.stringify(plans)).toContain(
+        'idx_dispatch_active_assignee_handle (assignee_handle=?)'
+      )
+      expect(JSON.stringify(plans)).not.toMatch(/SCAN dispatch_contexts|USE TEMP B-TREE/)
       for (const failure of ['missing', 'error', 'cycle', 'prepared']) {
         read.mockImplementation((id) => {
           if (failure === 'error') {
@@ -343,6 +374,28 @@ it.each([20, 200])(
           )
         ).toBe(true)
       }
+      db.db
+        .prepare(
+          "UPDATE dispatch_contexts SET status = 'completed', completed_at = ? WHERE status IN ('pending', 'dispatched')"
+        )
+        .run(new Date(now - 7_200_000).toISOString())
+      sql.mockClear()
+      sql.executions.length = 0
+      native.mockClear()
+      candidateVisits = 0
+      latestVisits = 0
+      read.mockClear()
+      expect(projection.buildByPaneKey()).toBeUndefined()
+      expect(candidateVisits).toBe(3 * n)
+      expect(latestVisits).toBe(0)
+      expect(read).not.toHaveBeenCalled()
+      expect(latestStatementMetrics(sql, native)).toEqual({
+        cachedPrepareCalls: 0,
+        executedStatements: 0,
+        nativeCompilations: 0,
+        addressEntries: 0,
+        returnedVerificationRows: 0
+      })
     } finally {
       db.close()
     }
@@ -380,21 +433,13 @@ it.each([20, 200])(
         insert.run(n, `expired-${i}-`, run.id, task.id, `null-session-${i}`)
       }
       let candidates = 0
-      db.db.function('null_candidate_visit', {}, (_rowid: unknown) => {
-        candidates++
-        return 1
+      installSqlVisitCounters({
+        null_candidate_visit: () => {
+          candidates++
+          return 1
+        }
       })
-      const prepare = db.db.prepare.bind(db.db)
-      const trace = vi
-        .spyOn(db.db, 'prepare')
-        .mockImplementation((query) =>
-          prepare(
-            query.replaceAll(
-              'WHERE assignee_orca_session_id IS NOT NULL',
-              'WHERE assignee_orca_session_id IS NOT NULL AND null_candidate_visit(rowid)'
-            )
-          )
-        )
+      const trace = traceDispatchPredicateVisits(db.db, { candidate: 'null_candidate_visit' })
       const roster = vi.spyOn(db, 'listSessionDispatchesForPresentation')
       const projection = projectionFor(db)
       const output = projection.buildByPaneKey() ?? {}
@@ -463,7 +508,7 @@ it('selects indexed active/latest per address with exact ISO/SQLite recency and 
     })
     let counter = 0
     const add = (
-      handle: string,
+      handle: string | null,
       session: string | null,
       status: string,
       completed: string | null
@@ -483,6 +528,31 @@ it('selects indexed active/latest per address with exact ISO/SQLite recency and 
     }
     add('suppressed', SESSION_X, 'completed', '2026-10-27T00:00:00Z')
     add('suppressed', null, 'failed', null)
+    add('active-hidden', 'hidden', 'pending', null)
+    add('active-hidden', null, 'pending', null)
+    add('newer-expired', 'expired-hidden', 'completed', '2026-10-27T00:00:00Z')
+    add('newer-expired', 'expired-hidden', 'completed', '2020-01-01T00:00:00Z')
+    add('newer-invalid', 'invalid-hidden', 'completed', '2026-10-27T00:00:00Z')
+    add('newer-invalid', 'invalid-hidden', 'completed', 'zzzz')
+    const unhandledRecent = add('', 'session-recent', 'completed', '2026-10-27T00:00:00Z')
+    const collisionHandle = add(
+      'shared-address',
+      'handle-namespace-session',
+      'completed',
+      '2026-10-27T00:00:00Z'
+    )
+    const collisionSession = add(null, 'shared-address', 'completed', '2026-10-27T00:00:00Z')
+    const nullRecent = add(null, 'null-recent', 'completed', '2026-10-27T00:00:00Z')
+    const boundary = add(
+      'exact-boundary',
+      'boundary',
+      'completed',
+      new Date(now - 1_800_000).toISOString()
+    )
+    add('stale-boundary', 'stale-boundary', 'completed', new Date(now - 1_800_001).toISOString())
+    add(null, 'suppressed-session', 'completed', '2026-10-27T00:00:00Z')
+    add('suppressed-session-handle', 'suppressed-session', 'completed', '2026-10-27T00:00:00Z')
+    add('suppressed-session-handle', null, 'completed', '2026-10-27T00:00:00Z')
     const sqlite = add('sqlite', SESSION_Y, 'completed', '2026-10-26 23:59:59')
     add('expired', 'expired', 'completed', '2020-01-01T00:00:00Z')
     add('invalid', 'invalid', 'completed', 'zzzz')
@@ -491,12 +561,65 @@ it('selects indexed active/latest per address with exact ISO/SQLite recency and 
     const active = add('active', SESSION_Y, 'dispatched', null)
     add('same-address', 'active-old', 'pending', null)
     const newest = add('same-address', 'active-new', 'pending', null)
+    const native = installSqlVisitCounters({
+      selection_candidate: () => 1,
+      selection_latest: () => 1
+    })
+    const trace = traceDispatchPredicateVisits(db.db, {
+      candidate: 'selection_candidate',
+      latest: 'selection_latest'
+    })
+    expect(db.listSessionDispatchesForPresentation(now).map((row) => row.dispatch.id)).toEqual([
+      active,
+      newest,
+      sqlite,
+      boundary,
+      unhandledRecent,
+      collisionHandle,
+      collisionSession,
+      nullRecent,
+      future
+    ])
+    const metrics = latestStatementMetrics(trace, native)
+    expect(metrics.cachedPrepareCalls).toBe(3)
+    expect(metrics.executedStatements).toBe(3)
+    expect(metrics.nativeCompilations).toBe(3)
+    expect(metrics.addressEntries).toBe(metrics.returnedVerificationRows)
+    const latestExecutions = trace.executions.filter(({ query }) =>
+      query.includes('rowid AS n FROM dispatch_contexts')
+    )
+    expect(new Set(latestExecutions.map(({ query }) => query)).size).toBe(3)
+    expect(latestExecutions.map(({ parameters }) => JSON.parse(String(parameters[0])))).toEqual([
+      ['active', 'active-hidden', 'same-address'],
+      [
+        'sqlite',
+        'exact-boundary',
+        'suppressed',
+        'newer-expired',
+        'shared-address',
+        'suppressed-session-handle',
+        'future'
+      ],
+      ['session-recent', 'shared-address', 'null-recent', 'suppressed-session']
+    ])
+    const plans = dispatchQueryPlans(db.db, trace)
+    const planText = JSON.stringify(plans)
+    for (const index of [
+      'idx_dispatch_active_assignee_handle (assignee_handle=?)',
+      'idx_dispatch_assignee_handle (assignee_handle=?)',
+      'idx_dispatch_assignee_orca_session_id (assignee_orca_session_id=?)',
+      'idx_dispatch_session_presentation (status=? AND completed_at>?)'
+    ]) {
+      expect(planText).toContain(index)
+    }
+    expect(planText).not.toMatch(/SCAN dispatch_contexts|USE TEMP B-TREE/)
+    trace.mockRestore()
+    add('', 'session-recent', 'completed', 'zzzz')
     expect(
       db
         .listSessionDispatchesForPresentation(now)
-        .map((row) => row.dispatch.id)
-        .sort()
-    ).toEqual([newest, active, future, sqlite].sort())
+        .some((row) => row.dispatch.id === unhandledRecent)
+    ).toBe(false)
     const noHandle = add('null-handle', 'null-address', 'dispatched', null)
     db.db.prepare('UPDATE dispatch_contexts SET assignee_handle = NULL WHERE id = ?').run(noHandle)
     expect(
@@ -554,170 +677,10 @@ it.skipIf(process.env.ORCA_LINEAGE_BENCH !== '1')(
       for (const history of [10_000, 100_000]) {
         for (const terminalHistory of [0, 100_000]) {
           for (const attentionFacts of [0, 2_000]) {
-            const directory = mkdtempSync(join(tmpdir(), 'orca-lineage-benchmark-'))
-            const path = join(directory, 'orchestration.sqlite')
-            let db = new OrchestrationDb(path)
-            try {
-              const run = db.createRun({
-                objective: 'benchmark',
-                coordinatorHandle: null,
-                coordinatorPaneKey: null,
-                coordinatorOrcaSessionId: SESSION_X
-              })
-              for (let i = 0; i < 20; i++) {
-                db.createDispatchContext({
-                  taskId: db.createTask({ runId: run.id, spec: 'active' }).id,
-                  assigneeHandle: formatOrcaSessionAddress(
-                    testOrcaSessionId(`00000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
-                  ),
-                  creator: { kind: 'system' },
-                  maxDepth: 99
-                })
-              }
-              if (nullAddress) {
-                db.db.exec(
-                  "UPDATE dispatch_contexts SET assignee_handle = NULL, assignee_pane_key = NULL WHERE status = 'pending'"
-                )
-              }
-              const taskId = db.createTask({ runId: run.id, spec: 'history' }).id
-              const insert = db.db
-                .prepare(`INSERT INTO dispatch_contexts(id, run_id, task_id, assignee_handle, assignee_orca_session_id, status, completed_at)
-        WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n < ?)
-        SELECT ? || n, ?, ?, ? || n, CASE WHEN ? THEN CASE WHEN ? THEN printf('00000000-0000-4000-8000-%012d', (n-1) % 20) ELSE 'session-' || n END ELSE NULL END, 'completed', '2020-01-01T00:00:00Z' FROM seq`)
-              insert.run(
-                history,
-                'session-history-',
-                run.id,
-                taskId,
-                'session-address-',
-                1,
-                nullAddress ? 1 : 0
-              )
-              if (terminalHistory) {
-                insert.run(
-                  terminalHistory,
-                  'terminal-history-',
-                  run.id,
-                  taskId,
-                  'terminal-address-',
-                  0,
-                  0
-                )
-              }
-              const active = db.db
-                .prepare(
-                  "SELECT id, task_id FROM dispatch_contexts WHERE status = 'pending' ORDER BY rowid"
-                )
-                .all()
-              const insertFact = db.db.prepare(
-                `INSERT INTO attempt_observation_facts(id, dispatch_id, task_id, sequence, authority_id, authority_clock, facet, payload, home_received_at) VALUES (?, ?, ?, ?, 'home', 'home', 'process_turn', '{"process":"running","turn":"working"}', ?)`
-              )
-              for (let i = 0; i < attentionFacts; i++) {
-                const row = active[i % active.length]
-                if (typeof row?.id !== 'string' || typeof row.task_id !== 'string') {
-                  throw new Error('Missing benchmark Dispatch')
-                }
-                insertFact.run(
-                  `observation-${i}`,
-                  row.id,
-                  row.task_id,
-                  Math.floor(i / active.length),
-                  Date.now()
-                )
-              }
-              db.db.exec('DROP INDEX idx_dispatch_session_presentation')
-              const first = performance.now()
-              db.createMailboxDeliveryIndexesIfPossible()
-              const indexHelperMs = performance.now() - first
-              db.db.exec('DROP INDEX idx_dispatch_session_presentation')
-              db.close()
-              const openStarted = performance.now()
-              db = new OrchestrationDb(path)
-              const reopenWithIndexCreationMs = performance.now() - openStarted
-              let observationVisits = 0
-              db.db.function('lineage_observation_visit', {}, (_rowid: unknown) => {
-                observationVisits++
-                return 1
-              })
-              let visits = 0
-              db.db.function('lineage_bench_visit', {}, (_rowid: unknown) => {
-                visits++
-                return 1
-              })
-              const prepare = db.db.prepare.bind(db.db)
-              const trace = vi
-                .spyOn(db.db, 'prepare')
-                .mockImplementation((query) =>
-                  prepare(
-                    query
-                      .replaceAll(
-                        'WHERE assignee_orca_session_id IS NOT NULL',
-                        'WHERE assignee_orca_session_id IS NOT NULL AND lineage_bench_visit(rowid)'
-                      )
-                      .replace(
-                        'WHERE dispatch_id IN',
-                        'WHERE lineage_observation_visit(rowid) AND dispatch_id IN'
-                      )
-                  )
-                )
-              const start = performance.now()
-              const output = projectionFor(db).buildByPaneKey()
-              const buildMs = performance.now() - start
-              const productionPrepareCalls = trace.mock.calls.length
-              const activeSessionVerificationProbes = trace.mock.calls.filter(
-                ([query]) =>
-                  query.includes('rowid AS n') &&
-                  query.includes('assignee_orca_session_id') &&
-                  query.includes("AND status IN ('pending', 'dispatched')")
-              ).length
-              expect(activeSessionVerificationProbes).toBe(0)
-              const plans = trace.mock.calls
-                .filter(
-                  ([query]) =>
-                    query.includes('idx_dispatch_session_presentation') ||
-                    query.includes('rowid AS n')
-                )
-                .map(([query]) =>
-                  db.db
-                    .prepare(`EXPLAIN QUERY PLAN ${query}`)
-                    .all(
-                      ...(query.includes('completed_at >= ?')
-                        ? ['2026-10-26T00:00:00Z']
-                        : ['orca_session_id:bench-0'])
-                    )
-                )
-              expect(Object.keys(output ?? {})).toHaveLength(20)
-              expect(visits).toBe(20)
-              expect(observationVisits).toBe(attentionFacts)
-              expect(JSON.stringify(plans)).not.toMatch(/SCAN dispatch_contexts/)
-              console.log(
-                'LINEAGE_BENCH_ENVIRONMENT_EVIDENCE',
-                JSON.stringify({
-                  host: hostname(),
-                  node: process.version,
-                  platform: process.platform,
-                  arch: process.arch,
-                  checkout: process.cwd(),
-                  history,
-                  nullAddress,
-                  terminalHistory,
-                  attentionFacts,
-                  observationVisits,
-                  indexHelperMs,
-                  reopenWithIndexCreationMs,
-                  buildMs,
-                  candidateVisits: visits,
-                  productionPrepareCalls,
-                  diagnosticPrepareCalls: trace.mock.calls.length - productionPrepareCalls,
-                  activeSessionVerificationProbes,
-                  plans
-                })
-              )
-              trace.mockRestore()
-            } finally {
-              db.close()
-              rmSync(directory, { recursive: true, force: true })
-            }
+            benchmarkPresentationCorpus(
+              { nullAddress, history, terminalHistory, attentionFacts, parentSessionId: SESSION_X },
+              (db) => projectionFor(db).buildByPaneKey()
+            )
           }
         }
       }

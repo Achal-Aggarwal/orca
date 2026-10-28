@@ -1,6 +1,8 @@
 import type { Tab } from '../../../../shared/tab-types'
-import { parseAgentStatusPaneIdentity } from '../../../../shared/agent-status-worktree-attribution'
-import { resolveAgentStatusWorktreeId } from '../../../../shared/agent-status-worktree-attribution'
+import {
+  parseAgentStatusPaneIdentity,
+  resolveAgentStatusWorktreeId
+} from '../../../../shared/agent-status-worktree-attribution'
 import type { AppState } from '@/store/types'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { isWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'

@@ -1,4 +1,5 @@
 import { OrchestrationDb } from './orchestration/db'
+import type { RuntimeAgentLineageTestModule } from '../../shared/runtime-agent-lineage-consumer.test-fixture'
 import { RuntimeAgentOrchestrationProjection } from './runtime-agent-orchestration-projection'
 import { attachRuntimeWorktreeAgentRows } from './runtime-worktree-agent-rows'
 import type { RuntimeWorktreePsSummary } from '../../shared/runtime-types'
@@ -118,3 +119,10 @@ export function publicLineageFixture(worktreeId = 'repo::/workspace') {
   }
   return { db, projection, build, privateHandle, privatePane, run }
 }
+
+export default {
+  publicLineageFixture,
+  canonicalChatRow,
+  LINEAGE_PARENT,
+  LINEAGE_CHILD
+} satisfies RuntimeAgentLineageTestModule
