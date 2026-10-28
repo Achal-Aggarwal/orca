@@ -1,8 +1,8 @@
-import type {
-  PluginPanelActionOutcome,
-  PluginPanelEntry
-} from '../../../shared/plugins/plugin-panel-bridge'
-import { panelActionCallSchema } from '../../../shared/plugins/plugin-panel-bridge'
+import {
+  panelActionCallSchema,
+  type PluginFrameEntry
+} from '../../../shared/plugins/plugin-frame-bridge'
+import type { PluginHostCallOutcome, PluginSurface } from '../../../shared/plugins/plugin-protocol'
 import {
   admitPluginPanelCall,
   createPluginPanelCallAdmission,
@@ -26,8 +26,9 @@ type PluginPanelControllerOptions = {
   executeHostCall: (
     pluginKey: string,
     method: string,
-    params: unknown
-  ) => Promise<PluginPanelActionOutcome>
+    params: unknown,
+    surface: PluginSurface
+  ) => Promise<PluginHostCallOutcome>
   log: (pluginKey: string) => (line: string) => void
   panelAdmission?: PluginPanelCallAdmission
 }
@@ -47,39 +48,22 @@ export class PluginPanelController {
   }
 
   async readEntry(pluginKey: string, panelId: string): Promise<{ html: string } | null> {
-    return (await this.load(pluginKey, panelId))?.entry ?? null
+    return (await this.load(pluginKey, 'panel', panelId))?.entry ?? null
   }
 
-  /** Why no session: custom editors get no host actions, only the tab's document channel. */
-  async readCustomEditorEntry(
-    pluginKey: string,
-    editorId: string
-  ): Promise<{ html: string } | null> {
-    const plugin = this.options.resolveApprovedPlugin(pluginKey)
-    const editor = plugin?.manifest.contributes.customEditors.find((entry) => entry.id === editorId)
-    if (!plugin || !editor) {
-      return null
-    }
-    const html = await this.readShell(plugin, editor.entry, 'custom-editor')
-    return html === null ? null : { html }
+  open(ownerKey: string, pluginKey: string, panelId: string): Promise<PluginFrameEntry | null> {
+    return this.openFrame(ownerKey, pluginKey, 'panel', panelId)
   }
 
-  async open(
+  openCustomEditor(
     ownerKey: string,
     pluginKey: string,
-    panelId: string
-  ): Promise<PluginPanelEntry | null> {
-    const loaded = await this.load(pluginKey, panelId)
-    if (!loaded) {
-      return null
-    }
-    return {
-      ...loaded.entry,
-      sessionToken: this.sessions.issue(ownerKey, loaded.binding)
-    }
+    editorId: string
+  ): Promise<PluginFrameEntry | null> {
+    return this.openFrame(ownerKey, pluginKey, 'editor', editorId)
   }
 
-  async execute(ownerKey: string, call: unknown): Promise<PluginPanelActionOutcome> {
+  async execute(ownerKey: string, call: unknown): Promise<PluginHostCallOutcome> {
     const sessionToken = this.extractSessionToken(call)
     if (!sessionToken) {
       return { ok: false, code: 'invalid_request', error: 'invalid panel session' }
@@ -97,18 +81,20 @@ export class PluginPanelController {
       return { ok: false, code: 'invalid_request', error: 'malformed panel action call' }
     }
     const plugin = this.options.resolveApprovedPlugin(binding.pluginKey)
-    const panelExists = plugin?.manifest.contributes.panels.some(
-      (panel) => panel.id === binding.panelId
-    )
     if (
       !plugin ||
       plugin.rootDir !== binding.rootDir ||
       JSON.stringify(plugin.manifest) !== binding.manifestRevision ||
-      !panelExists
+      !findFrameContribution(plugin, binding.surface, binding.contributionId)
     ) {
       return { ok: false, code: 'unavailable', error: 'panel session is no longer available' }
     }
-    return this.options.executeHostCall(binding.pluginKey, parsed.data.action, parsed.data.params)
+    return this.options.executeHostCall(
+      binding.pluginKey,
+      parsed.data.action,
+      parsed.data.params,
+      binding.surface
+    )
   }
 
   revokeOwner(ownerKey: string): void {
@@ -148,13 +134,30 @@ export class PluginPanelController {
     }
   }
 
-  private async load(pluginKey: string, panelId: string): Promise<LoadedPluginPanel | null> {
-    const plugin = this.options.resolveApprovedPlugin(pluginKey)
-    const panel = plugin?.manifest.contributes.panels.find((entry) => entry.id === panelId)
-    if (!plugin || !panel) {
+  private async openFrame(
+    ownerKey: string,
+    pluginKey: string,
+    surface: PluginPanelSessionBinding['surface'],
+    contributionId: string
+  ): Promise<PluginFrameEntry | null> {
+    const loaded = await this.load(pluginKey, surface, contributionId)
+    if (!loaded) {
       return null
     }
-    const html = await this.readShell(plugin, panel.entry, 'panel')
+    return { ...loaded.entry, sessionToken: this.sessions.issue(ownerKey, loaded.binding) }
+  }
+
+  private async load(
+    pluginKey: string,
+    surface: PluginPanelSessionBinding['surface'],
+    contributionId: string
+  ): Promise<LoadedPluginPanel | null> {
+    const plugin = this.options.resolveApprovedPlugin(pluginKey)
+    const contribution = plugin ? findFrameContribution(plugin, surface, contributionId) : null
+    if (!plugin || !contribution) {
+      return null
+    }
+    const html = await this.readShell(plugin, contribution.entry, surface)
     if (html === null) {
       return null
     }
@@ -162,7 +165,8 @@ export class PluginPanelController {
       entry: { html },
       binding: {
         pluginKey,
-        panelId,
+        surface,
+        contributionId,
         rootDir: plugin.rootDir,
         manifestRevision: JSON.stringify(plugin.manifest)
       }
@@ -198,4 +202,16 @@ export class PluginPanelController {
       return null
     }
   }
+}
+
+function findFrameContribution(
+  plugin: ValidDiscoveredPlugin,
+  surface: PluginPanelSessionBinding['surface'],
+  id: string
+): { entry: string } | null {
+  const list =
+    surface === 'panel'
+      ? plugin.manifest.contributes.panels
+      : plugin.manifest.contributes.customEditors
+  return list.find((entry) => entry.id === id) ?? null
 }
