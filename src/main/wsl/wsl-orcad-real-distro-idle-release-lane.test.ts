@@ -288,13 +288,13 @@ async function terminatePlain(): Promise<void> {
 }
 
 /** printf splits the token, so the typed command's echo never matches what the shell prints. */
-function promptProbe(): { command: string; token: string } {
+function outputProbe(): { command: string; token: string } {
   const nonce = Math.random().toString(36).slice(2, 10)
   return { command: `printf 'COLD_%s\\n' ${nonce}`, token: `COLD_${nonce}` }
 }
 
-/** (a) WSL host: holder boots the distro, orcad deploys and starts, a terminal spawns and answers. */
-async function coldStartThroughHost(repoPath: string): Promise<Receipt> {
+/** (a) WSL host: holder boots the distro, orcad deploys and starts, a terminal spawns and prints. */
+async function restartThroughHost(repoPath: string): Promise<Receipt> {
   await terminatePlain()
   createManager()
   const started = performance.now()
@@ -304,14 +304,14 @@ async function coldStartThroughHost(repoPath: string): Promise<Receipt> {
     worktree: `path:${repoPath}`
   })
   const createdMs = Math.round(performance.now() - started)
-  const probe = promptProbe()
+  const probe = outputProbe()
   await rpc(connection, 'terminal.send', {
     terminal: created.terminal.handle,
     text: probe.command,
     enter: true
   })
   await waitFor(
-    'the host terminal to answer',
+    'the host terminal to print the probe',
     async () => {
       const read = await rpc<{ terminal: { tail?: unknown[] } }>(connection, 'terminal.read', {
         terminal: created.terminal.handle
@@ -321,45 +321,51 @@ async function coldStartThroughHost(repoPath: string): Promise<Receipt> {
     120_000,
     100
   )
-  const promptMs = Math.round(performance.now() - started)
+  const firstOutputMs = Math.round(performance.now() - started)
   await rpc(connection, 'terminal.close', { terminal: created.terminal.handle }).catch(() => {})
   await manager.dispose()
-  return { ensureMs, terminalCreatedMs: createdMs - ensureMs, promptMs }
+  return { ensureMs, terminalCreatedMs: createdMs - ensureMs, firstOutputMs }
 }
 
-/** (b) Old bridge: one wsl.exe straight into the distro's interactive login shell. */
-async function coldStartThroughBridge(): Promise<Receipt> {
+/**
+ * (b) Old bridge lower bound: one non-PTY `wsl.exe --exec` into the login shell. The real bridge
+ * also starts ConPTY and paints, so this undercounts its first paint.
+ */
+async function restartThroughBridgeExec(): Promise<Receipt> {
   await terminatePlain()
-  const probe = promptProbe()
+  const probe = outputProbe()
   const started = performance.now()
   const result = await wslExe(
     // The same login-shell pick Orca's own WSL commands use (bash/zsh run -ilc, so rc files load).
     buildWslExecArgs(PLAIN, ['sh', '-c', buildWslLoginShellCommand(probe.command)])
   )
-  const promptMs = Math.round(performance.now() - started)
+  const firstOutputMs = Math.round(performance.now() - started)
   expect(result.output).toContain(probe.token)
-  return { promptMs }
+  return { firstOutputMs }
 }
 
-/** Reboot to first prompt, median of 3 each, alternating so neither path always runs on a warmer VM. */
-async function coldStartBaseline(): Promise<void> {
+/**
+ * Distro restart (VM warm) to first command output, median of 3 each, alternating so neither path
+ * always runs on a warmer VM.
+ */
+async function distroRestartBaseline(): Promise<void> {
   const repoPath = (await guest('cd "$HOME/wsl-orcad-lane-repo" && pwd')).trim()
   // One unrecorded bridge run warms the WSL VM, which the idle phase let shut down.
-  await coldStartThroughBridge()
+  await restartThroughBridgeExec()
   const host: Receipt[] = []
   const bridge: Receipt[] = []
   for (let i = 0; i < 3; i++) {
-    host.push(await coldStartThroughHost(repoPath))
-    bridge.push(await coldStartThroughBridge())
+    host.push(await restartThroughHost(repoPath))
+    bridge.push(await restartThroughBridgeExec())
   }
   const median = (runs: Receipt[], key: string): number =>
     runs.map((run) => Number(run[key])).toSorted((a, b) => a - b)[1] ?? 0
-  receipt.coldStart = {
+  receipt.distroRestartToFirstOutput = {
     host,
-    bridge,
-    medianHostPromptMs: median(host, 'promptMs'),
+    bridgeExecLowerBound: bridge,
+    medianHostFirstOutputMs: median(host, 'firstOutputMs'),
     medianHostEnsureMs: median(host, 'ensureMs'),
-    medianBridgePromptMs: median(bridge, 'promptMs')
+    medianBridgeExecLowerBoundMs: median(bridge, 'firstOutputMs')
   }
   await terminatePlain()
 }
@@ -386,10 +392,10 @@ describe.runIf(RUN && process.platform === 'win32')('WSL distro idle release', (
     RELEASE_BUDGET_MS + 2 * HELD_WITH_TERMINAL_MS + 6 * 60_000
   )
 
-  // After the idle phase: six cold boots of the distro plus a warm-up, each bounded.
+  // After the idle phase: six distro restarts plus a warm-up, each bounded.
   it(
-    'measures reboot to first prompt for the WSL host and the old bridge',
-    coldStartBaseline,
+    'measures distro restart to first output for the WSL host and an old-bridge exec lower bound',
+    distroRestartBaseline,
     20 * 60_000
   )
 })
