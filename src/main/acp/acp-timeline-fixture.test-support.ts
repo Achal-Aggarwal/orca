@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { expect, vi } from 'vitest'
+import { expect, vi, type Mock } from 'vitest'
 import {
   agentJournalSubmissionKey,
   parseAgentJournalItemKey
@@ -10,6 +10,7 @@ import {
   type AgentSessionPromptResponse
 } from '../../shared/agent-session-question-answer'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import {
   AGENT,
   NAMESPACE,
@@ -223,12 +224,18 @@ export function acpFixtureLoadReplay(frames: AcpFixtureFrame[], process: string)
   }))
 }
 
+export type AcpHistoryFixtureRig = {
+  fixture: Awaited<ReturnType<typeof openAcpFixtureRig>>
+  catchUp: (frames: AcpLoadHistoryFrame[]) => Promise<void>
+  warn: Mock<StructuredAgentSessionLogger['warn']>
+}
+
 export async function openAcpHistoryFixtureRig(
   dialect: AcpDialect,
   identity: AcpHistoryTurnIdentity
-) {
+): Promise<AcpHistoryFixtureRig> {
   const fixture = await openAcpFixtureRig(dialect)
-  const warn = vi.fn()
+  const warn: Mock<StructuredAgentSessionLogger['warn']> = vi.fn()
   const catchUp = (frames: ReturnType<typeof acpFixtureLoadReplay>) =>
     catchUpAcpHistory({
       frames,
