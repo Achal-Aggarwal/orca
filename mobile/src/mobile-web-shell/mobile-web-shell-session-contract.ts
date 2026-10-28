@@ -149,6 +149,8 @@ export type MobileWebShellSessionEvent =
   | { readonly type: 'page-ready-deadline'; readonly flow: number }
   | { readonly type: 'document-load-deadline'; readonly flow: number }
   | { readonly type: 'layout-changed'; readonly wide: boolean }
+  // Wall-clock read deadlines can fail a download while the app is away with the link still up.
+  | { readonly type: 'app-foregrounded' }
 
 // Keep retry/remount latches outside state because they must survive checking/ready replacements.
 export type MobileWebShellSession = {

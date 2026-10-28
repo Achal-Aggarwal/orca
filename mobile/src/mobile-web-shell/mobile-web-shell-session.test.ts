@@ -306,6 +306,19 @@ describe('a read the link cut short falls back to what is on disk', () => {
     expect(back.effects).toEqual([{ kind: 'open-cache' }])
   })
 
+  it('downloads again on return to the app when the link outlived the time away', () => {
+    const failed = run(afterCacheRead(null).session, { type: 'download-failed', cause: LINK_LOST })
+    const back = run(failed.session, { type: 'app-foregrounded' })
+    expect(back.effects).toEqual([{ kind: 'open-cache' }])
+    expect(run(back.session, { type: 'app-foregrounded' }).effects).toEqual([])
+
+    const refused = run(afterCacheRead(null).session, {
+      type: 'download-failed',
+      cause: BUNDLE_REFUSED
+    })
+    expect(run(refused.session, { type: 'app-foregrounded' }).effects).toEqual([])
+  })
+
   it('waits for Try again after a host refusal, however the link comes and goes', () => {
     const failed = run(afterCacheRead(null).session, {
       type: 'download-failed',

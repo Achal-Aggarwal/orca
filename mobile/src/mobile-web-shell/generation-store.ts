@@ -193,7 +193,8 @@ export function createGenerationStore(options: {
     const staging = stagingRoot(hostKey)
     for (const entry of await fs.list(staging)) {
       if (entry.name !== manifest.buildId) {
-        await fs.delete(joinUri(staging, entry.name))
+        // A stuck folder costs space, not this download's reuse of the active generation.
+        await fs.delete(joinUri(staging, entry.name)).catch(() => undefined)
       }
     }
     const directory = joinUri(staging, manifest.buildId)

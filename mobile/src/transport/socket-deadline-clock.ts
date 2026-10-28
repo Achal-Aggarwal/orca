@@ -3,6 +3,7 @@ type SocketDeadlineClockReading = { wallMs: number; monotonicMs: number }
 let outsideForegroundSince: SocketDeadlineClockReading | null = null
 let completedSleepGapMs = 0
 let completedOutsideForegroundMs = 0
+const foregroundListeners = new Set<() => void>()
 
 function readSocketDeadlineClock(): SocketDeadlineClockReading {
   return { wallMs: Date.now(), monotonicMs: performance.now() }
@@ -33,6 +34,9 @@ export function recordSocketDeadlineAppState(state: string | null | undefined): 
     completedSleepGapMs += sleepGapMs(outsideForegroundSince, now)
     completedOutsideForegroundMs += now.monotonicMs - outsideForegroundSince.monotonicMs
     outsideForegroundSince = null
+    for (const listener of foregroundListeners) {
+      listener()
+    }
   }
 }
 
@@ -54,5 +58,13 @@ export function startForegroundClock(): () => number {
   return () => {
     const now = readSocketDeadlineClock()
     return now.monotonicMs - armed.monotonicMs - (totalOutsideForegroundMs(now) - armedOutsideMs)
+  }
+}
+
+// Fires on each return to the foreground; returns the unsubscribe.
+export function subscribeAppForeground(listener: () => void): () => void {
+  foregroundListeners.add(listener)
+  return () => {
+    foregroundListeners.delete(listener)
   }
 }

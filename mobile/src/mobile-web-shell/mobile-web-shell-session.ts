@@ -20,7 +20,7 @@ import {
   CHECKING,
   gateState,
   gateVerdict,
-  reduceGatesChanged,
+  reduceGateEvent,
   ROUTE_UNAVAILABLE
 } from './mobile-web-shell-gates'
 import { pageRouteRefusalVerdict, routeViewOf, sameRouteView } from './page-route-policy'
@@ -252,7 +252,8 @@ export function reduceMobileWebShellSession(
   }
   switch (event.type) {
     case 'gates-changed':
-      return reduceGatesChanged(session, event.gates, startFlow)
+    case 'app-foregrounded':
+      return reduceGateEvent(session, event, startFlow)
     case 'cache-read':
       return onCacheRead(session, event.generation)
     case 'manifest-read':

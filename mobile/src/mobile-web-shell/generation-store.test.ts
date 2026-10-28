@@ -510,6 +510,28 @@ describe('a download that kept assets before it was interrupted', () => {
     expect(fs.bytes(KEPT_PAGE)).toBeNull()
   })
 
+  it('still offers the active generation when another build cannot be discarded', async () => {
+    const { fs, store } = await keptPage()
+    await activate(store, HOST)
+    const remove = fs.delete.bind(fs)
+    fs.delete = async (target) => {
+      if (target.includes(BUILT.manifest.buildId)) {
+        throw new Error('simulated stuck folder')
+      }
+      await remove(target)
+    }
+
+    const { manifest } = buildResult({
+      assets: [
+        { path: 'index.html', byteLength: 4 },
+        { path: 'assets/other.js', byteLength: 3 }
+      ]
+    })
+    const next = await store.openReusableAssets(HOST, manifest)
+
+    expect(next.has(manifest.assets[0]!)).toBe(true)
+  })
+
   it('discards what it kept once the host offers another build', async () => {
     const { fs, store } = await keptPage()
     const other = deriveHostCacheKey('host-b')
