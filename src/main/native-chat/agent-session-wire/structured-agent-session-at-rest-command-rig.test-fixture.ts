@@ -14,7 +14,7 @@ import type { StructuredAgentSessionAtRestCommands } from './structured-agent-se
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, vi } from 'vitest'
+import { afterEach, beforeEach, expect, vi, type Mock } from 'vitest'
 import type {
   AgentSessionSlashCommand,
   AgentSessionSubscribeEvent
@@ -41,7 +41,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: runtimeMocks.call,
   subscribeStructuredAgentSession: runtimeMocks.subscribe
 }))
-export const runtime = runtimeMocks
+export const runtime: { call: Mock; subscribe: Mock } = runtimeMocks
 export const renderer = await vi.importActual<CommandMenuRendererFixtureModule>(
   '../../../renderer/src/components/native-chat/agent-session-command-menu.test-fixture'
 )
