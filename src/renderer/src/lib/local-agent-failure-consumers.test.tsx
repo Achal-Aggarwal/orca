@@ -19,6 +19,7 @@ import { useNewTabAgentMenuRows } from '@/components/tab-bar/use-new-tab-agent-m
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { resetRendererAppPlatformCacheForTests } from './renderer-app-platform'
 import { resolveDirectWorkItemAgent } from './launch-work-item-direct-agent-routing'
+import type { Repo } from '../../../shared/repo-types'
 
 const launch = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: launch }))
@@ -73,8 +74,12 @@ it('cold rejection preserves status controls, explicit composer submit, and trut
   expect(hook.result.current).toEqual(toggles)
   const menu = renderHook(() => useNewTabAgentMenuRows(worktree.id, true, { kind: 'local' }))
   await act(async () => {})
-  expect(menu.result.current.state).toBe('settled')
-  expect(menu.result.current.detection).toMatchObject({ detectedIds: null, detectionFailed: true })
+  const model = menu.result.current
+  expect(model.state).toBe('settled')
+  if (model.state !== 'settled') {
+    throw new Error('Agent menu did not settle after cold inventory rejection')
+  }
+  expect(model.detection).toMatchObject({ detectedIds: null, detectionFailed: true })
   expect(
     buildDashboardWorktreeLaunchOptions(
       useAppStore.getState(),
@@ -101,7 +106,7 @@ it('cold rejection preserves status controls, explicit composer submit, and trut
   const card = await renderCard(
     {
       quickAgent: selection.quickAgent,
-      detectedAgentIds: ids,
+      detectedAgentIds: ids === null ? null : new Set(ids),
       repoId: TEST_REPO.id,
       onCreate: () => submitted(selection.quickAgent)
     },
@@ -193,11 +198,12 @@ it.each(['failed', 'empty', 'disabled', 'retargeted'] as const)(
       }
       throw new Error('optional inventory failed')
     })
+    const repo: Repo = { ...TEST_REPO }
     const result = await resolveDirectWorkItemAgent({
       latestStore: useAppStore.getState(),
       agentOverride: 'claude',
       worktreeId: worktree.id,
-      repoHost: TEST_REPO,
+      repoHost: repo,
       launchConnectionId: null,
       repoConnectionId: null,
       detectedAgentsPromise: null

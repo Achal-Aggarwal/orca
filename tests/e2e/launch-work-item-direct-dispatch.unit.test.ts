@@ -1,8 +1,9 @@
-import { directWorkItemProjectFixture } from './launch-work-item-direct-project.test-fixture'
+import { directDiscoveryProbe } from './launch-work-item-direct-discovery.test-fixture'
+import { directWorkItemProjectFixture } from '@/lib/launch-work-item-direct-project.test-fixture'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { PreflightRuntimeContext } from '../../../main/ipc/preflight-runtime-target'
+import type { PreflightRuntimeContext } from '../../src/main/ipc/preflight-runtime-target'
 import { useAppStore } from '@/store'
-import { RUNTIME_CAPABILITIES } from '../../../shared/protocol-version'
+import { RUNTIME_CAPABILITIES } from '../../src/shared/protocol-version'
 import * as localCapabilities from '@/runtime/local-runtime-capabilities'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type * as RuntimeRpcClient from '@/runtime/runtime-rpc-client'
@@ -10,13 +11,12 @@ import type * as NewWorkspace from '@/lib/new-workspace'
 import {
   detectAgentsOnHost,
   detectProjectLaunchContext
-} from '../../../main/preflight/workspace-agent-detection'
-import { directDiscoveryProbe } from './launch-work-item-direct-discovery.test-fixture'
+} from '../../src/main/preflight/workspace-agent-detection'
 import {
   makeCreatedAgentWorktree,
   seedEmptyActivatableWorktree
-} from './worktree-activation-created-agent.test-fixture'
-import { launchWorkItemDirect } from './launch-work-item-direct'
+} from '@/lib/worktree-activation-created-agent.test-fixture'
+import { launchWorkItemDirect } from '@/lib/launch-work-item-direct'
 import { createDeferred } from '@/components/terminal-pane/pty-connection-test-async'
 import { buildPaneConnectionDeps } from '@/components/terminal-pane/pty-connection-test-deps'
 import {

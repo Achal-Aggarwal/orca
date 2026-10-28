@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as LocalCommandResolver from './command-path-resolver'
+import type * as LocalCommandResolver from '../../src/main/ipc/command-path-resolver'
 
 const {
   handleMock,
@@ -33,7 +33,7 @@ const {
 
 const runWslProcessMock = vi.hoisted(() => vi.fn())
 // WSL detection uses runWslProcess, so child_process mocks cannot observe it.
-vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: runWslProcessMock }))
+vi.mock('../../src/main/wsl/wsl-runner', () => ({ runWslProcess: runWslProcessMock }))
 
 vi.mock('electron', () => ({
   ipcMain: {
@@ -51,46 +51,46 @@ vi.mock('child_process', () => {
   }
 })
 
-vi.mock('../startup/hydrate-shell-path', () => ({
+vi.mock('../../src/main/startup/hydrate-shell-path', () => ({
   hydrateShellPath: hydrateShellPathMock,
   mergePathSegments: mergePathSegmentsMock
 }))
 
-vi.mock('../../shared/node-cli-command-resolution', () => ({
+vi.mock('../../src/shared/node-cli-command-resolution', () => ({
   resolveCliCommands: resolveCliCommandsMock
 }))
 
 // Route filesystem PATH resolution through the existing command-lookup mock.
-vi.mock('./command-path-resolver', async (importOriginal) => ({
+vi.mock('../../src/main/ipc/command-path-resolver', async (importOriginal) => ({
   ...(await importOriginal<typeof LocalCommandResolver>()),
   isCommandOnLocalPath: isCommandOnLocalPathMock,
   listLocalCommandPaths: listLocalCommandPathsMock
 }))
 
-vi.mock('../pty/windows-environment-path', () => ({
+vi.mock('../../src/main/pty/windows-environment-path', () => ({
   mergePersistedWindowsPathAsync: mergePersistedWindowsPathAsyncMock,
   mergePersistedWindowsPath: mergePersistedWindowsPathMock
 }))
 
-vi.mock('../bitbucket/client', () => ({
+vi.mock('../../src/main/bitbucket/client', () => ({
   getBitbucketAuthStatus: getBitbucketAuthStatusMock
 }))
 
-vi.mock('../azure-devops/client', () => ({
+vi.mock('../../src/main/azure-devops/client', () => ({
   getAzureDevOpsAuthStatus: getAzureDevOpsAuthStatusMock
 }))
 
-vi.mock('../gitea/client', () => ({
+vi.mock('../../src/main/gitea/client', () => ({
   getGiteaAuthStatus: getGiteaAuthStatusMock
 }))
 
 import {
   detectInstalledAgents,
   detectInstalledAgentsWithShellPathHydration
-} from '../preflight/agent-detection'
-import * as guestEnvironment from '../wsl/wsl-guest-environment'
-import { registerPreflightHandlers } from './preflight'
-import { resetPreflightMocks, type HandlerMap } from './preflight-test-harness'
+} from '../../src/main/preflight/agent-detection'
+import * as guestEnvironment from '../../src/main/wsl/wsl-guest-environment'
+import { registerPreflightHandlers } from '../../src/main/ipc/preflight'
+import { resetPreflightMocks, type HandlerMap } from '../../src/main/ipc/preflight-test-harness'
 
 describe('preflight', () => {
   const originalPlatform = process.platform

@@ -1,10 +1,10 @@
 import { vi, type Mock } from 'vitest'
 
 const probe = vi.hoisted(() => vi.fn())
-vi.mock('../../../main/wsl/wsl-runner', () => ({ runWslProcess: probe }))
-vi.mock('../../../main/preflight/agent-detection', async () => {
+vi.mock('../../src/main/wsl/wsl-runner', () => ({ runWslProcess: probe }))
+vi.mock('../../src/main/preflight/agent-detection', async () => {
   const { detectWslCommandsOnPath } =
-    await import('../../../main/ipc/preflight-wsl-agent-detection')
+    await import('../../src/main/ipc/preflight-wsl-agent-detection')
   return {
     detectInstalledAgentsWithShellPathHydration: async () => [
       ...(await detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude', 'codex']))

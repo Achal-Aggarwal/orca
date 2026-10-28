@@ -21,6 +21,7 @@ import {
 import { useNewTabAgentMenuRows } from '@/components/tab-bar/use-new-tab-agent-menu-rows'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import type { Project } from '../../../shared/project-types'
+import type { Repo } from '../../../shared/repo-types'
 import { projectHostSetupProjectionFromRepos } from '../../../shared/project-host-setup-projection'
 import { useDetectedAgents, type AgentDetectionTarget } from './useDetectedAgents'
 
@@ -194,7 +195,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     let projectFixtureCopies = 0
     let workspaceRows = 0
     let folderRows = 0
-    const repos = Array.from({ length: 1000 }, (_, index) => ({
+    const repos: Repo[] = Array.from({ length: 1000 }, (_, index) => ({
       ...TEST_REPO,
       id: `repo-${index}`,
       path: `C:\\project-${index}`

@@ -248,9 +248,8 @@ it('onboarding and setup checklist retain selection, continue and save after fai
   const { getDefaultOnboardingState } = await import('../../../../shared/onboarding-defaults')
   const { FeatureWallSetupChecklist } = await import('../feature-wall/FeatureWallSetupChecklist')
   const { FEATURE_WALL_SETUP_STEPS } = await import('../../../../shared/feature-wall-setup-steps')
-  const update = vi.fn(async (patch) => {
+  const update = vi.fn<AppState['updateSettings']>(async (patch) => {
     useAppStore.setState((s) => ({ settings: { ...s.settings!, ...patch } }))
-    return true
   })
   useAppStore.setState({
     settings: { ...getDefaultSettings('/tmp'), defaultTuiAgent: 'claude' },
@@ -316,7 +315,7 @@ it('onboarding and setup checklist retain selection, continue and save after fai
   await act(async () => {})
   expect(checklist.queryByText(/isn't on your PATH|No agents detected/)).toBeNull()
   await act(async () => {
-    fireEvent.click(checklist.getByRole('button', { name: 'Claude', exact: true }))
+    fireEvent.click(checklist.getByRole('button', { name: /^Claude$/ }))
   })
   expect(useAppStore.getState().settings?.defaultTuiAgent).toBe('claude')
 })
