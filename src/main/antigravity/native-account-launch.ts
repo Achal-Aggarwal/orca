@@ -54,6 +54,10 @@ export async function prepareAntigravityAccountForLaunch(args: {
       if (tokens[index] === '--') {
         break
       }
+      if (tokens[index] === '--prompt-interactive' || tokens[index] === '-i') {
+        index++
+        continue
+      }
       const flag = /^--?(gemini_dir|app_data_dir)(?:=(.*))?$/.exec(tokens[index])
       if (!flag) {
         continue

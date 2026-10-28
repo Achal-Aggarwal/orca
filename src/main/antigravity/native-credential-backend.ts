@@ -56,8 +56,17 @@ export function createAntigravityFileCredentialBackend(path: string): Antigravit
       if ((await read())?.contents !== (expected ?? undefined)) {
         throw new Error(CONFLICT)
       }
-      mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-      writeCredentialFileAtomic(path, Buffer.from(contents, 'utf8'), undefined, true)
+      try {
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+        writeCredentialFileAtomic(path, Buffer.from(contents, 'utf8'), undefined, true)
+      } catch (error) {
+        if (process.platform === 'win32') {
+          throw new Error(
+            'Antigravity could not update its credential file privately. Check the file permissions and try again.'
+          )
+        }
+        throw error
+      }
       if ((await read())?.contents !== contents) {
         throw new Error(CONFLICT)
       }

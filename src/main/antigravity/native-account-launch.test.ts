@@ -123,4 +123,8 @@ describe('Windows native credential authority before launch', () => {
     })
     expect(prepareForLaunch).toHaveBeenCalledOnce()
   })
+  it('does not interpret an interactive prompt value as a storage flag', async () => {
+    await prepareAntigravityAccountForLaunch({ command: 'agy --prompt-interactive "--gemini_dir"' })
+    expect(prepareForLaunch).toHaveBeenCalledOnce()
+  })
 })

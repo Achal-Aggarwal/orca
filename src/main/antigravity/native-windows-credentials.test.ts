@@ -122,5 +122,12 @@ describe('Windows native Antigravity credentials', () => {
     })
     await backend.write(credential('a'), null)
     expect((await backend.read())?.contents).toBe(credential('a'))
+    fake.createFileWithDacl = () => {
+      throw new Error('fixture-secret Win32 error 5')
+    }
+    await expect(backend.write(credential('b'), credential('a'))).rejects.toThrow(
+      /^Antigravity could not update its credential file privately\. Check the file permissions and try again\.$/
+    )
+    expect((await backend.read())?.contents).toBe(credential('a'))
   })
 })
