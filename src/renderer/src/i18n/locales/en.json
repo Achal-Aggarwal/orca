@@ -6424,7 +6424,9 @@
           "ghostBody": "{{host}} is no longer a saved SSH host, so this workspace is no longer connected to a live host. It can only be removed from Orca — files and branches on the remote are left untouched.",
           "cancel": "Cancel",
           "forget": "Remove from Orca",
-          "reconnectAndDelete": "Reconnect & Delete"
+          "reconnectAndDelete": "Reconnect & Delete",
+          "removeTitle": "Remove “{{name}}” from Orca?",
+          "savedHostBody": "This workspace’s project isn’t served by Orca’s server on {{host}}, so Orca can’t delete it there. You can remove it from Orca; files, the Git worktree, and branches on {{host}} are left untouched."
         },
         "MarkdownImageLightbox": {
           "image": "Image",
