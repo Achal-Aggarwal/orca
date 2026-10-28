@@ -125,8 +125,8 @@ export abstract class DaemonPtyRuntimeState {
   protected readonly hostLossSessionIds = new Set<string>()
   /** ORCA_PANE_KEY a WSL session was spawned with; its shell's folder is read by it at Sleep. */
   protected wslPaneKeysBySessionId = new Map<string, string>()
-  /** A sleeping WSL pane's shell folder, read before its final checkpoint; the checkpoint keeps it. */
-  protected sleepShellCwds = new Map<string, string>()
+  /** A WSL bridge shell's folder read before a final checkpoint (Sleep or quit); that checkpoint keeps it. */
+  protected probedShellCwds = new Map<string, string>()
   protected killedSessionTombstones = new Map<string, number>()
   protected sleepRestoreSessionIds = new Set<string>()
   protected coldRestoreCache = new ColdRestorePayloadCache(undefined, (sessionId) => {
@@ -166,6 +166,8 @@ export abstract class DaemonPtyRuntimeState {
   protected static PERIODIC_CHECKPOINT_DEADLINE_MS = 15_000
   protected static MAX_CONCURRENT_CHECKPOINTS = 4
   protected static FULL_CHECKPOINT_COOLDOWN_MS = 45_000
+  /** Quit's whole wait for bridge shell folders; a slow distro must not hold up quitting. */
+  protected static QUIT_WSL_CWD_BUDGET_MS = 1_000
   protected lastFullCheckpointAt = new Map<string, number>()
 
   protected abstract observeAuditFailure(
