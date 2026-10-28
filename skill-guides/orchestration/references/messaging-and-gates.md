@@ -29,11 +29,9 @@ coordinator inbox. Scripts that only watch the inbox must use `--peek`.
 
 Inside an Orca terminal or chat, new Run mail normally wakes the coordinator
 with a pointer to `check --run <run_id>`, so it may end its turn between
-batches. The wake is best-effort: a Claude coordinator can stay marked working
-while an agent-teams teammate is running, or is believed to be, and then gets
-no wake. Use an explicit `check` or a bounded wait when the wake is
-unavailable. A
-caller that waits instead treats an empty wait or timeout as a checkpoint and
+batches. The wake may arrive mid-turn as queued input. It is held while a
+dialog, permission prompt, or unsent draft is open, and an open `check --wait`
+suppresses it for the types it waits on. A caller that waits instead treats an empty wait or timeout as a checkpoint and
 keeps each wait under its tool-call limit. Heartbeat or visible activity means
 alive, not done.
 
