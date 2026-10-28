@@ -66,12 +66,7 @@ it('shows the Arguments-owned value in disabled Permissions; removing its chip e
     expect.objectContaining({ surface: 'terminal', arguments: '--add-dir docs' })
   )
   expect(entry.arguments).toBe('--permission-mode plan --add-dir docs')
-  act(() =>
-    [...host.querySelectorAll('button')]
-      .find((button) => button.textContent === 'Reset to default')
-      ?.click()
-  )
-  expect(permission()?.disabled).toBe(true)
+  expect(host.textContent).not.toContain('Reset to default')
 })
 
 it('leaves chat Permissions enabled even with launch-owned raw CLI permission text', () => {
@@ -117,10 +112,9 @@ it('shows the remembered chat defaults while keeping an untouched configured lau
   const selections = [...host.querySelectorAll('[role="combobox"]')].map(
     (control) => control.textContent
   )
-  expect(selections).toEqual(['', 'Default · Low', 'Agents defaults · Ask'])
-  expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe(
-    'Agent default · Astra'
-  )
+  expect(selections).toEqual(['', 'Low', 'Ask'])
+  expect(host.textContent).not.toMatch(/Agents? defaults?|Reset to default/)
+  expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe('Astra')
   act(() =>
     [...host.querySelectorAll('button')]
       .find((button) => button.textContent === 'Open chat')
@@ -132,6 +126,152 @@ it('shows the remembered chat defaults while keeping an untouched configured lau
     choices: {},
     arguments: undefined
   })
+})
+
+it('keeps unknown default controls disabled in place, then selects host-resolved values without writing overrides', () => {
+  const pending: AgentPickerEntry = {
+    ...entry,
+    agent: 'codex',
+    defaultSurface: 'chat',
+    arguments: undefined,
+    structured: {},
+    defaultsPending: true
+  }
+  const render = (value: AgentPickerEntry) =>
+    act(() =>
+      root.render(
+        <TooltipProvider>
+          <AgentLaunchSetupPanel entry={value} onUse={onUse} />
+        </TooltipProvider>
+      )
+    )
+  render(pending)
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
+    true
+  )
+  expect(host.querySelector<HTMLButtonElement>('button[aria-label="Permissions"]')?.disabled).toBe(
+    true
+  )
+  expect(host.querySelector('[cmdk-item][data-current="true"]')).toBeNull()
+  const settled: AgentPickerEntry = {
+    ...pending,
+    defaultsPending: false,
+    structured: { permissionMode: 'ask' },
+    catalog: {
+      origin: 'probe',
+      fetchedAt: 1,
+      listingNamesConfiguredModel: true,
+      models: [
+        {
+          id: 'host-model',
+          label: 'Host model',
+          isDefault: true,
+          defaultEffort: 'low',
+          efforts: [
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' }
+          ]
+        }
+      ]
+    }
+  }
+  render(settled)
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
+    false
+  )
+  expect(host.querySelector('[cmdk-item][data-current="true"]')?.textContent).toBe('Host model')
+  expect(host.querySelector('button[aria-label="Reasoning effort"]')?.textContent).toBe('Low')
+  expect(host.querySelector('button[aria-label="Permissions"]')?.textContent).toBe('Ask')
+  expect(host.textContent).not.toMatch(/Agents? defaults?|Reset to default/)
+  act(() =>
+    [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Open chat')
+      ?.click()
+  )
+  expect(onUse).toHaveBeenCalledExactlyOnceWith(agentPickerDraft(settled))
+
+  render({ ...settled, catalog: { origin: 'unknown' }, structured: { permissionMode: 'ask' } })
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Search models"]')?.disabled).toBe(
+    true
+  )
+  expect(
+    [...host.querySelectorAll('button')].find((button) => button.textContent === 'Open chat')
+      ?.disabled
+  ).toBe(false)
+})
+
+it('returns to concrete default model, effort and permission values by selecting them directly', () => {
+  const own: AgentPickerEntry = {
+    ...entry,
+    agent: 'codex',
+    defaultSurface: 'chat',
+    arguments: undefined,
+    structured: { model: 'astra', options: { effort: 'low' }, permissionMode: 'ask' },
+    catalog: {
+      origin: 'probe',
+      fetchedAt: 1,
+      models: [
+        {
+          id: 'astra',
+          label: 'Astra',
+          isDefault: true,
+          defaultEffort: 'low',
+          efforts: [
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' }
+          ]
+        },
+        {
+          id: 'other',
+          label: 'Other',
+          isDefault: false,
+          defaultEffort: 'low',
+          efforts: [
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' }
+          ]
+        }
+      ]
+    }
+  }
+  act(() =>
+    root.render(
+      <TooltipProvider>
+        <AgentLaunchSetupPanel entry={own} onUse={onUse} />
+      </TooltipProvider>
+    )
+  )
+  const model = (name: string) =>
+    act(() =>
+      [...host.querySelectorAll<HTMLElement>('[cmdk-item]')]
+        .find((row) => row.textContent === name)
+        ?.click()
+    )
+  model('Other')
+  model('Astra')
+  const select = (label: string, value: string) => {
+    fireEvent.keyDown(host.querySelector(`button[aria-label="${label}"]`)!, { key: 'ArrowDown' })
+    fireEvent.click(
+      [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (row) => row.textContent === value
+      )!
+    )
+  }
+  select('Reasoning effort', 'High')
+  select('Reasoning effort', 'Low')
+  select('Permissions', 'Full access')
+  select('Permissions', 'Ask')
+  act(() =>
+    [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Open chat')
+      ?.click()
+  )
+  expect(onUse).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      choices: { model: 'astra', options: { effort: 'low' }, permissionMode: 'ask' }
+    })
+  )
+  expect(host.textContent).not.toMatch(/Agents? defaults?|Reset to default/)
 })
 
 it('searches current and supplied legacy models, keeps unknown explicit choices, and hides CLI Arguments for chat-only entries', () => {

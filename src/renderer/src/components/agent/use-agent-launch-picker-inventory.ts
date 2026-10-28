@@ -138,7 +138,10 @@ export function useAgentLaunchPickerInventory(
       if (controller.signal.aborted) {
         return
       }
-      entries = entries.map((entry) => ({ ...entry, defaultsPending: false }))
+      entries = entries.map((entry) => ({
+        ...entry,
+        defaultsPending: target.kind === 'environment' && entry.defaultSurface === 'chat'
+      }))
       publish(entries)
       const params = { worktree: `id:${worktreeId}` }
       const catalogs = agentPickerHydrationQueue(entries, () => selectedRef.current)
@@ -168,17 +171,20 @@ export function useAgentLaunchPickerInventory(
             )
             const { model, permissionMode, ...options } =
               parseStructuredLaunchSeedOptions(support?.seedOptions) ?? {}
-            if (support?.seedOptions) {
-              entries[index] = {
-                ...entries[index],
-                structured: {
-                  ...(model ? { model } : {}),
-                  options,
-                  ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
-                }
-              }
-              publish(entries)
+            entries[index] = {
+              ...entries[index],
+              defaultsPending: false,
+              ...(support?.seedOptions
+                ? {
+                    structured: {
+                      ...(model ? { model } : {}),
+                      options,
+                      ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
+                    }
+                  }
+                : {})
             }
+            publish(entries)
           }
         }
       }

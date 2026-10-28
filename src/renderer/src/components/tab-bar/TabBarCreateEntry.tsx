@@ -7,6 +7,7 @@ import {
   isTabEntryAbsolutePathLike
 } from './tab-create-entry-action'
 import {
+  configuredAgentPickerLaunchOption,
   findMatchingTabAgentLaunchOptions,
   matchingAgentPickerLaunchOptions
 } from './tab-agent-launch-options'
@@ -384,12 +385,12 @@ function TabBarCreateEntrySession({
                 id={resultOptionDomId(index)}
                 option={option}
                 selected={index === activeSelectedIndex}
-                onOtherWay={
-                  option.kind === 'agent' && option.option.otherWay
-                    ? () =>
+                onUseAgent={
+                  option.kind === 'agent' && option.option.pickerEntry
+                    ? (draft) =>
                         submitOption({
                           kind: 'agent',
-                          option: option.option.otherWay ?? option.option
+                          option: configuredAgentPickerLaunchOption(option.option, draft)
                         })
                     : undefined
                 }

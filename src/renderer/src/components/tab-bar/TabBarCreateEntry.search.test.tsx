@@ -463,7 +463,7 @@ describe('TabBarCreateEntry search behavior', () => {
   })
 })
 
-it('uses the common setup search for Enter and dispatches its alternate button only once', () => {
+it('launches searched defaults on Enter and reaches the alternate only through Configure', () => {
   const launched = vi.fn()
   const entry = {
     agent: 'codex' as const,
@@ -492,8 +492,15 @@ it('uses the common setup search for Enter and dispatches its alternate button o
   launched.mockClear()
   renderEntry({ agentPickerEntries: [entry], onLaunchAgentOption: launched })
   setQuery('astra low')
+  expect(container.querySelector('button[aria-label="Open terminal"]')).toBeNull()
   act(() =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Open terminal"]')?.click()
+    container.querySelector<HTMLButtonElement>('button[aria-label="Configure Codex"]')?.click()
+  )
+  expect(launched).not.toHaveBeenCalled()
+  act(() =>
+    [...document.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Open terminal')
+      ?.click()
   )
   expect(launched).toHaveBeenCalledOnce()
   expect(launched.mock.calls[0][0].setup.surface).toBe('terminal')

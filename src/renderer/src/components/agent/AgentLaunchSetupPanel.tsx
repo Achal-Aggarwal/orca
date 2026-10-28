@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Check } from 'lucide-react'
+import { getAgentSessionOptionLaunchCatalog } from '../../../../shared/agent-session-option-catalog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +35,6 @@ import {
   type AgentPickerSurface
 } from '../../../../shared/agent-launch-picker'
 
-const DEFAULT = '__agent_default__'
 const permissionLabels = {
   own: 'Use agent configuration',
   ask: 'Ask',
@@ -57,11 +58,17 @@ export function AgentLaunchSetupPanel({
   const [modelQuery, setModelQuery] = useState('')
   const [legacy, setLegacy] = useState(false)
   const effective = agentPickerEffectiveChoices(entry, draft)
-  const defaults = agentPickerEffectiveChoices(entry, { ...draft, choices: {} })
   const models = agentPickerModels(entry)
-  const currentModel = effective.model
-  const terminalArguments = draft.surface === 'terminal' && draft.arguments !== undefined
-  const selectedModel = terminalArguments ? currentModel : draft.choices.model
+  const seed = getAgentSessionOptionLaunchCatalog(entry.agent)
+  const listedDefaultKnown =
+    entry.catalog.origin !== 'unknown' &&
+    (entry.catalog.listingNamesConfiguredModel ?? seed?.hostListingNamesConfiguredModel === true)
+  const currentModel =
+    effective.model ??
+    (!entry.defaultsPending && listedDefaultKnown
+      ? models.find((model) => model.isDefault)?.id
+      : undefined)
+  const modelDisabled = disabled || entry.defaultsPending || !currentModel
   const options = agentPickerEntryOptions(entry, currentModel, draft.surface)
   const argumentPermission = agentPickerArgumentPermission(entry, draft)
   const permissionOwnedByArguments = argumentPermission?.locked ? argumentPermission : undefined
@@ -101,7 +108,7 @@ export function AgentLaunchSetupPanel({
           }}
         >
           <CommandInput
-            disabled={disabled}
+            disabled={modelDisabled}
             value={modelQuery}
             onValueChange={setModelQuery}
             aria-label={translate('agentPicker.searchModels', 'Search models')}
@@ -111,18 +118,6 @@ export function AgentLaunchSetupPanel({
             <CommandEmpty>
               {translate('agentPicker.noModels', 'No models match your search.')}
             </CommandEmpty>
-            <CommandItem
-              disabled={disabled}
-              value={DEFAULT}
-              keywords={[translate('agentPicker.agentDefault', 'Agent default')]}
-              data-current={!selectedModel}
-              onSelect={() => setDraft(editAgentPickerDraft(draft, { model: null }))}
-            >
-              {translate('agentPicker.agentDefault', 'Agent default')}
-              {currentModel && !selectedModel
-                ? ` · ${models.find((model) => model.id === currentModel)?.label ?? currentModel}`
-                : ''}
-            </CommandItem>
             {legacy && !modelQuery ? (
               <CommandItem value="__back__" disabled={disabled} onSelect={() => setLegacy(false)}>
                 {translate('agentPicker.backModels', 'Back to current models')}
@@ -130,18 +125,21 @@ export function AgentLaunchSetupPanel({
             ) : null}
             {models
               .filter(
-                (model) => !model.hidden && (modelQuery || Boolean(model.isLegacy) === legacy)
+                (model) =>
+                  !model.hidden &&
+                  (model.id === currentModel || modelQuery || Boolean(model.isLegacy) === legacy)
               )
               .map((model) => (
                 <CommandItem
                   key={model.id}
                   value={model.id}
                   keywords={[model.label]}
-                  disabled={disabled}
-                  data-current={selectedModel === model.id}
+                  disabled={modelDisabled}
+                  data-current={currentModel === model.id}
                   onSelect={() => setDraft(editAgentPickerDraft(draft, { model: model.id }))}
                 >
                   {model.label}
+                  {currentModel === model.id ? <Check className="ml-auto size-3.5" /> : null}
                 </CommandItem>
               ))}
             {!legacy && !modelQuery && models.some((model) => model.isLegacy) ? (
@@ -149,14 +147,15 @@ export function AgentLaunchSetupPanel({
                 {translate('agentPicker.legacyModels', 'Legacy models')}
               </CommandItem>
             ) : null}
-            {selectedModel && !models.some((model) => model.id === selectedModel) ? (
+            {currentModel && !models.some((model) => model.id === currentModel) ? (
               <CommandItem
-                value={selectedModel}
-                disabled={disabled}
+                value={currentModel}
+                disabled={modelDisabled}
                 onSelect={() => {}}
                 data-current="true"
               >
-                {selectedModel}
+                {currentModel}
+                <Check className="ml-auto size-3.5" />
               </CommandItem>
             ) : null}
           </CommandList>
@@ -170,7 +169,18 @@ export function AgentLaunchSetupPanel({
                 { value: 'true', label: translate('agentPicker.on', 'On') },
                 { value: 'false', label: translate('agentPicker.off', 'Off') }
               ]
-        const current = (terminalArguments ? effective : draft.choices).options?.[option.id]
+        const liveModel = models.find((model) => model.id === currentModel)
+        const current =
+          effective.options?.[option.id] ??
+          (currentModel && !entry.defaultsPending
+            ? option.kind.type === 'boolean'
+              ? String(option.kind.defaultValue)
+              : option.id === 'effort'
+                ? liveModel?.defaultEffort
+                : option.kind.defaultIsCliDefault
+                  ? option.kind.defaultValue
+                  : undefined
+            : undefined)
         return (
           <div key={option.id} className="space-y-1">
             <Label>
@@ -182,26 +192,20 @@ export function AgentLaunchSetupPanel({
                 : ''}
             </Label>
             <Select
-              disabled={disabled}
-              value={current ?? DEFAULT}
+              disabled={disabled || entry.defaultsPending || current === undefined}
+              value={current ?? ''}
               onValueChange={(value) =>
                 setDraft(
                   editAgentPickerDraft(draft, {
-                    options: { [option.id]: value === DEFAULT ? null : value }
+                    options: { [option.id]: value }
                   })
                 )
               }
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label={option.label}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={DEFAULT}>
-                  {translate('agentPicker.default', 'Default')}
-                  {defaults.options?.[option.id]
-                    ? ` · ${choices.find((choice) => choice.value === defaults.options?.[option.id])?.label ?? defaults.options[option.id]}`
-                    : ''}
-                </SelectItem>
                 {choices.map((choice) => (
                   <SelectItem key={choice.value} value={choice.value}>
                     {choice.label}
@@ -218,10 +222,13 @@ export function AgentLaunchSetupPanel({
       <div className="space-y-1">
         <Label>{translate('agentPicker.permissions', 'Permissions')}</Label>
         <Select
-          disabled={disabled || Boolean(permissionOwnedByArguments)}
-          value={
-            permissionOwnedByArguments ? '__arguments__' : (draft.choices.permissionMode ?? DEFAULT)
+          disabled={
+            disabled ||
+            entry.defaultsPending ||
+            Boolean(permissionOwnedByArguments) ||
+            !effective.permissionMode
           }
+          value={permissionOwnedByArguments ? '__arguments__' : (effective.permissionMode ?? '')}
           onValueChange={(permissionMode) => {
             const choice = agentPickerPermissions(entry.agent, draft.surface).find(
               (choice) => choice === permissionMode
@@ -236,12 +243,6 @@ export function AgentLaunchSetupPanel({
             {permissionOwnedByArguments ? (
               <SelectItem value="__arguments__">{permissionOwnedByArguments.flag}</SelectItem>
             ) : null}
-            <SelectItem value={DEFAULT}>
-              {translate('agentPicker.agentsDefaults', 'Agents defaults')}
-              {defaults.permissionMode
-                ? ` · ${translate(`agentPicker.permission.${defaults.permissionMode}`, permissionLabels[defaults.permissionMode])}`
-                : ''}
-            </SelectItem>
             {agentPickerPermissions(entry.agent, draft.surface).map((choice) => (
               <SelectItem key={choice} value={choice}>
                 {translate(`agentPicker.permission.${choice}`, permissionLabels[choice])}
@@ -291,25 +292,9 @@ export function AgentLaunchSetupPanel({
               )
             }
           />
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>
-              {translate('agentPicker.argumentsHint', 'Applies only to CLI launches.')}
-              {draft.arguments === undefined
-                ? ` ${translate('agentPicker.agentsDefaults', 'Agents defaults')}`
-                : ''}
-            </span>
-            {draft.arguments !== undefined ? (
-              <Button
-                type="button"
-                disabled={disabled}
-                variant="link"
-                size="xs"
-                onClick={() => setDraft({ ...draft, arguments: undefined })}
-              >
-                {translate('agentPicker.resetArguments', 'Reset to default')}
-              </Button>
-            ) : null}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {translate('agentPicker.argumentsHint', 'Applies only to CLI launches.')}
+          </p>
         </div>
       ) : null}
       <div className="flex justify-end gap-2 border-t border-border pt-3">

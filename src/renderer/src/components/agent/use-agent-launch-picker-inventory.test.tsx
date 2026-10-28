@@ -225,6 +225,24 @@ it('retains legacy remembered values when createSupport does not supply optional
   })
 })
 
+it('keeps Chat default controls pending until their independent seed read settles, even after catalog publication', async () => {
+  const support = Promise.withResolvers<{ seedOptions?: Record<string, string> }>()
+  mocks.session.mockImplementation((_target, method) =>
+    method === 'agentSession.modelCatalog' ? Promise.resolve(catalog) : support.promise
+  )
+  const hook = renderHook(() => useAgentLaunchPickerInventory('wt', model(), true))
+  await act(async () => {})
+  expect(hook.result.current[0]).toMatchObject({ defaultsPending: true, catalog })
+  expect(hook.result.current[0].terminal.permissionMode).toBe('ask')
+  await act(async () =>
+    support.resolve({ seedOptions: { model: 'remembered', permissionMode: 'ask' } })
+  )
+  expect(hook.result.current[0]).toMatchObject({
+    defaultsPending: false,
+    structured: { model: 'remembered', permissionMode: 'ask' }
+  })
+})
+
 it('acquires each host agent once per open batch at N and 10N, independently of catalog size and selection', async () => {
   const { TUI_AGENT_CONFIG } = await import('../../../../shared/tui-agent-config')
   const agents = Object.keys(TUI_AGENT_CONFIG).filter(

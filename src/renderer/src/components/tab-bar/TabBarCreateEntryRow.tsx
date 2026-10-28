@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  MessageSquare,
   FilePlus,
   FileText,
   GitCompare,
@@ -18,6 +17,8 @@ import { SEARCH_ENGINE_LABELS } from '../../../../shared/browser-url'
 import { formatBrowserHistoryUrl } from '@/lib/browser-history-match'
 import type { ActiveOption } from './tab-create-entry-active-option'
 import { BrowserFavicon } from '@/components/browser-favicon'
+import { AgentLaunchSetupButton } from '../agent/AgentLaunchSetupButton'
+import type { AgentPickerDraft } from '../../../../shared/agent-launch-picker'
 
 export const RESULT_LISTBOX_ID = 'tab-create-entry-results'
 
@@ -47,7 +48,7 @@ export function EntryActionRow({
   labelOverride,
   loading = false,
   onClick,
-  onOtherWay,
+  onUseAgent,
   option,
   selected
 }: {
@@ -55,7 +56,7 @@ export function EntryActionRow({
   id: string
   labelOverride?: string
   loading?: boolean
-  onOtherWay?: () => void
+  onUseAgent?: (draft: AgentPickerDraft) => void
   onClick: () => void
   option: ActiveOption
   selected: boolean
@@ -101,28 +102,13 @@ export function EntryActionRow({
           </>
         ) : null}
       </button>
-      {onOtherWay && option.kind === 'agent' && option.option.otherWay ? (
-        <button
-          type="button"
+      {onUseAgent && option.kind === 'agent' && option.option.pickerEntry ? (
+        <AgentLaunchSetupButton
+          entry={option.option.pickerEntry}
+          initial={option.option.setup}
           disabled={disabled}
-          aria-label={
-            option.option.otherWay.setup?.surface === 'chat'
-              ? translate('agentPicker.openChat', 'Open chat')
-              : translate('agentPicker.openTerminal', 'Open terminal')
-          }
-          className="shrink-0 rounded p-1 hover:bg-accent"
-          onClick={(event) => {
-            event.stopPropagation()
-            onOtherWay()
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          {option.option.otherWay.setup?.surface === 'chat' ? (
-            <MessageSquare className="size-3.5" />
-          ) : (
-            <TerminalSquare className="size-3.5" />
-          )}
-        </button>
+          onUse={onUseAgent}
+        />
       ) : null}
     </div>
   )

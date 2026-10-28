@@ -237,6 +237,32 @@ it('uses actual Chat permission seeds without transferring remembered Chat model
   })
 })
 
+it('shows inherited terminal Arguments choices without promoting them into launch overrides or Chat', () => {
+  const own = {
+    ...entry,
+    agent: 'claude' as const,
+    arguments: '--model sonnet --effort low',
+    structured: { model: 'opus' },
+    terminal: { permissionMode: 'ask' as const }
+  }
+  const draft = agentPickerDraft(own, 'terminal')
+  expect(agentPickerEffectiveChoices(own, draft)).toMatchObject({
+    model: 'sonnet',
+    options: { effort: 'low' }
+  })
+  expect(agentPickerLaunchInputs(draft, own)).toEqual({ sessionOptions: {} })
+  expect(
+    agentPickerEffectiveChoices(own, editAgentPickerArguments(draft, '')).model
+  ).toBeUndefined()
+  expect(
+    agentPickerEffectiveChoices(own, editAgentPickerArguments(draft, '--add-dir src')).model
+  ).toBeUndefined()
+  expect(agentPickerEffectiveChoices(own, { ...draft, surface: 'chat' }).model).toBe('opus')
+  expect(
+    agentPickerEffectiveChoices(own, editAgentPickerDraft(draft, { model: 'opus' })).model
+  ).toBe('opus')
+})
+
 it('only suggests host-advertised model words and preserves the mixed omnibox short-prefix boundary', () => {
   expect(
     searchAgentPickerSetups([{ ...entry, catalog: { origin: 'unknown' } }], 'gpt low')

@@ -1,3 +1,7 @@
+export {
+  agentPickerChoiceSeeds,
+  type AgentPickerDefaultSettings
+} from './agent-launch-picker-defaults'
 import { agentPickerOptions, agentPickerModels } from './agent-launch-picker-catalog'
 export {
   agentPickerOptions,
@@ -6,9 +10,6 @@ export {
   agentPickerPermissions
 } from './agent-launch-picker-catalog'
 import { projectAgentLaunchProfile } from './agent-launch-profile'
-import { structuredLaunchSeedOptions } from './native-chat-session-option-defaults'
-import { isAgentChatPermissionChoice } from './agent-chat-permission-mode'
-import type { GlobalSettings } from './global-settings-types'
 import type { AgentChoicePatch, AgentDedicatedChoices } from './agent-launch-choices'
 import { reconcileAgentChoiceArgs } from './agent-choice-reconciliation'
 import { resolveAgentChoiceLayers } from './agent-choice-layers'
@@ -55,9 +56,27 @@ export function agentPickerEffectiveChoices(
   entry: AgentPickerEntry,
   draft: AgentPickerDraft
 ): AgentDedicatedChoices {
+  const defaults =
+    draft.surface === 'chat'
+      ? entry.structured
+      : draft.arguments !== undefined
+        ? entry.terminal
+        : reconcileAgentChoiceArgs({
+            agent: entry.agent,
+            userArgs: entry.arguments ?? '',
+            choices: entry.terminal,
+            mode: 'load',
+            keys: new Set([
+              'model',
+              'permissionMode',
+              ...agentPickerOptions(entry.agent, entry.terminal.model, 'terminal').map(
+                (option) => option.id
+              )
+            ])
+          }).choices
   return resolveAgentChoiceLayers({
     agent: entry.agent,
-    defaults: draft.surface === 'chat' ? entry.structured : entry.terminal,
+    defaults,
     explicit: agentPickerLaunchChoices(draft).choices,
     userArgs:
       draft.surface === 'chat'
@@ -265,34 +284,6 @@ export function agentPickerEntriesFromRows(
       catalog: { origin: 'unknown' }
     }
   })
-}
-
-export type AgentPickerDefaultSettings = Partial<
-  Pick<
-    GlobalSettings,
-    | 'agentDefaultArgs'
-    | 'agentPermissionDefault'
-    | 'agentPermissionOverrides'
-    | 'nativeChatSessionOptions'
-    | 'nativeChatPermissionMode'
-  >
->
-
-export function agentPickerChoiceSeeds(
-  agent: TuiAgent,
-  settings: AgentPickerDefaultSettings | null | undefined
-): Pick<AgentPickerEntry, 'terminal' | 'structured' | 'arguments'> {
-  const profile = projectAgentLaunchProfile(agent, settings, { target: 'structured' })
-  const { model, permissionMode, ...options } = structuredLaunchSeedOptions(settings, agent) ?? {}
-  return {
-    terminal: profile.choices,
-    structured: {
-      ...(model ? { model } : {}),
-      options,
-      ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
-    },
-    arguments: profile.args
-  }
 }
 
 export function agentPickerHydrationQueue(

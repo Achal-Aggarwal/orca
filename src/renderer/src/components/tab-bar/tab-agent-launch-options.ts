@@ -18,7 +18,7 @@ export type TabAgentLaunchOption = {
   id?: string
   row?: NewTabAgentMenuRow
   setup?: AgentPickerDraft
-  otherWay?: TabAgentLaunchOption
+  pickerEntry?: AgentPickerEntry
   reason?: string
 }
 
@@ -91,6 +91,26 @@ export function buildTabAgentLaunchOptionsFromRows(
   })
 }
 
+export function buildAgentPickerLaunchOptions(
+  entries: readonly AgentPickerEntry[],
+  commandOverrides: Partial<Record<TuiAgent, string>> = {}
+): TabAgentLaunchOption[] {
+  return entries.flatMap((entry) => {
+    const row = entry.rows.find((row) =>
+      entry.defaultSurface === 'chat'
+        ? row.kind === 'chat'
+        : row.kind === 'cli' || row.kind === 'terminal'
+    )
+    return row
+      ? buildTabAgentLaunchOptionsFromRows([row], commandOverrides).map((option) => ({
+          ...option,
+          label: entry.label,
+          pickerEntry: entry
+        }))
+      : []
+  })
+}
+
 // Require exact aliases or token prefixes; substring hits would outrank files and hijack the omnibox.
 function scoreAgentLaunchOption(
   normalizedQuery: string,
@@ -157,7 +177,8 @@ export function matchingAgentPickerLaunchOptions(
   query: string
 ): TabAgentLaunchOption[] {
   return searchAgentPickerSetups(entries, query).map((setup) => {
-    const option = (surface: 'chat' | 'terminal'): TabAgentLaunchOption => ({
+    const surface = setup.entry.defaultSurface
+    return {
       agent: setup.entry.agent,
       label: setup.label,
       aliases: [],
@@ -167,9 +188,23 @@ export function matchingAgentPickerLaunchOptions(
         kind: surface === 'chat' ? 'chat' : 'cli',
         executionHostId: setup.entry.rows[0]?.executionHostId
       },
-      setup: { agent: setup.entry.agent, surface, choices: setup.choices }
-    })
-    const other = setup.entry.surfaces.find((surface) => surface !== setup.entry.defaultSurface)
-    return { ...option(setup.entry.defaultSurface), ...(other ? { otherWay: option(other) } : {}) }
+      setup: { agent: setup.entry.agent, surface, choices: setup.choices },
+      pickerEntry: setup.entry
+    }
   })
+}
+
+export function configuredAgentPickerLaunchOption(
+  option: TabAgentLaunchOption,
+  draft: AgentPickerDraft
+): TabAgentLaunchOption {
+  return {
+    ...option,
+    row: {
+      agent: draft.agent,
+      kind: draft.surface === 'chat' ? 'chat' : 'cli',
+      executionHostId: option.row?.executionHostId
+    },
+    setup: draft
+  }
 }
