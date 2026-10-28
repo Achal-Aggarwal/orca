@@ -100,12 +100,15 @@ function harness(options: { visible?: boolean } = {}) {
           proving: () => false
         }
       }
-      const record = { exit: (_code: number | null) => {}, closed: false }
+      const record = { exit: (_code: number | null) => {}, idle: () => {}, closed: false }
       watches.push(record)
       return {
         signal: 'ready',
         onExit: (listener) => {
           record.exit = listener
+        },
+        onIdle: (listener) => {
+          record.idle = listener
         },
         close: () => {
           record.closed = true
@@ -496,6 +499,20 @@ describe('WslOrcadLivenessSupervisor', () => {
     h.state.watchProves = true
     await h.advance(WSL_ORCAD_IDLE_VERIFY_MS + WSL_ORCAD_HEARTBEAT_MS)
     expect(h.readIdentity).toHaveBeenCalledTimes(reads + 2)
+  })
+
+  it('brings the next full check forward when the last desktop socket closes normally', async () => {
+    const h = harness()
+    await h.supervisor.connect('Ubuntu')
+    const reads = h.readIdentity.mock.calls.length
+    await h.advance(WSL_ORCAD_HEARTBEAT_MS / 2)
+    // The desktop closed its last socket: nothing proves orcad until the next check.
+    h.state.watchProves = false
+    h.lastWatch().idle()
+    await h.advance(WSL_ORCAD_IDLE_VERIFY_MS - 1)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads)
+    await h.advance(1)
+    expect(h.readIdentity).toHaveBeenCalledTimes(reads + 1)
   })
 
   it('treats a socket orcad closed for another reason as a verify, not a verdict', async () => {

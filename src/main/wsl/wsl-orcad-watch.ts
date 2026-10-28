@@ -15,6 +15,8 @@ export type WslOrcadWatch = {
   close(): void
   /** Whether it currently proves orcad answers on its port (false while it holds no open path). */
   proving(): boolean
+  /** Called each time it stops proving without an exit, so the next check can come sooner. */
+  onIdle?(listener: () => void): void
 }
 
 const WATCH_OPEN_TIMEOUT_MS = 10_000

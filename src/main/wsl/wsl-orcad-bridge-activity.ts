@@ -35,9 +35,17 @@ export function observeWslOrcadBridgeChannel(
   return channel
 }
 
+/** Exit signals this close together are one orcad exit, or one-shot sockets coming and going. */
+export const WSL_ORCAD_BRIDGE_EXIT_COOLDOWN_MS = 2_000
+
+type ActivityListener = (kind: 'exit' | 'idle') => void
+
 export class WslOrcadBridgeActivity {
   private readonly live = new Map<string, number>()
-  private readonly listeners = new Map<string, Set<() => void>>()
+  private readonly listeners = new Map<string, Set<ActivityListener>>()
+  private readonly lastExitAt = new Map<string, number>()
+
+  constructor(private readonly now: () => number = () => performance.now()) {}
 
   events(environmentId: string): WslOrcadBridgeChannelEvents {
     const key = environmentId
@@ -46,13 +54,20 @@ export class WslOrcadBridgeActivity {
       ended: (byGuest) => {
         const live = Math.max(0, (this.live.get(key) ?? 0) - 1)
         this.live.set(key, live)
+        if (live > 0) {
+          return
+        }
         // orcad exiting ends every socket at once; ending one while another stays open is a
         // normal close, which a WebSocket lets the server finish first, so it reads as guest-ended.
-        if (byGuest && live === 0) {
-          // A listener detaches itself as it fires.
-          for (const listener of Array.from(this.listeners.get(key) ?? [])) {
-            listener()
-          }
+        // Leading-edge cooldown: a burst of one-shot sockets with none held is one verify, not many.
+        const last = this.lastExitAt.get(key)
+        const exit =
+          byGuest && (last === undefined || this.now() - last >= WSL_ORCAD_BRIDGE_EXIT_COOLDOWN_MS)
+        if (exit) {
+          this.lastExitAt.set(key, this.now())
+        }
+        for (const listener of Array.from(this.listeners.get(key) ?? [])) {
+          listener(exit ? 'exit' : 'idle')
         }
       }
     }
@@ -63,30 +78,39 @@ export class WslOrcadBridgeActivity {
     return this.live.get(environmentId) ?? 0
   }
 
-  /** A watch that fires once when the guest ends the last open bridged socket, and proves only while one is open. */
+  /**
+   * A watch that fires once when the guest ends the last open bridged socket, proves only while
+   * one is open, and reports each time the last one closes any other way (no socket left to prove).
+   */
   watch(environmentId: string): WslOrcadWatch {
     const key = environmentId
-    const listeners = this.listeners.get(key) ?? new Set<() => void>()
+    const listeners = this.listeners.get(key) ?? new Set<ActivityListener>()
     this.listeners.set(key, listeners)
-    let fire: (() => void) | null = null
-    const detach = (): void => {
-      if (fire) {
-        listeners.delete(fire)
-        fire = null
+    let onExit: ((code: number | null) => void) | null = null
+    let onIdle: (() => void) | null = null
+    const listener: ActivityListener = (kind) => {
+      if (kind === 'idle') {
+        onIdle?.()
+        return
       }
+      const exit = onExit
+      close()
+      exit?.(null)
     }
+    const close = (): void => {
+      listeners.delete(listener)
+      onExit = onIdle = null
+    }
+    listeners.add(listener)
     return {
       signal: 'ready',
-      onExit: (listener) => {
-        detach()
-        const once = (): void => {
-          detach()
-          listener(null)
-        }
-        fire = once
-        listeners.add(once)
+      onExit: (exit) => {
+        onExit = exit
       },
-      close: detach,
+      onIdle: (idle) => {
+        onIdle = idle
+      },
+      close,
       proving: () => (this.live.get(key) ?? 0) > 0
     }
   }

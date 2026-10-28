@@ -2,7 +2,11 @@ import { connect, createServer, type Server, type Socket } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkOrcadStdioBridge, openOrcadStdioBridgeChannel } from '../ssh/orcad-stdio-bridge'
 import type { StartedPortForward } from '../ssh/port-forwarding/ssh-port-forward-provider'
-import { probeThenWatchWslOrcadBridges, WslOrcadBridgeActivity } from './wsl-orcad-bridge-activity'
+import {
+  probeThenWatchWslOrcadBridges,
+  WSL_ORCAD_BRIDGE_EXIT_COOLDOWN_MS,
+  WslOrcadBridgeActivity
+} from './wsl-orcad-bridge-activity'
 import { fakeWslBridgeChildren, posixOrcadStdioBridge } from './wsl-orcad-bridge-test-child'
 import { createWslOrcadHostTransport } from './wsl-orcad-host-transport'
 import { listenWslOrcadStdioBridge } from './wsl-orcad-stdio-bridge'
@@ -150,6 +154,49 @@ describe('the desktop’s bridged sockets as the liveness watch', () => {
     events.ended(true)
     expect(exits).not.toHaveBeenCalled()
     expect(other).not.toHaveBeenCalled()
+  })
+})
+
+describe('bridge activity signals', () => {
+  it('coalesces a burst of exit signals into one, and reports the rest as idle', () => {
+    let now = 0
+    const activity = new WslOrcadBridgeActivity(() => now)
+    const events = activity.events(ENV)
+    const seen: string[] = []
+    const watchOnce = (): void => {
+      const watch = activity.watch(ENV)
+      watch.onExit(() => seen.push('exit'))
+      watch.onIdle?.(() => seen.push('idle'))
+    }
+    watchOnce()
+    // One-shot sockets with nothing held: each ends on the guest side first.
+    events.opened()
+    events.ended(true)
+    watchOnce()
+    now += WSL_ORCAD_BRIDGE_EXIT_COOLDOWN_MS - 1
+    events.opened()
+    events.ended(true)
+    now += 1
+    events.opened()
+    events.ended(true)
+    expect(seen).toEqual(['exit', 'idle', 'exit'])
+  })
+
+  it('reports the last socket closing from the desktop side as idle, not exit', () => {
+    const activity = new WslOrcadBridgeActivity(() => 0)
+    const events = activity.events(ENV)
+    const watch = activity.watch(ENV)
+    const exits = vi.fn()
+    const idles = vi.fn()
+    watch.onExit(exits)
+    watch.onIdle?.(idles)
+    events.opened()
+    events.opened()
+    events.ended(false)
+    expect(idles).not.toHaveBeenCalled()
+    events.ended(false)
+    expect(idles).toHaveBeenCalledOnce()
+    expect(exits).not.toHaveBeenCalled()
   })
 })
 

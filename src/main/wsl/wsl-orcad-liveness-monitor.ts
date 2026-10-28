@@ -97,7 +97,8 @@ export function scheduleSupervisedHeartbeat(
 export async function attachSupervisedWatch(
   entry: Supervised,
   openWatch: () => Promise<WslOrcadWatch>,
-  onExit: (code: number | null) => void
+  onExit: (code: number | null) => void,
+  onIdle: () => void = () => {}
 ): Promise<WslOrcadWatch['signal']> {
   const generation = entry.generation
   const watch = await openWatch()
@@ -113,6 +114,11 @@ export async function attachSupervisedWatch(
     if (entry.watch === watch) {
       entry.watch = null
       onExit(code)
+    }
+  })
+  watch.onIdle?.(() => {
+    if (entry.watch === watch) {
+      onIdle()
     }
   })
   return 'ready'

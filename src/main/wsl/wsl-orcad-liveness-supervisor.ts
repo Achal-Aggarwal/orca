@@ -170,7 +170,9 @@ export class WslOrcadLivenessSupervisor {
     return attachSupervisedWatch(
       entry,
       () => this.deps.openWatch(connection),
-      (code) => this.trigger(entry, { source: 'bridge', code })
+      (code) => this.trigger(entry, { source: 'bridge', code }),
+      // Nothing proves orcad now: bring the next full check forward to the idle period.
+      () => this.scheduleHeartbeat(entry)
     )
   }
 
