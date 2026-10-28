@@ -67,6 +67,7 @@ function createHost(overrides: Partial<RuntimeBrowserCommandHost> = {}): Runtime
         getActivePageId: vi.fn(() => 'page-1'),
         tabList: vi.fn(() => ({ tabs: [] }))
       } as unknown as AgentBrowserBridge)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a partial host fake; these tests reach only the methods it defines.
   return {
     resolveWorkspaceSelector: async (selector) => ({ id: selector.replace(/^id:/, '') }),
     resolveBrowserWorkspace: async (selector) => ({ id: selector.replace(/^id:/, '') }),
