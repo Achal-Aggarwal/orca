@@ -20316,7 +20316,8 @@
         "manifestTooLarge": "there is more saved state than one move can carry",
         "hostUpdate": "the host needs an update first",
         "attemptsExhausted": "it didn't complete after several tries"
-      }
+      },
+      "finishPending": "An earlier move to the {{distro}} host is done there. Orca finishes it here when it restarts, or now with Check again."
     }
   },
   "onboarding": {
