@@ -126,7 +126,7 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
             return
           }
           if (provider === 'github') {
-            const page = await fetchGitHubItemsPage(requestClient, queriedRepos)
+            const page = await fetchGitHubItemsPage(requestClient, queriedRepos, 0, isCurrent)
             if (!isCurrent()) {
               return
             }
@@ -140,11 +140,13 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
             setGithubCurrentPage(0)
             setItems(page.items)
             if (effectiveRepoIds.size > 0) {
-              void countGitHubItemPages(requestClient, queriedRepos).then((totalPages) => {
-                if (isCurrent()) {
-                  setGithubCountedTotalPages(totalPages)
+              void countGitHubItemPages(requestClient, queriedRepos, isCurrent).then(
+                (totalPages) => {
+                  if (isCurrent()) {
+                    setGithubCountedTotalPages(totalPages)
+                  }
                 }
-              })
+              )
             } else {
               // Do not spend GitHub Search quota on all-repo totals before the user narrows scope.
               setGithubCountedTotalPages(null)
@@ -175,6 +177,9 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
             queriedRepos,
             GITHUB_REPO_CONCURRENCY,
             async (repo) => {
+              if (!isCurrent()) {
+                return { items: [] }
+              }
               try {
                 const reply = await gitlabWorkItemSearchRead.request(requestClient, {
                   repo: `id:${repo.id}`,
@@ -284,6 +289,12 @@ export function useMobileTasksTaskListLoading(model: ProviderLoadActionsModel) {
       taskStateHydrated,
       tasksSupported
     ]
+  )
+  useEffect(
+    () => () => {
+      loadGenerationRef.current += 1
+    },
+    [loadTasks, loadGenerationRef]
   )
   // Server-repo changes quietly reload unfiltered lists; a changed loadTasks already owns filter reloads, while Jira/Linear read independently.
   const listedServerReposRef = useRef({ serverRepoList, loadTasks })
