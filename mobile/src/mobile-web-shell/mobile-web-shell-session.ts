@@ -278,7 +278,7 @@ export function reduceMobileWebShellSession(
     case 'shell-failed':
       return reduceShellFailed(session, event.reason, refetchAfterDelete)
     case 'generation-verified':
-      return reduceGenerationVerified(session, event.intact, refetchAfterDelete)
+      return reduceGenerationVerified(session, event, refetchAfterDelete)
     case 'remounted':
     case 'document-started':
     case 'document-loaded':

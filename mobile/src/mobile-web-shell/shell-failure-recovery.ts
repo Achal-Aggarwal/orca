@@ -33,26 +33,27 @@ export function reduceShellFailed(
     case 'generation-unreadable':
       return refetchOnce(session, reason, refetch)
     case 'document-load-failed':
+      if (session.retriedOnce) {
+        return step(session, { state: failedState(session, reason) })
+      }
       // Advance flow so the failed document's deadlines cannot land while bytes are being checked.
       return step(session, { flow: session.flow + 1 }, [
-        { kind: 'verify-generation', buildId: state.buildId }
+        { kind: 'verify-generation', buildId: state.buildId, pageReady: session.pageReady }
       ])
   }
 }
 
 export function reduceGenerationVerified(
   session: MobileWebShellSession,
-  intact: boolean,
+  event: { readonly intact: boolean; readonly pageReady: boolean },
   refetch: RefetchAfterDelete
 ): MobileWebShellStep {
-  if (session.state.kind !== 'ready') {
+  // A page that said ready while its files were checked is working; leave it.
+  if (session.state.kind !== 'ready' || (session.pageReady && !event.pageReady)) {
     return step(session, {})
   }
-  if (session.retriedOnce) {
-    return step(session, { state: failedState(session, 'document-load-failed') })
-  }
   // Spend the page-failure budget, not renderer loss's: a later background renderer kill must still remount silently.
-  return intact
+  return event.intact
     ? step(session, { retriedOnce: true }, [{ kind: 'remount' }])
     : refetchOnce(session, 'document-load-failed', refetch)
 }

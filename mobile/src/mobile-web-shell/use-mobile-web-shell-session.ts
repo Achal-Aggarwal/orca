@@ -189,14 +189,14 @@ export function useMobileWebShellSession(args: {
             elapsedMs: runtime.now() - startedAtRef.current
           })
           return
-        case 'verify-generation':
-          send({
-            type: 'generation-verified',
-            flow,
-            // A failed check is no evidence against the bytes; remounting them is the cheaper recovery.
-            intact: await store.verifyActiveGeneration(hostKey, effect.buildId).catch(() => true)
-          })
+        case 'verify-generation': {
+          // A failed check is no evidence against the bytes; remounting them is the cheaper recovery.
+          const intact = await store
+            .verifyActiveGeneration(hostKey, effect.buildId)
+            .catch(() => true)
+          send({ type: 'generation-verified', flow, intact, pageReady: effect.pageReady })
           return
+        }
         case 'cancel-deadlines':
           deadline.cancel()
           return

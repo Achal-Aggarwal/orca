@@ -92,7 +92,8 @@ export type MobileWebShellSessionEffect =
       readonly totalBytes: number
     }
   // Compare the mounted build's files with its manifest; only a mismatch justifies deleting and refetching them.
-  | { readonly kind: 'verify-generation'; readonly buildId: string }
+  // Echo pageReady so a ready that arrives during the check can be told apart from one the failed page already sent.
+  | { readonly kind: 'verify-generation'; readonly buildId: string; readonly pageReady: boolean }
   | { readonly kind: 'delete-cache' }
   | { readonly kind: 'remount' }
   // Stamp expiry with its flow; arming either deadline replaces the armed one, so the runner owns timing without deciding recovery.
@@ -137,7 +138,12 @@ export type MobileWebShellSessionEvent =
       readonly elapsedMs: number
     }
   | { readonly type: 'remounted'; readonly flow: number; readonly sessionId: string }
-  | { readonly type: 'generation-verified'; readonly flow: number; readonly intact: boolean }
+  | {
+      readonly type: 'generation-verified'
+      readonly flow: number
+      readonly intact: boolean
+      readonly pageReady: boolean
+    }
   | {
       readonly type: 'download-failed'
       readonly flow: number

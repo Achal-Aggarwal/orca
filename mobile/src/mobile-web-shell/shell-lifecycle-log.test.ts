@@ -155,7 +155,7 @@ describe('shell lifecycle log lines', () => {
       [
         { type: 'document-loaded' },
         { type: 'page-ready-deadline' },
-        { type: 'generation-verified', intact: false }
+        { type: 'generation-verified', intact: false, pageReady: false }
       ],
       opened
     )
@@ -172,7 +172,7 @@ describe('shell lifecycle log lines', () => {
       [
         { type: 'document-started' },
         { type: 'document-load-deadline' },
-        { type: 'generation-verified', intact: true }
+        { type: 'generation-verified', intact: true, pageReady: false }
       ],
       opened
     )

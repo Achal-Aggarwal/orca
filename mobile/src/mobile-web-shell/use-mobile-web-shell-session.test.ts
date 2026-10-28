@@ -821,7 +821,7 @@ describe('deadlines on the real foreground timer', () => {
     })
     expect(fake.deleted()).toBe(0)
     expect(doubles.fetches).toHaveLength(0)
-    expect(fake.verified()).toBe(2)
+    expect(fake.verified()).toBe(1)
     expect(mounted.states().at(-1)).toMatchObject({
       kind: 'failed',
       reason: 'document-load-failed'

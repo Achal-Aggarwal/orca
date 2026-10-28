@@ -664,7 +664,9 @@ describe('the page has to speak for the document that loaded', () => {
   it('checks the files on disk when the wait expires', () => {
     const ready = run(readySession().session, { type: 'document-loaded' })
     const step = run(ready.session, { type: 'page-ready-deadline' })
-    expect(step.effects).toEqual([{ kind: 'verify-generation', buildId: MANIFEST.buildId }])
+    expect(step.effects).toEqual([
+      { kind: 'verify-generation', buildId: MANIFEST.buildId, pageReady: false }
+    ])
     expect(step.session.retriedOnce).toBe(false)
   })
 
@@ -753,7 +755,9 @@ describe('the view has to finish the document it was given', () => {
   it('checks the files on disk, then remounts them, when no document ever finished', () => {
     const started = run(readySession().session, { type: 'document-started' })
     const step = run(started.session, { type: 'document-load-deadline' })
-    expect(step.effects).toEqual([{ kind: 'verify-generation', buildId: MANIFEST.buildId }])
+    expect(step.effects).toEqual([
+      { kind: 'verify-generation', buildId: MANIFEST.buildId, pageReady: false }
+    ])
     expect(run(step.session, FILES_INTACT).effects).toEqual([{ kind: 'remount' }])
   })
 

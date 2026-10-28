@@ -13,7 +13,9 @@ describe('a failed document checks its files before choosing a recovery', () => 
   it('checks the files on disk before deciding how to recover a failed document', () => {
     const ready = readySession()
     const step = run(ready.session, DOCUMENT_FAILED)
-    expect(step.effects).toEqual([{ kind: 'verify-generation', buildId: MANIFEST.buildId }])
+    expect(step.effects).toEqual([
+      { kind: 'verify-generation', buildId: MANIFEST.buildId, pageReady: false }
+    ])
     expect(step.session.state).toEqual(ready.session.state)
     expect(step.session.flow).toBe(ready.session.flow + 1)
   })
@@ -78,5 +80,34 @@ describe('a failed document checks its files before choosing a recovery', () => 
     const failed = run(readySession().session, DOCUMENT_FAILED)
     const retried = run(failed.session, { type: 'retry-pressed' })
     expect(run(retried.session, FILES_DAMAGED).effects).toEqual([])
+  })
+
+  it('leaves a page that said ready while its files were checked', () => {
+    const checking = run(readySession().session, { type: 'document-loaded' }, DOCUMENT_FAILED)
+    const spoke = run(checking.session, { type: 'page-ready' })
+    const late = run(spoke.session, FILES_DAMAGED)
+    expect(late.effects).toEqual([])
+    expect(late.session.state.kind).toBe('ready')
+  })
+
+  it('still recovers a page that faults after it said ready', () => {
+    const faulted = run(readySession().session, { type: 'page-ready' }, DOCUMENT_FAILED)
+    expect(run(faulted.session, { ...FILES_INTACT, pageReady: true }).effects).toEqual([
+      { kind: 'remount' }
+    ])
+  })
+
+  it('fails without a check once the page-failure retry is spent', () => {
+    const remounted = run(readySession().session, DOCUMENT_FAILED, FILES_INTACT, {
+      type: 'remounted',
+      sessionId: 'session-two'
+    })
+    const again = run(remounted.session, DOCUMENT_FAILED)
+    expect(again.effects).toEqual([])
+    expect(again.session.state).toEqual({
+      kind: 'failed',
+      reason: 'document-load-failed',
+      retriedOnce: true
+    })
   })
 })
