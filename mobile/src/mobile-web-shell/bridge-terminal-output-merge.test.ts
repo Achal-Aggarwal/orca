@@ -204,9 +204,13 @@ describe('terminal backlog merge framing', () => {
 
       backlog.hold(output('after drain'))
       expect(backlog.next(640, true)).toEqual(output('after drain'))
-      backlog.hold(output('discarded'))
+      backlog.hold(output('a'))
+      backlog.hold({ type: 'resized', streamId: 1, cols: 2, rows: 24 })
+      backlog.hold(output('b'))
+      expect(backlog.next(640, true)).toEqual(output('a'))
       backlog.dispose()
       backlog.hold(output('after reset'))
+      expect(backlog.held).toBe(true)
       expect(backlog.next(640, true)).toEqual(output('after reset'))
     } finally {
       backlog.dispose()
