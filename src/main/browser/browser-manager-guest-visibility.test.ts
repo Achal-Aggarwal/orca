@@ -196,13 +196,13 @@ describe('browserManager', () => {
       if (failure === 'release') {
         const release = browserManager.holdPaintForCapture(guest.id)
         renderer.send.mockImplementationOnce(fail)
-        expect(release).toThrow('renderer unavailable')
+        expect(release).not.toThrow()
+      } else if (failure === 'notify') {
+        renderer.send.mockImplementationOnce(fail)
+        const release = browserManager.holdPaintForCapture(guest.id)
+        expect(release).not.toThrow()
       } else {
-        if (failure === 'notify') {
-          renderer.send.mockImplementationOnce(fail)
-        } else {
-          renderer.setBackgroundThrottling.mockImplementationOnce(fail)
-        }
+        renderer.setBackgroundThrottling.mockImplementationOnce(fail)
         expect(() => browserManager.holdPaintForCapture(guest.id)).toThrow('renderer unavailable')
       }
       vi.runAllTimers()

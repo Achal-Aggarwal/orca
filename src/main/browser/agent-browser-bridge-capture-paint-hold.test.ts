@@ -81,16 +81,17 @@ describe('AgentBrowserBridge', () => {
     bridge.setActiveTab(100)
   })
 
-  it('releases background work after commands that do not capture pixels', async () => {
+  it('holds only the guest, never paint, for commands that do not capture pixels', async () => {
     const releases: ReturnType<typeof vi.fn>[] = []
-    const holdPaintForCapture = vi.fn(() => {
+    const holdGuestActive = vi.fn(() => {
       const release = vi.fn()
       releases.push(release)
       return release
     })
+    const holdPaintForCapture = vi.fn(() => () => {})
     const printToPDF = vi.fn(async () => Buffer.from('pdf'))
     const b = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdPaintForCapture })
+      mockBrowserManager(undefined, undefined, { holdGuestActive, holdPaintForCapture })
     )
     b.setActiveTab(100)
     webContentsFromIdMock.mockReturnValue({ ...mockWebContents(100), printToPDF })
@@ -102,7 +103,8 @@ describe('AgentBrowserBridge', () => {
     await b.exec('get title')
     await expect(b.pdf()).resolves.toEqual({ data: Buffer.from('pdf').toString('base64') })
 
-    expect(holdPaintForCapture.mock.calls).toEqual([[100], [100], [100], [100], [100]])
+    expect(holdPaintForCapture).not.toHaveBeenCalled()
+    expect(holdGuestActive.mock.calls).toEqual([[100], [100], [100], [100], [100]])
     expect(releases.map((release) => release.mock.calls.length)).toEqual([1, 1, 1, 1, 1])
   })
 
@@ -112,7 +114,7 @@ describe('AgentBrowserBridge', () => {
     const released: number[] = []
     const b = new AgentBrowserBridge(
       mockBrowserManager(tabs, undefined, {
-        holdPaintForCapture: (id) => {
+        holdGuestActive: (id) => {
           holds.push(id)
           return () => released.push(id)
         }
@@ -143,11 +145,11 @@ describe('AgentBrowserBridge', () => {
     expect(released).toEqual([100, 200])
   })
 
-  it('drops queued commands without acquiring paint and holds running work until it settles', async () => {
+  it('drops queued commands without acquiring the guest and holds running work until it settles', async () => {
     const release = vi.fn()
-    const holdPaintForCapture = vi.fn(() => release)
+    const holdGuestActive = vi.fn(() => release)
     const b = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdPaintForCapture })
+      mockBrowserManager(undefined, undefined, { holdGuestActive })
     )
     b.setActiveTab(100)
     const guest = mockWebContents(100)
@@ -162,7 +164,7 @@ describe('AgentBrowserBridge', () => {
     const queuedResult = expect(queued).rejects.toMatchObject({ code: 'browser_tab_closed' })
     await b.onPageClosed('tab-1')
     await queuedResult
-    expect(holdPaintForCapture.mock.calls).toEqual([[100]])
+    expect(holdGuestActive.mock.calls).toEqual([[100]])
     expect(release).not.toHaveBeenCalled()
 
     finish({ result: { value: 'finished' } })
@@ -172,9 +174,9 @@ describe('AgentBrowserBridge', () => {
 
   it('releases the background hold when session setup fails', async () => {
     const release = vi.fn()
-    const holdPaintForCapture = vi.fn(() => release)
+    const holdGuestActive = vi.fn(() => release)
     const b = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdPaintForCapture })
+      mockBrowserManager(undefined, undefined, { holdGuestActive })
     )
     b.setActiveTab(100)
     CdpWsProxyMock.mockImplementationOnce(function (this: Record<string, unknown>) {
@@ -185,7 +187,7 @@ describe('AgentBrowserBridge', () => {
     succeedWith(null)
 
     await expect(b.snapshot()).rejects.toThrow('cannot start proxy')
-    expect(holdPaintForCapture).toHaveBeenCalledWith(100)
+    expect(holdGuestActive).toHaveBeenCalledWith(100)
     expect(release).toHaveBeenCalledTimes(1)
   })
 
@@ -230,7 +232,7 @@ describe('AgentBrowserBridge', () => {
       clip: { x: 0, y: 0, width: 601, height: 901, scale: 1 }
     })
     expect(holdPaintForCapture).toHaveBeenCalledWith(100)
-    expect(release).toHaveBeenCalledTimes(2)
+    expect(release).toHaveBeenCalledTimes(1)
     const screenshotCall = execFileMock.mock.calls.find((call: unknown[]) =>
       (call[1] as string[]).includes('screenshot')
     )

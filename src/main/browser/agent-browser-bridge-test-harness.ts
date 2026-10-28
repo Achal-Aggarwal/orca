@@ -36,6 +36,7 @@ export function mockBrowserManager(
     getBrowserPageCertificateFailure: vi.fn(() => null),
     unregisterGuest: vi.fn(),
     holdPaintForCapture: () => () => {},
+    holdGuestActive: () => () => {},
     beginAgentCommand: () => ({
       run: (execute: () => Promise<unknown>) => execute(),
       end: () => {}

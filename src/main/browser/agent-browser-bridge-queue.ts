@@ -120,14 +120,14 @@ export abstract class AgentBrowserBridgeQueue extends AgentBrowserBridgeShutdown
     const sessionName = `${ORCA_TAB_SESSION_PREFIX}${browserPageId}`
     // A queued page may acquire a replacement guest before execution.
     const target = this.resolveCommandTarget(worktreeId, browserPageId)
-    const releasePaint = this.browserManager.holdPaintForCapture(target.webContentsId)
+    const releaseGuest = this.browserManager.holdGuestActive(target.webContentsId)
     try {
       if (options.ensureSession !== false) {
         await this.ensureSession(sessionName, browserPageId, target.webContentsId)
       }
       return await execute(sessionName, target)
     } finally {
-      releasePaint()
+      releaseGuest()
     }
   }
 

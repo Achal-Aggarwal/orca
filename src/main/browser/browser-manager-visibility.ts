@@ -27,11 +27,15 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
     return this.agentActivity.showPointer(guest, input)
   }
 
+  // Non-capture commands only need the guest itself unthrottled; host paint stays parked.
+  holdGuestActive(guestWebContentsId: number): () => void {
+    const guest = webContents.fromId(guestWebContentsId)
+    return guest && !guest.isDestroyed() ? rendererPublicationThrottle.acquire(guest) : () => {}
+  }
+
   // Do not await the renderer: minimized or throttled windows must not stall frame capture.
   holdPaintForCapture(guestWebContentsId: number): () => void {
-    const guest = webContents.fromId(guestWebContentsId)
-    const releaseGuestThrottle =
-      guest && !guest.isDestroyed() ? rendererPublicationThrottle.acquire(guest) : () => {}
+    const releaseGuestThrottle = this.holdGuestActive(guestWebContentsId)
     const browserPageId = this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId)
     const renderer = browserPageId ? this.resolveRendererForBrowserTab(browserPageId) : null
     if (!browserPageId || !renderer || renderer.isDestroyed()) {
@@ -44,6 +48,9 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
     }
     const holds = pageHolds.get(browserPageId) ?? 0
     pageHolds.set(browserPageId, holds + 1)
+    if (holds === 0) {
+      sendPaintHold(renderer, browserPageId, true)
+    }
     let releaseThrottle = (): void => {}
     let released = false
     const release = (): void => {
@@ -59,29 +66,19 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
         if (pageHolds.size === 0) {
           this.capturePaintHolds.delete(renderer)
         }
+        sendPaintHold(renderer, browserPageId, false)
       }
-      try {
-        if (remaining === 0 && !renderer.isDestroyed()) {
-          renderer.send('browser:capturePaintHold', { browserPageId, held: false })
-        }
-      } finally {
-        releaseThrottle()
-        releaseGuestThrottle()
-      }
+      releaseThrottle()
+      releaseGuestThrottle()
     }
     try {
-      if (holds === 0) {
-        renderer.send('browser:capturePaintHold', { browserPageId, held: true })
-      }
       // Lift throttling so capture retries do not wait on delayed parking changes.
       releaseThrottle = rendererPublicationThrottle.acquire(renderer)
-      return release
     } catch (error) {
-      try {
-        release()
-      } catch {}
+      release()
       throw error
     }
+    return release
   }
 
   // Agent input moves Chromium focus into the guest; the pane restores the user's focus.
@@ -93,4 +90,14 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
     }
     return guardPaneFocusForAgentInput(renderer, browserPageId)
   }
+}
+
+// A paint hint must not fail the capture or command it accompanies; disposed frames throw.
+function sendPaintHold(renderer: Electron.WebContents, browserPageId: string, held: boolean): void {
+  if (renderer.isDestroyed()) {
+    return
+  }
+  try {
+    renderer.send('browser:capturePaintHold', { browserPageId, held })
+  } catch {}
 }

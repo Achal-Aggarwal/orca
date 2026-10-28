@@ -256,7 +256,7 @@ describe('AgentBrowserBridge', () => {
   it('cancels the command already running when a session is destroyed', async () => {
     const releasePaint = vi.fn()
     bridge = new AgentBrowserBridge(
-      mockBrowserManager(undefined, undefined, { holdPaintForCapture: () => releasePaint })
+      mockBrowserManager(undefined, undefined, { holdGuestActive: () => releasePaint })
     )
     bridge.setActiveTab(100)
     succeedWith({ snapshot: 'initial' })
