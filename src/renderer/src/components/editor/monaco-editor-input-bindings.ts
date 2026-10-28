@@ -54,6 +54,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
   } = params
 
   const editorDomNode = editorInstance.getContainerDomNode()
+  const pasteCaptureNode = editorContainerRef.current ?? editorDomNode
   const cleanupSaveShortcut = installEditorSaveShortcut(editorDomNode, () => {
     const value = editorInstance.getValue()
     propsRef.current.onSave(value)
@@ -103,6 +104,9 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     }
   })
   const onLargeTextPaste = (event: ClipboardEvent): void => {
+    if (!event.composedPath().includes(editorDomNode)) {
+      return
+    }
     let endSaveDeferral: (() => void) | null = null
     handleMonacoLargeTextPaste(editorInstance, event, {
       readOnly: readOnlyRef.current,
@@ -130,14 +134,14 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
       }
     })
   }
-  editorDomNode.addEventListener('paste', onLargeTextPaste, { capture: true })
+  pasteCaptureNode.addEventListener('paste', onLargeTextPaste, { capture: true })
 
   return {
     disposeInputBindings: () => {
       cleanupSaveShortcut()
       cleanupFindShortcut()
       cleanupAddReviewNoteShortcut()
-      editorDomNode.removeEventListener('paste', onLargeTextPaste, { capture: true })
+      pasteCaptureNode.removeEventListener('paste', onLargeTextPaste, { capture: true })
       searchInFilesAction.dispose()
     }
   }
