@@ -800,7 +800,7 @@ describe('local preflight context', () => {
   })
 })
 
-it('preserves main source order across exact project identity and repo matches during indexed runtime selection', () => {
+it('keeps first exact project identity ahead of ordered source-repo fallback during indexed runtime selection', () => {
   const state = makeState({
     repoPath: 'C:\\repo',
     worktreePath: 'C:\\repo',
@@ -829,7 +829,7 @@ it('preserves main source order across exact project identity and repo matches d
       'win32'
     )
   expect(select([fallback, exact, duplicate])).toMatchObject({
-    runtime: { projectId: 'saved-project', kind: 'wsl', distro: 'Ubuntu' }
+    runtime: { projectId: 'saved-project', kind: 'windows-host' }
   })
   expect(select([exact, fallback, duplicate])).toMatchObject({
     runtime: { projectId: 'saved-project', kind: 'windows-host' }
