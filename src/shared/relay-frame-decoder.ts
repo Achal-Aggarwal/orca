@@ -167,6 +167,7 @@ export class FrameDecoder {
     if (this.hasRunnableWork()) {
       this.scheduleContinuation()
     } else {
+      this.buffer.releaseConsumedBacking()
       this.releasePause()
     }
   }

@@ -98,6 +98,25 @@ describe('FrameDecoder', () => {
     expect(frames[0].payload.toString()).toBe('hello world')
   })
 
+  it('releases consumed frame backing while preserving a partial next header', () => {
+    const ids: number[] = []
+    const decoder = new FrameDecoder((frame) => ids.push(frame.id), undefined, frozenClock)
+    const first = encodeFrame(MessageType.Regular, 1, 0, Buffer.alloc(1024 * 1024))
+    const second = encodeFrame(MessageType.Regular, 2, 1, Buffer.from('next'))
+    const combined = Buffer.concat([first, second.subarray(0, 1)])
+
+    decoder.feed(combined)
+    expect(ids).toEqual([1])
+    const residue = decoder.drain()
+    expect(residue).toEqual(second.subarray(0, 1))
+    expect(residue.buffer === combined.buffer).toBe(false)
+    expect(residue.buffer.byteLength).toBeLessThanOrEqual(Buffer.poolSize)
+
+    decoder.feed(residue)
+    decoder.feed(second.subarray(1))
+    expect(ids).toEqual([1, 2])
+  })
+
   it('decodes multiple frames from a single chunk', () => {
     const frames: DecodedFrame[] = []
     const decoder = new FrameDecoder((f) => frames.push(f), undefined, frozenClock)

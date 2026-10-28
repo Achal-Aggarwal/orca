@@ -66,4 +66,17 @@ describe('RelayFrameBuffer', () => {
     buffer.append(Buffer.from('fresh'))
     expect(buffer.drain().toString()).toBe('fresh')
   })
+
+  it('releases oversized consumed backing while preserving the pending byte stream', () => {
+    const buffer = new RelayFrameBuffer()
+    const chunk = Buffer.alloc(1024 * 1024, 7)
+    buffer.append(chunk)
+    buffer.discard(chunk.length - 3)
+    buffer.append(Buffer.from([8, 9]))
+    buffer.releaseConsumedBacking()
+    expect(buffer.length).toBe(5)
+    expect(buffer.peek(3).buffer).not.toBe(chunk.buffer)
+    expect(buffer.peek(3).buffer.byteLength).toBeLessThanOrEqual(Buffer.poolSize)
+    expect(buffer.drain()).toEqual(Buffer.from([7, 7, 7, 8, 9]))
+  })
 })
