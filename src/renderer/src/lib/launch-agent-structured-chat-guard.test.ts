@@ -366,7 +366,9 @@ describe('structured chat adoption guard on the launch path', () => {
           await Promise.resolve()
           intent.createMessageSupport = true
           try {
-            intent.prepareCreate?.(false)
+            expect(intent.prepareCreate).toBeTypeOf('function')
+            intent.prepareCreate!(false)
+            expect(intent.createPrepared).toBe(true)
           } catch (error) {
             preparationErrors.push(error instanceof Error ? error.stack : error)
             throw error
