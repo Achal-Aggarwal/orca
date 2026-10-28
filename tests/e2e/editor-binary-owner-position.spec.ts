@@ -146,7 +146,6 @@ test('keeps restored PDF positions independent between a worktree and a folder w
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         )
     )
-    await orcaPage.waitForTimeout(250)
   }
   const parkPdf = async (worktreeId: string) => {
     await orcaPage.evaluate(
@@ -187,7 +186,12 @@ test('keeps restored PDF positions independent between a worktree and a folder w
         container.scrollTop = page.offsetTop + 100
       })
     await expect.poll(async () => (await snapshot()).scrollTop).toBeGreaterThan(500)
-    await orcaPage.waitForTimeout(250)
+    await orcaPage.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    )
     return snapshot()
   }
 
