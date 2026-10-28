@@ -283,7 +283,8 @@ function AgentArgsChoiceChip({
   disabled,
   chipRef,
   buttonRef,
-  choiceKey
+  choiceKey,
+  source
 }: {
   label: string
   flag: string
@@ -292,6 +293,7 @@ function AgentArgsChoiceChip({
   chipRef?: Ref<HTMLSpanElement>
   buttonRef?: Ref<HTMLButtonElement>
   choiceKey: string
+  source?: 'arguments'
 }): React.JSX.Element {
   return (
     <Tooltip>
@@ -321,7 +323,7 @@ function AgentArgsChoiceChip({
               }
             }}
             aria-label={
-              choiceKey !== 'permissionMode'
+              source === 'arguments' || choiceKey !== 'permissionMode'
                 ? translate('settings.agents.choiceChipRemove', 'Remove {{flag}}', { flag })
                 : translate(
                     'settings.agents.permissionChipRemove',
@@ -336,22 +338,24 @@ function AgentArgsChoiceChip({
         </span>
       </TooltipTrigger>
       <TooltipContent>
-        {choiceKey !== 'permissionMode'
-          ? translate(
-              'settings.agents.choiceChipTooltip',
-              'Added by {{choice}}. Remove it to use the default.',
-              {
-                choice:
-                  choiceKey === 'model'
-                    ? translate('settings.sourceControl.actionModel.model', 'Model')
-                    : translate('settings.sourceControl.actionModel.effort', 'Effort')
-              }
-            )
-          : translate(
-              'settings.agents.permissionChipTooltip',
-              'Added by Permissions. Remove it to use {{agent}}’s own settings.',
-              { agent: label }
-            )}
+        {source === 'arguments'
+          ? translate('agentPicker.argumentsHint', 'Applies only to CLI launches.')
+          : choiceKey !== 'permissionMode'
+            ? translate(
+                'settings.agents.choiceChipTooltip',
+                'Added by {{choice}}. Remove it to use the default.',
+                {
+                  choice:
+                    choiceKey === 'model'
+                      ? translate('settings.sourceControl.actionModel.model', 'Model')
+                      : translate('settings.sourceControl.actionModel.effort', 'Effort')
+                }
+              )
+            : translate(
+                'settings.agents.permissionChipTooltip',
+                'Added by Permissions. Remove it to use {{agent}}’s own settings.',
+                { agent: label }
+              )}
       </TooltipContent>
     </Tooltip>
   )
@@ -362,6 +366,7 @@ export type AgentArgsChoice = {
   label: string
   flag: string
   onRemove: (text: string) => string
+  source?: 'arguments'
 }
 
 export function AgentArgsChoiceChips({
@@ -388,6 +393,7 @@ export function AgentArgsChoiceChips({
           choiceKey={chip.key}
           label={chip.label}
           flag={chip.flag}
+          source={chip.source}
           disabled={disabled}
           buttonRef={index === chips.length - 1 ? buttonRef : undefined}
           onRemove={() => onRemove(chip)}

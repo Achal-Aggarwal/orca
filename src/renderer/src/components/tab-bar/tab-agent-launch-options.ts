@@ -1,6 +1,11 @@
+import {
+  searchAgentPickerSetups,
+  type AgentPickerDraft,
+  type AgentPickerEntry
+} from '../../../../shared/agent-launch-picker'
 import { rowLabel, rowId, chatUnavailableLabel } from './tab-agent-row-presentation'
 import { getAgentCatalog } from '@/lib/agent-catalog'
-import { filterEnabledTuiAgents } from '../../../../shared/tui-agent-selection'
+import { orderAgentLaunchPickerAgents } from '../../../../shared/agent-launch-picker-rows'
 import { normalizeMatchQuery, tokenizeMatchValue } from './query-token-match'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { NewTabAgentMenuRow } from '@/lib/new-tab-agent-menu-rows'
@@ -12,6 +17,8 @@ export type TabAgentLaunchOption = {
   disabled?: boolean
   id?: string
   row?: NewTabAgentMenuRow
+  setup?: AgentPickerDraft
+  otherWay?: TabAgentLaunchOption
   reason?: string
 }
 
@@ -32,14 +39,7 @@ export function orderTabLaunchAgents(
   detected: readonly TuiAgent[],
   disabled?: Iterable<unknown> | null
 ): TuiAgent[] {
-  const enabledDetected = filterEnabledTuiAgents(detected, disabled)
-  const inCatalogOrder = getAgentCatalog()
-    .filter((entry) => enabledDetected.includes(entry.id))
-    .map((entry) => entry.id)
-  if (!defaultAgent || defaultAgent === 'blank' || !inCatalogOrder.includes(defaultAgent)) {
-    return inCatalogOrder
-  }
-  return [defaultAgent, ...inCatalogOrder.filter((id) => id !== defaultAgent)]
+  return orderAgentLaunchPickerAgents(defaultAgent, detected, disabled)
 }
 
 export function buildTabAgentLaunchOptions(
@@ -150,4 +150,26 @@ export function findMatchingTabAgentLaunchOptions(
       )
       .map((entry) => entry.option)
   )
+}
+
+export function matchingAgentPickerLaunchOptions(
+  entries: readonly AgentPickerEntry[],
+  query: string
+): TabAgentLaunchOption[] {
+  return searchAgentPickerSetups(entries, query).map((setup) => {
+    const option = (surface: 'chat' | 'terminal'): TabAgentLaunchOption => ({
+      agent: setup.entry.agent,
+      label: setup.label,
+      aliases: [],
+      id: `setup:${setup.entry.agent}:${setup.model.id}:${setup.choices.options?.effort ?? ''}:${surface}`,
+      row: {
+        agent: setup.entry.agent,
+        kind: surface === 'chat' ? 'chat' : 'cli',
+        executionHostId: setup.entry.rows[0]?.executionHostId
+      },
+      setup: { agent: setup.entry.agent, surface, choices: setup.choices }
+    })
+    const other = setup.entry.surfaces.find((surface) => surface !== setup.entry.defaultSurface)
+    return { ...option(setup.entry.defaultSurface), ...(other ? { otherWay: option(other) } : {}) }
+  })
 }

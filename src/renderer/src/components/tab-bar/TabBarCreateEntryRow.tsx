@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  MessageSquare,
   FilePlus,
   FileText,
   GitCompare,
@@ -46,6 +47,7 @@ export function EntryActionRow({
   labelOverride,
   loading = false,
   onClick,
+  onOtherWay,
   option,
   selected
 }: {
@@ -53,6 +55,7 @@ export function EntryActionRow({
   id: string
   labelOverride?: string
   loading?: boolean
+  onOtherWay?: () => void
   onClick: () => void
   option: ActiveOption
   selected: boolean
@@ -60,43 +63,68 @@ export function EntryActionRow({
   const presentation = getActionPresentation(option, labelOverride)
 
   const row = (
-    <button
-      type="button"
-      id={id}
-      role="option"
-      aria-selected={selected}
-      disabled={disabled}
-      className={cn(
-        'flex h-6 w-full items-center gap-1.5 rounded-[7px] px-1 text-left text-[11px] leading-5 outline-none disabled:cursor-not-allowed disabled:opacity-50',
-        selected
-          ? 'bg-black/8 text-accent-foreground dark:bg-white/14'
-          : // Why: CSS :hover still matches a disabled button, so a pending row would
-            // light up under the pointer despite being unactivatable.
-            'text-muted-foreground hover:bg-black/8 hover:text-accent-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground dark:hover:bg-white/14 dark:disabled:hover:bg-transparent'
-      )}
-      onClick={onClick}
-    >
-      {loading ? (
-        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
-      ) : (
-        presentation.icon
-      )}
-      <span className={cn('min-w-0 truncate font-medium', presentation.showDetail && 'shrink-0')}>
-        {presentation.label}
-      </span>
-      {presentation.showDetail ? (
-        <>
-          <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
-            ·
-          </span>
-          {presentation.prioritizeFilename ? (
-            <FilenameFirstPath path={presentation.detail} />
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        id={id}
+        role="option"
+        aria-selected={selected}
+        disabled={disabled}
+        className={cn(
+          'flex h-6 w-full items-center gap-1.5 rounded-[7px] px-1 text-left text-[11px] leading-5 outline-none disabled:cursor-not-allowed disabled:opacity-50',
+          selected
+            ? 'bg-black/8 text-accent-foreground dark:bg-white/14'
+            : // Why: CSS :hover still matches a disabled button, so a pending row would
+              // light up under the pointer despite being unactivatable.
+              'text-muted-foreground hover:bg-black/8 hover:text-accent-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground dark:hover:bg-white/14 dark:disabled:hover:bg-transparent'
+        )}
+        onClick={onClick}
+      >
+        {loading ? (
+          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+        ) : (
+          presentation.icon
+        )}
+        <span className={cn('min-w-0 truncate font-medium', presentation.showDetail && 'shrink-0')}>
+          {presentation.label}
+        </span>
+        {presentation.showDetail ? (
+          <>
+            <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
+              ·
+            </span>
+            {presentation.prioritizeFilename ? (
+              <FilenameFirstPath path={presentation.detail} />
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{presentation.detail}</span>
+            )}
+          </>
+        ) : null}
+      </button>
+      {onOtherWay && option.kind === 'agent' && option.option.otherWay ? (
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={
+            option.option.otherWay.setup?.surface === 'chat'
+              ? translate('agentPicker.openChat', 'Open chat')
+              : translate('agentPicker.openTerminal', 'Open terminal')
+          }
+          className="shrink-0 rounded p-1 hover:bg-accent"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOtherWay()
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          {option.option.otherWay.setup?.surface === 'chat' ? (
+            <MessageSquare className="size-3.5" />
           ) : (
-            <span className="min-w-0 flex-1 truncate">{presentation.detail}</span>
+            <TerminalSquare className="size-3.5" />
           )}
-        </>
+        </button>
       ) : null}
-    </button>
+    </div>
   )
 
   // Only the filename-first rows hide information. Every other row already shows

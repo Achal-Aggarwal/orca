@@ -1,3 +1,9 @@
+import { AgentLaunchPickerMenu } from '@/components/agent/AgentLaunchPickerMenu'
+import {
+  agentPickerSessionOptions,
+  type AgentPickerEntry,
+  type AgentPickerDraft
+} from '../../../../shared/agent-launch-picker'
 import React, { useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
@@ -69,7 +75,7 @@ export function useTabAgentMenuLaunch({
   onFocusChat?: (tabId: string) => void
 }) {
   const runLaunch = useCallback(
-    (row: NewTabAgentMenuRow) => {
+    (row: NewTabAgentMenuRow, draft?: AgentPickerDraft) => {
       if (disabled || row.kind === 'chat-unavailable') {
         return
       }
@@ -86,6 +92,14 @@ export function useTabAgentMenuLaunch({
             }
           : {}),
         agent,
+        ...(draft
+          ? {
+              sessionOptions: agentPickerSessionOptions(draft.choices),
+              ...(draft.surface === 'terminal' && draft.arguments !== undefined
+                ? { agentArgs: draft.arguments }
+                : {})
+            }
+          : {}),
         worktreeId,
         groupId,
         ...(prompt !== undefined ? { prompt } : {}),
@@ -163,11 +177,17 @@ function QuickLaunchAgentMenuItemsInner(props: QuickLaunchAgentMenuItemsProps): 
 export function ProjectedAgentMenuItems({
   disabled = false,
   model,
-  runLaunch
+  runLaunch,
+  pickerEntries,
+  onSelectPickerAgent,
+  hidePickerSearch
 }: {
   disabled?: boolean
   model: NewTabAgentMenuModel
-  runLaunch: (row: NewTabAgentMenuRow) => void
+  runLaunch: (row: NewTabAgentMenuRow, draft?: AgentPickerDraft) => void
+  pickerEntries?: AgentPickerEntry[]
+  onSelectPickerAgent?: (agent: AgentPickerEntry['agent']) => void
+  hidePickerSearch?: boolean
 }): React.JSX.Element {
   const desktopDefaultAgent = useAppStore((s) => s.settings?.defaultTuiAgent)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
@@ -233,53 +253,63 @@ export function ProjectedAgentMenuItems({
                   )}
         </DropdownMenuItem>
       ) : null}
-      {rows.map((row, index) => {
-        const { agent } = row
-        const label = getCatalogEntry(agent)?.label ?? agent
-        // Chat rows come first; the rows that open a terminal start their own group.
-        const startsCliGroup = row.kind === 'cli' && index > 0 && rows[index - 1]?.kind !== 'cli'
-        if (row.kind === 'chat-unavailable') {
-          return (
-            <DropdownMenuItem key={rowId(row)} variant="launch" disabled>
-              <AgentIcon agent={agent} size={14} />
-              <span className="flex-1">{label}</span>
-              <span className="font-normal text-muted-foreground">
-                {chatUnavailableLabel(row.reason)}
-              </span>
-            </DropdownMenuItem>
-          )
-        }
-        const showsDefaultAgentShortcut =
-          newAgentShortcut !== null && defaultAgent !== 'blank' && agent === defaultAgent
-        const rowContent = (
-          <>
-            <AgentIcon agent={agent} size={14} />
-            <span className="flex-1">{rowLabel(row)}</span>
-            {showsDefaultAgentShortcut ? (
-              <DropdownMenuShortcut>{newAgentShortcut}</DropdownMenuShortcut>
-            ) : null}
-          </>
-        )
-        return (
-          <React.Fragment key={rowId(row)}>
-            {startsCliGroup ? <DropdownMenuSeparator /> : null}
-            {row.kind === 'chat' && detectedIds?.includes(agent) ? (
-              <ChatRow row={row} label={label} disabled={disabled} runLaunch={runLaunch}>
-                {rowContent}
-              </ChatRow>
-            ) : (
-              <DropdownMenuItem
-                variant="launch"
-                disabled={disabled}
-                onSelect={() => runLaunch(row)}
-                title={rowTitle(row, label)}
-              >
-                {rowContent}
+      {pickerEntries ? (
+        <AgentLaunchPickerMenu
+          model={model}
+          entries={pickerEntries}
+          runLaunch={runLaunch}
+          onSelectAgent={onSelectPickerAgent}
+          hideSearch={hidePickerSearch}
+        />
+      ) : (
+        rows.map((row, index) => {
+          const { agent } = row
+          const label = getCatalogEntry(agent)?.label ?? agent
+          // Chat rows come first; the rows that open a terminal start their own group.
+          const startsCliGroup = row.kind === 'cli' && index > 0 && rows[index - 1]?.kind !== 'cli'
+          if (row.kind === 'chat-unavailable') {
+            return (
+              <DropdownMenuItem key={rowId(row)} variant="launch" disabled>
+                <AgentIcon agent={agent} size={14} />
+                <span className="flex-1">{label}</span>
+                <span className="font-normal text-muted-foreground">
+                  {chatUnavailableLabel(row.reason)}
+                </span>
               </DropdownMenuItem>
-            )}
-          </React.Fragment>
-        )
-      })}
+            )
+          }
+          const showsDefaultAgentShortcut =
+            newAgentShortcut !== null && defaultAgent !== 'blank' && agent === defaultAgent
+          const rowContent = (
+            <>
+              <AgentIcon agent={agent} size={14} />
+              <span className="flex-1">{rowLabel(row)}</span>
+              {showsDefaultAgentShortcut ? (
+                <DropdownMenuShortcut>{newAgentShortcut}</DropdownMenuShortcut>
+              ) : null}
+            </>
+          )
+          return (
+            <React.Fragment key={rowId(row)}>
+              {startsCliGroup ? <DropdownMenuSeparator /> : null}
+              {row.kind === 'chat' && detectedIds?.includes(agent) ? (
+                <ChatRow row={row} label={label} disabled={disabled} runLaunch={runLaunch}>
+                  {rowContent}
+                </ChatRow>
+              ) : (
+                <DropdownMenuItem
+                  variant="launch"
+                  disabled={disabled}
+                  onSelect={() => runLaunch(row)}
+                  title={rowTitle(row, label)}
+                >
+                  {rowContent}
+                </DropdownMenuItem>
+              )}
+            </React.Fragment>
+          )
+        })
+      )}
       <AgentSettingsMenuItem onSelect={openAgentSettings} />
     </>
   )

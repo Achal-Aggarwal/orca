@@ -1,3 +1,5 @@
+import type { NewTabAgentMenuModel } from './new-tab-agent-menu-model'
+export type { NewTabAgentMenuModel } from './new-tab-agent-menu-model'
 import { useSyncExternalStore } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -33,29 +35,14 @@ import {
   readLocalRuntimeCapabilityObservation,
   subscribeLocalRuntimeCapabilityObservation
 } from '@/runtime/local-runtime-capabilities'
-import {
-  useDetectedAgents,
-  type AgentDetectionTarget,
-  type UseDetectedAgentsResult
-} from '@/hooks/useDetectedAgents'
+import { useDetectedAgents, type AgentDetectionTarget } from '@/hooks/useDetectedAgents'
 import { readDetectedAgentsForTarget } from '@/lib/agent-detection-target-inventory'
 import { useChatProgramFacts } from '@/lib/host-chat-program-acquisition'
 import { readChatProgram } from '@/lib/host-chat-program'
 import { resolveAgentMenuSelection } from '@/lib/agent-menu-selection'
 import { useHostAgentMenuSettings } from '@/components/settings/use-host-agent-launch-preferences'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { AgentLaunchSurface } from '@/lib/agent-session-launch-plan'
-
-export type NewTabAgentMenuModel =
-  | { state: 'loading'; placeholderCount: number }
-  | {
-      state: 'settled'
-      rows: ReturnType<typeof buildNewTabAgentMenuRows>
-      detection: UseDetectedAgentsResult
-      /** The default these rows were ordered by, so the new-agent badge marks the same agent. */
-      defaultTuiAgent?: GlobalSettings['defaultTuiAgent']
-    }
 
 function catalogUnlearned(
   host: string,
@@ -256,7 +243,20 @@ export function useAgentMenuObservation(
         state: 'loading',
         placeholderCount: Math.max(chatAgents.length, detection.detectedIds?.length ?? 0, 2)
       }
-    : { state: 'settled', rows, detection, defaultTuiAgent: settings?.defaultTuiAgent }
+    : {
+        state: 'settled',
+        rows,
+        detection,
+        defaultTuiAgent: settings?.defaultTuiAgent,
+        pickerContext: {
+          workspace,
+          executionHostId: facts.executionHostId,
+          pairingRevision: facts.pairingRevision,
+          runtimeId: facts.runtimeId,
+          settings,
+          key: JSON.stringify([workspace, launchCwd, facts])
+        }
+      }
   const { defaultTuiAgent, disabledTuiAgents } = settings ?? {}
   return {
     model,

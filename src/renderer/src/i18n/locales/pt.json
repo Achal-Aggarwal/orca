@@ -21278,5 +21278,31 @@
   },
   "browserTab": {
     "agentDriving": "Um agente está usando esta página"
+  },
+  "agentPicker": {
+    "chatOnly": "Apenas chat",
+    "search": "Buscar agentes e configurações…",
+    "configure": "Configurar {{agent}}",
+    "chat": "Chat",
+    "terminal": "Terminal",
+    "model": "Modelo",
+    "agentDefault": "Padrão do agente",
+    "default": "Padrão",
+    "on": "Ativado",
+    "off": "Desativado",
+    "permissions": "Permissões",
+    "agentsDefaults": "Padrões dos agentes",
+    "arguments": "Argumentos",
+    "argumentsHint": "Aplica-se apenas às inicializações pela CLI.",
+    "resetArguments": "Restaurar padrão",
+    "openChat": "Abrir chat",
+    "openTerminal": "Abrir terminal",
+    "permission": {
+      "own": "Usar configuração do agente",
+      "ask": "Perguntar",
+      "accept-edits": "Aceitar edições",
+      "auto": "Aprovar por mim",
+      "full-access": "Acesso completo"
+    }
   }
 }
