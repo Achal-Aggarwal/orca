@@ -1,4 +1,10 @@
-import { blockedWslDistroForPath, wslDistroForPath } from '../wsl/wsl-unc-access-gate'
+import type { SkillDiscoveryResult } from '../../shared/skills'
+import {
+  blockedWslDistroForPath,
+  wslDistroForPath,
+  WslDistroStoppedError,
+  WslDistroUnverifiableError
+} from '../wsl/wsl-unc-access-gate'
 import type { SkillScanRoot } from './skill-discovery-sources'
 
 /**
@@ -30,4 +36,21 @@ export async function withoutStoppedWslDistroRoots(
 /** Whether reading `path` would start a stopped (or unverifiable) WSL distro. */
 export async function isOnStoppedWslDistro(path: string): Promise<boolean> {
   return wslDistroForPath(path) !== null && (await blockedWslDistroForPath(path)) !== null
+}
+
+/**
+ * Discovery for a WSL target whose distro is stopped (or unverifiable) answers "nothing seen yet":
+ * no skills and no sources, so nothing reads as missing and the next scan retries.
+ */
+export async function unavailableWhileWslDistroStopped(
+  discover: () => Promise<SkillDiscoveryResult>
+): Promise<SkillDiscoveryResult> {
+  try {
+    return await discover()
+  } catch (error) {
+    if (error instanceof WslDistroStoppedError || error instanceof WslDistroUnverifiableError) {
+      return { skills: [], sources: [], scannedAt: Date.now() }
+    }
+    throw error
+  }
 }

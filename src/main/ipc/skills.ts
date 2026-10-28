@@ -15,16 +15,21 @@ import {
   discoverSkillsOnTarget,
   resolveSkillDiscoveryTarget
 } from '../skills/skill-discovery-target'
+import { unavailableWhileWslDistroStopped } from '../skills/skill-discovery-stopped-wsl-roots'
 import { registerSkillCloudIpcHandlers } from './skill-cloud-ipc-handlers'
 import { handleMainWindowSkillIpc } from './skill-ipc-main-window'
 
 export function registerSkillsHandlers(store: Store, runtime?: OrcaRuntimeService): void {
   const discover = async (target?: SkillDiscoveryTarget): Promise<SkillDiscoveryResult> => {
     const parsedTarget = target ? SkillDiscoveryTargetSchema.parse(target) : undefined
-    const resolvedTarget = await resolveSkillDiscoveryTarget(parsedTarget)
-    return discoverSkillsOnTarget(resolvedTarget, store.getRepos(), {
-      providerRootOverrides: await runtime?.resolveSkillDiscoveryProviderRoots(resolvedTarget),
-      refresh: parsedTarget?.refresh === true
+    return unavailableWhileWslDistroStopped(async () => {
+      const resolvedTarget = await resolveSkillDiscoveryTarget(parsedTarget, {
+        refuseStoppedWslDistro: true
+      })
+      return discoverSkillsOnTarget(resolvedTarget, store.getRepos(), {
+        providerRootOverrides: await runtime?.resolveSkillDiscoveryProviderRoots(resolvedTarget),
+        refresh: parsedTarget?.refresh === true
+      })
     })
   }
 

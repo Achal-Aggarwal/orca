@@ -12,6 +12,7 @@ import { stablePathId } from './skill-discovery-sources'
 import { skillScanSourceKinds } from './skill-discovery-source-filter'
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import { isSkillRootUnavailableError, SkillScanCoalescer } from './skill-scan-coalescer'
+import { assertWslUncPathRunning } from '../wsl/wsl-unc-access-gate'
 
 // Cache whole WSL results to amortize process boots; native roots already cache, so only coalesce concurrent targets.
 const WSL_RESULT_TTL_MS = 10_000
@@ -45,7 +46,8 @@ export type ResolvedSkillDiscoveryTarget =
     }
 
 export async function resolveSkillDiscoveryTarget(
-  target: SkillDiscoveryTarget | undefined
+  target: SkillDiscoveryTarget | undefined,
+  options: { refuseStoppedWslDistro?: boolean } = {}
 ): Promise<ResolvedSkillDiscoveryTarget> {
   const projectRuntime = target?.projectRuntime
   if (projectRuntime?.status === 'repair-required') {
@@ -76,6 +78,10 @@ export async function resolveSkillDiscoveryTarget(
   }
   if (process.platform !== 'win32') {
     throw new Error('WSL skill discovery is only available on Windows.')
+  }
+  // E9: discovery runs from passive UI; the home probe and the in-distro scan would start a stopped distro.
+  if (options.refuseStoppedWslDistro) {
+    await assertWslUncPathRunning('', wslDistro)
   }
   // Why async: a synchronous probe blocks main and, on a booting distro, kills its first boot.
   const homeDir = await getWslHomeAsync(wslDistro)
