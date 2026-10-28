@@ -5,6 +5,7 @@ import { createFakeRpcClient } from '../mobile-web-shell/bridge-host-test-fakes'
 import type { RpcResponse } from '../transport/types'
 import { useMobileSourceControlOpeners } from './use-mobile-source-control-openers'
 import { createStableLogicalRpcClient } from '../transport/stable-logical-rpc-client'
+import * as diffLines from '../session/mobile-diff-lines'
 
 vi.mock('../navigation/route-handoff', () => ({
   useRouteHandoff: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() })
@@ -28,6 +29,7 @@ const success: RpcResponse = {
 }
 const suspended = new Promise<void>(() => {})
 const suspendedRender = vi.fn()
+const buildDiff = vi.spyOn(diffLines, 'buildMobileDiffLines')
 
 describe('committed diff preview ownership', () => {
   let renderer: ReactTestRenderer | null = null
@@ -35,6 +37,7 @@ describe('committed diff preview ownership', () => {
   const replies: ((response: RpcResponse) => void)[] = []
   let client: ReturnType<typeof createStableLogicalRpcClient>
   beforeEach(() => {
+    buildDiff.mockClear()
     const physical = createFakeRpcClient()
     physical.sendRequest = () => new Promise((resolve) => replies.push(resolve))
     client = createStableLogicalRpcClient(physical, 'relay')
@@ -126,6 +129,48 @@ describe('committed diff preview ownership', () => {
     })
     expect(latest?.branchDiffPreview?.kind).toBe('ready')
   })
+  it.each([100, 1000])(
+    'skips a dismissed %i-line diff while the successor still builds',
+    async (count) => {
+      mount()
+      const old = open()
+      act(() => latest?.setBranchDiffPreview(null))
+      const current = open()
+      const originalContent = Array.from(
+        { length: count },
+        (_, index) => `const old${index} = 1`
+      ).join('\n')
+      const modifiedContent = originalContent.replaceAll('= 1', '= 2')
+      await act(async () => {
+        replies[0]?.({
+          id: 'old',
+          ok: true,
+          result: { kind: 'text', originalContent, modifiedContent }
+        })
+        await old
+      })
+      expect(latest?.branchDiffPreview?.kind).toBe('loading')
+      const discardedInputs = buildDiff.mock.calls.reduce(
+        (total, [before, after]) => total + before.length + after.length,
+        0
+      )
+      await act(async () => {
+        replies[1]?.(success)
+        await current
+      })
+      expect(latest?.branchDiffPreview).toMatchObject({
+        kind: 'ready',
+        truncated: false,
+        lines: [
+          { kind: 'delete', text: 'old' },
+          { kind: 'add', text: 'new' }
+        ]
+      })
+      expect(buildDiff.mock.calls.at(-1)?.slice(0, 2)).toEqual(['old', 'new'])
+      expect(discardedInputs).toBe(0)
+      expect(buildDiff).toHaveBeenCalledTimes(1)
+    }
+  )
   it('retires the preview when this mounted route changes workspace', async () => {
     mount()
     const pending = open()
