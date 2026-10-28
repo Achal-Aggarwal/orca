@@ -1,6 +1,7 @@
 import type { AgentHookSource } from '../agent-hook-relay'
 import { normalizeHookEventName } from './provider-event-names'
 
+// SessionStart entries are idle boundaries that clear previous-session caches (STA-3386), not turns.
 const NEW_TURN_EVENTS: Record<AgentHookSource, readonly string[]> = {
   claude: ['SessionStart', 'UserPromptSubmit'],
   codex: ['SessionStart', 'UserPromptSubmit'],
