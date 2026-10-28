@@ -256,7 +256,7 @@ export const Geolocation = BrowserTarget.extend({
 })
 
 export const InterceptEnable = BrowserTarget.extend({
-  patterns: RpcUnknown.transform((v) => (Array.isArray(v) ? (v as string[]) : undefined))
+  patterns: RpcUnknown.transform((v) => (Array.isArray(v) ? v : undefined))
     .pipe(z.union([z.array(RpcString), RpcUndefined]))
     .optional()
 })
