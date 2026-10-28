@@ -3480,6 +3480,9 @@
     "placeholder": {
       "description": "This is where all your agents will show up at a glance. The board is coming soon.",
       "title": "Agent dashboard"
+    },
+    "terminal": {
+      "closed": "No live terminal — this agent's pane has closed."
     }
   },
   "fileExplorer": {

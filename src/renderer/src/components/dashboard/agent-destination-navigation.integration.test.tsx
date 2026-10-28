@@ -125,7 +125,7 @@ describe('Dashboard and retained sidebar destination contract', () => {
           scope === 'folder'
             ? [folder, ...(native ? [{ ...folder, executionHostId: TAB_HOST }] : [])]
             : [],
-        getFreshFolderWorkspacePathStatus: () => ({ exists: true }),
+        getFreshFolderWorkspacePathStatus: () => ({ path: folder.folderPath, exists: true }),
         tabsByWorktree: { [worktree.id]: [terminal] },
         unifiedTabsByWorktree: {
           [worktree.id]: [
