@@ -1,3 +1,4 @@
+import type { JournalMailBoundary } from './journal-mail-boundary'
 import type { JournalReducerState } from './journal-reducer'
 // Derive pauses from journal state: personal Stop, cleared IDs and cards predating reopen.
 // Later accepted turns/Resume lift pauses; per-card holds still require their own action.
@@ -22,6 +23,7 @@ export type JournalStopFailedOn = { turnId: string } | { openedAfter: number }
 
 export type JournalQueuePauseMarks = {
   cleared?: { sequence: number; operationId: string; messageIds: readonly string[]; lifted?: true }
+  personalStop?: { sequence: number; event: JournalStopEvent }
   latestStop: { sequence: number; event: JournalStopEvent; settle?: JournalStopSettle } | null
   /** Zero means absent. */
   resumedSequence: number
@@ -66,6 +68,9 @@ export function foldJournalQueuePauseMark(
 ): void {
   if (isReadableStopEvent(row.stopEvent)) {
     marks.latestStop = { sequence: row.seq, event: row.stopEvent }
+    if (row.stopEvent.reason === 'user-stop') {
+      marks.personalStop = marks.latestStop
+    }
   } else if (row.queueResume === true) {
     marks.resumedSequence = row.seq
   } else if (row.queueReopen === true) {
@@ -123,11 +128,15 @@ export type JournalQueuePauseRestatement = {
 export function journalQueuePauseRestatement(
   marks: JournalQueuePauseMarks,
   latestAcceptedTurnSequence: number,
-  pauses: readonly DerivedQueuePause[]
+  pauses: readonly DerivedQueuePause[],
+  boundary?: JournalMailBoundary
 ): JournalQueuePauseRestatement {
   return {
     lifted: latestAcceptedTurnSequence > 0 || marks.resumedSequence > 0,
-    liveStop: journalUserStopInForce(marks, latestAcceptedTurnSequence)?.event ?? null,
+    liveStop:
+      boundary?.status === 'held' && boundary.stop
+        ? (marks.personalStop?.event ?? null)
+        : (journalUserStopInForce(marks, latestAcceptedTurnSequence)?.event ?? null),
     reopened: pauses.some((pause) => pause.reason === 'restarted'),
     ...(marks.cleared
       ? {
@@ -245,7 +254,7 @@ export function nextSendableQueuedCard<T extends QueueCard & { messageId: string
     const report = isQueuedMailReport(card)
     const eligible = report && mailEligible(card)
     const holding = queuePauseHolding(pauses, card)
-    const paused = holding && !(report && eligible && holding.reason === 'restarted')
+    const paused = holding && !(report && eligible && holding.reason !== 'cleared')
     if (report) {
       if (!eligible || paused || card.state !== 'waiting' || card.holdReason !== null) {
         continue
@@ -309,6 +318,7 @@ export function journalQueueSelectionKey(
     revision,
     editLeaseRevision,
     state.latestAcceptedTurnSequence,
+    state.latestAcceptedPersonalTurnSequence,
     marks.latestStop?.sequence,
     marks.resumedSequence,
     marks.reopenedSequence,

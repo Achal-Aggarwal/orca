@@ -1,9 +1,8 @@
-import { z } from 'zod'
 import { expect, vi } from 'vitest'
 import type { OrchestrationDb } from '../runtime/orchestration/db'
 import type { OrchestrationStructuredMailboxPointerDelivery } from '../runtime/orchestration/structured-mailbox-pointer-delivery'
 import type { OrchestrationMessageWaiter } from '../runtime/orchestration/mailbox-pointer-eligibility'
-import { observeMailSqlWork } from '../runtime/orchestration/mail-sql-work.test-support'
+import { observeMailSql } from '../runtime/orchestration/mail-handoff.test-fixture'
 import { type openAttachedHostRig, message } from './acp-structured-host.test-support'
 import { HOST_TEST_SESSION as SESSION } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 
@@ -13,66 +12,20 @@ export function prepareMailPerformanceHistory(
   runId: string,
   population: number
 ) {
-  const insert = () => db.insertMessage({ from: 'worker', to: mailbox, runId, subject: 'retained' })
-  const unknown = Array.from({ length: population }, insert)
-  const candidates = Array.from({ length: population }, insert)
-  const uncertain = Array.from({ length: 2 }, insert)
-  const waited = db.insertMessage({
-    from: 'worker',
-    to: mailbox,
-    runId,
-    type: 'question',
-    subject: 'waiter'
-  })
-  const parked = [...unknown, ...candidates, ...uncertain]
-  db.recordUnknownMailRead(parked)
-  const sql = observeMailSqlWork(
-    db.db,
-    (query) => query.includes('ORDER BY sequence LIMIT ?') && query.includes('json_valid(handoff)'),
-    'json_valid(handoff)'
+  const rows = db.insertMessages(
+    Array.from({ length: population }, () => ({
+      from: 'worker',
+      to: mailbox,
+      runId,
+      subject: 'retained history'
+    }))
   )
-  let saved: unknown[] = []
-  return {
-    population,
-    sql,
-    uncertain: uncertain.length,
-    waiters: new Set([{ typeFilter: ['question'] }]),
-    restoreParkedCandidates: (handoff: string) => {
-      const reference = z.record(z.string(), z.unknown()).parse(JSON.parse(handoff))
-      const update = db.db.prepare('UPDATE messages SET handoff = ? WHERE id = ?')
-      for (const row of [...candidates, ...uncertain]) {
-        // Saved operations without their original submission cannot authorize an automatic retry.
-        const operation = uncertain.includes(row) ? `crashed-${row.id}` : 'unowned-history'
-        update.run(
-          JSON.stringify({
-            ...reference,
-            phase: uncertain.includes(row) ? 'reserved' : 'offered',
-            operationId: operation,
-            authorizationId: operation,
-            clientMessageId: operation
-          }),
-          row.id
-        )
-      }
-      saved = parked.map((row) => db.getMessageById(row.id)!.handoff)
-      sql.reset()
-    },
-    finish: () => {
-      expect(parked.map((row) => db.getMessageById(row.id)!.handoff)).toEqual(saved)
-      expect(
-        parked.every((row) => {
-          const current = db.getMessageById(row.id)!
-          return current.read === 0 && current.recovery_used === 0
-        })
-      ).toBe(true)
-      expect(db.getMessageById(waited.id)).toMatchObject({
-        handoff: null,
-        read: 0,
-        recovery_used: 0
-      })
-      db.markAsRead([...parked, waited].map((row) => row.id))
-    }
-  }
+  db.markAsDelivered(
+    rows.map((row) => row.id),
+    mailbox
+  )
+  db.markAsRead(rows.map((row) => row.id))
+  return { population, waiters: new Set<OrchestrationMessageWaiter>() }
 }
 
 export async function measureMailDeliveryWork(input: {
@@ -81,213 +34,44 @@ export async function measureMailDeliveryWork(input: {
   delivery: OrchestrationStructuredMailboxPointerDelivery<OrchestrationMessageWaiter>
   mailbox: string
   performance: ReturnType<typeof prepareMailPerformanceHistory>
-  checking: () => Promise<void>
 }) {
   const { f, db, delivery, mailbox, performance } = input
   const journal = f.host.collaboratorsForTests().sessions.get(SESSION)!.journal
-  const maps = z
-    .object({ items: z.instanceof(Map), submissions: z.instanceof(Map) })
-    .parse(Object.getOwnPropertyDescriptor(journal, 'state')?.value)
-  const index = journal.mailHandoffs()
-  let indexOperations = 0
-  let indexScans = 0
-  const indexSpies = ['providers', 'queued', 'identities', 'openers'].flatMap((key) => {
-    const map = z.instanceof(Map).parse(Object.getOwnPropertyDescriptor(index, key)?.value)
-    return [
-      vi.spyOn(map, 'get').mockImplementation((key) => {
-        indexOperations++
-        return Map.prototype.get.call(map, key)
-      }),
-      vi.spyOn(map, 'set').mockImplementation((key, value) => {
-        indexOperations++
-        return Map.prototype.set.call(map, key, value)
-      }),
-      vi.spyOn(map, 'delete').mockImplementation((key) => {
-        indexOperations++
-        return Map.prototype.delete.call(map, key)
-      }),
-      ...(['values', 'entries', 'keys', Symbol.iterator] as const).map((method) =>
-        vi.spyOn(map, method).mockImplementation(() => {
-          indexScans++
-          return Map.prototype[method].call(map)
-        })
-      )
-    ]
-  })
-  const folds = vi.spyOn(index, 'item')
-  const folded = () =>
-    folds.mock.calls.map(([id, before, after]) => [id, before?.revision, after?.revision])
-  await input.checking()
-  console.info('mail live folds before history', JSON.stringify(folded()))
-  folds.mockClear()
-  indexOperations = 0
-  indexScans = 0
-  const history: Awaited<ReturnType<typeof journal.appendItem>>[] = []
+  const history = []
   for (let n = 0; n < performance.population; n++) {
-    const written = await journal.appendItem(
-      { provider: 'legacy', agent: 'grok', sessionId: SESSION, recordId: `history-${n}` },
-      message('historical output'),
-      { fence: f.fence(), turnScope: { kind: 'thread' } }
+    history.push(
+      await journal.appendItem(
+        { provider: 'legacy', agent: 'grok', sessionId: SESSION, recordId: `history-${n}` },
+        message('historical output'),
+        { fence: f.fence(), turnScope: { kind: 'thread' } }
+      )
     )
-    history.push(written)
   }
   await f.host.flushStreamedEvents(SESSION)
   await journal.readInOrder(() => undefined)
-  await new Promise<void>((resolve) => setImmediate(resolve))
-  console.info('mail history folds', JSON.stringify(folded()))
-  expect(folds).toHaveBeenCalledTimes(performance.population)
   expect(new Set(history.map((row) => row.itemId)).size).toBe(performance.population)
-  expect(folded()).toEqual(history.map((row) => [row.itemId, undefined, row.revision]))
-  let reading = false
-  let lookups = 0
-  const scans = [0, 0, 0]
-  const mapSpies = [maps.items, maps.submissions].flatMap((map, n) => [
-    vi.spyOn(map, 'values').mockImplementation(() => {
-      if (reading) {
-        scans[n]++
-      }
-      return Map.prototype.values.call(map)
-    }),
-    vi.spyOn(map, 'get').mockImplementation((key) => {
-      if (reading) {
-        lookups++
-      }
-      return Map.prototype.get.call(map, key)
-    })
-  ])
-  const snapshot = journal.snapshot.bind(journal)
-  const snapshotSpy = vi.spyOn(journal, 'snapshot').mockImplementation(() => {
-    if (reading) {
-      scans[2]++
-    }
-    return snapshot()
+  expect(history.every((row) => row.revision === 1)).toBe(true)
+  const calls: { sql: string; args: unknown; rows: number }[] = []
+  const sql = observeMailSql(db.db, /FROM messages[\s\S]*ORDER BY sequence/, 'all', (call) => {
+    calls.push({ sql: call.sql, args: call.args, rows: call.rows.length })
+    expect(sql.explain(call.sql, call.args)).toContain('SEARCH')
   })
-  const read = f.host.readMailHandoffEvidenceNow.bind(f.host)
-  const evidence = vi.spyOn(f.host, 'readMailHandoffEvidenceNow').mockImplementation((...args) => {
-    reading = true
-    try {
-      return read(...args)
-    } finally {
-      reading = false
-    }
-  })
-  const sql = performance.sql
-  const freshEvaluations = sql.count()
-  sql.reset()
-  const candidates = vi.spyOn(db, 'getAutomaticMailCandidates')
-  const debt = db.getIssuedSessionMail([SESSION], [mailbox])
-  expect(debt).toHaveLength(performance.population + performance.uncertain + 1)
-  const inventory = vi.spyOn(db, 'getIssuedSessionMail')
-  const preparation = vi.spyOn(f.host, 'readMailHandoffEvidence')
   const receipts = vi.spyOn(f.store, 'readCommandReceipt')
-  const argumentsOf = (calls: readonly unknown[][]) =>
-    Array.from(
-      Map.groupBy(calls, (args) => JSON.stringify(args)),
-      ([args, calls]) => ({ args, calls: calls.length })
-    )
-  const triggers = performance.population / 10
-  const passes = performance.uncertain + 1
-  const corpus = performance.population * 2 + performance.uncertain + 5
-  expect(freshEvaluations).toBeGreaterThanOrEqual(performance.population)
-  expect(freshEvaluations).toBeLessThanOrEqual((passes + 2) * corpus)
-  for (let trigger = 0; trigger < triggers; trigger++) {
-    const calls = evidence.mock.calls.length
-    inventory.mockClear()
-    preparation.mockClear()
+  for (let trigger = 0; trigger < 10; trigger++) {
+    calls.length = 0
     receipts.mockClear()
     delivery.deliverForHandle(mailbox)
-    await vi.waitFor(
-      () => {
-        expect(inventory).toHaveBeenCalled()
-      },
-      { interval: 1 }
-    )
     await f.rig.settle()
-    const observed = evidence.mock.calls.slice(calls)
-    console.info(
-      'mail completed busy trigger',
-      JSON.stringify({
-        population: performance.population,
-        trigger,
-        issued: debt.length,
-        inventoryRows: inventory.mock.results.map((r) =>
-          r.type === 'return' ? r.value.map((row) => row.id) : r.type
-        ),
-        inventory: argumentsOf(inventory.mock.calls),
-        preparation: argumentsOf(preparation.mock.calls),
-        receipts: argumentsOf(receipts.mock.calls),
-        evidence: argumentsOf(observed)
-      })
-    )
-    expect(inventory.mock.calls.length).toBeLessThanOrEqual(2)
-    expect(
-      inventory.mock.results.every((r) => r.type === 'return' && r.value.length === debt.length)
-    ).toBe(true)
-    expect(preparation.mock.calls).toEqual([[SESSION, '']])
-    expect(receipts.mock.calls.length).toBeLessThanOrEqual(2 * debt.length)
-    expect(observed.length).toBeLessThanOrEqual(2 * debt.length + 4)
-    expect(debt.map((row) => db.getMessageById(row.id))).toEqual(debt)
+    await journal.readInOrder(() => undefined)
+    console.info('ordinary completed busy trigger', {
+      population: performance.population,
+      trigger,
+      sourceQueries: calls,
+      receipts: receipts.mock.calls
+    })
+    expect(calls.reduce((sum, call) => sum + call.rows, 0)).toBe(0)
+    expect(receipts).not.toHaveBeenCalled()
   }
-  const rows = candidates.mock.results.reduce(
-    (sum, result) => sum + (result.type === 'return' ? result.value.length : 0),
-    0
-  )
-  // The live ACP turn prevents candidate scans; preparation still reaches the real journal.
-  expect(sql.count()).toBe(0)
-  expect(rows).toBe(0)
-  expect(sql.count()).toBeLessThanOrEqual(triggers * (passes + 1) * corpus)
-  expect(rows).toBeLessThanOrEqual(
-    triggers * passes * (performance.population + performance.uncertain + 5) + triggers
-  )
-  expect(candidates.mock.calls.length).toBeLessThanOrEqual(
-    triggers * (passes * Math.ceil((performance.population + performance.uncertain + 5) / 50) + 1)
-  )
-  expect(lookups).toBeLessThanOrEqual(triggers * passes * (2 * debt.length + 50))
-  expect(scans).toEqual([0, 0, 0])
-  expect(indexScans).toBe(0)
-  expect(indexOperations).toBeLessThanOrEqual(
-    20 * (performance.population + triggers * passes * (debt.length + 1))
-  )
-  expect(folds.mock.calls.length).toBeLessThanOrEqual(performance.population + 2)
-  sql.verify()
-  sql.restore()
-  const discovery = observeMailSqlWork(
-    db.db,
-    (query) =>
-      query.includes('SELECT DISTINCT to_handle FROM messages') &&
-      query.includes('handoff IS NOT NULL'),
-    'handoff IS NOT NULL'
-  )
-  expect(db.getOpenMailHandoffHandles()).toEqual([mailbox])
-  expect(discovery.count()).toBe(corpus + 1)
-  discovery.verify()
-  discovery.restore()
-  console.info('actual mail-trigger work', {
-    population: performance.population,
-    triggers,
-    uncertainOperations: performance.uncertain,
-    freshEvaluations,
-    discoveryEvaluations: discovery.count(),
-    candidateJsonEvaluations: sql.count(),
-    candidateQueries: candidates.mock.calls.length,
-    returnedRows: rows,
-    evidenceReads: evidence.mock.calls.length,
-    lookups,
-    indexOperations,
-    indexScans,
-    itemFolds: folds.mock.calls.length
-  })
-  for (const spy of [
-    ...indexSpies,
-    folds,
-    ...mapSpies,
-    snapshotSpy,
-    candidates,
-    evidence,
-    inventory,
-    preparation,
-    receipts
-  ]) {
-    spy.mockRestore()
-  }
+  sql.trace.mockRestore()
+  receipts.mockRestore()
 }

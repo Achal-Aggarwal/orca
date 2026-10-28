@@ -152,6 +152,7 @@ export function sendPlan(
       const source = sendSource(params)
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
+        ...(params.userSend || params.personsMessage ? { humanRelease: true as const } : {}),
         ...(source ? { source } : {}),
         clientMessageId,
         ...(params.options ? { options: params.options } : {}),

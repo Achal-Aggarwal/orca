@@ -1,25 +1,15 @@
 import './rpc/unused-default-rpc-methods.test-fixture'
-vi.mock('../node-runtime/pinned-zip-members', () => ({
-  extractPinnedZipMembers: () => {
-    throw new Error('Mail fixtures must not install a runtime')
-  }
-}))
-// A dispatched chat starting helper workers on the Run it works for, on the coordinator-mail rig:
-// the helpers report to it, its own mailbox never moves, and whatever it never handled goes back
-// to the Run's coordinator once it settles.
+// Dispatched chats retain their mailbox while starting nested helpers; unhandled mail returns to the Run coordinator on settlement.
 
 import { describe, expect, it, vi } from 'vitest'
 import { formatOrcaSessionAddress } from '../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../shared/orca-session-address-test-fixture'
 import { idOf, resultOf } from './rpc/orchestration-session-caller-test-fixture'
 import type { DispatchCreator } from './orchestration/db/dispatch-depth'
-import { structuredSessionDebtAddresses } from './orchestration/structured-mailbox-pointer-admission'
-import { readMailHandoff } from './orchestration/mail-handoff'
 import {
   COORDINATOR,
   PEER_CHAT,
   WAIT,
-  MAIL,
   WORKER_2_PANE,
   WORKER_PANE,
   call,
@@ -314,9 +304,6 @@ describe('a helper whose creator settles between it and the Run', () => {
     const ids = db.getAllMessages(mailbox).map((message) => message.id)
     // The middle worker's pointer for both already landed.
     db.markAsDelivered(ids, mailbox)
-    const beforeTransfer = ids.map((id) => db.getMessageById(id)!)
-    expect(beforeTransfer.every((row) => row.handoff !== null)).toBe(true)
-    db.db.prepare('UPDATE messages SET recovery_used = 1 WHERE id = ?').run(ids[0]!)
     const notify = vi.spyOn(runtime, 'notifyMessageArrived')
 
     db.db.exec('BEGIN IMMEDIATE')
@@ -335,35 +322,8 @@ describe('a helper whose creator settles between it and the Run', () => {
       expect.arrayContaining(ids)
     )
 
-    expect(db.getMessageById(ids[0]!)).toMatchObject({ recovery_used: 1, handoff: null })
-    expect(db.getMessageById(ids[1]!)).toMatchObject({ recovery_used: 0, handoff: null })
     restartRuntime()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
-    expect(turnText(chat.turns[0]!)).toMatch(MAIL)
-    const parent = db.findActiveDispatchForAssignee(WORKER)!
-    const authority = db.mailboxHandoffAuthority(`dispatch:${parent.id}`, PEER_CHAT)
-    const issued = ids
-      .map((id) => readMailHandoff(db.getMessageById(id)?.handoff))
-      .find((reference) => reference?.kind === 'structured')
-    if (issued?.kind !== 'structured') {
-      throw new Error('missing restored hand-back claim')
-    }
-    db.completeDispatch(parent.id)
-    const retained = db.insertMessage({
-      from: 'sender',
-      to: `dispatch:${parent.id}`,
-      subject: 'retained debt'
-    })
-    db.db
-      .prepare('UPDATE messages SET handoff = ? WHERE id = ?')
-      .run(JSON.stringify({ ...issued, sessionId: PEER_CHAT, authority }), retained.id)
-    const addresses = structuredSessionDebtAddresses(COORDINATOR, db, {
-      root: COORDINATOR,
-      aliases: [COORDINATOR, PEER_CHAT]
-    })
-    expect(addresses).toEqual(expect.arrayContaining([WORKER, `dispatch:${parent.id}`]))
-    expect(db.findActiveDispatchForAssignee(WORKER)).toBeUndefined()
-    expect(db.getIssuedSessionMail([], addresses).map((row) => row.id)).toContain(retained.id)
-    expect(db.getIssuedSessionMail([PEER_CHAT], []).map((row) => row.id)).toContain(retained.id)
+    expect(turnText(chat.turns[0]!)).toMatch(/orchestration message/)
   })
 })

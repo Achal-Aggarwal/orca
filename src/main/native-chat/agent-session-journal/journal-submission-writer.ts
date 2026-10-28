@@ -1,3 +1,4 @@
+import { releasedJournalMailBoundary } from './journal-mail-boundary'
 import type {
   AgentJournalCursor,
   AgentSessionJournalIdentity
@@ -39,7 +40,15 @@ export class JournalSubmissionWriter {
     receipt?: JournalOperationReceipt
   ): Promise<AgentJournalCursor> {
     const { claimAttachments, identity, queuedMessages, rowWriter, state } = this.deps
-    const submission = journalSubmissionRowBuilder(state, identity, input, consume)
+    const build = journalSubmissionRowBuilder(state, identity, input, consume)
+    const submission = (seq: number, ts: number): JournalRow => ({
+      ...build(seq, ts),
+      ...(input.humanRelease
+        ? {
+            mailBoundary: releasedJournalMailBoundary(state().sessionId, state().epoch, seq)
+          }
+        : {})
+    })
     let card: JournalQueuePlan | undefined
     return rowWriter
       .enqueueRows(

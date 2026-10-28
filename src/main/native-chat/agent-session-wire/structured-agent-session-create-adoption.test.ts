@@ -258,3 +258,25 @@ it.each(['adopted', 'blank'] as const)(
     expect(rig.adapter.acquire).not.toHaveBeenCalled()
   }
 )
+
+it('co-commits fresh origin without a first message, omits it publicly, and reopens that positive proof', async () => {
+  const params = createTestParams()
+  const result = await rig.host.create(CALLER, params, {
+    publishTab: async () => {
+      throw new Error('lost postcommit notification')
+    }
+  })
+  expect(result).toMatchObject({ ok: false, refusal: { code: 'agent_session_operation_unknown' } })
+  expect(await rig.host.create(CALLER, params)).toMatchObject({ ok: true, replayed: true })
+  expect(rig.store.getRecord(SESSION)?.queueOrigin).toBe('fresh')
+  expect(rig.store.getConversation(SESSION)).not.toHaveProperty('queueOrigin')
+  const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  expect(journal.cursor().sequence).toBe(1)
+  expect(journal.mailHoldFacts().held).toBe(false)
+  const { openTestAgentSessionRecordStore } =
+    await import('../../runtime/agent-session-record-store-test-harness')
+  const reopened = await openTestAgentSessionRecordStore(rig.root)
+  expect(reopened.getRecord(SESSION)?.queueOrigin).toBe('fresh')
+  await stopCreatedChat(rig.host)
+  expect(journal.mailHoldFacts().held).toBe(true)
+})

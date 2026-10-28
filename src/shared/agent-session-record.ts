@@ -115,6 +115,8 @@ export type AgentSessionLease = {
 }
 
 export type AgentSessionRecord = {
+  /** Internal founding evidence; never part of the public conversation projection. */
+  queueOrigin?: 'fresh'
   schemaVersion: typeof AGENT_SESSION_RECORD_SCHEMA_VERSION
   sessionId: string
   location: AgentSessionExecutionLocation

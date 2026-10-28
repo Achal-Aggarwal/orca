@@ -1,12 +1,9 @@
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { onTestFinished, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type Database from '../../sqlite/sync-database'
 import type { SqliteBindings, SqliteRow } from '../../sqlite/sqlite-statement'
-import type { StructuredMailHandoff } from './mail-handoff'
-import { mintAgentSessionOperationId } from './structured-pointer-operation-id'
 
 export function mailTestResources(prefix: string) {
   return {
@@ -19,23 +16,6 @@ export function mailTestResources(prefix: string) {
       onTestFinished(() => resource.close())
       return resource
     }
-  }
-}
-
-export function mailHandoffFixture(patch: Partial<StructuredMailHandoff>): StructuredMailHandoff {
-  const id = mintAgentSessionOperationId(Date.now())
-  return {
-    version: 1,
-    kind: 'structured',
-    sessionId: 'session',
-    epoch: 'epoch',
-    frontier: 'frontier',
-    operationId: id,
-    authorizationId: id,
-    clientMessageId: id,
-    phase: 'reserved',
-    authority: 'consumer',
-    ...patch
   }
 }
 
@@ -75,23 +55,5 @@ export function observeMailSql(
         .all(...args)
         .map((row) => row[column])
         .join(' ')
-  }
-}
-
-export function clearedMailRecord(
-  record: AgentSessionRecord,
-  replacementSessionId: string,
-  operationId = 'clear'
-): AgentSessionRecord {
-  return {
-    ...record,
-    conversationCommand: {
-      command: 'clear',
-      state: 'completed',
-      phase: 'committed',
-      operationId,
-      callerKey: 'person',
-      replacementSessionId
-    }
   }
 }

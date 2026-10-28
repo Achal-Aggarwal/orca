@@ -8,17 +8,7 @@ import {
 } from '../../../shared/orca-session-address'
 import type { OrchestrationDb } from './db'
 import { currentRunCoordinatorOrcaSessionId } from './db/runs/run-coordinator-orca-session'
-import { selectStructuredMailHandoff } from './mailbox-settlement'
-import { currentSessionMail } from './structured-mailbox-pointer-receipt'
-import { drainLegacyMailHandoff } from './legacy-mail-handoff'
-import { structuredMailBody } from './structured-mail-source'
-import type {
-  StructuredMailboxPointerHost,
-  StructuredPointerTarget
-} from './structured-mailbox-pointer-delivery'
-import type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
-import type { OrchestrationCliCommand } from './cli-command'
-import type { SenderNameResolver } from './agent-message-sender'
+import type { StructuredPointerTarget } from './structured-mailbox-pointer-delivery'
 import {
   addressableSessionParty,
   structuredSessionMailReach
@@ -91,7 +81,11 @@ export function structuredSessionOwnedMailboxes(sessionId: string, db: Orchestra
     return []
   }
   const mailboxes = db.runsBoundToCoordinator(party).map((run) => `run:${run.id}`)
-  if (db.getUnreadDirectMessageTypes(party.address).length > 0) {
+  if (
+    db.db
+      .prepare('SELECT 1 FROM messages WHERE to_handle = ? AND delivered_at IS NULL LIMIT 1')
+      .get(party.address)
+  ) {
     mailboxes.push(party.address)
   }
   // Re-derive Dispatch mail through current party identity; a cleared or restarted session has no future idle edge.
@@ -120,159 +114,13 @@ export function structuredSessionIdleEdgeMailboxes(
   return db ? structuredSessionOwnedMailboxes(sessionId, db) : []
 }
 
-class MailPreparation extends Error {
-  constructor(readonly sources: { sessionId: string; clientMessageId: string }[]) {
-    super('mail evidence preparation')
-  }
-}
-const retiredPreparation = new Error('mail preparation retired')
-
-export async function selectSessionMail(input: {
-  db: OrchestrationDb
-  mailbox: string
-  target: StructuredPointerTarget
-  reservedTypes: ReadonlySet<string> | undefined
-  reconciled: ReadonlySet<string>
-  host: StructuredMailboxPointerHost
-  getMessageWaiters: (mailbox: string) => ReadonlySet<OrchestrationMessageWaiter> | undefined
-  resolveStructuredTarget: (mailbox: string) => StructuredPointerTarget | null
-  getCliCommand: () => OrchestrationCliCommand
-  senderName: SenderNameResolver
-  ownWrite: <T>(write: () => T) => T
-  current: () => boolean
-  settle: (read: StructuredMailboxPointerHost['readHandoffEvidenceNow']) => ReadonlySet<string>
-  afterSequence?: number
-}) {
-  const { db, mailbox, target, host } = input
-  const prepared = new Map<string, boolean>()
-  const missing = new Map<string, { sessionId: string; clientMessageId: string }>()
-  const decision = <T>(run: () => T): T => {
-    const result = run()
-    if (missing.size) {
-      throw new MailPreparation([...missing.values()])
-    }
-    return result
-  }
-  const read: StructuredMailboxPointerHost['readHandoffEvidenceNow'] = (source) => {
-    if (!prepared.has(source.sessionId)) {
-      missing.set(source.sessionId, source)
-      return null
-    }
-    if (!prepared.get(source.sessionId)) {
-      return null
-    }
-    const value = host.readHandoffEvidenceNow(source)
-    if (!value) {
-      throw retiredPreparation
-    }
-    return value
-  }
-  let sources = [{ sessionId: target.sessionId, clientMessageId: '' }]
-  for (;;) {
-    for (const source of sources) {
-      const available = await host.readHandoffEvidence(source).catch(() => null)
-      if (!input.current()) {
-        return null
-      }
-      prepared.set(source.sessionId, Boolean(available))
-    }
-    missing.clear()
-    try {
-      return input.ownWrite(() =>
-        db.claimMailHandoff(() =>
-          decision(() => {
-            if (!input.current()) {
-              throw retiredPreparation
-            }
-            const skipped = new Set([...input.reconciled, ...input.settle(read)])
-            const session = read({ sessionId: target.sessionId, clientMessageId: '' })
-            const fence = host.currentFence(target.sessionId)
-            if (!session || fence === null) {
-              return null
-            }
-            let chosen: {
-              address: string
-              target: StructuredPointerTarget
-              batch: NonNullable<ReturnType<typeof selectStructuredMailHandoff>>
-            } | null = null
-            for (const address of new Set([
-              mailbox,
-              ...structuredSessionOwnedMailboxes(target.sessionId, db)
-            ])) {
-              const addressTarget = input.resolveStructuredTarget(address)
-              if (addressTarget?.sessionId !== target.sessionId) {
-                continue
-              }
-              const legacy = db.getStructuredPointerOperation(address)
-              if (legacy?.session_id === target.sessionId) {
-                const evidence = read({
-                  sessionId: target.sessionId,
-                  clientMessageId: legacy.operation_id
-                })
-                if (evidence) {
-                  drainLegacyMailHandoff(db, legacy, evidence)
-                }
-              }
-              const batch = selectStructuredMailHandoff({
-                db,
-                mailbox: address,
-                sessionId: target.sessionId,
-                epoch: session.epoch,
-                frontier: session.frontier,
-                waiters: input.getMessageWaiters(address),
-                reservedTypes: new Set([
-                  ...(address === mailbox ? (input.reservedTypes ?? []) : []),
-                  'heartbeat'
-                ]),
-                limit: 1,
-                afterSequence: input.afterSequence,
-                readEvidence: read,
-                skipOperations: skipped,
-                accept: (batch) =>
-                  currentSessionMail(
-                    { ...input, host: { ...host, readHandoffEvidenceNow: read } },
-                    { address, target: addressTarget, batch }
-                  ),
-                manifest: (messages) => ({
-                  members: messages.map((message) => message.id),
-                  dispatchId: addressTarget.dispatchId,
-                  runtimeFence: fence,
-                  context: host.currentContextClearOperationId(target.sessionId),
-                  body: JSON.stringify(
-                    structuredMailBody({
-                      db,
-                      mailboxHandle: address,
-                      dispatchId: addressTarget.dispatchId,
-                      message: messages[0],
-                      senderName: input.senderName,
-                      cliCommand: input.getCliCommand()
-                    })
-                  )
-                })
-              })
-              if (!batch) {
-                continue
-              }
-              const candidate = { address, target: addressTarget, batch }
-              if (!chosen || batch.messages[0].sequence < chosen.batch.messages[0].sequence) {
-                chosen = candidate
-              }
-            }
-            if (!input.current()) {
-              throw retiredPreparation
-            }
-            return chosen
-          })
-        )
-      )
-    } catch (error) {
-      if (!(error instanceof MailPreparation)) {
-        if (error === retiredPreparation) {
-          return null
-        }
-        throw error
-      }
-      sources = error.sources
-    }
-  }
+/** Include read rows for accepted-creation reconciliation and pointer-phase rows for terminal repair. */
+export function restoredSessionMailboxes(db: OrchestrationDb | null | undefined): Set<string> {
+  return new Set([
+    ...(db?.getUndeliveredUnreadMailboxHandles?.() ?? []),
+    ...(db?.db
+      .prepare('SELECT DISTINCT to_handle FROM messages WHERE delivered_at IS NULL')
+      .all()
+      .map((row) => String(row.to_handle)) ?? [])
+  ])
 }

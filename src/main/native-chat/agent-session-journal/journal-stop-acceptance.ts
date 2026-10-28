@@ -1,12 +1,7 @@
-import {
-  readMailHoldRecords,
-  mailLineageGraph,
-  type CaptureSessionMail
-} from './journal-mail-holds'
-import type { JournalHostDatabase } from './journal-host-database'
-import { composeJournalOperationReceipts } from './journal-row-writer'
+import type { CaptureSessionMail } from './journal-mail-holds'
 import type { JournalRow } from './journal-row-schema'
-import { unknownJournalMailBoundary, type JournalMailBoundary } from './journal-mail-boundary'
+import type { JournalMailBoundary } from './journal-mail-boundary'
+import { composeJournalOperationReceipts } from './journal-row-writer'
 // Commit withdrawals, Stop event and receipt atomically; failed acceptance must interrupt nothing.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -46,7 +41,6 @@ export class JournalStopAcceptor {
       writer: Pick<JournalRowWriter, 'enqueueRows'>
       sessionId: string
       state: () => JournalReducerState
-      database: () => JournalHostDatabase
     }
   ) {}
 
@@ -75,29 +69,18 @@ export class JournalStopAcceptor {
           const event = { ...input.event, ...(turnId !== null ? { turnId } : {}) }
           let boundary: JournalMailBoundary | undefined
           if (event.reason === 'user-stop' && input.captureMailIntent !== false) {
-            const prior = state().mailBoundary ?? unknownJournalMailBoundary()
             let captured: ReturnType<CaptureSessionMail> = {}
-            let scope = prior.scope
             try {
-              const records = readMailHoldRecords(this.deps.database().db)
-              scope = mailLineageGraph(records).get(this.deps.sessionId) ?? undefined
-              captured = input.captureMail?.(this.deps.sessionId, records, scope ?? null) ?? {}
+              captured = input.captureMail?.() ?? {}
               finished = captured.finished
             } catch {
-              // A missing source fact must never refuse Stop.
+              // Missing source order cannot refuse a person's Stop.
             }
             boundary = {
+              version: 2,
               status: 'held',
               stop: null,
-              ...(scope ? { scope } : {}),
-              cuts: captured.cut ? [captured.cut] : [],
-              members: [
-                ...new Set([
-                  ...(prior.status === 'held' ? prior.members : []),
-                  ...(captured.members ?? [])
-                ])
-              ],
-              ambiguous: !captured.cut || (prior.status === 'held' && prior.ambiguous)
+              ...(captured.cut ? { cut: captured.cut } : {})
             }
           }
           if (event.reason === 'user-stop' && input.captureMailIntent === false) {

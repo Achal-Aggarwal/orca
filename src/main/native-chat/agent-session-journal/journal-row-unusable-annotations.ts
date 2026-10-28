@@ -1,9 +1,9 @@
-import { readJournalMailBoundary, unknownJournalMailBoundary } from './journal-mail-boundary'
+import { readJournalMailBoundary } from './journal-mail-boundary'
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
 
 export function dropUnusableRowAnnotations(record: Record<string, unknown>): void {
   if (record.mailBoundary !== undefined && !readJournalMailBoundary(record.mailBoundary)) {
-    record.mailBoundary = unknownJournalMailBoundary()
+    delete record.mailBoundary
   }
   dropUnusableProducerLinkage(record)
   dropUnusableTurnScope(record)

@@ -62,6 +62,8 @@ export type StructuredAgentSessionRuntimeDeps = StructuredAgentSessionTransportO
   /** Required so carried-on failures reach the desktop/headless trace logger. */
   logger: StructuredAgentSessionLogger
   /** Host reactions to status, including the first-work workspace rename CLI hooks provide. */
+  captureSessionMail?: StructuredAgentSessionHostDeps['captureSessionMail']
+  onSessionMailActivity?: StructuredAgentSessionHostDeps['onSessionMailActivity']
   onSessionStatusChanged?: StructuredAgentSessionHostDeps['onSessionStatusChanged']
   conversationNaming?: StructuredAgentSessionHostDeps['conversationNaming']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */

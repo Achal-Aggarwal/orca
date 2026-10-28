@@ -63,8 +63,6 @@ export abstract class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCo
     | RuntimeConstructionBindings['readHookCliWriterObservation']
     | null
   declare protected readonly checkHookAgentPresenceFn: HostServices['checkHookAgentPresenceFn']
-  declare protected readonly readTerminalMailTargetFn: HostServices['readTerminalMailTargetFn']
-  declare protected readonly terminalMailTargetWasAbandonedFn: HostServices['terminalMailTargetWasAbandonedFn']
   declare readonly subscribeAgentProviderSessionChangesFn:
     | RuntimeConstructionBindings['subscribeAgentProviderSessionChanges']
     | null
@@ -225,8 +223,6 @@ export abstract class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCo
       deps?.retireAgentHookCompatibilityAuthority ?? null
     this.readHookCliWriterObservationFn = deps?.readHookCliWriterObservation ?? null
     this.checkHookAgentPresenceFn = deps?.checkHookAgentPresence ?? null
-    this.readTerminalMailTargetFn = deps?.readTerminalMailTarget ?? null
-    this.terminalMailTargetWasAbandonedFn = deps?.terminalMailTargetWasAbandoned ?? null
     this.subscribeAgentProviderSessionChangesFn = deps?.subscribeAgentProviderSessionChanges ?? null
     this.reconcileAgentStatusForEndedProcessFn = deps?.reconcileAgentStatusForEndedProcess ?? null
     this.forgetHookAgentExitFn = deps?.forgetHookAgentExit ?? null

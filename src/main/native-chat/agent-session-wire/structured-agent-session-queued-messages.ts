@@ -167,7 +167,6 @@ export async function maybeQueueStructuredAgentSessionSend(
   if ('refusal' in captured) {
     return { ok: false, refusal: captured.refusal }
   }
-  params.beforeRun?.()
   // Journal commit listeners publish and wake drain automatically.
   let row: QueuedMessageRow
   try {
@@ -175,6 +174,8 @@ export async function maybeQueueStructuredAgentSessionSend(
       {
         messageId: clientMessageId,
         body: params.body,
+        ...(params.beforeRun ? { beforeInsert: params.beforeRun } : {}),
+        ...(params.userSend || params.personsMessage ? { humanRelease: true as const } : {}),
         ...(params.mailSource ? { mailSource: params.mailSource } : {}),
         options: captured.options,
         ...(params.userSend ? { requireAttachments: true } : {})

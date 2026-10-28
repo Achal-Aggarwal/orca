@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { memo } from 'react'
+import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalSubmission,
@@ -10,6 +11,8 @@ import type {
 import {
   AGENT_SESSION_HISTORY_MAX_LIMIT,
   type AgentSessionHistoryPage,
+  type AgentSessionQueuedMessage,
+  type AgentSessionQueuePause,
   type AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
 
@@ -666,6 +669,128 @@ describe('useStructuredAgentSessionRead stream failures', () => {
       await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_CLIENT_COALESCE_MS)
       expect(visits).toBe(0)
       vi.useRealTimers()
+    }
+  )
+})
+
+describe('mounted queue publication consumers', () => {
+  afterEach(cleanup)
+  it.each([100, 1000])(
+    'keeps token and other-host frames out of N=%i queue consumers',
+    async (count) => {
+      resetStructuredAgentSessionReadOwnersForTests()
+      vi.clearAllMocks()
+      const emits = new Map<string, (event: AgentSessionSubscribeEvent) => void>()
+      mocks.call.mockImplementation(async (_target, _method, params) => ({
+        ok: true,
+        page: { ...page('tail', [], false), sessionId: params.sessionId }
+      }))
+      mocks.subscribe.mockImplementation((_target, params, emit) => {
+        emits.set(params.sessionId, emit)
+        return Promise.resolve({ unsubscribe: vi.fn() })
+      })
+      const targets = {
+        'queue-a': LOCAL_TARGET,
+        'queue-b': { kind: 'environment', environmentId: 'host-b' }
+      } as const
+      const targetFor = (id: string) => (id === 'queue-a' ? targets['queue-a'] : targets['queue-b'])
+      const renders = new Map<string, number>()
+      const Queue = memo(
+        ({
+          sessionId,
+          cards,
+          pause
+        }: {
+          sessionId: string
+          cards: readonly AgentSessionQueuedMessage[] | null
+          pause: AgentSessionQueuePause | null
+        }) => {
+          renders.set(sessionId, (renders.get(sessionId) ?? 0) + 1)
+          return (
+            <output>
+              {sessionId}:{cards?.length ?? 0}:{pause?.reason ?? 'running'}
+            </output>
+          )
+        }
+      )
+      function Reader({ sessionId }: { sessionId: string }) {
+        const { state } = useStructuredAgentSessionRead({
+          sessionId,
+          target: targetFor(sessionId),
+          isViewed: false
+        })
+        return <Queue sessionId={sessionId} cards={state.queuedMessages} pause={state.queuePause} />
+      }
+      const view = render(
+        <>
+          <Reader sessionId="queue-a" />
+          <Reader sessionId="queue-b" />
+        </>
+      )
+      await waitFor(() => expect(emits.size).toBe(2))
+      const cards: AgentSessionQueuedMessage[] = Array.from({ length: count }, (_, position) => ({
+        messageId: `report-${position}`,
+        position,
+        state: 'waiting',
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [],
+          from: { kind: 'agent', senders: [], orchestration: null }
+        }
+      }))
+      const frame = (sessionId: string, sequence: number): AgentSessionSubscribeEvent => ({
+        type: 'batch',
+        sessionId,
+        batch: {
+          cursor: { epoch: 'epoch-a', sequence },
+          items: [],
+          removedItemIds: [],
+          submissions: []
+        }
+      })
+      for (const sessionId of ['queue-a', 'queue-b']) {
+        await act(async () =>
+          emits.get(sessionId)?.({
+            ...frame(sessionId, 501),
+            queuedMessages: cards,
+            queuePause: { reason: 'stopped' }
+          })
+        )
+        await waitFor(() =>
+          expect(view.container.textContent).toContain(`${sessionId}:${count}:stopped`)
+        )
+      }
+      renders.clear()
+      for (const sessionId of ['queue-a', 'queue-b']) {
+        await act(async () =>
+          emits.get(sessionId)?.({
+            ...frame(sessionId, 502),
+            activity: { turnId: 'working', text: 'token-only' }
+          })
+        )
+        await waitFor(() =>
+          expect(
+            findStructuredAgentSessionReadOwner(sessionId, targetFor(sessionId))?.getSnapshot()
+              .state.activity?.text
+          ).toBe('token-only')
+        )
+        expect([...renders.values()].reduce((a, b) => a + b, 0)).toBe(0)
+      }
+      await act(async () =>
+        emits.get('queue-a')?.({
+          ...frame('queue-a', 503),
+          queuedMessages: cards.slice(1),
+          queuePause: null
+        })
+      )
+      await waitFor(() =>
+        expect(view.container.textContent).toContain(`queue-a:${count - 1}:running`)
+      )
+      expect(renders.get('queue-a')).toBe(1)
+      expect(renders.get('queue-b') ?? 0).toBe(0)
+      view.unmount()
+      resetStructuredAgentSessionReadOwnersForTests()
     }
   )
 })

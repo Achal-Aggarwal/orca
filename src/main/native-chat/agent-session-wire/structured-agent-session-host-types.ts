@@ -1,3 +1,4 @@
+import type { CaptureSessionMail } from '../agent-session-journal/journal-mail-holds'
 import type { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type {
   OpenedStructuredAgentSessionConversation,
@@ -134,6 +135,8 @@ export type StructuredAgentSessionHostSession = {
 }
 
 export type StructuredAgentSessionHostDeps = {
+  captureSessionMail?: CaptureSessionMail
+  onSessionMailActivity?: (sessionId: string) => void
   store: AgentSessionRecordStore
   adapter: StructuredAgentSessionAdapter
   /** Capabilities come from registry declarations, never adapters. */

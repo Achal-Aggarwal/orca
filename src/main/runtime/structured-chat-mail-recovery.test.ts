@@ -16,11 +16,12 @@ import {
   runtime,
   db,
   call,
-  WAIT
+  WAIT,
+  settleTurn
 } from './structured-chat-coordinator-mail-rig.test-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 
-it('new QA mail wakes a failed chat holding an older unacknowledged batch, preserving FIFO replay and ack', async () => {
+it('new mail wakes a failed chat holding an independent unacknowledged check, preserving FIFO replay and ack', async () => {
   const chat = await openChat(COORDINATOR)
   const { runId, taskId } = await coordinatorRunAndTask()
   await finishWorker(taskId)
@@ -60,40 +61,18 @@ it('new QA mail wakes a failed chat holding an older unacknowledged batch, prese
   expect(db.getUnreadMessages(`run:${runId}`)).toHaveLength(1)
 })
 
-it('recovers a proven failed notice once without successor mail, while repeated failure remains explicitly readable', async () => {
+it('a failed ordinary report is spent at source and remains independently readable without an automatic provider retry', async () => {
   const chat = await openChat(COORDINATOR)
   const { runId, taskId } = await coordinatorRunAndTask()
   await finishWorker(taskId)
   await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
-  const fail = async (index: number) => {
-    const turn = chat.turns[index]!
-    chat.handlers.onNotification?.('turn/started', { turn: { id: `turn-${index + 1}` } })
-    chat.handlers.onNotification?.('item/completed', {
-      item: {
-        type: 'userMessage',
-        id: `echo-${turn.clientUserMessageId}`,
-        clientId: turn.clientUserMessageId,
-        content: [{ type: 'text', text: 'notice' }]
-      }
-    })
-    chat.handlers.onNotification?.('turn/completed', {
-      turn: {
-        id: `turn-${index + 1}`,
-        status: 'failed',
-        error: { message: 'connection dropped' }
-      }
-    })
-    await host.flushStreamedEvents(COORDINATOR)
-  }
-  await fail(0)
-  await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
-  await fail(1)
+  await settleTurn(COORDINATOR, 0, 'failed')
   for (let edge = 0; edge < 3; edge++) {
     runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
     await host.flushStreamedEvents(COORDINATOR)
   }
-  expect(chat.turns).toHaveLength(2)
-  expect(db.getUnreadMessages(`run:${runId}`)[0]?.recovery_used).toBe(1)
+  expect(chat.turns).toHaveLength(1)
+  expect(db.getUnreadMessages(`run:${runId}`)[0]?.delivered_at).not.toBeNull()
   expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
     count: 1
   })

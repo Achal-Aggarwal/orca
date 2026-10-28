@@ -16,7 +16,6 @@ export function applyJournalSubmission(
   state: JournalReducerState,
   row: Extract<JournalRow, { kind: 'submission' }>
 ): void {
-  state.submissionTurnScopes.set(row.clientMessageId, row.turnScope ?? null)
   const options = readAgentSessionExecutionOptions(row.options)
   state.submissions.set(row.clientMessageId, {
     clientMessageId: row.clientMessageId,
@@ -37,7 +36,6 @@ export function applyJournalSubmission(
     ...(row.source !== undefined ? { source: { kind: storedSourceKind(row.source) } } : {}),
     ...(options ? { options } : {})
   })
-  state.mailHandoffs.submission(row.clientMessageId, state.submissions.get(row.clientMessageId))
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // Delayed handovers belong to no turn until dispatch names one.
   const turnScope = row.handoverRecorded
@@ -140,7 +138,6 @@ export function acceptSubmissionFromProviderItem(
   submission.providerItemId = providerItemId
   submission.reason = null
   submission.resolvedAt = row.ts
-  state.mailHandoffs.submission(submission.clientMessageId, submission)
   delete submission.recovered
   state.receipts.set(submission.clientMessageId, {
     clientMessageId: submission.clientMessageId,
@@ -150,16 +147,24 @@ export function acceptSubmissionFromProviderItem(
   })
 }
 
-/** Automatic input cannot resume the person's paused messages. */
+/** Any provider-accepted turn may lift queue pauses. */
 export function noteTurnAccepted(
   state: JournalReducerState,
-  submission: Pick<AgentJournalSubmission, 'acceptedSequence' | 'source' | 'clientMessageId'>
+  submission: Pick<AgentJournalSubmission, 'acceptedSequence' | 'origin'>
 ): void {
-  if (
-    submission.acceptedSequence !== undefined &&
-    (submission.source?.kind !== 'agent' ||
-      state.personalQueuedSends.has(submission.clientMessageId))
-  ) {
+  if (submission.acceptedSequence !== undefined) {
+    const release = state.mailBoundary
+    if (
+      submission.origin === 'client' ||
+      (release?.status === 'released' &&
+        release.at.epoch === state.epoch &&
+        release.at.sequence === submission.acceptedSequence)
+    ) {
+      state.latestAcceptedPersonalTurnSequence = Math.max(
+        state.latestAcceptedPersonalTurnSequence,
+        submission.acceptedSequence
+      )
+    }
     state.latestAcceptedTurnSequence = Math.max(
       state.latestAcceptedTurnSequence,
       submission.acceptedSequence

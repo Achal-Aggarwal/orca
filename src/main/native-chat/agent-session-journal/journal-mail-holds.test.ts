@@ -1,16 +1,12 @@
 import { expect, it, vi } from 'vitest'
 import { join } from 'node:path'
-import {
-  mailTestResources,
-  clearedMailRecord
-} from '../../runtime/orchestration/mail-handoff.test-fixture'
+import { mailTestResources } from '../../runtime/orchestration/mail-handoff.test-fixture'
 import { agentSessionRecordFixture } from '../agent-session-record-test-fixture'
 import { encodeAgentSessionRecord } from '../../../shared/agent-session-record-stored-form'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
+import { insertCommandReceiptIfAbsent } from './command-receipt-table'
 import { JournalHostDatabase } from './journal-host-database'
 import { AgentSessionJournal } from './journal-store'
-import { writeMailHold } from './journal-mail-holds'
-import { bootstrapJournalMailBoundary } from './journal-mail-bootstrap'
 import { journalMailSourceEligible, type JournalMailSource } from './journal-mail-boundary'
 import { nextSendableQueuedCard } from './queued-message-pause'
 import { resumeStructuredQueue } from '../agent-session-wire/structured-agent-session-queued-pause'
@@ -29,9 +25,6 @@ async function harness(fresh = true) {
   database.db
     .prepare('INSERT INTO agent_session_records VALUES (?, ?)')
     .run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
-  if (fresh) {
-    writeMailHold(database.db, record.sessionId, { version: 1, status: 'released' }, true)
-  }
   const identity = {
     sessionId: record.sessionId,
     workspaceId: 'workspace',
@@ -40,7 +33,13 @@ async function harness(fresh = true) {
     providerHandle: null
   }
   const open = async () => {
-    const journal = resources.track(new AgentSessionJournal({ database, identity }))
+    const journal = resources.track(
+      new AgentSessionJournal({
+        database,
+        identity,
+        queueOrigin: () => (fresh ? 'fresh' : undefined)
+      })
+    )
     await journal.open()
     return journal
   }
@@ -57,8 +56,8 @@ async function harness(fresh = true) {
     })
   const source = (row: MessageRow): JournalMailSource => ({
     incarnation: mailSourceIncarnation(db.db),
-    mailbox,
-    members: [{ id: row.id, sequence: row.sequence, origin: row.ordering_origin ?? null }]
+    sequence: row.sequence,
+    origin: row.ordering_origin ?? null
   })
   const enqueue = (row: MessageRow, target = journal) =>
     target.queuedMessages.insert({
@@ -81,8 +80,7 @@ async function harness(fresh = true) {
         liveTurnId: () => null,
         ...(capture
           ? {
-              captureMail: (id, records, scope) =>
-                captureSessionMailAtStop(db, id, records, () => {}, scope)
+              captureMail: () => captureSessionMailAtStop(db, () => {})
             }
           : {})
       },
@@ -154,7 +152,7 @@ it('holds admitted and missed old reports, lets fresh local mail pass personal F
       json_type(row_json, '$.mailBoundary') IS NOT NULL`)
     .run(h.record.sessionId)
   const salvaged = await h.open()
-  expect(salvaged.mailHoldFacts()).toMatchObject({ held: true, ambiguous: true })
+  expect(salvaged.mailHoldFacts()).toMatchObject({ held: true })
   await salvaged.appendQueueResume(0)
   expect(h.eligible(imported.id, salvaged)).toBe(true)
 })
@@ -162,7 +160,7 @@ it('holds admitted and missed old reports, lets fresh local mail pass personal F
 it('failed capture and repeated Stops HOLD; personal Stop/Resume never write the compatibility holds relation', async () => {
   const h = await harness()
   h.database.db.exec(
-    `CREATE TRIGGER refuse_legacy_hold BEFORE UPDATE ON agent_session_mail_holds BEGIN SELECT RAISE(ABORT, 'obsolete writer'); END`
+    'CREATE TABLE agent_session_mail_holds (intent_order INTEGER PRIMARY KEY, state_json TEXT)'
   )
   await h.stop(false)
   const ambiguous = h.message('ambiguous')
@@ -183,9 +181,7 @@ it('failed capture and repeated Stops HOLD; personal Stop/Resume never write the
     captureMailIntent: false
   })
   expect(h.eligible(ambiguous.id)).toBe(true)
-  expect(
-    h.database.db.prepare('SELECT state_json FROM agent_session_mail_holds').get()?.state_json
-  ).toContain('released')
+  expect(h.database.db.prepare('SELECT * FROM agent_session_mail_holds').all()).toEqual([])
 })
 
 it('holds the zero-wait source reservation through host COMMIT, rolls back a failed Stop and releases before publication', async () => {
@@ -204,7 +200,7 @@ it('holds the zero-wait source reservation through host COMMIT, rolls back a fai
         ).toThrow()
         h.database.db.exec('PRAGMA defer_foreign_keys = ON')
         h.database.db.exec(
-          'CREATE TABLE bad_fk (parent INTEGER REFERENCES agent_session_mail_holds(intent_order))'
+          'CREATE TABLE bad_fk (parent TEXT REFERENCES agent_session_records(session_id))'
         )
         h.database.db.prepare('INSERT INTO bad_fk VALUES (?)').run(9999)
       },
@@ -215,11 +211,11 @@ it('holds the zero-wait source reservation through host COMMIT, rolls back a fai
   expect(h.journal.cursor()).toEqual(before)
   expect(h.db.db.isTransaction).toBe(false)
   expect(h.db.db.pragma('busy_timeout', { simple: true })).toBe(5000)
-  expect(h.journal.mailHoldFacts().ambiguous).toBe(false)
+  expect(h.journal.mailHoldFacts().held).toBe(false)
   peer.insertMessage({ from: 'peer', to: h.mailbox, subject: 'after rollback' })
   h.journal.observeCommits(() => expect(h.db.db.isTransaction).toBe(false))
   await h.stop()
-  expect(h.journal.mailHoldFacts()).toMatchObject({ held: true, ambiguous: false })
+  expect(h.journal.mailHoldFacts()).toMatchObject({ held: true })
   await h.journal.appendStopEvent({ reason: 'host-stop' }, 0)
   expect(h.journal.queuedMessages.list()).toHaveLength(0)
   expect(await resumeStructuredQueue(h.journal, 0)).toBe(true)
@@ -259,101 +255,50 @@ it.each([100, 1000])(
   }
 )
 
-it.each([100, 1000])(
-  'bootstraps actual encoded legacy lineage N=%i once, conservatively preserving missing/cyclic evidence',
-  async (count) => {
+it.each([false, true])(
+  'preserves a parent-format Stop after an earlier receipt (malformed=%s), through replacement/reopen until genuine Resume',
+  async (malformed) => {
     const h = await harness(false)
-    const records = Array.from({ length: count }, (_, index) =>
-      agentSessionRecordFixture({
-        sessionId: testOrcaSessionId(
-          `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
-        )
-      })
+    h.database.transaction((db) =>
+      insertCommandReceiptIfAbsent(
+        db,
+        { kind: 'caller', callerKey: 'person' },
+        {
+          operationId: 'parent-queued-send',
+          sessionId: h.record.sessionId,
+          callerKey: 'person',
+          method: 'agentSession.queuedMessageSend',
+          fingerprint: 'parent-fingerprint',
+          acceptedAt: 1,
+          status: 'accepted',
+          result: { kind: 'journal-row', epoch: h.journal.epoch, sequence: 1 }
+        }
+      )
     )
-    const insert = h.database.db.prepare(
-      'INSERT OR REPLACE INTO agent_session_records VALUES (?, ?)'
-    )
-    insert.run(records[0].sessionId, JSON.stringify(encodeAgentSessionRecord(records[0])))
-    writeMailHold(h.database.db, records[0].sessionId, {
-      version: 1,
-      status: 'held',
-      members: ['legacy-A'],
-      ambiguous: false,
-      releasedThrough: 0
-    })
-    const root = resources.track(
-      new AgentSessionJournal({
-        database: h.database,
-        identity: { ...h.identity, sessionId: records[0].sessionId }
-      })
-    )
-    await root.open()
-    expect(root.mailHoldFacts().scope?.aliases).toHaveLength(1)
-    for (let index = 0; index < count; index++) {
-      const record =
-        index + 1 < count
-          ? clearedMailRecord(records[index], records[index + 1].sessionId)
-          : records[index]
-      insert.run(record.sessionId, JSON.stringify(encodeAgentSessionRecord(record)))
+    await h.stop(false)
+    const held = h.journal.mailBoundary()
+    expect(held).toMatchObject({ status: 'held', stop: { sequence: expect.any(Number) } })
+    h.database.db
+      .prepare(`UPDATE journal_rows SET row_json = json_remove(row_json, '$.mailBoundary')
+    WHERE session_id = ?`)
+      .run(h.record.sessionId)
+    if (malformed) {
+      h.database.db
+        .prepare(`UPDATE journal_rows SET row_json = json_set(row_json,
+    '$.mailBoundary', json('{"version":1,"status":"released"}')) WHERE session_id = ?
+    AND json_extract(row_json, '$.stopEvent.reason') = 'user-stop'`)
+        .run(h.record.sessionId)
     }
-    expect(bootstrapJournalMailBoundary(h.database.db, records[count - 1].sessionId)).toMatchObject(
-      {
-        status: 'held',
-        members: ['legacy-A'],
-        ambiguous: false
-      }
-    )
-    await root.appendQueueResume(0)
-    expect(bootstrapJournalMailBoundary(h.database.db, records[count - 1].sessionId).status).toBe(
-      'released'
-    )
-    await root.appendStopEvent({ reason: 'user-stop' }, 0)
-    const successorId = records[count - 1].sessionId
-    const successor = resources.track(
-      new AgentSessionJournal({
-        database: h.database,
-        identity: { ...h.identity, sessionId: successorId }
-      })
-    )
-    await successor.open()
-    expect(successor.mailHoldFacts().ambiguous).toBe(true)
-    expect(successor.mailHoldFacts().scope?.aliases).toHaveLength(count)
-    await successor.appendQueueResume(0)
-    expect(bootstrapJournalMailBoundary(h.database.db, successorId).status).toBe('released')
-    const current = h.message('later exact C')
-    await successor.stops.accept({
-      event: { reason: 'user-stop' },
-      fence: 0,
-      liveTurnId: () => null,
-      captureMail: (id, records, scope) =>
-        captureSessionMailAtStop(h.db, id, records, () => {}, scope)
-    })
-    const boundary = bootstrapJournalMailBoundary(h.database.db, successorId)
-    expect(boundary).toMatchObject({
-      status: 'held',
-      ambiguous: false,
-      members: [],
-      cuts: [{ throughSequence: current.sequence }]
-    })
-    expect(successor.mailHoldFacts().members.size).toBe(0)
-    const broken = clearedMailRecord(
-      h.record,
-      testOrcaSessionId('99999999-0000-4000-8000-000000000000')
-    )
-    h.database.db
-      .prepare('UPDATE agent_session_records SET record_json = ? WHERE session_id = ?')
-      .run(JSON.stringify(encodeAgentSessionRecord(broken)), h.record.sessionId)
-    expect(bootstrapJournalMailBoundary(h.database.db, h.record.sessionId)).toMatchObject({
-      status: 'held',
-      ambiguous: true
-    })
-    const cycle = clearedMailRecord(h.record, h.record.sessionId)
-    h.database.db
-      .prepare('UPDATE agent_session_records SET record_json = ? WHERE session_id = ?')
-      .run(JSON.stringify(encodeAgentSessionRecord(cycle)), h.record.sessionId)
-    expect(bootstrapJournalMailBoundary(h.database.db, h.record.sessionId)).toMatchObject({
-      status: 'held',
-      ambiguous: true
-    })
+    const upgraded = await h.open()
+    expect(upgraded.mailBoundary()).toEqual(held)
+    const owed = h.message('unknown order')
+    await h.enqueue(owed, upgraded)
+    expect(h.eligible(owed.id, upgraded)).toBe(false)
+    await upgraded.replaceEpochItems('unreconcilable_prefix', 0, [])
+    const reopened = await h.open()
+    expect(reopened.mailBoundary()).toEqual(held)
+    expect(h.eligible(owed.id, reopened)).toBe(false)
+    await reopened.appendQueueResume(0)
+    expect(h.eligible(owed.id, reopened)).toBe(true)
   }
 )

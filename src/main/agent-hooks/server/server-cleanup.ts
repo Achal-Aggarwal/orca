@@ -1,4 +1,3 @@
-import { retainedProviderSessionRow } from './retained-provider-session-row'
 import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
 import {
   admitLegacyAgentStatus,
@@ -18,23 +17,22 @@ import { isLocalHookConnectionId } from '../../../shared/wsl-hook-relay-contract
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 import { recordAgentExit } from './agent-exit-evidence'
-import type { TerminalMailTarget } from './terminal-mail-target'
 
 export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFences {
-  readTerminalMailTarget(paneKey: string): TerminalMailTarget | null {
-    const key = this.resolvePaneKeyAlias(paneKey)
-    return this.terminalMailTargets.read(this.state.lastStatusByPaneKey.get(key))
+  /** Resume identity survives teardown without claiming live work. */
+  protected toRetainedProviderSessionRow(
+    entry: EnrichedAgentHookEventPayload | null | undefined
+  ): EnrichedAgentHookEventPayload | null {
+    if (
+      !entry?.providerSession ||
+      !entry.payload.agentType ||
+      entry.payload.agentType === 'unknown'
+    ) {
+      return null
+    }
+    const { launchToken: _launchToken, ...resumeIdentity } = entry
+    return { ...resumeIdentity, providerSessionOnly: true, retainedForLiveness: true }
   }
-
-  terminalMailTargetWasAbandoned(target: TerminalMailTarget): boolean {
-    const key = this.resolvePaneKeyAlias(target.paneKey)
-    return this.terminalMailTargets.wasAbandoned(
-      { ...target, paneKey: key },
-      this.state.lastStatusByPaneKey.get(key),
-      this.agentExitedAtByPaneKey.get(key)?.process
-    )
-  }
-  protected toRetainedProviderSessionRow = retainedProviderSessionRow
 
   /** Dismiss the row while preserving the live agent's caches; PTY teardown uses clearPaneState. */
   dropStatusEntry(
@@ -123,8 +121,6 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     for (const paneKey of paneKeys) {
       const resolvedPaneKey = this.resolvePaneKeyAlias(paneKey)
       if (options?.endedPresence) {
-        const row = this.state.lastStatusByPaneKey.get(resolvedPaneKey)
-        this.terminalMailTargets.observeExit(row, options.endedPresence.process)
         // Cleanup drops aliases, but readers may still hold either key.
         const paneKeys = new Set([resolvedPaneKey, paneKey])
         for (const [aliasKey, alias] of this.legacyPaneKeyAliases) {
@@ -140,7 +136,6 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       }
       const resumeRow = options?.preserveResumeIdentity
         ? this.toRetainedProviderSessionRow(
-            // SAFETY: Main writers attach or preserve both status clocks before admitting this row.
             this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
               | EnrichedAgentHookEventPayload
               | undefined
@@ -150,7 +145,6 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         resumeRow && options?.endedPresence
           ? { ...resumeRow, agentPresence: options.endedPresence }
           : resumeRow
-      // SAFETY: This same main-only raw map admits rows with both status clocks preserved.
       const previous = this.state.lastStatusByPaneKey.get(resolvedPaneKey) as
         | EnrichedAgentHookEventPayload
         | undefined

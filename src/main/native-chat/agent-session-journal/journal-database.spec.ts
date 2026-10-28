@@ -98,6 +98,36 @@ export function registerJournalDatabaseTests(): void {
       }
     })
 
+    it('keeps a saved v5 journal writable without deleting obsolete extension data or resetting its version', () => {
+      const seeded = openJournalDatabase(dbPath).db
+      publishJournalSessionEpoch(seeded, SESSION, 'epoch-1')
+      insertJournalRow(seeded, SESSION.sessionId, epochRow(1))
+      seeded.exec(
+        'CREATE TABLE agent_session_mail_holds (session_id TEXT PRIMARY KEY, intent_order INTEGER NOT NULL UNIQUE, state_json TEXT NOT NULL)'
+      )
+      seeded
+        .prepare('INSERT INTO agent_session_mail_holds VALUES (?, ?, ?)')
+        .run(SESSION.sessionId, 1, '{"legacy":true}')
+      seeded.pragma('user_version = 5')
+      seeded.close()
+      const opened = openJournalDatabase(dbPath)
+      try {
+        expect(opened.readOnly).toBe(false)
+        expect(journalPragmaNumber(opened.db, 'user_version')).toBe(5)
+        expect(
+          opened.db
+            .prepare('SELECT state_json FROM agent_session_mail_holds WHERE session_id = ?')
+            .get(SESSION.sessionId)?.state_json
+        ).toBe('{"legacy":true}')
+        insertJournalRow(opened.db, SESSION.sessionId, epochRow(2))
+        expect([...iterateJournalEpochRows(opened.db, SESSION.sessionId, 'epoch-1')]).toHaveLength(
+          2
+        )
+      } finally {
+        opened.db.close()
+      }
+    })
+
     it('opens a newer user_version read-only without touching the file', async () => {
       const seeded = openJournalDatabase(dbPath).db
       publishJournalSessionEpoch(seeded, SESSION, 'epoch-1')

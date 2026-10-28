@@ -15,7 +15,6 @@ import type {
 import type { WriteSettlement } from '../../../shared/pty-write-settlement'
 
 type PointerSubmitDependencies<TWaiter extends OrchestrationMessageWaiter> = {
-  validateHandoff?: () => boolean | readonly { id: string; type: string }[]
   mailboxOwner: OrchestrationMailboxOwner
   state: OrchestrationMailboxPointerState
   getDb: () => OrchestrationDb | null
@@ -58,7 +57,7 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
   let preserveAmbiguousDelivery = false
   let deferredUntilIdle = false
   let expectedPhase = MAILBOX_POINTER_WRITE_ATTEMPTED
-  let messageIds = input.messages.map((message) => message.id)
+  const messageIds = input.messages.map((message) => message.id)
   const reservationTarget = {
     ptyId: input.ptyId,
     processIncarnation: input.expectedTarget.processIncarnation
@@ -106,13 +105,7 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
       } else if (!queueSafe) {
         releaseWithoutRedrive = true
       } else {
-        const members = deps.validateHandoff?.()
-        if (members && typeof members !== 'boolean') {
-          input.messages = members
-          messageIds = members.map((message) => message.id)
-        }
         if (
-          members === false ||
           shouldReleaseOrchestrationPointer(
             deps.getDb(),
             input.mailboxHandle,
@@ -136,7 +129,6 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
           }
           // Unverifiable Enter stays attempted: neither delivery nor safe resend is proven.
           if (enterSettlement.outcome === 'refused') {
-            db.markMailboxPointerWriteAttempted(messageIds, reservationTarget, true)
             releaseWithoutRedrive = true
           }
         }
@@ -162,7 +154,7 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
             // Runtime teardown can close the DB while this delayed submit is settling.
             rollbackPersisted = false
           }
-        } else if (submitted) {
+        } else if (submitted || releaseWithoutRedrive) {
           try {
             deps.getDb()?.settleMailboxPointerEnter(messageIds, reservationTarget, [expectedPhase])
           } catch {

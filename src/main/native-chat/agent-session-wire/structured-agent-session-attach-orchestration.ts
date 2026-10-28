@@ -45,7 +45,6 @@ import {
 
 export type StructuredAgentSessionAttachOptions = {
   hostLaunchDirectory?: string
-  newRoot?: true
   catalogModels?: AttachFlowInput['models']
   recordPhase?: AgentSessionCreatePhaseRecorder
   onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
@@ -206,7 +205,6 @@ async function runAttachUnderAbort(
   try {
     const attached = await performAttach({
       models: priorRecord ? undefined : options.catalogModels,
-      newRoot: options.newRoot,
       store: context.deps.store,
       adapter: context.deps.adapter,
       agents: context.deps.agents,

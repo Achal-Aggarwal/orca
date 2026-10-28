@@ -229,6 +229,7 @@ export class StructuredAgentSessionClientDelivery {
   /** Closing handles retains session-list rows; agent-status retains them only while tabs need them. */
   closeSession(sessionId: string, options: { listed: boolean }): void {
     this.requestFailures.forget(sessionId)
+    this.mailQueueKeys.delete(sessionId)
     this.sendSettlement.closeSession(sessionId)
     if (options.listed) {
       this.statusFeed.revokeLive(sessionId)
@@ -244,7 +245,10 @@ export class StructuredAgentSessionClientDelivery {
     this.stopAtRestCommandUpdates()
     this.sendSettlement.closeAll()
     this.journalObservers.clear()
+    this.mailQueueKeys.clear()
   }
+
+  private readonly mailQueueKeys = new Map<string, string>()
 
   private publishJournal(sessionId: string, journal: AgentSessionJournal, activity = true): void {
     this.statusFeed.publish(sessionId, journal)
@@ -252,6 +256,24 @@ export class StructuredAgentSessionClientDelivery {
     // Observe completion after status projection updates, even without subscribers for background chats.
     this.turnCompletionFeed.observe(sessionId, journal)
     this.queue.onJournalActivity(sessionId, activity)
+    const queueKey = JSON.stringify([
+      journal.queuedMessages.selectionRevision(),
+      journal.mailBoundary(),
+      this.deps().store.getRecord(sessionId)?.queueOrigin
+    ])
+    if (this.mailQueueKeys.get(sessionId) !== queueKey) {
+      try {
+        this.deps().onSessionMailActivity?.(sessionId)
+        this.mailQueueKeys.set(sessionId, queueKey)
+      } catch (error) {
+        this.mailQueueKeys.delete(sessionId)
+        this.deps().logger.warn('notifying ordinary mail discovery failed', {
+          scope: 'queue-source-notification',
+          sessionId,
+          error
+        })
+      }
+    }
     for (const observer of this.journalObservers.get(sessionId) ?? []) {
       try {
         observer()

@@ -276,12 +276,10 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
       ...(this.prepareCodexCatalogProbeHomeFn
         ? { prepareCodexCatalogProbeHome: this.prepareCodexCatalogProbeHomeFn }
         : {}),
-      onRequestFailure: (failure) => this.onStructuredRequestFailureForErrorMail(failure),
-      // Structured chat has no agent CLI hooks, so this projection is what the first-work
-      // workspace rename listens to instead of `agentStatus:set`.
-      captureSessionMail: (sessionId, records, scope) =>
-        this.captureSessionMail(sessionId, records, scope),
+      captureSessionMail: () => this.captureSessionMail(),
       onSessionMailActivity: (sessionId) => this.notifyStructuredSessionJournalActivity(sessionId),
+      onRequestFailure: (failure) => this.onStructuredRequestFailureForErrorMail(failure),
+      // Structured chat has no CLI hooks; this projection drives first-work renaming.
       onSessionStatusChanged: (summary, options) => {
         this.onStructuredSessionStatusForMail(summary)
         nameChat(summary, options)

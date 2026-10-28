@@ -107,7 +107,6 @@ export function registerCommandReceiptSchemaTests(): void {
           expect(readOnly).toBe(false)
           expect(hasReceiptTable(db)).toBe(true)
           expect(journalPragmaNumber(db, 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
-          expect(db.prepare('SELECT * FROM agent_session_mail_holds').all()).toEqual([])
           if (version === 4) {
             expect(db.prepare('SELECT session_id FROM agent_session_records').all()).toEqual([
               { session_id: 'session-1' }

@@ -23,7 +23,7 @@ export const orchestrationInboxMethod = defineMethod({
             params.limit
           )
         : db.getInbox(params.limit)
-    const messages = rows.map(({ handoff: _handoff, recovery_used: _budget, ...row }) => row)
+    const messages = rows.map(({ ordering_origin: _orderingOrigin, ...row }) => row)
     return { messages, count: messages.length }
   }
 })

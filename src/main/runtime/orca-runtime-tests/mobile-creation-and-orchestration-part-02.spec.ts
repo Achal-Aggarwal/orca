@@ -242,7 +242,7 @@ describe('OrcaRuntimeService', () => {
     try {
       const runtime = new OrcaRuntimeService(store)
       const db = new InMemoryOrchestrationMessages()
-      const pendingReads = vi.spyOn(db, 'getAutomaticMailCandidates')
+      const pendingReads = vi.spyOn(db, 'getUndeliveredUnreadMessages')
       const write = vi.fn().mockReturnValue(true)
       setInMemoryOrchestrationMessages(runtime, db)
       runtime.setPtyController({

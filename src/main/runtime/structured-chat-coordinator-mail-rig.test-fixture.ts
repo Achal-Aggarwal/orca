@@ -267,8 +267,7 @@ function createMailHost() {
     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
     ...scriptedCodexTransport(codex.openConnection),
     onRequestFailure: (failure) => runtime.onStructuredRequestFailureForErrorMail(failure),
-    captureSessionMail: (sessionId, records, scope) =>
-      runtime.captureSessionMail(sessionId, records, scope),
+    captureSessionMail: () => runtime.captureSessionMail(),
     onSessionMailActivity: (sessionId) => runtime.notifyStructuredSessionJournalActivity(sessionId),
     onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
     onSessionTabHidden: (sessionId) => runtime.onStructuredSessionTabHidden(sessionId)

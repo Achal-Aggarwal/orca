@@ -150,7 +150,6 @@ async function attach(
 ) {
   store ??= await openTestAgentSessionRecordStore(root!)
   return performAttach({
-    newRoot: true,
     agents,
     logger: createStructuredAgentSessionLogger(),
     store,
@@ -182,9 +181,6 @@ describe('adopting a provider conversation on create', () => {
         ? attachParams(undefined, { adopt: undefined, providerHandle })
         : attachParams(transcriptPath)
       const result = await attach(transcriptPath, sessionAdapter, undefined, params)
-      expect(
-        openTestJournalHostDatabase(root).db.prepare('SELECT * FROM agent_session_mail_holds').all()
-      ).toEqual([])
       expect(result).toMatchObject({ ok: true })
       // The seeded chain must resume the adopted conversation.
       const page = (result as { value: { page: { items: unknown[] } } }).value.page
@@ -419,4 +415,52 @@ describe('adopting a provider conversation on create', () => {
     expect(JSON.stringify(result.value.page.items)).toContain('prepared before acquiring')
     expect(prepare).toHaveBeenCalledTimes(1)
   })
+})
+
+it('actual attach imports prepared history over only the exact saved bookkeeping baseline', async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-q-baseline-attach-'))
+  const transcriptPath = join(root, 'rollout.jsonl')
+  await writeCodexRollout(transcriptPath, 'retained adopted transcript')
+  const database = openTestJournalHostDatabase(root)
+  const journal = new AgentSessionJournal({
+    database,
+    identity: {
+      sessionId: SESSION,
+      workspaceId: 'workspace-1',
+      hostId: 'local',
+      agent: 'codex',
+      providerHandle: null
+    }
+  })
+  await journal.open()
+  const { epoch } = journal.cursor()
+  const { agentJournalItemKey } = await import('../../../shared/agent-session-journal-item-key')
+  database.db
+    .prepare(
+      'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
+    )
+    .run(
+      SESSION,
+      epoch,
+      2,
+      NOW,
+      JSON.stringify({
+        v: 1,
+        epoch,
+        seq: 2,
+        fence: 0,
+        ts: NOW,
+        kind: 'tombstone',
+        itemId: agentJournalItemKey({ provider: 'orca', clientMessageId: 'mail-boundary' }),
+        revision: 1,
+        mailBoundary: { status: 'held', stop: null, cuts: [], members: [], ambiguous: true }
+      })
+    )
+  await journal.close()
+  const result = await attach(transcriptPath, adapter())
+  expect(result).toMatchObject({ ok: true })
+  if (!result.ok) {
+    throw new Error('attach failed')
+  }
+  expect(JSON.stringify(result.value.page.items)).toContain('retained adopted transcript')
 })

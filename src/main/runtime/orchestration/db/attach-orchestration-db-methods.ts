@@ -1,4 +1,3 @@
-import { attachMailHandoffStore } from './messages/mail-handoff-store'
 import { attachAttemptObservationStore } from './attempt-observation-store'
 import { attachCoordinatorRunStore } from './coordinator-runs/coordinator-run-store'
 import { attachDecisionGateStore } from './decision-gates/decision-gate-store'
@@ -97,7 +96,6 @@ export function attachOrchestrationDbMethods(ctor: { prototype: object }): void 
   attachRoleMailboxDelivery(ctor)
   attachStructuredPointerOperationStore(ctor)
   attachMessageInbox(ctor)
-  attachMailHandoffStore(ctor)
   attachMailboxPointerEnterState(ctor)
   attachDirectMailboxRouting(ctor)
   attachForeignDirectMailboxRouting(ctor)

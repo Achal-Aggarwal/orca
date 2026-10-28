@@ -1,5 +1,4 @@
 import { captureSessionMailAtStop } from '../../orchestration/session-mail-stop-inventory'
-import type { CaptureSessionMail } from '../../../native-chat/agent-session-journal/journal-mail-holds'
 import type { AutomationsChangedPayload } from '../../../../shared/runtime-client-events'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { OrcaRuntimeWithPtyForegroundProcessReads } from '../../client/runtime-client-state'
@@ -168,27 +167,21 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
       : null
   }
 
-  captureSessionMail: CaptureSessionMail = (sessionId, records, scope) =>
-    captureSessionMailAtStop(
-      this._orchestrationDb,
-      sessionId,
-      records,
-      (db) => {
-        if (this._orchestrationDb !== db) {
-          return
-        }
-        this.orchestrationStructuredMailboxPointerDelivery.resetForDatabaseChange()
-        this.orchestrationFederation.resetForDatabaseChange()
-        this.mailPointerRepointScheduler.clear()
-        this._orchestrationDb = null
-        try {
-          db.close()
-        } catch (error) {
-          console.warn('[mail] failed to retire capture connection', error)
-        }
-      },
-      scope
-    )
+  captureSessionMail = () =>
+    captureSessionMailAtStop(this._orchestrationDb, (db) => {
+      if (this._orchestrationDb !== db) {
+        return
+      }
+      this.orchestrationStructuredMailboxPointerDelivery.resetForDatabaseChange()
+      this.orchestrationFederation.resetForDatabaseChange()
+      this.mailPointerRepointScheduler.clear()
+      this._orchestrationDb = null
+      try {
+        db.close()
+      } catch (error) {
+        console.warn('[mail] retiring source connection failed', error)
+      }
+    })
 
   private orchestrationDbPath(): string {
     return join(getAppEnvironment().getPath('userData'), 'orchestration.db')

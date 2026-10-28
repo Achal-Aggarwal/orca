@@ -59,7 +59,6 @@ export type AttachedOwner = 'acquired' | 'kept' | 'none'
 
 export type AttachFlowInput = {
   store: AgentSessionRecordStore
-  newRoot?: true
   adapter: StructuredAgentSessionAdapter
   agents: Pick<StructuredAgentRegistry, 'definition'>
   logger: StructuredAgentSessionLogger
@@ -161,8 +160,7 @@ export async function performAttach(
             fingerprint: admitted.fingerprint,
             now: input.now(),
             models: input.models
-          }),
-          input.newRoot && !params.providerHandle && !params.adopt ? true : undefined
+          })
         )
       )
     )

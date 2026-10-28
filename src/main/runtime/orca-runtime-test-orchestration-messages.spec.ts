@@ -1,13 +1,12 @@
-import { withMailHandoffs } from './orchestration-mail-handoff.test-fixture'
 import type { MessagePriority, MessageRow, MessageType } from './orca-runtime-test-mocks.spec'
 
 // Test message semantics in memory to avoid unrelated SQLite native ABI failures.
-export class InMemoryMessageQueue {
+export class InMemoryOrchestrationMessages {
   private sequence = 0
 
   private activeCoordinatorRun: { coordinator_handle: string } | null = null
 
-  protected messages: MessageRow[] = []
+  private messages: MessageRow[] = []
 
   private runs = new Map<
     string,
@@ -344,5 +343,3 @@ export class InMemoryMessageQueue {
 
   close(): void {}
 }
-
-export class InMemoryOrchestrationMessages extends withMailHandoffs(InMemoryMessageQueue) {}

@@ -45,9 +45,7 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_pane_key TEXT,
   pointer_enter_pending INTEGER NOT NULL DEFAULT 0,
   pointer_pty_id TEXT,
-  pointer_process_incarnation TEXT,
-  handoff TEXT,
-  recovery_used INTEGER NOT NULL DEFAULT 0
+  pointer_process_incarnation TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_id ON messages(id);

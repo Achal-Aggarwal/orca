@@ -1,6 +1,6 @@
 // Test capability-gated queue writes with authoritative cards; Stop preserves host-held drafts and legacy Edit copies before deleting.
 
-import { createElement } from 'react'
+import { createElement, memo } from 'react'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -66,13 +66,19 @@ describe('mobile structured queued messages', () => {
     close: () => {}
   }
 
+  const queueRender = vi.fn()
+  const QueueObserver = memo(({ cards, pause }: { cards: unknown; pause: unknown }) => {
+    queueRender(cards, pause)
+    return null
+  })
+
   function Harness({
     hostSupport,
     sessionId = SESSION_ID
   }: {
     hostSupport: StructuredAgentSessionHostSupport
     sessionId?: string
-  }): null {
+  }) {
     hook = useMobileStructuredAgentSession({
       client,
       sessionId,
@@ -84,7 +90,7 @@ describe('mobile structured queued messages', () => {
       appendComposerText: appendText,
       onSendError
     })
-    return null
+    return createElement(QueueObserver, { cards: hook.queued.cards, pause: hook.queued.pause })
   }
 
   async function mountSession(
@@ -143,6 +149,27 @@ describe('mobile structured queued messages', () => {
     vi.useRealTimers()
     unmountSession()
   })
+
+  it.each([100, 1000])(
+    'does not render the mounted N=%i queue consumer for token-only frames',
+    async (count) => {
+      const cards = Array.from({ length: count }, (_, position) =>
+        queuedDraft({ messageId: `report-${position}`, position })
+      )
+      await mountSession(CAPABLE, snapshotEvent({ queuedMessages: cards }))
+      await act(async () => {})
+      queueRender.mockClear()
+      await act(async () =>
+        listener?.({ ...batchEvent(), activity: { turnId: 'working', text: 'token' } })
+      )
+      await act(async () => {})
+      expect(hook?.queued.cards).toHaveLength(count)
+      expect(queueRender).not.toHaveBeenCalled()
+      await act(async () => listener?.(batchEvent(cards.slice(1))))
+      await vi.waitFor(() => expect(hook?.queued.cards).toHaveLength(count - 1))
+      expect(queueRender).toHaveBeenCalledTimes(1)
+    }
+  )
 
   it('reverts an optimistic relative move when the host reports a changed queue', async () => {
     const mail = queuedDraft({
@@ -698,6 +725,50 @@ describe('mobile structured queued messages', () => {
         expect(await hook!.queued.resume()).toBe(false)
       })
       expect(onSendError).toHaveBeenCalledWith(expect.any(String))
+    })
+
+    it('uses existing Resume for report-only and returned-prefix worker queues and follows the released host state', async () => {
+      sendRequest.mockImplementation(async (method) =>
+        method === 'agentSession.queuedMessagesResume'
+          ? mutationOk({ resumed: true })
+          : method === 'agentSession.options'
+            ? ok({ models: [], current: {} })
+            : ok({})
+      )
+      const worker = queuedDraft({
+        messageId: 'worker',
+        position: 2,
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [],
+          from: {
+            kind: 'agent',
+            senders: [],
+            orchestration: {
+              message: 'mail-notice',
+              mailbox: 'run:r',
+              dispatchId: null,
+              messages: []
+            }
+          }
+        }
+      })
+      await mountSession(CAPABLE, snapshotEvent({ queuedMessages: [worker] }))
+      for (const cards of [
+        [worker],
+        [queuedDraft({ messageId: 'returned', state: 'returned', returnedReason: null }), worker]
+      ]) {
+        act(() => listener?.(batchEvent(cards, [], { reason: 'stopped' })))
+        expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
+        expect(hook!.queued.cards.find((card) => card.messageId === 'worker')?.hold).toBe('turn')
+        await act(async () => expect(await hook!.queued.resume()).toBe(true))
+        expect(Object.keys(requestOf('agentSession.queuedMessagesResume').params)).toEqual([
+          'envelope'
+        ])
+        act(() => listener?.(batchEvent(cards, [], null)))
+        expect(hook!.queued.pause).toBeNull()
+      }
     })
 
     it('an incapable Stop is exactly today’s cancel', async () => {

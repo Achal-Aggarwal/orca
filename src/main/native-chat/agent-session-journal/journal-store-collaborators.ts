@@ -25,6 +25,7 @@ import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-atta
 import { isJournalStreamedTextRevision } from './journal-streamed-text-revision'
 
 export type JournalStoreHost = {
+  queueOrigin?: () => 'fresh' | undefined
   /** Notify readers of durable draft-only transactions that append no journal row. */
   notifyCommitted: () => void
   identity: AgentSessionJournalIdentity
@@ -70,9 +71,13 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     state: host.state,
     queuePauseRestatement: () =>
       journalQueuePauseRestatement(
-        host.state().queuePauseMarks,
-        host.state().latestAcceptedTurnSequence,
-        host.journal().queuedMessages.pauses()
+        {
+          ...host.state().queuePauseMarks,
+          latestStop: host.state().queuePauseMarks.personalStop ?? null
+        },
+        host.state().latestAcceptedPersonalTurnSequence,
+        host.journal().queuedMessages.pauses(),
+        host.state().mailBoundary
       ),
     queueRestatement: () => host.journal().queuedMessages.restatement(),
     cursor: host.cursor,
@@ -99,6 +104,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     streamedTextRevision: (row) => isJournalStreamedTextRevision(host.state(), row)
   })
   const queuedMessages = new JournalQueuedMessages({
+    queueOrigin: host.queueOrigin,
     sessionId: host.identity.sessionId,
     serialize: host.serialize,
     database: host.database,
@@ -126,8 +132,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     stops: new JournalStopAcceptor({
       writer: rowWriter,
       state: host.state,
-      sessionId: host.identity.sessionId,
-      database: host.database
+      sessionId: host.identity.sessionId
     }),
     // Import legacy cards once per open without failing the open.
     restore: () =>

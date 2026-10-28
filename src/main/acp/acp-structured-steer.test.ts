@@ -1,6 +1,4 @@
 import { subscribeForRedrive } from '../runtime/rpc/methods/orchestration-structured-worker-session'
-import { structuredMailBody } from '../runtime/orchestration/structured-mail-source'
-import { mintAgentSessionOperationId } from '../runtime/orchestration/structured-pointer-operation-id'
 import '../runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
@@ -375,12 +373,10 @@ describe('Steer on a Grok card, through the host', () => {
   })
 })
 
-// A real execution host, ACP adapter and RPC dispatcher; only the ACP child is scripted.
+// Real host, ACP adapter, source DB and RPC consumer; only the child process is scripted.
 it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
-  'holds a backlog for a full ACP turn, then reports its oldest member with exact check replay and ack (%s)',
+  'queues attributed reports for whole ACP turns with independent check/replay/ack (%s)',
   async (variant) => {
-    const history = variant === 'mixed-10N' ? 'mixed' : variant
-    const population = variant === 'mixed-10N' ? 1000 : 100
     const { OrchestrationDb } = await import('../runtime/orchestration/db')
     const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
     const { RpcDispatcher } = await import('../runtime/rpc/dispatcher')
@@ -392,7 +388,7 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
       await import('../native-chat/agent-session-wire/structured-agent-session-registry')
     const { createStructuredMailboxPointerHost } =
       await import('../runtime/orchestration/structured-mailbox-pointer-host')
-    const { OrchestrationStructuredMailboxPointerDelivery } =
+    const { OrchestrationStructuredMailboxPointerDelivery, ordinaryMailCreationId } =
       await import('../runtime/orchestration/structured-mailbox-pointer-delivery')
     const db = new OrchestrationDb(':memory:')
     const runtime = new OrcaRuntimeService()
@@ -409,22 +405,22 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         params,
         authToken: 'test',
         orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
-        orchestrationRequestId: `backlog-${request}`,
+        orchestrationRequestId: `ordinary-backlog-${request}`,
         orchestrationCompatibilityEvidence: { agentSessionId: SESSION }
       })
       expect(response).toMatchObject({ ok: true })
       return resultOf(response)
     }
     let disposeRedrive = () => {}
+    let delivery: InstanceType<typeof OrchestrationStructuredMailboxPointerDelivery> | undefined
     try {
       const runId = idOf((await call('orchestration.runCreate', { objective: 'backlog' })).run)
       const mailbox = `run:${runId}`
-      const performance =
-        history === 'mixed'
-          ? prepareMailPerformanceHistory(db, mailbox, runId, population)
-          : undefined
+      const performance = variant.startsWith('mixed')
+        ? prepareMailPerformanceHistory(db, mailbox, runId, variant === 'mixed-10N' ? 1000 : 100)
+        : undefined
       const pointerHost = createStructuredMailboxPointerHost()
-      const delivery = new OrchestrationStructuredMailboxPointerDelivery({
+      delivery = new OrchestrationStructuredMailboxPointerDelivery({
         getDb: () => db,
         getMessageWaiters: () => performance?.waiters,
         resolveStructuredTarget: () => ({ sessionId: SESSION, dispatchId: null }),
@@ -432,88 +428,31 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         senderName: () => null,
         host: pointerHost
       })
-      const insert = () =>
-        db.insertMessage({ from: 'worker', to: mailbox, runId, subject: 'result' })
-      const body = message(history === 'fresh' ? 'working before mail' : 'release mail')
+      const body = message('working before mail')
       const personal = envelope('agentSession.send', { body })
-      const accepted = await f.host.send(CALLER, { envelope: personal, body, userSend: true })
-      expect(accepted.ok).toBe(true)
+      expect(await f.host.send(CALLER, { envelope: personal, body, userSend: true })).toMatchObject(
+        { ok: true }
+      )
+      const journal = f.host.collaboratorsForTests().sessions.get(SESSION)!.journal
       expect(
-        await f.host.readMailHandoffEvidence(SESSION, personal.clientOperationId)
-      ).toMatchObject({
-        submission: { origin: 'client', source: { kind: 'user' } },
-        mailHold: { ambiguous: false, members: new Set() }
-      })
+        (await f.host.journalSnapshot(SESSION)).submissions.find(
+          (row) => row.clientMessageId === personal.clientOperationId
+        )
+      ).toMatchObject({ origin: 'client', source: { kind: 'user' } })
+      expect(journal.mailHoldFacts().held).toBe(false)
       const working = await f.rig.frame('session/prompt')
-      if (history !== 'fresh') {
-        f.rig.child().agent.reply(working, { stopReason: 'end_turn' })
-        await waitFor(() => expect(pointerHost.takesMailNow?.(SESSION)).toBe(true))
-      }
-      const first = insert()
-      let prompts = 1
-      if (history === 'mixed' || history === 'invalidation') {
-        delivery.deliverForHandle(mailbox)
-        const failed = await f.rig.frame('session/prompt', prompts)
-        f.rig.child().agent.notify('session/update', replyChunk(promptIdOf(failed), 'working'))
-        await waitFor(() =>
-          expect(JSON.parse(db.getMessageById(first.id)!.handoff!).phase).toBe('offered')
-        )
-        f.rig.child().agent.fail(failed, -32603, 'Internal error')
-        await waitFor(async () =>
-          expect((await f.turns()).at(-1)).toMatchObject({ outcome: 'failure' })
-        )
-        prompts = 2
-      } else if (history === 'fresh') {
-        f.rig.child().agent.notify('session/update', replyChunk(promptIdOf(working), 'working'))
-        await f.rig.settle()
-        await f.host.flushStreamedEvents(SESSION)
-        answersCancels(f.rig.child().agent)
-        expect(
-          await pointerHost.send({
-            sessionId: SESSION,
-            dispatchId: null,
-            operationId: mintAgentSessionOperationId(Date.now()),
-            expectedRuntimeFence: f.fence(),
-            beforeRun: () => true,
-            body: structuredMailBody({
-              db,
-              mailboxHandle: mailbox,
-              dispatchId: null,
-              message: first,
-              senderName: () => null,
-              cliCommand: 'orca'
-            })
-          })
-        ).toEqual({ kind: 'held' })
-        prompts = 1
-      }
-      let priorEpoch: string | undefined
-      if (history === 'held-epoch') {
-        const held = vi.spyOn(pointerHost, 'send').mockResolvedValue({ kind: 'held' })
-        delivery.deliverForHandle(mailbox)
-        await waitFor(() => expect(held).toHaveBeenCalled())
-        await f.rig.settle()
-        const heldCalls = held.mock.calls.length
-        const original = JSON.parse(db.getMessageById(first.id)!.handoff!)
-        delivery.onJournalActivity(SESSION)
-        await f.rig.settle()
-        expect(held).toHaveBeenCalledTimes(heldCalls)
-        delivery.deliverForHandle(mailbox)
-        await waitFor(() => expect(held.mock.calls.length).toBeGreaterThan(heldCalls))
-        expect(JSON.parse(db.getMessageById(first.id)!.handoff!).operationId).toBe(
-          original.operationId
-        )
-        priorEpoch = original.epoch
-        await f.rig.settle()
-        held.mockRestore()
-      }
-      performance?.restoreParkedCandidates(db.getMessageById(first.id)!.handoff!)
-      const messages = [first, ...Array.from({ length: 4 }, insert)]
-      let invalidated = false
+      const messages = Array.from({ length: 5 }, (_, n) =>
+        db.insertMessage({ from: 'worker', to: mailbox, runId, subject: `result-${n}` })
+      )
+      const held =
+        variant === 'held-epoch'
+          ? vi.spyOn(pointerHost, 'send').mockResolvedValue({ kind: 'held' })
+          : undefined
       const actualSend = f.host.send.bind(f.host)
-      const sendSpy = vi.spyOn(f.host, 'send').mockImplementation(async (...args) => {
-        if (history === 'invalidation' && !invalidated) {
-          invalidated = true
+      let checked = false
+      const sends = vi.spyOn(f.host, 'send').mockImplementation(async (...args) => {
+        if (variant === 'invalidation' && !checked) {
+          checked = true
           db.getOrCreateMailboxDelivery({
             runId,
             mailboxHandle: mailbox,
@@ -523,102 +462,95 @@ it.each(['fresh', 'mixed', 'mixed-10N', 'invalidation', 'held-epoch'] as const)(
         }
         return actualSend(...args)
       })
-      if (history === 'fresh') {
-        const prepared = vi.spyOn(pointerHost, 'readHandoffEvidence')
-        delivery.deliverForHandle(mailbox)
-        await waitFor(() => expect(prepared).toHaveBeenCalled())
-        await f.rig.settle()
-        expect(sendSpy).not.toHaveBeenCalled()
-        expect(db.getMessageById(first.id)?.handoff).toBeNull()
-        expect(f.rig.sent('session/prompt')).toHaveLength(prompts)
-        f.rig.child().agent.reply(await f.rig.frame('session/prompt'), { stopReason: 'end_turn' })
-        await waitFor(() => expect(pointerHost.takesMailNow?.(SESSION)).toBe(true))
-        prepared.mockRestore()
-      }
-      if (priorEpoch !== undefined) {
-        const journal = f.host.collaboratorsForTests().sessions.get(SESSION)!.journal
+      delivery.deliverForHandle(mailbox)
+      if (held) {
+        await waitFor(() => expect(held).toHaveBeenCalled())
+        const original = vi.mocked(pointerHost.send).mock.calls[0][0].operationId
+        expect(original).toBe(ordinaryMailCreationId(messages[0]))
+        await f.host.flushStreamedEvents(SESSION)
+        held.mockRestore()
+        const priorEpoch = journal.epoch
         disposeRedrive = await subscribeForRedrive(f.host, SESSION, (id) =>
-          delivery.onJournalActivity(id)
+          delivery?.onJournalActivity(id)
         )
         await journal.replaceEpochItems('handle_forked', f.fence(), [])
-        expect(journal.cursor().epoch).not.toBe(priorEpoch)
-      } else {
+        expect(journal.epoch).not.toBe(priorEpoch)
+      }
+      if (variant === 'invalidation') {
+        await waitFor(() => expect(checked).toBe(true))
+        await f.rig.settle()
+        expect(db.getMessageById(messages[0].id)?.delivered_at).toBeNull()
         delivery.deliverForHandle(mailbox)
       }
-      const pointer = await f.rig.frame('session/prompt', prompts).catch((error) => {
-        console.error(
-          'backlog diagnostic',
-          history,
-          db.getUnreadMessages(mailbox),
-          sendSpy.mock.calls.length
-        )
-        throw error
-      })
-      await f.rig.settle()
-      expect(f.rig.sent('session/prompt')).toHaveLength(prompts + 1)
-      expect(f.rig.sent('session/cancel')).toHaveLength(0)
-      const delivered = messages[history === 'invalidation' ? 1 : 0]
-      expect(sendSpy.mock.calls.at(-1)?.[1].body?.from?.orchestration).toMatchObject({
-        carriesMailContent: true,
-        messages: [{ messageId: delivered.id, runId, from: 'worker' }]
-      })
-      expect(messages.map((m) => db.getMessageById(m.id)!.recovery_used)).toEqual([
-        history === 'mixed' || history === 'invalidation' ? 1 : 0,
-        0,
-        0,
-        0,
-        0
-      ])
-      const checking = async () => {
-        f.rig.child().agent.notify('session/update', replyChunk(promptIdOf(pointer), 'checking'))
-        await waitFor(async () => expect(await f.messages()).toContain('checking'))
-        expect(JSON.parse(db.getMessageById(delivered.id)!.handoff!).phase).toBe('offered')
-      }
-      if (performance) {
-        await measureMailDeliveryWork({ f, db, delivery, mailbox, performance, checking })
-        expect(f.rig.sent('session/prompt')).toHaveLength(prompts + 1)
-        expect(f.rig.sent('session/cancel')).toHaveLength(0)
-        expect(messages.map((row) => db.getMessageById(row.id)!.recovery_used)).toEqual([
-          1, 0, 0, 0, 0
-        ])
-        performance.finish()
-      } else {
-        await checking()
-      }
-      const fetched = await call('orchestration.check')
-      if (performance) {
-        expect(fetched.messages).toMatchObject(messages.map((row) => ({ id: row.id })))
-      }
-      const replay = await call('orchestration.check')
-      expect(replay).toMatchObject({
-        deliveryId: fetched.deliveryId,
-        replayed: true,
-        messages: fetched.messages
-      })
-      const next = await call('orchestration.check', { ack: fetched.deliveryId })
-      if (history === 'invalidation') {
-        expect(next).toMatchObject({ count: 4 })
-        expect(await call('orchestration.check', { ack: next.deliveryId })).toMatchObject({
-          count: 0
-        })
-      } else {
-        expect(next).toMatchObject({ count: 0 })
-      }
-      f.rig.child().agent.reply(pointer, { stopReason: 'end_turn' })
-      await waitFor(async () =>
-        expect(
-          (await f.host.journalSnapshot(SESSION)).items
-            .flatMap((item) => readAgentJournalTurn(item.body) ?? [])
-            .at(-1)
-        ).toMatchObject({ state: 'completed' })
+      const owned = variant === 'invalidation' ? messages.slice(1) : messages
+      await waitFor(() =>
+        expect(owned.every((row) => db.getMessageById(row.id)?.delivered_at !== null)).toBe(true)
       )
+      await f.rig.settle()
+      expect(f.rig.sent('session/prompt')).toHaveLength(1)
+      expect(f.rig.sent('session/cancel')).toHaveLength(0)
+      if (performance) {
+        await measureMailDeliveryWork({ f, db, delivery, mailbox, performance })
+      }
+      f.rig.child().agent.reply(working, { stopReason: 'end_turn' })
+      let prompts = 1
+      for (const [index, row] of owned.entries()) {
+        const prompt = await f.rig.frame('session/prompt', prompts++)
+        const card = journal.queuedMessages.get(ordinaryMailCreationId(row))
+        expect(card?.body.from?.orchestration?.messages).toEqual([
+          { messageId: row.id, runId, from: 'worker' }
+        ])
+        expect(JSON.stringify(prompt)).toContain(row.subject)
+        f.rig
+          .child()
+          .agent.notify('session/update', replyChunk(promptIdOf(prompt), `checking-${index}`))
+        await waitFor(async () => expect(await f.messages()).toContain(`checking-${index}`))
+        await f.rig.settle()
+        expect(f.rig.sent('session/prompt')).toHaveLength(prompts)
+        expect(f.rig.sent('session/cancel')).toHaveLength(0)
+        if (index === 0) {
+          const fetched = await call('orchestration.check')
+          const replay = await call('orchestration.check')
+          expect(replay).toMatchObject({
+            deliveryId: fetched.deliveryId,
+            replayed: true,
+            messages: fetched.messages
+          })
+          const next = await call('orchestration.check', { ack: fetched.deliveryId })
+          if (variant === 'invalidation') {
+            expect(next).toMatchObject({ count: 4 })
+            expect(await call('orchestration.check', { ack: next.deliveryId })).toMatchObject({
+              count: 0
+            })
+          } else {
+            expect(next).toMatchObject({ count: 0 })
+          }
+        }
+        if (index === 0 && performance) {
+          f.rig.child().agent.fail(prompt, -32603, 'Internal error')
+          await waitFor(async () =>
+            expect((await f.turns()).at(-1)).toMatchObject({ outcome: 'failure' })
+          )
+          expect(db.getMessageById(row.id)?.delivered_at).not.toBeNull()
+        } else {
+          f.rig.child().agent.reply(prompt, { stopReason: 'end_turn' })
+        }
+        await waitFor(async () => expect((await f.turns()).at(-1)?.state).toBe('completed'))
+      }
       delivery.onJournalActivity(SESSION)
       await f.rig.settle()
       expect(db.getUnreadMessages(mailbox)).toHaveLength(0)
-      expect(f.rig.sent('session/prompt')).toHaveLength(prompts + 1)
-      expect(sendSpy.mock.calls.length).toBe(history === 'invalidation' ? 2 : 1)
+      expect(f.rig.sent('session/prompt')).toHaveLength(prompts)
+      expect(journal.queuedMessages.list().filter((row) => row.state === 'waiting')).toHaveLength(0)
+      expect(
+        sends.mock.calls.filter(
+          ([, input]) => input.body.from?.orchestration?.message === 'mail-notice'
+        ).length
+      ).toBe(owned.length + Number(variant === 'invalidation'))
     } finally {
       disposeRedrive()
+      delivery?.resetForDatabaseChange()
+      await f.host.close(SESSION, 'user-close')
       setStructuredAgentSessionHost(null)
       vi.restoreAllMocks()
       db.close()

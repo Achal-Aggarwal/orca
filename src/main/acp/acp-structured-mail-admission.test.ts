@@ -5,7 +5,10 @@ import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline
 import { HOST_TEST_SESSION as SESSION } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { commandReceiptScope } from '../native-chat/agent-session-journal/command-receipt-schema'
-import { createStructuredMailboxPointerHost } from '../runtime/orchestration/structured-mailbox-pointer-host'
+import {
+  createStructuredMailboxPointerHost,
+  readStructuredSessionGateFacts
+} from '../runtime/orchestration/structured-mailbox-pointer-host'
 import { mintAgentSessionOperationId } from '../runtime/orchestration/structured-pointer-operation-id'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 
@@ -14,7 +17,7 @@ afterEach(async () => {
   await closeProviderTimelineRigs()
 })
 
-it('holds mail without interrupting an answerable ACP question', async () => {
+it('queues mail without interrupting an answerable ACP question', async () => {
   const { host, rig } = await openAttachedHostRig()
   setStructuredAgentSessionHost(host)
   await send(host, 'work')
@@ -25,7 +28,9 @@ it('holds mail without interrupting an answerable ACP question', async () => {
     questions: [{ question: 'Which file?', options: [{ label: 'a.ts' }] }]
   })
   const pointer = createStructuredMailboxPointerHost()
-  await waitFor(() => expect(pointer.hasActionablePromptNow(SESSION)).toBe(true))
+  await waitFor(async () =>
+    expect(await readStructuredSessionGateFacts(SESSION)).toMatchObject({ awaitingHuman: true })
+  )
   const body: AgentJournalMessageItem = {
     ...hello,
     from: {
@@ -46,17 +51,21 @@ it('holds mail without interrupting an answerable ACP question', async () => {
       operationId,
       expectedRuntimeFence,
       body,
-      holdWhileWorking: false
+      beforeRun: () => {},
+      mailSource: { incarnation: 'source', sequence: 1, origin: 'local' }
     })
-  ).toEqual({ kind: 'held' })
+  ).toEqual({ kind: 'queued' })
   const after = await host.journalSnapshot(SESSION)
   expect(before.submissions).toHaveLength(1)
   expect(after.submissions).toEqual(before.submissions)
   expect(after.items.filter((row) => row.body.kind === 'question')).toEqual(questions)
-  expect(pointer.hasActionablePromptNow(SESSION)).toBe(true)
+  expect(await readStructuredSessionGateFacts(SESSION)).toMatchObject({ awaitingHuman: true })
   expect(
     host.deps.store.readCommandReceipt(commandReceiptScope('any', 'global'), operationId)
-  ).toMatchObject({ verdict: 'absent' })
+  ).toMatchObject({
+    verdict: 'readable',
+    receipt: { status: 'accepted', result: { kind: 'queued-draft', messageId: operationId } }
+  })
   expect(framesOf(rig.child(), 'session/cancel')).toHaveLength(0)
   await host.close(SESSION, 'user-close')
 })

@@ -1,6 +1,4 @@
-import { initializeJournalMailBoundary, restorePersonalQueuedSends } from './journal-mail-bootstrap'
-import { journalMailHoldFacts } from './journal-mail-boundary'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { journalHasConversationHistory } from './journal-conversation-history'
 // Each session owns its fold and queue; all statements use the host's shared database connection.
 
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
@@ -92,6 +90,7 @@ export class AgentSessionJournal {
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly submissionWriter: JournalSubmissionWriter
   private readonly stepWriter: JournalStepWriter
+  private readonly freshOrigin: () => boolean
   private readonly restore: () => Promise<void>
   /** Queued cards never count as owed work. */
   readonly queuedMessages: JournalQueuedMessages
@@ -100,6 +99,7 @@ export class AgentSessionJournal {
   readonly context: JournalContextController
 
   constructor(options: AgentSessionJournalOptions) {
+    this.freshOrigin = () => options.queueOrigin?.() === 'fresh'
     this.identity = options.identity
     this.database = options.database
     this.now = options.now ?? (() => Date.now())
@@ -107,6 +107,7 @@ export class AgentSessionJournal {
     this.state = createJournalReducerState(options.identity.sessionId, '')
     this.queue = new JournalWriteQueue(options.identity.sessionId)
     const collaborators = createJournalStoreCollaborators({
+      queueOrigin: options.queueOrigin,
       identity: this.identity,
       now: this.now,
       mintEpoch: this.mintEpoch,
@@ -117,14 +118,12 @@ export class AgentSessionJournal {
       cursor: this.cursor,
       adopt: (loaded) => {
         this.state = loaded.state
-        restorePersonalQueuedSends(this.database.db, this.state)
         this.onCommitted?.()
       },
       commit: (rows, savedAt) => {
         for (const row of rows) {
           applyJournalRow(this.state, row, savedAt)
         }
-        restorePersonalQueuedSends(this.database.db, this.state, rows)
         this.onCommitted?.(rows)
       },
       notifyCommitted: () => this.onCommitted?.([]),
@@ -168,7 +167,6 @@ export class AgentSessionJournal {
 
   async open(): Promise<void> {
     await this.restore()
-    await initializeJournalMailBoundary(this.database.db, () => this.state, this.rowWriter)
     this.openedThrough = this.cursor()
   }
 
@@ -251,11 +249,7 @@ export class AgentSessionJournal {
 
   historyOrigin = () => this.state.historyOrigin
 
-  mailHandoffs = () => this.state.mailHandoffs
-
   submission = (clientMessageId: string) => this.state.submissions.get(clientMessageId)
-
-  submissionHandoff = (id: string) => this.state.mailHandoffs.owner(this.state, id)
 
   pendingSubmissions = () => this.submissions().filter((entry) => entry.dispatchState === 'pending')
 
@@ -302,13 +296,15 @@ export class AgentSessionJournal {
     return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
   }
 
-  personalQueuedSend(clientMessageId: string): boolean {
-    return this.state.personalQueuedSends.has(clientMessageId)
-  }
+  hasConversationHistory = () =>
+    journalHasConversationHistory(this.database.db, this.identity.sessionId, this.state.epoch)
 
-  mailHoldFacts(_records?: () => readonly AgentSessionRecord[], _revision = -1) {
-    return journalMailHoldFacts(this.state.mailBoundary)
-  }
+  mailBoundary = () => this.state.mailBoundary
+
+  mailHoldFacts = () => ({
+    held: this.state.mailBoundary ? this.state.mailBoundary.status === 'held' : !this.freshOrigin(),
+    key: JSON.stringify([this.state.mailBoundary ?? null, this.freshOrigin()])
+  })
 
   appendQueueResume(fence: number, receipt?: JournalOperationReceipt): Promise<AgentJournalCursor> {
     return this.rowWriter.append(

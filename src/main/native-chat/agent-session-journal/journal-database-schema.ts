@@ -66,9 +66,3 @@ CREATE TABLE IF NOT EXISTS agent_session_store_meta (
 );
 `
 }
-
-export function createMailHoldsTableSql(): string {
-  return `CREATE TABLE IF NOT EXISTS agent_session_mail_holds (
-    session_id TEXT PRIMARY KEY, intent_order INTEGER NOT NULL UNIQUE, state_json TEXT NOT NULL
-  );`
-}

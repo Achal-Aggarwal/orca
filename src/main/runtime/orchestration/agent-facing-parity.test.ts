@@ -123,16 +123,6 @@ async function renderChatMail(mailbox: string): Promise<string> {
     .run()
   const texts: string[] = []
   const message = db.insertMessage({ from: 'term_peer', to: mailbox, subject: 'hi' })
-  const evidence = {
-    mailHold: { members: new Set<string>(), ambiguous: false, key: 'released' },
-    epoch: 'epoch',
-    frontier: 'frontier',
-    stopInForce: false,
-    submission: undefined,
-    owner: null,
-    personStopped: false,
-    diedTurnId: null
-  }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
     getDb: () => db,
     getMessageWaiters: () => undefined,
@@ -140,18 +130,13 @@ async function renderChatMail(mailbox: string): Promise<string> {
     getCliCommand: localOrchestrationCliCommand,
     senderName: () => null,
     host: {
-      readSessionFacts: async () => evidence,
-      readHandoffEvidence: async () => evidence,
-      readHandoffEvidenceNow: () => evidence,
-      hasActionablePromptNow: () => false,
-      isWorkingNow: () => false,
+      readCreation: () => 'absent',
       currentFence: () => 1,
-      currentContextClearOperationId: () => undefined,
       send: async (input) => {
         for (const block of input.body.blocks) {
           texts.push(block.type === 'text' ? block.text : '')
         }
-        return { kind: 'sent', state: 'accepted' }
+        return { kind: 'queued' }
       }
     }
   })

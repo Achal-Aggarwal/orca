@@ -1,4 +1,3 @@
-import { UNKNOWN_MAIL_HANDOFF } from '../../mail-handoff'
 import type { MessageRow } from '../../types'
 import type { OrchestrationDb } from '../orchestration-db'
 import { ORCHESTRATION_DELIVERY_BATCH_LIMIT } from './mailbox-routing-page'
@@ -41,38 +40,8 @@ export function getPendingMailboxPointerHandles(this: OrchestrationDb): string[]
 export function stageMailboxPointerEnter(
   this: OrchestrationDb,
   ids: string[],
-  target: MailboxPointerReservationTarget,
-  expectedHandoffs?: readonly { id: string; handoff?: string | null }[]
+  target: MailboxPointerReservationTarget
 ): boolean {
-  if (expectedHandoffs) {
-    this.db.exec('SAVEPOINT mailbox_pointer_handoff_stage')
-    try {
-      const update = this.db
-        .prepare(`UPDATE messages SET pointer_enter_pending = ?, pointer_pty_id = ?, pointer_process_incarnation = ?
-        WHERE id = ? AND read = 0 AND pointer_enter_pending = 0 AND handoff IS ?`)
-      for (const message of expectedHandoffs) {
-        if (
-          !update.run(
-            MAILBOX_POINTER_RESERVED,
-            target.ptyId,
-            target.processIncarnation,
-            message.id,
-            message.handoff ?? null
-          ).changes
-        ) {
-          this.db.exec('ROLLBACK TO mailbox_pointer_handoff_stage')
-          this.db.exec('RELEASE mailbox_pointer_handoff_stage')
-          return false
-        }
-      }
-      this.db.exec('RELEASE mailbox_pointer_handoff_stage')
-      return true
-    } catch (error) {
-      this.db.exec('ROLLBACK TO mailbox_pointer_handoff_stage')
-      this.db.exec('RELEASE mailbox_pointer_handoff_stage')
-      throw error
-    }
-  }
   return (
     mutatePointerMessages(
       this,
@@ -81,7 +50,7 @@ export function stageMailboxPointerEnter(
         sql: `UPDATE messages
           SET pointer_enter_pending = ?,
               pointer_pty_id = ?, pointer_process_incarnation = ?
-          WHERE read = 0 AND handoff IS NULL AND pointer_enter_pending = 0
+          WHERE read = 0 AND pointer_enter_pending = 0
             AND id IN (${placeholders})`,
         leadingParams: [MAILBOX_POINTER_RESERVED, target.ptyId, target.processIncarnation]
       }),
@@ -93,8 +62,7 @@ export function stageMailboxPointerEnter(
 export function markMailboxPointerWriteAttempted(
   this: OrchestrationDb,
   ids: string[],
-  target: MailboxPointerReservationTarget,
-  refusedEnter = false
+  target: MailboxPointerReservationTarget
 ): boolean {
   return (
     mutatePointerMessages(
@@ -108,7 +76,7 @@ export function markMailboxPointerWriteAttempted(
             AND id IN (${placeholders})`,
         leadingParams: [
           MAILBOX_POINTER_WRITE_ATTEMPTED,
-          refusedEnter ? MAILBOX_POINTER_ENTER_ATTEMPTED : MAILBOX_POINTER_RESERVED,
+          MAILBOX_POINTER_RESERVED,
           target.ptyId,
           target.processIncarnation
         ]
@@ -156,9 +124,7 @@ export function settleMailboxPointerEnter(
   }
   mutatePointerMessages(this, ids, (placeholders) => ({
     sql: `UPDATE messages
-          SET handoff = CASE WHEN json_valid(handoff) AND json_extract(handoff, '$.kind') = 'terminal'
-                THEN json_set(handoff, '$.phase', 'offered') ELSE COALESCE(handoff, '${UNKNOWN_MAIL_HANDOFF}') END,
-              delivered_at = COALESCE(delivered_at, datetime('now')),
+          SET delivered_at = COALESCE(delivered_at, datetime('now')),
               pointer_enter_pending = 0, pointer_pty_id = NULL,
               pointer_process_incarnation = NULL
           WHERE pointer_pty_id = ? AND pointer_process_incarnation = ?
@@ -192,13 +158,8 @@ export function releasePendingMailboxPointerForPty(this: OrchestrationDb, ptyId:
   this.db
     .prepare(
       `UPDATE messages
-       SET handoff = CASE WHEN pointer_enter_pending = ? THEN handoff
-             WHEN pointer_enter_pending = 2 THEN '${UNKNOWN_MAIL_HANDOFF}'
-             WHEN json_valid(handoff) AND json_extract(handoff, '$.kind') = 'terminal'
-               THEN json_set(handoff, '$.phase', 'offered')
-             ELSE COALESCE(handoff, '${UNKNOWN_MAIL_HANDOFF}') END,
-           delivered_at = CASE
-             WHEN read = 0 AND pointer_enter_pending IN (?, 2) THEN NULL
+       SET delivered_at = CASE
+             WHEN read = 0 AND pointer_enter_pending = ? THEN NULL
              WHEN read = 0 THEN COALESCE(delivered_at, datetime('now'))
              ELSE delivered_at
            END,
@@ -206,7 +167,7 @@ export function releasePendingMailboxPointerForPty(this: OrchestrationDb, ptyId:
            pointer_process_incarnation = NULL
        WHERE pointer_enter_pending > 0 AND pointer_pty_id = ?`
     )
-    .run(MAILBOX_POINTER_RESERVED, MAILBOX_POINTER_RESERVED, ptyId)
+    .run(MAILBOX_POINTER_RESERVED, ptyId)
 }
 
 function mutatePointerMessages(

@@ -1,4 +1,3 @@
-import { writeMailHold } from './journal-mail-holds'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -93,28 +92,15 @@ export function registerJournalEpochReplacementTests(): void {
   describe('journal epoch replacement', () => {
     it('keeps personal mail intent through actual epoch retirement and non-person Stop restatement', async () => {
       const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
-      database.transaction((db) =>
-        writeMailHold(db, IDENTITY.sessionId, {
-          version: 1,
-          status: 'held',
-          members: ['A', 'B'],
-          ambiguous: false,
-          releasedThrough: 0
-        })
-      )
-      const held = () =>
-        database.db
-          .prepare(
-            'SELECT intent_order, state_json FROM agent_session_mail_holds WHERE session_id = ?'
-          )
-          .get(IDENTITY.sessionId)
-      const before = held()
       await journal.appendStopEvent({ reason: 'user-stop' }, 1)
+      const before = journal.mailBoundary()
       await journal.rollEpoch('handle_forked', 1)
       await journal.appendStopEvent({ reason: 'host-stop' }, 1)
-      expect(held()).toEqual(before)
-      replace({ items: [] })
-      expect(held()).toEqual(before)
+      expect(journal.mailBoundary()).toEqual(before)
+      await journal.replaceEpochItems('legacy_import', 1, [])
+      expect(journal.mailBoundary()).toEqual(before)
+      await journal.appendQueueResume(1)
+      expect(journal.mailBoundary()?.status).toBe('released')
     })
 
     it('publishes one observable replacement', () => {

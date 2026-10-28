@@ -56,11 +56,7 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
     if (row.state !== 'waiting' && row.state !== 'returned') {
       continue
     }
-    const held =
-      row.state === 'waiting' &&
-      (row.holdReason !== null ||
-        (row.body.from?.orchestration?.message === 'mail-notice' &&
-          !journal.queuedMessages.mailEligible(row)))
+    const held = row.state === 'waiting' && row.holdReason !== null
     published.push({
       messageId: row.messageId,
       position: row.position,
@@ -133,29 +129,31 @@ export function readQueuePublication(
   }
   publicationKeys.set(journal, key)
   const queuedMessages = readPublishedQueuedMessages(journal)
-  // Show personal Stop only when Resume can send a card; hide old pauses after clear/reopen.
-  // Re-derive per emit because submission acceptance can lift a pause.
+  const rows = journal.queuedMessages.list()
   const pauses = structuredQueuePauses(journal)
-  const stop = pauses.find((pause) => pause.reason === 'stopped')?.since
-  const silent = pauses.some(
-    (pause) =>
-      pause.reason === 'cleared' ||
-      (pause.reason === 'restarted' &&
-        (!stop ||
-          !pause.since ||
-          stop.epoch !== pause.since.epoch ||
-          stop.sequence < pause.since.sequence))
+  const resumable = resumableQueuePause(pauses, rows)
+  const heldReport = rows.some(
+    (row) =>
+      row.state === 'waiting' &&
+      row.holdReason === null &&
+      row.body.from?.orchestration?.message === 'mail-notice' &&
+      !journal.queuedMessages.mailEligible(row)
   )
-  const resumable = silent ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
-  // Avoid scanning submissions when no pause can show.
-  const pause =
-    resumable &&
-    !queuePauseLiftOnItsWay(resumable, journal.submissions(), (id) =>
-      journal.personalQueuedSend(id)
+  const intent = journal.mailBoundary()
+  const humanPending = journal
+    .submissions()
+    .filter(
+      (row) =>
+        row.origin === 'client' ||
+        (intent?.status === 'released' &&
+          intent.at.epoch === journal.epoch &&
+          intent.at.sequence === row.acceptedSequence)
     )
-      ? resumable
-      : null
-  const queuePause = pause?.reason === 'stopped' ? { reason: pause.reason } : null
+  const ordinaryPause =
+    resumable?.reason === 'stopped' &&
+    !pauses.some((pause) => pause.reason === 'restarted') &&
+    !queuePauseLiftOnItsWay(resumable, humanPending, () => true)
+  const queuePause = heldReport || ordinaryPause ? { reason: 'stopped' as const } : null
   const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...input })?.messageId ?? null
   const previous = publications.get(journal)
   if (

@@ -35,12 +35,7 @@ export async function resumeStructuredQueue(
   receipt?: JournalOperationReceipt
 ): Promise<boolean> {
   const mail = journal.mailHoldFacts()
-  if (
-    structuredQueuePauses(journal).length === 0 &&
-    !mail.held &&
-    !mail.ambiguous &&
-    mail.members.size === 0
-  ) {
+  if (structuredQueuePauses(journal).length === 0 && !mail.held) {
     return false
   }
   await journal.appendQueueResume(fence, receipt)
