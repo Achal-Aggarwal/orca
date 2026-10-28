@@ -128,12 +128,12 @@ describe.skipIf(process.platform === 'win32')('default terminal shell', () => {
             ...plan.shellArgs,
             '-i',
             '-c',
-            'login=off; if [ -n "${ZSH_VERSION:-}" ]; then [[ -o login ]] && login=on; else shopt -q login_shell && login=on; fi; printf "%s:%s" "${ORCA_TEST_STARTUP:-unset}" "$login"'
+            'login=off; if [ -n "${ZSH_VERSION:-}" ]; then [[ -o login ]] && login=on; else shopt -q login_shell && login=on; fi; printf "\\nORCA_STARTUP_RESULT=%s:%s\\n" "${ORCA_TEST_STARTUP:-unset}" "$login"'
           ],
           { env, encoding: 'utf8', timeout: 10_000 }
         )
         expect(result.status, result.stderr).toBe(0)
-        expect(result.stdout).toBe(expected)
+        expect(result.stdout.match(/^ORCA_STARTUP_RESULT=(.*)$/m)?.[1]).toBe(expected)
       } finally {
         rmSync(home, { recursive: true, force: true })
       }
