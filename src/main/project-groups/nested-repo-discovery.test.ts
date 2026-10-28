@@ -1,6 +1,6 @@
-import { lstat, stat, mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
+import { lstat, stat, realpath, mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
 import type * as FsPromisesModule from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { scanNestedRepos } from './nested-repo-discovery'
@@ -74,6 +74,39 @@ describe('scanNestedRepos', () => {
     const root = await tempRoot()
     const result = await scanNestedRepos({ path: root })
     expect(result.selectedPathKind).toBe('non_git_folder')
+    expect(isGitRepoAsync).not.toHaveBeenCalled()
+  })
+
+  it.each([10, 100])('bounds native markerless preflight at %i ancestor levels', async (depth) => {
+    const path = join(await tempRoot(), ...Array<string>(depth).fill('folder'))
+    await mkdir(path, { recursive: true })
+    const roots = new Set([path, await realpath(path)])
+    const ancestorCount = [...roots].reduce((count, root) => count + root.split(sep).length, 0)
+    vi.mocked(lstat).mockClear()
+    vi.mocked(stat).mockClear()
+
+    const result = await scanNestedRepos({ path })
+
+    expect(result).toMatchObject({ selectedPathKind: 'non_git_folder', repos: [], stopped: false })
+    expect(lstat).toHaveBeenCalledTimes(4 * ancestorCount)
+    expect(stat).not.toHaveBeenCalled()
+    expect(isGitRepoAsync).not.toHaveBeenCalled()
+  })
+
+  it('admits no further ancestor or Git probe after cancellation during native preflight', async () => {
+    const path = await tempRoot()
+    const controller = new AbortController()
+    vi.mocked(lstat)
+      .mockClear()
+      .mockImplementationOnce(async () => {
+        controller.abort()
+        throw Object.assign(new Error('missing marker'), { code: 'ENOENT' })
+      })
+
+    const result = await scanNestedRepos({ path, signal: controller.signal })
+
+    expect(result).toMatchObject({ selectedPathKind: 'non_git_folder', repos: [], stopped: true })
+    expect(lstat).toHaveBeenCalledTimes(4)
     expect(isGitRepoAsync).not.toHaveBeenCalled()
   })
 
