@@ -1,6 +1,6 @@
 import { CODEX_STORE_DIRECTORIES, codexAccountOverlayHomes } from '../codex/codex-launch-home'
 import { safeRemoveTree } from '../pty/overlay-mirror'
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import {

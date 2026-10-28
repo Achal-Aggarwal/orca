@@ -15,6 +15,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { safeRemoveTree } from '../pty/overlay-mirror'
+import { resolveHostCodexManagedHomeVerdict } from '../codex-accounts/host-codex-managed-home-ownership'
 import {
   getOrcaUserDataPath,
   getSystemCodexHomePath,
@@ -51,8 +52,12 @@ export function codexConversationStore(home: string): string {
 }
 
 /** The login remains in its original account folder even when CODEX_HOME is an overlay. */
-export function codexLoginHome(home: string): string {
-  return basename(dirname(home)) === 'overlays' ? join(dirname(dirname(home)), 'home') : home
+export function codexLoginHome(home: string, systemHome = getSystemCodexHomePath()): string {
+  if (basename(dirname(home)) !== 'overlays') {
+    return home
+  }
+  const account = dirname(dirname(home))
+  return basename(account) === 'system' ? systemHome : join(account, 'home')
 }
 
 export function codexAccountOverlayHomes(accountDirectory: string): string[] {
@@ -84,18 +89,19 @@ export function discoverCodexStoreHomes(
   }
   for (const id of accounts) {
     const home = join(accountsRoot, id, 'home')
-    try {
-      if (readFileSync(join(home, '.orca-managed-home'), 'utf8').trim() !== id) {
-        continue
-      }
+    const verdict = resolveHostCodexManagedHomeVerdict({
+      candidatePath: home,
+      managedAccountsRoot: accountsRoot,
+      systemCodexHomePath: getSystemCodexHomePath(),
+      expectedAccountId: id
+    })
+    if (verdict.kind === 'indeterminate') {
+      throw verdict.error
+    }
+    if (verdict.kind === 'owned') {
       homes.push(home)
-    } catch (error) {
-      if (!isDefinitiveAbsence(error)) {
-        throw error
-      }
-      if (id !== 'system') {
-        continue
-      }
+    } else if (id !== 'system') {
+      continue
     }
     for (const overlay of codexAccountOverlayHomes(join(accountsRoot, id))) {
       homes.push(overlay, codexConversationStore(overlay))
@@ -105,7 +111,7 @@ export function discoverCodexStoreHomes(
 }
 
 // Keep this policy in one place while the system-keyring product ruling is pending.
-function keyringOnlyCodexLaunch(): never {
+function keyringOnlyCodexLaunch(_conversationStore: string): string | undefined {
   throw new Error(
     'Codex cannot use this conversation with a keyring-only login. Sign in to Codex with a file login, or select a managed Codex account in Settings.'
   )
@@ -142,7 +148,7 @@ export function resolveCodexLaunchHome(options: CodexLaunchHomeOptions): string 
     return overlay
   }
   if (!options.selectedAccount && !existsSync(join(loginHome, 'auth.json'))) {
-    return keyringOnlyCodexLaunch()
+    return keyringOnlyCodexLaunch(store)
   }
   materializeCodexOverlay(overlay, store, loginHome, systemHome)
   return overlay

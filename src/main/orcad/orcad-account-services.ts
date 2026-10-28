@@ -54,7 +54,7 @@ export function createOrcadAccountServices(args: {
   /** Client-provided account homes override host selection, as for PTYs. */
   clientCodexHomes: {
     selectLaunchHome: GetSelectedCodexHomePath
-    readLaunchHome: (launchEnv?: NodeJS.ProcessEnv) => string | null
+    readLaunchHome: (launchEnv?: NodeJS.ProcessEnv, conversationHome?: string) => string | null
   }
   isWslHost?: () => boolean
 }): OrcadAccountServices | null {

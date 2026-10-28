@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CODEX_STORE_DIRECTORIES,
   codexConversationStore,
+  codexLoginHome,
   discoverCodexStoreHomes,
   reconcileCodexOverlaySignOut,
   resolveCodexLaunchHome
@@ -162,6 +163,7 @@ describe('Codex login overlays over conversation stores', () => {
     )
     writeFileSync(join(system, 'auth.json'), '{"system":true}')
     const overlay = launch(null, a)
+    expect(codexLoginHome(overlay, system)).toBe(system)
     expect(codexConversationStore(overlay)).toBe(realpathSync(a))
     expect(readFileSync(join(overlay, 'auth.json'), 'utf8')).toContain('system')
   })
