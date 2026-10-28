@@ -157,6 +157,7 @@ export function useWorktreeCardActivationActions({
       // Drag suppression can swallow this gesture's click; the flag must not outlive it and skip a later click.
       afterPointerGestureEnds(() => {
         pressActivatedRef.current = false
+        focusBeforePressRef.current = null
       })
       activate()
     },
