@@ -37,7 +37,7 @@ import {
 import { runTrackedWslMove } from '../telemetry/wsl-move-telemetry'
 import { readWslDistroRegistrations } from '../wsl/wsl-distro-registry-id'
 import { wslHostsGateOpen } from '../wsl/wsl-host-gate'
-import { runAsWslUserAct } from '../wsl/wsl-user-act-scope'
+import { runAsWslUserAct } from '../wsl/wsl-unc-access-gate'
 import { getWslHostService } from '../wsl/wsl-host-service-instance'
 import { onWslHostUserAction } from '../wsl/wsl-host-user-actions'
 import { getTrustedUIRendererWebContents, getTrustedUIRendererWindow } from './ui'

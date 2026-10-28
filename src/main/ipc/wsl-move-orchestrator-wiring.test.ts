@@ -55,7 +55,12 @@ vi.mock('../wsl/wsl-orcad-deploy', () => ({
   defaultWslOrcadEnvironmentId: (distro: string) => `wsl:${distro}`
 }))
 vi.mock('../wsl-background-distro-gate', () => ({
-  readConfirmedRunningWslDistros: async () => host.running
+  readConfirmedRunningWslDistros: async () => host.running,
+  // The user-act gate notes a woken distro when the act settles.
+  noteWslDistroWoken: vi.fn(),
+  noteWslDistroMayHaveStopped: vi.fn(),
+  noteWslDistrosRunning: vi.fn(),
+  readWslDistroRunningState: vi.fn(async () => 'running')
 }))
 vi.mock('../wsl/wsl-host-service-instance', () => ({
   getWslHostService: () => ({
@@ -497,5 +502,43 @@ describe('WSL move orchestrator wiring', () => {
     } finally {
       profile.repos = savedRepos
     }
+  })
+
+  // #34632's stopped-distro gates: Check again runs the driver as the user's act on its distro,
+  // so its reads of a just-connected distro pass; a wake's reads stay background work.
+  it('runs the driver for Check again as the user act, and for a wake as background work', async () => {
+    vi.stubEnv(WSL_HOSTS_INTERNAL_GATE_ENV, '1')
+    const { isWslUserActFor } = await import('../wsl/wsl-user-act-scope')
+    const seen: boolean[] = []
+    const original = driver.previewWslMove.getMockImplementation()
+    driver.previewWslMove.mockImplementation(
+      async (_deps: unknown, request: { distro: string }) => {
+        seen.push(isWslUserActFor(request.distro))
+        return {
+          outcome: 'ready',
+          distro: request.distro,
+          repoIds: ['r1'],
+          folderWorkspaceIds: [],
+          changed: [],
+          heldByHost: [],
+          refused: [],
+          blockers: []
+        }
+      }
+    )
+    host.statuses = [
+      { distro: 'Ubuntu', state: 'ready', environmentId: 'wsl:Ubuntu', detail: null }
+    ]
+    await register()
+    await answerWindow()
+    await handlers.get('wslMoveOrchestrator:userAction')?.(
+      { sender: { id: MAIN_WINDOW_ID } },
+      { distro: 'Ubuntu', action: 'retry' }
+    )
+    await answerWindow()
+    if (original) {
+      driver.previewWslMove.mockImplementation(original)
+    }
+    expect(seen).toEqual([false, true])
   })
 })
