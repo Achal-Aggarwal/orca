@@ -178,35 +178,6 @@ describe('readTuiIdleHookTurn', () => {
     ).toEqual({ state: 'permission', blockedReason: null })
   })
 
-  it("marks a live turn end under program work, and joins Agent Teams to claude's row", () => {
-    const transition = (kind: 'transition' | 'snapshot', launchToken = 'launch-1') =>
-      row({
-        agentType: 'claude',
-        launchToken,
-        observation: {
-          origin: 'hook',
-          authorityId: 'local',
-          incarnation: 1,
-          revision: 1,
-          observedAt: 1,
-          kind
-        }
-      })
-    const read = (hookRow: AgentStatusIpcPayload, programWorking = true) =>
-      readTuiIdleHookTurn({
-        ...base,
-        agent: 'claude-agent-teams',
-        launchToken: 'launch-1',
-        hookRows: [hookRow],
-        programWorking
-      })
-    expect(read(transition('transition'))).toEqual({ ...DONE, endedUnderProgramWork: true })
-    // A replayed done restates an old turn; another launch's done speaks for its predecessor.
-    expect(read(transition('snapshot'))).toEqual(DONE)
-    expect(read(transition('transition', 'launch-0'))).toEqual(DONE)
-    expect(read(transition('transition'), false)).toEqual(DONE)
-  })
-
   it('takes the newest joined row', () => {
     const now = Date.now()
     expect(
@@ -353,20 +324,6 @@ describe('evaluateTuiIdle hook lane', () => {
       quietForeground: 'closed'
     })
     expect(readHookTurn).toHaveBeenCalledOnce()
-  })
-})
-
-describe('evaluateTuiIdle claude turn end under program work', () => {
-  it("settles over Claude's working report once its turn end outlasts it (live teammates)", () => {
-    expect(
-      evaluateTuiIdle(
-        input({
-          agent: 'claude',
-          record: record({ lastAgentStatus: 'working' }),
-          readHookTurn: () => ({ ...DONE, endedUnderProgramWork: true })
-        })
-      )
-    ).toEqual({ kind: 'ready-strong' })
   })
 })
 

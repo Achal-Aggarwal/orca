@@ -72,16 +72,11 @@ describe('headless orchestration mailbox pointer', () => {
     db.close()
   })
 
-  it('points a coordinator at mail that arrived while it worked once it goes idle', async () => {
+  it('points a coordinator at mail that arrives mid-turn', async () => {
     const { db, runtime, write, sendRunMail } = await coordinator()
     runtime.onPtyData(PTY_ID, '\x1b]0;Codex working\x07', 1)
     await runtime.serializeMainTerminalBuffer(PTY_ID)
     const message = sendRunMail()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(pointerCount(write)).toBe(0)
-
-    runtime.onPtyData(PTY_ID, '\x1b]0;Codex done\x07', 2)
-    await runtime.serializeMainTerminalBuffer(PTY_ID)
     await vi.advanceTimersByTimeAsync(0)
     expect(pointerCount(write)).toBe(1)
     await vi.advanceTimersByTimeAsync(500)
@@ -92,13 +87,29 @@ describe('headless orchestration mailbox pointer', () => {
   it('waits for a name-only idle pane to go quiet before typing the pointer', async () => {
     const { db, runtime, write, sendRunMail } = await coordinator()
     sendRunMail()
-    runtime.onPtyData(PTY_ID, '\x1b]0;⠋ Codex\x07working\n', Date.now())
-    runtime.onPtyData(PTY_ID, '\x1b]0;Codex\x07still working\n', Date.now())
+    runtime.onPtyData(PTY_ID, '\x1b]0;Codex\x07output\n', Date.now())
     await runtime.serializeMainTerminalBuffer(PTY_ID)
     expect(pointerCount(write)).toBe(0)
 
     await vi.advanceTimersByTimeAsync(3_050)
     expect(pointerCount(write)).toBe(1)
+    db.close()
+  })
+
+  // A quiet retry armed before the prompt opened must not type into it on the retained working report.
+  it('does not type into a pane that turned to a permission prompt after a retry was armed', async () => {
+    const { db, runtime, write, sendRunMail } = await coordinator()
+    runtime.onPtyData(PTY_ID, '\x1b]0;Codex\x07output\n', Date.now())
+    runtime.onPtyData(
+      PTY_ID,
+      '\x1b]9999;{"state":"working","agentType":"codex"}\x07\x1b]0;Codex waiting for permission\x07',
+      Date.now()
+    )
+    await runtime.serializeMainTerminalBuffer(PTY_ID)
+    sendRunMail()
+
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(write).not.toHaveBeenCalled()
     db.close()
   })
 

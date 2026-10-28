@@ -200,7 +200,6 @@ export abstract class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission 
       launchToken: pty.launchToken,
       titleObservedAtEpochMs: pty.lastOscTitleEpochMs,
       hasExplicitIdleTitle: hasExplicitIdleTitle(pty),
-      programWorking: this.ptyTitleTrackersByPtyId.get(ptyId)?.programActivity === 'working',
       respawnedAt: this.agentPromptExplicitStatusFloorByPtyId.get(ptyId),
       lastInputAt: this.terminalRunFacts.readLastInputAt(ptyId),
       tailIncludes: (text) => retainedTailIncludes(pty.tailBuffer, pty.tailPartialLine, text),

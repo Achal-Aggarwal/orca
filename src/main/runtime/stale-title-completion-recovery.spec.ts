@@ -22,7 +22,7 @@ describe('stale-working title clear and completion recovery', () => {
   })
 
   // Synthetic: Codex's done hook, then a final native spinner that only the timer clears (#19243).
-  it('delivers mail once the clear confirms a live Codex behind a fresh done hook', async () => {
+  it('delivers mail to a live Codex behind a fresh done hook and a stale spinner', async () => {
     vi.useFakeTimers()
     const db = createDatabase('orca-stale-title-completion-')
     const hook: AgentStatusIpcPayload = {
@@ -50,9 +50,7 @@ describe('stale-working title clear and completion recovery', () => {
     runtime.onPtyData(PTY_ID, 'composer repaint without a title', 2)
     insertDirectRunMessage(db, run.id, 'Worker progress')
     runtime.notifyMessageArrived(`run:${run.id}`, 'status')
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(write).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(4_000)
+    await vi.advanceTimersByTimeAsync(5_000)
     expect(write.mock.calls.map(([, data]) => data)).toEqual([
       expect.stringContaining('You have 1 orchestration message'),
       '\r'

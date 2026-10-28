@@ -148,13 +148,13 @@ describe('orchestration detached mailbox routing', () => {
     db.close()
   })
 
-  it('uses bounded ownership lookup for direct arrivals while the agent is working', async () => {
+  it('uses bounded ownership lookup for direct arrivals while the agent cannot take input', async () => {
     vi.useFakeTimers()
     const db = createDatabase('orca-mailbox-bounded-')
     const harness = createRuntime(db)
-    const run = createBoundRun(db, 'Working Run')
+    const run = createBoundRun(db, 'Permission Run')
     await harness.runtime.listTerminals()
-    harness.runtime.onPtyData(PTY_ID, '\x1b]0;Codex working\x07', 1)
+    harness.runtime.onPtyData(PTY_ID, '\x1b]0;Codex needs permission\x07', 1)
     const fullMailboxScan = vi.spyOn(db, 'getUndeliveredUnreadMessages')
     const message = insertDirectRunMessage(db, run.id, 'Direct coordinator status')
 

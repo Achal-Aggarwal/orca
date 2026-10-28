@@ -64,14 +64,7 @@ export abstract class OrcaRuntimeWithAgentTransitions extends OrcaRuntimeWithMig
 
   constructor(...args: ConstructorParameters<typeof OrcaRuntimeWithMigrationCatalog>) {
     super(...args)
-    this.agentTransitions.subscribe((change) => {
-      this.terminalAgentPhonePush.observe(change)
-      // A hook row can end or reopen a turn under an unchanged program `working` report.
-      const ptyId = this.getPtyRecordForPaneKey(change.paneKey)?.ptyId
-      if (ptyId && this.ptyTitleTrackersByPtyId.get(ptyId)?.programActivity === 'working') {
-        this.reclassifyPtyStatus(ptyId)
-      }
-    })
+    this.agentTransitions.subscribe((change) => this.terminalAgentPhonePush.observe(change))
   }
 
   /** Attach after higher layers subscribe; also drive generated tab titles. */

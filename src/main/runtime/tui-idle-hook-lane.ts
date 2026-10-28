@@ -14,21 +14,12 @@ export type TuiIdleHookTurn = {
   taskWakeupPending?: true
   /** When a fresh `done`'s turn has had time to paint its last frame. */
   finalFrameAt?: number
-  /** A live turn end while the program still reports `working`, which then covers work beyond
-   *  the lead's turn (e.g. live teammates) rather than the turn itself. */
-  endedUnderProgramWork?: true
 }
 
 // Why: Codex runs its Stop hook before it paints the turn's last frame, which can be its plan menu.
 const TURN_END_FINAL_FRAME_MS = 750
 // Why: Codex opens its plan menu only after a turn that rendered a proposed plan; no hook field says so.
 const CODEX_PROPOSED_PLAN_HEADER = 'Proposed Plan'
-
-/** The agent whose hooks report for a pane running `agent`. */
-function hookReportingAgent(agent: TuiAgent | null | undefined): TuiAgent | null | undefined {
-  // Why: Agent Teams runs the same Claude binary, so its hooks report as `claude`.
-  return agent === 'claude-agent-teams' ? 'claude' : agent
-}
 
 /** Scans newest-first so the common hit (this turn's plan) returns early. */
 export function retainedTailIncludes(
@@ -79,8 +70,6 @@ export type TuiIdleHookTurnRead = {
    *  the turn that input may have started (or the agent it restarted), whose first hook can still
    *  be in flight. */
   lastInputAt?: number | null
-  /** Whether the program currently reports OSC 7501 `working`. */
-  programWorking?: boolean
   /** Whether the pane's retained output holds `text`; read only while a fresh `done` may precede a menu. */
   tailIncludes?: (text: string) => boolean
   /** The existing permission arbiter, given the turn as the pane's explicit status. */
@@ -93,8 +82,7 @@ export type TuiIdleHookTurnRead = {
 /** Read the freshest pane/handle-joined hook row for this agent and process; unjoinable, stale or foreign rows leave other lanes to decide. */
 export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn | null {
   const row = selectFreshExplicitAgentStatusRow(read)
-  const agent = hookReportingAgent(read.agent)
-  if (!row || row.agentType !== agent || row.receivedAt < (read.respawnedAt ?? -1)) {
+  if (!row || row.agentType !== read.agent || row.receivedAt < (read.respawnedAt ?? -1)) {
     return null
   }
   const state = hookLeadTurnState(row)
@@ -103,15 +91,10 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
     return null
   }
   const blockedReason = read.resolveBlockedText(state, row)
-  // Why: an older host or launch's late hook speaks for its predecessor, not this process.
-  const ownHook =
-    row.observation?.origin === 'hook' &&
-    terminalHostConnectionMatches(row.connectionId, read.connectionId ?? null, read.wslDistro) &&
-    (!read.launchToken || row.launchToken === read.launchToken)
   // Why the hook alone blocks: a question or custom modal paints no dialog text the arbiter knows,
   // and these hooks report its answer. Input since may have answered it before the hook arrived.
   const taskWakeupPending =
-    agent === 'claude' &&
+    read.agent === 'claude' &&
     row.state !== 'done' &&
     (row.claudeTaskWakeupPending === 'notification' ||
       (row.claudeTaskWakeupPending === 'finishing-turn' &&
@@ -120,28 +103,20 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
           typeof read.titleObservedAtEpochMs === 'number' &&
           read.titleObservedAtEpochMs > (row.turnStartedAt ?? row.receivedAt)
         ))) &&
-    ownHook &&
-    row.providerSession?.key === 'session_id'
+    row.observation?.origin === 'hook' &&
+    row.providerSession?.key === 'session_id' &&
+    terminalHostConnectionMatches(row.connectionId, read.connectionId ?? null, read.wslDistro) &&
+    (!read.launchToken || row.launchToken === read.launchToken)
   const finalFrameAt = row.receivedAt + TURN_END_FINAL_FRAME_MS
   const finalFramePending =
     state === 'done' &&
     hookAuthority(read.agent) === 'turn-end' &&
     Date.now() < finalFrameAt &&
     read.tailIncludes?.(CODEX_PROPOSED_PLAN_HEADER) === true
-  // Why a transition: a replay or snapshot restates an old turn end and cannot prove this one ended.
-  const endedUnderProgramWork =
-    state === 'done' &&
-    read.programWorking === true &&
-    ownHook &&
-    row.observation?.kind === 'transition' &&
-    !taskWakeupPending &&
-    !finalFramePending &&
-    blockedReason === null
   return {
     state,
     ...(taskWakeupPending ? { taskWakeupPending: true as const } : {}),
     ...(finalFramePending ? { finalFrameAt } : {}),
-    ...(endedUnderProgramWork ? { endedUnderProgramWork: true as const } : {}),
     blockedReason:
       blockedReason ??
       (state === 'permission' && !predatesInput ? 'agent-interactive-prompt' : null)
@@ -161,12 +136,8 @@ export function evaluateHookTurn(
   readHookTurn: () => TuiIdleHookTurn | null
 ): TuiIdleHookVerdict | null {
   // A ready composer can still owe a task wake-up; only that owner-produced fact vetoes Claude rest.
-  // A turn end that outlasts Claude's `working` report is rest: Claude keeps reporting working while teammates live.
-  if (hookReportingAgent(agent) === 'claude') {
+  if (agent === 'claude') {
     const turn = readHookTurn()
-    if (turn?.endedUnderProgramWork) {
-      return { kind: 'ready-strong' }
-    }
     return turn?.taskWakeupPending
       ? turn.blockedReason
         ? { kind: 'blocked', reason: turn.blockedReason }

@@ -856,12 +856,8 @@ describe('orchestration notification mailbox consistency', () => {
       `after delivery ${firstDelivery.deliveryId}, which you have not acknowledged. If you no longer have it, run \`${localOrchestrationCliCommand()} orchestration check --run ${run.id}\` to see it again; once it is handled, run \`${localOrchestrationCliCommand()} orchestration check --run ${run.id} --ack ${firstDelivery.deliveryId}\``
     )
 
-    // A turn that starts inside the Enter delay keeps the reminder until it ends.
+    // A turn that starts inside the Enter delay still takes the reminder; the agent queues it.
     harness.runtime.onPtyData(PTY_ID, '\x1b]0;Codex working\x07', 3)
-    await harness.runtime.serializeMainTerminalBuffer(PTY_ID)
-    await vi.advanceTimersByTimeAsync(500)
-    expect(enters()).toBe(0)
-    harness.runtime.onPtyData(PTY_ID, '\x1b]0;Codex done\x07', 4)
     await harness.runtime.serializeMainTerminalBuffer(PTY_ID)
     await vi.advanceTimersByTimeAsync(500)
     expect(enters()).toBe(1)

@@ -7,7 +7,11 @@ import {
   shouldReleaseOrchestrationPointer,
   type OrchestrationMessageWaiter
 } from './mailbox-pointer-eligibility'
-import type { OrchestrationMailboxLeaf, OrchestrationMailboxOwner } from './mailbox-owner'
+import {
+  isMailboxLeafTakingInput,
+  type OrchestrationMailboxLeaf,
+  type OrchestrationMailboxOwner
+} from './mailbox-owner'
 import type {
   OrchestrationMailboxDeliveryFlight,
   OrchestrationMailboxPointerState
@@ -42,7 +46,6 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
     leaf: OrchestrationMailboxLeaf
     mailboxHandle: string
     messages: readonly { id: string; type: string }[]
-    heldDeliveryId?: string
     newestSequence: number
     ptyId: string
     flight: OrchestrationMailboxDeliveryFlight
@@ -84,18 +87,13 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
         deps.mailboxOwner.resolve(exactTarget.leaf, undefined, {
           terminalHandle: exactTarget.terminalHandle
         }) === input.mailboxHandle
-      const queueSafe =
-        exactTarget?.leaf.lastAgentStatusObservedLive === true &&
-        (exactTarget.leaf.lastAgentStatus === 'idle' ||
-          exactTarget.leaf.lastAgentStatus === 'working')
+      const queueSafe = !!exactTarget && isMailboxLeafTakingInput(exactTarget.leaf)
       if (!exactTarget?.leaf.writable || !sameMailbox) {
         clearAndRedrive = true
       } else if (
         (exactTarget.leaf.lastAgentStatusObservedLive &&
           exactTarget.leaf.lastAgentStatus === null) ||
-        deps.isPtyAwaitingUserInput(input.ptyId) ||
-        // As in chat: a mid-turn Enter would spend a held batch's newer mail's only nudge.
-        (input.heldDeliveryId !== undefined && exactTarget.leaf.lastAgentStatus === 'working')
+        deps.isPtyAwaitingUserInput(input.ptyId)
       ) {
         // A neutral title can outlive the foreground check, and an open dialog would take the
         // Enter as its answer; no Enter has been attempted yet.

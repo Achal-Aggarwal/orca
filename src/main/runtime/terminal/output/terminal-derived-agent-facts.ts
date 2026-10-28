@@ -1,4 +1,4 @@
-import { OrcaRuntimeWithApplyPtyProgramActivity } from './terminal-program-activity'
+import { OrcaRuntimeWithApplyTrackedPtyTitle } from './terminal-title-observation'
 import type {
   RuntimePtyTitleTrackerEntry,
   RuntimePtyWorktreeRecord
@@ -28,7 +28,7 @@ type TerminalAgentStatusTarget = Pick<
   'source' | 'paneKey' | 'tabId' | 'worktreeId' | 'connectionId' | 'terminalHandle'
 >
 
-export abstract class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends OrcaRuntimeWithApplyPtyProgramActivity {
+export abstract class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends OrcaRuntimeWithApplyTrackedPtyTitle {
   abstract getAgentStatusTerminalHandleForPaneKey(paneKey: string): string | undefined
 
   /** Each live OSC 7501 program's latest row payload; renewed while its PTY keeps a live facet. */
