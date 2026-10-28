@@ -1,4 +1,3 @@
-import { makeWorktree } from '../components/automations/automations-page-fixtures'
 import { expect, it, vi } from 'vitest'
 import { activateWebRuntimeSessionTab } from './web-runtime-session-tab-lifecycle'
 import {
@@ -11,7 +10,7 @@ import type { LegacyRelayBridgedPane } from '../../../shared/legacy-relay-bridge
 import { ENVIRONMENT_ID, WORKTREE_ID } from './web-runtime-session-test-harness'
 import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
 import { createAutomationRunWorkspaceAction } from '../components/automations/automation-run-workspace-action'
-import { makeRun } from '../components/automations/automations-page-fixtures'
+import { makeRun, makeWorktree } from '../components/automations/automations-page-fixtures'
 
 export function registerHistoricalSessionTabActivationTests(mocks: {
   getState: ReturnType<typeof vi.fn>
