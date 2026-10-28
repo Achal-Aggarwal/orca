@@ -279,12 +279,16 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
         filePath: string
         staged: boolean
         compareAgainstHead?: boolean
+        oldPath?: string
         connectionId?: string
       }
     ): Promise<GitDiffResult> => {
       requireReachableGitRoute(getConnectionExecutionHostId(args.connectionId))
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
       const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
+      const oldPath = args.oldPath
+        ? validateGitRelativeFilePath(worktreePath, args.oldPath)
+        : undefined
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,
@@ -292,7 +296,8 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
       )
       return getDiff(worktreePath, filePath, args.staged, args.compareAgainstHead, {
         ...gitOptions,
-        admissionTier: 'interactive'
+        admissionTier: 'interactive',
+        ...(oldPath ? { oldPath } : {})
       })
     }
   )

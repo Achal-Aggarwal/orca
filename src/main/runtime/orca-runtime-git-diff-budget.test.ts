@@ -81,6 +81,28 @@ describe('runtime git diff transport budget', () => {
     ).resolves.toMatchObject({ modifiedContent: OVERSIZED_BASE64 })
   })
 
+  it('retains and validates the source path of a staged rename on the owning host', async () => {
+    await commands({ wslDistro: 'Ubuntu' }).getRuntimeGitDiff(
+      'id:wt-1',
+      'new.txt',
+      true,
+      false,
+      undefined,
+      'old.txt'
+    )
+    expect(mocks.getDiff).toHaveBeenLastCalledWith('/remote/repo', 'new.txt', true, false, {
+      admissionTier: 'interactive',
+      wslDistro: 'Ubuntu',
+      oldPath: 'old.txt'
+    })
+
+    mocks.getDiff.mockClear()
+    await expect(
+      commands().getRuntimeGitDiff('id:wt-1', 'new.txt', true, false, undefined, '../outside.txt')
+    ).rejects.toThrow()
+    expect(mocks.getDiff).not.toHaveBeenCalled()
+  })
+
   it('caps a local-repo branch diff that exceeds the budget', async () => {
     await expect(
       commands().getRuntimeGitBranchDiff(

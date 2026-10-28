@@ -33,6 +33,7 @@ export type RuntimeFileCommandHost = {
     relativePath: string,
     staged: boolean,
     runtimeEnvironmentId?: string | null,
-    navigation?: RuntimeNavigationTarget
+    navigation?: RuntimeNavigationTarget,
+    oldPath?: string
   ): void
 }

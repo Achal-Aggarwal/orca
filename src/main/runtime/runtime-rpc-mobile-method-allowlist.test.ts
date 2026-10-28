@@ -646,7 +646,8 @@ describe('OrcaRuntimeRpcServer', () => {
       'docs/readme.md',
       false,
       undefined,
-      remoteRpcContentBudget('req_git_diff')
+      remoteRpcContentBudget('req_git_diff'),
+      undefined
     )
     expect(mocks.browserTabCreate).toHaveBeenCalledWith(
       { worktree: 'id:wt-1', url: 'about:blank' },

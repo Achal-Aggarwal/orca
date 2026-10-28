@@ -286,6 +286,7 @@ export type UiCommandEventApi = {
       filePath: string
       relativePath: string
       staged: boolean
+      oldPath?: string
       runtimeEnvironmentId?: string | null
       navigation?: RuntimeNavigationTarget
     }) => void

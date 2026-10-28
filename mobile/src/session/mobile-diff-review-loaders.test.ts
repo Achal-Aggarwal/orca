@@ -35,6 +35,26 @@ function failure(code: string, message: string): RpcResponse {
 }
 
 describe('loadMobileDiffReviewDiff', () => {
+  it.each(['staged', 'unstaged'] as const)(
+    'retains the rename source only for %s review requests',
+    async (scope) => {
+      const client = clientWith(failure('diff_too_large', 'Diff too large'))
+      await loadMobileDiffReviewDiff({
+        client,
+        worktreeId: 'wt-1',
+        item: { ...DELETED_ITEM, scope, area: scope, status: 'renamed', oldPath: 'old.ts' },
+        branchCompare: null
+      })
+
+      expect(client.sendRequest).toHaveBeenCalledWith('git.diff', {
+        worktree: 'id:wt-1',
+        filePath: 'deleted.ts',
+        staged: scope === 'staged',
+        ...(scope === 'staged' ? { oldPath: 'old.ts' } : {})
+      })
+    }
+  )
+
   it('shows the too-large state for an oversized deleted diff', async () => {
     await expect(
       loadMobileDiffReviewDiff({

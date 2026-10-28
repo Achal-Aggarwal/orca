@@ -322,6 +322,26 @@ describe('file open RPC navigation', () => {
     expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'a.ts', false, 'host')
   })
 
+  it('preserves a staged rename source through RPC validation and dispatch', async () => {
+    const { runtime, dispatcher } = createDispatcher()
+    const response = await dispatcher.dispatch(
+      makeRequest('files.openDiff', {
+        worktree: 'id:wt-1',
+        relativePath: 'a.ts',
+        staged: true,
+        oldPath: 'before.ts'
+      })
+    )
+    expect(response).toMatchObject({ ok: true })
+    expect(runtime.openMobileDiff).toHaveBeenCalledWith(
+      'id:wt-1',
+      'a.ts',
+      true,
+      undefined,
+      'before.ts'
+    )
+  })
+
   it('leaves navigation absent for callers that send none (phones, older CLIs)', async () => {
     const { runtime, dispatcher } = createDispatcher()
 

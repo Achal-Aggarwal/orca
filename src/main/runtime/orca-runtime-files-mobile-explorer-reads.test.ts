@@ -105,6 +105,26 @@ describe('RuntimeFileCommands', () => {
     })
   })
 
+  it('keeps the rename source through a mobile diff open and rejects paths outside the workspace', async () => {
+    const openDiff = vi.fn()
+    const { commands } = createRuntimeFileCommands({ openDiff })
+    await commands.openMobileDiff('id:wt-1', 'new.ts', true, undefined, 'old.ts')
+    expect(openDiff).toHaveBeenLastCalledWith(
+      'wt-1',
+      '/repo/new.ts',
+      'new.ts',
+      true,
+      null,
+      undefined,
+      'old.ts'
+    )
+    openDiff.mockClear()
+    await expect(
+      commands.openMobileDiff('id:wt-1', 'new.ts', true, undefined, '../old.ts')
+    ).rejects.toThrow('invalid_relative_path')
+    expect(openDiff).not.toHaveBeenCalled()
+  })
+
   it('opens text files through the renderer host as owned by this desktop, not the focused server', async () => {
     const openFile = vi.fn()
     const { commands } = createRuntimeFileCommands({ openFile })

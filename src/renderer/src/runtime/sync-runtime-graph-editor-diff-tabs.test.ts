@@ -19,37 +19,42 @@ function collectLayoutGroupIds(node: unknown, into: string[] = []): string[] {
 }
 
 describe('buildMobileSessionTabSnapshots', () => {
-  it('preserves source-control diff metadata for mobile file tabs', () => {
-    const diffId = 'wt-1::diff::unstaged::src/app.ts'
-    const state = makeState({
-      browserTabsByWorktree: {},
-      tabBarOrderByWorktree: { 'wt-1': [diffId] },
-      openFiles: [
+  it.each(['staged', 'unstaged'] as const)(
+    'preserves %s diff metadata for mobile file tabs',
+    (diffSource) => {
+      const diffId = 'wt-1::diff::unstaged::src/app.ts'
+      const state = makeState({
+        browserTabsByWorktree: {},
+        tabBarOrderByWorktree: { 'wt-1': [diffId] },
+        openFiles: [
+          {
+            id: diffId,
+            filePath: '/repo/src/app.ts',
+            relativePath: 'src/app.ts',
+            worktreeId: 'wt-1',
+            language: 'typescript',
+            mode: 'diff',
+            diffSource,
+            branchOldPath: 'src/before.ts',
+            isDirty: false
+          }
+        ]
+      })
+
+      const snapshot = buildMobileSessionTabSnapshots(state)[0]
+
+      expect(snapshot?.tabs).toMatchObject([
         {
+          type: 'file',
           id: diffId,
-          filePath: '/repo/src/app.ts',
-          relativePath: 'src/app.ts',
-          worktreeId: 'wt-1',
-          language: 'typescript',
           mode: 'diff',
-          diffSource: 'unstaged',
-          isDirty: false
+          diffSource,
+          ...(diffSource === 'staged' ? { oldPath: 'src/before.ts' } : {}),
+          relativePath: 'src/app.ts'
         }
-      ]
-    })
-
-    const snapshot = buildMobileSessionTabSnapshots(state)[0]
-
-    expect(snapshot?.tabs).toMatchObject([
-      {
-        type: 'file',
-        id: diffId,
-        mode: 'diff',
-        diffSource: 'unstaged',
-        relativePath: 'src/app.ts'
-      }
-    ])
-  })
+      ])
+    }
+  )
 
   it('omits unsupported branch and commit diff metadata from mobile file tabs', () => {
     const diffId = 'wt-1::diff::branch::src/app.ts'

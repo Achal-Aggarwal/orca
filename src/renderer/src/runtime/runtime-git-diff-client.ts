@@ -9,7 +9,7 @@ import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 
 export async function getRuntimeGitDiff(
   context: RuntimeGitContext,
-  args: { filePath: string; staged: boolean; compareAgainstHead?: boolean }
+  args: { filePath: string; staged: boolean; compareAgainstHead?: boolean; oldPath?: string }
 ): Promise<GitDiffResult> {
   const target = context.target
   if (target.kind === 'local' || !context.worktreeId) {
@@ -18,6 +18,7 @@ export async function getRuntimeGitDiff(
       filePath: args.filePath,
       staged: args.staged,
       compareAgainstHead: args.compareAgainstHead,
+      ...(args.oldPath ? { oldPath: args.oldPath } : {}),
       connectionId: context.connectionId
     })
   }

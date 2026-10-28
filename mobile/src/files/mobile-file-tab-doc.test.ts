@@ -55,14 +55,15 @@ describe('resolveMobileFileTabDoc', () => {
     expect(client.calls).toEqual([])
   })
 
-  it('renders a staged text diff', async () => {
+  it.each([undefined, 'old.ts'])('renders a staged text diff with source %s', async (oldPath) => {
     const client = clientOf({
       'git.diff': ok({ kind: 'text', originalContent: 'a\n', modifiedContent: 'a\nb\n' })
     })
     const doc = await resolveMobileFileTabDoc(client, {
       ...WT,
       relativePath: 'a.ts',
-      diffSource: 'staged'
+      diffSource: 'staged',
+      ...(oldPath ? { oldPath } : {})
     })
     expect(doc).toEqual({
       status: 'ready',
@@ -74,7 +75,15 @@ describe('resolveMobileFileTabDoc', () => {
       truncated: false
     })
     expect(client.requests).toEqual([
-      { method: 'git.diff', params: { worktree: 'id:wt1', filePath: 'a.ts', staged: true } }
+      {
+        method: 'git.diff',
+        params: {
+          worktree: 'id:wt1',
+          filePath: 'a.ts',
+          staged: true,
+          ...(oldPath ? { oldPath } : {})
+        }
+      }
     ])
   })
 

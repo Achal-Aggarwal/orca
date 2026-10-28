@@ -57,6 +57,30 @@ describe('openUncommittedEntry', () => {
     expect(store.getState().openFiles[0]).toMatchObject({ mode: 'diff', diffSource: 'staged' })
   })
 
+  it('retains the source path for staged renames and clears it when the row is reopened without a rename', () => {
+    const store = createEditorStore()
+    openUncommittedEntry(store.getState(), 'wt-1', '/repo', {
+      path: 'new.ts',
+      oldPath: 'old.ts',
+      status: 'renamed',
+      area: 'staged'
+    })
+
+    expect(store.getState().openFiles[0]).toMatchObject({
+      diffSource: 'staged',
+      branchOldPath: 'old.ts'
+    })
+
+    openUncommittedEntry(store.getState(), 'wt-1', '/repo', {
+      path: 'new.ts',
+      status: 'modified',
+      area: 'staged'
+    })
+
+    expect(store.getState().openFiles).toHaveLength(1)
+    expect(store.getState().openFiles[0].branchOldPath).toBeUndefined()
+  })
+
   it.each(['source', 'changes'] as const)('preserves an explicit %s choice on reselect', (mode) => {
     const store = createEditorStore()
     const entry = markdownEntry()
