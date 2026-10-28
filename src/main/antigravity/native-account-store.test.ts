@@ -76,7 +76,7 @@ describe('protected Antigravity account snapshots', () => {
       }
       const fake = createFakeWindowsSecurity()
       setWindowsSecurityForTests(fake)
-      const backend = createAntigravityWindowsCredentialBackend(dir)
+      const backend = createAntigravityWindowsCredentialBackend(dir, () => false)
       const path = join(dir, 'typed-vault')
       const store = () => createEncryptedAntigravityAccountStore(path, backend.parse)
       const lookup = vi.fn<(accessToken: string) => Promise<AntigravityCredentialIdentity>>(

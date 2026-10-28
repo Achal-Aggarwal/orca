@@ -122,14 +122,15 @@ export function isAntigravityWindowsFileHost(env: NodeJS.ProcessEnv): boolean {
 }
 
 export function createAntigravityWindowsCredentialBackend(
-  home: string
+  home: string,
+  isFileHost = isAntigravityWindowsFileHost
 ): AntigravityCredentialBackend {
   const file = createAntigravityFileCredentialBackend(
     join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
     parseAntigravityWindowsSnapshot
   )
   async function effective() {
-    if (isAntigravityWindowsFileHost(process.env)) {
+    if (isFileHost(process.env)) {
       return { current: await file.read(), file: true }
     }
     let nativeError: unknown

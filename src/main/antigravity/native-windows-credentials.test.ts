@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import type * as NodeFs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,11 +18,17 @@ import { credential, harness } from './native-account-test-fixtures'
 import { AntigravityAccountService } from './native-account-service'
 import { createAntigravityHostCredentialBackend } from './native-credential-backend'
 import {
+  createAntigravityWindowsCredentialBackend,
   readAntigravityWindowsCredential,
   readAntigravityWindowsCredentialContents,
   writeAntigravityWindowsCredential
 } from './native-windows-credentials'
 import { readAntigravityCredentialFile } from './native-file-credentials'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFs>()
+  return { ...actual, existsSync: vi.fn(actual.existsSync) }
+})
 
 let home: string
 let fake: FakeWindowsSecurity
@@ -37,12 +44,34 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.mocked(existsSync).mockReset()
   vi.unstubAllEnvs()
   resetWindowsSecurityLoadForTests()
   rmSync(home, { recursive: true, force: true })
 })
 
 describe('Windows native Antigravity credentials', () => {
+  it('keeps live container detection by default while isolating an explicit native fixture', async () => {
+    const actual = await vi.importActual<typeof NodeFs>('node:fs')
+    vi.mocked(existsSync).mockImplementation(
+      (path) => path === '/.dockerenv' || actual.existsSync(path)
+    )
+    fake.writeGenericCredential('gemini:antigravity', 'antigravity', Buffer.from(credential('a')))
+    const nativeReads = vi.spyOn(fake, 'readGenericCredential')
+    const fileReads = vi.spyOn(fake, 'readFileWithDacl')
+    const defaultBackend = createAntigravityWindowsCredentialBackend(home)
+    expect(await defaultBackend.read()).toBeNull()
+    expect(nativeReads).not.toHaveBeenCalled()
+    const nativeBackend = createAntigravityWindowsCredentialBackend(home, () => false)
+    expect((await nativeBackend.read())?.contents).toBe(credential('a'))
+    expect(await defaultBackend.read()).toBeNull()
+    expect(nativeReads).toHaveBeenCalledTimes(1)
+    expect(fileReads).toHaveBeenCalledTimes(2)
+    expect(
+      vi.mocked(existsSync).mock.calls.filter(([path]) => path === '/.dockerenv')
+    ).toHaveLength(2)
+  })
+
   function privateFile(contents: string) {
     const path = join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token')
     mkdirSync(dirname(path), { recursive: true })
