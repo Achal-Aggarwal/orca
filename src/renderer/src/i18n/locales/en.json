@@ -1850,7 +1850,6 @@
         "0bbdc673c1": "Failed to refresh checks",
         "e7007aa1d8": "Unable to refresh checks without a repository path.",
         "675bc0d638": "Cancel",
-        "a18f669c7a": "{{value0}} {{value1}} reaction{{value2}}",
         "53fe19aefc": "Open GitHub merge box",
         "a2495e4784": "Pull request",
         "ce360fc318": "Failed to disable auto-merge",
@@ -1982,7 +1981,9 @@
         "8812225174": "Reopen",
         "09d67a0f9b": "Failed to close pull request",
         "88809e79db": "Failed to reopen pull request",
-        "00f55cc17b": "Repository access is unavailable for this pull request."
+        "00f55cc17b": "Repository access is unavailable for this pull request.",
+        "reactionCountSingular": "{{count}} {{reaction}} reaction",
+        "reactionCountPlural": "{{count}} {{reaction}} reactions"
       },
       "GitLabItemDialog": {
         "65e784c1f1": "Reopen",
@@ -2043,12 +2044,13 @@
         "22511537d2": "Approved",
         "00f3bab87b": " of {{value0}} required",
         "11384f99aa": "number",
-        "40c56b95e2": "{{value0}} approval{{value1}} remaining",
         "3a051b8ade": "Work item",
         "32f8bef818": "No log output.",
         "4168eb2c51": "Resolve",
         "commentTooLarge": "Comment is too large to submit safely.",
-        "gitlabActionFailed": "GitLab action failed."
+        "gitlabActionFailed": "GitLab action failed.",
+        "approvalsRemainingSingular": "{{count}} approval remaining",
+        "approvalsRemainingPlural": "{{count}} approvals remaining"
       },
       "JiraIssueWorkspace": {
         "b0b92666c9": "Comment",
@@ -2815,10 +2817,8 @@
         "3b11c8e8fc": "array",
         "e178c0a953": "Choose a Jira project before creating the issue.",
         "0f7b0d964a": "Creates a new issue in {{value0}}.",
-        "eff9800d4b": "{{value0}} label{{value1}}",
         "d7f16d0e32": "Select Team",
         "5301ca0f20": "Create project",
-        "7719d8daa9": "{{value0}} member{{value1}}",
         "5af6f0ae5b": "Select team",
         "cfb730b73e": "issue",
         "3659f9792a": "board",
@@ -2920,7 +2920,11 @@
         "linearEmptyHasWorktree": "No Linear tickets are linked to an Orca workspace yet. Start work from a Linear issue to see it here.",
         "linearOpenAttachedWorkspace": "Open workspace attached to {{value0}}",
         "linearWorktreesColumn": "Workspaces",
-        "jiraBoardEmptyColumn": "No issues"
+        "jiraBoardEmptyColumn": "No issues",
+        "labelCountPlural": "{{count}} labels",
+        "labelCountSingular": "{{count}} label",
+        "memberCountPlural": "{{count}} members",
+        "memberCountSingular": "{{count}} member"
       },
       "Terminal": {
         "73768427cf": "Close",
@@ -3931,8 +3935,6 @@
             "drop": {
               "handler": {
                 "1e072f611e": "Failed to upload {{value0}} {{value1}}.",
-                "53f015fd85": "Skipped {{value0}} symlink{{value1}}.",
-                "29c031b49a": "Uploading {{value0}} file{{value1}} to runtime…",
                 "0c77693641": "Worktree not ready — try again in a moment.",
                 "ce8248b835": "Worktree path not available.",
                 "internalTooManyPaths": "Drop contains too many paths for a safe terminal paste.",
@@ -3940,7 +3942,13 @@
                 "internalHostMismatch": "Drop files from the same host as this terminal.",
                 "b4cf68e889": "Skipped {{value0}} {{value1}}.",
                 "writeTimeout": "File drop cancelled: terminal did not accept the path before the safety timeout.",
-                "writeRejected": "File drop cancelled: terminal could not accept the path."
+                "writeRejected": "File drop cancelled: terminal could not accept the path.",
+                "skippedSymlinkSingular": "Skipped {{count}} symlink.",
+                "skippedSymlinkPlural": "Skipped {{count}} symlinks.",
+                "uploadingFileSingular": "Uploading {{count}} file to runtime…",
+                "uploadingFilePlural": "Uploading {{count}} files to runtime…",
+                "uploadingFileToRemoteSingular": "Uploading {{count}} file to remote…",
+                "uploadingFileToRemotePlural": "Uploading {{count}} files to remote…"
               }
             }
           },
@@ -6525,7 +6533,6 @@
           "0cd15956d4": "Hide {{value0}} child workspaces",
           "bd37a57ac8": "Create workspace for {{value0}}",
           "b667b59632": "Some projects could not be removed from Orca",
-          "f94466bc39": "{{value0}} of {{value1}} contained project{{value2}} remained after deleting the group.",
           "groupDeleteFailed": "Failed to delete group",
           "groupDeleteFailedDesc": "Something went wrong while deleting the group. No projects were removed.",
           "groupRenameFailed": "Failed to rename group",
@@ -6533,7 +6540,9 @@
           "failedNestWorkspace": "Failed to nest workspace",
           "sidebarRowMissing": "Target no longer exists",
           "failedUnnestWorkspace": "Failed to unnest workspace",
-          "hostRepairRequired": "Re-pair required"
+          "hostRepairRequired": "Re-pair required",
+          "groupProjectsRemainedSingular": "{{remaining}} of {{count}} contained project remained after deleting the group.",
+          "groupProjectsRemainedPlural": "{{remaining}} of {{count}} contained projects remained after deleting the group."
         },
         "WorktreeMetaDialog": {
           "3db0a2a593": "Cancel",
@@ -7017,7 +7026,6 @@
           "pairingCommand": "orca serve --pairing-address <host>",
           "pairingHelpSuffix": "on the server and paste the printed pairing URL.",
           "sshImportAlreadySynced": "~/.ssh/config already in sync.",
-          "sshImportSynced": "Added {{value0}} host{{value1}} to Orca.",
           "sshImportFailed": "Failed to import SSH config.",
           "sshAlreadyExists": "That SSH host is already in Orca.",
           "advanced": "Advanced",
@@ -7051,7 +7059,9 @@
           "identityFileFromConfigHint": "Left empty on purpose: Orca uses every key ~/.ssh/config resolves for {{value0}}. Type a path to use just that key.",
           "sshConfigPickerRetry": "Try again",
           "sshConfigPickerResolving": "Reading…",
-          "pairingHelpShareComputer": "Create this under Settings → Remote Orca Servers → Share this computer on the other computer."
+          "pairingHelpShareComputer": "Create this under Settings → Remote Orca Servers → Share this computer on the other computer.",
+          "sshImportSyncedPlural": "Added {{count}} hosts to Orca.",
+          "sshImportSyncedSingular": "Added {{count}} host to Orca."
         },
         "ForgetSshWorkspaceDialog": {
           "reconnectFailed": "Reconnection failed",
@@ -9317,7 +9327,10 @@
           "df8466f3fc": "Clear shortcut search",
           "f733c4b89f": "Search command or keys",
           "02dc7d4251": "Find shortcuts",
-          "1d5634ba31": "{{value0}} shortcut"
+          "1d5634ba31": "{{value0}} shortcut",
+          "filterAll": "All",
+          "filterUnassigned": "Unassigned",
+          "filterConflicts": "Conflicts"
         },
         "ShortcutRowsList": {
           "4ce3cd24d9": "No shortcuts match those filters."
@@ -13125,7 +13138,8 @@
           "confirm": "Stop cleanup"
         },
         "shortcutDefinitionCatalog": {
-          "missionControlConflict": "Blocked by Mission Control. Remap here or change it in System Settings."
+          "missionControlConflict": "Blocked by Mission Control. Remap here or change it in System Settings.",
+          "bindingConflict": "{{binding}} conflicts with {{actions}}."
         },
         "contrast": {
           "title": "Color Contrast",
@@ -14098,7 +14112,6 @@
             "e131cd7128": "Source Control is only available for Git repositories",
             "c07b236287": "Select a workspace to view changes",
             "dc5a6465fc": "{{value0}} (e.g. {{value1}}{{value2}})",
-            "8eb3782a0c": "Failed to discard {{value0}} file{{value1}}",
             "a5e5a11090": "Discard all failed — unable to unstage files before discard",
             "8a5ba6a988": "Failed to load commit diff",
             "fe5bd1a610": "Creating {{value0}}...",
@@ -14107,7 +14120,6 @@
             "0453ca3a9a": "{{value0}} created, but Orca could not refresh it yet.",
             "f99560ab29": "Abort {{value0}} failed",
             "eae7a1da5f": "Failed to clear notes.",
-            "657e0c90ad": "{{value0}} note{{value1}}",
             "df5040e3c3": "Unstage",
             "8cde1a2fb0": "Stage",
             "d54dd48b0b": "Discard changes",
@@ -14252,7 +14264,11 @@
             "entryFailedInWorkspace": "{{value0}} in {{value1}}",
             "diffCommentNotesCopyFailed": "Failed to copy notes",
             "conflictCount_one": "{{count}} conflict",
-            "conflictCount_other": "{{count}} conflicts"
+            "conflictCount_other": "{{count}} conflicts",
+            "discardFailedSingular": "Failed to discard {{count}} file",
+            "discardFailedPlural": "Failed to discard {{count}} files",
+            "noteCountSingular": "{{count}} note",
+            "noteCountPlural": "{{count}} notes"
           },
           "SourceControlAgentActionDialog": {
             "8e856842d1": "Could not start the selected agent.",
@@ -14782,7 +14798,25 @@
                   "forcePushBeforeReview": "Force Push before {{shortLabel}}",
                   "pushBeforeReview": "Push before {{shortLabel}}",
                   "titleForcePushBeforeCreatingReview": "Force push with lease before creating a {{reviewLabel}}",
-                  "titlePushBeforeCreatingReview": "Push local commits before creating a {{reviewLabel}}"
+                  "titlePushBeforeCreatingReview": "Push local commits before creating a {{reviewLabel}}",
+                  "pushCount_one": "Push {{count}} commit",
+                  "pushCount_other": "Push {{count}} commits",
+                  "pullCount_one": "Pull {{count}} commit",
+                  "pullCount_other": "Pull {{count}} commits",
+                  "fastForwardCount_one": "Fast-forward {{count}} commit",
+                  "fastForwardCount_other": "Fast-forward {{count}} commits",
+                  "syncCounts": "Pull {{behind}}, push {{ahead}}",
+                  "remoteBranchFallback": "the remote branch",
+                  "titleForcePushOlderCopiesBranch": "Remote only has older copies of local commits. Force push this branch with lease to update {{upstreamName}}.",
+                  "titleForcePushOlderCopiesCount_one": "Remote only has older copies of local commits. Force push {{count}} branch commit with lease to update {{upstreamName}}.",
+                  "titleForcePushOlderCopiesCount_other": "Remote only has older copies of local commits. Force push {{count}} branch commits with lease to update {{upstreamName}}.",
+                  "titleManualForcePushReplaceRemote_one": "Force push {{count}} local commit with lease to update {{upstreamName}} and replace remote-only commits.",
+                  "titleManualForcePushReplaceRemote_other": "Force push {{count}} local commits with lease to update {{upstreamName}} and replace remote-only commits.",
+                  "titleManualForcePush_one": "Force push {{count}} local commit with lease to update {{upstreamName}}.",
+                  "titleManualForcePush_other": "Force push {{count}} local commits with lease to update {{upstreamName}}.",
+                  "titleUnpublishedForcePushBranch": "Force push this branch with lease and set an upstream if needed.",
+                  "titleUnpublishedForcePushCount_one": "Force push {{count}} branch commit with lease and set an upstream if needed.",
+                  "titleUnpublishedForcePushCount_other": "Force push {{count}} branch commits with lease and set an upstream if needed."
                 }
               },
               "primary": {
@@ -14854,7 +14888,8 @@
               },
               "compare": {
                 "summary": {
-                  "dd72a6fd37": "{{value0}} commit{{value1}} ahead of {{value2}}"
+                  "commitsAheadSingular": "{{count}} commit ahead of {{ref}}",
+                  "commitsAheadPlural": "{{count}} commits ahead of {{ref}}"
                 }
               },
               "conflict": {
@@ -15441,12 +15476,13 @@
           "5c115cb713": "CLI not installed",
           "217beb0658": "GitHub",
           "4983ae7433": "Add Linear access with a Personal API key. Full-access keys can show every team the key owner can access.",
-          "b08a6ac93c": "{{value0}} workspace{{value1}} linked. Add another workspace or replace a restricted key any time.",
           "93f0c49ad1": "not-authenticated",
           "a3bcf13694": "connected",
           "d6e5dba05a": "Sign in",
           "0b4a7d23ab": "Signing in",
-          "a74c6d6b18": "not-installed"
+          "a74c6d6b18": "not-installed",
+          "linearWorkspacesLinkedSingular": "{{count}} workspace linked. Add another workspace or replace a restricted key any time.",
+          "linearWorkspacesLinkedPlural": "{{count}} workspaces linked. Add another workspace or replace a restricted key any time."
         },
         "NotificationStep": {
           "3bede04483": "Send test notification",
@@ -19331,7 +19367,43 @@
           "insertColumnLeft": "Insert column left",
           "insertColumnRight": "Insert column right",
           "deleteColumn": "Delete column",
-          "deleteTable": "Delete table"
+          "deleteTable": "Delete table",
+          "addLink": "Add link",
+          "format": "Format",
+          "bold": "Bold",
+          "italic": "Italic",
+          "strike": "Strike",
+          "inlineCode": "Inline code",
+          "codeBlock": "Code block",
+          "quote": "Quote",
+          "paragraph": "Paragraph",
+          "bodyText": "Body text",
+          "heading1": "Heading 1",
+          "heading2": "Heading 2",
+          "heading3": "Heading 3",
+          "heading4": "Heading 4",
+          "heading5": "Heading 5",
+          "bulletList": "Bullet list",
+          "numberedList": "Numbered list",
+          "checklist": "Checklist",
+          "insert": "Insert",
+          "link": "Link",
+          "image": "Image",
+          "divider": "Divider",
+          "paste": "Paste",
+          "pasteAsPlainText": "Paste as plain text",
+          "addToDictionary": "Add to dictionary"
+        }
+      },
+      "ipc": {
+        "diagnostics": {
+          "uploadConfirm": {
+            "send": "Send",
+            "cancel": "Cancel",
+            "title": "Send this file to support?",
+            "message": "This uploads the redacted app diagnostics file you reviewed.",
+            "detail": "Diagnostic ID: {{id}}\nDiagnostic records: {{records}}\nSize: {{sizeKb}} KB"
+          }
         }
       }
     },
@@ -20202,6 +20274,83 @@
         "settingsUnconfirmed": "Codex did not confirm the selected model and effort. This goal change was not sent. Check the chat and try again.",
         "pauseUnconfirmed": "Codex stopped running, but its goal pause was not confirmed. Check the goal before continuing.",
         "stopUnconfirmed": "Codex could not confirm Stop. Check the chat before continuing."
+      },
+      "slashCommandDescriptions": {
+        "clearConversation": "Clear the conversation",
+        "clearHistory": "Clear conversation history",
+        "clearTerminal": "Clear the terminal and start a new chat",
+        "clearKeepSession": "Clear context while keeping the session",
+        "help": "Show available commands",
+        "compactSummarize": "Summarize and compact the conversation",
+        "compactConversation": "Compact the conversation",
+        "compactContext": "Compact conversation context",
+        "initClaude": "Initialize a CLAUDE.md",
+        "initAgents": "Create an AGENTS.md file",
+        "review": "Review the current changes",
+        "contextUsage": "Show context usage",
+        "contextEstimated": "Show estimated context usage",
+        "modelAndEffort": "Choose the model and reasoning effort",
+        "modelTerminal": "Open the model selector in Terminal",
+        "model": "Choose the model",
+        "effort": "Choose reasoning effort",
+        "ide": "Include IDE context",
+        "permissions": "Choose what Codex is allowed to do",
+        "keymap": "Remap TUI shortcuts",
+        "vim": "Toggle Vim mode",
+        "experimental": "Toggle experimental features",
+        "approve": "Approve one auto-review retry",
+        "memories": "Configure memory use",
+        "skills": "Manage and use skills",
+        "import": "Import setup from Claude Code",
+        "hooks": "View lifecycle hooks",
+        "renameThread": "Rename the current thread",
+        "renameSession": "Rename the session",
+        "newChat": "Start a new chat",
+        "newSession": "Start a new session",
+        "archive": "Archive this session and exit",
+        "delete": "Delete this session and exit",
+        "resumeSaved": "Resume a saved chat",
+        "resumeSession": "Resume a session; without arguments, choose in Terminal",
+        "forkChat": "Fork the current chat",
+        "forkMessage": "Fork from a previous message in Terminal",
+        "app": "Continue in Codex Desktop",
+        "planSwitch": "Switch to Plan mode",
+        "planToggle": "Toggle plan mode",
+        "goal": "Set or view the goal",
+        "agent": "Switch the active agent thread",
+        "subagents": "Switch the active agent thread",
+        "side": "Start a side conversation",
+        "copy": "Copy the last response as markdown",
+        "raw": "Toggle raw scrollback mode",
+        "diff": "Show the working diff",
+        "mention": "Mention a file",
+        "status": "Show session configuration and usage",
+        "usageAccount": "View account usage",
+        "usageProvider": "Show provider usage and limits",
+        "title": "Configure the terminal title",
+        "statusline": "Configure the status line",
+        "theme": "Choose a syntax highlighting theme",
+        "pets": "Choose or hide the terminal pet",
+        "mcp": "List configured MCP tools",
+        "plugins": "Browse plugins",
+        "logout": "Log out of Codex",
+        "exit": "Exit Codex",
+        "feedback": "Send logs to maintainers",
+        "ps": "List background terminals",
+        "stop": "Stop all background terminals",
+        "personality": "Choose a communication style",
+        "switch": "Open the temporary model selector in Terminal",
+        "branch": "Rewind to a previous message in Terminal",
+        "tree": "Browse the session tree in Terminal",
+        "session": "Show session information and controls",
+        "fast": "Toggle priority service tier",
+        "tools": "Show tools visible to the agent",
+        "jobs": "Show background jobs",
+        "git": "Open the Git viewer in Terminal",
+        "export": "Export the session to HTML",
+        "settings": "Open settings in Terminal",
+        "extensions": "Open the extension dashboard in Terminal",
+        "hotkeys": "Show keyboard shortcuts in Terminal"
       }
     },
     "tab": {
@@ -21451,7 +21600,8 @@
       "deleting": "Deleting…",
       "confirm": "Delete all listed worktrees",
       "preservedBranches": "Some nested worktree branches were kept"
-    }
+    },
+    "setupTerminalTitle": "Setup"
   },
   "projectBoard": {
     "noColumnField": "This board view has no single-select or iteration field to group by, so Orca is listing items instead.",
@@ -21962,5 +22112,116 @@
     "ok": "OK",
     "unavailableMessage": "Orca can't stop every terminal session right now.",
     "unavailableDetail": "Nothing was stopped. Try again once your terminals have opened. If a terminal says it was opened in a newer version of Orca, reopen it first. If your terminals are already open, quit and reopen Orca, then try again."
+  },
+  "keybindings": {
+    "title": {
+      "worktreeQuickOpen": "Go to File",
+      "appSettings": "Open Settings",
+      "appForceReload": "Force Reload",
+      "worktreePalette": "Switch worktree",
+      "worktreeNavigateUp": "Previous worktree",
+      "worktreeNavigateDown": "Next worktree",
+      "workspaceCreate": "Create worktree",
+      "workspaceRename": "Rename worktree",
+      "workspaceDelete": "Delete Workspace",
+      "workspaceOpenBoard": "Toggle Workspace Board",
+      "dashboardToggle": "Toggle Agent Dashboard",
+      "workspaceSelectByIndex": "Select Workspace 1–9",
+      "voiceDictation": "Dictation",
+      "viewTasks": "Open Tasks",
+      "sidebarLeftToggle": "Toggle Sidebar",
+      "sidebarRightToggle": "Toggle Right Sidebar",
+      "sidebarExplorerToggle": "Show Explorer",
+      "sidebarSearchToggle": "Show Search",
+      "sidebarSourceControlToggle": "Show Source Control",
+      "sidebarChecksToggle": "Show Checks",
+      "sidebarPortsToggle": "Show Ports",
+      "sidebarSleepingWorkspacesToggle": "Toggle Sleeping Workspaces",
+      "sidebarFocusWorktreeList": "Focus worktree list",
+      "floatingTerminalToggle": "Toggle Floating Terminal",
+      "floatingWorkspaceMaximize": "Maximize Floating Workspace Panel",
+      "floatingWorkspaceMinimize": "Minimize Floating Workspace Panel",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "zoomReset": "Reset Size",
+      "worktreeHistoryBack": "Worktree History Back",
+      "worktreeHistoryForward": "Worktree History Forward",
+      "tabNewTerminal": "New terminal tab",
+      "tabNewAgent": "New agent tab (default agent)",
+      "tabNewBrowser": "New browser tab",
+      "tabNewSimulator": "New mobile emulator tab",
+      "tabNewMarkdown": "New markdown tab",
+      "tabOpenMarkdown": "Open markdown tab",
+      "tabClose": "Close active tab",
+      "tabCloseAll": "Close all editor tabs",
+      "tabRename": "Rename active tab",
+      "tabReopenClosed": "Reopen closed tab",
+      "tabNextSameType": "Next tab (same type)",
+      "tabPreviousSameType": "Previous tab (same type)",
+      "tabNextAllTypes": "Next tab (all types)",
+      "tabPreviousAllTypes": "Previous tab (all types)",
+      "tabPreviousRecent": "Previous recent tab",
+      "tabNextTerminal": "Next terminal tab",
+      "tabPreviousTerminal": "Previous terminal tab",
+      "tabSelectByIndex": "Select Tab 1–9",
+      "tabOpenQuickCommandsMenu": "Toggle Quick Commands menu",
+      "browserFind": "Find in Browser",
+      "browserBack": "Go Back in Browser",
+      "browserForward": "Go Forward in Browser",
+      "browserShowHistory": "Show Browser History",
+      "browserReload": "Reload Browser Page",
+      "browserHardReload": "Hard Reload Browser Page",
+      "browserFocusAddressBar": "Focus Browser Address Bar",
+      "browserGrabElement": "Grab Page Element",
+      "browserAnnotateElement": "Annotate Page Element",
+      "editorFind": "Find in editor",
+      "editorReplace": "Replace in editor",
+      "editorSave": "Save File",
+      "editorMarkdownPreview": "Show Markdown Preview",
+      "editorToggleWordWrap": "Toggle Word Wrap",
+      "editorCopyContext": "Copy Context",
+      "editorPreviousChange": "Go to Previous Change",
+      "editorNextChange": "Go to Next Change",
+      "editorAddReviewNote": "Add Review Note",
+      "sourceControlSendReviewNotes": "Send Review Notes to Agent",
+      "fileExplorerUndo": "Undo file operation",
+      "fileExplorerRedo": "Redo file operation",
+      "fileExplorerCopyPath": "Copy file path",
+      "fileExplorerCopyRelativePath": "Copy relative file path",
+      "fileExplorerDelete": "Delete file",
+      "settingsSearch": "Search Settings",
+      "terminalCopySelection": "Copy terminal selection",
+      "terminalSelectAll": "Select all terminal text",
+      "terminalPaste": "Paste into terminal",
+      "terminalSearch": "Search active pane",
+      "terminalClear": "Clear active pane",
+      "terminalFocusNextPane": "Focus next pane",
+      "terminalFocusPreviousPane": "Focus previous pane",
+      "terminalEqualizePaneSizes": "Equalize pane sizes",
+      "terminalExpandPane": "Expand / collapse pane",
+      "terminalSetTitle": "Set Title…",
+      "chatFind": "Find in chat",
+      "terminalToggleNativeChat": "Switch between Chat UI and terminal",
+      "sidebarChildWorkspacesToggle": "Toggle Child Workspaces",
+      "terminalClearPaneTitle": "Clear Pane Title",
+      "terminalClosePane": "Close active pane",
+      "terminalSplitRight": "Split terminal right",
+      "terminalSplitDown": "Split terminal down",
+      "terminalSwitchInputSource": "Switch input source / language (native)",
+      "newAgentTab": "New {{agent}} tab"
+    },
+    "group": {
+      "global": "Global",
+      "tabs": "Tabs",
+      "tabNavigation": "Tab Navigation",
+      "quickCommands": "Quick Commands",
+      "browser": "Browser",
+      "editors": "Editors",
+      "fileExplorer": "File Explorer",
+      "settings": "Settings",
+      "terminalPanes": "Terminal Panes",
+      "chat": "Chat",
+      "agents": "Agents"
+    }
   }
 }

@@ -1602,7 +1602,6 @@
         "0bbdc673c1": "체크를 새로고침하지 못했습니다.",
         "e7007aa1d8": "repos 경로가 없으면 체크를 새로고침할 수 없습니다.",
         "675bc0d638": "취소",
-        "a18f669c7a": "{{value0}} {{value1}} 반응{{value2}}",
         "53fe19aefc": "GitHub 병합 대화상자 열기",
         "a2495e4784": "PR",
         "ce360fc318": "자동 병합을 비활성화하지 못했습니다.",
@@ -1734,7 +1733,9 @@
         "8812225174": "다시 열기",
         "09d67a0f9b": "PR을 닫지 못했습니다.",
         "88809e79db": "PR을 다시 열지 못했습니다.",
-        "00f55cc17b": "이 PR에는 저장소 액세스를 사용할 수 없습니다."
+        "00f55cc17b": "이 PR에는 저장소 액세스를 사용할 수 없습니다.",
+        "reactionCountSingular": "{{reaction}} 반응 {{count}}개",
+        "reactionCountPlural": "{{reaction}} 반응 {{count}}개"
       },
       "GitLabItemDialog": {
         "65e784c1f1": "다시 열기",
@@ -1795,12 +1796,13 @@
         "22511537d2": "승인됨",
         "00f3bab87b": " / 총 {{value0}}개 필요",
         "11384f99aa": "숫자",
-        "40c56b95e2": "{{value0}} 승인{{value1}} 남음",
         "3a051b8ade": "작업 항목",
         "32f8bef818": "로그 출력이 없습니다.",
         "4168eb2c51": "해결",
         "commentTooLarge": "댓글이 너무 길어 안전하게 제출할 수 없습니다.",
-        "gitlabActionFailed": "GitLab 작업이 실패했습니다."
+        "gitlabActionFailed": "GitLab 작업이 실패했습니다.",
+        "approvalsRemainingSingular": "승인 {{count}}개 남음",
+        "approvalsRemainingPlural": "승인 {{count}}개 남음"
       },
       "JiraIssueWorkspace": {
         "b0b92666c9": "댓글",
@@ -2517,10 +2519,8 @@
         "3b11c8e8fc": "배열",
         "e178c0a953": "이슈를 생성하기 전에 Jira 프로젝트를 선택하세요.",
         "0f7b0d964a": "{{value0}}에 새로운 이슈를 생성합니다.",
-        "eff9800d4b": "{{value0}} 라벨{{value1}}",
         "d7f16d0e32": "팀 선택",
         "5301ca0f20": "프로젝트 생성",
-        "7719d8daa9": "{{value0}} 멤버{{value1}}",
         "5af6f0ae5b": "팀 선택",
         "cfb730b73e": "이슈",
         "3659f9792a": "보드",
@@ -2622,7 +2622,11 @@
         "jiraColumnStoryPoints": "포인트",
         "jiraColumnOriginalEstimate": "예상",
         "jiraColumnRemainingEstimate": "남음",
-        "jiraBoardEmptyColumn": "이슈 없음"
+        "jiraBoardEmptyColumn": "이슈 없음",
+        "labelCountPlural": "라벨 {{count}}개",
+        "labelCountSingular": "라벨 {{count}}개",
+        "memberCountPlural": "멤버 {{count}}명",
+        "memberCountSingular": "멤버 {{count}}명"
       },
       "Terminal": {
         "73768427cf": "닫기",
@@ -3612,8 +3616,6 @@
             "drop": {
               "handler": {
                 "1e072f611e": "{{value0}} {{value1}}을(를) 업로드하지 못했습니다.",
-                "53f015fd85": "{{value0}} 심볼릭 링크{{value1}}을 건너뛰었습니다.",
-                "29c031b49a": "{{value0}} 파일{{value1}}을 런타임에 업로드하는 중…",
                 "0c77693641": "Worktree가 준비되지 않았습니다. 잠시 후에 다시 시도하세요.",
                 "ce8248b835": "작업 트리 경로를 사용할 수 없습니다.",
                 "internalTooManyPaths": "터미널에 안전하게 붙여넣기에는 드롭된 경로가 너무 많습니다.",
@@ -3621,7 +3623,13 @@
                 "internalHostMismatch": "이 터미널과 같은 호스트의 파일을 드롭하세요.",
                 "b4cf68e889": "{{value0}} {{value1}}을(를) 건너뛰었습니다.",
                 "writeTimeout": "파일 드롭이 취소되었습니다. 안전 시간 제한 전에 터미널이 경로를 받지 않았습니다.",
-                "writeRejected": "파일 드롭이 취소되었습니다. 터미널이 경로를 받을 수 없습니다."
+                "writeRejected": "파일 드롭이 취소되었습니다. 터미널이 경로를 받을 수 없습니다.",
+                "skippedSymlinkSingular": "심볼릭 링크 {{count}}개를 건너뛰었습니다.",
+                "skippedSymlinkPlural": "심볼릭 링크 {{count}}개를 건너뛰었습니다.",
+                "uploadingFileSingular": "파일 {{count}}개를 런타임에 업로드하는 중…",
+                "uploadingFilePlural": "파일 {{count}}개를 런타임에 업로드하는 중…",
+                "uploadingFileToRemoteSingular": "파일 {{count}}개를 원격 호스트에 업로드하는 중…",
+                "uploadingFileToRemotePlural": "파일 {{count}}개를 원격 호스트에 업로드하는 중…"
               }
             }
           },
@@ -6167,7 +6175,6 @@
           "0cd15956d4": "{{value0}}개 하위 워크스페이스 숨기기",
           "bd37a57ac8": "{{value0}}에 대한 워크스페이스 만들기",
           "b667b59632": "일부 프로젝트를 Orca에서 제거하지 못했습니다.",
-          "f94466bc39": "그룹 삭제 후에도 {{value0}}/{{value1}} 프로젝트{{value2}}가 남아 있습니다.",
           "groupDeleteFailed": "그룹을 삭제하지 못했습니다.",
           "groupDeleteFailedDesc": "그룹을 삭제하는 중 문제가 발생했습니다. 제거된 프로젝트는 없습니다.",
           "7a8b9c0d1e": "업데이트 필요",
@@ -6178,7 +6185,9 @@
           "failedUnnestWorkspace": "워크스페이스 펼치기 실패",
           "groupRenameFailed": "그룹 이름을 바꾸지 못했습니다.",
           "groupRenameFailedDesc": "Orca는 그룹 호스트에게 새 이름을 확인할 수 없습니다. 다시 연결한 후 그룹을 다시 확인하세요.",
-          "hostRepairRequired": "Re-pair required"
+          "hostRepairRequired": "Re-pair required",
+          "groupProjectsRemainedSingular": "그룹을 삭제했지만, 포함된 프로젝트 {{count}}개 중 {{remaining}}개가 남아 있습니다.",
+          "groupProjectsRemainedPlural": "그룹을 삭제했지만, 포함된 프로젝트 {{count}}개 중 {{remaining}}개가 남아 있습니다."
         },
         "WorktreeMetaDialog": {
           "3db0a2a593": "취소",
@@ -6733,7 +6742,6 @@
           "pairingCommand": "orca serve --pairing-address <host>",
           "pairingHelpSuffix": "한 다음 출력된 페어링 URL을 붙여넣으세요.",
           "sshImportAlreadySynced": "~/.ssh/config가 이미 동기화되어 있습니다.",
-          "sshImportSynced": "{{value0}} 호스트{{value1}}을(를) Orca에 추가했습니다.",
           "sshImportFailed": "SSH 구성을 가져오지 못했습니다.",
           "sshPersistenceDefault": "이 호스트의 원격 터미널은 종료하거나 릴레이를 재설정할 때까지 계속 실행됩니다.",
           "advanced": "고급",
@@ -6768,7 +6776,9 @@
           "identityFileFromConfigHint": "의도적으로 비워 두기: Orca는 ~/.ssh/config가 {{value0}}을 확인하는 모든 키를 사용합니다. 해당 키만 사용하려면 경로를 입력하세요.",
           "sshConfigPickerRetry": "다시 시도하세요",
           "sshConfigPickerResolving": "독서…",
-          "pairingHelpShareComputer": "다른 컴퓨터의 설정 → 원격 Orca 서버 → 이 컴퓨터 공유에서 만드세요."
+          "pairingHelpShareComputer": "다른 컴퓨터의 설정 → 원격 Orca 서버 → 이 컴퓨터 공유에서 만드세요.",
+          "sshImportSyncedPlural": "호스트 {{count}}개를 Orca에 추가했습니다.",
+          "sshImportSyncedSingular": "호스트 {{count}}개를 Orca에 추가했습니다."
         },
         "ForgetSshWorkspaceDialog": {
           "reconnectFailed": "재연결 실패",
@@ -8950,7 +8960,10 @@
           "df8466f3fc": "바로가기 검색 지우기",
           "f733c4b89f": "명령 또는 키 검색",
           "02dc7d4251": "바로가기 검색",
-          "1d5634ba31": "{{value0}} 바로가기"
+          "1d5634ba31": "{{value0}} 바로가기",
+          "filterAll": "모두",
+          "filterUnassigned": "할당되지 않음",
+          "filterConflicts": "충돌"
         },
         "ShortcutRowsList": {
           "4ce3cd24d9": "해당 필터와 일치하는 바로가기가 없습니다."
@@ -11039,7 +11052,8 @@
           }
         },
         "shortcutDefinitionCatalog": {
-          "missionControlConflict": "Mission Control에 의해 차단되었습니다. 여기에서 다시 매핑하거나 시스템 설정에서 변경하세요."
+          "missionControlConflict": "Mission Control에 의해 차단되었습니다. 여기에서 다시 매핑하거나 시스템 설정에서 변경하세요.",
+          "bindingConflict": "{{binding}}이(가) {{actions}}과(와) 충돌합니다."
         },
         "shortcuts": {
           "search": {
@@ -13789,7 +13803,6 @@
             "e131cd7128": "소스 제어는 Git 리포지토리에서만 사용할 수 있습니다.",
             "c07b236287": "변경사항을 보려면 워크스페이스를 선택하세요.",
             "dc5a6465fc": "{{value0}}(예: {{value1}}{{value2}})",
-            "8eb3782a0c": "{{value0}} 파일{{value1}}을(를) 삭제하지 못했습니다.",
             "a5e5a11090": "모든 변경 사항 취소 실패 — 취소 전에 파일의 스테이징을 해제하지 못했습니다.",
             "8a5ba6a988": "commit 차이점을 로드하지 못했습니다.",
             "fe5bd1a610": "{{value0}} 생성 중...",
@@ -13798,7 +13811,6 @@
             "0453ca3a9a": "{{value0}}이(가) 생성되었지만 Orca가 아직 새로 고칠 수 없습니다.",
             "f99560ab29": "중단 {{value0}} 실패",
             "eae7a1da5f": "메모를 지우지 못했습니다.",
-            "657e0c90ad": "{{value0}} 메모{{value1}}",
             "df5040e3c3": "언스테이지",
             "8cde1a2fb0": "스테이지",
             "d54dd48b0b": "변경사항 취소",
@@ -13943,7 +13955,11 @@
             "entryFailedInWorkspace": "{{value1}}의 {{value0}}",
             "diffCommentNotesCopyFailed": "메모를 복사하지 못했습니다.",
             "conflictCount_one": "충돌 {{count}}개",
-            "conflictCount_other": "충돌 {{count}}개"
+            "conflictCount_other": "충돌 {{count}}개",
+            "discardFailedSingular": "파일 {{count}}개의 변경 사항을 버리지 못했습니다.",
+            "discardFailedPlural": "파일 {{count}}개의 변경 사항을 버리지 못했습니다.",
+            "noteCountSingular": "메모 {{count}}개",
+            "noteCountPlural": "메모 {{count}}개"
           },
           "SourceControlAgentActionDialog": {
             "8e856842d1": "선택한 agent를 시작할 수 없습니다.",
@@ -14473,7 +14489,25 @@
                   "forcePushBeforeReview": "강제 푸시 후 {{shortLabel}} 만들기",
                   "pushBeforeReview": "푸시 후 {{shortLabel}} 만들기",
                   "titleForcePushBeforeCreatingReview": "{{reviewLabel}}을(를) 만들기 전에 lease로 강제 푸시",
-                  "titlePushBeforeCreatingReview": "{{reviewLabel}}을(를) 만들기 전에 로컬 commits 푸시"
+                  "titlePushBeforeCreatingReview": "{{reviewLabel}}을(를) 만들기 전에 로컬 commits 푸시",
+                  "pushCount_one": "커밋 {{count}}개 푸시",
+                  "pushCount_other": "커밋 {{count}}개 푸시",
+                  "pullCount_one": "커밋 {{count}}개 풀",
+                  "pullCount_other": "커밋 {{count}}개 풀",
+                  "fastForwardCount_one": "커밋 {{count}}개 fast-forward",
+                  "fastForwardCount_other": "커밋 {{count}}개 fast-forward",
+                  "syncCounts": "{{behind}}개 풀, {{ahead}}개 푸시",
+                  "remoteBranchFallback": "원격 브랜치",
+                  "titleForcePushOlderCopiesBranch": "원격에는 로컬 커밋의 이전 사본만 있습니다. {{upstreamName}}을(를) 업데이트하려면 이 브랜치를 lease로 강제 푸시하세요.",
+                  "titleForcePushOlderCopiesCount_one": "원격에는 로컬 커밋의 이전 사본만 있습니다. {{upstreamName}}을(를) 업데이트하려면 브랜치 커밋 {{count}}개를 lease로 강제 푸시하세요.",
+                  "titleForcePushOlderCopiesCount_other": "원격에는 로컬 커밋의 이전 사본만 있습니다. {{upstreamName}}을(를) 업데이트하려면 브랜치 커밋 {{count}}개를 lease로 강제 푸시하세요.",
+                  "titleManualForcePush_one": "로컬 커밋 {{count}}개를 lease로 강제 푸시하여 {{upstreamName}}을(를) 업데이트합니다.",
+                  "titleManualForcePush_other": "로컬 커밋 {{count}}개를 lease로 강제 푸시하여 {{upstreamName}}을(를) 업데이트합니다.",
+                  "titleManualForcePushReplaceRemote_one": "로컬 커밋 {{count}}개를 lease로 강제 푸시하여 {{upstreamName}}을(를) 업데이트하고 원격에만 있는 커밋을 대체합니다.",
+                  "titleManualForcePushReplaceRemote_other": "로컬 커밋 {{count}}개를 lease로 강제 푸시하여 {{upstreamName}}을(를) 업데이트하고 원격에만 있는 커밋을 대체합니다.",
+                  "titleUnpublishedForcePushBranch": "이 브랜치를 lease로 강제 푸시하고 필요하면 업스트림을 설정합니다.",
+                  "titleUnpublishedForcePushCount_one": "브랜치 커밋 {{count}}개를 lease로 강제 푸시하고 필요하면 업스트림을 설정합니다.",
+                  "titleUnpublishedForcePushCount_other": "브랜치 커밋 {{count}}개를 lease로 강제 푸시하고 필요하면 업스트림을 설정합니다."
                 }
               },
               "primary": {
@@ -14545,7 +14579,8 @@
               },
               "compare": {
                 "summary": {
-                  "dd72a6fd37": "{{value0}}은 {{value2}}보다 먼저 {{value1}}을 커밋합니다."
+                  "commitsAheadSingular": "{{ref}}보다 커밋 {{count}}개 앞서 있음",
+                  "commitsAheadPlural": "{{ref}}보다 커밋 {{count}}개 앞서 있음"
                 }
               },
               "conflict": {
@@ -15132,12 +15167,13 @@
           "5c115cb713": "CLI가 설치되지 않았습니다.",
           "217beb0658": "GitHub",
           "4983ae7433": "개인 API 키로 Linear를 연결하세요. 전체 액세스 키는 키 소유자가 접근할 수 있는 모든 팀을 표시할 수 있습니다.",
-          "b08a6ac93c": "{{value0}} 워크스페이스{{value1}}이 연결되었습니다. 언제든지 다른 워크스페이스를 추가하거나 제한된 키를 교체하세요.",
           "93f0c49ad1": "인증되지 않은",
           "a3bcf13694": "연결됨",
           "d6e5dba05a": "로그인",
           "0b4a7d23ab": "로그인 중",
-          "a74c6d6b18": "설치되지 않은"
+          "a74c6d6b18": "설치되지 않은",
+          "linearWorkspacesLinkedSingular": "워크스페이스 {{count}}개가 연결되었습니다. 언제든지 다른 워크스페이스를 추가하거나 접근 권한이 제한된 API 키를 교체할 수 있습니다.",
+          "linearWorkspacesLinkedPlural": "워크스페이스 {{count}}개가 연결되었습니다. 언제든지 다른 워크스페이스를 추가하거나 접근 권한이 제한된 API 키를 교체할 수 있습니다."
         },
         "NotificationStep": {
           "3bede04483": "테스트 알림 보내기",
@@ -19076,7 +19112,43 @@
           "insertColumnLeft": "왼쪽에 열 삽입",
           "insertColumnRight": "오른쪽에 열 삽입",
           "deleteColumn": "열 삭제",
-          "deleteTable": "표 삭제"
+          "deleteTable": "표 삭제",
+          "addLink": "링크 추가",
+          "format": "서식",
+          "bold": "굵게",
+          "italic": "기울임",
+          "strike": "취소선",
+          "inlineCode": "인라인 코드",
+          "codeBlock": "코드 블록",
+          "quote": "인용",
+          "paragraph": "단락",
+          "bodyText": "본문 텍스트",
+          "heading1": "제목 1",
+          "heading2": "제목 2",
+          "heading3": "제목 3",
+          "heading4": "제목 4",
+          "heading5": "제목 5",
+          "bulletList": "글머리 기호 목록",
+          "numberedList": "번호 매기기 목록",
+          "checklist": "체크리스트",
+          "insert": "삽입",
+          "link": "링크",
+          "image": "이미지",
+          "divider": "구분선",
+          "paste": "붙여넣기",
+          "pasteAsPlainText": "일반 텍스트로 붙여넣기",
+          "addToDictionary": "사전에 추가"
+        }
+      },
+      "ipc": {
+        "diagnostics": {
+          "uploadConfirm": {
+            "send": "보내기",
+            "cancel": "취소",
+            "title": "이 파일을 지원팀에 보낼까요?",
+            "message": "검토한 마스킹 처리된 앱 진단 파일을 업로드합니다.",
+            "detail": "진단 ID: {{id}}\n진단 기록: {{records}}\n크기: {{sizeKb}}KB"
+          }
         }
       }
     },
@@ -19935,6 +20007,83 @@
         "settingsUnconfirmed": "Codex가 선택한 모델과 추론 수준의 적용을 확인하지 않았습니다. 이 목표 변경은 전송되지 않았습니다. 채팅을 확인하고 다시 시도하세요.",
         "pauseUnconfirmed": "Codex 실행은 중지되었지만 목표 일시 중지는 확인되지 않았습니다. 계속하기 전에 목표를 확인하세요.",
         "stopUnconfirmed": "Codex 중지를 확인하지 못했습니다. 계속하기 전에 채팅을 확인하세요."
+      },
+      "slashCommandDescriptions": {
+        "clearConversation": "대화 지우기",
+        "clearHistory": "대화 기록 지우기",
+        "clearTerminal": "터미널을 지우고 새 채팅 시작",
+        "clearKeepSession": "세션은 유지하고 컨텍스트 지우기",
+        "help": "사용 가능한 명령어 표시",
+        "compactSummarize": "대화를 요약하고 압축",
+        "compactConversation": "대화 압축",
+        "compactContext": "대화 컨텍스트 압축",
+        "initClaude": "CLAUDE.md 초기화",
+        "initAgents": "AGENTS.md 파일 만들기",
+        "review": "현재 변경 사항 검토",
+        "contextUsage": "컨텍스트 사용량 표시",
+        "contextEstimated": "예상 컨텍스트 사용량 표시",
+        "modelAndEffort": "모델과 추론 강도 선택",
+        "modelTerminal": "터미널에서 모델 선택기 열기",
+        "model": "모델 선택",
+        "effort": "추론 강도 선택",
+        "ide": "IDE 컨텍스트 포함",
+        "permissions": "Codex에 허용할 작업 선택",
+        "keymap": "TUI 단축키 다시 지정",
+        "vim": "Vim 모드 전환",
+        "experimental": "실험적 기능 전환",
+        "approve": "자동 검토 재시도 1회 승인",
+        "memories": "메모리 사용 구성",
+        "skills": "스킬 관리 및 사용",
+        "import": "Claude Code에서 설정 가져오기",
+        "hooks": "수명 주기 후크 보기",
+        "renameThread": "현재 스레드 이름 바꾸기",
+        "renameSession": "세션 이름 바꾸기",
+        "newChat": "새 채팅 시작",
+        "newSession": "새 세션 시작",
+        "archive": "이 세션을 보관하고 종료",
+        "delete": "이 세션을 삭제하고 종료",
+        "resumeSaved": "저장된 채팅 재개",
+        "resumeSession": "세션 재개. 인수가 없으면 터미널에서 선택",
+        "forkChat": "현재 채팅 포크",
+        "forkMessage": "터미널에서 이전 메시지부터 포크",
+        "app": "Codex Desktop에서 계속하기",
+        "planSwitch": "계획 모드로 전환",
+        "planToggle": "계획 모드 전환",
+        "goal": "목표 설정 또는 보기",
+        "agent": "활성 Agent 스레드 전환",
+        "subagents": "활성 Agent 스레드 전환",
+        "side": "사이드 대화 시작",
+        "copy": "마지막 응답을 마크다운으로 복사",
+        "raw": "원시 스크롤백 모드 전환",
+        "diff": "작업 중인 diff 표시",
+        "mention": "파일 멘션",
+        "status": "세션 구성 및 사용량 표시",
+        "usageAccount": "계정 사용량 보기",
+        "usageProvider": "제공자 사용량 및 한도 표시",
+        "title": "터미널 제목 구성",
+        "statusline": "상태 줄 구성",
+        "theme": "구문 강조 테마 선택",
+        "pets": "터미널 펫 선택 또는 숨기기",
+        "mcp": "구성된 MCP 도구 나열",
+        "plugins": "플러그인 찾아보기",
+        "logout": "Codex에서 로그아웃",
+        "exit": "Codex 종료",
+        "feedback": "유지 관리자에게 로그 보내기",
+        "ps": "백그라운드 터미널 나열",
+        "stop": "모든 백그라운드 터미널 중지",
+        "personality": "커뮤니케이션 스타일 선택",
+        "switch": "터미널에서 임시 모델 선택기 열기",
+        "branch": "터미널에서 이전 메시지로 되돌리기",
+        "tree": "터미널에서 세션 트리 찾아보기",
+        "session": "세션 정보 및 컨트롤 표시",
+        "fast": "우선 서비스 등급 전환",
+        "tools": "Agent에 표시되는 도구 표시",
+        "jobs": "백그라운드 작업 표시",
+        "git": "터미널에서 Git 뷰어 열기",
+        "export": "세션을 HTML로 내보내기",
+        "settings": "터미널에서 설정 열기",
+        "extensions": "터미널에서 확장 대시보드 열기",
+        "hotkeys": "터미널에서 키보드 단축키 표시"
       }
     },
     "tab": {
@@ -21430,7 +21579,8 @@
       "deleting": "삭제 중…",
       "confirm": "나열된 모든 워크트리 삭제",
       "preservedBranches": "일부 중첩 워크트리 브랜치가 유지되었습니다"
-    }
+    },
+    "setupTerminalTitle": "초기 설정"
   },
   "mediaPreview": {
     "unavailable": "미디어 파일을 재생할 수 없습니다. 파일을 사용할 수 없거나 지원하지 않는 코덱일 수 있습니다.",
@@ -21950,5 +22100,116 @@
     "ok": "확인",
     "unavailableMessage": "Orca가 지금은 모든 터미널 세션을 중지할 수 없습니다.",
     "unavailableDetail": "아무것도 중지하지 않았습니다. 터미널이 열린 뒤 다시 시도하세요. 더 새로운 버전의 Orca에서 열렸다고 표시된 터미널이 있으면 먼저 다시 여세요. 터미널이 이미 열려 있다면 Orca를 종료했다가 다시 연 다음 다시 시도하세요."
+  },
+  "keybindings": {
+    "title": {
+      "worktreeQuickOpen": "파일로 이동",
+      "appSettings": "설정 열기",
+      "appForceReload": "강제 새로고침",
+      "worktreePalette": "워크트리 전환",
+      "worktreeNavigateUp": "이전 워크트리",
+      "worktreeNavigateDown": "다음 워크트리",
+      "workspaceCreate": "워크트리 만들기",
+      "workspaceRename": "워크트리 이름 바꾸기",
+      "workspaceDelete": "워크스페이스 삭제",
+      "workspaceOpenBoard": "워크스페이스 보드 전환",
+      "dashboardToggle": "에이전트 대시보드 전환",
+      "workspaceSelectByIndex": "워크스페이스 1–9 선택",
+      "voiceDictation": "받아쓰기",
+      "viewTasks": "작업 열기",
+      "sidebarLeftToggle": "사이드바 전환",
+      "sidebarRightToggle": "오른쪽 사이드바 전환",
+      "sidebarExplorerToggle": "탐색기 표시",
+      "sidebarSearchToggle": "검색 표시",
+      "sidebarSourceControlToggle": "소스 제어 표시",
+      "sidebarChecksToggle": "체크 표시",
+      "sidebarPortsToggle": "포트 표시",
+      "sidebarSleepingWorkspacesToggle": "슬립 중인 워크스페이스 전환",
+      "sidebarFocusWorktreeList": "워크트리 목록에 포커스",
+      "floatingTerminalToggle": "플로팅 터미널 전환",
+      "floatingWorkspaceMaximize": "플로팅 워크스페이스 패널 최대화",
+      "floatingWorkspaceMinimize": "플로팅 워크스페이스 패널 최소화",
+      "zoomIn": "확대",
+      "zoomOut": "축소",
+      "zoomReset": "크기 재설정",
+      "worktreeHistoryBack": "워크트리 기록 뒤로",
+      "worktreeHistoryForward": "워크트리 기록 앞으로",
+      "tabNewTerminal": "새 터미널 탭",
+      "tabNewAgent": "새 에이전트 탭(기본 에이전트)",
+      "tabNewBrowser": "새 브라우저 탭",
+      "tabNewSimulator": "새 모바일 에뮬레이터 탭",
+      "tabNewMarkdown": "새 Markdown 탭",
+      "tabOpenMarkdown": "Markdown 탭 열기",
+      "tabClose": "활성 탭 닫기",
+      "tabCloseAll": "모든 편집기 탭 닫기",
+      "tabRename": "활성 탭 이름 바꾸기",
+      "tabReopenClosed": "닫은 탭 다시 열기",
+      "tabNextSameType": "다음 탭(같은 유형)",
+      "tabPreviousSameType": "이전 탭(같은 유형)",
+      "tabNextAllTypes": "다음 탭(모든 유형)",
+      "tabPreviousAllTypes": "이전 탭(모든 유형)",
+      "tabPreviousRecent": "최근 사용한 이전 탭",
+      "tabNextTerminal": "다음 터미널 탭",
+      "tabPreviousTerminal": "이전 터미널 탭",
+      "tabSelectByIndex": "탭 1–9 선택",
+      "tabOpenQuickCommandsMenu": "빠른 명령어 메뉴 전환",
+      "browserFind": "브라우저에서 찾기",
+      "browserBack": "브라우저에서 뒤로 이동",
+      "browserForward": "브라우저에서 앞으로 이동",
+      "browserShowHistory": "브라우저 기록 표시",
+      "browserReload": "브라우저 페이지 새로고침",
+      "browserHardReload": "브라우저 페이지 강제 새로고침",
+      "browserFocusAddressBar": "브라우저 주소 표시줄에 포커스",
+      "browserGrabElement": "페이지 요소 가져오기",
+      "browserAnnotateElement": "페이지 요소에 주석 달기",
+      "editorFind": "편집기에서 찾기",
+      "editorReplace": "편집기에서 바꾸기",
+      "editorSave": "파일 저장",
+      "editorMarkdownPreview": "Markdown 미리보기 표시",
+      "editorToggleWordWrap": "단어 줄 바꿈 전환",
+      "editorCopyContext": "컨텍스트 복사",
+      "editorPreviousChange": "이전 변경으로 이동",
+      "editorNextChange": "다음 변경으로 이동",
+      "editorAddReviewNote": "리뷰 노트 추가",
+      "sourceControlSendReviewNotes": "리뷰 노트를 에이전트에 보내기",
+      "fileExplorerUndo": "파일 작업 실행 취소",
+      "fileExplorerRedo": "파일 작업 다시 실행",
+      "fileExplorerCopyPath": "파일 경로 복사",
+      "fileExplorerCopyRelativePath": "파일 상대 경로 복사",
+      "fileExplorerDelete": "파일 삭제",
+      "settingsSearch": "설정 검색",
+      "terminalCopySelection": "터미널 선택 영역 복사",
+      "terminalSelectAll": "터미널 텍스트 모두 선택",
+      "terminalPaste": "터미널에 붙여넣기",
+      "terminalSearch": "활성 창 검색",
+      "terminalClear": "활성 창 지우기",
+      "terminalFocusNextPane": "다음 창에 포커스",
+      "terminalFocusPreviousPane": "이전 창에 포커스",
+      "terminalEqualizePaneSizes": "창 크기 균등화",
+      "terminalExpandPane": "창 확장/접기",
+      "terminalSetTitle": "제목 설정…",
+      "chatFind": "채팅에서 찾기",
+      "terminalToggleNativeChat": "채팅 UI와 터미널 간 전환",
+      "sidebarChildWorkspacesToggle": "하위 워크스페이스 전환",
+      "terminalClearPaneTitle": "창 제목 지우기",
+      "terminalClosePane": "활성 창 닫기",
+      "terminalSplitRight": "터미널 오른쪽으로 분할",
+      "terminalSplitDown": "터미널 아래로 분할",
+      "terminalSwitchInputSource": "입력 소스/언어 전환(네이티브)",
+      "newAgentTab": "새 {{agent}} 탭"
+    },
+    "group": {
+      "global": "글로벌",
+      "tabs": "탭",
+      "tabNavigation": "탭 탐색",
+      "quickCommands": "빠른 명령어",
+      "browser": "브라우저",
+      "editors": "편집기",
+      "fileExplorer": "파일 탐색기",
+      "settings": "설정",
+      "terminalPanes": "터미널 창",
+      "chat": "채팅",
+      "agents": "에이전트"
+    }
   }
 }
