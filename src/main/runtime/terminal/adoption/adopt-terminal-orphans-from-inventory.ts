@@ -1,3 +1,4 @@
+import type { TerminalIdentityReadContext } from '../query/terminal-identity-read-context'
 import {
   recordPtySurface,
   spawnSurfaceClaimSequence,
@@ -21,9 +22,15 @@ import { getLatestPtyTitle } from '../../runtime-worktree-status-projection'
 import type { PtyLivenessVerdict } from '../../../../shared/pty-liveness-verdict'
 
 export abstract class OrcaRuntimeWithAdoptTerminalOrphansFromInventory extends OrcaRuntimeWithSubscribeToTerminalResize {
-  protected abstract issueHandle(leaf: RuntimeLeafRecord): string
+  protected abstract issueHandle(
+    leaf: RuntimeLeafRecord,
+    context?: TerminalIdentityReadContext
+  ): string
 
-  protected abstract getPaneKeyForTerminalHandle(handle: string): string | null
+  protected abstract getPaneKeyForTerminalHandle(
+    handle: string,
+    context?: TerminalIdentityReadContext
+  ): string | null
 
   abstract assertGraphReady(): void
 
@@ -191,12 +198,12 @@ export abstract class OrcaRuntimeWithAdoptTerminalOrphansFromInventory extends O
   }
 
   // Dispatch uses remint-stable pane keys; unresolved handles return null so best-effort dispatch can proceed.
-  getTerminalPaneKey(handle: string): string | null {
+  getTerminalPaneKey(handle: string, context?: TerminalIdentityReadContext): string | null {
     return (
       resolveStructuredWorkerAuthority(handle, this.getOrchestrationDbIfAvailable?.() ?? null)
         ?.identity.paneKey ??
-      this.getPaneKeyForTerminalHandle(handle) ??
-      this.getOrchestrationCompatibilitySshTerminal(handle)?.paneKey ??
+      this.getPaneKeyForTerminalHandle(handle, context) ??
+      this.getOrchestrationCompatibilitySshTerminal(handle, context)?.paneKey ??
       null
     )
   }

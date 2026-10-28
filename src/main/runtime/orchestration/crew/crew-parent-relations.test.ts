@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildCrewSnapshot, CrewReadModel } from './crew-read-model'
 import { fixture } from './crew-read-model.test-fixture'
 import { subscribeCrew } from './crew-stream'
@@ -8,12 +8,15 @@ import { federatedStubHomeRunId } from '../db/contract-constants'
 import { maximalCrewClaims } from './crew-claim-reduction'
 import { isEquivalentPaneKey } from '../db/pane-key-match'
 
+afterEach(() => vi.useRealTimers())
+
 describe('durable crew parents', () => {
   it('composes incomparable local and remote claims through terminal outcomes without re-aging Managing', async () => {
     const { db, deps, handles, assign } = fixture()
     deps.processForHandle = () => 'process_one'
     const local = assign('term_worker')
-    const now = Date.now()
+    const now = 1_800_000_000_000
+    vi.useFakeTimers({ now })
     db.completeDispatch(local.id)
     db.db
       .prepare('UPDATE dispatch_contexts SET completed_at = ? WHERE id = ?')

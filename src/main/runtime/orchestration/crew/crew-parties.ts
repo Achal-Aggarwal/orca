@@ -5,8 +5,7 @@ import {
   parseOrcaSessionAddress
 } from '../../../../shared/orca-session-address'
 import { isPublicOrchestrationAddress } from '../../../../shared/orchestration-agent-reference'
-import { createCanonicalSessionPaneResolver } from '../structured-session-lineage'
-import { clearedInto } from '../structured-session-lineage'
+import { createCanonicalSessionPaneResolver, clearedInto } from '../structured-session-lineage'
 import type { CrewReadDependencies } from './crew-read-model'
 
 export type Party = AgentMessageSender['party'] & { paneKey: string | null }

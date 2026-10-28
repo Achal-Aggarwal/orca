@@ -1,3 +1,4 @@
+import type { TerminalIdentityReadContext } from '../query/terminal-identity-read-context'
 import type { AgentStatusOrchestrationContext } from '../../../../shared/agent-status-types'
 import type { OrchestrationDb } from '../../orchestration/db/orchestration-db'
 import { OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller } from '../../orchestration/terminal-authority/verify-orchestration-compatibility-caller'
@@ -30,11 +31,38 @@ import { matchesProcessIncarnation } from '../../orchestration/worker-terminal-p
 export abstract class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntimeWithVerifyOrchestrationCompatibilityCaller {
   protected abstract getExistingTerminalHandlesForPtyId(ptyId: string): string[]
   protected abstract getOrchestrationDbIfAvailable(): OrchestrationDb | null
-  abstract getTerminalProcessIncarnation(handle: string): string | null
+  getTerminalProcessIncarnation(
+    handle: string,
+    context?: TerminalIdentityReadContext
+  ): string | null {
+    const structured = resolveStructuredWorkerAuthority(
+      handle,
+      this.getOrchestrationDbIfAvailable?.() ?? null
+    )
+    if (structured) {
+      return structured.identity.processIncarnation
+    }
+    const live = this.getLivePtyForHandle(handle, context)
+    const record = live?.record ?? this.handles.get(handle)
+    if (!record?.ptyId) {
+      return (
+        this.getOrchestrationCompatibilitySshTerminal(handle, context)?.processIncarnation ?? null
+      )
+    }
+    const incarnationId = live?.pty.incarnationId ?? this.ptysById.get(record.ptyId)?.incarnationId
+    if (incarnationId) {
+      return `${record.ptyId}:${incarnationId}`
+    }
+    // Legacy providers retain the runtime/PTY/generation fence.
+    return `${this.runtimeId}:${record.ptyId}:${record.ptyGeneration}`
+  }
   abstract getAgentStatusOrchestrationContextForPaneKey(
     paneKey: string
   ): AgentStatusOrchestrationContext | undefined
-  protected abstract issuePtyHandle(pty: RuntimePtyWorktreeRecord): string
+  protected abstract issuePtyHandle(
+    pty: RuntimePtyWorktreeRecord,
+    context?: TerminalIdentityReadContext
+  ): string
 
   /** Every pane key this PTY could be addressed by, including restored receipts. */
   protected collectPaneKeysForPty(ptyId: string): Set<string> {

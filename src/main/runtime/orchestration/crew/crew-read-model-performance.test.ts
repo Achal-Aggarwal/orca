@@ -6,7 +6,7 @@ import { RuntimeAgentOrchestrationProjection } from '../../runtime-agent-orchest
 import { readOrchestrationFleetAgentStatusSnapshot } from '../../orchestration-fleet-agent-status-snapshot'
 import { RuntimeOrchestrationSenderNames } from '../../runtime-orchestration-sender-names'
 
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 
 import { CrewReadModel } from './crew-read-model'
 import { CrewChanges } from './crew-changes'
@@ -16,6 +16,8 @@ import { agentSessionRecordFixture } from '../../../native-chat/agent-session-re
 import { agentSessionConversationView } from '../../../../shared/agent-session-conversation-view'
 
 import { fixture } from './crew-read-model.test-fixture'
+afterEach(() => vi.useRealTimers())
+
 it('shares complete host derivation across N/10N handled assignments and subscribers on real wakes', async () => {
   const flush = async () => {
     await Promise.resolve()
@@ -145,6 +147,8 @@ it('shares complete host derivation across N/10N handled assignments and subscri
   }
 })
 it('counts the real status qualification/projection SQL on a decoration wake without global reacquisition', async () => {
+  const now = 1_800_000_000_000
+  vi.useFakeTimers({ now })
   const measurements = []
   for (const population of [3, 30]) {
     const { db, deps, assign, handles } = fixture()
@@ -190,8 +194,8 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
         agentType: 'codex',
         prompt: '',
         connectionId: null,
-        receivedAt: Date.now(),
-        stateStartedAt: Date.now()
+        receivedAt: now,
+        stateStartedAt: now
       }))
     const acquireStatus = vi.fn(() =>
       readOrchestrationFleetAgentStatusSnapshot({
@@ -292,6 +296,12 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
     expect(globalSelection).not.toHaveBeenCalled()
     expect(model.read('term_coord').sections.managing[0].label).toBe(title)
     expect(sql.some((text) => text.includes('retry_of_dispatch_id AS retry'))).toBe(false)
+    acquireStatus.mockClear()
+    handles.delete('term_worker')
+    wake.notify(new Set(['status']))
+    await Promise.resolve()
+    expect(acquireStatus).toHaveBeenCalledTimes(1)
+    expect(globalSelection).toHaveBeenCalledTimes(1)
     for (const stop of streams) {
       stop()
     }

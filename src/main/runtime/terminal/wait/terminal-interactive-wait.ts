@@ -1,5 +1,5 @@
+import type { TerminalIdentityReadContext } from '../query/terminal-identity-read-context'
 import { getRepoRoutingConnectionId } from '../../../../shared/execution-host'
-import { resolveStructuredWorkerAuthority } from '../../structured-worker-authority'
 import { OrcaRuntimeWithAdoptTerminalOrphansFromInventory } from '../adoption/adopt-terminal-orphans-from-inventory'
 import type {
   RuntimeTerminalAgentStatus,
@@ -63,7 +63,10 @@ export abstract class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRunt
 
   protected abstract getLeafKey(tabId: string, leafId: string): string
 
-  protected abstract getPtyRecordForPaneKey(paneKey: string): RuntimePtyWorktreeRecord | null
+  protected abstract getPtyRecordForPaneKey(
+    paneKey: string,
+    context?: TerminalIdentityReadContext
+  ): RuntimePtyWorktreeRecord | null
 
   protected abstract getOrchestrationDbIfAvailable(): OrchestrationDb | null
 
@@ -167,27 +170,6 @@ export abstract class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRunt
     } catch {
       return null
     }
-  }
-
-  getTerminalProcessIncarnation(handle: string): string | null {
-    const structured = resolveStructuredWorkerAuthority(
-      handle,
-      this.getOrchestrationDbIfAvailable?.() ?? null
-    )
-    if (structured) {
-      return structured.identity.processIncarnation
-    }
-    const live = this.getLivePtyForHandle(handle)
-    const record = live?.record ?? this.handles.get(handle)
-    if (!record?.ptyId) {
-      return this.getOrchestrationCompatibilitySshTerminal(handle)?.processIncarnation ?? null
-    }
-    const incarnationId = live?.pty.incarnationId ?? this.ptysById.get(record.ptyId)?.incarnationId
-    if (incarnationId) {
-      return `${record.ptyId}:${incarnationId}`
-    }
-    // Why: legacy providers may omit process incarnation; retain the prior restart-degraded fence.
-    return `${this.runtimeId}:${record.ptyId}:${record.ptyGeneration}`
   }
 
   getExactWorkerProviderSession(
