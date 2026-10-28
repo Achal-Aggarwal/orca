@@ -16,6 +16,7 @@ const nodeRuntimeInclude = process.versions.bun
   ? getNodeRuntimeInclude({ filters: readRunFilters() })
   : []
 const balancedShards = process.env.ORCA_BALANCE_UNIT_SHARDS === '1'
+const ciUnitInventory = balancedShards || process.env.ORCA_UNIT_INVENTORY === 'ci'
 const moduleCachePath = process.env.ORCA_UNIT_MODULE_CACHE_PATH
 const measurementFile = 'src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts'
 const paletteMeasurementFile =
@@ -53,7 +54,7 @@ const transforms = {
       name: 'locale-catalog-test-assets',
       enforce: 'pre' as const,
       load(id: string) {
-        if (/\/i18n\/locales\/[a-z]+\.json\?url$/.test(id)) {
+        if (/\/i18n\/locales\/[A-Za-z-]+\.json\?url$/.test(id)) {
           const catalog = readFileSync(id.slice(0, -4)).toString('base64')
           return `export default ${JSON.stringify(`data:application/json;base64,${catalog}`)}`
         }
@@ -95,7 +96,7 @@ const testOptions = {
   execArgv: ['--no-experimental-webstorage', '--expose-gc'],
   setupFiles: UNIT_SETUP_FILES.map((file) => resolve(file)),
   include: UNIT_INCLUDE,
-  exclude: balancedShards ? UNIT_EXCLUDE : defaultExclude,
+  exclude: ciUnitInventory ? UNIT_EXCLUDE : defaultExclude,
   hookTimeout: 60_000,
   testTimeout: 30_000
 }

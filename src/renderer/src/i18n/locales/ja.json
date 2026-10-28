@@ -110,11 +110,14 @@
         "system": "システム",
         "english": "English",
         "chinese": "中文（简体）",
+        "chineseTraditional": "繁體中文（台灣）",
         "korean": "한국어",
         "japanese": "日本語",
         "spanish": "Español",
         "french": "Français",
-        "portuguese": "Português (Brasil)"
+        "portuguese": "Português (Brasil)",
+        "russian": "Русский",
+        "turkish": "Türkçe"
       },
       "statusBar": {
         "claudeToggleDescription": "アクティブなワークスペースの Claude トークンとコストの使用状況を表示します。",
