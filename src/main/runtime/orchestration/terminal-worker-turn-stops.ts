@@ -10,6 +10,7 @@ import {
   reportWorkerTurnStop,
   workerTurnStopDispatchId,
   type WorkerTurnStopDispatch,
+  type WorkerTurnStopReason,
   type WorkerTurnStopReportDeps
 } from './worker-turn-stop-report'
 
@@ -51,28 +52,31 @@ export class TerminalWorkerTurnStops {
     if (!stopped) {
       return
     }
-    const lastOutput = await this.deps
-      .readScreen(stopped.handle)
-      .then((view) => redactWorkerTerminalView(view).tail.join('\n'))
-      .catch(() => undefined)
+    const reason: WorkerTurnStopReason =
+      hookRowAgentPhase(stop.row) === 'needs-you'
+        ? 'needs-input'
+        : agentVerdictDisplayMark(stop.row) === 'failed'
+          ? 'errored'
+          : 'finished'
+    // A clean finish has the agent's own last words; an error or prompt is on the screen.
+    const lastOutput =
+      (reason === 'finished' && stop.row.lastAssistantMessage) ||
+      (await this.deps
+        .readScreen(stopped.handle)
+        .then((view) => redactWorkerTerminalView(view).tail.join('\n'))
+        .catch(() => undefined))
     // The read awaited: the worker may have resumed, reported, or been handed a new Dispatch since.
     const resolved = this.stillStopped(stop)
     if (!resolved) {
       return
     }
-    const { paneKey, row } = stop
     reportWorkerTurnStop(
       resolved.db,
       resolved.target,
       {
         from: resolved.handle,
-        stopKey: `${paneKey}:${row.stateStartedAt}`,
-        reason:
-          hookRowAgentPhase(row) === 'needs-you'
-            ? 'needs-input'
-            : agentVerdictDisplayMark(row) === 'failed'
-              ? 'errored'
-              : 'finished',
+        stopKey: `${stop.paneKey}:${stop.row.stateStartedAt}`,
+        reason,
         lastOutput
       },
       this.deps

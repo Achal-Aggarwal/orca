@@ -53,7 +53,7 @@ export abstract class OrcaRuntimeWithAgentTransitions extends OrcaRuntimeWithMig
     setTimer: unrefTimer,
     getHandle: (paneKey) => this.getTerminalHandleForPaneKey(paneKey),
     getProcessIncarnation: (handle) => this.getTerminalProcessIncarnation(handle),
-    readScreen: (handle) => this.readTerminal(handle, { screen: true, limit: 40 })
+    readScreen: (handle) => this.readTerminal(handle, { screen: true, limit: 15 })
   })
 
   private readonly externalConversations = installExternalConversations(this.store, this)
