@@ -203,11 +203,14 @@ it.each([3, 30])(
     const hooks = renders.map((_, index) =>
       renderHook(() => {
         renders[index]++
-        return useStructuredAgentSessionRead({
-          sessionId: `chat-${index}`,
-          target,
-          isViewed: false
-        })
+        return {
+          read: useStructuredAgentSessionRead({
+            sessionId: `chat-${index}`,
+            target,
+            isViewed: false
+          }),
+          menu: useStructuredAgentSessionCommandMenu(target, `chat-${index}`, true)
+        }
       })
     )
     const otherHost = renderHook(() =>
@@ -218,6 +221,11 @@ it.each([3, 30])(
       })
     )
     await act(async () => {})
+    expect(reads()).toBe(0)
+    await act(async () => {
+      hooks.forEach((hook) => hook.result.current.menu.setOpen(true))
+    })
+    expect(reads()).toBe(count)
     renders.fill(0)
     await act(async () => {
       streams
@@ -239,6 +247,7 @@ it.each([3, 30])(
         await vi.advanceTimersByTimeAsync(49)
       })
       expect(renders).toEqual(Array(count).fill(0))
+      expect(reads()).toBe(count + index + 1)
     }
     await act(async () => {
       streams
@@ -248,7 +257,7 @@ it.each([3, 30])(
     })
     expect(renders[0]).toBe(1)
     expect(renders.slice(1)).toEqual(Array(count - 1).fill(0))
-    expect(hooks[0]!.result.current.state.commands?.[0]?.name).toBe('fast')
-    expect(reads()).toBe(0)
+    expect(hooks[0]!.result.current.read.state.commands?.[0]?.name).toBe('fast')
+    expect(reads()).toBe(2 * count)
   }
 )
