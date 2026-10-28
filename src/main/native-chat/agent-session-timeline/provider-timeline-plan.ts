@@ -5,25 +5,41 @@ import type {
   StructuredAgentSessionEventSink,
   StructuredAgentSessionSinkAdmission
 } from '../agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionTransitionStep } from '../agent-session-wire/structured-agent-session-transition'
+import type {
+  StructuredAgentSessionTransitionStep,
+  StructuredAgentSessionTransitionJournal,
+  StructuredAgentSessionTextJournal,
+  StructuredAgentSessionTransitionSink
+} from '../agent-session-wire/structured-agent-session-transition'
 
-export type ProviderTimelineSink = Required<
-  Pick<StructuredAgentSessionEventSink, 'tryAppendTransition' | 'journalItems'>
-> &
-  Pick<StructuredAgentSessionEventSink, 'setActivity' | 'written' | 'prepareText' | 'textSource'>
+import type { StructuredAgentSessionTextSink } from '../agent-session-wire/structured-agent-session-text-append'
 
-type ItemStep = Extract<StructuredAgentSessionTransitionStep, { kind: 'item' }>
-type SettlementStep = Extract<StructuredAgentSessionTransitionStep, { kind: 'settlement' }>
+export type ProviderTimelineSink<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = Required<StructuredAgentSessionTransitionSink<Journal>> &
+  Pick<StructuredAgentSessionEventSink, 'setActivity' | 'written'> &
+  Pick<StructuredAgentSessionTextSink<Journal>, 'prepareText' | 'textSource'>
+
+type ItemStep<Journal extends StructuredAgentSessionTransitionJournal> = Extract<
+  StructuredAgentSessionTransitionStep<Journal>,
+  { kind: 'item' }
+>
+type SettlementStep<Journal extends StructuredAgentSessionTransitionJournal> = Extract<
+  StructuredAgentSessionTransitionStep<Journal>,
+  { kind: 'settlement' }
+>
 
 const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 
-export class ProviderTimelinePlan {
-  private readonly steps: StructuredAgentSessionTransitionStep[] = []
+export class ProviderTimelinePlan<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> {
+  private readonly steps: StructuredAgentSessionTransitionStep<Journal>[] = []
   private readonly admitted: (() => void)[] = []
   private lifecycle = false
   private readonly textWrites = new Map<string, number>()
 
-  text(key: string, step: Omit<ItemStep, 'kind'>, lifecycle: boolean): void {
+  text(key: string, step: Omit<ItemStep<Journal>, 'kind'>, lifecycle: boolean): void {
     const index = this.textWrites.get(key)
     if (index === undefined) {
       this.textWrites.set(key, this.steps.length)
@@ -34,12 +50,12 @@ export class ProviderTimelinePlan {
     }
   }
 
-  item(step: Omit<ItemStep, 'kind'>, lifecycle = false): void {
+  item(step: Omit<ItemStep<Journal>, 'kind'>, lifecycle = false): void {
     this.steps.push({ kind: 'item', ...step })
     this.lifecycle ||= lifecycle
   }
 
-  settlement(step: Omit<SettlementStep, 'kind'>): void {
+  settlement(step: Omit<SettlementStep<Journal>, 'kind'>): void {
     this.steps.push({ kind: 'settlement', ...step })
     this.lifecycle = true
   }
@@ -49,7 +65,7 @@ export class ProviderTimelinePlan {
   }
 
   submit(
-    sink: ProviderTimelineSink,
+    sink: ProviderTimelineSink<Journal>,
     onPublished?: () => void
   ): StructuredAgentSessionSinkAdmission {
     if (this.steps.length > 0) {

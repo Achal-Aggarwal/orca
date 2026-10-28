@@ -1,6 +1,9 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionSinkAdmission } from '../agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
+import type {
+  StructuredAgentSessionTransitionJournal,
+  StructuredAgentSessionTextJournal
+} from '../agent-session-wire/structured-agent-session-transition'
 import type { ProviderTimelineHold } from './provider-timeline-budget'
 import { PROVIDER_TIMELINE_OVER_BUDGET } from './provider-timeline-budget'
 import type { ProviderTimelineDropRule } from './provider-timeline-decision'
@@ -16,25 +19,29 @@ export type ProviderTimelineApplyResult = {
   dropped?: ProviderTimelineDropRule
 }
 
-export type ProviderTimelineTextHost = {
-  sink: ProviderTimelineSink
+export type ProviderTimelineTextHost<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = {
+  sink: ProviderTimelineSink<Journal>
   state: ProviderTimelineState
-  streams: ProviderTimelineTextStreams
-  journal: StructuredAgentSessionTransitionJournal | null
+  streams: ProviderTimelineTextStreams<Journal>
+  journal: Journal | null
   admits(hold: ProviderTimelineHold): boolean
 }
 
 const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 
-export function applyProviderTimelineTextDelta(
-  host: ProviderTimelineTextHost,
+export function applyProviderTimelineTextDelta<
+  Journal extends StructuredAgentSessionTransitionJournal
+>(
+  host: ProviderTimelineTextHost<Journal>,
   event: Extract<ProviderTimelineEvent, { type: 'text.delta' }>
 ): ProviderTimelineApplyResult {
   const { streams, state } = host
   if (state.ended) {
     return { admission: ADMITTED, dropped: 'session-ended' }
   }
-  const plan = new ProviderTimelinePlan()
+  const plan = new ProviderTimelinePlan<Journal>()
   const key = streams.key(event.item, event.join)
   let stream = streams.get(key)
   if (stream && !streams.continues(stream, event.channel, event.producer)) {
@@ -72,7 +79,10 @@ export function applyProviderTimelineTextDelta(
   return { admission: plan.submit(host.sink) }
 }
 
-function settledNamedItem(host: ProviderTimelineTextHost, key: string): boolean {
+function settledNamedItem<Journal extends StructuredAgentSessionTransitionJournal>(
+  host: ProviderTimelineTextHost<Journal>,
+  key: string
+): boolean {
   if (host.state.items.get(key)?.closed) {
     return true
   }
@@ -85,8 +95,10 @@ function settledNamedItem(host: ProviderTimelineTextHost, key: string): boolean 
   )
 }
 
-export function applyProviderTimelineTextClose(
-  host: ProviderTimelineTextHost,
+export function applyProviderTimelineTextClose<
+  Journal extends StructuredAgentSessionTransitionJournal
+>(
+  host: ProviderTimelineTextHost<Journal>,
   event: Extract<ProviderTimelineEvent, { type: 'text.close' }>
 ): ProviderTimelineApplyResult {
   const { streams, state } = host
@@ -101,7 +113,7 @@ export function applyProviderTimelineTextClose(
       dropped: streams.stoppedFor(key, event.join) ? 'turn-settled' : 'stream-unknown'
     }
   }
-  const plan = new ProviderTimelinePlan()
+  const plan = new ProviderTimelinePlan<Journal>()
   streams.planFlush(plan, stream)
   streams.planClose(plan, stream, event.text)
   if (stream.named) {

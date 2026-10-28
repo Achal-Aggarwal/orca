@@ -24,7 +24,10 @@ import {
   type AgentSessionDeltaWindow,
   type AgentSessionDeltaCoalescerDeps
 } from '../agent-session-wire/agent-session-delta-coalescer'
-import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
+import type {
+  StructuredAgentSessionTransitionJournal,
+  StructuredAgentSessionTextJournal
+} from '../agent-session-wire/structured-agent-session-transition'
 import {
   providerTimelineEntryBytes,
   providerTimelinePlacement,
@@ -65,7 +68,9 @@ export type ProviderTimelineStream = {
 /** Retain stopped keys until the turn boundary, within this bound. */
 const MAX_STOPPED_STREAMS = 128
 
-export class ProviderTimelineTextStreams {
+export class ProviderTimelineTextStreams<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> {
   private readonly streams = new Map<string, ProviderTimelineStream>()
   private readonly byId = new Map<string, ProviderTimelineStream>()
   private readonly stopped = new Map<string, string>()
@@ -73,7 +78,7 @@ export class ProviderTimelineTextStreams {
 
   constructor(
     private readonly deps: {
-      sink: ProviderTimelineSink
+      sink: ProviderTimelineSink<Journal>
       context: ProviderTimelineContext
       coalesceMs?: number
       schedule?: AgentSessionDeltaCoalescerDeps['schedule']
@@ -163,7 +168,11 @@ export class ProviderTimelineTextStreams {
     return stream.channel === channel && stream.producer?.agentId === producer?.agentId
   }
 
-  planAppend(plan: ProviderTimelinePlan, stream: ProviderTimelineStream, text: string): void {
+  planAppend(
+    plan: ProviderTimelinePlan<Journal>,
+    stream: ProviderTimelineStream,
+    text: string
+  ): void {
     plan.onAdmitted(() => {
       if (!this.byId.has(stream.id)) {
         this.streams.set(stream.key, stream)
@@ -174,7 +183,7 @@ export class ProviderTimelineTextStreams {
   }
 
   /** Flush preceding text before the event’s own writes. */
-  planFlush(plan: ProviderTimelinePlan, except?: ProviderTimelineStream): void {
+  planFlush(plan: ProviderTimelinePlan<Journal>, except?: ProviderTimelineStream): void {
     for (const { key, window } of this.coalescer.dirtyWindows()) {
       const stream = this.byId.get(key)
       if (stream && stream !== except) {
@@ -184,7 +193,7 @@ export class ProviderTimelineTextStreams {
   }
 
   /** Stop externally settled streams only when the event is admitted. */
-  planStop(plan: ProviderTimelinePlan, turnItemId: string): void {
+  planStop(plan: ProviderTimelinePlan<Journal>, turnItemId: string): void {
     const stopped = [...this.streams.values()].filter(
       (stream) => turnOf(stream.scope) === turnItemId
     )
@@ -194,7 +203,7 @@ export class ProviderTimelineTextStreams {
   }
 
   /** Release stopped keys at their turn boundary; null covers every turn. */
-  planBoundary(plan: ProviderTimelinePlan, turnItemId: string | null): void {
+  planBoundary(plan: ProviderTimelinePlan<Journal>, turnItemId: string | null): void {
     plan.onAdmitted(() => {
       for (const [key, turn] of this.stopped) {
         if (turnItemId === null || turn === turnItemId) {
@@ -215,7 +224,7 @@ export class ProviderTimelineTextStreams {
   }
 
   planRelease(
-    plan: ProviderTimelinePlan,
+    plan: ProviderTimelinePlan<Journal>,
     which: (stream: ProviderTimelineStream) => boolean,
     finalize = true
   ): void {
@@ -228,7 +237,11 @@ export class ProviderTimelineTextStreams {
     }
   }
 
-  planClose(plan: ProviderTimelinePlan, stream: ProviderTimelineStream, finalText?: string): void {
+  planClose(
+    plan: ProviderTimelinePlan<Journal>,
+    stream: ProviderTimelineStream,
+    finalText?: string
+  ): void {
     if (finalText === undefined) {
       this.planText(plan, stream, '', undefined, true)
     } else {
@@ -254,14 +267,14 @@ export class ProviderTimelineTextStreams {
     if (!stream) {
       return true
     }
-    const plan = new ProviderTimelinePlan()
+    const plan = new ProviderTimelinePlan<Journal>()
     this.planText(plan, stream, text, window)
     const admission = plan.submit(this.deps.sink)
     return admission.accepted || admission.reason !== 'backpressure'
   }
 
   private planText(
-    plan: ProviderTimelinePlan,
+    plan: ProviderTimelinePlan<Journal>,
     stream: ProviderTimelineStream,
     text: string,
     window?: AgentSessionDeltaWindow,

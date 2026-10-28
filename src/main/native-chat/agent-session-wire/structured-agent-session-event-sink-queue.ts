@@ -9,7 +9,7 @@ import type {
   StructuredAgentSessionSinkState,
   StructuredAgentSessionSinkWatermarks
 } from './structured-agent-session-event-sink'
-import type { StructuredAgentSessionTransitionJournal } from './structured-agent-session-transition'
+import type { StructuredAgentSessionTextJournal } from './structured-agent-session-transition'
 import { StructuredAgentSessionFinalTailReservation } from './structured-agent-session-final-tail-reservation'
 
 export type StructuredAgentSessionSinkOperation = {
@@ -85,7 +85,7 @@ export class StructuredAgentSessionSinkQueue {
 
   journalHistory = (): StructuredAgentSessionHistoryJournal | null => this.target?.journal ?? null
 
-  journalItems = (): StructuredAgentSessionTransitionJournal | null => this.target?.journal ?? null
+  journalItems = (): StructuredAgentSessionTextJournal | null => this.target?.journal ?? null
 
   journalStopDecidesTurn = (turnId: string, endedAt: number): boolean =>
     this.target?.journal.stopMarks.personStopDecides(turnId, endedAt) ?? false

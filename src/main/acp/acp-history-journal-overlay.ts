@@ -21,7 +21,7 @@ export class AcpHistoryJournalOverlay {
     }
   >()
   readonly journal: StructuredAgentSessionTransitionJournal
-  readonly sink: ProviderTimelineSink
+  readonly sink: ProviderTimelineSink<StructuredAgentSessionTransitionJournal>
 
   constructor(epoch: string) {
     const item = (key: string) => this.staged.get(key)?.item ?? null

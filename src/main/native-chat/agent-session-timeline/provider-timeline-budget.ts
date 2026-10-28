@@ -19,7 +19,7 @@ export type ProviderTimelineHold = { key: string; bytes: number }
 export function providerTimelineBudgetAdmits(input: {
   hold: ProviderTimelineHold
   state: ProviderTimelineState
-  streams: ProviderTimelineTextStreams
+  streams: Pick<ProviderTimelineTextStreams, 'open' | 'stopSettled'>
   journal: StructuredAgentSessionTransitionJournal | null
 }): boolean {
   if (fits(input)) {
@@ -41,7 +41,7 @@ export function providerTimelineBudgetAdmits(input: {
 function fits(input: {
   hold: ProviderTimelineHold
   state: ProviderTimelineState
-  streams: ProviderTimelineTextStreams
+  streams: Pick<ProviderTimelineTextStreams, 'open' | 'stopSettled'>
 }): boolean {
   const open = new Map<string, number>()
   for (const [key, entry] of input.state.items) {

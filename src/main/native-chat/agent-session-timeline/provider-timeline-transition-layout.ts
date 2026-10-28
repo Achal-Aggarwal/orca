@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import {
   providerTimelineSettlementId,
   type ProviderTimelineContext
@@ -15,12 +16,14 @@ import type { ProviderTimelineTextStreams } from './provider-timeline-text-strea
 const SETTLEMENT_RESERVED_BYTES = 64 * 1024
 
 /** Flush preceding text; separate anonymous messages by producer and release streams at their own boundaries. */
-export function planProviderTimelineBarrier(
+export function planProviderTimelineBarrier<
+  Journal extends StructuredAgentSessionTransitionJournal
+>(
   input: {
-    streams: ProviderTimelineTextStreams
+    streams: ProviderTimelineTextStreams<Journal>
     state: ProviderTimelineState
   },
-  plan: ProviderTimelinePlan,
+  plan: ProviderTimelinePlan<Journal>,
   event: ProviderTimelineDecidedEvent,
   decision: ProviderTimelineDecision
 ): void {
@@ -60,9 +63,9 @@ export function planProviderTimelineBarrier(
   }
 }
 
-export function planProviderTimelineWrites(
+export function planProviderTimelineWrites<Journal extends StructuredAgentSessionTransitionJournal>(
   context: ProviderTimelineContext,
-  plan: ProviderTimelinePlan,
+  plan: ProviderTimelinePlan<Journal>,
   decision: ProviderTimelineDecision,
   serial: () => number
 ): void {

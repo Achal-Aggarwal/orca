@@ -264,28 +264,45 @@ describe('text after a person stopped its turn never lands outside that turn', (
     ])
   })
 
-  it('drops the rest of a named stream whose first write found the turn stopped', async () => {
-    const rig = await openProviderTimelineRig({ schedule: () => () => {} })
-    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
-    rig.assembler.apply({
-      type: 'text.delta',
-      item: { id: 'm' },
-      channel: 'assistant',
-      text: 'Hel'
-    })
-    await stop(rig, 't1')
-    rig.assembler.flush()
-    expect(
+  it.each([false, true])(
+    'drops a stopped named stream and retires its source (saved prefix=%s)',
+    async (savedPrefix) => {
+      const rig = await openProviderTimelineRig({ schedule: () => () => {} })
+      rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
       rig.assembler.apply({
         type: 'text.delta',
         item: { id: 'm' },
         channel: 'assistant',
-        text: 'lo'
-      }).dropped
-    ).toBe('turn-settled')
-    rig.assembler.flush()
-    expect(await texts(rig)).toEqual([])
-  })
+        text: 'Hel'
+      })
+      if (savedPrefix) {
+        rig.assembler.flush()
+        await rig.rows()
+        expect(rig.journal.textSource(providerItemId('item', 'm'))?.length).toBe(3)
+        rig.assembler.apply({
+          type: 'text.delta',
+          item: { id: 'm' },
+          channel: 'assistant',
+          text: ' pending suffix'
+        })
+      }
+      await stop(rig, 't1')
+      rig.assembler.flush()
+      expect(
+        rig.assembler.apply({
+          type: 'text.delta',
+          item: { id: 'm' },
+          channel: 'assistant',
+          text: 'lo'
+        }).dropped
+      ).toBe('turn-settled')
+      rig.assembler.flush()
+      expect(await texts(rig)).toEqual(
+        savedPrefix ? [[{ kind: 'turn', turnItemId: providerTurnItemId('t1') }, 'Hel']] : []
+      )
+      expect(rig.journal.textSource(providerItemId('item', 'm'))).toBeUndefined()
+    }
+  )
 
   it('drops a stopped stream admitted before the sink bound once its write found the turn over', async () => {
     const rig = await openProviderTimelineRig()

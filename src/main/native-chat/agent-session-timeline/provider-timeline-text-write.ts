@@ -13,10 +13,10 @@ import type { ProviderTimelineStream } from './provider-timeline-text-streams'
 import type { ProviderTimelinePlan, ProviderTimelineSink } from './provider-timeline-plan'
 import { providerTimelineTurnRowState, turnOf } from './provider-timeline-rows'
 
-export function planProviderTimelineText(
-  sink: ProviderTimelineSink,
+export function planProviderTimelineText<Journal extends StructuredAgentSessionTransitionJournal>(
+  sink: ProviderTimelineSink<Journal>,
   coalescer: AgentSessionDeltaCoalescer,
-  plan: ProviderTimelinePlan,
+  plan: ProviderTimelinePlan<Journal>,
   stream: ProviderTimelineStream,
   text: string,
   window?: AgentSessionDeltaWindow,
@@ -68,7 +68,7 @@ export function planProviderTimelineText(
         ...prepared,
         resolve: (journal) => {
           if (!resolveTimelineText(stream, providerTimelineTextBody(stream, ''), journal)) {
-            journal.retireText(stream.row.itemId)
+            prepared.retireText(journal)
             return null
           }
           return resolve(journal)
@@ -90,26 +90,15 @@ export function planProviderTimelineText(
     plan.onAdmitted(() => coalescer.markFlushed(stream.id))
     return
   }
-  const body = providerTimelineTextBody(stream, text)
+  const body = providerTimelineTextBody(stream, window?.text() ?? text)
   plan.text(
     stream.id,
     {
-      reservedBytes:
-        estimateStructuredAgentSessionItemBytes(stream.row.identity, body) +
-        (window ? Buffer.byteLength(window.suffix, 'utf8') : 0),
+      reservedBytes: estimateStructuredAgentSessionItemBytes(stream.row.identity, body),
       resolve: (journal) => resolveTimelineText(stream, body, journal),
       options: {
         ...stream.producer,
-        turnScope: stream.scope,
-        ...(window
-          ? {
-              streamText: {
-                ...window,
-                operation: window.replace ? ('replace' as const) : ('append' as const),
-                field: 0
-              }
-            }
-          : {})
+        turnScope: stream.scope
       }
     },
     finish

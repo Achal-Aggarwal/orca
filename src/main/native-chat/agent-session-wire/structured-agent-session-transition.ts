@@ -17,24 +17,20 @@ import { structuredAgentSessionJournalAppendOptions } from './structured-agent-s
 
 export type StructuredAgentSessionTransitionJournal = Pick<
   AgentSessionJournal,
-  | 'textSource'
-  | 'textSourceByRaw'
-  | 'textSources'
-  | 'retireText'
-  | 'epoch'
-  | 'visitItems'
-  | 'itemBody'
-  | 'item'
-  | 'visitItemsWithLinkage'
-  | 'canonicalItemId'
+  'epoch' | 'visitItems' | 'itemBody' | 'item' | 'visitItemsWithLinkage' | 'canonicalItemId'
 >
 
-export type StructuredAgentSessionTransitionStep =
+export type StructuredAgentSessionTextJournal = StructuredAgentSessionTransitionJournal &
+  Pick<AgentSessionJournal, 'textSource' | 'textSourceByRaw' | 'textSources' | 'retireText'>
+
+export type StructuredAgentSessionTransitionStep<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> =
   | {
       kind: 'item'
       /** Exceeding the reservation fails the sink. */
       reservedBytes: number
-      resolve: (journal: StructuredAgentSessionTransitionJournal) => {
+      resolve: (journal: Journal) => {
         identity: AgentJournalItemIdentity
         body: AgentJournalItemBody
       } | null
@@ -50,13 +46,13 @@ export type StructuredAgentSessionTransitionStep =
       /** Queue pacing only; the journal chooses actual mutations. */
       reservedBytes: number
       /** Resolve at execution; an empty result writes nothing. */
-      resolve: (
-        journal: StructuredAgentSessionTransitionJournal
-      ) => readonly JournalLifecycleMutationInput[]
+      resolve: (journal: Journal) => readonly JournalLifecycleMutationInput[]
     }
 
-export type StructuredAgentSessionTransition = {
-  steps: readonly StructuredAgentSessionTransitionStep[]
+export type StructuredAgentSessionTransition<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = {
+  steps: readonly StructuredAgentSessionTransitionStep<Journal>[]
   /** Charge the lifecycle budget for ending/settling work. */
   lifecycle: boolean
   /** Internal admission for bounded provider tails after finalization. */
@@ -67,12 +63,14 @@ export type StructuredAgentSessionTransition = {
 }
 
 /** The sink members a transition writer uses. */
-export type StructuredAgentSessionTransitionSink = {
+export type StructuredAgentSessionTransitionSink<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = {
   tryAppendTransition?(
-    transition: StructuredAgentSessionTransition
+    transition: StructuredAgentSessionTransition<Journal>
   ): StructuredAgentSessionSinkAdmission
   /** null until the sink binds to a journal. */
-  journalItems?(): StructuredAgentSessionTransitionJournal | null
+  journalItems?(): Journal | null
 }
 
 export function createStructuredAgentSessionTransitionMembers(

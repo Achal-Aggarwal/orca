@@ -1,4 +1,8 @@
-import type { StructuredAgentSessionTransitionStep } from './structured-agent-session-transition'
+import type {
+  StructuredAgentSessionTransitionStep,
+  StructuredAgentSessionTransitionJournal,
+  StructuredAgentSessionTextJournal
+} from './structured-agent-session-transition'
 import type { JournalTextAdmission } from '../agent-session-journal/journal-text-rows'
 import {
   extendAgentSessionTextSource,
@@ -23,7 +27,9 @@ import { estimateStructuredAgentSessionItemBytes } from './structured-agent-sess
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 
-export type StructuredAgentSessionTextSink = {
+export type StructuredAgentSessionTextSink<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = {
   prepareText?: (
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
@@ -32,7 +38,9 @@ export type StructuredAgentSessionTextSink = {
       'suffix' | 'baseLength' | 'cuts' | 'limit' | 'replace' | 'applied' | 'source'
     > & { text?: () => string; observedBytes?: number; truncated?: boolean },
     options: StructuredAgentSessionItemAppendOptions
-  ) => Extract<StructuredAgentSessionTransitionStep, { kind: 'item' }>
+  ) => Extract<StructuredAgentSessionTransitionStep<Journal>, { kind: 'item' }> & {
+    retireText(journal: Journal): void
+  }
   liveText?: (key: string) => AgentSessionDeltaSource | undefined
   liveTexts?: () => AgentSessionDeltaSource[]
   textSource?: (identity: AgentJournalItemIdentity) => AgentSessionDeltaSource | undefined
@@ -141,6 +149,9 @@ export function createStructuredAgentSessionTextAppend(queue: StructuredAgentSes
     return {
       kind: 'item',
       reservedBytes,
+      retireText: (journal) => {
+        journal.retireText(key)
+      },
       resolve: (journal) => {
         const actual = journal.textSource(key)
         if (operation === 'append' && actual?.truncated) {

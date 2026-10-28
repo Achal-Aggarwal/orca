@@ -8,6 +8,10 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionCommandRun } from '../agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionDeltaCoalescerDeps } from '../agent-session-wire/agent-session-delta-coalescer'
 import type { StructuredAgentSessionSinkAdmission } from '../agent-session-wire/structured-agent-session-event-sink'
+import type {
+  StructuredAgentSessionTransitionJournal,
+  StructuredAgentSessionTextJournal
+} from '../agent-session-wire/structured-agent-session-transition'
 import {
   PROVIDER_TIMELINE_OVER_BUDGET,
   providerTimelineBudgetAdmits,
@@ -50,8 +54,10 @@ export type ProviderTimelineAssembler = {
   dispose(): void
 }
 
-export type ProviderTimelineAssemblerDeps = {
-  sink: ProviderTimelineSink
+export type ProviderTimelineAssemblerDeps<
+  Journal extends StructuredAgentSessionTransitionJournal = StructuredAgentSessionTextJournal
+> = {
+  sink: ProviderTimelineSink<Journal>
   sessionId: string
   agent: AgentType
   /** Minted keys and request IDs are generation-scoped. */
@@ -65,9 +71,9 @@ export type ProviderTimelineAssemblerDeps = {
 
 const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 
-export function createProviderTimelineAssembler(
-  deps: ProviderTimelineAssemblerDeps
-): ProviderTimelineAssembler {
+export function createProviderTimelineAssembler<
+  Journal extends StructuredAgentSessionTransitionJournal
+>(deps: ProviderTimelineAssemblerDeps<Journal>): ProviderTimelineAssembler {
   const context: ProviderTimelineContext = {
     sessionId: deps.sessionId,
     agent: deps.agent,
@@ -90,7 +96,9 @@ export function createProviderTimelineAssembler(
     ...(deps.schedule ? { schedule: deps.schedule } : {})
   })
 
-  const textHost = (journal: ProviderTimelineTextHost['journal']): ProviderTimelineTextHost => ({
+  const textHost = (
+    journal: ProviderTimelineTextHost<Journal>['journal']
+  ): ProviderTimelineTextHost<Journal> => ({
     sink: deps.sink,
     state,
     streams,
@@ -98,12 +106,14 @@ export function createProviderTimelineAssembler(
     admits: (hold) => admits(hold, journal)
   })
 
-  const admits = (hold: ProviderTimelineHold, journal: ProviderTimelineTextHost['journal']) =>
-    providerTimelineBudgetAdmits({ hold, state, streams, journal })
+  const admits = (
+    hold: ProviderTimelineHold,
+    journal: ProviderTimelineTextHost<Journal>['journal']
+  ) => providerTimelineBudgetAdmits({ hold, state, streams, journal })
 
   const applyDecided = (
     event: ProviderTimelineDecidedEvent,
-    journal: ProviderTimelineTextHost['journal'],
+    journal: ProviderTimelineTextHost<Journal>['journal'],
     onPublished?: () => void
   ): ProviderTimelineApplyResult => {
     const serials = state.serials()
@@ -117,7 +127,7 @@ export function createProviderTimelineAssembler(
     if (decision.hold && !admits(decision.hold, journal)) {
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
-    const plan = new ProviderTimelinePlan()
+    const plan = new ProviderTimelinePlan<Journal>()
     planProviderTimelineBarrier({ streams, state }, plan, event, decision)
     planProviderTimelineWrites(context, plan, decision, serials.next)
     plan.onAdmitted(() => {
@@ -136,7 +146,7 @@ export function createProviderTimelineAssembler(
 
   /** Settle another writer’s ended turn first; refusal rejects the discovering event so retry repeats both. */
   const endSettledTurn = (
-    journal: NonNullable<ProviderTimelineTextHost['journal']>
+    journal: NonNullable<ProviderTimelineTextHost<Journal>['journal']>
   ): ProviderTimelineApplyResult | null => {
     const open = state.open
     if (state.ended || !open || providerTimelineTurnRowState(journal, open.itemId) !== 'settled') {
