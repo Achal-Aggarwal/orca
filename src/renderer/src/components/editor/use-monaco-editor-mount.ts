@@ -119,7 +119,8 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
       if (!staleCache) {
         settleStaleCacheReload(fileIdRef.current)
       }
-      const liveTextDiffers = editorInstance.getModel()?.getValue() !== contentRef.current
+      const currentContent = editorInstance.getModel()?.getValue()
+      const liveTextDiffers = currentContent !== contentRef.current
       if (
         (staleCache && liveTextDiffers) ||
         (liveTextDiffers && !mayPushTabTextIntoModel(fileIdRef.current))
@@ -133,7 +134,14 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
         beginProgrammaticContentSync(modelKey)
         isApplyingProgrammaticContentRef.current = true
         try {
-          if (syncContentOnMount(editorInstance, contentRef.current, contentSyncModeRef.current)) {
+          if (
+            syncContentOnMount(
+              editorInstance,
+              contentRef.current,
+              contentSyncModeRef.current,
+              currentContent
+            )
+          ) {
             lastSyncedContentRef.current = contentRef.current
           }
         } finally {

@@ -17,6 +17,8 @@ vi.mock('@/store', () => ({
       pendingEditorReveal: null,
       pendingEditorFocusRequest: null,
       editorDrafts: {},
+      editorBufferIdOf: {},
+      editorBufferViews: {},
       // A sibling wrote 'B' and this tab's baseline moved with it, but its panel cache kept 'A'.
       openFiles: [
         {
@@ -100,10 +102,15 @@ function setupMount() {
   }
   const modelText = { value: 'B' }
   const model = {
-    getValue: () => modelText.value,
+    getValue: vi.fn(() => modelText.value),
     getEOL: () => '\n',
     pushEditOperations: vi.fn(),
-    getFullModelRange: vi.fn()
+    getFullModelRange: vi.fn(() => ({
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 21
+    }))
   }
   const updateOptions = vi.fn()
   const executeEdits = vi.fn()
@@ -191,4 +198,28 @@ it('reloads the same stale text again once the baseline moves or a fresh mount s
   } finally {
     window.removeEventListener(ORCA_EDITOR_FILE_CACHE_STALE_EVENT, onStale)
   }
+})
+
+it('reuses the mount guard snapshot for an already current model and for a retained model update', () => {
+  const { params, modelText, model, editorInstance, monaco } = setupMount()
+  params.contentSync.contentRef.current = disk.text
+  const view = renderHook(() => useMonacoEditorMount(params))
+  view.result.current(editorInstance, monaco)
+  expect(model.getValue).toHaveBeenCalledOnce()
+  expect(model.pushEditOperations).not.toHaveBeenCalled()
+
+  model.getValue.mockClear()
+  modelText.value = 'older retained model'
+  view.result.current(editorInstance, monaco)
+  expect(model.getValue).toHaveBeenCalledOnce()
+  expect(model.pushEditOperations).toHaveBeenCalledExactlyOnceWith(
+    [],
+    [
+      {
+        range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 21 },
+        text: disk.text
+      }
+    ],
+    expect.any(Function)
+  )
 })
