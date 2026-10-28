@@ -10,6 +10,10 @@ export type LocalDetectedAgentState = {
     ids: TuiAgent[] | null
     state: 'pending' | 'successful' | 'failed'
   }
+  readLocalAgentInventoryByKey: (key: string) => {
+    ids: TuiAgent[] | null
+    state: 'pending' | 'successful' | 'failed'
+  }
   detectedAgentIds: TuiAgent[] | null
   isDetectingAgents: boolean
   isRefreshingAgents: boolean

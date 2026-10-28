@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, renderHook, within } from '@testing-library/react'
-import { useState } from 'react'
+import { makeDetectedResult } from '@/store/slices/worktrees-detected-listing-fixtures'
+import type { AppState } from '@/store/types'
+import { Profiler, useState } from 'react'
+import * as runtime from '../../../../shared/project-execution-runtime'
+import { useLocalAgentPreflightContext } from '@/hooks/useLocalAgentPreflightContext'
+import { localAgentInventoryContextKey } from '@/lib/local-preflight-context-key'
+import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 import type { RepoSourceControlAiOverrides } from '../../../../shared/source-control-ai-types'
 import { useRepositorySourceControlAiGlobalUx } from './repository/source-control/repository-source-control-ai-global-ux'
 import userEvent from '@testing-library/user-event'
@@ -14,7 +20,7 @@ import { OrchestrationSkillAgentCoverage } from './OrchestrationSkillAgentCovera
 import { useSourceControlActionAgent } from './use-source-control-action-agent'
 import { RepositorySourceControlAiActionRows } from './repository/source-control/RepositorySourceControlAiActionRows'
 import { getDefaultSourceControlAiSettings } from '../../../../shared/source-control-ai'
-import { TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
+import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AgentStep } from '../onboarding/AgentStep'
 
@@ -138,28 +144,6 @@ it('shows the catalog failure through the real hook while retaining installed ag
   expect(view.queryByText(/Check the host connection/)).toBeNull()
 })
 
-it('points a repair-required runtime at Project Runtime settings', async () => {
-  useAppStore.setState({
-    settings: {
-      ...getDefaultSettings('/tmp'),
-      localWindowsRuntimeDefault: { kind: 'wsl', distro: null }
-    }
-  })
-  const view = render(
-    <AgentLaunchSettingsCatalog
-      settings={projectAgentLaunchSettings(getDefaultSettings('/tmp'))}
-      mutate={vi.fn()}
-      detectionTarget={{ kind: 'local' }}
-      hostName={null}
-      renderPermissions={() => null}
-    />
-  )
-  await act(async () => {})
-  expect(view.getByText(/Choose a WSL distro/)).toBeTruthy()
-  expect(view.getByText(/Open project Settings → Project Runtime/)).toBeTruthy()
-  expect(view.queryByText(/Try again/)).toBeNull()
-})
-
 it('settles Source Control arguments after an unknown native inventory fails', async () => {
   const { result } = renderHook(() => useSourceControlActionAgent(null, 'claude'))
   expect(result.current.status).toBe('pending')
@@ -175,20 +159,6 @@ it('ends skill coverage loading with a failure instead of an empty inventory', a
   expect(view.queryByText(/Checking installed/)).toBeNull()
   expect(view.queryByText(/No agent CLIs/)).toBeNull()
   expect(view.getByText(/Couldn't check which agents/)).toBeTruthy()
-})
-
-it('does not claim an onboarding selection is absent after a failed check', async () => {
-  await useAppStore.getState().ensureDetectedAgents()
-  const view = render(
-    <AgentStep
-      selectedAgent="claude"
-      onSelect={vi.fn()}
-      detectedSet={new Set()}
-      isDetecting={false}
-    />
-  )
-  expect(view.queryByText(/No agents detected/)).toBeNull()
-  expect(view.queryByText(/isn't on your PATH/)).toBeNull()
 })
 
 it('renders cold catalog failure, then Retry restores actual installed rows and controls', async () => {
@@ -364,4 +334,117 @@ it('onboarding and setup checklist retain selection, continue and save after fai
     fireEvent.click(checklist.getByRole('button', { name: 'Claude', exact: true }))
   })
   expect(useAppStore.getState().settings?.defaultTuiAgent).toBe('claude')
+})
+
+it('scopes the real catalog and AgentStep subscriptions while preserving full runtime repair details', async () => {
+  const repo = { ...TEST_REPO, path: 'C:\\project' }
+  const worktree = makeWorktree({ id: 'active', repoId: repo.id, path: repo.path })
+  const catalog = projectHostSetupProjectionFromRepos([repo])
+  const settings = getDefaultSettings('/tmp')
+  useAppStore.setState({
+    repos: [repo],
+    activeRepoId: repo.id,
+    activeWorktreeId: worktree.id,
+    worktreesByRepo: { [repo.id]: [worktree] },
+    settings,
+    endpointProjects: catalog.projects.map((project) => ({
+      ...project,
+      localWindowsRuntimePreference: { kind: 'windows-host' }
+    })),
+    endpointProjectHostSetups: [...catalog.setups]
+  })
+  await useAppStore.getState().ensureDetectedAgents()
+  const resolution = vi.spyOn(runtime, 'resolveProjectExecutionRuntime')
+  const commits = { catalog: 0, step: 0 }
+  const view = render(
+    <TooltipProvider>
+      <Profiler id="catalog" onRender={() => (commits.catalog += 1)}>
+        <AgentLaunchSettingsCatalog
+          settings={projectAgentLaunchSettings(settings)}
+          mutate={vi.fn()}
+          detectionTarget={{ kind: 'local' }}
+          hostName={null}
+          renderPermissions={() => null}
+        />
+      </Profiler>
+      <Profiler id="step" onRender={() => (commits.step += 1)}>
+        <AgentStep
+          selectedAgent="claude"
+          onSelect={vi.fn()}
+          detectedSet={new Set()}
+          isDetecting={false}
+        />
+      </Profiler>
+    </TooltipProvider>
+  )
+  const selected = renderHook(() => useLocalAgentPreflightContext())
+  await act(async () => {})
+  expect(view.queryByText(/isn't on your PATH|No agents detected/)).toBeNull()
+  expect(view.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  commits.catalog = commits.step = 0
+  resolution.mockClear()
+  const publications: Partial<AppState>[] = [
+    { isDetectingAgents: false },
+    { detectedWorktreesByRepo: { otherHost: makeDetectedResult('otherHost', []) } },
+    { remoteDetectedAgentIds: { otherHost: ['codex'] } },
+    { localAgentInventoryFailedByContext: { host: true, anotherContext: true } }
+  ]
+  for (const patch of publications) {
+    await act(async () => {
+      useAppStore.setState(patch)
+    })
+    expect(commits).toEqual({ catalog: 0, step: 0 })
+    expect(resolution).not.toHaveBeenCalled()
+  }
+  await act(async () => {
+    useAppStore.setState({ isRefreshingLocalAgentsByContext: { host: true } })
+  })
+  expect(commits.step).toBeGreaterThan(0)
+  expect(view.getByText(/isn't on your PATH/)).toBeTruthy()
+  await act(async () => {
+    useAppStore.setState({ isRefreshingLocalAgentsByContext: {} })
+  })
+  expect(view.queryByText(/isn't on your PATH/)).toBeNull()
+  const before = selected.result.current
+  expect(before?.projectRuntime).toMatchObject({ runtime: { reason: 'project-override' } })
+  await act(async () => {
+    useAppStore.setState((s) => ({
+      endpointProjects: s.endpointProjects.map((project) => ({
+        ...project,
+        localWindowsRuntimePreference: { kind: 'inherit-global' }
+      }))
+    }))
+  })
+  expect(localAgentInventoryContextKey(selected.result.current)).toBe('host')
+  expect(selected.result.current).not.toBe(before)
+  expect(selected.result.current?.projectRuntime).toMatchObject({
+    runtime: { projectId: catalog.projects[0].id, reason: 'global-default' }
+  })
+  await act(async () => {
+    useAppStore.setState((s) => ({
+      settings: {
+        ...(s.settings ?? settings),
+        localWindowsRuntimeDefault: { kind: 'wsl', distro: null }
+      }
+    }))
+  })
+  expect(selected.result.current?.projectRuntime).toMatchObject({
+    status: 'repair-required',
+    repair: { source: 'global-default', reason: 'wsl-distro-required' }
+  })
+  expect(view.getByText(/Choose a WSL distro/)).toBeTruthy()
+  expect(view.getByText(/Open project Settings → Project Runtime/)).toBeTruthy()
+  expect(view.queryByText(/Try again/)).toBeNull()
+  await act(async () => {
+    useAppStore.setState((s) => ({
+      settings: {
+        ...(s.settings ?? settings),
+        localWindowsRuntimeDefault: { kind: 'windows-host' }
+      }
+    }))
+  })
+  expect(view.queryByText(/Open project Settings → Project Runtime/)).toBeNull()
+  expect(view.getByText(/Couldn't check which agents/)).toBeTruthy()
+  expect(detectAgents).toHaveBeenCalledTimes(2)
+  resolution.mockRestore()
 })

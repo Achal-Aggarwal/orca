@@ -51,7 +51,7 @@ import { buildCodexSessionSourceHomeControl } from './codex-session-source-home-
 import { buildDefaultAgentOpensAs } from './native-chat-provider-choice'
 import { useHostStructuredAgentsVersion } from '@/lib/chat-provider-agents'
 import { readNativeDetectedAgents } from '@/store/slices/local-detected-agent-store-state'
-import { getLocalAgentPreflightContext } from '@/lib/local-preflight-context'
+import { useLocalAgentPreflightContext } from '@/hooks/useLocalAgentPreflightContext'
 import { projectRuntimeRepairSentence } from '../../../../shared/project-runtime-repair-message'
 import { translate } from '@/i18n/i18n'
 
@@ -90,12 +90,10 @@ export function AgentLaunchSettingsCatalog({
     isRefreshing,
     refresh
   } = useDetectedAgents(detectionTarget)
-  const projectRuntime = useAppStore((state) =>
+  const projectRuntime = useLocalAgentPreflightContext(
+    detectionTarget.kind === 'local' ? detectionTarget.worktreeId : undefined,
     detectionTarget.kind === 'local'
-      ? getLocalAgentPreflightContext(state, undefined, undefined, detectionTarget.worktreeId)
-          ?.projectRuntime
-      : undefined
-  )
+  )?.projectRuntime
   const localDetectionFailure =
     detectionTarget.kind !== 'local'
       ? undefined

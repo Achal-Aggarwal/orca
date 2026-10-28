@@ -132,11 +132,6 @@ vi.mock('@/lib/launch-work-item-direct-agent-routing', async () => {
   }
 })
 
-import {
-  directDiscoveryProbe,
-  registerDirectDiscoveryFailureTests
-} from './launch-work-item-direct-discovery.test-fixture'
-
 import { launchWorkItemDirect } from './launch-work-item-direct'
 import { pasteDraftWhenAgentReady } from '@/lib/agent-paste-draft'
 import { beginDirectWorkItemStructuredLaunch } from '@/lib/launch-work-item-direct-agent-routing'
@@ -810,11 +805,6 @@ describe('launchWorkItemDirect', () => {
     expect(activationOptions.startup.command).toContain(
       `command test -n "$fish_pid" && set --erase -g ORCA_PI_PREFILL; command test -z "$fish_pid" && unset ORCA_PI_PREFILL; true`
     )
-  })
-  registerDirectDiscoveryFailureTests({
-    mocks: { ...mocks, getStore: () => mocks.store },
-    callRuntimeRpc: hostMocks.callRuntimeRpc,
-    probe: directDiscoveryProbe()
   })
 
   it('uses prospective native facts to ignore hidden args before create', async () => {

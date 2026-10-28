@@ -820,3 +820,30 @@ describe('local preflight context', () => {
     )
   })
 })
+
+it('keeps first exact project identity ahead of ordered source-repo fallback during indexed runtime selection', () => {
+  const state = makeState({ repoPath: 'C:\\repo' })
+  const fallback = project({
+    id: 'fallback',
+    sourceRepoIds: ['repo-1'],
+    localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+  })
+  const exact = project({ id: 'repo-1', localWindowsRuntimePreference: { kind: 'windows-host' } })
+  const duplicate = project({
+    id: 'repo-1',
+    localWindowsRuntimePreference: { kind: 'wsl', distro: 'Debian' }
+  })
+  const select = (projects: Project[]) =>
+    getLocalProjectExecutionRuntimeContext(
+      {
+        ...state,
+        projectHostSetupProjection: { projects, setups: state.endpointProjectHostSetups }
+      },
+      undefined,
+      'win32'
+    )
+  expect(select([fallback, exact, duplicate])).toMatchObject({ runtime: { kind: 'windows-host' } })
+  expect(
+    select([fallback, { ...duplicate, id: 'other', sourceRepoIds: ['repo-1'] }])
+  ).toMatchObject({ runtime: { kind: 'wsl', distro: 'Ubuntu' } })
+})

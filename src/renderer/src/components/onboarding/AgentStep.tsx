@@ -1,3 +1,5 @@
+import { useLocalAgentPreflightContext } from '@/hooks/useLocalAgentPreflightContext'
+import { localAgentInventoryContextKey } from '@/lib/local-preflight-context-key'
 import { useAppStore } from '@/store'
 import { useId, useState } from 'react'
 import { Check, ExternalLink } from 'lucide-react'
@@ -27,7 +29,9 @@ export function AgentStep({
   yoloPermissions = true,
   onYoloPermissionsChange
 }: AgentStepProps) {
-  const detectionFailed = useAppStore((s) => s.readLocalAgentInventory().state === 'failed')
+  const context = useLocalAgentPreflightContext()
+  const key = localAgentInventoryContextKey(context)
+  const detectionFailed = useAppStore((s) => s.readLocalAgentInventoryByKey(key).state === 'failed')
   const agentCatalog = getAgentCatalog()
   const detected = agentCatalog.filter((agent) => detectedSet.has(agent.id))
   const rest = agentCatalog.filter((agent) => !detectedSet.has(agent.id))

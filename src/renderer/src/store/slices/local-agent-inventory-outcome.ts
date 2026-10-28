@@ -12,6 +12,14 @@ export function readLocalAgentInventoryOutcome(
   const key = localAgentInventoryContextKey(
     getLocalAgentPreflightContext(state, undefined, undefined, worktreeId)
   )
+  return readLocalAgentInventoryOutcomeByKey(state, key, keptThroughFailure)
+}
+
+export function readLocalAgentInventoryOutcomeByKey(
+  state: AppState,
+  key: string,
+  keptThroughFailure: WeakSet<TuiAgent[]>
+): { ids: TuiAgent[] | null; state: 'pending' | 'successful' | 'failed' } {
   const ids = state.localDetectedAgentIdsByContext[key] ?? null
   const inFlight =
     state.isDetectingLocalAgentsByContext[key] || state.isRefreshingLocalAgentsByContext[key]
