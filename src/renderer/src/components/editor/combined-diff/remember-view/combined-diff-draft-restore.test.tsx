@@ -269,6 +269,7 @@ function View({ file }: { file: OpenFile }) {
 afterEach(() => {
   cleanup()
   clearCombinedDiffViewMemory()
+  probe.editors.length = 0
   probe.models.clear()
 })
 
@@ -277,6 +278,7 @@ it('restores an unsaved combined-diff edit after visiting twenty other views', a
   const first = probe.state.openFiles[0]!
   const view = render(<View key={first.id} file={first} />)
   await waitFor(() => expect(view.getByTestId('state').textContent).toContain('disk baseline'))
+  await waitFor(() => expect(probe.editors.at(-1)).toBeDefined())
   await act(async () => {
     probe.editors.at(-1)!.edit('unsaved combined draft')
   })
