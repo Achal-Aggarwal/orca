@@ -82,46 +82,86 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
   it('preserves disposable-item metadata, counted UTF-8/subarrays, and the native cap', () => {
     const target = `orca-sta11846-test:${randomUUID()}`
     expect(target).not.toBe('gemini:antigravity')
-    expect(addon.readGenericCredential(target)).toBeNull()
+    expect(addon.readGenericCredential(target), 'initial disposable-target absence').toBeNull()
     const fixture = readFileSync(
       new URL('./windows-generic-credential.test-fixture.py', import.meta.url),
       'utf8'
     )
+    const diagnostics: string[] = []
+    const failures: Error[] = []
+    const processDetails = (phase: string, result: ReturnType<typeof runProcessSync>) => {
+      const details = JSON.stringify({
+        phase,
+        code: result.code,
+        signal: result.signal,
+        timedOut: result.timedOut,
+        stdout: result.stdout.slice(0, 2048),
+        stderr: result.stderr.slice(0, 2048)
+      })
+      diagnostics.push(details)
+      return details
+    }
     const metadata = (phase: string) => {
       const result = runProcessSync({
         program: 'python',
         args: ['-c', fixture, phase, target],
         timeoutMs: 5000
       })
-      expect(result.code, result.stderr).toBe(0)
+      expect(result.code, processDetails(phase, result)).toBe(0)
     }
+    let phase = 'seed'
     try {
       metadata('seed')
       const bytes = Buffer.from('{"access_token":"fixture-only-テスト"}')
       const backing = Buffer.concat([Buffer.from('prefix'), bytes, Buffer.from('suffix')])
+      phase = 'native counted UTF-8/subarray'
       addon.writeGenericCredential(target, 'antigravity', backing.subarray(6, 6 + bytes.length))
       expect(addon.readGenericCredential(target)).toEqual(bytes)
+      phase = 'native replacement'
       addon.writeGenericCredential(target, 'antigravity', Buffer.from('replacement-fixture'))
       expect(new TextDecoder().decode(addon.readGenericCredential(target) ?? undefined)).toBe(
         'replacement-fixture'
       )
+      phase = 'verify'
       metadata('verify')
+      phase = 'native over-cap rejection and unchanged bytes'
       expect(() =>
         addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2561))
       ).toThrow()
       expect(new TextDecoder().decode(addon.readGenericCredential(target) ?? undefined)).toBe(
         'replacement-fixture'
       )
+      phase = 'native exact-cap write/readback'
       addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2560, 65))
       expect(addon.readGenericCredential(target)).toEqual(Buffer.alloc(2560, 65))
+    } catch (error) {
+      failures.push(new Error(`Disposable credential ${phase} failed`, { cause: error }))
     } finally {
-      const result = runProcessSync({
-        program: 'cmdkey.exe',
-        args: [`/delete:${target}`],
-        timeoutMs: 5000
-      })
-      expect(result.code).toBe(0)
-      expect(addon.readGenericCredential(target)).toBeNull()
+      try {
+        const result = runProcessSync({
+          program: 'cmdkey.exe',
+          args: [`/delete:${target}`],
+          timeoutMs: 5000
+        })
+        expect(result.code, processDetails('delete', result)).toBe(0)
+      } catch (error) {
+        failures.push(new Error('Disposable credential deletion failed', { cause: error }))
+      }
+      try {
+        expect(addon.readGenericCredential(target)).toBeNull()
+        diagnostics.push('cleanup disposable-target absence confirmed')
+      } catch (error) {
+        failures.push(new Error('Disposable credential cleanup absence failed', { cause: error }))
+      }
+    }
+    if (failures.length) {
+      const errors = failures.map(
+        (cause) =>
+          new Error(`Disposable credential diagnostics:\n${diagnostics.join('\n')}`, { cause })
+      )
+      throw errors.length === 1
+        ? errors[0]
+        : new AggregateError(errors, 'Disposable credential body/cleanup failures')
     }
   })
 
