@@ -16,7 +16,10 @@ import {
   withWslOrcadAccountEnv,
   type WslOrcadAccountEnvDependencies
 } from '../../../src/main/wsl/wsl-orcad-account-env'
-import { RuntimeRpcCallError } from '../../../src/renderer/src/runtime/runtime-rpc-result'
+import {
+  RuntimeRpcCallError,
+  unwrapRuntimeRpcResult
+} from '../../../src/renderer/src/runtime/runtime-rpc-result'
 import {
   importReleaseCheckoutModule,
   materializeReleaseCheckout,
@@ -78,7 +81,10 @@ beforeAll(async () => {
 
 function accountDependencies(): WslOrcadAccountEnvDependencies {
   return {
-    prepareClaudeLaunch: async () => null,
+    // A Codex launch never prepares a Claude account.
+    prepareClaudeLaunch: async () => {
+      throw new Error('unexpected Claude preparation')
+    },
     claudeTerminalEnv: () => ({}),
     prepareCodexHome: async () => `\\\\wsl.localhost\\Ubuntu${CODEX_HOME.replaceAll('/', '\\')}`,
     managedAccountSelected: () => true,
@@ -143,13 +149,17 @@ describe('a newer desktop and an older WSL-host orcad', () => {
 
   it("reads the older orcad's failures as plain errors, with no drive refusal to act on", () => {
     const response = olderHost.mapError('req-1', { runtimeId: 'wsl-runtime' }, new Error('denied'))
-    expect(() => olderDesktopUnwrap(response)).toThrow('denied')
-    if (response.ok !== false) {
-      throw new Error('expected a failure')
+    let thrown: unknown
+    try {
+      unwrapRuntimeRpcResult(response)
+    } catch (error) {
+      thrown = error
     }
-    const error = new RuntimeRpcCallError(response)
-    expect(error.message).toBe('denied')
-    expect(readWslHostWindowsDriveRefusal(error.response.error.data)).toBeNull()
+    if (!(thrown instanceof RuntimeRpcCallError)) {
+      throw new Error('expected the newer desktop to read a call error')
+    }
+    expect(thrown.message).toBe('denied')
+    expect(readWslHostWindowsDriveRefusal(thrown.response.error.data)).toBeNull()
   })
 })
 
