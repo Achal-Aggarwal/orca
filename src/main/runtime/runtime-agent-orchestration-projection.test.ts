@@ -34,6 +34,10 @@ import {
   structuredAgentSessionTabId
 } from '../../shared/structured-agent-session-projection'
 import { RuntimeAgentOrchestrationProjection } from './runtime-agent-orchestration-projection'
+import {
+  installSqlVisitCounters,
+  traceDispatchPredicateVisits
+} from './dispatch-predicate-visits.test-fixture'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import { OrchestrationDb } from './orchestration/db'
 import {
@@ -46,6 +50,8 @@ const COORDINATOR_CHAT = testOrcaSessionId('1b6f0c3a-7d2e-4a91-8c55-2e9d4b7a0f13
 const WORKER_CHAT = testOrcaSessionId('9c3e5a17-4b2d-4f60-8e91-0d7a6c2b5e48')
 const TERMINAL_WORKER_HANDLE = 'term_worker'
 const TERMINAL_WORKER_PANE = 'tab_w:11111111-1111-4111-8111-111111111111'
+
+afterEach(() => vi.restoreAllMocks())
 
 function chatRow(sessionId: string): string {
   return structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId)
@@ -260,32 +266,20 @@ it.each([20, 200])(
       const roster = vi.spyOn(db, 'listSessionDispatchesForPresentation')
       let candidateVisits = 0
       let latestVisits = 0
-      db.db.function('lineage_candidate_visit', {}, (_rowid: unknown) => {
-        candidateVisits++
-        return 1
+      installSqlVisitCounters({
+        lineage_candidate_visit: () => {
+          candidateVisits++
+          return 1
+        },
+        lineage_latest_visit: () => {
+          latestVisits++
+          return 1
+        }
       })
-      db.db.function('lineage_latest_visit', {}, (_rowid: unknown) => {
-        latestVisits++
-        return 1
+      const sql = traceDispatchPredicateVisits(db.db, {
+        candidate: 'lineage_candidate_visit',
+        latest: 'lineage_latest_visit'
       })
-      const prepare = db.db.prepare.bind(db.db)
-      const sql = vi
-        .spyOn(db.db, 'prepare')
-        .mockImplementation((query) =>
-          prepare(
-            query
-              .replaceAll(
-                'WHERE assignee_orca_session_id IS NOT NULL',
-                'WHERE assignee_orca_session_id IS NOT NULL AND lineage_candidate_visit(rowid)'
-              )
-              .replace(
-                'ORDER BY rowid DESC LIMIT 1',
-                query.includes('rowid AS n')
-                  ? 'AND lineage_latest_visit(rowid) ORDER BY rowid DESC LIMIT 1'
-                  : 'ORDER BY rowid DESC LIMIT 1'
-              )
-          )
-        )
       const output = projection.buildByPaneKey()
       expect(Object.keys(output ?? {})).toHaveLength(n)
       expect(
@@ -380,21 +374,13 @@ it.each([20, 200])(
         insert.run(n, `expired-${i}-`, run.id, task.id, `null-session-${i}`)
       }
       let candidates = 0
-      db.db.function('null_candidate_visit', {}, (_rowid: unknown) => {
-        candidates++
-        return 1
+      installSqlVisitCounters({
+        null_candidate_visit: () => {
+          candidates++
+          return 1
+        }
       })
-      const prepare = db.db.prepare.bind(db.db)
-      const trace = vi
-        .spyOn(db.db, 'prepare')
-        .mockImplementation((query) =>
-          prepare(
-            query.replaceAll(
-              'WHERE assignee_orca_session_id IS NOT NULL',
-              'WHERE assignee_orca_session_id IS NOT NULL AND null_candidate_visit(rowid)'
-            )
-          )
-        )
+      const trace = traceDispatchPredicateVisits(db.db, { candidate: 'null_candidate_visit' })
       const roster = vi.spyOn(db, 'listSessionDispatchesForPresentation')
       const projection = projectionFor(db)
       const output = projection.buildByPaneKey() ?? {}
@@ -557,6 +543,7 @@ it.skipIf(process.env.ORCA_LINEAGE_BENCH !== '1')(
             const directory = mkdtempSync(join(tmpdir(), 'orca-lineage-benchmark-'))
             const path = join(directory, 'orchestration.sqlite')
             let db = new OrchestrationDb(path)
+            let nativePrepare: ReturnType<typeof installSqlVisitCounters> | undefined
             try {
               const run = db.createRun({
                 objective: 'benchmark',
@@ -622,7 +609,7 @@ it.skipIf(process.env.ORCA_LINEAGE_BENCH !== '1')(
                   row.id,
                   row.task_id,
                   Math.floor(i / active.length),
-                  Date.now()
+                  1_800_000_000_000 + i
                 )
               }
               db.db.exec('DROP INDEX idx_dispatch_session_presentation')
@@ -635,31 +622,21 @@ it.skipIf(process.env.ORCA_LINEAGE_BENCH !== '1')(
               db = new OrchestrationDb(path)
               const reopenWithIndexCreationMs = performance.now() - openStarted
               let observationVisits = 0
-              db.db.function('lineage_observation_visit', {}, (_rowid: unknown) => {
-                observationVisits++
-                return 1
-              })
               let visits = 0
-              db.db.function('lineage_bench_visit', {}, (_rowid: unknown) => {
-                visits++
-                return 1
+              nativePrepare = installSqlVisitCounters({
+                lineage_observation_visit: () => {
+                  observationVisits++
+                  return 1
+                },
+                lineage_bench_visit: () => {
+                  visits++
+                  return 1
+                }
               })
-              const prepare = db.db.prepare.bind(db.db)
-              const trace = vi
-                .spyOn(db.db, 'prepare')
-                .mockImplementation((query) =>
-                  prepare(
-                    query
-                      .replaceAll(
-                        'WHERE assignee_orca_session_id IS NOT NULL',
-                        'WHERE assignee_orca_session_id IS NOT NULL AND lineage_bench_visit(rowid)'
-                      )
-                      .replace(
-                        'WHERE dispatch_id IN',
-                        'WHERE lineage_observation_visit(rowid) AND dispatch_id IN'
-                      )
-                  )
-                )
+              const trace = traceDispatchPredicateVisits(db.db, {
+                candidate: 'lineage_bench_visit',
+                observation: 'lineage_observation_visit'
+              })
               const start = performance.now()
               const output = projectionFor(db).buildByPaneKey()
               const buildMs = performance.now() - start
@@ -715,6 +692,7 @@ it.skipIf(process.env.ORCA_LINEAGE_BENCH !== '1')(
               )
               trace.mockRestore()
             } finally {
+              nativePrepare?.mockRestore()
               db.close()
               rmSync(directory, { recursive: true, force: true })
             }
