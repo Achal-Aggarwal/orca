@@ -205,20 +205,18 @@ describe('NonGitFolderDialog', () => {
             isOpen: true,
             droppedLocalPath: '',
             activeRuntimeEnvironmentId: null,
-            scanNestedRepos: vi
-              .fn()
-              .mockResolvedValue({
-                selectedPath: path,
-                selectedPathKind: 'non_git_folder',
-                repos: [],
-                truncated: false,
-                timedOut: false,
-                stopped: false,
-                durationMs: 1,
-                maxDepth: 3,
-                maxRepos: 100,
-                timeoutMs: null
-              }),
+            scanNestedRepos: vi.fn().mockResolvedValue({
+              selectedPath: path,
+              selectedPathKind: 'non_git_folder',
+              repos: [],
+              truncated: false,
+              timedOut: false,
+              stopped: false,
+              durationMs: 1,
+              maxDepth: 3,
+              maxRepos: 100,
+              timeoutMs: null
+            }),
             setActiveNestedScanId: vi.fn(),
             setNestedScanInProgress: vi.fn(),
             showNestedRepoReview: vi.fn(),
