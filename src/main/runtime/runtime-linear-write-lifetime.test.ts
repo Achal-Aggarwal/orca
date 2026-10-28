@@ -27,18 +27,21 @@ const target = { issue, workspaceId: 'w1' }
 const team = { ...issue.team, workspaceId: 'w1' }
 
 function commands(listResolvedWorktrees: () => Promise<[]> = async () => []) {
-  const result = new RuntimeLinearReadCommands({
+  const unusedSelector = async () => {
+    throw new Error('unused')
+  }
+  const ports = {
     runtimeAvailable: () => true,
     showTerminal: async () => {
       throw new Error('unused')
     },
-    resolveWorktreeSelector: async () => {
-      throw new Error('unused')
-    },
+    resolveWorktreeSelector: unusedSelector,
+    resolveWorkspaceSelector: unusedSelector,
     listResolvedWorktrees,
     setWorktreeMeta: () => {},
     emitClientEvent: () => {}
-  })
+  }
+  const result = new RuntimeLinearReadCommands(ports)
   vi.spyOn(result, 'resolveLinearAgentWriteTarget').mockResolvedValue(target)
   vi.spyOn(result, 'resolveLinearCreateTeam').mockResolvedValue(team)
   vi.spyOn(result, 'getLinearTeamStatesForWrite').mockResolvedValue([
