@@ -201,3 +201,17 @@ it.each(['<details\n', '</details\n'])(
     expect(encoded).toBe(`${codec.transport.create('block-html', '<details>')}\n${incomplete}`)
   }
 )
+
+it('checks nested sibling details fences without revisiting every fence per child', () => {
+  const codec = createRichMarkdownEditorCodec(key)
+  const children = '<details><summary>Inner</summary>Body</details>\n\n```text\ncode\n```\n'.repeat(
+    40_000
+  )
+  const content = `<details><summary>Outer</summary>\n\n${children}\n</details>`
+  const encoded = runInNewContext(
+    'encode(content, codec)',
+    { encode: encodeRawMarkdownHtmlForRichEditor, content, codec },
+    { timeout: 1500 }
+  )
+  expect(encoded).toBe(content)
+})

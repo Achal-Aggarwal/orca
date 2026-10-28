@@ -245,8 +245,7 @@ const MAX_DETAILS_NESTING_LEVELS = 16
 function stripEditableNestedDetails(bodyHtml: string, nestingLevel: number): string | null {
   let result = ''
   let index = 0
-  // Share fence ranges so sibling toggles cannot rescan the entire body per sibling.
-  let fenceRanges: MarkdownFenceRanges | null = null
+  let matchNested: ReturnType<typeof createDetailsMatcher> | undefined
 
   for (;;) {
     const nestedStart = indexOfAsciiIgnoreCase(bodyHtml, '<details', index)
@@ -258,8 +257,8 @@ function stripEditableNestedDetails(bodyHtml: string, nestingLevel: number): str
       return null
     }
 
-    fenceRanges ??= getMarkdownFenceRanges(bodyHtml)
-    const nested = matchDetailsHtmlBlock(bodyHtml, nestedStart, fenceRanges)
+    matchNested ??= createDetailsMatcher(bodyHtml)
+    const nested = matchNested(nestedStart)
     if (!nested || !isEditableDetailsHtmlBlock(nested, nestingLevel + 1)) {
       return null
     }
