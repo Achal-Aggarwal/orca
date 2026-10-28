@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { AgentMessageSource } from '../../../../shared/agent-session/agent-session-message-source'
@@ -8,6 +8,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { isOrcaSessionId, type OrcaSessionId } from '../../../../shared/orca-session-address'
 import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import { useAgentMessageSenderView } from './native-chat-agent-message-sender-view'
 import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
 
 const conversationNames = vi.hoisted(() => new Map<string, string>())
@@ -115,7 +116,7 @@ describe('the name a sender is shown under', () => {
       agentStatusByPaneKey: { [`${TAB}:${LEAF}`]: agentRow(HANDLE) }
     })
     renderSenders(source({}, 'Recorded name'))
-    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.getByText('Recorded name')).toBeInTheDocument()
     expect(screen.queryByText('Parser worker')).not.toBeInTheDocument()
   })
 
@@ -130,7 +131,7 @@ describe('the name a sender is shown under', () => {
         tabsByWorktree: { [WORKTREE]: [terminalTab({ customTitle: 'New name' })] }
       })
     })
-    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.getByText('Recorded name')).toBeInTheDocument()
     expect(screen.queryByText('New name')).not.toBeInTheDocument()
   })
 
@@ -144,7 +145,7 @@ describe('the name a sender is shown under', () => {
         orcaSessionId: SESSION
       })
     )
-    expect(screen.getByRole('button', { name: 'Port the parser' })).toBeInTheDocument()
+    expect(screen.getByText('Port the parser')).toBeInTheDocument()
   })
 
   it('keeps the recorded name for a chat sender whose tab has no name of its own', () => {
@@ -155,7 +156,7 @@ describe('the name a sender is shown under', () => {
         'Port the parser task'
       )
     )
-    expect(screen.getByRole('button', { name: 'Port the parser task' })).toBeInTheDocument()
+    expect(screen.getByText('Port the parser task')).toBeInTheDocument()
   })
 
   it('keeps the recorded name when its agent row has no name of its own', () => {
@@ -164,12 +165,12 @@ describe('the name a sender is shown under', () => {
       agentStatusByPaneKey: { [`${TAB}:${LEAF}`]: agentRow(HANDLE) }
     })
     renderSenders(source({}))
-    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.getByText('Recorded name')).toBeInTheDocument()
   })
 
   it('keeps the recorded name once the sender is gone from this window', () => {
     renderSenders(source({}))
-    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.getByText('Recorded name')).toBeInTheDocument()
   })
 
   it('keeps the recorded name for a sender on another host, whatever runs here', () => {
@@ -181,4 +182,34 @@ describe('the name a sender is shown under', () => {
     expect(screen.getByText('Remote task')).toBeInTheDocument()
     expect(screen.queryByText('Local agent')).not.toBeInTheDocument()
   })
+})
+
+it('uses the sidebar glyph for a live sender and retained completion after its pane closes', () => {
+  const entry = { ...agentRow(HANDLE), updatedAt: Date.now() }
+  const tab = terminalTab()
+  useAppStore.setState({
+    activeWorktreeId: WORKTREE,
+    activeWorkspaceExecutionHostId: 'local',
+    tabsByWorktree: { [WORKTREE]: [tab] },
+    agentStatusByPaneKey: { [entry.paneKey]: entry }
+  })
+  const { result } = renderHook(() =>
+    useAgentMessageSenderView(source({}).senders[0], WORKTREE, { kind: 'local' })
+  )
+  expect(result.current).toEqual({ agentType: 'claude', dot: 'working' })
+  act(() =>
+    useAppStore.setState({
+      agentStatusByPaneKey: {},
+      retainedAgentsByPaneKey: {
+        [entry.paneKey]: {
+          entry: { ...entry, state: 'done' },
+          tab,
+          worktreeId: WORKTREE,
+          agentType: 'claude',
+          startedAt: 1
+        }
+      }
+    })
+  )
+  expect(result.current).toEqual({ agentType: 'claude', dot: 'done' })
 })

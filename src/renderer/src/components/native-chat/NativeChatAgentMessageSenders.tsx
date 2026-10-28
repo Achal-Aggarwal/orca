@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { ArrowUpRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { openAgentMessageSender } from '@/lib/open-agent-message-sender'
@@ -28,11 +29,11 @@ export function NativeChatAgentMessageSenders({
   const owner = useNativeChatVisualOwner()
   const worktreeId = owner?.worktreeId ?? chatWorktreeId
   return (
-    <div className="flex min-w-0 max-w-full flex-wrap items-center text-xs text-chat-foreground-faint">
+    <div
+      className={`flex min-w-0 max-w-full flex-wrap items-center ${queued ? 'text-xs text-chat-foreground-faint' : '-ml-2 text-sm text-foreground'}`}
+    >
       <span>
-        {queued
-          ? translate('components.native-chat.queuedMessages.fromSender', 'From')
-          : translate('components.native-chat.agentMessage.messageFrom', 'Message from')}
+        {queued ? translate('components.native-chat.queuedMessages.fromSender', 'From') : null}
       </span>
       {shown.length === 0 ? <span className="px-2">{unnamedSenderLabel()}</span> : null}
       {shown.map((sender, index) => (
@@ -42,6 +43,7 @@ export function NativeChatAgentMessageSenders({
             sender={sender}
             chatWorktreeId={worktreeId}
             target={owner?.target}
+            queued={queued}
           />
           {/* Pulled back over the name's padding, so it reads "A, B". */}
           {index < shown.length - 1 ? (
@@ -60,12 +62,14 @@ function SenderName({
   from,
   sender,
   chatWorktreeId,
-  target
+  target,
+  queued
 }: {
   from: AgentMessageSource
   sender: AgentMessageSender
   chatWorktreeId: string | null
   target?: RuntimeClientTarget
+  queued: boolean
 }): React.JSX.Element {
   const label = useAgentMessageSenderLabel(sender, chatWorktreeId, target)
   if (!chatWorktreeId || !opensFromHere(sender)) {
@@ -78,9 +82,17 @@ function SenderName({
   return (
     <Button
       type="button"
-      variant="link"
+      variant={queued ? 'link' : 'ghost'}
       size="xs"
-      title={label}
+      className={queued ? undefined : 'text-sm font-medium'}
+      title={
+        queued ? label : translate('components.native-chat.agentMessage.goToAgent', 'Go to agent')
+      }
+      aria-label={
+        queued
+          ? undefined
+          : translate('components.native-chat.agentMessage.goToAgent', 'Go to agent')
+      }
       onClick={() =>
         void (target
           ? openAgentMessageSender(from, sender, chatWorktreeId, target)
@@ -88,6 +100,7 @@ function SenderName({
       }
     >
       <span className="max-w-48 truncate">{label}</span>
+      {!queued ? <ArrowUpRight className="size-3" aria-hidden /> : null}
     </Button>
   )
 }

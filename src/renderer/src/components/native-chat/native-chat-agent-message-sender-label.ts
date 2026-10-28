@@ -20,7 +20,7 @@ export function unnamedSenderLabel(): string {
   return translate('components.native-chat.agentMessage.unnamedSender', 'an agent')
 }
 
-function findChatTab(
+export function findAgentMessageSenderChatTab(
   state: AppState,
   sessionId: string,
   executionHostId: string | null
@@ -63,7 +63,7 @@ export function useAgentMessageSenderLabel(
         : null
   )
   const chatTab = useAppStore((state) =>
-    local && orcaSessionId ? findChatTab(state, orcaSessionId, owner) : undefined
+    local && orcaSessionId ? findAgentMessageSenderChatTab(state, orcaSessionId, owner) : undefined
   )
   const conversationName = useStructuredChatTabConversationName(chatTab)
   const ownName = chatTab ? chatTab.customLabel?.trim() || conversationName : null
