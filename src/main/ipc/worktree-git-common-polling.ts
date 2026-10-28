@@ -114,8 +114,8 @@ async function snapshotGitCommon(
 export type GitCommonPollingOptions = {
   /** Reconciliation directly probes in-place leaves each tick and forces a full sweep every N ticks. */
   reconciliationFullScanEveryTicks?: number
-  /** An existing native owner must retire even when the first snapshot observes root loss. */
-  onInitialRootMissing?: () => void
+  /** Missing snapshots can outlive the native owner they originally retired. */
+  onRootMissing?: (initial: boolean) => void
 }
 
 // Require misses on separate ticks before distrusting the directory gate for the whole catalog.
@@ -147,7 +147,7 @@ export async function startGitCommonPolling(
     new Set(getStatusRefPaths()),
     false,
     undefined,
-    options.onInitialRootMissing
+    () => options.onRootMissing?.(true)
   )
   let timer: ReturnType<typeof setTimeout> | null = null
   let parkedWhileHidden = false
@@ -185,6 +185,10 @@ export async function startGitCommonPolling(
           ? () => {
               dirGateMissed = true
             }
+          : undefined,
+        // A present-to-missing edge already retires through the normal diff.
+        snapshot.worktreesDirSignature === 'missing'
+          ? () => options.onRootMissing?.(false)
           : undefined
       )
       if (disposed) {

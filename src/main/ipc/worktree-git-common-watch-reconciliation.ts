@@ -100,9 +100,13 @@ export function createGitCommonWatchReconciliation({
           () => [],
           {
             reconciliationFullScanEveryTicks: RECONCILIATION_FULL_SCAN_EVERY_TICKS,
-            onInitialRootMissing: () => {
+            onRootMissing: (initial) => {
               if (shouldKeepBaseline()) {
-                handleEvents([{ type: 'delete', path: worktreesDir }])
+                if (initial) {
+                  handleEvents([{ type: 'delete', path: worktreesDir }])
+                } else {
+                  onRootReplacement()
+                }
               }
             }
           }
