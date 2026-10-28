@@ -20,6 +20,7 @@ import type { DiffSectionItemProps } from './diff-section-item-props'
 import { useDiffSectionModelLifecycle } from './use-diff-section-model-lifecycle'
 import { hasLayoutBox } from '@/hooks/virtualized-hidden-row-measurement'
 import { DiffSectionSaveConflictBar } from './DiffSectionSaveConflictBar'
+import { readContentEventSnapshot } from './monaco-content-event-snapshot'
 
 export function DiffSectionItem({
   section,
@@ -238,7 +239,11 @@ export function DiffSectionItem({
     const cleanupOriginalFindShortcut = installMonacoEditorFindShortcut(original)
     const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modified)
     const modelContentSub = modified.onDidChangeModelContent(() => {
-      const current = modified.getValue()
+      const model = modified.getModel()
+      if (!model) {
+        return
+      }
+      const current = readContentEventSnapshot(model, modified)
       setSections((prev) => {
         let changed = false
         const next = prev.map((s, i) => {

@@ -3,37 +3,12 @@ import type { editor } from 'monaco-editor'
 import { syncContentUpdate, type MonacoContentSyncMode } from './monaco-content-sync'
 import { mayPushTabTextIntoModel } from './editor-stale-mount-guard'
 import { isEditorLargePasteInFlight } from './editor-large-paste-in-flight'
+import { readContentEventSnapshot } from './monaco-content-event-snapshot'
 import {
   beginProgrammaticContentSync,
   endProgrammaticContentSync,
   shouldIgnoreMonacoContentChange
 } from './monaco-programmatic-sync'
-
-const contentEventSnapshots = new WeakMap<editor.ITextModel, { version: number; value: string }>()
-
-function readContentEventSnapshot(
-  model: editor.ITextModel,
-  mountedEditor: editor.IStandaloneCodeEditor
-): string {
-  const version = model.getVersionId()
-  const previous = contentEventSnapshots.get(model)
-  if (previous) {
-    if (previous.version !== version) {
-      previous.version = version
-      previous.value = mountedEditor.getValue()
-    }
-    return previous.value
-  }
-  const snapshot = { version, value: mountedEditor.getValue() }
-  contentEventSnapshots.set(model, snapshot)
-  // Share synchronous pane delivery, then release the full text even while the model stays mounted.
-  queueMicrotask(() => {
-    if (contentEventSnapshots.get(model) === snapshot) {
-      contentEventSnapshots.delete(model)
-    }
-  })
-  return snapshot.value
-}
 
 export type MonacoContentSyncBridge = {
   contentRef: MutableRefObject<string>
