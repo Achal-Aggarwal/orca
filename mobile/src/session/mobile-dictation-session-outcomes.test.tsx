@@ -261,12 +261,23 @@ describe('a mic tap while the transcript is processing', () => {
 })
 
 describe('a live terminal insert that fails', () => {
-  it('copies the transcript to the clipboard and says so', async () => {
-    const rpc = createFakeRpcClient()
-    const mounted = await startRecording(rpc, { liveInput: true, sendLive: async () => false })
-    act(() => mounted.current().handleDictationToggle())
-    await settle(rpc, 'git status')
-    expect(seen.clipboard).toEqual(['git status'])
-    expect(seen.toasts).toEqual(["Couldn't insert dictation, so it was copied to the clipboard"])
-  })
+  const failures: [string, () => Promise<boolean>][] = [
+    ['is refused', async () => false],
+    [
+      'throws',
+      async () => {
+        throw new Error('mirror step failed')
+      }
+    ]
+  ]
+  for (const [label, sendLive] of failures) {
+    it(`copies the transcript to the clipboard and says so when the send ${label}`, async () => {
+      const rpc = createFakeRpcClient()
+      const mounted = await startRecording(rpc, { liveInput: true, sendLive })
+      act(() => mounted.current().handleDictationToggle())
+      await settle(rpc, 'git status')
+      expect(seen.clipboard).toEqual(['git status'])
+      expect(seen.toasts).toEqual(["Couldn't insert dictation, so it was copied to the clipboard"])
+    })
+  }
 })

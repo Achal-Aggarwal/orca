@@ -167,7 +167,7 @@ export function useMobileSessionNativeChatDictation(
           } else {
             keepUndeliveredDictation(route.text)
           }
-        })()
+        })().catch(() => keepUndeliveredDictation(route.text))
         return
       }
       setInput((current) => appendBufferedDictation(current, route.text))
