@@ -48,8 +48,7 @@ export function listSessionDispatchesForPresentation(
   now: number
 ): { dispatch: DispatchContextRow; order: number }[] {
   const lowerBound = new Date(now - AGENT_STATUS_STALE_AFTER_MS - 86_400_000).toISOString()
-  // SAFETY: explicit Dispatch columns plus SQLite's internal ordering identity.
-  const candidates = this.db
+  const rawCandidates = this.db
     .prepare(`
     SELECT rowid AS presentation_order, ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts
       INDEXED BY idx_dispatch_session_presentation
@@ -60,7 +59,9 @@ export function listSessionDispatchesForPresentation(
       WHERE assignee_orca_session_id IS NOT NULL
         AND status IN ('completed', 'failed', 'circuit_broken') AND completed_at >= ?
   `)
-    .all(lowerBound) as (DispatchContextRow & { presentation_order: number })[]
+    .all(lowerBound)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The complete schema-pinned Dispatch projection restores the persisted-row contract; the default integer wrapper normalizes rowid to a safe number.
+  const candidates = rawCandidates as (DispatchContextRow & { presentation_order: number })[]
   const newestActiveOrderBySession = new Map<string, number>()
   const selected = new Map<string, (typeof candidates)[number]>()
   for (const candidate of candidates) {
