@@ -1,7 +1,8 @@
 /**
  * The bridged loopback sockets a WSL host's listener carries (the desktop's own control and
  * request connections), read as a liveness watch so no extra wsl.exe bridge is held just to see
- * orcad exit. A channel the guest ended first means orcad closed the socket or exited.
+ * orcad exit. The guest ending the last open socket means orcad closed it or exited; anything it
+ * means for certain is settled by the supervisor's verify.
  */
 import type { RemoteCommandChannel } from '../managed-server/install/remote-install-transport'
 import type { WslOrcadWatch } from './wsl-orcad-watch'
@@ -43,8 +44,11 @@ export class WslOrcadBridgeActivity {
     return {
       opened: () => this.live.set(key, (this.live.get(key) ?? 0) + 1),
       ended: (byGuest) => {
-        this.live.set(key, Math.max(0, (this.live.get(key) ?? 0) - 1))
-        if (byGuest) {
+        const live = Math.max(0, (this.live.get(key) ?? 0) - 1)
+        this.live.set(key, live)
+        // orcad exiting ends every socket at once; ending one while another stays open is a
+        // normal close, which a WebSocket lets the server finish first, so it reads as guest-ended.
+        if (byGuest && live === 0) {
           // A listener detaches itself as it fires.
           for (const listener of Array.from(this.listeners.get(key) ?? [])) {
             listener()
@@ -54,7 +58,12 @@ export class WslOrcadBridgeActivity {
     }
   }
 
-  /** A watch that fires once when the guest ends any bridged socket, and proves only while one is open. */
+  /** How many of the desktop's sockets to this host are bridged right now. */
+  openSockets(environmentId: string): number {
+    return this.live.get(environmentId) ?? 0
+  }
+
+  /** A watch that fires once when the guest ends the last open bridged socket, and proves only while one is open. */
   watch(environmentId: string): WslOrcadWatch {
     const key = environmentId
     const listeners = this.listeners.get(key) ?? new Set<() => void>()

@@ -36,7 +36,11 @@ async function fakeOrcad(): Promise<{ server: Server; port: number; accepted: So
   return { server, port: typeof address === 'object' && address ? address.port : 0, accepted }
 }
 
-async function bridgedHost(activity: WslOrcadBridgeActivity, remotePort: number) {
+async function bridgedHost(
+  activity: WslOrcadBridgeActivity,
+  orcad: { port: number; accepted: Socket[] }
+) {
+  const remotePort = orcad.port
   const children = fakeWslBridgeChildren()
   const transport = createWslOrcadHostTransport({
     target: { kind: 'wsl', id: ENV, distro: 'Ubuntu', label: 'Ubuntu' },
@@ -58,6 +62,8 @@ async function bridgedHost(activity: WslOrcadBridgeActivity, remotePort: number)
     }
   )
   cleanups.push(() => forward.close())
+  // The listener's start-up check dials orcad once; let it land so tests count only their own.
+  await expect.poll(() => orcad.accepted.length).toBe(1)
   return forward
 }
 
@@ -73,13 +79,12 @@ describe('the desktop’s bridged sockets as the liveness watch', () => {
   it('fires once when orcad ends a socket, and proves liveness only while one is open', async () => {
     const orcad = await fakeOrcad()
     const activity = new WslOrcadBridgeActivity()
-    const forward = await bridgedHost(activity, orcad.port)
+    const forward = await bridgedHost(activity, orcad)
     const watch = activity.watch(ENV)
     const exits = vi.fn()
     watch.onExit(exits)
     expect(watch.proving()).toBe(false)
 
-    // The listener's start-up check already dialed orcad once.
     const before = orcad.accepted.length
     await dial(forward.entry.localPort)
     await expect.poll(() => orcad.accepted.length).toBe(before + 1)
@@ -92,10 +97,35 @@ describe('the desktop’s bridged sockets as the liveness watch', () => {
     await expect.poll(() => watch.proving()).toBe(false)
   })
 
+  it('stays quiet when orcad finishes a normal close while another socket is open', async () => {
+    const orcad = await fakeOrcad()
+    const activity = new WslOrcadBridgeActivity()
+    const forward = await bridgedHost(activity, orcad)
+    const watch = activity.watch(ENV)
+    const exits = vi.fn()
+    watch.onExit(exits)
+    const before = orcad.accepted.length
+    // The desktop's control socket stays open; a one-shot RPC socket comes and goes.
+    await dial(forward.entry.localPort)
+    const oneShot = await dial(forward.entry.localPort)
+    await expect.poll(() => orcad.accepted.length).toBe(before + 2)
+    // A WebSocket close: the client sends its close frame, the server ends the stream first.
+    oneShot.write(Buffer.from([0x88, 0x80, 0, 0, 0, 0]))
+    orcad.accepted.at(-1)?.end()
+    await expect.poll(() => oneShot.destroyed || oneShot.readableEnded).toBe(true)
+    oneShot.end()
+    await expect.poll(() => orcad.accepted.at(-1)?.closed).toBe(true)
+    expect(exits).not.toHaveBeenCalled()
+    expect(activity.openSockets(ENV)).toBe(1)
+    // orcad exiting then ends the last one: that is the exit signal.
+    orcad.accepted.at(-2)?.destroy()
+    await expect.poll(() => exits.mock.calls.length).toBe(1)
+  })
+
   it('stays quiet when the desktop closes its own socket', async () => {
     const orcad = await fakeOrcad()
     const activity = new WslOrcadBridgeActivity()
-    const forward = await bridgedHost(activity, orcad.port)
+    const forward = await bridgedHost(activity, orcad)
     const watch = activity.watch(ENV)
     const exits = vi.fn()
     watch.onExit(exits)

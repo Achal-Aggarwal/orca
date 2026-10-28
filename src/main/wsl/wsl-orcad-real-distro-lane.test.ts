@@ -271,6 +271,29 @@ function createLaneManager(): void {
   })
 }
 
+/** One-shot RPCs open and close their own socket (the server ends it first); none is an exit. */
+async function countWatchFiresAcrossRpcs(connection: WslOrcadConnection, count: number) {
+  let fires = 0
+  let watch = bridgeActivity.watch(connection.environmentId)
+  const rearm = (): void => {
+    fires += 1
+    watch = bridgeActivity.watch(connection.environmentId)
+    watch.onExit(rearm)
+  }
+  watch.onExit(rearm)
+  for (let i = 0; i < count; i++) {
+    await rpc(connection, 'status.get')
+  }
+  // Count only once every one-shot bridge has ended; the control socket stays.
+  await waitFor(
+    'one-shot bridges to close',
+    async () => (bridgeActivity.openSockets(connection.environmentId) === 1 ? true : null),
+    10_000
+  )
+  watch.close()
+  return fires
+}
+
 /** Runs `command` in a terminal and waits for a printf-split token the echoed input never matches. */
 async function runInTerminal(
   connection: WslOrcadConnection,
@@ -497,6 +520,10 @@ async function launchPhase(distro: string, systemd: boolean): Promise<Receipt> {
     clientCapabilities: ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
   })
   await control.request('status.get', undefined, 30_000)
+  result.watchFiresOnNormalCloses = await countWatchFiresAcrossRpcs(connection, 10)
+  expect(result.watchFiresOnNormalCloses, 'normal socket closes must not read as orcad exit').toBe(
+    0
+  )
   let since = statusLog(distro).length
   started = performance.now()
   await guest(distro, `kill -9 ${connection.pid}; true`)
