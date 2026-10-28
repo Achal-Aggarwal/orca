@@ -252,6 +252,7 @@ it.each([20, 200])(
       for (const tab of tabs[worktreeId]) {
         live[pane(tab.id, tab.entityId)] = {
           ...entry(pane(tab.id, tab.entityId), worktreeId),
+          agentType: 'codex',
           tabId: tab.id
         }
       }
@@ -363,20 +364,42 @@ it.each([20, 200])(
     }
     counts.clear()
     const foreignRow = pane(`child-actual-${n - 1}`, `child-${n - 1}`)
+    const beforeForeign = visibleOrchestrationWorkForTest()
+    const beforeForeignIndex = indexBuilds()
+    const { projectStatus } =
+      await import('@/components/native-chat/structured-agent-session-status-projection')
+    const foreignTab = tabs[`lineage-${n - 1}`][1]
     act(() =>
-      useAppStore
-        .getState()
-        .setAgentStatus(
-          foreignRow,
-          { state: 'working', agentType: 'codex', prompt: 'Another host update' },
-          undefined,
-          { updatedAt: Date.now() + 1 },
-          { tabId: `child-actual-${n - 1}`, worktreeId: `lineage-${n - 1}` }
+      useAppStore.getState().transactAgentStatuses((transaction) =>
+        projectStatus(
+          transaction,
+          foreignTab,
+          {
+            sessionId: foreignTab.entityId,
+            workspaceId: foreignTab.worktreeId,
+            agent: 'codex',
+            status: 'working',
+            latestPrompt: 'Another host update',
+            updatedAt: Date.now() + 1,
+            hostExecutionOwned: true
+          },
+          'live',
+          null
         )
+      )
+    )
+    expect(counts.get(n - 1)).toBe(1)
+    expect(observed.get(n - 1)?.find((row) => row.paneKey === foreignRow)?.entry.prompt).toBe(
+      'Another host update'
     )
     for (let i = 0; i < n - 1; i++) {
       expect(counts.has(i)).toBe(false)
     }
+    const afterForeign = visibleOrchestrationWorkForTest()
+    expect(afterForeign.builds - beforeForeign.builds).toBeLessThanOrEqual(1)
+    expect(afterForeign.aliasBuilds).toBe(beforeForeign.aliasBuilds)
+    expect(indexBuilds() - beforeForeignIndex).toBeLessThanOrEqual(1)
+    expect(afterForeign.visits - beforeForeign.visits).toBeLessThanOrEqual(n * 14)
   }
 )
 
@@ -518,7 +541,7 @@ it('joins production mirrored custom/collision rows locally and keeps canonical 
       now: Date.now(),
       generation: 1
     })
-    expect(dashboard.map((row) => row.lineage.depth)).toEqual([0, 1])
+    expect(dashboard.map((row) => row.lineage?.depth)).toEqual([0, 1])
     expect(selectWorktreeAgentActivitySummary(state, 'folder-a').hasLiveWorking).toBe(true)
     const activity = buildActivityEvents({
       ...state,
@@ -597,6 +620,20 @@ it('joins production mirrored custom/collision rows locally and keeps canonical 
     f.db.close()
   }
 })
+
+it.each(['default', 'reserved', 'collision'] as const)(
+  'joins mirrored live/retained terminal contexts with positive provenance and a %s parent',
+  async (kind) => {
+    const { verifyMirroredTerminalLineage } =
+      await import('./mirrored-terminal-lineage.test-fixture')
+    await verifyMirroredTerminalLineage(kind, {
+      patch,
+      entry,
+      mount: () => act(() => root.render(<Probe />)),
+      getRows: () => rows
+    })
+  }
+)
 
 it('settles the production graph subscription/scheduler/publication/receiver loop with at most one feedback flight', async () => {
   const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } =

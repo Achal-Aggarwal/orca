@@ -57,8 +57,19 @@ export function listSessionDispatchesForPresentation(
         AND status IN ('completed', 'failed', 'circuit_broken') AND completed_at >= ?
   `)
     .all(lowerBound) as (DispatchContextRow & { presentation_order: number })[]
+  const newestActiveOrderBySession = new Map<string, number>()
   const selected = new Map<string, (typeof candidates)[number]>()
   for (const candidate of candidates) {
+    // Include handled rows even when a newer non-public row later suppresses their address.
+    if (candidate.status === 'pending' || candidate.status === 'dispatched') {
+      const session = candidate.assignee_orca_session_id
+      if (session) {
+        newestActiveOrderBySession.set(
+          session,
+          Math.max(newestActiveOrderBySession.get(session) ?? 0, candidate.presentation_order)
+        )
+      }
+    }
     const address = candidate.assignee_handle
       ? `handle:${candidate.assignee_handle}`
       : `session:${candidate.assignee_orca_session_id}`
@@ -78,13 +89,16 @@ export function listSessionDispatchesForPresentation(
     const { presentation_order, ...dispatch } = candidate
     const active = dispatch.status === 'pending' || dispatch.status === 'dispatched'
     // SAFETY: equality-index probes return just the internal row order, or no row.
-    const latest = this.db
-      .prepare(`SELECT rowid AS n FROM dispatch_contexts
+    const latest =
+      active && !candidate.assignee_handle
+        ? { n: newestActiveOrderBySession.get(candidate.assignee_orca_session_id ?? '') }
+        : (this.db
+            .prepare(`SELECT rowid AS n FROM dispatch_contexts
       WHERE ${candidate.assignee_handle ? 'assignee_handle' : 'assignee_orca_session_id'} = ?
       ${active ? "AND status IN ('pending', 'dispatched')" : ''} ORDER BY rowid DESC LIMIT 1`)
-      .get(candidate.assignee_handle || candidate.assignee_orca_session_id) as
-      | { n: number }
-      | undefined
+            .get(candidate.assignee_handle || candidate.assignee_orca_session_id) as
+            | { n: number }
+            | undefined)
     if (
       latest?.n !== presentation_order ||
       (!active && !isRecentPresentationDispatch(dispatch, now))

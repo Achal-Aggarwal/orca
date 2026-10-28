@@ -287,12 +287,7 @@ function worktreeIdForPaneKey(
   paneKey: string | undefined,
   tabIdToWorktreeId: Map<string, string>
 ): string | null {
-  const paneIdentity = parseAgentStatusPaneIdentity(
-    paneKey,
-    state.unifiedTabsByWorktree
-      ? getStructuredAgentSessionTabsByPaneKey(state.unifiedTabsByWorktree).get(paneKey)
-      : undefined
-  )
+  const paneIdentity = parseAgentStatusPaneIdentity(paneKey)
   return paneIdentity ? (tabIdToWorktreeId.get(paneIdentity.tabId) ?? null) : null
 }
 

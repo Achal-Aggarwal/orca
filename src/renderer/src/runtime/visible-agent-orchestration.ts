@@ -1,7 +1,12 @@
 import type { AppState } from '@/store/types'
 import type { WorktreeRuntimeOwnerState } from '@/lib/worktree-runtime-owner-state'
 import { getStructuredAgentSessionTabs } from '@/components/native-chat/structured-agent-session-tabs'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, toRuntimeExecutionHostId } from '../../../shared/execution-host'
+import {
+  isRemoteRuntimePtyId,
+  parseRemoteRuntimePtyId
+} from '../../../shared/remote-runtime/remote-runtime-pty-id'
+import { parseAgentStatusPaneIdentity } from '../../../shared/agent-status-worktree-attribution'
 import {
   structuredAgentSessionPaneKey,
   structuredAgentSessionTabId
@@ -23,8 +28,11 @@ export type VisibleOrchestrationState = WorktreeRuntimeOwnerState &
       | 'agentStatusByPaneKey'
       | 'retainedAgentsByPaneKey'
       | 'runtimeAgentOrchestrationByPaneKey'
+      | 'ptyIdsByTabId'
     >
-  >
+  > & {
+    tabsByWorktree?: Record<string, readonly { id: string; ptyId?: string | null }[]>
+  }
 const EMPTY = {}
 const producerByContext = new WeakMap<AgentStatusOrchestrationContext, string>()
 export function orchestrationProducer(context: AgentStatusOrchestrationContext): string {
@@ -86,12 +94,80 @@ function rowIdentities(state: VisibleOrchestrationState): RowIdentities {
   return rowCache
 }
 
+let terminalCache:
+  | { inputs: unknown[]; hosts: Map<string, string | null>; ptys: Map<string, string | null> }
+  | undefined
+function terminalProvenance(state: VisibleOrchestrationState) {
+  const inputs = [
+    state.unifiedTabsByWorktree,
+    state.tabsByWorktree,
+    state.ptyIdsByTabId,
+    state.retainedAgentsByPaneKey
+  ]
+  if (terminalCache && inputs.every((value, index) => value === terminalCache?.inputs[index])) {
+    return terminalCache
+  }
+  const hosts = new Map<string, string | null>()
+  const ptys = new Map<string, string | null>()
+  const merge = (map: Map<string, string | null>, key: string, host: string | null) => {
+    map.set(key, map.has(key) && map.get(key) !== host ? null : host)
+  }
+  const ptyHost = (id?: string | null): string | null | undefined => {
+    if (!id) {
+      return undefined
+    }
+    const remote = parseRemoteRuntimePtyId(id)
+    return remote?.environmentId
+      ? toRuntimeExecutionHostId(remote.environmentId)
+      : isRemoteRuntimePtyId(id)
+        ? null
+        : undefined
+  }
+  for (const [tab, ids] of Object.entries(state.ptyIdsByTabId ?? EMPTY)) {
+    for (const id of ids) {
+      visits++
+      const host = ptyHost(id)
+      if (host !== undefined) {
+        merge(ptys, tab, host)
+      }
+    }
+  }
+  for (const tabs of Object.values(state.unifiedTabsByWorktree ?? EMPTY)) {
+    for (const tab of tabs) {
+      visits++
+      if (tab.contentType === 'terminal' && tab.executionHostId) {
+        merge(hosts, aliasKey(tab.worktreeId, tab.entityId), tab.executionHostId)
+      }
+    }
+  }
+  for (const [worktree, tabs] of Object.entries(state.tabsByWorktree ?? EMPTY)) {
+    for (const tab of tabs) {
+      visits++
+      const host = ptyHost(tab.ptyId)
+      if (host !== undefined) {
+        merge(hosts, aliasKey(worktree, tab.id), host)
+      }
+    }
+  }
+  for (const retained of Object.values(state.retainedAgentsByPaneKey ?? EMPTY)) {
+    visits++
+    const host = ptyHost(retained.tab.ptyId)
+    if (host !== undefined) {
+      merge(hosts, aliasKey(retained.worktreeId, retained.tab.id), host)
+    }
+  }
+  terminalCache = { inputs, hosts, ptys }
+  return terminalCache
+}
+
 function projection(state: VisibleOrchestrationState): NonNullable<typeof cache> {
   const rows = rowIdentities(state)
+  const terminals = terminalProvenance(state)
   const inputs = [
     state.runtimeAgentOrchestrationByPaneKey,
     state.agentStatusByPaneKey,
     state.retainedAgentsByPaneKey,
+    terminals,
     rows
   ]
   if (cache && inputs.every((value, index) => value === cache?.inputs[index])) {
@@ -132,21 +208,32 @@ function projection(state: VisibleOrchestrationState): NonNullable<typeof cache>
     }
     const row = canonical.get(entry.paneKey)
     const runtime = state.runtimeAgentOrchestrationByPaneKey?.[row?.key ?? entry.paneKey]
-    const host = row
-      ? row.host
-      : entry.connectionId
-        ? null
-        : worktreeId
-          ? resolveStructuredAgentSessionOwner(state, worktreeId)
-          : null
     if (
       runtime &&
-      host === (producerByContext.get(runtime) ?? LOCAL_EXECUTION_HOST_ID) &&
+      (!row || row.host === orchestrationProducer(runtime)) &&
       runtime.taskId === entry.orchestration.taskId &&
       runtime.dispatchId === entry.orchestration.dispatchId
     ) {
+      // Matching graph facts already carry the context's producer, independently of execution routing.
       return
     }
+    const tabId = parseAgentStatusPaneIdentity(entry.paneKey)?.tabId
+    const terminalKey = worktreeId && tabId ? aliasKey(worktreeId, tabId) : null
+    const tabHost = terminalKey ? terminals.hosts.get(terminalKey) : undefined
+    const ptyHost = tabId ? terminals.ptys.get(tabId) : undefined
+    const terminalHost =
+      tabHost === undefined
+        ? ptyHost
+        : ptyHost === undefined || tabHost === ptyHost
+          ? tabHost
+          : null
+    const host = row
+      ? row.host
+      : terminalHost !== undefined
+        ? terminalHost
+        : !entry.connectionId && worktreeId
+          ? resolveStructuredAgentSessionOwner(state, worktreeId)
+          : null
     if (
       entry.orchestration.parentPaneKey &&
       visibleKey(entry.orchestration.parentPaneKey, host) !== entry.orchestration.parentPaneKey
