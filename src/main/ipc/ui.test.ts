@@ -98,57 +98,18 @@ describe('UI IPC', () => {
     vi.unstubAllEnvs()
   })
 
-  it.each([10, 100])(
-    'delivers full UI updates only to main with %i persisted pane acknowledgments',
-    (paneCount) => {
-      const mainSend = vi.fn()
-      const dashboardSend = vi.fn()
-      const spaceSend = vi.fn()
-      const main = { id: 17, isDestroyed: () => false, send: mainSend }
-      getAllWindowsMock.mockReturnValue(
-        [main, { id: 42, send: dashboardSend }, { id: 43, send: spaceSend }].map((contents) => ({
-          isDestroyed: () => false,
-          webContents: { ...contents, isDestroyed: () => false }
-        }))
-      )
-      fromIdMock.mockReturnValue(main)
-      setTrustedUIRendererWebContentsId(main.id)
-      const store = makeStore()
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: UI handler registration uses only the supplied store methods.
-      registerUIHandlers(store as never)
-      const publish = store.onUIChanged.mock.calls[0]?.[0]
-      if (!publish) {
-        throw new Error('UI state publisher was not registered')
-      }
-      const snapshot = {
-        ...getDefaultUIState(),
-        acknowledgedAgentsByPaneKey: Object.fromEntries(
-          Array.from({ length: paneCount }, (_, index) => [`tab-${index}::pane`, index + 1])
-        )
-      }
-      for (let index = 0; index < 20; index++) {
-        const update: PersistedUIState = {
-          ...snapshot,
-          activeView: index % 2 === 0 ? 'tasks' : 'terminal'
-        }
-        publish(update)
-        expect(mainSend).toHaveBeenNthCalledWith(index + 1, 'ui:stateChanged', update)
-      }
-      expect(mainSend).toHaveBeenCalledTimes(20)
-      expect(dashboardSend).not.toHaveBeenCalled()
-      expect(spaceSend).not.toHaveBeenCalled()
-      expect(getAllWindowsMock).not.toHaveBeenCalled()
-    }
-  )
-
-  it('keeps UI publication on the current main owner without falling back to other windows', () => {
-    const otherSend = vi.fn()
-    getAllWindowsMock.mockReturnValue([
-      {
+  it('publishes UI state only to the trusted main renderer, never other windows', () => {
+    const mainSend = vi.fn()
+    const dashboardSend = vi.fn()
+    const spaceSend = vi.fn()
+    const main = { id: 17, isDestroyed: () => false, send: mainSend }
+    getAllWindowsMock.mockReturnValue(
+      [main, { id: 42, send: dashboardSend }, { id: 43, send: spaceSend }].map((contents) => ({
         isDestroyed: () => false,
-        webContents: { id: 42, isDestroyed: () => false, send: otherSend }
-      }
-    ])
+        webContents: { ...contents, isDestroyed: () => false }
+      }))
+    )
+    fromIdMock.mockReturnValue(main)
     const store = makeStore()
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: UI handler registration uses only the supplied store methods.
     registerUIHandlers(store as never)
@@ -157,25 +118,15 @@ describe('UI IPC', () => {
       throw new Error('UI state publisher was not registered')
     }
     const ui = getDefaultUIState()
-    publish(ui)
-    expect(fromIdMock).not.toHaveBeenCalled()
-    setTrustedUIRendererWebContentsId(17)
-    fromIdMock.mockReturnValue(undefined)
-    publish(ui)
-    const retiredSend = vi.fn()
-    fromIdMock.mockReturnValue({ id: 17, isDestroyed: () => true, send: retiredSend })
-    publish(ui)
-    expect(retiredSend).not.toHaveBeenCalled()
-    expect(otherSend).not.toHaveBeenCalled()
 
-    setTrustedUIRendererWebContentsId(77)
-    clearTrustedUIRendererWebContentsId(17)
-    const replacementSend = vi.fn()
-    fromIdMock.mockReturnValue({ id: 77, isDestroyed: () => false, send: replacementSend })
     publish(ui)
-    expect(fromIdMock).toHaveBeenLastCalledWith(77)
-    expect(replacementSend).toHaveBeenCalledExactlyOnceWith('ui:stateChanged', ui)
-    expect(otherSend).not.toHaveBeenCalled()
+    expect(mainSend).not.toHaveBeenCalled()
+
+    setTrustedUIRendererWebContentsId(main.id)
+    publish(ui)
+    expect(mainSend).toHaveBeenCalledExactlyOnceWith('ui:stateChanged', ui)
+    expect(dashboardSend).not.toHaveBeenCalled()
+    expect(spaceSend).not.toHaveBeenCalled()
     expect(getAllWindowsMock).not.toHaveBeenCalled()
   })
 
