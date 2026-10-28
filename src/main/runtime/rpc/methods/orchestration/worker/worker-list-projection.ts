@@ -5,7 +5,10 @@ import {
   type OrchestrationFleetWorker
 } from '../../../../../../shared/orchestration-fleet-projection'
 import { resolveFleetWorkerOutcome } from '../../../../../../shared/orchestration-fleet-outcome-resolution'
-import type { WorkerTerminalListState } from '../../../../orchestration/worker-terminal-ownership'
+import {
+  liveWorkerTerminalAutoReleaseAt,
+  type WorkerTerminalListState
+} from '../../../../orchestration/worker-terminal-ownership'
 import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaSessionId } from '../../../../../../shared/orca-session-address'
 import {
@@ -51,6 +54,7 @@ export function projectWorkerFleet(args: {
             hostScope: row.resource.host_scope,
             ownershipState: row.resource.ownership_state,
             releaseState: row.resource.release_state,
+            autoReleaseAt: liveWorkerTerminalAutoReleaseAt(row.resource),
             updatedAt: row.resource.updated_at
           }
         : null

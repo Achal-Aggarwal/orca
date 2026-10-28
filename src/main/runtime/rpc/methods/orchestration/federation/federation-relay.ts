@@ -77,6 +77,7 @@ export const ORCHESTRATION_FEDERATION_RELAY_METHODS = [
         dispatchId: params.dispatchId,
         direction: 'to_home',
         throughSequence: params.throughSequence,
+        armAutoRelease: params.autoRelease === true,
         ...(settlements.length === 0
           ? {}
           : {

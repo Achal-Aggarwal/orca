@@ -47,7 +47,9 @@ const VERSIONED_POST_V6_COLUMNS = [
   { version: 42, table: 'runs', column: 'coordinator_orca_session_id' },
   { version: 42, table: 'runs', column: 'coordinator_orca_session_id_generation' },
   { version: 42, table: 'dispatch_contexts', column: 'assignee_orca_session_id' },
-  { version: 42, table: 'dispatch_contexts', column: 'creator_orca_session_id' }
+  { version: 42, table: 'dispatch_contexts', column: 'creator_orca_session_id' },
+  { version: 44, table: 'worker_terminal_resources', column: 'auto_release_at' },
+  { version: 44, table: 'worker_terminal_resources', column: 'auto_release_dispatch_id' }
 ] as const
 
 // v34 stamps can lack these repairs; v35 probes must verify their stored defaults.

@@ -112,7 +112,7 @@ export const ORCHESTRATION_WORKER_TERMINAL_HANDLERS: Record<string, CommandHandl
         dispatchStatus: string
         agentTerminalHandle: string | null
         terminalState: string | null
-        resource: unknown
+        resource: { autoReleaseAt?: string | null } | null
         projection?: {
           provider: { id: string; model: string | null } | null
           host: { id: string }
@@ -167,7 +167,10 @@ export const ORCHESTRATION_WORKER_TERMINAL_HANDLERS: Record<string, CommandHandl
                 const next = projection
                   ? ` next=${projection.nextAction.argv.join(' ') || 'none'}`
                   : ''
-                return `${worker.dispatchId} task=${worker.taskId} [${worker.workerState}${details} terminal=${worker.terminalState ?? 'none'}${next}`
+                const autoRelease = worker.resource?.autoReleaseAt
+                  ? ` auto-release=${worker.resource.autoReleaseAt}`
+                  : ''
+                return `${worker.dispatchId} task=${worker.taskId} [${worker.workerState}${details} terminal=${worker.terminalState ?? 'none'}${autoRelease}${next}`
               })
               .join('\n')
       const counts = Object.entries(value.counts)

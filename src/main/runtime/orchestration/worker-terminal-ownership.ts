@@ -1,4 +1,5 @@
 import type { WorkerDispatchState } from './types'
+import { exposeUtcTimestamp } from './db/utc-timestamp'
 
 export type WorkerTerminalOwnershipState =
   | 'owned'
@@ -49,6 +50,8 @@ export type WorkerTerminalResourceRow = {
   last_recovery_at: string | null
   archive_source: string | null
   archive_status: WorkerTerminalArchiveStatus | null
+  auto_release_at: string | null
+  auto_release_dispatch_id: string | null
   created_at: string
   updated_at: string
 }
@@ -153,3 +156,28 @@ export function decideWorkerTerminalRelease(
 /** SQL form of the table's `proceed` arm, for the compare-and-set race guard on the same row. */
 export const WORKER_TERMINAL_RELEASABLE_ROW_SQL =
   "ownership_state = 'owned' AND release_state <> 'released'"
+
+// A deadline binds to the Dispatch that armed it; transfer, retain, takeover or a release request void it.
+export const WORKER_TERMINAL_AUTO_RELEASE_LIVE_SQL =
+  "auto_release_at IS NOT NULL AND auto_release_dispatch_id = owner_dispatch_id AND ownership_state = 'owned' AND release_state = 'not_requested'"
+
+export function liveWorkerTerminalAutoReleaseAt(
+  resource:
+    | Pick<
+        WorkerTerminalResourceRow,
+        | 'auto_release_at'
+        | 'auto_release_dispatch_id'
+        | 'owner_dispatch_id'
+        | 'ownership_state'
+        | 'release_state'
+      >
+    | null
+    | undefined
+): string | null {
+  return resource?.auto_release_at &&
+    resource.auto_release_dispatch_id === resource.owner_dispatch_id &&
+    resource.ownership_state === 'owned' &&
+    resource.release_state === 'not_requested'
+    ? exposeUtcTimestamp(resource.auto_release_at)
+    : null
+}

@@ -194,7 +194,8 @@ export function transferWorkerTerminalResourceStatement(
       `UPDATE worker_terminal_resources
        SET owner_dispatch_id = ?, prior_owner_dispatch_ids = ?, release_state = 'not_requested',
            retained_reason = NULL, release_requested_at = NULL, release_completed_at = NULL,
-           release_error = NULL, terminal_handle = ?, pane_key = ?, process_incarnation = ?,
+           release_error = NULL, auto_release_at = NULL, auto_release_dispatch_id = NULL,
+           terminal_handle = ?, pane_key = ?, process_incarnation = ?,
            endpoint_id = COALESCE(?, endpoint_id), endpoint_incarnation = ?,
            host_scope = ?, updated_at = datetime('now')
        WHERE id = ? AND ownership_state = 'owned'`

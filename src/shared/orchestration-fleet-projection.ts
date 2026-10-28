@@ -44,6 +44,8 @@ export type FleetDurableWorker = {
     hostScope: string | null
     ownershipState: string
     releaseState: string
+    /** A scheduled automatic release; the coordinator owes no release of its own. */
+    autoReleaseAt?: string | null
     updatedAt: string
   } | null
 }

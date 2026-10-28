@@ -129,6 +129,9 @@ export function projectFleetNextAction(
   if (worker.workerStage === 'released') {
     return { kind: 'none', argv: [] }
   }
+  if (worker.resource?.autoReleaseAt) {
+    return { kind: 'none', argv: [] }
+  }
   if (worker.terminalState === 'reclaimable') {
     return {
       kind: 'release',

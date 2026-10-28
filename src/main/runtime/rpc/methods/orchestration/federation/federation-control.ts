@@ -3,6 +3,8 @@ import type { RemoteDispatchAttachmentRow } from '../../../../orchestration/type
 import { defineMethod } from '../../../core'
 import { mapWithConcurrency } from '../../../../../../shared/map-with-concurrency'
 import { readExactWorkerOutput } from '../worker/worker-output'
+import { exposeWorkerRetainReceipt } from '../worker/worker-terminal-resource-presentation'
+import { liveWorkerTerminalAutoReleaseAt } from '../../../../orchestration/worker-terminal-ownership'
 import { describeUnconfirmedAgentStop } from '../../../../../../shared/pty-liveness-verdict'
 import {
   inspectRemoteAttachment,
@@ -59,6 +61,18 @@ export const ORCHESTRATION_FEDERATION_CONTROL_METHODS = [
     }
   }),
   defineMethod({
+    name: 'orchestration.federationRetain',
+    permission: 'workspace',
+    params: FederationDispatchParams,
+    handler: (params, { runtime, authenticatedCallerFingerprint }) => {
+      requireHomeAttachment(runtime, params.dispatchId, authenticatedCallerFingerprint)
+      return exposeWorkerRetainReceipt(
+        params.dispatchId,
+        runtime.getOrchestrationDb().retainRemoteAttachmentTerminalResource(params.dispatchId)
+      )
+    }
+  }),
+  defineMethod({
     name: 'orchestration.federationShow',
     permission: 'workspace',
     params: FederationDispatchParams,
@@ -69,10 +83,14 @@ export const ORCHESTRATION_FEDERATION_CONTROL_METHODS = [
         authenticatedCallerFingerprint
       )
       const observation = await observeRemoteAttachmentLiveness(runtime, params.dispatchId)
+      const resource = runtime
+        .getOrchestrationDb()
+        .getWorkerTerminalResourceByOwner(params.dispatchId)
       return {
         dispatchId: params.dispatchId,
         runtimeEpoch: runtime.getRuntimeId(),
         attachment: exposeRemoteAttachment(attachment),
+        autoReleaseAt: liveWorkerTerminalAutoReleaseAt(resource),
         terminal: observation.exact ? observation.terminal : null,
         observation: {
           status: observation.status,

@@ -306,6 +306,8 @@ export async function callFederatedWorkerShow(
     effects: unknown[]
     residualResources: unknown[]
   }
+  /** Absent from hosts that predate automatic release. */
+  autoReleaseAt?: string | null
   terminal: unknown
   observation: {
     status: string

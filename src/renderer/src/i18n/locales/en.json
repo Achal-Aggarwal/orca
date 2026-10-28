@@ -18582,6 +18582,12 @@
           "failed": "Could not copy tab ID",
           "copy": "Copy Tab ID"
         },
+        "KeepWorkerMenuItem": {
+          "kept": "Worker kept open",
+          "nothingToKeep": "Nothing to keep for this terminal",
+          "failed": "Could not keep this worker open",
+          "keep": "Keep Worker Open"
+        },
         "bulkClose": {
           "others": "Close other tabs?",
           "right": "Close tabs to the right?",

@@ -10,7 +10,9 @@ import type { OrchestrationDb } from '../orchestration-db'
 
 export function requestRemoteAttachmentTerminalRelease(
   this: OrchestrationDb,
-  dispatchId: string
+  dispatchId: string,
+  // Recovery resumes a committed request; it must not revive one a retain or takeover replaced.
+  mode: 'interactive' | 'recovery' = 'interactive'
 ):
   | { disposition: 'requested'; resource: WorkerTerminalResourceRow }
   | { disposition: 'already_released'; resource: WorkerTerminalResourceRow }
@@ -54,6 +56,18 @@ export function requestRemoteAttachmentTerminalRelease(
     if (decision.action === 'retained') {
       this.db.exec('COMMIT')
       return { disposition: 'retained', resource, reason: decision.reason }
+    }
+    if (
+      mode === 'recovery' &&
+      resource.release_state !== 'requested' &&
+      resource.release_state !== 'releasing'
+    ) {
+      this.db.exec('COMMIT')
+      return {
+        disposition: 'retained',
+        resource,
+        reason: (resource.retained_reason as WorkerTerminalRetainedReason) ?? 'identity_unproven'
+      }
     }
     this.db
       .prepare(

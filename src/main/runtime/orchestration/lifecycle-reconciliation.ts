@@ -31,8 +31,8 @@ export type LifecycleReconciliationResult =
   // Suppressed mail is already read and must not wake waiters; ignored mail still needs delivery.
   | { action: 'suppressed' }
   | LifecycleRejectionResult
-  | { action: 'completed'; taskId: string; dispatchId: string }
-  | { action: 'failed'; taskId: string; dispatchId: string }
+  | { action: 'completed'; taskId: string; dispatchId: string; autoReleaseAt?: string }
+  | { action: 'failed'; taskId: string; dispatchId: string; autoReleaseAt?: string }
   | { action: 'heartbeat_recorded'; dispatchId: string }
 
 export type LifecycleRejectionCode =
@@ -284,13 +284,14 @@ function reconcileWorkerDoneMessage(
     return rejectLifecycleMessage(db, msg, settlement.code, settlement.reason, onLog)
   }
   suppressEarlierHeartbeats(db, msg, dispatchId)
+  const autoReleaseAt = db.getLiveWorkerTerminalAutoReleaseAt(dispatchId) ?? undefined
 
   if (outcome === 'failed') {
     onLog(`Task ${taskId} failed by worker report`)
-    return { action: 'failed', taskId, dispatchId }
+    return { action: 'failed', taskId, dispatchId, autoReleaseAt }
   }
   onLog(`Task ${taskId} completed by worker report`)
-  return { action: 'completed', taskId, dispatchId }
+  return { action: 'completed', taskId, dispatchId, autoReleaseAt }
 }
 
 function rejectLifecycleMessage(

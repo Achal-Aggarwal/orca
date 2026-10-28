@@ -8,7 +8,8 @@ import {
   ORCHESTRATION_CONTRACT_VERSION,
   ORCHESTRATION_FEDERATION_FLEET_SNAPSHOT_RUNTIME_CAPABILITY,
   ORCHESTRATION_FEDERATION_RELEASE_ARCHIVE_RUNTIME_CAPABILITY,
-  ORCHESTRATION_FEDERATION_STRUCTURED_READ_RUNTIME_CAPABILITY
+  ORCHESTRATION_FEDERATION_STRUCTURED_READ_RUNTIME_CAPABILITY,
+  ORCHESTRATION_WORKER_AUTO_RELEASE_RUNTIME_CAPABILITY
 } from '../../../../../../shared/protocol-version'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
@@ -17,6 +18,7 @@ import type { RpcRequest } from '../../../core'
 import { RpcDispatcher } from '../../../dispatcher'
 import { ORCHESTRATION_METHODS } from '../../orchestration'
 import { registerFederatedReleaseRecoveryScenarios } from './federation-release-recovery-scenarios.test-support'
+import { registerFederatedAutoReleaseScenarios } from './federation-auto-release-scenarios.test-support'
 
 describe('orchestration federated worker output', () => {
   const databases: OrchestrationDb[] = []
@@ -34,6 +36,8 @@ describe('orchestration federated worker output', () => {
   let workerAdvertisesNewCapabilities: boolean
   let workerAdvertisesDurableRelease: boolean
   let workerTerminalAvailable: boolean
+  let workerAdvertisesAutoRelease: boolean
+  let homeOmitsAutoRelease: boolean
   let remoteCalls: string[]
 
   beforeEach(() => {
@@ -54,6 +58,8 @@ describe('orchestration federated worker output', () => {
     workerAdvertisesNewCapabilities = true
     workerAdvertisesDurableRelease = true
     workerTerminalAvailable = true
+    workerAdvertisesAutoRelease = true
+    homeOmitsAutoRelease = false
     remoteCalls = []
     const transport: OrchestrationEnvironmentTransport = {
       resolve: () => ({
@@ -80,7 +86,9 @@ describe('orchestration federated worker output', () => {
                         ORCHESTRATION_FEDERATION_FLEET_SNAPSHOT_RUNTIME_CAPABILITY
                       ].includes(capability as never)) ||
                     ((!workerAdvertisesNewCapabilities || !workerAdvertisesDurableRelease) &&
-                      capability === ORCHESTRATION_FEDERATION_RELEASE_ARCHIVE_RUNTIME_CAPABILITY)
+                      capability === ORCHESTRATION_FEDERATION_RELEASE_ARCHIVE_RUNTIME_CAPABILITY) ||
+                    (!workerAdvertisesAutoRelease &&
+                      capability === ORCHESTRATION_WORKER_AUTO_RELEASE_RUNTIME_CAPABILITY)
                   )
               )
             },
@@ -123,7 +131,10 @@ describe('orchestration federated worker output', () => {
           id: `remote_${method}`,
           authToken: 'run-home-device-token',
           method,
-          params,
+          params:
+            homeOmitsAutoRelease && method === 'orchestration.federationAck'
+              ? { ...(params as Record<string, unknown>), autoRelease: undefined }
+              : params,
           orchestrationContractVersion: envelope?.orchestrationContractVersion,
           orchestrationRequestId: envelope?.orchestrationRequestId
         })
@@ -656,6 +667,27 @@ describe('orchestration federated worker output', () => {
       }
     })
     expect(workerRuntime.closeTerminal).not.toHaveBeenCalled()
+  })
+
+  registerFederatedAutoReleaseScenarios({
+    startRemoteWorker: async () => {
+      const dispatchId = await startRemoteWorker()
+      homeRuntime.stopOrchestrationFederationRelay()
+      return dispatchId
+    },
+    dispatchHome: (request) => homeDispatcher.dispatch(request),
+    dispatchWorker: (request) => workerDispatcher.dispatch(request),
+    syncHome: (dispatchId) => homeRuntime.syncOrchestrationFederatedDispatch(dispatchId),
+    workerRuntime: () => workerRuntime,
+    homeDb: () => homeDb,
+    workerDb: () => workerDb,
+    remoteCalls: () => remoteCalls,
+    setWorkerAdvertisesAutoRelease: (advertised) => {
+      workerAdvertisesAutoRelease = advertised
+    },
+    setHomeOmitsAutoRelease: (omitted) => {
+      homeOmitsAutoRelease = omitted
+    }
   })
 
   registerFederatedReleaseRecoveryScenarios({

@@ -108,7 +108,8 @@ export async function showFederatedWorker(args: {
       db.getFederatedDispatch(dispatchId)?.remote_runtime_epoch ??
       (observationProjected ? remote.runtimeEpoch : null),
     terminal: observationProjected ? remote.terminal : null,
-    observation
+    observation,
+    autoReleaseAt: remote.autoReleaseAt ?? null
   }
 }
 

@@ -1,4 +1,5 @@
 import type { AutomationsChangedPayload } from '../../../../shared/runtime-client-events'
+import { getWorkerTerminalAutoReleaseScheduler } from '../../orchestration/worker-terminal-auto-release-scheduler'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { OrcaRuntimeWithPtyForegroundProcessReads } from '../../client/runtime-client-state'
 import type {
@@ -155,6 +156,9 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
       this.bindMailHandBack(this._orchestrationDb)
       this.ensureOrchestrationFederationRelay()
       this.scheduleRestoredMessageRepoints()
+      this.bindWorkerTerminalAutoRelease(this._orchestrationDb)
+      // Recover deadlines armed before a restart.
+      getWorkerTerminalAutoReleaseScheduler(this).rearm()
     }
     return this._orchestrationDb
   }
@@ -177,6 +181,15 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
     this.bindMailHandBack(db)
     this.ensureOrchestrationFederationRelay()
     this.scheduleRestoredMessageRepoints()
+    this.bindWorkerTerminalAutoRelease(db)
+  }
+
+  private bindWorkerTerminalAutoRelease(db: OrchestrationDb): void {
+    db.workerTerminalAutoReleaseListener = () => {
+      if (this._orchestrationDb === db) {
+        getWorkerTerminalAutoReleaseScheduler(this).rearm()
+      }
+    }
   }
 
   private bindMailHandBack(db: OrchestrationDb): void {

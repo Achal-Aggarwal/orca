@@ -199,7 +199,7 @@ async function syncFederatedDispatchPages(
       {
         dispatchId,
         throughSequence: acknowledgmentCursor,
-        ...(settlements.length > 0 ? { settlements } : {})
+        ...(settlements.length > 0 ? { settlements, autoRelease: true } : {})
       },
       15_000,
       { orchestrationRequestId: `relay_ack_${dispatchId}_${cursor}` },

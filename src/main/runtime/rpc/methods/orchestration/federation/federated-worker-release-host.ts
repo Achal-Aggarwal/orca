@@ -86,7 +86,7 @@ export async function releaseRemoteAttachment(args: {
       ...(archived ? { output: archived } : {})
     }
   }
-  const requested = db.requestRemoteAttachmentTerminalRelease(attachment.dispatch_id)
+  const requested = db.requestRemoteAttachmentTerminalRelease(attachment.dispatch_id, args.mode)
   if (requested.disposition === 'already_released') {
     return {
       dispatchId: attachment.dispatch_id,
