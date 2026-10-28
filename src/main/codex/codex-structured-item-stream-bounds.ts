@@ -1,6 +1,6 @@
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
 import type { AgentSessionDeltaWindow } from '../native-chat/agent-session-wire/agent-session-delta-coalescer'
-import { toolExecutionMetadata } from '../../shared/native-chat-tool-identity'
+import { toolExecutionMetadata } from '../../shared/native-chat/tools/native-chat-tool-identity'
 import type {
   CodexItemStreamState,
   CodexPendingItemPatch

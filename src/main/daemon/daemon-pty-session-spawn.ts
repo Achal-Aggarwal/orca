@@ -1,6 +1,3 @@
-import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
-import { shouldUseShellReadyStartupDelivery } from '../../shared/codex-startup-delivery'
-import { CODEX_SHELL_READY_TIMEOUT_MS } from './session-shell-ready-barrier'
 import type {
   HistoryRecoveryContext,
   PendingDaemonSpawnOperation
@@ -231,16 +228,6 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
         : ''
     const shellReadySupported = shellPathSupportsPtyStartupBarrier(effectiveShellPath)
     const immediateMarker = shellReadyMarkerComesFromLineEditor(effectiveShellPath)
-    const shellReadyTimeoutMs =
-      shellReadySupported &&
-      !immediateMarker &&
-      recognizeAgentProcessFromCommandLine(opts.command)?.agent === 'codex' &&
-      !shouldUseShellReadyStartupDelivery({
-        command: opts.command,
-        startupCommandDelivery: opts.startupCommandDelivery
-      })
-        ? CODEX_SHELL_READY_TIMEOUT_MS
-        : undefined
     const context: DaemonPtySpawnContext = {
       // Older daemons also need the existing hint to enable their ready marker.
       opts:
@@ -258,7 +245,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
       effectiveCols,
       effectiveRows,
       shellReadySupported,
-      shellReadyTimeoutMs,
+      shellReadyTimeoutMs: undefined,
       historySeedSegments: restoreInfo ? getRecoveredHistorySeedSegments(restoreInfo) : null,
       detectColdRestore
     }
@@ -267,7 +254,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     if (result.isNew && !attachOnly) {
       // Not awaited: the app-side read behind it can sit on an unanswered macOS folder prompt.
       void reportDaemonPtyCwdVerdict({
-        cwd: effectiveCwd,
+        cwd: context.effectiveCwd,
         cwdReadableByDaemon: result.cwdReadableByDaemon,
         pidPath: this.pidPath,
         daemonIdentity: this.client.getDaemonIdentity()

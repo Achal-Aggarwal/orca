@@ -2,14 +2,9 @@ import { snapshotLatestTurn } from './agent-session-history-latest-turn'
 export { snapshotLatestTurn } from './agent-session-history-latest-turn'
 import { resolveHistoryLimit } from './agent-session-history-limit'
 export { resolveHistoryLimit } from './agent-session-history-limit'
-// Paged history over one journal.
-//
-// `tail` and `before` read the REDUCED timeline, so backward paging keeps
-// working after compaction — the folded snapshot still holds every live item.
-// `after` is the catch-up direction and must read rows instead: an item created
-// early and revised late orders by its creation sequence, so an item-window
-// read would silently skip that revision. Rows carry the revision, which is why
-// `after` is the only direction that can answer `cursor_compacted`.
+// Backward pages use the reduced timeline so compaction retains live items. Catch-up reads rows:
+// late revisions keep old creation positions and would be skipped by item windows. Only catch-up
+// can therefore return cursor_compacted.
 
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
@@ -41,9 +36,7 @@ import { offPageSubagentRoster } from './agent-session-history-subagent-roster'
 
 export { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
 
-/** Whose rows a backward read serves. Both window over the session's own rows; a
- *  reader of the session's own agent alone gets only those. In-process only: no wire
- *  request carries it. */
+/** In-process only: both scopes window by own-agent rows; own-agent also excludes other producers. */
 export type AgentSessionHistoryScope = 'every-agent' | 'own-agent'
 
 export function readAgentSessionHistory(
@@ -114,7 +107,7 @@ export function readAgentSessionHistory(
   }
 }
 
-/** Reuse reduced state until the journal cursor advances. */
+/** Reuse reduced state until the complete journal source changes. */
 export function createAgentSessionCatchUpReader(
   journal: AgentSessionJournal,
   reader: HistoryReader = CLIENT_HISTORY_READER,
@@ -122,10 +115,9 @@ export function createAgentSessionCatchUpReader(
 ): (request: AgentSessionHistoryRequest) => AgentSessionHistoryResult {
   let view = initialView
   return (request) => {
-    const live = journal.cursor()
-    const prior = view.snapshot.cursor
-    if (live.epoch !== prior.epoch || live.sequence !== prior.sequence) {
-      view = journal.publicRead()
+    const live = journal.publicRead()
+    if (view !== live) {
+      view = live
     }
     return readAgentSessionHistory(journal, request, { view, reader, rowReplay: true })
   }

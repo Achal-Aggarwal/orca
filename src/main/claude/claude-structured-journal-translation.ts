@@ -22,11 +22,7 @@ import {
   observeClaudeStreamedText
 } from './claude-streamed-block-identity'
 import { createClaudeProseCheckpoints } from './claude-streamed-text-checkpoints'
-import {
-  claudeFrameParentRef,
-  claudeStreamTurnSource,
-  isRootClaudeFrame
-} from './claude-turn-opening'
+import { claudeFrameParentRef, claudeStreamTurnSource } from './claude-turn-opening'
 import { ClaudeOpenTurn } from './claude-open-turn'
 import { claudeCommandCurrentTurn, observeClaudeCommandFrame } from './claude-command-turn'
 import { ClaudeContextFacts } from './claude-context-facts'
@@ -180,18 +176,7 @@ export function createClaudeJournalTranslator(
       turn.observeStartedSend(event.type === 'message' ? (event.startedSend ?? null) : null)
       if (event.type === 'message') {
         context.observe(event.message, event.observedAt ?? Date.now())
-        // Root init starts a cycle; replays after root work fold into it, while task frames do not mark cycle work.
-        if (isRootClaudeFrame(event.message)) {
-          if (event.message.type === 'system' && event.message.subtype === 'init') {
-            turn.observeProviderCycleStart()
-          } else if (
-            event.startsTurn === true ||
-            event.message.type === 'assistant' ||
-            event.message.type === 'stream_event'
-          ) {
-            turn.observeProviderCycleWork()
-          }
-        }
+        turn.observeProviderCycleFrame(event)
       }
       if (event.type === 'message' && observeClaudeCommandFrame(turn.command, event.message)) {
         return
@@ -278,6 +263,9 @@ export function createClaudeJournalTranslator(
     commandInterruptRequested: (turnId) => turn.commandInterruptRequested(turnId),
     get openTurnInLiveProviderCycle() {
       return turn.openedInLiveProviderCycle
+    },
+    get openTurnHasInputWork() {
+      return turn.isOpen && turn.inputChoiceWorkObserved
     },
     flush,
     childToolOwner: childQueries.childToolOwner,

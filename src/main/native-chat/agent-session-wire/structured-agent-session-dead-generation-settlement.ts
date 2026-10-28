@@ -1,3 +1,4 @@
+import { providerTimelineExecutionItems } from '../agent-session-timeline/provider-timeline-history'
 import {
   agentSessionFailureFact,
   MAX_PROVIDER_DIAGNOSTIC_CHARS,
@@ -59,7 +60,7 @@ export type StructuredAgentSessionDeadGenerationInput = {
   exitFailure?: SubmissionRejectionFact
   failureTextContext?: AgentSessionFailureWordsContext
   /** Share generation-keyed startup failure rows with delivery-loop settlement. */
-  exitedDuringStartup?: { generation: string | null }
+  exitedDuringStartup?: { generation: string | null; flightOwned?: boolean }
   /** Refine translator-unverifiable rows after observed exit proof. */
   exit?: StructuredAgentSessionWatchedExit
   unrunRejection?: SubmissionRejectionFact
@@ -72,15 +73,6 @@ export function planStructuredAgentSessionDeadGeneration(
 ): { mutations: JournalLifecycleMutationInput[]; dispatches: ResolveDispatchInput[] } {
   const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal, input.exit)
   const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
-  const allItems = input.journal.snapshot().items
-  const items = allItems.filter((item) => owns(input.journal.itemFence(item.itemId)))
-  if (
-    !showUnexpectedExitOutcome &&
-    !hasUnfinishedWork &&
-    !items.some((item) => input.journal.hasUnwitnessedText?.(item.itemId))
-  ) {
-    return { mutations: [], dispatches: [] }
-  }
   // Leave queued sends to delivery. Failed-start handoffs never ran; ready-child handoffs remain uncertain.
   const startupFailure = input.exitedDuringStartup
     ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
@@ -89,6 +81,16 @@ export function planStructuredAgentSessionDeadGeneration(
   const unrun =
     startupFailure ?? (closed && agentSessionFailureWords(closed, { surface: 'rejection' }))
   const withdrawn = unrun ? [] : codexUnopenedSendResolutions(input.journal, input.fence)
+  const allItems = providerTimelineExecutionItems(input.journal.snapshot().items)
+  const items = allItems.filter((item) => owns(input.journal.itemFence(item.itemId)))
+  if (
+    !showUnexpectedExitOutcome &&
+    !hasUnfinishedWork &&
+    withdrawn.length === 0 &&
+    !items.some((item) => input.journal.hasUnwitnessedText?.(item.itemId))
+  ) {
+    return { mutations: [], dispatches: [] }
+  }
   const withdrawnIds = new Set(withdrawn.map((entry) => entry.clientMessageId))
   const dispatches = [
     ...withdrawn,
@@ -107,6 +109,7 @@ export function planStructuredAgentSessionDeadGeneration(
     // Delivery owns failure rows for sends; other startup effects need their own row.
     // Existing rejection wording is terminal and must remain unchanged.
     const recordedByDeliveryLoop =
+      input.exitedDuringStartup.flightOwned ||
       input.journal.submissions?.().some(isQueuedAgentJournalSubmission) ||
       hasStructuredAgentSessionStartFailureRow(allItems, startKey)
     if (!recordedByDeliveryLoop) {

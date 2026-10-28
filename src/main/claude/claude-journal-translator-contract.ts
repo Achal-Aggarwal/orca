@@ -12,7 +12,7 @@ import type { AgentJournalTurnScope } from '../../shared/agent-session-journal-t
 import type { ClaudeChildToolQueries } from './claude-child-tool-queries'
 import type { ClaudeContextReportPart, ClaudeContextReportTarget } from './claude-context-facts'
 import type { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
-import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+import type { ClaudeStructuredSessionEvent } from './structured/claude-structured-session-state'
 import type { ClaudeCommandStart } from './claude-command-turn'
 
 export type ClaudeJournalTranslatorDeps = {
@@ -41,6 +41,7 @@ export type ClaudeJournalTranslator = {
   commandInterruptRequested: (turnId: string) => void
   /** Root work since cycle init makes the open turn eligible for folded sends. */
   readonly openTurnInLiveProviderCycle: boolean
+  readonly openTurnHasInputWork: boolean
   flush: () => void
   childToolOwner?: ClaudeChildToolQueries['childToolOwner']
   childActivity?: ClaudeChildToolQueries['childActivity']

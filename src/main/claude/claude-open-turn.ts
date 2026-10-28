@@ -19,10 +19,17 @@ import {
   writeAgentJournalTurnRow
 } from '../native-chat/agent-session-timeline/agent-journal-turn-row-revision'
 import type { ClaudeCommandTurn } from './claude-command-turn'
-import { createClaudeTurnOpener, type ClaudeTurnSource } from './claude-turn-opening'
+import {
+  createClaudeTurnOpener,
+  isRootClaudeFrame,
+  type ClaudeTurnSource
+} from './claude-turn-opening'
 import { claudeQuotaTurnEndStep, refineClaudeQuotaTurnEnd } from './claude-terminal-failure'
 import type { ClaudeUsageLimitEvidence } from './claude-usage-limits'
-import type { ClaudeStartedSend } from './claude-structured-session-state'
+import type {
+  ClaudeStartedSend,
+  ClaudeStructuredSessionEvent
+} from './structured/claude-structured-session-state'
 
 export type ClaudeOpenTurnDeps = {
   sink: StructuredAgentSessionEventSink
@@ -44,6 +51,8 @@ export class ClaudeOpenTurn {
   private reopenSuppressed = false
   /** Track root work since cycle init; background output may open a turn before that init. */
   private cycleWorkObserved = false
+  /** Input choices follow actual work; correlation also includes API errors. */
+  inputChoiceWorkObserved = false
   private startedSend: ClaudeStartedSend | null = null
   private readonly opener: (
     frame: Record<string, unknown>,
@@ -103,12 +112,26 @@ export class ClaudeOpenTurn {
     this.startedSend = send
   }
 
-  observeProviderCycleStart(): void {
-    this.cycleWorkObserved = false
-  }
-
-  observeProviderCycleWork(): void {
-    this.cycleWorkObserved = true
+  observeProviderCycleFrame(
+    event: Extract<ClaudeStructuredSessionEvent, { type: 'message' }>
+  ): void {
+    // Root init starts a cycle; replays after root work fold into it, while task frames do not mark cycle work.
+    if (isRootClaudeFrame(event.message)) {
+      if (event.message.type === 'system' && event.message.subtype === 'init') {
+        this.cycleWorkObserved = false
+        this.inputChoiceWorkObserved = false
+      } else if (
+        event.startsTurn === true ||
+        event.message.type === 'assistant' ||
+        event.message.type === 'stream_event'
+      ) {
+        this.cycleWorkObserved = true
+        this.inputChoiceWorkObserved ||=
+          event.message.type !== 'assistant' ||
+          event.message.is_api_error_message !== true ||
+          event.startedSend != null
+      }
+    }
   }
 
   /** Supersede the previous turn before opening another; a missing result must not leave old work live. */
@@ -152,6 +175,7 @@ export class ClaudeOpenTurn {
   forgetCommand(turnId: string): void {
     if (this.current?.command && this.current.turnId === turnId) {
       this.usageLimitEvidence = null
+      this.inputChoiceWorkObserved = false
       this.current = null
     }
   }
@@ -173,6 +197,7 @@ export class ClaudeOpenTurn {
       this.usageLimitEvidence?.cause === 'quota'
     this.suppressReopenOnFailure(quotaEnd)
     this.cycleWorkObserved = false
+    this.inputChoiceWorkObserved = false
     this.usageLimitEvidence = null
     // Even with no turn open: work a suppressed turn produced still ends here.
     if (!this.finish(end, contextUsage, quotaEnd)) {
