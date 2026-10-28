@@ -1,5 +1,8 @@
+import { mockPanePtyArgs } from '../../renderer/src/components/terminal-pane/pty-connection-test-connect-mock-pane'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as React from 'react'
+import type { PtyApi } from '../../preload/api/pty-api'
+import type { Project, ProjectHostSetup } from '../../shared/project-types'
 import { getDefaultSettings, getDefaultWorkspaceSession } from '../../shared/constants'
 import { MIXED_FOLDER, MIXED_GROUP } from '../../shared/folder-workspace-host-routing.test-fixture'
 import { setupPtyIpcSuite } from './pty/pty-ipc-test-harness'
@@ -17,7 +20,10 @@ import {
   restoreTerminalTestGlobals
 } from '../../renderer/src/components/terminal-pane/pty-connection-test-environment'
 import type { StoreState } from '../../renderer/src/components/terminal-pane/pty-connection-test-store-state'
-import type { IpcPtyTransportOptions } from '../../renderer/src/components/terminal-pane/pty-transport-types'
+import type {
+  IpcPtyTransportOptions,
+  PtyTransport
+} from '../../renderer/src/components/terminal-pane/pty-transport-types'
 import { createTestStore, makeTab } from '../../renderer/src/store/slices/store-test-helpers'
 import { existsSyncMock, wslUncDirectoryExistsAsyncMock } from './pty/pty-ipc-mock-registry'
 import { _setWslCachesForTests, _resetWslCachesForTests } from '../wsl'
@@ -43,19 +49,18 @@ vi.mock('@/components/terminal-pane/pty-transport', () => ({
   createIpcPtyTransport: (options: IpcPtyTransportOptions) => {
     mountedOptions = options
     const transport = createMockTransport()
-    transport.connect.mockImplementation(async (connectOptions) => {
+    const connect = vi.fn<PtyTransport['connect']>(async (connectOptions) => {
       const { spawnIpcPty } =
         await import('../../renderer/src/components/terminal-pane/ipc-pty-spawn-request')
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the real connector supplies the transport connect options.
       const result = await spawnIpcPty(
         options,
-        connectOptions as never,
+        connectOptions,
         typeof connectOptions.sessionId === 'string' ? connectOptions.sessionId : undefined
       )
       transport.attach({ existingPtyId: result.id })
       return result
     })
-    return transport
+    return Object.assign(transport, { connect })
   }
 }))
 
@@ -109,6 +114,19 @@ vi.mock('../codex/codex-state-db-backfill-recovery', () =>
 describe('mounted folder plain-shell project runtime', () => {
   const { handlers, mainWindow, installDaemonTestProvider } = setupPtyIpcSuite()
   const platform = process.platform
+
+  const invokePaneSpawn: PtyApi['spawn'] = async (args) => {
+    const result = await handlers.get('pty:spawn')!(null, args)
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      !('id' in result) ||
+      typeof result.id !== 'string'
+    ) {
+      throw new Error('PTY spawn did not return a terminal ID')
+    }
+    return result
+  }
 
   beforeEach(async () => {
     mountedOptions = undefined
@@ -215,6 +233,15 @@ describe('mounted folder plain-shell project runtime', () => {
     existsSyncMock.mockClear()
     wslUncDirectoryExistsAsyncMock.mockClear()
     const savedSessionId = 'repo1::\\\\wsl.localhost\\Saved\\work@@abc12345'
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    if (live) {
+      session.terminalLayoutsByTabId['saved-tab'] = {
+        root: { type: 'leaf', leafId },
+        activeLeafId: leafId,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [leafId]: savedSessionId }
+      }
+    }
     const result = await controller.spawn({
       cols: 80,
       rows: 24,
@@ -231,12 +258,14 @@ describe('mounted folder plain-shell project runtime', () => {
         : {}),
       ...(live
         ? {
+            leafId,
+            preAllocatedHandle: 'handle',
             adoptedStablePane: {
               result: { id: savedSessionId, wslDistro: 'Saved' },
               owner: {
                 handle: 'handle',
                 tabId: 'saved-tab',
-                leafId: 'leaf',
+                leafId,
                 ptyId: savedSessionId
               },
               materialized: true
@@ -255,13 +284,13 @@ describe('mounted folder plain-shell project runtime', () => {
             }
           }
         : {}),
-      env: {}
+      env: live ? { ORCA_PANE_KEY: `saved-tab:${leafId}` } : {}
     })
     if (live) {
       expect(result).toMatchObject({ id: savedSessionId, wslDistro: 'Saved' })
       expect(providerSpawn).not.toHaveBeenCalled()
       expect(getProjects).not.toHaveBeenCalled()
-      expect(getFolders).not.toHaveBeenCalled()
+      expect(getFolders).toHaveBeenCalledTimes(1)
       expect(existsSyncMock.mock.calls.some(([path]) => path === folder.folderPath)).toBe(false)
       expect(wslUncDirectoryExistsAsyncMock).not.toHaveBeenCalled()
       expect(session.tabsByWorktree[worktreeId][0].startupCwd).toBe('C:/saved/deleted')
@@ -361,7 +390,7 @@ describe('mounted folder plain-shell project runtime', () => {
       undefined,
       store as never
     )
-    window.api.pty.spawn = vi.fn(async (args) => handlers.get('pty:spawn')!(null, args) as never)
+    window.api.pty.spawn = vi.fn(invokePaneSpawn)
     vi.mocked(window.api.pty.hasPty).mockResolvedValue(false)
     await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
     expect(session.tabsByWorktree[worktreeId]).toBeUndefined()
@@ -371,8 +400,7 @@ describe('mounted folder plain-shell project runtime', () => {
       tabId: tab.id,
       cwd: folder.folderPath
     })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the pane fixture implements the real connector's dependency ports.
-    const binding = connectPanePty(pane as never, createManager(1) as never, deps as never)
+    const binding = connectPanePty(...mockPanePtyArgs(pane, createManager(1), deps))
     try {
       await vi.waitFor(() => expect(providerSpawn).toHaveBeenCalledTimes(1))
       expect(providerSpawn).toHaveBeenCalledWith(
@@ -422,14 +450,39 @@ describe('mounted folder plain-shell project runtime', () => {
         terminalWindowsWslDistro: 'Debian',
         localWindowsRuntimeDefault: { kind: 'wsl' as const, distro: 'Debian' }
       }
+      const project: Project = {
+        id: localRepo.id,
+        displayName: 'Repo',
+        badgeColor: 'blue',
+        sourceRepoIds: [localRepo.id],
+        localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' },
+        createdAt: 1,
+        updatedAt: 1
+      }
+      const localSetup: ProjectHostSetup = {
+        id: 'local-setup',
+        projectId: project.id,
+        hostId: 'local',
+        repoId: localRepo.id,
+        path: localRepo.path,
+        displayName: 'Repo',
+        setupState: 'ready',
+        setupMethod: 'legacy-repo',
+        createdAt: 1,
+        updatedAt: 1
+      }
+      const remoteSetup: ProjectHostSetup = {
+        ...localSetup,
+        id: 'remote-setup',
+        hostId: 'ssh:prod'
+      }
       Object.assign(state, {
         activeWorktreeId: 'unrelated',
         repos: reverse ? [remoteRepo, localRepo] : [localRepo, remoteRepo],
         folderWorkspaces: reverse ? [remoteFolder, localFolder] : [localFolder, remoteFolder],
         projectGroups: [MIXED_GROUP],
-        projects: [
-          { id: 'repo1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }
-        ],
+        endpointProjects: [project],
+        endpointProjectHostSetups: reverse ? [remoteSetup, localSetup] : [localSetup, remoteSetup],
         settings,
         unifiedTabsByWorktree: {
           'folder:copied': [
@@ -456,7 +509,7 @@ describe('mounted folder plain-shell project runtime', () => {
         undefined,
         store as never
       )
-      window.api.pty.spawn = vi.fn(async (args) => handlers.get('pty:spawn')!(null, args) as never)
+      window.api.pty.spawn = vi.fn(invokePaneSpawn)
       vi.mocked(window.api.pty.hasPty).mockResolvedValue(false)
 
       for (const mode of ['fresh', 'cold', 'force-host', 'no-project'] as const) {
@@ -466,7 +519,8 @@ describe('mounted folder plain-shell project runtime', () => {
         }
         if (mode === 'no-project') {
           Object.assign(state.tabsByWorktree['folder:copied'][0], { forceHostRuntime: false })
-          state.projects = []
+          state.endpointProjects = []
+          state.endpointProjectHostSetups = []
           state.repos = []
         }
         const pane = createPane(1)
@@ -480,8 +534,7 @@ describe('mounted folder plain-shell project runtime', () => {
               }
             : {})
         })
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the existing pane/manager/dependency fixtures provide the connector contract.
-        const binding = connectPanePty(pane as never, createManager(1) as never, deps as never)
+        const binding = connectPanePty(...mockPanePtyArgs(pane, createManager(1), deps))
         await vi.waitFor(() => expect(providerSpawn).toHaveBeenCalledTimes(1))
         await flushAsyncTicks(40)
         const expectedDistro = mode === 'fresh' || mode === 'cold' ? 'Ubuntu' : 'Debian'
