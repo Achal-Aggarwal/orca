@@ -1,5 +1,19 @@
 // @vitest-environment happy-dom
-// @vitest-environment happy-dom
+import {
+  directory,
+  workspace,
+  account,
+  clock,
+  store,
+  host,
+  deliveryAdapter,
+  openHost,
+  menuOf,
+  namesOf,
+  attachContext,
+  runtime,
+  advanceCatalogClock
+} from './structured-agent-session-at-rest-command-rig.test-fixture'
 import { act, renderHook } from '@testing-library/react'
 import { useStructuredAgentSessionCommandMenu } from '../../../renderer/src/components/native-chat/structured-agent-session-command-refresh'
 import { useStructuredAgentSessionRead } from '../../../renderer/src/components/native-chat/use-structured-agent-session-read'
@@ -35,21 +49,6 @@ import type { runAgentModelCatalogListing } from '../agent-model-catalog/agent-m
 
 import { HOST_TEST_SESSION as SESSION } from './structured-agent-session-host-test-data'
 
-import {
-  directory,
-  workspace,
-  account,
-  clock,
-  store,
-  host,
-  deliveryAdapter,
-  openHost,
-  menuOf,
-  namesOf,
-  attachContext,
-  runtime,
-  advanceCatalogClock
-} from './structured-agent-session-at-rest-command-rig.test-fixture'
 type ListingCall = Parameters<typeof runAgentModelCatalogListing>
 
 describe("a Claude chat whose Claude isn't running lists Claude's own `/` commands", () => {

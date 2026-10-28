@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// @vitest-environment happy-dom
 import { cleanup } from '@testing-library/react'
 
 import { resetStructuredAgentSessionReadOwnersForTests } from '../../../renderer/src/components/native-chat/structured-agent-session-read-owner'
@@ -37,11 +36,12 @@ import {
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
-export const runtime = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
+const runtimeMocks = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: runtime.call,
-  subscribeStructuredAgentSession: runtime.subscribe
+  callStructuredAgentSession: runtimeMocks.call,
+  subscribeStructuredAgentSession: runtimeMocks.subscribe
 }))
+export const runtime = runtimeMocks
 export const caller = { callerKey: 'desktop' }
 export const CLAUDE_SESSION = '819cf9f8-e43c-4ad7-b50f-54aa158a726a'
 

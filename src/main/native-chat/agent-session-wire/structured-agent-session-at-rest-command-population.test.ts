@@ -1,6 +1,16 @@
 // @vitest-environment happy-dom
+import {
+  directory,
+  workspace,
+  account,
+  clock,
+  host,
+  openHost,
+  attachContext,
+  advanceCatalogClock,
+  setCatalogAccount
+} from './structured-agent-session-at-rest-command-rig.test-fixture'
 
-// @vitest-environment happy-dom
 import { PrioritySemaphore } from '../../../shared/priority-semaphore'
 import {
   commandDiscoveryRig,
@@ -23,17 +33,6 @@ import {
   ClaudeAtRestCommandCatalog
 } from '../../claude/claude-at-rest-commands'
 
-import {
-  directory,
-  workspace,
-  account,
-  clock,
-  host,
-  openHost,
-  attachContext,
-  advanceCatalogClock,
-  setCatalogAccount
-} from './structured-agent-session-at-rest-command-rig.test-fixture'
 it.each(['claude', 'omp'] as const)(
   'bounds mixed real-host %s admission, retained reads and replacement roots at N/10N',
   async (provider) => {
