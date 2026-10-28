@@ -88,6 +88,7 @@ export function RichMarkdownCodeBlock({
   return (
     <NodeViewWrapper className="rich-markdown-code-block-wrapper">
       <select
+        aria-label={translate('components.editor.codeBlock.language', 'Code block language')}
         className="rich-markdown-code-block-lang"
         contentEditable={false}
         value={language}
