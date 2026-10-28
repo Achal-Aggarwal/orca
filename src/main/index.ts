@@ -1,5 +1,5 @@
 import { app, clipboard, dialog, type BrowserWindow } from 'electron'
-import { parseSkillShareId } from '../shared/skill-share-link'
+import { isRoutedOrcaDeepLink } from './startup/orca-deep-link-url'
 import { createMacAppActivationHandler } from './window/macos-app-activation'
 import { isBackgroundLaunch, isOrcadSidecarLaunch } from './window/foreground-activation-policy'
 import { createDesktopHandoff, desktopHandoffArguments } from './window/macos-desktop-handoff'
@@ -37,6 +37,7 @@ import { leaseAppImageGenerationForCurrentProcess } from './cli/appimage-generat
 import { wakeRememberedWslHosts } from './wsl/wsl-host-early-wake'
 import { wslHostsServing } from './wsl/wsl-host-gate'
 import { configureWslHostsGateFromDisk } from './wsl/wsl-host-gate-startup'
+import { registerOrcaProtocolClient } from './startup/orca-protocol-registration'
 
 function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): BrowserWindow {
   return openMainWindowController(options)
@@ -55,6 +56,9 @@ const requestDesktopHandoff = createDesktopHandoff({
 function requestDesktopActivation(argv: readonly string[] = []): void {
   state.skillShareDeepLinks.capture(argv, (shareId) => {
     state.mainWindow?.webContents.send('ui:openSkillShare', shareId)
+  })
+  state.pluginInstallLinks.capture(argv, (link) => {
+    state.mainWindow?.webContents.send('ui:openPluginInstallLink', link)
   })
   state.osOpenedDocuments.capture(argv, publishOsOpenedDocuments)
   // Duplicate serve launches must not activate a desktop on a headless server (#11935).
@@ -120,7 +124,7 @@ if (preflightReady) {
     wakeRememberedWslHosts(app.getPath('userData'))
   }
   app.on('open-url', (event, url) => {
-    if (!parseSkillShareId(url)) {
+    if (!isRoutedOrcaDeepLink(url)) {
       return
     }
     event.preventDefault()
@@ -137,7 +141,12 @@ if (preflightReady) {
       requestDesktopActivation()
     }
   })
+  registerOrcaProtocolClient(app, {
+    platform: process.platform,
+    desktopLaunch: !state.isServeMode && !isBackgroundLaunch() && !isOrcadSidecarLaunch()
+  })
   state.skillShareDeepLinks.capture(process.argv)
+  state.pluginInstallLinks.capture(process.argv)
   // The first renderer pulls on mount; nothing listens this early.
   state.osOpenedDocuments.capture(process.argv)
   registerMainProcessIpcHandlers()

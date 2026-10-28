@@ -1053,6 +1053,9 @@
       "pluginNewFile": {
         "unavailable": "{{value0}} is no longer available. Turn its plugin back on.",
         "failed": "Couldn't create the file."
+      },
+      "pluginInstallLink": {
+        "invalid": "That plugin link isn’t valid."
       }
     },
     "lib": {
@@ -17857,6 +17860,15 @@
         "cancelled": "This plain SSH terminal was closed before it started.",
         "terminalUnavailable": "Orca couldn’t open a terminal here.",
         "openHint": "Keeps you working on the host while Orca can’t set up there."
+      },
+      "plugins": {
+        "PluginCatalogLinkDialog": {
+          "failed": "Couldn’t add this catalog.",
+          "title": "Add catalog {{value0}}?",
+          "cancel": "Cancel",
+          "add": "Add catalog",
+          "body": "A link asked to show {{value0}} from this catalog. Add catalogs only from people you trust."
+        }
       }
     },
     "i18n": {
