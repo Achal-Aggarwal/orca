@@ -8,7 +8,12 @@ import type { Store } from '../persistence'
 import { consumeBurstToken, resetBurstCapsForSession } from './burst-cap'
 import { getCohortAtEmit } from './cohort-classifier'
 import { resolveConsent } from './consent'
-import { buildCommonProps, createPostHogClient, waitForCaptureEnqueue } from './posthog-transport'
+import {
+  buildCommonProps,
+  createPostHogClient,
+  shouldOptOutSdkAtInit,
+  waitForCaptureEnqueue
+} from './posthog-transport'
 import { commonPropsSchema, validate } from './validator'
 
 export { shouldOptOutSdkAtInit } from './posthog-transport'
@@ -80,7 +85,25 @@ export function initTelemetry(store: Store): void {
     return
   }
 
-  posthog = createPostHogClient(WRITE_KEY, resolveConsent(settings))
+  const consent = resolveConsent(settings)
+  if (!shouldOptOutSdkAtInit(consent)) {
+    posthog = createPostHogClient(WRITE_KEY, consent)
+  }
+}
+
+function ensurePostHogClient(): PostHog | null {
+  if (
+    !posthog &&
+    !shuttingDown &&
+    TELEMETRY_ENABLED &&
+    IS_OFFICIAL_BUILD &&
+    WRITE_KEY &&
+    commonProps &&
+    storeRef
+  ) {
+    posthog = createPostHogClient(WRITE_KEY, resolveConsent(storeRef.getSettings()))
+  }
+  return posthog
 }
 
 /** Lets producers avoid preparing usage payloads when transmission is disabled. */
@@ -216,7 +239,7 @@ export async function setOptIn(via: OptInVia, optedIn: boolean): Promise<void> {
     { notifyListeners: true }
   )
 
-  const client = posthog
+  const client = optedIn ? ensurePostHogClient() : posthog
   if (optedIn) {
     if (client) {
       await client.optIn()
@@ -274,8 +297,9 @@ export async function persistBannerAcknowledgeWithoutEmitting(): Promise<void> {
     },
     { notifyListeners: true }
   )
-  if (posthog) {
-    await posthog.optIn()
+  const client = ensurePostHogClient()
+  if (client) {
+    await client.optIn()
   }
   // Banner resolution is first app_opened eligibility; re-enable SDK before capture.
   trackAppOpenedOnce()
