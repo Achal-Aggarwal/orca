@@ -156,3 +156,25 @@ interface ImportMetaEnv {
 }
 
 export {}
+
+declare module 'monaco-editor/esm/vs/common/initialize.js' {
+  import type { TypeScriptWorker } from 'monaco-editor/esm/vs/language/typescript/tsWorker.js'
+  export function initialize(
+    factory: (
+      context: ConstructorParameters<typeof TypeScriptWorker>[0],
+      data: ConstructorParameters<typeof TypeScriptWorker>[1]
+    ) => TypeScriptWorker
+  ): void
+}
+
+declare module 'monaco-editor/esm/vs/editor/common/services/editorWebWorker.js' {
+  import type { TypeScriptWorker } from 'monaco-editor/esm/vs/language/typescript/tsWorker.js'
+  export class EditorWorker {
+    constructor(foreignModule?: TypeScriptWorker)
+    getModels(): ReturnType<ConstructorParameters<typeof TypeScriptWorker>[0]['getMirrorModels']>
+    $fmr(method: string, args: unknown[]): Promise<unknown>
+    $acceptRemovedModel(uri: string): void
+    $acceptModelChanged(uri: string, event: unknown): void
+    $acceptNewModel(data: unknown): void
+  }
+}

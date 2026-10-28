@@ -1,6 +1,10 @@
 // Keep these Monaco worker/snippet test declarations ambient by leaving this file a script.
 declare module 'monaco-editor/esm/vs/language/typescript/tsWorker.js' {
   import type { URI } from 'monaco-editor/esm/vs/base/common/uri.js'
+  export function create(
+    context: ConstructorParameters<typeof TypeScriptWorker>[0],
+    data: ConstructorParameters<typeof TypeScriptWorker>[1]
+  ): TypeScriptWorker
   export class TypeScriptWorker {
     constructor(
       context: { getMirrorModels(): { uri: URI; version: number; getValue(): string }[] },
@@ -10,6 +14,10 @@ declare module 'monaco-editor/esm/vs/language/typescript/tsWorker.js' {
         inlayHintsOptions: Record<string, unknown>
       }
     )
+    getScriptFileNames(): string[]
+    getLanguageService(): {
+      getProgram(): { getSourceFile(fileName: string): object | undefined } | undefined
+    }
     getScriptKind(fileName: string): number
     getQuickInfoAtPosition(
       fileName: string,

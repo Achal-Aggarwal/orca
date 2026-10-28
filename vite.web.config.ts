@@ -25,6 +25,8 @@ export default defineConfig({
   resolve: {
     alias: {
       ...markdownParserAliases,
+      // Monaco's fallback descriptor must share the owned worker asset.
+      'ts.worker.js': resolve('src/renderer/src/lib/monaco-typescript.worker.ts'),
       '@renderer': resolve('src/renderer/src'),
       '@': resolve('src/renderer/src')
     }
