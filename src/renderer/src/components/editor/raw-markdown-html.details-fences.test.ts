@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
 import { createRichMarkdownEditorCodec } from './rich-markdown-source-transport'
@@ -68,3 +69,27 @@ describe('raw Markdown details fence scanning', () => {
     )
   })
 })
+
+it('encodes unfinished details blocks without rescanning every remaining opener', () => {
+  const codec = createRichMarkdownEditorCodec(key)
+  const count = 30_000
+  const content = '<details>\n'.repeat(count)
+  const encoded = runInNewContext(
+    'encode(content, codec)',
+    { encode: encodeRawMarkdownHtmlForRichEditor, content, codec },
+    { timeout: 1500 }
+  )
+  expect(encoded).toBe(`${codec.transport.create('block-html', '<details>')}\n`.repeat(count))
+})
+
+it.each(['', '\n```html\n</details>\n```\n'])(
+  'preserves a closed inner toggle under an unfinished outer toggle: %j',
+  (fencedClose) => {
+    const codec = createRichMarkdownEditorCodec(key)
+    const inner = '<details><summary>Inner</summary>\n\nBody\n\n</details>'
+    const content = `<details>\n${fencedClose}${inner}\n<DeTaIlS open>\n`
+    expect(encodeRawMarkdownHtmlForRichEditor(content, codec)).toBe(
+      `${codec.transport.create('block-html', '<details>')}\n${fencedClose}${inner}\n${codec.transport.create('block-html', '<DeTaIlS open>')}\n`
+    )
+  }
+)

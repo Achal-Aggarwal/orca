@@ -92,16 +92,35 @@ export function renderDetailsAttributes(attrs: Record<string, unknown> | undefin
 
 export function createDetailsMatcher(content: string): (start: number) => DetailsHtmlBlock | null {
   let fenceRanges: MarkdownFenceRanges | undefined
-  return (start) =>
-    /^<details\b[^>]*>/i.test(content.slice(start))
-      ? matchDetailsHtmlBlock(content, start, (fenceRanges ??= getMarkdownFenceRanges(content)))
+  let unclosedStarts: Set<number> | undefined
+  return (start) => {
+    if (unclosedStarts?.has(start)) {
+      return null
+    }
+    return /^<details\b[^>]*>/i.test(content.slice(start))
+      ? scanDetailsHtmlBlock(
+          content,
+          start,
+          (fenceRanges ??= getMarkdownFenceRanges(content)),
+          (unclosedStarts ??= new Set<number>())
+        )
       : null
+  }
 }
 
 export function matchDetailsHtmlBlock(
   content: string,
   start: number,
   precomputedFenceRanges?: MarkdownFenceRanges
+): DetailsHtmlBlock | null {
+  return scanDetailsHtmlBlock(content, start, precomputedFenceRanges)
+}
+
+function scanDetailsHtmlBlock(
+  content: string,
+  start: number,
+  precomputedFenceRanges?: MarkdownFenceRanges,
+  unclosedStarts?: Set<number>
 ): DetailsHtmlBlock | null {
   const openingMatch = content.slice(start).match(/^<details\b[^>]*>/i)
   if (!openingMatch) {
@@ -113,10 +132,16 @@ export function matchDetailsHtmlBlock(
   const fenceRanges = precomputedFenceRanges ?? getMarkdownFenceRanges(content)
 
   let depth = 0
+  const openingStarts: number[] | undefined = unclosedStarts ? [] : undefined
 
   for (;;) {
     const tagMatch = detailsTagPattern.exec(content)
     if (!tagMatch) {
+      if (openingStarts && unclosedStarts) {
+        for (const openingStart of openingStarts) {
+          unclosedStarts.add(openingStart)
+        }
+      }
       return null
     }
 
@@ -128,6 +153,7 @@ export function matchDetailsHtmlBlock(
     const isClosingTag = /^<\/details\b/i.test(tag)
 
     if (isClosingTag) {
+      openingStarts?.pop()
       depth -= 1
       if (depth === 0) {
         const closingEnd = tagMatch.index + tag.length
@@ -138,6 +164,7 @@ export function matchDetailsHtmlBlock(
         }
       }
     } else {
+      openingStarts?.push(tagMatch.index)
       depth += 1
     }
   }
