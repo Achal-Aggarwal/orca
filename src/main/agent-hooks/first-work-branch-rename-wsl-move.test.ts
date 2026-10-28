@@ -92,9 +92,12 @@ describe('first-work rename while a WSL move takes the project', () => {
 
     resetWslMoveFenceForTests()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
-    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['branch', '-m', 'you/fix-auth'], {
-      cwd: '/repo/wt'
-    })
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
+      {
+        cwd: '/repo/wt'
+      }
+    )
     expect(setDisplayName).toHaveBeenCalled()
   })
 
@@ -150,9 +153,12 @@ describe('first-work rename while a WSL move takes the project', () => {
 
     resetWslMoveFenceForTests()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
-    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['branch', '-m', 'you/fix-auth'], {
-      cwd: '/repo/wt'
-    })
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
+      {
+        cwd: '/repo/wt'
+      }
+    )
   })
 
   it('settles the rename but leaves the folder in place when the move starts during git branch -m', async () => {
@@ -174,9 +180,12 @@ describe('first-work rename while a WSL move takes the project', () => {
 
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
 
-    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['branch', '-m', 'you/fix-auth'], {
-      cwd: '/repo/wt'
-    })
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
+      {
+        cwd: '/repo/wt'
+      }
+    )
     expect(renameWorktreeFolder).not.toHaveBeenCalled()
 
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)

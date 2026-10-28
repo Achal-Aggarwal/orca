@@ -17,6 +17,7 @@ import { resolveGitRouteForHost } from '../providers/execution-host-provider-dis
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import {
   probeBranchUpstream,
+  readCheckedOutBranchName,
   renameCurrentBranch,
   resolveUniqueBranchName,
   type GitExec
@@ -194,8 +195,8 @@ async function runAutoRename(
   }
   const exec: GitExec = (args) => gitExecFileAsync(args, { cwd: worktreePath })
 
-  const currentBranch = (await exec(['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim()
-  if (!currentBranch || currentBranch === 'HEAD') {
+  const currentBranch = await readCheckedOutBranchName(exec)
+  if (!currentBranch) {
     return retry(`no checked-out branch (${currentBranch || 'empty'})`)
   }
   if (!deps.canRenameOrcaCreatedBranch(worktreeId)) {
@@ -249,7 +250,7 @@ async function runAutoRename(
   }
 
   // Generation can outlive a branch switch or publication.
-  const branchNow = (await exec(['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim()
+  const branchNow = await readCheckedOutBranchName(exec)
   if (branchNow !== currentBranch) {
     return retry(`branch changed during generation (${currentBranch} -> ${branchNow})`)
   }
@@ -286,7 +287,15 @@ async function runAutoRename(
   if (isWslMoveRepoBlocked(repo)) {
     return retry('a WSL move started before the branch rename')
   }
-  await renameCurrentBranch(exec, newBranch)
+  const branchBeforeRename = await readCheckedOutBranchName(exec)
+  if (branchBeforeRename !== currentBranch) {
+    return retry('branch changed during name resolution')
+  }
+  await renameCurrentBranch(exec, currentBranch, newBranch)
+  const branchAfterRename = await readCheckedOutBranchName(exec)
+  if (branchAfterRename !== newBranch) {
+    return stop('checked-out branch changed during the branch rename')
+  }
 
   // Collision suffixes belong in display and folder names too.
   const newBranchLeaf = newBranch.slice(newBranch.lastIndexOf('/') + 1)

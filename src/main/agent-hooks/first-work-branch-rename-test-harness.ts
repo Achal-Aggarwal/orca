@@ -21,6 +21,7 @@ export function gitResponder(opts: {
   hasUpstream: boolean
   existingRefs?: string[]
 }) {
+  let currentBranch = opts.currentBranch
   return async (args: string[]) => {
     if (args[0] === 'rev-parse' && args.some((arg) => arg.includes('@{u}'))) {
       if (opts.hasUpstream) {
@@ -29,7 +30,11 @@ export function gitResponder(opts: {
       throw noUpstreamError
     }
     if (args[0] === 'rev-parse') {
-      return { stdout: `${opts.currentBranch}\n`, stderr: '' }
+      const branch =
+        args.includes('--symbolic-full-name') && currentBranch !== 'HEAD'
+          ? `refs/heads/${currentBranch}`
+          : currentBranch
+      return { stdout: `${branch}\n`, stderr: '' }
     }
     if (args[0] === 'show-ref') {
       const ref = args.at(-1) ?? ''
@@ -39,6 +44,7 @@ export function gitResponder(opts: {
       throw new Error('not found')
     }
     if (args[0] === 'branch' && args[1] === '-m') {
+      currentBranch = args.at(-1) ?? currentBranch
       return { stdout: '', stderr: '' }
     }
     throw new Error(`unexpected git args: ${args.join(' ')}`)

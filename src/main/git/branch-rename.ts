@@ -61,6 +61,15 @@ export async function resolveUniqueBranchName(
   return null
 }
 
-export async function renameCurrentBranch(exec: GitExec, newBranch: string): Promise<void> {
-  await exec(['branch', '-m', newBranch])
+export async function readCheckedOutBranchName(exec: GitExec): Promise<string | null> {
+  const ref = (await exec(['rev-parse', '--symbolic-full-name', 'HEAD'])).stdout.trim()
+  return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null
+}
+
+export async function renameCurrentBranch(
+  exec: GitExec,
+  expectedBranch: string,
+  newBranch: string
+): Promise<void> {
+  await exec(['branch', '-m', '--', expectedBranch, newBranch])
 }

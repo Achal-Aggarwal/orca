@@ -197,7 +197,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
       } else {
         expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-          ['branch', '-m', 'you/fix-auth'],
+          ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
           expect.anything()
         )
       }
@@ -276,7 +276,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, onRenamed, setDisplayName } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent({ prompt: 'Fix auth from note #1' }), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(resolveTextGenerationParamsMock).toHaveBeenCalledWith(
@@ -299,7 +299,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, onRenamed, setDisplayName } = makeDeps({ renameWorktreeFolder: undefined })
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setDisplayName).toHaveBeenCalledWith(WORKTREE_ID, 'Fix auth')
@@ -320,7 +320,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     })
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setDisplayName).toHaveBeenCalledWith(WORKTREE_ID, 'Fix auth')
@@ -333,7 +333,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/worktree-spinner'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/worktree-spinner'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setDisplayName).toHaveBeenCalledWith(WORKTREE_ID, 'Worktree spinner')
@@ -344,7 +344,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, onRenamed, setRenameError } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).not.toHaveBeenCalledWith(
-      ['branch', '-m', expect.anything()],
+      ['branch', '-m', '--', 'you/Nautilus', expect.anything()],
       expect.anything()
     )
     expect(onRenamed).not.toHaveBeenCalled()
@@ -355,7 +355,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName } = makeDeps({ getCurrentDisplayName: () => 'My cool feature' })
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setDisplayName).not.toHaveBeenCalled()
@@ -366,7 +366,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps } = makeDeps({ resolveWorktreeIdForTab: () => instanceId })
     await maybeAutoRenameBranchOnFirstWork(workingEvent({ worktreeId: undefined }), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
   })
@@ -493,7 +493,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      ['rev-parse', '--symbolic-full-name', 'HEAD'],
       expect.objectContaining({ cwd: '/repo/wt-0' })
     )
   })
@@ -507,7 +507,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     elapseGenerationBackoff()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(onRenamed).toHaveBeenCalledWith(REPO_ID)
@@ -638,7 +638,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     gitExecFileAsyncMock.mockImplementation(plainResponder)
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setRenameError).toHaveBeenLastCalledWith(WORKTREE_ID, null)
@@ -662,7 +662,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName, renameWorktreeFolder } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth-2'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth-2'],
       expect.objectContaining({ cwd: '/repo/wt' })
     )
     expect(setDisplayName).toHaveBeenCalledWith(WORKTREE_ID, 'Fix auth 2')
@@ -672,9 +672,12 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
   it('does not rename when the branch changes while generation is running', async () => {
     let branchReadCount = 0
     gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
-      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
+      if (args[0] === 'rev-parse' && args[1] === '--symbolic-full-name' && args[2] === 'HEAD') {
         branchReadCount += 1
-        return { stdout: `${branchReadCount === 1 ? 'you/Nautilus' : 'you/manual'}\n`, stderr: '' }
+        return {
+          stdout: `refs/heads/${branchReadCount === 1 ? 'you/Nautilus' : 'you/manual'}\n`,
+          stderr: ''
+        }
       }
       if (args[0] === 'rev-parse' && args.some((arg) => arg.includes('@{u}'))) {
         throw noUpstreamError
@@ -690,7 +693,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, onRenamed } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).not.toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.anything()
     )
     expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
@@ -701,8 +704,8 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
   it('does not rename when the branch gains an upstream while generation is running', async () => {
     let upstreamReadCount = 0
     gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
-      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
-        return { stdout: 'you/Nautilus\n', stderr: '' }
+      if (args[0] === 'rev-parse' && args[1] === '--symbolic-full-name' && args[2] === 'HEAD') {
+        return { stdout: 'refs/heads/you/Nautilus\n', stderr: '' }
       }
       if (args[0] === 'symbolic-ref') {
         return { stdout: 'you/Nautilus\n', stderr: '' }
@@ -722,7 +725,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, onRenamed } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
     expect(gitExecFileAsyncMock).not.toHaveBeenCalledWith(
-      ['branch', '-m', 'you/fix-auth'],
+      ['branch', '-m', '--', 'you/Nautilus', 'you/fix-auth'],
       expect.anything()
     )
     expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
