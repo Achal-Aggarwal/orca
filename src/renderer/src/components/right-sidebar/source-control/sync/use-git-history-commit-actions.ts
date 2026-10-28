@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useMemo } from 'react'
 import { requireGitOwnerTarget } from '../../worktree-git-owner-target'
 import type { RuntimeClientTarget } from '../../../../../../shared/runtime-client-target'
 import { toast } from 'sonner'
@@ -51,31 +51,51 @@ export function useGitHistoryCommitActions({
   const openCommitAllDiffs = useAppStore((s) => s.openCommitAllDiffs)
   const openCommitDiff = useAppStore((s) => s.openCommitDiff)
 
-  // Share compare results across expansion and diff opening to avoid a second round-trip.
-  const commitCompareCacheRef = useRef<Map<string, GitCommitCompareResult>>(new Map())
-
-  // Bound cached commit comparisons to the current worktree.
-  useEffect(() => {
-    commitCompareCacheRef.current = new Map()
-  }, [activeWorktreeId])
+  const connectionId =
+    activeWorktreeId && activeRepoTarget?.kind === 'local'
+      ? (getConnectionId(activeWorktreeId) ?? undefined)
+      : undefined
+  const targetKind = activeRepoTarget?.kind
+  const environmentId =
+    activeRepoTarget?.kind === 'environment' ? activeRepoTarget.environmentId : undefined
+  // Capture the owner so late reads cannot populate a successor's comparison cache.
+  const commitCompareOwner = useMemo(() => {
+    const target: RuntimeClientTarget | null =
+      targetKind === 'environment' && environmentId !== undefined
+        ? { kind: 'environment', environmentId }
+        : targetKind === 'local'
+          ? { kind: 'local' }
+          : null
+    return {
+      active: false,
+      cache: new Map<string, GitCommitCompareResult>(),
+      context: { target, worktreeId: activeWorktreeId, worktreePath, connectionId }
+    }
+  }, [activeWorktreeId, worktreePath, targetKind, environmentId, connectionId])
+  useLayoutEffect(() => {
+    commitCompareOwner.active = true
+    return () => {
+      commitCompareOwner.active = false
+      commitCompareOwner.cache.clear()
+    }
+  }, [commitCompareOwner])
 
   const loadCommitFiles = useCallback(
     async (item: GitHistoryItem): Promise<GitBranchChangeEntry[]> => {
-      if (!activeWorktreeId || !worktreePath) {
+      const { context } = commitCompareOwner
+      if (!context.worktreeId || !context.worktreePath || !commitCompareOwner.active) {
         return EMPTY_BRANCH_CHANGE_ENTRIES
       }
-      const cached = commitCompareCacheRef.current.get(item.id)
+      const cached = commitCompareOwner.cache.get(item.id)
       if (cached) {
         return cached.entries
       }
-      const connectionId = getConnectionId(activeWorktreeId) ?? undefined
       const result = await getRuntimeGitCommitCompare(
         {
           // Compare on the repo owner, which may differ from the focused host.
-          target: requireGitOwnerTarget(activeRepoTarget),
-          worktreeId: activeWorktreeId,
-          worktreePath,
-          connectionId
+          ...context,
+          target: requireGitOwnerTarget(context.target),
+          worktreePath: context.worktreePath
         },
         item.id
       )
@@ -88,10 +108,12 @@ export function useGitHistoryCommitActions({
             )
         )
       }
-      commitCompareCacheRef.current.set(item.id, result)
+      if (commitCompareOwner.active) {
+        commitCompareOwner.cache.set(item.id, result)
+      }
       return result.entries
     },
-    [activeRepoTarget, activeWorktreeId, worktreePath]
+    [commitCompareOwner]
   )
 
   const openHistoryCommitDiff = useCallback(
@@ -101,7 +123,10 @@ export function useGitHistoryCommitActions({
       }
       try {
         await loadCommitFiles(item)
-        const cached = commitCompareCacheRef.current.get(item.id)
+        if (!commitCompareOwner.active) {
+          return
+        }
+        const cached = commitCompareOwner.cache.get(item.id)
         if (!cached) {
           return
         }
@@ -114,6 +139,9 @@ export function useGitHistoryCommitActions({
           item.message
         )
       } catch (error) {
+        if (!commitCompareOwner.active) {
+          return
+        }
         toast.error(
           error instanceof Error
             ? error.message
@@ -124,7 +152,7 @@ export function useGitHistoryCommitActions({
         )
       }
     },
-    [activeWorktreeId, loadCommitFiles, openCommitAllDiffs, worktreePath]
+    [activeWorktreeId, commitCompareOwner, loadCommitFiles, openCommitAllDiffs, worktreePath]
   )
 
   const openCommitFile = useCallback(
@@ -133,10 +161,10 @@ export function useGitHistoryCommitActions({
       entry: GitBranchChangeEntry,
       event?: SourceControlRowOpenEvent
     ): void => {
-      if (!activeWorktreeId || !worktreePath) {
+      if (!activeWorktreeId || !worktreePath || !commitCompareOwner.active) {
         return
       }
-      const cached = commitCompareCacheRef.current.get(item.id)
+      const cached = commitCompareOwner.cache.get(item.id)
       if (!cached) {
         return
       }
@@ -157,7 +185,7 @@ export function useGitHistoryCommitActions({
         { targetGroupId, preview: shouldOpenSourceControlRowAsPreview(event, targetGroupId) }
       )
     },
-    [activeWorktreeId, openCommitDiff, resolveSplitTargetGroupId, worktreePath]
+    [activeWorktreeId, commitCompareOwner, openCommitDiff, resolveSplitTargetGroupId, worktreePath]
   )
 
   const copyCommitText = useCallback(async (text: string, label: string): Promise<void> => {
