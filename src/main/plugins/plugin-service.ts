@@ -219,7 +219,7 @@ export class PluginService {
       this.contentPacksReady &&
       this.activationState(plugin) === 'approved' &&
       !this.contentPacks.error(plugin.pluginKey) &&
-      !pluginPolicyBlockError(this.options, plugin.pluginKey, plugin)
+      !pluginPolicyBlockError(this.options, plugin.pluginKey)
     )
   }
 
@@ -229,7 +229,7 @@ export class PluginService {
 
   activationError(pluginKey: string): string | null {
     return (
-      pluginPolicyBlockError(this.options, pluginKey, this.findValidPlugin(pluginKey)) ??
+      pluginPolicyBlockError(this.options, pluginKey) ??
       this.contentPacks.error(pluginKey) ??
       this.workerController.activationError(pluginKey)
     )
