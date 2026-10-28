@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runProcess } from '@orca/process-host'
-import { isMissingGitBlobPath } from '../../../shared/git-blob-absence'
-import { readGitBlobAtIndexPath } from './git-blob-read'
+import { readGitBlobAtIndexPath, readGitBlobAtOidPath } from './git-blob-read'
+import { getCommitDiff } from './commit-diff'
+import { MAX_GIT_SHOW_BYTES } from './git-show-max-bytes'
 import { getDiff } from './file-diff'
 import { invalidateGitReadCaches, settledDiffCache } from './git-read-cache-invalidation'
 import { readWorktreeDiffStamp } from './worktree-diff-stamp'
@@ -97,24 +98,97 @@ describe('real Git missing paths and failed blob reads', () => {
     })
   })
 
+  it('shows empty baselines for untracked and newly committed paths containing brackets', async () => {
+    await writeFile(path.join(repo, 'seed.txt'), 'seed\n')
+    gitCommit(repo, 'COMMIT_METADATA_MUST_NOT_BE_DIFF_CONTENT')
+    const parentOid = (await git(['rev-parse', 'HEAD'])).trim()
+    const filePath = 'new [draft].txt'
+    await writeFile(path.join(repo, filePath), 'new content\n')
+
+    expect(await readGitBlobAtIndexPath(repo, filePath)).toEqual({
+      content: '',
+      isBinary: false,
+      exists: false,
+      failed: false
+    })
+    expect(await readGitBlobAtOidPath(repo, 'HEAD', filePath)).toEqual({
+      content: '',
+      isBinary: false,
+      exists: false,
+      failed: false
+    })
+    expect(await getDiff(repo, filePath, false)).toMatchObject({
+      originalContent: '',
+      modifiedContent: 'new content\n'
+    })
+
+    await git(['add', '--', filePath])
+    expect(await getDiff(repo, filePath, true)).toMatchObject({
+      originalContent: '',
+      modifiedContent: 'new content\n'
+    })
+    gitCommit(repo, 'add bracket path')
+    const commitOid = (await git(['rev-parse', 'HEAD'])).trim()
+    expect(await getCommitDiff(repo, { commitOid, parentOid, filePath })).toMatchObject({
+      originalContent: '',
+      modifiedContent: 'new content\n'
+    })
+  })
+
+  it('keeps valid binary blob bytes and corrupt-object failures distinct from absence', async () => {
+    const filePath = 'image [draft].png'
+    const image = Buffer.from([0, 1, 255])
+    await writeFile(path.join(repo, filePath), image)
+    gitCommit(repo, 'binary bracket path')
+    const expected = { content: image.toString('base64'), isBinary: true, exists: true }
+    expect(await readGitBlobAtIndexPath(repo, filePath)).toEqual(expected)
+    expect(await readGitBlobAtOidPath(repo, 'HEAD', filePath)).toEqual(expected)
+
+    const oid = (await git(['rev-parse', `HEAD:${filePath}`])).trim()
+    await unlink(path.join(repo, '.git', 'objects', oid.slice(0, 2), oid.slice(2)))
+    expect(await readGitBlobAtIndexPath(repo, filePath)).toMatchObject({
+      exists: false,
+      failed: true
+    })
+    expect(await readGitBlobAtOidPath(repo, 'HEAD', filePath)).toMatchObject({
+      exists: false,
+      failed: true
+    })
+    expect(await readGitBlobAtOidPath(repo, 'missing-ref', filePath)).toMatchObject({
+      exists: false,
+      failed: true
+    })
+  })
+
+  it('keeps oversized index and committed blob reads bounded', async () => {
+    const filePath = 'large [draft].txt'
+    await writeFile(path.join(repo, filePath), Buffer.alloc(MAX_GIT_SHOW_BYTES + 1, 0x61))
+    gitCommit(repo, 'large blob')
+    const expected = { content: '', isBinary: true, exists: true }
+    expect(await readGitBlobAtIndexPath(repo, filePath)).toEqual(expected)
+    expect(await readGitBlobAtOidPath(repo, 'HEAD', filePath)).toEqual(expected)
+  })
+
   it('recognizes actual index and tree absence without accepting corrupt objects', async () => {
     await writeFile(path.join(repo, 'seed.txt'), 'seed\n')
     gitCommit(repo, 'initial')
-    const names = ['file.txt', ...(process.platform === 'win32' ? [] : ["quote' and\nnewline.txt"])]
+    const names = [
+      'file.txt',
+      'new [draft].txt',
+      ...(process.platform === 'win32'
+        ? []
+        : ['new *.txt', 'new ?.txt', ' edge spaces .txt ', "quote' and\nnewline.txt"])
+    ]
     for (const filePath of names) {
       for (const presentOnDisk of [false, true]) {
         if (presentOnDisk) {
           await writeFile(path.join(repo, filePath), 'untracked\n')
         }
-        for (const oid of [undefined, 'HEAD']) {
-          const result = await runProcess({
-            program: 'git',
-            args: ['show', '--end-of-options', `${oid ?? ''}:${filePath}`],
-            cwd: repo
-          })
-          expect(
-            isMissingGitBlobPath({ code: result.code, stderr: result.stderr }, filePath, oid)
-          ).toBe(true)
+        for (const result of [
+          await readGitBlobAtIndexPath(repo, filePath),
+          await readGitBlobAtOidPath(repo, 'HEAD', filePath)
+        ]) {
+          expect(result).toEqual({ content: '', isBinary: false, exists: false, failed: false })
         }
       }
     }
