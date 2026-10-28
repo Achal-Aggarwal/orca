@@ -1,4 +1,4 @@
-// Mount the real composing hooks over native capture: each loss was in how the session hook and dictation hook meet, which isolated handler tests would miss.
+// Mount the real composing hooks over native capture: refused starts and lost transcripts were in how the session hook and dictation hook meet, which isolated handler tests would miss.
 import { createElement, useRef } from 'react'
 import { act, create } from 'react-test-renderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,8 @@ import type * as NativeChatSendError from './native-chat/use-mobile-native-chat-
 
 const seen = vi.hoisted(() => ({
   toasts: new Array<string>(),
+  errorHaptics: 0,
+  setupSheetOpens: 0,
   clipboard: new Array<string>(),
   inputs: new Array<string>(),
   audioListeners: new Map<string, (event: { data: string }) => void>()
@@ -31,7 +33,11 @@ vi.mock('expo-keep-awake', () => ({
   deactivateKeepAwake: () => Promise.resolve()
 }))
 vi.mock('expo-router', () => ({ useFocusEffect: () => {} }))
-vi.mock('../platform/haptics', () => ({ triggerError: () => {} }))
+vi.mock('../platform/haptics', () => ({
+  triggerError: () => {
+    seen.errorHaptics += 1
+  }
+}))
 vi.mock('../platform/clipboard', () => {
   const writer = {
     writeText: async (text: string) => {
@@ -103,7 +109,11 @@ function mount(
       activeSessionTab: { id: 'tab1', type: 'terminal', terminal: 't1' },
       diffComments: [],
       diffCommentsRef: useRef([]),
-      setShowDictationSetup: () => {},
+      setShowDictationSetup: (next: boolean) => {
+        if (next) {
+          seen.setupSheetOpens += 1
+        }
+      },
       setDictationMode: () => {},
       dictationEnabled: true,
       setDictationEnabled: () => {},
@@ -137,17 +147,25 @@ function mount(
 }
 
 // Answer every request the hooks send, including chained ones, until none remain.
-async function settle(rpc: FakeRpcClient, transcript: string): Promise<string[]> {
+async function settle(
+  rpc: FakeRpcClient,
+  transcript: string,
+  refuseStartWith?: string
+): Promise<string[]> {
   const methods: string[] = []
   await act(async () => {
     for (let round = 0; round < 12; round += 1) {
       for (const request of rpc.requests.splice(0)) {
         methods.push(request.method)
-        request.resolve({
-          id: 'desktop',
-          ok: true,
-          result: request.method === 'speech.dictation.finish' ? { text: transcript } : {}
-        })
+        request.resolve(
+          refuseStartWith !== undefined && request.method === 'speech.dictation.start'
+            ? { id: 'desktop', ok: false, error: { code: 'refused', message: refuseStartWith } }
+            : {
+                id: 'desktop',
+                ok: true,
+                result: request.method === 'speech.dictation.finish' ? { text: transcript } : {}
+              }
+        )
       }
       await Promise.resolve()
       await Promise.resolve()
@@ -172,9 +190,38 @@ async function startRecording(
 
 beforeEach(() => {
   seen.toasts.length = 0
+  seen.errorHaptics = 0
+  seen.setupSheetOpens = 0
   seen.clipboard.length = 0
   seen.inputs.length = 0
   seen.audioListeners.clear()
+})
+
+async function tapAndRefuseStart(code: string): Promise<void> {
+  const rpc = createFakeRpcClient()
+  const mounted = mount(rpc, { liveInput: false, sendLive: async () => true })
+  act(() => mounted.current().handleDictationToggle())
+  await settle(rpc, '', code)
+}
+
+describe('a mic tap the desktop refuses because dictation is not set up', () => {
+  // Exercise both disabled-profile and missing-model start refusals.
+  for (const code of ['voice_dictation_disabled', 'voice_model_not_ready:not-downloaded']) {
+    it(`opens the dictation setup sheet for ${code}`, async () => {
+      await tapAndRefuseStart(code)
+      expect(seen.setupSheetOpens).toBe(1)
+      expect(seen.toasts).toEqual([])
+    })
+  }
+})
+
+describe('a mic tap the desktop refuses for a reason setup cannot fix', () => {
+  it('toasts the host refusal in plain words with the error haptic', async () => {
+    await tapAndRefuseStart('dictation_already_active')
+    expect(seen.setupSheetOpens).toBe(0)
+    expect(seen.toasts).toEqual(['Dictation is already in use on the computer or another phone.'])
+    expect(seen.errorHaptics).toBe(1)
+  })
 })
 
 describe('an audio interruption while recording', () => {
