@@ -1,3 +1,4 @@
+import { getRepoRoutingConnectionId } from '../../shared/execution-host'
 import { hostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 import { CLEARED_HOSTED_REVIEW_SELECTION_UPDATES } from '../../shared/worktree/hosted-review-links'
 import { gitExecFileAsync } from '../git/runner'
@@ -85,7 +86,7 @@ export async function workspaceReviewTarget(args: {
     repo.id,
     branch,
     undefined,
-    repo.connectionId,
+    getRepoRoutingConnectionId(repo),
     executionHostId
   )
   const cached = store.getGitHubCache().pr[cacheKey]
@@ -127,6 +128,10 @@ export async function workspaceReviewTarget(args: {
     }
     store.setGitHubCache?.({ ...cache, pr })
   }
+  const usableCached =
+    staleLinked || (selection.linkedPR != null && cached?.data?.number !== selection.linkedPR)
+      ? undefined
+      : cached
   return {
     ...neutral,
     branch,
@@ -146,13 +151,13 @@ export async function workspaceReviewTarget(args: {
       currentHeadOid: head,
       linkedPRNumber: staleLinked ? null : (selection.linkedPR ?? null),
       isSelected: true,
-      cachedFetchedAt: staleLinked ? null : (cached?.fetchedAt ?? null),
-      cachedHeadOid: cached?.fetchedHeadOid ?? cached?.data?.headSha ?? null,
-      cachedHasPR: staleLinked ? null : cached ? cached.data !== null : null,
-      cachedPRState: staleLinked ? null : (cached?.data?.state ?? null),
-      cachedChecksStatus: cached?.data?.checksStatus ?? null,
-      cachedMergeable: cached?.data?.mergeable ?? null,
-      cachedMergeStateStatus: cached?.data?.mergeStateStatus ?? null
+      cachedFetchedAt: usableCached?.fetchedAt ?? null,
+      cachedHeadOid: usableCached?.fetchedHeadOid ?? usableCached?.data?.headSha ?? null,
+      cachedHasPR: usableCached ? usableCached.data !== null : null,
+      cachedPRState: usableCached?.data?.state ?? null,
+      cachedChecksStatus: usableCached?.data?.checksStatus ?? null,
+      cachedMergeable: usableCached?.data?.mergeable ?? null,
+      cachedMergeStateStatus: usableCached?.data?.mergeStateStatus ?? null
     }
   }
 }

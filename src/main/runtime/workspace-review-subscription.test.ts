@@ -13,6 +13,7 @@ vi.mock('../github/github-api-repository', () => modules.githubApiRepositoryModu
 vi.mock('../github/rate-limit', () => modules.rateLimitModuleMock(mocks))
 
 beforeEach(() => {
+  vi.useFakeTimers()
   modules.resetPRRefreshCoordinatorMocks(mocks)
 })
 afterEach(() => {

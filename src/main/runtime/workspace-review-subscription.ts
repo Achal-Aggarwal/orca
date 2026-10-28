@@ -180,6 +180,11 @@ export class WorkspaceReviewSubscription {
     ) {
       pr = null
     }
+    const mismatchedLink =
+      this.target.linkedPR != null && cached?.data?.number !== this.target.linkedPR
+    if (mismatchedLink) {
+      pr = null
+    }
     const interval = reviewRefreshIntervalMs({
       state: pr?.state,
       checksStatus: pr?.checksStatus,
@@ -205,8 +210,9 @@ export class WorkspaceReviewSubscription {
             url: pr.url
           }
         : null,
-      fetchedAt: cached?.fetchedAt ?? null,
+      fetchedAt: mismatchedLink ? null : (cached?.fetchedAt ?? null),
       stale:
+        mismatchedLink ||
         !!this.lastError ||
         staleHead ||
         (candidate !== null &&

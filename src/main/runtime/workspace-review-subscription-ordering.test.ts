@@ -14,6 +14,7 @@ vi.mock('../github/github-api-repository', () => modules.githubApiRepositoryModu
 vi.mock('../github/rate-limit', () => modules.rateLimitModuleMock(mocks))
 
 beforeEach(() => {
+  vi.useFakeTimers()
   modules.resetPRRefreshCoordinatorMocks(mocks)
 })
 afterEach(() => {
@@ -71,6 +72,24 @@ describe('workspace review asynchronous ownership', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(snapshots(h.frames).at(-1)).toMatchObject({ review: null })
     expect(h.cache.pr[h.candidate.cacheKey]?.data?.number).toBe(12)
+    subscription.close()
+  })
+
+  it('does not expose a warm cache answer for a different newly linked PR', async () => {
+    const h = await harness()
+    h.cache = {
+      pr: { [h.candidate.cacheKey]: { data: makePR({ number: 12 }), fetchedAt: Date.now() } },
+      issue: {}
+    }
+    const initial = await h.prepare()
+    h.prepare.mockResolvedValue({
+      ...initial,
+      linkedPR: 13,
+      candidate: { ...h.candidate, linkedPRNumber: 13, cachedFetchedAt: null }
+    })
+    const subscription = h.open()
+    await subscription.renew()
+    expect(snapshots(h.frames).at(-1)).toMatchObject({ review: null, fetchedAt: null, stale: true })
     subscription.close()
   })
 
