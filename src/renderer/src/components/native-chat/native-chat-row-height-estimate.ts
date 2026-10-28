@@ -60,28 +60,32 @@ export const NATIVE_CHAT_ROW_GAP_PX = 20
 // Cap estimates to keep scrolling usable; mounted measurements may legitimately exceed this limit.
 const ROW_MAX_PX = 1600
 
+/** Stops counting at `maxLines`: callers only need lines until the row reaches its height cap. */
 export function estimateNativeChatTextLines(
   markdown: string,
-  charsPerLine = DEFAULT_ROW_TYPOGRAPHY.charsPerLine
+  charsPerLine = DEFAULT_ROW_TYPOGRAPHY.charsPerLine,
+  maxLines = Number.POSITIVE_INFINITY
 ): number {
   if (markdown.length === 0) {
     return 0
   }
   let lines = 0
   let lineStart = 0
-  for (let index = 0; index <= markdown.length; index += 1) {
-    if (index === markdown.length || markdown[index] === '\n') {
-      const length = index - lineStart
-      lines += Math.max(PROSE_MIN_LINES, Math.ceil(length / charsPerLine))
-      lineStart = index + 1
+  while (lines < maxLines) {
+    const newline = markdown.indexOf('\n', lineStart)
+    const lineEnd = newline === -1 ? markdown.length : newline
+    lines += Math.max(PROSE_MIN_LINES, Math.ceil((lineEnd - lineStart) / charsPerLine))
+    if (newline === -1) {
+      break
     }
+    lineStart = newline + 1
   }
-  return lines
+  return Math.min(lines, maxLines)
 }
 
 const metricsCache = new WeakMap<
   NativeChatMessage,
-  { charsPerLine: number; metrics: NativeChatRowContentMetrics }
+  { charsPerLine: number; lineHeightPx: number; metrics: NativeChatRowContentMetrics }
 >()
 
 /** Cache per message identity so streaming rederives metrics only for changed rows. */
@@ -90,19 +94,31 @@ export function nativeChatRowContentMetrics(
   typography = DEFAULT_ROW_TYPOGRAPHY
 ): NativeChatRowContentMetrics {
   const cached = metricsCache.get(message)
-  if (cached?.charsPerLine === typography.charsPerLine) {
+  if (
+    cached?.charsPerLine === typography.charsPerLine &&
+    cached.lineHeightPx === typography.lineHeightPx
+  ) {
     return cached.metrics
   }
   const content = deriveNativeChatRowContent(message.blocks)
   const metrics: NativeChatRowContentMetrics = {
     role: message.role,
-    textLines: estimateNativeChatTextLines(content.markdown, typography.charsPerLine),
+    // Lines past the cap cannot change the clamped estimate, so long replies stop being scanned there.
+    textLines: estimateNativeChatTextLines(
+      content.markdown,
+      typography.charsPerLine,
+      Math.ceil(ROW_MAX_PX / typography.lineHeightPx)
+    ),
     userFolds: message.role === 'user' && nativeChatUserMessageFolds(content.markdown),
     imageCount: content.prose.filter((block) => block.type === 'image-ref').length,
     toolCount: content.tools.length,
     subagentGroupCount: content.subagentGroups.length
   }
-  metricsCache.set(message, { charsPerLine: typography.charsPerLine, metrics })
+  metricsCache.set(message, {
+    charsPerLine: typography.charsPerLine,
+    lineHeightPx: typography.lineHeightPx,
+    metrics
+  })
   return metrics
 }
 

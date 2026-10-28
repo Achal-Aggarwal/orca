@@ -109,6 +109,36 @@ describe('transcript row height estimate', () => {
     expect(enormous).toBeLessThan(5000 * 22)
   })
 
+  it('stops counting lines at the height cap without changing any estimate', () => {
+    expect(estimateNativeChatTextLines('line\n'.repeat(5000), 96, 73)).toBe(73)
+    expect(estimateNativeChatTextLines('x'.repeat(96 * 500), 96, 73)).toBe(73)
+    const texts = [
+      '',
+      'a\n\nb',
+      'x'.repeat(7000),
+      'line\n'.repeat(72),
+      'line\n'.repeat(73),
+      'y\n'.repeat(20000)
+    ]
+    for (const fontSize of [10, 14, 24]) {
+      const style = nativeChatAppearanceStyle({ nativeChatAppearance: { fontSize } })
+      const typography = {
+        lineHeightPx: style['--chat-estimated-line-height'],
+        charsPerLine: style['--chat-estimated-chars-per-line'],
+        spacingScale: style['--chat-estimated-spacing-scale']
+      }
+      for (const text of texts) {
+        for (const role of ['assistant', 'user'] as const) {
+          const uncapped = estimateNativeChatTextLines(text, typography.charsPerLine)
+          const metrics = nativeChatRowContentMetrics(message(text, role), typography)
+          expect(estimateNativeChatRowHeight(metrics, NO_CHROME, typography)).toBe(
+            estimateNativeChatRowHeight({ ...metrics, textLines: uncapped }, NO_CHROME, typography)
+          )
+        }
+      }
+    }
+  })
+
   // Inter-row gaps belong to the virtualizer; charging them per row compounds transcript drift.
   it('charges a prose row for its lines and for nothing else', () => {
     const lines = (count: number): number =>
