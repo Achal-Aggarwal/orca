@@ -139,8 +139,7 @@ export function useWorktreeCardActivationActions({
         isSelectableTextTarget(event.target) ||
         !canActivateWorktreeOnPress({
           worktreeId: worktree.id,
-          rowHostId: worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined),
-          isSshDisconnected
+          rowHostId: worktree.hostId ?? (repo ? getRepoExecutionHostId(repo) : undefined)
         })
       ) {
         return
@@ -156,16 +155,7 @@ export function useWorktreeCardActivationActions({
       })
       activate()
     },
-    [
-      activateOnPress,
-      isDeleting,
-      onSelectionGesture,
-      activate,
-      worktree.id,
-      worktree.hostId,
-      repo,
-      isSshDisconnected
-    ]
+    [activateOnPress, isDeleting, onSelectionGesture, activate, worktree.id, worktree.hostId, repo]
   )
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {

@@ -32,6 +32,7 @@ vi.mock('@/store', () => {
     openModal,
     projectGroups: [],
     remoteBranchConflictByWorktreeId: {},
+    repos: [{ id: 'repo-1', path: '/repo' }],
     settings: { experimentalNewWorktreeCardStyle: true },
     sshConnectionStates: new Map(),
     sleepingAgentSessionsByPaneKey: {},

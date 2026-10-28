@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  toRuntimeExecutionHostId,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../../../../shared/execution-host'
-import type { WslHostConnectionState } from '../../../../shared/wsl-host-types'
+import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
+import { canActivateWorktreeOnPress } from './worktree-press-activation-eligibility'
 
+const WORKTREE_ID = 'repo-1::/repo'
+const LOCAL_REPO = { id: 'repo-1', path: '/repo' }
+const WSL_TWIN_REPO = { ...LOCAL_REPO, executionHostId: toRuntimeExecutionHostId('env-wsl') }
 let state: Record<string, unknown> = {}
 
 vi.mock('@/store', () => ({
@@ -16,63 +15,26 @@ vi.mock('./use-worktree-sleep-state', () => ({
   selectIsSleepingWorktree: () => false
 }))
 
-const WSL_ENV = 'env-wsl'
-const PAIRED_ENV = 'env-paired'
-
-function setHostState(args: {
-  wslState?: WslHostConnectionState
-  pairedConnected?: boolean
-}): void {
-  state = {
-    activeView: 'terminal',
-    sleepingAgentSessionsByPaneKey: {},
-    folderWorkspaces: [],
-    projectGroups: [],
-    repos: [],
-    runtimeEnvironments: [
-      { id: WSL_ENV, orcadDeployment: { kind: 'wsl', distro: 'Ubuntu' } },
-      { id: PAIRED_ENV }
-    ],
-    runtimeStatusByEnvironmentId: new Map(
-      args.pairedConnected ? [[PAIRED_ENV, { status: { runtimeId: 'r1' }, checkedAt: 1 }]] : []
-    ),
-    wslHostStatuses: args.wslState
-      ? {
-          [WSL_ENV]: {
-            environmentId: WSL_ENV,
-            distro: 'Ubuntu',
-            state: args.wslState,
-            detail: null
-          }
-        }
-      : {}
-  }
-}
-
-async function canPress(rowHostId: ExecutionHostId): Promise<boolean> {
-  const { canActivateWorktreeOnPress } = await import('./worktree-press-activation-eligibility')
-  return canActivateWorktreeOnPress({ worktreeId: 'wt-1', rowHostId, isSshDisconnected: false })
-}
-
-describe('press activation host readiness', () => {
+describe('press activation hosts', () => {
   beforeEach(() => {
-    setHostState({})
+    state = {
+      activeView: 'terminal',
+      sleepingAgentSessionsByPaneKey: {},
+      folderWorkspaces: [],
+      projectGroups: [],
+      repos: [LOCAL_REPO]
+    }
   })
 
-  it('keeps click activation for a WSL host unless it reports ready', async () => {
-    expect(await canPress(toRuntimeExecutionHostId(WSL_ENV))).toBe(false)
-    setHostState({ wslState: 'distro-stopped' })
-    expect(await canPress(toRuntimeExecutionHostId(WSL_ENV))).toBe(false)
-    setHostState({ wslState: 'ready' })
-    expect(await canPress(toRuntimeExecutionHostId(WSL_ENV))).toBe(true)
+  it('presses only into local workspaces', () => {
+    expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(true)
+    for (const rowHostId of [toSshExecutionHostId('devbox'), toRuntimeExecutionHostId('env-wsl')]) {
+      expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId })).toBe(false)
+    }
   })
 
-  it('requires a connected paired runtime and never presses into a recipe VM target', async () => {
-    expect(await canPress(toRuntimeExecutionHostId(PAIRED_ENV))).toBe(false)
-    setHostState({ pairedConnected: true })
-    expect(await canPress(toRuntimeExecutionHostId(PAIRED_ENV))).toBe(true)
-    expect(await canPress(toSshExecutionHostId('runtime-ssh-vm1'))).toBe(false)
-    expect(await canPress(toSshExecutionHostId('devbox'))).toBe(true)
-    expect(await canPress('local')).toBe(true)
+  it('keeps click activation for a local row whose id also names a remote twin', () => {
+    state = { ...state, repos: [WSL_TWIN_REPO, LOCAL_REPO] }
+    expect(canActivateWorktreeOnPress({ worktreeId: WORKTREE_ID, rowHostId: 'local' })).toBe(false)
   })
 })
