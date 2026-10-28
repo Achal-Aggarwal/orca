@@ -169,3 +169,22 @@ it('keeps large supported labels after collapsing long whitespace runs', () => {
   const source = `${'['.repeat(8)}[${label}][]\n\n[${definition}]: large\n`
   expect(normalizeMarkdownReferenceLinks(source)).toBe(`${'['.repeat(8)}[${label}](large)\n\n`)
 })
+
+it.each(['界', '𐐀'])(
+  'rejects oversized nested Unicode labels containing %s without repeated normalization',
+  (character) => {
+    const count = 400_000
+    const prefix = `${'['.repeat(count)}${character.repeat(count)}]`
+    const definitions = Array.from(
+      { length: Math.floor(Math.sqrt(count)) },
+      (_, index) => `[${'['.repeat(index)}missing]: url`
+    ).join('\n')
+    const source = `${prefix}\n\n${definitions}\n`
+    const normalized = runInNewContext(
+      'normalize(source)',
+      { normalize: normalizeMarkdownReferenceLinks, source },
+      { timeout: 1500 }
+    )
+    expect(normalized).toBe(`${prefix}\n\n`)
+  }
+)

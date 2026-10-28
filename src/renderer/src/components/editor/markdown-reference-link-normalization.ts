@@ -135,7 +135,7 @@ function createClosingBracketCursor(content: string): (start: number) => number 
 
 type ReferenceTextCharacterCounts = {
   openingBrackets: number
-  asciiNonWhitespace: number
+  nonWhitespaceCodePoints: number
 }
 
 function countReferenceTextCharacters(
@@ -144,17 +144,21 @@ function countReferenceTextCharacters(
   end: number
 ): ReferenceTextCharacterCounts {
   let openingBrackets = 0
-  let asciiNonWhitespace = 0
+  let nonWhitespaceCodePoints = 0
   for (let index = start; index < end; index += 1) {
     const code = content.charCodeAt(index)
     if (code === 91) {
       openingBrackets += 1
     }
-    if (code < 128 && !isMarkdownReferenceLabelWhitespace(code)) {
-      asciiNonWhitespace += 1
+    if (!isMarkdownReferenceLabelWhitespace(code)) {
+      nonWhitespaceCodePoints += 1
+      const next = content.charCodeAt(index + 1)
+      if (code >= 0xd800 && code <= 0xdbff && index + 1 < end && next >= 0xdc00 && next <= 0xdfff) {
+        index += 1
+      }
     }
   }
-  return { openingBrackets, asciiNonWhitespace }
+  return { openingBrackets, nonWhitespaceCodePoints }
 }
 
 function createReferenceTextDefinitionLookup(
@@ -184,11 +188,11 @@ function createReferenceTextDefinitionLookup(
       } else {
         const removed = countReferenceTextCharacters(markdown, lastStart, start)
         textCounts.openingBrackets -= removed.openingBrackets
-        textCounts.asciiNonWhitespace -= removed.asciiNonWhitespace
+        textCounts.nonWhitespaceCodePoints -= removed.nonWhitespaceCodePoints
       }
       if (
         !definitionBracketCounts.has(textCounts.openingBrackets) ||
-        textCounts.asciiNonWhitespace > maximumDefinitionLength
+        textCounts.nonWhitespaceCodePoints > maximumDefinitionLength
       ) {
         return undefined
       }
