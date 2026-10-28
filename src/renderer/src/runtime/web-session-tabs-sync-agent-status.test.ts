@@ -540,7 +540,7 @@ describe('applyWebSessionTabsSnapshot', () => {
 })
 
 it.each([false, true])(
-  'keeps paired rows stable with rolling history=%s and no host origin',
+  'keeps paired rows stable with rolling history=%s across host enrichment and replacement',
   (history) => {
     resetWebSessionTabsSyncTestState()
     let state = makeState()
@@ -551,7 +551,7 @@ it.each([false, true])(
         retained: [],
         now: NOW
       }).map((row) => row.paneKey)
-    const update = (at: number, tick: number) => {
+    const update = (at: number, tick: number, session = 'A', origin?: number, stale = false) => {
       const tabs = [1, 2].map((index) => ({
         type: 'terminal' as const,
         id: `host-tab-${index}::${LEAF_ID}`,
@@ -562,10 +562,12 @@ it.each([false, true])(
         agentStatus: {
           state: 'working' as const,
           prompt: 'task',
-          updatedAt: NOW + tick,
+          updatedAt: NOW + tick - (stale ? 100 : 0),
           stateStartedAt: NOW - (index === 1 ? 10000 - at : 8000),
           agentType: 'claude',
           paneKey: makePaneKey(`host-tab-${index}`, LEAF_ID),
+          providerSession: { key: 'session_id' as const, id: index === 1 ? session : 'quiet' },
+          ...(origin !== undefined ? { firstStateStartedAt: origin } : {}),
           stateHistory: history
             ? [
                 {
@@ -589,7 +591,14 @@ it.each([false, true])(
     }
     update(0, 0)
     const before = order()
-    update(5000, 1)
+    update(5000, 1, 'A', NOW - 5000)
     expect(order()).toEqual(before)
+    const epoch = state.sortEpoch
+    update(6000, 2, 'B', NOW - 5000)
+    expect(order()).toEqual(before.toReversed())
+    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 4000)
+    expect(state.sortEpoch).toBeGreaterThan(epoch ?? 0)
+    update(7000, 3, 'rejected-old-session', undefined, true)
+    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 4000)
   }
 )

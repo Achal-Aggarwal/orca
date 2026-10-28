@@ -113,10 +113,7 @@ export type AgentStatusEntry = {
   terminalTitle?: string
   /** Rolling log of previous states, capped at AGENT_STATE_HISTORY_MAX. */
   stateHistory: AgentStateHistoryEntry[]
-  /** Timestamp (ms) of this session's FIRST reported state, latched once and never moved.
-   *  Why: `stateHistory` trims oldest-first at the cap, so `stateHistory[0]` stops being the
-   *  session origin after ~20 transitions; row order keyed off it would follow activity.
-   *  Read it via `agentEntrySessionStartedAt`, which still falls back to history. */
+  /** Observed session origin for row ordering; recent history can evict its first state. */
   firstStateStartedAt?: number
   /** Name of the tool the agent is currently using (e.g. "Edit", "Bash"). */
   toolName?: string

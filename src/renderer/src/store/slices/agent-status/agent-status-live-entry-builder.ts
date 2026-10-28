@@ -1,3 +1,4 @@
+import { resolveAgentSessionStartedAt } from '../../../../../shared/agent-session-start-time'
 import { sameAgentStatusTerminalOwner } from '../../../../../shared/agent-status-terminal-owner'
 import type { AppState } from '../../types'
 import { resolveAgentStatusLiveEntryMainAgent } from './agent-status-live-entry-main-agent'
@@ -272,6 +273,14 @@ export function buildAgentStatusLiveEntry(
         ? existing.sessionBoundary
         : undefined)
   }
+  const retained = existing ? undefined : state.retainedAgentsByPaneKey[paneKey]
+  entry.firstStateStartedAt = resolveAgentSessionStartedAt({
+    entry,
+    previous: existing ?? retained?.entry,
+    previousStartedAt: retained?.startedAt,
+    identity: { ...identity, ...routing, providerSession: metadata?.providerSession },
+    replacementStartedAt: timing?.stateStartedAt ?? updatedAt
+  })
   const facts = deriveAgentStatusLiveFacts({
     state,
     paneKey,

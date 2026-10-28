@@ -1,3 +1,4 @@
+import { resolveAgentSessionStartedAt } from '../../../../shared/agent-session-start-time'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { withMirroredEvidenceReceipt } from '../../../../shared/agent-status-freshness'
 import { agentEntryCompletionAt } from '../../../../shared/agent-completion-time'
@@ -119,10 +120,16 @@ export function buildMirroredAgentStatusPatch(
                 : entry.lastAssistantMessageIsToolOutput
           }
         : entry
-    nextByPaneKey.set(
-      entry.paneKey,
+    const accepted =
       nextEntry === entry ? entry : withHostProgramStatus(nextEntry, entry.programStatus)
-    )
+    nextByPaneKey.set(entry.paneKey, {
+      ...accepted,
+      firstStateStartedAt: resolveAgentSessionStartedAt({
+        entry: accepted,
+        previous: existing,
+        replacementStartedAt: accepted.stateStartedAt
+      })
+    })
   }
 
   let nextAgentStatusByPaneKey = state.agentStatusByPaneKey
@@ -166,7 +173,10 @@ export function buildMirroredAgentStatusPatch(
 
   for (const [paneKey, entry] of nextByPaneKey) {
     const existing = nextAgentStatusByPaneKey[paneKey]
-    if (agentStatusEntryEqual(existing, entry)) {
+    if (
+      agentStatusEntryEqual(existing, entry) &&
+      existing?.firstStateStartedAt === entry.firstStateStartedAt
+    ) {
       continue
     }
     if (nextAgentStatusByPaneKey === state.agentStatusByPaneKey) {
@@ -193,6 +203,7 @@ export function buildMirroredAgentStatusPatch(
       !!existing && agentMainAgentVerdict(existing) !== agentMainAgentVerdict(entry)
     const entrySortRelevantChange =
       !existing ||
+      existing.firstStateStartedAt !== entry.firstStateStartedAt ||
       existing.state !== entry.state ||
       !isAgentStatusFresh(existing, now) ||
       entryFreshnessChanged ||
