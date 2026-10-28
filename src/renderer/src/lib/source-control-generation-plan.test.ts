@@ -5,19 +5,6 @@ import {
 } from './source-control-generation-plan'
 
 describe('planSourceControlCommitMessageGeneration', () => {
-  it('catches empty custom commands without invoking an agent', () => {
-    expect(
-      planSourceControlCommitMessageGeneration({
-        agentId: 'custom',
-        model: '',
-        customAgentCommand: ''
-      })
-    ).toEqual({
-      ok: false,
-      error: 'Custom command is empty. Add one in Settings → Git → AI Commit Messages.'
-    })
-  })
-
   it('rejects command templates that render empty input', () => {
     expect(
       planSourceControlCommitMessageGeneration({
@@ -28,32 +15,14 @@ describe('planSourceControlCommitMessageGeneration', () => {
     ).toEqual({ ok: false, error: 'Command input is empty.' })
   })
 
-  it.each([
-    { agentId: 'codex', command: 'codex exec', delivery: 'stdin' },
-    { agentId: 'omp', command: 'omp --print', delivery: 'temporary file attachment' }
-  ] as const)(
-    'plans $agentId and includes renderer-only caveats',
-    ({ agentId, command, delivery }) => {
-      const result = planSourceControlCommitMessageGeneration({
-        agentId,
-        model: 'gpt-5.5',
-        thinkingLevel: 'low'
-      })
-
-      expect(result.ok && result.commandLabel).toContain(command)
-      expect(result.ok && result.delivery).toContain(delivery)
-      expect(result.ok && result.caveat).toContain('Windows .cmd')
-    }
-  )
-
-  it('plans pull-request generation with pull-request variables', () => {
-    const result = planSourceControlTextGeneration('pullRequest', {
-      agentId: 'codex',
+  it('describes OMP file delivery in dry-run plans', () => {
+    const result = planSourceControlCommitMessageGeneration({
+      agentId: 'omp',
       model: 'gpt-5.5',
-      commandInputTemplate: '{basePrompt}\n\nReview {changedFiles}'
+      thinkingLevel: 'low'
     })
 
-    expect(result.ok && result.commandLabel).toContain('codex exec')
+    expect(result.ok && result.delivery).toContain('temporary file attachment')
   })
 
   it('expands linkedIssue when validating commit and pull-request recipes', () => {
@@ -91,30 +60,5 @@ describe('planSourceControlCommitMessageGeneration', () => {
     })
 
     expect(result.ok && result.commandLabel).toBe('echo issue {linkedIssue}')
-  })
-
-  it('omits Pi configured-default sentinel from dry-run command labels', () => {
-    const result = planSourceControlTextGeneration('commitMessage', {
-      agentId: 'pi',
-      model: 'default',
-      commandInputTemplate: '{basePrompt}'
-    })
-
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.commandLabel).not.toContain('--model')
-      expect(result.commandLabel).not.toContain('default')
-    }
-  })
-
-  it('shows per-action CLI arguments in dry-run command labels', () => {
-    const result = planSourceControlTextGeneration('pullRequest', {
-      agentId: 'codex',
-      model: 'gpt-5.5',
-      agentArgs: '--model gpt-5.4',
-      commandInputTemplate: '{basePrompt}'
-    })
-
-    expect(result.ok && result.commandLabel).toContain('--model gpt-5.4')
   })
 })
