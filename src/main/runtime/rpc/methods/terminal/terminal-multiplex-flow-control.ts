@@ -49,6 +49,8 @@ export function installMultiplexFlowControl(state: TerminalMultiplexConnection):
       if (!serialized) {
         throw new Error('Remote terminal recovery snapshot unavailable.')
       }
+      // Overflow still queues, so batched covered output reaches the cutoff below instead of settling queries the viewer drops.
+      stream.outputBatcher.flush()
       const displayMode = runtime.getMobileDisplayMode(stream.ptyId)
       const publication = sendSnapshotFrames(
         (opcode, payload) =>

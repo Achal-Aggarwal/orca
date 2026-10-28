@@ -305,12 +305,20 @@ async function startSoleQueryOwnerStream() {
         )!
       )
     },
-    emit: async (data: string): Promise<void> => {
+    emit: async (data: string, { holdInBatcher = false } = {}): Promise<void> => {
       seq += data.length
       listener?.(data, { seq, rawLength: data.length })
-      await vi.runOnlyPendingTimersAsync()
+      if (!holdInBatcher) {
+        await vi.runOnlyPendingTimersAsync()
+      }
     },
-    outputAfterLastSnapshot: (): string => {
+    currentSeq: (): number => seq,
+    snapshotEndCount: (): number =>
+      harness.binaryFrames
+        .map(decodeTerminalStreamFrame)
+        .filter((frame) => frame?.opcode === TerminalStreamOpcode.SnapshotEnd).length,
+    /** `viewerCutoffSeq` mirrors the viewer dropping seq'd output its recovery snapshot covers. */
+    outputAfterLastSnapshot: (viewerCutoffSeq = 0): string => {
       const frames = harness.binaryFrames.map(decodeTerminalStreamFrame)
       const snapshotEnd = frames.findLastIndex(
         (frame) => frame?.opcode === TerminalStreamOpcode.SnapshotEnd
@@ -318,6 +326,7 @@ async function startSoleQueryOwnerStream() {
       return frames
         .slice(snapshotEnd + 1)
         .filter((frame) => frame?.opcode === TerminalStreamOpcode.Output)
+        .filter((frame) => !frame?.seq || frame.seq > viewerCutoffSeq)
         .map((frame) => frame && decodeTerminalStreamText(frame.payload))
         .join('')
     },
@@ -344,6 +353,37 @@ it('replays DA1 trimmed from an overflowed ACK queue after the recovery snapshot
     await vi.runOnlyPendingTimersAsync()
 
     expect(stream.outputAfterLastSnapshot()).toBe('\x1b[c')
+    expect(stream.answerYieldedTerminalQueries).not.toHaveBeenCalled()
+  } finally {
+    await stream.cleanup()
+  }
+})
+
+it('replays DA1 still batched when the ACK recovery snapshot covers it', async () => {
+  vi.useFakeTimers()
+  const stream = await startSoleQueryOwnerStream()
+  try {
+    await stream.subscribe()
+    await stream.waitSubscribed()
+    await stream.emit('x'.repeat(TERMINAL_MULTIPLEX_ACK_STREAM_INITIAL_WINDOW_BYTES))
+    await stream.emit('y'.repeat(TERMINAL_MULTIPLEX_PENDING_MAX_BYTES + 1))
+    stream.holdNextSnapshot()
+    stream.send(TerminalStreamOpcode.Ack, {
+      bytes: TERMINAL_MULTIPLEX_ACK_STREAM_INITIAL_WINDOW_BYTES
+    })
+    const release = await stream.held()
+    await stream.emit('\x1b[c', { holdInBatcher: true })
+    const snapshotSeq = stream.currentSeq()
+    const snapshotEnds = stream.snapshotEndCount()
+    release()
+    // Publish recovery before the batcher's flush timer fires.
+    for (let turn = 0; turn < 50 && stream.snapshotEndCount() === snapshotEnds; turn += 1) {
+      await Promise.resolve()
+    }
+    expect(stream.snapshotEndCount()).toBe(snapshotEnds + 1)
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(stream.outputAfterLastSnapshot(snapshotSeq)).toBe('\x1b[c')
     expect(stream.answerYieldedTerminalQueries).not.toHaveBeenCalled()
   } finally {
     await stream.cleanup()
