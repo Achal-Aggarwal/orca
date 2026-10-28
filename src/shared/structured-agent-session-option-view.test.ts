@@ -1,11 +1,11 @@
 import { structuredAgentSessionSeedCatalog } from './structured-agent-session-seed-catalog'
-import { canSetStructuredAgentSessionOption } from './structured-agent-session-options'
 import { describe, expect, it } from 'vitest'
 import { CLAUDE_SESSION_OPTION_CATALOG } from './agent-session-option-catalog-claude-codex'
 import type { AgentSessionModelCatalogResult } from './agent-session-wire'
 import {
   applyStructuredAgentSessionModelCatalog,
   applyStructuredAgentSessionOptions,
+  canSetStructuredAgentSessionOption,
   commitStructuredAgentSessionOption,
   createStructuredAgentSessionOptionState,
   structuredAgentSessionOptionSnapshot,
