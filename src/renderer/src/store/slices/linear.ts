@@ -1,6 +1,5 @@
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
-import { linearListInvalidationToken } from './linear/linear-cache'
 import { createLinearConnectionActions } from './linear/linear-slice-connection-actions'
 import { createLinearCustomViewDetailActions } from './linear/linear-custom-view-detail-actions'
 import { createLinearCustomViewIssueActions } from './linear/linear-custom-view-issue-actions'
@@ -40,7 +39,6 @@ export const createLinearSlice: StateCreator<AppState, [], [], LinearSlice> = (s
   linearCustomViewDetailCache: {},
   linearCustomViewIssueCache: {},
   linearCustomViewProjectCache: {},
-  linearListInvalidationToken,
   ...createLinearStatusActions(set, get),
   ...createLinearConnectionActions(set, get),
   ...createLinearIssueDetailActions(set, get),

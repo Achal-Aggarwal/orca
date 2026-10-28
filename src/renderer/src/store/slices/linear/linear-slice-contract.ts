@@ -98,7 +98,6 @@ export type LinearSlice = {
     args: LinearIssueListReadArgs,
     options?: LinearFetchOptions
   ) => LinearIssueRead<LinearCollectionResult<LinearIssue>>
-  linearListInvalidationToken: { scope: string; version: number }
   invalidateLinearIssueLists: (
     options?: Pick<LinearFetchOptions, 'sourceContext' | 'scope'>
   ) => void

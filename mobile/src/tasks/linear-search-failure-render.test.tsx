@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useMobileTasksTaskListLoading } from './use-mobile-tasks-task-list-loading'
+import { MobileTasksLegacySurface } from './MobileTasksLegacySurface'
+import type { ProviderLoadActionsModel } from './use-mobile-tasks-provider-load-actions'
+import type { ConnectionPresentationModel } from './use-mobile-tasks-connection-presentation'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { SmartWorkspaceSourceDrawer } from '../components/SmartWorkspaceSourceDrawer'
@@ -109,6 +113,139 @@ it.each([
   if (raw !== visible) {
     expect(screen.queryByText(raw)).toBeNull()
   }
+  expect(warn).toHaveBeenCalledWith(
+    '[linear] searchIssues failed:',
+    expect.objectContaining({ message: raw })
+  )
+})
+
+vi.mock('./mobile-tasks-dependencies', async () => {
+  const react = await import('react')
+  const View = ({ children }: { children?: React.ReactNode }) =>
+    react.createElement('div', null, children)
+  return {
+    ...react,
+    View,
+    Text: View,
+    SafeAreaView: View,
+    BottomDrawerModalHost: View,
+    ActionSheetModal: () => null,
+    ConfirmModal: () => null,
+    AlertTriangle: () => null,
+    GitBranch: () => null,
+    colors: {},
+    useMobileColorScheme: () => 'light'
+  }
+})
+vi.mock('./mobile-tasks-legacy-styles', () => ({ styles: {} }))
+vi.mock('./mobile-tasks-legacy-foundation', () => ({ LINEAR_LIMIT: 100 }))
+vi.mock('./mobile-tasks-screen-chrome', () => ({ renderMobileTasksChrome: () => null }))
+vi.mock('./mobile-tasks-list-surface', () => ({ renderMobileTasksListSurface: () => null }))
+vi.mock('./mobile-tasks-provider-pickers', () => ({
+  renderMobileTasksProviderPicker: () => null,
+  renderMobileTasksRepoPicker: () => null,
+  renderMobileTasksGitHubIssueSourcePicker: () => null,
+  renderMobileTasksGitHubViewPicker: () => null,
+  renderMobileTasksGitHubPresetPicker: () => null,
+  renderMobileTasksPagePicker: () => null
+}))
+vi.mock('./mobile-tasks-github-project-pickers', () => ({
+  renderMobileTasksGitHubProjectPicker: () => null,
+  renderMobileTasksGitHubProjectViewPicker: () => null,
+  renderMobileTasksGitHubProjectSortPicker: () => null
+}))
+vi.mock('./mobile-tasks-filter-pickers', () => ({
+  renderMobileTasksGitHubProjectFieldsPicker: () => null,
+  renderMobileTasksGitLabViewPicker: () => null,
+  renderMobileTasksGitLabFilterPicker: () => null,
+  renderMobileTasksJiraFilterPicker: () => null,
+  renderMobileTasksJiraSitePicker: () => null,
+  renderMobileTasksLinearFilterPicker: () => null,
+  renderMobileTasksLinearWorkspacePicker: () => null,
+  renderMobileTasksLinearTeamPicker: () => null,
+  renderMobileTasksLinearStatusPicker: () => null
+}))
+vi.mock('./mobile-tasks-list-display-pickers', () => ({
+  renderMobileTasksLinearViewPicker: () => null,
+  renderMobileTasksLinearGroupPicker: () => null,
+  renderMobileTasksLinearOrderPicker: () => null,
+  renderMobileTasksLinearDisplayPicker: () => null,
+  renderMobileTasksSortPicker: () => null
+}))
+vi.mock('./mobile-tasks-create-drawers', () => ({
+  renderMobileTasksCreateDrawer: () => null,
+  renderMobileTasksCreateTargetPicker: () => null,
+  renderMobileTasksLinearConnectDrawer: () => null,
+  renderMobileTasksWorkspaceCreateTargetPicker: () => null
+}))
+vi.mock('./mobile-tasks-workspace-create-drawer', () => ({
+  renderMobileTasksWorkspaceCreateDrawer: () => null,
+  renderMobileTasksWorkspaceCreateRepoPicker: () => null,
+  renderMobileTasksWorkspaceAgentPicker: () => null
+}))
+vi.mock('./mobile-tasks-workspace-option-pickers', () => ({
+  renderMobileTasksWorkspaceBaseBranchPicker: () => null,
+  renderMobileTasksWorkspaceSparsePicker: () => null
+}))
+vi.mock('./mobile-tasks-workspace-trust-drawers', () => ({
+  renderMobileTasksWorkspaceSparseDrawer: () => null,
+  renderMobileTasksSetupTrustDrawer: () => null,
+  renderMobileTasksOrcaYamlTrustDrawer: () => null
+}))
+vi.mock('./mobile-tasks-project-detail-drawer', () => ({
+  renderMobileTasksProjectMissingRepoDrawer: () => null,
+  renderMobileTasksProjectDetailDrawer: () => null
+}))
+vi.mock('./mobile-tasks-item-detail-drawer', () => ({
+  renderMobileTasksItemDetailDrawer: () => null
+}))
+function Tasks() {
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const clientRef = useRef(client),
+    loadGenerationRef = useRef(0)
+  const model = {
+    appliedQuery: 'network issue',
+    client,
+    clientRef,
+    loadGenerationRef,
+    connState: 'connected',
+    tasksSupported: true,
+    taskStateHydrated: true,
+    provider: 'linear',
+    linearConnected: true,
+    linearFilter: 'all',
+    selectedLinearWorkspaceId: 'w',
+    selectedLinearTeamIds: new Set<string>(),
+    linearOrderBy: 'updatedAt',
+    effectiveRepoIds: new Set<string>(),
+    serverRepoList: [],
+    repoListEnsureLoaded: async () => [],
+    resetGitHubItemsState: () => {},
+    setError,
+    setLoading,
+    setRefreshing: () => {},
+    setItems: () => {},
+    error,
+    loading
+  }
+  // SAFETY: the actual Linear search branch uses precisely these fields; unrelated screen controls are omitted.
+  const actions = useMobileTasksTaskListLoading(model as unknown as ProviderLoadActionsModel)
+  useEffect(() => {
+    void actions.loadTasks()
+  }, [])
+  // SAFETY: shipping error banner reads error/provider/loading; unrelated drawers/chrome are mocked above.
+  return <MobileTasksLegacySurface model={actions as unknown as ConnectionPresentationModel} />
+}
+it('shipping phone Tasks renders the safe real main/RPC search failure', async () => {
+  const raw = '429: GraphQL request failed private phone Tasks diagnostic'
+  provider.request.mockRejectedValue(new Error(raw))
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  render(<Tasks />)
+  await waitFor(() =>
+    expect(screen.getByText('Unable to load Linear issues. Try again.')).toBeTruthy()
+  )
+  expect(screen.queryByText(raw)).toBeNull()
   expect(warn).toHaveBeenCalledWith(
     '[linear] searchIssues failed:',
     expect.objectContaining({ message: raw })

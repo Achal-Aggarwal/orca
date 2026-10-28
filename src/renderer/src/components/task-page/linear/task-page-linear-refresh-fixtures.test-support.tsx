@@ -1,3 +1,4 @@
+import type * as ReactModule from 'react'
 import type { LinearEditState } from '../../linear-item-drawer-types'
 import { useState, useCallback } from 'react'
 import { LinearIssueTextEditor } from '../../LinearIssueTextEditor'
@@ -14,6 +15,32 @@ import { clearLinearRequestMaps } from '../../../store/slices/linear/linear-slic
 import { useTaskPageLinearListSelectionPrelude } from './use-task-page-linear-list-selection'
 import { useTaskPageLinearListEffects } from './use-task-page-linear-list-effects'
 
+const deferredIssueSetters = vi.hoisted(() => ({ enabled: false, updates: [] as VoidFunction[] }))
+vi.mock('react', async (original) => {
+  const actual = await original<typeof ReactModule>()
+  return {
+    ...actual,
+    useState<T>(initial: T | (() => T)) {
+      const [value, setValue] = actual.useState(initial)
+      const issueState = actual.useRef(
+        Boolean(
+          value === null ||
+          (value && typeof value === 'object' && 'id' in value && value.id === 'same-uuid')
+        )
+      )
+      const set = actual.useCallback((update: React.SetStateAction<T>) => {
+        if (deferredIssueSetters.enabled && issueState.current && typeof update === 'function') {
+          deferredIssueSetters.updates.push(() => setValue(update))
+        } else {
+          setValue(update)
+        }
+      }, [])
+      return [value, set] as const
+    }
+  }
+})
+export { deferredIssueSetters }
+
 const active = vi.hoisted(() => ({ store: vi.fn<() => Store>() }))
 
 vi.mock('@/store', () => ({
@@ -29,7 +56,8 @@ vi.mock('@/store', () => ({
 
 vi.mock('@/i18n/i18n', async (original) => ({
   ...(await original<Record<string, unknown>>()),
-  translate: (_key: string, fallback: string) => fallback
+  translate: (_key: string, fallback: string, values?: Record<string, string>) =>
+    fallback.replace(/{{(\w+)}}/g, (match, key) => values?.[key] ?? match)
 }))
 
 const reads = vi.hoisted(() => ({
@@ -46,6 +74,8 @@ const reads = vi.hoisted(() => ({
 vi.mock('@/runtime/runtime-linear-client', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   linearDisconnect: async () => {},
+  linearConnect: async () => ({ ok: true }),
+  linearStatus: async () => ({ connected: true, viewer: null, selectedWorkspaceId: 'w' }),
   linearListIssues: (...args: unknown[]) => reads.list(...args),
   linearSearchIssues: (...args: unknown[]) => reads.search(...args)
 }))
@@ -249,6 +279,8 @@ export function display(s: Store, rows: LinearIssue[], view: View = 'list') {
 }
 
 beforeEach(() => {
+  deferredIssueSetters.enabled = false
+  deferredIssueSetters.updates.length = 0
   vi.resetAllMocks()
   clearLinearRequestMaps()
 })
@@ -262,7 +294,6 @@ export function loadingHook(
   s: Store,
   query = '',
   extra = {},
-  observeInvalidation = false,
   queued?: React.SetStateAction<LinearIssue[]>[]
 ) {
   const refs = {
@@ -296,9 +327,6 @@ export function loadingHook(
   return renderHook(
     ({ nonce }) => {
       renderCount++
-      const version = useStore(s, (state) =>
-        observeInvalidation ? state.linearListInvalidationToken.version : 0
-      )
       const [rows, setLinearIssues] = useState([task()])
       const publishRows = useCallback(
         (update: React.SetStateAction<LinearIssue[]>) =>
@@ -311,7 +339,6 @@ export function loadingHook(
       useTaskPageLinearListEffects({
         ...base,
         linearRefreshNonce: nonce,
-        linearListInvalidationVersionForSource: version,
         setLinearIssues: publishRows,
         setLinearError,
         setLinearLoading

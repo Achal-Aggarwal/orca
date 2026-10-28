@@ -50,7 +50,7 @@ it.each(
       runtime.mockReturnValueOnce(during.promise)
     }
     runtime.mockReturnValueOnce(replacement.promise)
-    const hook = loadingHook(s, kind === 'search' ? 'DAT-124' : '', {}, true)
+    const hook = loadingHook(s, kind === 'search' ? 'DAT-124' : '', {})
     await waitFor(() => expect(runtime).toHaveBeenCalledTimes(2))
     const pending = deferred<{ ok: boolean }>()
     reads.update.mockReturnValue(pending.promise)
@@ -222,7 +222,7 @@ it('checks authority inside a delayed real loader updater after write settlement
     .mockResolvedValueOnce({ items: [task('Pre-edit')] })
     .mockReturnValueOnce(replacement.promise)
   const queued: React.SetStateAction<LinearIssue[]>[] = []
-  const hook = loadingHook(s, '', {}, false, queued)
+  const hook = loadingHook(s, '', {}, queued)
   await waitFor(() => expect(queued.length).toBeGreaterThan(1))
   const old = queued.splice(0)
   const pending = deferred<{ ok: boolean }>()
@@ -269,7 +269,7 @@ it('rejects a during-save loader updater consumed after failure, then accepts ex
   reads.list.mockResolvedValue({ items: [task()] })
   await read(s, 'list')
   const queued: React.SetStateAction<LinearIssue[]>[] = []
-  const hook = loadingHook(s, '', {}, false, queued)
+  const hook = loadingHook(s, '', {}, queued)
   const flushRows = () => {
     act(() => {
       for (const update of queued.splice(0)) {
@@ -526,25 +526,52 @@ it('captured default runtime cannot seed or patch the focused foreign runtime ca
   lease.release()
 })
 
-it('disconnect detaches old obligations; old finally cannot overwrite a reconnected observation', async () => {
+it('full disconnect detaches default and every explicit source, preserving another runtime and replacement owner', async () => {
   const s = store()
-  const pending = deferred<{ ok: boolean }>()
-  const saving = writeLinearIssue(
-    task(),
-    { state: task('Done').state },
+  const contexts = [
     defaultScopeSource(null),
-    () => pending.promise
+    source('local'),
+    { ...source('local'), accountLabel: 'second' },
+    source('runtime:other')
+  ]
+  const pending = contexts.map(() => deferred<{ ok: boolean }>())
+  const saves = contexts.map((context, i) =>
+    writeLinearIssue(task(), { priority: 4 }, context, () => pending[i].promise)
   )
   await s.getState().disconnectLinear()
-  reads.detail.mockResolvedValue(task('External'))
-  expect((await s.getState().fetchLinearIssue(task().id, 'w', { force: true }))?.state.name).toBe(
-    'External'
+  const keys = contexts.map((context) => getLinearSourceScope(context).contextKey)
+  expect(keys.map((key) => pendingLinearIssueWrites.has(key))).toEqual([false, false, false, true])
+  expect((await s.getState().connectLinear('fixture-not-a-credential')).ok).toBe(true)
+  reads.detail.mockResolvedValue({ ...task(), priority: 2 })
+  const lease = s
+    .getState()
+    .fetchLinearIssue(task().id, 'w', { scope: getLinearSourceScope(contexts[1]), force: true })
+    .acquire()
+  expect((await lease.waitForCurrentTerminal()).data?.priority).toBe(2)
+  const next = deferred<{ ok: boolean }>()
+  const replacement = writeLinearIssue(
+    { ...task(), priority: 2 },
+    { priority: 3 },
+    contexts[1],
+    () => next.promise
   )
   await act(async () => {
-    pending.resolve({ ok: false })
-    await saving
+    for (let i = 0; i < 3; i++) {
+      pending[i].resolve({ ok: i === 2 })
+    }
+    await Promise.all(saves.slice(0, 3))
   })
-  expect(s.getState().linearIssueCache['w::same-uuid'].data?.state.name).toBe('External')
+  expect(pendingLinearIssueWrites.has(keys[1])).toBe(true)
+  expect(pendingLinearIssueWrites.has(keys[3])).toBe(true)
+  expect(lease.currentView().data?.priority).toBe(3)
+  await act(async () => {
+    next.resolve({ ok: false })
+    pending[3].resolve({ ok: true })
+    await Promise.all([replacement, saves[3]])
+  })
+  expect((await lease.waitForCurrentTerminal()).data?.priority).toBe(2)
+  lease.release()
+  expect(pendingLinearIssueWrites.size).toBe(0)
 })
 
 it('a shared read gives explicit-runtime consumers authority after default focus moves', async () => {

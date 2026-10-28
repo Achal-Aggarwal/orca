@@ -114,7 +114,10 @@ it.each(
 
 it('real drawer hydration, field controller and text writer compose rollback without permanent masks', async () => {
   const s = store()
-  s.setState({ recordFeatureInteraction: vi.fn() })
+  s.setState({
+    recordFeatureInteraction: vi.fn(),
+    linearStatus: { connected: true, viewer: null, selectedWorkspaceId: 'B' }
+  })
   const old = deferred<LinearIssue | null>(),
     fresh = deferred<LinearIssue | null>()
   reads.detail.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
@@ -132,6 +135,12 @@ it('real drawer hydration, field controller and text writer compose rollback wit
     target: { value: 'Local title' }
   })
   fireEvent.blur(screen.getByRole('textbox', { name: 'Issue title' }))
+  expect(reads.update).toHaveBeenCalledWith(
+    expect.anything(),
+    task().id,
+    { labelIds: ['bug'] },
+    'w'
+  )
   expect(screen.getByTestId('drawer').textContent).toBe('In Review:4:Bug')
   await act(async () => {
     old.resolve(task('Stale'))
@@ -273,7 +282,7 @@ it('a consumed detail observation retires that mounted consumer queued rollback'
   const queued: LinearIssuePublication[] = []
   const local = renderHook(() => {
     const [row, setRow] = useState(task())
-    const acceptRead = useLinearIssuePublication(row, defaultScopeSource(null), (apply) => {
+    const { acceptRead } = useLinearIssuePublication(row, defaultScopeSource(null), (apply) => {
       queued.push(apply)
     })
     return { row, setRow, acceptRead }

@@ -182,7 +182,13 @@ export function useLinearIssueEditController({
             { ...issue, ...editState },
             { labelIds: newLabelIds, labels: newLabels },
             providerSettings,
-            () => linearUpdateIssue(providerSettings, issue.id, { labelIds: newLabelIds })
+            () =>
+              linearUpdateIssue(
+                providerSettings,
+                issue.id,
+                { labelIds: newLabelIds },
+                issue.workspaceId
+              )
           ),
         onSuccess: () => {
           useAppStore.getState().invalidateLinearIssueLists({ scope })

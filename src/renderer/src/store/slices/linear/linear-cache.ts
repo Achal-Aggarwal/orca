@@ -95,16 +95,6 @@ export function linearListCacheKey(
   return `${workspaceId ?? 'default'}::list::${filter}::${limit}::${attributeSignature}`
 }
 
-export const LINEAR_LIST_INVALIDATION_VERSION_CAP = 10_000
-export let linearListInvalidationToken: { scope: string; version: number } = {
-  scope: '',
-  version: 0
-}
-
-export function setLinearListInvalidationToken(next: { scope: string; version: number }): void {
-  linearListInvalidationToken = next
-}
-
 export function linearTeamsCacheKey(
   workspaceId: LinearWorkspaceSelection | null | undefined
 ): string {

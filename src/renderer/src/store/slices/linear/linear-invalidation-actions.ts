@@ -5,12 +5,7 @@ import type {
   LinearSliceGet,
   LinearSliceSet
 } from './linear-slice-contract'
-import {
-  LINEAR_LIST_INVALIDATION_VERSION_CAP,
-  linearListInvalidationToken,
-  patchLinearIssueCollectionCache,
-  setLinearListInvalidationToken
-} from './linear-cache'
+import { patchLinearIssueCollectionCache } from './linear-cache'
 import { publishLinearIssuePatch, invalidateLinearIssueReads } from './linear-issue-publication'
 import { getLinearReadScope, canPublishLinearScopeCache } from './linear-slice-scope'
 
@@ -25,14 +20,6 @@ export function createLinearInvalidationActions(
       if (!canPublishLinearScopeCache(scope, get().settings)) {
         return
       }
-      const tokenScope = scope.cachePrefix ?? 'local'
-      const nextVersion =
-        linearListInvalidationToken.scope === tokenScope
-          ? (linearListInvalidationToken.version + 1) % LINEAR_LIST_INVALIDATION_VERSION_CAP || 1
-          : 1
-      const nextToken = { scope: tokenScope, version: nextVersion }
-      setLinearListInvalidationToken(nextToken)
-
       // Invalidate only scoped attribute-filtered lists so TaskPage refetches without wiping searches/unrelated collections.
       set((s) => {
         const nextListCache = { ...s.linearListCache }
@@ -57,11 +44,10 @@ export function createLinearInvalidationActions(
           changed = true
         }
         if (!changed) {
-          return { linearListInvalidationToken: nextToken }
+          return s
         }
         return {
-          linearListCache: nextListCache,
-          linearListInvalidationToken: nextToken
+          linearListCache: nextListCache
         }
       })
     },

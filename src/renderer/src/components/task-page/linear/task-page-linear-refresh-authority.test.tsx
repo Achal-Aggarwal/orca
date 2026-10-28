@@ -13,6 +13,9 @@ import {
   loadingHook,
   source
 } from './task-page-linear-refresh-fixtures.test-support'
+import { TaskPageLinearIssueTable } from './IssueTable'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import type { TaskPageComposerActionsModel } from '../use-task-page-composer-actions'
 import { useState } from 'react'
 import { PaginationBar } from '../PaginationBar'
 import { useTaskPageLinearListProjectionPrelude } from './use-task-page-linear-list-projection'
@@ -63,10 +66,40 @@ describe('Linear refresh failure', () => {
         expect(hook.result.current.error).toBe('Unable to load Linear issues. Try again.')
       )
       expect(hook.result.current.rows[0].state.name).toBe('In Review')
+      const table = () => {
+        const model = {
+          selectedLinearWorkspaceId: 'w',
+          linearTaskSourceContext: null,
+          selectedLinearIssueId: null,
+          openLinearDetailPage: vi.fn(),
+          linearIssueAttachmentIndex: new Map(),
+          effectiveLinearDisplayProperties: new Set(['state']),
+          linearIssueGridStyle: {},
+          linearIssueListRows: hook.result.current.displayed.map((issue) => ({
+            type: 'issue',
+            issue
+          })),
+          handleOpenOrUseLinearItem: vi.fn()
+        }
+        // SAFETY: this is every input read by the actual Tasks table; loader and selection above are production.
+        return (
+          <TooltipProvider>
+            <TaskPageLinearIssueTable model={model as unknown as TaskPageComposerActionsModel} />
+          </TooltipProvider>
+        )
+      }
+      const visible = render(table())
+      expect(
+        screen.getAllByRole('button', { name: /Change Linear state from In Review/ })
+      ).toHaveLength(2)
       runtime.mockResolvedValue(response(kind, 'Done'))
       hook.rerender({ nonce: 1 })
       await waitFor(() => expect(hook.result.current.rows[0].state.name).toBe('Done'))
       expect(hook.result.current.error).toBeNull()
+      visible.rerender(table())
+      expect(screen.getAllByRole('button', { name: /Change Linear state from Done/ })).toHaveLength(
+        2
+      )
     }
   )
 })

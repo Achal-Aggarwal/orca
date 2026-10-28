@@ -43,7 +43,6 @@ type WorktreeJumpPaletteCreateWorktreeInput = Pick<
   Pick<
     WorktreeJumpPaletteTaskUrl,
     | 'currentGitHubWorkItemPreview'
-    | 'currentLinearIssuePreview'
     | 'githubLookupRef'
     | 'linearIssueUrlIntent'
     | 'linearLookupRef'

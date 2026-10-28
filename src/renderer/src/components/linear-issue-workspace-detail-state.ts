@@ -1,6 +1,9 @@
 import { useAppStore } from '@/store'
 import { getLinearSourceScope } from '@/store/slices/linear/linear-slice-scope'
-import { observeLinearIssueRead } from '@/store/slices/linear/linear-issue-publication'
+import {
+  observeLinearIssueRead,
+  projectLinearIssue
+} from '@/store/slices/linear/linear-issue-publication'
 import { useLinearIssuePublication } from '@/hooks/useLinearIssuePublication'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -46,6 +49,10 @@ export function useLinearIssueWorkspaceDetail({
   providerSettings: RuntimeLinearSettings
   requestKey: string
 }): LinearIssueWorkspaceDetailState {
+  const { acceptRead, isCurrent } = useLinearIssuePublication(issue, providerSettings, (apply) => {
+    setFullIssue((previous) => apply(previous))
+    setEditState((previous) => apply(previous))
+  })
   const [fullIssue, setFullIssue] = useState<LinearIssue>(issue)
   const [issueLoading, setIssueLoading] = useState(true)
   const [comments, setComments] = useState<LinearComment[]>([])
@@ -56,10 +63,6 @@ export function useLinearIssueWorkspaceDetail({
   const commentsRequestIdRef = useRef(0)
   const hydrationRequestIdRef = useRef(0)
   const mountedRef = useMountedRef()
-  const acceptRead = useLinearIssuePublication(issue, providerSettings, (apply) => {
-    setFullIssue((previous) => apply(previous))
-    setEditState((previous) => apply(previous))
-  })
 
   const handleCommentAdded = useCallback((comment: LinearLocalComment) => {
     const added: LinearComment = {
@@ -75,26 +78,38 @@ export function useLinearIssueWorkspaceDetail({
   const loadComments = useCallback(
     (targetIssue: LinearIssue, targetProviderSettings: RuntimeLinearSettings): Promise<void> => {
       const requestId = ++commentsRequestIdRef.current
-      setCommentsLoading(true)
-      setCommentsError(null)
+      const current = () =>
+        mountedRef.current && requestId === commentsRequestIdRef.current && isCurrent()
+      setCommentsLoading((previous) => (current() ? true : previous))
+      setCommentsError((previous) => (current() ? null : previous))
       return linearIssueComments(targetProviderSettings, targetIssue.id, targetIssue.workspaceId)
         .then((fetched) => {
-          if (mountedRef.current && requestId === commentsRequestIdRef.current) {
-            setComments(mergeLinearIssueComments(fetched, optimisticCommentsRef.current))
+          if (current()) {
+            setComments((previous) =>
+              current()
+                ? mergeLinearIssueComments(fetched, optimisticCommentsRef.current)
+                : previous
+            )
           }
         })
         .catch((error) => {
-          if (mountedRef.current && requestId === commentsRequestIdRef.current) {
-            setCommentsError(error instanceof Error ? error.message : 'Failed to load comments.')
+          if (current()) {
+            setCommentsError((previous) =>
+              current()
+                ? error instanceof Error
+                  ? error.message
+                  : 'Failed to load comments.'
+                : previous
+            )
           }
         })
         .finally(() => {
-          if (mountedRef.current && requestId === commentsRequestIdRef.current) {
-            setCommentsLoading(false)
+          if (current()) {
+            setCommentsLoading((previous) => (current() ? false : previous))
           }
         })
     },
-    [mountedRef]
+    [mountedRef, isCurrent]
   )
 
   const retryComments = useCallback(
@@ -104,25 +119,37 @@ export function useLinearIssueWorkspaceDetail({
 
   useEffect(() => {
     const requestId = ++hydrationRequestIdRef.current
-    setIssueLoading(true)
+    const scope = getLinearSourceScope(providerSettings)
+    const current = () =>
+      mountedRef.current && requestId === hydrationRequestIdRef.current && isCurrent()
+    setIssueLoading((previous) => (current() ? true : previous))
     const initialRequest = { issue, providerSettings }
+    let initial = true
     const release = observeLinearIssueRead(
       useAppStore
         .getState()
         .fetchLinearIssue(initialRequest.issue.id, initialRequest.issue.workspaceId, {
-          scope: getLinearSourceScope(initialRequest.providerSettings),
+          scope,
           force: true,
           seed: initialRequest.issue
         }),
-      () => mountedRef.current && requestId === hydrationRequestIdRef.current,
+      current,
       (lease, view) => {
-        if (view.kind === 'data' && view.data) {
+        const seed = initial && view.kind === 'loading'
+        initial = false
+        if ((view.kind === 'data' || seed) && view.data) {
           setFullIssue((previous) =>
-            lease.commit(view, previous, (_, data) => (data ? acceptRead(data) : previous))
+            lease.commit(view, previous, (_, data) =>
+              data ? (seed ? projectLinearIssue(scope, data) : acceptRead(data)) : previous
+            )
           )
           setEditState((previous) =>
             lease.commit(view, previous, (_, data) =>
-              data ? acceptRead(initLinearIssueEditState(data)) : previous
+              data
+                ? initLinearIssueEditState(
+                    seed ? projectLinearIssue(scope, data) : acceptRead(data)
+                  )
+                : previous
             )
           )
         }
@@ -136,7 +163,7 @@ export function useLinearIssueWorkspaceDetail({
       commentsRequestIdRef.current += 1
     }
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Why: requestKey captures source/runtime/issue identity; field updates must not restart hydration.
-  }, [acceptRead, loadComments, mountedRef, requestKey])
+  }, [acceptRead, isCurrent, loadComments, mountedRef, requestKey])
 
   return {
     displayed: fullIssue,

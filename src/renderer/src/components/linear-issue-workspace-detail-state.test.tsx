@@ -2,6 +2,7 @@ import { createTestStore } from '@/store/slices/linear-slice-test-harness'
 import { clearLinearRequestMaps } from '@/store/slices/linear/linear-slice-request-state'
 // @vitest-environment happy-dom
 
+import { useStore } from 'zustand'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -34,7 +35,13 @@ vi.mock('@/components/LinearItemDrawer', () => ({
 }))
 
 const detailStore = createTestStore()
-vi.mock('@/store', () => ({ useAppStore: { getState: () => detailStore.getState() } }))
+vi.mock('@/store', () => ({
+  useAppStore: Object.assign(
+    (selector: (state: ReturnType<typeof detailStore.getState>) => unknown) =>
+      useStore(detailStore, selector),
+    { getState: () => detailStore.getState() }
+  )
+}))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 

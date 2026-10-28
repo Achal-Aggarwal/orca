@@ -170,6 +170,7 @@ export function createLinearConnectionActions(
       const scope = getLinearReadScope(get().settings)
       const requestGeneration = beginLinearMutation()
       const contextKey = getProviderRuntimeContextKey(get().settings)
+      detachLinearIssuePublication(scope, true)
       await linearDisconnect(scope.settings)
       if (
         !isCurrentLinearMutation(requestGeneration) ||
@@ -177,7 +178,6 @@ export function createLinearConnectionActions(
       ) {
         return
       }
-      detachLinearIssuePublication(scope)
       invalidateLinearCaches()
       set({
         linearStatus: { connected: false, viewer: null },

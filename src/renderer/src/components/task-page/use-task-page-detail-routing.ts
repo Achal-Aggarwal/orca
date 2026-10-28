@@ -56,7 +56,7 @@ export function useTaskPageDetailRouting(model: TaskPageGitHubIssueDraftModel) {
     pageData.openLinearSourceContext,
     selectedLinearIssue
   ])
-  const acceptRead = useLinearIssuePublication(
+  const { acceptRead } = useLinearIssuePublication(
     selectedLinearIssueFallback,
     linearDetailSourceContext ?? defaultScopeSource(useAppStore.getState().settings),
     (apply) => {

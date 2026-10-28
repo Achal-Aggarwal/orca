@@ -23,7 +23,12 @@ type Field =
 type Delta = Partial<LinearIssue>
 type Contribution = { operation?: object; value: Delta }
 type FieldGroup = { base: Delta; contributions: Contribution[] }
-type IssueOwner = { issue: LinearIssue; organizationId?: string; fields: Map<Field, FieldGroup> }
+type IssueOwner = {
+  id: string
+  workspaceId?: string
+  organizationId?: string
+  fields: Map<Field, FieldGroup>
+}
 export const pendingLinearIssueWrites = new Map<string, Map<string, IssueOwner>>()
 export type LinearIssuePublication = <T extends Delta>(previous: T) => T
 type LocalConsumer = {
@@ -100,6 +105,10 @@ export function registerLinearIssueConsumer(
   }
   const consumer: LocalConsumer = { tokens: new Map(), publish }
   consumers.add(consumer)
+  const owner = ownerMap(scope)?.get(id)
+  if (owner) {
+    publishConsumer(consumer, Object.assign({}, ...[...owner.fields.values()].map(value)))
+  }
   return {
     retire: () => consumer.tokens.clear(),
     release: () => {
@@ -114,26 +123,27 @@ export function registerLinearIssueConsumer(
     }
   }
 }
+function publishConsumer(consumer: LocalConsumer, patch: Delta) {
+  const token = {}
+  const changed = [...fields, 'project' as const].filter((field) => Object.hasOwn(patch, field))
+  for (const field of changed) {
+    consumer.tokens.set(field, token)
+  }
+  notifyPublication(() =>
+    consumer.publish((previous) => {
+      const current = changed.filter((field) => consumer.tokens.get(field) === token)
+      return current.length
+        ? { ...previous, ...Object.assign({}, ...current.map((field) => fieldValue(patch, field))) }
+        : previous
+    })
+  )
+}
 function publishLocal(scope: LinearReadScope, id: string, patch: Delta) {
   for (const consumer of localConsumers.get(scope.contextKey)?.get(id) ?? []) {
-    const token = {}
-    const changed = [...fields, 'project' as const].filter((field) => Object.hasOwn(patch, field))
-    for (const field of changed) {
-      consumer.tokens.set(field, token)
-    }
-    notifyPublication(() =>
-      consumer.publish((previous) => {
-        const current = changed.filter((field) => consumer.tokens.get(field) === token)
-        return current.length
-          ? {
-              ...previous,
-              ...Object.assign({}, ...current.map((field) => fieldValue(patch, field)))
-            }
-          : previous
-      })
-    )
+    publishConsumer(consumer, patch)
   }
 }
+
 function retire(scope: LinearReadScope, id: string, confirmed = false) {
   for (const read of reads) {
     if (read.scope.contextKey === scope.contextKey) {
@@ -184,7 +194,12 @@ export async function runLinearIssueWrite<T extends { ok: boolean }>(args: {
   }
   let owner = byIssue.get(issue.id)
   if (!owner) {
-    owner = { issue, organizationId: args.organizationId, fields: new Map() }
+    owner = {
+      id: issue.id,
+      workspaceId: issue.workspaceId,
+      organizationId: args.organizationId,
+      fields: new Map()
+    }
     byIssue.set(issue.id, owner)
   }
   const operation = {}
@@ -339,12 +354,12 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
     const knownDetail = args.identifier ? rows(warm)[0]?.id : undefined
     return [...all.values()].filter((owner) => {
       if (knownDetail) {
-        return owner.issue.id === knownDetail
+        return owner.id === knownDetail
       }
-      if (args.identifier && owner.issue.id === args.identifier) {
+      if (args.identifier && owner.id === args.identifier) {
         return true
       }
-      const ownerOrg = owner.organizationId ?? org(owner.issue.workspaceId)
+      const ownerOrg = owner.organizationId ?? org(owner.workspaceId)
       return !queryOrg || !ownerOrg || queryOrg === ownerOrg
     })
   }
@@ -365,7 +380,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
       (row) => !present.has(occurrence(row)) && ownerMap(args.scope)?.has(row.id)
     )
     const known = new Set([...returned, ...previous].map((row) => row.id))
-    const uncertain = candidates().some((owner) => !known.has(owner.issue.id))
+    const uncertain = candidates().some((owner) => !known.has(owner.id))
     if (uncertain && !(data && !Array.isArray(data) && 'errors' in data && data.errors?.length)) {
       return null
     }
@@ -472,7 +487,7 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
         if (known && known.id !== id) {
           return
         }
-      } else if (!candidates().some((candidate) => candidate.issue.id === id)) {
+      } else if (!candidates().some((candidate) => candidate.id === id)) {
         return
       }
       attempt = null
@@ -564,14 +579,32 @@ export function openLinearIssueRead<T extends LinearIssueData>(args: {
   return read
 }
 
-export function detachLinearIssuePublication(scope: LinearReadScope) {
-  pendingLinearIssueWrites.delete(scope.contextKey)
-  for (const consumers of localConsumers.get(scope.contextKey)?.values() ?? []) {
-    for (const consumer of consumers) {
-      consumer.tokens.clear()
+export function detachLinearIssuePublication(scope: LinearReadScope, allSources = false) {
+  const affected = (key: string) =>
+    key === scope.contextKey ||
+    (allSources &&
+      (key === scope.runtimeContextKey || key.startsWith(`${scope.runtimeContextKey}::`)))
+  for (const key of pendingLinearIssueWrites.keys()) {
+    if (affected(key)) {
+      pendingLinearIssueWrites.delete(key)
     }
   }
-  abandonLinearIssueReads(scope)
+  for (const [key, byIssue] of localConsumers) {
+    if (!affected(key)) {
+      continue
+    }
+    for (const consumers of byIssue.values()) {
+      for (const consumer of consumers) {
+        consumer.tokens.clear()
+      }
+    }
+  }
+  // oxlint-disable-next-line unicorn/no-useless-spread -- Why: abandonment callbacks can replace demand while old scopes are removed.
+  for (const read of [...reads]) {
+    if (affected(read.scope.contextKey)) {
+      read.abandon()
+    }
+  }
 }
 
 export function abandonLinearIssueReads(scope?: LinearReadScope) {
