@@ -96,6 +96,8 @@ const NODE_RUNTIME_INCLUDE = [
   'src/**/*.live-shell.test.ts',
   // The live zsh PTY probe relies on Node's native PTY stream delivery.
   'src/main/shell-startup-feature-channel.test.ts',
+  'src/main/daemon/shell-ready.test.ts',
+  'src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts',
   'src/**/*real-pty*.test.ts',
   'src/**/*-native.test.ts',
   'src/**/*retention*.test.ts',
