@@ -10,6 +10,7 @@ import { registerPendingEditorFlush } from './editor-pending-flush'
 import {
   focusLeftView,
   notifyStaleViewEditRejected,
+  retainStaleViewEditEpoch,
   staleViewEditEpoch
 } from './editor-stale-view-edit'
 import {
@@ -161,6 +162,17 @@ export function useIpynbDocumentEditing({
       void flushSourceDrafts()
     }, NOTEBOOK_SOURCE_COMMIT_DELAY_MS)
   }, [flushSourceDrafts])
+
+  useLayoutEffect(() => {
+    const releaseEpoch = retainStaleViewEditEpoch(fileId)
+    return () => {
+      try {
+        flushSourceDrafts()
+      } finally {
+        releaseEpoch()
+      }
+    }
+  }, [fileId, flushSourceDrafts])
 
   useEffect(
     () => registerPendingEditorFlush(fileId, flushSourceDrafts),

@@ -1,4 +1,5 @@
 import type { EditorSaveResult, EditorSaveTrigger } from './editor-save-disk-precondition'
+import { retainEditorDiscardEpoch } from './editor-discard-epoch'
 
 export type EditorSaveRequest = {
   fileId: string
@@ -55,15 +56,18 @@ export function createEditorSaveSlots(
       }
       return slot.queued.promise
     }
+    const releaseEpoch = retainEditorDiscardEpoch(incoming.recordId)
     const request = { ...incoming }
-    const promise = (slot?.running ?? Promise.resolve()).then(() => {
-      const current = slots.get(key)
-      if (current?.queued?.request === request) {
-        current.running = running
-        current.queued = undefined
-      }
-      return run(request)
-    })
+    const promise = (slot?.running ?? Promise.resolve())
+      .then(() => {
+        const current = slots.get(key)
+        if (current?.queued?.request === request) {
+          current.running = running
+          current.queued = undefined
+        }
+        return run(request)
+      })
+      .finally(releaseEpoch)
     const running = promise.then(ignore, ignore)
     if (slot) {
       slot.queued = { request, promise }

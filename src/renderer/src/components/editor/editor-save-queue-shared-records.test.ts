@@ -6,7 +6,11 @@ import { getDiskBaselineSignature } from '../../../../shared/disk-baseline-signa
 import { createEditorSaveQueue, type EditorSaveQueue } from './editor-save-queue'
 import { createEditorRestartSaveHandlers } from './editor-restart-save-handlers'
 import { __clearSelfWriteRegistryForTests } from './editor-self-write-registry'
-import { bumpEditorDiscardEpoch } from './editor-discard-epoch'
+import {
+  bumpEditorDiscardEpoch,
+  editorDiscardEpoch,
+  retainEditorDiscardEpoch
+} from './editor-discard-epoch'
 import { isDetachedEditorBufferId } from '@/store/slices/editor/buffers/editor-buffer-views'
 import {
   createEditorStore,
@@ -98,6 +102,7 @@ describe('editor save queue: shared records', () => {
     })
     expect(isDetachedEditorBufferId(recordOf('w2'))).toBe(true)
     // Only w1’s record has previously been discarded.
+    const releaseEpoch = retainEditorDiscardEpoch(recordOf('w1'))
     bumpEditorDiscardEpoch(recordOf('w1'))
     let release = (): void => {}
     const gate = new Promise<void>((resolve) => {
@@ -125,7 +130,39 @@ describe('editor save queue: shared records', () => {
     await expect(first).resolves.toBe('written')
     await expect(second).resolves.toBe('written')
     expect(writes()).toEqual(['theirs', 'theirs, more'])
+    releaseEpoch()
   })
+
+  it.each(['written', 'failed'] as const)(
+    'releases the discard epoch after an in-flight save is %s',
+    async (outcome) => {
+      store.setState({ openFiles: [tab('w1', { isDirty: true })], editorDrafts: { w1: 'typing' } })
+      const recordId = recordOf('w1')
+      let release = (): void => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      disk.fs.writeFile.mockImplementationOnce(async () => {
+        await gate
+        if (outcome === 'failed') {
+          throw new Error('disk unavailable')
+        }
+        return { ok: true }
+      })
+      const save = queue.queueSave(view('w1'), 'typing')
+      const settled = save.catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(0)
+      bumpEditorDiscardEpoch(recordId)
+      expect(editorDiscardEpoch(recordId)).toBe(1)
+      release()
+      if (outcome === 'failed') {
+        expect(await settled).toBeInstanceOf(Error)
+      } else {
+        expect(await settled).toBe('written')
+      }
+      expect(editorDiscardEpoch(recordId)).toBe(0)
+    }
+  )
 
   describe('a read-only sibling joining a dirty record', () => {
     it('mirrors the edits, and autosave writes once through the writable view', async () => {

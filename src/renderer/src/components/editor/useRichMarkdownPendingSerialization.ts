@@ -8,7 +8,11 @@ import {
 } from 'react'
 import type { Editor } from '@tiptap/react'
 import { registerPendingEditorFlush } from './editor-pending-flush'
-import { focusLeftView, staleViewEditEpoch } from './editor-stale-view-edit'
+import {
+  focusLeftView,
+  retainStaleViewEditEpoch,
+  staleViewEditEpoch
+} from './editor-stale-view-edit'
 import { commitRichMarkdownSerialization } from './rich-markdown-serialization-commit'
 
 type PendingSerializationParams = {
@@ -75,10 +79,15 @@ export function useRichMarkdownPendingSerialization({
 
   // Flush in layout cleanup before Tiptap’s passive cleanup destroys the editor on tab/mode changes.
   useLayoutEffect(() => {
+    const releaseEpoch = retainStaleViewEditEpoch(fileId)
     return () => {
-      flushPendingSerialization()
+      try {
+        flushPendingSerialization()
+      } finally {
+        releaseEpoch()
+      }
     }
-  }, [flushPendingSerialization])
+  }, [fileId, flushPendingSerialization])
 
   const flushOnFocusLeave = useCallback(
     (event: FocusEvent<HTMLDivElement>) => {

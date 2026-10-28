@@ -21,7 +21,15 @@ vi.mock('@/store', () => {
   }
   const useAppStore = Object.assign(
     <T,>(select: (state: ReturnType<typeof read>) => T): T => select(read()),
-    { getState: read }
+    {
+      getState: read,
+      subscribe: (listener: Parameters<ReturnType<typeof createEditorStore>['subscribe']>[0]) => {
+        if (!storeRef.current) {
+          throw new Error('store not set')
+        }
+        return storeRef.current.subscribe(listener)
+      }
+    }
   )
   return { useAppStore }
 })
