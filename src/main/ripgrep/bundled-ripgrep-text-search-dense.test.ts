@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { runBundledRipgrepTextSearch } from './bundled-ripgrep-text-search'
 
+// Allow file setup and cleanup around a real search that streams over 64 MiB of JSON.
 it('returns bounded, navigable results when a legal dense file emits more than 64 MiB of JSON', async () => {
   const rootPath = await mkdtemp(join(tmpdir(), 'orca-dense-json-'))
   const resultRootPath = join(rootPath, 'lexical-root')
