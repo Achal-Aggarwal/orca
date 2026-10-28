@@ -20,7 +20,9 @@ test('automation menu paste publishes once at N and 10N and retains Undo', async
   await expect(orcaPage.locator(`${selector} .monaco-editor`)).toBeVisible()
   const assets = await readdir(path.join(process.cwd(), 'out/renderer/assets'))
   const asset = assets.find((name) => name.startsWith('monaco-setup-') && name.endsWith('.js'))
-  if (!asset) throw new Error('Missing Monaco setup asset')
+  if (!asset) {
+    throw new Error('Missing Monaco setup asset')
+  }
   const probe = await orcaPage.evaluateHandle(
     async ({ asset, selector }) => {
       const exports = await import(new URL(`./assets/${asset}`, document.baseURI).href)
@@ -40,7 +42,9 @@ test('automation menu paste publishes once at N and 10N and retains Undo', async
         .getEditors()
         .find((candidate) => candidate.getContainerDomNode().closest(selector))
       const model = instance?.getModel()
-      if (!instance || !model) throw new Error('Missing target editor/model')
+      if (!instance || !model) {
+        throw new Error('Missing target editor/model')
+      }
       const stats = {
         reads: 0,
         units: 0,
@@ -52,7 +56,8 @@ test('automation menu paste publishes once at N and 10N and retains Undo', async
       const original = model.getValue.bind(model)
       model.getValue = (...args: Parameters<typeof original>) => {
         const value = original(...args)
-        const stack = new Error().stack?.split('\n').slice(2, 5).join('\n') ?? ''
+        const stack =
+          new Error('paste full-value read').stack?.split('\n').slice(2, 5).join('\n') ?? ''
         const entry = stats.stacks.get(stack) ?? { reads: 0, units: 0 }
         entry.reads += 1
         entry.units += value.length
@@ -68,7 +73,7 @@ test('automation menu paste publishes once at N and 10N and retains Undo', async
     },
     { asset, selector }
   )
-  const measurements = []
+  const measurements: { size: number; reads: number; units: number; events: number }[] = []
   for (const size of [81920, 819200]) {
     const text = 'PASTE_LINE\n'.repeat(Math.floor(size / 11))
     await electronApp.evaluate(({ clipboard }, text) => clipboard.writeText(text), text)
@@ -81,7 +86,9 @@ test('automation menu paste publishes once at N and 10N and retains Undo', async
       instance.focus()
       const model = instance.getModel()
       const end = model?.getFullModelRange()
-      if (end) instance.setPosition({ lineNumber: end.endLineNumber, column: end.endColumn })
+      if (end) {
+        instance.setPosition({ lineNumber: end.endLineNumber, column: end.endColumn })
+      }
     })
     await orcaPage.keyboard.press('Shift+F10')
     await expect(orcaPage.getByRole('menuitem', { name: /^Paste/ })).toBeVisible()

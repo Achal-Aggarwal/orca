@@ -12,6 +12,8 @@ const mounted = vi.hoisted(
       getContainerDomNode: () => HTMLElement
       hasTextFocus: () => boolean
       getSelections: () => null
+      getSelection: () => null
+      setSelection: () => void
       executeEdits: () => boolean
       pushUndoStop: () => boolean
       dispose: () => void
@@ -38,7 +40,9 @@ vi.mock('@monaco-editor/react', async () => {
       }, [props])
       useLayoutEffect(() => {
         const container = ref.current
-        if (!container) throw new Error('Missing editor container')
+        if (!container) {
+          throw new Error('Missing editor container')
+        }
         const model = monaco.editor.createModel(
           typeof props.defaultValue === 'string' ? props.defaultValue : '',
           'plaintext'
@@ -50,6 +54,8 @@ vi.mock('@monaco-editor/react', async () => {
           getContainerDomNode: () => container,
           hasTextFocus: () => true,
           getSelections: () => null,
+          getSelection: () => null,
+          setSelection: () => {},
           executeEdits: () => true,
           pushUndoStop: () => {
             model.pushStackElement()
@@ -70,10 +76,14 @@ vi.mock('@monaco-editor/react', async () => {
           typeof props.onChange === 'function'
             ? model.onDidChangeContent(() => {
                 const onChange = propsRef.current.onChange
-                if (typeof onChange === 'function') onChange(model.getValue())
+                if (typeof onChange === 'function') {
+                  onChange(model.getValue())
+                }
               })
             : undefined
-        if (typeof props.onMount === 'function') props.onMount(instance, monaco)
+        if (typeof props.onMount === 'function') {
+          props.onMount(instance, monaco)
+        }
         return () => {
           instance.dispose()
           wrapperListener?.dispose()
@@ -92,7 +102,9 @@ import { AutomationEditorPromptEditor } from './AutomationEditorPromptEditor'
 function currentEditor() {
   const instance = mounted.instance
   const model = instance?.getModel()
-  if (!instance || !model) throw new Error('Missing prompt editor/model')
+  if (!instance || !model) {
+    throw new Error('Missing prompt editor/model')
+  }
   return { instance, model }
 }
 
@@ -124,7 +136,9 @@ describe('automation prompt large paste publication', () => {
       const finish = beginMonacoLargePasteLifecycle(instance)
       model.pushStackElement()
       act(() => {
-        for (let i = 0; i < chunks; i += 1) append(model, 'x'.repeat(16384))
+        for (let i = 0; i < chunks; i += 1) {
+          append(model, 'x'.repeat(16384))
+        }
       })
       expect(reads).not.toHaveBeenCalled()
       expect(onChange).not.toHaveBeenCalled()
