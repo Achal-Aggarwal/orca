@@ -111,14 +111,17 @@ describe('useMobileStructuredSessionCommands', () => {
     async (mode) => {
       vi.useFakeTimers()
       let first = true
+      let finishFirstRead: () => void = () => {}
+      const firstRead = new Promise<void>((resolve) => {
+        finishFirstRead = resolve
+      })
       const sendRequest = vi.fn(async () => {
         if (first) {
           first = false
+          await firstRead
           if (mode === 'lost-reply') {
-            await new Promise((resolve) => setTimeout(resolve, 30_000))
             throw new Error('transport timeout')
           }
-          await new Promise((resolve) => setTimeout(resolve, 10_000))
           return {
             id: 'pending',
             ok: true as const,
@@ -153,7 +156,10 @@ describe('useMobileStructuredSessionCommands', () => {
         expect(sendRequest).not.toHaveBeenCalled()
         await act(async () => hook!.setMenuOpen(true))
         if (mode !== 'lost-reply') {
-          await act(async () => vi.advanceTimersByTimeAsync(10_000))
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(10_000)
+            finishFirstRead()
+          })
           expect(sendRequest).toHaveBeenCalledTimes(1)
           // Probe completion at 12s wakes this demanded target, without a second probe.
           await act(async () => {
@@ -164,7 +170,11 @@ describe('useMobileStructuredSessionCommands', () => {
             await vi.advanceTimersByTimeAsync(mode === 'pending' ? 0 : 8_000)
           })
         } else {
-          await act(async () => vi.advanceTimersByTimeAsync(40_000))
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(30_000)
+            finishFirstRead()
+          })
+          await act(async () => vi.advanceTimersByTimeAsync(10_000))
         }
         expect(hook!.commands?.map((row) => row.name)).toEqual(['fast'])
         expect(sendRequest).toHaveBeenCalledTimes(2)

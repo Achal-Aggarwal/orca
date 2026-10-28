@@ -1,5 +1,7 @@
-import { AGENT_SESSION_COMMANDS_ON_REQUEST_CAPABILITY } from '../../../src/shared/structured-agent-session-surface-capabilities'
-import { AGENT_SESSION_COHERENT_MODEL_CATALOG_CAPABILITY } from '../../../src/shared/structured-agent-session-surface-capabilities'
+import {
+  AGENT_SESSION_COMMANDS_ON_REQUEST_CAPABILITY,
+  AGENT_SESSION_COHERENT_MODEL_CATALOG_CAPABILITY
+} from '../../../src/shared/structured-agent-session-surface-capabilities'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_ITEM_DETAIL_RUNTIME_CAPABILITY,
