@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { FileContent } from './editor-panel-content-types'
 import type { OpenFile } from '@/store/slices/editor'
+import type * as MarkdownFrontmatter from './markdown-frontmatter'
 
 const probe = vi.hoisted(() => ({ scan: vi.fn(), render: vi.fn() }))
 const contentState = vi.hoisted((): { fileContents: Record<string, FileContent> } => ({
@@ -12,7 +13,7 @@ const contentState = vi.hoisted((): { fileContents: Record<string, FileContent> 
 }))
 
 vi.mock('./markdown-frontmatter', async (importActual) => {
-  const actual = await importActual<typeof import('./markdown-frontmatter')>()
+  const actual = await importActual<typeof MarkdownFrontmatter>()
   return {
     ...actual,
     extractFrontMatter: (content: string) => {
@@ -67,7 +68,7 @@ describe('EditorPanel frontmatter availability', () => {
       gitStatusByWorktree: { [file.worktreeId]: [] }
     })
     contentState.fileContents = {
-      [file.id]: { content: '---\n' + 'x'.repeat(2 * 1024 * 1024), isBinary: false }
+      [file.id]: { content: `---\n${'x'.repeat(2 * 1024 * 1024)}`, isBinary: false }
     }
     container = document.createElement('div')
     document.body.append(container)
