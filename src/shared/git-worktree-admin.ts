@@ -21,7 +21,7 @@ type WorktreeAdminDirectory = {
   isMain?: true
 }
 
-function hostPathKey(value: string): string {
+export function worktreeAdminHostPathKey(value: string): string {
   const normalized = path.resolve(value)
   return (
     foldWslUncPathCaseInsensitiveParts(normalized) ??
@@ -29,7 +29,7 @@ function hostPathKey(value: string): string {
   )
 }
 
-async function readWorktreeAdminDirectories(
+export async function readWorktreeAdminDirectories(
   repoPath: string,
   options: GitAdminReadOptions,
   requireDirectDirectories = false
@@ -81,9 +81,9 @@ export async function findLinkedWorktreeGitDirectory(
     return null
   }
   const directories = await readWorktreeAdminDirectories(repoPath, options, true)
-  const targetKey = hostPathKey(hostPath)
+  const targetKey = worktreeAdminHostPathKey(hostPath)
   const matches = directories.filter(
-    (entry) => entry.worktreePath && hostPathKey(entry.worktreePath) === targetKey
+    (entry) => entry.worktreePath && worktreeAdminHostPathKey(entry.worktreePath) === targetKey
   )
   if (matches.length === 0) {
     return null
@@ -115,6 +115,14 @@ export async function annotateWorktreeLocksFromAdmin(
     return worktrees
   }
   const directories = await readWorktreeAdminDirectories(repoPath, options)
+  return annotateWorktreeLocksFromDirectories(directories, worktrees, options)
+}
+
+export async function annotateWorktreeLocksFromDirectories(
+  directories: WorktreeAdminDirectory[],
+  worktrees: GitWorktreeInfo[],
+  options: GitAdminReadOptions
+): Promise<GitWorktreeInfo[]> {
   const locks = new Map<string, string>()
   await mapWithConcurrency(directories, ADMIN_READ_CONCURRENCY, async (entry) => {
     if (!entry.worktreePath) {
@@ -122,13 +130,13 @@ export async function annotateWorktreeLocksFromAdmin(
     }
     const reason = await readGitAdminFile(path.join(entry.gitDir, 'locked'), options.signal)
     if (reason !== null) {
-      locks.set(hostPathKey(entry.worktreePath), reason.trim())
+      locks.set(worktreeAdminHostPathKey(entry.worktreePath), reason.trim())
     }
   })
   options.signal?.throwIfAborted()
   return worktrees.map((worktree) => {
     const hostPath = resolveWorktreeHostPath(worktree.path, options)
-    const reason = hostPath ? locks.get(hostPathKey(hostPath)) : undefined
+    const reason = hostPath ? locks.get(worktreeAdminHostPathKey(hostPath)) : undefined
     return reason === undefined
       ? worktree
       : { ...worktree, locked: true, ...(reason ? { lockReason: reason } : {}) }
@@ -178,14 +186,14 @@ export async function isBranchReservedByWorktreeOperation(
   const targets = new Set(
     nonBare.map((worktree) => {
       const hostPath = resolveWorktreeHostPath(worktree.path, options)
-      return hostPath ? hostPathKey(hostPath) : worktree.path
+      return hostPath ? worktreeAdminHostPathKey(hostPath) : worktree.path
     })
   )
   const directories = await readWorktreeAdminDirectories(repoPath, options)
   const relevant = directories.filter((entry) =>
     entry.isMain
       ? nonBare.some((worktree) => worktree.isMainWorktree)
-      : entry.worktreePath && targets.has(hostPathKey(entry.worktreePath))
+      : entry.worktreePath && targets.has(worktreeAdminHostPathKey(entry.worktreePath))
   )
   if (relevant.length < nonBare.length) {
     throw new Error('Cannot verify worktree branch usage.')

@@ -17,8 +17,12 @@ const {
   resolveGitDirMock: vi.fn()
 }))
 
-vi.mock('../../shared/git-worktree-admin', () => ({
-  annotateWorktreeLocksFromAdmin: async (_repoPath: string, rows: unknown[]) => rows
+vi.mock('../../shared/git-legacy-worktree-list', () => ({
+  reconcileLegacyWorktreeListFromAdmin: async (
+    _repoPath: string,
+    _output: string,
+    rows: unknown[]
+  ) => rows
 }))
 
 vi.mock('./runner', () => ({

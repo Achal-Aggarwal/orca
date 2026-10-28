@@ -1,7 +1,14 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import type { WorktreeHeadIdentity } from '../../shared/worktree/types'
 import { mapWithConcurrency } from '../../shared/map-with-concurrency'
+import {
+  createGitHeadIdentityReader,
+  readGitHeadMetadataFile as readTrimmedFile,
+  UNREADABLE_GIT_HEAD as UNREADABLE,
+  type ResolvedGitRefOids as ResolvedRefOids,
+  type UnreadableGitHead as Unreadable
+} from '../../shared/git-head-identity-reader'
 import {
   FULL_HEAD_IDENTITY_SCOPE,
   headIdentityEntryKey,
@@ -10,7 +17,6 @@ import {
 
 // Keep refresh spawn-free: bounded metadata reads avoid Git subprocess pressure on terminal input.
 
-const MAX_SYMREF_DEPTH = 5
 // Bound parallel metadata reads without serial WSL/UNC round trips per worktree.
 const HEAD_IDENTITY_READ_CONCURRENCY = 8
 
@@ -40,122 +46,10 @@ export type GitCommonHeadIdentityRead = {
   complete: boolean
 }
 
-/** ref → oid resolved during one pass; null means the ref no longer resolves. */
-type ResolvedRefOids = Map<string, string | null>
-
-// Unreadable is unknown, not absent: retain proven identities rather than evicting them on transient errors.
-const UNREADABLE = Symbol('unreadable')
-type Unreadable = typeof UNREADABLE
-
-async function readTrimmedFile(path: string): Promise<string | null | Unreadable> {
-  try {
-    return (await readFile(path, 'utf8')).trim()
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? null : UNREADABLE
-  }
-}
-
-async function readPackedRefs(commonDirPath: string): Promise<Map<string, string> | Unreadable> {
-  const refs = new Map<string, string>()
-  const content = await readTrimmedFile(join(commonDirPath, 'packed-refs'))
-  if (content === UNREADABLE) {
-    return UNREADABLE
-  }
-  if (content === null) {
-    return refs
-  }
-  for (const line of content.split('\n')) {
-    if (!line || line.startsWith('#') || line.startsWith('^')) {
-      continue
-    }
-    const separator = line.indexOf(' ')
-    if (separator <= 0) {
-      continue
-    }
-    refs.set(line.slice(separator + 1).trim(), line.slice(0, separator))
-  }
-  return refs
-}
-
-// Repo-authored ref names must reject Windows separators/drive syntax before joining filesystem paths.
-function isSafeRefName(ref: string): boolean {
-  if (ref.length === 0 || ref.includes('\\') || ref.includes(':')) {
-    return false
-  }
-  return !ref.split('/').some((part) => part === '..' || part === '')
-}
-
-// Only SHA-1/SHA-256 object IDs may leave this reader, bounding malformed-repo output.
-const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
-
-function asObjectId(value: string | null | undefined): string | null {
-  return value != null && OBJECT_ID_PATTERN.test(value) ? value : null
-}
-
-async function resolveRefToOid(
-  commonDirPath: string,
-  ref: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>
-): Promise<string | null | Unreadable> {
-  let current = ref
-  for (let depth = 0; depth < MAX_SYMREF_DEPTH; depth++) {
-    if (!isSafeRefName(current)) {
-      return null
-    }
-    const loose = await readTrimmedFile(join(commonDirPath, ...current.split('/')))
-    if (loose === UNREADABLE) {
-      return UNREADABLE
-    }
-    if (loose === null) {
-      const packed = await packedRefs()
-      return packed === UNREADABLE ? UNREADABLE : asObjectId(packed.get(current))
-    }
-    if (loose.startsWith('ref: ')) {
-      current = loose.slice('ref: '.length).trim()
-      continue
-    }
-    return asObjectId(loose)
-  }
-  return null
-}
-
-async function readHeadIdentity(
-  commonDirPath: string,
-  headFilePath: string,
-  worktreePath: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>,
-  resolved: ResolvedRefOids
-): Promise<WorktreeHeadIdentity | null | Unreadable> {
-  const head = await readTrimmedFile(headFilePath)
-  if (head === UNREADABLE) {
-    return UNREADABLE
-  }
-  if (!head) {
-    return null
-  }
-  if (head.startsWith('ref: ')) {
-    const ref = head.slice('ref: '.length).trim()
-    const oid = await resolveRefToOid(commonDirPath, ref, packedRefs)
-    // Unknown branch reads must not evict cached siblings sharing the branch.
-    if (oid === UNREADABLE) {
-      return UNREADABLE
-    }
-    resolved.set(ref, oid)
-    // Unborn branches (no commit yet) stay covered by the structural listing.
-    if (!oid) {
-      return null
-    }
-    return { worktreePath, head: oid, branch: ref }
-  }
-  const detachedOid = asObjectId(head)
-  return detachedOid ? { worktreePath, head: detachedOid, branch: null } : null
-}
-
 async function readLinkedEntryIdentity(
   commonDirPath: string,
   entryName: string,
-  packedRefs: () => Promise<Map<string, string> | Unreadable>,
-  resolved: ResolvedRefOids
+  reader: ReturnType<typeof createGitHeadIdentityReader>
 ): Promise<WorktreeHeadIdentity | null | Unreadable> {
   const entryPath = join(commonDirPath, 'worktrees', entryName)
   const gitdirContent = await readTrimmedFile(join(entryPath, 'gitdir'))
@@ -168,13 +62,7 @@ async function readLinkedEntryIdentity(
   // `gitdir` holds `<worktree>/.git`, absolute or (with relative-path
   // worktrees) relative to the entry dir.
   const gitdirAbsolute = isAbsolute(gitdirContent) ? gitdirContent : join(entryPath, gitdirContent)
-  return readHeadIdentity(
-    commonDirPath,
-    join(entryPath, 'HEAD'),
-    dirname(gitdirAbsolute),
-    packedRefs,
-    resolved
-  )
+  return reader.read(join(entryPath, 'HEAD'), dirname(gitdirAbsolute))
 }
 
 // Transient listing failure is unknown; only a genuinely absent directory proves an empty catalog.
@@ -233,22 +121,13 @@ export async function readGitCommonHeadIdentities(
   cache: WorktreeHeadIdentityCache = createWorktreeHeadIdentityCache(),
   scope: WorktreeHeadIdentityScope = FULL_HEAD_IDENTITY_SCOPE
 ): Promise<GitCommonHeadIdentityRead> {
-  let packedRefsPromise: Promise<Map<string, string> | Unreadable> | null = null
-  const packedRefs = (): Promise<Map<string, string> | Unreadable> =>
-    (packedRefsPromise ??= readPackedRefs(commonDirPath))
-  const resolved: ResolvedRefOids = new Map()
+  const reader = createGitHeadIdentityReader(commonDirPath)
 
   // Bare/custom Git directories cannot infer a primary checkout from the standard .git parent.
   if (basename(commonDirPath) !== '.git') {
     cache.primary = null
   } else if (scope.all || scope.primary || cache.primary === null || cache.primaryUnverified) {
-    const primary = await readHeadIdentity(
-      commonDirPath,
-      join(commonDirPath, 'HEAD'),
-      dirname(commonDirPath),
-      packedRefs,
-      resolved
-    )
+    const primary = await reader.read(join(commonDirPath, 'HEAD'), dirname(commonDirPath))
     cache.primaryUnverified = primary === UNREADABLE
     if (primary !== UNREADABLE) {
       cache.primary = primary
@@ -303,7 +182,7 @@ export async function readGitCommonHeadIdentities(
   )
   // Bound libuv fanout; publish in listing order rather than completion order.
   const reads = await mapWithConcurrency(staleNames, HEAD_IDENTITY_READ_CONCURRENCY, (name) =>
-    readLinkedEntryIdentity(commonDirPath, name, packedRefs, resolved)
+    readLinkedEntryIdentity(commonDirPath, name, reader)
   )
   staleNames.forEach((name, index) => {
     const identity = reads[index]
@@ -318,7 +197,7 @@ export async function readGitCommonHeadIdentities(
       cache.entries.delete(name)
     }
   })
-  applyResolvedRefOids(cache, resolved)
+  applyResolvedRefOids(cache, reader.resolved)
 
   // Forget failed listings so the next scoped refresh still re-enumerates missed additions/removals.
   cache.entryNames = listingStale ? null : entryNames

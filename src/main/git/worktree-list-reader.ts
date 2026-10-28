@@ -1,5 +1,5 @@
 import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
-import { annotateWorktreeLocksFromAdmin } from '../../shared/git-worktree-admin'
+import { reconcileLegacyWorktreeListFromAdmin } from '../../shared/git-legacy-worktree-list'
 import { stat } from 'node:fs/promises'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { toWslExecutionSpace } from '../../shared/wsl-paths'
@@ -227,15 +227,16 @@ export async function readWorktreeList(
           )
           const normalized = await normalizeMainWorktreePath(
             repoPath,
-            parseWorktreeList(stdout),
+            await reconcileLegacyWorktreeListFromAdmin(
+              repoPath,
+              stdout,
+              parseWorktreeList(stdout),
+              options
+            ),
             options
           )
           // Git <2.31 omits prunable fields; verify linked paths rather than trusting stale registrations.
-          return annotatePrunableByExistence(
-            await annotateWorktreeLocksFromAdmin(repoPath, normalized, options),
-            repoPath,
-            options
-          )
+          return annotatePrunableByExistence(normalized, repoPath, options)
         },
         isUnsupportedWorktreeListZError
       )

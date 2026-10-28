@@ -16,8 +16,12 @@ vi.mock('./runner', () => ({
   gitExecFileAsync: gitExec,
   translateWslOutputPaths: (output: string) => output
 }))
-vi.mock('../../shared/git-worktree-admin', () => ({
-  annotateWorktreeLocksFromAdmin: async (_repoPath: string, rows: GitWorktreeInfo[]) => rows
+vi.mock('../../shared/git-legacy-worktree-list', () => ({
+  reconcileLegacyWorktreeListFromAdmin: async (
+    _repoPath: string,
+    _output: string,
+    rows: GitWorktreeInfo[]
+  ) => rows
 }))
 
 import { clearGitCapabilityStateForTests } from './git-capability-state'
