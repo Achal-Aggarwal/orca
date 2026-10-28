@@ -110,7 +110,8 @@ describe.skipIf(process.platform === 'win32')(
         warn: (message) => warns.push(message),
         transientRetryDelayMs: 1,
         // A bridge terminal stays open, so no relay idles out mid-test.
-        bridgePtyPresence: { count: () => 1, onChange: () => () => {} }
+        bridgePtyPresence: { count: () => 1, onChange: () => () => {} },
+        daemonBridgeSessions: async () => 'none' as const
       })
 
       manager.ensureForDistro('LiveDistro', codexHome)

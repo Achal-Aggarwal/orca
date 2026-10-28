@@ -9,6 +9,7 @@ import { wslHookRelayStateKey } from './wsl-hook-relay-state-key'
 import { captureWslRelaySetup, seedWslRelayState } from './wsl-hook-relay-state-machine'
 import type { WslHookRelayManagerDeps } from './wsl-hook-relay-deps'
 import type { WslRelayRecovery } from './wsl-hook-relay-recovery'
+import type { DaemonBridgeSessionVerdict } from './wsl-bridge-daemon-sessions'
 
 export const WSL_RELAY_IDLE_STOP_MS = 5 * 60_000
 
@@ -16,6 +17,8 @@ export type WslRelayIdleStopDeps = {
   idleMs?: number
   states: Map<string, WslRelayDistroState>
   livePtyCount: (distro: string) => number
+  /** The daemon's own inventory, read before a stop; anything but 'none' keeps the relay. */
+  daemonBridgeSessions: (distro: string) => Promise<DaemonBridgeSessionVerdict>
   isDisposed: () => boolean
   clearRecoveryTimers: (state: WslRelayDistroState) => void
   warn: (message: string) => void
@@ -35,9 +38,7 @@ export class WslRelayIdleStop {
     }
     const timer = setTimeout(() => {
       this.timers.delete(state)
-      if (state.phase === 'running' && this.deps.livePtyCount(state.distro) === 0) {
-        this.stop(state)
-      }
+      void this.stopIfIdle(state)
     }, this.deps.idleMs ?? WSL_RELAY_IDLE_STOP_MS)
     timer.unref?.()
     this.timers.set(state, timer)
@@ -96,6 +97,27 @@ export class WslRelayIdleStop {
     }
   }
 
+  private async stopIfIdle(state: WslRelayDistroState): Promise<void> {
+    if (state.phase !== 'running' || this.deps.livePtyCount(state.distro) > 0) {
+      return
+    }
+    const verdict = await this.deps.daemonBridgeSessions(state.distro)
+    // A session no pane in this run has noted (a hidden or headless one after a relaunch) still
+    // needs its hooks; so does one the daemon couldn't vouch for. Look again a window later.
+    if (verdict !== 'none') {
+      this.update(state)
+      return
+    }
+    // Re-checked after the await: a terminal or hook may have come meanwhile.
+    if (
+      !this.timers.has(state) &&
+      state.phase === 'running' &&
+      this.deps.livePtyCount(state.distro) === 0
+    ) {
+      this.stop(state)
+    }
+  }
+
   /** Detach first: the link's death then reads as superseded, so recovery never restarts it. */
   private stop(state: WslRelayDistroState): void {
     const key = wslHookRelayStateKey(state.distro)
@@ -125,6 +147,7 @@ export function createWslRelayIdleStopForManager(manager: {
     idleMs: deps.idleStopMs,
     states: manager.states,
     livePtyCount: (distro) => manager.deps().bridgePtyPresence.count(distro),
+    daemonBridgeSessions: (distro) => manager.deps().daemonBridgeSessions(distro),
     isDisposed: manager.isDisposed,
     clearRecoveryTimers: (state) => manager.recovery.clearTimers(state),
     warn: (message) => manager.deps().warn(message)

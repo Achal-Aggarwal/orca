@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WslBridgePtyPresence } from './wsl-bridge-pty-presence'
 import { WslRelayIdleStop } from './wsl-hook-relay-idle-stop'
 import type { WslRelayDistroState } from './wsl-hook-relay-state'
+import type { DaemonBridgeSessionVerdict } from './wsl-bridge-daemon-sessions'
 
 function running(distro = 'Ubuntu'): WslRelayDistroState {
   return {
@@ -20,16 +21,19 @@ describe('the WSL hook relay idle stop', () => {
   let presence: WslBridgePtyPresence
   let idle: WslRelayIdleStop
   const clearRecoveryTimers = vi.fn()
+  let daemon: DaemonBridgeSessionVerdict
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     states = new Map()
     presence = new WslBridgePtyPresence()
     clearRecoveryTimers.mockClear()
+    daemon = 'none'
     idle = new WslRelayIdleStop({
       idleMs: 1_000,
       states,
       livePtyCount: (distro) => presence.count(distro),
+      daemonBridgeSessions: async () => daemon,
       isDisposed: () => false,
       clearRecoveryTimers,
       warn: () => {}
@@ -83,6 +87,23 @@ describe('the WSL hook relay idle stop', () => {
     expect(states.has('ubuntu')).toBe(true)
 
     presence.noteExited('pty-1')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(states.has('ubuntu')).toBe(false)
+  })
+
+  // Review of #35173: after a relaunch a hidden or headless bridge session is live in the daemon
+  // though no pane noted it; orchestration or mobile may wake its agent.
+  it("keeps a relay while the daemon still runs a bridge session there, or can't say", async () => {
+    const state = running()
+    states.set('ubuntu', state)
+    for (const verdict of ['live', 'unverifiable'] as const) {
+      daemon = verdict
+      idle.update(state)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(states.get('ubuntu')).toBe(state)
+    }
+
+    daemon = 'none'
     await vi.advanceTimersByTimeAsync(1_000)
     expect(states.has('ubuntu')).toBe(false)
   })

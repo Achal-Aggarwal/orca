@@ -23,6 +23,10 @@ import { listWslDistrosAsync } from '../wsl'
 import { deferUntilWslDistroRunning, isWslDistroRunning } from '../wsl-background-distro-gate'
 import { isWslAgentHookRelayEnabled } from '../../shared/agent-hook-relay'
 import { wslBridgePtyPresence, type WslBridgePtyPresence } from './wsl-bridge-pty-presence'
+import {
+  readDaemonBridgeSessions,
+  type DaemonBridgeSessionVerdict
+} from './wsl-bridge-daemon-sessions'
 
 // Concurrent wsl.exe spawns can trigger transient E_UNEXPECTED failures.
 export const WSL_RELAY_TRANSIENT_RETRY_DELAY_MS = 2_000
@@ -71,6 +75,8 @@ export type WslHookRelayManagerDeps = {
   transientRetryDelayMs: number
   /** Live bridge terminals per distro; a relay idles out only when its distro has none. */
   bridgePtyPresence: Pick<WslBridgePtyPresence, 'count' | 'onChange'>
+  /** Whether the terminal daemon still runs a bridge session there, mounted or not. */
+  daemonBridgeSessions: (distro: string) => Promise<DaemonBridgeSessionVerdict>
   idleStopMs?: number
 }
 
@@ -94,6 +100,7 @@ export const defaultWslHookRelayDeps: WslHookRelayManagerDeps = {
     return source ? createHash('sha256').update(source).digest('hex').slice(0, 12) : null
   },
   bridgePtyPresence: wslBridgePtyPresence,
+  daemonBridgeSessions: readDaemonBridgeSessions,
   resolveBundle: resolveWslHookRelayBundle,
   readBundle: (jsPath) => readFileSync(jsPath),
   listDistros: () => listWslDistrosAsync(),
