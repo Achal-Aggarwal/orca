@@ -21,7 +21,8 @@ export async function resolveWorktreeBaseCommitOid(
       ['rev-parse', '--verify', '--quiet', `${qualifiedRef}^{commit}`],
       {
         cwd: repoPath,
-        ...options
+        ...options,
+        captureWslLoginShellOutput: true
       }
     )
     const oid = stdout.trim()

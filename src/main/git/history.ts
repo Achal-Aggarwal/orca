@@ -9,7 +9,11 @@ export async function getHistory(
   options: GitHistoryOptions & GitRuntimeOptions = {}
 ): Promise<GitHistoryResult> {
   return loadGitHistoryFromExecutor(
-    (args, cwd) => gitExecFileAsync(args, gitOptionsForWorktree(cwd, options)),
+    (args, cwd) =>
+      gitExecFileAsync(args, {
+        ...gitOptionsForWorktree(cwd, options),
+        captureWslLoginShellOutput: true
+      }),
     worktreePath,
     options
   )

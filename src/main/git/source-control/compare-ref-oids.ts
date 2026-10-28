@@ -8,7 +8,8 @@ export async function resolveCompareRef(
 ): Promise<string> {
   try {
     const { stdout } = await gitExecFileAsync(['branch', '--show-current'], {
-      ...gitOptionsForWorktree(worktreePath, options)
+      ...gitOptionsForWorktree(worktreePath, options),
+      captureWslLoginShellOutput: true
     })
     const branch = stdout.trim()
     return branch || 'HEAD'
@@ -23,7 +24,8 @@ export async function resolveRefOid(
   options: GitRuntimeOptions = {}
 ): Promise<string> {
   const { stdout } = await gitExecFileAsync(['rev-parse', '--verify', '--end-of-options', ref], {
-    ...gitOptionsForWorktree(worktreePath, options)
+    ...gitOptionsForWorktree(worktreePath, options),
+    captureWslLoginShellOutput: true
   })
   return stdout.trim()
 }
@@ -35,7 +37,8 @@ export async function resolveMergeBase(
   options: GitRuntimeOptions = {}
 ): Promise<string> {
   const { stdout } = await gitExecFileAsync(['merge-base', baseOid, headOid], {
-    ...gitOptionsForWorktree(worktreePath, options)
+    ...gitOptionsForWorktree(worktreePath, options),
+    captureWslLoginShellOutput: true
   })
   return stdout.trim()
 }
@@ -49,7 +52,7 @@ export async function countCompareDivergence(
 ): Promise<{ ahead: number; behind: number }> {
   const { stdout } = await gitExecFileAsync(
     ['rev-list', '--left-right', '--count', `${baseOid}...${headOid}`],
-    { ...gitOptionsForWorktree(worktreePath, options) }
+    { ...gitOptionsForWorktree(worktreePath, options), captureWslLoginShellOutput: true }
   )
   const [behind = '', ahead = ''] = stdout.trim().split(/\s+/)
   return {

@@ -22,6 +22,7 @@ export async function loadCommitChanges(
 ): Promise<GitBranchChangeEntry[]> {
   const { stdout } = await gitExecFileAsync(gitChangeListArgs(parentOid, commitOid), {
     ...gitOptionsForWorktree(worktreePath, options),
+    captureWslLoginShellOutput: true,
     maxBuffer: MAX_GIT_SHOW_BYTES
   })
   return parseGitChangeList(stdout)

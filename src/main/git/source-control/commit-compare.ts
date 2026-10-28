@@ -39,10 +39,10 @@ export async function getCommitCompare(
   }
 
   try {
-    const { stdout } = await gitExecFileAsync(
-      ['rev-list', '--parents', '-n', '1', commitOid],
-      gitOptionsForWorktree(worktreePath, options)
-    )
+    const { stdout } = await gitExecFileAsync(['rev-list', '--parents', '-n', '1', commitOid], {
+      ...gitOptionsForWorktree(worktreePath, options),
+      captureWslLoginShellOutput: true
+    })
     const firstParent = parseGitRevListFirstParentOid(stdout)
     summary.parentOid = firstParent
     summary.baseRef = firstParent ? firstParent.slice(0, 7) : 'empty tree'

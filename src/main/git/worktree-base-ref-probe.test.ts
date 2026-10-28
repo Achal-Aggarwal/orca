@@ -78,7 +78,7 @@ describe('hasLocalWorktreeBaseRef', () => {
     await expect(hasLocalWorktreeBaseRef(repoPath, 'origin/main')).resolves.toBe(true)
     expect(gitExecFileAsync).toHaveBeenCalledWith(
       ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}'],
-      { cwd: repoPath }
+      { cwd: repoPath, captureWslLoginShellOutput: true }
     )
   })
 

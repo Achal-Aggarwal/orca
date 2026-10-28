@@ -432,11 +432,11 @@ describe('getBranchCompare', () => {
     })
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}'],
-      { cwd: '/repo' }
+      { cwd: '/repo', captureWslLoginShellOutput: true }
     )
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['rev-parse', '--verify', '--end-of-options', 'refs/remotes/origin/main'],
-      { cwd: '/repo' }
+      { cwd: '/repo', captureWslLoginShellOutput: true }
     )
   })
 
