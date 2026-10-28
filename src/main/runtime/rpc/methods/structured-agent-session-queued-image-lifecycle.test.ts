@@ -1,4 +1,9 @@
 import {
+  createQueuedImageWireRecord,
+  streamState,
+  queuedImageTestBody
+} from './structured-agent-session-wire-record.test-fixture'
+import {
   appendTestJournalQueueRow,
   openTestJournalHostDatabase
 } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
@@ -7,17 +12,17 @@ import {
   EMPTY_STRUCTURED_AGENT_SESSION
 } from '../../../../shared/structured-agent-session-reducer'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { afterEach, beforeAll, expect, it, vi } from 'vitest'
-import { loadFrozen57, expectFrozenSource } from './structured-agent-session-frozen57.test-fixture'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import {
+  loadFrozen57,
+  expectFrozenSource as expectPinnedSource
+} from './structured-agent-session-frozen57.test-fixture'
 import {
   createQueuedMessageTestRig,
   eventually,
   type QueuedMessageTestRig
 } from '../../../native-chat/agent-session-wire/structured-agent-session-queued-message-rig.test-fixture'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
-import { agentSessionAttachmentStoreRoot } from '../../../native-chat/agent-session-attachments/agent-session-attachment-references'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -72,22 +77,11 @@ const { isRenderableImageUri } = await vi.importActual<{
 
 let frozen: Awaited<ReturnType<typeof loadFrozen57>>
 beforeAll(async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
   frozen = await loadFrozen57()
 })
 
-function streamState(frames: Awaited<ReturnType<typeof openStream>>) {
-  return frames.reduce((state, frame) => {
-    if (!frame.ok) {
-      throw new Error('subscription failed')
-    }
-    if (!frame.result) {
-      return state
-    }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only the installed subscribe dispatcher writes these serialized events.
-    const event = frame.result as AgentSessionSubscribeEvent
-    return reduceStructuredAgentSession(state, { type: 'event', event })
-  }, EMPTY_STRUCTURED_AGENT_SESSION)
-}
+afterAll(() => vi.restoreAllMocks())
 
 const OLD = { ...STRUCTURED_MOBILE_CLIENT, clientId: 'old-phone', connectionId: 'old-phone' }
 const MODERN = {
@@ -95,6 +89,14 @@ const MODERN = {
   connectionId: 'modern',
   clientKind: 'runtime' as const,
   clientCapabilities: [...DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES]
+}
+let wireRecord: ReturnType<typeof createQueuedImageWireRecord> | undefined
+function wire() {
+  return (wireRecord ??= createQueuedImageWireRecord(current().root, SESSION, journal))
+}
+function expectFrozenSource(...args: Parameters<typeof expectPinnedSource>) {
+  wire().record(args[1])
+  return expectPinnedSource(...args)
 }
 let rig: QueuedMessageTestRig | undefined
 const current = () => {
@@ -111,9 +113,14 @@ const journal = () => {
   return value
 }
 afterEach(async () => {
-  setStructuredAgentSessionHost(null)
-  await rig?.dispose()
-  rig = undefined
+  try {
+    wireRecord?.verify()
+  } finally {
+    wireRecord = undefined
+    setStructuredAgentSessionHost(null)
+    await rig?.dispose()
+    rig = undefined
+  }
 })
 async function history(
   request: Omit<AgentSessionHistoryRequest, 'sessionId'> = { direction: 'tail' },
@@ -124,24 +131,12 @@ async function history(
     undefined,
     old ? queuedImageHistoryReader(OLD) : undefined
   )
-  return old ? projectQueuedImageCardHistory(result, OLD) : result
+  const answer = old ? projectQueuedImageCardHistory(result, OLD) : result
+  wire().record(answer)
+  return answer
 }
-async function imageBody(text = 'original'): Promise<AgentJournalMessageItem> {
-  const dir = join(
-    agentSessionAttachmentStoreRoot(current().root),
-    '0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c0a'
-  )
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, 'shot.png')
-  await writeFile(path, 'fixture image bytes')
-  return {
-    kind: 'message',
-    role: 'user',
-    blocks: [
-      { type: 'text', text },
-      { type: 'image-ref', path }
-    ]
-  }
+async function imageBody(text = 'original') {
+  return queuedImageTestBody(current().root, text)
 }
 async function sendImage(body: AgentJournalMessageItem) {
   const id = hostTestOperationId()
