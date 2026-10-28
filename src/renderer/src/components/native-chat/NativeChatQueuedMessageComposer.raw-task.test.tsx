@@ -13,7 +13,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import { ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX } from '../../../../shared/orca-dispatch-status-prompt'
 import { agentSessionSendBodyFingerprint } from '../../../../shared/structured-agent-session-send-mutation'
-import { projectQueuedMessageCards } from '../../../../shared/structured-agent-session-queued-cards'
+import {
+  projectQueuedMessageCards,
+  queuedMessageCardLine
+} from '../../../../shared/structured-agent-session-queued-cards'
 import { NativeChatQueuedMessageCard } from './NativeChatQueuedMessageCard'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import { changePrompt, promptValue } from './native-chat-prompt-editor.test-support'
@@ -121,9 +124,11 @@ it('shows the queued task and edits, saves and reopens its full raw input in the
       }
     }
   }
+  // The host's queuedMessageUpdateDecision removes attribution on a content-changing Save.
+  const { from: _sender, ...userBody } = message.body
   const saved: AgentSessionQueuedMessage = {
     ...message,
-    body: { ...message.body, blocks: [{ type: 'text', text: prefix + changedTask }] }
+    body: { ...userBody, blocks: [{ type: 'text', text: prefix + changedTask }] }
   }
   script.answer = done({
     status: 'updated',
@@ -136,6 +141,8 @@ it('shows the queued task and edits, saves and reopens its full raw input in the
   })
   const view = render(<QueuedTask message={message} />)
   expect(screen.getByTitle(task).textContent).toBe(task)
+  expect(screen.getByText('From')).toBeDefined()
+  expect(screen.getByText('an agent')).toBeDefined()
   expect(screen.queryByText(/You are working inside Orca/)).toBeNull()
 
   fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
@@ -153,12 +160,17 @@ it('shows the queued task and edits, saves and reopens its full raw input in the
   await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
 
   view.rerender(<QueuedTask message={saved} />)
-  expect(projectQueuedMessageCards([saved], [], {})[0]).toMatchObject({
-    text: prefix + changedTask,
-    displayText: changedTask
-  })
-  expect(screen.getByTitle(changedTask).textContent).toBe(changedTask)
-  expect(screen.queryByText(/You are working inside Orca/)).toBeNull()
+  const [savedCard] = projectQueuedMessageCards([saved], [], {})
+  expect(saved.body).not.toHaveProperty('from')
+  expect(savedCard.text).toBe(prefix + changedTask)
+  expect(savedCard).not.toHaveProperty('from')
+  expect(savedCard).not.toHaveProperty('displayText')
+  expect(queuedMessageCardLine(savedCard)).toBe(prefix + changedTask)
+  expect(screen.getByTitle(prefix + changedTask, { normalizer: (text) => text }).textContent).toBe(
+    prefix + changedTask
+  )
+  expect(screen.queryByText('From')).toBeNull()
+  expect(screen.queryByText('an agent')).toBeNull()
   fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit message' }))
   const reopened = await screen.findByRole('textbox', { name: 'Edit message' })

@@ -244,10 +244,13 @@ it.each(['worker-start', 'dispatch'] as const)(
         throw new Error('cannot reopen queue')
       }
       const reopened = page.page.queuedMessages!.find((row) => row.messageId === queued.messageId)!
-      expect(projectQueuedMessageCards([reopened], [], {})[0]).toMatchObject({
-        text: edited,
-        displayText: 'Edited task'
-      })
+      expect(nativeChatMessageCopyText(reopened.body)).toBe(edited)
+      expect(reopened.body).not.toHaveProperty('from')
+      const [editedCard] = projectQueuedMessageCards([reopened], [], {})
+      expect(editedCard.text).toBe(edited)
+      expect(editedCard).not.toHaveProperty('from')
+      expect(editedCard).not.toHaveProperty('displayText')
+      expect(queuedMessageCardLine(editedCard)).toBe(edited)
       if (!openingSend) {
         throw new Error('busy dispatch has no opening send')
       }

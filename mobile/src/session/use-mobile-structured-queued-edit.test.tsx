@@ -54,7 +54,7 @@ describe('mobile in-place queued Edit', () => {
     expect(state.hook!.queued.edit).toEqual(expect.any(Function))
   })
 
-  it('opens full canonical task input and hands back a suffix edit with current display text', async () => {
+  it('opens full canonical task input and publishes a changed Save as user-authored raw input', async () => {
     const prefix = 'You are working inside Orca, a multi-agent IDE.\n=== TASK ===\n'
     const message = queuedDraft({
       messageId: 'task',
@@ -72,7 +72,9 @@ describe('mobile in-place queued Edit', () => {
     await mount(message)
     expect(state.hook!.queued.cards[0]).toMatchObject({
       text: `${prefix}Task`,
-      displayText: 'Task'
+      displayText: 'Task',
+      line: 'Task',
+      attribution: 'From an agent'
     })
     expect(state.hook!.queued.editor!.text).toBe(`${prefix}Task`)
     act(() => state.hook!.queued.editor!.change(`${prefix}Edited`))
@@ -83,15 +85,19 @@ describe('mobile in-place queued Edit', () => {
       ([method]) => method === 'agentSession.queuedMessageUpdate'
     )
     expect(fieldsOf(update?.[1]).text).toBe(`${prefix}Edited`)
-    act(() =>
-      state.listener?.(
-        batchEvent([{ ...message, body: withText(message.body, `${prefix}Edited`) }])
-      )
-    )
-    expect(state.hook!.queued.cards[0]).toMatchObject({
+    // The current host commits changed content without the original agent attribution.
+    const { from: _sender, ...userBody } = withText(message.body, `${prefix}Edited`)
+    const saved: typeof message = { ...message, body: userBody }
+    act(() => state.listener?.(batchEvent([saved])))
+    const [savedCard] = state.hook!.queued.cards
+    expect(saved.body).not.toHaveProperty('from')
+    expect(savedCard).toMatchObject({
       text: `${prefix}Edited`,
-      displayText: 'Edited'
+      line: `${prefix}Edited`,
+      attribution: null
     })
+    expect(savedCard).not.toHaveProperty('from')
+    expect(savedCard).not.toHaveProperty('displayText')
     await act(async () => {
       await state.hook!.queued.edit!('task')
     })

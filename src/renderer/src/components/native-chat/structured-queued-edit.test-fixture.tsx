@@ -44,11 +44,28 @@ const hoistedRpc = vi.hoisted(() =>
   )
 )
 export const rpc = hoistedRpc
-vi.mock('@/runtime/structured-agent-session-client', () => ({
+const toastError = vi.hoisted(() => vi.fn<typeof import('sonner').toast.error>())
+vi.mock('@/runtime/structured-agent-session-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/runtime/structured-agent-session-client')>()),
   callStructuredAgentSession: hoistedRpc
 }))
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
-vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
+vi.mock('sonner', async (importOriginal) => {
+  const original = await importOriginal<typeof import('sonner')>()
+  return {
+    ...original,
+    toast: Object.assign(
+      function (this: unknown, ...args: Parameters<typeof original.toast>) {
+        return original.toast.apply(this, args)
+      },
+      original.toast,
+      { error: toastError }
+    )
+  }
+})
+vi.mock('@/i18n/i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/i18n/i18n')>()),
+  translate: (_key: string, fallback: string) => fallback
+}))
 
 export const SESSION = 'folder-session'
 export const SCOPE = 'pane-draft'
