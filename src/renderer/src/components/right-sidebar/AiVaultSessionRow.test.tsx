@@ -9,6 +9,7 @@ import type { AiVaultSessionWorktreeInfo } from './ai-vault-session-worktree'
 import { searchHit } from '../../../../shared/ai-vault-search-test-fixture'
 import type { AiVaultSearchHit } from '../../../../shared/ai-vault-search-types'
 import type { AiVaultSubagentResumeActions } from './AiVaultSessionSubagents'
+import { findAiVaultSessionLiveState } from './ai-vault-original-pane'
 import { VaultSessionRow } from './AiVaultSessionRow'
 
 import type { AgentDotState } from '@/components/AgentStateDot'
@@ -129,17 +130,21 @@ it.each([true, false])(
       stateHistory: [],
       ...(direct ? { providerSession: { key: 'session_id', id: session.sessionId } } : {})
     }
-    const lookup = (entries: AgentStatusEntry[]) =>
-      findAiVaultSessionLiveStateInIndex(
-        buildAiVaultOriginalPaneIndex({
-          agentStatusByPaneKey: Object.fromEntries(entries.map((entry, i) => [String(i), entry])),
-          retainedAgentsByPaneKey: {},
-          sleepingAgentSessionsByPaneKey: {},
-          tabsByWorktree: {},
-          terminalLayoutsByTabId: {}
-        }),
+    const lookup = (entries: AgentStatusEntry[]) => {
+      const state = {
+        agentStatusByPaneKey: Object.fromEntries(entries.map((entry, i) => [String(i), entry])),
+        retainedAgentsByPaneKey: {},
+        sleepingAgentSessionsByPaneKey: {},
+        tabsByWorktree: {},
+        terminalLayoutsByTabId: {}
+      }
+      const indexed = findAiVaultSessionLiveStateInIndex(
+        buildAiVaultOriginalPaneIndex(state),
         selectedSession
       )
+      expect(findAiVaultSessionLiveState(state, selectedSession)).toBe(indexed)
+      return indexed
+    }
     renderRow({ liveState: lookup([selected]) })
     expect(screen.getByLabelText('Monitoring background tasks')).toBeTruthy()
     cleanup()
@@ -150,6 +155,23 @@ it.each([true, false])(
       liveState: lookup([{ ...selected, state: 'done', workingMode: undefined, interrupted: true }])
     })
     expect(screen.getByLabelText('Interrupted')).toBeTruthy()
+    for (const [outcome, label] of [
+      ['failure', 'Failed'],
+      ['unconfirmed', 'Couldn’t confirm']
+    ] as const) {
+      cleanup()
+      renderRow({
+        liveState: lookup([
+          {
+            ...selected,
+            state: 'done',
+            workingMode: undefined,
+            mainAgent: { state: 'done', outcome, stateStartedAt: 100 }
+          }
+        ])
+      })
+      expect(screen.getByLabelText(label)).toBeTruthy()
+    }
     cleanup()
     renderRow({ liveState: lookup([{ ...selected, state: 'done', workingMode: undefined }]) })
     expect(screen.queryByLabelText('Done')).toBeNull()
