@@ -21,7 +21,11 @@ const mounted = vi.hoisted(
   } => ({ instance: null })
 )
 
-vi.mock('@/store', () => ({ useAppStore: (select: (state: object) => unknown) => select({}) }))
+type PromptEditorStore = { settings: undefined; editorFontZoomLevel: number }
+vi.mock('@/store', () => ({
+  useAppStore: (select: (state: PromptEditorStore) => unknown) =>
+    select({ settings: undefined, editorFontZoomLevel: 0 })
+}))
 vi.mock('@/hooks/use-document-dark-theme', () => ({ useDocumentDarkTheme: () => false }))
 vi.mock('@/components/editor/editor-shortcuts', () => ({
   installMonacoEditorFindShortcut: () => () => {}
