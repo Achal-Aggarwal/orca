@@ -3,53 +3,156 @@ import { imageReferenceToken } from '../../../../shared/native-chat-image-refere
 import {
   agentReferenceToken,
   isPublicOrchestrationAddress,
+  printableAgentLabel,
   type OrchestrationAgentReference
 } from '../../../../shared/orchestration-agent-reference'
+import { projectNativeChatPastedText } from './native-chat-composer-pasted-text-references'
 
-/** Only the document matching this submission can contribute selected targets. */
-export function serializeNativeChatAgentReferences(text: string, document?: JSONContent): string {
-  const references = new Map<string, OrchestrationAgentReference>()
-  const render = (node: JSONContent, wire: boolean): string => {
+type SelectedReference = {
+  reference: OrchestrationAgentReference
+  labels: Set<string>
+  safeLabels: Set<string>
+  label: string
+  affected: boolean
+}
+
+function framedLabel(label: string): string {
+  return printableAgentLabel(label).replace(/[\\"[\]]/g, '\\$&') || 'Agent'
+}
+
+/** Only a matching submitted document contributes targets; delivery owns the finished plain text. */
+export function serializeNativeChatAgentReferences(
+  text: string,
+  document?: JSONContent,
+  files: Readonly<Record<string, string>> = {}
+): string {
+  const selected = new Map<string, SelectedReference>()
+  const occurrences: (SelectedReference | string)[] = []
+  const render = (node: JSONContent): string => {
     if (node.type === 'nativeChatAgentReference') {
       const { label, address, hostKey } = node.attrs ?? {}
       if (typeof label !== 'string' || typeof address !== 'string' || typeof hostKey !== 'string') {
         return ''
       }
       const reference = { label, address, hostKey }
-      if (wire && isPublicOrchestrationAddress(address)) {
-        references.set(JSON.stringify([hostKey, address]), reference)
-        return `@${label}`
+      const literal = agentReferenceToken(reference)
+      if (isPublicOrchestrationAddress(address)) {
+        const key = JSON.stringify([hostKey, address])
+        let target = selected.get(key)
+        if (!target) {
+          target = {
+            reference,
+            labels: new Set(),
+            safeLabels: new Set(),
+            label: framedLabel(label),
+            affected: false
+          }
+          selected.set(key, target)
+        }
+        target.labels.add(label)
+        target.safeLabels.add(framedLabel(label))
+        occurrences.push(target)
+      } else {
+        occurrences.push(literal)
       }
-      return agentReferenceToken(reference)
+      return literal
     }
     if (node.type === 'hardBreak') {
+      occurrences.push('\n')
       return '\n'
     }
-    if (node.type === 'nativeChatImageReference') {
-      return imageReferenceToken(String(node.attrs?.attachmentId))
+    if (node.type === 'doc' || node.content) {
+      return (node.content ?? [])
+        .map((child, index) => {
+          if (node.type === 'doc' && index > 0) {
+            occurrences.push('\n')
+          }
+          return render(child)
+        })
+        .join(node.type === 'doc' ? '\n' : '')
     }
-    if (node.text !== undefined) {
-      return node.text
-    }
-    if (typeof node.attrs?.token === 'string') {
-      return node.attrs.token
-    }
-    return (node.content ?? [])
-      .map((child) => render(child, wire))
-      .join(node.type === 'doc' ? '\n' : '')
+    const plain =
+      node.type === 'nativeChatImageReference'
+        ? imageReferenceToken(String(node.attrs?.attachmentId))
+        : (node.text ?? (typeof node.attrs?.token === 'string' ? node.attrs.token : ''))
+    occurrences.push(plain)
+    return plain
   }
-  if (!document || render(document, false) !== text) {
-    return text
+  if (!document || render(document) !== text || selected.size === 0) {
+    return projectNativeChatPastedText(text, files)
   }
-  const wire = render(document, true)
-  return `${wire}${
-    references.size === 0
-      ? ''
-      : `\n\n${[...references.values()]
-          .map(
-            ({ label, address }) =>
-              `[Orca agent "${label}": ${address} — message it with orca orchestration send --to ${address}]`
-          )
-          .join('\n')}`
-  }`
+  const owners = new Map<string, Set<SelectedReference>>()
+  const forbidden = new Set<string>()
+  const spellings = new Set<string>()
+  const reserve = (value: string) => {
+    for (const match of value.matchAll(/\(([1-9][0-9]*)\)/g)) {
+      forbidden.add(match[1])
+    }
+  }
+  for (const target of selected.values()) {
+    for (const label of target.labels) {
+      reserve(label)
+    }
+    for (const label of target.safeLabels) {
+      reserve(label)
+      spellings.add(label)
+      const keys = owners.get(label) ?? new Set()
+      keys.add(target)
+      owners.set(label, keys)
+    }
+  }
+  for (const target of selected.values()) {
+    target.affected =
+      target.labels.size > 1 || [...target.safeLabels].some((label) => owners.get(label)!.size > 1)
+  }
+  // A delimiter longer than every source run cannot occur in authored text or expanded file paths.
+  let longest = 0
+  for (const value of [text, ...Object.values(files)]) {
+    for (const match of value.matchAll(/\0+/g)) {
+      longest = Math.max(longest, match[0].length)
+    }
+  }
+  const delimiter = `@${'\0'.repeat(longest + 1)}:`
+  const slots: { target: SelectedReference; tail: string }[] = []
+  const template = occurrences
+    .map((part) => {
+      if (typeof part === 'string') {
+        return part
+      }
+      const tail = part.affected ? '' : (part.label.match(/\s+$/)?.[0] ?? '')
+      const index = slots.push({ target: part, tail }) - 1
+      return `${delimiter}${index}${delimiter}${tail}`
+    })
+    .join('')
+  const projected = projectNativeChatPastedText(template, files)
+  reserve(projected)
+  let suffix = 0
+  for (const target of selected.values()) {
+    if (!target.affected) {
+      continue
+    }
+    // At most forbidden.size + selected.size candidates: each skipped number was captured above.
+    do {
+      suffix++
+    } while (forbidden.has(String(suffix)) || spellings.has(`${target.label} (${suffix})`))
+    forbidden.add(String(suffix))
+    target.label = `${target.label} (${suffix})`
+    spellings.add(target.label)
+  }
+  const body = projected
+    .split(delimiter)
+    .map((part, index) => {
+      if (index % 2 === 0) {
+        return part
+      }
+      const { target, tail } = slots[Number(part)]
+      return `@${tail ? target.label.slice(0, -tail.length) : target.label}`
+    })
+    .join('')
+  return `${body}\n\n${[...selected.values()]
+    .map(
+      ({ reference, label }) =>
+        `[Orca agent "${label}": ${reference.address} — message it with orca orchestration send --to ${reference.address}]`
+    )
+    .join('\n')}`
 }

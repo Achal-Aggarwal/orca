@@ -27,7 +27,7 @@ import {
 import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
 import {
   admitNativeChatPastedText,
-  resolveNativeChatPastedText
+  projectNativeChatPastedText
 } from './native-chat-composer-pasted-text-references'
 
 export type UseNativeChatStructuredComposerSendArgs = {
@@ -80,7 +80,7 @@ export function useNativeChatStructuredComposerSend({
       }
       const submitted = readNativeChatComposerDraft(draftScopeKey)
       const submittedText = text
-      text = resolveNativeChatPastedText(draftScopeKey, text)
+      text = projectNativeChatPastedText(text, submitted.pastedTextFiles)
       const hostCommand = isNativeChatStructuredHostCommand(text, agent, structuredTransport)
       // Blocked hosts cannot take turns/conversation commands; option commands only configure later turns.
       if (
@@ -109,10 +109,14 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onSubmitted?.()
       }
       const isCurrent = structuredTransport.capturePresentation()
-      if (!hostCommand) {
-        text = resolveNativeChatPastedText(
-          draftScopeKey,
-          serializeNativeChatAgentReferences(submittedText, submitted.document)
+      if (
+        !hostCommand ||
+        (structuredTransport.threadGoal && isStructuredAgentSessionGoalCommand(text))
+      ) {
+        text = serializeNativeChatAgentReferences(
+          submittedText,
+          submitted.document,
+          submitted.pastedTextFiles
         )
       }
       await dispatchNativeChatStructuredComposerText(

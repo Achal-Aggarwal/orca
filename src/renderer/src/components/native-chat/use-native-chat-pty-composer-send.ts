@@ -1,9 +1,6 @@
 import { readNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import { serializeNativeChatAgentReferences } from './native-chat-agent-reference-send'
-import {
-  admitNativeChatPastedText,
-  resolveNativeChatPastedText
-} from './native-chat-composer-pasted-text-references'
+import { admitNativeChatPastedText } from './native-chat-composer-pasted-text-references'
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
@@ -76,13 +73,8 @@ export function useNativeChatPtyComposerSend(args: {
     if (!admitNativeChatPastedText(args.draftScopeKey, text, args.setNotice)) {
       return
     }
-    text = resolveNativeChatPastedText(
-      args.draftScopeKey,
-      serializeNativeChatAgentReferences(
-        text,
-        readNativeChatComposerDraft(args.draftScopeKey).document
-      )
-    )
+    const submitted = readNativeChatComposerDraft(args.draftScopeKey)
+    text = serializeNativeChatAgentReferences(text, submitted.document, submitted.pastedTextFiles)
     const { sendOptions: launchSendOptions } = resolveNativeChatLaunchDraftSend({
       launchDraft: args.launchDraft,
       launchDraftResolved: args.launchDraftResolved,

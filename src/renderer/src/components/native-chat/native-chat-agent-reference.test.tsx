@@ -1,9 +1,22 @@
 // @vitest-environment happy-dom
+import { claudeDispatchMessageContent } from '../../../../main/claude/claude-structured-dispatch-content'
+import { turnInputFor } from '../../../../main/codex/codex-structured-message-options'
+import type { CodexTurnHost } from '../../../../main/codex/codex-structured-turn-start'
+import { preparePiRpcPrompt } from '../../../../main/pi/rpc-prompt'
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import {
+  pendingSendsAsMessages,
+  prunePendingSends
+} from '../../../../shared/native-chat-pending-sends'
+import { useNativeChatComposerRecall } from './use-native-chat-composer-recall'
+import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
+import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
+import { nativeChatPastedTextToken } from './native-chat-pasted-text-reference'
 import { CrewPanelContent } from '../orchestration-crew/OrchestrationCrewPanel'
 import { TooltipProvider } from '../ui/tooltip'
 import { emptyCrew, type OrchestrationCrewRow } from '../../../../shared/orchestration-crew'
 import { openOrchestrationCrewAgent } from '@/lib/open-agent-message-sender'
-import { createRef } from 'react'
+import { createRef, useRef, useState } from 'react'
 import { act, cleanup, render, renderHook, within, fireEvent } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
@@ -12,6 +25,7 @@ import type { NativeChatStructuredComposerTransport } from './native-chat-compos
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { NativeChatPromptEditor } from './NativeChatPromptEditor'
 import { promptEditor } from './native-chat-prompt-editor.test-support'
+import { promptText } from './native-chat-prompt-document'
 import { agentReferenceToken } from '../../../../shared/orchestration-agent-reference'
 import { serializeNativeChatAgentReferences } from './native-chat-agent-reference-send'
 import { useNativeChatStructuredComposerSend } from './use-native-chat-structured-composer-send'
@@ -93,7 +107,7 @@ function transport(): NativeChatStructuredComposerTransport {
   }
 }
 
-it('keeps a split’s caret, duplicate-name identities, literal copy/recall and atomic undo', async () => {
+it('keeps a split’s caret, duplicate-name identities, literal unsent copy and atomic undo', async () => {
   const left = editor('left')
   const right = editor('right', 'Other draft')
   await act(async () => {
@@ -107,7 +121,7 @@ it('keeps a split’s caret, duplicate-name identities, literal copy/recall and 
   expect(left.container.querySelectorAll('[data-native-chat-agent-reference]')).toHaveLength(2)
   const doc = readNativeChatComposerDraft('left').document
   expect(serializeNativeChatAgentReferences(stored, doc)).toBe(
-    'Hello @Same name @Same name \n\n[Orca agent "Same name": term_first — message it with orca orchestration send --to term_first]\n[Orca agent "Same name": dispatch:ctx_second — message it with orca orchestration send --to dispatch:ctx_second]'
+    'Hello @Same name (1) @Same name (2) \n\n[Orca agent "Same name (1)": term_first — message it with orca orchestration send --to term_first]\n[Orca agent "Same name (2)": dispatch:ctx_second — message it with orca orchestration send --to dispatch:ctx_second]'
   )
   expect(left.editor.getText()).toBe(stored)
   expect(serializeNativeChatAgentReferences('/model', doc)).toBe('/model')
@@ -138,9 +152,27 @@ it('serializes before structured queue admission, PTY writes and goal submission
     pane.input.setSelectionRange(6, 6)
     pane.input.insertAgentReferences!([first, first, second])
   })
+  const fileId = '22222222-2222-4222-8222-222222222222'
+  act(() => pane.editor.commands.insertContent(` ${nativeChatPastedTextToken(fileId)}`))
+  updateNativeChatComposerDraft(
+    'send',
+    { pastedTextFiles: { [fileId]: '/tmp/Same name (1).txt' } },
+    'immediate'
+  )
   const snapshot = readNativeChatComposerDraft('send')
-  const wire = serializeNativeChatAgentReferences(snapshot.text, snapshot.document)
+  const wire = serializeNativeChatAgentReferences(
+    snapshot.text,
+    snapshot.document,
+    snapshot.pastedTextFiles
+  )
   const structured = transport()
+  structured.dispatchCommand = vi.fn((text) =>
+    dispatchStructuredAgentSessionComposerCommand(text, {
+      snapshot: [],
+      invokeAction: async () => true,
+      setOption: async () => true
+    })
+  )
   const structuredHook = renderHook(() =>
     useNativeChatStructuredComposerSend({
       agent: 'claude',
@@ -165,7 +197,15 @@ it('serializes before structured queue admission, PTY writes and goal submission
     delivery: 'queue-if-active'
   })
   expect(entry).not.toBeNull()
-  updateNativeChatComposerDraft('send', { text: 'new draft', document: undefined }, 'immediate')
+  updateNativeChatComposerDraft(
+    'send',
+    {
+      text: 'new draft/label/file',
+      document: undefined,
+      pastedTextFiles: { [fileId]: '/tmp/changed.txt' }
+    },
+    'immediate'
+  )
   noteStructuredAgentSessionFence('test-session', 1)
   queuedRuntime.call.mockResolvedValue({
     ok: true,
@@ -194,6 +234,7 @@ it('serializes before structured queue admission, PTY writes and goal submission
   })
   expect(structured.dispatchCommand).toHaveBeenCalledWith('/compact')
   updateNativeChatComposerDraft('send', snapshot, 'immediate')
+  const optimistic = vi.fn()
   const ptyHook = renderHook(() =>
     useNativeChatPtyComposerSend({
       agent: 'codex',
@@ -208,6 +249,7 @@ it('serializes before structured queue admission, PTY writes and goal submission
       sessionOptionsSurface: null,
       terminalTabId: 'tab-left',
       trackPendingSend: vi.fn(),
+      onOptimisticSend: optimistic,
       setDraft: vi.fn(),
       setCaret: vi.fn(),
       clearSkillOrigin: vi.fn(),
@@ -220,6 +262,14 @@ it('serializes before structured queue admission, PTY writes and goal submission
     'pty-left',
     wire
   ])
+  expect(optimistic).toHaveBeenCalledExactlyOnceWith(wire, [])
+  if (!entry) {
+    throw new Error('send slot not admitted')
+  }
+  expect(await claudeDispatchMessageContent(entry.body)).toEqual([{ type: 'text', text: wire }])
+  // SAFETY: a text-only body with no skills never reads the turn host; the production adapter consumes only its captured blocks.
+  expect(turnInputFor({} as CodexTurnHost, entry.body)).toEqual([{ type: 'text', text: wire }])
+  expect((await preparePiRpcPrompt(entry.body)).message).toBe(wire)
   const goalTransport = transport()
   goalTransport.threadGoal = { setObjective: vi.fn(async () => true) }
   const goalHook = renderHook(() =>
@@ -332,4 +382,228 @@ it('hides unknown hosts, starts collapsed and separates mention, navigation and 
   fireEvent.keyDown(view.getByRole('complementary'), { key: 'Escape' })
   expect(view.queryByRole('complementary')).toBeNull()
   expect(document.activeElement).toBe(view.getByRole('button', { name: 'Show crew: 1 workers' }))
+})
+
+it('captures projected identity once for real typed-goal dispatch and Goal mode while isolating other host commands', async () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  const token = nativeChatPastedTextToken(id)
+  const pane = editor('goals', '/goal Inspect ')
+  act(() => {
+    pane.input.setSelectionRange(pane.input.value.length, pane.input.value.length)
+    pane.input.insertAgentReferences!([first, second, first])
+    pane.editor.commands.insertContent(` ${token}`)
+  })
+  const raw = readNativeChatComposerDraft('goals')
+  updateNativeChatComposerDraft(
+    'goals',
+    { pastedTextFiles: { [id]: '/tmp/Same name (1).txt' } },
+    'immediate'
+  )
+  const snapshot = readNativeChatComposerDraft('goals')
+  const expected = serializeNativeChatAgentReferences(
+    snapshot.text,
+    snapshot.document,
+    snapshot.pastedTextFiles
+  )
+    .replace(/^\/goal\s+/, '')
+    .trim()
+  expect(expected).toContain('@Same name (2) @Same name (3) @Same name (2)')
+  const setObjective = vi.fn(async () => true)
+  const structured = transport()
+  structured.threadGoal = { setObjective }
+  structured.dispatchCommand = (text) =>
+    dispatchStructuredAgentSessionComposerCommand(text, {
+      snapshot: [],
+      invokeAction: async () => true,
+      setOption: async () => true,
+      setThreadGoalObjective: setObjective
+    })
+  structured.capturePresentation = () => {
+    updateNativeChatComposerDraft(
+      'goals',
+      { text: 'later @label', document: undefined, pastedTextFiles: { [id]: '/tmp/later.txt' } },
+      'immediate'
+    )
+    return () => true
+  }
+  const hook = renderHook(() =>
+    useNativeChatStructuredComposerSend({
+      agent: 'claude',
+      draftScopeKey: 'goals',
+      imageAttachments: [],
+      structuredTransport: structured,
+      isComposing: () => false,
+      clearSkillOrigin: vi.fn(),
+      setDraft: vi.fn(),
+      setCaret: vi.fn()
+    })
+  )
+  await act(async () => hook.result.current(snapshot.text))
+  expect(setObjective).toHaveBeenLastCalledWith(expected)
+  expect(structured.send).not.toHaveBeenCalled()
+  updateNativeChatComposerDraft('goals', snapshot, 'immediate')
+  const mode = renderHook(() =>
+    useNativeChatComposerSubmit({
+      structuredTransport: structured,
+      draftScopeKey: 'goals',
+      draft: snapshot.text,
+      caret: 0,
+      imageAttachments: [],
+      disabled: false,
+      sendPty: vi.fn(),
+      sendStructured: vi.fn(),
+      setDraft: vi.fn(),
+      setCaret: vi.fn()
+    })
+  )
+  act(() =>
+    mode.result.current.goalMode.interceptPick(vi.fn())({
+      kind: 'command',
+      id: 'goal',
+      name: 'goal',
+      token: '/goal',
+      skillCollision: false
+    })
+  )
+  await act(async () => mode.result.current.send())
+  expect(setObjective).toHaveBeenCalledTimes(2)
+  expect(setObjective).toHaveBeenLastCalledWith(expected)
+  updateNativeChatComposerDraft('goals', snapshot, 'immediate')
+  structured.dispatchCommand = vi.fn(async () => ({ handled: true, accepted: true, error: null }))
+  for (const command of ['/compact', '/model sonnet']) {
+    await act(async () => hook.result.current(command))
+    expect(structured.dispatchCommand).toHaveBeenLastCalledWith(command)
+  }
+  expect(raw.text).toContain(token)
+})
+
+function RecallComposer({
+  messages,
+  onSend
+}: {
+  messages: NativeChatMessage[]
+  onSend: (text: string) => void
+}) {
+  const inputRef = useRef<NativeChatComposerInput>(null)
+  const [draft, setDraft] = useState('')
+  const [, setCaret] = useState(0)
+  const { recall } = useNativeChatComposerRecall({ draft, source: { messages }, inputRef })
+  const structured = transport()
+  structured.send = (text) => {
+    onSend(text)
+    return 'queued'
+  }
+  const send = useNativeChatStructuredComposerSend({
+    agent: 'claude',
+    draftScopeKey: 'recall',
+    imageAttachments: [],
+    structuredTransport: structured,
+    isComposing: () => false,
+    clearSkillOrigin: vi.fn(),
+    setDraft,
+    setCaret
+  })
+  const keydown = useNativeChatComposerKeyDown({
+    autocomplete: { mode: 'none' },
+    mentionFiles: { files: [], loading: false, failed: false },
+    completeMention: vi.fn(),
+    activeSuggestion: 0,
+    draft,
+    recall,
+    isComposing: () => false,
+    completePickerItem: vi.fn(),
+    dispatchPickerCommand: vi.fn(),
+    dismissPicker: vi.fn(),
+    interrupt: vi.fn(),
+    send: () => void send(draft),
+    setActiveSuggestion: vi.fn(),
+    setDraft,
+    setCaret
+  })
+  return (
+    <NativeChatPromptEditor
+      scopeKey="recall"
+      inputRef={inputRef}
+      initialValue=""
+      disabled={false}
+      placeholder="Recall"
+      onChange={(input) => setDraft(input.value)}
+      onSelect={vi.fn()}
+      onKeyDown={keydown}
+    />
+  )
+}
+
+it('replaces optimistic exact and glued echoes with authoritative turns before ArrowUp, plain resend and remount', async () => {
+  const pane = editor('echo', 'ordinary @Same name ')
+  act(() => {
+    pane.input.setSelectionRange(pane.input.value.length, pane.input.value.length)
+    pane.input.insertAgentReferences!([first, second, first])
+  })
+  const submitted = readNativeChatComposerDraft('echo')
+  const wire = serializeNativeChatAgentReferences(submitted.text, submitted.document).trim()
+  const pending = [{ id: 'optimistic', text: wire, sentAt: 1 }]
+  expect(pendingSendsAsMessages(pending)[0].id).toBe('pending:optimistic')
+  const authoritative: NativeChatMessage = {
+    id: 'provider-user',
+    role: 'user',
+    blocks: [{ type: 'text', text: wire }],
+    timestamp: 2,
+    source: 'transcript'
+  }
+  expect(pendingSendsAsMessages(pending, [authoritative])).toEqual([])
+  const assistant: NativeChatMessage = {
+    id: 'provider-reply',
+    role: 'assistant',
+    blocks: [{ type: 'text', text: 'ok' }],
+    timestamp: 3,
+    source: 'transcript'
+  }
+  expect(prunePendingSends(pending, [authoritative, assistant])).toEqual([])
+  const glued: NativeChatMessage = {
+    ...authoritative,
+    id: 'provider-glued',
+    blocks: [{ type: 'text', text: `${wire}follow-up` }]
+  }
+  const both = [...pending, { id: 'second', text: 'follow-up', sentAt: 1 }]
+  expect(pendingSendsAsMessages(both, [glued])).toEqual([])
+  expect(prunePendingSends(both, [glued, assistant])).toEqual([])
+  pane.unmount()
+  const sent = vi.fn()
+  for (let mount = 0; mount < 2; mount++) {
+    const recalled = render(<RecallComposer messages={[authoritative, assistant]} onSend={sent} />)
+    const textbox = within(recalled.container).getByRole('textbox')
+    fireEvent.keyDown(textbox, { key: 'ArrowUp' })
+    expect(promptText(promptEditor(textbox).state.doc)).toBe(wire)
+    expect(recalled.container.querySelector('[data-native-chat-agent-reference]')).toBeNull()
+    await act(async () => fireEvent.keyDown(textbox, { key: 'Enter' }))
+    expect(sent).toHaveBeenLastCalledWith(wire)
+    recalled.unmount()
+    clearNativeChatComposerDraftsForTests()
+  }
+})
+
+it('applies structured UTF-8 admission to the expanded final body before any send slot is taken', async () => {
+  const pane = editor('size', '')
+  act(() => pane.input.insertAgentReferences!([{ ...first, label: 'é'.repeat(70000) }]))
+  const raw = readNativeChatComposerDraft('size')
+  expect(Buffer.byteLength(raw.text, 'utf8')).toBeLessThan(256 * 1024)
+  const structured = transport()
+  structured.dispatchCommand = async () => ({ handled: false, accepted: false, error: null })
+  const hook = renderHook(() =>
+    useNativeChatStructuredComposerSend({
+      agent: 'claude',
+      draftScopeKey: 'size',
+      imageAttachments: [],
+      structuredTransport: structured,
+      isComposing: () => false,
+      clearSkillOrigin: vi.fn(),
+      setDraft: vi.fn(),
+      setCaret: vi.fn()
+    })
+  )
+  await act(async () => hook.result.current(raw.text))
+  expect(structured.send).not.toHaveBeenCalled()
+  expect(structured.onError).toHaveBeenCalledTimes(1)
+  expect(readNativeChatComposerDraft('size').text).toBe(raw.text)
 })

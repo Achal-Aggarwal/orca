@@ -26,10 +26,26 @@ export function nativeChatPastedTextState(scope: string, token: string): string 
 
 /** Only completed paths need boundaries; copied source bytes remain literal. */
 export function resolveNativeChatPastedText(scope: string, text: string, copy = false): string {
+  return projectPastedText(text, (token) => nativeChatPastedTextState(scope, token), copy)
+}
+
+/** Capture completed file facts with the submitted document, before any send body is built. */
+export function projectNativeChatPastedText(
+  text: string,
+  files: Readonly<Record<string, string>> = {}
+): string {
+  return projectPastedText(text, (token) => files[nativeChatPastedTextId(token) ?? ''] ?? null)
+}
+
+function projectPastedText(
+  text: string,
+  stateOf: (token: string) => string | null,
+  copy = false
+): string {
   let resolved = ''
   let pathBefore = false
   text.split(NATIVE_CHAT_PASTED_TEXT_TOKEN).forEach((part, index) => {
-    const state = index % 2 === 1 ? nativeChatPastedTextState(scope, part) : null
+    const state = index % 2 === 1 ? stateOf(part) : null
     const path = state !== null && state !== 'saving' && state !== 'unsaved'
     const piece = path
       ? formatNativeChatFileReference(state)

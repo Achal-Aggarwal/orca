@@ -4,7 +4,10 @@ import { useAppStore } from '@/store'
 import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
 import type { TerminalPaneController } from '../terminal-pane/use-terminal-pane-controller'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
-import { captureTerminalDropTarget } from '../terminal-pane/terminal-drop-target'
+import {
+  captureTerminalDropTarget,
+  getCurrentTerminalDropTransport
+} from '../terminal-pane/terminal-drop-target'
 import { insertTerminalCrewMention } from '../terminal-pane/terminal-crew-mention'
 import { useTerminalCrewIdentity } from './use-terminal-crew-identity'
 import { OrchestrationCrewPanel } from './OrchestrationCrewPanel'
@@ -43,6 +46,8 @@ function TerminalCrewPortal({
           row.sendAddress ? [{ label: row.label, address: row.sendAddress, hostKey }] : []
         )
         if (manager) {
+          const rejected = () =>
+            toast.error('The terminal did not accept the agent reference. Try again.')
           void insertTerminalCrewMention(
             manager,
             paneTransportsRef.current,
@@ -50,9 +55,14 @@ function TerminalCrewPortal({
             references
           ).then((accepted) => {
             if (!accepted) {
-              toast.error('The terminal did not accept the agent reference. Try again.')
+              rejected()
+            } else if (
+              managerRef.current === manager &&
+              getCurrentTerminalDropTransport(manager, paneTransportsRef.current, captured)
+            ) {
+              manager.setActivePane(captured.paneId)
             }
-          })
+          }, rejected)
         }
       }}
     />,
