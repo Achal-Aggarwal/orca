@@ -60,6 +60,7 @@
       "useHereRefusedOk": "OK",
       "useHereSupersededBy": "{{names}} wurden nach diesem Projekt auf den {{distro}}-Host verschoben. Zuerst diese Projekte wieder auf diesem Computer verwenden, dann dieses Projekt.",
       "useHereMoveRunning": "Ein Verschiebevorgang auf den {{distro}}-Host läuft noch. Nach dessen Abschluss erneut versuchen.",
+      "useHereHostKeptForPeers": "{{project}} wurde auf den Host {{distro}} verschoben, der für ein anderes Orca weiterläuft. Füge den Host erneut hinzu, um es hier wieder zu verwenden.",
       "useHereHostUnreachable": "Der {{distro}}-Host antwortet nicht, daher kann Orca die dortige Kopie dieses Projekts nicht stoppen, und die zugehörigen Agenten laufen dort möglicherweise noch. Den Host in den Einstellungen verbinden oder entfernen und dann erneut versuchen.",
       "useHereHostStillRunning": "In der Kopie dieses Projekts auf dem {{distro}}-Host laufen noch Terminals, sodass die zugehörigen Agenten doppelt ausgeführt werden könnten. Einen Moment warten und dann erneut versuchen.",
       "useHereFailed": "Dieses Projekt konnte nicht auf diesen Computer zurückgeholt werden.",
@@ -6217,7 +6218,7 @@
           "advanced": "Erweitert",
           "alsoDeleteRemoteHint": "Löscht die entfernten Git-Worktrees und ihre Branches dauerhaft. Kann nicht rückgängig gemacht werden.",
           "alsoForgetLocalHint": "Entfernt sie nur aus Orca. Entfernte Dateien, Worktrees und Branches bleiben unberührt.",
-          "wslHostEndsTerminals": "Entfernt {{value0}} aus Orca, beendet die zugehörigen offenen Terminals und stoppt den Orca-Server in dieser Distribution. Dateien in der Distribution bleiben unberührt."
+          "wslHostEndsTerminalsUnlessShared": "Entfernt {{value0}} aus Orca. Sofern kein anderes auf diesem Computer geöffnetes Orca es verwendet, werden außerdem die offenen Terminals beendet und der Orca-Server in dieser Distribution gestoppt. Dateien in der Distribution bleiben unverändert."
         },
         "HostRenameDialog": {
           "1a2b3c4d5e": "Host umbenennen",
@@ -6574,6 +6575,7 @@
           "removalPending": "Entfernen nicht abgeschlossen"
         },
         "wslHostRemoval": {
+          "keptForOthers": "Aus diesem Orca entfernt. Der Host läuft für {{value0}} weiter.",
           "partial": "Der Host wurde entfernt, aber in der Distribution läuft noch etwas: {{value0}}",
           "pending": "Orca hat den Host noch nicht entfernt: {{value0}} Zum Wiederholen erneut entfernen oder zum Beibehalten verbinden."
         },
