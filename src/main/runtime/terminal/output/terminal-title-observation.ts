@@ -60,39 +60,15 @@ export abstract class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWit
   }
 
   /** The PTY's agent status under this title: the program's own OSC 7501 activity while it
-   *  reports one, else what the title glyph says. */
+   *  reports one, else what the title glyph says. A turn end that outlasts a `working` report is
+   *  rest: the program then reports work beyond the turn, such as live teammates. */
   protected classifyPtyTitleStatus(ptyId: string, rawTitle: string): AgentStatus | null {
-    return (
-      this.ptyTitleTrackersByPtyId.get(ptyId)?.programActivity ??
-      detectAgentStatusFromTitle(rawTitle)
-    )
-  }
-
-  /** Re-classifies the PTY under new program activity; on null the title's own glyph decides again. */
-  protected applyPtyProgramActivity(ptyId: string, activity: AgentStatus | null): void {
-    const entry = this.ptyTitleTrackersByPtyId.get(ptyId)
-    if (!entry) {
-      return
+    const activity = this.ptyTitleTrackersByPtyId.get(ptyId)?.programActivity
+    const agent = activity === 'working' ? this.getPaneAgentForTuiIdle(ptyId) : null
+    if (agent && this.readTuiIdleHookTurnForPty(ptyId, agent)?.endedUnderProgramWork) {
+      return 'idle'
     }
-    entry.programActivity = activity
-    this.observeClaudeTerminalEvidence(ptyId, { kind: 'activity', status: activity })
-    const pty = this.ptysById.get(ptyId)
-    if (activity === null && pty?.lastExplicitAgentStatus?.programAtRest) {
-      // The at-rest claim was the program's; a later agent in this pane must earn its own.
-      const { programAtRest: _ended, ...status } = pty.lastExplicitAgentStatus
-      pty.lastExplicitAgentStatus = status
-    }
-    if (entry.lastTitle) {
-      // A stale-spinner clear stands for the title it replaced, so a dead spinner is not revived.
-      const raw = pty?.titleDisplayClear?.title ?? entry.lastTitle.raw
-      const changed = this.applyTrackedPtyTitle(ptyId, raw, entry.lastTitle.normalized, undefined, {
-        statusOnly: true
-      })
-      // The chunk's session-tab fan-out carries the new status to mobile.
-      if (changed && entry.applyingChunk) {
-        entry.chunkTouchedSessionTabs = true
-      }
-    }
+    return activity ?? detectAgentStatusFromTitle(rawTitle)
   }
 
   /** Apply one observed OSC title (raw form) to the PTY and leaf records.

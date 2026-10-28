@@ -178,6 +178,22 @@ describe('readTuiIdleHookTurn', () => {
     ).toEqual({ state: 'permission', blockedReason: null })
   })
 
+  it("marks a done newer than the program's working report, and joins Agent Teams to claude's row", () => {
+    const hookRow = row({ agentType: 'claude' })
+    const { receivedAt } = hookRow
+    const read = (programWorkingSince: number | null) =>
+      readTuiIdleHookTurn({
+        ...base,
+        agent: 'claude-agent-teams',
+        hookRows: [hookRow],
+        programWorkingSince
+      })
+    expect(read(receivedAt - 1000)).toEqual({ ...DONE, endedUnderProgramWork: true })
+    // Work the program reported after the turn end, or no working report at all, is not outlasted.
+    expect(read(receivedAt + 1)).toEqual(DONE)
+    expect(read(null)).toEqual(DONE)
+  })
+
   it('takes the newest joined row', () => {
     const now = Date.now()
     expect(
@@ -324,6 +340,20 @@ describe('evaluateTuiIdle hook lane', () => {
       quietForeground: 'closed'
     })
     expect(readHookTurn).toHaveBeenCalledOnce()
+  })
+})
+
+describe('evaluateTuiIdle claude turn end under program work', () => {
+  it("settles over Claude's working report once its turn end outlasts it (live teammates)", () => {
+    expect(
+      evaluateTuiIdle(
+        input({
+          agent: 'claude',
+          record: record({ lastAgentStatus: 'working' }),
+          readHookTurn: () => ({ ...DONE, endedUnderProgramWork: true })
+        })
+      )
+    ).toEqual({ kind: 'ready-strong' })
   })
 })
 

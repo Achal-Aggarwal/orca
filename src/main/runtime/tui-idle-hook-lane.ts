@@ -14,12 +14,21 @@ export type TuiIdleHookTurn = {
   taskWakeupPending?: true
   /** When a fresh `done`'s turn has had time to paint its last frame. */
   finalFrameAt?: number
+  /** A clear turn end newer than the program's ongoing `working` report, which then covers work
+   *  beyond the lead's turn (e.g. live teammates) rather than the turn itself. */
+  endedUnderProgramWork?: true
 }
 
 // Why: Codex runs its Stop hook before it paints the turn's last frame, which can be its plan menu.
 const TURN_END_FINAL_FRAME_MS = 750
 // Why: Codex opens its plan menu only after a turn that rendered a proposed plan; no hook field says so.
 const CODEX_PROPOSED_PLAN_HEADER = 'Proposed Plan'
+
+/** The agent whose hooks report for a pane running `agent`. */
+function hookReportingAgent(agent: TuiAgent | null | undefined): TuiAgent | null | undefined {
+  // Why: Agent Teams runs the same Claude binary, so its hooks report as `claude`.
+  return agent === 'claude-agent-teams' ? 'claude' : agent
+}
 
 /** Scans newest-first so the common hit (this turn's plan) returns early. */
 export function retainedTailIncludes(
@@ -70,6 +79,8 @@ export type TuiIdleHookTurnRead = {
    *  the turn that input may have started (or the agent it restarted), whose first hook can still
    *  be in flight. */
   lastInputAt?: number | null
+  /** When the program's current OSC 7501 `working` report began; null while it reports none. */
+  programWorkingSince?: number | null
   /** Whether the pane's retained output holds `text`; read only while a fresh `done` may precede a menu. */
   tailIncludes?: (text: string) => boolean
   /** The existing permission arbiter, given the turn as the pane's explicit status. */
@@ -82,7 +93,8 @@ export type TuiIdleHookTurnRead = {
 /** Read the freshest pane/handle-joined hook row for this agent and process; unjoinable, stale or foreign rows leave other lanes to decide. */
 export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn | null {
   const row = selectFreshExplicitAgentStatusRow(read)
-  if (!row || row.agentType !== read.agent || row.receivedAt < (read.respawnedAt ?? -1)) {
+  const agent = hookReportingAgent(read.agent)
+  if (!row || row.agentType !== agent || row.receivedAt < (read.respawnedAt ?? -1)) {
     return null
   }
   const state = hookLeadTurnState(row)
@@ -94,7 +106,7 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
   // Why the hook alone blocks: a question or custom modal paints no dialog text the arbiter knows,
   // and these hooks report its answer. Input since may have answered it before the hook arrived.
   const taskWakeupPending =
-    read.agent === 'claude' &&
+    agent === 'claude' &&
     row.state !== 'done' &&
     (row.claudeTaskWakeupPending === 'notification' ||
       (row.claudeTaskWakeupPending === 'finishing-turn' &&
@@ -113,10 +125,18 @@ export function readTuiIdleHookTurn(read: TuiIdleHookTurnRead): TuiIdleHookTurn 
     hookAuthority(read.agent) === 'turn-end' &&
     Date.now() < finalFrameAt &&
     read.tailIncludes?.(CODEX_PROPOSED_PLAN_HEADER) === true
+  const endedUnderProgramWork =
+    state === 'done' &&
+    !taskWakeupPending &&
+    !finalFramePending &&
+    blockedReason === null &&
+    typeof read.programWorkingSince === 'number' &&
+    row.receivedAt > read.programWorkingSince
   return {
     state,
     ...(taskWakeupPending ? { taskWakeupPending: true as const } : {}),
     ...(finalFramePending ? { finalFrameAt } : {}),
+    ...(endedUnderProgramWork ? { endedUnderProgramWork: true as const } : {}),
     blockedReason:
       blockedReason ??
       (state === 'permission' && !predatesInput ? 'agent-interactive-prompt' : null)
@@ -136,8 +156,12 @@ export function evaluateHookTurn(
   readHookTurn: () => TuiIdleHookTurn | null
 ): TuiIdleHookVerdict | null {
   // A ready composer can still owe a task wake-up; only that owner-produced fact vetoes Claude rest.
-  if (agent === 'claude') {
+  // A turn end that outlasts Claude's `working` report is rest: Claude keeps reporting working while teammates live.
+  if (hookReportingAgent(agent) === 'claude') {
     const turn = readHookTurn()
+    if (turn?.endedUnderProgramWork) {
+      return { kind: 'ready-strong' }
+    }
     return turn?.taskWakeupPending
       ? turn.blockedReason
         ? { kind: 'blocked', reason: turn.blockedReason }
