@@ -6,7 +6,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
  */
  function isTaskItem(item) {
 -	const match = (item.raw || item.text || "").match(/^(\s*)[-+*]\s+\[([ xX])\]\s+/);
-+	const match = (item.raw || item.text || "").match(/^(\s*)[-+*]\s+\[([ xX])\][^\S\r\n]+/);
++	const match = (item.raw || item.text || "").match(/^([^\S\r\n]*)[-+*][^\S\r\n]+\[([ xX])\][^\S\r\n]+/);
  	if (match) return {
  		isTask: true,
  		checked: match[2].toLowerCase() === "x",
@@ -18,7 +18,7 @@ diff --git a/dist/index.js b/dist/index.js
  */
  function isTaskItem(item) {
 -	const match = (item.raw || item.text || "").match(/^(\s*)[-+*]\s+\[([ xX])\]\s+/);
-+	const match = (item.raw || item.text || "").match(/^(\s*)[-+*]\s+\[([ xX])\][^\S\r\n]+/);
++	const match = (item.raw || item.text || "").match(/^([^\S\r\n]*)[-+*][^\S\r\n]+\[([ xX])\][^\S\r\n]+/);
  	if (match) return {
  		isTask: true,
  		checked: match[2].toLowerCase() === "x",
