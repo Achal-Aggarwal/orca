@@ -10,6 +10,8 @@ import { makeFolderWorkspace, makeWorktree } from '../worktree-jump-palette-test
 import { aiVaultSessionOwnerWorkspaces } from './ai-vault-session-worktree'
 import { resolveAiVaultHistoryRowResume } from './ai-vault-session-resume-in-chat-workspace'
 import { useSubagentSessions } from './use-subagent-sessions'
+import type { AiVaultListResult } from '../../../../shared/ai-vault-types'
+import { reuseAiVaultListResult } from './ai-vault-session-identity'
 
 vi.mock('@/runtime/local-runtime-capabilities', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -37,6 +39,7 @@ function parentSession() {
 it('bounds loaded-child correspondence work at N and 10N without alias-only refetches', async () => {
   const copy = vi.spyOn(correspondence, 'withAiVaultSessionCwdAliases')
   for (const size of [100, 1000]) {
+    copy.mockClear()
     const parent = parentSession()
     const children = Array.from({ length: size }, (_, index) => ({
       ...parent,
@@ -69,6 +72,20 @@ it('bounds loaded-child correspondence work at N and 10N without alias-only refe
     rerender({ ...updated, title: 'Renamed parent' })
     expect(copy).not.toHaveBeenCalled()
     expect(result.current.sessions).toBe(projected)
+    let published: AiVaultListResult = { sessions: [updated], issues: [], scannedAt: '' }
+    for (const title of ['Transport rename', 'Another metadata update']) {
+      const incoming = structuredClone(published)
+      incoming.sessions[0].title = title
+      incoming.sessions[0].totalTokens += 1
+      published = reuseAiVaultListResult(published, incoming)
+      const delivered = published.sessions[0]
+      expect(delivered).toBe(incoming.sessions[0])
+      expect(delivered.cwdAliases).not.toBe(updated.cwdAliases)
+      expect(delivered.cwdAliases).toEqual(updated.cwdAliases)
+      rerender(delivered)
+      expect(copy).not.toHaveBeenCalled()
+      expect(result.current.sessions).toBe(projected)
+    }
     rerender({ ...updated, cwdAliases: ['/var/relinked'] })
     expect(copy).toHaveBeenCalledTimes(size)
     expect(result.current.sessions.every((row) => row.cwdAliases?.[0] === '/var/relinked')).toBe(
@@ -79,6 +96,21 @@ it('bounds loaded-child correspondence work at N and 10N without alias-only refe
     expect(copy).not.toHaveBeenCalled()
     expect(result.current.sessions).toBe(children)
     expect(list).toHaveBeenCalledTimes(1)
+    for (const changed of [
+      { cwd: '/private/var/other' },
+      { executionHostId: 'runtime:other' as const },
+      { filePath: '//wsl.localhost/Ubuntu/parent.jsonl' },
+      { agent: 'claude' as const }
+    ]) {
+      rerender(updated)
+      await act(async () => {})
+      expect(result.current.sessions.every((row) => row.cwdAliases?.[0] === '/var/example')).toBe(
+        true
+      )
+      rerender({ ...updated, ...changed })
+      await act(async () => {})
+      expect(result.current.sessions.every((row, index) => row === children[index])).toBe(true)
+    }
     unmount()
   }
 })

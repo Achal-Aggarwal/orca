@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { withAiVaultSessionCwdAliases } from '../../../../shared/ai-vault-session-cwd-aliases'
 
@@ -52,7 +53,10 @@ export function useSubagentSessions(
     session.modifiedAt,
     attempt
   ])
-  const { agent, cwd, cwdAliases, executionHostId, filePath } = session
+  const { agent, cwd, executionHostId, filePath } = session
+  // IPC clones equal alias arrays when only parent metadata changes.
+  const retainCwdAliases = useShallow((aliases: AiVaultSession['cwdAliases']) => aliases)
+  const cwdAliases = retainCwdAliases(session.cwdAliases)
   const sessions = useMemo(() => {
     if (!cwdAliases?.length) {
       return state.sessions
