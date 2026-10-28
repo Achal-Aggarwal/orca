@@ -10,6 +10,7 @@ import {
 import type { GenerationStore } from './generation-store'
 import { deriveHostCacheKey } from './host-cache-key'
 import { download, openCache, readManifest } from './mobile-web-shell-session-effects'
+import { verifyGeneration } from './generation-verification'
 import {
   createMobileWebShellRuntime,
   DOCUMENT_LOAD_DEADLINE_MS,
@@ -95,27 +96,35 @@ export function useMobileWebShellSession(args: {
   const epochRef = useRef(0)
   // Abort abandoned downloads to release their four host read slots.
   const downloadsRef = useRef<Set<AbortController>>(new Set())
-  const deadlineRef = useRef<ReturnType<typeof createShellPageDeadline> | null>(null)
-  deadlineRef.current ??= createShellPageDeadline(runtime.setForegroundTimer)
-  const deadline = deadlineRef.current
+  const [deadline] = useState(() => createShellPageDeadline(runtime.setForegroundTimer))
   const hostIdRef = useRef(hostId)
   const logTraceRef = useRef(EMPTY_SHELL_LOG_TRACE)
   const runEffectRef = useRef<
     ((epoch: number, flow: number, effect: MobileWebShellSessionEffect) => void) | null
   >(null)
 
+  const cancelPending = useCallback((): void => {
+    downloadsRef.current.forEach((controller) => controller.abort())
+    downloadsRef.current.clear()
+    deadline.cancel()
+  }, [deadline])
+
   const dispatch = useCallback(
     (epoch: number, event: MobileWebShellSessionEvent): void => {
       if (epoch !== epochRef.current) {
         return
       }
-      const stepped = reduceMobileWebShellSession(sessionRef.current, event)
-      const trace = traceShellStep(logTraceRef.current, sessionRef.current, event, stepped.session)
+      const previous = sessionRef.current
+      const stepped = reduceMobileWebShellSession(previous, event)
+      const trace = traceShellStep(logTraceRef.current, previous, event, stepped.session)
       logTraceRef.current = trace
-      for (const line of shellSessionStepLines(sessionRef.current, event, stepped.session, trace)) {
+      for (const line of shellSessionStepLines(previous, event, stepped.session, trace)) {
         recordShellLifecycleLine(hostIdRef.current, line)
       }
       sessionRef.current = stepped.session
+      if (stepped.session.flow !== previous.flow) {
+        cancelPending()
+      }
       const next = stepped.session.state
       if (next.kind === 'fetching') {
         downloadProgress.publish(downloadFraction(next.receivedBytes, next.totalBytes))
@@ -129,17 +138,13 @@ export function useMobileWebShellSession(args: {
         runEffectRef.current?.(epoch, stepped.session.flow, effect)
       }
     },
-    [downloadProgress]
+    [cancelPending, downloadProgress]
   )
 
   const invalidate = useCallback((): void => {
     epochRef.current += 1
-    for (const controller of downloadsRef.current) {
-      controller.abort()
-    }
-    downloadsRef.current.clear()
-    deadline.cancel()
-  }, [deadline])
+    cancelPending()
+  }, [cancelPending])
 
   const runEffect = useCallback(
     async (epoch: number, flow: number, effect: MobileWebShellSessionEffect): Promise<void> => {
@@ -189,14 +194,9 @@ export function useMobileWebShellSession(args: {
             elapsedMs: runtime.now() - startedAtRef.current
           })
           return
-        case 'verify-generation': {
-          // A failed check is no evidence against the bytes; remounting them is the cheaper recovery.
-          const intact = await store
-            .verifyActiveGeneration(hostKey, effect.buildId)
-            .catch(() => true)
-          send({ type: 'generation-verified', flow, intact, pageReady: effect.pageReady })
+        case 'verify-generation':
+          await verifyGeneration(store, hostKey, flow, effect, send)
           return
-        }
         case 'cancel-deadlines':
           deadline.cancel()
           return
