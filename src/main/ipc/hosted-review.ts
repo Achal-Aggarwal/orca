@@ -41,7 +41,10 @@ function assertRegisteredRepo(repoPath: string, store: Store, repoId?: string): 
   return repo
 }
 
-function assertRegisteredRepoForBranch(args: HostedReviewForBranchArgs, store: Store): Repo {
+function assertRegisteredRepoForBranch(
+  args: Pick<HostedReviewForBranchArgs, 'repoPath' | 'repoId' | 'repoOwnerExecutionHostId'>,
+  store: Store
+): Repo {
   if (!args.repoOwnerExecutionHostId) {
     return assertRegisteredRepo(args.repoPath, store, args.repoId)
   }
@@ -140,7 +143,7 @@ export function registerHostedReviewHandlers(store: Store, stats: StatsCollector
   ipcMain.handle(
     'hostedReview:getCreationEligibility',
     async (_event, args: HostedReviewCreationEligibilityArgs) => {
-      const repo = assertRegisteredRepo(args.repoPath, store, args.repoId)
+      const repo = assertRegisteredRepoForBranch(args, store)
       const worktreePath = await resolveHostedReviewWorktreePath(repo, store, args.worktreePath)
       const localGitOptions = getLocalProjectGhExecOptions(store, repo)
       return getHostedReviewCreationEligibility({

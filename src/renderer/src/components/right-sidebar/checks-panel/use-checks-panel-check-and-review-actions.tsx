@@ -1,3 +1,4 @@
+import { getRepoExecutionHostId } from '../../../../../shared/execution-host'
 import { forgeOwnerHostIdForWorkspace } from '@/runtime/forge-credential-target'
 import React, { useCallback } from 'react'
 import { toast } from 'sonner'
@@ -104,7 +105,7 @@ export function useChecksPanelCheckAndReviewActions(model: ChecksPanelCheckAndRe
                     url: check.url,
                     prRepo: pr?.prRepo ?? null
                   },
-                  { repoId: repo.id }
+                  { repoId: repo.id, repoOwnerExecutionHostId: getRepoExecutionHostId(repo) }
                 )
           } catch {
             console.warn('[ChecksPanel] failed to load check details for AI fix prompt')
@@ -177,6 +178,7 @@ export function useChecksPanelCheckAndReviewActions(model: ChecksPanelCheckAndRe
         const refreshedPR = await fetchPRForBranch(repo.path, branch, {
           force: true,
           repoId: repo.id,
+          repoOwnerExecutionHostId: getRepoExecutionHostId(repo),
           worktreeId: activeWorktreeId ?? undefined,
           linkedPRNumber
         })
@@ -186,6 +188,7 @@ export function useChecksPanelCheckAndReviewActions(model: ChecksPanelCheckAndRe
         await refreshHostedReviewCard(fetchHostedReviewForBranch, {
           repoPath: repo.path,
           repoId: repo.id,
+          repoOwnerExecutionHostId: getRepoExecutionHostId(repo),
           branch,
           linkedGitHubPR: linkedPRNumber,
           linkedGitLabMR,
@@ -220,7 +223,8 @@ export function useChecksPanelCheckAndReviewActions(model: ChecksPanelCheckAndRe
             refreshedPR.prRepo,
             {
               force: true,
-              repoId: repo.id
+              repoId: repo.id,
+              repoOwnerExecutionHostId: getRepoExecutionHostId(repo)
             }
           )
             .then(
@@ -245,6 +249,7 @@ export function useChecksPanelCheckAndReviewActions(model: ChecksPanelCheckAndRe
           fetchPRComments(repo.path, refreshedPR.number, {
             force: true,
             repoId: repo.id,
+            repoOwnerExecutionHostId: getRepoExecutionHostId(repo),
             prRepo: refreshedPR.prRepo
           })
             .then(

@@ -18,6 +18,7 @@ import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../../../sha
 import { callRuntimeRpc } from '../../runtime/runtime-rpc-client'
 import { inflightPRRequests, prRequestGenerations } from './request-coordination'
 import { getRuntimeRepoTarget } from './repository-routing'
+import { hostedReviewOwnerIpcArgs } from '../slices/hosted-review-cache-state'
 import { applyCachedChecksStatus } from './pr-check-status-cache'
 import { isWslHostOffForForge, withForgeHostOffSkip } from './wsl-host-off-forge'
 import { cachedPRCandidateFields } from './pr-refresh-cached-candidate-fields'
@@ -73,6 +74,8 @@ export function startPullRequestLookup(args: {
     requestStartedHostedReviewEntry,
     requestStartedPRRefreshToken
   } = args
+  const executionHostId = repo ? getRepoExecutionHostId(repo) : undefined
+  const ownerHostId = executionHostId ?? LOCAL_EXECUTION_HOST_ID
   const request = (async () => {
     try {
       const runtimeRepo = getRuntimeRepoTarget(get(), { repoId, repoPath }, requestTarget)
@@ -83,7 +86,7 @@ export function startPullRequestLookup(args: {
         return cached?.data ?? null
       }
       const candidateWorktree = options?.worktreeId
-        ? findWorktreeById(get(), options.worktreeId)
+        ? findWorktreeById(get(), options.worktreeId, executionHostId)
         : null
       const requestHeadOid = candidateWorktree?.head ?? null
       const outcome = runtimeRepo
@@ -131,7 +134,8 @@ export function startPullRequestLookup(args: {
                   linkedPRNumber,
                   fallbackPRNumber,
                   acceptMergedFallbackPR: fallbackPRNumber !== null && fallbackPRSource !== null,
-                  currentHeadOid: requestHeadOid
+                  currentHeadOid: requestHeadOid,
+                  ...hostedReviewOwnerIpcArgs(options)
                 })
             return normalizeGitHubPRForBranchOutcome(response)
           })()
@@ -160,7 +164,7 @@ export function startPullRequestLookup(args: {
         let skippedStaleLinkedPRLookup = false
         set((s) => {
           // Why: unlinking a PR mid exact-linked-PR-lookup must stop the older result from restoring the manual link UI.
-          if (isStaleExactLinkedPRLookup(s, options?.worktreeId, linkedPRNumber)) {
+          if (isStaleExactLinkedPRLookup(s, options?.worktreeId, linkedPRNumber, executionHostId)) {
             skippedStaleLinkedPRLookup = true
             return s
           }
@@ -180,7 +184,7 @@ export function startPullRequestLookup(args: {
                     { cacheKey, repoPath, branch, repoId, connectionId: repo?.connectionId },
                     pr,
                     outcome.fetchedAt,
-                    repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
+                    ownerHostId
                   )
                 : pr,
             fetchedAt: outcome.fetchedAt,
@@ -200,11 +204,7 @@ export function startPullRequestLookup(args: {
         }
         const linkedPRWorktree =
           options?.worktreeId && linkedPRNumber != null
-            ? findUniqueWorktreeById(
-                get(),
-                options.worktreeId,
-                repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
-              )
+            ? findUniqueWorktreeById(get(), options.worktreeId, ownerHostId)
             : null
         if (
           options?.worktreeId &&
@@ -220,11 +220,7 @@ export function startPullRequestLookup(args: {
               shouldApply: () =>
                 shouldApplyDivergedLinkedPRClear({
                   worktree:
-                    findUniqueWorktreeById(
-                      get(),
-                      options.worktreeId!,
-                      repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
-                    ) ?? undefined,
+                    findUniqueWorktreeById(get(), options.worktreeId!, ownerHostId) ?? undefined,
                   linkedPRNumber,
                   branch,
                   requestHeadOid
@@ -253,11 +249,7 @@ export function startPullRequestLookup(args: {
               shouldApply: () =>
                 shouldApplyBranchMismatchedLinkedPRClear({
                   worktree:
-                    findUniqueWorktreeById(
-                      get(),
-                      options.worktreeId!,
-                      repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
-                    ) ?? undefined,
+                    findUniqueWorktreeById(get(), options.worktreeId!, ownerHostId) ?? undefined,
                   linkedPRNumber,
                   branch,
                   requestHeadOid
@@ -268,6 +260,7 @@ export function startPullRequestLookup(args: {
           void get().fetchPRForBranch(repoPath, branch, {
             force: true,
             repoId,
+            repoOwnerExecutionHostId: executionHostId,
             worktreeId: options.worktreeId,
             reason: options.reason
           })
@@ -279,6 +272,7 @@ export function startPullRequestLookup(args: {
           nextPR: pr,
           state: get(),
           worktreeId: options?.worktreeId,
+          executionHostId,
           linkedPRNumber,
           rejectedPRUrls: outcome.kind === 'no-pr' ? outcome.rejectedPRUrls : undefined
         })
