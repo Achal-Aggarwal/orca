@@ -23,13 +23,14 @@ import { isHistoricalProviderTimelineItem } from '../native-chat/agent-session-t
 import { StructuredAgentSessionCurrentWork } from '../native-chat/agent-session-wire/structured-agent-session-current-work'
 import { hasUnfinishedStructuredAgentSessionWork } from '../native-chat/agent-session-wire/structured-agent-session-unfinished-work'
 import { planStructuredAgentSessionDeadGeneration } from '../native-chat/agent-session-wire/structured-agent-session-dead-generation-settlement'
-import { AcpLoadHistory, type AcpLoadHistoryFrame } from './acp-history-replay'
+import { AcpLoadHistory } from './acp-history-replay'
 import { asReattachHistory } from './acp-structured-session'
 import {
   readNamespacedAcpFixture as recording,
   acpFixtureLoadReplay as loadReplay,
   openAcpHistoryFixtureRig as setup,
-  appendAcpFixtureChatSend as chatSend
+  appendAcpFixtureChatSend as chatSend,
+  acpFixtureReplayUpdate as replayUpdate
 } from './acp-timeline-fixture.test-support'
 
 afterEach(closeProviderTimelineRigs)
@@ -61,15 +62,6 @@ function dividers(rows: AgentJournalRenderItem[]): AgentJournalRenderItem[] {
   )
 }
 
-function replayUpdate(
-  sessionUpdate: string,
-  rest: Record<string, unknown> = {}
-): AcpLoadHistoryFrame {
-  return {
-    method: 'session/update',
-    params: { sessionId: NAMESPACE, update: { sessionUpdate, ...rest } }
-  }
-}
 const userReplay = (id: string, text = 'repeat') =>
   replayUpdate('user_message_chunk', {
     messageId: id,
@@ -133,6 +125,7 @@ describe('ACP history catch-up', () => {
 
     await catchUp(replay)
     expect(await fixture.rig.rows()).toEqual(complete)
+    expect((await fixture.rig.reopenJournal()).snapshot().items).toEqual(complete)
   })
 
   it('retains unproven visible replay after an OpenCode native failure', async () => {
@@ -245,6 +238,7 @@ describe('ACP history catch-up', () => {
     await fixture.restart()
     await catchUp(replay)
     expect(await fixture.rig.rows()).toEqual(complete)
+    expect((await fixture.rig.reopenJournal()).snapshot().items).toEqual(complete)
   })
   it('refreshes same-key bodies after restart without inventing execution ownership or a new divider', async () => {
     const { fixture, catchUp } = await setup(OPENCODE_ACP_DIALECT, 'user-message-id')

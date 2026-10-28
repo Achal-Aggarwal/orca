@@ -25,7 +25,7 @@ import { acpSubagentRecords } from './acp-structured-child-work.test-support'
 import { PromptResponseSchema } from './generated/acp-protocol.generated'
 
 import { catchUpAcpHistory } from './acp-history-catch-up'
-import type { AcpHistoryTurnIdentity } from './acp-history-replay'
+import type { AcpHistoryTurnIdentity, AcpLoadHistoryFrame } from './acp-history-replay'
 import { asReattachHistory } from './acp-structured-session'
 
 const frameSchema = z.object({
@@ -256,4 +256,14 @@ export async function appendAcpFixtureChatSend(
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
     { fence: 1, turnScope: { kind: 'thread' } }
   )
+}
+
+export function acpFixtureReplayUpdate(
+  sessionUpdate: string,
+  rest: Record<string, unknown> = {}
+): AcpLoadHistoryFrame {
+  return {
+    method: 'session/update',
+    params: { sessionId: NAMESPACE, update: { sessionUpdate, ...rest } }
+  }
 }
