@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
+import type { Project } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
 import {
   ghRepoExecOptions,
@@ -136,4 +137,32 @@ it('selects before an asynchronous repository lookup and retains that account fo
   finish()
   expect((await pending).ghOptions.ghAccount).toEqual(alice)
   expect(options('/repo').ghAccount).toEqual(bob)
+})
+
+it('derives runtime ownership again after project runtime changes', () => {
+  const platform = process.platform
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+  try {
+    let project: Project = {
+      id: 'p',
+      displayName: 'Work',
+      badgeColor: '#000000',
+      createdAt: 0,
+      updatedAt: 0,
+      sourceRepoIds: ['repo'],
+      localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+    }
+    release = installGitHubProjectAccounts({
+      getRepos: () => [repo()],
+      getProjects: () => [project],
+      getSettings: () => ({})
+    })
+    expect(options('/repo', null, { wslDistro: 'Ubuntu' }).ghAccount).toEqual(alice)
+    expect(options('/repo').ghAccount).toBeUndefined()
+    project = { ...project, localWindowsRuntimePreference: { kind: 'windows-host' } }
+    expect(options('/repo').ghAccount).toEqual(alice)
+    expect(options('/repo', null, { wslDistro: 'Ubuntu' }).ghAccount).toBeUndefined()
+  } finally {
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+  }
 })

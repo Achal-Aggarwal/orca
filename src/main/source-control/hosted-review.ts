@@ -62,46 +62,43 @@ export async function getHostedReviewForBranch(
     return null
   }
 
-  const provider = await getForgeProviderForRepository({
-    repoPath: input.repoPath,
-    executionHostId: input.executionHostId,
-    ...(input.localGitExecOptions ? { localGitExecOptions: input.localGitExecOptions } : {})
-  })
-  if (provider?.id === 'github') {
-    const connectionId = hostedReviewSshConnectionId(input.executionHostId)
-    return withGitHubRepoExecution(
-      input.repoPath,
-      connectionId,
-      getHostedReviewLocalGitOptions(input),
-      async () => {
-        const context = githubRepoContext(
-          input.repoPath,
-          connectionId,
-          getHostedReviewLocalGitOptions(input)
-        )
-        return lookup({
-          ...input,
-          localGitExecOptions: {
-            ...getHostedReviewLocalGitOptions(input),
-            ghAccount: context.ghAccount
-          }
-        })
-      }
-    )
-  }
-  return lookup(input)
+  const connectionId = hostedReviewSshConnectionId(input.executionHostId)
+  return withGitHubRepoExecution(
+    input.repoPath,
+    connectionId,
+    getHostedReviewLocalGitOptions(input),
+    async () => {
+      const context = githubRepoContext(
+        input.repoPath,
+        connectionId,
+        getHostedReviewLocalGitOptions(input)
+      )
+      return lookup({
+        ...input,
+        localGitExecOptions: {
+          ...getHostedReviewLocalGitOptions(input),
+          ghAccount: context.ghAccount
+        }
+      })
+    }
+  )
 
-  function lookup(input: Parameters<typeof getHostedReviewForBranch>[0]) {
+  function lookup(resolvedInput: Parameters<typeof getHostedReviewForBranch>[0]) {
     const headOid = input.currentHeadOid?.trim() || null
     // Cache review API results by the resolved account and execution identity (#11532).
     return withHostedReviewBranchCache(
-      { ...input, branch: branchName },
+      { ...resolvedInput, branch: branchName },
       {
         headOid,
         ...(input.active === true ? { active: true } : {}),
         ...(input.force === true ? { force: true } : {})
       },
       async () => {
+        const provider = await getForgeProviderForRepository({
+          repoPath: input.repoPath,
+          executionHostId: input.executionHostId,
+          ...(input.localGitExecOptions ? { localGitExecOptions: input.localGitExecOptions } : {})
+        })
         if (!provider) {
           // Detection swallows errors; probe reachability first so timeouts/relay loss cannot cache definitive no-review (P1-D).
           await assertRemoteUrlReadable({
@@ -112,11 +109,14 @@ export async function getHostedReviewForBranch(
           })
           return null
         }
+        const providerOptions = provider.id === 'github' ? resolvedInput : input
         return provider.getReviewForBranch({
           repoPath: input.repoPath,
           executionHostId: input.executionHostId,
           branch: branchName,
-          ...(input.localGitExecOptions ? { localGitExecOptions: input.localGitExecOptions } : {}),
+          ...(providerOptions.localGitExecOptions
+            ? { localGitExecOptions: providerOptions.localGitExecOptions }
+            : {}),
           githubCurrentHeadOid: headOid,
           ...reviewLinkForProvider(input, provider.id)
         })

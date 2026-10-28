@@ -40,7 +40,7 @@ export type GitHubRemoteIdentityProbeOptions = {
   requireVerifiedSshProbe?: boolean
 }
 
-const operations = new AsyncLocalStorage<{ context: GitHubRepoContext; active: boolean }>()
+const operations = new AsyncLocalStorage<GitHubRepoContext>()
 
 export async function withGitHubRepoExecution<T>(
   repoPath: string,
@@ -48,14 +48,8 @@ export async function withGitHubRepoExecution<T>(
   options: LocalGitExecOptions,
   operation: () => Promise<T>
 ): Promise<T> {
-  const scope = { context: githubRepoContext(repoPath, connectionId, options), active: true }
-  return operations.run(scope, async () => {
-    try {
-      return await operation()
-    } finally {
-      scope.active = false
-    }
-  })
+  // Async descendants keep the selection through settlement, including detached cache work.
+  return operations.run(githubRepoContext(repoPath, connectionId, options), operation)
 }
 
 export function githubRepoContext(
@@ -72,11 +66,11 @@ export function githubRepoContext(
   }
   const scope = operations.getStore()
   const pinned =
-    scope?.active &&
-    scope.context.repoPath === repoPath &&
-    scope.context.connectionId === context.connectionId &&
-    scope.context.wslDistro === context.wslDistro
-      ? scope.context
+    scope &&
+    scope.repoPath === repoPath &&
+    scope.connectionId === context.connectionId &&
+    scope.wslDistro === context.wslDistro
+      ? scope
       : null
   const account = pinned ?? resolveGitHubProjectAccount(context) ?? context
   const binding = account.ghAccount ? Object.freeze({ ...account.ghAccount }) : undefined
