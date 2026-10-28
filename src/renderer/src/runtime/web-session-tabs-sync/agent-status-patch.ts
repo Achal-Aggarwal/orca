@@ -122,12 +122,13 @@ export function buildMirroredAgentStatusPatch(
         : entry
     const accepted =
       nextEntry === entry ? entry : withHostProgramStatus(nextEntry, entry.programStatus)
+    const retained = existing ? undefined : state.retainedAgentsByPaneKey?.[entry.paneKey]
     nextByPaneKey.set(entry.paneKey, {
       ...accepted,
       firstStateStartedAt: resolveAgentSessionStartedAt({
         entry: accepted,
-        previous: existing,
-        replacementStartedAt: accepted.stateStartedAt
+        previous: existing ?? retained?.entry,
+        previousStartedAt: retained?.startedAt
       })
     })
   }

@@ -27,9 +27,8 @@ export function resolveAgentSessionStartedAt(args: {
   previous?: AgentStatusEntry
   previousStartedAt?: number
   identity?: SessionIdentity
-  replacementStartedAt: number
 }): number {
-  const { entry, previous, previousStartedAt, identity = entry, replacementStartedAt } = args
+  const { entry, previous, previousStartedAt, identity = entry } = args
   if (!previous) {
     return agentEntrySessionStartedAt(entry)
   }
@@ -67,7 +66,8 @@ export function resolveAgentSessionStartedAt(args: {
     identity.connectionId !== undefined &&
     !sameAgentStatusTerminalOwner(previous, identity)
   if (agentChanged || sessionChanged || worktreeChanged || connectionChanged) {
-    return finite(replacementStartedAt) ?? entry.updatedAt
+    // State clocks can span sessions; only the accepted source dates a replacement.
+    return finite(entry.firstStateStartedAt) ?? finite(entry.evidenceObservedAt) ?? entry.updatedAt
   }
   return (
     finite(previous.firstStateStartedAt) ??

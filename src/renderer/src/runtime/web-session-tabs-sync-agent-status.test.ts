@@ -587,7 +587,7 @@ it.each([false, true])(
           state,
           makeSnapshot(tabs, { snapshotVersion: tick + 1 }),
           ENV,
-          NOW + tick
+          NOW + tick + 100_000
         )
       }
     }
@@ -598,9 +598,11 @@ it.each([false, true])(
     const epoch = state.sortEpoch
     update(6000, 2, 'B', NOW - 5000)
     expect(order()).toEqual(before.toReversed())
-    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 4000)
+    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 5000)
     expect(state.sortEpoch).toBeGreaterThan(epoch ?? 0)
     update(7000, 3, 'rejected-old-session', undefined, true)
-    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 4000)
+    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW - 5000)
+    update(6000, 4, 'legacy-next-session')
+    expect(state.agentStatusByPaneKey[before[0]!].firstStateStartedAt).toBe(NOW + 4)
   }
 )

@@ -278,8 +278,7 @@ export function buildAgentStatusLiveEntry(
     entry,
     previous: existing ?? retained?.entry,
     previousStartedAt: retained?.startedAt,
-    identity: { ...identity, ...routing, providerSession: metadata?.providerSession },
-    replacementStartedAt: timing?.stateStartedAt ?? updatedAt
+    identity: { ...identity, ...routing, providerSession: metadata?.providerSession }
   })
   const facts = deriveAgentStatusLiveFacts({
     state,
