@@ -178,8 +178,9 @@ function MobileRichMarkdownEditorWebInner(
   }, [])
 
   useEffect(() => {
-    if (documentRef.current) {
-      ensureDocumentStyle()
+    const host = hostRef.current
+    if (documentRef.current && host instanceof HTMLElement) {
+      ensureDocumentStyle(host)
     }
   }, [colorScheme])
 
