@@ -65,7 +65,7 @@ describe('first account push on a fresh WSL host', () => {
 
     for (const accounts of [desktop, saved, other]) {
       let done = false
-      void accounts.prepareHostAgentLaunch(null).then(() => {
+      void accounts.prepareHostAgentLaunch('claude').then(() => {
         done = true
       })
       await Promise.resolve()

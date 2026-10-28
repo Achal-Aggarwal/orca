@@ -30,6 +30,10 @@ import {
   hostAccountsManagedByDesktopMessage,
   type HostAccountLaunchEnv
 } from '../../shared/host-account-launch-env'
+import {
+  refreshSelectedClaudeProfile,
+  type HostClaudeProfileRefresh
+} from './host-claude-profile-refresh'
 import { FirstHostLaunchEnvGate } from './first-host-launch-env-gate'
 
 export type RuntimeAccountServices = {
@@ -65,7 +69,7 @@ export class RuntimeAccountController {
   private hostLaunchEnv: HostAccountLaunchEnv | null = null
   private persistHostLaunchEnv: ((launchEnv: HostAccountLaunchEnv) => void) | null = null
   private readonly firstHostLaunchEnv = new FirstHostLaunchEnvGate()
-  private refreshClaudeProfile: ((launchEnv: HostAccountLaunchEnv) => Promise<void>) | null = null
+  private refreshClaudeProfile: HostClaudeProfileRefresh | null = null
 
   setServices(services: RuntimeAccountServices): void {
     this.services = services
@@ -123,10 +127,7 @@ export class RuntimeAccountController {
   restoreHostLaunchEnv(
     saved: HostAccountLaunchEnv | null,
     persist: (launchEnv: HostAccountLaunchEnv) => void,
-    options: {
-      expectDesktopPush?: boolean
-      refreshClaudeProfile?: (launchEnv: HostAccountLaunchEnv) => Promise<void>
-    } = {}
+    options: { expectDesktopPush?: boolean; refreshClaudeProfile?: HostClaudeProfileRefresh } = {}
   ): void {
     this.persistHostLaunchEnv = persist
     if (this.services) {
@@ -150,16 +151,8 @@ export class RuntimeAccountController {
    *  briefly), then a refresh of the selected Claude folder, as the desktop's launches do. */
   async prepareHostAgentLaunch(agent: string | null | undefined): Promise<void> {
     await this.firstHostLaunchEnv.wait()
-    if (agent !== 'claude' || !this.refreshClaudeProfile) {
-      return
-    }
-    // Why twice at most: a switch during the refresh would launch on a folder never refreshed.
-    for (let pass = 0, env = this.hostLaunchEnv; env && pass < 2; pass++) {
-      await this.refreshClaudeProfile(env)
-      if (this.hostLaunchEnv === env) {
-        return
-      }
-      env = this.hostLaunchEnv
+    if (agent === 'claude' && this.refreshClaudeProfile) {
+      await refreshSelectedClaudeProfile(this.refreshClaudeProfile, () => this.hostLaunchEnv)
     }
   }
 
