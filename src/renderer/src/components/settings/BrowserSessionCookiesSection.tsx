@@ -155,32 +155,33 @@ export function BrowserSessionCookiesSection({
           />
         ))}
       </div>
-      <div className="space-y-2">
-        <div className="space-y-1">
-          <Label>{translate('browser.googleCookieClear.heading', 'Google sign-in')}</Label>
+      <div className="flex items-center justify-between gap-3 pt-3">
+        <div className="min-w-0 space-y-0.5">
+          <Label>{translate('browser.googleCookieClear.heading', 'Google Cookies')}</Label>
           <p className="text-xs text-muted-foreground">
             {translate(
               'browser.googleCookieClear.explanation',
-              'Google ties sign-in to the original browser, so Google cookies aren’t imported—sign in directly in Orca. If sign-in is stuck or using the wrong account, clear the active profile’s Google cookies to sign out of Google only; other sites stay signed in.'
+              'Google stuck on the wrong account or keeps signing you out? Clear Google cookies from the active profile, then sign in to Google again in Orca. Other sites stay signed in. Orca never imports Google cookies from other browsers.'
             )}
           </p>
+          {googleCookieClear.available === false ? (
+            <p className="text-xs text-muted-foreground">
+              {translate(
+                'browser.googleCookieClear.unavailable',
+                'Unavailable for this profile on the selected host.'
+              )}
+            </p>
+          ) : null}
         </div>
         <Button
-          variant="outline"
+          variant="destructive"
           size="xs"
+          className="shrink-0"
           disabled={!googleCookieClear.available || googleCookieClear.busy}
           onClick={() => void googleCookieClear.onClick()}
         >
           {translate('browser.googleCookieClear.action', 'Clear Google cookies…')}
         </Button>
-        {googleCookieClear.available === false ? (
-          <p className="text-xs text-muted-foreground">
-            {translate(
-              'browser.googleCookieClear.unavailable',
-              'Unavailable for this profile on the selected host.'
-            )}
-          </p>
-        ) : null}
       </div>
     </SearchableSetting>
   )

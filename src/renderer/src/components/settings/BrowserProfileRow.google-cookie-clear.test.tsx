@@ -202,9 +202,9 @@ it('places one Google section after the rows and clears the current Active profi
   await screen.findByRole('menuitem', { name: 'From File…' })
   expect(screen.queryByRole('menuitem', { name: 'Clear Google cookies…' })).toBeNull()
   fireEvent.keyDown(screen.getByRole('menuitem', { name: 'From File…' }), { key: 'Escape' })
-  expect(screen.getAllByText('Google sign-in')).toHaveLength(1)
+  expect(screen.getAllByText('Google Cookies')).toHaveLength(1)
   expect(
-    screen.getByText('Google sign-in').compareDocumentPosition(screen.getByText('Private')) & 2
+    screen.getByText('Google Cookies').compareDocumentPosition(screen.getByText('Private')) & 2
   ).toBe(2)
   await act(async () => fireEvent.click(button))
   expect(mocks.clear).toHaveBeenLastCalledWith(
