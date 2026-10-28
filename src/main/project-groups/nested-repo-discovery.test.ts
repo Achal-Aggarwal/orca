@@ -1,8 +1,23 @@
-import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
+import type * as FsPromisesModule from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { scanNestedRepos } from './nested-repo-discovery'
+import { isGitRepoAsync } from '../git/repo'
+
+vi.mock('../git/repo', () => ({ isGitRepoAsync: vi.fn() }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromisesModule>()
+  return { ...actual, lstat: vi.fn(actual.lstat) }
+})
+
+beforeEach(() => {
+  vi.mocked(isGitRepoAsync).mockReset().mockResolvedValue(false)
+  for (const key of Object.keys(process.env).filter((key) => key.startsWith('GIT_'))) {
+    vi.stubEnv(key, undefined)
+  }
+})
 
 let tempDirs: string[] = []
 
@@ -49,11 +64,74 @@ function posixTestFilesystem(args: {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })))
   tempDirs = []
 })
 
 describe('scanNestedRepos', () => {
+  it('classifies a plain directory without invoking Git', async () => {
+    const root = await tempRoot()
+    const result = await scanNestedRepos({ path: root })
+    expect(result.selectedPathKind).toBe('non_git_folder')
+    expect(isGitRepoAsync).not.toHaveBeenCalled()
+  })
+
+  it.each(['selected', 'ancestor', 'linked', 'bare', 'symlink', 'partial'])(
+    'defers %s repository markers to Git',
+    async (kind) => {
+      const root = await tempRoot()
+      let path = root
+      if (kind === 'bare') {
+        await makeBareGitRepo(root)
+      } else if (kind === 'linked' || kind === 'partial') {
+        await writeFile(join(root, kind === 'linked' ? '.git' : 'HEAD'), 'gitdir: ../metadata\n')
+      } else {
+        await makeGitRepo(root)
+        if (kind !== 'selected') {
+          path = join(root, 'nested')
+          await mkdir(path)
+          if (kind === 'symlink') {
+            const link = join(await tempRoot(), 'link')
+            await symlink(path, link, process.platform === 'win32' ? 'junction' : 'dir')
+            path = link
+          }
+        }
+      }
+      vi.mocked(isGitRepoAsync).mockResolvedValueOnce(true)
+      expect((await scanNestedRepos({ path })).selectedPathKind).toBe('git_repo')
+      expect(isGitRepoAsync).toHaveBeenCalledWith(path)
+    }
+  )
+
+  it.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS'])(
+    'preserves configured discovery through %s',
+    async (key) => {
+      const root = await tempRoot()
+      vi.stubEnv(key, 'configured')
+      vi.mocked(isGitRepoAsync).mockResolvedValueOnce(true)
+      expect((await scanNestedRepos({ path: root })).selectedPathKind).toBe('git_repo')
+      expect(isGitRepoAsync).toHaveBeenCalledWith(root)
+    }
+  )
+
+  it('defers inaccessible metadata to Git instead of declaring a plain folder', async () => {
+    const root = await tempRoot()
+    vi.mocked(lstat).mockRejectedValueOnce(
+      Object.assign(new Error('Permission denied'), { code: 'EACCES' })
+    )
+    vi.mocked(isGitRepoAsync).mockResolvedValueOnce(true)
+    expect((await scanNestedRepos({ path: root })).selectedPathKind).toBe('git_repo')
+    expect(isGitRepoAsync).toHaveBeenCalledWith(root)
+  })
+
+  it.skipIf(process.platform === 'win32')('defers a broken .git link to Git', async () => {
+    const root = await tempRoot()
+    await symlink(join(root, 'missing'), join(root, '.git'))
+    await scanNestedRepos({ path: root })
+    expect(isGitRepoAsync).toHaveBeenCalledWith(root)
+  })
+
   it('returns child repos for a non-git parent', async () => {
     const root = await tempRoot()
     await mkdir(join(root, 'auth-service'), { recursive: true })
