@@ -19,6 +19,77 @@ import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { buildNativeChatTranscriptSlots } from './native-chat-transcript-slots'
 import { nativeChatSlotCopyText } from './native-chat-message-copy-text'
 import { NativeChatAgentMessageCard } from './NativeChatAgentMessageCard'
+import { MessageRow } from './NativeChatMessageRow'
+import { projectStructuredItemToNativeChat } from '../../../../shared/structured-agent-session-projection'
+import { isAdmissibleAgentJournalRenderItem } from '../../../../shared/agent-session-journal-schemas'
+import { agentMessageHeading } from '../../../../shared/agent-session/agent-message-presentation'
+import { nativeChatTurnFoldRow } from '../../../../shared/native-chat/transcript/native-chat-turn-fold'
+import { isNoiseMessage } from '../../../../shared/native-chat-noise'
+import { nativeChatRowSpeaksOrActs } from '../../../../shared/native-chat/native-chat-trailing-run'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+
+it('reloads a positioned worker start into the shared card with full task, Copy and navigation', async () => {
+  const task =
+    '  Task with [a link](https://example.com).\n\n' + 'More task text.\n'.repeat(20) + 'END  '
+  const item: AgentJournalRenderItem = {
+    itemId: 'start:dispatch',
+    revision: 1,
+    sequence: 7,
+    observedAt: 1,
+    body: { kind: 'agent-start', dispatchId: 'dispatch', worker: source().senders[0], task }
+  }
+  const reloaded: unknown = JSON.parse(JSON.stringify(item))
+  if (!isAdmissibleAgentJournalRenderItem(reloaded)) {
+    throw new Error('start item did not survive admission')
+  }
+  const message = projectStructuredItemToNativeChat(reloaded)
+  if (!message?.from) {
+    throw new Error('start item did not project')
+  }
+  expect(message).toMatchObject({
+    role: 'system',
+    agentStart: true,
+    journalPosition: { sequence: 7, index: 0 },
+    timestamp: 1
+  })
+  expect(agentMessageHeading(message.from, message.agentStart)).toBe('started')
+  expect(nativeChatTurnFoldRow(message, 'turn', false).outlivesTurn).toBe(true)
+  expect(isNoiseMessage(message)).toBe(false)
+  expect(nativeChatRowSpeaksOrActs(message, true, new Map())).toBe(false)
+  const future: unknown = { ...item, body: { kind: 'future-start' } }
+  if (!isAdmissibleAgentJournalRenderItem(future)) {
+    throw new Error('unknown journal kind was refused')
+  }
+  expect(projectStructuredItemToNativeChat(future)).toBeNull()
+  expect(projectStructuredItemToNativeChat({ ...item, shortened: true })).toBeNull()
+  height = 120
+  const writeClipboardText = vi.fn(async () => {})
+  vi.stubGlobal('api', { ui: { writeClipboardText } })
+  render(
+    <MessageRow
+      message={message}
+      expandSignal={false}
+      onScrollMessageToTop={() => {}}
+      runtimeContext={{ worktreeId: 'wt-chat', worktreePath: null, target: { kind: 'local' } }}
+    />
+  )
+  expect(screen.getByText('Started your worker')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'a link' })).toHaveAttribute(
+    'href',
+    'https://example.com'
+  )
+  expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+  expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+  expect(writeClipboardText).toHaveBeenCalledWith(task)
+  expect(nativeChatSlotCopyText(slots(message), message.id)).toBe(task)
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Build cards' })))
+  expect(navigation.rpc).toHaveBeenCalled()
+})
 
 const navigation = vi.hoisted(() => ({ rpc: vi.fn(), gone: vi.fn(), toast: vi.fn() }))
 vi.mock('@/runtime/runtime-rpc-client', async (original) => ({

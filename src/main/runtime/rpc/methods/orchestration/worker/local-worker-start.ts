@@ -36,6 +36,7 @@ import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
 import type { WorkerStartMutation } from './worker-start-mutation'
+import { prepareWorkerStartCard } from '../../../../orchestration/worker-start-card'
 
 export async function startLocalWorker(args: {
   params: WorkerStartInput
@@ -52,6 +53,7 @@ export async function startLocalWorker(args: {
   helperCreator?: DispatchContextRow
 }): Promise<unknown> {
   const { runtime, db, run, coordinator, callerSession, existingTask, orchestrationMutation } = args
+  const recordStart = prepareWorkerStartCard(runtime, callerSession)
   // `--terminal` names a party: a chat by its `/clear` root address, as its Dispatch does.
   const terminal = args.params.terminal && resolveDispatchAssigneeParty(args.params.terminal, db)
   const params = terminal ? { ...args.params, terminal: terminal.address } : args.params
@@ -185,6 +187,7 @@ export async function startLocalWorker(args: {
   let terminalHandle = params.terminal
   let placed: Awaited<ReturnType<typeof placeWorkerAgent>> | undefined
   let failedStage = 'terminal_create'
+  let result: unknown
   try {
     placed = await placeWorkerAgent({
       runtime,
@@ -271,7 +274,7 @@ export async function startLocalWorker(args: {
       terminalOwnership: params.terminal ? 'external' : 'created'
     })
 
-    return await deliverAndSettleWorkerStartReadiness({
+    result = await deliverAndSettleWorkerStartReadiness({
       runtime,
       db,
       run,
@@ -297,7 +300,7 @@ export async function startLocalWorker(args: {
       }
     })
   } catch (error) {
-    return await failWorkerStartWithReceipt({
+    result = await failWorkerStartWithReceipt({
       runtime,
       structuredSession: placed?.structuredSession ?? null,
       db,
@@ -311,4 +314,19 @@ export async function startLocalWorker(args: {
       mode
     })
   }
+  if (
+    !params.terminal &&
+    terminalHandle &&
+    result &&
+    typeof result === 'object' &&
+    'state' in result &&
+    result.state === 'ready'
+  ) {
+    recordStart({
+      dispatchId: started.dispatch.id,
+      workerAddress: terminalHandle,
+      task: task.spec
+    })
+  }
+  return result
 }

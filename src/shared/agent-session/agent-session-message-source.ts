@@ -75,7 +75,7 @@ const taskSchema = z.object({
   dispatchId: z.string()
 })
 
-const senderSchema = z.object({
+export const AgentMessageSenderSchema = z.object({
   party: z.object({
     address: z.string().min(1),
     terminalHandle: z.string().nullable(),
@@ -88,7 +88,7 @@ const senderSchema = z.object({
 // Parse separately so malformed senders or newer orchestration kinds never turn an agent message into a human message.
 const sourceSchema = z.object({
   kind: openEnum(['agent'], 'agent'),
-  senders: salvagedField('senders', salvagingArray(senderSchema), () => []),
+  senders: salvagedField('senders', salvagingArray(AgentMessageSenderSchema), () => []),
   orchestration: salvagedOptional(
     'orchestration',
     z.discriminatedUnion('message', [mailNoticeSchema, taskSchema])

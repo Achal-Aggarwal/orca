@@ -1,4 +1,8 @@
 import { continuationContextReader as contextReader } from './structured-agent-session-continuation-context'
+import type { AgentJournalAgentStartItem } from '../../../shared/agent-session-journal-types'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { readJournalSessionEpoch } from '../agent-session-journal/journal-row-table'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
@@ -33,6 +37,8 @@ import { wireStructuredAgentSessionQueuedMessages as wireQueuedMessages } from '
 import * as sessionLogger from './structured-agent-session-logger'
 import { sleepStructuredAgentSessionWorkspace } from './structured-agent-session-workspace-sleep'
 export type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
+
+type AgentStartDestination = { sessionId: string; epoch: string; contextId: string | null }
 
 export class StructuredAgentSessionHost {
   private readonly conversationCommands = new StructuredConversationCommandController(
@@ -321,6 +327,48 @@ export class StructuredAgentSessionHost {
   /** Full reduction: absence from a bounded page cannot prove a revised/tombstoned item is absent. */
   journalSnapshot = async (sessionId: string) =>
     (await this.lifetime.conversation(sessionId)).journal.snapshot()
+
+  /** Record only in this transcript; opening at rest neither follows clears nor starts its agent. */
+  captureAgentStartDestination = (sessionId: string): AgentStartDestination | null => {
+    const record = this.deps.store.getConversation(sessionId)
+    const epoch = readJournalSessionEpoch(this.deps.journalDatabase.db, sessionId)
+    return record && epoch
+      ? { sessionId, epoch, contextId: record.providerContextBoundary?.operationId ?? null }
+      : null
+  }
+
+  appendAgentStart = async (
+    destination: AgentStartDestination,
+    body: AgentJournalAgentStartItem,
+    observedAt: number
+  ): Promise<void> => {
+    const { sessionId } = destination
+    const stillSameContext = () => {
+      const current = this.captureAgentStartDestination(sessionId)
+      return current?.epoch === destination.epoch && current?.contextId === destination.contextId
+    }
+    if (!stillSameContext()) {
+      return
+    }
+    const { journal } = await this.lifetime.conversation(sessionId)
+    const identity = {
+      provider: 'orca' as const,
+      clientMessageId: `agent-start:${body.dispatchId}`
+    }
+    await journal.appendResolvedItem(
+      () => {
+        if (!stillSameContext() || journal.hasRecordedItem(agentJournalItemKey(identity))) {
+          return null
+        }
+        return { identity, body }
+      },
+      {
+        fence: this.deps.store.getConversation(sessionId)?.currentFence ?? 0,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE,
+        observedAt
+      }
+    )
+  }
 
   currentWork = this.clientDelivery.readCurrentWork
   readCurrentRequests: StructuredAgentSessionBackgroundTaskChannel['currentRequests'] = (...args) =>
