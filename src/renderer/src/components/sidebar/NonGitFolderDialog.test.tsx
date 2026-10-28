@@ -3,6 +3,7 @@ import type * as ReactModule from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { createGlobalSettingsFixture } from '../../../../shared/global-settings-test-fixture'
 import type { AppState } from '@/store/types'
 import { createTestStore } from '@/store/slices/store-test-helpers'
 import { useAddRepoLocalFolderFlow } from './useAddRepoLocalFolderFlow'
@@ -193,7 +194,7 @@ describe('NonGitFolderDialog', () => {
           }
         })
         store.setState({
-          settings: { ...store.getState().settings, activeRuntimeEnvironmentId: 'env-1' },
+          settings: createGlobalSettingsFixture({ activeRuntimeEnvironmentId: 'env-1' }),
           fetchWorktrees
         })
         const addFolder = vi.spyOn(store.getState(), 'addNonGitFolder')
