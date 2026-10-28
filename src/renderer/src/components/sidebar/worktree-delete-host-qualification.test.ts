@@ -239,21 +239,16 @@ describe('STA-4343 sidebar delete: the confirmed row decides the host', () => {
           id: 'repo1',
           path: '/repo1',
           displayName: 'Repo 1',
+          badgeColor: '#000000',
+          addedAt: 0,
           executionHostId: SSH_HOST,
           connectionId: 'ssh-1'
         }
       ],
-      worktreesByRepo: {
-        repo1: [rowOnHost(SSH_HOST)]
-      },
-      activeWorktreeId: null,
-      activeView: 'terminal',
-      activePendingCreationId: null,
-      settings: { skipDeleteWorktreeConfirm: true },
-      sshConnectionStates: new Map([['ssh-1', { targetId: 'ssh-1', status: 'connected' }]]),
+      worktreesByRepo: { repo1: [rowOnHost(SSH_HOST)] },
       sshTargetLabels: new Map([['ssh-1', 'SSH One']]),
       worktreeLineageById: {}
-    } as unknown as Partial<AppState>)
+    })
 
     runWorktreeDelete(WORKTREE_ID)
 
