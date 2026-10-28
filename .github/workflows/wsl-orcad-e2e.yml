@@ -355,8 +355,8 @@ jobs:
           if ($global:LASTEXITCODE -ne 0) { throw "WSL move real pause failed: $global:LASTEXITCODE" }
           wsl.exe --terminate $env:PLAIN_DISTRO
       # R40: with no terminal left, orcad idle-exits and the holder lets the distro stop on its own.
-      - name: 'Phase 3: idle orcad releases the distro'
-        timeout-minutes: 15
+      - name: 'Phase 3: idle orcad releases the distro; reboot-to-prompt baseline'
+        timeout-minutes: 30
         env:
           ORCA_RUN_WSL_ORCAD_LANE: '1'
           ORCA_WSL_ORCAD_LANE_PHASE: idle-release
