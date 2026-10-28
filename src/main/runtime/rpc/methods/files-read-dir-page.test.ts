@@ -148,16 +148,64 @@ describe('DirListingPageCache', () => {
     expect(list).toHaveBeenCalledTimes(10)
   })
 
-  it('does not hold a folder too large to keep, and re-lists it per page', async () => {
+  it('holds an oversized folder alone, so scrolling it costs one listing', async () => {
     const cache = new DirListingPageCache(() => 0)
-    const list = vi.fn(async () => folder(200_001))
-    await cache.readPage('socket-1', { ...REQUEST, limit: 10 }, list)
+    const small = vi.fn(async () => folder(3))
+    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'small', limit: 1 }, small)
+    const big = folder(200_001)
+    const list = vi.fn(async () => big)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 5_000 }, list)
     await cache.readPage(
       'socket-1',
-      { ...REQUEST, after: cursorOf(folder(10)[9]), limit: 10 },
+      { ...REQUEST, after: cursorOf(big[4_999]), limit: 5_000 },
       list
     )
-    expect(list).toHaveBeenCalledTimes(2)
+    await cache.readPage(
+      'socket-1',
+      { ...REQUEST, after: cursorOf(big[9_999]), limit: 5_000 },
+      list
+    )
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(cache.heldEntryCount).toBe(200_001)
+
+    await cache.readPage(
+      'socket-1',
+      { ...REQUEST, relativePath: 'small', after: cursorOf(folder(3)[0]), limit: 1 },
+      small
+    )
+    expect(small).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares one in-flight listing between concurrent reads of a folder', async () => {
+    const cache = new DirListingPageCache(() => 0)
+    let finish!: (entries: DirEntry[]) => void
+    const list = vi.fn(
+      () =>
+        new Promise<DirEntry[]>((resolve) => {
+          finish = resolve
+        })
+    )
+    const pages = [
+      cache.readPage('socket-1', { ...REQUEST, limit: 2 }, list),
+      cache.readPage('socket-1', { ...REQUEST, limit: 2 }, list)
+    ]
+    finish(folder(5))
+    expect((await Promise.all(pages)).map((page) => names(page.entries))).toEqual([
+      names(folder(2)),
+      names(folder(2))
+    ])
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases an expired listing on the next read of any folder', async () => {
+    let now = 0
+    const cache = new DirListingPageCache(() => now)
+    await cache.readPage('socket-1', { ...REQUEST, limit: 2 }, async () => folder(150_000))
+    expect(cache.heldEntryCount).toBe(150_000)
+
+    now = DIR_LISTING_PAGE_CACHE_TTL_MS
+    await cache.readPage('socket-1', { ...REQUEST, relativePath: 'tiny' }, async () => folder(1))
+    expect(cache.heldEntryCount).toBe(0)
   })
 })
 
