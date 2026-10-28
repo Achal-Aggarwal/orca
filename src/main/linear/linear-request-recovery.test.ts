@@ -36,7 +36,16 @@ let sink: ReturnType<typeof createLocalFileSink>
 
 function records(): RedactableSpan[] {
   sink.flush()
-  return readFileSync(sink.filePath, 'utf8')
+  let contents: string
+  try {
+    contents = readFileSync(sink.filePath, 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+  return contents
     .trim()
     .split('\n')
     .filter(Boolean)
