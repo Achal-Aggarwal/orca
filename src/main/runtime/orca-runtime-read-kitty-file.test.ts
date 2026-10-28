@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultWorkspaceSession } from '../../shared/constants'
 import { OrcaRuntimeService } from './orca-runtime'
 import { withDurableRuntimeStore } from './runtime-durable-store-fixture'
-import { getDefaultWorkspaceSession } from '../../shared/constants'
 
 const { readFile } = vi.hoisted(() => ({ readFile: vi.fn() }))
 vi.mock('./terminal-kitty-file-read', () => ({ readTerminalKittyFile: readFile }))
