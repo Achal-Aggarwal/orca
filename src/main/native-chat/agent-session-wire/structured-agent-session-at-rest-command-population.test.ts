@@ -195,9 +195,9 @@ it.each(['claude', 'omp'] as const)(
               )
             }
             await vi.waitFor(() => expect(permits).toBe(0), { interval: 0 })
-            const seeded = starts
+            const cached = (await host.readCommands(ids[0]!, true)).commands
+            let seeded = starts
             expect(seeded).toBe(count + 1)
-            legacyStops.splice(0).forEach((stop) => stop())
             frames = 0
             hints = 0
             snapshot.mockClear()
@@ -213,6 +213,37 @@ it.each(['claude', 'omp'] as const)(
             expect(starts).toBe(seeded)
             expect(snapshot).toHaveBeenCalled()
             expect(frames).toBe(2)
+            if (legacy > 0) {
+              hold = true
+              let retained: AgentSessionSubscribeEvent | undefined
+              legacyStops.push(
+                await host.subscribe({
+                  id: 'expired-legacy-frame',
+                  sessionId: ids[0]!,
+                  emit: (event) => {
+                    if ('commands' in event) {
+                      retained = event
+                    }
+                  }
+                })
+              )
+              await vi.waitFor(() => expect(starts).toBe(seeded + 1), { interval: 0 })
+              expect(retained).toMatchObject({ commands: cached })
+              expect(permits).toBe(1)
+            }
+            legacyStops.splice(0).forEach((stop) => stop())
+            hold = false
+            gates.forEach((gate) => gate.resolve())
+            await vi.waitFor(() => expect(physical).toBe(0), { interval: 0 })
+            await vi.waitFor(() => expect(permits).toBe(0), { interval: 0 })
+            if (omp) {
+              await vi.waitFor(
+                () => expect(omp.children.every((child) => child.exited)).toBe(true),
+                { interval: 0 }
+              )
+            }
+            seeded += legacy > 0 ? 1 : 0
+            expect(starts).toBe(seeded)
             frames = 0
             hints = 0
             selected = join(directory, 'replacement-account')
