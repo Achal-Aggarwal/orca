@@ -1,8 +1,11 @@
 import type { LocalFileAccess } from '../../../../shared/local-file-access'
 import { observeViewportVisibility } from '@/lib/viewport-visibility'
+import {
+  acquireLocalImageDisplayLease,
+  type LocalImageDisplayLease
+} from './local-image-display-lease'
 import type { RichMarkdownImageRuntimeContext } from './rich-markdown-image-context'
 import {
-  acquireLocalImageSrcLease,
   getLocalImageSrcCacheKey,
   loadLocalImageSrc,
   onImageCacheInvalidated,
@@ -47,7 +50,8 @@ export function createDocumentImageDisplay(
   let naturalSize: ImageSize | undefined
   let renderedSize: ImageSize | undefined
   let controller: AbortController | undefined
-  let releaseLease: (() => void) | undefined
+  let displayLease: LocalImageDisplayLease | undefined
+  let displayedUrl: string | undefined
   let stopObserving: (() => void) | undefined
   let stopWaitingForCapacity: (() => void) | undefined
 
@@ -96,8 +100,11 @@ export function createDocumentImageDisplay(
     controller = undefined
     stopWaitingForCapacity?.()
     stopWaitingForCapacity = undefined
-    releaseLease?.()
-    releaseLease = undefined
+    if (evict) {
+      displayLease?.release()
+      displayLease = undefined
+      displayedUrl = undefined
+    }
     if (evict && key) {
       releaseUnusedLocalImageSrcByKey(key)
     }
@@ -109,13 +116,7 @@ export function createDocumentImageDisplay(
     }
     stopWaitingForCapacity?.()
     stopWaitingForCapacity = undefined
-    releaseLease ??= acquireLocalImageSrcLease(
-      source.src,
-      source.filePath,
-      undefined,
-      source.runtimeContext,
-      source.access
-    )
+    displayLease ??= acquireLocalImageDisplayLease(key)
     const loadController = new AbortController()
     controller = loadController
     void loadLocalImageSrc(
@@ -131,6 +132,7 @@ export function createDocumentImageDisplay(
       }
       controller = undefined
       if (resolved) {
+        displayLease?.setDisplayedUrls(displayedUrl ? [displayedUrl, resolved] : [resolved])
         image.src = resolved
         if (image.complete && image.naturalWidth > 0) {
           onLoad()
@@ -146,21 +148,31 @@ export function createDocumentImageDisplay(
         }
       } else {
         image.removeAttribute('src')
+        displayedUrl = undefined
+        displayLease?.setDisplayedUrls([])
         clearPlaceholder()
       }
     })
   }
 
   const onLoad = (): void => {
-    if (!visible || !image.hasAttribute('src')) {
+    const url = image.getAttribute('src')
+    if (!visible || !url) {
       return
     }
     if (image.naturalWidth > 0 && image.naturalHeight > 0) {
       naturalSize = { width: image.naturalWidth, height: image.naturalHeight }
     }
+    displayedUrl = url
+    displayLease?.setDisplayedUrls([url])
     clearPlaceholder()
   }
+  const onError = (): void => {
+    displayedUrl = undefined
+    displayLease?.setDisplayedUrls([])
+  }
   image.addEventListener('load', onLoad)
+  image.addEventListener('error', onError)
 
   const update = (nextSource: DocumentImageSource): void => {
     const nextKey = nextSource.filePath
@@ -240,6 +252,7 @@ export function createDocumentImageDisplay(
       stopObserving?.()
       unsubscribe()
       image.removeEventListener('load', onLoad)
+      image.removeEventListener('error', onError)
       clearPlaceholder()
     }
   }

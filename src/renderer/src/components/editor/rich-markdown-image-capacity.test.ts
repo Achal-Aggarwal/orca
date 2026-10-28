@@ -87,6 +87,7 @@ it.each([101, 1_000])(
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     view.editor.destroy()
     expect(blobUrlCache.size).toBe(0)
+    await settleImages()
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(count + 1)
   }
 )

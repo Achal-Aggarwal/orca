@@ -96,6 +96,7 @@ it('scopes visible folder-document reads and restores layout after leaving and r
   ImageVisibilityObserver.current.emit(element, false)
   expect(element.hasAttribute('src')).toBe(false)
   expect(element.parentElement?.style.width).toBe('640px')
+  await settle()
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview-0')
   act(() =>
     root.render(

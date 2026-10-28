@@ -1,4 +1,13 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react'
+import { useStore } from 'zustand'
+import { createStore } from 'zustand/vanilla'
 import { resolveImageAbsolutePath } from './markdown-preview-links'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
 import { readLocalImagePreview } from './local-image-src-reader'
@@ -16,6 +25,10 @@ import {
   subscribeToLocalImageCacheInvalidation,
   unpinLocalImageCache
 } from './local-image-src-cache'
+import {
+  acquireLocalImageDisplayLease,
+  type LocalImageDisplayLease
+} from './local-image-display-lease'
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import {
   createLocalImageRead,
@@ -99,7 +112,7 @@ export function useLocalImageSrc(
   access?: LocalFileAccess,
   retryKey?: number
 ): string | undefined {
-  const [generation, setGeneration] = useState(getLocalImageCacheGeneration())
+  const generation = useSyncExternalStore(onImageCacheInvalidated, getLocalImageCacheGeneration)
   const externalSrc =
     rawSrc && runtimeContext !== null && isExternalUrl(rawSrc) ? rawSrc : undefined
   // Key leases by semantic identity; equal rebuilt context objects must not revoke a still-displayed image URL.
@@ -111,21 +124,40 @@ export function useLocalImageSrc(
       : Promise.resolve(null)
   })
 
-  useEffect(() => {
-    if (!cacheKey) {
-      return
-    }
-    pinLocalImageCache(cacheKey)
-    return () => unpinLocalImageCache(cacheKey)
-  }, [cacheKey])
-
-  useEffect(() => {
-    return onImageCacheInvalidated(() => setGeneration(getLocalImageCacheGeneration()))
-  }, [])
-
-  const [displaySrc, setDisplaySrc] = useState<string | undefined>(
-    () => externalSrc ?? (cacheKey ? blobUrlCache.get(cacheKey) : undefined)
+  const [displayStore] = useState(() =>
+    createStore<string | undefined>(
+      () => externalSrc ?? (cacheKey ? blobUrlCache.get(cacheKey) : undefined)
+    )
   )
+  const displaySrc = useStore(displayStore)
+  const displayLease = useRef<LocalImageDisplayLease | null>(null)
+  const syncDisplayLease = useEffectEvent(
+    (lease: LocalImageDisplayLease, nextSrc: string | undefined) => {
+      lease.setDisplayedUrls([displaySrc, nextSrc].filter((url) => url !== undefined))
+    }
+  )
+  const setDisplaySrc = useEffectEvent((nextSrc: string | undefined) => {
+    if (displayLease.current) {
+      syncDisplayLease(displayLease.current, nextSrc)
+    }
+    displayStore.setState(nextSrc)
+  })
+
+  useEffect(() => {
+    const lease = displayLease.current ?? acquireLocalImageDisplayLease(cacheKey)
+    displayLease.current = lease
+    syncDisplayLease(lease, displayStore.getState())
+    return () => {
+      lease.release()
+      displayLease.current = null
+    }
+  }, [cacheKey, displayStore])
+
+  // Passive cleanup survives Suspense hiding; layout setup protects the first cached commit.
+  useLayoutEffect(() => {
+    displayLease.current ??= acquireLocalImageDisplayLease(cacheKey)
+    syncDisplayLease(displayLease.current, displayStore.getState())
+  }, [cacheKey, displaySrc, displayStore])
 
   useEffect(() => {
     if (externalSrc || !cacheKey) {

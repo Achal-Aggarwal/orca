@@ -79,6 +79,7 @@ it.each([100, 1000])(
     editor.destroy()
     expect(ImageVisibilityObserver.current.targets.size).toBe(0)
     expect(ImageVisibilityObserver.current.disconnect).toHaveBeenCalledOnce()
+    await settle()
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
   }
 )
@@ -126,6 +127,7 @@ it('recovers a refused visible image after capacity frees and can revisit a docu
   for (const image of images) {
     ImageVisibilityObserver.current.emit(image, false)
   }
+  await settle()
   expect(live.size).toBe(0)
   for (const image of images) {
     ImageVisibilityObserver.current.emit(image, true)
@@ -135,6 +137,7 @@ it('recovers a refused visible image after capacity frees and can revisit a docu
     ImageVisibilityObserver.current.emit(image, false)
   }
   editor.destroy()
+  await settle()
   expect(live.size).toBe(0)
 })
 

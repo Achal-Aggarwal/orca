@@ -305,6 +305,9 @@ describe('native chat Markdown image preview', () => {
     act(() => ImageVisibilityObserver.current.emit(trigger, false))
     expect(screen.queryByRole('img')).toBeNull()
     expect(trigger).toHaveStyle({ width: '640px', aspectRatio: '640 / 360' })
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-1')
     act(() => ImageVisibilityObserver.current.emit(trigger, true))
     const reloaded = await screen.findByRole('img')
@@ -316,6 +319,9 @@ describe('native chat Markdown image preview', () => {
     rerender(<Transcript owner={{ ...localOwner, isVisible: false }} />)
     expect(screen.queryByRole('img')).toBeNull()
     expect(trigger).toHaveStyle({ width: '640px', aspectRatio: '640 / 360' })
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-2')
     rerender(<Transcript />)
     expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:image-3')
@@ -355,6 +361,9 @@ describe('native chat Markdown image preview', () => {
     })
     expect(container.querySelectorAll('img')).toHaveLength(0)
     unpinLocalImageCache('budget-reservation')
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(4)
   })
 
