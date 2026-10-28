@@ -13,6 +13,7 @@ import { remarkChatMath } from './chat-markdown-math'
 import CommentMarkdown from './CommentMarkdown'
 import { splitMarkdownTopLevelBlocks, type MarkdownBlockSplit } from './markdown-top-level-blocks'
 import { NativeChatMarkdown } from '../native-chat/NativeChatMarkdown'
+import type * as TypesetModule from './chat-markdown-math-typeset'
 
 const parsing = vi.hoisted(() => ({ characters: 0, calls: 0, operations: 0 }))
 vi.mock('remark-parse', async (original) => {
@@ -63,7 +64,7 @@ vi.mock('remark-parse', async (original) => {
 
 const typesets = vi.hoisted(() => ({ count: 0 }))
 vi.mock('./chat-markdown-math-typeset', async (original) => {
-  const { typesetChatMath } = await original<typeof import('./chat-markdown-math-typeset')>()
+  const { typesetChatMath } = await original<typeof TypesetModule>()
   return {
     typesetChatMath: (...args: Parameters<typeof typesetChatMath>) => {
       typesets.count++
