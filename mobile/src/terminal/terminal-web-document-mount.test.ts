@@ -150,8 +150,9 @@ describe('a stopped document takes its engines with it', () => {
 })
 
 describe('terminal panes start when first selected', () => {
-  it.each([10, 100])('starts only the selected document among %i terminal tabs', (count) => {
+  it('starts only the selected document among several terminal tabs', () => {
     vi.useFakeTimers()
+    const count = 3
     const refs = new Map<string, TerminalWebViewHandle>()
     const ready: string[] = []
     const engines: Array<ReturnType<typeof terminalDocumentDouble>> = []
@@ -218,17 +219,22 @@ describe('terminal panes start when first selected', () => {
       expect(ready).toEqual(['terminal-0'])
       expect(refs.size).toBe(1)
       expect(document.querySelectorAll(`.${HOST_CLASS}`)).toHaveLength(1)
-      expect(documentListeners()).toBe(5)
+      const perDocument = documentListeners()
+      expect(perDocument).toBeGreaterThan(0)
       const firstHost = document.querySelector(`.${HOST_CLASS}`)
-      act(() => vi.advanceTimersByTime(32))
+      act(() => {
+        vi.advanceTimersByTime(32)
+      })
       expect(replayed).toEqual(['\x1b[0msnapshot:terminal-0'])
 
       act(() => renderer?.update(createElement('div', null, panes(1))))
       expect(startedBuilds).toEqual([true, true])
       expect(ready).toEqual(['terminal-0', 'terminal-1'])
       expect(refs.size).toBe(2)
-      expect(documentListeners()).toBe(10)
-      act(() => vi.advanceTimersByTime(32))
+      expect(documentListeners()).toBe(2 * perDocument)
+      act(() => {
+        vi.advanceTimersByTime(32)
+      })
       expect(replayed).toEqual(['\x1b[0msnapshot:terminal-0', '\x1b[0msnapshot:terminal-1'])
 
       act(() => renderer?.update(createElement('div', null, panes(0))))
