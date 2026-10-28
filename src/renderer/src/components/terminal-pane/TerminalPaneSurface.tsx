@@ -31,6 +31,8 @@ import { canCloseTerminalPane, terminalPaneCloseLabel } from './terminal-pane-cl
 import { useAppStore } from '@/store'
 import { getKnownExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
+import { selectStoppedWslDistro } from '@/lib/wsl-host-stopped-status'
+import { selectWorkspaceRuntimeEnvironmentId } from './remote-server-outage'
 
 export function TerminalPaneSurface({
   controller
@@ -126,6 +128,10 @@ export function TerminalPaneSurface({
   const paneOnClient = useAppStore(
     (state) => getKnownExecutionHostIdForWorktree(state, worktreeId) === LOCAL_EXECUTION_HOST_ID
   )
+  const wslHostStopped = useAppStore(
+    (state) =>
+      selectStoppedWslDistro(state, selectWorkspaceRuntimeEnvironmentId(state, worktreeId)) !== null
+  )
 
   return (
     <>
@@ -195,8 +201,8 @@ export function TerminalPaneSurface({
         pane={activePane}
         tabId={tabId}
       />
-      {/* Let SSH recovery own its strip instead of covering it with the raw connection-error toast. */}
-      {visibleTerminalError && isActive && !showSshReconnectOverlay && activePane
+      {/* Let SSH recovery and a stopped WSL distro's Start own the pane instead of the raw error toast. */}
+      {visibleTerminalError && isActive && !showSshReconnectOverlay && !wslHostStopped && activePane
         ? createPortal(
             <TerminalErrorToast
               error={visibleTerminalError}
