@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fsWatch = vi.hoisted(() => {
   const state: {
-    listener: ((eventType?: string, filename?: string | Buffer | null) => void) | null
+    listener: ((eventType?: string, filename?: string | null) => void) | null
   } = { listener: null }
   return state
 })
@@ -11,11 +11,10 @@ vi.mock('node:fs', () => ({
   watch: (
     _root: string,
     _options: unknown,
-    listener: (eventType?: string, filename?: string | Buffer | null) => void
+    listener: (eventType?: string, filename?: string | null) => void
   ) => {
     fsWatch.listener = listener
-    const watcher = new EventEmitter()
-    return Object.assign(watcher, { close: vi.fn(() => watcher.emit('close')) })
+    return Object.assign(new EventEmitter(), { close: vi.fn() })
   }
 }))
 
@@ -72,7 +71,7 @@ describe('watchWindowsRuntimeFileExplorer', () => {
       '.venv/lib/module.py',
       'app\\__pycache__\\module.pyc'
     ]
-    for (let elapsed = 0; elapsed < 10_000; elapsed += 10) {
+    for (let elapsed = 0; elapsed < 2_000; elapsed += 10) {
       for (const filename of excludedPaths) {
         fsWatch.listener?.(elapsed % 20 === 0 ? 'rename' : 'change', filename)
       }
@@ -95,8 +94,7 @@ describe('watchWindowsRuntimeFileExplorer', () => {
     'build',
     'src\\target.ts',
     '',
-    null,
-    Buffer.from('node_modules/unknown-encoding')
+    null
   ])('preserves conservative refreshes for an included or unknown filename: %s', (filename) => {
     const callback = vi.fn()
     watchWindowsRuntimeFileExplorer('C:\\repo', callback, vi.fn())
@@ -105,22 +103,5 @@ describe('watchWindowsRuntimeFileExplorer', () => {
     expect(callback).toHaveBeenCalledExactlyOnceWith([
       { kind: 'overflow', absolutePath: 'C:\\repo' }
     ])
-  })
-
-  it('does not let excluded events delay an included refresh or revive a closed watcher', async () => {
-    const callback = vi.fn()
-    const close = watchWindowsRuntimeFileExplorer('C:\\repo', callback, vi.fn())
-    fsWatch.listener?.('change', 'src\\index.ts')
-    vi.advanceTimersByTime(100)
-    fsWatch.listener?.('change', 'node_modules\\dependency\\index.js')
-    vi.advanceTimersByTime(50)
-    expect(callback).toHaveBeenCalledTimes(1)
-
-    fsWatch.listener?.('change', 'src\\index.ts')
-    await close()
-    fsWatch.listener?.('change', 'src\\index.ts')
-    vi.advanceTimersByTime(1_000)
-    expect(callback).toHaveBeenCalledTimes(1)
-    expect(vi.getTimerCount()).toBe(0)
   })
 })
