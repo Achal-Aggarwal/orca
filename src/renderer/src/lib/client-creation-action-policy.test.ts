@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createStore } from 'zustand/vanilla'
 import { createBrowserLinkTestStore, WORKSPACE } from './browser-link-open.test-fixture'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
@@ -290,5 +291,80 @@ describe('a runtime whose pages this desktop hosts', () => {
     expect(
       runtimeHostsPagesOnThisDesktop(hostingState({ id: 'orcad-server' }), 'orcad-server')
     ).toBe(false)
+  })
+})
+
+describe('creation action availability selectors', () => {
+  it.each([100, 1_000])(
+    'skips provider catalog scans for 25 desktop consumers with %i environments',
+    (environmentCount) => {
+      vi.stubGlobal('__ORCA_WEB_CLIENT__', false)
+      let environmentIdReads = 0
+      const runtimeEnvironments = Array.from(
+        { length: environmentCount },
+        (_, index): PublicKnownRuntimeEnvironment => ({
+          get id() {
+            environmentIdReads += 1
+            return `runtime-${index}`
+          },
+          name: `Host ${index}`,
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: null,
+          runtimeId: `runtime-${index}`,
+          endpoints: [
+            { id: 'endpoint-1', kind: 'websocket', label: 'WebSocket', endpoint: 'ws://host.test' }
+          ],
+          preferredEndpointId: 'endpoint-1'
+        })
+      )
+      const seeded = createBrowserLinkTestStore().getState()
+      const store = createStore(() => ({
+        ...seeded,
+        settings: {
+          ...getDefaultSettings('/home/test'),
+          activeRuntimeEnvironmentId: `runtime-${environmentCount - 1}`
+        },
+        runtimeEnvironments,
+        unrelatedWrite: 0
+      }))
+      let availability: readonly [boolean, boolean] | undefined
+      const releases = Array.from({ length: 25 }, () =>
+        store.subscribe((state) => {
+          availability = getClientCreationActionPolicy(state, null, 'enabled')
+        })
+      )
+      for (let index = 1; index <= 50; index += 1) {
+        store.setState({ unrelatedWrite: index })
+      }
+      releases.forEach((release) => release())
+      expect(availability).toEqual([true, true])
+      expect(environmentIdReads).toBe(0)
+    }
+  )
+
+  it('keeps paired-web affordances tied to negotiated host capabilities and workspace scope', () => {
+    vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
+    const store = createBrowserLinkTestStore()
+    store.setState({
+      settings: { ...getDefaultSettings('/home/test'), activeRuntimeEnvironmentId: 'runtime-1' },
+      runtimeStatusByEnvironmentId: new Map([
+        ['runtime-1', { status: runtimeStatus(), checkedAt: 1 }]
+      ])
+    })
+    expect(getClientCreationActionPolicy(store.getState(), null, 'enabled')).toEqual([false, false])
+    store.setState({
+      runtimeStatusByEnvironmentId: new Map([
+        ['runtime-1', { status: runtimeStatus(['browser.screencast.v1']), checkedAt: 2 }]
+      ])
+    })
+    expect(getClientCreationActionPolicy(store.getState(), null, 'enabled')).toEqual([true, false])
+    expect(
+      getClientCreationActionPolicy(store.getState(), FLOATING_TERMINAL_WORKTREE_ID, 'enabled')
+    ).toEqual([false, false])
+    expect(getClientCreationActionPolicy(store.getState(), WORKSPACE, 'enabled')).toEqual([
+      false,
+      false
+    ])
   })
 })

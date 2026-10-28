@@ -117,13 +117,7 @@ export function useSettingsNavigationMetadata(): SettingsNavSection[] {
   const projectHostSetupProjection = useProjectHostSetupProjection()
   const settings = useAppStore((state) => state.settings)
   const [managedBrowserCreationEnabled, mobileEmulatorCreationEnabled] = useAppStore(
-    useShallow((state) => {
-      const policy = getClientCreationActionPolicy(state, state.activeWorktreeId)
-      return [
-        policy['managed-browser'].state === 'enabled',
-        policy['mobile-emulator'].state === 'enabled'
-      ] as const
-    })
+    useShallow((state) => getClientCreationActionPolicy(state, state.activeWorktreeId, 'enabled'))
   )
   const nativeChatEnabled = settings?.experimentalNativeChat === true
   const typedChatPermissions = useChatSettingsOwnPermissions()

@@ -218,13 +218,7 @@ export function useTabBarRuntimeModel({
     [unifiedTabs]
   )
   const [managedBrowserCreationEnabled, mobileEmulatorCreationEnabled] = useAppStore(
-    useShallow((state) => {
-      const policy = getClientCreationActionPolicy(state, worktreeId)
-      return [
-        policy['managed-browser'].state === 'enabled',
-        policy['mobile-emulator'].state === 'enabled'
-      ] as const
-    })
+    useShallow((state) => getClientCreationActionPolicy(state, worktreeId, 'enabled'))
   )
   // Why: tab-wide launch/title hints are safe only before split; gate the view-mode toggle to the active leaf's agent.
   const toggleTabViewMode = useAppStore((s) => s.toggleTabViewMode)

@@ -69,17 +69,35 @@ export function resolveClientCreationActionPolicy(args: {
   }
 }
 
+const DESKTOP_CREATION_ACTIONS_ENABLED = Object.freeze([true, true] as const)
+
+export function getClientCreationActionPolicy(
+  state: AppState,
+  worktreeId: string | null,
+  projection: 'enabled'
+): readonly [boolean, boolean]
 export function getClientCreationActionPolicy(
   state: AppState,
   worktreeId: string | null
-): ClientCreationActionPolicy {
-  return worktreeId
+): ClientCreationActionPolicy
+export function getClientCreationActionPolicy(
+  state: AppState,
+  worktreeId: string | null,
+  projection?: 'enabled'
+): ClientCreationActionPolicy | readonly [boolean, boolean] {
+  if (projection === 'enabled' && !isPairedWebClientWindow()) {
+    return DESKTOP_CREATION_ACTIONS_ENABLED
+  }
+  const policy = worktreeId
     ? getWorkspaceClientCreationActionPolicy(state, worktreeId)
     : creationPolicyForRuntime(
         state,
         state.settings?.activeRuntimeEnvironmentId?.trim() ?? null,
         false
       )
+  return projection === 'enabled'
+    ? [policy['managed-browser'].state === 'enabled', policy['mobile-emulator'].state === 'enabled']
+    : policy
 }
 
 export function getWorkspaceClientCreationActionPolicy(

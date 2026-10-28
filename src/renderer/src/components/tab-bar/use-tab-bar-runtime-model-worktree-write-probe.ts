@@ -72,10 +72,7 @@ const AGENT_PROJECTIONS = Object.freeze({
   tabAgentTypesByTabId: Object.freeze({}),
   nativeChatTabWideFallbackUnsafeTabsById: Object.freeze({})
 })
-const CREATION_POLICY = Object.freeze({
-  'managed-browser': { state: 'enabled' },
-  'mobile-emulator': { state: 'enabled' }
-})
+const CREATION_ACTIONS_ENABLED = Object.freeze([true, true] as const)
 const DETECTED_AGENTS = Object.freeze({ detectedIds: Object.freeze([]) })
 const CREATE_MENU = Object.freeze({})
 const ITEM_PROJECTION = Object.freeze({
@@ -105,7 +102,7 @@ export function tabBarRuntimeModelStubs(): Record<string, () => Record<string, u
     connectionContext: () => ({ getConnectionIdFromState: () => null }),
     runtimeOwner: () => ({ runtimeEnvironmentIdOrLocalUnlessTwin: () => null }),
     nativeChatReadability: () => ({ isNativeChatTranscriptLocalReadable: () => false }),
-    creationPolicy: () => ({ getClientCreationActionPolicy: () => CREATION_POLICY }),
+    creationPolicy: () => ({ getClientCreationActionPolicy: () => CREATION_ACTIONS_ENABLED }),
     agentProjections: () => ({ selectTabBarAgentProjections: () => AGENT_PROJECTIONS }),
     localPreflight: () => ({
       getLocalProjectExecutionRuntimeContext: localProjectRuntimeSpy
