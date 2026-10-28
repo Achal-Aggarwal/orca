@@ -18,6 +18,7 @@ import {
   getActiveTabDockSide,
   readTabStripSlotIds,
   revealTabStripSlot,
+  updateTabStripDockAvailability,
   type ActiveTabDockSide
 } from './tab-strip-slot-geometry'
 import { motionSafeScrollBehavior } from '@/hooks/usePrefersReducedMotion'
@@ -94,6 +95,7 @@ export function useTabStripOverflowNavigation({
     setTabStripOverflowState((previous) =>
       sameTabStripOverflowState(previous, next) ? previous : next
     )
+    updateTabStripDockAvailability(el)
     setActiveTabDockSide(getActiveTabDockSide(el))
   }, [])
   const scrollTabStrip = useCallback(

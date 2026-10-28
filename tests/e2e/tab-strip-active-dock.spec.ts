@@ -74,6 +74,50 @@ test.describe('Tab strip active-tab dock', () => {
     await ensureTerminalVisible(orcaPage)
   })
 
+  for (const edge of ['start', 'end'] as const) {
+    test(`keeps inactive tabs clickable in a strip too narrow for the ${edge} dock`, async ({
+      orcaPage
+    }) => {
+      const worktreeId = await waitForActiveWorktree(orcaPage)
+      for (let i = 0; i < 3; i++) {
+        await createBackgroundTerminalTab(orcaPage, worktreeId)
+      }
+      const ids = await readStripSlotIds(orcaPage)
+      const activeTabId = (edge === 'start' ? ids.at(0) : ids.at(-1))!
+      const inactiveTabId = (edge === 'start' ? ids.at(-1) : ids.at(0))!
+      const activeTab = orcaPage.locator(
+        `${slotSelector(activeTabId)} [data-testid="sortable-tab"]`
+      )
+      const inactiveTab = orcaPage.locator(
+        `${slotSelector(inactiveTabId)} [data-testid="sortable-tab"]`
+      )
+      await activeTab.click()
+
+      const strip = orcaPage.locator(STRIP).first()
+      await strip.evaluate((el) => {
+        el.style.maxWidth = '100px'
+      })
+      await strip.evaluate((el, side) => {
+        el.scrollLeft = side === 'start' ? el.scrollWidth : 0
+      }, edge)
+      await expect.poll(() => isSlotInView(orcaPage, inactiveTabId)).toBe(true)
+      await inactiveTab.click()
+      await expect(inactiveTab).toHaveAttribute('data-active', 'true')
+      await activeTab.locator('[data-tab-close-button]').click()
+      await expect(activeTab).toHaveCount(0)
+
+      await strip.evaluate((el, side) => {
+        el.style.maxWidth = '200px'
+        el.scrollLeft = side === 'start' ? 0 : el.scrollWidth
+      }, edge)
+      await expect(strip).toHaveAttribute(
+        'data-active-tab-docked',
+        edge === 'start' ? 'end' : 'start'
+      )
+      expect(await isSlotInView(orcaPage, inactiveTabId)).toBe(true)
+    })
+  }
+
   test('docks an offscreen active tab and reveals an arriving tab beside it without flicker', async ({
     orcaPage
   }) => {
