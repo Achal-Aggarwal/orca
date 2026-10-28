@@ -33,14 +33,26 @@ export function isTransientRipgrepSpawnError(error: unknown): boolean {
   return typeof code === 'string' && TRANSIENT_SPAWN_ERROR_CODES.has(code)
 }
 
-function ignoreRipgrepSpawnError(): void {}
+function ignoreRipgrepProcessError(): void {}
+
+export function absorbRipgrepTerminationError(child: ChildProcessHandle): void {
+  if (!child.listeners('error').includes(ignoreRipgrepProcessError)) {
+    child.once('error', ignoreRipgrepProcessError)
+  }
+}
 
 export function killSpawnedRipgrepProcess(child: ChildProcessHandle): boolean {
   // Why: killing a failed-spawn handle can signal the relay's own process group.
   if (Object.hasOwn(child, 'pid') && child.pid === undefined) {
     return false
   }
-  return child.kill()
+  // Termination is advisory after the caller has decided the request outcome.
+  absorbRipgrepTerminationError(child)
+  try {
+    return child.kill()
+  } catch {
+    return false
+  }
 }
 
 export function absorbPendingRipgrepSpawnError(
@@ -54,7 +66,7 @@ export function absorbPendingRipgrepSpawnError(
     return
   }
   // Why: concurrent-pass cleanup can win before Node delivers the queued spawn error.
-  child.once('error', ignoreRipgrepSpawnError)
+  child.once('error', ignoreRipgrepProcessError)
 }
 
 export async function isRipgrepSpawnCwdUsable(cwd: string): Promise<boolean> {

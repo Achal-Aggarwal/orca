@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../../persistence/loading-store/store'
 import type * as GitRunner from '../../git/runner'
 import type * as BundledRipgrepPath from '../../ripgrep/bundled-ripgrep-path'
-import { isFileListingCancellation } from '../../../shared/file-listing-cancellation'
+import {
+  FileListingCancelledError,
+  isFileListingCancellation
+} from '../../../shared/file-listing-cancellation'
 import { RipgrepUnavailableError } from '../../../shared/ripgrep-process-availability'
 
 const {
@@ -79,23 +82,73 @@ describe('searchQuickOpenFilePaths', () => {
     )
   })
 
-  it('preserves cancellation while an incomplete UTF-8 scalar is buffered', async () => {
-    const child = createMockProcess()
-    wslAwareSpawnMock.mockReturnValue(child)
-    const controller = new AbortController()
-    const promise = searchQuickOpenFilePaths('/repo', UNUSED_STORE, {
-      query: 'file',
-      limit: 2,
-      signal: controller.signal
-    })
-    await flushMicrotasks()
-    child.stdout?.emit('data', Buffer.from([0xf0, 0x9f]))
-    controller.abort()
-    await expect(promise).rejects.toSatisfy(isFileListingCancellation)
-  })
+  it.each(['synchronous-error', 'queued-error'] as const)(
+    'preserves cancellation with buffered UTF-8 when termination emits a %s',
+    async (termination) => {
+      const child = createMockProcess()
+      vi.mocked(child.kill).mockImplementation(() => {
+        const emit = (): void => {
+          child.emit('error', new Error('kill EPERM'))
+        }
+        if (termination === 'synchronous-error') {
+          emit()
+        } else {
+          queueMicrotask(emit)
+        }
+        return false
+      })
+      wslAwareSpawnMock.mockReturnValue(child)
+      const controller = new AbortController()
+      const promise = searchQuickOpenFilePaths('/repo', UNUSED_STORE, {
+        query: 'file',
+        limit: 2,
+        signal: controller.signal
+      })
+      await flushMicrotasks()
+      child.stdout?.emit('data', Buffer.from([0xf0, 0x9f]))
+      const cancellation = new FileListingCancelledError('superseded')
+      controller.abort(cancellation)
+      await expect(promise).rejects.toBe(cancellation)
+    }
+  )
+
+  it.each(['synchronous-error', 'queued-error'] as const)(
+    'preserves path-search timeout errors when termination emits a %s',
+    async (termination) => {
+      vi.useFakeTimers()
+      try {
+        const child = createMockProcess()
+        vi.mocked(child.kill).mockImplementation(() => {
+          const emit = (): void => {
+            child.emit('error', new Error('kill EPERM'))
+          }
+          if (termination === 'synchronous-error') {
+            emit()
+          } else {
+            queueMicrotask(emit)
+          }
+          return false
+        })
+        wslAwareSpawnMock.mockReturnValue(child)
+        const pending = searchQuickOpenFilePaths('/repo', UNUSED_STORE, { query: 'file', limit: 2 })
+        const rejected = expect(pending).rejects.toThrow('rg file-path search timed out')
+        await flushMicrotasks()
+        await vi.advanceTimersByTimeAsync(10_000)
+        await rejected
+        expect(child.stdout?.listenerCount('data')).toBe(0)
+        expect(child.listenerCount('close')).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 
   it.each(['invalid', 'incomplete'] as const)('rejects %s UTF-8 filename bytes', async (kind) => {
     const child = createMockProcess()
+    vi.mocked(child.kill).mockImplementation(() => {
+      child.emit('error', new Error('kill EPERM'))
+      return false
+    })
     wslAwareSpawnMock.mockReturnValue(child)
     const promise = searchQuickOpenFilePaths('/repo', UNUSED_STORE, { query: 'file', limit: 2 })
     await flushMicrotasks()
@@ -124,6 +177,10 @@ describe('searchQuickOpenFilePaths', () => {
 
   it('rejects and stops an oversized path rather than ranking a truncated suffix', async () => {
     const child = createMockProcess()
+    vi.mocked(child.kill).mockImplementation(() => {
+      child.emit('error', new Error('kill EPERM'))
+      return false
+    })
     wslAwareSpawnMock.mockReturnValue(child)
     const promise = searchQuickOpenFilePaths('/repo', UNUSED_STORE, {
       query: 'target',

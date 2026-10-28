@@ -128,8 +128,8 @@ function scanRipgrepPaths(args: {
   }
   return new Promise((resolve, reject) => {
     const filenameDecoder = new RipgrepFilenameDecoder((error) => {
-      killSpawnedRipgrepProcess(child)
       finish(error)
+      killSpawnedRipgrepProcess(child)
     }, Boolean(args.wslDistroForOutput))
     const pathAccumulator = new QuickOpenSubprocessPathAccumulator(0)
     let done = false
@@ -208,8 +208,8 @@ function scanRipgrepPaths(args: {
         return true
       })
       if (result === 'path-too-large') {
-        killSpawnedRipgrepProcess(child)
         finish(new Error('Quick Open file path exceeds the listing limit'))
+        killSpawnedRipgrepProcess(child)
       }
     }
     const handleStderrData = (): void => {
@@ -271,8 +271,8 @@ function scanRipgrepPaths(args: {
     }
     const handleAbort = (): void => {
       pathAccumulator.clear()
-      killSpawnedRipgrepProcess(child)
       finish(fileListingCancellationError(args.signal))
+      killSpawnedRipgrepProcess(child)
     }
 
     child.stdout?.on('data', handleStdoutData)
@@ -282,8 +282,8 @@ function scanRipgrepPaths(args: {
     args.signal?.addEventListener('abort', handleAbort, { once: true })
     timer = setTimeout(() => {
       pathAccumulator.clear()
-      killSpawnedRipgrepProcess(child)
       finish(new Error('rg file-path search timed out'))
+      killSpawnedRipgrepProcess(child)
     }, 10_000)
     if (args.signal?.aborted) {
       handleAbort()

@@ -137,10 +137,10 @@ export function runBundledRipgrepTextSearch({
     const handleStdoutData = (chunk: string): void => {
       if (!lines.push(chunk, processLine)) {
         acc.truncated = true
+        resolveOnce()
         if (child) {
           stopBundledRipgrep(child, Boolean(wslDistroForOutput))
         }
-        resolveOnce()
       }
     }
     const handleStderrData = (chunk: Buffer): void => {
@@ -213,10 +213,10 @@ export function runBundledRipgrepTextSearch({
     }
     killTimeout = setTimeout(() => {
       acc.truncated = true
+      resolveOnce()
       if (child) {
         stopBundledRipgrep(child, Boolean(wslDistroForOutput))
       }
-      resolveOnce()
     }, SEARCH_TIMEOUT_MS)
   })
 }

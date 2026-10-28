@@ -130,43 +130,109 @@ describe('RuntimeFileCommands', () => {
     )
   })
 
-  it('settles and detaches runtime rg searches when timeout kill is ignored', async () => {
-    const resolveRuntimeFileTarget = vi.fn(async () => ({
-      worktree: {
-        id: 'wt-1',
-        repoId: 'repo-1',
-        path: '/repo'
-      },
-      executionHostId: 'local'
-    }))
-    const { commands } = createRuntimeFileCommands({ resolveRuntimeFileTarget })
-    const child = createRuntimeSearchChild()
-    resolveAuthorizedPathMock.mockResolvedValue('/repo')
-    wslAwareSpawnMock.mockReturnValue(child)
+  it.each(['ignored', 'synchronous-error', 'queued-error'] as const)(
+    'preserves partial runtime results when timeout termination is %s',
+    async (termination) => {
+      const resolveRuntimeFileTarget = vi.fn(async () => ({
+        worktree: {
+          id: 'wt-1',
+          repoId: 'repo-1',
+          path: '/repo'
+        },
+        executionHostId: 'local'
+      }))
+      const { commands } = createRuntimeFileCommands({ resolveRuntimeFileTarget })
+      const child = createRuntimeSearchChild()
+      Object.defineProperty(child, 'pid', { value: 1 })
+      child.kill.mockImplementation(() => {
+        const emit = (): void => {
+          child.emit('error', Object.assign(new Error('kill EPERM'), { code: 'EPERM' }))
+        }
+        if (termination === 'synchronous-error') {
+          emit()
+        }
+        if (termination === 'queued-error') {
+          queueMicrotask(emit)
+        }
+        return false
+      })
+      resolveAuthorizedPathMock.mockResolvedValue('/repo')
+      wslAwareSpawnMock.mockReturnValue(child)
 
-    const resultPromise = commands.searchRuntimeFiles('id:wt-1', {
-      query: 'needle',
-      maxResults: 10
-    })
-    await vi.advanceTimersByTimeAsync(SEARCH_TIMEOUT_MS)
+      const resultPromise = commands.searchRuntimeFiles('id:wt-1', {
+        query: 'needle',
+        maxResults: 10
+      })
+      await flushRuntimeSearchMicrotasks()
+      child.stdout.emit(
+        'data',
+        `${JSON.stringify({
+          type: 'match',
+          data: {
+            path: { text: './example.txt' },
+            lines: { text: 'needle\n' },
+            line_number: 1,
+            submatches: [{ start: 0, end: 6 }]
+          }
+        })}\n`
+      )
+      await vi.advanceTimersByTimeAsync(SEARCH_TIMEOUT_MS)
 
-    await expect(resultPromise).resolves.toMatchObject({
-      files: [],
-      totalMatches: 0,
-      truncated: true
-    })
-    expect(child.kill).toHaveBeenCalledTimes(1)
-    expect(child.stdout.listenerCount('data')).toBe(0)
-    expect(child.stderr.listenerCount('data')).toBe(0)
-    expect(child.listenerCount('error')).toBe(0)
-    expect(child.listenerCount('close')).toBe(0)
-    expect(bundledRipgrepCommandMock).toHaveBeenCalledWith({ wsl: false })
-    expect(wslAwareSpawnMock).toHaveBeenCalledWith(
-      '/bundled/rg',
-      expect.any(Array),
-      expect.objectContaining({ cwd: '/repo' })
-    )
-  })
+      await expect(resultPromise).resolves.toMatchObject({
+        files: [{ relativePath: 'example.txt', matches: [{ line: 1, column: 1 }] }],
+        totalMatches: 1,
+        truncated: true
+      })
+      expect(child.kill).toHaveBeenCalledTimes(1)
+      expect(child.stdout.listenerCount('data')).toBe(0)
+      expect(child.stderr.listenerCount('data')).toBe(0)
+      expect(child.listenerCount('error')).toBe(termination === 'ignored' ? 1 : 0)
+      expect(child.listenerCount('close')).toBe(0)
+      expect(bundledRipgrepCommandMock).toHaveBeenCalledWith({ wsl: false })
+      expect(wslAwareSpawnMock).toHaveBeenCalledWith(
+        '/bundled/rg',
+        expect.any(Array),
+        expect.objectContaining({ cwd: '/repo' })
+      )
+    }
+  )
+
+  it.each(['synchronous-error', 'queued-error'] as const)(
+    'preserves cancellation when runtime termination emits a %s',
+    async (termination) => {
+      const { commands } = createRuntimeFileCommands()
+      const child = createRuntimeSearchChild()
+      Object.defineProperty(child, 'pid', { value: 1 })
+      child.kill.mockImplementation(() => {
+        const emit = (): void => {
+          child.emit('error', Object.assign(new Error('kill EPERM'), { code: 'EPERM' }))
+        }
+        if (termination === 'synchronous-error') {
+          emit()
+        } else {
+          queueMicrotask(emit)
+        }
+        return false
+      })
+      resolveAuthorizedPathMock.mockResolvedValue('/repo')
+      wslAwareSpawnMock.mockReturnValue(child)
+      const controller = new AbortController()
+      const cancellation = new Error('requested cancellation')
+      const pending = commands.searchRuntimeFiles(
+        'id:wt-1',
+        { query: 'needle' },
+        { signal: controller.signal }
+      )
+      const rejected = expect(pending).rejects.toBe(cancellation)
+      await flushRuntimeSearchMicrotasks()
+      controller.abort(cancellation)
+      await rejected
+      expect(child.stdout.listenerCount('data')).toBe(0)
+      expect(child.stderr.listenerCount('data')).toBe(0)
+      expect(child.listenerCount('close')).toBe(0)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
 
   it.each(['error-first', 'close-first'] as const)(
     'rejects with the bundled-ripgrep error when runtime rg native launch failure is %s',

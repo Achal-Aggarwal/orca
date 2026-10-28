@@ -87,8 +87,8 @@ export async function listQuickOpenFiles(
   const runRg = (args: string[]): Promise<void> =>
     new Promise((resolve, reject) => {
       const filenameDecoder = new RipgrepFilenameDecoder((error) => {
-        killSpawnedRipgrepProcess(child)
         finish(error)
+        killSpawnedRipgrepProcess(child)
       }, Boolean(wslDistroForOutput))
       let buf = ''
       let done = false
@@ -263,8 +263,8 @@ export async function listQuickOpenFiles(
       }
       const handleAbort = (): void => {
         buf = ''
-        killSpawnedRipgrepProcess(child)
         finish(fileListingCancellationError(signal))
+        killSpawnedRipgrepProcess(child)
       }
 
       children.push({ child, isDone: () => done, finish })
@@ -276,8 +276,8 @@ export async function listQuickOpenFiles(
       timer = setTimeout(() => {
         // Discard timeout buffers that may end mid-path.
         buf = ''
-        killSpawnedRipgrepProcess(child)
         finish(new Error('rg list timed out'))
+        killSpawnedRipgrepProcess(child)
       }, 10000)
       signal?.addEventListener('abort', handleAbort, { once: true })
       if (signal?.aborted) {

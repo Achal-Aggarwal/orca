@@ -92,6 +92,10 @@ describe('filesystem-list-files', () => {
     spawnMock.mockReturnValue(child)
     const store: Store = Object.create(null)
     const promise = listQuickOpenFiles('/repo', store)
+    vi.mocked(child.kill).mockImplementation(() => {
+      child.emit('error', new Error('kill EPERM'))
+      return false
+    })
     await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1))
     child.stdout?.emit('data', Buffer.from(kind === 'invalid' ? [0xff] : [0xe2, 0x82]))
     if (kind === 'incomplete') {
@@ -140,16 +144,30 @@ describe('filesystem-list-files', () => {
     expect(child.listenerCount('close')).toBe(0)
   })
 
-  it('counts NUL-delimited filenames containing newlines as one result each', async () => {
-    const child = createMockProcess()
-    spawnMock.mockReturnValue(child)
-    const store: Store = Object.create(null)
-    const promise = listQuickOpenFiles('/repo', store, undefined, undefined, 2)
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1))
-    child.stdout?.emit('data', 'first\nsecond.ts\0trailing\r\0third.ts\0')
-    await expect(promise).resolves.toEqual(['first\nsecond.ts', 'trailing\r'])
-    expect(child.kill).toHaveBeenCalled()
-  })
+  it.each(['synchronous-error', 'queued-error'] as const)(
+    'preserves capped NUL-delimited filenames when termination emits a %s',
+    async (termination) => {
+      const child = createMockProcess()
+      vi.mocked(child.kill).mockImplementation(() => {
+        const emit = (): void => {
+          child.emit('error', new Error('kill EPERM'))
+        }
+        if (termination === 'synchronous-error') {
+          emit()
+        } else {
+          queueMicrotask(emit)
+        }
+        return false
+      })
+      spawnMock.mockReturnValue(child)
+      const store: Store = Object.create(null)
+      const promise = listQuickOpenFiles('/repo', store, undefined, undefined, 2)
+      await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1))
+      child.stdout?.emit('data', 'first\nsecond.ts\0trailing\r\0third.ts\0')
+      await expect(promise).resolves.toEqual(['first\nsecond.ts', 'trailing\r'])
+      expect(child.kill).toHaveBeenCalled()
+    }
+  )
 
   it('rejects a synchronous launch failure before cleanup has been initialized', async () => {
     spawnMock.mockImplementationOnce(() => {
@@ -365,55 +383,84 @@ describe('filesystem-list-files', () => {
     await expect(promise).resolves.toEqual(['src/index.ts'])
   })
 
-  it('settles and detaches rg scans that ignore timeout kills', async () => {
-    vi.useFakeTimers()
+  it.each(['ignored', 'synchronous-error', 'queued-error'] as const)(
+    'preserves listing timeout errors when termination is %s',
+    async (termination) => {
+      vi.useFakeTimers()
 
-    try {
-      const p1 = createMockProcess()
+      try {
+        const p1 = createMockProcess()
 
-      spawnMock.mockReturnValue(p1)
+        vi.mocked(p1.kill).mockImplementation(() => {
+          const emit = (): void => {
+            p1.emit('error', new Error('kill EPERM'))
+          }
+          if (termination === 'synchronous-error') {
+            emit()
+          }
+          if (termination === 'queued-error') {
+            queueMicrotask(emit)
+          }
+          return false
+        })
+        spawnMock.mockReturnValue(p1)
 
-      const storeMock = {} as unknown as Store
-      const promise = listQuickOpenFiles('/mock/root', storeMock)
+        const storeMock = {} as unknown as Store
+        const promise = listQuickOpenFiles('/mock/root', storeMock)
 
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
 
-      p1.stdout?.emit('data', 'src/index.ts\0partial')
-      const rejection = expect(promise).rejects.toThrow('rg list timed out')
+        p1.stdout?.emit('data', 'src/index.ts\0partial')
+        const rejection = expect(promise).rejects.toThrow('rg list timed out')
 
-      await vi.advanceTimersByTimeAsync(10000)
+        await vi.advanceTimersByTimeAsync(10000)
 
-      await rejection
-      expect(p1.kill).toHaveBeenCalled()
-      expect((p1.stdout as unknown as EventEmitter).listenerCount('data')).toBe(0)
-      expect((p1.stderr as unknown as EventEmitter).listenerCount('data')).toBe(0)
-      expect(p1.listenerCount('error')).toBe(0)
-      expect(p1.listenerCount('close')).toBe(0)
-    } finally {
-      vi.useRealTimers()
+        await rejection
+        expect(p1.kill).toHaveBeenCalled()
+        expect((p1.stdout as unknown as EventEmitter).listenerCount('data')).toBe(0)
+        expect((p1.stderr as unknown as EventEmitter).listenerCount('data')).toBe(0)
+        expect(p1.listenerCount('error')).toBe(termination === 'ignored' ? 1 : 0)
+        expect(p1.listenerCount('close')).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
     }
-  })
+  )
 
-  it('kills local rg scans when a paired listing is cancelled', async () => {
-    const p1 = createMockProcess()
-    spawnMock.mockReturnValue(p1)
-    const controller = new AbortController()
-    const cancellation = new FileListingCancelledError('superseded')
-    const promise = listQuickOpenFiles(
-      '/mock/root',
-      {} as unknown as Store,
-      undefined,
-      controller.signal
-    )
-    await flushMicrotasks()
+  it.each(['synchronous-error', 'queued-error'] as const)(
+    'preserves paired listing cancellation when termination emits a %s',
+    async (termination) => {
+      const p1 = createMockProcess()
+      vi.mocked(p1.kill).mockImplementation(() => {
+        const emit = (): void => {
+          p1.emit('error', new Error('kill EPERM'))
+        }
+        if (termination === 'synchronous-error') {
+          emit()
+        } else {
+          queueMicrotask(emit)
+        }
+        return false
+      })
+      spawnMock.mockReturnValue(p1)
+      const controller = new AbortController()
+      const cancellation = new FileListingCancelledError('superseded')
+      const promise = listQuickOpenFiles(
+        '/mock/root',
+        {} as unknown as Store,
+        undefined,
+        controller.signal
+      )
+      await flushMicrotasks()
 
-    controller.abort(cancellation)
+      controller.abort(cancellation)
 
-    await expect(promise).rejects.toBe(cancellation)
-    expect(p1.kill).toHaveBeenCalledOnce()
-  })
+      await expect(promise).rejects.toBe(cancellation)
+      expect(p1.kill).toHaveBeenCalledOnce()
+    }
+  )
 
   it('filters out .next, .cache, .stably, .vscode, .idea', async () => {
     const p1 = createMockProcess()

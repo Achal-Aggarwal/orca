@@ -60,6 +60,27 @@ describe('ripgrep process availability', () => {
     }
   })
 
+  it.each(['synchronous-error', 'queued-error', 'throw'] as const)(
+    'keeps termination advisory for a started process with %s',
+    async (termination) => {
+      const child = createChild(1)
+      vi.spyOn(child, 'kill').mockImplementation(() => {
+        const error = Object.assign(new Error('kill EPERM'), { code: 'EPERM' })
+        if (termination === 'throw') {
+          throw error
+        }
+        if (termination === 'synchronous-error') {
+          child.emit('error', error)
+        } else {
+          queueMicrotask(() => child.emit('error', error))
+        }
+        return false
+      })
+      expect(killSpawnedRipgrepProcess(child)).toBe(false)
+      await Promise.resolve()
+    }
+  )
+
   it('distinguishes a usable root from a missing spawn cwd', async () => {
     await expect(isRipgrepSpawnCwdUsable(process.cwd())).resolves.toBe(true)
     await expect(
