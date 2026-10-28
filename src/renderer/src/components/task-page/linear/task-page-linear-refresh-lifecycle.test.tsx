@@ -18,12 +18,19 @@ import { useState } from 'react'
 import { getLinearSourceScope } from '@/store/slices/linear/linear-slice-scope'
 import { bumpProviderRuntimeSessionGeneration } from '@/lib/provider-runtime-context'
 import type { LinearIssue } from '../../../../../shared/linear/issue-types'
-import { expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor, render, fireEvent, screen } from '@testing-library/react'
 import { deferred } from '../../../store/slices/linear-slice-test-harness'
 import { inflightListRequests } from '../../../store/slices/linear/linear-slice-request-state'
 import { LinearStateCell } from './task-page-linear-issue-model'
 import { getTaskSourceCacheScope } from '../../../../../shared/task-source-context'
+
+const cacheTime = Date.parse('2026-01-01T00:00:00Z')
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(cacheTime)
+})
+afterEach(() => vi.useRealTimers())
 
 it.each(
   ['list', 'search'].flatMap((kind) =>
@@ -37,7 +44,7 @@ it.each(
     const s = store()
     s.setState({
       recordFeatureInteraction: vi.fn(),
-      linearIssueCache: { 'w::same-uuid': { data: task(), fetchedAt: Date.now() } }
+      linearIssueCache: { 'w::same-uuid': { data: task(), fetchedAt: cacheTime } }
     })
     const runtime = wire(kind)
     runtime.mockResolvedValueOnce(response(kind, 'In Review'))
@@ -501,7 +508,7 @@ it('captured default runtime cannot seed or patch the focused foreign runtime ca
   // SAFETY: only activeRuntimeEnvironmentId is read by this captured-scope fixture.
   s.setState({
     settings: { activeRuntimeEnvironmentId: 'remote' } as never,
-    linearIssueCache: { 'w::same-uuid': { data: task('Remote'), fetchedAt: Date.now() } }
+    linearIssueCache: { 'w::same-uuid': { data: task('Remote'), fetchedAt: cacheTime } }
   })
   const remote = s.getState().fetchLinearIssue(task().id, 'w').acquire()
   expect(remote.currentView().data?.state.name).toBe('Remote')

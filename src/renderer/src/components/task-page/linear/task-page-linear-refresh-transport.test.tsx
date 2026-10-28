@@ -30,6 +30,9 @@ vi.mock('../../../../../main/linear/client', () => ({
   isAuthError: () => false
 }))
 vi.mock('../../../../../main/linear/linear-token-store', () => ({ clearToken: vi.fn() }))
+const actual = await vi.importActual<typeof RuntimeLinearProjectClient>(
+  '@/runtime/runtime-linear-project-client'
+)
 let restoreApi = () => {}
 afterEach(() => {
   restoreApi()
@@ -57,9 +60,6 @@ it.each(['project', 'custom-view'] as const)(
       kind === 'project'
         ? { linearProjectIssueCache: cache }
         : { linearCustomViewIssueCache: cache }
-    )
-    const actual = await vi.importActual<typeof RuntimeLinearProjectClient>(
-      '@/runtime/runtime-linear-project-client'
     )
     reads.project.mockImplementation(actual.linearListProjectIssues)
     reads.view.mockImplementation(actual.linearListCustomViewIssues)

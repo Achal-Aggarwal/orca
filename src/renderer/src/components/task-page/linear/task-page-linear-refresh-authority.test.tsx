@@ -28,7 +28,7 @@ import type { TaskSourceContext } from '../../../../../shared/task-source-contex
 import { useTaskPageLinearInOrcaEffects } from './use-task-page-linear-in-orca-effects'
 import { useTaskPageDetailRouting } from '../use-task-page-detail-routing'
 import { useLinearIssueWorkspaceDetail } from '../../linear-issue-workspace-detail-state'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor, render, fireEvent, screen } from '@testing-library/react'
 import { deferred } from '../../../store/slices/linear-slice-test-harness'
 import { clearLinearRequestMaps } from '../../../store/slices/linear/linear-slice-request-state'
@@ -36,6 +36,13 @@ import { useTaskPageLinearListSelectionPrelude } from './use-task-page-linear-li
 import { LinearStateCell } from './task-page-linear-issue-model'
 import { getTaskSourceCacheScope } from '../../../../../shared/task-source-context'
 import { useTaskPageLinearListEffects } from './use-task-page-linear-list-effects'
+
+const cacheTime = Date.parse('2026-01-01T00:00:00Z')
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(cacheTime)
+})
+afterEach(() => vi.useRealTimers())
 
 describe('Linear refresh row authority', () => {
   it.each(views)(
@@ -194,7 +201,7 @@ it('opens the fresh row on its origin source despite stale aliases and failed de
     jiraSearchCache: {},
     linearIssueCache: {
       [`${getTaskSourceCacheScope(origin)}::w::DAT-124`]: { data: task(), fetchedAt: 1 },
-      [`${getTaskSourceCacheScope(foreign)}::w::same-uuid`]: { data: task(), fetchedAt: Date.now() }
+      [`${getTaskSourceCacheScope(foreign)}::w::same-uuid`]: { data: task(), fetchedAt: cacheTime }
     }
   })
   reads.detail.mockRejectedValue(new Error('raw detail failure'))

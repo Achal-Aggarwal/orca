@@ -102,6 +102,9 @@ const mocks = vi.hoisted(() => {
     }
   }
 })
+const actual = await vi.importActual<typeof RuntimeLinearIssueMutations>(
+  '@/runtime/runtime-linear-issue-mutations'
+)
 let stopBridge = () => {}
 let restoreApi = () => {}
 let pickerStore: ReturnType<typeof createTestStore>
@@ -682,9 +685,6 @@ it.each(['success', 'fallback', 'legacy', 'release'] as const)(
     const old = Promise.withResolvers<LinearIssue | null>()
     const fresh = Promise.withResolvers<LinearIssue | null>()
     const control = Promise.withResolvers<LinearIssue | null>()
-    const actual = await vi.importActual<typeof RuntimeLinearIssueMutations>(
-      '@/runtime/runtime-linear-issue-mutations'
-    )
     let aliasLoads = 0
     detailTransport.issue.mockReset().mockImplementation(async (_id, workspaceId) => {
       const issue =
