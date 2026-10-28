@@ -15,6 +15,7 @@ const rig = vi.hoisted(() => ({
   }[],
   listeners: new Set<() => void>(),
   state: {
+    unusedLocalState: 0,
     runtimeStatusByEnvironmentId: new Map([
       [
         'crew-host',
@@ -68,9 +69,14 @@ function Pane({
   const crew = useOrchestrationCrew(target, party)
   renderCount()
   return (
-    <output data-testid={party}>
-      {crew.status === 'ok' ? crew.sections.managing.length : 'unknown'}
-    </output>
+    <>
+      <output data-testid={party}>
+        {crew.status === 'ok' ? crew.sections.managing.length : 'unknown'}
+      </output>
+      <output data-testid={`${party}-question`}>
+        {crew.sections.managing[0]?.pendingQuestion?.preview}
+      </output>
+    </>
   )
 }
 function publish(index: number, pending = false) {
@@ -142,6 +148,7 @@ it('caches old-host refusal per generation and resubscribes after reconnect or p
   expect(rig.streams).toHaveLength(1)
   act(() => {
     rig.state = {
+      ...rig.state,
       runtimeStatusByEnvironmentId: new Map([
         [
           'crew-host',
@@ -165,4 +172,94 @@ it('caches old-host refusal per generation and resubscribes after reconnect or p
   expect(rig.streams[1].unsubscribe).toHaveBeenCalledOnce()
   view.unmount()
   expect(rig.streams[2].unsubscribe).toHaveBeenCalledOnce()
+})
+
+it('renders no unaffected local parties or hosts after unused state and other-host updates', async () => {
+  const otherHost = { kind: 'environment', environmentId: 'crew-other-host' } as const
+  const status = {
+    status: { runtimeId: 'runtime-isolation' },
+    connectionGeneration: 1,
+    hostContactEpoch: 1
+  }
+  rig.state = {
+    unusedLocalState: 0,
+    runtimeStatusByEnvironmentId: new Map([
+      ['crew-host', status],
+      ['crew-other-host', status]
+    ])
+  }
+  replaceRuntimeEnvironmentRevisions([
+    { id: 'crew-host', createdAt: 10 },
+    { id: 'crew-other-host', createdAt: 20 }
+  ])
+  const localFirst = vi.fn(),
+    localOther = vi.fn(),
+    selected = vi.fn(),
+    other = vi.fn()
+  const counts = [localFirst, localOther, selected, other]
+  const view = render(
+    <>
+      <Pane party="term_local_first" renderCount={localFirst} />
+      <Pane party="term_local_other" renderCount={localOther} />
+      <Pane party="term_selected" target={remote} renderCount={selected} />
+      <Pane party="term_other_host" target={otherHost} renderCount={other} />
+    </>
+  )
+  await act(async () => {})
+  expect(rig.streams).toHaveLength(4)
+  for (let index = 0; index < 4; index++) {
+    act(() => publish(index)())
+  }
+  counts.forEach((count) => count.mockClear())
+  const expectNone = () => counts.forEach((count) => expect(count).not.toHaveBeenCalled())
+
+  act(() => {
+    rig.state = { ...rig.state, unusedLocalState: 1 }
+    rig.listeners.forEach((wake) => wake())
+  })
+  expectNone()
+  act(() => {
+    rig.state = {
+      ...rig.state,
+      runtimeStatusByEnvironmentId: new Map(rig.state.runtimeStatusByEnvironmentId).set(
+        'crew-other-host',
+        { ...status, connectionGeneration: 2 }
+      )
+    }
+    rig.listeners.forEach((wake) => wake())
+  })
+  await act(async () => {})
+  expect(localFirst).not.toHaveBeenCalled()
+  expect(localOther).not.toHaveBeenCalled()
+  expect(selected).not.toHaveBeenCalled()
+  expect(other).toHaveBeenCalled()
+  expect(rig.streams).toHaveLength(5)
+  counts.forEach((count) => count.mockClear())
+  act(() =>
+    replaceRuntimeEnvironmentRevisions([
+      { id: 'crew-host', createdAt: 10 },
+      { id: 'crew-other-host', createdAt: 20, pairingRevision: 21 }
+    ])
+  )
+  await act(async () => {})
+  expect(localFirst).not.toHaveBeenCalled()
+  expect(localOther).not.toHaveBeenCalled()
+  expect(selected).not.toHaveBeenCalled()
+  expect(other).toHaveBeenCalled()
+  expect(rig.streams).toHaveLength(6)
+  counts.forEach((count) => count.mockClear())
+  act(() => publish(5, true)())
+  expect(localFirst).not.toHaveBeenCalled()
+  expect(localOther).not.toHaveBeenCalled()
+  expect(selected).not.toHaveBeenCalled()
+  expect(other).toHaveBeenCalledOnce()
+  counts.forEach((count) => count.mockClear())
+  act(() => publish(2, true)())
+  expect(selected).toHaveBeenCalledOnce()
+  expect(localFirst).not.toHaveBeenCalled()
+  expect(localOther).not.toHaveBeenCalled()
+  expect(other).not.toHaveBeenCalled()
+  expect(view.getByTestId('term_selected').textContent).toBe('1')
+  expect(view.getByTestId('term_selected-question').textContent).toBe('Which option?')
+  view.unmount()
 })

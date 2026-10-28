@@ -1,0 +1,110 @@
+// @vitest-environment happy-dom
+import '@testing-library/jest-dom/vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, expect, it, vi } from 'vitest'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { emptyCrew, type OrchestrationCrewRow } from '../../../../shared/orchestration-crew'
+import { OrchestrationCrewPanel } from './OrchestrationCrewPanel'
+
+const rig = vi.hoisted(() => ({ snapshot: {}, open: vi.fn(), copy: vi.fn(), success: vi.fn() }))
+vi.mock('../native-chat/use-orchestration-crew', () => ({
+  useOrchestrationCrew: () => rig.snapshot
+}))
+vi.mock('@/lib/open-agent-message-sender', () => ({ openOrchestrationCrewAgent: rig.open }))
+vi.mock('sonner', () => ({ toast: { success: rig.success } }))
+const host = { kind: 'environment', environmentId: 'captured-host' } as const
+const worker: OrchestrationCrewRow = {
+  partyKey: 'worker',
+  role: 'worker',
+  label: 'Worker',
+  agentKind: 'codex',
+  status: 'working',
+  sendAddress: 'dispatch:d1',
+  openTarget: { kind: 'terminal', handle: 'term_captured' },
+  task: { title: 'Check the result', state: 'active' },
+  latest: {
+    direction: 'from',
+    preview: 'The result is ready.',
+    at: '2026-10-28T00:00:00Z',
+    sequence: 1
+  }
+}
+function mount(row = worker) {
+  rig.snapshot = {
+    ...emptyCrew('ok'),
+    sections: { managedBy: [], managing: [row], talkingWith: [] }
+  }
+  rig.copy.mockResolvedValue(undefined)
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    value: { ui: { writeTerminalClipboardText: rig.copy } }
+  })
+  render(
+    <TooltipProvider>
+      <OrchestrationCrewPanel target={host} party="term_coordinator" />
+    </TooltipProvider>
+  )
+}
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+it('keeps keyboard/body disclosure, chevron, Open, Copy, Escape and collapse independent', async () => {
+  const user = userEvent.setup()
+  mount()
+  const tab = screen.getByRole('button', { name: 'Show crew: 1 workers' })
+  tab.focus()
+  await user.keyboard('{Enter}')
+  expect(screen.getByRole('button', { name: 'Collapse crew panel' })).toHaveFocus()
+  const body = screen.getByRole('button', { name: /Worker codex Check the result/ })
+  expect(body).toHaveAttribute('aria-expanded', 'false')
+  body.focus()
+  await user.keyboard(' ')
+  expect(body).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText('The result is ready.')).toBeInTheDocument()
+  expect(rig.open).not.toHaveBeenCalled()
+  expect(rig.copy).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: "Show Worker's task and latest message" }))
+  expect(body).toHaveAttribute('aria-expanded', 'false')
+  await user.click(body)
+  expect(body).toHaveAttribute('aria-expanded', 'true')
+  const open = screen.getByRole('button', { name: 'Open Worker' })
+  open.focus()
+  await user.keyboard('{Enter}')
+  expect(rig.open).toHaveBeenCalledExactlyOnceWith(worker, host)
+  expect(body).toHaveAttribute('aria-expanded', 'true')
+  await user.click(screen.getByRole('button', { name: 'More for Worker' }))
+  await user.click(screen.getByRole('menuitem', { name: 'Copy address' }))
+  expect(rig.copy).toHaveBeenCalledExactlyOnceWith('dispatch:d1')
+  expect(rig.success).toHaveBeenCalledExactlyOnceWith("Copied Worker's address")
+  expect(rig.open).toHaveBeenCalledOnce()
+  expect(body).toHaveAttribute('aria-expanded', 'true')
+  await user.click(screen.getByRole('button', { name: 'More for Worker' }))
+  const menuOpen = screen.getByRole('menuitem', { name: 'Open its chat' })
+  menuOpen.focus()
+  await user.keyboard('{Enter}')
+  expect(rig.open).toHaveBeenCalledTimes(2)
+  expect(rig.open).toHaveBeenLastCalledWith(worker, host)
+  expect(body).toHaveAttribute('aria-expanded', 'true')
+  screen.getByRole('button', { name: 'Collapse crew panel' }).focus()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('complementary', { name: 'Agent crew' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Show crew: 1 workers' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  await user.click(screen.getByRole('button', { name: 'Collapse crew panel' }))
+  expect(screen.getByRole('button', { name: 'Show crew: 1 workers' })).toHaveFocus()
+  expect(rig.copy).toHaveBeenCalledOnce()
+})
+
+it('starts pending questions expanded without navigating or copying', async () => {
+  const user = userEvent.setup()
+  mount({ ...worker, pendingQuestion: { preview: 'Which option?', at: '2026-10-28T01:00:00Z' } })
+  await user.click(screen.getByRole('button', { name: 'Show crew: 1 workers' }))
+  expect(screen.getByText('Asks you')).toBeInTheDocument()
+  expect(screen.getByText('Which option?')).toBeInTheDocument()
+  expect(screen.queryByText('The result is ready.')).not.toBeInTheDocument()
+  expect(rig.open).not.toHaveBeenCalled()
+  expect(rig.copy).not.toHaveBeenCalled()
+})
