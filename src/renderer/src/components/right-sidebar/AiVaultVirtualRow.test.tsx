@@ -94,6 +94,23 @@ function renderSession(
   return { buildResumeStartup, onCopyResume, onResume, onResumeInNewCli }
 }
 
+describe('AiVaultVirtualRow conversation logs', () => {
+  it.each(['overflow', 'context'] as const)(
+    'omits Open Log for a database-backed row in the %s menu',
+    async (menu) => {
+      renderSession({ ...cliSession, agent: 'opencode2', filePath: '/tmp/opencode.db' })
+      const user = userEvent.setup()
+      if (menu === 'overflow') {
+        await user.click(screen.getByTestId('ai-vault-session-more-actions'))
+      } else {
+        fireEvent.contextMenu(screen.getByText('CLI session'))
+      }
+      expect(await screen.findByRole('menuitem', { name: 'Copy Session ID' })).toBeTruthy()
+      expect(screen.queryByRole('menuitem', { name: 'Open Log' })).toBeNull()
+    }
+  )
+})
+
 describe('AiVaultVirtualRow search hit source host', () => {
   it('names the host a hit came from when hits span several hosts', () => {
     renderSession(cliSession, false, undefined, new Map([['local', 'Local Mac']]))
