@@ -127,7 +127,15 @@ export function renderFolderWorkspaceVirtualRow(args: {
           flushSurface
           nativeDragEnabled={false}
           onImmediateActivate={activationDisabled ? undefined : ctx.onImmediateActivate}
-          activateOnPress={ctx.activateOnPress && !activationDisabled}
+          // A press inside a multi-selection starts a group drag; only the click may collapse it.
+          activateOnPress={
+            ctx.activateOnPress &&
+            !activationDisabled &&
+            !(
+              ctx.selectedWorktreeIds.has(folderWorktreeIdentity) &&
+              ctx.selectedWorktreeIds.size > 1
+            )
+          }
           activationRowKey={folderWorktreeIdentity}
           onSelectionGesture={(event) => ctx.onSelectionGesture(event, folderWorktree)}
           onContextMenuSelect={ctx.onContextMenuSelect}
