@@ -66,6 +66,19 @@ function restoreFinalEmptyTask(token: Tokens.List, trailingSpace: string, lexer:
   if (child.ordered || !nested || !/^\[[ xX]\]$/.test(nested.text)) {
     return restoreFinalEmptyTask(child, trailingSpace, lexer)
   }
+  return restoreEmptyTaskLeaf(last.tokens, child, trailingSpace, lexer)
+}
+
+function restoreEmptyTaskLeaf(
+  children: Token[],
+  child: Tokens.List,
+  trailingSpace: string,
+  lexer: Lexer
+): boolean {
+  const nested = child.items.at(-1)
+  if (!nested) {
+    return false
+  }
   const tokenizer = TaskList.config.markdownTokenizer
   if (!tokenizer || typeof tokenizer !== 'object') {
     return false
@@ -80,19 +93,70 @@ function restoreFinalEmptyTask(token: Tokens.List, trailingSpace: string, lexer:
   }
   const repaired = { ...task, type: 'taskList', raw: source, tokens: [] }
   if (child.items.length === 1) {
-    const previous = last.tokens.at(-2)
+    const previous = children.at(-2)
     if (previous?.type === 'taskList' && Array.isArray(previous.items)) {
       previous.items.push(...task.items)
       previous.raw += `${previous.raw.endsWith('\n') ? '' : '\n'}${source}`
-      last.tokens.pop()
+      children.pop()
     } else {
-      last.tokens.splice(-1, 1, repaired)
+      children.splice(-1, 1, repaired)
     }
   } else {
     child.items.pop()
-    last.tokens.push(repaired)
+    children.push(repaired)
   }
   return true
+}
+
+function getTrailingTaskSpace(source: string): string {
+  let end = source.length
+  while (source[end - 1] === '\n' || source[end - 1] === '\r') {
+    end--
+  }
+  let start = end
+  while (source[start - 1] === ' ' || source[start - 1] === '\t') {
+    start--
+  }
+  return source[start - 1] === ']' ? source.slice(start, end) : ''
+}
+
+function restoreTrailingEmptyTasks(tokens: Token[], trailingSpace: string, lexer: Lexer): void {
+  for (const [index, token] of tokens.entries()) {
+    const next = tokens[index + 1]
+    const inheritedSpace =
+      next?.type === 'space' && token.raw.endsWith(']')
+        ? (/^[ \t]+/.exec(next.raw)?.[0] ?? '')
+        : token === tokens.at(-1)
+          ? trailingSpace
+          : undefined
+    if (isListToken(token)) {
+      const listSpace = inheritedSpace ?? getTrailingTaskSpace(token.raw)
+      for (const item of token.items) {
+        const itemSpace =
+          (item === token.items.at(-1) ? listSpace : undefined) ?? getTrailingTaskSpace(item.raw)
+        restoreTrailingEmptyTasks(item.tokens, itemSpace, lexer)
+      }
+    } else if (token.type === 'blockquote' && Array.isArray(token.tokens)) {
+      restoreTrailingEmptyTasks(
+        token.tokens,
+        inheritedSpace ?? getTrailingTaskSpace(token.raw),
+        lexer
+      )
+    }
+  }
+  const child = tokens.at(-1)
+  const previous = tokens.at(-2)
+  if (
+    trailingSpace &&
+    isListToken(child) &&
+    !child.ordered &&
+    child.items.length === 1 &&
+    /^\[[ xX]\]$/.test(child.items[0].text) &&
+    previous?.type === 'taskList' &&
+    Array.isArray(previous.items)
+  ) {
+    restoreEmptyTaskLeaf(tokens, child, trailingSpace, lexer)
+  }
 }
 
 class BlockquoteListTokenizer extends Tokenizer {
@@ -141,6 +205,12 @@ export function createTiptapMarkedFacade(): typeof marked {
       } finally {
         this.options.extensions = previousExtensions
       }
+    }
+
+    lex(source: string): TokensList {
+      const tokens = super.lex(source)
+      restoreTrailingEmptyTasks(tokens, getTrailingTaskSpace(source), this)
+      return tokens
     }
 
     constructor(options?: MarkedOptions) {

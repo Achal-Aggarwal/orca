@@ -46,14 +46,23 @@ function tasks(editor: Editor) {
 const parents = [
   ['4. Parent', '   ', 3],
   ['- Parent', '  ', 3],
-  ['4. Parent\n   1. Nested', '      ', 5]
+  ['4. Parent\n   1. Nested', '      ', 5],
+  ['4. Parent\n   - Parent', '     ', 5],
+  ['- Parent', '  > ', 4],
+  ['4. Parent', '   > ', 4],
+  ['- Parent\n  4. Parent\n     - Parent', '       ', 7]
 ] as const
 
 const cases = parents.flatMap(([parent, indent, depth]) =>
-  ['\n', '\r\n'].map((newline) => ({
-    source: `${parent}\n${indent}- [ ] First\n${indent}- [x] Done`.replaceAll('\n', newline),
-    depth
-  }))
+  ['\n', '\r\n'].flatMap((newline) =>
+    ['', '\n\nAfter', '\n\n- Following'].map((suffix) => ({
+      source: `${parent}\n${indent}- [ ] First\n${indent}- [x] Done${suffix}`.replaceAll(
+        '\n',
+        newline
+      ),
+      depth
+    }))
+  )
 )
 
 describe('empty nested task save/reopen', () => {
@@ -72,6 +81,34 @@ describe('empty nested task save/reopen', () => {
       document.descendants((node) => {
         if (node.type.name === 'taskItem' && node.textContent === '') {
           emptyTasks += 1
+        }
+      })
+      expect(emptyTasks).toBe(1)
+      expect(blockTokens).toHaveBeenCalledTimes(depth + 2)
+    } finally {
+      blockTokens.mockRestore()
+      editor.destroy()
+    }
+  })
+
+  it('repairs a mixed nested tail without reparsing its ancestors', () => {
+    const depth = 16
+    let source = '- [ ] First\n- [x] Done\n- [ ] '
+    for (let level = 0; level < depth; level++) {
+      const prefix = level % 3 === 0 ? '4. Parent\n   ' : level % 3 === 1 ? '- Parent\n  ' : '> '
+      const indent = level % 3 === 0 ? '   ' : level % 3 === 1 ? '  ' : '> '
+      source = prefix + source.replaceAll('\n', `\n${indent}`)
+    }
+    const codec = createRichMarkdownEditorCodec()
+    const editor = openMarkdown('', codec)
+    const blockTokens = vi.spyOn(codec.marked.Lexer.prototype, 'blockTokens')
+    try {
+      const document = editor.schema.nodeFromJSON(editor.markdown!.parse(source))
+      document.check()
+      let emptyTasks = 0
+      document.descendants((node) => {
+        if (node.type.name === 'taskItem' && node.textContent === '') {
+          emptyTasks++
         }
       })
       expect(emptyTasks).toBe(1)
@@ -114,6 +151,24 @@ describe('empty nested task save/reopen', () => {
       } finally {
         reopened.destroy()
       }
+    } finally {
+      editor.destroy()
+    }
+  })
+
+  it.each([
+    '4. Parent\n   - Parent\n     - [ ] First\n     - [x] Done\n\n         - [ ] ',
+    '- Parent\n  > - [ ] First\n  > - [x] Done\n  >\n  >     - [ ] ',
+    '4. Parent\n   > - [ ] First\n   > - [x] Done\n   >\n   > ```md\n   > - [ ] \n   > ```',
+    '4. Parent\n   > - [ ] First\n   > - [x] Done\n   >\n   > ```md\n   > - [ ] ',
+    '4. Parent\n   - Parent\n     - [ ] First\n     - [x] Done\n     - [ ]',
+    '4. Parent\n   - Parent\n     - [ ] First\n     - [x] Done\n     - [ ]\n     ',
+    '- Parent\n  > - [ ] First\n  > - [x] Done\n  > - [ ]\n  >  '
+  ])('does not promote trailing literal or code markers after tasks in %s', (source) => {
+    const editor = openMarkdown(source)
+    try {
+      editor.state.doc.check()
+      expect(tasks(editor).map((item) => item.checked)).toEqual([false, true])
     } finally {
       editor.destroy()
     }
