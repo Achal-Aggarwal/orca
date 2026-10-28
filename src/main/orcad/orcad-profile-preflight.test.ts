@@ -268,6 +268,17 @@ describe('startup qualification on an unchanged host', () => {
     expect(fixture.recordQualification).not.toHaveBeenCalled()
   })
 
+  it('always runs the preflight child on Windows', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    fixture.consumeQualification.mockResolvedValue(true)
+
+    await preflightBundledOrcadStartup()
+    await confirmBundledOrcadStartupQualified()
+
+    expect(fixture.run).toHaveBeenCalledOnce()
+    expect(fixture.recordQualification).not.toHaveBeenCalled()
+  })
+
   it('never skips the version check, which runs before any marker is read', async () => {
     fixture.readVersion.mockRejectedValue(new Error('ENOENT'))
     fixture.consumeQualification.mockResolvedValue(true)

@@ -37,7 +37,11 @@ export async function preflightBundledOrcadStartup(): Promise<void> {
     return
   }
   const identity = await readInstalledVersion(directory)
-  const key = await orcadStartupQualificationKey(directory, identity).catch(() => null)
+  // Windows' child also proves the process identity table, which depends on host services.
+  const key =
+    process.platform === 'win32'
+      ? null
+      : await orcadStartupQualificationKey(directory, identity).catch(() => null)
   if (key && (await consumeOrcadStartupQualification(directory, key))) {
     pendingQualification = { directory, key }
     return
