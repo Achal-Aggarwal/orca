@@ -453,6 +453,73 @@ describe('useEditorPanelContentState visibility', () => {
     expect(mocks.getRuntimeGitDiff).toHaveBeenCalledTimes(2)
   })
 
+  it.each([false, true])(
+    'reloads the current staged rename source across status changes (hidden=%s)',
+    async (hidden) => {
+      const file = makeFile('rename', {
+        mode: 'diff',
+        diffSource: 'staged',
+        branchOldPath: 'old.ts'
+      })
+      const store = createTestStore()
+      store.setState({ openFiles: [file] })
+      mocks.getState.mockImplementation(() => store.getState())
+      mocks.getRuntimeGitDiff.mockResolvedValue(textDiff('staged content'))
+      const setSource = (oldPath: string) =>
+        store.getState().setGitStatus('wt-1', {
+          conflictOperation: 'unknown',
+          entries: [{ path: file.relativePath, status: 'renamed', area: 'staged', oldPath }]
+        })
+      const render = (visible: boolean) => {
+        const activeFile = store.getState().openFiles[0]
+        root.render(
+          <Probe
+            activeFile={activeFile}
+            gitStatusEntries={store.getState().gitStatusByWorktree['wt-1']}
+            isVisible={visible}
+          />
+        )
+      }
+
+      setSource('old.ts')
+      await act(async () => render(true))
+      await vi.waitFor(() => expect(snapshots.get('main')?.diffContents[file.id]).toBeDefined())
+      expect(mocks.getRuntimeGitDiff).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ oldPath: 'old.ts' })
+      )
+
+      await act(async () => {
+        setSource('another.ts')
+        render(!hidden)
+      })
+      if (hidden) {
+        expect(snapshots.get('main')?.diffContents[file.id]?.isStale).toBe(true)
+        expect(mocks.getRuntimeGitDiff).toHaveBeenCalledOnce()
+        await act(async () => render(true))
+      }
+      await vi.waitFor(() => expect(mocks.getRuntimeGitDiff).toHaveBeenCalledTimes(2))
+      expect(mocks.getRuntimeGitDiff).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ oldPath: 'another.ts' })
+      )
+
+      await act(async () => {
+        store.getState().setGitStatus('wt-1', {
+          conflictOperation: 'unknown',
+          entries: [{ path: file.relativePath, status: 'modified', area: 'staged' }]
+        })
+        render(true)
+      })
+      await vi.waitFor(() => expect(mocks.getRuntimeGitDiff).toHaveBeenCalledTimes(3))
+      expect(mocks.getRuntimeGitDiff).toHaveBeenLastCalledWith(expect.anything(), {
+        filePath: file.relativePath,
+        staged: true,
+        compareAgainstHead: false
+      })
+    }
+  )
+
   it('invalidates an inactive cached Changes diff after an external edit', async () => {
     const file = makeFile('changes-cache')
     const changesMode = { [file.id]: 'changes' as const }

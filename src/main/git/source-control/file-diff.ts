@@ -107,11 +107,16 @@ async function loadDiff(
             staged,
             compareAgainstHead,
             options,
-            submoduleWorktreePath
+            submoduleWorktreePath,
+            staged ? options.oldPath : undefined
           )
         )
       }
       const innerPath = normalizedFilePath.slice(matchedSubmodule.length + 1)
+      const normalizedOldPath = staged ? options.oldPath?.replace(/\\/g, '/') : undefined
+      const innerOldPath = normalizedOldPath?.startsWith(`${matchedSubmodule}/`)
+        ? normalizedOldPath.slice(matchedSubmodule.length + 1)
+        : undefined
       const fromOid = staged
         ? await readGitlinkOidFromTree(worktreePath, 'HEAD', matchedSubmodule, options)
         : (await readGitlinkOidFromIndex(worktreePath, matchedSubmodule, options)) ||
@@ -127,13 +132,17 @@ async function loadDiff(
             innerPath,
             fromOid,
             toOid,
-            options
+            options,
+            innerOldPath
           )
         )
       }
       // The inner read stamps and caches against the submodule's own repo state.
       return notReusable(
-        await getDiff(submoduleWorktreePath, innerPath, staged, compareAgainstHead, options)
+        await getDiff(submoduleWorktreePath, innerPath, staged, compareAgainstHead, {
+          ...options,
+          oldPath: innerOldPath
+        })
       )
     }
   }

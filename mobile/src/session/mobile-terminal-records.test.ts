@@ -28,6 +28,20 @@ const darkTheme = {
 }
 
 describe('mobile terminal records', () => {
+  it('observes staged rename source changes without changing the destination tab', () => {
+    const tab = {
+      type: 'file' as const,
+      id: 'diff',
+      relativePath: 'new.ts',
+      diffSource: 'staged' as const
+    }
+    const renamed = { ...tab, oldPath: 'old.ts' }
+    expect(mobileSessionTabsEqual([tab], [renamed])).toBe(false)
+    expect(mobileSessionTabsEqual([renamed], [tab])).toBe(false)
+    expect(mobileSessionTabsEqual([renamed], [{ ...renamed, oldPath: 'other.ts' }])).toBe(false)
+    expect(mobileSessionTabsEqual([renamed], [{ ...renamed }])).toBe(true)
+  })
+
   it('compares terminal themes without serializing them', () => {
     const equivalentTheme = {
       mode: 'dark' as const,

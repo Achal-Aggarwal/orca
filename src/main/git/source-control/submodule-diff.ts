@@ -17,12 +17,13 @@ export async function buildSubmodulePointerDiff(
   compareAgainstHead: boolean,
   options: GitRuntimeOptions,
   // Default to the validated resolver to prevent submodule path escape.
-  submoduleWorktreePath = resolveSubmoduleWorktreePath(worktreePath, submodulePath)
+  submoduleWorktreePath = resolveSubmoduleWorktreePath(worktreePath, submodulePath),
+  oldPath?: string
 ): Promise<GitDiffResult> {
   let leftOid = ''
   let rightOid = ''
   if (staged) {
-    leftOid = await readGitlinkOidFromTree(worktreePath, 'HEAD', submodulePath, options)
+    leftOid = await readGitlinkOidFromTree(worktreePath, 'HEAD', oldPath ?? submodulePath, options)
     rightOid = await readGitlinkOidFromIndex(worktreePath, submodulePath, options)
   } else if (compareAgainstHead) {
     leftOid = await readGitlinkOidFromTree(worktreePath, 'HEAD', submodulePath, options)
@@ -48,14 +49,20 @@ export async function buildSubmoduleInnerCommitRangeDiff(
   innerPath: string,
   fromOid: string,
   toOid: string,
-  options: GitRuntimeOptions
+  options: GitRuntimeOptions,
+  oldPath?: string
 ): Promise<GitDiffResult> {
   let originalContent = ''
   let modifiedContent = ''
   let originalIsBinary = false
   let modifiedIsBinary = false
   try {
-    const left = await readGitBlobAtOidPath(submoduleWorktreePath, fromOid, innerPath, options)
+    const left = await readGitBlobAtOidPath(
+      submoduleWorktreePath,
+      fromOid,
+      oldPath ?? innerPath,
+      options
+    )
     originalContent = left.content
     originalIsBinary = left.isBinary
     const right = await readGitBlobAtOidPath(submoduleWorktreePath, toOid, innerPath, options)

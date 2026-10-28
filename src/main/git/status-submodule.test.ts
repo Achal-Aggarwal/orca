@@ -104,6 +104,22 @@ describe('submodule diff routing', () => {
     expect(result.modifiedContent).toBe(`Subproject commit ${NEW_OID}\n`)
   })
 
+  it('keeps the old gitlink path when a staged submodule was renamed', async () => {
+    const ordinary = gitExecFileAsyncMock.getMockImplementation()
+    gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
+      if (args[0] === 'ls-tree') {
+        return Promise.resolve({
+          stdout: args.at(-1) === 'old_module' ? `160000 commit ${OLD_OID}\told_module\n` : ''
+        })
+      }
+      return ordinary?.(args, options)
+    })
+
+    const result = await getDiff(PARENT, 'flutter_mine', true, false, { oldPath: 'old_module' })
+    expect(result.originalContent).toBe(`Subproject commit ${OLD_OID}\n`)
+    expect(result.modifiedContent).toBe(`Subproject commit ${OLD_OID}\n`)
+  })
+
   it('diffs inner files across the two commits when the gitlink moved', async () => {
     gitExecFileAsyncBufferMock.mockImplementation((args: string[]) => {
       const spec = String(args.at(-1))
@@ -131,49 +147,52 @@ describe('submodule diff routing', () => {
     expect(result.modifiedContent).toBe('v2\n')
   })
 
-  it('diffs staged inner files from parent HEAD to parent index', async () => {
-    gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
-      if (args[0] === 'config' && args.includes('.gitmodules')) {
-        return Promise.resolve({
-          stdout: options?.cwd === PARENT ? 'submodule.flutter_mine.path flutter_mine\n' : ''
-        })
-      }
-      if (args[0] === 'ls-files') {
-        return Promise.resolve({ stdout: `160000 ${NEW_OID} 0\tflutter_mine\n` })
-      }
-      if (args[0] === 'ls-tree') {
-        return Promise.resolve({ stdout: `160000 commit ${OLD_OID}\tflutter_mine\n` })
-      }
-      if (args[0] === 'rev-parse') {
-        return Promise.resolve({ stdout: `${NEW_OID}\n` })
-      }
-      return Promise.resolve({ stdout: '' })
-    })
-    gitExecFileAsyncBufferMock.mockImplementation((args: string[]) => {
-      const spec = String(args.at(-1))
-      if (spec.startsWith(`${OLD_OID}:`)) {
-        return Promise.resolve({ stdout: Buffer.from('v1\n') })
-      }
-      if (spec.startsWith(`${NEW_OID}:`)) {
-        return Promise.resolve({ stdout: Buffer.from('v2\n') })
-      }
-      return Promise.resolve({ stdout: Buffer.from('') })
-    })
+  it.each([undefined, 'flutter_mine/lib/old.dart'])(
+    'diffs staged inner files from parent HEAD to parent index with source %s',
+    async (oldPath) => {
+      gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
+        if (args[0] === 'config' && args.includes('.gitmodules')) {
+          return Promise.resolve({
+            stdout: options?.cwd === PARENT ? 'submodule.flutter_mine.path flutter_mine\n' : ''
+          })
+        }
+        if (args[0] === 'ls-files') {
+          return Promise.resolve({ stdout: `160000 ${NEW_OID} 0\tflutter_mine\n` })
+        }
+        if (args[0] === 'ls-tree') {
+          return Promise.resolve({ stdout: `160000 commit ${OLD_OID}\tflutter_mine\n` })
+        }
+        if (args[0] === 'rev-parse') {
+          return Promise.resolve({ stdout: `${NEW_OID}\n` })
+        }
+        return Promise.resolve({ stdout: '' })
+      })
+      gitExecFileAsyncBufferMock.mockImplementation((args: string[]) => {
+        const spec = String(args.at(-1))
+        if (spec.startsWith(`${OLD_OID}:`)) {
+          return Promise.resolve({ stdout: Buffer.from('v1\n') })
+        }
+        if (spec.startsWith(`${NEW_OID}:`)) {
+          return Promise.resolve({ stdout: Buffer.from('v2\n') })
+        }
+        return Promise.resolve({ stdout: Buffer.from('') })
+      })
 
-    const result = await getDiff(PARENT, 'flutter_mine/lib/main.dart', true)
+      const result = await getDiff(PARENT, 'flutter_mine/lib/main.dart', true, false, { oldPath })
 
-    expect(gitExecFileAsyncBufferMock).toHaveBeenCalledWith(
-      ['show', '--end-of-options', `${OLD_OID}:lib/main.dart`],
-      { cwd: SUBMODULE, maxBuffer: 10 * 1024 * 1024, preferWslDirectGit: true }
-    )
-    expect(gitExecFileAsyncBufferMock).toHaveBeenCalledWith(
-      ['show', '--end-of-options', `${NEW_OID}:lib/main.dart`],
-      { cwd: SUBMODULE, maxBuffer: 10 * 1024 * 1024, preferWslDirectGit: true }
-    )
-    expect(result.kind).toBe('text')
-    expect(result.originalContent).toBe('v1\n')
-    expect(result.modifiedContent).toBe('v2\n')
-  })
+      expect(gitExecFileAsyncBufferMock).toHaveBeenCalledWith(
+        ['show', '--end-of-options', `${OLD_OID}:${oldPath ? 'lib/old.dart' : 'lib/main.dart'}`],
+        { cwd: SUBMODULE, maxBuffer: 10 * 1024 * 1024, preferWslDirectGit: true }
+      )
+      expect(gitExecFileAsyncBufferMock).toHaveBeenCalledWith(
+        ['show', '--end-of-options', `${NEW_OID}:lib/main.dart`],
+        { cwd: SUBMODULE, maxBuffer: 10 * 1024 * 1024, preferWslDirectGit: true }
+      )
+      expect(result.kind).toBe('text')
+      expect(result.originalContent).toBe('v1\n')
+      expect(result.modifiedContent).toBe('v2\n')
+    }
+  )
 
   it('reads inner files from the working tree when the commit is unchanged', async () => {
     gitExecFileAsyncMock.mockImplementation((args: string[], options?: { cwd?: string }) => {
@@ -204,6 +223,23 @@ describe('submodule diff routing', () => {
     expect(result.kind).toBe('text')
     expect(result.originalContent).toBe('old\n')
     expect(result.modifiedContent).toBe('new')
+  })
+
+  it('makes staged rename sources relative to the submodule when recursing', async () => {
+    gitExecFileAsyncBufferMock.mockImplementation((args: string[]) => {
+      const spec = args.at(-1)
+      return Promise.resolve({
+        stdout: Buffer.from(
+          spec === 'HEAD:lib/old.dart' ? 'source\n' : spec === ':lib/main.dart' ? 'staged\n' : ''
+        )
+      })
+    })
+
+    const result = await getDiff(PARENT, 'flutter_mine/lib/main.dart', true, false, {
+      oldPath: 'flutter_mine\\lib\\old.dart'
+    })
+    expect(result.originalContent).toBe('source\n')
+    expect(result.modifiedContent).toBe('staged\n')
   })
 
   it('rejects inner submodule diffs whose .gitmodules path escapes the worktree', async () => {
