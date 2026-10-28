@@ -30,7 +30,7 @@ function setup(assignee = HANDLE) {
   const notify = vi.fn()
   const deps = { getDb: () => db, isWaitingForMail: (m: string) => waiting.has(m), notify }
   const mail = () => db.getUnreadRunMailbox(run.id, 100, ['escalation'])
-  return { db, dispatch, waiting, notify, deps, mail }
+  return { db, run, dispatch, waiting, notify, deps, mail }
 }
 
 function hookRow(overrides: Partial<AgentStatusIpcPayload>): AgentStatusIpcPayload {
@@ -127,6 +127,27 @@ describe('terminal worker turn stops', () => {
     stops.observe(moved('working', 'done'))
     await settle()
     expect(ctx.mail()).toHaveLength(1)
+  })
+
+  it('drops a stop whose Dispatch was replaced before it was reported', async () => {
+    const ctx = setup()
+    const current = { row: hookRow({ state: 'working' }) }
+    const stops = terminal(ctx, current)
+    stops.observe({
+      kind: 'observed',
+      paneKey: PANE,
+      workspace: { worktreeId: 'repo::/tmp/wt', sshHostId: null },
+      phase: 'working',
+      at: 1
+    })
+    current.row = hookRow({})
+    stops.observe(moved('working', 'done'))
+    // The quiet window is still open: A settles and the terminal takes follow-up B.
+    ctx.db.completeDispatch(ctx.dispatch.id)
+    const followUp = ctx.db.createTask({ spec: 'follow up', runId: ctx.run.id })
+    createRootDispatch(ctx.db, followUp.id, HANDLE, PANE)
+    await settle()
+    expect(ctx.mail()).toHaveLength(0)
   })
 
   it('reports a worker stopped at an approval prompt', async () => {

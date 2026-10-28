@@ -22,14 +22,20 @@ export type TerminalWorkerTurnStopsDeps = WorkerTurnStopReportDeps & {
 }
 
 /** Report a terminal worker whose turn ended (or stopped at a prompt) while its Dispatch is open. */
+type PreparedStop = TerminalAgentTurnNewsItem & { dispatchId: string | null }
+
 export class TerminalWorkerTurnStops {
-  private readonly news: TerminalAgentTurnNews<TerminalAgentTurnNewsItem>
+  private readonly news: TerminalAgentTurnNews<PreparedStop>
 
   constructor(private readonly deps: TerminalWorkerTurnStopsDeps) {
     this.news = new TerminalAgentTurnNews({
       readHookRow: deps.readHookRow,
-      prepare: (news) => news,
-      deliver: (news) => void this.report(news),
+      // The Dispatch the stop belongs to is the one active when the stop was seen.
+      prepare: (news) => {
+        const resolved = this.resolve(news.paneKey)
+        return { ...news, dispatchId: resolved && workerTurnStopDispatchId(resolved.target) }
+      },
+      deliver: (stop) => void this.report(stop),
       setTimer: deps.setTimer,
       // A lead waiting on its own children is not stopped; their all-clear is.
       allClearOnly: true
@@ -40,8 +46,8 @@ export class TerminalWorkerTurnStops {
     this.news.observe(change)
   }
 
-  private async report({ paneKey, row }: TerminalAgentTurnNewsItem): Promise<void> {
-    const stopped = this.atRest(paneKey, row) ? this.resolve(paneKey) : null
+  private async report(stop: PreparedStop): Promise<void> {
+    const stopped = this.stillStopped(stop)
     if (!stopped) {
       return
     }
@@ -50,13 +56,11 @@ export class TerminalWorkerTurnStops {
       .then((view) => redactWorkerTerminalView(view).tail.join('\n'))
       .catch(() => undefined)
     // The read awaited: the worker may have resumed, reported, or been handed a new Dispatch since.
-    const resolved = this.atRest(paneKey, row) ? this.resolve(paneKey) : null
-    if (
-      !resolved ||
-      workerTurnStopDispatchId(resolved.target) !== workerTurnStopDispatchId(stopped.target)
-    ) {
+    const resolved = this.stillStopped(stop)
+    if (!resolved) {
       return
     }
+    const { paneKey, row } = stop
     reportWorkerTurnStop(
       resolved.db,
       resolved.target,
@@ -73,6 +77,13 @@ export class TerminalWorkerTurnStops {
       },
       this.deps
     )
+  }
+
+  private stillStopped(stop: PreparedStop) {
+    const resolved = this.atRest(stop.paneKey, stop.row) ? this.resolve(stop.paneKey) : null
+    return resolved && workerTurnStopDispatchId(resolved.target) === stop.dispatchId
+      ? resolved
+      : null
   }
 
   /** Still on this stop: a resumed turn, or a lead whose children still work, has not stopped. */

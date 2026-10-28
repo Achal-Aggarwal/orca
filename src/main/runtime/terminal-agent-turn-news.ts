@@ -139,7 +139,8 @@ export class TerminalAgentTurnNews<Prepared> {
   // Seed restored rows like the window: working counts as seen, stamped completion as announced.
   private seed(paneKey: string): void {
     const row = this.deps.readHookRow(paneKey)
-    if (row?.turnCompletedAt !== undefined) {
+    // An all-clear listener never heard the lead's finish, so its stamp announces nothing.
+    if (row?.turnCompletedAt !== undefined && !this.deps.allClearOnly) {
       this.finishedTurnByPane.set(paneKey, row.turnCompletedAt)
     }
     if (row?.state === 'working') {
