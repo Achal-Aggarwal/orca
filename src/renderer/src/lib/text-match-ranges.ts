@@ -63,6 +63,21 @@ function findCaseInsensitiveMatchRanges(
   const normalizedQuery = buildLocaleLowercaseIndex(query).text
   const matches: { start: number; end: number }[] = []
   let searchStart = 0
+  // Matches advance in order, so each exceptional span is visited only once.
+  let spanIndex = -4
+  const mapOffset = (offset: number, end: boolean): number => {
+    const spans = normalizedText.offsetSpans
+    while (spans && spanIndex + 4 < spans.length && spans[spanIndex + 4]! <= offset) {
+      spanIndex += 4
+    }
+    if (!spans || spanIndex < 0) {
+      return offset + (end ? 1 : 0)
+    }
+    if (offset < spans[spanIndex + 1]!) {
+      return spans[spanIndex + (end ? 3 : 2)]!
+    }
+    return offset + spans[spanIndex + 3]! - spans[spanIndex + 1]! + (end ? 1 : 0)
+  }
 
   while (searchStart <= normalizedText.text.length - normalizedQuery.length) {
     const matchStart = normalizedText.text.indexOf(normalizedQuery, searchStart)
@@ -72,8 +87,8 @@ function findCaseInsensitiveMatchRanges(
 
     const matchEnd = matchStart + normalizedQuery.length
     matches.push({
-      start: normalizedText.originalStartByNormalizedOffset?.[matchStart] ?? matchStart,
-      end: normalizedText.originalEndByNormalizedOffset?.[matchEnd - 1] ?? matchEnd
+      start: mapOffset(matchStart, false),
+      end: mapOffset(matchEnd - 1, true)
     })
     // Advance at least one even if future locale normalization yields an empty query.
     searchStart = matchEnd + (normalizedQuery.length === 0 ? 1 : 0)
@@ -121,37 +136,32 @@ function isWholeWordMatch(text: string, start: number, end: number): boolean {
 
 function buildLocaleLowercaseIndex(text: string): {
   text: string
-  originalStartByNormalizedOffset: number[] | null
-  originalEndByNormalizedOffset: number[] | null
+  // Packed normalized start/end and original start/end for exceptional characters.
+  offsetSpans: number[] | null
 } {
   // ASCII has no contextual casing or multi-unit characters, so every offset stays identical.
   if (!/[\u0080-\uffff]/.test(text)) {
     return {
       text: text.toLocaleLowerCase(),
-      originalStartByNormalizedOffset: null,
-      originalEndByNormalizedOffset: null
+      offsetSpans: null
     }
   }
 
   let normalized = ''
-  let originalStartByNormalizedOffset: number[] | null = null
-  let originalEndByNormalizedOffset: number[] | null = null
+  let offsetSpans: number[] | null = null
   let originalOffset = 0
 
   for (const char of text) {
     const normalizedChar = char.toLocaleLowerCase()
     const originalEnd = originalOffset + char.length
-    if (!originalStartByNormalizedOffset && (char.length !== 1 || normalizedChar.length !== 1)) {
-      originalStartByNormalizedOffset = Array.from({ length: originalOffset }, (_, index) => index)
-      originalEndByNormalizedOffset = Array.from(
-        { length: originalOffset },
-        (_, index) => index + 1
+    if (char.length !== 1 || normalizedChar.length !== 1) {
+      offsetSpans ??= []
+      offsetSpans.push(
+        normalized.length,
+        normalized.length + normalizedChar.length,
+        originalOffset,
+        originalEnd
       )
-    }
-    // Locale folding can expand UTF-16 (İ → i + combining dot); map normalized matches back to original DOM offsets.
-    for (let i = 0; i < normalizedChar.length; i += 1) {
-      originalStartByNormalizedOffset?.push(originalOffset)
-      originalEndByNormalizedOffset?.push(originalEnd)
     }
     normalized += normalizedChar
     originalOffset = originalEnd
@@ -159,7 +169,6 @@ function buildLocaleLowercaseIndex(text: string): {
 
   return {
     text: normalized,
-    originalStartByNormalizedOffset,
-    originalEndByNormalizedOffset
+    offsetSpans
   }
 }
