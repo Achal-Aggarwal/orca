@@ -1,3 +1,4 @@
+import { makeRuntimeOrchestrationDb } from '../runtime-orchestration-db.test-fixture'
 import { withDurableRuntimeStore } from '../runtime-durable-store-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -391,23 +392,23 @@ describe('OrcaRuntimeService', () => {
       undefined,
       { canRecoverPersistentLocalPtys: () => true }
     )
-    runtime.setOrchestrationDb({
-      listSessionDispatchesForPresentation: () => [],
-      listLegacyWorkerTerminalRecoveryRows: () => [
-        {
-          dispatch_id: 'dispatch-inventory-unavailable',
-          task_id: 'task-inventory-unavailable',
-          dispatch_status: 'completed',
-          contract_version: 0,
-          assignee_handle: 'term_inventory_unavailable',
-          assignee_pane_key: workerPaneKey,
-          process_incarnation: `pty-inventory-unavailable:${incarnationId}`,
-          worker_state: 'ready',
-          worktree_id: TEST_WORKTREE_ID,
-          agent_terminal_handle: 'term_inventory_unavailable'
-        }
-      ]
-    } as unknown as OrchestrationDb)
+    const orchestrationDb = makeRuntimeOrchestrationDb()
+    vi.spyOn(orchestrationDb, 'listSessionDispatchesForPresentation').mockImplementation(() => [])
+    vi.spyOn(orchestrationDb, 'listLegacyWorkerTerminalRecoveryRows').mockImplementation(() => [
+      {
+        dispatch_id: 'dispatch-inventory-unavailable',
+        task_id: 'task-inventory-unavailable',
+        dispatch_status: 'completed',
+        contract_version: 0,
+        assignee_handle: 'term_inventory_unavailable',
+        assignee_pane_key: workerPaneKey,
+        process_incarnation: `pty-inventory-unavailable:${incarnationId}`,
+        worker_state: 'ready',
+        worktree_id: TEST_WORKTREE_ID,
+        agent_terminal_handle: 'term_inventory_unavailable'
+      }
+    ])
+    runtime.setOrchestrationDb(orchestrationDb)
     const listProcesses = vi
       .fn()
       .mockRejectedValueOnce(new Error('local provider unavailable'))
