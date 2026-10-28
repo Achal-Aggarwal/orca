@@ -580,6 +580,20 @@ it.each([20, 200])('bounds real write-edge and read reconciliation work at Q=P=W
   candidates = 0
   workspaceKeys = 0
   foreignScopes = 0
+  // Fresh cached observations use the same reconciliation while real writes remain pending.
+  leases.forEach((lease, i) => {
+    lease.release()
+    leases[i] = s.getState().searchLinearIssues(`query${i}`, n).acquire()
+  })
+  expect(reads.search).toHaveBeenCalledTimes(n)
+  expect(workspaceKeys).toBeLessThanOrEqual(n * n)
+  expect(candidates).toBeLessThanOrEqual(n * (n + 2))
+  expect(foreignScopes).toBe(0)
+  expect(foreignCandidates).toBe(0)
+  expect(leases.every((lease) => lease.currentView().data?.[0].priority === 1)).toBe(true)
+  candidates = 0
+  workspaceKeys = 0
+  foreignScopes = 0
   const edit = deferred<{ ok: boolean }>()
   const mutate = vi.fn(() => edit.promise)
   const saving = writeLinearIssue(rows[0], { priority: 4 }, defaultScopeSource(null), mutate)
