@@ -44,6 +44,12 @@ export const WORKTREE_REVIEW_METHODS = [
         return
       }
       registry.set(id, subscription)
+      try {
+        emit({ type: 'ready', subscriptionId: id })
+      } catch {
+        subscription.close()
+        return
+      }
       await subscription.renew()
     }
   }),
