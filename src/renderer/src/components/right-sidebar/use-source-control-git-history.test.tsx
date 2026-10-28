@@ -11,6 +11,14 @@ vi.mock('@/runtime/runtime-git-status-client', () => ({
   getRuntimeGitHistory: mocks.getRuntimeGitHistory
 }))
 vi.mock('@/lib/connection-context', () => ({ getConnectionId: () => undefined }))
+vi.mock('./worktree-git-owner-target', () => ({
+  requireGitOwnerTarget: (target: RuntimeClientTarget | null) => {
+    if (!target) {
+      throw new Error('Missing repository owner')
+    }
+    return target
+  }
+}))
 
 import { useSourceControlGitHistory } from './source-control/sync/use-git-history'
 import { deferred, flush, mountProbe, unmountProbes } from './source-control-hook-test-harness'
