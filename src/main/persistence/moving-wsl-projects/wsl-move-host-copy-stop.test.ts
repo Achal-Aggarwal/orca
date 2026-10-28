@@ -72,6 +72,29 @@ describe("undo's stop of the host's copies", () => {
       vi.useRealTimers()
     })
 
+    it('still gives the terminals time to exit after slow sleeps used up the budget', async () => {
+      vi.useFakeTimers()
+      let sleptAt: number | null = null
+      const workspaces = Array.from({ length: 8 }, (_, index) => `wt-${index}`)
+      const host = port({
+        workspacesWithTerminals: vi.fn(async () => workspaces),
+        // Each sleep takes 5 s: the 30 s budget is gone before the first exit check.
+        sleepWorkspace: vi.fn(async () => {
+          vi.advanceTimersByTime(5_000)
+          sleptAt = Date.now()
+          return true
+        }),
+        // The terminals exit 3 s after the last sleep.
+        liveTerminals: vi.fn(async () =>
+          sleptAt !== null && Date.now() - sleptAt >= 3_000 ? 0 : 1
+        ),
+        wait: vi.fn(async (ms: number) => {
+          vi.advanceTimersByTime(ms)
+        })
+      })
+      expect(await stopWslMoveHostCopies([], host, 30_000)).toBe('stopped')
+    })
+
     // Polls counted, not timed: a host taking 10 s per answer stretched the wait 40-fold.
     it('gives up by one wall-clock deadline however long each answer takes', async () => {
       vi.useFakeTimers()

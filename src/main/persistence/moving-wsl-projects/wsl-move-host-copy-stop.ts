@@ -21,6 +21,8 @@ export type WslMoveHostCopyPort = {
 
 // One wall-clock budget for the whole stop, slow answers included, not a count of polls.
 const STOP_DEADLINE_MS = 30_000
+// What the terminals always get to exit after the last sleep, however long the sleeps took.
+const MIN_EXIT_WAIT_MS = 5_000
 const EXIT_POLL_MS = 500
 
 export async function stopWslMoveHostCopies(
@@ -49,6 +51,8 @@ export async function stopWslMoveHostCopies(
       return 'unreachable'
     }
   }
+  // A slow but healthy host with many workspaces may spend the budget sleeping them.
+  const exitDeadline = Math.max(deadline, now() + MIN_EXIT_WAIT_MS)
   for (;;) {
     let running = 0
     for (const id of hostWorkspaceIds) {
@@ -61,7 +65,7 @@ export async function stopWslMoveHostCopies(
     if (running === 0) {
       return 'stopped'
     }
-    if (now() >= deadline) {
+    if (now() >= exitDeadline) {
       return 'still-running'
     }
     await port.wait(EXIT_POLL_MS)
