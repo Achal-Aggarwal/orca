@@ -25,6 +25,10 @@ const ACTIVE_DISPATCH_BY_PANE_SUFFIX_SQL = `SELECT ${DISPATCH_CONTEXT_COLUMN_LIS
        ORDER BY rowid DESC LIMIT 1`
 const LATEST_DISPATCH_BY_HANDLE_SQL = `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE assignee_handle = ? ORDER BY rowid DESC LIMIT 1`
 
+function presentationAddressKey(column: string, address: string | null): string {
+  return `${column}:${address}`
+}
+
 /** Preserve the terminal projection's exact ISO/SQLite recency contract, including future dates. */
 export function isRecentPresentationDispatch(dispatch: DispatchContextRow, now: number): boolean {
   if (!dispatch.completed_at || dispatch.status === 'pending' || dispatch.status === 'dispatched') {
@@ -70,9 +74,10 @@ export function listSessionDispatchesForPresentation(
         )
       }
     }
-    const address = candidate.assignee_handle
-      ? `handle:${candidate.assignee_handle}`
-      : `session:${candidate.assignee_orca_session_id}`
+    const address = presentationAddressKey(
+      candidate.assignee_handle ? 'assignee_handle' : 'assignee_orca_session_id',
+      candidate.assignee_handle || candidate.assignee_orca_session_id
+    )
     const previous = selected.get(address)
     const active = candidate.status === 'pending' || candidate.status === 'dispatched'
     const previousActive = previous?.status === 'pending' || previous?.status === 'dispatched'
@@ -84,25 +89,50 @@ export function listSessionDispatchesForPresentation(
       selected.set(address, candidate)
     }
   }
+  const eligible = [...selected].filter(
+    ([, candidate]) =>
+      candidate.status === 'pending' ||
+      candidate.status === 'dispatched' ||
+      isRecentPresentationDispatch(candidate, now)
+  )
+  const latestOrderByAddress = new Map<string, number>()
+  for (const [column, active] of [
+    ['assignee_handle', true],
+    ['assignee_handle', false],
+    ['assignee_orca_session_id', false]
+  ] as const) {
+    const addresses = eligible
+      .filter(
+        ([, candidate]) =>
+          Boolean(candidate.assignee_handle) === (column === 'assignee_handle') &&
+          (candidate.status === 'pending' || candidate.status === 'dispatched') === active
+      )
+      .map(([, candidate]) => candidate[column])
+    if (addresses.length === 0) {
+      continue
+    }
+    // Batch native calls, retaining one equality-index seek per selected address.
+    const latest = this.db
+      .prepare(`SELECT requested.value AS address, (SELECT rowid AS n FROM dispatch_contexts
+        WHERE ${column} = requested.value
+        ${active ? "AND status IN ('pending', 'dispatched')" : ''}
+        ORDER BY rowid DESC LIMIT 1) AS n FROM json_each(?) requested`)
+      .all(JSON.stringify(addresses))
+    for (const row of latest) {
+      if (typeof row.address === 'string' && typeof row.n === 'number') {
+        latestOrderByAddress.set(presentationAddressKey(column, row.address), row.n)
+      }
+    }
+  }
   const result: { dispatch: DispatchContextRow; order: number }[] = []
-  for (const candidate of selected.values()) {
+  for (const [address, candidate] of eligible) {
     const { presentation_order, ...dispatch } = candidate
     const active = dispatch.status === 'pending' || dispatch.status === 'dispatched'
-    // SAFETY: equality-index probes return just the internal row order, or no row.
     const latest =
       active && !candidate.assignee_handle
-        ? { n: newestActiveOrderBySession.get(candidate.assignee_orca_session_id ?? '') }
-        : (this.db
-            .prepare(`SELECT rowid AS n FROM dispatch_contexts
-      WHERE ${candidate.assignee_handle ? 'assignee_handle' : 'assignee_orca_session_id'} = ?
-      ${active ? "AND status IN ('pending', 'dispatched')" : ''} ORDER BY rowid DESC LIMIT 1`)
-            .get(candidate.assignee_handle || candidate.assignee_orca_session_id) as
-            | { n: number }
-            | undefined)
-    if (
-      latest?.n !== presentation_order ||
-      (!active && !isRecentPresentationDispatch(dispatch, now))
-    ) {
+        ? newestActiveOrderBySession.get(candidate.assignee_orca_session_id ?? '')
+        : latestOrderByAddress.get(address)
+    if (latest !== presentation_order) {
       continue
     }
     result.push({ dispatch, order: presentation_order })
