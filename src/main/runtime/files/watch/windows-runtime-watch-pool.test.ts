@@ -28,10 +28,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it.each([2, 10])('uses one native watch and one refresh timer for %i clients', async (clients) => {
+it('shares one native watch and refresh timer across path aliases', async () => {
   const pool = new WindowsRuntimeWatchPool()
   const { watcher, notify } = installWatcher()
-  const callbacks = Array.from({ length: clients }, () => vi.fn())
+  const callbacks = Array.from({ length: 3 }, () => vi.fn())
   const releases = await Promise.all(
     callbacks.map((callback, index) =>
       pool.watch(index % 2 === 0 ? 'C:\\repo' : 'c:/REPO', callback, vi.fn())
