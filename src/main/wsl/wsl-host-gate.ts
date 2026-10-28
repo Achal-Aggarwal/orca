@@ -1,23 +1,27 @@
 import {
   formatWslHostsServeOnlyArgument,
   isWslHostsInternalGateOpen,
+  noteWslHostsServeOnly,
   resolveWslHostsGateState,
   type WslHostsGateState
 } from '../../shared/wsl-host-internal-gate'
 import type { OrcadDeploymentLink } from '../../shared/runtime-environments'
 
 export const WSL_HOSTS_GATED_OFF_MESSAGE = 'WSL hosts are not available in this build.'
+export const WSL_HOSTS_NEW_WORK_PAUSED_MESSAGE =
+  'Adding WSL hosts and moving projects onto them is paused in this build. Your saved WSL hosts keep working.'
 
 // Fixed for the run once main reads the disk; nothing can create a host or a move while not open.
-let promoted: { hasSavedWslHost: boolean; hasCommittedWslMove: boolean } | null = null
+let promoted: { hasSavedWslHost: boolean; hasWslMoveCutover: boolean } | null = null
 
 /** Startup, before any gate check: a closed gate with saved WSL work becomes `serve-only`. */
 export function configureWslHostsGate(facts: {
   hasSavedWslHost: () => boolean
-  hasCommittedWslMove: () => boolean
+  hasWslMoveCutover: () => boolean
 }): void {
   if (wslHostsGateOpen()) {
     promoted = null
+    noteWslHostsServeOnly(false)
     return
   }
   // Unreadable state counts as absent: today's closed behavior.
@@ -30,19 +34,21 @@ export function configureWslHostsGate(facts: {
   }
   promoted = {
     hasSavedWslHost: read(facts.hasSavedWslHost),
-    hasCommittedWslMove: read(facts.hasCommittedWslMove)
+    hasWslMoveCutover: read(facts.hasWslMoveCutover)
   }
+  noteWslHostsServeOnly(wslHostsGateState() === 'serve-only')
 }
 
 export function resetWslHostsGateForTests(): void {
   promoted = null
+  noteWslHostsServeOnly(false)
 }
 
 export function wslHostsGateState(): WslHostsGateState {
   return resolveWslHostsGateState({
     gateOpen: wslHostsGateOpen(),
     hasSavedWslHost: promoted?.hasSavedWslHost ?? false,
-    hasCommittedWslMove: promoted?.hasCommittedWslMove ?? false
+    hasWslMoveCutover: promoted?.hasWslMoveCutover ?? false
   })
 }
 

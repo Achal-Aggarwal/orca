@@ -15,9 +15,9 @@ const wslHost = {
   orcadDeployment: { kind: 'wsl' as const, distro: 'Ubuntu', localPort: 41000, remotePort: 6768 }
 }
 const sshHost = { orcadDeployment: null }
-const facts = (hasSavedWslHost: boolean, hasCommittedWslMove: boolean) => ({
+const facts = (hasSavedWslHost: boolean, hasWslMoveCutover: boolean) => ({
   hasSavedWslHost: () => hasSavedWslHost,
-  hasCommittedWslMove: () => hasCommittedWslMove
+  hasWslMoveCutover: () => hasWslMoveCutover
 })
 
 afterEach(() => {
@@ -39,7 +39,7 @@ describe('WSL hosts gate', () => {
 
   it.each([
     ['a saved host', facts(true, false)],
-    ['a committed move', facts(false, true)]
+    ['a move journal entry', facts(false, true)]
   ])('serves %s behind a closed gate without opening it', (_label, saved) => {
     vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', undefined)
     configureWslHostsGate(saved)
@@ -57,7 +57,7 @@ describe('WSL hosts gate', () => {
       hasSavedWslHost: () => {
         throw new Error('unreadable')
       },
-      hasCommittedWslMove: () => {
+      hasWslMoveCutover: () => {
         throw new Error('unreadable')
       }
     })
@@ -68,12 +68,12 @@ describe('WSL hosts gate', () => {
   it('stays open with the internal gate on, and reads nothing to decide', () => {
     vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', '1')
     const hasSavedWslHost = vi.fn(() => false)
-    const hasCommittedWslMove = vi.fn(() => false)
-    configureWslHostsGate({ hasSavedWslHost, hasCommittedWslMove })
+    const hasWslMoveCutover = vi.fn(() => false)
+    configureWslHostsGate({ hasSavedWslHost, hasWslMoveCutover })
 
     expect(wslHostsGateState()).toBe('open')
     expect(hasSavedWslHost).not.toHaveBeenCalled()
-    expect(hasCommittedWslMove).not.toHaveBeenCalled()
+    expect(hasWslMoveCutover).not.toHaveBeenCalled()
   })
 
   it('is closed before startup configures it', () => {

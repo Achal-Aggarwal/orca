@@ -126,7 +126,7 @@ function registerWslMoveDriverHandlers(
     }
   )
   ipcMain.handle('wslMove:listUnfinished', (): WslMoveUnfinished[] =>
-    wslHostsGateOpen() ? listUnfinishedWslMoves(getUserDataPath()) : []
+    wslHostsServing() ? listUnfinishedWslMoves(getUserDataPath()) : []
   )
   ipcMain.handle(
     'wslMove:cancel',

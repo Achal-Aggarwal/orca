@@ -49,10 +49,11 @@ describe('WSL hosts gate startup promotion', () => {
     expect(wslHostsGateState()).toBe('serve-only')
   })
 
-  it('stays closed for a move that never committed', () => {
+  // Recovery must still reset an in-flight move whose host record is already gone.
+  it('serves a move that never committed', () => {
     seedWslMoveCutover(userDataPath, cutover('move-1', 'prepared'))
     configureWslHostsGateFromDisk(userDataPath)
 
-    expect(wslHostsGateState()).toBe('closed')
+    expect(wslHostsGateState()).toBe('serve-only')
   })
 })

@@ -47,7 +47,7 @@ afterEach(() => {
 describe('Space window and the WSL hosts gate', () => {
   it('lets its preload expose saved WSL hosts in serve-only', () => {
     vi.stubEnv('ORCA_INTERNAL_WSL_HOSTS', undefined)
-    configureWslHostsGate({ hasSavedWslHost: () => true, hasCommittedWslMove: () => false })
+    configureWslHostsGate({ hasSavedWslHost: () => true, hasWslMoveCutover: () => false })
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the window reads only getUI and onUIChanged from the store.
     createOrFocusWorkspaceSpaceWindow(store as never)
 

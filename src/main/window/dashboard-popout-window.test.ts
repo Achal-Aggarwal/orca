@@ -206,7 +206,7 @@ describe('createOrFocusDashboardPopout', () => {
     expect(instances[0].options.webPreferences?.additionalArguments).toBeUndefined()
     closeDashboardPopout()
 
-    configureWslHostsGate({ hasSavedWslHost: () => true, hasCommittedWslMove: () => false })
+    configureWslHostsGate({ hasSavedWslHost: () => true, hasWslMoveCutover: () => false })
     try {
       createOrFocusDashboardPopout(makeStore() as never)
       expect(
