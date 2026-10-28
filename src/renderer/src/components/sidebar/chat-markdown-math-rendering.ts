@@ -37,6 +37,47 @@ export function useChatMathRendering(enabled: boolean): () => ReturnType<typeof 
   return () => rehypeChatMath(typeset, parsed)
 }
 
+type TypesetResult = { failed: boolean; children: Root['children'] }
+// Typesetting dominates a streaming block's re-render: each changed prefix repeats every formula in it.
+const TYPESET_CACHE_LIMIT = 256
+const typesetCache = new Map<string, TypesetResult>()
+
+function typesetFormula(
+  typeset: Typeset,
+  element: Element,
+  mathElement: Element | undefined,
+  file: VFile
+): TypesetResult {
+  const run = (): TypesetResult => {
+    const fragment: Root = { type: 'root', children: [element] }
+    const messagesBefore = file.messages.length
+    typeset(fragment, file)
+    return { failed: file.messages.length > messagesBefore, children: fragment.children }
+  }
+  const textOnly = mathElement?.children.every((child) => child.type === 'text') ?? false
+  if (!mathElement || !textOnly) {
+    return run()
+  }
+  // The typesetter reads only the tag, the math classes and the formula text.
+  const key = [
+    element.tagName,
+    String(mathElement.properties.className),
+    mathElement.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
+  ].join('\u0000')
+  let result = typesetCache.get(key)
+  if (result) {
+    typesetCache.delete(key)
+  } else {
+    result = run()
+    if (typesetCache.size >= TYPESET_CACHE_LIMIT) {
+      typesetCache.delete(typesetCache.keys().next().value as string)
+    }
+  }
+  typesetCache.set(key, result)
+  // Later plugins (word fade) rewrite children in place, so each tree gets its own copy.
+  return { failed: result.failed, children: structuredClone(result.children) }
+}
+
 /** Sanitized input enters KaTeX; invalid formulas keep readable source without error UI. */
 function rehypeChatMath(
   typeset: Typeset | undefined,
@@ -71,14 +112,12 @@ function rehypeChatMath(
       if (authored?.complete) {
         parsed.complete = true
       }
-      const fragment: Root = { type: 'root', children: [element] }
-      const messagesBefore = file.messages.length
-      if (typeset && authored?.complete !== false) {
-        typeset(fragment, file)
-      }
-      const invalid =
-        !typeset || authored?.complete === false || file.messages.length > messagesBefore
-      const children = invalid ? [{ type: 'text' as const, value: source }] : fragment.children
+      const typesetResult =
+        typeset && authored?.complete !== false
+          ? typesetFormula(typeset, element, mathElement, file)
+          : undefined
+      const invalid = !typesetResult || typesetResult.failed
+      const children = invalid ? [{ type: 'text' as const, value: source }] : typesetResult.children
       const display = classes.includes('math-display') || element.tagName === 'pre'
       const content = children.filter(
         (child): child is Exclude<RootContent, { type: 'doctype' }> => child.type !== 'doctype'

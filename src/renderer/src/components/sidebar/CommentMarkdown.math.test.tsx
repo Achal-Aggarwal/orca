@@ -61,6 +61,16 @@ vi.mock('remark-parse', async (original) => {
   }
 })
 
+const typesets = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./chat-markdown-math-typeset', async (original) => {
+  const { typesetChatMath } = await original<typeof import('./chat-markdown-math-typeset')>()
+  return {
+    typesetChatMath: (...args: Parameters<typeof typesetChatMath>) => {
+      typesets.count++
+      return typesetChatMath(...args)
+    }
+  }
+})
 vi.mock('./CommentMermaidBlock', () => ({ default: () => null }))
 afterEach(cleanup)
 
@@ -305,6 +315,30 @@ b\]`,
     expect(invalid.textContent).toBe(String.raw`$\notACommand{x}$`)
     expect(invalid.querySelector('.katex-error')).toBeNull()
     expect(documentOf('```math\nx^2\n```').querySelector('.katex')).not.toBeNull()
+  })
+
+  it('typesets an unchanged formula once while its block streams and when it remounts', () => {
+    const formulas = String.raw`Cache $q_{c}^{2}$, $\notACachedCommand{x}$ and $\frac{c_1}{c_2}$ `
+    const before = typesets.count
+    const finished = documentOf(`${formulas}tail`, { fadeWords: true }).innerHTML
+    const streamed = render(<CommentMarkdown content={formulas} math growing variant="document" />)
+    for (let words = 1; words <= 20; words++) {
+      streamed.rerender(
+        <CommentMarkdown
+          content={`${formulas}${'more '.repeat(words)}`}
+          math
+          growing
+          variant="document"
+        />
+      )
+    }
+    streamed.unmount()
+    expect(typesets.count - before).toBe(3)
+    const remounted = documentOf(`${formulas}tail`, { fadeWords: true })
+    expect(remounted.innerHTML).toBe(finished)
+    expect(annotations(remounted)).toEqual(['q_{c}^{2}', String.raw`\frac{c_1}{c_2}`])
+    expect(remounted.textContent).toContain(String.raw`$\notACachedCommand{x}$`)
+    expect(typesets.count - before).toBe(3)
   })
 
   it.each(['> ', '- ', '> - '])('ends unfinished math before leaving %s containers', (prefix) => {
