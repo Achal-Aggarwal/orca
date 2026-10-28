@@ -26,6 +26,9 @@ export async function joinStructuredAgentSessionChildClose(
   if (!closed) {
     return 'unverifiable'
   }
+  if (closed === 'kill-delivered') {
+    observeClose?.({ deathEvidenceKind: closed })
+  }
   await endClosedStructuredAgentSessionChild(context, sessionId, child, unanswered, closed)
   return 'exited'
 }
