@@ -14,10 +14,11 @@ const cache = new Map<string, string>()
 
 /** Git < 2.31 echoes unsupported --path-format=absolute; resolve its relative answer to prevent key collisions. */
 export function readGitCommonDir(stdout: string, repoPath: string): string | undefined {
-  const commonDir = stdout
-    .split('\n')
-    .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
-    .findLast((line) => line.length > 0 && !line.startsWith('-'))
+  const unsupportedOption = '--path-format=absolute\n'
+  const payload = stdout.startsWith(unsupportedOption)
+    ? stdout.slice(unsupportedOption.length)
+    : stdout
+  const commonDir = payload.endsWith('\n') ? payload.slice(0, -1) : payload
   return commonDir ? resolveRevParsePath(toWslExecutionSpace(repoPath), commonDir) : undefined
 }
 
@@ -48,7 +49,7 @@ export async function getCanonicalRepoKey(
   try {
     const { stdout } = await gitExecFileAsync(
       ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-      { cwd: repoPath, ...options }
+      { cwd: repoPath, ...options, captureWslLoginShellOutput: true }
     )
     const commonDir = readGitCommonDir(stdout, repoPath)
     if (commonDir) {

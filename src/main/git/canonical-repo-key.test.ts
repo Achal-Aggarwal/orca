@@ -35,8 +35,20 @@ describe('readGitCommonDir', () => {
     expect(readGitCommonDir('.git\n', '//wsl$/Ubuntu/home/dev/repo')).toBe('/home/dev/repo/.git')
   })
 
-  it('tolerates CRLF and blank lines', () => {
-    expect(readGitCommonDir('\r\n/repo/.git\r\n', '/repo')).toBe('/repo/.git')
+  it.each(['/repo/line\nbreak/.git', '/repo/git\r', '/repo/git\n', '/repo/ git ', '\nrelative'])(
+    'preserves pathname bytes in %j',
+    (commonDir) => {
+      expect(readGitCommonDir(`${commonDir}\n`, '/repo')).toBe(
+        commonDir.startsWith('/') ? commonDir : `/repo/${commonDir}`
+      )
+    }
+  )
+
+  it('removes only the leading old-Git option echo', () => {
+    const commonDir = '--path-format=absolute\nrelative'
+    expect(readGitCommonDir(`--path-format=absolute\n${commonDir}\n`, '/repo')).toBe(
+      `/repo/${commonDir}`
+    )
   })
 
   it('returns undefined when Git printed nothing usable', () => {

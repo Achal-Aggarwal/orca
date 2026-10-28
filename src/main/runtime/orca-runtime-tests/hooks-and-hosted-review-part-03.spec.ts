@@ -81,7 +81,7 @@ describe('OrcaRuntimeService', () => {
       expect(asyncGitSpy).toHaveBeenCalledWith(['remote'], wslGitOptions)
       expect(asyncGitSpy).toHaveBeenCalledWith(
         ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-        wslGitOptions
+        { ...wslGitOptions, captureWslLoginShellOutput: true }
       )
       expect(asyncGitSpy).toHaveBeenCalledWith(['fetch', 'origin'], {
         ...wslGitOptions,
