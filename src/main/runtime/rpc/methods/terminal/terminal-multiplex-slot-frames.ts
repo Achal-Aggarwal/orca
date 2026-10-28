@@ -114,10 +114,11 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
       }
       stream.desktopClaimTail = stream.desktopClaimTail
         .then(async (priorClaimed) => {
-          const result = await applyStreamViewport(stream, stream.client!, viewport)
-          return stream.supportsDesktopViewportClaims
-            ? priorClaimed && result.applied
-            : result.applied
+          const result = await applyStreamViewport(stream, stream.client!, viewport).catch(
+            () => null
+          )
+          // Passive geometry updates cannot revoke an established input claim.
+          return stream.supportsDesktopViewportClaims ? priorClaimed : result?.applied === true
         })
         .catch(() => false)
       return

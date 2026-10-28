@@ -91,8 +91,9 @@ export function registerTerminalSubscribeBinaryControlFrames(
               'desktop',
               'register',
               !supportsDesktopViewportClaims
-            )
-            return supportsDesktopViewportClaims ? priorClaimed && result.applied : result.applied
+            ).catch(() => null)
+            // Passive geometry updates cannot revoke an established input claim.
+            return supportsDesktopViewportClaims ? priorClaimed : result?.applied === true
           })
           .catch(() => false)
       )
