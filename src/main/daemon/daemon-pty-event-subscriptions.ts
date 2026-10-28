@@ -208,7 +208,7 @@ export abstract class DaemonPtyEventSubscriptions extends DaemonPtySessionInvent
     // Bridge bash reports no folder and the daemon outlives quit; a distro stopped before relaunch leaves only this read.
     const shellCwds = await readDaemonWslQuitCwds(
       this.wslBridgePanesForQuit(),
-      (this.constructor as typeof DaemonPtyEventSubscriptions).QUIT_WSL_CWD_BUDGET_MS
+      this.quitWslCwdBudgetMs
     )
     // Await final checkpoints, including new sessions, before disconnect can reject their snapshot RPCs.
     await this.runExclusiveCheckpoint(

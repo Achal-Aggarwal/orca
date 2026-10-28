@@ -31,7 +31,7 @@ const DEEP = `${WSL_CWD}\\deep`
 
 /** Shortens quit's folder budget so an unanswering distro is not a real-time wait. */
 class QuickQuitDaemonPtyAdapter extends DaemonPtyAdapter {
-  protected static QUIT_WSL_CWD_BUDGET_MS = 5
+  protected quitWslCwdBudgetMs = 5
 }
 
 describe('a bridge WSL pane keeps its shell folder across quit', () => {

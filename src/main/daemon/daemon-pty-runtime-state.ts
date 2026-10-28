@@ -127,6 +127,8 @@ export abstract class DaemonPtyRuntimeState {
   protected wslPaneKeysBySessionId = new Map<string, string>()
   /** A WSL bridge shell's folder read before a final checkpoint (Sleep or quit); that checkpoint keeps it. */
   protected probedShellCwds = new Map<string, string>()
+  /** Quit's whole wait for bridge shell folders; a slow distro must not hold up quitting. */
+  protected quitWslCwdBudgetMs = 1_000
   protected killedSessionTombstones = new Map<string, number>()
   protected sleepRestoreSessionIds = new Set<string>()
   protected coldRestoreCache = new ColdRestorePayloadCache(undefined, (sessionId) => {
@@ -166,8 +168,6 @@ export abstract class DaemonPtyRuntimeState {
   protected static PERIODIC_CHECKPOINT_DEADLINE_MS = 15_000
   protected static MAX_CONCURRENT_CHECKPOINTS = 4
   protected static FULL_CHECKPOINT_COOLDOWN_MS = 45_000
-  /** Quit's whole wait for bridge shell folders; a slow distro must not hold up quitting. */
-  protected static QUIT_WSL_CWD_BUDGET_MS = 1_000
   protected lastFullCheckpointAt = new Map<string, number>()
 
   protected abstract observeAuditFailure(
