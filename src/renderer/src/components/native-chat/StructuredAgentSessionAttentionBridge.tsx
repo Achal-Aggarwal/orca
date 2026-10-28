@@ -17,7 +17,6 @@ import {
 } from './structured-agent-session-read-owner'
 import { structuredAttentionReadObservation } from './structured-attention-read-observation'
 import { useAppStore } from '@/store'
-import { isWebClientLocation } from '@/lib/web-client-location'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import {
   structuredAgentSessionOwnerForTab,
@@ -55,14 +54,7 @@ function StructuredAgentSessionOwnedAttention({
   tab: StructuredTab
   target: RuntimeClientTarget
 }): null {
-  const feed = useMemo(
-    () =>
-      getStructuredAgentSessionTurnCompletionFeed(
-        target,
-        target.kind === 'environment' && !isWebClientLocation() ? tab.entityId : undefined
-      ),
-    [target, tab.entityId]
-  )
+  const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
   const owner = useMemo(
     () => getStructuredAgentSessionReadOwner(tab.entityId, target),
     [tab.entityId, target]
@@ -266,7 +258,6 @@ function StructuredAgentSessionOwnedAttention({
         dispatchStructuredTurnCompletionAttention(tab, edge.completion, target)
       }
     })
-    // The real forwarding listener must exist before insertion grants host responsibility.
     const release = feed.activate()
     return () => {
       release()

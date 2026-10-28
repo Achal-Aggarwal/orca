@@ -60,7 +60,6 @@ import {
   type AgentSessionReserveResult
 } from './agent-session/ownership/agent-session-reservation-admission'
 import {
-  applyAgentSessionRecordMutation,
   getAgentSessionConversation,
   selectWritableAgentSessionRecord,
   listAgentSessionConversations,
@@ -308,10 +307,6 @@ export class AgentSessionRecordStore {
   commitOperationReceipt = (receipt: JournalOperationReceipt) =>
     this.transactions.commitReceipt(receipt)
 
-  readCommandReceiptCandidates = (
-    ...args: Parameters<AgentSessionStoreTransactions['readCommandReceiptCandidates']>
-  ) => this.transactions.readCommandReceiptCandidates(...args)
-
   readCommandReceipt = (...args: Parameters<AgentSessionStoreTransactions['readCommandReceipt']>) =>
     this.transactions.readCommandReceipt(...args)
 
@@ -332,7 +327,12 @@ export class AgentSessionRecordStore {
     sessionId: string,
     apply: (record: AgentSessionRecord) => AgentSessionRecord
   ): Promise<AgentSessionRecord> {
-    return this.transact((draft) => applyAgentSessionRecordMutation(draft, sessionId, apply))
+    return this.transact((draft) => {
+      const record = requireWritableAgentSessionRecord(draft, sessionId)
+      const next = apply(record)
+      draft.records.set(sessionId, next)
+      return next
+    })
   }
 
   /** Notify committed death evidence from every transition; listeners must not throw. */

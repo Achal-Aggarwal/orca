@@ -259,7 +259,6 @@ it('keeps an actual unread delivery through pending, refused and accepted compac
   try {
     await waitFor(() => expect(publication).toBe(3))
     await waitFor(() => expect(owner.getSnapshot().current).toBe(true))
-    expect(h.host.hasPhoneRelay(SESSION, CALLER.callerKey)).toBe(true)
     const first = await send('Original request')
     await write('first', first, 'running')
     await write('first', first, 'completed')
@@ -449,7 +448,6 @@ it('keeps an actual unread delivery through pending, refused and accepted compac
     for (const stop of subscriptions) {
       stop()
     }
-    expect(h.host.hasPhoneRelay(SESSION, CALLER.callerKey)).toBe(false)
     setStructuredAgentSessionHost(null)
   }
 })

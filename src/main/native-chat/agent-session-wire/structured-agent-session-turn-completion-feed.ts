@@ -22,7 +22,6 @@ export type StructuredAgentSessionTurnCompletionSubscriber = {
   emit: (event: AgentSessionTurnCompletionEvent) => void
   /** Older clients misread prompt arms, so delivery requires opt-in. */
   includePrompts?: boolean
-  phoneRelay?: { sessionId: string; callerKey: string }
   /** In-process reconciliation on restore and prompt removal. */
   onState?: (state: StructuredAttentionState) => void
   onTurnStarted?: (sessionId: string, cursor: AgentJournalCursor, sourceSequence: number) => void
@@ -67,24 +66,7 @@ export class StructuredAgentSessionTurnCompletionFeed {
 
   subscribe(subscriber: StructuredAgentSessionTurnCompletionSubscriber): () => void {
     this.subscribers.set(subscriber.id, subscriber)
-    return () => {
-      if (this.subscribers.get(subscriber.id) === subscriber) {
-        this.unsubscribe(subscriber.id)
-      }
-    }
-  }
-
-  hasPhoneRelay(sessionId: string, callerKey: string): boolean {
-    for (const subscriber of this.subscribers.values()) {
-      if (
-        subscriber.includePrompts === true &&
-        subscriber.phoneRelay?.sessionId === sessionId &&
-        subscriber.phoneRelay.callerKey === callerKey
-      ) {
-        return true
-      }
-    }
-    return false
+    return () => this.unsubscribe(subscriber.id)
   }
 
   unsubscribe(id: string): void {
@@ -257,11 +239,7 @@ export class StructuredAgentSessionTurnCompletionFeed {
     event: AgentSessionAttentionEdge,
     audience: 'all' | 'legacy' | 'prompt-aware'
   ): void {
-    const sessionId = event.type === 'prompt' ? event.prompt.sessionId : event.completion.sessionId
     for (const subscriber of this.subscribers.values()) {
-      if (subscriber.phoneRelay && subscriber.phoneRelay.sessionId !== sessionId) {
-        continue
-      }
       const promptAware = subscriber.includePrompts === true
       if ((audience === 'legacy' && promptAware) || (audience === 'prompt-aware' && !promptAware)) {
         continue
@@ -269,9 +247,7 @@ export class StructuredAgentSessionTurnCompletionFeed {
       try {
         subscriber.emit(event)
       } catch {
-        if (this.subscribers.get(subscriber.id) === subscriber) {
-          this.subscribers.delete(subscriber.id)
-        }
+        this.subscribers.delete(subscriber.id)
       }
     }
   }

@@ -40,7 +40,7 @@ function parseReceiptJson(value: unknown): unknown {
   return typeof value === 'string' ? JSON.parse(value) : undefined
 }
 
-export function readCommandReceiptCandidates(
+function readCommandReceiptCandidates(
   db: Database.Database,
   scope: CommandReceiptScope,
   operationId: string

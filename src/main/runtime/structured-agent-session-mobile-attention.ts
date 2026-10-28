@@ -1,6 +1,5 @@
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import type { AgentJournalCursor } from '../../shared/agent-session-journal-types'
-// Execution-host delivery falls back unless the native origin has a live source forwarding subscriber.
 // Read labels synchronously at the raising commit so alerts cannot outlive prompts; edge ids dedupe delivery and address retirement.
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import {
@@ -150,10 +149,7 @@ export function subscribeStructuredAgentSessionAttention(
       }
       const sessionId =
         event.type === 'prompt' ? event.prompt.sessionId : event.completion.sessionId
-      const caller = host.phoneAlertCaller(event)
-      if (!caller || !host.hasPhoneRelay(sessionId, caller)) {
-        delivery.deliver(event, host.readStatusSummary(sessionId))
-      }
+      delivery.deliver(event, host.readStatusSummary(sessionId))
     },
     onState: delivery.reconcile,
     onTurnStarted: delivery.onTurnStarted

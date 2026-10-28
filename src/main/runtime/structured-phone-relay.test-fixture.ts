@@ -16,12 +16,10 @@ import {
   envelope,
   CALLER
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-harness'
-import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
-  hostTestMessage,
-  hostTestAttachParams
+  hostTestMessage
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import {
   RuntimeMobileNotificationController,
@@ -104,12 +102,7 @@ export async function phoneRelayFlow() {
   }
   let request = 0
   const controllers: AbortController[] = []
-  const stream = async (
-    params: unknown,
-    options: RpcDispatchStreamingOptions = HISTORICAL_NATIVE_CLIENT,
-    forward = false,
-    onFrame?: (response: RpcResponse) => void
-  ) => {
+  const stream = async (params: unknown, forward = false) => {
     const controller = new AbortController()
     controllers.push(controller)
     const replies: RpcResponse[] = []
@@ -119,7 +112,6 @@ export async function phoneRelayFlow() {
       (raw) => {
         const response: RpcResponse = JSON.parse(raw)
         replies.push(response)
-        onFrame?.(response)
         if (forward && response.ok) {
           const result = response.result
           if (result && typeof result === 'object' && 'type' in result && result.type !== 'end') {
@@ -128,14 +120,11 @@ export async function phoneRelayFlow() {
           }
         }
       },
-      { ...options, connectionId: id, signal: controller.signal }
+      { ...HISTORICAL_NATIVE_CLIENT, connectionId: id, signal: controller.signal }
     )
-    return { close: () => controller.abort(), replies, controller }
+    return { close: () => controller.abort(), replies }
   }
-  const send = async (
-    text: string,
-    client: RpcDispatchStreamingOptions = HISTORICAL_NATIVE_CLIENT
-  ) => {
+  const send = async (text: string) => {
     const body = hostTestMessage(text)
     const command = envelope('agentSession.send', { body })
     const response = await rpc.dispatch(
@@ -145,7 +134,7 @@ export async function phoneRelayFlow() {
         method: 'agentSession.send',
         params: { envelope: command, body }
       },
-      client
+      HISTORICAL_NATIVE_CLIENT
     )
     expect(response.ok).toBe(true)
     await vi.waitFor(() =>
@@ -188,50 +177,14 @@ export async function phoneRelayFlow() {
     )
     await h.host.flushStreamedEvents(SESSION)
   }
-  const attachOtherSource = async () => {
-    const sessionId = 'second-session'
-    const params = hostTestAttachParams(null)
-    const originalAcquire = h.acquire.getMockImplementation()
-    if (!originalAcquire) {
-      throw new Error('Missing acquire fixture')
-    }
-    h.acquire.mockImplementationOnce(async (input) => {
-      const acquired = await originalAcquire(input)
-      if (!acquired.link) {
-        throw new Error('Expected the attached provider handle')
-      }
-      return {
-        ...acquired,
-        process: { ...acquired.process, pid: 4343, spawnToken: input.spawnToken },
-        link: { ...acquired.link, origin: 'created', handle: codexProviderHandle('thread-second') }
-      }
-    })
-    expect(
-      await h.host.attach(
-        CALLER,
-        hostTestAttachParams(null, {
-          envelope: { ...params.envelope, sessionId },
-          providerHandle: { kind: 'codex', threadId: 'thread-second' }
-        })
-      )
-    ).toMatchObject({ ok: true })
-    return sessionId
-  }
   return {
-    h,
-    a,
-    b,
     sent,
     forwarded,
-    settings,
-    registry,
-    rpc,
     journal,
     stream,
     send,
     turn,
     prompt,
-    attachOtherSource,
     async close() {
       controllers.forEach((controller) => controller.abort())
       setStructuredAgentSessionHost(null)

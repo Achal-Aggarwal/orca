@@ -75,14 +75,3 @@ export function requireWritableAgentSessionRecord(
     ? agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' })
     : agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
 }
-
-export function applyAgentSessionRecordMutation(
-  state: AgentSessionStoreState,
-  sessionId: string,
-  apply: (record: AgentSessionRecord) => AgentSessionRecord
-): AgentSessionRecord {
-  const record = requireWritableAgentSessionRecord(state, sessionId)
-  const next = apply(record)
-  state.records.set(sessionId, next)
-  return next
-}

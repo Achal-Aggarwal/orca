@@ -1,4 +1,3 @@
-import { structuredPhoneAlertCaller } from './structured-agent-session-phone-origin'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
@@ -19,7 +18,10 @@ import { createStructuredAgentSessionHostMutationContext } from './structured-ag
 import * as lifetime from './structured-agent-session-conversation-lifetime'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { createStructuredAgentSessionTabSurface as createTabs } from './structured-agent-session-host-tabs'
-import * as mutation from './structured-agent-session-host-mutations'
+import {
+  structuredAgentSessionMutationDelegates,
+  type StructuredAgentSessionMutationContext
+} from './structured-agent-session-host-mutations'
 import { flushStructuredAgentSessionHost } from './structured-agent-session-host-teardown'
 import type * as HostTypes from './structured-agent-session-host-types'
 import { StructuredAgentSessionEventRecovery } from './structured-agent-session-event-recovery'
@@ -268,7 +270,7 @@ export class StructuredAgentSessionHost {
     }).finally(() => this.clientDelivery.closeAll())
   }
 
-  private mutationContext = (): mutation.StructuredAgentSessionMutationContext =>
+  private mutationContext = (): StructuredAgentSessionMutationContext =>
     createStructuredAgentSessionHostMutationContext({
       deps: this.deps,
       sessions: this.sessions,
@@ -294,7 +296,7 @@ export class StructuredAgentSessionHost {
 
   waitForSendSettlement = this.clientDelivery.waitForSendSettlement
 
-  private mutations = mutation.structuredAgentSessionMutationDelegates(() => this.mutationContext())
+  private mutations = structuredAgentSessionMutationDelegates(() => this.mutationContext())
   cancel = this.mutations.cancel
   respondToPrompt = this.mutations.respondToPrompt
   setOption = this.mutations.setOption
@@ -343,9 +345,6 @@ export class StructuredAgentSessionHost {
 
   /** Live-only completion/prompt events; missed events are never replayed. */
   subscribeTurnCompletions = this.clientDelivery.subscribeTurnCompletions
-  hasPhoneRelay = this.clientDelivery.hasPhoneRelay
-  phoneAlertCaller = structuredPhoneAlertCaller.bind(null, this.sessions, () => this.deps.store)
-
   readStatusSummary = this.clientDelivery.readStatusSummary
 
   collaboratorsForTests = () => ({

@@ -17,8 +17,6 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { observeStructuredAttentionWork } from './structured-attention-work.test-fixture'
 export { assertSnapshotCosts } from './structured-attention-work.test-fixture'
-import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
-import { insertCommandReceiptIfAbsent } from '../native-chat/agent-session-journal/command-receipt-table'
 import { RuntimeMobileNotificationController } from './runtime-mobile-notification-controller'
 import {
   createStructuredAttentionMobileDelivery,
@@ -35,8 +33,6 @@ export async function structuredAttentionScaling(
     items?: number
     submissions?: number
     subscribers?: number
-    relays?: number
-    matchingRelay?: boolean
   } = {}
 ) {
   const h = hostTestState()
@@ -83,29 +79,6 @@ export async function structuredAttentionScaling(
   }
   const controller = new RuntimeMobileNotificationController()
   const tail = attentionDeliveryTail(controller, h.root)
-  const relays: (() => void)[] = []
-  for (let index = 0; index < (options.relays ?? 8); index += 1) {
-    relays.push(
-      h.host.subscribeTurnCompletions({
-        id: `source-relay-${index}`,
-        includePrompts: true,
-        phoneRelay: {
-          sessionId: SESSION,
-          callerKey:
-            index === 0 && options.matchingRelay !== false ? CALLER.callerKey : `other-${index}`
-        },
-        emit: () => {}
-      })
-    )
-  }
-  const socket = { disconnect: () => relays.splice(0).forEach((stop) => stop()) }
-  const proof: { visits: number; result: boolean }[] = []
-  const originalRelay = h.host.hasPhoneRelay
-  vi.spyOn(h.host, 'hasPhoneRelay').mockImplementation((...args) => {
-    const { counts, result } = countAttentionCollectionWork(() => originalRelay(...args))
-    proof.push({ visits: counts.mapValues, result })
-    return result
-  })
   const retirements: number[] = []
   let starts = 0
   subscribeStructuredAgentSessionAttention(
@@ -146,8 +119,8 @@ export async function structuredAttentionScaling(
       }
     })
   }
-  const work = observeStructuredAttentionWork(h.host, journal, h.store)
-  const { snapshots, provenance } = work
+  const work = observeStructuredAttentionWork(journal)
+  const { snapshots } = work
   const events = h.acquire.mock.calls.at(-1)![0].events!
   const send = async (text: string) => {
     const body = hostTestMessage(text)
@@ -204,37 +177,8 @@ export async function structuredAttentionScaling(
     )
     await h.host.flushStreamedEvents(SESSION)
   }
-  const addCandidate = (operation: string, caller: string, matches: boolean) => {
-    const submittedSequence = journal.submission(operation)?.submittedSequence
-    if (submittedSequence === undefined) {
-      throw new Error('Expected a submitted journal sequence for the receipt candidate')
-    }
-    openTestJournalHostDatabase(h.root).transaction((db) => {
-      expect(
-        insertCommandReceiptIfAbsent(
-          db,
-          { kind: 'caller', callerKey: caller },
-          {
-            operationId: operation,
-            sessionId: SESSION,
-            callerKey: caller,
-            method: 'agentSession.send',
-            fingerprint: `${caller}-fingerprint`,
-            status: 'accepted',
-            acceptedAt: Date.now(),
-            result: {
-              kind: 'journal-row',
-              epoch: journal.cursor().epoch,
-              sequence: submittedSequence + (matches ? 0 : 1)
-            }
-          }
-        )
-      ).toEqual({ inserted: true })
-    })
-  }
   const reset = () => {
     work.reset()
-    proof.length = 0
     starts = 0
     retirements.length = 0
   }
@@ -243,19 +187,14 @@ export async function structuredAttentionScaling(
     journal,
     controller,
     tail,
-    socket,
-    proof,
     snapshots,
-    provenance,
     retirements,
     starts: () => starts,
     send,
     writeTurn,
     prompt,
-    addCandidate,
     reset,
     async close() {
-      socket.disconnect()
       await tail.close()
       vi.restoreAllMocks()
     }

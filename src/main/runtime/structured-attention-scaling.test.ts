@@ -60,112 +60,20 @@ it.each([
     expect(flow.starts()).toBe(0)
     expect(flow.snapshots.filter((cost) => cost.phase === 'new-root')).toEqual([])
     await flow.writeTurn('measured', operation, 'completed')
-    expect(flow.provenance).toEqual([
-      { caller: 'client-1', snapshots: 1, candidates: 1, filters: 1 }
-    ])
-    expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(0)
-    expect(flow.proof).toEqual([{ result: true, visits: 1 }])
+    expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(1)
     await flow.prompt(0, 'measured')
-    expect(flow.provenance).toHaveLength(2)
-    expect(flow.provenance.at(-1)).toEqual({
-      caller: 'client-1',
-      snapshots: 1,
-      candidates: 1,
-      filters: 1
-    })
-    const attributionCosts = flow.snapshots.filter((cost) => cost.phase === 'provenance')
-    expect(attributionCosts.every((cost) => cost.materialization === 0)).toBe(true)
-    assertSnapshotCosts(attributionCosts)
+    expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(2)
     console.info('host-history-scaling', {
       items,
       submissions,
       subscribers,
       rootCosts,
-      sameRootUpdates,
-      attribution: flow.snapshots.filter((cost) => cost.phase === 'provenance')
+      sameRootUpdates
     })
   } finally {
     await flow.close()
   }
 })
-
-it.each([2, 20])(
-  'filters C=%i real receipt candidates and sends ambiguous/unknown origins',
-  async (candidates) => {
-    const flow = await structuredAttentionScaling()
-    try {
-      const operation = await flow.send('Candidate proof')
-      for (let index = 1; index < candidates; index += 1) {
-        flow.addCandidate(operation, `other-${index}`, false)
-      }
-      await flow.writeTurn('candidate', operation, 'running')
-      flow.reset()
-      await flow.writeTurn('candidate', operation, 'completed')
-      expect(flow.provenance).toEqual([
-        { caller: 'client-1', snapshots: 1, candidates: 1, filters: candidates }
-      ])
-      expect(flow.proof).toHaveLength(1)
-      expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(0)
-      flow.addCandidate(operation, 'ambiguous', true)
-      await flow.prompt(0, 'candidate')
-      expect(flow.provenance.at(-1)).toEqual({
-        caller: null,
-        snapshots: 1,
-        candidates: 1,
-        filters: candidates + 1
-      })
-      expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(1)
-      await flow.prompt(0, 'candidate', true)
-      const beforeUnknown = flow.provenance.length
-      await flow.writeTurn('unknown', 'not-a-submission', 'running')
-      await flow.writeTurn('unknown', 'not-a-submission', 'completed')
-      expect(flow.provenance).toHaveLength(beforeUnknown + 1)
-      expect(flow.provenance.at(-1)).toMatchObject({ caller: null, snapshots: 1, candidates: 0 })
-      expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(2)
-      console.info('host-candidate-scaling', { candidates, provenance: flow.provenance })
-    } finally {
-      await flow.close()
-    }
-  }
-)
-
-it.each([8, 80])('bounds delivery lookup across U=%i live source subscribers', async (relays) => {
-  const flow = await structuredAttentionScaling({ relays })
-  try {
-    const first = await flow.send('Scoped request')
-    await flow.writeTurn('scoped', first, 'running')
-    flow.reset()
-    await flow.writeTurn('scoped', first, 'completed')
-    expect(flow.proof).toEqual([{ result: true, visits: 1 }])
-    expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(0)
-    flow.socket.disconnect()
-    const second = await flow.send('No live relay')
-    await flow.writeTurn('fallback', second, 'running')
-    await flow.writeTurn('fallback', second, 'completed')
-    expect(flow.proof.at(-1)).toEqual({ result: false, visits: 2 })
-    expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(1)
-    console.info('source-relay-scaling', { relays, proof: flow.proof })
-  } finally {
-    await flow.close()
-  }
-})
-
-it.each([8, 80])(
-  'bounds unmatched delivery across U=%i live relays without a second source registry',
-  async (relays) => {
-    const flow = await structuredAttentionScaling({ relays, matchingRelay: false })
-    try {
-      const operation = await flow.send('No matching responsible caller')
-      await flow.writeTurn('unmatched', operation, 'running')
-      flow.reset()
-      await flow.writeTurn('unmatched', operation, 'completed')
-      expect(flow.proof).toEqual([{ result: false, visits: relays + 2 }])
-      expect(flow.tail.events.filter((event) => event.type === 'notification')).toHaveLength(1)
-    } finally {
-      await flow.close()
-    }
-  }
-)
 
 it.each([
   [20, 2],
@@ -176,7 +84,6 @@ it.each([
   async (replay, count) => {
     const flow = await structuredAttentionScaling()
     try {
-      flow.socket.disconnect()
       const first = await flow.send('Prompt-bearing root')
       await flow.writeTurn('prompt-root', first, 'running')
       for (let index = 0; index < replay - count; index += 1) {
