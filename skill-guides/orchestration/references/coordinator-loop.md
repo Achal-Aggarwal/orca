@@ -47,7 +47,7 @@ claim a model or effort from requested arguments alone.
 
 ## Reuse after settlement
 
-Choose the terminal's next owner before acknowledging the Delivery. When the
+Choose the terminal's next owner before the next `check`. When the
 same exact agent has immediate follow-up work, recover the proven handle and
 transfer cleanup ownership to the new Dispatch:
 

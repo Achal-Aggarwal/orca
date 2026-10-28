@@ -1,6 +1,6 @@
 # Messaging and gates
 
-Load this reference for inbox replay, attempt-specific guidance, group
+Load this reference for inbox recovery, attempt-specific guidance, group
 addresses, blocking questions, or coordinator-managed DAG decisions.
 
 A successful `send` proves durable enqueue. Wake and nudge are best-effort
@@ -15,16 +15,17 @@ the caller; pass it explicitly from anywhere else, including a dispatched
 worker reading coordinator follow-ups.
 
 A consuming coordinator `check` returns the bound Run's oldest FIFO Delivery,
-up to 50 messages, and replays that exact batch until acknowledged or all its
-messages are marked read. Concurrent waits on one Run inbox are allowed; they
-share the outstanding batch and reserve nothing, and acknowledging the same
-Delivery twice is a no-op. Process every row and required terminal ownership
-decision before `--ack`. Type filters decide when a waiter wakes; they do not
+up to 50 messages, and marks it handled; `--ack` is still accepted but not
+needed. Waits woken by the same message share one batch. Process every row and
+required terminal ownership decision before the next `check`. If a reply was
+lost, rerun with its `--retry-request <id>`; after lost context, read handled
+mail with `ORCA orchestration inbox --terminal run:<run_id> --limit 50 --full --json`.
+Type filters decide when a waiter wakes; they do not
 authorize skipping older actionable mail. A Delivery therefore always carries
 the whole FIFO batch whatever its types, and a `check` without `--wait` hands
 that batch over unfiltered.
 `--peek` and `--all` are read-only inspection, not progress through the
-coordinator inbox.
+coordinator inbox. Scripts that only watch the inbox must use `--peek`.
 
 An empty wait or timeout is a checkpoint. Continue rolling waits until every
 expected Dispatch settles. Heartbeat or visible activity means alive, not done.
