@@ -9,6 +9,7 @@ import {
 } from '@/runtime/structured-agent-session-owner'
 import { stablePaneHasLivePty } from '@/lib/sleeping-agent-pane-ownership'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import { getPtyExecutionHost } from '../../../../shared/terminal-execution-host'
 
 export function activateRetainedAgentRow(worktreeId: string, tabId: string, paneKey: string): void {
   const parsed = parsePaneKey(paneKey)
@@ -21,19 +22,19 @@ export function activateRetainedAgentRow(worktreeId: string, tabId: string, pane
       tab.id === tabId && tab.worktreeId === worktreeId && tab.contentType === 'agent-session'
   )
   const target = nativeTab ? structuredAgentSessionTargetForTab(state, nativeTab) : null
+  const layout = state.terminalLayoutsByTabId[tabId]
   const hasLiveTerminal =
     state.tabsByWorktree[worktreeId]?.some((tab) => tab.id === tabId) &&
-    stablePaneHasLivePty(
-      tabId,
-      parsed.leafId,
-      state.ptyIdsByTabId,
-      state.terminalLayoutsByTabId[tabId]
-    )
-  if (nativeTab ? !target : !hasLiveTerminal) {
+    stablePaneHasLivePty(tabId, parsed.leafId, state.ptyIdsByTabId, layout)
+  const owner = nativeTab
+    ? structuredAgentSessionOwnerForTab(state, nativeTab)
+    : getPtyExecutionHost(
+        layout?.ptyIdsByLeafId?.[parsed.leafId] ?? state.ptyIdsByTabId[tabId]?.[0]
+      )
+  if ((nativeTab ? !target : !hasLiveTerminal) || owner === 'foreign') {
     return
   }
   // Verify an existing destination before workspace activation can resume sleeping panes.
-  const owner = nativeTab ? structuredAgentSessionOwnerForTab(state, nativeTab) : null
   if (
     activateAndRevealWorkspace(worktreeId, owner ? { executionHostId: owner } : undefined) === false
   ) {

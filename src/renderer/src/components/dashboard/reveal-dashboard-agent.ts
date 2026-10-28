@@ -19,7 +19,7 @@ export function revealDashboardAgent(args: DashboardRevealAgentArgs): boolean {
   if (tab) {
     const owner = structuredAgentSessionOwnerForTab(state, tab)
     const target = structuredAgentSessionTargetForTab(state, tab)
-    if (!target || (args.executionHostId && args.executionHostId !== owner)) {
+    if (!target) {
       return false
     }
     if (

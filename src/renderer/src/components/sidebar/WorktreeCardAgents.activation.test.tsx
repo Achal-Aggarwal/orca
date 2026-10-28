@@ -269,7 +269,9 @@ describe('WorktreeCardAgents activation', () => {
         mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'remote:host-B@@pty-1' }
       }
       await clickRetained(mode)
-      expect(activationMocks.activateAndRevealWorkspace).toHaveBeenCalledWith('wt-1', undefined)
+      expect(activationMocks.activateAndRevealWorkspace).toHaveBeenCalledWith('wt-1', {
+        executionHostId: 'runtime:host-B'
+      })
       expect(activationMocks.activateAndRevealWorktree).not.toHaveBeenCalled()
       expect(activationMocks.activateTabAndFocusPane).toHaveBeenCalledWith(
         'retained-tab',
@@ -284,59 +286,52 @@ describe('WorktreeCardAgents activation', () => {
     }
   )
 
-  it.each(['missing', 'sleeping', 'stale', 'other-split', 'reveal-failed'] as const)(
-    'keeps a retained %s destination inert',
-    async (shape) => {
-      retainedRow()
-      mockPtyIds = { 'retained-tab': ['live-pty'] }
-      if (shape === 'missing') {
-        mockTabsByWorktree = {}
-      }
-      if (shape === 'sleeping') {
-        mockPtyIds = {}
-        mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'persisted-pty' }
-      }
-      if (shape === 'stale') {
-        mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'exited-pty' }
-      }
-      if (shape === 'other-split') {
-        mockLayouts['retained-tab'] = {
-          root: {
-            type: 'split',
-            direction: 'horizontal',
-            first: { type: 'leaf', leafId: LEAF_A },
-            second: { type: 'leaf', leafId: LEAF_B }
-          },
-          activeLeafId: LEAF_B,
-          expandedLeafId: null,
-          ptyIdsByLeafId: { [LEAF_B]: 'live-pty' }
-        }
-      }
-      if (shape === 'reveal-failed') {
-        activationMocks.activateAndRevealWorkspace.mockReturnValue(false)
-      }
-      await clickRetained('full')
-      if (shape !== 'reveal-failed') {
-        expect(activationMocks.activateAndRevealWorkspace).not.toHaveBeenCalled()
-      }
-      expect(activationMocks.activateTabAndFocusPane).not.toHaveBeenCalled()
-      expect(ownerActivationMocks.activateTerminalTabOnOwner).not.toHaveBeenCalled()
-      expect(staleAgentRowMocks.dismissStaleAgentRowByKey).not.toHaveBeenCalled()
-    }
-  )
-
-  it('dispatches a retained folder pane through workspace activation', async () => {
+  it.each([
+    'missing',
+    'sleeping',
+    'stale',
+    'other-split',
+    'foreign-owner',
+    'reveal-failed'
+  ] as const)('keeps a retained %s destination inert', async (shape) => {
     retainedRow()
-    mockTabsByWorktree = { 'folder:f1': [{ id: 'retained-tab' }] }
     mockPtyIds = { 'retained-tab': ['live-pty'] }
-    await clickRetained('full', 'folder:f1')
-    expect(activationMocks.activateAndRevealWorkspace).toHaveBeenCalledWith('folder:f1', undefined)
-    expect(activationMocks.activateAndRevealWorktree).not.toHaveBeenCalled()
-    expect(ownerActivationMocks.activateTerminalTabOnOwner).toHaveBeenCalledWith(
-      'folder:f1',
-      'retained-tab',
-      LEAF_A
-    )
+    if (shape === 'missing') {
+      mockTabsByWorktree = {}
+    }
+    if (shape === 'sleeping') {
+      mockPtyIds = {}
+      mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'persisted-pty' }
+    }
+    if (shape === 'stale') {
+      mockLayouts['retained-tab'].ptyIdsByLeafId = { [LEAF_A]: 'exited-pty' }
+    }
+    if (shape === 'other-split') {
+      mockLayouts['retained-tab'] = {
+        root: {
+          type: 'split',
+          direction: 'horizontal',
+          first: { type: 'leaf', leafId: LEAF_A },
+          second: { type: 'leaf', leafId: LEAF_B }
+        },
+        activeLeafId: LEAF_B,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_B]: 'live-pty' }
+      }
+    }
+    if (shape === 'foreign-owner') {
+      mockPtyIds = { 'retained-tab': ['remote:unscoped-handle'] }
+    }
+    if (shape === 'reveal-failed') {
+      activationMocks.activateAndRevealWorkspace.mockReturnValue(false)
+    }
+    await clickRetained('full')
+    if (shape !== 'reveal-failed') {
+      expect(activationMocks.activateAndRevealWorkspace).not.toHaveBeenCalled()
+    }
+    expect(activationMocks.activateTabAndFocusPane).not.toHaveBeenCalled()
+    expect(ownerActivationMocks.activateTerminalTabOnOwner).not.toHaveBeenCalled()
+    expect(staleAgentRowMocks.dismissStaleAgentRowByKey).not.toHaveBeenCalled()
   })
 
   it('opens a retained native tab without a PTY using its explicit owner', async () => {

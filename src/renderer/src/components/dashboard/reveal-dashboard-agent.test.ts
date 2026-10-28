@@ -53,7 +53,7 @@ import { revealDashboardAgent } from './reveal-dashboard-agent'
 const args = {
   repoId: 'repo-1',
   worktreeId: 'wt-1',
-  executionHostId: 'runtime:host-B' as const,
+  executionHostId: 'runtime:host-A' as const,
   tabId: 'agent-tab',
   leafId: '11111111-1111-4111-8111-111111111111'
 }
@@ -61,7 +61,7 @@ function nativeTab(agent: 'claude' | 'codex'): Tab {
   return {
     id: args.tabId,
     worktreeId: args.worktreeId,
-    executionHostId: args.executionHostId,
+    executionHostId: 'runtime:host-B',
     contentType: 'agent-session',
     entityId: 'session-1',
     groupId: 'group-1',
@@ -89,7 +89,7 @@ describe('revealDashboardAgent', () => {
       mocks.tabs = [nativeTab(agent)]
       expect(revealDashboardAgent({ ...args, leafId: null })).toBe(true)
       expect(mocks.activateAndRevealWorkspace).toHaveBeenCalledWith('wt-1', {
-        executionHostId: args.executionHostId
+        executionHostId: 'runtime:host-B'
       })
       expect(mocks.focusGroup).toHaveBeenCalledWith('wt-1', 'group-1')
       expect(mocks.activateTab).toHaveBeenCalledWith(args.tabId, { worktreeId: 'wt-1' })
@@ -145,8 +145,8 @@ describe('revealDashboardAgent', () => {
     expect(mocks.activateTerminalTabOnOwner).not.toHaveBeenCalled()
   })
 
-  it('does not activate a current native tab belonging to a different owner', () => {
-    mocks.tabs = [{ ...nativeTab('codex'), executionHostId: 'runtime:host-C' }]
+  it('does not fall back to a terminal when the current native owner has no runtime', () => {
+    mocks.tabs = [{ ...nativeTab('codex'), executionHostId: 'ssh:host-C' }]
     expect(revealDashboardAgent(args)).toBe(false)
     expect(mocks.activateAndRevealWorkspace).not.toHaveBeenCalled()
     expect(mocks.activateTerminalTabOnOwner).not.toHaveBeenCalled()
