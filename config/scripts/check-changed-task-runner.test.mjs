@@ -9,7 +9,8 @@ afterEach(() => {
 
 it('reports live progress, bounds the failure tail, and stops a task on timeout', async () => {
   vi.useFakeTimers()
-  const logs = vi.spyOn(console, 'log').mockImplementation(() => {})
+  const logs = vi.fn()
+  const output = { log: logs, stdout: vi.fn(), stderr: vi.fn() }
   let finish
   const task = {
     name: 'unit tests',
@@ -24,14 +25,21 @@ it('reports live progress, bounds the failure tail, and stops a task on timeout'
         finish = resolve
       })
   )
-  const pending = runTask(task, { root: '.', env: {}, runProcess: launch, stepTimeoutMs: 30_000 })
+  const pending = runTask(task, {
+    root: '.',
+    env: {},
+    runProcess: launch,
+    stepTimeoutMs: 30_000,
+    output
+  })
   await vi.advanceTimersByTimeAsync(15_000)
   expect(logs.mock.calls.flat().join('\n')).toContain('still running')
   expect(launch.mock.calls[0][0]).toMatchObject({
     timeoutMs: 30_000,
     terminationBarrier: true,
     detached: process.platform !== 'win32',
-    stdio: ['ignore', 'inherit', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    onStdout: expect.any(Function)
   })
   finish({
     code: 0,

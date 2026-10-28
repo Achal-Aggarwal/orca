@@ -9,17 +9,30 @@ import { pathToFileURL } from 'node:url'
 import {
   collectChangedFiles,
   computePassHash,
+  changedCheckEnvironment,
+  invalidatePassHash,
   readPassHash,
   writePassHash
 } from './check-changed-pass-cache.mjs'
 import { planChangedChecks } from './check-changed-selection.mjs'
-import { outputTail as tail, runPool, runTask } from './check-changed-task-runner.mjs'
+import {
+  DEPENDENCY_PATH_PREFIX,
+  hasNewIncompleteEvidence,
+  readDependencyEvidence
+} from './check-changed-dependency-evidence.mjs'
+import {
+  createTaskOutput,
+  outputTail as tail,
+  runPool,
+  runTask
+} from './check-changed-task-runner.mjs'
 import { resolveOxcCliInvocation } from './oxc-cli-invocation.mjs'
 
 // Windows caps a command line near 32K characters; past this, lint the whole tree instead.
 const MAX_PATH_ARGUMENT_CHARS = 24_000
 const LINTABLE = /\.[cm]?[jt]sx?$/
 const ANTI_SLOP_ROOTS = ['src/', 'config/', 'tests/', 'mobile/']
+const runsAsCommand = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 
 function parseArgs(argv) {
   const options = {
@@ -36,6 +49,9 @@ function parseArgs(argv) {
       options.force = true
     } else if (argument.startsWith('--base=')) {
       options.base = argument.slice('--base='.length)
+      if (!options.base) {
+        throw new Error('Invalid --base=: pass an existing commit or ref.')
+      }
     } else if (argument.startsWith('--scope=')) {
       options.scope = argument.slice('--scope='.length)
     } else if (argument.startsWith('--stepTimeoutMs=')) {
@@ -72,7 +88,10 @@ function git(root, args) {
 }
 
 function resolveMergeBase(root, requested) {
-  for (const candidate of [requested, process.env.ORCA_CODE_QUALITY_BASE, 'origin/main', 'main']) {
+  const candidates = requested
+    ? [requested]
+    : [process.env.ORCA_CODE_QUALITY_BASE, 'origin/main', 'main']
+  for (const candidate of candidates) {
     if (!candidate) {
       continue
     }
@@ -87,6 +106,9 @@ function resolveMergeBase(root, requested) {
     if (verified.status === 0) {
       return { ref: candidate, mergeBase: git(root, ['merge-base', candidate, 'HEAD']) }
     }
+  }
+  if (requested) {
+    throw new Error(`Invalid --base=${requested}: fetch that ref or pass an existing commit.`)
   }
   throw new Error('No base: fetch origin/main or pass --base=<ref>.')
 }
@@ -120,7 +142,8 @@ function buildTasks(root, plan, { files, mergeBase, maxWorkers, bun }) {
       ]
     })
   }
-  const related = plan.unitTests.related.filter((file) => existsSync(path.join(root, file)))
+  const related = plan.unitTests.related
+  const deletedRelated = related.some((file) => !existsSync(path.join(root, file)))
   const colocated = plan.unitTests.colocated.filter((file) => existsSync(path.join(root, file)))
   if (related.length > 0 || colocated.length > 0) {
     const vitest = (selection) => ({
@@ -142,9 +165,11 @@ function buildTasks(root, plan, { files, mergeBase, maxWorkers, bun }) {
         ...(related.length > 0
           ? [
               vitest(
-                fitsCommandLine(related)
-                  ? ['related', '--run', ...related]
-                  : ['run', `--changed=${mergeBase}`]
+                deletedRelated
+                  ? ['run']
+                  : fitsCommandLine(related)
+                    ? ['related', '--run', ...related]
+                    : ['run', `--changed=${mergeBase}`]
               )
             ]
           : []),
@@ -222,11 +247,18 @@ export async function main(root, argv) {
     console.log(`check:changed: no changes against ${ref}.`)
     return 0
   }
-  const hash = computePassHash(root, mergeBase, options.scope)
+  const env = {
+    ...changedCheckEnvironment(options.scope),
+    // Spawned gates that resolve their own base must use the same pinned comparison.
+    ORCA_CODE_QUALITY_BASE: mergeBase,
+    ...(process.stdout.isTTY ? { FORCE_COLOR: '1' } : {})
+  }
+  const hash = computePassHash(root, mergeBase, options.scope, env)
   if (!options.force && readPassHash(root, options.scope) === hash) {
     console.log(`check:changed (${options.scope}): nothing changed since last passing run.`)
     return 0
   }
+  invalidatePassHash(root, options.scope)
 
   const plan = planChangedChecks(files, {
     scriptsDir: path.join(root, 'config', 'scripts'),
@@ -238,44 +270,40 @@ export async function main(root, argv) {
       }
     }
   })
-  const env = {
-    ...process.env,
-    ORCA_BACKGROUND_LAUNCH: '1',
-    ORCA_UNIT_INVENTORY: options.scope === 'worktree' ? 'ci' : 'local',
-    // Why: spawned gates that read the base themselves (flaky-test ratchet) must use --base too.
-    ORCA_CODE_QUALITY_BASE: mergeBase,
-    ...(process.stdout.isTTY ? { FORCE_COLOR: '1' } : {})
-  }
-  console.log(
-    `check:changed (${options.scope}): ${files.length} changed file(s) since ${ref} (${mergeBase.slice(0, 10)}); unit inventory: ${options.scope === 'worktree' ? 'CI' : 'local'}.`
-  )
-  // Load the source runner so even its own initial build has tree cancellation and a deadline.
-  const requireFromHost = createRequire(
-    new URL('../../src/packages/process-host/package.json', import.meta.url)
-  )
-  const { tsImport } = await import(pathToFileURL(requireFromHost.resolve('tsx/esm/api')).href)
-  const { runProcess, runProcessSync } = await tsImport(
-    '../../src/packages/process-host/src/run-process.ts',
-    import.meta.url
-  )
   const abort = new AbortController()
   const cancel = () => abort.abort()
-  process.on('SIGINT', cancel)
-  process.on('SIGTERM', cancel)
-  const run = async (task) => {
-    const result = await runTask(task, {
-      root,
-      env,
-      runProcess,
-      stepTimeoutMs: options.stepTimeoutMs,
-      signal: abort.signal
-    })
-    if (!result.ok) {
-      console.error(`\n✗ ${task.name} (${result.elapsed})\n${tail(result.output)}`)
-    }
-    return result
-  }
+  const signals =
+    process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGHUP']
+  signals.forEach((signal) => process.on(signal, cancel))
+  const output = createTaskOutput(cancel)
+  let completedPass = false
   try {
+    output.log(
+      `check:changed (${options.scope}): ${files.length} changed file(s) since ${ref} (${mergeBase.slice(0, 10)}); unit inventory: ${options.scope === 'worktree' ? 'CI' : 'local'}.`
+    )
+    // Load the source runner so even its own initial build has tree cancellation and a deadline.
+    const requireFromHost = createRequire(
+      new URL('../../src/packages/process-host/package.json', import.meta.url)
+    )
+    const { tsImport } = await import(pathToFileURL(requireFromHost.resolve('tsx/esm/api')).href)
+    const { runProcess, runProcessSync } = await tsImport(
+      '../../src/packages/process-host/src/run-process.ts',
+      import.meta.url
+    )
+    const run = async (task) => {
+      const result = await runTask(task, {
+        root,
+        env,
+        runProcess,
+        stepTimeoutMs: options.stepTimeoutMs,
+        signal: abort.signal,
+        output
+      })
+      if (!result.ok) {
+        output.error(`\n✗ ${task.name} (${result.elapsed})\n${tail(result.output)}`)
+      }
+      return result
+    }
     if (
       plan.typecheckProjects.length > 0 ||
       plan.unitTests.related.length + plan.unitTests.colocated.length > 0
@@ -297,29 +325,87 @@ export async function main(root, argv) {
     const { resolvePinnedBunExecutable } = await import('./pinned-bun-executable.mjs')
     const bun = () => resolvePinnedBunExecutable(root, runProcessSync) ?? 'bun'
     const tasks = buildTasks(root, plan, { files, mergeBase, maxWorkers: options.maxWorkers, bun })
-    console.log(`check:changed: running ${tasks.length} check(s).`)
+    let evidencePath = null
+    if (tasks.some((task) => task.name === 'unit tests')) {
+      const resolved = await run({
+        name: 'dependency evidence',
+        steps: [
+          {
+            program: bun(),
+            args: ['--bun', path.join(import.meta.dirname, 'check-changed-dependency-evidence.mjs')]
+          }
+        ]
+      })
+      if (!resolved.ok) {
+        return 1
+      }
+      const record = resolved.output
+        .split('\n')
+        .find((line) => line.startsWith(DEPENDENCY_PATH_PREFIX))
+      evidencePath = record ? JSON.parse(record.slice(DEPENDENCY_PATH_PREFIX.length)) : undefined
+    }
+    const evidence = readDependencyEvidence(evidencePath)
+    output.log(`check:changed: running ${tasks.length} check(s).`)
     // Typecheck and tests lead the queue so short checks fill in around them.
     const concurrency = options.maxWorkers
       ? Number(options.maxWorkers)
       : Math.max(3, Math.floor(availableParallelism() / 3))
     const results = await runPool(tasks, concurrency, run)
+    await output.flush()
     const failed = results.filter((result) => !result.ok)
     if (failed.length > 0 || abort.signal.aborted) {
-      console.error(
+      output.error(
         `\n✗ ${failed.length} of ${results.length} check(s) failed in ${seconds(startedAt)}: ${failed.map((result) => result.task.name).join(', ')}`
       )
       return 1
     }
-    writePassHash(root, hash, options.scope)
-    console.log(`✓ ${results.length} check(s) passed in ${seconds(startedAt)}.`)
-    return 0
+    output.log(`✓ ${results.length} check(s) passed in ${seconds(startedAt)}.`)
+    await output.flush()
+    if (abort.signal.aborted) {
+      return 1
+    }
+    if (computePassHash(root, mergeBase, options.scope, env) !== hash) {
+      output.error('check:changed: inputs changed during checks; rerun before recording a pass.')
+      return 1
+    }
+    const finalEvidence = readDependencyEvidence(evidencePath)
+    if (hasNewIncompleteEvidence(evidence, finalEvidence)) {
+      output.error(
+        'check:changed: new incomplete dependency evidence arrived during checks; rerun before recording a pass.'
+      )
+      return 1
+    }
+    if (!evidence || !finalEvidence) {
+      output.log('check:changed: dependency evidence unavailable; passing checks were not cached.')
+    } else {
+      completedPass = writePassHash(root, hash, options.scope, finalEvidence)
+      if (!completedPass) {
+        output.error(
+          'check:changed: dependency evidence changed while recording a pass; rerun checks.'
+        )
+        return 1
+      }
+    }
   } finally {
-    process.off('SIGINT', cancel)
-    process.off('SIGTERM', cancel)
+    let disposed = false
+    try {
+      await output.dispose()
+      disposed = true
+    } finally {
+      if (!completedPass || !disposed || abort.signal.aborted) {
+        invalidatePassHash(root, options.scope, hash)
+      }
+      signals.forEach((signal) => process.off(signal, cancel))
+      if (output.blocked && runsAsCommand) {
+        // Node protects stdio from destroy(); exit only after owned checks have settled.
+        process.exit(1)
+      }
+    }
   }
+  return abort.signal.aborted ? 1 : 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (runsAsCommand) {
   try {
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
     process.exitCode = await main(root, process.argv.slice(2))
