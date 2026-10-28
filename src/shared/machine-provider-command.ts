@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { isRuntimePathAbsolute } from './cross-platform-path'
-import { pluginRelativePathError } from './plugins/plugin-path-safety'
+import { pluginRelativePathError } from './plugins/installation/plugin-path-safety'
 
 /** Runs Orca's own executable as node, so providers never depend on a `node` on PATH. */
 export const MACHINE_PROVIDER_ORCA_NODE = '$orca-node'

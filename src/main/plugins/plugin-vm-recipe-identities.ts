@@ -18,7 +18,7 @@ export async function readPluginVmRecipeIdentities(
   try {
     const identities: string[] = []
     for (const contribution of manifest.contributes.vmRecipes ?? []) {
-      const recipe = parsePluginVmRecipeArtifact(
+      const artifact = parsePluginVmRecipeArtifact(
         await readContainedPluginArtifactText(
           rootDir,
           contribution.path,
@@ -26,7 +26,15 @@ export async function readPluginVmRecipeIdentities(
         )
       )
       identities.push(
-        JSON.stringify([recipe.id, recipe.checkoutMode ?? null, listPluginVmRecipeCommands(recipe)])
+        JSON.stringify(
+          artifact.kind === 'recipe'
+            ? [
+                artifact.recipe.id,
+                artifact.recipe.checkoutMode ?? null,
+                listPluginVmRecipeCommands(artifact.recipe)
+              ]
+            : [artifact.provider.id, 'machine-provider', artifact.provider.command]
+        )
       )
     }
     return identities

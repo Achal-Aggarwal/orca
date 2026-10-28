@@ -180,6 +180,7 @@ it('composes real dispatched headers, current repo gates and folder cache refres
       onWorkspaceStatusDrop: vi.fn()
     }
     const ctx: WorktreeVirtualRowContext = {
+      archivedMachineHostIds: new Set(),
       renderRows: rows,
       firstHeaderIndex: 0,
       activeStickyHeaderIndexRef: { current: 0 },

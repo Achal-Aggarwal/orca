@@ -117,6 +117,18 @@
           "unpushedOne": "1 unpushed commit on these worktrees will be lost."
         }
       },
+      "new": {
+        "workspace": {
+          "MachineCreateFields": {
+            "days_one": "1 day",
+            "days_other": "{{count}} days",
+            "hours_one": "1 hour",
+            "hours_other": "{{count}} hours",
+            "minutes_one": "1 minute",
+            "minutes_other": "{{count}} minutes"
+          }
+        }
+      },
       "right": {
         "sidebar": {
           "AiVaultScanProgressStrip": {
@@ -1017,6 +1029,10 @@
       "subagents_other": "{{count}} subagents"
     }
   },
+  "localBuild": {
+    "liveTerminals_one": "{{count}} live terminal will reconnect after restart.",
+    "liveTerminals_other": "{{count}} live terminals will reconnect after restart."
+  },
   "machines": {
     "workAtRisk": {
       "neverPushed_one": "{{count}} branch never pushed",
@@ -1026,10 +1042,6 @@
       "unpushed_one": "{{count}} unpushed commit",
       "unpushed_other": "{{count}} unpushed commits"
     }
-  },
-  "localBuild": {
-    "liveTerminals_one": "{{count}} live terminal will reconnect after restart.",
-    "liveTerminals_other": "{{count}} live terminals will reconnect after restart."
   },
   "menu": {
     "quitApp": "Quit {{appName}}"

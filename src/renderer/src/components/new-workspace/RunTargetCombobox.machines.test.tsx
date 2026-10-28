@@ -13,6 +13,14 @@ vi.mock('@/components/ui/popover', () => ({
   PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }))
 
+vi.mock('@/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="run-target-tooltip">{children}</div>
+  )
+}))
+
 const PROVIDER = 'plugin:omarchy/omarchy' as const
 
 const localOption: ReadyProjectHostSetupOption = {
@@ -182,8 +190,10 @@ describe('run target machines', () => {
     const shownFor = (picked: MachineOption): string => {
       cleanup()
       renderPicker({ selected: { group, machine: picked } })
+      // The closed field shows the name; the tooltip carries the provider and state.
       const field = screen.getByRole('combobox', { name: 'Run on' })
-      return field.parentElement?.parentElement?.textContent ?? ''
+      const tooltip = screen.queryByTestId('run-target-tooltip')?.textContent ?? ''
+      return `${field.parentElement?.parentElement?.textContent ?? ''} ${tooltip}`
     }
     const running = shownFor(group.machines[1])
     expect(running).toContain('pr-2231')
