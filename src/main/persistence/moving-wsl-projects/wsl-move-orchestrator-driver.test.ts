@@ -103,7 +103,8 @@ function orchestratorOverDriver(): {
       }
     },
     track: () => {},
-    publish: () => {}
+    publish: () => {},
+    runAsUserAct: (_distro, act) => act()
   }
   const orchestrator = new WslMoveOrchestrator(ports)
   return {

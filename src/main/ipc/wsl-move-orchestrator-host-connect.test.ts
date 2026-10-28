@@ -100,7 +100,8 @@ function orchestratorOverHost(connector: ReturnType<typeof makeConnector>) {
     save: () => {},
     schedule: () => () => {},
     track: () => {},
-    publish: () => {}
+    publish: () => {},
+    runAsUserAct: (_distro, act) => act()
   })
   return { orchestrator, service, driverConnect }
 }

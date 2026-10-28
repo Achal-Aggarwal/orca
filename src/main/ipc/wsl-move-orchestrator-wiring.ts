@@ -37,6 +37,7 @@ import {
 import { runTrackedWslMove } from '../telemetry/wsl-move-telemetry'
 import { readWslDistroRegistrations } from '../wsl/wsl-distro-registry-id'
 import { wslHostsGateOpen } from '../wsl/wsl-host-gate'
+import { runAsWslUserAct } from '../wsl/wsl-user-act-scope'
 import { getWslHostService } from '../wsl/wsl-host-service-instance'
 import { onWslHostUserAction } from '../wsl/wsl-host-user-actions'
 import { getTrustedUIRendererWebContents, getTrustedUIRendererWindow } from './ui'
@@ -158,7 +159,8 @@ function createOrchestrator(
     },
     track: (trigger, record, cause) =>
       trackWslMoveOrchestrator(wslMoveOrchestratorEventProps(trigger, record, cause)),
-    publish
+    publish,
+    runAsUserAct: runAsWslUserAct
   })
 }
 

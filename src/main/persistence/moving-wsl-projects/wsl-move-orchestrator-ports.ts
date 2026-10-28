@@ -59,4 +59,6 @@ export type WslMoveOrchestratorPorts = {
     cause?: WslMovePreview | WslMoveResult
   ) => void
   publish: (records: WslMoveOrchestratorRecord[]) => void
+  /** Runs a step the user asked for as their act on the distro (the WSL stopped-distro gates). */
+  runAsUserAct: <T>(distro: string, act: () => Promise<T>) => Promise<T>
 }

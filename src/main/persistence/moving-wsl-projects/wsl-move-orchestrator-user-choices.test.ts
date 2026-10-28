@@ -411,4 +411,17 @@ describe('WslMoveOrchestrator: user choices, races and failures', () => {
     orchestrator.releasedByUser('Ubuntu', 'removed')
     expect(stateOf(orchestrator, 'Ubuntu')).toMatchObject({ reason: 'declined', cause: 'removed' })
   })
+
+  // #34632's stopped-distro gates: the user's Check again is their act on the distro, so the
+  // driver's reads for a just-connected distro are not refused as background work.
+  it('runs a Retry step as the user act on its distro, and nothing else', async () => {
+    const ports = fakePorts()
+    const orchestrator = new WslMoveOrchestrator(ports)
+    await orchestrator.trigger('Ubuntu', 'connect')
+    await orchestrator.trigger('Debian', 'project-opened')
+    expect(ports.userActs).toEqual([])
+    await orchestrator.userAction('Ubuntu', 'retry')
+    await orchestrator.whenIdle()
+    expect(ports.userActs).toEqual(['Ubuntu'])
+  })
 })

@@ -110,7 +110,11 @@ export class WslMoveOrchestrator {
     this.busy.add(key)
     const running = (async () => {
       try {
-        await this.step(key, distro, trigger)
+        // The user's Retry is their act on this distro: the driver's reads may start it, as a
+        // click would. Every other trigger stays under the background gates (A1).
+        await (trigger === 'user'
+          ? this.ports.runAsUserAct(distro, () => this.step(key, distro, trigger))
+          : this.step(key, distro, trigger))
       } catch (error) {
         // Triggers are fire-and-forget (status events, timers): a throw must not go unhandled.
         console.warn('[wsl-move] Orchestrator step failed:', error)
