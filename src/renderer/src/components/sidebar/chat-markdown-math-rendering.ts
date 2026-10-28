@@ -118,7 +118,8 @@ function rehypeChatMath(
           ? typesetFormula(typeset, element, mathElement, file)
           : undefined
       const invalid = !typesetResult || typesetResult.failed
-      const children = invalid ? [{ type: 'text' as const, value: source }] : typesetResult.children
+      const readable: Root['children'] = [{ type: 'text', value: source }]
+      const children = invalid ? readable : typesetResult.children
       const display = classes.includes('math-display') || element.tagName === 'pre'
       const content = children.filter(
         (child): child is Exclude<RootContent, { type: 'doctype' }> => child.type !== 'doctype'
