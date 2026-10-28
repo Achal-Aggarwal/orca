@@ -18,7 +18,7 @@ import { richMarkdownClipboardInsertionOrderKey } from './rich-markdown-clipboar
 import { selectFolderWorkspaces, selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 export type RichMarkdownImageInsertArgs = {
-  editor: Editor
+  getEditor: () => Editor | null
   filePath: string
   sourcePath: string
   worktreeId: string | null
@@ -27,7 +27,7 @@ export type RichMarkdownImageInsertArgs = {
 }
 
 export async function insertRichMarkdownImageFromPath({
-  editor,
+  getEditor,
   filePath,
   sourcePath,
   worktreeId,
@@ -87,7 +87,8 @@ export async function insertRichMarkdownImageFromPath({
     }
 
     const range = getInsertionRange()
-    if (!range) {
+    const editor = getEditor()
+    if (!range || !editor) {
       showRichMarkdownImageInsertionCanceled(true)
       return
     }

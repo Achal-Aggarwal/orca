@@ -24,37 +24,52 @@ export function useLocalImagePick(
     }
   }, [editor, filePath, runtimeEnvironmentId, worktreeId])
 
-  return useCallback(async () => {
+  return useCallback(() => {
     if (!editor) {
-      return
+      return Promise.resolve()
     }
     const target = captureRichMarkdownImageInsertionTarget(editor)
     if (!target) {
+      return Promise.resolve()
+    }
+    const pendingTargets = pendingTargetsRef.current
+    pendingTargets.add(target)
+    return insertPickedImage(target, pendingTargets, {
+      filePath,
+      worktreeId,
+      runtimeEnvironmentId
+    })
+  }, [editor, filePath, runtimeEnvironmentId, worktreeId])
+}
+
+async function insertPickedImage(
+  target: RichMarkdownImageInsertionTarget,
+  pendingTargets: Set<RichMarkdownImageInsertionTarget>,
+  location: {
+    filePath: string
+    worktreeId: string | null
+    runtimeEnvironmentId?: string | null
+  }
+): Promise<void> {
+  try {
+    const srcPath = await window.api.shell.pickImage()
+    if (!srcPath) {
       return
     }
-    pendingTargetsRef.current.add(target)
-    try {
-      const srcPath = await window.api.shell.pickImage()
-      if (!srcPath) {
-        return
-      }
-      if (!target.getRange()) {
-        showRichMarkdownImageInsertionCanceled()
-        return
-      }
-      await insertRichMarkdownImageFromPath({
-        editor,
-        filePath,
-        sourcePath: srcPath,
-        worktreeId,
-        runtimeEnvironmentId,
-        getInsertionRange: target.getRange
-      })
-    } catch (err) {
-      toast.error(extractIpcErrorMessage(err, 'Failed to insert image.'))
-    } finally {
-      target.dispose()
-      pendingTargetsRef.current.delete(target)
+    if (!target.getRange()) {
+      showRichMarkdownImageInsertionCanceled()
+      return
     }
-  }, [editor, filePath, runtimeEnvironmentId, worktreeId])
+    await insertRichMarkdownImageFromPath({
+      getEditor: target.getEditor,
+      ...location,
+      sourcePath: srcPath,
+      getInsertionRange: target.getRange
+    })
+  } catch (err) {
+    toast.error(extractIpcErrorMessage(err, 'Failed to insert image.'))
+  } finally {
+    target.dispose()
+    pendingTargets.delete(target)
+  }
 }

@@ -90,6 +90,8 @@ describe('rich markdown image paste', () => {
   it('imports pasted images instead of letting TipTap embed base64 markdown', async () => {
     const event = pasteEvent([{ kind: 'file', type: 'image/png' }])
     const editor = editorAt(7)
+    const importing = Promise.withResolvers<void>()
+    vi.mocked(insertRichMarkdownImageFromPath).mockReturnValueOnce(importing.promise)
 
     expect(
       handleRichMarkdownImagePaste({
@@ -106,12 +108,20 @@ describe('rich markdown image paste', () => {
       connectionId: 'ssh-1'
     })
     expect(insertRichMarkdownImageFromPath).toHaveBeenCalledWith({
-      editor,
+      getEditor: expect.any(Function),
       filePath: '/repo/note.md',
       sourcePath: '/tmp/orca-paste-image.png',
       worktreeId: 'wt-1',
       runtimeEnvironmentId: undefined,
       getInsertionRange: expect.any(Function)
+    })
+    const options = vi.mocked(insertRichMarkdownImageFromPath).mock.calls[0]?.[0]
+    expect(options?.getEditor()).toBe(editor)
+    expect(options?.getInsertionRange?.()).toMatchObject({ from: 7, to: 7 })
+    importing.resolve()
+    await vi.waitFor(() => {
+      expect(options?.getEditor()).toBe(null)
+      expect(options?.getInsertionRange?.()).toBe(null)
     })
   })
 

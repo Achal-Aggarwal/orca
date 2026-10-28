@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react'
 import type { Transaction } from '@tiptap/pm/state'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { CellSelection } from '@tiptap/pm/tables'
 import { getRichMarkdownImageResolverContextVersion } from './rich-markdown-image-context'
 import {
@@ -15,6 +16,7 @@ export type RichMarkdownImageInsertionRange = {
 }
 
 export type RichMarkdownImageInsertionTarget = {
+  getEditor: () => Editor | null
   getRange: () => RichMarkdownImageInsertionRange | null
   dispose: () => void
 }
@@ -25,7 +27,8 @@ export function captureRichMarkdownImageInsertionTarget(
   if (editor.isDestroyed || !editor.view.dom.isConnected || !editor.isEditable) {
     return null
   }
-  const targetDom = editor.view.dom
+  let activeEditor: Editor | null = editor
+  let targetDom: HTMLElement | null = editor.view.dom
   const contextVersion = getRichMarkdownImageResolverContextVersion(editor)
   const requestOrder = captureRichMarkdownClipboardInsertionOrder(editor)
   let cellSelection =
@@ -36,7 +39,7 @@ export function captureRichMarkdownImageInsertionTarget(
     from: $from.pos,
     to: $to.pos
   }))
-  let document = editor.state.doc
+  let document: ProseMirrorNode | null = editor.state.doc
   let active = true
 
   const dispose = (): void => {
@@ -44,8 +47,14 @@ export function captureRichMarkdownImageInsertionTarget(
       return
     }
     active = false
-    editor.off('transaction', mapTransactions)
-    editor.off('destroy', dispose)
+    const owner = activeEditor
+    activeEditor = null
+    targetDom = null
+    document = null
+    cellSelection = null
+    ranges = []
+    owner?.off('transaction', mapTransactions)
+    owner?.off('destroy', dispose)
   }
 
   const mapTransactions = ({
@@ -55,6 +64,9 @@ export function captureRichMarkdownImageInsertionTarget(
     transaction: Transaction
     appendedTransactions: Transaction[]
   }): void => {
+    if (!document) {
+      return
+    }
     const transactions = [transaction, ...appendedTransactions]
     const nextDocument = appendedTransactions.at(-1)?.doc ?? transaction.doc
     if (nextDocument.eq(document)) {
@@ -122,15 +134,21 @@ export function captureRichMarkdownImageInsertionTarget(
 
   return {
     dispose,
-    getRange: () =>
-      active &&
-      !editor.isDestroyed &&
-      editor.isEditable &&
-      editor.view.dom === targetDom &&
-      targetDom.isConnected &&
-      getRichMarkdownImageResolverContextVersion(editor) === contextVersion &&
-      editor.state.doc.eq(document)
+    getEditor: () => activeEditor,
+    getRange: () => {
+      const owner = activeEditor
+      return active &&
+        owner &&
+        document &&
+        targetDom &&
+        !owner.isDestroyed &&
+        owner.isEditable &&
+        owner.view.dom === targetDom &&
+        targetDom.isConnected &&
+        getRichMarkdownImageResolverContextVersion(owner) === contextVersion &&
+        owner.state.doc.eq(document)
         ? { ...ranges[0], requestOrder, ...(cellSelection ? { cellSelection } : {}) }
         : null
+    }
   }
 }

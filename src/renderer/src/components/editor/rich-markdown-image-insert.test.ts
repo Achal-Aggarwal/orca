@@ -82,7 +82,7 @@ describe('insertRichMarkdownImageFromPath', () => {
     const { editor } = editorWithRunResult(false)
 
     await insertRichMarkdownImageFromPath({
-      editor,
+      getEditor: () => editor,
       filePath: '/repo/note.md',
       sourcePath: '/tmp/image.png',
       worktreeId: 'wt-1',
@@ -102,7 +102,7 @@ describe('insertRichMarkdownImageFromPath', () => {
     const { editor } = editorWithRunResult(true)
 
     await insertRichMarkdownImageFromPath({
-      editor,
+      getEditor: () => editor,
       filePath: '/folder-workspace/note.md',
       sourcePath: '/tmp/image.png',
       worktreeId: 'folder:folder-1',
@@ -133,7 +133,7 @@ describe('insertRichMarkdownImageFromPath', () => {
     const { editor, insertContentAt } = editorWithRunResult(true)
 
     await insertRichMarkdownImageFromPath({
-      editor,
+      getEditor: () => editor,
       filePath: '/repo/note.md',
       sourcePath: '/tmp/image.png',
       worktreeId: 'wt-1',
@@ -175,7 +175,7 @@ describe('insertRichMarkdownImageFromPath', () => {
       const { editor, insertContentAt } = editorWithRunResult(true)
 
       await insertRichMarkdownImageFromPath({
-        editor: editor as never,
+        getEditor: () => editor,
         filePath,
         sourcePath: '/tmp/image.png',
         worktreeId: 'wt-1',
@@ -196,7 +196,7 @@ describe('insertRichMarkdownImageFromPath', () => {
     const { editor, chain } = editorWithRunResult(true)
 
     await insertRichMarkdownImageFromPath({
-      editor,
+      getEditor: () => editor,
       filePath: '/repo/note.md',
       sourcePath: '/tmp/image.png',
       worktreeId: 'wt-1',

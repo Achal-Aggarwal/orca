@@ -53,7 +53,7 @@ export function handleRichMarkdownImagePaste({
         return
       }
       return insertRichMarkdownImageFromPath({
-        editor,
+        getEditor: target.getEditor,
         filePath,
         sourcePath,
         worktreeId,
