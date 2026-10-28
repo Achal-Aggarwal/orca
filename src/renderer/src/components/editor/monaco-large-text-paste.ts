@@ -94,6 +94,7 @@ function isMonacoPasteTargetCurrent(
     monacoEditor.getContainerDomNode() === snapshot.container &&
     snapshot.container.isConnected &&
     monacoEditor.hasTextFocus() &&
+    !snapshot.model.isDisposed() &&
     snapshot.model.getVersionId() === snapshot.versionId &&
     Selection.selectionsArrEqual(monacoEditor.getSelections() ?? [], snapshot.selections)
   )
@@ -225,7 +226,7 @@ async function insertMonacoTextInChunks(
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
-    snapshot.versionId = snapshot.model.getVersionId()
+    snapshot.versionId = snapshot.model.isDisposed() ? -1 : snapshot.model.getVersionId()
     snapshot.selections = monacoEditor.getSelections() ?? []
     textIndices = nextIndices
     firstChunk = false

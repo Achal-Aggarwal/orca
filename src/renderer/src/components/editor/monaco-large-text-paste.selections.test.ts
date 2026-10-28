@@ -29,7 +29,9 @@ function makeEditor(value: string, initialSelections: Selection[]) {
       return true
     },
     pushUndoStop: () => {
-      model.pushStackElement()
+      if (!model.isDisposed()) {
+        model.pushStackElement()
+      }
       return true
     }
   }
@@ -222,5 +224,26 @@ describe('chunked Monaco paste interruption', () => {
     expect(model.getValue()).toBe('leftAB')
     await model.undo()
     expect(model.getValue()).toBe('left')
+  })
+
+  it('settles cancellation when the target is disposed during a yield', async () => {
+    const { editor, model, batchCodeUnits } = makeEditor('left', [new Selection(1, 5, 1, 5)])
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      yieldToEventLoop: async () => model.dispose()
+    })
+    expect(result).toMatchObject({ status: 'cancelled', chunksWritten: 1 })
+    expect(batchCodeUnits).toEqual([2])
+  })
+
+  it('settles cancellation when a content listener disposes the target', async () => {
+    const { editor, model, batchCodeUnits } = makeEditor('left', [new Selection(1, 5, 1, 5)])
+    model.onDidChangeContent(() => model.dispose())
+    const result = await executeMonacoLargeTextPaste(editor, 'ABCDEF', {
+      chunkMaxBytes: 2,
+      yieldToEventLoop: async () => {}
+    })
+    expect(result).toMatchObject({ status: 'cancelled', chunksWritten: 1 })
+    expect(batchCodeUnits).toEqual([2])
   })
 })
