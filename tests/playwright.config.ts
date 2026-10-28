@@ -19,6 +19,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  repeatEach: 5,
   reporter: 'list',
   use: {
     // Disable retries so CI retains the first failure’s reliable trace.
