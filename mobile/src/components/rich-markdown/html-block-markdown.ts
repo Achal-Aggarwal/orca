@@ -64,7 +64,7 @@ export function blockMarkdown(node: Node): string {
   }
   if (tag === 'pre') {
     const language = node.getAttribute('data-language') ?? ''
-    const code = literalTextContent(node.querySelector('code') ?? node)
+    const code = literalTextContent(node)
     const fence = codeFenceFor(code)
     return `${fence}${language}\n${code}\n${fence}`
   }
