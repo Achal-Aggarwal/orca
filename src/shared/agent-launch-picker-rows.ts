@@ -44,7 +44,7 @@ export type ChatUnavailableReason =
 export type NewTabAgentMenuRow = (
   | { kind: 'chat'; agent: TuiAgent }
   | { kind: 'chat-unavailable'; agent: TuiAgent; reason: ChatUnavailableReason }
-  | { kind: 'cli'; agent: TuiAgent }
+  | { kind: 'cli'; agent: TuiAgent; chat?: true }
   | { kind: 'terminal'; agent: TuiAgent }
 ) & { executionHostId?: ExecutionHostId }
 
@@ -76,11 +76,19 @@ export function buildNewTabAgentMenuRows(args: {
     chatProgramOffered(args.chatProgram(agent)) ||
     (args.chatProgram(agent) === 'unknown' && installed.includes(agent))
   const providedHere = chatAgents.filter(canOpen)
+  const chatToo = new Set<TuiAgent>()
   for (const agent of chatAgents) {
-    if (!isNativeChatProviderDisplayedOn(settings, agent, providedHere)) {
+    const displayed = isNativeChatProviderDisplayedOn(settings, agent, providedHere)
+    if (!displayed && (!installed.includes(agent) || !canOpen(agent))) {
       continue
     }
     const answer = args.hostChatAnswer(agent)
+    if (!displayed) {
+      if (answer === 'yes') {
+        chatToo.add(agent)
+      }
+      continue
+    }
     const program = args.chatProgram(agent)
     if (answer === 'yes' && canOpen(agent)) {
       runnable.push(agent)
@@ -114,6 +122,10 @@ export function buildNewTabAgentMenuRows(args: {
     ...orderAgentLaunchPickerAgents(
       defaultAgent,
       installed.filter((agent) => !runnable.includes(agent))
-    ).map((agent) => ({ kind: 'cli' as const, agent }))
+    ).map((agent) => ({
+      kind: 'cli' as const,
+      agent,
+      ...(chatToo.has(agent) ? { chat: true as const } : {})
+    }))
   ]
 }

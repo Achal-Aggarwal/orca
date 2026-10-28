@@ -1,3 +1,16 @@
+import {
+  normalizeSourceControlActionRecipe,
+  readSourceControlActionDefault,
+  type SourceControlActionRecipe
+} from './source-control-ai-actions'
+import { liftActionPermissionArgs } from './source-control-action-permission-lift'
+import {
+  lowerActionArgumentChoices,
+  readActionArgumentNode,
+  transportActionArgumentChoices,
+  editActionArgumentChoices
+} from './source-control-action-argument-choices'
+import * as startupShell from './tui-agent-startup-shell'
 import { tokenizeStartupCommand } from './tui-agent-startup-shell'
 import { describe, expect, it, vi } from 'vitest'
 import * as choiceArgs from './agent-choice-args'
@@ -280,7 +293,7 @@ describe('dedicated agent choices', () => {
     const input = {
       agent: 'claude' as const,
       remembered: { model: 'sonnet', options: { effort: 'high' } },
-      action: { model: 'opus', options: { effort: 'low' }, permissionMode: 'ask' as const },
+      action: { permissionMode: 'ask' as const },
       argumentOwner: 'launch' as const,
       launchPreferencesYieldToAgentArgs: true
     }
@@ -288,7 +301,7 @@ describe('dedicated agent choices', () => {
       permissionMode: 'ask'
     })
     expect(resolveAgentChoiceLayers({ ...input, userArgs: '--effort medium' })).toEqual({
-      model: 'opus',
+      model: 'sonnet',
       permissionMode: 'ask'
     })
     expect(
@@ -337,7 +350,6 @@ describe('dedicated agent choices', () => {
         { target: 'structured', choices: { model: 'opus' }, userArgs: '' }
       )
     ).toEqual({ args: '', choices: { model: 'opus', permissionMode: 'ask' } })
-    expect(agentLaunchNeedsPreparedCommand('claude', { effort: 'high' })).toBe(true)
     expect(agentLaunchNeedsPreparedCommand('codex', { model: 'unlisted', effort: 'high' })).toBe(
       false
     )
@@ -430,4 +442,271 @@ it('round-trips arbitrary host-owned Codex tier ids through the common config ca
     choices: read.choices
   })
   expect(launch.args).toBe('-c service_tier=account_fast_v9 --add-dir docs')
+})
+
+it.each([
+  ['claude', '--add-dir /tmp/😀 --model "opus" --effort high -- tail'],
+  ['claude', '--add-dir /tmp --model=opus --effort=high -- tail'],
+  ['codex', '--search -m o3 -c model_reasoning_effort=high -- tail'],
+  ['codex', '--search -c model=o3 -- tail'],
+  ['cursor', '--model claude-opus-4-8-thinking-high --verbose']
+] as const)(
+  'preserves the current %s literal document spelling, gaps and edit lifetime: %s',
+  (agent, raw) => {
+    const input: SourceControlActionRecipe = { agentId: agent, agentArgs: raw }
+    const recipe = liftActionPermissionArgs(input)
+    if (raw.includes('😀')) {
+      expect(recipe.argumentChoices?.nodes.map((node) => node.at)).toEqual([18, 19])
+    }
+    expect(recipe.launchPreferences).toBeUndefined()
+    expect(recipe.argumentChoices?.syntaxAgent).toBe(agent)
+    expect(recipe.argumentChoices?.nodes.map((node) => node.text)).toEqual(
+      agent === 'claude'
+        ? raw.includes('=')
+          ? ['--model=opus', '--effort=high']
+          : ['--model "opus"', '--effort high']
+        : agent === 'cursor'
+          ? ['--model claude-opus-4-8-thinking-high']
+          : raw.includes('model=o3')
+            ? ['-c model=o3']
+            : ['-m o3', '-c model_reasoning_effort=high']
+    )
+    for (const shell of ['posix', 'powershell', 'cmd'] as const) {
+      const original = tokenizeStartupCommand(raw, shell)
+      const lowered = tokenizeStartupCommand(lowerActionArgumentChoices(recipe) ?? '', shell)
+      expect(original.ok && lowered.ok).toBe(true)
+      if (!original.ok || !lowered.ok) {
+        throw new Error('Expected common syntax')
+      }
+      expect(lowered.tokens).toEqual(original.tokens)
+    }
+    expect(normalizeSourceControlActionRecipe(recipe)).toEqual(recipe)
+    const padded = {
+      ...recipe,
+      agentArgs: `   ${recipe.agentArgs}   `,
+      argumentChoices: recipe.argumentChoices && {
+        ...recipe.argumentChoices,
+        nodes: recipe.argumentChoices.nodes.map((node) => ({ ...node, at: node.at + 3 }))
+      }
+    }
+    expect(readSourceControlActionDefault({ fixChecks: padded }, 'fixChecks')).toEqual(recipe)
+    expect(
+      transportActionArgumentChoices(recipe, 'unclosed "')?.nodes.map((node) => node.at)
+    ).toEqual(recipe.argumentChoices?.nodes.map(() => 0))
+    const text = `prefix ${recipe.agentArgs}`
+    const edited = {
+      ...recipe,
+      agentArgs: text,
+      argumentChoices: transportActionArgumentChoices(recipe, text)
+    }
+    expect(edited.argumentChoices?.nodes.map((node) => node.at)).toEqual(
+      recipe.argumentChoices?.nodes.map((node) => (node.at === 0 ? 0 : node.at + 7))
+    )
+    const selected = {
+      model:
+        agent === 'claude' ? 'opus' : agent === 'cursor' ? 'claude-opus-4-8-thinking-high' : 'o3',
+      options: { effort: 'high' }
+    }
+    const removed = editActionArgumentChoices(edited, agent, selected, { model: null }, text)
+    expect(
+      (removed.argumentChoices?.nodes ?? []).some(
+        (node) => readActionArgumentNode(agent, node.text)?.key === 'model'
+      )
+    ).toBe(false)
+    expect(liftActionPermissionArgs({ ...removed, agentId: agent }).argumentChoices).toEqual(
+      removed.argumentChoices
+    )
+  }
+)
+
+it('moves an anchor out of a replaced token and rejects malformed document atoms', () => {
+  const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
+    agentId: 'claude' as const,
+    agentArgs: '--add-dir /tmp --model opus -- tail'
+  })
+  const agentArgs = '--add-dir /tmpX -- tail'
+  const edited = {
+    ...recipe,
+    agentArgs,
+    argumentChoices: transportActionArgumentChoices(recipe, agentArgs)
+  }
+  expect(edited.argumentChoices?.nodes).toEqual([{ at: 15, text: '--model opus' }])
+  expect(tokenizeStartupCommand(lowerActionArgumentChoices(edited) ?? '', 'posix')).toMatchObject({
+    ok: true,
+    tokens: ['--add-dir', '/tmpX', '--model', 'opus', '--', 'tail']
+  })
+  const trailing = liftActionPermissionArgs<SourceControlActionRecipe>({
+    agentId: 'codex' as const,
+    agentArgs: '--search -m o3 --search -c model_reasoning_effort=high'
+  })
+  const trailingArgs = `${trailing.agentArgs}^ `
+  const trailingChoices = transportActionArgumentChoices(trailing, trailingArgs)
+  expect(trailing.agentArgs).toBe('--search  --search')
+  expect(trailing.argumentChoices?.nodes.map((node) => node.at)).toEqual([9, 18])
+  expect(trailingChoices?.nodes.map((node) => node.at)).toEqual([0, 0])
+  const canonical = { ...trailing, agentArgs: trailingArgs, argumentChoices: trailingChoices }
+  expect(trailingChoices?.nodes.map((node) => node.text)).toEqual([
+    '-m o3',
+    '-c model_reasoning_effort=high'
+  ])
+  expect(canonical.agentArgs).toBe('--search  --search^ ')
+  const normalized = normalizeSourceControlActionRecipe(canonical)
+  expect(normalized).toEqual(canonical)
+  expect(normalizeSourceControlActionRecipe(normalized)).toEqual(normalized)
+  for (const document of [canonical, normalized!]) {
+    expect(lowerActionArgumentChoices(document)).toBe(
+      '-m o3  -c model_reasoning_effort=high --search  --search^'
+    )
+  }
+  for (const nodes of [
+    [{ at: -1, text: '--model opus' }],
+    [{ at: 0.5, text: '--model opus' }],
+    [
+      { at: 1, text: '--model opus' },
+      { at: 0, text: '--effort high' }
+    ],
+    [
+      { at: 0, text: '--model opus' },
+      { at: 0, text: '--model sonnet' }
+    ],
+    [{ at: 0, text: '--model opus --verbose' }],
+    [{ at: 0, text: '--permission-mode auto' }]
+  ]) {
+    expect(() =>
+      normalizeSourceControlActionRecipe({
+        agentId: 'claude',
+        agentArgs: '--verbose',
+        argumentChoices: { syntaxAgent: 'claude', nodes }
+      })
+    ).toThrow(/(?:Invalid|Duplicate) action argument choice/)
+  }
+})
+
+it('retires model-dependent live effort when raw Model changes, while preserving permission and independent removal', () => {
+  const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
+    agentId: 'claude' as const,
+    agentArgs: '--model opus --effort high',
+    launchPreferences: { agentId: 'claude' as const, permissionMode: 'ask' as const }
+  })
+  const changed = liftActionPermissionArgs({ ...recipe, agentArgs: '--model haiku' }, true)
+  expect(changed.argumentChoices?.nodes).toEqual([{ at: 0, text: '--model haiku' }])
+  expect(changed.launchPreferences).toEqual({ agentId: 'claude', permissionMode: 'ask' })
+  const removed = editActionArgumentChoices(
+    recipe,
+    'claude',
+    { model: 'opus', options: { effort: 'high' }, permissionMode: 'ask' },
+    { model: null },
+    ''
+  )
+  expect(removed.argumentChoices?.nodes).toEqual([{ at: 0, text: '--effort high' }])
+  expect(removed.launchPreferences).toEqual({
+    agentId: 'claude',
+    permissionMode: 'ask',
+    modelSelection: { base: 'default', model: { agentId: 'claude', value: null } }
+  })
+})
+
+it('bounds real raw-edit transport across invalid, divergent, exhausted and two-node boundaries', () => {
+  const tokenize = startupShell.tokenizeStartupCommand
+  let reads = 0
+  let population = 0
+  let outcomes: boolean[] = []
+  const spy = vi.spyOn(startupShell, 'tokenizeStartupCommand').mockImplementation((text, shell) => {
+    const parsed = tokenize(text, shell)
+    outcomes.push(parsed.ok)
+    if (!parsed.ok) {
+      return parsed
+    }
+    population += parsed.spans.length
+    return {
+      ...parsed,
+      spans: parsed.spans.map((span) =>
+        Object.defineProperties(
+          { ...span },
+          {
+            start: {
+              get: () => {
+                reads++
+                return span.start
+              }
+            },
+            end: {
+              get: () => {
+                reads++
+                return span.end
+              }
+            }
+          }
+        )
+      )
+    }
+  })
+  const measure = (
+    recipe: SourceControlActionRecipe,
+    next: string,
+    expected: number[],
+    lower: string
+  ) => {
+    reads = population = 0
+    outcomes = []
+    const document = transportActionArgumentChoices(recipe, next)
+    const work = { reads, population, outcomes: [...outcomes], nodes: document!.nodes.length }
+    expect(document?.syntaxAgent).toBe('codex')
+    expect(document?.nodes.map((node) => node.at)).toEqual(expected)
+    expect(document?.nodes.map((node) => node.text)).toEqual(
+      recipe.argumentChoices?.nodes.map((node) => node.text)
+    )
+    expect(outcomes).toHaveLength(3)
+    expect(reads).toBeLessThanOrEqual(20 * work.nodes * (population + 1))
+    expect(lowerActionArgumentChoices({ agentArgs: next, argumentChoices: document })).toBe(lower)
+    return work
+  }
+  try {
+    const invalid: ReturnType<typeof measure>[] = []
+    const valid: ReturnType<typeof measure>[] = []
+    const short = liftActionPermissionArgs<SourceControlActionRecipe>({
+      agentId: 'codex' as const,
+      agentArgs: '--search -m o3'
+    })
+    expect(short.agentArgs).toBe('--search')
+    expect(short.argumentChoices?.nodes).toEqual([{ at: 8, text: '-m o3' }])
+    for (const n of [128, 1280]) {
+      const recipe = liftActionPermissionArgs<SourceControlActionRecipe>({
+        agentId: 'codex' as const,
+        agentArgs: `--search -m o3 --search ${'--search '.repeat(n)}`
+      })
+      expect(recipe.agentArgs).toBe(`--search  --search ${'--search '.repeat(n).trim()}`)
+      expect(recipe.argumentChoices?.nodes).toEqual([{ at: 9, text: '-m o3' }])
+      const next = String.fromCharCode(92, 34, 32) + recipe.agentArgs
+      const failed = measure(recipe, next, [0], `-m o3 ${next}`)
+      expect(failed.outcomes).toEqual([true, false, false])
+      expect(failed.population).toBeGreaterThan(n)
+      invalid.push(failed)
+      const divergent = `${'--search^ '.repeat(n)}tail`
+      const passed = measure(short, divergent, [divergent.length], `${divergent} -m o3`)
+      expect(passed.outcomes).toEqual([true, true, true])
+      expect(passed.population).toBeGreaterThan(n)
+      expect(passed.reads).toBeGreaterThan(n)
+      valid.push(passed)
+    }
+    measure(short, '--search^ ', [0], '-m o3 --search^')
+    expect(invalid[1].reads).toBeLessThanOrEqual(12 * (invalid[0].reads + 1))
+    expect(valid[1].reads).toBeLessThanOrEqual(12 * valid[0].reads)
+    const pair = liftActionPermissionArgs({
+      agentId: 'codex' as const,
+      agentArgs: '--search -m o3 --search -c model_reasoning_effort=high'
+    })
+    const two = measure(
+      pair,
+      `${pair.agentArgs}^ `,
+      [0, 0],
+      '-m o3  -c model_reasoning_effort=high --search  --search^'
+    )
+    expect(two.reads).toBeGreaterThan(0)
+    process.stdout.write(
+      `${JSON.stringify({ metric: 'raw-edit-transport', invalid, valid, two })}\n`
+    )
+  } finally {
+    spy.mockRestore()
+  }
 })

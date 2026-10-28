@@ -1,10 +1,12 @@
+import { projectSelectedSourceControlActionLaunch } from '../../../../shared/source-control-action-launch-preferences'
+import type { SelectedSourceControlActionRecipe } from '../../../../shared/source-control-action-selection'
 import type { AgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RuntimeGitContext } from '@/runtime/runtime-git-client-context'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import type {
-  SourceControlActionRecipe,
-  SourceControlLaunchActionId
+  SourceControlLaunchActionId,
+  SourceControlActionRecipe
 } from '../../../../shared/source-control-ai-actions'
 import type { SourceControlAiWriteTarget } from '../../../../shared/source-control-ai-recipe-save'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -25,10 +27,9 @@ type UseSourceControlAgentActionStartArgs = {
   selectedAgent: TuiAgent | null
   commandInput: string
   trimmedCommandInput: string
-  agentArgs?: string
   /** False when the launch would be structured native chat, which reads no CLI arguments. */
   agentArgsApply: boolean
-  recipe: SourceControlActionRecipe
+  recipe: SelectedSourceControlActionRecipe
   saveLaunchRecipe: boolean
   saveTargetValue: string
   actionId: SourceControlLaunchActionId
@@ -82,7 +83,6 @@ export function useSourceControlAgentActionStart({
   selectedAgent,
   commandInput,
   trimmedCommandInput,
-  agentArgs,
   agentArgsApply,
   recipe,
   saveLaunchRecipe,
@@ -130,7 +130,13 @@ export function useSourceControlAgentActionStart({
         selectedAgent,
         commandInput,
         // Why: the check must judge the arguments the launch will really apply.
-        agentArgs: agentArgsApply ? agentArgs : undefined,
+        agentArgs:
+          agentArgsApply && selectedAgent
+            ? projectSelectedSourceControlActionLaunch(recipe, selectedAgent, {
+                renderedPrompt: commandInput,
+                settings
+              }).agentArgs
+            : undefined,
         detectedAgents: currentDetectedAgents,
         connectionUnavailable,
         launchPlatform,
@@ -139,7 +145,7 @@ export function useSourceControlAgentActionStart({
     [
       settings,
       agentLaunchPreferences,
-      agentArgs,
+      recipe,
       agentArgsApply,
       commandInput,
       connectionUnavailable,

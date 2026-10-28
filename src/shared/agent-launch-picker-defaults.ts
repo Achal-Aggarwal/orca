@@ -1,5 +1,5 @@
 import { projectAgentLaunchProfile } from './agent-launch-profile'
-import { structuredLaunchSeedOptions } from './native-chat-session-option-defaults'
+import { structuredLaunchSeedOptions } from './native-chat/input/native-chat-session-option-defaults'
 import { isAgentChatPermissionChoice } from './agent-chat-permission-mode'
 import type { GlobalSettings } from './global-settings-types'
 import type { TuiAgent } from './tui-agent'

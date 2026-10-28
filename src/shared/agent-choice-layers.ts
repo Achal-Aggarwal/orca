@@ -19,8 +19,7 @@ export type AgentChoiceLayersInput = {
 export function resolveAgentChoiceLayers(input: AgentChoiceLayersInput): AgentDedicatedChoices {
   const { agent } = input
   const catalog = getAgentSessionOptionLaunchCatalog(agent)
-  const parsed = tokenizeStartupCommand(input.userArgs ?? '', input.shell ?? 'posix')
-  const tokens = parsed.ok ? parsed.tokens : []
+  let tokens: readonly string[] | undefined
   const layers = [input.remembered, input.defaults, input.action, input.explicit]
   let result: AgentDedicatedChoices = {}
   for (const [index, layer] of layers.entries()) {
@@ -30,9 +29,23 @@ export function resolveAgentChoiceLayers(input: AgentChoiceLayersInput): AgentDe
     const rawWins =
       (index === 1 && input.argumentOwner === 'launch') ||
       (index === 2 && input.launchPreferencesYieldToAgentArgs)
-    const hasRaw = (remove: ((tokens: readonly string[]) => string[]) | undefined) =>
-      rawWins && (remove?.(tokens).length ?? tokens.length) < tokens.length
-    const rawModel = hasRaw(catalog?.modelApply.removeAgentArgs)
+    const hasRaw = (remove: ((tokens: readonly string[]) => string[]) | undefined) => {
+      if (!rawWins || !remove) {
+        return false
+      }
+      if (!tokens) {
+        const parsed = tokenizeStartupCommand(input.userArgs ?? '', input.shell ?? 'posix')
+        tokens = parsed.ok ? parsed.tokens : []
+      }
+      return remove(tokens).length < tokens.length
+    }
+    const rawModel = Boolean(
+      (layer.model ||
+        result.model ||
+        Object.keys(layer.options ?? {}).length ||
+        Object.keys(result.options ?? {}).length) &&
+      hasRaw(catalog?.modelApply.removeAgentArgs)
+    )
     if (rawModel) {
       result = result.permissionMode ? { permissionMode: result.permissionMode } : {}
     }

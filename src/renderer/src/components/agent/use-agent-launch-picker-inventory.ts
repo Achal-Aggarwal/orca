@@ -11,7 +11,7 @@ import { callStructuredAgentSession } from '@/runtime/structured-agent-session-c
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { formatAgentTypeLabel } from '../../../../shared/agent-type-label'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
-import { parseStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
+import { parseStructuredLaunchSeedOptions } from '../../../../shared/native-chat/input/native-chat-session-option-defaults'
 import {
   currentAgentPickerAcquisition,
   observeAgentPickerAcquisition

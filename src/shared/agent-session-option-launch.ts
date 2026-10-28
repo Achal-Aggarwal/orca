@@ -4,8 +4,10 @@ import {
   readAgentChoiceSettings
 } from './agent-choice-settings'
 import type { AgentType } from './agent-status-types'
-import { findCatalogModel } from './agent-session-option-catalog'
-import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
+import {
+  findCatalogModel,
+  getAgentSessionOptionLaunchCatalog
+} from './agent-session-option-catalog'
 export { getAgentSessionOptionLaunchCatalog } from './agent-session-option-catalog'
 import type {
   AgentSessionOptionCatalog,
@@ -13,7 +15,7 @@ import type {
   CatalogOption,
   CatalogOptionApply
 } from './agent-session-option-catalog-types'
-import type { SessionOptionValue } from './native-chat-session-options'
+import type { SessionOptionValue } from './native-chat/input/native-chat-session-options'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from './agent-chat-permission-mode'
 import { agentPermissionArgsForLaunch } from './agent-permission-args'
 import {

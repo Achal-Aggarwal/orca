@@ -1,5 +1,4 @@
 import { agentPermissionHostPlatform, permissionEnvNameMatches } from './agent-permission-env'
-import type { AgentChatPermissionMode } from './agent-chat-permission-mode'
 import type { GlobalSettings } from './global-settings-types'
 import {
   agentPermissionEnv,
@@ -18,7 +17,7 @@ import type { TuiAgent } from './tui-agent'
 export function liftAgentPermissionArgs(
   agent: TuiAgent,
   text: string | null | undefined
-): { choice: AgentChatPermissionMode | null; args: string } {
+): { choice: AgentPermissionChoice | null; args: string } {
   const result = reconcileAgentChoiceArgs({
     agent,
     userArgs: text?.trim() ?? '',
