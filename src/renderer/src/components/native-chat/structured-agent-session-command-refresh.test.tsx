@@ -22,7 +22,11 @@ const streams = new Map<
   string,
   { event: (event: AgentSessionSubscribeEvent) => void; close: () => void }
 >()
-const batch = (sessionId = 'one', extra: object = {}): AgentSessionSubscribeEvent => ({
+type CommandBatchFields = Pick<
+  Extract<AgentSessionSubscribeEvent, { type: 'batch' }>,
+  'commands' | 'commandsChanged'
+>
+const batch = (sessionId = 'one', extra: CommandBatchFields = {}): AgentSessionSubscribeEvent => ({
   type: 'batch',
   sessionId,
   batch: { cursor: { epoch: 'e', sequence: 0 }, items: [], removedItemIds: [], submissions: [] },
