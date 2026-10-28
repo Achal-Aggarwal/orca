@@ -210,13 +210,18 @@ export async function loadGitHistoryFromExecutor(
       '-z',
       '--topo-order',
       '--decorate=full',
-      `-n${limit + 1}`,
+      `-n${limit}`,
       ...historyRevisions
     ],
     cwd
   )
   const parsed = parseGitHistoryLog(stdout)
   const items = parsed.slice(0, limit)
+  const visibleIds = new Set(items.map((item) => item.id))
+  // HEAD-only topo prefixes end exactly when all observed parents are included.
+  const hasMore =
+    items.length === limit &&
+    items.some((item) => item.parentIds.some((parentId) => !visibleIds.has(parentId)))
   const hasIncomingChanges =
     Boolean(remoteRef?.revision && mergeBase) && remoteRef?.revision !== mergeBase
   const hasOutgoingChanges =
@@ -231,7 +236,7 @@ export async function loadGitHistoryFromExecutor(
     mergeBase,
     hasIncomingChanges,
     hasOutgoingChanges,
-    hasMore: parsed.length > limit,
+    hasMore,
     limit
   }
 }

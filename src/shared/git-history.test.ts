@@ -69,16 +69,18 @@ function createHistoryExecutor(limitRecords = 2): {
     }
     if (command === 'log') {
       const includesRemoteRoot = args.includes(REMOTE_OID)
+      const rowId = (index: number): string =>
+        index === 0
+          ? HEAD_OID
+          : includesRemoteRoot && index === 1
+            ? REMOTE_OID
+            : index.toString(16).padStart(40, '0')
+      const requested = Number(args.find((arg) => /^-n\d+$/.test(arg))?.slice(2) ?? limitRecords)
       return {
-        stdout: Array.from({ length: limitRecords }, (_, index) =>
+        stdout: Array.from({ length: Math.min(limitRecords, requested) }, (_, index) =>
           logRecord({
-            hash:
-              index === 0
-                ? HEAD_OID
-                : includesRemoteRoot && index === 1
-                  ? REMOTE_OID
-                  : (index % 16).toString(16).repeat(40),
-            parents: [BASE_OID],
+            hash: rowId(index),
+            parents: index + 1 < limitRecords ? [rowId(index + 1)] : [],
             decorations: index === 0 ? 'HEAD -> refs/heads/feature' : '',
             message: `commit ${index}`
           })
@@ -191,7 +193,7 @@ describe('git history loader', () => {
         '-z',
         '--topo-order',
         '--decorate=full',
-        '-n51',
+        '-n50',
         HEAD_OID
       ])
     )
@@ -280,7 +282,7 @@ describe('git history loader', () => {
     const result = await loadGitHistoryFromExecutor(executor, '/repo', { limit: 500 })
 
     const logCall = calls.find((args) => args[0] === 'log')
-    expect(logCall).toContain(`-n${GIT_HISTORY_MAX_LIMIT + 1}`)
+    expect(logCall).toContain(`-n${GIT_HISTORY_MAX_LIMIT}`)
     expect(result.items).toHaveLength(GIT_HISTORY_MAX_LIMIT)
     expect(result.limit).toBe(GIT_HISTORY_MAX_LIMIT)
     expect(result.hasMore).toBe(true)

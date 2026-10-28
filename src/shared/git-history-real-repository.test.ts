@@ -42,7 +42,7 @@ async function createRepository(inheritedEnv: NodeJS.ProcessEnv = process.env) {
         GIT_COMMITTER_DATE: date
       },
       timeoutMs: 10000,
-      maxOutputBytes: 1024 * 1024
+      maxOutputBytes: 10 * 1024 * 1024
     })
     if (result.code !== 0 || result.timedOut || result.outputTruncated) {
       throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)
@@ -122,7 +122,11 @@ describe('real unrelated Git histories', () => {
         'M',
         firstParentIsRoot ? 'first' : 'unrelated'
       ])
+      const complete = (await git(['log', '--format=%H', '--topo-order', 'HEAD'])).stdout
+        .trim()
+        .split('\n')
       const history = await loadGitHistoryFromExecutor(git, repo, { limit: 10 })
+      expect(history.items.map((item) => item.id)).toEqual(complete)
       const rows = buildGitHistoryViewModels(
         history.items,
         buildDefaultGitHistoryColorMap(history),
@@ -144,9 +148,85 @@ describe('real unrelated Git histories', () => {
       expect(nextRow.inputSwimlanes.map((lane) => lane.id)).toEqual([surviving.id])
       expect(rows.at(-1)!.outputSwimlanes).toEqual([])
 
-      const truncated = await loadGitHistoryFromExecutor(git, repo, { limit: 2 })
-      expect(truncated.hasMore).toBe(true)
-      expect(truncated.items).toHaveLength(2)
+      for (const limit of [1, 2, 3, 4, 5]) {
+        const page = await loadGitHistoryFromExecutor(git, repo, { limit })
+        expect(page.items.map((item) => item.id)).toEqual(complete.slice(0, limit))
+        expect(page.hasMore).toBe(limit < complete.length)
+      }
+    }
+  )
+})
+
+describe('real history page capture budget', () => {
+  it('loads fifty small messages when the first excluded message exceeds the capture cap', async () => {
+    const { repo, git } = await createRepository()
+    const messageFile = join(repo, 'large-commit-message')
+    await writeFile(messageFile, `excluded\n${'x'.repeat(10 * 1024 * 1024)}`)
+    await git(['commit', '--quiet', '--allow-empty', '-F', messageFile])
+    for (let index = 0; index < 50; index += 1) {
+      await git(['commit', '--quiet', '--allow-empty', '-m', `visible ${index}`])
+    }
+    const logBytes: number[] = []
+    const history = await loadGitHistoryFromExecutor(
+      async (args, cwd) => {
+        const output = await git(args, cwd)
+        if (args[0] === 'log') {
+          logBytes.push(Buffer.byteLength(output.stdout))
+        }
+        return output
+      },
+      repo,
+      { limit: 50 }
+    )
+
+    expect(history.items).toHaveLength(50)
+    expect(history.items[0]?.subject).toBe('visible 49')
+    expect(history.items[49]?.subject).toBe('visible 0')
+    expect(history.items.reduce((sum, item) => sum + item.message.length, 0)).toBe(490)
+    expect(history.hasMore).toBe(true)
+    expect(logBytes).toHaveLength(1)
+    expect(logBytes[0]).toBeLessThan(20_000)
+  })
+
+  it.each(['same', 'skewed'] as const)(
+    'matches the complete traversal with %s dates',
+    async (dates) => {
+      const { repo, git } = await createRepository()
+      for (let index = 0; index < 3; index += 1) {
+        const date = dates === 'same' ? '2000-01-04T00:00:00Z' : `1999-01-0${3 - index}T00:00:00Z`
+        await git(['commit', '--quiet', '--allow-empty', '-m', `later ${index}`], repo, date)
+      }
+      const complete = (await git(['log', '--format=%H', '--topo-order', 'HEAD'])).stdout
+        .trim()
+        .split('\n')
+      for (const limit of [1, 3, 4, 5]) {
+        const page = await loadGitHistoryFromExecutor(git, repo, { limit })
+        expect(page.items.map((item) => item.id)).toEqual(complete.slice(0, limit))
+        expect(page.hasMore).toBe(limit < complete.length)
+      }
+    }
+  )
+
+  it.each(['shallow', 'graft', 'replace'] as const)(
+    'stops at a %s root even when its raw object has parents',
+    async (boundary) => {
+      const { repo, git } = await createRepository()
+      await git(['checkout', 'first'])
+      const tip = (await git(['rev-parse', 'HEAD'])).stdout.trim()
+      expect((await git(['cat-file', '-p', tip])).stdout).toContain('parent ')
+      if (boundary === 'shallow') {
+        await writeFile(join(repo, '.git', 'shallow'), `${tip}\n`)
+      } else if (boundary === 'graft') {
+        await mkdir(join(repo, '.git', 'info'), { recursive: true })
+        await writeFile(join(repo, '.git', 'info', 'grafts'), `${tip}\n`)
+      } else {
+        await git(['replace', '--graft', tip])
+      }
+
+      const page = await loadGitHistoryFromExecutor(git, repo, { limit: 1 })
+      expect(page.items).toHaveLength(1)
+      expect(page.items[0]?.parentIds).toEqual([])
+      expect(page.hasMore).toBe(false)
     }
   )
 })
