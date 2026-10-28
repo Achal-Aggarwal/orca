@@ -20,7 +20,7 @@ import { resolveHostAgentBaseEnvironment } from '../runtime/structured-agent-she
 import { isWslHostOrcadProcess } from '../ipc/wsl-guest-windows-drive-path'
 import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 
-type StructuredLaunchInput = { launchEnv: NodeJS.ProcessEnv }
+type StructuredLaunchInput = { launchEnv: NodeJS.ProcessEnv; conversationHome?: string }
 
 type OrcadAccountServices = {
   prepareCodexHome: ReturnType<typeof createCodexRuntimeHomeLaunchPreparation>
@@ -90,12 +90,12 @@ export function createOrcadAccountServices(args: {
         ? null
         : resumeLaunch.prepareCodexSessionResumeForLaunch(resumeArgs),
     runtimeDeps: {
-      prepareCodexStructuredLaunch: async ({ launchEnv }) =>
-        (await clientCodexHomes.selectLaunchHome(undefined, launchEnv)) ??
-        prepareCodexHome(undefined, launchEnv),
-      resolveCodexStructuredLaunchHome: ({ launchEnv }) =>
-        clientCodexHomes.readLaunchHome(launchEnv) ??
-        codexRuntimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv),
+      prepareCodexStructuredLaunch: async ({ launchEnv, conversationHome }) =>
+        (await clientCodexHomes.selectLaunchHome(undefined, launchEnv, { conversationHome })) ??
+        prepareCodexHome(undefined, launchEnv, { conversationHome }),
+      resolveCodexStructuredLaunchHome: ({ launchEnv, conversationHome }) =>
+        clientCodexHomes.readLaunchHome(launchEnv, conversationHome) ??
+        codexRuntimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv, conversationHome),
       prepareCodexCatalogProbeHome: (homePath) =>
         codexRuntimeHome.prepareHostCodexHomeForReadOnlyAppServer(
           homePath,

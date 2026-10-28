@@ -1,3 +1,4 @@
+import { codexConversationStore, discoverCodexStoreHomes } from '../codex/codex-launch-home'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { InFlightPromiseDedupe, stableInFlightKey } from '../../shared/in-flight-promise-dedupe'
@@ -62,8 +63,27 @@ export async function readCodexSessionIndexTitle(
   if (!resolvedCodexHome) {
     return null
   }
-  const titleBySessionId = await readCodexSessionIndexTitles(resolvedCodexHome)
-  return titleBySessionId.get(sessionId) ?? null
+  // Overlays keep private indexes; choose the most recently written index for this store.
+  const store = codexConversationStore(resolvedCodexHome)
+  const homes = discoverCodexStoreHomes().filter((home) => codexConversationStore(home) === store)
+  const indexes = await Promise.all(
+    [...new Set([resolvedCodexHome, ...homes])].map(async (home) => {
+      const titles = await readCodexSessionIndexTitles(home)
+      const title = titles.get(sessionId)
+      if (!title) {
+        return null
+      }
+      try {
+        return {
+          title,
+          time: (await wslGatedStat(join(home, CODEX_SESSION_INDEX_FILE), 'scan')).mtimeMs
+        }
+      } catch {
+        return null
+      }
+    })
+  )
+  return indexes.filter((index) => index !== null).sort((a, b) => b.time - a.time)[0]?.title ?? null
 }
 
 function codexHomeFromSessionFilePath(sessionFilePath: string): string | null {

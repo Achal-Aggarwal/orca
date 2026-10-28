@@ -5,14 +5,13 @@ import type * as NodeFs from 'node:fs'
 import type * as CodexConfigMirror from '../codex/codex-config-mirror'
 import type * as CodexHomePaths from '../codex/codex-home-paths'
 import type * as CodexSessionBackfillMarker from '../codex/codex-session-backfill-marker'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAccountRecord,
   createCodexAuthJson,
   createManagedAuth,
   createStore,
-  getRuntimeCodexHomePath,
   getSystemCodexHomePath,
   setupRuntimeHomeTest,
   teardownRuntimeHomeTest,
@@ -179,7 +178,7 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     )
 
     const readOnlyHome = service.resolveHostCodexHomePathForLaunchReadOnly()
-    expect(readOnlyHome).toBe(managedHomePath)
+    expect(readOnlyHome).toContain(join(dirname(managedHomePath), 'overlays'))
     expectNoSideEffects(sideEffects, store)
 
     // Prove the spies detect actual launch side effects.
@@ -206,7 +205,7 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     )
 
     const readOnlyHome = service.resolveHostCodexHomePathForLaunchReadOnly()
-    expect(readOnlyHome).toBe(getRuntimeCodexHomePath())
+    expect(readOnlyHome).toBeNull()
     expectNoSideEffects(sideEffects, store)
 
     expect(service.prepareForCodexLaunch()).toBe(readOnlyHome)
@@ -247,7 +246,9 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     )
     const { ManagedCodexHomeTemporarilyUnavailableError } =
       await import('./host-codex-managed-home-ownership')
-    expect(service.resolveHostCodexHomePathForLaunchReadOnly()).toBe(managedHomePath)
+    expect(service.resolveHostCodexHomePathForLaunchReadOnly()).toContain(
+      join(dirname(managedHomePath), 'overlays')
+    )
     const markerPath = join(realpathSync(managedHomePath), '.orca-managed-home')
     lstatFaults.hold(markerPath)
 
@@ -264,7 +265,9 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
     expect(store.getSettings().activeCodexManagedAccountId).toBe('account-1')
 
     lstatFaults.release(markerPath)
-    expect(service.resolveHostCodexHomePathForLaunchReadOnly()).toBe(managedHomePath)
+    expect(service.resolveHostCodexHomePathForLaunchReadOnly()).toContain(
+      join(dirname(managedHomePath), 'overlays')
+    )
   })
 
   it('shares the create-path null-to-system-home mapping', async () => {

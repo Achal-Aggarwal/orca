@@ -12,6 +12,11 @@ const { prepareHooks, resolveHome, listHomes } = vi.hoisted(() => ({
   listHomes: vi.fn(() => ['/home/u/.local/share/orca/codex-accounts/a1/home'])
 }))
 
+vi.mock('../codex/codex-launch-home', () => ({
+  resolveCodexLaunchHome: ({ selectedAccount }: { selectedAccount: { homePath: string } }) =>
+    `${selectedAccount.homePath}/overlay`
+}))
+
 vi.mock('../codex/codex-account-home-hook', () => ({
   reconcileCodexAccountHomeHook: prepareHooks
 }))
@@ -49,8 +54,8 @@ describe('orcadCodexAccountHomes', () => {
         { CODEX_HOME: ACCOUNT_HOME },
         { launchesCodex: true }
       )
-    ).resolves.toBe(ACCOUNT_HOME)
-    expect(prepareHooks).toHaveBeenCalledWith(ACCOUNT_HOME, expect.any(Function), true)
+    ).resolves.toBe(`${ACCOUNT_HOME}/overlay`)
+    expect(prepareHooks).toHaveBeenCalledWith(`${ACCOUNT_HOME}/overlay`, expect.any(Function), true)
   })
 
   it('reads the hook switch live, so turning hooks off takes the entry out', async () => {

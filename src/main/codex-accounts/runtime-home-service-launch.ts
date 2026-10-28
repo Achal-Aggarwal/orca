@@ -1,10 +1,5 @@
+import { resolveCodexLaunchHome } from '../codex/codex-launch-home'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
-import { startSystemCodexSessionBridgeInBackground } from '../codex/codex-session-bridge'
-import {
-  resolveOrcaManagedCodexHomePath,
-  syncSystemCodexResourcesIntoManagedHome
-} from '../codex/codex-home-paths'
-import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import {
   normalizeCodexRuntimeSelection,
@@ -35,7 +30,7 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
   prepareForCodexLaunch(
     target?: CodexAccountSelectionTarget,
     launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string }
+    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
   ): string | null {
     if (target?.runtime === 'wsl') {
       const wslTarget = this.resolveWslDefaultTarget(target)
@@ -44,61 +39,49 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
       this.finishWslLaunchPreparation(wslTarget, homePath)
       return homePath
     }
-    const selfContainedAccount = this.getSelfContainedManagedHostAccount()
-    if (selfContainedAccount) {
-      const perAccountHome = this.prepareSelfContainedManagedHomeForLaunch(
-        selfContainedAccount,
-        options?.unavailableManagedHomePath
-      )
-      if (perAccountHome) {
-        return perAccountHome
-      }
-    }
-    if (this.isHostSystemDefaultRealHomeSelected(launchEnv)) {
-      // Null leaves CODEX_HOME uninjected; refresh the retired mirror only for retained panes.
+    const account = this.getSelfContainedManagedHostAccount()
+    const loginHome = account
+      ? this.prepareSelfContainedManagedHomeForLaunch(account, options?.unavailableManagedHomePath)
+      : null
+    if (!account) {
       this.copyMirrorLoginIntoEmptySystemHome()
       this.reconcileLegacySharedHomeForRetainedPanes()
-      return null
     }
-    this.invalidateBackfillAfterManagedSystemDefaultLaunch(launchEnv)
-    this.syncForCurrentSelection(target, launchEnv)
-    syncSystemCodexResourcesIntoManagedHome()
-    syncSystemConfigIntoManagedCodexHome()
-    // Keep large history scans off the launch path.
-    void startSystemCodexSessionBridgeInBackground(
-      {},
-      resolveHostCodexSessionSourceHome(this.store.getSettings())
+    return (
+      resolveCodexLaunchHome({
+        selectedAccount: loginHome ? { homePath: loginHome } : null,
+        conversationHome: options?.conversationHome,
+        storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings()),
+        accountsRoot: this.getManagedAccountsRoot()
+      }) ?? null
     )
-    return this.getRuntimeHomePath()
   }
 
-  /** Resolve the launch home without side effects for catalog reads; null means real ~/.codex. */
-  resolveHostCodexHomePathForLaunchReadOnly(launchEnv?: NodeJS.ProcessEnv): string | null {
-    const selfContainedAccount = this.getSelfContainedManagedHostAccount()
-    if (selfContainedAccount) {
-      const resolved = this.resolveSelfContainedManagedHome(selfContainedAccount)
-      if (resolved.kind === 'owned') {
-        return resolved.homePath
-      }
-      if (resolved.kind === 'indeterminate') {
-        // Keep reads under the selected account; an unreadable home cannot imply system default.
-        throw new ManagedCodexHomeTemporarilyUnavailableError()
-      }
-      // Predict launch's route after deselection while leaving the selection untouched.
-      return !hasCustomCodexHomeOverrideForLaunch(launchEnv)
-        ? null
-        : resolveOrcaManagedCodexHomePath()
+  /** Catalog reads and launches derive the same path; reads never materialize it. */
+  resolveHostCodexHomePathForLaunchReadOnly(
+    _launchEnv?: NodeJS.ProcessEnv,
+    conversationHome?: string
+  ): string | null {
+    const account = this.getSelfContainedManagedHostAccount()
+    const resolved = account ? this.resolveSelfContainedManagedHome(account) : null
+    if (resolved?.kind === 'indeterminate') {
+      throw new ManagedCodexHomeTemporarilyUnavailableError()
     }
-    // Avoid getRuntimeHomePath(), which creates the mirror directory.
-    return this.isHostSystemDefaultRealHomeSelected(launchEnv)
-      ? null
-      : resolveOrcaManagedCodexHomePath()
+    return (
+      resolveCodexLaunchHome({
+        selectedAccount: resolved?.kind === 'owned' ? { homePath: resolved.homePath } : null,
+        conversationHome,
+        storeHome: resolveHostCodexSessionSourceHome(this.store.getSettings()),
+        accountsRoot: this.getManagedAccountsRoot(),
+        readOnly: true
+      }) ?? null
+    )
   }
 
   async prepareForCodexLaunchAsync(
     target?: CodexAccountSelectionTarget,
     launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string }
+    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
   ): Promise<string | null> {
     if (target?.runtime !== 'wsl') {
       return this.prepareForCodexLaunch(target, launchEnv, options)
@@ -115,19 +98,9 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
     codexHomePath: string | null,
     options: { reattached?: boolean; launchEnv?: NodeJS.ProcessEnv } = {}
   ): boolean | null {
-    if (
-      !this.isHostSystemDefaultSessionMigrationEligible() ||
-      (!codexHomePath && !options.reattached) ||
-      (codexHomePath &&
-        normalizeRuntimePathForComparison(codexHomePath) !==
-          normalizeRuntimePathForComparison(this.getRuntimeHomePath()))
-    ) {
-      return null
-    }
-    // An older pass can clear launch preparation while PTY spawn awaits recovery.
-    return this.invalidateBackfillAfterManagedSystemDefaultLaunch(
-      options.reattached && !codexHomePath ? undefined : options.launchEnv
-    )
+    void codexHomePath
+    void options
+    return null
   }
 
   isHostSystemDefaultSessionMigrationEligible(): boolean {

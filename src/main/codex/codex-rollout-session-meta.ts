@@ -2,15 +2,6 @@ import { readTranscriptSlice } from '../native-chat/wsl-transcript-fs-access'
 import type { WslTranscriptFsTaskPriority } from '../native-chat/wsl-transcript-fs-gate'
 
 const ROLLOUT_READ_LIMIT = 64 * 1024
-const LONG_META_READ_LIMIT = 1024 * 1024
-
-/** Where a reverted or forked rollout's inherited prefix lives: a ROLLOUT id, not a thread id. */
-export type CodexRolloutHistoryBase = { rolloutId: string; endByteOffset: number }
-
-export type CodexRolloutSessionMeta = {
-  id: string
-  historyBase: CodexRolloutHistoryBase | null
-}
 
 /** Interactive resume uses exact priority; bulk AI Vault scans must not starve it. */
 export async function readCodexRolloutSessionMetaId(
@@ -18,22 +9,10 @@ export async function readCodexRolloutSessionMetaId(
   signal?: AbortSignal,
   priority: WslTranscriptFsTaskPriority = 'exact'
 ): Promise<string | null> {
-  return (await readCodexRolloutSessionMeta(filePath, signal, priority))?.id ?? null
-}
-
-export async function readCodexRolloutSessionMeta(
-  filePath: string,
-  signal?: AbortSignal,
-  priority: WslTranscriptFsTaskPriority = 'exact'
-): Promise<CodexRolloutSessionMeta | null> {
   let head: Buffer
   try {
     // The transcript gate bounds stalled WSL reads; missing or pruned rollouts cannot abort a scan (#15453).
     head = await readTranscriptSlice(filePath, 0, ROLLOUT_READ_LIMIT, priority, signal)
-    // Why: session_meta carries base_instructions, which can outgrow the first read.
-    if (head.length === ROLLOUT_READ_LIMIT && !head.includes(0x0a)) {
-      head = await readTranscriptSlice(filePath, 0, LONG_META_READ_LIMIT, priority, signal)
-    }
   } catch (error) {
     // Preserve cancellation instead of treating it as an unreadable rollout.
     if (signal?.aborted) {
@@ -42,42 +21,29 @@ export async function readCodexRolloutSessionMeta(
     return null
   }
   const firstLine = head.toString('utf8').split(/\r?\n/, 1)[0]?.trim()
-  return firstLine ? parseCodexSessionMetaLine(firstLine) : null
-}
-
-export function parseCodexSessionMetaLine(line: string): CodexRolloutSessionMeta | null {
-  let record: Map<string, unknown>
+  if (!firstLine) {
+    return null
+  }
   try {
-    record = objectFields(JSON.parse(line))
+    const record = JSON.parse(firstLine) as {
+      type?: unknown
+      id?: unknown
+      session_id?: unknown
+      thread_id?: unknown
+      payload?: { id?: unknown; session_id?: unknown; thread_id?: unknown }
+    }
+    if (record.type !== 'session_meta') {
+      return null
+    }
+    const id =
+      record.payload?.id ??
+      record.payload?.session_id ??
+      record.payload?.thread_id ??
+      record.id ??
+      record.session_id ??
+      record.thread_id
+    return typeof id === 'string' && id.length > 0 ? id : null
   } catch {
     return null
   }
-  if (record.get('type') !== 'session_meta') {
-    return null
-  }
-  const payload = objectFields(record.get('payload'))
-  const id = [payload, record]
-    .flatMap((fields) => ['id', 'session_id', 'thread_id'].map((key) => fields.get(key)))
-    .find((value) => value !== undefined && value !== null)
-  if (typeof id !== 'string' || id.length === 0) {
-    return null
-  }
-  return { id, historyBase: readCodexHistoryBase(payload.get('history_base')) }
-}
-
-function objectFields(value: unknown): Map<string, unknown> {
-  return new Map(value && typeof value === 'object' ? Object.entries(value) : [])
-}
-
-export function readCodexHistoryBase(value: unknown): CodexRolloutHistoryBase | null {
-  const fields = objectFields(value)
-  const rolloutId = fields.get('thread_id')
-  const endByteOffset = fields.get('end_byte_offset')
-  return typeof rolloutId === 'string' &&
-    rolloutId.length > 0 &&
-    typeof endByteOffset === 'number' &&
-    Number.isSafeInteger(endByteOffset) &&
-    endByteOffset >= 0
-    ? { rolloutId: rolloutId.toLowerCase(), endByteOffset }
-    : null
 }

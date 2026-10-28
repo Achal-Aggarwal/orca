@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAuthJson,
@@ -189,7 +189,7 @@ describe('CodexRuntimeHomeService', () => {
       service.prepareForCodexLaunch(undefined, undefined, {
         unavailableManagedHomePath: managedHomePath
       })
-    ).toBe(managedHomePath)
+    ).toContain(join(dirname(managedHomePath), 'overlays'))
     expect(store.getSettings().activeCodexManagedAccountId).toBe('account-1')
     expect(store.updateSettings).not.toHaveBeenCalled()
 
@@ -201,7 +201,7 @@ describe('CodexRuntimeHomeService', () => {
         service.prepareForCodexLaunch(undefined, undefined, {
           unavailableManagedHomePath: managedHomePath
         })
-      ).toBe(managedHomePath)
+      ).toContain(join(dirname(managedHomePath), 'overlays'))
     } finally {
       nowSpy.mockRestore()
     }
@@ -244,7 +244,7 @@ describe('CodexRuntimeHomeService', () => {
 
     writeFileSync(runtimeAuthPath, mismatchedAuth, 'utf-8')
     rmSync(join(managedHomePath, 'auth.json'), { force: true })
-    expect(service.prepareForCodexLaunch()).toBe(managedHomePath)
+    expect(service.prepareForCodexLaunch()).toContain(join(dirname(managedHomePath), 'overlays'))
 
     expect(existsSync(join(managedHomePath, 'auth.json'))).toBe(false)
     expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(systemAuth)

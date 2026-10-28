@@ -1,7 +1,6 @@
 import { join } from 'node:path'
 import { observeAgentStateFile } from './codex-path-observation'
 import { isOnlyCodexDaemonOverride } from './codex-daemon-socket-path-guard'
-import { stripCodexSharedStoreConfig } from './codex-shared-store-config'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
 import {
   getCodexSettingsBaselinePath,
@@ -28,7 +27,7 @@ export function getCodexConfigSyncStatus(
   if (
     runtimeConfigObservation.kind === 'absent' ||
     (runtimeConfigObservation.kind === 'present' &&
-      isOnlyOrcaOwnedCodexConfig(runtimeConfigObservation.value))
+      isOnlyCodexDaemonOverride(runtimeConfigObservation.value))
   ) {
     return { state: 'synced', reason: null, systemConfigPath }
   }
@@ -105,12 +104,4 @@ export function reportCodexConfigSyncOutcome(
 
 export function resetCodexConfigSyncStallLatchForTests(): void {
   stalledHomes.clear()
-}
-
-// A managed config holding only Orca's own lines has nothing of the user's left to sync.
-function isOnlyOrcaOwnedCodexConfig(config: string): boolean {
-  const withoutStoreLine = stripCodexSharedStoreConfig(config)
-  return withoutStoreLine.trim() === ''
-    ? withoutStoreLine !== config
-    : isOnlyCodexDaemonOverride(withoutStoreLine)
 }

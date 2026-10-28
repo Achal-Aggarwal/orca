@@ -38,12 +38,12 @@ export abstract class CodexRuntimeHomeState {
   abstract prepareForCodexLaunch(
     target?: CodexAccountSelectionTarget,
     launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string }
+    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
   ): string | null
   abstract prepareForCodexLaunchAsync(
     target?: CodexAccountSelectionTarget,
     launchEnv?: NodeJS.ProcessEnv,
-    options?: { unavailableManagedHomePath?: string }
+    options?: { unavailableManagedHomePath?: string; conversationHome?: string }
   ): Promise<string | null>
   abstract beginHostSystemDefaultSessionMigrationLaunch(
     codexHomePath: string | null,
@@ -62,8 +62,6 @@ export abstract class CodexRuntimeHomeState {
     account: CodexManagedAccount,
     unavailableManagedHomePath?: string
   ): string | null
-  protected abstract startSelfContainedSessionBridgeForLaunch(perAccountHome: string): void
-  protected abstract getSelfContainedSessionBridgeSourceHomes(): string[]
   protected abstract syncSelfContainedManagedSelection(account: CodexManagedAccount): void
   protected abstract resolveSelfContainedManagedHome(
     account: CodexManagedAccount

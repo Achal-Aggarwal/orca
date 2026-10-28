@@ -1,14 +1,7 @@
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import {
-  syncSystemCodexResourcesIntoManagedHome,
-  getSystemCodexHomePath,
-  resolveOrcaManagedCodexHomePath
-} from '../codex/codex-home-paths'
-import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
-import { startCodexAccountSessionBridgeInBackground } from '../codex/codex-account-session-bridge'
-import { startCodexSharedStoreMigrationInBackground } from '../codex/codex-shared-store-migration'
+import { getSystemCodexHomePath } from '../codex/codex-home-paths'
 import {
   resolveHostCodexSessionSourceHome,
   resolveWslCodexSessionSourceHome
@@ -122,39 +115,7 @@ export abstract class CodexRuntimeHomeManagedHome extends CodexRuntimeHomeSync {
     this.lastHostAccountUsedSelfContainedHome = true
     this.sharedAuthRefreshBlockedByManagedTransition = true
     this.markSharedRuntimeAuthManaged(account.id)
-    syncSystemCodexResourcesIntoManagedHome(perAccountHome)
-    syncSystemConfigIntoManagedCodexHome({
-      runtimeHomePath: perAccountHome,
-      systemHomePath: getSystemCodexHomePath()
-    })
-    this.startSelfContainedSessionBridgeForLaunch(perAccountHome)
     return perAccountHome
-  }
-
-  // Bridge history in the background: /resume only sees launch-home rollouts, and scans can be large.
-  protected startSelfContainedSessionBridgeForLaunch(perAccountHome: string): void {
-    // Why: accounts not on the shared store yet still reach this one through the file
-    // bridge; a move already under way folds these links in with its catch-up merge.
-    void startCodexAccountSessionBridgeInBackground({
-      targetCodexHomePath: perAccountHome,
-      sourceCodexHomePaths: this.getSelfContainedSessionBridgeSourceHomes()
-    })
-    // One store for every account is what lets a revert under one account be what another resumes.
-    startCodexSharedStoreMigrationInBackground({
-      managedHome: perAccountHome,
-      storeHome:
-        resolveHostCodexSessionSourceHome(this.store.getSettings()) ?? getSystemCodexHomePath()
-    })
-  }
-
-  protected getSelfContainedSessionBridgeSourceHomes(): string[] {
-    return [
-      // Honor custom history sources without changing credential routing.
-      resolveHostCodexSessionSourceHome(this.store.getSettings()) ?? getSystemCodexHomePath(),
-      // Resolve the mirror path without creating it for per-account launches.
-      resolveOrcaManagedCodexHomePath(),
-      ...this.getManagedHostAccountHomesForSessionDiscovery()
-    ]
   }
 
   // Per-account homes own auth refreshes in place; selection needs no shared-mirror read-back.
@@ -170,8 +131,6 @@ export abstract class CodexRuntimeHomeManagedHome extends CodexRuntimeHomeSync {
       this.lastHostAccountUsedSelfContainedHome = true
       this.sharedAuthRefreshBlockedByManagedTransition = true
       this.markSharedRuntimeAuthManaged(account.id)
-      // Start history bridging at selection so /resume is ready before the next launch.
-      this.startSelfContainedSessionBridgeForLaunch(perAccountHome)
       return
     }
     this.clearSelfContainedManagedSelection(account)

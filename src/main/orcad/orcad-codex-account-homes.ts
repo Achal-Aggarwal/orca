@@ -1,3 +1,6 @@
+import { basename, dirname, join } from 'node:path'
+import { resolveCodexLaunchHome } from '../codex/codex-launch-home'
+import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import {
@@ -15,9 +18,29 @@ export function orcadCodexAccountHomes(
   registerCleanup: (cleanup: OrcadRuntimeCleanup) => void
 ) {
   registerCleanup(() => stopCodexStateDbBackfillRecoveries())
+  const launchHome = (
+    env?: NodeJS.ProcessEnv,
+    readOnly = true,
+    conversationHome?: string
+  ): string | null => {
+    const home = resolveGuestCodexAccountHome(env?.CODEX_HOME)
+    if (!home) {
+      return null
+    }
+    const loginHome =
+      basename(dirname(home)) === 'overlays' ? join(dirname(dirname(home)), 'home') : home
+    return (
+      resolveCodexLaunchHome({
+        selectedAccount: { homePath: loginHome },
+        conversationHome,
+        storeHome: resolveHostCodexSessionSourceHome(getSettings()),
+        readOnly
+      }) ?? null
+    )
+  }
   const selectLaunchHome: GetSelectedCodexHomePath = async (_target, launchEnv, context) => {
     // Wire-supplied CODEX_HOME must be managed; user-owned homes are not ours to edit.
-    const home = resolveGuestCodexAccountHome(launchEnv?.CODEX_HOME)
+    const home = launchHome(launchEnv, false, context?.conversationHome)
     if (!home) {
       return null
     }
@@ -31,8 +54,8 @@ export function orcadCodexAccountHomes(
   return {
     selectLaunchHome,
     /** Read selected homes without hook reconciliation for record-less catalogs. */
-    readLaunchHome: (launchEnv?: NodeJS.ProcessEnv): string | null =>
-      resolveGuestCodexAccountHome(launchEnv?.CODEX_HOME),
+    readLaunchHome: (launchEnv?: NodeJS.ProcessEnv, conversationHome?: string): string | null =>
+      launchHome(launchEnv, true, conversationHome),
     listSessionHomes: (): readonly string[] => listGuestCodexAccountHomes()
   }
 }

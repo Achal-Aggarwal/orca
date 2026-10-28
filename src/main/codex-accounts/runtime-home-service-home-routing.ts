@@ -1,3 +1,5 @@
+import { discoverCodexStoreHomes } from '../codex/codex-launch-home'
+import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { posix as pathPosix } from 'node:path'
 import { parseWslUncPath, toLinuxPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
@@ -29,7 +31,14 @@ import { CodexRuntimeHomeManagedHome } from './runtime-home-service-managed-home
 export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHome {
   getHostCodexHomePathsForSessionDiscovery(): string[] {
     // Transcript polling must resolve the mirror path without creating it.
-    const homes = [resolveOrcaManagedCodexHomePath()]
+    const homes = [
+      resolveOrcaManagedCodexHomePath(),
+      ...discoverCodexStoreHomes(this.getManagedAccountsRoot())
+    ]
+    const source = resolveHostCodexSessionSourceHome(this.store.getSettings())
+    if (source) {
+      homes.push(source)
+    }
     if (this.isHostSystemDefaultRealHomeSelected() || this.getSelfContainedManagedHostAccount()) {
       // Include real-home history even when nested Orca inherits a managed CODEX_HOME.
       homes.push(getSystemCodexHomePath())
