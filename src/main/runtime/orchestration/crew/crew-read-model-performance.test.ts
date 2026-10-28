@@ -1,4 +1,5 @@
-import { readCrewTraffic, readCrewProvenance } from './crew-query'
+import { readCrewTraffic } from './crew-query'
+import { readCrewParentInputs } from './crew-parent-inputs'
 
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status-ipc-payload'
 import { RuntimeAgentOrchestrationProjection } from '../../runtime-agent-orchestration-projection'
@@ -215,14 +216,15 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
         tabsByWorktree: { folder: [{ id: 'tab_worker', title, customTitle: null }] }
       }),
       getGeneratedTitlesEnabled: () => true,
+      getAgentStatusSnapshot: () => raw,
       getAgentStatusSnapshotForPane: (pane) => raw.filter((row) => row.paneKey === pane),
       getTrackedTitle: () => null
     })
-    deps.name = (party, task, records) => names.nameOf(party, undefined, task, records)
     const wake = new CrewChanges()
     const model = new CrewReadModel(
       () => ({
         ...deps,
+        name: names.captureCrewInputs(),
         get statuses() {
           return acquireStatus()
         }
@@ -279,6 +281,7 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
     expect(listRecords).not.toHaveBeenCalled()
     expect(executed.get).toBeGreaterThan(population * 2)
     expect(sql.some((text) => text.includes('attempt_observation_facts'))).toBe(true)
+    expect(sql.some((text) => text.includes('retry_of_dispatch_id AS retry'))).toBe(false)
     expect(model.read('term_coord').sections.managing[0].status).toBe('waiting')
     measurements.push({ population, ...executed })
     acquireStatus.mockClear()
@@ -288,6 +291,7 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
     expect(acquireStatus).not.toHaveBeenCalled()
     expect(globalSelection).not.toHaveBeenCalled()
     expect(model.read('term_coord').sections.managing[0].label).toBe(title)
+    expect(sql.some((text) => text.includes('retry_of_dispatch_id AS retry'))).toBe(false)
     for (const stop of streams) {
       stop()
     }
@@ -300,7 +304,8 @@ it('counts the real status qualification/projection SQL on a decoration wake wit
   console.log('crew actual status operation contract', JSON.stringify(measurements))
 })
 it('selects peer maxima without losing bodies and uses indexed historical provenance', () => {
-  const { db, run, assign } = fixture()
+  const { db, run, assign, handles } = fixture()
+  handles.set('term_worker', 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
   assign('term_worker')
   db.insertMessage({
     runId: run.id,
@@ -336,12 +341,11 @@ it('selects peer maxima without losing bodies and uses indexed historical proven
   expect(traffic).toMatchObject([
     { peer: 'term_worker', direction: 'from', sequence: winner.sequence, body: 'latest' }
   ])
-  const provenance = readCrewProvenance(
-    db,
-    ['term_worker'],
-    ['tab_worker:aaaaaaaa-aaaa-4aaa-8aaa-workeraaaaaa']
-  )
-  expect(provenance.local).toHaveLength(1)
+  const provenance = readCrewParentInputs(db, ['term_worker'], [handles.get('term_worker')!])
+  expect(provenance.claims.filter((row) => row.family === 'local')).toHaveLength(1)
+  expect(JSON.stringify(plans)).toContain('idx_crew_dispatch_leaf')
+  expect(JSON.stringify(plans)).toContain('idx_crew_remote_leaf')
+  expect(JSON.stringify(plans)).toContain('idx_crew_resource_leaf')
   const plan = JSON.stringify(plans)
   expect(plan).toContain('idx_messages_crew_from')
   expect(plan).toContain('idx_messages_crew_to')

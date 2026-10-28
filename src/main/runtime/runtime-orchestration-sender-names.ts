@@ -37,7 +37,8 @@ type RuntimeSenderNameDeps = {
   getWorkspaceSession: (worktreeId: string) => MirroredTabs | null | undefined
   /** The person's "generate tab titles" setting, which decides whether a generated title names a tab. */
   getGeneratedTitlesEnabled: () => boolean
-  getAgentStatusSnapshotForPane: (paneKey: string) => readonly SenderHookRow[]
+  getAgentStatusSnapshotForPane: (paneKey: string) => readonly SenderHookRow[] | undefined
+  getAgentStatusSnapshot?: () => readonly SenderHookRow[]
   getTrackedTitle: (ptyId: string) => string | null
 }
 
@@ -103,20 +104,117 @@ export class RuntimeOrchestrationSenderNames {
     )
   }
 
-  private terminalNaming(handle: string): TerminalSenderNaming | null {
+  captureCrewInputs() {
+    const generatedTitlesEnabled = this.deps.getGeneratedTitlesEnabled()
+    const db = this.deps.getDb()
+    const snapshots = new WeakMap<MirroredTabs, MirroredTabs>()
+    const workspaces = new Map<string, MirroredTabs | null>()
+    const terminalTabs = new Map<
+      string,
+      Map<string, Pick<TerminalTab, 'id'> & Partial<ConversationNameTab>>
+    >()
+    const chatTabs = new Map<
+      string,
+      Map<string, Pick<Tab, 'contentType' | 'entityId' | 'customLabel' | 'label'>>
+    >()
+    const session = (id: string) => {
+      if (!workspaces.has(id)) {
+        const live = this.deps.getWorkspaceSession(id)
+        let captured = live ? snapshots.get(live) : null
+        if (live && !captured) {
+          captured = structuredClone(live)
+          snapshots.set(live, captured)
+        }
+        workspaces.set(id, captured ?? null)
+        const terminals = new Map<string, Pick<TerminalTab, 'id'> & Partial<ConversationNameTab>>()
+        for (const tab of captured?.tabsByWorktree?.[id] ?? []) {
+          if (!terminals.has(tab.id)) {
+            terminals.set(tab.id, tab)
+          }
+        }
+        terminalTabs.set(id, terminals)
+        const chats = new Map<
+          string,
+          Pick<Tab, 'contentType' | 'entityId' | 'customLabel' | 'label'>
+        >()
+        for (const tab of captured?.unifiedTabs?.[id] ?? []) {
+          if (tab.contentType === 'agent-session' && !chats.has(tab.entityId)) {
+            chats.set(tab.entityId, tab)
+          }
+        }
+        chatTabs.set(id, chats)
+      }
+      return workspaces.get(id)
+    }
+    const statuses = new Map<string, SenderHookRow[]>()
+    const allStatuses = this.deps.getAgentStatusSnapshot?.()
+    for (const row of allStatuses ?? []) {
+      const rows = statuses.get(row.paneKey) ?? []
+      rows.push(structuredClone(row))
+      statuses.set(row.paneKey, rows)
+    }
+    const terminals = new Map<string, TerminalSenderNaming | null>()
+    return (
+      party: AgentMessageSender['party'],
+      taskName: string | null,
+      records: AgentSessionRecordReader | null
+    ) =>
+      orchestrationSenderName(
+        party,
+        {
+          db,
+          records,
+          generatedTitlesEnabled,
+          chatTab: (worktreeId, sessionId) => {
+            session(worktreeId)
+            return chatTabs.get(worktreeId)?.get(sessionId) ?? null
+          },
+          terminal: (handle) => {
+            if (!terminals.has(handle)) {
+              const naming = this.terminalNaming(
+                handle,
+                session,
+                (worktreeId, tabId) => terminalTabs.get(worktreeId)?.get(tabId),
+                allStatuses ? (pane) => statuses.get(pane) ?? [] : this.statusRowsForPane
+              )
+              terminals.set(handle, naming ? structuredClone(naming) : null)
+            }
+            return terminals.get(handle) ?? null
+          }
+        },
+        undefined,
+        taskName
+      )
+  }
+
+  private statusRowsForPane = (pane: string): readonly SenderHookRow[] =>
+    this.deps.getAgentStatusSnapshotForPane(pane) ??
+    this.deps.getAgentStatusSnapshot?.().filter((row) => row.paneKey === pane) ??
+    []
+
+  private terminalNaming(
+    handle: string,
+    readSession = this.deps.getWorkspaceSession,
+    readTab?: (
+      worktreeId: string,
+      tabId: string
+    ) => (Pick<TerminalTab, 'id'> & Partial<ConversationNameTab>) | undefined,
+    readStatuses = this.statusRowsForPane
+  ): TerminalSenderNaming | null {
     const record = this.deps.getHandleRecord(handle)
     if (!record) {
       return null
     }
     const pty = record.ptyId ? this.deps.getPtyAgents(record.ptyId) : undefined
-    const session = this.deps.getWorkspaceSession(record.worktreeId)
-    const tab = session?.tabsByWorktree?.[record.worktreeId]?.find(
-      (candidate) => candidate.id === record.tabId
-    )
+    const session = readSession(record.worktreeId)
+    const tab = readTab
+      ? readTab(record.worktreeId, record.tabId)
+      : session?.tabsByWorktree?.[record.worktreeId]?.find(
+          (candidate) => candidate.id === record.tabId
+        )
     const paneKey = this.deps.getTerminalPaneKey(handle)
     const status = paneKey
-      ? this.deps
-          .getAgentStatusSnapshotForPane(paneKey)
+      ? readStatuses(paneKey)
           .filter(
             (row) =>
               row.paneKey === paneKey &&

@@ -85,12 +85,16 @@ export function createCrewPartyRegistry(deps: CrewReadDependencies) {
       session: string | null,
       storedHandle: string | null,
       pane: string | null,
-      fallback?: string
+      fallback?: string,
+      process?: string | null
     ): Party | undefined => {
       const sessionId = session ? root(session) : null
       const liveHandle = pane ? deps.handleForPane(pane) : null
-      const handle =
+      const candidateHandle =
         liveHandle ?? (storedHandle && deps.liveHandle(storedHandle) ? storedHandle : null)
+      const currentProcess = candidateHandle ? deps.processForHandle?.(candidateHandle) : null
+      const mismatch = Boolean(process && currentProcess && process !== currentProcess)
+      const handle = mismatch ? null : candidateHandle
       const publicHandle = handle?.startsWith('term_') ? handle : null
       const publicAddress =
         sessionId && isOrcaSessionId(sessionId)
@@ -113,7 +117,7 @@ export function createCrewPartyRegistry(deps: CrewReadDependencies) {
       for (const alias of [
         publicAddress,
         ...(sessionId ? (lineageAliases.get(sessionId) ?? []) : []),
-        storedHandle,
+        mismatch ? null : storedHandle,
         handle,
         session && isOrcaSessionId(session) ? formatOrcaSessionAddress(session) : null
       ]) {
