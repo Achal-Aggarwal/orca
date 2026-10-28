@@ -1,4 +1,5 @@
 import { MAX_TIMER_DELAY_MS } from '../../../../shared/timer-delay'
+import { FILE_INVENTORY_MAX_BYTES } from '../../../../shared/file-inventory-budget'
 
 export type RuntimeMobileFilePathInventory = {
   paths: string[]
@@ -6,12 +7,13 @@ export type RuntimeMobileFilePathInventory = {
   truncated: boolean
 }
 
-type CacheEntry = RuntimeMobileFilePathInventory & { expiresAt: number }
+type CacheEntry = RuntimeMobileFilePathInventory & { expiresAt: number; retainedBytes: number }
 
 /** Bound autocomplete inventories and avoid spawning rg per mobile keystroke. */
 export class RuntimeMobileFilePathSearchCache {
   private readonly entries = new Map<string, CacheEntry>()
   private readonly inFlight = new Map<string, Promise<RuntimeMobileFilePathInventory>>()
+  private retainedBytes = 0
   private readonly expirationTimers = new Map<
     string,
     { token: symbol; timer: ReturnType<typeof setTimeout> }
@@ -19,7 +21,8 @@ export class RuntimeMobileFilePathSearchCache {
 
   constructor(
     private readonly maxEntries: number,
-    private readonly ttlMs: number
+    private readonly ttlMs: number,
+    private readonly maxRetainedBytes = FILE_INVENTORY_MAX_BYTES
   ) {}
 
   async get(
@@ -41,13 +44,19 @@ export class RuntimeMobileFilePathSearchCache {
     }
     const next = load()
       .then((loaded) => {
+        // Match inventory budgeting: two bytes per code unit plus string/array-slot overhead.
+        const retainedBytes = loaded.paths.reduce((bytes, path) => bytes + path.length * 2 + 64, 0)
+        if (retainedBytes > this.maxRetainedBytes) {
+          return loaded
+        }
         // Start TTL after slow scans finish so usable results do not arrive expired.
         const expiresAt = (now ?? Date.now()) + this.ttlMs
-        this.entries.set(key, { ...loaded, expiresAt })
+        this.entries.set(key, { ...loaded, expiresAt, retainedBytes })
+        this.retainedBytes += retainedBytes
         if (now === undefined) {
           this.scheduleExpiry(key, expiresAt)
         }
-        while (this.entries.size > this.maxEntries) {
+        while (this.entries.size > this.maxEntries || this.retainedBytes > this.maxRetainedBytes) {
           const oldest = this.entries.keys().next().value
           if (!oldest) {
             break
@@ -67,6 +76,7 @@ export class RuntimeMobileFilePathSearchCache {
   }
 
   private removeEntry(key: string): void {
+    this.retainedBytes -= this.entries.get(key)?.retainedBytes ?? 0
     this.entries.delete(key)
     const expiration = this.expirationTimers.get(key)
     if (expiration) {

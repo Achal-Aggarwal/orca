@@ -166,4 +166,18 @@ describe('mobile file path inventory expiry', () => {
     vi.advanceTimersByTime(MAX_TIMER_DELAY_MS)
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it.each([10_000, 100_000])('does not retain %i paths from an oversized result', async (count) => {
+    const cache = new RuntimeMobileFilePathSearchCache(8, TTL_MS, 1024)
+    async function loadOversized(): Promise<WeakRef<string[]>> {
+      const paths = Array.from({ length: count }, (_, index) => `src/project/${index}/file.ts`)
+      const loaded = { paths, totalCount: count + 1, truncated: true }
+      expect(await cache.get('large', async () => loaded)).toBe(loaded)
+      return new WeakRef(paths)
+    }
+    const retained = await loadOversized()
+    await collectUntil(() => retained.deref() === undefined)
+    expect(retained.deref() === undefined).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })

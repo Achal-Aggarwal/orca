@@ -78,4 +78,77 @@ describe('RuntimeMobileFilePathSearchCache', () => {
       vi.useRealTimers()
     }
   })
+
+  it('evicts by aggregate path bytes in recently-used order', async () => {
+    const cache = new RuntimeMobileFilePathSearchCache(8, 100, 250)
+    const loads: string[] = []
+    const load = async (key: string) => {
+      loads.push(key)
+      return { paths: [key.repeat(20)], totalCount: 1, truncated: false }
+    }
+
+    await cache.get('a', () => load('a'), 0)
+    await cache.get('b', () => load('b'), 0)
+    await cache.get('a', () => load('a'), 0)
+    await cache.get('c', () => load('c'), 0)
+    await cache.get('a', () => load('a'), 0)
+    await cache.get('b', () => load('b'), 0)
+
+    expect(loads).toEqual(['a', 'b', 'c', 'b'])
+  })
+
+  it('returns an oversized inventory unchanged without caching it or evicting a useful entry', async () => {
+    const cache = new RuntimeMobileFilePathSearchCache(8, 100, 100)
+    const small = { paths: ['a.ts'], totalCount: 1, truncated: false }
+    const oversized = { paths: ['x'.repeat(100)], totalCount: 12, truncated: true }
+    const load = vi.fn(async () => oversized)
+    await cache.get('small', async () => small, 0)
+
+    expect(await cache.get('large', load, 0)).toBe(oversized)
+    expect(await cache.get('large', load, 0)).toBe(oversized)
+    expect(load).toHaveBeenCalledTimes(2)
+    await expect(
+      cache.get(
+        'small',
+        async () => {
+          throw new Error('evicted')
+        },
+        0
+      )
+    ).resolves.toMatchObject(small)
+  })
+
+  it('shares an oversized in-flight inventory before declining to retain it', async () => {
+    const cache = new RuntimeMobileFilePathSearchCache(8, 100, 100)
+    const loaded = { paths: ['x'.repeat(100)], totalCount: 1, truncated: false }
+    const load = vi.fn(async () => loaded)
+    const first = cache.get('a', load, 0)
+    const second = cache.get('a', load, 0)
+    expect(await first).toBe(loaded)
+    expect(await second).toBe(loaded)
+    expect(load).toHaveBeenCalledOnce()
+    await cache.get('a', load, 0)
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases expired entry bytes before admitting the next inventory', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(0)
+      const cache = new RuntimeMobileFilePathSearchCache(8, 100, 150)
+      const load = async () => ({ paths: ['a.ts'], totalCount: 1, truncated: false })
+      await cache.get('expired', load)
+      vi.advanceTimersByTime(100)
+      await cache.get('b', load)
+      await cache.get('c', load)
+      await expect(
+        cache.get('b', async () => {
+          throw new Error('evicted')
+        })
+      ).resolves.toMatchObject({ paths: ['a.ts'] })
+      expect(vi.getTimerCount()).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
