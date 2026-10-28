@@ -100,7 +100,8 @@ test('large context-menu paste keeps both selections and one undo step', async (
     await orcaPage.keyboard.press('Shift+F10')
     await expect(orcaPage.getByRole('menuitem', { name: /^Paste/ })).toBeVisible()
     expect(await editor.evaluate((editor) => editor.getSelections()?.length)).toBe(2)
-    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click()
+    // Monaco enables menu mouse-up 100 ms after opening.
+    await orcaPage.getByRole('menuitem', { name: /^Paste/ }).click({ delay: 150 })
   }
   await pasteFromMenu('SMALL_PASTE')
   await expect
