@@ -51,34 +51,46 @@ function scanDocLinks(
 ): { atoms: Decoration[]; text: Decoration[] } {
   const atoms: Decoration[] = []
   const text: Decoration[] = []
-  for (const range of ranges) {
-    doc.nodesBetween(range.from, range.to, (node, pos, parent) => {
-      if (node.type.name === 'markdownDocLink') {
-        const target: unknown = node.attrs.target
-        atoms.push(
-          atomDecoration(
-            pos,
-            pos + node.nodeSize,
-            typeof target === 'string' ? target : '',
-            storage
-          )
-        )
-        return false
-      }
-      if (!canHoldDocLink(node, parent)) {
-        return true
-      }
-      for (const match of node.text.matchAll(DOC_LINK_PATTERN)) {
-        const link = isReservedRichMarkdownTransportBody(match[1])
-          ? null
-          : parseMarkdownDocLink(match[1])
-        if (link && match.index !== undefined) {
-          const from = pos + match.index
-          text.push(textDecoration(from, from + match[0].length, link.target, link.alias, storage))
-        }
-      }
+  const scan = (node: DocumentNode, pos: number, parent: DocumentNode | null): boolean => {
+    if (node.type.name === 'markdownDocLink') {
+      const target: unknown = node.attrs.target
+      atoms.push(
+        atomDecoration(pos, pos + node.nodeSize, typeof target === 'string' ? target : '', storage)
+      )
       return false
-    })
+    }
+    if (!canHoldDocLink(node, parent)) {
+      return true
+    }
+    for (const match of node.text.matchAll(DOC_LINK_PATTERN)) {
+      const link = isReservedRichMarkdownTransportBody(match[1])
+        ? null
+        : parseMarkdownDocLink(match[1])
+      if (link && match.index !== undefined) {
+        const from = pos + match.index
+        text.push(textDecoration(from, from + match[0].length, link.target, link.alias, storage))
+      }
+    }
+    return false
+  }
+  const first = ranges[0]
+  const last = ranges.at(-1)
+  if (first && last) {
+    if (ranges.length === 1) {
+      doc.nodesBetween(first.from, first.to, scan)
+    } else {
+      let index = 0
+      doc.nodesBetween(first.from, last.to, (node, pos, parent) => {
+        while (index < ranges.length && ranges[index].to <= pos) {
+          index += 1
+        }
+        const range = ranges[index]
+        if (!range || range.from >= pos + node.nodeSize) {
+          return false
+        }
+        return scan(node, pos, parent)
+      })
+    }
   }
   return { atoms, text }
 }
