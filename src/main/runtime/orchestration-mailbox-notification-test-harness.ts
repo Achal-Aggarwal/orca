@@ -64,8 +64,14 @@ export function insertDirectRunMessage(db: OrchestrationDb, runId: string, subje
   return db.getMessageById(message.id)!
 }
 
+class MailboxRuntime extends OrcaRuntimeService {
+  get idleEvidenceSource() {
+    return this.tuiIdleEvidenceSource
+  }
+}
+
 export type MailboxNotificationHarness = {
-  runtime: OrcaRuntimeService
+  runtime: MailboxRuntime
   write: ReturnType<typeof vi.fn>
 }
 
@@ -122,7 +128,7 @@ export function createRuntime(
     launchAgent?: TuiAgent | null
   } = {}
 ): MailboxNotificationHarness {
-  const runtime = new OrcaRuntimeService(
+  const runtime = new MailboxRuntime(
     ORCA_LAYOUT_OWNER_IS_MAIN ? mailboxLayoutStore() : null,
     undefined,
     {

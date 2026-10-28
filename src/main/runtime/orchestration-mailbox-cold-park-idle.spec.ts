@@ -2,7 +2,6 @@ import { rmSync } from 'node:fs'
 import { stubWriteSettlement } from '../providers/settled-pty-write-stub'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TuiIdleEvidenceSource } from './tui-idle-evidence-source'
 import {
   checkBoundMailbox,
   createBoundRun,
@@ -30,8 +29,7 @@ describe('orchestration mailbox cold-park idle continuation', () => {
     const db = createDatabase('orca-mailbox-null-title-policy-')
     const { runtime, write } = createRuntime(db, { launchAgent: null })
     await runtime.listTerminals()
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: inspect the actual evaluator source; no method is replaced.
-    const source = Reflect.get(runtime, 'tuiIdleEvidenceSource') as TuiIdleEvidenceSource
+    const source = runtime.idleEvidenceSource
     expect(source.getPaneAgent(PTY_ID)).toBeNull()
     const run = createBoundRun(db, 'Null-agent title policy Run')
     const message = insertDirectRunMessage(db, run.id, 'Deliver after legitimate quiet')
