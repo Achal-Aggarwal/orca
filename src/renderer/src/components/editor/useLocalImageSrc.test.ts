@@ -135,6 +135,7 @@ describe('loadLocalImageSrc', () => {
     const first = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
     const second = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
 
+    await flushPromises()
     expect(readFile).toHaveBeenCalledTimes(1)
     read.resolve(binaryPreview())
 
@@ -242,6 +243,7 @@ describe('loadLocalImageSrc', () => {
     setReadFile(readFile)
 
     const staleLoad = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
+    await flushPromises()
     invalidateLocalImageSrcCacheForTests()
     firstRead.resolve(binaryPreview())
 
@@ -264,6 +266,7 @@ describe('loadLocalImageSrc', () => {
     setReadFile(readFile)
 
     const staleLoad = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
+    await flushPromises()
     invalidateLocalImageSrcCacheForTests()
     const newerLoad = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
 
@@ -285,6 +288,7 @@ describe('loadLocalImageSrc', () => {
     setReadFile(readFile)
 
     const pending = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
+    await flushPromises()
     releaseByPath('diagram.png', '/repo/docs/readme.md')
     read.resolve(binaryPreview())
 
@@ -306,8 +310,10 @@ describe('loadLocalImageSrc', () => {
     setReadFile(readFile)
 
     const stale = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
+    await flushPromises()
     releaseByPath('diagram.png', '/repo/docs/readme.md')
     const fresh = loadLocalImageSrc('diagram.png', '/repo/docs/readme.md')
+    await flushPromises()
     expect(readFile).toHaveBeenCalledTimes(2)
 
     secondRead.resolve(binaryPreview('AQ=='))

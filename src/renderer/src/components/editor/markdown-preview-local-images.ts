@@ -139,6 +139,7 @@ export function prewarmMarkdownPreviewLocalImages(
     1,
     options.concurrency ?? MARKDOWN_PREVIEW_LOCAL_IMAGE_PREWARM_CONCURRENCY
   )
+  const controller = new AbortController()
   const loadImage =
     options.loadImage ??
     ((candidate: MarkdownPreviewLocalImageCandidate) =>
@@ -146,7 +147,8 @@ export function prewarmMarkdownPreviewLocalImages(
         candidate.absolutePath,
         options.connectionId,
         options.runtimeContext,
-        documentResourceAccess(filePath)
+        documentResourceAccess(filePath),
+        controller.signal
       ))
   let cancelled = false
   let nextIndex = 0
@@ -192,6 +194,7 @@ export function prewarmMarkdownPreviewLocalImages(
   return {
     cancel: () => {
       cancelled = true
+      controller.abort()
       settleIfFinished()
     },
     done

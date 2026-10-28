@@ -128,8 +128,10 @@ export function createRichMarkdownExtensions({
           let currentSrc = node.attrs.src as string | undefined
           let currentContextVersion = getImageContextVersion(this.storage)
           let releaseImageLease: (() => void) | undefined
+          let imageLoadController: AbortController | undefined
 
           const loadImage = (src: string | undefined): void => {
+            imageLoadController?.abort()
             releaseImageLease?.()
             releaseImageLease = undefined
             const fp = this.storage.filePath as string
@@ -144,19 +146,30 @@ export function createRichMarkdownExtensions({
                 runtimeContext,
                 access
               )
-              void loadLocalImageSrc(src, fp, undefined, runtimeContext, access).then(
-                (resolved) => {
-                  if (currentSrc !== src || currentContextVersion !== contextVersionAtLoad) {
-                    return
-                  }
-                  if (resolved) {
-                    img.src = resolved
-                    return
-                  }
-                  // Local paths require main’s file checks; failed loads must not fall back to Chromium reading raw paths.
-                  img.removeAttribute('src')
+              const controller = new AbortController()
+              imageLoadController = controller
+              void loadLocalImageSrc(
+                src,
+                fp,
+                undefined,
+                runtimeContext,
+                access,
+                controller.signal
+              ).then((resolved) => {
+                if (
+                  controller.signal.aborted ||
+                  currentSrc !== src ||
+                  currentContextVersion !== contextVersionAtLoad
+                ) {
+                  return
                 }
-              )
+                if (resolved) {
+                  img.src = resolved
+                  return
+                }
+                // Local paths require main’s file checks; failed loads must not fall back to Chromium reading raw paths.
+                img.removeAttribute('src')
+              })
             } else if (src) {
               img.src = resolveRichMarkdownImageUrl(this.storage, src)
             } else {
@@ -195,6 +208,7 @@ export function createRichMarkdownExtensions({
               return true
             },
             destroy: () => {
+              imageLoadController?.abort()
               releaseImageLease?.()
               if (reloadListeners instanceof Set) {
                 reloadListeners.delete(reloadForContextChange)
