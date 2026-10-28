@@ -1,6 +1,6 @@
 // 5e: a bridge pane whose distro was terminated must cold-restore its own session after a relaunch.
 import './mock-descendant-sweep'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { rmSync } from 'node:fs'
 import type { WslRunningDistrosRead } from '../wsl-background-distro-gate'
@@ -80,8 +80,8 @@ describe('a WSL bridge pane whose distro was terminated, after a relaunch', () =
     const bridge = await openBridgePane(app)
     await app.disconnectOnly()
 
+    // The daemon reaps the session as its process exits.
     bridge._simulateExit(1)
-    await new Promise((resolve) => setTimeout(resolve, 50))
 
     await expect(relaunchAndRestore()).resolves.toBe(true)
   })
@@ -131,8 +131,7 @@ describe('a WSL bridge pane whose distro was terminated, after a relaunch', () =
     const bridge = await openBridgePane(app)
 
     bridge._simulateExit(1)
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(exits).toEqual([expect.objectContaining({ hostLost: true })])
+    await vi.waitFor(() => expect(exits).toEqual([expect.objectContaining({ hostLost: true })]))
     await app.disconnectOnly()
 
     await expect(relaunchAndRestore()).resolves.toBe(true)
