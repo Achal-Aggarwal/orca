@@ -123,3 +123,26 @@ it('reuses a missing full-reference label shared by unfinished text', () => {
   )
   expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
 })
+
+it.each([
+  { name: 'shortcut', suffix: ']' },
+  { name: 'collapsed', suffix: '][]' }
+])('rejects impossible nested $name labels without repeated normalization', ({ suffix }) => {
+  const prefix = `${'['.repeat(100_000)}${suffix}`
+  const source = `[valid]\n${prefix}\n\n[valid]: https://example.com\n`
+  const normalized = runInNewContext(
+    'normalize(source)',
+    { normalize: normalizeMarkdownReferenceLinks, source },
+    { timeout: 1500 }
+  )
+  expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
+})
+
+it('preserves bracket-bearing definitions and Unicode folding after rejected outer labels', () => {
+  const source =
+    '[[[[Docs] [[[[A\uFEFFΣ][] [Label][[Docs] [Docs]\n\n[[docs]: nested\n[[[a σ]: deeper\n[docs]: plain\n'
+
+  expect(normalizeMarkdownReferenceLinks(source)).toBe(
+    '[[[[Docs](nested) [[[[A\uFEFFΣ](deeper) [Label](nested) [Docs](plain)\n\n'
+  )
+})

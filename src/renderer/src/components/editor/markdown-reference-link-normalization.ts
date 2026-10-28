@@ -133,6 +133,49 @@ function createClosingBracketCursor(content: string): (start: number) => number 
   }
 }
 
+function countOpeningBrackets(content: string, start: number, end: number): number {
+  let count = 0
+  for (let index = start; index < end; index += 1) {
+    if (content[index] === '[') {
+      count += 1
+    }
+  }
+  return count
+}
+
+function createReferenceTextDefinitionLookup(
+  markdown: string,
+  definitions: Map<string, ReferenceLinkDefinition>
+): (text: string, start: number, end: number) => ReferenceLinkDefinition | undefined {
+  let definitionBracketCounts: Set<number> | undefined
+  let previousStart = 0
+  let previousEnd = -1
+  let openingBracketCount: number | null = null
+  return (text, start, end) => {
+    const lastStart = previousStart
+    previousStart = start
+    if (end === previousEnd) {
+      if (!definitionBracketCounts) {
+        definitionBracketCounts = new Set<number>()
+        for (const label of definitions.keys()) {
+          definitionBracketCounts.add(countOpeningBrackets(label, 0, label.length))
+        }
+      }
+      openingBracketCount =
+        openingBracketCount === null
+          ? countOpeningBrackets(markdown, start, end)
+          : openingBracketCount - countOpeningBrackets(markdown, lastStart, start)
+      if (!definitionBracketCounts.has(openingBracketCount)) {
+        return undefined
+      }
+    } else {
+      previousEnd = end
+      openingBracketCount = null
+    }
+    return definitions.get(normalizeReferenceLabel(text))
+  }
+}
+
 function formatInlineReferenceLink(text: string, definition: ReferenceLinkDefinition): string {
   const escapedUrl = definition.url.replace(/[()\\]/g, '\\$&')
   if (!definition.title) {
@@ -151,6 +194,7 @@ function replaceReferenceLinks(
   const isInsideFence = createMarkdownFenceRangeCursor(getMarkdownFenceRanges(markdown))
   const findClosingTextBracket = createClosingBracketCursor(markdown)
   const findClosingLabelBracket = createClosingBracketCursor(markdown)
+  const findTextDefinition = createReferenceTextDefinitionLookup(markdown, definitions)
   let cachedLabelStart = -1
   let cachedLabelDefinition: ReferenceLinkDefinition | undefined
 
@@ -182,7 +226,7 @@ function replaceReferenceLinks(
         const labelStart = closingTextIndex + 2
         let definition: ReferenceLinkDefinition | undefined
         if (labelStart === closingLabelIndex) {
-          definition = definitions.get(normalizeReferenceLabel(text))
+          definition = findTextDefinition(text, index + 1, closingTextIndex)
         } else {
           if (cachedLabelStart !== labelStart) {
             cachedLabelStart = labelStart
@@ -199,7 +243,7 @@ function replaceReferenceLinks(
         }
       }
     } else {
-      const definition = definitions.get(normalizeReferenceLabel(text))
+      const definition = findTextDefinition(text, index + 1, closingTextIndex)
       if (definition) {
         result += formatInlineReferenceLink(text, definition)
         index = closingTextIndex + 1
