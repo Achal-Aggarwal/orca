@@ -99,7 +99,7 @@ export type TerminalDocumentState = {
   bottomRowBackdrop: string
   surface: HTMLElement | null
   pendingTerm: TerminalDocumentTerminal | null
-  // The anchor the pending replay will restore; null once live output makes its buffer the source.
+  // The anchor the pending replay will restore; null after a clear or an alternate-screen snapshot.
   pendingReplayScrollAnchorRows: number | null
   committedTerm: TerminalDocumentTerminal | null
   provisionalTerm: TerminalDocumentTerminal | null

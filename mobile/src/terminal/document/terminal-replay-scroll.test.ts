@@ -133,19 +133,24 @@ afterEach(() => {
 })
 
 describe('mobile terminal replay reading position', () => {
-  it('keeps the reading position when a resize snapshot overtakes a hidden replay', async () => {
-    const buffer = await readAt40ThenOvertakeHiddenReplay()
-
-    expect(buffer.viewportY).toBe(40)
-    expect(buffer.getLine(40)?.translateToString(true)).toBe('ROW_40')
-  })
-
   it.each([
+    { name: '' },
     {
-      name: 'live output reached the hidden replay',
+      name: ' that printed live output',
       duringHiddenReplay: (harness: ReplayHarness) =>
         handleMsg(harness.scope, { type: 'write', data: '\r\nLIVE' })
-    },
+    }
+  ])(
+    'keeps the reading position when a resize snapshot overtakes a hidden replay$name',
+    async ({ name: _name, ...overtake }) => {
+      const buffer = await readAt40ThenOvertakeHiddenReplay(overtake)
+
+      expect(buffer.viewportY).toBe(40)
+      expect(buffer.getLine(40)?.translateToString(true)).toBe('ROW_40')
+    }
+  )
+
+  it.each([
     {
       name: 'the terminal was cleared',
       duringHiddenReplay: (harness: ReplayHarness) => handleMsg(harness.scope, { type: 'clear' })

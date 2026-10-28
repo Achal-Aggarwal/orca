@@ -216,8 +216,6 @@ export function init(
 }
 
 export function write(scope: TerminalDocumentScope, data: string) {
-  // Live output makes the pending buffer, not the committed reading position, the next anchor.
-  scope.pendingReplayScrollAnchorRows = null
   updateMouseModeFromData(scope, data, true)
   scope.keyboardModes.scan(data)
   enqueueWrite(scope, data)
