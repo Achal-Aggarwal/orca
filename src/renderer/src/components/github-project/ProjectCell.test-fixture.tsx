@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { GitHubProjectRow, GitHubProjectTable } from '../../../../shared/github/project-types'
 import ProjectCell from './ProjectCell'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 export const linkedPullRequestsRow: GitHubProjectRow = {
   id: 'project-item',
@@ -31,12 +32,32 @@ export const linkedPullRequestsRow: GitHubProjectRow = {
           url: 'https://github.example.com/other/api/pull/93'
         }
       ],
-      totalCount: 4
+      totalCount: 2
     }
   },
   fieldValuesByFieldId: {},
   updatedAt: '2026-10-27T00:00:00Z',
   position: 0
+}
+
+const overflowRow: GitHubProjectRow = {
+  ...linkedPullRequestsRow,
+  id: 'project-item-overflow',
+  content: {
+    ...linkedPullRequestsRow.content,
+    number: 8,
+    title: 'Track linked pull request updates',
+    url: 'https://github.com/acme/app/issues/8',
+    linkedPullRequests: {
+      pullRequests: Array.from({ length: 10 }, (_, index) => ({
+        number: 1 + index,
+        title: `Update linked pull request ${1 + index}`,
+        url: `https://github.com/acme/app/pull/${1 + index}`
+      })),
+      totalCount: 12
+    }
+  },
+  position: 1
 }
 
 export const linkedPullRequestsTable: GitHubProjectTable = {
@@ -67,20 +88,22 @@ export const linkedPullRequestsTable: GitHubProjectTable = {
     sortByFields: [],
     verticalGroupByFields: []
   },
-  rows: [linkedPullRequestsRow],
-  totalCount: 1,
+  rows: [linkedPullRequestsRow, overflowRow],
+  totalCount: 2,
   parentFieldDropped: false
 }
 
 export function projectRelationCellText(row: GitHubProjectRow): string[] {
   return ['LINKED_PULL_REQUESTS', 'SUB_ISSUES_PROGRESS'].map((dataType) =>
     renderToStaticMarkup(
-      <ProjectCell
-        row={row}
-        field={{ kind: 'field', id: dataType, name: dataType, dataType }}
-        editable={false}
-        sourceTarget={{ kind: 'local' }}
-      />
+      <TooltipProvider>
+        <ProjectCell
+          row={row}
+          field={{ kind: 'field', id: dataType, name: dataType, dataType }}
+          editable={false}
+          sourceTarget={{ kind: 'local' }}
+        />
+      </TooltipProvider>
     ).replace(/<[^>]*>/g, '')
   )
 }

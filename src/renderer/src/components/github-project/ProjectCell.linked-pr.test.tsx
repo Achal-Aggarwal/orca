@@ -20,7 +20,7 @@ it('opens exact linked PR URLs with native activation and preserves the issue ti
     ...linkedPullRequestsRow,
     content: {
       ...linkedPullRequestsRow.content,
-      linkedPullRequests: { pullRequests, totalCount: 5 }
+      linkedPullRequests: { pullRequests, totalCount: 3 }
     }
   }
   const openUrl = vi.fn().mockResolvedValue(undefined)
@@ -60,9 +60,58 @@ it('opens exact linked PR URLs with native activation and preserves the issue ti
   expect(onOpenDialog).not.toHaveBeenCalled()
   expect(rowClick).not.toHaveBeenCalled()
   expect(rowKeyDown).not.toHaveBeenCalled()
-  expect(buttons[0].parentElement?.textContent).toBe('#93, #93, #93 +2')
-  expect(screen.getByText(/\+2/).closest('button')).toBeNull()
+  expect(buttons[0].parentElement?.textContent).toBe('#93, #93, #93')
+  expect(screen.queryByRole('button', { name: /more linked pull requests/ })).toBeNull()
   await user.click(title)
   expect(onOpenDialog).toHaveBeenCalledExactlyOnceWith(row)
   expect(openUrl).toHaveBeenCalledTimes(9)
+})
+
+it('opens the original issue URL from linked PR overflow without activating the row', async () => {
+  const user = userEvent.setup()
+  const openUrl = vi.fn().mockResolvedValue(undefined)
+  Object.assign(window, { api: { shell: { openUrl } } })
+  const onOpenDialog = vi.fn()
+  const rowEvent = vi.fn()
+  render(
+    <TooltipProvider>
+      <div onClick={rowEvent} onKeyDown={rowEvent}>
+        <ProjectViewList
+          table={linkedPullRequestsTable}
+          sourceTarget={{ kind: 'local' }}
+          onOpenDialog={onOpenDialog}
+        />
+      </div>
+    </TooltipProvider>
+  )
+  const overflow = screen.getByRole('button', { name: '2 more linked pull requests' })
+  expect(overflow.textContent).toBe('+2')
+  await user.hover(overflow)
+  expect((await screen.findByRole('tooltip')).textContent).toBe('2 more linked pull requests')
+  await user.click(overflow)
+  expect(document.activeElement).toBe(overflow)
+  await user.keyboard('{Enter}')
+  await user.keyboard(' ')
+  expect(openUrl.mock.calls).toEqual(
+    Array.from({ length: 3 }, () => [linkedPullRequestsTable.rows[1].content.url])
+  )
+  expect(onOpenDialog).not.toHaveBeenCalled()
+  expect(rowEvent).not.toHaveBeenCalled()
+})
+
+it('keeps loaded PRs without overflow navigation when the item URL is missing', () => {
+  const overflowRow = linkedPullRequestsTable.rows[1]
+  render(
+    <TooltipProvider>
+      <ProjectViewList
+        table={{
+          ...linkedPullRequestsTable,
+          rows: [{ ...overflowRow, content: { ...overflowRow.content, url: null } }]
+        }}
+        sourceTarget={{ kind: 'local' }}
+      />
+    </TooltipProvider>
+  )
+  expect(screen.getAllByRole('button', { name: /^#\d+$/ })).toHaveLength(10)
+  expect(screen.queryByRole('button', { name: /more linked pull requests/ })).toBeNull()
 })

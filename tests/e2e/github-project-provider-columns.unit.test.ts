@@ -18,6 +18,7 @@ import type { GitHubProjectRow, GitHubProjectTable } from '../../src/shared/gith
 import { sortRows, groupRows } from '../../src/shared/github/project-group-sort'
 import * as fieldNormalization from '../../src/main/github/project-view/project-view-field-normalization'
 import ProjectCell from '../../src/renderer/src/components/github-project/ProjectCell'
+import { TooltipProvider } from '../../src/renderer/src/components/ui/tooltip'
 
 vi.mock('../../src/main/github/project-view/internals', () => ({
   acquire: vi.fn(),
@@ -40,6 +41,7 @@ const item: RawItem = {
     __typename: 'Issue',
     number: 42,
     title: 'Issue',
+    url: 'https://github.com/o/r/issues/42',
     parent,
     subIssuesSummary: { completed: 1, total: 2, percentCompleted: 50 }
   },
@@ -161,7 +163,8 @@ function renderColumns(row: GitHubProjectRow): {
           field: { kind: 'field', id, name: dataType, dataType },
           editable: false,
           sourceTarget: { kind: 'local' }
-        })
+        }),
+        { wrapper: TooltipProvider }
       ).container
   )
   return { pullRequests, progress }
