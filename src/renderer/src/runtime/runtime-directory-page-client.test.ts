@@ -15,7 +15,10 @@ vi.mock('@/store', () => ({
   useAppStore: { getState: () => ({ runtimeStatusByEnvironmentId: statuses }) }
 }))
 
-import { readRuntimeDirectoryPage } from './runtime-directory-page-client'
+import {
+  readRuntimeDirectoryPage,
+  runtimeDirectoryPagesSupported
+} from './runtime-directory-page-client'
 
 const REMOTE = {
   target: { kind: 'environment' as const, environmentId: 'env-1' },
@@ -79,5 +82,13 @@ describe('readRuntimeDirectoryPage', () => {
       readRuntimeDirectoryPage(local, '/w', { offset: 0, limit: 1 }, { wakeWslDistro: true })
     ).resolves.toEqual({ entries: [entry('a')], total: 1 })
     expect(readRuntimeDirectory).toHaveBeenCalledWith(local, '/w', { wakeWslDistro: true })
+  })
+
+  it('reports paging only for a remote folder whose host advertises it', () => {
+    expect(runtimeDirectoryPagesSupported(REMOTE, '/srv/repo/big')).toBe(false)
+    hostWithCapabilities([FILE_READ_DIR_PAGED_RUNTIME_CAPABILITY])
+    expect(runtimeDirectoryPagesSupported(REMOTE, '/srv/repo/big')).toBe(true)
+    const local = { target: { kind: 'local' as const }, worktreeId: 'wt-1', worktreePath: '/w' }
+    expect(runtimeDirectoryPagesSupported(local, '/w')).toBe(false)
   })
 })

@@ -3,8 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DirEntry } from '../../../../shared/filesystem-entry-types'
 
 const readRuntimeDirectoryPage = vi.fn()
+const readRuntimeDirectory = vi.fn()
+let hostPages = true
 vi.mock('@/runtime/runtime-directory-page-client', () => ({
-  readRuntimeDirectoryPage: (...args: unknown[]) => readRuntimeDirectoryPage(...args)
+  readRuntimeDirectoryPage: (...args: unknown[]) => readRuntimeDirectoryPage(...args),
+  runtimeDirectoryPagesSupported: () => hostPages
+}))
+vi.mock('@/runtime/runtime-file-mutation-client', () => ({
+  readRuntimeDirectory: (...args: unknown[]) => readRuntimeDirectory(...args)
 }))
 vi.mock('./file-explorer-operation-owner', () => ({
   getFileExplorerOperationOwner: () => ({ kind: 'local' }),
@@ -24,13 +30,20 @@ import {
 import { fileExplorerDirsDueForMore } from './use-file-explorer-load-more'
 import { createFileExplorerDirLoadTracker } from './file-explorer-dir-load-tracker'
 import type { DirCache } from './file-explorer-types'
+import { dirListingTooLargeForRemoteMessage } from '../../../../shared/file-dir-page'
 
 const file = (name: string): DirEntry => ({ name, isDirectory: false, isSymlink: false })
 const names = (count: number, from = 0): DirEntry[] =>
   Array.from({ length: count }, (_, index) => file(`f${String(from + index).padStart(5, '0')}`))
 
-/** A host folder of `total` sorted files, served page by page. */
-function serveFolder(total: number): void {
+/** A host folder of `total` sorted files: refused whole past `wholeLimit`, served in pages. */
+function serveFolder(total: number, wholeLimit = 50_000): void {
+  readRuntimeDirectory.mockImplementation(async () => {
+    if (total > wholeLimit) {
+      throw new Error(dirListingTooLargeForRemoteMessage(total))
+    }
+    return names(total)
+  })
   readRuntimeDirectoryPage.mockImplementation(
     async (_context, _dirPath, page: { offset: number; limit: number }) => ({
       entries: names(Math.max(0, Math.min(page.limit, total - page.offset)), page.offset),
@@ -41,30 +54,54 @@ function serveFolder(total: number): void {
 
 beforeEach(() => {
   readRuntimeDirectoryPage.mockReset()
+  readRuntimeDirectory.mockReset()
+  hostPages = true
 })
 
 describe('paged folder listing', () => {
-  it('lists the first page of a big folder and remembers where the rest starts', async () => {
-    serveFolder(2_500)
+  it('lists a folder that fits one reply whole, in one request, as before', async () => {
+    serveFolder(49_000)
+    const listing = await readFileExplorerDirectory('wt-1', '/w', '/w')
+    expect(listing.entries).toHaveLength(49_000)
+    expect(listing).not.toHaveProperty('more')
+    expect(listing).not.toHaveProperty('paged')
+    expect(readRuntimeDirectory).toHaveBeenCalledTimes(1)
+    expect(readRuntimeDirectoryPage).not.toHaveBeenCalled()
+  })
+
+  it('pages a folder the host refuses whole, and remembers where the rest starts', async () => {
+    serveFolder(60_000)
     const listing = await readFileExplorerDirectory('wt-1', '/w', '/w')
     expect(listing.entries).toHaveLength(FILE_EXPLORER_DIR_PAGE_ENTRIES)
-    expect(listing.more).toEqual({ nextOffset: 1_000, total: 2_500 })
+    expect(listing.paged).toBe(true)
+    expect(listing.more).toEqual({ nextOffset: 5_000, total: 60_000 })
   })
 
-  it('re-reads as many rows as were shown on a refresh, then reports the folder complete', async () => {
-    serveFolder(2_500)
-    const listing = await readFileExplorerDirectory('wt-1', '/w', '/w', { minEntries: 2_000 })
-    expect(listing.entries).toHaveLength(2_000)
-    expect(listing.more).toEqual({ nextOffset: 2_000, total: 2_500 })
+  it('keeps the refusal from a host that cannot page', async () => {
+    serveFolder(60_000)
+    hostPages = false
+    await expect(readFileExplorerDirectory('wt-1', '/w', '/w')).rejects.toThrow(
+      'too many to list over a remote connection.'
+    )
+    expect(readRuntimeDirectoryPage).not.toHaveBeenCalled()
+  })
 
-    const whole = await readFileExplorerDirectory('wt-1', '/w', '/w', { minEntries: 2_400 })
-    expect(whole.entries).toHaveLength(2_500)
+  it('refreshes a paged folder in pages, re-reading as many rows as were shown', async () => {
+    serveFolder(60_000)
+    const listing = await readFileExplorerDirectory('wt-1', '/w', '/w', {
+      paged: true,
+      minEntries: 12_000
+    })
+    expect(readRuntimeDirectory).not.toHaveBeenCalled()
+    expect(listing.entries).toHaveLength(15_000)
+    expect(listing.more).toEqual({ nextOffset: 15_000, total: 60_000 })
+
+    const whole = await readFileExplorerDirectory('wt-1', '/w', '/w', {
+      paged: true,
+      minEntries: 59_000
+    })
+    expect(whole.entries).toHaveLength(60_000)
     expect(whole.more).toBeUndefined()
-  })
-
-  it('reports no more rows for a folder the host sent whole', async () => {
-    readRuntimeDirectoryPage.mockResolvedValueOnce({ entries: names(3), total: 3 })
-    expect((await readFileExplorerDirectory('wt-1', '/w', '/w')).more).toBeUndefined()
   })
 
   it('appends a page in order, keeping a row the watcher already added once', () => {
@@ -143,12 +180,12 @@ describe('loading more on scroll', () => {
   })
 
   it('appends the next page, and a refresh started meanwhile wins', async () => {
-    serveFolder(1_500)
+    serveFolder(60_000)
     let dirCache: Record<string, DirCache> = {
       '/w': {
         children: [],
         operationOwner: { kind: 'local' },
-        more: { nextOffset: 1_000, total: 1_500 }
+        more: { nextOffset: 57_000, total: 60_000 }
       }
     }
     const setDirCache = (update: SetStateAction<Record<string, DirCache>>): void => {
@@ -168,12 +205,12 @@ describe('loading more on scroll', () => {
     }
 
     await loadMoreFileExplorerDir({ ...params, dirCache, loadingDirPaths: loading })
-    expect(dirCache['/w'].children).toHaveLength(500)
-    expect(dirCache['/w'].children[0].name).toBe('f01000')
+    expect(dirCache['/w'].children).toHaveLength(3_000)
+    expect(dirCache['/w'].children[0].name).toBe('f57000')
     expect(dirCache['/w'].more).toBeUndefined()
     expect(loading.size).toBe(0)
 
-    dirCache = { '/w': { ...dirCache['/w'], children: [], more: { nextOffset: 0, total: 1_500 } } }
+    dirCache = { '/w': { ...dirCache['/w'], children: [], more: { nextOffset: 0, total: 60_000 } } }
     const pending = loadMoreFileExplorerDir({ ...params, dirCache, loadingDirPaths: loading })
     tracker.begin('/w')
     await pending

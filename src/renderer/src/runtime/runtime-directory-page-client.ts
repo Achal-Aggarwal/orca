@@ -25,6 +25,15 @@ function wholeFolderFrom(entries: DirEntry[], offset: number): DirEntryPage {
   return { entries: offset === 0 ? entries : entries.slice(offset), total: entries.length }
 }
 
+/** True where `dirPath` is on a remote server that serves folders in pages. */
+export function runtimeDirectoryPagesSupported(
+  context: RuntimeFileOperationArgs,
+  dirPath: string
+): boolean {
+  const remoteArgs = getRemoteFileArgs(context, dirPath)
+  return remoteArgs !== null && hostServesDirPages(remoteArgs.target.environmentId)
+}
+
 /**
  * One page of a remote server's folder. Where the folder is local, over SSH, or on a host too old
  * to page, it returns every entry from `offset`, so `total` is always reached.

@@ -112,6 +112,7 @@ export function useFileExplorerTree(
       }
       const loadToken = dirLoadTrackerRef.current.begin(dirPath)
       const minEntries = cache[dirPath]?.children.length
+      const paged = cache[dirPath]?.paged
       // Reads started after stale marking can verify that listing.
       staleDirsRef.current.delete(dirPath)
       // Retain cached children while loading so projection shrinkage cannot jump the virtualizer.
@@ -120,6 +121,7 @@ export function useFileExplorerTree(
       try {
         const listing = await readFileExplorerDirectory(activeWorktreeId, worktreePath, dirPath, {
           wakeWslDistro: options?.wakeWslDistro,
+          paged,
           minEntries
         })
         // Only the current read may clear loading; superseded reads must preserve their replacement’s spinner.
@@ -250,6 +252,7 @@ export function useFileExplorerTree(
       updateLoadingDirPaths,
       readDirectory: (dirPath) =>
         readFileExplorerDirectory(activeWorktreeId, worktreePath, dirPath, {
+          paged: dirCacheRef.current[dirPath]?.paged,
           minEntries: dirCacheRef.current[dirPath]?.children.length
         }),
       maxConcurrentReads: fileExplorerRefreshConcurrency(

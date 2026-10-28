@@ -18,7 +18,7 @@ vi.mock('./file-explorer-operation-owner', async (importOriginal) => ({
 const file = (name: string): DirEntry => ({ name, isDirectory: false, isSymlink: false })
 
 function page(names: string[], more?: { nextOffset: number; total: number }) {
-  return { entries: names.map(file), operationOwner: { kind: 'local' as const }, more }
+  return { entries: names.map(file), operationOwner: { kind: 'local' as const }, more, paged: true }
 }
 
 describe('useFileExplorerTree paged folders', () => {
@@ -39,7 +39,10 @@ describe('useFileExplorerTree paged folders', () => {
     await act(async () => {
       await result.current.loadMoreDir('/repo')
     })
-    expect(readDirectoryMock).toHaveBeenLastCalledWith('wt-1', '/repo', '/repo', { offset: 2 })
+    expect(readDirectoryMock).toHaveBeenLastCalledWith('wt-1', '/repo', '/repo', {
+      paged: true,
+      offset: 2
+    })
     expect(result.current.dirCache['/repo'].children.map((child) => child.name)).toEqual([
       'a',
       'b',
@@ -54,6 +57,7 @@ describe('useFileExplorerTree paged folders', () => {
     })
     expect(readDirectoryMock).toHaveBeenLastCalledWith('wt-1', '/repo', '/repo', {
       wakeWslDistro: undefined,
+      paged: true,
       minEntries: 4
     })
     expect(result.current.dirCache['/repo'].children).toHaveLength(4)
@@ -61,7 +65,7 @@ describe('useFileExplorerTree paged folders', () => {
 
   it('does nothing for a folder that was listed whole', async () => {
     const { result } = renderHook(() => useFileExplorerTree('/repo', new Set(), 'wt-1'))
-    readDirectoryMock.mockResolvedValueOnce(page(['a']))
+    readDirectoryMock.mockResolvedValueOnce({ ...page(['a']), paged: undefined })
     await act(async () => {
       await result.current.loadDir('/repo', -1, { force: true })
     })

@@ -2,7 +2,15 @@ import { useAppStore } from '@/store'
 import { getRelativePathInsideRoot, joinPath } from '@/lib/path'
 import type { DirEntry } from '../../../../shared/filesystem-entry-types'
 import { sortDirEntries } from '../../../../shared/file-name-sort'
-import { readRuntimeDirectoryPage } from '@/runtime/runtime-directory-page-client'
+import {
+  readRuntimeDirectoryPage,
+  runtimeDirectoryPagesSupported
+} from '@/runtime/runtime-directory-page-client'
+import { readRuntimeDirectory } from '@/runtime/runtime-file-mutation-client'
+import {
+  FILE_READ_DIR_MAX_PAGE_ENTRIES,
+  isDirListingTooLargeForRemoteError
+} from '../../../../shared/file-dir-page'
 import type {
   DirCache,
   FileExplorerDirMore,
@@ -17,13 +25,14 @@ import {
   getFileExplorerOperationRoute
 } from './file-explorer-operation-owner'
 
-/** Entries per page from a remote server; a big folder lists its first page, then more on scroll. */
-export const FILE_EXPLORER_DIR_PAGE_ENTRIES = 1_000
+/** Entries per page of a folder too big for one remote reply; smaller folders still list whole. */
+export const FILE_EXPLORER_DIR_PAGE_ENTRIES = FILE_READ_DIR_MAX_PAGE_ENTRIES
 
 export type FileExplorerDirectoryListing = {
   entries: DirEntry[]
   operationOwner: FileExplorerOperationOwner
   more?: FileExplorerDirMore
+  paged?: true
 }
 
 export function fileExplorerEntriesToTreeNodes(
@@ -103,14 +112,14 @@ export function clearFailedOpenedDirectoryLink(
 }
 
 /**
- * Lists `dirPath` from `offset`, page by page, until at least `minEntries` are read or the folder
- * ends; a refresh passes the count already shown so the tree does not shrink under the user.
+ * Lists `dirPath` whole, as always. Only a remote folder too big for one reply is listed in pages:
+ * from `offset` until at least `minEntries` are read, so a refresh does not shrink the tree.
  */
 export async function readFileExplorerDirectory(
   activeWorktreeId: string | null | undefined,
   worktreePath: string | null,
   dirPath: string,
-  options: { wakeWslDistro?: boolean; offset?: number; minEntries?: number } = {}
+  options: { wakeWslDistro?: boolean; paged?: boolean; offset?: number; minEntries?: number } = {}
 ): Promise<FileExplorerDirectoryListing> {
   const operationOwner = getFileExplorerOperationOwner(activeWorktreeId)
   const route = getFileExplorerOperationRoute(operationOwner)
@@ -130,6 +139,20 @@ export async function readFileExplorerDirectory(
     ...(options.wakeWslDistro === undefined ? {} : { wakeWslDistro: options.wakeWslDistro })
   }
   const offset = options.offset ?? 0
+  if (!options.paged && offset === 0) {
+    try {
+      // Older remote hosts may return lexical order; adaptive sorting keeps already-sorted local listings cheap.
+      const whole = await readRuntimeDirectory(context, dirPath, readOptions)
+      return { entries: sortDirEntries(whole), operationOwner }
+    } catch (error) {
+      if (
+        !isDirListingTooLargeForRemoteError(error) ||
+        !runtimeDirectoryPagesSupported(context, dirPath)
+      ) {
+        throw error
+      }
+    }
+  }
   const wanted = Math.max(options.minEntries ?? 0, FILE_EXPLORER_DIR_PAGE_ENTRIES)
   let entries: DirEntry[] = []
   let total = 0
@@ -147,10 +170,10 @@ export async function readFileExplorerDirectory(
     }
   } while (entries.length < wanted && offset + entries.length < total)
   const nextOffset = offset + entries.length
-  // Older remote hosts may return lexical order; adaptive sorting keeps already-sorted local listings cheap.
   return {
     entries: sortDirEntries(entries),
     operationOwner,
+    paged: true,
     ...(nextOffset < total ? { more: { nextOffset, total } } : {})
   }
 }

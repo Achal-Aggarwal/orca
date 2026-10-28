@@ -29,6 +29,8 @@ export type DirCache = {
   operationOwner?: FileExplorerOperationOwner
   /** Present while the host holds entries not yet listed here. */
   more?: FileExplorerDirMore
+  /** Listed in pages because it is too big for one remote reply; a refresh pages straight away. */
+  paged?: true
 }
 
 /** Retry covered dir reads after supersession, but not unreadable roots, which would add one dead transport timeout per dir. */

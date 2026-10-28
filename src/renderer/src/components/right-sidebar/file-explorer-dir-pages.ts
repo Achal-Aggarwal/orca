@@ -38,7 +38,8 @@ export function fileExplorerListingToDirCache(
       listing.operationOwner
     ),
     operationOwner: listing.operationOwner,
-    ...(listing.more ? { more: listing.more } : {})
+    ...(listing.more ? { more: listing.more } : {}),
+    ...(listing.paged ? { paged: true } : {})
   }
 }
 
@@ -110,6 +111,7 @@ export async function loadMoreFileExplorerDir({
   updateLoadingDirPaths((prev) => markFileExplorerDirsLoading(prev, [dirPath]))
   try {
     const page = await readFileExplorerDirectory(activeWorktreeId, worktreePath, dirPath, {
+      paged: true,
       offset: more.nextOffset
     })
     if (!dirLoadTracker.isCurrent(loadToken)) {
