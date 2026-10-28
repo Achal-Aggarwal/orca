@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, renderHook, within } from '@testing-library/react'
 import { makeDetectedResult } from '@/store/slices/worktrees-detected-listing-fixtures'
 import type { AppState } from '@/store/types'
-import { Profiler, useState } from 'react'
+import { type ComponentProps, Profiler, useState } from 'react'
 import * as runtime from '../../../../shared/project-execution-runtime'
 import { useLocalAgentPreflightContext } from '@/hooks/useLocalAgentPreflightContext'
 import { localAgentInventoryContextKey } from '@/lib/local-preflight-context-key'
@@ -143,7 +143,7 @@ it('ends skill coverage loading with a failure instead of an empty inventory', a
 })
 
 it('recovers the cold catalog through Retry and keeps retained rows editable after failed refresh', async () => {
-  const mutate = vi.fn()
+  const mutate = vi.fn<ComponentProps<typeof AgentLaunchSettingsCatalog>['mutate']>(async () => {})
   const view = render(
     <TooltipProvider>
       <AgentLaunchSettingsCatalog
@@ -170,7 +170,9 @@ it('recovers the cold catalog through Retry and keeps retained rows editable aft
   })
   expect(view.getAllByText('Claude').length).toBeGreaterThan(0)
   const availability = view.getByRole('radiogroup', { name: 'Claude availability' })
-  fireEvent.click(within(availability).getByRole('radio', { name: /Disabled/ }))
+  await act(async () => {
+    fireEvent.click(within(availability).getByRole('radio', { name: /Disabled/ }))
+  })
   expect(mutate).toHaveBeenCalled()
   expect(view.getByRole('button', { name: 'Retry' })).toBeTruthy()
   expect(view.queryByText(/Check the host connection/)).toBeNull()
@@ -351,7 +353,9 @@ it('scopes the real catalog and AgentStep subscriptions while preserving full ru
       <Profiler id="catalog" onRender={() => (commits.catalog += 1)}>
         <AgentLaunchSettingsCatalog
           settings={projectAgentLaunchSettings(settings)}
-          mutate={vi.fn()}
+          mutate={vi.fn<ComponentProps<typeof AgentLaunchSettingsCatalog>['mutate']>(
+            async () => {}
+          )}
           detectionTarget={{ kind: 'local' }}
           hostName={null}
           renderPermissions={() => null}

@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
-import type { TuiAgent } from '../../../../shared/tui-agent'
+import { useAppStore } from '@/store'
 import { decodeAgentSessionAgentsResult } from '../../../../shared/agent-session/agent-session-registered-agents'
 import { ChatSettingsSection } from './ChatSettingsSection'
 import { NativeChatProvidersSetting } from './NativeChatProvidersSetting'
@@ -22,34 +22,20 @@ import { buildCmdJSettingsResults } from '../cmd-j/palette-results'
 import { isSettingsNavigationTarget } from '@/lib/settings-navigation-types'
 import { getSettingsSectionId, getSettingsScrollTarget } from './settings-navigation-foundations'
 
-const state = vi.hoisted(
-  (): {
-    settingsSearchQuery: string
-    settings: GlobalSettings | null
-    localDetectedAgentIdsByContext: Record<string, TuiAgent[] | null>
-  } => ({ settingsSearchQuery: '', settings: null, localDetectedAgentIdsByContext: {} })
-)
+const initial = useAppStore.getState()
 vi.mock('@/runtime/host-structured-agents', async (importOriginal) => ({
   ...(await importOriginal<typeof HostStructuredAgentsModule>()),
   readHostStructuredAgents: () =>
     decodeAgentSessionAgentsResult({ agents: [{ agent: 'grok', capabilities: {} }] }) ?? []
 }))
 vi.mock('@/lib/host-chat-program-acquisition', () => ({ useChatProgramFacts: () => {} }))
-vi.mock('../../store', () => ({
-  useAppStore: Object.assign((selector: (value: typeof state) => unknown) => selector(state), {
-    getState: () => state
-  })
-}))
-
 afterEach(async () => {
   cleanup()
+  useAppStore.setState(initial, true)
   setLocalRuntimeCapabilitiesForTests(null)
   await i18n.changeLanguage('en')
 })
 beforeEach(() => {
-  state.settingsSearchQuery = ''
-  state.settings = null
-  state.localDetectedAgentIdsByContext = {}
   setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
 })
 
@@ -60,10 +46,11 @@ function renderChat(
   overrides: Partial<GlobalSettings> = {}
 ) {
   const settings = { ...getDefaultSettings('/tmp'), experimentalNativeChat: enabled, ...overrides }
-  state.settings = settings
+  useAppStore.setState({ settings })
   const updateSettings = vi.fn(async (updates: Partial<GlobalSettings>) => {
-    if (state.settings) {
-      state.settings = { ...state.settings, ...updates }
+    const current = useAppStore.getState().settings
+    if (current) {
+      useAppStore.setState({ settings: { ...current, ...updates } })
     }
   })
   const element = (active = 'chat') => (
@@ -91,8 +78,7 @@ function renderChat(
 describe('Chat settings page', () => {
   it('preserves clicked provider choices while queued saves and inventory changes settle', async () => {
     let latest = getDefaultSettings('/tmp')
-    state.settings = latest
-    state.localDetectedAgentIdsByContext = { host: [] }
+    useAppStore.setState({ settings: latest, localDetectedAgentIdsByContext: { host: [] } })
     let finish: () => void = () => {}
     const delayed = new Promise<void>((resolve) => {
       finish = resolve
@@ -100,7 +86,7 @@ describe('Chat settings page', () => {
     const updateSettings = vi.fn(async (updates: Partial<GlobalSettings>) => {
       await delayed
       latest = { ...latest, ...updates }
-      state.settings = latest
+      useAppStore.setState({ settings: latest })
     })
     const element = () => (
       <NativeChatProvidersSetting settings={latest} updateSettings={updateSettings} />
@@ -113,10 +99,14 @@ describe('Chat settings page', () => {
     await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1))
     fireEvent.click(grok)
     fireEvent.click(claude)
-    state.localDetectedAgentIdsByContext = { host: ['grok'] }
+    act(() => {
+      useAppStore.setState({ localDetectedAgentIdsByContext: { host: ['grok'] } })
+    })
     rerender(element())
     expect(grok.getAttribute('aria-checked')).toBe('true')
-    finish()
+    await act(async () => {
+      finish()
+    })
     await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(3))
     expect(latest.nativeChatProviders).toEqual({ claude: false, grok: true })
   })
@@ -128,7 +118,9 @@ describe('Chat settings page', () => {
       throw new Error('Command template textarea is missing')
     }
     fireEvent.change(template, { target: { value: 'Unsaved: {firstPrompt}' } })
-    state.settingsSearchQuery = 'unrelated setting'
+    act(() => {
+      useAppStore.setState({ settingsSearchQuery: 'unrelated setting' })
+    })
     rerender(element())
     expect(screen.getByDisplayValue('Unsaved: {firstPrompt}')).toBe(template)
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
@@ -137,7 +129,7 @@ describe('Chat settings page', () => {
   })
 
   it('searches a moved row and resolves its deep link within the Chat page', () => {
-    state.settingsSearchQuery = 'Code text size'
+    useAppStore.setState({ settingsSearchQuery: 'Code text size' })
     const { container, element, rerender } = renderChat(true)
     expect(screen.queryByRole('spinbutton', { name: 'Text size' })).toBeNull()
     expect(screen.getByRole('spinbutton', { name: 'Code text size' })).toBeTruthy()
@@ -160,7 +152,9 @@ describe('Chat settings page', () => {
     )
     rerender(element('appearance'))
     expect(container.querySelector('#chat')).toBeNull()
-    state.settingsSearchQuery = ''
+    act(() => {
+      useAppStore.setState({ settingsSearchQuery: '' })
+    })
     rerender(element())
     for (const entry of getChatAppearanceSearchEntries().filter((entry) => entry.targetSectionId)) {
       expect(getSettingsScrollTarget(entry.targetSectionId ?? '', container)).toBeTruthy()

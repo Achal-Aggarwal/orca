@@ -1,3 +1,4 @@
+import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expandNode, findDropdownMenuItemByText } from './tab-bar-dropdown-menu-item-probe'
 import {
@@ -112,19 +113,23 @@ describe('TabBar PowerShell launch wiring', () => {
     appStoreSnapshot.projects = [
       {
         id: 'project-1',
+        displayName: 'Project',
+        badgeColor: '#000',
+        createdAt: 0,
+        updatedAt: 0,
         localWindowsRuntimePreference: { kind: 'windows-host' },
         sourceRepoIds: ['repo-1']
       }
     ]
-    appStoreSnapshot.repos = [{ id: 'repo-1' }]
+    appStoreSnapshot.repos = [{ ...TEST_REPO, id: 'repo-1' }]
     appStoreSnapshot.worktreesByRepo = {
       'repo-1': [
-        {
+        makeWorktree({
           id: 'wt-1',
           repoId: 'repo-1',
           path: 'C:\\repo',
           projectId: 'project-1'
-        }
+        })
       ]
     }
     vi.stubGlobal('window', {
@@ -180,19 +185,23 @@ describe('TabBar PowerShell launch wiring', () => {
     appStoreSnapshot.projects = [
       {
         id: 'project-1',
+        displayName: 'Project',
+        badgeColor: '#000',
+        createdAt: 0,
+        updatedAt: 0,
         localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' },
         sourceRepoIds: ['repo-1']
       }
     ]
-    appStoreSnapshot.repos = [{ id: 'repo-1' }]
+    appStoreSnapshot.repos = [{ ...TEST_REPO, id: 'repo-1' }]
     appStoreSnapshot.worktreesByRepo = {
       'repo-1': [
-        {
+        makeWorktree({
           id: 'wt-1',
           repoId: 'repo-1',
           path: 'C:\\repo',
           projectId: 'project-1'
-        }
+        })
       ]
     }
     vi.stubGlobal('window', {
