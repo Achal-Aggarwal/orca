@@ -11,7 +11,6 @@ import {
   getTerminalSendGuardRefusedReason,
   isTerminalInputLockedForClient,
   isTerminalSendGuardNotWritable,
-  isUserTerminalClient,
   resolveMobileFloorClientId,
   type MobileInputFloorClaimHolder
 } from './terminal-input-delivery'
@@ -193,12 +192,6 @@ export const TERMINAL_SEND_METHODS = [
       const answered = observeQuestionAnswerSend(params, runtime)
       let result
       let acceptedPromptCheckpoint: unknown
-      if (params.inputKind !== 'query-reply' && isUserTerminalClient(params.client)) {
-        runtime.recordWorkerTerminalUserInput(
-          { terminal: params.terminal },
-          [params.text, params.enter ? '\r' : ''].join('')
-        )
-      }
       try {
         result = useSettledAgentPrompt
           ? await runtime.sendTerminalAgentPrompt(params.terminal, params.text!, {

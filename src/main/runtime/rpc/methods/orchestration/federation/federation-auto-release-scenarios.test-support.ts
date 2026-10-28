@@ -73,8 +73,21 @@ export function registerFederatedAutoReleaseScenarios(harness: AutoReleaseScenar
     if (!listed.ok) {
       throw new Error('worker-list failed')
     }
-    const { workers } = listed.result as { workers: { dispatchId: string; projection: unknown }[] }
-    return workers.find((worker) => worker.dispatchId === dispatchId)?.projection
+    const result: unknown = listed.result
+    const workers =
+      typeof result === 'object' &&
+      result !== null &&
+      'workers' in result &&
+      Array.isArray(result.workers)
+        ? result.workers
+        : []
+    return workers.find(
+      (worker: unknown) =>
+        typeof worker === 'object' &&
+        worker !== null &&
+        'dispatchId' in worker &&
+        worker.dispatchId === dispatchId
+    )?.projection
   }
 
   function retainFromHome(dispatchId: string) {
@@ -146,7 +159,8 @@ export function registerFederatedAutoReleaseScenarios(harness: AutoReleaseScenar
     vi.mocked(harness.workerRuntime().closeTerminal).mockImplementation(
       () =>
         new Promise((resolve) => {
-          finishClose = () => resolve({ ptyKilled: true } as never)
+          finishClose = () =>
+            resolve({ handle: 'term_windows_worker', tabId: 'tab-windows-worker', ptyKilled: true })
         })
     )
     vi.setSystemTime(Date.now() + GRACE_MS)
@@ -185,6 +199,20 @@ export function registerFederatedAutoReleaseScenarios(harness: AutoReleaseScenar
     expect(harness.workerDb().getWorkerTerminalResourceByOwner(dispatchId)).toMatchObject({
       release_state: 'retained',
       auto_release_at: null
+    })
+  })
+
+  it('keeps a host terminal someone typed into after worker_done', async () => {
+    const dispatchId = await settleRemotely()
+    vi.setSystemTime(Date.now() + 30_000)
+    vi.spyOn(harness.workerRuntime(), 'getTerminalLastDrivingInputAt').mockReturnValue(Date.now())
+
+    await releaseDueOnHost()
+
+    expect(harness.workerRuntime().closeTerminal).not.toHaveBeenCalled()
+    expect(harness.workerDb().getWorkerTerminalResourceByOwner(dispatchId)).toMatchObject({
+      ownership_state: 'user_owned',
+      release_state: 'retained'
     })
   })
 

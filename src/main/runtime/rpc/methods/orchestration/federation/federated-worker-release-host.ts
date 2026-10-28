@@ -11,6 +11,7 @@ import {
 import type { WorkerTerminalReleaseRuntime } from '../../../../orchestration/worker-terminal-release-runtime'
 import { readRemoteAttachmentArchive } from './remote-attachment-archive-read'
 import { WorkerTerminalReleaseSingleFlight } from '../worker/worker-terminal-release-single-flight'
+import { yieldAutoReleaseToUserInput } from '../../../../orchestration/worker-terminal-auto-release-scheduler'
 import { archiveSummary } from '../worker/worker-terminal-resource-presentation'
 import {
   releaseUnknownRecovery,
@@ -168,30 +169,24 @@ async function releaseRemoteAttachmentOnce(
       lastError: error instanceof Error ? error.message : String(error)
     }
   }
-  const releasing = db.commitWorkerTerminalArchiveForRelease({
+  const committed = db.commitWorkerTerminalArchiveForRelease({
     dispatchId: attachment.dispatch_id,
     resourceId: resource.id,
     archiveSource: summarizeWorkerOutputArchive(archive).source,
     archiveStatus: summarizeWorkerOutputArchive(archive).status
   })
-  if (releasing.ownership_state !== 'owned' || releasing.release_state !== 'releasing') {
+  const releasing = !isStillReleasing(committed)
+    ? committed
+    : !remoteAttachmentLeaseIsCurrent(runtime, attachment, observation, committed)
+      ? db.revertWorkerTerminalReleaseToRetained(resource.id, 'identity_unproven')
+      : yieldAutoReleaseToUserInput(runtime, committed, observation.terminal.handle)
+  if (!isStillReleasing(releasing)) {
     return {
       dispatchId: attachment.dispatch_id,
       state: 'retained',
       reason: retainedReason(releasing),
       processAction: 'none',
       archive: archiveSummary(releasing),
-      output
-    }
-  }
-  if (!remoteAttachmentLeaseIsCurrent(runtime, attachment, observation, releasing)) {
-    const retained = db.revertWorkerTerminalReleaseToRetained(resource.id, 'identity_unproven')
-    return {
-      dispatchId: attachment.dispatch_id,
-      state: 'retained',
-      reason: 'identity_unproven',
-      processAction: 'none',
-      archive: archiveSummary(retained),
       output
     }
   }
@@ -293,4 +288,8 @@ function projectArchivedOutputLiveness<
       liveness
     }
   }
+}
+
+function isStillReleasing(resource: WorkerTerminalResourceRow): boolean {
+  return resource.ownership_state === 'owned' && resource.release_state === 'releasing'
 }

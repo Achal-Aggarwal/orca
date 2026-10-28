@@ -221,31 +221,6 @@ export abstract class OrcaRuntimeWithMarkPtyLivenessUnverifiable extends OrcaRun
     }
   }
 
-  /** Record takeover where the bytes are accepted, before they reach the PTY; the renderer's report is advisory. */
-  recordWorkerTerminalUserInput(
-    target: { ptyId: string } | { terminal: string },
-    data: string
-  ): void {
-    const db = this.getOrchestrationDbIfAvailable()
-    if (!db || isUntypedTerminalInput(data)) {
-      return
-    }
-    const paneKey =
-      'ptyId' in target
-        ? this.paneOfPty(this.ptysById.get(target.ptyId)).paneKey
-        : this.getTerminalPaneKey(target.terminal)
-    if (!paneKey) {
-      return
-    }
-    try {
-      if (db.hasUserClaimableWorkerTerminal(paneKey)) {
-        db.markWorkerTerminalUserOwned(paneKey)
-      }
-    } catch (error) {
-      console.warn('[orchestration] worker terminal takeover not recorded', error)
-    }
-  }
-
   unregisterRemoteDesktopViewer(ptyId: string, subscriptionKey: string): Promise<boolean> {
     return this.unregisterRemoteDesktopViewers(ptyId, [subscriptionKey])
   }

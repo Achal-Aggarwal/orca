@@ -33,11 +33,6 @@ function findUserClaimableResources(db: OrchestrationDb, paneKey: string): UserC
   return candidates.filter((candidate) => isEquivalentPaneKey(candidate.pane_key, paneKey))
 }
 
-// Read-only gate so ordinary typing writes only when a worker terminal can still be claimed.
-export function hasUserClaimableWorkerTerminal(this: OrchestrationDb, paneKey: string): boolean {
-  return findUserClaimableResources(this, paneKey).length > 0
-}
-
 export function markWorkerTerminalUserOwned(this: OrchestrationDb, paneKey: string): number {
   this.db.exec('BEGIN IMMEDIATE')
   try {

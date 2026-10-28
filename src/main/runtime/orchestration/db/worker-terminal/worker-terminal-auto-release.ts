@@ -39,13 +39,14 @@ export function armWorkerTerminalAutoReleaseStatement(
   }
 }
 
-/** The automatic counterpart of a release request: it never overrides retention, takeover or transfer. */
+/** The automatic counterpart of a release request: it never overrides retention, takeover or transfer.
+ *  The kept deadline marks the request automatic until an explicit request clears it. */
 export function claimDueWorkerTerminalAutoReleases(this: OrchestrationDb, nowMs: number): number {
   return Number(
     this.db
       .prepare(
         `UPDATE worker_terminal_resources
-            SET release_state = 'requested', retained_reason = NULL, auto_release_at = NULL,
+            SET release_state = 'requested', retained_reason = NULL,
                 release_requested_at = datetime('now'), release_error = NULL,
                 updated_at = datetime('now')
           WHERE ${WORKER_TERMINAL_AUTO_RELEASE_LIVE_SQL} AND auto_release_at <= ?

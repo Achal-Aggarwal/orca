@@ -1,5 +1,4 @@
 import { InvalidArgumentError } from '../../core'
-import { ORCA_CLI_TERMINAL_CLIENT_ID } from '../../../../../shared/terminal-input-kind'
 import type { RuntimeTerminalSend } from '../../../../../shared/runtime-terminal-send-contract'
 import type { DriverState, OrcaRuntimeService } from '../../../orca-runtime'
 import {
@@ -47,13 +46,6 @@ export function resolveMobileFloorClientId(
   return null
 }
 
-export function isUserTerminalClient(client: TerminalViewportClient | undefined): boolean {
-  return (
-    client?.type === 'mobile' ||
-    (client?.type === 'desktop' && client.id !== ORCA_CLI_TERMINAL_CLIENT_ID)
-  )
-}
-
 export type TerminalStreamInputOutcome = 'delivered' | 'rejected' | 'failed'
 
 function isTerminalStreamInputRejection(error: unknown): boolean {
@@ -77,8 +69,6 @@ export async function sendTerminalStreamInput(
   const floorClaim: MobileInputFloorClaimHolder = { current: null }
   const settlement = args.requireWriteSettlement ? { requireWriteSettlement: true as const } : {}
   try {
-    // Stream input comes only from a viewing UI, so it is a person typing.
-    runtime.recordWorkerTerminalUserInput({ terminal: args.terminal }, args.text)
     const result = await runtime.sendTerminal(args.terminal, action, {
       inputKind: 'driving',
       ...settlement,

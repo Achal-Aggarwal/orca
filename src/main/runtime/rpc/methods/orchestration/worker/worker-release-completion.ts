@@ -18,6 +18,7 @@ import { stopStructuredWorkerForRelease } from './structured-worker-release-stop
 import { isStructuredWorkerHandle } from '../../../../../../shared/structured-worker-handle'
 import { captureWorkerReleaseArchive } from './worker-release-archive-capture'
 import { WorkerTerminalReleaseSingleFlight } from './worker-terminal-release-single-flight'
+import { yieldAutoReleaseToUserInput } from '../../../../orchestration/worker-terminal-auto-release-scheduler'
 
 export type WorkerReleaseReceipt = {
   dispatchId: string
@@ -181,14 +182,19 @@ async function completeWorkerTerminalReleaseOnce(
     archiveSource ??= stored.source
     archiveStatus ??= stored.status
   }
-  const releasing = db.commitWorkerTerminalArchiveForRelease({
+  const committed = db.commitWorkerTerminalArchiveForRelease({
     dispatchId,
     resourceId: resource.id,
     ...capturedArchive,
     archiveSource,
     archiveStatus: archiveStatus === 'empty' ? 'empty' : 'captured'
   })
-  if (releasing.ownership_state !== 'owned' || releasing.release_state !== 'releasing') {
+  const releasing = !isStillReleasing(committed)
+    ? committed
+    : !workerTerminalLeaseIsCurrent(runtime, db, dispatchId, committed, terminalHandle)
+      ? db.revertWorkerTerminalReleaseToRetained(resource.id, 'identity_unproven')
+      : yieldAutoReleaseToUserInput(runtime, committed, terminalHandle)
+  if (!isStillReleasing(releasing)) {
     return {
       dispatchId,
       state: 'retained',
@@ -197,17 +203,6 @@ async function completeWorkerTerminalReleaseOnce(
       archive: archiveSummary(releasing)
     }
   }
-  if (!workerTerminalLeaseIsCurrent(runtime, db, dispatchId, releasing, terminalHandle)) {
-    const retained = db.revertWorkerTerminalReleaseToRetained(resource.id, 'identity_unproven')
-    return {
-      dispatchId,
-      state: 'retained',
-      reason: 'identity_unproven',
-      processAction: 'none',
-      archive: archiveSummary(retained)
-    }
-  }
-
   try {
     if (structured) {
       return await stopStructuredWorkerForRelease({
@@ -284,4 +279,8 @@ function retainedReason(resource: WorkerTerminalResourceRow): WorkerTerminalReta
     return 'user_takeover'
   }
   return 'identity_unproven'
+}
+
+function isStillReleasing(resource: WorkerTerminalResourceRow): boolean {
+  return resource.ownership_state === 'owned' && resource.release_state === 'releasing'
 }

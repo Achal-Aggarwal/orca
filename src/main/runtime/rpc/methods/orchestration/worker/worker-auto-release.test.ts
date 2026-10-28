@@ -7,7 +7,6 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { getWorkerTerminalAutoReleaseScheduler } from '../../../../orchestration/worker-terminal-auto-release-scheduler'
 import { createOrchestrationWorkerReleaseHarness } from './worker-release.test-support'
-import { sendTerminalStreamInput } from '../../terminal/terminal-input-delivery'
 
 const GRACE_MS = 2 * 60_000
 
@@ -140,25 +139,14 @@ describe('orchestration worker automatic release', () => {
       setupWithFakeClock()
       const { dispatchId } = await h.startSettledWorker()
       const pendingRead = h.deferred<Awaited<ReturnType<OrcaRuntimeService['readTerminal']>>>()
-      if (moment !== 'before the deadline') {
+      if (moment === 'before the deadline') {
+        await vi.advanceTimersByTimeAsync(30_000)
+      } else {
         vi.mocked(h.runtime.readTerminal).mockReturnValue(pendingRead.promise)
         await vi.advanceTimersByTimeAsync(GRACE_MS)
         await vi.waitFor(() => expect(h.runtime.readTerminal).toHaveBeenCalledTimes(1))
       }
-      const ownershipAtWrite: string[] = []
-      vi.spyOn(h.runtime, 'sendTerminal').mockImplementation(async (handle) => {
-        ownershipAtWrite.push(h.db.getWorkerTerminalResourceByOwner(dispatchId)!.ownership_state)
-        return { handle, accepted: true, bytesWritten: 5 }
-      })
-
-      await expect(
-        sendTerminalStreamInput(h.runtime, {
-          terminal: 'term_worker',
-          text: 'typed',
-          client: { id: 'desktop-viewer', type: 'desktop' },
-          isMobile: false
-        })
-      ).resolves.toBe('delivered')
+      vi.spyOn(h.runtime, 'getTerminalLastDrivingInputAt').mockReturnValue(Date.now())
       pendingRead.resolve({
         handle: 'term_worker',
         status: 'running',
@@ -168,7 +156,6 @@ describe('orchestration worker automatic release', () => {
       })
       await vi.advanceTimersByTimeAsync(2 * GRACE_MS)
 
-      expect(ownershipAtWrite).toEqual(['user_owned'])
       expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
       expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)).toMatchObject({
         ownership_state: 'user_owned',
@@ -176,6 +163,29 @@ describe('orchestration worker automatic release', () => {
       })
     }
   )
+
+  it('still releases on time when the last typing came before worker_done', async () => {
+    setupWithFakeClock()
+    const typedBeforeDone = Date.now()
+    vi.spyOn(h.runtime, 'getTerminalLastDrivingInputAt').mockReturnValue(typedBeforeDone)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await h.startSettledWorker()
+
+    await vi.advanceTimersByTimeAsync(GRACE_MS)
+
+    await vi.waitFor(() => expect(h.runtime.closeTerminal).toHaveBeenCalledTimes(1))
+  })
+
+  it('lets an explicit worker-release close a terminal the user typed into', async () => {
+    setupWithFakeClock()
+    const { dispatchId } = await h.startSettledWorker()
+    vi.spyOn(h.runtime, 'getTerminalLastDrivingInputAt').mockReturnValue(Date.now())
+
+    await expect(
+      h.call('orchestration.workerRelease', { dispatch: dispatchId })
+    ).resolves.toMatchObject({ state: 'released' })
+    expect(h.runtime.closeTerminal).toHaveBeenCalledTimes(1)
+  })
 
   it('does not arm a worker retained before it reported', async () => {
     setupWithFakeClock()

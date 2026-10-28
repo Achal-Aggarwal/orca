@@ -78,11 +78,12 @@ export function requestRemoteAttachmentTerminalRelease(
                ELSE 'requested'
              END,
              retained_reason = NULL,
+             auto_release_at = CASE WHEN ? THEN auto_release_at ELSE NULL END,
              release_requested_at = COALESCE(release_requested_at, datetime('now')),
              release_error = NULL, updated_at = datetime('now')
          WHERE id = ? AND ${WORKER_TERMINAL_RELEASABLE_ROW_SQL}`
       )
-      .run(resource.id)
+      .run(mode === 'recovery' ? 1 : 0, resource.id)
     this.db.exec('COMMIT')
     return {
       disposition: 'requested',

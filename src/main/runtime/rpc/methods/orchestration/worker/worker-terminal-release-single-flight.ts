@@ -1,11 +1,16 @@
+import type { WorkerTerminalReleaseRuntime } from '../../../../orchestration/worker-terminal-release-runtime'
+
 type ActiveRelease<T> = { promise: Promise<T>; recoveryRequested: boolean }
 
 /** One release per resource per runtime: a timer, recovery and an explicit release all join it. */
 export class WorkerTerminalReleaseSingleFlight<T> {
-  private readonly activeByRuntime = new WeakMap<object, Map<string, ActiveRelease<T>>>()
+  private readonly activeByRuntime = new WeakMap<
+    WorkerTerminalReleaseRuntime,
+    Map<string, ActiveRelease<T>>
+  >()
 
   run(
-    runtime: object,
+    runtime: WorkerTerminalReleaseRuntime,
     key: string,
     mode: 'interactive' | 'recovery' | undefined,
     start: (active: { readonly recoveryRequested: boolean }) => Promise<T>
