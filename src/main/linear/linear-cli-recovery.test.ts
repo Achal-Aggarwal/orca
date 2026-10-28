@@ -1,16 +1,16 @@
-import '../main/runtime/rpc/unused-default-rpc-methods.test-fixture'
+import '../runtime/rpc/unused-default-rpc-methods.test-fixture'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { OrcaRuntimeService } from '../main/runtime/orca-runtime'
-import { RpcDispatcher } from '../main/runtime/rpc/dispatcher'
-import { LINEAR_AGENT_ACCESS_METHODS } from '../main/runtime/rpc/methods/linear-agent-access'
-import { connect, getClient, testConnection } from '../main/linear/client'
-import { updateIssueForAgent } from '../main/linear/linear-issue-mutations'
-import { writeIssueRelation } from '../main/linear/issue-relation-write'
-import { sendLinearData, serveLinearHttp } from '../main/linear/linear-sdk-http.test-fixture'
-import { LinearAgentAccessError } from '../main/linear/issue-context/errors'
-import { RuntimeRpcFailureError } from './runtime/types'
-import { main } from './index'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { RpcDispatcher } from '../runtime/rpc/dispatcher'
+import { LINEAR_AGENT_ACCESS_METHODS } from '../runtime/rpc/methods/linear-agent-access'
+import { connect, getClient, testConnection } from './client'
+import { updateIssueForAgent } from './linear-issue-mutations'
+import { writeIssueRelation } from './issue-relation-write'
+import { sendLinearData, serveLinearHttp } from './linear-sdk-http.test-fixture'
+import { LinearAgentAccessError } from './issue-context/errors'
+import { RuntimeRpcFailureError } from '../../cli/runtime/types'
+import { main } from '../../cli/index'
 
 const boundary = vi.hoisted(() => ({
   callMock: vi.fn(),
@@ -28,11 +28,11 @@ const boundary = vi.hoisted(() => ({
     email: 'proof@example.invalid'
   }
 }))
-vi.mock('./runtime-client', async () => {
-  const { createRuntimeClientModuleMock } = await import('./index-test-harness')
+vi.mock('../../cli/runtime-client', async () => {
+  const { createRuntimeClientModuleMock } = await import('../../cli/index-test-harness.js')
   return createRuntimeClientModuleMock(boundary)
 })
-vi.mock('../main/linear/linear-token-store', () => ({
+vi.mock('./linear-token-store', () => ({
   loadToken: () => 'local-proof-token',
   saveWorkspaceToken: boundary.save,
   getWorkspaceTokenProtection: () => null,
@@ -40,7 +40,7 @@ vi.mock('../main/linear/linear-token-store', () => ({
   clearTokenFile: vi.fn(),
   replaceLegacyWorkspace: vi.fn()
 }))
-vi.mock('../main/linear/linear-workspace-registry', () => ({
+vi.mock('./linear-workspace-registry', () => ({
   getWorkspaceState: () => ({
     workspaces: [boundary.workspace],
     activeWorkspaceId: boundary.workspace.id,
