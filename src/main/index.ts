@@ -30,7 +30,7 @@ import {
   readProfileStateCopySavedTimes
 } from './persistence/profile-state/profile-state-startup-recovery-dialog'
 import { profileStateDesktopRecoveryArgs } from './startup/profile-state-recovery-preflight'
-import { translateMain } from './i18n/main-i18n'
+import { prepareEarlyMainUiLanguage, translateMain } from './i18n/main-i18n'
 import { ProfileStateRecoveryRequiredError } from './persistence/profile-state/profile-state-recovery-required'
 import { getProfileUserDataPath } from './orca-profiles/profile-storage-paths'
 import { leaseAppImageGenerationForCurrentProcess } from './cli/appimage-generation-lease'
@@ -158,6 +158,7 @@ if (preflightReady) {
       console.error(`[profile-state] ${message}`)
       if (!state.isServeMode && !isBackgroundLaunch()) {
         try {
+          await prepareEarlyMainUiLanguage()
           const userDataPath = getProfileUserDataPath()
           if (isDivergedProfileStateFailure(error)) {
             const choice = await chooseProfileStateCopy({

@@ -94,6 +94,18 @@ export async function setMainUiLanguage(language: UiLanguage): Promise<string> {
   return locale
 }
 
+/** Startup failures can show dialogs before settings load; use the system language until then. */
+export async function prepareEarlyMainUiLanguage(): Promise<void> {
+  if (languageGeneration > 0) {
+    return
+  }
+  try {
+    await setMainUiLanguage(UI_LANGUAGE_SYSTEM)
+  } catch (error) {
+    console.warn('[i18n] Could not localize early startup dialogs:', error)
+  }
+}
+
 function applyMainPluginLanguagePacks(): void {
   for (const language of registeredPluginLanguages) {
     mainI18n.removeResourceBundle(language, 'translation')

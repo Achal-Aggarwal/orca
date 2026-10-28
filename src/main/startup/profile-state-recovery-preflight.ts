@@ -11,7 +11,7 @@ import {
   type ProfileStateRecoveryRequest,
   type ProfileStateRecoveryResponse
 } from '../../shared/profile-state-recovery-command'
-import { translateMain } from '../i18n/main-i18n'
+import { prepareEarlyMainUiLanguage, translateMain } from '../i18n/main-i18n'
 import { acquireProfileStateMaintenance } from '../persistence/profile-state/profile-state-access'
 import { rollbackProfileState } from '../persistence/profile-state/profile-state-recovery-command'
 import { applyBackgroundActivationPolicy } from '../window/foreground-activation-policy'
@@ -72,6 +72,7 @@ function runDesktopRecovery(argv: readonly string[]): void {
   console.error(`[profile-state] Desktop recovery failed: ${response.message}`)
   void app
     .whenReady()
+    .then(prepareEarlyMainUiLanguage)
     .then(() =>
       dialog.showMessageBox({
         type: 'error',
