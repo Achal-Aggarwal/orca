@@ -13,6 +13,16 @@ describe('resolveWindowsShiftEnterEncoding', () => {
     expect(resolveWindowsShiftEnterEncodingForPane(state, 'tab:pane', '⠋ Droid')).toBe('csi-u')
   })
 
+  it('does not expose a keyboard mode inside a wrapped task barrier', () => {
+    expect(
+      resolveWindowsShiftEnterEncodingForPane(
+        { paneForegroundAgentByPaneKey: {}, agentLaunchConfigByPaneKey: {} },
+        'tab:pane',
+        'tmux | ⠋ fix | a | b | c | d | e | f | g | Droid'
+      )
+    ).toBe('alt-enter')
+  })
+
   it.each(['dsb', 'codex'] as const)(
     'keeps pending %s input encoding when a stale title names another agent',
     (agent) => {

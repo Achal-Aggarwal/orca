@@ -121,16 +121,41 @@ export function agentForOwnerSuffix(text: string): TerminalAgent | null {
   return RESERVED_OWNER_IDS.get(normalized) ?? agentForBareName(text)
 }
 
+const NATIVE_PAYLOAD_RE = /(?::\s+[\s\S]*|\s*[\u2013\u2014]\s*[\s\S]*)$/
+const NATIVE_STATUS_RE =
+  /(?:\s+(?:(?:ready|idle|done|working|thinking|running|waiting|permission)|\[(?:ready|idle|done|working|thinking|running|waiting|permission)\])|\s+-\s+action required)$/i
+
+/** Only payload delimiters consume later pipes; bare names/statuses still require the full frame. */
+export function agentForNamedTitlePrefix(text: string): TerminalAgent | null {
+  const undecorated = stripLeadingAgentTitleDecorationOrEmpty(text).trim()
+  const match = NATIVE_PAYLOAD_RE.exec(undecorated)
+  return match ? agentForNativeName(undecorated.slice(0, match.index)) : null
+}
+
+/** Inspect one disjoint header, preserving shell host/cwd syntax without admitting colon task prose. */
+export function isNeutralAgentTitleWrapper(header: string): boolean {
+  const trimmed = header.trim()
+  if (stripLeadingAgentTitleDecorationOrEmpty(trimmed) !== trimmed) {
+    return false
+  }
+  return (
+    !trimmed.includes(':') ||
+    /^(?:[^\s@:[\]]+@(?:\[[^\]]+\]|[^\s:]+)|\[[^\]\s]+@[^\]\s]+\]):\s*(?:[~/]|[A-Za-z]:[\\/])/.test(
+      trimmed
+    ) ||
+    /^[A-Za-z]:[\\/]/.test(trimmed)
+  )
+}
+
 /** Native frames identify an agent by a complete name, a named status, or a name before task text. */
 export function agentForNativeFrame(text: string): TerminalAgent | null {
   if (isCursorAgentTitle(text)) {
     return 'cursor'
   }
   const undecorated = stripLeadingAgentTitleDecorationOrEmpty(text).trim()
-  const frameName = undecorated.replace(
-    /(?::\s+[\s\S]*|\s*[\u2013\u2014]\s*[\s\S]*|\s+(?:(?:ready|idle|done|working|thinking|running|waiting|permission)|\[(?:ready|idle|done|working|thinking|running|waiting|permission)\])|\s+-\s+action required)$/i,
-    ''
-  )
+  const frameName = NATIVE_PAYLOAD_RE.test(undecorated)
+    ? undecorated.replace(NATIVE_PAYLOAD_RE, '')
+    : undecorated.replace(NATIVE_STATUS_RE, '')
   if (!frameName || /[|>\\/]/.test(frameName)) {
     return null
   }

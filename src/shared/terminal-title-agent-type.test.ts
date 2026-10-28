@@ -59,6 +59,40 @@ describe('resolveExplicitTerminalTitleAgentType', () => {
     expect(resolveExplicitTerminalTitleAgentType('oc | Understand about the plugin')).toBeNull()
   })
 
+  it.each([
+    ['tmux | OC | a | b | c | d | e | f | g | h | Codex', 'opencode'],
+    ['tmux | 🐋 a | b | c | d | e | f | g | h | Codex', 'dsh'],
+    ['Wrapper | OC | Review Codex - DeepSeek Build', 'opencode'],
+    ['user@host: ~/code | OC | ses_123', 'opencode'],
+    ['user@[::1]: ~/code | ⠋ OC | ses_123', 'opencode'],
+    ['[user@host]: ~/code | Codex: fix parser', 'codex'],
+    ['C:\\repo | ⠋ Cursor Agent', 'cursor'],
+    ['tmux | Codex: fix parser | a | b | c | d | e | f | g | Claude Code', 'codex'],
+    ['tmux | ⠋ fix parser | a | b | c | d | e | f | g | Codex', null],
+    ['Plan: migrate | Codex', null],
+    ['codex | main | fix parser', null],
+    ['OC |\tCodex', 'opencode'],
+    ['⠋ - Codex: fix parser - grok', 'grok'],
+    ['⠋ Codex: fix parser - grok', null],
+    ['tmux | OC | ⠋ - Codex: fix parser - grok', null],
+    ['⠋ - OC | Claude Code - DeepSeek Build', 'dsb']
+  ] as const)('consumes the actual frame/barrier in %j', (title, agent) => {
+    expect(resolveExplicitTerminalTitleAgentType(title)).toBe(agent)
+  })
+
+  it.each([7, 8, 9, 200])('retains frames and barriers after %i actual wrappers', (depth) => {
+    const wrappers = 'x | '.repeat(depth)
+    const payload = 'a | b | c | d | e | f | g | h | Codex'
+    for (const [frame, agent] of [
+      [`OC | ${payload}`, 'opencode'],
+      [`🐋 ${payload}`, 'dsh'],
+      [`Codex: fix parser | ${payload}`, 'codex'],
+      [`⠋ fix parser | ${payload}`, null]
+    ] as const) {
+      expect(resolveExplicitTerminalTitleAgentType(wrappers + frame)).toBe(agent)
+    }
+  })
+
   it('does not find an OpenCode marker inside another agent task title', () => {
     expect(isOpenCodeNativeTitle('⠋ Fix foo | OC | bar')).toBe(false)
     expect(resolveExplicitTerminalTitleAgentType('⠋ Fix foo | OC | bar')).toBeNull()

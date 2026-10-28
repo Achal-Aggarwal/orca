@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { normalizeTerminalTitle } from '../../../../shared/agent-title-status'
 import { hasCtrlEnterCsiUAuthorityForPane } from './terminal-ctrl-enter'
 
 const PANE_KEY = 'tab:pane'
@@ -11,6 +12,19 @@ describe('hasCtrlEnterCsiUAuthorityForPane', () => {
     expect(
       hasCtrlEnterCsiUAuthorityForPane(state, PANE_KEY, 'Fix Codex terminal behavior… - grok')
     ).toBe(true)
+  })
+
+  it.each([
+    ['⠋ - Codex: fix parser - grok', true],
+    ['⠋ Codex: fix parser - grok', false],
+    ['tmux | ⠋ fix | a | b | c | d | e | f | g | Grok', false],
+    ['✦ session | Thinking - grok', false]
+  ])('uses raw and stored structural input authority for %j', (raw, expected) => {
+    for (const title of [raw, normalizeTerminalTitle(raw)]) {
+      expect(
+        hasCtrlEnterCsiUAuthorityForPane({ paneForegroundAgentByPaneKey: {} }, PANE_KEY, title)
+      ).toBe(expected)
+    }
   })
 
   it.each([

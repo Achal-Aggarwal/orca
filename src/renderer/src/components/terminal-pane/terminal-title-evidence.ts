@@ -1,11 +1,9 @@
 import { normalizeCompatibleAgentTitleForOwner } from '../../../../shared/agent-title-owner'
-import { normalizeTerminalTitle } from '../../../../shared/agent-title-status'
-import { resolveExplicitTerminalTitleAgentType } from '../../../../shared/terminal-title-agent-type'
 import {
-  GEMINI_IDLE,
-  GEMINI_PERMISSION,
-  GEMINI_WORKING
-} from '../../../../shared/agent-title-glyphs'
+  isNormalizedAgentTitleStamp,
+  normalizeTerminalTitle
+} from '../../../../shared/agent-title-status'
+import { resolveExplicitTerminalTitleAgentType } from '../../../../shared/terminal-title-agent-type'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import {
   resolvePaneRendererPolicy,
@@ -46,12 +44,11 @@ export type ResolvePaneTitleDecisionInput = {
 }
 
 export function resolvePaneTitleDecision(input: ResolvePaneTitleDecisionInput): PaneTitleDecision {
-  // Old producers can stamp task prose as Gemini while still supplying the disproving raw title.
-  const oldGeminiStamp = [GEMINI_WORKING, GEMINI_IDLE, GEMINI_PERMISSION].some(
-    (glyph) => input.normalizedTitle === `${glyph} Gemini CLI`
-  )
+  // Actual raw evidence can disprove an old producer's destructive display stamp.
   const displayInput =
-    oldGeminiStamp && resolveExplicitTerminalTitleAgentType(input.rawTitle) !== 'gemini'
+    isNormalizedAgentTitleStamp(input.normalizedTitle) &&
+    resolveExplicitTerminalTitleAgentType(input.rawTitle) !==
+      resolveExplicitTerminalTitleAgentType(input.normalizedTitle)
       ? normalizeTerminalTitle(input.rawTitle)
       : input.normalizedTitle
   const displayTitle = resolvePaneDisplayTitle(

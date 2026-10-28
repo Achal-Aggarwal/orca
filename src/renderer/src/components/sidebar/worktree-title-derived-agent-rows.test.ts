@@ -11,6 +11,8 @@ import {
   type TitleDerivedPaneForeground
 } from './title-derived-pane-agent-identity'
 
+import { resolveExplicitTerminalTitleAgentType } from '../../../../shared/terminal-title-agent-type'
+
 const LEAF_ID_1 = '77777777-7777-4777-8777-777777777777'
 const LEAF_ID_2 = '88888888-8888-4888-8888-888888888888'
 
@@ -55,29 +57,96 @@ function processRead(agent: TuiAgent): TitleDerivedPaneForeground {
 
 describe('buildTitleDerivedAgentRows', () => {
   it.each([
-    ['⠋ fix the gemini launcher', '⠋ fix the gemini launcher', 'claude', 'Claude'],
-    ['⠋ add ✦ icon to header', '⠋ add ✦ icon to header', 'claude', 'Claude'],
+    ['⠋ fix the gemini launcher', '⠋ fix the gemini launcher', null, 'claude', 'claude', 'Claude'],
+    ['⠋ add ✦ icon to header', '⠋ add ✦ icon to header', null, 'claude', 'claude', 'Claude'],
     [
       '⠋ Codex: fix Gemini terminal behavior',
       '⠋ Codex: fix Gemini terminal behavior',
       'codex',
+      'codex',
+      'codex',
       'Codex'
     ],
-    ['Fix Codex terminal behavior… - grok', 'Fix Codex terminal behavior… - grok', 'grok', 'Grok'],
-    ['✦ Analyze Codex', '✦ Gemini CLI', 'gemini', 'Gemini CLI'],
-    ['✦ Claude Code', '✦ Gemini CLI', 'gemini', 'Gemini CLI']
+    [
+      'Fix Codex terminal behavior… - grok',
+      'Fix Codex terminal behavior… - grok',
+      'grok',
+      'grok',
+      'grok',
+      'Grok'
+    ],
+    ['✦ Analyze Codex', '✦ Gemini CLI', 'gemini', 'gemini', 'gemini', 'Gemini CLI'],
+    ['✦ Claude Code', '✦ Gemini CLI', 'gemini', 'gemini', 'gemini', 'Gemini CLI'],
+    [
+      `${'x | '.repeat(200)}OC | a | b | c | d | e | f | g | h | Codex`,
+      null,
+      'opencode',
+      'opencode',
+      'opencode',
+      'OpenCode'
+    ],
+    [
+      `${'x | '.repeat(200)}🐋 a | b | c | d | e | f | g | h | Codex`,
+      null,
+      'dsh',
+      'dsh',
+      'unknown',
+      'Codex'
+    ],
+    [
+      'Wrapper | OC | Review Codex - DeepSeek Build',
+      null,
+      'opencode',
+      'claude',
+      'opencode',
+      'OpenCode'
+    ],
+    ['user@host: ~/code | ⠋ OC | ses_123', null, 'opencode', 'claude', 'opencode', 'OpenCode'],
+    [
+      `${'x | '.repeat(9)}Codex: fix | a | b | c | d | e | f | g | Claude Code`,
+      null,
+      'codex',
+      'codex',
+      'codex',
+      'Codex'
+    ],
+    [
+      `${'x | '.repeat(8)}⠋ fix | a | b | c | d | e | f | g | Codex`,
+      null,
+      null,
+      'claude',
+      'claude',
+      'Claude'
+    ],
+    ['✦ session | Thinking - grok', null, null, 'claude', 'claude', 'Claude'],
+    ['▲ session | Action Required - grok', null, null, 'claude', 'claude', 'Claude'],
+    ['✦ session | Thinking', '✦ Qoder CLI', 'qoder', 'qoder', 'unknown', 'Qoder CLI'],
+    [
+      '◇ Qoder CLI CN (Codex | Claude Code)',
+      '◇ Qoder CLI CN',
+      'qoder-cn',
+      'qoder-cn',
+      'unknown',
+      'Qoder CLI CN'
+    ],
+    ['⠋ - Codex: fix parser - grok', '⠋ Grok', 'grok', 'grok', 'grok', 'Grok']
   ])(
-    'projects actual OSC %s into the shared desktop/mobile icon and visible row',
-    (raw, normalized, agent, label) => {
+    'projects actual untruncated OSC %s into the shared icon and visible row',
+    (raw, normalized, strict, agent, rowAgent, label) => {
       let title = ''
+      let observed = ''
       const tracker = createTerminalTitleTracker({
-        onTitle: (emitted) => {
+        onTitle: (emitted, actualRaw) => {
           title = emitted
+          observed = actualRaw
         }
       })
       try {
+        expect(raw.length).toBeLessThanOrEqual(1024)
         tracker.handleChunk(`\x1b]0;${raw}\x07`)
-        expect(title).toBe(normalized)
+        expect(observed).toBe(raw)
+        expect(title).toBe(normalized ?? raw)
+        expect(resolveExplicitTerminalTitleAgentType(title)).toBe(strict)
         expect(
           resolveTabAgentFromSignalSnapshot({
             title,
@@ -86,6 +155,15 @@ describe('buildTitleDerivedAgentRows', () => {
             launchAgent: 'claude'
           })
         ).toBe(agent)
+        if (strict === 'opencode') {
+          expect(resolveTabAgentFromSignalSnapshot({ title, hookAgent: null })).toBe('opencode')
+          expect(
+            resolveTabAgentFromSignalSnapshot({ title, hookAgent: null, launchAgent: 'claude' })
+          ).toBe(raw.startsWith('x | ') ? 'claude' : 'opencode')
+        }
+        expect(
+          resolveTabAgentFromSignalSnapshot({ title, hookAgent: 'claude', launchAgent: 'claude' })
+        ).toBe('claude')
         const rows = buildWorktreeAgentRows({
           tabs: [makeTab('tab-1', { title, launchAgent: 'claude' })],
           entries: [],
@@ -96,7 +174,7 @@ describe('buildTitleDerivedAgentRows', () => {
           now: 2000
         })
         expect(rows).toHaveLength(1)
-        expect(rows[0]).toMatchObject({ agentType: agent, entry: { prompt: label } })
+        expect(rows[0]).toMatchObject({ agentType: rowAgent, entry: { prompt: label } })
       } finally {
         tracker.dispose()
       }

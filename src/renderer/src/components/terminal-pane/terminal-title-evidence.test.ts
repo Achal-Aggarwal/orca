@@ -8,6 +8,8 @@ import { resolvePaneTitleDecision } from './terminal-title-evidence'
 import { installTitleSpawnBell } from './pty-connection/title-spawn-bell'
 import { clearStaleAgentTabTitleOnConfirmedShell } from './pty-connection/confirmed-shell-agent-title'
 
+import { isNormalizedAgentTitleStamp } from '../../../../shared/agent-title-status'
+
 vi.mock('@/store', () => ({
   useAppStore: {
     getState: () => ({
@@ -32,22 +34,75 @@ describe('resolvePaneTitleDecision', () => {
       '⠋ Codex: fix Gemini terminal behavior'
     ],
     ['✦ Gemini CLI', '✦ Analyze Codex', '✦ Gemini CLI'],
+    ['✦ Qoder CLI', '✦ session | Thinking - grok', '✦ session | Thinking - grok'],
+    ['▲ Qoder CLI', '▲ session | Action Required - grok', '▲ session | Action Required - grok'],
+    ['◇ Qoder CLI CN', '◇ Qoder CLI CN | Idle - grok', '◇ Qoder CLI CN | Idle - grok'],
+    ['✦ Qoder CLI CN', '✦ Qoder CLI CN (Codex | Claude Code)', '✦ Qoder CLI CN'],
+    ['⠋ Grok', '⠋ Codex: fix parser - grok', '⠋ Codex: fix parser - grok'],
+    ['⠋ Grok', '⠋ - Codex: fix parser - grok', '⠋ Grok'],
     // Normalized-only history cannot recover the original task; title-only reuse remains supported.
     ['✦ Gemini CLI', '✦ Gemini CLI', '✦ Gemini CLI']
+  ])('corrects only disproved old stamps (%s, %s)', (normalizedTitle, rawTitle, displayTitle) => {
+    const decision = resolvePaneTitleDecision({
+      normalizedTitle,
+      rawTitle,
+      displayOwnerAgentType: 'claude',
+      rendererOwnerAgentType: null,
+      userGpuMode: 'auto'
+    })
+    expect(decision.displayTitle).toBe(displayTitle)
+    expect(decision.rawTitle).toBe(rawTitle)
+  })
+
+  it.each([
+    '✦ Gemini CLI',
+    '✋ Gemini CLI',
+    '◇ Gemini CLI',
+    '✦ Qoder CLI',
+    '▲ Qoder CLI',
+    '◇ Qoder CLI',
+    '✦ Qoder CLI CN',
+    '▲ Qoder CLI CN',
+    '◇ Qoder CLI CN',
+    '⠋ Grok'
   ])(
-    'corrects only disproved old Gemini stamps (%s, %s)',
-    (normalizedTitle, rawTitle, displayTitle) => {
-      const decision = resolvePaneTitleDecision({
-        normalizedTitle,
-        rawTitle,
-        displayOwnerAgentType: 'claude',
-        rendererOwnerAgentType: null,
-        userGpuMode: 'auto'
-      })
-      expect(decision.displayTitle).toBe(displayTitle)
-      expect(decision.rawTitle).toBe(rawTitle)
+    'corrects actual raw disproof and preserves normalized-only history for exact output %j',
+    (stamp) => {
+      expect(isNormalizedAgentTitleStamp(stamp)).toBe(true)
+      const decide = (rawTitle: string) =>
+        resolvePaneTitleDecision({
+          normalizedTitle: stamp,
+          rawTitle,
+          displayOwnerAgentType: null,
+          rendererOwnerAgentType: null,
+          userGpuMode: 'auto'
+        })
+      const raw = '⠋ Codex: repair parser'
+      expect(decide(raw)).toEqual(
+        resolvePaneTitleDecision({
+          normalizedTitle: raw,
+          rawTitle: raw,
+          displayOwnerAgentType: null,
+          rendererOwnerAgentType: null,
+          userGpuMode: 'auto'
+        })
+      )
+      expect(decide(stamp).displayTitle).toBe(stamp)
     }
   )
+
+  it.each([
+    'Gemini',
+    'gemini cli',
+    'Qoder CLI',
+    'Grok',
+    '⠴ Grok',
+    'Pi ready',
+    'OMP ready',
+    '✦ Qoder CLI extra'
+  ])('does not treat loose or owner-shaped text %j as an exact output', (title) => {
+    expect(isNormalizedAgentTitleStamp(title)).toBe(false)
+  })
 
   it('keeps current timer facts cleared with equal raw/display input and existing provenance', async () => {
     vi.useFakeTimers()

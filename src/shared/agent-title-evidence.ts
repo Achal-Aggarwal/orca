@@ -7,10 +7,19 @@ import {
   containsAgentSpinnerGlyph,
   isClaudeIdentityFrameSegment,
   isClaudeManagementTitle,
-  isCursorNativeAgentTitle
+  isCursorNativeAgentTitle,
+  isGrokRotatingWorkingTitle
 } from './agent-title-core'
-import { isOpenCodeNativeTitle } from './opencode-terminal-title'
-import { isDeepSeekBuildTerminalTitle } from './dsb-terminal-title'
+import {
+  isOpenCodeNativeTitle,
+  isOpenCodeNativeTitleHeader,
+  isDirectOpenCodeNativeTitle
+} from './opencode-terminal-title'
+import {
+  hasDeepSeekBuildWorkingTitlePrefix,
+  isDeepSeekBuildWorkingTitle,
+  isDeepSeekBuildTerminalTitle
+} from './dsb-terminal-title'
 import { stripLeadingAgentTitleDecorationOrEmpty } from './agent-title-decoration'
 import {
   getPiCompatibleSyntheticAgentLabel,
@@ -18,7 +27,7 @@ import {
   isLegacyPiCompatibleTitle
 } from './pi-compatible-synthetic-title'
 import { isDshTerminalTitle } from './dsh-terminal-title'
-import { isQoderTerminalTitle } from './qoder-terminal-title'
+import { hasQoderTitleLabelPayload, isQoderTerminalTitle } from './qoder-terminal-title'
 import {
   SYNTHETIC_AGENT_TITLE_AGENTS,
   SYNTHETIC_AGENT_TITLE_PROFILES
@@ -26,6 +35,8 @@ import {
 import type { TerminalAgent } from './terminal-agent'
 import {
   agentForNativeFrame,
+  agentForNamedTitlePrefix,
+  isNeutralAgentTitleWrapper,
   agentForOwnerSuffix,
   agentForShellCommand,
   agentForWholeTitle,
@@ -186,63 +197,84 @@ function collectAnchoredNames(
   return [...anchored]
 }
 
-/** An envelope consumes its payload before any inner wrapper or name can be interpreted. */
-function collectObserverAnchors(segments: readonly string[]): TerminalAgent[] {
+/** Only neutral headers advance; payload pipes never become candidates. */
+function observerFrameStart(title: string): number {
+  let start = 0
+  let boundary = title.indexOf(WRAPPER_SEPARATOR)
+  while (boundary >= 0) {
+    // Retain the separator's first space for whitespace-delimited native brands.
+    const header = title.slice(start, boundary + 1)
+    const undecorated = stripLeadingAgentTitleDecorationOrEmpty(header).trim()
+    const neutralWrapper = isNeutralAgentTitleWrapper(header)
+    if (
+      isOpenCodeNativeTitleHeader(header) ||
+      hasQoderTitleLabelPayload(header) ||
+      undecorated.startsWith('🐋') ||
+      getPiCompatibleTitleBrand(header) ||
+      isLegacyPiCompatibleTitle(header) ||
+      hasDeepSeekBuildWorkingTitlePrefix(header) ||
+      agentForNamedTitlePrefix(header) ||
+      ANTIGRAVITY_MODEL_TITLE_RE.test(undecorated) ||
+      !neutralWrapper
+    ) {
+      break
+    }
+    start = boundary + WRAPPER_SEPARATOR.length
+    boundary = title.indexOf(WRAPPER_SEPARATOR, start)
+  }
+  return start
+}
+
+/** Evaluate the sole unconsumed remainder, keeping the independent final owner suffix. */
+function collectObserverAnchors(title: string): TerminalAgent[] {
   const anchored = new Set<TerminalAgent>()
-  const suffix = OWNER_SUFFIX_RE.exec(segments[0])
+  const suffix = OWNER_SUFFIX_RE.exec(title)
   const suffixAgent = suffix ? agentForOwnerSuffix(suffix[1]) : null
   if (suffixAgent) {
     anchored.add(suffixAgent)
   }
-  // Inspect the outermost available frame first, retaining the existing bounded innermost window.
-  const ordered = [segments[0], ...segments.slice(1).toReversed()]
-  for (const segment of ordered) {
-    const undecorated = stripLeadingAgentTitleDecorationOrEmpty(segment).trim()
-    const piBrand = getPiCompatibleTitleBrand(segment)
-    const genericClaude =
-      segment === CLAUDE_IDLE ||
-      segment.startsWith(`${CLAUDE_IDLE} `) ||
-      segment.startsWith('. ') ||
-      segment.startsWith('* ')
-    let agent: TerminalAgent | null
-    if (
-      !genericClaude &&
-      isOpenCodeNativeTitle(segment) &&
-      (undecorated.startsWith('OC | ') || segment.startsWith('▣ OC | '))
-    ) {
-      agent = 'opencode'
-    } else if (isDshTerminalTitle(segment) && undecorated.startsWith('🐋')) {
-      agent = 'dsh'
-    } else if (isQoderTerminalTitle(segment)) {
-      agent = segment.includes('Qoder CLI CN') ? 'qoder-cn' : 'qoder'
-    } else if (piBrand || isLegacyPiCompatibleTitle(segment)) {
-      agent = piBrand === 'OMP' ? 'omp' : 'pi'
-    } else if (GEMINI_GLYPHS.some((glyph) => segment.startsWith(glyph))) {
-      agent = 'gemini'
-    } else if (genericClaude) {
-      agent = agentForNativeFrame(segment) === 'claude' ? 'claude' : null
-    } else {
-      agent =
-        (isDeepSeekBuildTerminalTitle(segment) ? 'dsb' : null) ??
-        agentForNativeFrame(segment) ??
-        agentForWholeTitle(segment) ??
-        agentForSyntheticTitle(segment) ??
-        (ANTIGRAVITY_MODEL_TITLE_RE.test(undecorated) ? 'antigravity' : null) ??
-        (getPiCompatibleSyntheticAgentLabel(segment) === 'OMP'
-          ? 'omp'
-          : getPiCompatibleSyntheticAgentLabel(segment) === 'Pi'
-            ? 'pi'
-            : null) ??
-        (!suffixAgent ? agentForShellCommand(segment) : null)
-    }
-    if (agent) {
-      anchored.add(agent)
-      break
-    }
-    // A decorated task or colon payload is not an outer multiplexer wrapper.
-    if (genericClaude || undecorated !== segment.trim() || /^[^|]*:/.test(segment)) {
-      break
-    }
+  const segment = title.slice(observerFrameStart(title)).trim()
+  const undecorated = stripLeadingAgentTitleDecorationOrEmpty(segment).trim()
+  const nativeOpenCode = isOpenCodeNativeTitle(segment)
+  const piBrand = getPiCompatibleTitleBrand(segment)
+  const genericClaude =
+    segment === CLAUDE_IDLE ||
+    segment.startsWith(`${CLAUDE_IDLE} `) ||
+    segment.startsWith('. ') ||
+    segment.startsWith('* ')
+  let agent: TerminalAgent | null
+  if (!genericClaude && nativeOpenCode && isDirectOpenCodeNativeTitle(segment)) {
+    agent = 'opencode'
+  } else if (isDshTerminalTitle(segment) && undecorated.startsWith('🐋')) {
+    agent = 'dsh'
+  } else if (isQoderTerminalTitle(segment)) {
+    agent = segment.includes('Qoder CLI CN') ? 'qoder-cn' : 'qoder'
+  } else if (piBrand || isLegacyPiCompatibleTitle(segment)) {
+    agent = piBrand === 'OMP' ? 'omp' : 'pi'
+  } else if (GEMINI_GLYPHS.some((glyph) => segment.startsWith(glyph))) {
+    agent = 'gemini'
+  } else if (genericClaude) {
+    agent = agentForNativeFrame(segment) === 'claude' ? 'claude' : null
+  } else {
+    agent =
+      (isGrokRotatingWorkingTitle(segment) ? 'grok' : null) ??
+      (isDeepSeekBuildWorkingTitle(segment) ||
+      (!segment.includes('|') && isDeepSeekBuildTerminalTitle(segment))
+        ? 'dsb'
+        : null) ??
+      agentForNativeFrame(segment) ??
+      agentForWholeTitle(segment) ??
+      agentForSyntheticTitle(segment) ??
+      (ANTIGRAVITY_MODEL_TITLE_RE.test(undecorated) ? 'antigravity' : null) ??
+      (getPiCompatibleSyntheticAgentLabel(segment) === 'OMP'
+        ? 'omp'
+        : getPiCompatibleSyntheticAgentLabel(segment) === 'Pi'
+          ? 'pi'
+          : null) ??
+      (!suffixAgent ? agentForShellCommand(segment) : null)
+  }
+  if (agent) {
+    anchored.add(agent)
   }
   return [...anchored]
 }
@@ -258,7 +290,7 @@ function collectTitleEvidence(title: string, nativeFrames: boolean): AgentTitleE
   const segments = getEvidenceTitleSegments(title)
   const vendorMarkers = collectVendorMarkers(segments)
   const anchoredNames = nativeFrames
-    ? collectObserverAnchors(segments)
+    ? collectObserverAnchors(title)
     : collectAnchoredNames(segments, vendorMarkers)
   const anchoredSet = new Set(anchoredNames)
   const anchoredLabelNames = namesConsumedByAnchoredLabels(segments, anchoredSet)
