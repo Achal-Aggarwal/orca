@@ -24,8 +24,8 @@ function replaceSessionFileName(filePath: string, fileName: string): string {
 
 type LogFileResolver = (filePath: string) => string | null
 
-const jsonlLog: LogFileResolver = (filePath) => (filePath.endsWith('.jsonl') ? filePath : null)
-const jsonLog: LogFileResolver = (filePath) => (filePath.endsWith('.json') ? filePath : null)
+const jsonlLog: LogFileResolver = (filePath) => (/\.jsonl$/i.test(filePath) ? filePath : null)
+const jsonLog: LogFileResolver = (filePath) => (/\.json$/i.test(filePath) ? filePath : null)
 
 // Storage locators may name metadata or a shared database, rather than one conversation's log.
 const logFileResolvers = {

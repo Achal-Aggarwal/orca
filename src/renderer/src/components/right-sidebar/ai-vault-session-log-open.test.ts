@@ -85,6 +85,21 @@ describe('openAiVaultSessionLogInOrca', () => {
     expect(toastErrorMock).not.toHaveBeenCalled()
   })
 
+  it.each<[AiVaultAgent, string]>([
+    ['claude', String.raw`\\wsl.localhost\Ubuntu\home\User\Session.JsOnL`],
+    ['jcode', '/home/User/.jcode/sessions/session_123.JsOn']
+  ])('opens the accepted %s extension without changing path case', async (agent, filePath) => {
+    const state = makeState()
+    getStateMock.mockReturnValue(state)
+
+    await openAiVaultSessionLogInOrca({ agent, filePath, executionHostId: 'local' })
+
+    expect(state.openFile).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ filePath, relativePath: filePath, readOnly: true, liveTail: true }),
+      expect.objectContaining({ suppressActiveRuntimeFallback: true })
+    )
+  })
+
   it('withholds blank, remote, and synthetic paths', async () => {
     const state = makeState()
     getStateMock.mockReturnValue(state)
