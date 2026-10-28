@@ -24,6 +24,15 @@ type PlatformProbeOutcome =
   | { kind: 'unparsed'; output: string }
   | { kind: 'failed'; error: unknown }
 
+/** The POSIX platform probe, for callers that fold it into a command of their own. */
+export const UNAME_PLATFORM_PROBE_COMMAND = `printf '\\n%s ' '${PLATFORM_PROBE_MARKER}'; uname -sm`
+
+/** The platform a probe's output proves; null for unsupported, unparsed or startup-noise output. */
+export function remoteHostPlatformFromUnameProbe(output: string): RemoteHostPlatform | null {
+  const outcome = parseRemotePlatformOutput(output)
+  return outcome.kind === 'detected' ? getRemoteHostPlatform(outcome.platform) : null
+}
+
 export async function detectRemoteHostPlatform(
   conn: RemoteInstallTransport,
   options?: { signal?: AbortSignal }
@@ -127,10 +136,9 @@ async function detectUnamePlatform(
 ): Promise<PlatformProbeOutcome> {
   try {
     // Separate marker from startup output that may omit its trailing newline.
-    const command = `printf '\\n%s ' '${PLATFORM_PROBE_MARKER}'; uname -sm`
     const output = signal
-      ? await execCommand(conn, command, { signal })
-      : await execCommand(conn, command)
+      ? await execCommand(conn, UNAME_PLATFORM_PROBE_COMMAND, { signal })
+      : await execCommand(conn, UNAME_PLATFORM_PROBE_COMMAND)
     return parseRemotePlatformOutput(output)
   } catch (error) {
     signal?.throwIfAborted()

@@ -108,7 +108,7 @@ function transport(target: WslOrcadHostTarget): OrcadHostTransport {
 
 function launch(kernel = '5.15.167.4-microsoft-standard-WSL2', options = {}) {
   mocks.exec.mockImplementation(async (_conn: unknown, command: string) => {
-    if (command === 'uname -r') {
+    if (command.includes('uname -r')) {
       mocks.steps.push('uname')
       return `${kernel}\n`
     }

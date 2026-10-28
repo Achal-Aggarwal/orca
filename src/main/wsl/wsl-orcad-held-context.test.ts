@@ -4,10 +4,18 @@ import type { WslDistroHolder } from './wsl-distro-holder'
 import type { WslOrcadHostTarget } from './wsl-orcad-host-target'
 
 const mocks = vi.hoisted(() => {
-  const state: { spawned: string[]; refused: string[]; probeStep: (() => void) | null } = {
+  const state: {
+    spawned: string[]
+    refused: string[]
+    probeStep: (() => void) | null
+    facts: string
+    contextArgs: unknown[]
+  } = {
     spawned: [],
     refused: [],
-    probeStep: null
+    probeStep: null,
+    facts: '',
+    contextArgs: []
   }
   return state
 })
@@ -16,25 +24,28 @@ const mocks = vi.hoisted(() => {
 vi.mock('../ssh/remote-exec/remote-exec-command', () => ({
   execCommand: vi.fn(
     async (_conn: unknown, command: string, options?: { signal?: AbortSignal }) => {
+      const label = command.includes('uname -r') ? 'host-facts' : command
       if (options?.signal?.aborted) {
-        mocks.refused.push(command)
+        mocks.refused.push(label)
         throw options.signal.reason
       }
-      mocks.spawned.push(command)
-      return command === 'uname -r' ? '5.15.167.4-microsoft-standard-WSL2\n' : ''
+      mocks.spawned.push(label)
+      return label === 'host-facts' ? mocks.facts : ''
     }
   )
 }))
-// Like the real context resolver: several probes in series, each passed the caller's signal.
+// Like the real context resolver given a known platform and home: its remaining probes in series.
 vi.mock('../managed-server/install/orcad-remote-context', async () => {
   const { execCommand } = await import('../ssh/remote-exec/remote-exec-command')
   return {
     resolveOrcadRemoteContext: async (
       _target: unknown,
       conn: OrcadHostTransport,
-      signal?: AbortSignal
+      signal?: AbortSignal,
+      ...known: unknown[]
     ) => {
-      for (const command of ['uname -sm', 'echo $HOME', 'ldd --version']) {
+      mocks.contextArgs = known
+      for (const command of ['ldd --version', 'cat orcad-active.json']) {
         await new Promise<void>((resolve) => {
           mocks.probeStep = resolve
         })
@@ -68,6 +79,9 @@ beforeEach(() => {
   mocks.spawned.length = 0
   mocks.refused.length = 0
   mocks.probeStep = null
+  mocks.facts =
+    '5.15.167.4-microsoft-standard-WSL2\n/home/u\n\n__ORCA_REMOTE_PLATFORM__ Linux x86_64\n'
+  mocks.contextArgs = []
 })
 
 describe('holdWslDistroWithContext', () => {
@@ -90,14 +104,14 @@ describe('holdWslDistroWithContext', () => {
     const held = holdWslDistroWithContext('U', target, conn, hold, undefined).finally(() => {
       settled = true
     })
-    for (let step = 0; step < 3; step++) {
+    for (let step = 0; step < 2; step++) {
       await vi.waitFor(() => expect(mocks.probeStep).not.toBeNull())
       const next = mocks.probeStep
       mocks.probeStep = null
       next?.()
     }
     await vi.waitFor(() =>
-      expect(mocks.spawned).toEqual(['uname -r', 'uname -sm', 'echo $HOME', 'ldd --version'])
+      expect(mocks.spawned).toEqual(['host-facts', 'ldd --version', 'cat orcad-active.json'])
     )
     // The deploy awaits this before recovery, which may launch orcad.
     expect(settled).toBe(false)
@@ -124,14 +138,69 @@ describe('holdWslDistroWithContext', () => {
     )
     await vi.waitFor(() => expect(mocks.probeStep).not.toBeNull())
     mocks.probeStep?.()
-    await vi.waitFor(() => expect(mocks.spawned).toEqual(['uname -r', 'uname -sm']))
+    await vi.waitFor(() => expect(mocks.spawned).toEqual(['host-facts', 'ldd --version']))
 
     failHold()
     await expect(held).rejects.toThrow('holder exited')
     mocks.probeStep?.()
-    await vi.waitFor(() => expect(mocks.refused).toEqual(['echo $HOME']))
+    await vi.waitFor(() => expect(mocks.refused).toEqual(['cat orcad-active.json']))
 
-    expect(mocks.spawned).toEqual(['uname -r', 'uname -sm'])
+    expect(mocks.spawned).toEqual(['host-facts', 'ldd --version'])
+  })
+})
+
+describe('the folded host facts probe', () => {
+  function heldNow(): WslDistroHolder {
+    return {
+      ...holderRejectingOn(Promise.resolve()),
+      ensureHeld: vi.fn(async (distro: string) => ({
+        outcome: 'adopted' as const,
+        record: { version: 1 as const, distro, pid: 9, creationTimeMs: 1, startedAtMs: 1 }
+      }))
+    }
+  }
+
+  async function resolveWith(facts: string) {
+    mocks.facts = facts
+    const held = holdWslDistroWithContext('U', target, conn, heldNow(), undefined)
+    for (let step = 0; step < 2; step++) {
+      await vi.waitFor(() => expect(mocks.probeStep).not.toBeNull())
+      const next = mocks.probeStep
+      mocks.probeStep = null
+      next?.()
+    }
+    return held
+  }
+
+  it('hands the context the platform and login home it read in the same exec', async () => {
+    await resolveWith(mocks.facts)
+
+    expect(mocks.spawned.filter((label) => label === 'host-facts')).toHaveLength(1)
+    expect(mocks.contextArgs).toEqual([
+      expect.objectContaining({ os: 'linux', arch: 'x64' }),
+      '/home/u'
+    ])
+  })
+
+  it('leaves the context to probe what the facts did not prove', async () => {
+    await resolveWith(
+      '5.15.167.4-microsoft-standard-WSL2\n\n\n__ORCA_REMOTE_PLATFORM__ Linux sparc\n'
+    )
+
+    expect(mocks.contextArgs).toEqual([undefined, undefined])
+  })
+
+  it('refuses WSL 1 from the kernel line before holding or probing', async () => {
+    mocks.facts = '4.4.0-19041-Microsoft\n/home/u\n\n__ORCA_REMOTE_PLATFORM__ Linux x86_64\n'
+    const holder = heldNow()
+
+    await expect(
+      holdWslDistroWithContext('U', target, conn, holder, undefined)
+    ).rejects.toMatchObject({
+      name: 'OrcadHostUnsupportedError'
+    })
+    expect(holder.ensureHeld).not.toHaveBeenCalled()
+    expect(mocks.spawned).toEqual(['host-facts'])
   })
 })
 
