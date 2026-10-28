@@ -1,6 +1,9 @@
-import { openLinearIssueRead, type LinearIssueData } from './linear/linear-issue-publication'
+import {
+  openLinearIssueRead,
+  type LinearIssueData,
+  type LinearIssueRead
+} from './linear/linear-issue-publication'
 import { getLinearSourceScope } from './linear/linear-slice-scope'
-import type { LinearIssueRead } from './linear/linear-issue-publication'
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { AppState } from '../types'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
