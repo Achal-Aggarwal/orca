@@ -354,11 +354,12 @@ describe('remote completion repairs saved spinner titles', () => {
     })
     try {
       const state = restoredState()
-      state.runtimePaneTitlesByTabId[TAB_ID] = {
+      const clientSplitTitles = {
         1: '⠋ Pi - saved session',
         2: '⠋ Pi',
         [THIRD_LEAF_ID]: '⠋ Pi'
       }
+      state.runtimePaneTitlesByTabId[TAB_ID] = clientSplitTitles
       const patch = applyWebSessionTabsSnapshot(
         state,
         makeSnapshot([hostPane()], { snapshotVersion: 2 }),

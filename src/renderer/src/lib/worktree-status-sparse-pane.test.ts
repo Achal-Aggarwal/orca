@@ -29,12 +29,13 @@ describe('live numeric slots after closing an earlier split pane', () => {
 
 describe('pane titles from removed panes', () => {
   it('ignores a removed durable leaf spinner and falls back to the idle tab title', () => {
+    const removedLeafTitles = { [LEAF_C]: '⠋ Codex' }
     expect(
       getWorktreeStatus(
         [{ id: 'tab', title: 'zsh', launchAgent: 'codex' }],
         [],
         { tab: ['pty-a'] },
-        { tab: { [LEAF_C]: '⠋ Codex' } },
+        { tab: removedLeafTitles },
         { terminalLayoutRootsByTabId: { tab: { type: 'leaf', leafId: LEAF_A } } }
       )
     ).not.toBe('working')

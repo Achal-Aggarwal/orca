@@ -97,9 +97,9 @@ export function isFencedClientAgentStatus(
 export function clientAgentStatusFencesHost(
   paneKey: string,
   existing: AgentStatusEntry | undefined,
-  hostEntry: AgentStatusEntry | undefined,
+  hostEntry: AgentStatusEntry | null | undefined,
   now: number
-): existing is AgentStatusEntry {
+): boolean {
   return (
     isFencedClientAgentStatus(paneKey, existing, now) &&
     !(hostEntry && hostAgentStatusPiercesClientAuthority(hostEntry))
