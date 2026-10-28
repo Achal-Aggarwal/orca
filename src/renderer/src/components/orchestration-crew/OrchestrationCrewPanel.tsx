@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -27,6 +27,8 @@ import type { RuntimeClientTarget } from '../../../../shared/runtime-client-targ
 import { useOrchestrationCrew } from '../native-chat/use-orchestration-crew'
 import { openOrchestrationCrewAgent } from '@/lib/open-agent-message-sender'
 import { cn } from '@/lib/utils'
+import { hasVisibleOverlay } from '@/lib/visible-overlay'
+import { isImeOwnedKeyboardEvent } from '@/lib/ime-composition-keyboard-event'
 
 function Avatar({ row }: { row: OrchestrationCrewRow }) {
   return (
@@ -97,6 +99,7 @@ function CrewPanelContent({
   snapshot
 }: PanelProps & { snapshot: OrchestrationCrewSnapshot }): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
   const tab = useRef<HTMLButtonElement>(null)
   const collapse = useRef<HTMLButtonElement>(null)
   const restore = useRef(false)
@@ -109,10 +112,42 @@ function CrewPanelContent({
   }, [open])
   const { managedBy, managing, talkingWith } = snapshot.sections
   const all = [...managedBy, ...managing, ...talkingWith]
-  if (snapshot.status !== 'ok' || all.length === 0) {
+  const visible = snapshot.status === 'ok' && all.length > 0
+  useEffect(() => {
+    const pane =
+      root.current?.closest<HTMLElement>('[data-native-chat-root], .pane') ?? root.current
+    if (!open || !visible || !pane) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        isImeOwnedKeyboardEvent(event) ||
+        hasVisibleOverlay()
+      ) {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      restore.current = true
+      setOpen(false)
+    }
+    pane.addEventListener('keydown', onKeyDown, true)
+    return () => pane.removeEventListener('keydown', onKeyDown, true)
+  }, [open, visible])
+  if (!visible) {
     return null
   }
-  const pending = all.filter((row) => row.pendingQuestion).length
+  const seen = new Set<string>()
+  const summary = all.filter((row) => {
+    if (seen.has(row.partyKey)) {
+      return false
+    }
+    seen.add(row.partyKey)
+    return true
+  })
+  const pending = new Set(all.filter((row) => row.pendingQuestion).map((row) => row.partyKey)).size
   const label = managing.length
     ? `${managing.length} workers`
     : managedBy.length
@@ -129,18 +164,15 @@ function CrewPanelContent({
   ] as const
   return (
     <div
+      ref={root}
       data-orchestration-crew
       data-pane-prevent-terminal-focus
       data-native-chat-typing-redirect-ignore="true"
-      className="pointer-events-auto absolute inset-y-0 right-0 z-30 text-foreground"
+      className="pointer-events-auto absolute bottom-0 top-(--orca-pane-title-height) right-0 z-30 text-foreground"
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         event.stopPropagation()
-        if (event.key === 'Escape' && open) {
-          event.preventDefault()
-          changeOpen(false)
-        }
       }}
     >
       {open ? (
@@ -174,38 +206,47 @@ function CrewPanelContent({
           </div>
         </aside>
       ) : (
-        <Button
-          ref={tab}
-          variant="outline"
-          size="xs"
-          className="absolute right-0 top-2 max-w-80 rounded-r-none bg-card text-card-foreground"
-          aria-label={`Show crew: ${label}`}
-          aria-expanded={false}
-          onClick={() => changeOpen(true)}
-        >
-          <PanelRight />
-          <span className="flex -space-x-2">
-            {all.slice(0, 3).map((row) => (
-              <Avatar key={row.partyKey} row={row} />
-            ))}
-          </span>
-          <span className="truncate">{label}</span>
-          <span className="flex gap-0.5">
-            {managing.map((row) => (
-              <Dot key={row.partyKey} row={row} />
-            ))}
-          </span>
-          {pending > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-status-warning">
-                  {pending}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>{pending} waiting for you</TooltipContent>
-            </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              ref={tab}
+              variant="outline"
+              size="xs"
+              className="absolute right-0 top-2 max-w-80 rounded-r-none bg-card text-card-foreground"
+              aria-label={`Show crew: ${label}`}
+              aria-expanded={false}
+              onClick={() => changeOpen(true)}
+            >
+              <PanelRight />
+              <span className="flex -space-x-2">
+                {summary.slice(0, 3).map((row) => (
+                  <Avatar key={row.partyKey} row={row} />
+                ))}
+              </span>
+              <span className="truncate">{label}</span>
+              <span className="flex gap-0.5">
+                {managing.map((row) => (
+                  <Dot key={row.partyKey} row={row} />
+                ))}
+              </span>
+              {pending > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-status-warning">
+                      {pending}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>{pending} waiting for you</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </Button>
+          </TooltipTrigger>
+          {managedBy.length > 0 ? (
+            <TooltipContent>
+              Managed by {managedBy.map((row) => row.label).join(', ')}
+            </TooltipContent>
           ) : null}
-        </Button>
+        </Tooltip>
       )}
     </div>
   )

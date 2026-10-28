@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -87,8 +87,14 @@ it('keeps keyboard/body disclosure, chevron, Open, Copy, Escape and collapse ind
   await user.keyboard('{Enter}')
   expect(rig.open).toHaveBeenCalledTimes(2)
   expect(rig.open).toHaveBeenLastCalledWith(worker, host)
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
   expect(body).toHaveAttribute('aria-expanded', 'true')
   screen.getByRole('button', { name: 'Collapse crew panel' }).focus()
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Collapse crew panel')
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  expect(screen.getByRole('complementary', { name: 'Agent crew' })).toBeInTheDocument()
+  body.focus()
   await user.keyboard('{Escape}')
   expect(screen.queryByRole('complementary', { name: 'Agent crew' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Show crew: 1 workers' })).toHaveFocus()
@@ -107,4 +113,66 @@ it('starts pending questions expanded without navigating or copying', async () =
   expect(screen.queryByText('The result is ready.')).not.toBeInTheDocument()
   expect(rig.open).not.toHaveBeenCalled()
   expect(rig.copy).not.toHaveBeenCalled()
+})
+
+it('keeps the stable first manager label, names every manager in the tooltip and expands every manager', async () => {
+  const user = userEvent.setup()
+  const first = {
+    ...worker,
+    role: 'manager' as const,
+    partyKey: 'host-a:manager',
+    label: 'First manager'
+  }
+  const second = {
+    ...worker,
+    role: 'manager' as const,
+    partyKey: 'host-b:manager',
+    label: 'Other manager'
+  }
+  rig.snapshot = {
+    ...emptyCrew('ok'),
+    sections: { managedBy: [first, second], managing: [], talkingWith: [] }
+  }
+  render(
+    <TooltipProvider delayDuration={0}>
+      <OrchestrationCrewPanel target={host} party="term_worker" />
+    </TooltipProvider>
+  )
+  const tab = screen.getByRole('button', { name: 'Show crew: Managed by First manager' })
+  await user.hover(tab)
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(
+    'Managed by First manager, Other manager'
+  )
+  await user.click(tab)
+  expect(screen.getByRole('region', { name: 'Managed by' })).toHaveTextContent('First manager')
+  expect(screen.getByRole('region', { name: 'Managed by' })).toHaveTextContent('Other manager')
+})
+
+it('shows one collapsed avatar and question per party with reverse-role relationships while keeping both sections', async () => {
+  const user = userEvent.setup()
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const question = { preview: 'Which option?', at: '2026-10-28T01:00:00Z' }
+    const manager = { ...worker, role: 'manager' as const, pendingQuestion: question }
+    const reverseWorker = { ...worker, pendingQuestion: question }
+    const peer = { ...worker, partyKey: 'other-worker', label: 'Other worker' }
+    rig.snapshot = {
+      ...emptyCrew('ok'),
+      sections: { managedBy: [manager], managing: [reverseWorker, peer], talkingWith: [] }
+    }
+    render(
+      <TooltipProvider delayDuration={0}>
+        <OrchestrationCrewPanel target={host} party="term_coordinator" />
+      </TooltipProvider>
+    )
+    const tab = screen.getByRole('button', { name: 'Show crew: 2 workers' })
+    expect(tab.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2)
+    expect(error).not.toHaveBeenCalled()
+    expect(within(tab).getByText('1')).toBeInTheDocument()
+    await user.click(tab)
+    expect(screen.getByRole('region', { name: 'Managed by' })).toHaveTextContent('Worker')
+    expect(screen.getByRole('region', { name: 'Managing' })).toHaveTextContent('Worker')
+  } finally {
+    error.mockRestore()
+  }
 })
