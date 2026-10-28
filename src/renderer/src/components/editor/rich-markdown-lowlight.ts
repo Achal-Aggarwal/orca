@@ -75,43 +75,34 @@ function findCodeBlocksNearRanges(
   name: string,
   ranges: DocumentRange[]
 ): CodeBlockAt[] {
-  const blocks = new Map<number, ProseMirrorNode>()
-  const addResolvedBlocks = (position: number): void => {
-    // Why: zero-width inserts and deletes have no nodesBetween span.
-    const $position = doc.resolve(Math.max(0, Math.min(doc.content.size, position)))
-    for (let depth = $position.depth; depth > 0; depth -= 1) {
-      const node = $position.node(depth)
-      if (node.type.name === name) {
-        blocks.set($position.before(depth), node)
-        break
-      }
-    }
-    if ($position.nodeBefore?.type.name === name) {
-      blocks.set($position.pos - $position.nodeBefore.nodeSize, $position.nodeBefore)
-    }
-    if ($position.nodeAfter?.type.name === name) {
-      blocks.set($position.pos, $position.nodeAfter)
-    }
+  const normalized = ranges
+    .map((range) => {
+      const from = Math.max(0, Math.min(doc.content.size, range.from))
+      return { from, to: Math.max(from, Math.min(doc.content.size, range.to)) }
+    })
+    .sort((left, right) => left.from - right.from)
+  const first = normalized[0]
+  if (!first) {
+    return []
   }
-
-  for (const range of ranges) {
-    const from = Math.max(0, Math.min(doc.content.size, range.from))
-    const to = Math.max(from, Math.min(doc.content.size, range.to))
-    if (from < to) {
-      doc.nodesBetween(from, to, (node, pos) => {
-        if (node.type.name === name) {
-          blocks.set(pos, node)
-          return false
-        }
-        return true
-      })
+  const last = normalized.reduce((end, range) => Math.max(end, range.to), first.to)
+  const to = Math.min(doc.content.size, last + 1)
+  const blocks: CodeBlockAt[] = []
+  let index = 0
+  doc.nodesBetween(Math.max(0, first.from - 1), to, (node, pos) => {
+    while (index < normalized.length && normalized[index].to < pos) {
+      index += 1
     }
-    addResolvedBlocks(from)
-    if (to !== from) {
-      addResolvedBlocks(to)
+    if (index === normalized.length || normalized[index].from > pos + node.nodeSize) {
+      return false
     }
-  }
-  return [...blocks].map(([pos, node]) => ({ node, pos }))
+    if (node.type.name === name) {
+      blocks.push({ node, pos })
+      return false
+    }
+    return true
+  })
+  return blocks
 }
 
 function createDecorations(
