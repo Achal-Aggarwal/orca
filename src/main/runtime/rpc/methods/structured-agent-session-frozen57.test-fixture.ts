@@ -87,15 +87,23 @@ export async function loadFrozen57() {
     optimizeDeps: { noDiscovery: true, include: [] }
   })
   try {
-    const projection: {
-      projectStructuredAgentSessionMessages: typeof projectStructuredAgentSessionMessages
-    } = await server.ssrLoadModule(
+    const projectionModule = await server.ssrLoadModule(
       `${PREFIX}src/shared/structured-agent-session-message-projection.ts`
     )
-    const text: { nativeChatMessagePlainText: (message: NativeChatMessage) => string } =
-      await server.ssrLoadModule(
-        `${PREFIX}mobile/src/session/mobile-native-chat-message-plain-text.ts`
-      )
+    const projection: {
+      projectStructuredAgentSessionMessages: typeof projectStructuredAgentSessionMessages
+    } = {
+      projectStructuredAgentSessionMessages: projectionModule.projectStructuredAgentSessionMessages
+    }
+    const textModule = await server.ssrLoadModule(
+      `${PREFIX}mobile/src/session/mobile-native-chat-message-plain-text.ts`
+    )
+    const text: { nativeChatMessagePlainText: (message: NativeChatMessage) => string } = {
+      nativeChatMessagePlainText: textModule.nativeChatMessagePlainText
+    }
+    const transientModule = await server.ssrLoadModule(
+      `${PREFIX}mobile/src/session/mobile-native-chat-render-data.ts`
+    )
     const transient: {
       foldMobileNativeChatMessages: (
         messages: NativeChatMessage[],
@@ -108,7 +116,13 @@ export async function loadFrozen57() {
         pending: []
         imagePreviewsByMessageId: Record<string, string[]>
       }) => { data: NativeChatMessage[] }
-    } = await server.ssrLoadModule(`${PREFIX}mobile/src/session/mobile-native-chat-render-data.ts`)
+    } = {
+      foldMobileNativeChatMessages: transientModule.foldMobileNativeChatMessages,
+      buildMobileNativeChatTransientData: transientModule.buildMobileNativeChatTransientData
+    }
+    const cardsModule = await server.ssrLoadModule(
+      `${PREFIX}mobile/src/session/mobile-structured-queued-message-cards.ts`
+    )
     const cards: {
       mobileQueuedMessageCards: (
         queue: readonly AgentSessionQueuedMessage[] | null,
@@ -121,9 +135,7 @@ export async function loadFrozen57() {
         waitsForAgent?: true
         text: string
       }[]
-    } = await server.ssrLoadModule(
-      `${PREFIX}mobile/src/session/mobile-structured-queued-message-cards.ts`
-    )
+    } = { mobileQueuedMessageCards: cardsModule.mobileQueuedMessageCards }
     return { ...projection, ...text, ...transient, ...cards, manifest, pin: PIN }
   } finally {
     await server.close()

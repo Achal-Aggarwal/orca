@@ -270,7 +270,7 @@ describe('published recovery membership through the Resume controller', () => {
       [recovery],
       [],
       [card('P', { paused: true })],
-      [{ ...recovery, state: 'returned', paused: undefined }, w2]
+      [card(recovery.messageId, { ...recovery, state: 'returned', paused: undefined }), w2]
     ]) {
       rerender({ queuedMessages })
       expect(result.current.pause).toBeNull()
