@@ -92,7 +92,7 @@ it.each([8, 80])(
             previous.notificationId
           ]),
           seq: previous.notificationSeq,
-          expiresAt: Date.now() + 60_000
+          expiresAt: Number.MAX_SAFE_INTEGER
         }
       ])
     )
