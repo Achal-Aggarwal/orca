@@ -10249,7 +10249,6 @@
       "src/renderer/src/hooks/ipc-events/terminal-presentation-pane-title.test.ts": 1399,
       "src/renderer/src/hooks/ipc-events/terminal-request-ipc-bridge-placement.test.ts": 1252,
       "src/renderer/src/hooks/ipc-events/terminal-ui-routing-ipc-bridge-split.test.ts": 998,
-      "src/renderer/src/hooks/ipc-events/updater-status-ipc-bridge.test.ts": 50,
       "src/renderer/src/hooks/ipc-events/worktree-event-lineage-refresh.test.ts": 1702,
       "src/renderer/src/hooks/ipc-events/worktree-event-runtime-activation.test.ts": 1375,
       "src/renderer/src/hooks/ipc-events/wsl-host-ipc-bridge.test.ts": 1381,
