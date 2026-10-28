@@ -1,4 +1,5 @@
 import type { editor } from 'monaco-editor'
+import { Selection } from 'monaco-editor/esm/vs/editor/common/core/selection.js'
 import { yieldToEventLoop } from '../../../../shared/event-loop-yield'
 import { getUtf8ChunkEndIndex } from '../../../../shared/utf8-byte-limits'
 import {
@@ -51,8 +52,7 @@ export type MonacoPasteEditor = Pick<
   | 'getModel'
   | 'getContainerDomNode'
   | 'hasTextFocus'
-  | 'getSelection'
-  | 'setSelection'
+  | 'getSelections'
   | 'executeEdits'
   | 'pushUndoStop'
 >
@@ -62,36 +62,8 @@ type MonacoPasteSnapshot = {
   model: editor.ITextModel
 }
 
-type Position = {
-  lineNumber: number
-  column: number
-}
-
 function getPlainTextFromPasteEvent(event: ClipboardEvent): string {
   return event.clipboardData?.getData('text/plain') ?? ''
-}
-
-function getEndPositionAfterInsert(start: Position, text: string): Position {
-  let lineNumber = start.lineNumber
-  let column = start.column
-  for (let index = 0; index < text.length; index += 1) {
-    const codeUnit = text.charCodeAt(index)
-    if (codeUnit === 13) {
-      lineNumber += 1
-      column = 1
-      if (text.charCodeAt(index + 1) === 10) {
-        index += 1
-      }
-      continue
-    }
-    if (codeUnit === 10) {
-      lineNumber += 1
-      column = 1
-      continue
-    }
-    column += 1
-  }
-  return { lineNumber, column }
 }
 
 function snapshotMonacoPasteTarget(monacoEditor: MonacoPasteEditor): MonacoPasteSnapshot | null {
@@ -113,15 +85,6 @@ function isMonacoPasteTargetCurrent(
     snapshot.container.isConnected &&
     monacoEditor.hasTextFocus()
   )
-}
-
-function setCollapsedSelection(monacoEditor: MonacoPasteEditor, position: Position): void {
-  monacoEditor.setSelection({
-    startLineNumber: position.lineNumber,
-    startColumn: position.column,
-    endLineNumber: position.lineNumber,
-    endColumn: position.column
-  })
 }
 
 async function insertMonacoTextInChunks(
@@ -146,26 +109,40 @@ async function insertMonacoTextInChunks(
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
 
-    const selection = monacoEditor.getSelection()
-    if (!selection) {
+    const selections = monacoEditor.getSelections()
+    if (!selections?.length) {
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
 
-    const nextIndex = getUtf8ChunkEndIndex(text, textIndex, chunkMaxBytes)
+    const selectionChunkMaxBytes = Math.max(1, Math.floor(chunkMaxBytes / selections.length))
+    const nextIndex = getUtf8ChunkEndIndex(text, textIndex, selectionChunkMaxBytes)
     const chunk = text.slice(textIndex, nextIndex)
-    const endPosition = getEndPositionAfterInsert(
-      { lineNumber: selection.startLineNumber, column: selection.startColumn },
-      chunk
+    const chunkLength = chunk.replace(/\r\n|\r|\n/g, snapshot.model.getEOL()).length
+    const orderedRanges = selections
+      .map((selection, index) => ({
+        index,
+        start: snapshot.model.getOffsetAt(selection.getStartPosition()),
+        end: snapshot.model.getOffsetAt(selection.getEndPosition())
+      }))
+      .sort((left, right) => left.start - right.start)
+    // Model offsets account for earlier edits, EOL normalization and coalesced inverse operations.
+    const endOffsets = selections.map(() => 0)
+    let offsetDelta = 0
+    for (const { start, end, index } of orderedRanges) {
+      endOffsets[index] = start + offsetDelta + chunkLength
+      offsetDelta += chunkLength - (end - start)
+    }
+    const accepted = monacoEditor.executeEdits(
+      'orca-large-paste',
+      selections.map((range) => ({ range, text: chunk, forceMoveMarkers: true })),
+      () =>
+        endOffsets.map((offset) => Selection.fromPositions(snapshot.model.getPositionAt(offset)))
     )
-    const accepted = monacoEditor.executeEdits('orca-large-paste', [
-      { range: selection, text: chunk, forceMoveMarkers: true }
-    ])
     if (!accepted) {
       monacoEditor.pushUndoStop()
       return { status: 'cancelled', reason: 'target-unavailable', byteLength, chunksWritten }
     }
-    setCollapsedSelection(monacoEditor, endPosition)
     textIndex = nextIndex
     chunksWritten += 1
 

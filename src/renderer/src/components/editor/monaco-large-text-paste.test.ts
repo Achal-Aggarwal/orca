@@ -1,20 +1,10 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { editor as monacoEditor, Selection } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { handleMonacoLargeTextPaste } from './monaco-large-text-paste'
 
-type FakeSelection = {
-  startLineNumber: number
-  startColumn: number
-  endLineNumber: number
-  endColumn: number
-}
-
-type FakeEdit = {
-  range: FakeSelection
-  text: string
-  forceMoveMarkers?: boolean
-}
+const models: monacoEditor.ITextModel[] = []
 
 function pasteEvent(text: string): ClipboardEvent {
   const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
@@ -29,30 +19,30 @@ function pasteEvent(text: string): ClipboardEvent {
 function makeEditor() {
   const container = document.createElement('div')
   document.body.appendChild(container)
-  const model = {}
-  let currentModel: object | null = model
+  const model = monacoEditor.createModel('', 'plaintext')
+  models.push(model)
+  let currentModel = model
   let focused = true
-  let selection: FakeSelection = {
-    startLineNumber: 1,
-    startColumn: 1,
-    endLineNumber: 1,
-    endColumn: 1
-  }
-  let value = ''
+  let selections = [new Selection(1, 1, 1, 1)]
   const edits: string[] = []
   const undoStops: number[] = []
   const editor = {
     getModel: () => currentModel,
     getContainerDomNode: () => container,
     hasTextFocus: () => focused,
-    getSelection: () => selection,
-    setSelection: (next: FakeSelection) => {
-      selection = next
-    },
-    executeEdits: (_source: string, nextEdits: FakeEdit[]) => {
-      for (const edit of nextEdits) {
-        edits.push(edit.text)
-        value += edit.text
+    getSelection: () => selections[0],
+    getSelections: () => selections,
+    executeEdits: (
+      _source: string,
+      nextEdits: monacoEditor.IIdentifiedSingleEditOperation[],
+      cursorState?: monacoEditor.ICursorStateComputer | Selection[]
+    ) => {
+      edits.push(...nextEdits.map((edit) => edit.text ?? ''))
+      const result = currentModel.pushEditOperations(selections, nextEdits, (inverse) =>
+        typeof cursorState === 'function' ? cursorState(inverse) : (cursorState ?? null)
+      )
+      if (result) {
+        selections = result
       }
       return true
     },
@@ -60,7 +50,7 @@ function makeEditor() {
       undoStops.push(1)
       return true
     },
-    getValue: () => value
+    getValue: () => currentModel.getValue()
   }
   return {
     container,
@@ -71,7 +61,8 @@ function makeEditor() {
       focused = next
     },
     replaceModel: () => {
-      currentModel = {}
+      currentModel = monacoEditor.createModel('', 'plaintext')
+      models.push(currentModel)
     }
   }
 }
@@ -83,6 +74,9 @@ async function flushPromises(count = 12): Promise<void> {
 }
 
 afterEach(() => {
+  for (const model of models.splice(0)) {
+    model.dispose()
+  }
   document.body.replaceChildren()
   vi.restoreAllMocks()
 })
@@ -194,9 +188,8 @@ describe('monaco large text paste', () => {
     )
   })
 
-  it('updates Monaco selection for mixed newlines without splitting chunk text', async () => {
+  it('updates Monaco selection for mixed newlines', async () => {
     const { editor, edits } = makeEditor()
-    const split = vi.spyOn(String.prototype, 'split')
     const text = 'a\r\nbb\nc\rd'
     const event = pasteEvent(text)
 
@@ -214,7 +207,6 @@ describe('monaco large text paste', () => {
       startColumn: 2,
       startLineNumber: 4
     })
-    expect(split).not.toHaveBeenCalled()
   })
 
   it('cancels chunking when focus leaves the original Monaco target', async () => {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import type { editor } from 'monaco-editor'
+import { editor as monacoEditor, Selection, Uri } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { getDiskBaselineSignature } from '../../../../shared/disk-baseline-signature'
 import { createEditorStore } from './editor-autosave-controller-test-fixture'
 import { createEditorSaveQueue } from './editor-save-queue'
@@ -20,32 +21,46 @@ vi.mock('./editor-shortcuts', () => ({
 }))
 
 const PATH = '/repo/file.ts'
+const models: monacoEditor.ITextModel[] = []
 
 afterEach(() => {
+  for (const model of models.splice(0)) {
+    model.dispose()
+  }
+  document.body.replaceChildren()
   vi.unstubAllGlobals()
 })
 
 function createSingleLineEditor(initial: string) {
-  let value = initial
-  let selection = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }
+  let selections = [new Selection(1, 1, 1, 1)]
   const container = document.createElement('div')
   document.body.appendChild(container)
-  const model = { uri: { toString: () => toEditorModelUri(PATH) }, getValue: () => value }
+  const model = monacoEditor.createModel(initial, 'plaintext', Uri.parse(toEditorModelUri(PATH)))
+  models.push(model)
   const editorStub = {
     getModel: () => model,
     getContainerDomNode: () => container,
     hasTextFocus: () => true,
-    getValue: () => value,
-    getSelection: () => selection,
-    setSelection: (next: typeof selection) => {
-      selection = next
-    },
-    executeEdits: (_source: string, edits: { text: string }[]) => {
-      const at = selection.startColumn - 1
-      value = value.slice(0, at) + edits[0].text + value.slice(at)
+    getValue: () => model.getValue(),
+    getSelection: () => selections[0],
+    getSelections: () => selections,
+    executeEdits: (
+      _source: string,
+      edits: monacoEditor.IIdentifiedSingleEditOperation[],
+      cursorState?: monacoEditor.ICursorStateComputer | Selection[]
+    ) => {
+      const result = model.pushEditOperations(selections, edits, (inverse) =>
+        typeof cursorState === 'function' ? cursorState(inverse) : (cursorState ?? null)
+      )
+      if (result) {
+        selections = result
+      }
       return true
     },
-    pushUndoStop: () => true,
+    pushUndoStop: () => {
+      model.pushStackElement()
+      return true
+    },
     addAction: () => ({ dispose: () => undefined })
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the bindings and chunked paste call only the methods stubbed above.

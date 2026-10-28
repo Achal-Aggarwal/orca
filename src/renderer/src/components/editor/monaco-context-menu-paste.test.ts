@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { editor as monacoEditor, Selection } from 'monaco-editor/esm/vs/editor/editor.api.js'
+
 import { runOrcaContextMenuPaste, type OrcaContextMenuPasteDeps } from './monaco-context-menu-paste'
 
+const models: monacoEditor.ITextModel[] = []
 const READ_ONLY_OPTION = 104
 const EMPTY_SELECTION_OPTION = 45
 
@@ -22,7 +25,10 @@ function makeEditor(state: FakeEditorState = {}) {
   } = state
   let focused = hasTextFocus
   const trigger = vi.fn()
-  const model = hasModel ? ({} as object) : null
+  const model = hasModel ? monacoEditor.createModel('', 'plaintext') : null
+  if (model) {
+    models.push(model)
+  }
   // Chunked paste rechecks model/container identity, so fixture instances must remain stable.
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -40,13 +46,7 @@ function makeEditor(state: FakeEditorState = {}) {
     },
     trigger,
     getContainerDomNode: () => container,
-    getSelection: () => ({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 1,
-      endColumn: 1
-    }),
-    setSelection: vi.fn(),
+    getSelections: () => [new Selection(1, 1, 1, 1)],
     executeEdits: vi.fn(() => true),
     pushUndoStop: vi.fn(() => true)
   }
@@ -74,6 +74,9 @@ function makeDeps(
 }
 
 afterEach(() => {
+  for (const model of models.splice(0)) {
+    model.dispose()
+  }
   document.body.replaceChildren()
   vi.restoreAllMocks()
 })
