@@ -20,21 +20,3 @@ export function isLocalImageCacheKeyPinned(key: string): boolean {
 export function clearLocalImageCachePins(): void {
   pinnedKeys.clear()
 }
-
-export function prunePinnedLocalImageCache(
-  cache: Map<string, string>,
-  maxSize: number,
-  revoke: (url: string) => void
-): void {
-  while (cache.size > maxSize) {
-    const oldest = Array.from(cache.keys()).find((key) => !isLocalImageCacheKeyPinned(key))
-    if (oldest === undefined) {
-      return
-    }
-    const url = cache.get(oldest)
-    cache.delete(oldest)
-    if (url) {
-      revoke(url)
-    }
-  }
-}
