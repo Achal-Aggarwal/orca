@@ -1,22 +1,37 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+type UserActScope = { distro: string; active: boolean }
+
 // The distro a user act may start; reads and Git it triggers (e.g. a roots rebuild) pass for it alone.
-const userActDistro = new AsyncLocalStorage<string>()
+const userActScope = new AsyncLocalStorage<UserActScope>()
 
 function distroKey(distro: string): string {
   return distro.trim().toLowerCase()
 }
 
-/** Runs a user act on `distro`: gated work inside it may start that distro, and no other. */
-export function runAsWslUserAct<T>(distro: string | null, act: () => Promise<T>): Promise<T> {
-  return distro ? userActDistro.run(distroKey(distro), act) : act()
+/**
+ * Runs a user act on `distro`: gated work inside it may start that distro, and no other. The
+ * allowance ends with the act, so timers, listeners or queues created inside it (which keep its
+ * async context) never start the distro later, e.g. after the user terminates it.
+ */
+export async function runAsWslUserAct<T>(distro: string | null, act: () => Promise<T>): Promise<T> {
+  if (!distro) {
+    return act()
+  }
+  const scope: UserActScope = { distro: distroKey(distro), active: true }
+  try {
+    return await userActScope.run(scope, act)
+  } finally {
+    scope.active = false
+  }
 }
 
 export function isWslUserActFor(distro: string): boolean {
-  return userActDistro.getStore() === distroKey(distro)
+  const scope = userActScope.getStore()
+  return scope?.active === true && scope.distro === distroKey(distro)
 }
 
 /** Runs `work` outside any user act, so deferred or listener work never inherits one. */
 export function outsideWslUserAct<T>(work: () => T): T {
-  return userActDistro.exit(work)
+  return userActScope.exit(work)
 }
