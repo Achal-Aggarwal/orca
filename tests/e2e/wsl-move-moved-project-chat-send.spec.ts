@@ -123,8 +123,10 @@ test("a moved project's existing chat still answers here after the move", async 
     await entry.getByTestId('wsl-moved-chat').click()
     const chat = page.locator('[data-native-chat-root="true"]')
     const composer = chat.getByRole('textbox')
+    await expect(composer).toBeEditable()
     await composer.click()
     await page.keyboard.type('hello after the move')
+    await expect(composer).toContainText('hello after the move')
     await chat.getByRole('button', { name: 'Send', exact: true }).click()
     await expect(chat.getByText('Stub reply.')).toBeVisible({ timeout: 30_000 })
 
