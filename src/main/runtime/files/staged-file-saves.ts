@@ -5,7 +5,7 @@
  * per host; idle saves and a closed socket's saves are dropped, and host start empties the folder.
  */
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   FileWriteDiskPrecondition,
@@ -13,6 +13,8 @@ import type {
 } from '../../../shared/file-write-disk-precondition'
 import { STAGED_FILE_SAVE_LIMITS } from '../../../shared/staged-file-save'
 import { writeLocalTextFileWithDiskPrecondition } from '../../ipc/filesystem/local-disk-write-precondition'
+import { inspectProcessLiveness } from '../../daemon/daemon-process-inspection'
+import type { ProcessLivenessVerdict } from '../../daemon/daemon-incarnation-evidence-types'
 
 type StagedSave = {
   owner: string
@@ -29,10 +31,16 @@ type StagedSave = {
 }
 
 export type StagedFileSavesDeps = {
-  /** This host's private staging folder; null refuses staged saves. */
+  /** The profile's private staging folder; null refuses staged saves. */
   stagingDir: () => string | null
   limits?: typeof STAGED_FILE_SAVE_LIMITS
+  /** Test seams: this process's id, and whether another owner's process still runs. */
+  pid?: number
+  ownerLiveness?: (pid: number) => ProcessLivenessVerdict
 }
+
+// Each process stages in its own subfolder, so runtimes sharing a profile never touch each other's.
+const OWNER_FOLDER = /^[1-9][0-9]*$/
 
 export class StagedFileSaves {
   private readonly saves = new Map<string, StagedSave>()
@@ -49,7 +57,7 @@ export class StagedFileSaves {
     target: { requestedPath: string; realPath: string },
     totalBytes: number
   ): Promise<{ saveId: string }> {
-    const dir = this.deps.stagingDir()
+    const dir = this.processDir()
     if (!dir) {
       throw new Error('staged_save_unavailable')
     }
@@ -107,7 +115,11 @@ export class StagedFileSaves {
     this.release(saveId, save)
     return this.queue(save, async () => {
       try {
-        if (save.written !== save.totalBytes) {
+        // The file itself, not the count: a temp cut short outside this process can't be saved.
+        if (
+          save.written !== save.totalBytes ||
+          (await stat(save.tempPath)).size !== save.totalBytes
+        ) {
           throw new Error('staged_save_incomplete')
         }
         if ((await authorize(save.requestedPath)) !== save.targetPath) {
@@ -138,17 +150,37 @@ export class StagedFileSaves {
     await Promise.all(ids.map((id) => this.abort(owner, id)))
   }
 
-  /** Host start: whatever a previous run left in the staging folder is an unfinished save. */
+  /**
+   * Host start: this process's folder and those of owners that have exited hold only unfinished
+   * saves. A live owner's folder, or one whose owner can't be checked, is left alone.
+   */
   sweepOrphans(): Promise<void> {
     this.sweep ??= (async () => {
-      const dir = this.deps.stagingDir()
-      if (dir) {
-        await rm(dir, { recursive: true, force: true }).catch((error: unknown) => {
-          console.warn('[files] Could not clear staged saves:', error)
-        })
+      const root = this.deps.stagingDir()
+      if (!root) {
+        return
+      }
+      const own = String(this.deps.pid ?? process.pid)
+      const liveness = this.deps.ownerLiveness ?? inspectProcessLiveness
+      try {
+        for (const name of await readdir(root).catch(() => [])) {
+          if (
+            OWNER_FOLDER.test(name) &&
+            (name === own || liveness(Number(name)).status === 'exited')
+          ) {
+            await rm(join(root, name), { recursive: true, force: true })
+          }
+        }
+      } catch (error) {
+        console.warn('[files] Could not clear staged saves:', error)
       }
     })()
     return this.sweep
+  }
+
+  private processDir(): string | null {
+    const root = this.deps.stagingDir()
+    return root ? join(root, String(this.deps.pid ?? process.pid)) : null
   }
 
   private queue<TResult>(save: StagedSave, op: () => Promise<TResult>): Promise<TResult> {

@@ -1,7 +1,8 @@
 /**
- * A remote text save too large for one request: chunks go to a temp the host makes beside the
- * target, and the commit replaces the target under the host's disk precondition. Pinned to one
- * runtime connection, because the host ties a save to the socket that began it.
+ * A remote text save too large for one request: chunks go to a temp in the host's private staging
+ * folder, and the commit writes the target in place under the host's disk precondition, as a
+ * one-request save does. Pinned to one runtime connection, because the host ties a save to the
+ * socket that began it.
  */
 import {
   parseFileWriteResult,

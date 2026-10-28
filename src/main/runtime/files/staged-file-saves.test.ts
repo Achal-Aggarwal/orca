@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  truncateSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -46,7 +47,14 @@ afterEach(() => {
 const saves = (limits: Partial<typeof STAGED_FILE_SAVE_LIMITS> = {}) =>
   new StagedFileSaves({
     stagingDir: () => staging,
-    limits: { ...STAGED_FILE_SAVE_LIMITS, ...limits }
+    limits: { ...STAGED_FILE_SAVE_LIMITS, ...limits },
+    pid: PID,
+    ownerLiveness: (pid) =>
+      pid === 111
+        ? { status: 'exited' }
+        : pid === 333
+          ? { status: 'unverifiable', reason: 'test' }
+          : { status: 'live' }
   })
 
 const at = (path: string) => ({ requestedPath: path, realPath: path })
@@ -58,7 +66,9 @@ async function send(staged: StagedFileSaves, owner: string, saveId: string, byte
   }
 }
 
-const temps = () => (existsSync(staging) ? readdirSync(staging) : [])
+const PID = 4242
+const ownDir = () => join(staging, String(PID))
+const temps = () => (existsSync(ownDir()) ? readdirSync(ownDir()) : [])
 const userFolderTemps = () => readdirSync(root).filter((name) => name !== 'profile')
 
 // E7: a 5 MB lockfile opened from a remote host could be edited but not saved (720 KB cap).
@@ -228,13 +238,31 @@ describe('a staged save', () => {
     )
   })
 
-  it('clears at host start what a crashed run left, and only the staging folder', async () => {
-    mkdirSync(staging, { recursive: true })
-    writeFileSync(join(staging, 'left-by-a-crash.tmp'), 'partial')
+  it("clears at host start its own and exited owners' folders, and nothing a live process holds", async () => {
+    for (const owner of [String(PID), '111', '222', '333', 'not-a-pid']) {
+      mkdirSync(join(staging, owner), { recursive: true })
+      writeFileSync(join(staging, owner, 'save.tmp'), 'partial')
+    }
     writeFileSync(join(root, 'notes.tmp'), 'keep')
 
     await saves().sweepOrphans()
-    expect(temps()).toEqual([])
+    // Its own folder from a previous run and an exited owner's go; a live or uncheckable owner's stay.
+    expect(readdirSync(staging).toSorted()).toEqual(['222', '333', 'not-a-pid'])
     expect(existsSync(join(root, 'notes.tmp'))).toBe(true)
+  })
+
+  it('refuses a commit whose temp was cut short outside this process', async () => {
+    const target = join(root, 'a.txt')
+    writeFileSync(target, 'old')
+    const staged = saves()
+    const { saveId } = await staged.begin('conn-1', at(target), 6)
+    await staged.append('conn-1', saveId, 0, Buffer.from('abcdef'))
+    truncateSync(join(ownDir(), `${saveId}.tmp`), 2)
+
+    await expect(staged.commit('conn-1', saveId, undefined, same)).rejects.toThrow(
+      'staged_save_incomplete'
+    )
+    expect(readFileSync(target, 'utf8')).toBe('old')
+    expect(temps()).toEqual([])
   })
 })
