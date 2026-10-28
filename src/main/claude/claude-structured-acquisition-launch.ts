@@ -42,7 +42,11 @@ export async function resolveClaudeAcquisitionLaunch(args: {
   const { input, deps, sessions, acquisitions, exits, callbacks, previous, attempt } = args
   const sessionId = input.identity.sessionId
   return withAgentSessionCreatePhase('auth_settle', input.recordPhase, async () => {
-    if (previous && !(await cancelClaudeAcquisitionAttempt(previous))) {
+    if (
+      previous &&
+      !(await cancelClaudeAcquisitionAttempt(previous)) &&
+      !previous.connection?.exitVerdict.killDelivered
+    ) {
       acquisitions.restoreIfCurrent(sessionId, attempt, previous)
       throw new AgentSessionAcquisitionExitUnprovenError(
         new Error(`claude acquisition for session ${sessionId} could not be stopped`)

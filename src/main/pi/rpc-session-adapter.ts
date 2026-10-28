@@ -1,3 +1,4 @@
+import { stopAgentSessionProviderRoot } from '../native-chat/agent-session-wire/structured-agent-session-provider-exit-proof'
 import { randomUUID } from 'node:crypto'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import {
@@ -57,10 +58,8 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
           new Error('Previous Pi start has not exited')
         )
       }
-      const previous = this.sessions.get(id)
-      if (previous?.connection.closed && previous.connection.rootVerdict === 'exited') {
-        this.acknowledgeSessionRelease(id)
-      } else if (previous) {
+      this.acknowledgeSessionRelease(id)
+      if (this.sessions.has(id)) {
         throw new AgentSessionPreSpawnError(new Error('Pi session already owns a child'))
       }
       let launch: PiRpcResolvedLaunch
@@ -104,6 +103,9 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
           : new AgentSessionPreSpawnError(error)
       }
       const result = await session.close(false).catch(() => null)
+      if (result?.killDelivered && result.root !== 'exited') {
+        throw new AgentSessionAcquisitionRootExitObservedError(error, 'kill-delivered')
+      }
       if (result?.root === 'exited') {
         if (session.connection.processless) {
           throw new AgentSessionAcquisitionExitProvenError(error)
@@ -239,11 +241,14 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       return true
     }
     const result = await session.close(requested)
-    if (result.root !== 'exited') {
+    if (result.root !== 'exited' && !result.killDelivered) {
       return false
     }
-    if (result.tree !== 'exited') {
-      throw new AgentSessionAcquisitionRootExitObservedError(new Error('Pi root exit observed'))
+    if (result.root !== 'exited' || result.tree !== 'exited') {
+      throw new AgentSessionAcquisitionRootExitObservedError(
+        new Error('Pi writer stopped without descendant exit proof'),
+        result.root === 'exited' ? 'exit-observed' : 'kill-delivered'
+      )
     }
     return true
   }
@@ -262,7 +267,11 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
   }
   acknowledgeSessionRelease(id: string): void {
     const session = this.sessions.get(id)
-    if (!session?.connection.closed || session.connection.rootVerdict !== 'exited') {
+    if (
+      !session?.connection.closed ||
+      (session.connection.rootVerdict !== 'exited' &&
+        !session.connection.lastCloseResult?.killDelivered)
+    ) {
       return
     }
     this.sessions.delete(id)
@@ -271,7 +280,11 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
     void retirement.then(() => this.retiring.delete(retirement))
   }
   async closeAll(): Promise<void> {
-    await Promise.all([...this.sessions.keys()].map((id) => this.closeSession(id)))
+    await Promise.all(
+      [...this.sessions.keys()].map((id) =>
+        stopAgentSessionProviderRoot(() => this.closeSession(id))
+      )
+    )
   }
   async drainObservedExits(): Promise<void> {
     await Promise.all([

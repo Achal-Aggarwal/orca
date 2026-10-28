@@ -46,6 +46,24 @@ afterEach(async () => {
 })
 
 describe('death evidence on disk', () => {
+  it('reads a delivered-kill fence after restart', async () => {
+    const evidence = {
+      kind: 'kill-delivered' as const,
+      detail: 'writer terminated',
+      observedAt: 90_000,
+      ownerFence: 7
+    }
+    await seed(evidence)
+    const store = await open()
+    const probe = vi.fn(async () => ({
+      outcome: 'indeterminate' as const,
+      reason: 'no exit report'
+    }))
+    await store.reconcileOnRestart({ probe, now: 100_000 })
+    expect(store.isSessionUnreadable(SESSION)).toBe(false)
+    expect(store.getRecord(SESSION)?.lease.deathEvidence).toEqual(evidence)
+  })
+
   it('records the last renewal before the crash and reads it back after another restart', async () => {
     await seed(null)
     const crashed = await open()

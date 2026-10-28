@@ -731,6 +731,7 @@ describe('claude child tree reaper', () => {
     expect(child.kill).not.toHaveBeenCalled()
     release.resolve(true)
     await expect(reap).resolves.toBe('exited')
+    expect(tree.killDelivered).toBe(true)
     expect(child.kill).toHaveBeenCalledWith('SIGKILL')
     expect(captureDescendants).not.toHaveBeenCalled()
   })
@@ -744,6 +745,7 @@ describe('claude child tree reaper', () => {
 
     await expect(tree.reap()).resolves.toBe('unverifiable')
     expect(tree.treeVerdict).toBe('unverifiable')
+    expect(tree.killDelivered).toBe(false)
     expect(child.kill).toHaveBeenCalledWith('SIGKILL')
   })
 
@@ -757,6 +759,7 @@ describe('claude child tree reaper', () => {
     })
 
     await expect(tree.reap()).resolves.toBe('unverifiable')
+    expect(tree.killDelivered).toBe(false)
     expect(child.kill).toHaveBeenCalledWith('SIGKILL')
   })
 

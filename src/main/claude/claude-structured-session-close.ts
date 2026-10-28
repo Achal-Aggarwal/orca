@@ -35,12 +35,14 @@ export function claudeAcquisitionCleanupError(
   cause: unknown
 ): Error {
   const verdict = connection?.exitVerdict
-  if (verdict?.processless === true) {
-    return new AgentSessionPreSpawnError(cause)
-  }
-  return claudeRootExitObserved(connection)
-    ? new AgentSessionAcquisitionRootExitObservedError(cause)
-    : new AgentSessionAcquisitionExitUnprovenError(cause)
+  return verdict?.processless === true
+    ? new AgentSessionPreSpawnError(cause)
+    : claudeRootExitObserved(connection) || verdict?.killDelivered
+      ? new AgentSessionAcquisitionRootExitObservedError(
+          cause,
+          verdict?.root === 'exited' ? 'exit-observed' : 'kill-delivered'
+        )
+      : new AgentSessionAcquisitionExitUnprovenError(cause)
 }
 
 /** Retain unproven acquisitions so a later Stop can retry cleanup. */
@@ -145,6 +147,10 @@ async function finalizeClaudePublishedSession(
       sessionId: input.sessionId,
       reason: 'claude session closed',
       cause: 'requested-close',
+      ...(rootExitVerdict instanceof AgentSessionAcquisitionRootExitObservedError &&
+      rootExitVerdict.deathEvidenceKind === 'kill-delivered'
+        ? { deathEvidenceKind: 'kill-delivered' as const }
+        : {}),
       fence: session.fence,
       acquisitionGeneration: session.acquisitionGeneration,
       observedAt
@@ -221,16 +227,7 @@ export async function closeClaudePublishedSession(
 export function closeClaudePublishedSessionForDeps(
   sessions: Map<string, ClaudeSession>,
   sessionId: string,
-  deps: {
-    persistHandle?: (handle: {
-      sessionId: string
-      providerSessionId: string
-      leafUuid: string | null
-      fence: number
-    }) => Promise<void>
-    onEvent?: (event: ClaudeStructuredSessionEvent) => void
-    logger?: StructuredAgentSessionLogger
-  }
+  deps: Omit<CloseClaudePublishedSessionInput, 'sessions' | 'sessionId'>
 ): Promise<boolean> {
   return closeClaudePublishedSession({ sessions, sessionId, ...deps })
 }

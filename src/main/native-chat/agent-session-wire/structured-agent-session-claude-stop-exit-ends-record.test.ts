@@ -652,3 +652,65 @@ it('runs the stop again for every ask after a close that came back unproven', as
   await resumedWith(connection, 'Third.')
   expect(connection.closeCount).toBe(4)
 })
+
+it('releases a killed writer without an exit report and ignores its stale exit after resuming', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  const old = child()!
+  vi.spyOn(connection, 'close').mockImplementation(async () => {
+    connection.closed = true
+    connection.exitVerdict = { root: 'live', tree: 'unverifiable', killDelivered: true }
+    return false
+  })
+  await expect(stop()).resolves.toMatchObject({ ok: true })
+  expect(child()).toBeNull()
+  expect(lease()?.deathEvidence).toMatchObject({ kind: 'kill-delivered', ownerFence: old.fence })
+  await send('Continue after the kill.')
+  await resumedWith(connection, 'Continue after the kill.')
+  const replacement = store.getRecord(SESSION)!.lease
+  await host.handleAdapterEvent({
+    type: 'ended',
+    sessionId: SESSION,
+    fence: old.fence,
+    acquisitionGeneration: old.generation!,
+    cause: 'requested-close',
+    reason: 'late exit'
+  })
+  expect(store.getRecord(SESSION)!.lease).toEqual(replacement)
+})
+
+it.each([true, false])(
+  'journal failure retains its fault when kill delivery is %s',
+  async (delivered) => {
+    const connection = claude.connections[0]!
+    await openTurn(connection)
+    vi.spyOn(connection, 'close').mockImplementation(async () => {
+      connection.closed = true
+      connection.exitVerdict = {
+        root: 'live',
+        tree: 'unverifiable',
+        ...(delivered ? { killDelivered: true } : {})
+      }
+      return false
+    })
+    host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('journal unavailable'))
+    await laneDrained()
+    if (!delivered) {
+      expect(child()?.close?.failure).toEqual({ kind: 'hostFault' })
+      connection.exitVerdict = { root: 'exited', tree: 'exited' }
+      connection.handlers.onExit?.(new Error('late exit after failed journal'))
+      await eventually(() => expect(child()).toBeNull())
+    } else {
+      expect(child()).toBeNull()
+      expect(lease()?.deathEvidence?.kind).toBe('kill-delivered')
+    }
+    expect(host['sessions'].get(SESSION)?.lastEndedChild?.failure).toEqual({ kind: 'hostFault' })
+    const snapshot = await host.journalSnapshot(SESSION)
+    expect(activeStructuredAgentSessionTurnId(snapshot.items)).toBeNull()
+    expect(snapshot.items).toContainEqual(
+      expect.objectContaining({
+        body: expect.objectContaining({ kind: 'status', failure: { kind: 'hostFault' } })
+      })
+    )
+  }
+)

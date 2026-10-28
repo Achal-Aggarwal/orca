@@ -74,6 +74,7 @@ export type ClaudeChildExitVerdict = {
   root: DescendantTreeVerdict
   tree: DescendantTreeVerdict
   processless?: boolean
+  killDelivered?: true
 }
 
 export type ClaudeStreamJsonConnection = ClaudeControlSurface & {
@@ -149,7 +150,10 @@ export async function openClaudeStreamJsonConnection(
   const waitUntilReadable = (): Promise<void> => readingBarrier ?? Promise.resolve()
   // Share descendant evidence across close retries and fault cleanup.
   const rootSettled = (): boolean => managed.rootVerdict === 'exited'
-  const tree = createClaudeChildTreeReaper(child, { exited: rootSettled })
+  const tree = createClaudeChildTreeReaper(child, {
+    exited: rootSettled,
+    supervised: managed.supervised
+  })
 
   // Observe descendants on first output to avoid startup scans while still catching natural-exit races.
   let outputObservationArmed = false
@@ -301,6 +305,7 @@ export async function openClaudeStreamJsonConnection(
       return {
         root: managed.rootVerdict,
         tree: tree.treeVerdict,
+        ...(managed.lastCloseResult?.killDelivered ? { killDelivered: true } : {}),
         ...(managed.processless ? { processless: true } : {})
       } as const
     },

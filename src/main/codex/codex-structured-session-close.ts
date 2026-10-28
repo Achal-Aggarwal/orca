@@ -49,6 +49,10 @@ export function handleCodexSessionExit(input: {
           }
         }
       : {}),
+    ...(input.connection?.closeResult?.killDelivered &&
+    input.connection.closeResult.root !== 'exited'
+      ? { deathEvidenceKind: 'kill-delivered' as const }
+      : {}),
     fence: session.fence,
     acquisitionGeneration: session.acquisitionGeneration,
     observedAt: session.exitObservedAt

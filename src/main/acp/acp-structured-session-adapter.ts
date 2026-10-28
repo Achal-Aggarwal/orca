@@ -4,6 +4,7 @@ import type { AgentSessionExecutionLocation } from '../../shared/agent-session-r
 import {
   AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,
+  AgentSessionAcquisitionRootExitObservedError,
   AgentSessionAcquisitionRefusal,
   AgentSessionPreSpawnError,
   isAgentSessionPreSpawnError,
@@ -115,6 +116,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         // Retain failed cleanup for retry before another child can spawn.
         this.children.starts.retainFailed(sessionId, connection)
         throw new AgentSessionAcquisitionExitUnprovenError(error)
+      }
+      if (connection?.lastCloseResult?.killDelivered && !connection.exited) {
+        throw new AgentSessionAcquisitionRootExitObservedError(error, 'kill-delivered')
       }
       if (attempt.signal.aborted) {
         const closed = new Error(
@@ -300,7 +304,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   hasOwnedAcquisition = (sessionId: string): boolean =>
     this.children.sessions.has(sessionId) ||
     this.children.starts.failedSessionIds().includes(sessionId)
-  forceCloseSession = (sessionId: string): Promise<boolean> => this.children.stop(sessionId, false)
+  forceCloseSession = (sessionId: string): Promise<boolean> => this.children.close(sessionId, false)
 
   async closeAll(): Promise<void> {
     const copiedChildren = this.copies.closeAll()

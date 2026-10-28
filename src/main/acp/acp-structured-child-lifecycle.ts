@@ -33,9 +33,17 @@ export class AcpStructuredChildren {
   }
 
   /** Requires root exit; reports unproven descendant cleanup separately. */
-  async close(sessionId: string): Promise<boolean> {
+  async close(sessionId: string, requested = true): Promise<boolean> {
     const connection = this.sessions.get(sessionId)?.connection
-    const closed = await this.stop(sessionId, true)
+    const failed = this.starts.failedConnection(sessionId)
+    const closed = await this.stop(sessionId, requested)
+    const result = connection?.lastCloseResult ?? failed?.lastCloseResult
+    if (closed && result?.killDelivered && result.root !== 'exited') {
+      throw new AgentSessionAcquisitionRootExitObservedError(
+        new Error('ACP writer killed'),
+        'kill-delivered'
+      )
+    }
     if (closed && connection?.processTreeUnproven) {
       throw new AgentSessionAcquisitionRootExitObservedError(
         new Error(
@@ -105,6 +113,9 @@ export class AcpStructuredChildren {
       session.dispose()
       this.deps.onEvent?.({
         type: 'ended',
+        ...(session.connection.lastCloseResult?.killDelivered && !session.connection.exited
+          ? { deathEvidenceKind: 'kill-delivered' as const }
+          : {}),
         sessionId: session.sessionId,
         fence: session.fence,
         acquisitionGeneration: session.acquisitionGeneration,

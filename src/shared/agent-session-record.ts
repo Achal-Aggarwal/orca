@@ -74,7 +74,7 @@ export type AgentSessionProcessIdentity = {
 export type AgentSessionClaimStatus = 'reserved' | 'live' | 'conflicted' | 'released'
 
 export type AgentSessionDeathEvidence = {
-  kind: 'exit-observed' | 'pid-absent' | 'identity-mismatch'
+  kind: 'exit-observed' | 'kill-delivered' | 'pid-absent' | 'identity-mismatch'
   detail: string
   observedAt: number
   /** Fence of the owner (or reservation) this death is about; a fence names exactly one. Absent on
@@ -250,6 +250,7 @@ function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeath
   const { observedAt, lastProvenAliveAt, ownerFence, runtimeEnd } = evidence
   return (
     (evidence.kind === 'exit-observed' ||
+      evidence.kind === 'kill-delivered' ||
       evidence.kind === 'pid-absent' ||
       evidence.kind === 'identity-mismatch') &&
     isBoundedString(evidence.detail, MAX_AGENT_SESSION_DEATH_DETAIL_CHARS) &&
