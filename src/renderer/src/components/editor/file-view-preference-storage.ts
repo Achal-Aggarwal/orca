@@ -1,3 +1,6 @@
+import type { OpenFile } from '@/store/slices/editor'
+import { parseExecutionHostId } from '../../../../shared/execution-host'
+
 const MAX_PREFERENCES = 100
 const MAX_STORAGE_LENGTH = 2 * 1024 * 1024
 
@@ -6,11 +9,20 @@ export function buildFileViewPreferenceKey(input: {
   runtimeEnvironmentId?: string | null
   externalSshTargetId?: string | null
   filePath: string
+  operationProvenance?: OpenFile['operationProvenance']
 }): string {
+  const route = input.operationProvenance?.generation.route
+  const host = parseExecutionHostId(route?.executionHostId)
+  const runtimeEnvironmentId = route ? route.runtimeEnvironmentId : input.runtimeEnvironmentId
+  const sshTargetId = route
+    ? host?.kind === 'ssh'
+      ? host.targetId
+      : null
+    : input.externalSshTargetId
   return JSON.stringify([
     input.worktreeId,
-    input.runtimeEnvironmentId?.trim() || 'local',
-    input.externalSshTargetId?.trim() || null,
+    runtimeEnvironmentId?.trim() || 'local',
+    sshTargetId?.trim() || null,
     input.filePath
   ])
 }
