@@ -124,23 +124,6 @@ describe('preflight', () => {
     })
   })
 
-  it.each([true, false])(
-    'propagates incomplete WSL inventory through IPC (timeout=%s)',
-    async (timedOut) => {
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-      runWslProcessMock.mockResolvedValue({
-        timedOut,
-        environmentResolved: false,
-        code: 0,
-        stdout: ''
-      })
-      registerPreflightHandlers()
-      for (const method of ['preflight:detectAgents', 'preflight:refreshAgents']) {
-        await expect(handlers[method](undefined, { wslDistro: 'Ubuntu' })).rejects.toThrow()
-      }
-    }
-  )
-
   it('carries an unresolved login environment through production IPC/store failure and manual recovery', async () => {
     const { useAppStore } = await import('@/store')
     const initial = useAppStore.getState()

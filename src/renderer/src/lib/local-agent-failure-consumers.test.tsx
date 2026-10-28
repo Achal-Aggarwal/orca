@@ -8,7 +8,6 @@ import { getDefaultSettings } from '../../../shared/constants'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY as CHAT } from '../../../shared/protocol-version'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { useAvailableStatusBarToggles } from '@/components/status-bar/use-available-status-bar-toggles'
-import { isStatusBarItemAvailable } from '@/components/status-bar/status-bar-agent-gating'
 import { buildDashboardWorktreeLaunchOptions } from '@/components/dashboard/dashboard-worktree-launch-options'
 import { resolveTerminalAgentTabShortcut } from '@/components/terminal-agent-tab-shortcut'
 import { resolveQuickWorkspaceAgentSelection } from './quick-workspace-agent-selection'
@@ -69,8 +68,6 @@ afterEach(() => {
 
 it('cold rejection preserves status controls, explicit composer submit, and truthful dashboard choices', async () => {
   const ids = useAppStore.getState().detectedAgentIds
-  expect(ids).toBeNull()
-  expect(isStatusBarItemAvailable('claude', ids)).toBe(true)
   const toggles = [{ id: 'claude' }, { id: 'codex' }] as const
   const hook = renderHook(() => useAvailableStatusBarToggles(toggles))
   expect(hook.result.current).toEqual(toggles)

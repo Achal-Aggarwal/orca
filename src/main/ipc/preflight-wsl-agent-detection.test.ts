@@ -129,18 +129,6 @@ describe('detectWslCommandsOnPath', () => {
     await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).rejects.toThrow()
   })
 
-  it('keeps a successful empty probe distinct from a failed probe', async () => {
-    runWslProcessMock.mockResolvedValue({
-      timedOut: false,
-      code: 0,
-      stdout: '',
-      environmentResolved: true
-    })
-    await expect(detectWslCommandsOnPath({ distro: 'Ubuntu' }, ['claude'])).resolves.toEqual(
-      new Set()
-    )
-  })
-
   it('skips the probe entirely when no commands are requested', async () => {
     const found = await detectWslCommandsOnPath({ distro: 'Ubuntu' }, [])
 

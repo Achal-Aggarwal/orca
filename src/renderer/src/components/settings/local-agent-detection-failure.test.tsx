@@ -119,31 +119,6 @@ it.each([true, false])(
   }
 )
 
-it('shows the catalog failure through the real hook while retaining installed agents', async () => {
-  const mutate = vi.fn()
-  detectAgents.mockResolvedValue(['claude'])
-  await useAppStore.getState().ensureDetectedAgents()
-  refreshAgents.mockRejectedValue(new Error('refresh failed'))
-  const view = render(
-    <AgentLaunchSettingsCatalog
-      settings={projectAgentLaunchSettings(getDefaultSettings('/tmp'))}
-      mutate={mutate}
-      detectionTarget={{ kind: 'local' }}
-      hostName={null}
-      renderPermissions={() => null}
-    />
-  )
-  await act(async () => {
-    await useAppStore.getState().refreshDetectedAgents()
-  })
-  expect(view.getAllByText('Claude').length).toBeGreaterThan(0)
-  const availability = view.getByRole('radiogroup', { name: 'Claude availability' })
-  fireEvent.click(within(availability).getByRole('radio', { name: /Disabled/ }))
-  expect(mutate).toHaveBeenCalled()
-  expect(view.getByRole('button', { name: 'Retry' })).toBeTruthy()
-  expect(view.queryByText(/Check the host connection/)).toBeNull()
-})
-
 it('settles Source Control arguments after an unknown native inventory fails', async () => {
   const { result } = renderHook(() => useSourceControlActionAgent(null, 'claude'))
   expect(result.current.status).toBe('pending')
@@ -161,7 +136,7 @@ it('ends skill coverage loading with a failure instead of an empty inventory', a
   expect(view.getByText(/Couldn't check which agents/)).toBeTruthy()
 })
 
-it('renders cold catalog failure, then Retry restores actual installed rows and controls', async () => {
+it('recovers the cold catalog through Retry and keeps retained rows editable after failed refresh', async () => {
   const mutate = vi.fn()
   const view = render(
     <TooltipProvider>
@@ -183,6 +158,16 @@ it('renders cold catalog failure, then Retry restores actual installed rows and 
   expect(view.getByText('Installed')).toBeTruthy()
   expect(view.getByRole('radiogroup', { name: 'Claude availability' })).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Retry' })).toBeNull()
+  refreshAgents.mockRejectedValue(new Error('refresh failed'))
+  await act(async () => {
+    await useAppStore.getState().refreshDetectedAgents()
+  })
+  expect(view.getAllByText('Claude').length).toBeGreaterThan(0)
+  const availability = view.getByRole('radiogroup', { name: 'Claude availability' })
+  fireEvent.click(within(availability).getByRole('radio', { name: /Disabled/ }))
+  expect(mutate).toHaveBeenCalled()
+  expect(view.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  expect(view.queryByText(/Check the host connection/)).toBeNull()
 })
 
 it('repository saved recipe permission editing settles after the real cold store rejection', async () => {
