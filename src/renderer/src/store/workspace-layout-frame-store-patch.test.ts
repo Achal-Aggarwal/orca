@@ -141,6 +141,51 @@ describe('laying frame slices over the store', () => {
     expect(closed.openFiles).toEqual([])
   })
 
+  it('keeps a loaded diff’s link classification and draft when main reapplies its view', async () => {
+    const { state, session, frame } = await restored()
+    const file = state.openFiles.find((entry) => entry.worktreeId === GIT_KEY)!
+    const diff = {
+      ...file,
+      id: `${GIT_KEY}::diff::unstaged::${file.relativePath}`,
+      mode: 'diff' as const,
+      diffSource: 'unstaged' as const,
+      symbolicLink: true as const,
+      isDirty: true
+    }
+    const diffFrame: PublishedWorkspaceLayout = {
+      ...frame,
+      tabs: frame.tabs.map((tab) =>
+        tab.entityId === file.id
+          ? {
+              ...tab,
+              entityId: diff.id,
+              editorView: {
+                file: {
+                  filePath: file.filePath,
+                  relativePath: file.relativePath,
+                  language: file.language
+                },
+                view: { mode: 'diff', diffSource: 'unstaged' }
+              }
+            }
+          : tab
+      )
+    }
+    const edited = { ...state, openFiles: [diff], editorDrafts: { [diff.id]: 'preserved draft' } }
+    const patch = patchFor(edited, session, diffFrame)
+    const applied = { ...edited, ...patch }
+    expect(applied.openFiles.find((entry) => entry.id === diff.id)).toMatchObject({
+      symbolicLink: true,
+      isDirty: true
+    })
+    expect(applied.editorDrafts[diff.id]).toBe('preserved draft')
+    const rebuilt = patchFor({ ...state, openFiles: [] }, session, diffFrame).openFiles?.find(
+      (entry) => entry.id === diff.id
+    )
+    expect(rebuilt).toMatchObject({ mode: 'diff', isDirty: false })
+    expect(rebuilt?.symbolicLink).toBeUndefined()
+  })
+
   it('keeps a browser tab’s page state, and drops the pages of a tab main closed', async () => {
     const { state, session, frame } = await restored()
     const browser = state.browserTabsByWorktree[GIT_KEY]![0]!

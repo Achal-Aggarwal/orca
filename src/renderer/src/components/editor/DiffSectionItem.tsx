@@ -19,6 +19,7 @@ import { submitDiffSectionComment } from './diff-section-comment-submit'
 import type { DiffSectionItemProps } from './diff-section-item-props'
 import { useDiffSectionModelLifecycle } from './use-diff-section-model-lifecycle'
 import { hasLayoutBox } from '@/hooks/virtualized-hidden-row-measurement'
+import { SymbolicLinkDiffNotice } from './SymbolicLinkDiffNotice'
 import { DiffSectionSaveConflictBar } from './DiffSectionSaveConflictBar'
 
 export function DiffSectionItem({
@@ -62,8 +63,8 @@ export function DiffSectionItem({
     () => (allDiffComments ?? []).filter((c) => c.filePath === section.path && isDiffComment(c)),
     [allDiffComments, section.path]
   )
-  const language = detectLanguage(section.path)
-  const isEditable = section.area === 'unstaged'
+  const language = section.diffResult?.symbolicLink ? 'plaintext' : detectLanguage(section.path)
+  const isEditable = section.area === 'unstaged' && section.diffResult?.symbolicLink !== true
   const modelPathBase = useMemo(
     () =>
       `diff-section:${encodeURIComponent(worktreeId ?? 'review')}:${encodeURIComponent(section.key)}:${section.contentGeneration ?? 0}`,
@@ -242,7 +243,7 @@ export function DiffSectionItem({
       setSections((prev) => {
         let changed = false
         const next = prev.map((s, i) => {
-          if (i !== index) {
+          if (i !== index || s.diffResult?.symbolicLink === true) {
             return s
           }
 
@@ -306,12 +307,13 @@ export function DiffSectionItem({
         trailingContent={renderHeaderTrailingContent?.(section, index)}
       />
 
-      {section.saveConflict && (
+      {isEditable && section.saveConflict && (
         <DiffSectionSaveConflictBar
           onReload={() => retrySection(index)}
           onOverwrite={() => void handleSectionSaveRef.current(index, 'overwrite')}
         />
       )}
+      {!section.collapsed && section.diffResult?.symbolicLink && <SymbolicLinkDiffNotice />}
       {!section.collapsed && (
         <DiffSectionBody
           section={section}

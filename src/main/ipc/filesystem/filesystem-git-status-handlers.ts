@@ -279,6 +279,7 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
         filePath: string
         staged: boolean
         compareAgainstHead?: boolean
+        readSymbolicLinkTargets?: true
         connectionId?: string
       }
     ): Promise<GitDiffResult> => {
@@ -292,7 +293,8 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
       )
       return getDiff(worktreePath, filePath, args.staged, args.compareAgainstHead, {
         ...gitOptions,
-        admissionTier: 'interactive'
+        admissionTier: 'interactive',
+        ...(args.readSymbolicLinkTargets ? { readSymbolicLinkTargets: true } : {})
       })
     }
   )

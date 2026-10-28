@@ -7,6 +7,9 @@ import type { DiffSection } from '../../diff-section-types'
 import type { OpenFile } from '@/store/slices/editor'
 import type * as EditorFileOperationOwner from '@/lib/editor-file-operation-owner'
 import { useCombinedDiffSectionActions } from './use-combined-diff-section-actions'
+import { useAppStore } from '@/store'
+import { editorPathHoldKey } from '../../editor-autosave-holds'
+import { withEditorFileWriteLock } from '../../editor-file-write-lock'
 import { getStoredTextDiffResult } from '../../large-diff-section-content'
 
 const mocks = vi.hoisted(() => ({ writeRuntimeFile: vi.fn() }))
@@ -273,3 +276,101 @@ it('applies a queued save to the section clicked even after rows are rebuilt', a
   expect(paths).toEqual(['/repo/b.ts', '/repo/b.ts'])
   expect(mocks.writeRuntimeFile.mock.calls[1]?.[4]).toBeUndefined()
 })
+
+it.each([undefined, 'overwrite'] as const)(
+  'refuses a link discovered while a section %s waits for the path lock',
+  async (mode) => {
+    const ownedFile: OpenFile = { ...file, runtimeEnvironmentId: 'env' }
+    const sectionsRef = { current: [section()] }
+    const key = editorPathHoldKey(useAppStore.getState(), ownedFile, '/repo/a.ts')
+    expect(key).not.toBeNull()
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const held = withEditorFileWriteLock(key, () => gate)
+    const { result } = renderHook(() =>
+      useCombinedDiffSectionActions({
+        activeGroupId: undefined,
+        branchCompare: null,
+        canOpenWorkspaceFileBrowserForPath: () => false,
+        commitCompare: null,
+        file: ownedFile,
+        isAllMode: false,
+        isBranchMode: false,
+        isCommitMode: false,
+        sections: sectionsRef.current,
+        sectionsRef,
+        setSectionHeights: vi.fn(),
+        setSections: vi.fn()
+      })
+    )
+    const save = result.current.handleSectionSaveRef.current(0, mode)
+    await act(async () => undefined)
+    const current = sectionsRef.current[0]!
+    if (!current.diffResult) {
+      throw new Error('section has no loaded diff')
+    }
+    sectionsRef.current = [
+      { ...current, diffResult: { ...current.diffResult, symbolicLink: true } }
+    ]
+    release()
+    await act(() => Promise.all([held, save]))
+    expect(mocks.writeRuntimeFile).not.toHaveBeenCalled()
+    expect(sectionsRef.current[0]).toMatchObject({ dirty: true, modifiedContent: 'section edit' })
+  }
+)
+
+it.each([undefined, 'overwrite'] as const)(
+  'refuses a link discovered during section %s transport preparation',
+  async (mode) => {
+    const sectionsRef = { current: [section()] }
+    let release = () => {}
+    let started = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const preparing = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const landed: string[] = []
+    mocks.writeRuntimeFile.mockImplementationOnce(
+      async (_context, _path, content, _access, _precondition, beforeSend) => {
+        started()
+        await gate
+        beforeSend?.()
+        landed.push(content)
+        return { ok: true }
+      }
+    )
+    const { result } = renderHook(() =>
+      useCombinedDiffSectionActions({
+        activeGroupId: undefined,
+        branchCompare: null,
+        canOpenWorkspaceFileBrowserForPath: () => false,
+        commitCompare: null,
+        file,
+        isAllMode: false,
+        isBranchMode: false,
+        isCommitMode: false,
+        sections: sectionsRef.current,
+        sectionsRef,
+        setSectionHeights: vi.fn(),
+        setSections: vi.fn()
+      })
+    )
+    const save = result.current.handleSectionSaveRef.current(0, mode)
+    await preparing
+    const current = sectionsRef.current[0]!
+    if (!current.diffResult) {
+      throw new Error('section has no loaded diff')
+    }
+    sectionsRef.current = [
+      { ...current, diffResult: { ...current.diffResult, symbolicLink: true } }
+    ]
+    release()
+    await act(() => save)
+    expect(landed).toEqual([])
+    expect(sectionsRef.current[0]).toMatchObject({ dirty: true, modifiedContent: 'section edit' })
+  }
+)

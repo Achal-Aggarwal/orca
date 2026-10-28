@@ -5,6 +5,8 @@ import { editorBufferSiblingViewIds } from '@/store/slices/editor/buffers/editor
 import type { EditorSaveTrigger } from './editor-save-disk-precondition'
 import { canAutoSaveOpenFile } from './editor-autosave'
 
+export class EditorSaveReadOnlyError extends Error {}
+
 function hasCurrentProvenance(state: AppState, file: OpenFile): boolean {
   if (!file.operationProvenance) {
     return true
@@ -18,7 +20,11 @@ function hasCurrentProvenance(state: AppState, file: OpenFile): boolean {
 }
 
 export function isEditorWritableView(view: OpenFile): boolean {
-  return view.readOnly !== true && view.csvPreviewOnly !== true
+  return (
+    view.readOnly !== true &&
+    view.csvPreviewOnly !== true &&
+    !(view.mode === 'diff' && view.symbolicLink === true)
+  )
 }
 
 export function firstEditorSaveWriter(
@@ -70,4 +76,16 @@ export function liveEditorSaveWriter(
 export function liveEditorRecordView(state: AppState, viewIds: readonly string[]): OpenFile | null {
   const open = viewIds.flatMap((id) => state.openFiles.find((file) => file.id === id) ?? [])
   return open.find(isEditorWritableView) ?? open[0] ?? null
+}
+
+export function assertEditorSaveWriterWritable(
+  state: AppState,
+  viewId: string,
+  recordViewIds: readonly string[],
+  trigger: EditorSaveTrigger
+): void {
+  const writer = liveEditorSaveWriter(state, viewId, recordViewIds, trigger)
+  if (!writer || !isEditorWritableView(writer)) {
+    throw new EditorSaveReadOnlyError()
+  }
 }

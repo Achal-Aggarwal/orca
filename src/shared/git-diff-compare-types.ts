@@ -44,8 +44,14 @@ export type GitCommitCompareResult = {
   entries: GitBranchChangeEntry[]
 }
 
+export type GitDiffReadOptions = {
+  /** Opt in only when the client treats working symlink target names as read-only. */
+  readSymbolicLinkTargets?: true
+}
+
 export type GitDiffTextResult = {
   kind: 'text'
+  symbolicLink?: true
   originalContent: string
   modifiedContent: string
   originalIsBinary: false
@@ -55,6 +61,7 @@ export type GitDiffTextResult = {
 
 export type GitDiffBinaryResult = {
   kind: 'binary'
+  symbolicLink?: true
   originalContent: string
   modifiedContent: string
   /** Legacy flag used by the renderer for any binary format it can preview, including PDFs. */

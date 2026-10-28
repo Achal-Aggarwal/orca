@@ -47,7 +47,8 @@ export const GitFilePath = WorktreeSelector.extend({
 
 export const GitDiff = GitFilePath.extend({
   staged: z.boolean(),
-  compareAgainstHead: z.boolean().optional()
+  compareAgainstHead: z.boolean().optional(),
+  readSymbolicLinkTargets: z.literal(true).optional()
 })
 
 export const GitBranchCompare = WorktreeSelector.extend({

@@ -1,6 +1,7 @@
 import type {
   GitBranchCompareResult,
   GitCommitCompareResult,
+  GitDiffReadOptions,
   GitDiffResult
 } from '../../shared/git-diff-compare-types'
 import type { GitForkSyncExpectedUpstream, GitForkSyncResult } from '../../shared/git-fork-sync'
@@ -35,7 +36,8 @@ export type IGitProvider = {
     worktreePath: string,
     filePath: string,
     staged: boolean,
-    compareAgainstHead?: boolean
+    compareAgainstHead?: boolean,
+    readOptions?: GitDiffReadOptions
   ): Promise<GitDiffResult>
   stageFile(worktreePath: string, filePath: string): Promise<void>
   unstageFile(worktreePath: string, filePath: string): Promise<void>

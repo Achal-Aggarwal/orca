@@ -9,14 +9,22 @@ import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 
 export async function getRuntimeGitDiff(
   context: RuntimeGitContext,
-  args: { filePath: string; staged: boolean; compareAgainstHead?: boolean }
+  args: {
+    filePath: string
+    staged: boolean
+    compareAgainstHead?: boolean
+    readSymbolicLinkTargets?: boolean
+  }
 ): Promise<GitDiffResult> {
+  const { readSymbolicLinkTargets = true, ...diffArgs } = args
+  const readOptions = readSymbolicLinkTargets ? { readSymbolicLinkTargets: true as const } : {}
   const target = context.target
   if (target.kind === 'local' || !context.worktreeId) {
     return window.api.git.diff({
       worktreePath: resolveLocalWorktreePath(context),
       filePath: args.filePath,
       staged: args.staged,
+      ...readOptions,
       compareAgainstHead: args.compareAgainstHead,
       connectionId: context.connectionId
     })
@@ -24,7 +32,7 @@ export async function getRuntimeGitDiff(
   return callRuntimeRpc<GitDiffResult>(
     target,
     'git.diff',
-    { worktree: toRuntimeWorktreeSelector(context.worktreeId), ...args },
+    { worktree: toRuntimeWorktreeSelector(context.worktreeId), ...diffArgs, ...readOptions },
     { timeoutMs: 15_000 }
   )
 }

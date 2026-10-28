@@ -23,6 +23,7 @@ import { getDiskBaselineSignature } from '../../../../../../shared/disk-baseline
 import { writeEditorSave } from '../../editor-save-disk-precondition'
 import { withEditorFileWriteLock } from '../../editor-file-write-lock'
 import { editorPathHoldKey } from '../../editor-autosave-holds'
+import { EditorSaveReadOnlyError } from '../../editor-save-writer-view'
 import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 export type CombinedDiffSectionActions = {
@@ -163,7 +164,7 @@ export function useCombinedDiffSectionActions({
       // Resolve by key after queued saves; rows may move or disappear while waiting.
       const index = sectionsRef.current.findIndex((s) => s.key === sectionKey)
       const section = sectionsRef.current[index]
-      if (!section) {
+      if (!section || section.diffResult?.symbolicLink === true) {
         return
       }
       const modifiedEditor = modifiedEditorsRef.current.get(index)
@@ -201,8 +202,14 @@ export function useCombinedDiffSectionActions({
         // Share the path write lock with ordinary editor tabs.
         const writeResult = await withEditorFileWriteLock(
           editorPathHoldKey(state, owner, absolutePath),
-          () =>
-            writeEditorSave(
+          async () => {
+            if (
+              sectionsRef.current.find((current) => current.key === sectionKey)?.diffResult
+                ?.symbolicLink === true
+            ) {
+              return null
+            }
+            return writeEditorSave(
               context,
               absolutePath,
               content,
@@ -213,9 +220,19 @@ export function useCombinedDiffSectionActions({
                     kind: 'guarded',
                     signature: getDiskBaselineSignature(loaded),
                     allowMissing: false
-                  }
+                  },
+              () => {
+                const current = sectionsRef.current.find((item) => item.key === sectionKey)
+                if (!current || current.diffResult?.symbolicLink === true) {
+                  throw new EditorSaveReadOnlyError()
+                }
+              }
             )
+          }
         )
+        if (!writeResult) {
+          return
+        }
         if (!writeResult.ok) {
           markConflict()
           return
@@ -258,6 +275,9 @@ export function useCombinedDiffSectionActions({
           })
         )
       } catch (err) {
+        if (err instanceof EditorSaveReadOnlyError) {
+          return
+        }
         console.error('Save failed:', err)
       }
     },

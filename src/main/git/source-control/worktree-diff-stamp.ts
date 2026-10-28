@@ -1,6 +1,7 @@
-import { readFile, stat } from 'node:fs/promises'
+import { lstat, readFile, stat } from 'node:fs/promises'
 import * as path from 'node:path'
 import { resolveWorktreeHostPath } from '../../../shared/git-metadata-path'
+import type { GitDiffReadOptions } from '../../../shared/git-diff-compare-types'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { resolveGitDir } from './resolve-git-dir'
 
@@ -36,7 +37,7 @@ export async function readWorktreeDiffStamp(
   worktreePath: string,
   filePath: string,
   includeWorkingTree: boolean,
-  options: Pick<GitRuntimeOptions, 'wslDistro'> = {}
+  options: Pick<GitRuntimeOptions, 'wslDistro'> & GitDiffReadOptions = {}
 ): Promise<WorktreeDiffStamp | null> {
   const capturedAtMs = Date.now()
   try {
@@ -53,7 +54,7 @@ export async function readWorktreeDiffStamp(
       readFileStampComponent(path.join(gitDir, 'index')),
       readFileStampComponent(path.join(hostWorktreePath, '.gitmodules')),
       includeWorkingTree
-        ? readWorkingTreeComponent(path.join(hostWorktreePath, filePath))
+        ? readWorkingTreeComponent(path.join(hostWorktreePath, filePath), options)
         : Promise.resolve(ABSENT)
     ])
     if (!head) {
@@ -148,13 +149,16 @@ async function readFileStampComponent(filePath: string): Promise<StampComponent>
   }
 }
 
-async function readWorkingTreeComponent(filePath: string): Promise<StampComponent> {
+async function readWorkingTreeComponent(
+  filePath: string,
+  options: GitDiffReadOptions
+): Promise<StampComponent> {
   try {
-    const stats = await stat(filePath)
+    const stats = await (options.readSymbolicLinkTargets ? lstat(filePath) : stat(filePath))
     // Inodes detect atomic replacement, but zero/unstable network-redirector values cannot improve the stamp.
     const inode = isUsableInode(stats.ino) ? String(stats.ino) : MISSING
     return {
-      text: `${requireMtimeMs(stats.mtimeMs)}:${stats.size}:${inode}`,
+      text: `${options.readSymbolicLinkTargets && stats.isSymbolicLink() ? 'link' : 'file'}:${requireMtimeMs(stats.mtimeMs)}:${stats.size}:${inode}`,
       mtimeMs: stats.mtimeMs
     }
   } catch (error) {

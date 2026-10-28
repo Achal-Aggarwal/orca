@@ -88,6 +88,8 @@ export type OpenFile = {
   readOnly?: boolean
   /** Transient: paged CSV data must never become an editable buffer. */
   csvPreviewOnly?: boolean
+  /** Renderer-local classification from the current diff load; preserves existing dirty drafts. */
+  symbolicLink?: true
   /** Why: explicit live tail, only meaningful for a read-only local log. */
   liveTail?: boolean
   mode: 'edit' | 'diff' | 'conflict-review' | 'markdown-preview' | 'check-details'

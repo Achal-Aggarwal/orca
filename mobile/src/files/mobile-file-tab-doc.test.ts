@@ -74,7 +74,15 @@ describe('resolveMobileFileTabDoc', () => {
       truncated: false
     })
     expect(client.requests).toEqual([
-      { method: 'git.diff', params: { worktree: 'id:wt1', filePath: 'a.ts', staged: true } }
+      {
+        method: 'git.diff',
+        params: {
+          worktree: 'id:wt1',
+          filePath: 'a.ts',
+          staged: true,
+          readSymbolicLinkTargets: true
+        }
+      }
     ])
   })
 

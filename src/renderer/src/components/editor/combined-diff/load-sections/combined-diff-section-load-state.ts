@@ -43,7 +43,10 @@ export function isUnchangedDiffSectionReload(
   current: ReloadedDiffSectionContent,
   next: ReloadedDiffSectionContent
 ): boolean {
-  if (current.error !== next.error) {
+  if (
+    current.error !== next.error ||
+    current.diffResult?.symbolicLink !== next.diffResult?.symbolicLink
+  ) {
     return false
   }
   // Only text diffs compare by content; binary/image results carry data this can't see.

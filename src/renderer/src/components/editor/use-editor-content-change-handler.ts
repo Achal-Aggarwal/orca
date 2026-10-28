@@ -25,9 +25,15 @@ export function useEditorContentChangeHandler({
 
   return useCallback(
     (file: OpenFile | null, content: string) => {
+      if (!file) {
+        return
+      }
+      const current = useAppStore.getState().openFiles.find((candidate) => candidate.id === file.id)
       if (
-        !file ||
-        !useAppStore.getState().openFiles.some((candidate) => candidate.id === file.id)
+        !current ||
+        (current.mode === 'diff' &&
+          (current.symbolicLink === true ||
+            diffContentsRef.current[file.id]?.symbolicLink === true))
       ) {
         return
       }

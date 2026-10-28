@@ -125,6 +125,25 @@ export function useCombinedDiffSectionLoader({
       supersededLoadIndicesRef.current.delete(index)
       // User edits outrank incoming disk content.
       if (sectionsRef.current[index]?.dirty) {
+        if (!error) {
+          setSections((prev) =>
+            prev.map((s, i) => {
+              if (
+                i !== index ||
+                !s.diffResult ||
+                (s.diffResult.symbolicLink !== true && result.symbolicLink !== true)
+              ) {
+                return s
+              }
+              return {
+                ...s,
+                diffResult: result.symbolicLink
+                  ? result
+                  : { ...s.diffResult, symbolicLink: undefined }
+              }
+            })
+          )
+        }
         loadedIndicesRef.current.add(index)
         return
       }

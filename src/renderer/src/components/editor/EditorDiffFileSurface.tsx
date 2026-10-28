@@ -1,3 +1,4 @@
+import { SymbolicLinkDiffNotice } from './SymbolicLinkDiffNotice'
 import { DiffTooLargeNotice } from './DiffTooLargeNotice'
 import { translate } from '@/i18n/i18n'
 import type { OpenFile } from '@/store/slices/editor'
@@ -53,12 +54,13 @@ export function EditorDiffFileSurface({
     )
   }
 
-  const isEditable = activeFile.diffSource === 'unstaged'
+  const symbolicLink = diffContent.symbolicLink === true
+  const isEditable = activeFile.diffSource === 'unstaged' && !symbolicLink
   if (diffContent.kind === 'binary') {
     if (diffContent.tooLarge) {
       return <DiffTooLargeNotice />
     }
-    if (diffContent.isImage) {
+    if (diffContent.isImage && !symbolicLink) {
       return (
         <ImageDiffViewer
           originalContent={diffContent.originalContent}
@@ -91,14 +93,16 @@ export function EditorDiffFileSurface({
     )
   }
 
-  const modifiedDiffContent = editBuffer ?? diffContent.modifiedContent
+  const modifiedDiffContent = symbolicLink
+    ? diffContent.modifiedContent
+    : (editBuffer ?? diffContent.modifiedContent)
   const largeDiffSaveContentAvailable = !(
     diffContent.largeDiffRenderLimit?.limited === true &&
     editBuffer === undefined &&
     diffContent.modifiedContent.length === 0
   )
   const externalChangeBanner =
-    activeFile.externalMutation === 'changed' ? (
+    !symbolicLink && activeFile.externalMutation === 'changed' ? (
       <ExternalFileChangeBanner
         file={activeFile}
         currentContent={modifiedDiffContent}
@@ -107,6 +111,7 @@ export function EditorDiffFileSurface({
     ) : null
 
   if (
+    !symbolicLink &&
     isMarkdown &&
     mdViewMode === 'preview' &&
     diffContent.largeDiffRenderLimit?.limited !== true
@@ -156,7 +161,7 @@ export function EditorDiffFileSurface({
       modifiedContent={modifiedDiffContent}
       largeDiffRenderLimit={diffContent.largeDiffRenderLimit}
       largeDiffSaveContentAvailable={largeDiffSaveContentAvailable}
-      language={resolvedLanguage}
+      language={symbolicLink ? 'plaintext' : resolvedLanguage}
       filePath={activeFile.filePath}
       relativePath={activeFile.relativePath}
       sideBySide={sideBySide}
@@ -166,6 +171,14 @@ export function EditorDiffFileSurface({
       onSave={isEditable ? (isMarkdown ? markdownDocuments.mdSave : onSave) : undefined}
     />
   )
+  if (symbolicLink) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <SymbolicLinkDiffNotice />
+        <div className="flex min-h-0 flex-1 flex-col">{diffViewer}</div>
+      </div>
+    )
+  }
   if (activeFile.externalMutation !== 'changed') {
     return diffViewer
   }

@@ -1,7 +1,8 @@
-import { readFile, stat } from 'node:fs/promises'
+import { lstat, readFile, readlink, stat } from 'node:fs/promises'
 import * as path from 'node:path'
 import { isBinaryBuffer } from '../../../shared/binary-buffer'
 import { isMissingGitBlobPath } from '../../../shared/git-blob-absence'
+import type { GitDiffReadOptions } from '../../../shared/git-diff-compare-types'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { gitReadOptionsForWorktree } from '../git-runtime-options'
 import { gitExecFileAsyncBuffer } from '../runner'
@@ -13,6 +14,7 @@ export type GitBlobReadResult = {
   content: string
   isBinary: boolean
   exists: boolean
+  symbolicLink?: true
   /** Unknown presence: never cache a diff whose empty side came from an incomplete read. */
   failed?: boolean
   /** Past MAX_GIT_SHOW_BYTES: left unread and reported binary, so older diff readers stay safe. */
@@ -97,14 +99,29 @@ export async function readGitBlobAtOidPath(
   }
 }
 
-export async function readWorkingTreeFile(filePath: string): Promise<GitBlobReadResult> {
+export async function readWorkingTreeFile(
+  filePath: string,
+  options: GitDiffReadOptions = {}
+): Promise<GitBlobReadResult> {
   let fileStat
   try {
-    fileStat = await stat(filePath)
+    fileStat = await (options.readSymbolicLinkTargets ? lstat(filePath) : stat(filePath))
   } catch (error) {
     // Only ENOENT proves deletion; other stat errors leave presence unknown.
     const missing = (error as NodeJS.ErrnoException)?.code === 'ENOENT'
     return { content: '', isBinary: false, exists: !missing, ...(missing ? {} : { failed: true }) }
+  }
+  if (options.readSymbolicLinkTargets && fileStat.isSymbolicLink()) {
+    try {
+      return {
+        content: await readlink(filePath),
+        isBinary: false,
+        exists: true,
+        symbolicLink: true
+      }
+    } catch {
+      return { content: '', isBinary: false, exists: true, symbolicLink: true, failed: true }
+    }
   }
   if (!fileStat.isFile()) {
     return { content: '', isBinary: false, exists: false }

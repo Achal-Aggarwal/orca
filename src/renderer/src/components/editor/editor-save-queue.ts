@@ -43,12 +43,19 @@ import {
 } from './editor-save-disk-precondition'
 import { withEditorFileWriteLock } from './editor-file-write-lock'
 import {
+  EditorSaveReadOnlyError,
+  assertEditorSaveWriterWritable,
+  isEditorWritableView,
   editorSaveWriterView,
   liveEditorRecordView,
   liveEditorSaveWriter
 } from './editor-save-writer-view'
 import { editorBufferIdForFile } from '@/store/slices/editor/buffers/editor-buffer-identity-cache'
-import { createEditorSaveSlots, type EditorSaveRequest } from './editor-save-slots'
+import {
+  createEditorSaveSlots,
+  editorSaveRequest,
+  type EditorSaveRequest
+} from './editor-save-slots'
 import { EditorSaveDiscardedError, editorDiscardEpoch } from './editor-discard-epoch'
 import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 import { releaseNonUtf8PausesWithoutDirtyTab } from './editor-non-utf8-autosave-pause'
@@ -108,7 +115,7 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
     }
 
     // Read-only artifact tabs must never write agent-owned files.
-    if (liveFile.readOnly === true) {
+    if (!isEditorWritableView(liveFile)) {
       return 'failed'
     }
 
@@ -149,9 +156,7 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
     ) {
       return 'failed'
     }
-    const worktree = liveFile.worktreeId
-      ? findWorktreeById(selectWorktreesByRepo(state) ?? {}, liveFile.worktreeId)
-      : null
+    const worktree = findWorktreeById(selectWorktreesByRepo(state) ?? {}, liveFile.worktreeId)
     const fileContext = getEditorFileOperationContext(state, liveFile, worktree?.path ?? null)
     const connectionId = fileContext.connectionId
     const precondition = editorSavePrecondition(liveFile, trigger)
@@ -179,12 +184,16 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           if (discarded()) {
             throw new EditorSaveDiscardedError()
           }
+          assertEditorSaveWriterWritable(store.getState(), writerId, writerViewIds, trigger)
         },
         editorSaveGrant(liveFile, fileContext, () => store.getState())
       )
     } catch (error) {
       // Clear failed-write stamps so they cannot suppress real external changes.
       clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)
+      if (error instanceof EditorSaveReadOnlyError) {
+        return 'failed'
+      }
       if (error instanceof EditorSaveDiscardedError) {
         return nothingToWrite
       }
@@ -259,18 +268,8 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
   ): Promise<EditorSaveResult> => {
     const key = recordKeyOf(file.id)
     clearScheduledAutoSave(key)
-    const requestedDirty = store
-      .getState()
-      .openFiles.some((tab) => tab.id === file.id && tab.isDirty)
-    const discardEpoch = editorDiscardEpoch(key)
-    return slots.enqueue(key, {
-      fileId: file.id,
-      fallbackContent,
-      trigger,
-      requestedDirty,
-      recordId: key,
-      discardEpoch
-    })
+    const request = editorSaveRequest(store.getState(), file.id, fallbackContent, trigger, key)
+    return slots.enqueue(key, request)
   }
 
   const settleFileSaves = async (fileId: string, flush = true): Promise<void> => {

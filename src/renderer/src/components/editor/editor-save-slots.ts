@@ -1,3 +1,5 @@
+import type { AppState } from '@/store'
+import { editorDiscardEpoch } from './editor-discard-epoch'
 import type { EditorSaveResult, EditorSaveTrigger } from './editor-save-disk-precondition'
 
 export type EditorSaveRequest = {
@@ -85,4 +87,21 @@ export function createEditorSaveSlots(
   }
 
   return { enqueue, settle, clear: () => slots.clear() }
+}
+
+export function editorSaveRequest(
+  state: Pick<AppState, 'openFiles'>,
+  fileId: string,
+  fallbackContent: string,
+  trigger: EditorSaveTrigger,
+  recordId: string
+): EditorSaveRequest {
+  return {
+    fileId,
+    fallbackContent,
+    trigger,
+    requestedDirty: state.openFiles.some((tab) => tab.id === fileId && tab.isDirty),
+    recordId,
+    discardEpoch: editorDiscardEpoch(recordId)
+  }
 }

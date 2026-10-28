@@ -58,6 +58,7 @@ export const gitApi = {
     filePath: string
     staged: boolean
     compareAgainstHead?: boolean
+    readSymbolicLinkTargets?: true
     connectionId?: string
   }) => ipcRenderer.invoke('git:diff', args),
   branchCompare: (args: { worktreePath: string; baseRef: string; connectionId?: string }) =>

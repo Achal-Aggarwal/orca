@@ -101,7 +101,11 @@ export function isExternalReloadableEditorTab(file: OpenFile): boolean {
 
 export function canAutoSaveOpenFile(file: OpenFile): boolean {
   // Never autosave provider-owned transcripts or CSV preview placeholders; either can overwrite content the editor does not own.
-  if (file.readOnly === true || file.csvPreviewOnly === true) {
+  if (
+    file.readOnly === true ||
+    file.csvPreviewOnly === true ||
+    (file.mode === 'diff' && file.symbolicLink === true)
+  ) {
     return false
   }
   // Only edit and unstaged single-file diffs have one write target; multi-file surfaces need separate save coordination.

@@ -35,7 +35,8 @@ export async function resolveMobileFileTabDoc(
     const reply = await fileTabDiffRead.request(client, {
       worktree,
       filePath: relativePath,
-      staged: request.diffSource === 'staged'
+      staged: request.diffSource === 'staged',
+      readSymbolicLinkTargets: true
     })
     const result = fileTabDiffRead.interpret(reply)
     if (result.kind !== 'text') {

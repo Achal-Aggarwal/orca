@@ -32,6 +32,7 @@ export function createOpenFileMutations(
   EditorSlice,
   | 'setActiveFile'
   | 'markFileDirty'
+  | 'setDiffSymbolicLink'
   | 'setExternalMutation'
   | 'setLastKnownDiskSignature'
   | 'setTerminalArtifactGrant'
@@ -87,7 +88,9 @@ export function createOpenFileMutations(
         }
         // Why: read-only tabs can never become dirty; hard no-op any stray change/save callback that reached here.
         if (
-          (file.readOnly === true || file.csvPreviewOnly === true) &&
+          (file.readOnly === true ||
+            file.csvPreviewOnly === true ||
+            (file.mode === 'diff' && file.symbolicLink === true)) &&
           (dirty || opts?.written !== true)
         ) {
           return s
@@ -147,6 +150,19 @@ export function createOpenFileMutations(
         promotePreviewTabsThroughLayoutOwner(get(), set, promoted)
       }
     },
+
+    setDiffSymbolicLink: (fileId, symbolicLink) =>
+      set((s) => {
+        const file = s.openFiles.find((f) => f.id === fileId)
+        if (!file || file.mode !== 'diff' || (file.symbolicLink === true) === symbolicLink) {
+          return s
+        }
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === fileId ? { ...f, symbolicLink: symbolicLink ? true : undefined } : f
+          )
+        }
+      }),
 
     setExternalMutation: (fileId, mutation) =>
       set((s) => updateEditorBuffer(s, fileId, { externalMutation: mutation ?? undefined })),

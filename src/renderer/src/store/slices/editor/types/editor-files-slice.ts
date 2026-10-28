@@ -128,6 +128,7 @@ export type EditorFilesSlice = {
   setActiveFile: (fileId: string, targetWorktreeId?: string) => void
   /** `written`: a save made disk match, so even a read-only view may mark its record clean. */
   markFileDirty: (fileId: string, dirty: boolean, opts?: { written?: boolean }) => void
+  setDiffSymbolicLink: (fileId: string, symbolicLink: boolean) => void
   setExternalMutation: (fileId: string, mutation: 'deleted' | 'renamed' | 'changed' | null) => void
   /** `undefined` un-records a baseline a failed operation stamped provisionally. */
   setLastKnownDiskSignature: (fileId: string, signature: string | undefined) => void

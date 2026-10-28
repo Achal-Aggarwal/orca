@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { assertEditorFileOperationCurrent } from '@/lib/editor-file-operation-owner'
 import { requireRuntimeTargetForFileOwner } from '@/lib/file-owner-runtime-target'
 import type { OpenFile } from '@/store/slices/editor'
 import { getConnectionIdForFile } from '@/lib/connection-context'
@@ -142,6 +143,7 @@ export function useEditorPanelDiffContentLoader({
                     {
                       filePath: file.relativePath,
                       staged: effectiveDiffSource === 'staged',
+                      readSymbolicLinkTargets: file.mode === 'diff',
                       compareAgainstHead
                     }
                   )
@@ -157,11 +159,41 @@ export function useEditorPanelDiffContentLoader({
         if (diffReadGenerationRef.current[file.id] !== generation) {
           return
         }
+        const state = useAppStore.getState()
+        const currentFile = state.openFiles.find((candidate) => candidate.id === file.id)
+        if (
+          !currentFile ||
+          currentFile.filePath !== file.filePath ||
+          currentFile.worktreeId !== file.worktreeId ||
+          currentFile.mode !== file.mode ||
+          currentFile.runtimeEnvironmentId !== file.runtimeEnvironmentId ||
+          currentFile.diffSource !== file.diffSource
+        ) {
+          return
+        }
+        if (file.operationProvenance) {
+          assertEditorFileOperationCurrent(state, file.worktreeId, file.operationProvenance)
+        }
+        const currentScope = getRuntimeGitScope(
+          requireRuntimeTargetForFileOwner(
+            state,
+            currentFile.worktreeId,
+            currentFile.runtimeEnvironmentId
+          ),
+          getConnectionIdForFile(currentFile.worktreeId, currentFile.filePath) ?? undefined
+        )
+        if (currentScope !== gitScope) {
+          return
+        }
+        if (file.mode === 'diff') {
+          state.setDiffSymbolicLink(file.id, result.symbolicLink === true)
+        }
         setDiffContents((prev) => ({ ...prev, [file.id]: result }))
         // Why: an unstaged diff saves its modified side to the working-tree file, so that side is its baseline.
         if (
           file.diffSource === 'unstaged' &&
           result.kind === 'text' &&
+          result.symbolicLink !== true &&
           result.largeDiffRenderLimit === undefined
         ) {
           stampCleanTabDiskBaseline(file.id, { content: result.modifiedContent, isBinary: false })

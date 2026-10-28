@@ -155,7 +155,7 @@ export function DiffSectionBody({
       ) : section.diffResult?.kind === 'binary' ? (
         section.diffResult.tooLarge ? (
           <DiffTooLargeNotice />
-        ) : section.diffResult.isImage ? (
+        ) : section.diffResult.isImage && !section.diffResult.symbolicLink ? (
           <ImageDiffViewer
             originalContent={section.diffResult.originalContent}
             modifiedContent={section.diffResult.modifiedContent}
@@ -208,8 +208,16 @@ export function DiffSectionBody({
         <DiffEditor
           height="100%"
           language={language}
-          original={section.originalContent}
-          modified={section.modifiedContent}
+          original={
+            section.diffResult?.symbolicLink
+              ? section.diffResult.originalContent
+              : section.originalContent
+          }
+          modified={
+            section.diffResult?.symbolicLink
+              ? section.diffResult.modifiedContent
+              : section.modifiedContent
+          }
           theme={isDark ? 'vs-dark' : 'vs'}
           onMount={handleEditorMount}
           // The React wrapper may dispose models before widgets; retain them through teardown and dispose unattached models next tick.

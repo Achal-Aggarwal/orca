@@ -260,6 +260,7 @@
     }
   },
   "editor": {
+    "symbolicLinkDiff": "Symbolic link target · Read-only",
     "richMarkdown": {
       "tooLarge": "File is larger than the {{limit}} rich editing limit. Showing source mode instead.",
       "openAnyway": "Open anyway"

@@ -1,6 +1,7 @@
 import type {
   GitBranchCompareResult,
   GitCommitCompareResult,
+  GitDiffReadOptions,
   GitDiffResult
 } from '../../shared/git-diff-compare-types'
 import { assertGitDiffWithinTransportBudget } from '../../shared/git-diff-transport-budget'
@@ -24,7 +25,8 @@ export class RuntimeGitDiffCommands {
     filePath: string,
     staged: boolean,
     compareAgainstHead?: boolean,
-    maxContentBytes?: number
+    maxContentBytes?: number,
+    readOptions?: GitDiffReadOptions
   ): Promise<GitDiffResult> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePath = normalizeRuntimeGitRelativePath(filePath)
@@ -33,7 +35,8 @@ export class RuntimeGitDiffCommands {
         target.worktree.path,
         relativePath,
         staged,
-        compareAgainstHead
+        compareAgainstHead,
+        ...(readOptions ? ([readOptions] as const) : [])
       ),
       maxContentBytes
     )

@@ -1,11 +1,12 @@
 import * as path from 'node:path'
-import type { GitDiffResult } from '../../../shared/git-diff-compare-types'
+import type { GitDiffReadOptions, GitDiffResult } from '../../../shared/git-diff-compare-types'
 import { resolveWorktreeHostPath } from '../../../shared/git-metadata-path'
 import { stableInFlightKey } from '../../../shared/in-flight-promise-dedupe'
 import type { GitRuntimeOptions } from '../git-runtime-options'
 import { gitRuntimeOptionsKey } from './git-runtime-options-cache-key'
 import { gitDiffReadDedupe, settledDiffCache } from './git-read-cache-invalidation'
 import { readWorktreeDiffStamp } from './worktree-diff-stamp'
+import { workingSymlinkTargetForGit } from './working-symlink-target'
 import { buildDiffResult } from './diff-result'
 import {
   type GitBlobReadResult,
@@ -31,7 +32,7 @@ export async function getDiff(
   filePath: string,
   staged: boolean,
   compareAgainstHead = false,
-  options: GitRuntimeOptions = {}
+  options: GitRuntimeOptions & GitDiffReadOptions = {}
 ): Promise<GitDiffResult> {
   const readKey = stableInFlightKey([
     'diff',
@@ -39,6 +40,7 @@ export async function getDiff(
     filePath,
     staged,
     compareAgainstHead,
+    options.readSymbolicLinkTargets === true,
     ...gitRuntimeOptionsKey(options)
   ])
   // Register before any await so concurrent reads also coalesce settled-cache lookup I/O.
@@ -61,7 +63,7 @@ async function loadDiffThroughSettledCache(
   filePath: string,
   staged: boolean,
   compareAgainstHead: boolean,
-  options: GitRuntimeOptions
+  options: GitRuntimeOptions & GitDiffReadOptions
 ): Promise<GitDiffResult> {
   // Start the mutation fence before awaited stats so writes during stamp collection also invalidate the read.
   const readGeneration = settledDiffCache.beginRead()
@@ -86,7 +88,7 @@ async function loadDiff(
   filePath: string,
   staged: boolean,
   compareAgainstHead: boolean,
-  options: GitRuntimeOptions
+  options: GitRuntimeOptions & GitDiffReadOptions
 ): Promise<LoadedDiff> {
   // Gitlinks are not blobs: route root paths to pointer diffs and inner paths to submodule reads.
   const submodulePaths = await listSubmodulePaths(worktreePath, options)
@@ -139,6 +141,7 @@ async function loadDiff(
   let modifiedContent = ''
   let originalIsBinary = false
   let modifiedIsBinary = false
+  let symbolicLink = false
   let modifiedDeleted = false
   let readFailed = false
   let tooLarge = false
@@ -166,12 +169,15 @@ async function loadDiff(
           ? readGitBlobAtOidPath(worktreePath, 'HEAD', filePath, options)
           : readUnstagedLeftBlob(worktreePath, filePath, options),
         hostWorktreePath
-          ? readWorkingTreeFile(path.join(hostWorktreePath, filePath))
+          ? readWorkingTreeFile(path.join(hostWorktreePath, filePath), options)
           : Promise.resolve(UNSPELLABLE_WORKING_TREE_READ)
       ])
       originalContent = leftBlob.content
       originalIsBinary = leftBlob.isBinary
-      modifiedContent = workingTreeBlob.content
+      symbolicLink = workingTreeBlob.symbolicLink === true
+      modifiedContent = symbolicLink
+        ? workingSymlinkTargetForGit(workingTreeBlob.content, worktreePath, options)
+        : workingTreeBlob.content
       modifiedIsBinary = workingTreeBlob.isBinary
       modifiedDeleted = !workingTreeBlob.exists
       readFailed = leftBlob.failed === true || workingTreeBlob.failed === true
@@ -181,7 +187,7 @@ async function loadDiff(
     readFailed = true
   }
 
-  const result = buildDiffResult(
+  const builtResult = buildDiffResult(
     originalContent,
     modifiedContent,
     originalIsBinary,
@@ -189,6 +195,13 @@ async function loadDiff(
     filePath,
     tooLarge
   )
+  const result: GitDiffResult = symbolicLink
+    ? {
+        ...builtResult,
+        symbolicLink: true,
+        ...(builtResult.kind === 'binary' ? { isImage: false } : {})
+      }
+    : builtResult
   // Mark proven deletions so previewers can distinguish them from failed empty reads.
   if (result.kind === 'binary' && modifiedDeleted) {
     return { result: { ...result, modifiedDeleted: true }, reusable: !readFailed }

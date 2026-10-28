@@ -199,7 +199,8 @@ async function requestWorktreeFileDiff(
   const reply = await reviewFileDiffRead.request(client, {
     worktree: `id:${worktreeId}`,
     filePath: item.filePath,
-    staged: item.scope === 'staged'
+    staged: item.scope === 'staged',
+    readSymbolicLinkTargets: true
   })
   return { reply, interpret: (settled) => reviewFileDiffRead.interpret(settled) }
 }
