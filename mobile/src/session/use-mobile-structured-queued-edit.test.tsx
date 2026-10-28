@@ -1,5 +1,5 @@
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
-import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
+import type { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 import { useMobileNativeChatSessionLane } from './use-mobile-native-chat-session-lane'
 import type { RpcClient } from '../transport/rpc-client'
 import { createElement } from 'react'
