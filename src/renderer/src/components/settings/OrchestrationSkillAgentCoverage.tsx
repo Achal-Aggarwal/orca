@@ -48,7 +48,7 @@ function getAgentCoverageSummary(props: {
       ? translate(
           'auto.components.settings.OrchestrationSkillAgentCoverage.fullCoverage_one',
           'All 1 detected agent has the skill.',
-          { count: totalCount }
+          { value0: totalCount, count: totalCount }
         )
       : translate(
           'auto.components.settings.OrchestrationSkillAgentCoverage.fullCoverage_other',
