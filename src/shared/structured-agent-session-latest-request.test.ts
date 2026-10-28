@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type {
   AgentJournalRenderItem,
@@ -17,8 +16,6 @@ import {
   DISPATCH_REJECTED_WRITE_FAILED
 } from './structured-agent-session-dispatch-rejection'
 import {
-  latestStructuredAgentSessionPrompt,
-  latestStructuredAgentSessionDisplayPrompt,
   hasStructuredAgentSessionRequest,
   latestStructuredAgentSessionRequest
 } from './structured-agent-session-latest-request'
@@ -367,33 +364,4 @@ describe('the assistant line plain-text surfaces show', () => {
       'p95 is highest in ap-south.'
     )
   })
-})
-
-it('shows task text in the status preview while raw recovery readers retain instructions', () => {
-  const prefix = 'Worker instructions\n=== TASK ===\n'
-  const item: AgentJournalRenderItem = {
-    ...userEntry('task', 1),
-    body: {
-      kind: 'message',
-      role: 'user',
-      blocks: [{ type: 'text', text: prefix + 'Build cards' }],
-      from: {
-        kind: 'agent',
-        senders: [],
-        orchestration: {
-          message: 'task',
-          runId: 'r',
-          taskId: 't',
-          dispatchId: 'd',
-          instructions: {
-            length: prefix.length,
-            sha256: createHash('sha256').update(prefix).digest('hex')
-          }
-        }
-      }
-    }
-  }
-  expect(latestStructuredAgentSessionPrompt([item])).toBe(prefix + 'Build cards')
-  expect(latestStructuredAgentSessionDisplayPrompt([item])).toBe('Build cards')
-  expect(projectStructuredAgentSessionStatusSummary([item]).latestPrompt).toBe('Build cards')
 })

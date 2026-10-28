@@ -30,10 +30,13 @@ export function agentMessageRelation(args: {
 }): AgentMessageSender['relation'] {
   try {
     const { db, sender, runId } = args
-    if (!db || sender.address.startsWith('dispatch:') || args.recipient.startsWith('dispatch:'))
+    if (!db || sender.address.startsWith('dispatch:') || args.recipient.startsWith('dispatch:')) {
       return undefined
+    }
     const run = db.getRun(runId)
-    if (!run) return undefined
+    if (!run) {
+      return undefined
+    }
     const recipient =
       args.recipient === `run:${runId}`
         ? runCoordinatorKey(run)
@@ -60,7 +63,9 @@ export function agentMessageRelation(args: {
       return matches.length === 1 ? matches[0] : undefined
     }
     const parentOf = (dispatch: DispatchContextRow | undefined): Party | undefined => {
-      if (!dispatch) return undefined
+      if (!dispatch) {
+        return undefined
+      }
       if (dispatch.creator_handle || dispatch.creator_orca_session_id) {
         return {
           terminalHandle: dispatch.creator_handle,
@@ -76,15 +81,19 @@ export function agentMessageRelation(args: {
             }
           : undefined
       }
-      return coordinator.terminalHandle || coordinator.orcaSessionId ? coordinator : undefined
+      return undefined
     }
     const senderDispatch = dispatchFor(sender, args.reportedDispatchId)
     const recipientDispatch = dispatchFor(recipient, args.recipientDispatchId)
     const senderParent = parentOf(senderDispatch)
     const recipientParent = parentOf(recipientDispatch)
     if (!sameParty(sender, recipient)) {
-      if (senderParent && sameParty(senderParent, recipient)) return 'worker'
-      if (recipientParent && sameParty(recipientParent, sender)) return 'coordinator'
+      if (senderParent && sameParty(senderParent, recipient)) {
+        return 'worker'
+      }
+      if (recipientParent && sameParty(recipientParent, sender)) {
+        return 'coordinator'
+      }
     }
     return (senderParent || sameParty(sender, coordinator)) &&
       (recipientParent || sameParty(recipient, coordinator))

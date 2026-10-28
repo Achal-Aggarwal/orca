@@ -1,6 +1,5 @@
 // Sidebar request/verdict/preview share this read: a turn or refused send is a request; steers belong to their turn, and commands are not requests.
 
-import { agentMessageDisplayText } from './agent-session/agent-message-display-text'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission,
@@ -154,13 +153,6 @@ export function latestStructuredAgentSessionPrompt(
 ): string {
   const body = latestStructuredAgentSessionUserItem(items)?.body
   return body?.kind === 'message' ? messageProse(body.blocks) : ''
-}
-
-export function latestStructuredAgentSessionDisplayPrompt(
-  items: readonly AgentJournalRenderItem[]
-): string {
-  const body = latestStructuredAgentSessionUserItem(items)?.body
-  return body?.kind === 'message' ? agentMessageDisplayText(body.blocks, body.from) : ''
 }
 
 export function latestStructuredAgentSessionUserItem(

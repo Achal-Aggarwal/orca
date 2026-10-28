@@ -94,7 +94,7 @@ describe("a message's sender, read through its one reader", () => {
   })
 })
 
-it('salvages malformed instruction metadata and unknown relations without losing provenance', () => {
+it('ignores obsolete proof and unknown relations without losing provenance', () => {
   const task = {
     message: 'task',
     runId: 'r',

@@ -7,7 +7,7 @@ import {
 } from '../../../../../../shared/orca-session-address'
 import { canonicalOrcaSessionId } from '../../../../orchestration/canonical-orca-session-id'
 import { orcaSessionIdOrHandle } from '../../../../orchestration/orchestration-party'
-import { buildDispatchPreambleParts } from '../../../../orchestration/preamble'
+import { buildDispatchPreamble } from '../../../../orchestration/preamble'
 import { sendAgentTurn } from '../../../../orchestration/send-agent-turn'
 import { createWorkerBriefWriteGuard } from '../../../../launched-agent-write-guard'
 import { sendStructuredWorkerPreamble } from '../../orchestration-structured-worker-session'
@@ -46,7 +46,7 @@ export async function deliverWorkerDispatchPreamble(args: {
   structuredTurnStart?: WorkerTurnStartObservation
 }> {
   const { runtime, structuredSession, terminalHandle } = args
-  const { text: preamble, instructions } = buildDispatchPreambleParts({
+  const preamble = buildDispatchPreamble({
     // Only depth gates nesting; resolve structured callers' workspace so they can dispatch like PTY workers.
     canDispatchSubWorkers: args.dispatchDepth < runtime.getNestedWorkerMaxDepth(),
     heartbeatIntervalMinutes: runtime.getOrchestrationHeartbeatMinutes(),
@@ -70,7 +70,7 @@ export async function deliverWorkerDispatchPreamble(args: {
         `Dispatch ${args.dispatchId} was not found.`
       )
     }
-    const from = workerTaskSource({ ...args, instructions })
+    const from = workerTaskSource(args)
     const delivery = await sendChatTask({ db: args.db, dispatch, from, preamble })
     return { structuredTurnStart: chatTaskTurnStart(delivery) }
   }
@@ -80,7 +80,7 @@ export async function deliverWorkerDispatchPreamble(args: {
       sessionId: structuredSession.identity.sessionId,
       dispatchId: args.dispatchId,
       preamble,
-      from: workerTaskSource({ ...args, instructions }),
+      from: workerTaskSource(args),
       ...(args.readinessTimeoutMs === undefined ? {} : { budgetMs: args.readinessTimeoutMs })
     })
     return {
@@ -142,13 +142,11 @@ function workerTaskSource(args: {
   runId: string
   taskId: string
   coordinatorHandle: string
-  instructions: { length: number; sha256: string }
 }): AgentMessageSource {
   return dispatchTaskSource({
     db: args.db,
     dispatch: { id: args.dispatchId, run_id: args.runId, task_id: args.taskId },
     from: args.coordinatorHandle,
-    instructions: args.instructions,
     senderName: (party, reported) => args.runtime.orchestrationSenderNames.nameOf(party, reported)
   })
 }

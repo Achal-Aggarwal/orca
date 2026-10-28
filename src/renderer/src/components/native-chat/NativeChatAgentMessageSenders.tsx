@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { openAgentMessageSender } from '@/lib/open-agent-message-sender'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
+import { agentMessageSenderCanOpen } from '../../../../shared/agent-session/agent-message-presentation'
 import { useNativeChatVisualOwner } from './native-chat-visual-owner'
 import {
   agentMessageSendersShown,
@@ -19,10 +20,12 @@ import {
 export function NativeChatAgentMessageSenders({
   from,
   chatWorktreeId,
+  target,
   queued = false
 }: {
   from: AgentMessageSource
   chatWorktreeId: string | null
+  target?: RuntimeClientTarget
   queued?: boolean
 }): React.JSX.Element {
   const { shown, more } = agentMessageSendersShown(from)
@@ -42,7 +45,7 @@ export function NativeChatAgentMessageSenders({
             from={from}
             sender={sender}
             chatWorktreeId={worktreeId}
-            target={owner?.target}
+            target={owner?.target ?? target}
             queued={queued}
           />
           {/* Pulled back over the name's padding, so it reads "A, B". */}
@@ -72,7 +75,7 @@ function SenderName({
   queued: boolean
 }): React.JSX.Element {
   const label = useAgentMessageSenderLabel(sender, chatWorktreeId, target)
-  if (!chatWorktreeId || !opensFromHere(sender)) {
+  if (!agentMessageSenderCanOpen(sender, Boolean(chatWorktreeId)) || !chatWorktreeId) {
     return (
       <span className="max-w-48 truncate px-2" title={label}>
         {label}
@@ -88,11 +91,6 @@ function SenderName({
       title={
         queued ? label : translate('components.native-chat.agentMessage.goToAgent', 'Go to agent')
       }
-      aria-label={
-        queued
-          ? undefined
-          : translate('components.native-chat.agentMessage.goToAgent', 'Go to agent')
-      }
       onClick={() =>
         void (target
           ? openAgentMessageSender(from, sender, chatWorktreeId, target)
@@ -103,9 +101,4 @@ function SenderName({
       {!queued ? <ArrowUpRight className="size-3" aria-hidden /> : null}
     </Button>
   )
-}
-
-/** A federated sender (`dispatch:<id>`) runs on another host, which this chat's host cannot open. */
-function opensFromHere(sender: AgentMessageSender): boolean {
-  return !sender.party.address.startsWith('dispatch:')
 }

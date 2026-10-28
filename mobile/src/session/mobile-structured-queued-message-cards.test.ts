@@ -111,3 +111,27 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards.map((card) => card.line)).toEqual(['shot.png', 'Pasted image', '2 images'])
   })
 })
+
+it('shows the current task but keeps the complete editor input and sender relation', () => {
+  const raw = 'You are working inside Orca, a multi-agent IDE.\n=== TASK ===\n  Task 🐋  '
+  const body: AgentSessionQueuedMessage['body'] = {
+    kind: 'message',
+    role: 'user',
+    blocks: [{ type: 'text', text: raw }],
+    from: {
+      kind: 'agent',
+      senders: [
+        {
+          party: { address: 'term_a', terminalHandle: 'term_a', orcaSessionId: null },
+          name: 'Coordinator',
+          relation: 'coordinator'
+        }
+      ],
+      orchestration: { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
+    }
+  }
+  const [card] = mobileQueuedMessageCards([draft({ messageId: 'task', body })], [])
+  expect(card.line).toBe('  Task 🐋  ')
+  expect(card.text).toBe(raw)
+  expect(card.attribution).toBe('From Coordinator')
+})

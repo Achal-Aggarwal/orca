@@ -1,9 +1,6 @@
 import { defineMethod } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
-import {
-  buildDispatchPreamble,
-  buildDispatchPreambleParts
-} from '../../../../orchestration/preamble'
+import { buildDispatchPreamble } from '../../../../orchestration/preamble'
 import { sendAgentTurn } from '../../../../orchestration/send-agent-turn'
 import { resolveDispatchCreator } from './dispatch-creator'
 import {
@@ -163,7 +160,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
       })
 
       // Build after ctx to put its real id in heartbeats and attribute liveness to this Dispatch.
-      const { text: preamble, instructions } = buildDispatchPreambleParts({
+      const preamble = buildDispatchPreamble({
         taskId: task.id,
         dispatchId: ctx.id,
         canDispatchSubWorkers: ctx.depth < runtime.getNestedWorkerMaxDepth(),
@@ -183,7 +180,6 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
             const from = dispatchTaskSource({
               db,
               dispatch: ctx,
-              instructions,
               from: params.from,
               senderName: (party, reported) =>
                 runtime.orchestrationSenderNames.nameOf(party, reported)

@@ -140,6 +140,43 @@ describe('mobile in-place queued Edit', () => {
     expect(hook!.queued.edit).toEqual(expect.any(Function))
   })
 
+  it('opens full canonical task input and hands back a suffix edit with current display text', async () => {
+    const prefix = 'You are working inside Orca, a multi-agent IDE.\n=== TASK ===\n'
+    const message = queuedDraft({
+      messageId: 'task',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: `${prefix}Task` }],
+        from: {
+          kind: 'agent',
+          senders: [],
+          orchestration: { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
+        }
+      }
+    })
+    await mount(message)
+    expect(hook!.queued.cards[0]).toMatchObject({ text: `${prefix}Task`, displayText: 'Task' })
+    expect(hook!.queued.editor!.text).toBe(`${prefix}Task`)
+    act(() => hook!.queued.editor!.change(`${prefix}Edited`))
+    await act(async () => {
+      expect(await hook!.queued.editor!.save()).toBe(true)
+    })
+    const update = sendRequest.mock.calls.find(
+      ([method]) => method === 'agentSession.queuedMessageUpdate'
+    )
+    expect(fieldsOf(update?.[1]).text).toBe(`${prefix}Edited`)
+    act(() =>
+      listener?.(batchEvent([{ ...message, body: withText(message.body, `${prefix}Edited`) }]))
+    )
+    expect(hook!.queued.cards[0]).toMatchObject({ text: `${prefix}Edited`, displayText: 'Edited' })
+    await act(async () => {
+      await hook!.queued.edit!('task')
+    })
+    expect(hook!.queued.editor!.text).toBe(`${prefix}Edited`)
+    await act(async () => hook!.queued.editor!.cancel())
+  })
+
   it('holds and renews a card while typing, sends only its edited text, and cancels in place', async () => {
     const message = queuedDraft({
       messageId: 'image-card',

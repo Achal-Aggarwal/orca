@@ -32,7 +32,6 @@ export type OrchestrationTaskMessage = Readonly<{
   runId: string
   taskId: string
   dispatchId: string
-  instructions?: Readonly<{ length: number; sha256: string }>
 }>
 
 /** What Orca delivers for other agents, one shape per message kind. */
@@ -73,14 +72,7 @@ const taskSchema = z.object({
   message: z.literal('task'),
   runId: z.string(),
   taskId: z.string(),
-  dispatchId: z.string(),
-  instructions: salvagedOptional(
-    'instructions',
-    z.object({
-      length: z.number().int().positive().safe(),
-      sha256: z.string().regex(/^[0-9a-f]{64}$/)
-    })
-  )
+  dispatchId: z.string()
 })
 
 const senderSchema = z.object({

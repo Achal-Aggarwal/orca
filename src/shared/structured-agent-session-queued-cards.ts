@@ -102,7 +102,13 @@ export function projectQueuedMessageCards(
       messageId: message.messageId,
       position: message.position,
       text: queuedMessageCardText(message.body),
-      ...(from ? { displayText: agentMessageDisplayText(message.body.blocks, from) } : {}),
+      ...(from
+        ? {
+            displayText:
+              agentMessageDisplayText(message.body.blocks, from) ??
+              queuedMessageCardText(message.body)
+          }
+        : {}),
       ...queuedMessageCardImages(message.body),
       state: message.state,
       hold,

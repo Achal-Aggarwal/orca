@@ -9,7 +9,6 @@ export function dispatchTaskSource(args: {
   dispatch: Pick<DispatchContextRow, 'id' | 'run_id' | 'task_id'>
   /** The coordinator's address; a Dispatch with no declared caller names no sender. */
   from: string | undefined
-  instructions?: { length: number; sha256: string }
   senderName: SenderNameResolver
 }): AgentMessageSource {
   const { dispatch } = args
@@ -22,8 +21,7 @@ export function dispatchTaskSource(args: {
       message: 'task',
       runId: dispatch.run_id,
       taskId: dispatch.task_id,
-      dispatchId: dispatch.id,
-      ...(args.instructions ? { instructions: args.instructions } : {})
+      dispatchId: dispatch.id
     }
   }
 }

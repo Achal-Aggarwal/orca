@@ -1,17 +1,23 @@
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { AgentMessageSource } from '../../../shared/agent-session/agent-session-message-source'
 import { agentMessageDisplayText } from '../../../shared/agent-session/agent-message-display-text'
 import { projectQueuedMessageCards } from '../../../shared/structured-agent-session-queued-cards'
 import { nativeChatMessageCopyText } from '../../../shared/native-chat-message-copy-text'
-import type { AgentMessageSource } from '../../../shared/agent-session/agent-session-message-source'
+import { projectStructuredAgentSessionStatusSummary } from '../../../shared/structured-agent-session-projection'
+import { latestStructuredAgentSessionPrompt } from '../../../shared/structured-agent-session-latest-request'
+import {
+  getAgentRowPrimaryText,
+  getAgentRowGeneratedTitleText,
+  isOrcaDispatchPrompt
+} from '../../../shared/agent-row-primary-text'
+import { generatedTabTitleForStatus } from '../../../shared/agent-generated-tab-title-rules'
+import { normalizePromptField } from '../../../shared/agent-status-field-normalization'
+import { ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX } from '../../../shared/orca-dispatch-status-prompt'
 import { spawnSync } from 'node:child_process'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import { describe, expect, it } from 'vitest'
-import {
-  buildDispatchPreambleParts,
-  buildDispatchPreamble,
-  CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH
-} from './preamble'
+import { buildDispatchPreamble, CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH } from './preamble'
 
 function baseParams(overrides: Partial<Parameters<typeof buildDispatchPreamble>[0]> = {}) {
   return {
@@ -322,42 +328,119 @@ describe('how the preamble names the worker and its coordinator, by kind', () =>
   })
 })
 
-describe('task display without changing provider input', () => {
-  it('verifies the constructed prefix, falls back on edits, and keeps raw queued text', () => {
-    const spec = 'Task 🐋\n=== TASK ===\nKeep this task boundary.'
-    const { text, instructions } = buildDispatchPreambleParts(baseParams({ taskSpec: spec }))
-    expect(text).toBe(buildDispatchPreamble(baseParams({ taskSpec: spec })))
-    const from: AgentMessageSource = {
-      kind: 'agent',
-      senders: [],
-      orchestration: {
-        message: 'task',
-        runId: 'r',
-        taskId: 't',
-        dispatchId: 'd',
-        instructions
+describe('canonical task input and its display slice', () => {
+  const from: AgentMessageSource = {
+    kind: 'agent',
+    senders: [],
+    orchestration: { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
+  }
+  it('uses the actual templates without trimming, clipping or changing raw input', () => {
+    for (const workerHandle of [
+      'term_worker',
+      'orca_session_id:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
+    ]) {
+      for (const variant of [
+        { canDispatchSubWorkers: false, heartbeatIntervalMinutes: null },
+        {
+          canDispatchSubWorkers: true,
+          heartbeatIntervalMinutes: 15,
+          baseDrift: {
+            base: 'origin/main',
+            behind: 1,
+            recentSubjects: ['quoted === TASK === marker']
+          }
+        }
+      ]) {
+        for (const taskSpec of [
+          '',
+          '  🐋\r\n\r\n=== TASK ===\nTask marker belongs to me.  ',
+          'x'.repeat(30_000)
+        ]) {
+          const text = buildDispatchPreamble(
+            baseParams({
+              workerHandle,
+              taskSpec,
+              ...variant
+            })
+          )
+          for (const raw of [text, text.replaceAll('\n', '\r\n')]) {
+            const suffix = raw === text ? taskSpec : taskSpec.replaceAll('\n', '\r\n')
+            const body: AgentJournalMessageItem = {
+              kind: 'message',
+              role: 'user',
+              blocks: [{ type: 'text', text: raw }],
+              from
+            }
+            expect(agentMessageDisplayText(body.blocks, from)).toBe(suffix)
+            expect(agentMessageDisplayText(body.blocks)).toBeUndefined()
+            expect(nativeChatMessageCopyText(body)).toBe(raw)
+            const card = projectQueuedMessageCards(
+              [{ messageId: 'q', position: 0, state: 'waiting', body }],
+              [],
+              {}
+            )[0]
+            expect(card.text).toBe(raw)
+            expect(card.displayText).toBe(suffix)
+          }
+        }
       }
     }
-    const body: AgentJournalMessageItem = {
-      kind: 'message',
-      role: 'user',
-      blocks: [{ type: 'text', text }],
-      from
+    const raw = buildDispatchPreamble(baseParams({ taskSpec: 'original' }))
+    const edited = raw.replace('original', 'edited')
+    expect(agentMessageDisplayText([{ type: 'text', text: edited }], from)).toBe('edited')
+    expect(
+      agentMessageDisplayText(
+        [
+          {
+            type: 'text',
+            text: raw.replace('multi-agent IDE', 'multi-agent IDE with edited instructions')
+          }
+        ],
+        from
+      )
+    ).toBe('original')
+    for (const text of [
+      'unrecognized',
+      raw.replace('You are working inside Orca', 'changed'),
+      `${ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX}\n${'x'.repeat(24_576)}\n=== TASK ===\nlate`
+    ]) {
+      expect(agentMessageDisplayText([{ type: 'text', text }], from)).toBeUndefined()
     }
-    expect(agentMessageDisplayText(body.blocks, from)).toBe(spec)
-    expect(nativeChatMessageCopyText(body)).toBe(text)
-    expect(agentMessageDisplayText(body.blocks)).toBe(text)
-    const edited = [{ type: 'text', text: 'Edited ' + text }] as const
-    expect(agentMessageDisplayText(edited, from)).toBe(edited[0].text)
-    expect(agentMessageDisplayText([...body.blocks, { type: 'text', text: 'extra' }], from)).toBe(
-      text + '\nextra'
-    )
-    const card = projectQueuedMessageCards(
-      [{ messageId: 'q', position: 0, body, state: 'waiting' }],
-      [],
-      {}
-    )[0]
-    expect(card.text).toBe(text)
-    expect(card.displayText).toBe(spec)
+    const blocks = [
+      { type: 'text', text: raw },
+      { type: 'text', text: 'second paragraph' }
+    ] as const
+    expect(agentMessageDisplayText(blocks, from)).toBeUndefined()
+    const items: Parameters<typeof projectStructuredAgentSessionStatusSummary>[0] = [
+      {
+        itemId: 'i',
+        sequence: 1,
+        revision: 1,
+        observedAt: 1,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: raw }], from }
+      }
+    ]
+    expect(latestStructuredAgentSessionPrompt(items)).toBe(raw)
+    const summary = projectStructuredAgentSessionStatusSummary(items)
+    expect(summary.latestPrompt).toBe(normalizePromptField(raw))
+    const normalized = normalizePromptField(summary.latestPrompt)
+    expect(normalized).toContain(ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX)
+    expect(normalized).toContain('Your task ID is:')
+    expect(normalized).toContain('=== TASK === original')
+    const row = {
+      prompt: normalized,
+      orchestration: {
+        taskId: 'task_abc123',
+        dispatchId: 'ctx_def456',
+        displayName: 'Current task label'
+      }
+    }
+    expect(isOrcaDispatchPrompt(row.prompt)).toBe(true)
+    expect(getAgentRowPrimaryText(row)).toBe('Current task label')
+    expect(getAgentRowGeneratedTitleText(row)).toBe('Current task label')
+    expect(generatedTabTitleForStatus(row, { generatedTitle: 'Old work' })).toEqual({
+      title: 'Current task label',
+      replaceExisting: true
+    })
   })
 })

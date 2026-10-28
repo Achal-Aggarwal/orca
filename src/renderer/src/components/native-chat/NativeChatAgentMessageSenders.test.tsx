@@ -106,6 +106,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   useAppStore.setState(initialState, true)
 })
 
@@ -185,7 +186,9 @@ describe('the name a sender is shown under', () => {
 })
 
 it('uses the sidebar glyph for a live sender and retained completion after its pane closes', () => {
-  const entry = { ...agentRow(HANDLE), updatedAt: Date.now() }
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(2_000_000)
+  const entry = { ...agentRow(HANDLE), updatedAt: 2_000_000 }
   const tab = terminalTab()
   useAppStore.setState({
     activeWorktreeId: WORKTREE,

@@ -1,30 +1,65 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { createHash } from 'node:crypto'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as renderComponent, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { openAgentMessageSender } from '@/lib/open-agent-message-sender'
+import type { ReactElement } from 'react'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { useAppStore } from '@/store'
+import { makeTab } from '@/store/slices/store-test-helpers'
+import { NativeChatUserMessageRow } from './NativeChatUserMessageRow'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../../shared/agent-session-write-notice-copy'
+import * as markdown from './NativeChatMarkdown'
+import * as display from '../../../../shared/agent-session/agent-message-display-text'
+import * as grammar from '../../../../shared/orca-dispatch-status-prompt'
+import * as prose from '../../../../shared/native-chat/transcript/native-chat-prose'
+import { testOrcaSessionId } from '../../../../shared/orca-session-address-test-fixture'
 import type { AgentMessageSource } from '../../../../shared/agent-session/agent-session-message-source'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import { buildNativeChatTranscriptSlots } from './native-chat-transcript-slots'
+import { nativeChatSlotCopyText } from './native-chat-message-copy-text'
 import { NativeChatAgentMessageCard } from './NativeChatAgentMessageCard'
 
-vi.mock('@/lib/open-agent-message-sender', () => ({ openAgentMessageSender: vi.fn() }))
-vi.mock('./native-chat-agent-message-sender-label', () => ({
-  useAgentMessageSenderLabel: (sender: { name: string }) => sender.name,
-  unnamedSenderLabel: () => 'an agent'
+const navigation = vi.hoisted(() => ({ rpc: vi.fn(), gone: vi.fn(), toast: vi.fn() }))
+vi.mock('@/runtime/runtime-rpc-client', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  callRuntimeRpc: navigation.rpc
 }))
-vi.mock('./native-chat-agent-message-sender-view', () => ({
-  useAgentMessageSenderView: () => ({ agentType: 'codex', dot: undefined })
+vi.mock('@/components/terminal-pane/stale-agent-row', () => ({
+  showAgentPaneUnavailable: navigation.gone
 }))
-vi.mock('./NativeChatMarkdown', () => ({
-  NativeChatMarkdown: ({ content }: { content: string }) => <p>{content}</p>
-}))
-
+vi.mock('sonner', () => ({ toast: { error: navigation.toast } }))
+function render(element: ReactElement) {
+  return renderComponent(element, { wrapper: TooltipProvider })
+}
+const initialStore = useAppStore.getState()
 let height = 48
 let resize: () => void
+let disconnects = 0
+let measurements = 0
 beforeEach(() => {
+  useAppStore.setState(
+    {
+      ...initialStore,
+      activeWorktreeId: 'wt-chat',
+      activeWorkspaceExecutionHostId: 'local',
+      agentStatusByPaneKey: {},
+      retainedAgentsByPaneKey: {},
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {}
+    },
+    true
+  )
+  navigation.rpc.mockReset()
+  navigation.gone.mockReset()
+  navigation.toast.mockReset()
   height = 48
-  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => height)
+  disconnects = 0
+  measurements = 0
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => {
+    measurements++
+    return height
+  })
   const computedStyle = getComputedStyle
   vi.stubGlobal('getComputedStyle', (element: Element) => {
     const style = computedStyle(element)
@@ -38,14 +73,18 @@ beforeEach(() => {
         resize = callback
       }
       observe() {}
-      disconnect() {}
+      disconnect() {
+        disconnects++
+      }
     }
   )
 })
 afterEach(() => {
   cleanup()
+  useAppStore.setState(initialStore, true)
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 function source(relation?: 'worker' | 'coordinator' | 'none'): AgentMessageSource {
@@ -86,68 +125,260 @@ function card(from = source(), text = 'Short message') {
   )
 }
 
-it.each([
-  ['worker', 'Update from your worker'],
-  ['coordinator', 'Message from'],
-  ['none', 'Message from'],
-  [undefined, 'Message from']
-] as const)('uses the recorded %s relation', (relation, heading) => {
-  render(card(source(relation)))
-  expect(screen.getByText(heading)).toBeInTheDocument()
+function slots(message: NativeChatMessage) {
+  return buildNativeChatTranscriptSlots({
+    messages: [message],
+    turnKeys: [undefined],
+    liveTurnKey: undefined,
+    receipts: new Map(),
+    turnStatuses: { active: null, completedByTurn: {} },
+    turnDiffs: new Map(),
+    expandedTurnKeys: new Set(),
+    isWorking: false,
+    lifecycleWorking: false
+  })
+}
+
+it('maps the shared worker heading and keeps short text unfolded', () => {
+  render(card(source('worker')))
+  expect(screen.getByText('Update from your worker')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
 })
 
-it('keeps mixed senders generic and opens a local sender even without live status', () => {
+it('opens distinct named local senders without status and preserves real gone/unreachable/older-host feedback', async () => {
   const from = source('worker')
-  const peer = source('none').senders[0]
+  const session = testOrcaSessionId('other-sender')
+  const second = {
+    party: { address: `orca_session_id:${session}`, terminalHandle: null, orcaSessionId: session },
+    name: 'Other sender'
+  }
   render(
     card({
       ...from,
       senders: [
         ...from.senders,
-        { ...peer, party: { ...peer.party, address: 'dispatch:foreign' }, name: 'Remote' }
+        second,
+        {
+          ...from.senders[0],
+          party: { ...from.senders[0].party, address: 'dispatch:foreign' },
+          name: 'Remote'
+        }
       ]
     })
   )
-  expect(screen.getByText('Message from')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Go to agent' }))
-  expect(openAgentMessageSender).toHaveBeenCalledWith(expect.anything(), from.senders[0], 'wt-chat')
+  navigation.rpc.mockResolvedValueOnce({ location: null, lost: 'terminal' })
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Build cards' })))
+  expect(navigation.gone).toHaveBeenCalledTimes(1)
+  expect(navigation.rpc).toHaveBeenCalledWith({ kind: 'local' }, 'orchestration.partyLocation', {
+    address: 'term_sender'
+  })
+  navigation.rpc.mockRejectedValueOnce(new Error('unreachable'))
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Other sender' })))
+  expect(navigation.toast).toHaveBeenLastCalledWith(
+    `${AGENT_SESSION_WRITE_NOTICE_COPY.unreachable} ${AGENT_SESSION_WRITE_NOTICE_COPY.tryAgain}`
+  )
+  navigation.rpc.mockRejectedValueOnce(
+    new RuntimeRpcCallError({
+      id: 'lookup',
+      ok: false,
+      error: { code: 'method_not_found', message: 'old' },
+      _meta: { runtimeId: 'fixture' }
+    })
+  )
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Other sender' })))
+  expect(navigation.toast).toHaveBeenLastCalledWith(AGENT_SESSION_WRITE_NOTICE_COPY.unsupported)
   expect(screen.getByText('Remote').closest('button')).toBeNull()
 })
 
-it('shows only the task spec and toggles only for measured overflow, including width changes', () => {
-  const prefix = 'Worker instructions\n=== TASK ===\n'
-  const from: AgentMessageSource = {
-    ...source('coordinator'),
-    orchestration: {
-      message: 'task',
-      runId: 'r',
-      taskId: 't',
-      dispatchId: 'd',
-      instructions: {
-        length: prefix.length,
-        sha256: createHash('sha256').update(prefix).digest('hex')
+it.each([10, 100])(
+  'shows only the task spec and bounds %i resize notifications, including width changes',
+  async (notifications) => {
+    const prefix = 'You are working inside Orca, a multi-agent IDE.\n=== TASK ===\n'
+    const from: AgentMessageSource = {
+      ...source('coordinator'),
+      orchestration: {
+        message: 'task',
+        runId: 'r',
+        taskId: 't',
+        dispatchId: 'd'
       }
     }
+    const writeClipboardText = vi.fn(async () => {})
+    vi.stubGlobal('api', { ui: { writeClipboardText } })
+    const mounted = render(card(from, `${prefix}Build the cards`))
+    expect(screen.getByText('Task from your coordinator')).toBeInTheDocument()
+    expect(screen.getByText('Build the cards')).toBeInTheDocument()
+    expect(screen.queryByText(/Worker instructions/)).not.toBeInTheDocument()
+    act(() => {
+      height = 120
+      resize()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }))
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    act(() => {
+      height = 48
+      resize()
+    })
+    expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+    const before = measurements
+    for (let i = 0; i < notifications; i++) {
+      act(() => resize())
+    }
+    expect(measurements - before).toBe(notifications)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+    expect(writeClipboardText).toHaveBeenCalledWith('Build the cards')
+    const task: NativeChatMessage = {
+      id: 'task-copy',
+      role: 'user',
+      source: 'transcript',
+      timestamp: 1,
+      from,
+      blocks: [{ type: 'text', text: `${prefix}Build the cards` }]
+    }
+    expect(nativeChatSlotCopyText(slots(task), task.id)).toBe('Build the cards')
+    mounted.unmount()
+    expect(disconnects).toBe(1)
   }
-  render(card(from, prefix + 'Build the cards'))
-  expect(screen.getByText('Task from your coordinator')).toBeInTheDocument()
-  expect(screen.getByText('Build the cards')).toBeInTheDocument()
-  expect(screen.queryByText(/Worker instructions/)).not.toBeInTheDocument()
-  act(() => {
-    height = 120
-    resize()
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
-  expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
-  fireEvent.click(screen.getByRole('button', { name: 'Show less' }))
-  expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
-    'aria-expanded',
-    'false'
+)
+
+it('renders real Markdown paragraphs and links and preserves the direct and slot Copy boundary', async () => {
+  const text =
+    'First paragraph with [a link](https://example.com) and ![image](https://example.com/image.png).\n\nSecond paragraph.'
+  const from = source()
+  const message: NativeChatMessage = {
+    id: 'paragraphs',
+    role: 'user',
+    source: 'transcript',
+    timestamp: 1,
+    from,
+    blocks: [
+      { type: 'text', text: text.split('\n\n')[0] },
+      { type: 'text', text: '' },
+      { type: 'text', text: 'Second paragraph.' },
+      {
+        type: 'image-ref',
+        path: '/attachment.png',
+        url: 'data:image/png;base64,iVBORw0KGgo=',
+        alt: 'Attachment'
+      }
+    ]
+  }
+  const writeClipboardText = vi.fn(async () => {})
+  vi.stubGlobal('api', { ui: { writeClipboardText } })
+  vi.stubGlobal('IntersectionObserver', undefined)
+  const mounted = render(
+    <NativeChatUserMessageRow
+      message={message}
+      markdown={text}
+      prose={message.blocks}
+      runtimeContext={{ worktreeId: 'wt-chat', worktreePath: null, target: { kind: 'local' } }}
+      rowRef={{ current: null }}
+      allowFileUriLinks={false}
+      onRefolded={() => {}}
+    />
   )
-  act(() => {
-    height = 48
-    resize()
-  })
-  expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+  expect(screen.getByRole('img', { name: 'Attachment' })).toHaveAttribute(
+    'src',
+    'data:image/png;base64,iVBORw0KGgo='
+  )
+  expect(mounted.container.querySelectorAll('p')).toHaveLength(2)
+  expect(screen.getByRole('link', { name: 'a link' })).toHaveAttribute(
+    'href',
+    'https://example.com'
+  )
+  expect(screen.getByRole('img', { name: 'image' })).toHaveAttribute(
+    'src',
+    'https://example.com/image.png'
+  )
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+  expect(writeClipboardText).toHaveBeenCalledWith(text)
+  expect(nativeChatSlotCopyText(slots(message), message.id)).toBe(text)
+  expect(mounted.container.firstElementChild).toHaveClass('items-start')
+  const human = { ...message, id: 'human', from: undefined }
+  mounted.rerender(
+    <NativeChatUserMessageRow
+      message={human}
+      markdown={text}
+      prose={human.blocks}
+      rowRef={{ current: null }}
+      allowFileUriLinks={false}
+      onRefolded={() => {}}
+    />
+  )
+  expect(mounted.container.firstElementChild).toHaveClass('items-end')
+  expect(screen.queryByText('Message from')).not.toBeInTheDocument()
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+  expect(writeClipboardText).toHaveBeenLastCalledWith(text)
 })
+
+it.each(['task', 'mail'] as const)(
+  'isolates actual %s body/Markdown work from the avatar, then reparses own blocks and Copy',
+  async (kind) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(2_000_000)
+    const entry = {
+      paneKey: 'sender:11111111-1111-4111-8111-111111111111',
+      worktreeId: 'wt-chat',
+      terminalHandle: 'term_sender',
+      agentType: 'claude',
+      state: 'working' as const,
+      prompt: '',
+      updatedAt: 2_000_000,
+      stateStartedAt: 2_000_000,
+      stateHistory: []
+    }
+    useAppStore.setState({
+      tabsByWorktree: { 'wt-chat': [makeTab({ id: 'sender', worktreeId: 'wt-chat' })] },
+      agentStatusByPaneKey: { [entry.paneKey]: entry },
+      agentStatusEpoch: 1
+    })
+    const from: AgentMessageSource =
+      kind === 'task'
+        ? {
+            ...source(),
+            orchestration: { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
+          }
+        : source()
+    const prefix =
+      kind === 'task' ? 'You are working inside Orca, a multi-agent IDE.\n=== TASK ===\n' : ''
+    const convert = vi.spyOn(display, 'agentMessageTranscriptText')
+    const parse = vi.spyOn(grammar, 'orcaDispatchTaskBodyOffset')
+    const paragraphs = vi.spyOn(prose, 'nativeChatProseToMarkdown')
+    const renderMarkdown = vi.spyOn(markdown, 'NativeChatMarkdown')
+    const mounted = render(card(from, `${prefix}Current task`))
+    expect(screen.getByLabelText('Working')).toBeInTheDocument()
+    convert.mockClear()
+    parse.mockClear()
+    paragraphs.mockClear()
+    renderMarkdown.mockClear()
+    act(() =>
+      useAppStore.setState({
+        agentStatusByPaneKey: { [entry.paneKey]: { ...entry, state: 'blocked' } },
+        agentStatusEpoch: 2
+      })
+    )
+    expect(screen.getByLabelText('Blocked')).toBeInTheDocument()
+    expect(convert).not.toHaveBeenCalled()
+    expect(parse).not.toHaveBeenCalled()
+    expect(paragraphs).not.toHaveBeenCalled()
+    expect(renderMarkdown).not.toHaveBeenCalled()
+    const writeClipboardText = vi.fn(async () => {})
+    vi.stubGlobal('api', { ui: { writeClipboardText } })
+    mounted.rerender(card(from, `${prefix}Edited task`))
+    expect(screen.getByText('Edited task')).toBeInTheDocument()
+    expect(convert).toHaveBeenCalled()
+    expect(renderMarkdown).toHaveBeenCalled()
+    expect(parse.mock.calls.length).toBe(kind === 'task' ? 1 : 0)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy message' })))
+    expect(writeClipboardText).toHaveBeenCalledWith('Edited task')
+    vi.useRealTimers()
+  }
+)

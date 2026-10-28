@@ -25,7 +25,7 @@ import { statusStructuredAgentSessionToolCall } from './structured-agent-session
 import {
   hasStructuredAgentSessionRequest,
   latestStructuredAgentSessionAssistantMessage,
-  latestStructuredAgentSessionDisplayPrompt,
+  latestStructuredAgentSessionPrompt,
   latestStructuredAgentSessionRequest,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
@@ -276,7 +276,7 @@ export function projectStructuredAgentSessionStatusState(
   /** Item ids of the approvals and questions waiting on the user: what makes the status `attention`. */
   pendingPromptIds: string[]
 } {
-  const latestPrompt = latestStructuredAgentSessionDisplayPrompt(items)
+  const latestPrompt = latestStructuredAgentSessionPrompt(items)
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
     return {
       summary: { status: null, latestPrompt: '' },

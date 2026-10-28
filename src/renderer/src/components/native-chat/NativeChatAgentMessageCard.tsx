@@ -5,9 +5,18 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
+import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { AgentMessageSource } from '../../../../shared/agent-session/agent-session-message-source'
-import { agentMessageDisplayText } from '../../../../shared/agent-session/agent-message-display-text'
+import {
+  agentMessageHeading,
+  agentMessagePrimarySender,
+  agentMessageOverflows,
+  agentMessageFoldLabel,
+  agentMessageCanCopy,
+  AGENT_MESSAGE_FOLDED_LINES
+} from '../../../../shared/agent-session/agent-message-presentation'
+import { agentMessageTranscriptText } from '../../../../shared/agent-session/agent-message-display-text'
 import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
 import { useAgentMessageSenderView } from './native-chat-agent-message-sender-view'
 import { useNativeChatVisualOwner } from './native-chat-visual-owner'
@@ -19,21 +28,25 @@ import { NativeChatMessageTimestamp } from './NativeChatMessageTimestamp'
 import { NativeChatImageAttachments } from './NativeChatTranscriptChrome'
 
 function heading(from: AgentMessageSource): string {
-  if (from.orchestration?.message === 'task')
-    return translate(
-      'components.native-chat.agentMessage.taskFromCoordinator',
-      'Task from your coordinator'
-    )
-  if (
-    from.orchestration?.message === 'mail-notice' &&
-    from.senders.length > 0 &&
-    from.senders.every((sender) => sender.relation === 'worker')
-  )
-    return translate(
-      'components.native-chat.agentMessage.updateFromWorker',
-      'Update from your worker'
-    )
-  return translate('components.native-chat.agentMessage.messageFrom', 'Message from')
+  switch (agentMessageHeading(from)) {
+    case 'task':
+      return translate(
+        'components.native-chat.agentMessage.taskFromCoordinator',
+        'Task from your coordinator'
+      )
+    case 'coordinator':
+      return translate(
+        'components.native-chat.agentMessage.messageFromCoordinator',
+        'Message from your coordinator'
+      )
+    case 'worker':
+      return translate(
+        'components.native-chat.agentMessage.updateFromWorker',
+        'Update from your worker'
+      )
+    case 'generic':
+      return translate('components.native-chat.agentMessage.messageFrom', 'Message from')
+  }
 }
 
 export function NativeChatAgentMessageCard({
@@ -53,18 +66,20 @@ export function NativeChatAgentMessageCard({
 }): React.JSX.Element {
   const owner = useNativeChatVisualOwner()
   const worktreeId = owner?.worktreeId ?? runtimeContext?.worktreeId ?? null
-  const view = useAgentMessageSenderView(from.senders[0], worktreeId, owner?.target)
-  const text = agentMessageDisplayText(message.blocks, from)
+  const target = owner?.target ?? runtimeContext?.target
+  const text = agentMessageTranscriptText(message.blocks, from)
   const disclosure = useNativeChatDisclosure(`agent-message:${message.id}`, false)
   const clip = useRef<HTMLDivElement>(null)
   const clipId = useId()
   const [overflows, setOverflows] = useState(false)
   useLayoutEffect(() => {
     const element = clip.current
-    if (!element) return
+    if (!element) {
+      return
+    }
     const measure = () => {
       const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight)
-      setOverflows(element.scrollHeight > lineHeight * 3 + 1)
+      setOverflows(agentMessageOverflows(element.scrollHeight, lineHeight))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -73,14 +88,11 @@ export function NativeChatAgentMessageCard({
   }, [text])
   return (
     <div className="flex w-full gap-3 rounded-xl border border-border bg-card p-3 text-sm text-card-foreground">
-      <div className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
-        <AgentTypeIcon agentType={view.agentType} size={24} />
-        {view.dot ? (
-          <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-card ring-2 ring-card">
-            <AgentStateDot state={view.dot} size="md" />
-          </span>
-        ) : null}
-      </div>
+      <AgentMessageAvatar
+        sender={agentMessagePrimarySender(from)}
+        worktreeId={worktreeId}
+        target={target}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>{heading(from)}</span>
@@ -89,7 +101,7 @@ export function NativeChatAgentMessageCard({
             className="text-muted-foreground"
           />
         </div>
-        <NativeChatAgentMessageSenders from={from} chatWorktreeId={worktreeId} />
+        <NativeChatAgentMessageSenders from={from} chatWorktreeId={worktreeId} target={target} />
         <NativeChatImageAttachments
           blocks={message.blocks}
           runtimeContext={runtimeContext}
@@ -99,7 +111,7 @@ export function NativeChatAgentMessageCard({
           ref={clip}
           id={clipId}
           className="overflow-hidden leading-6"
-          style={disclosure.open ? undefined : { maxHeight: '3lh' }}
+          style={disclosure.open ? undefined : { maxHeight: `${AGENT_MESSAGE_FOLDED_LINES}lh` }}
         >
           <NativeChatMarkdown
             rowKey={message.id}
@@ -121,19 +133,43 @@ export function NativeChatAgentMessageCard({
               aria-controls={clipId}
               onClick={() => {
                 disclosure.setOpen(!disclosure.open)
-                if (disclosure.open) requestAnimationFrame(onRefolded)
+                if (disclosure.open) {
+                  requestAnimationFrame(onRefolded)
+                }
               }}
             >
-              {disclosure.open
+              {agentMessageFoldLabel(disclosure.open) === 'expanded'
                 ? translate('components.native-chat.userMessage.showLess', 'Show less')
                 : translate('components.native-chat.agentMessage.showMore', 'Show more')}
             </Button>
           ) : (
             <span />
           )}
-          {text ? <NativeChatCopyButton text={text} /> : null}
+          {agentMessageCanCopy(text) ? <NativeChatCopyButton text={text} /> : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+function AgentMessageAvatar({
+  sender,
+  worktreeId,
+  target
+}: {
+  sender: AgentMessageSource['senders'][number] | undefined
+  worktreeId: string | null
+  target?: RuntimeClientTarget
+}): React.JSX.Element {
+  const view = useAgentMessageSenderView(sender, worktreeId, target)
+  return (
+    <div className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
+      <AgentTypeIcon agentType={view.agentType} size={24} />
+      {view.dot ? (
+        <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-card ring-2 ring-card">
+          <AgentStateDot state={view.dot} size="md" />
+        </span>
+      ) : null}
     </div>
   )
 }
