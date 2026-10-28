@@ -3,7 +3,6 @@ import {
   type AgentSessionConversationClear
 } from './agent-session-conversation-command-record'
 import { structuredAgentSessionReceivingAccount } from '../native-chat/agent-session-wire/structured-agent-session-receiving-account'
-import { SELECTED_B } from '../native-chat/agent-session-wire/structured-agent-session-receiving-account.test-support'
 import { describe, expect, it } from 'vitest'
 import {
   acquiredAgentSessionAccount,
@@ -12,7 +11,8 @@ import {
 import { agentSessionConversationView } from '../../shared/agent-session-conversation-view'
 import {
   createReceivingAccountFixture,
-  RECEIVING_A
+  RECEIVING_A,
+  SELECTED_B
 } from '../native-chat/agent-session-wire/structured-agent-session-receiving-account.test-support'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 import {

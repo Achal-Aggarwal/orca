@@ -145,7 +145,7 @@ export function structuredParentAccountWork(
     if (
       message &&
       (message.to_handle === party.address ||
-        mailboxes.has(`${message.run_id}\0${message.to_handle}`))
+        mailboxes.has(`${String(message.run_id)}\0${String(message.to_handle)}`))
     ) {
       return true
     }

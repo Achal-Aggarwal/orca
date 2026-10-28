@@ -1,10 +1,12 @@
 import type { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
-import { createStructuredAgentSessionHostRestore } from './structured-agent-session-reveal'
+import {
+  createStructuredAgentSessionHostRestore,
+  revealStructuredAgentSession
+} from './structured-agent-session-reveal'
 import type { StructuredAgentSessionClientDelivery } from './structured-agent-session-client-delivery'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import * as providerSupport from './structured-agent-session-provider-support'
-import { revealStructuredAgentSession } from './structured-agent-session-reveal'
 import type { OpenedStructuredAgentSessionConversation } from './structured-agent-session-conversation-open'
 import type {
   StructuredAgentSessionHostDeps,
