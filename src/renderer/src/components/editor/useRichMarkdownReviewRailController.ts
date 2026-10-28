@@ -42,6 +42,9 @@ export function useRichMarkdownReviewRailController({
   const attentionReviewCommentTimeoutRef = useRef<number | null>(null)
   const sourceAttentionTimeoutRef = useRef<number | null>(null)
   const notePositionsFrameRef = useRef<number | null>(null)
+  const attentionReviewCommentFrameRef = useRef<number | null>(null)
+  const sourceAttentionFrameRef = useRef<number | null>(null)
+  const centerReviewNoteFrameRef = useRef<number | null>(null)
   const reviewRailVisible = markdownComments.length > 0 && reviewRailOpen
 
   notePositionsRef.current = notePositions
@@ -49,6 +52,9 @@ export function useRichMarkdownReviewRailController({
   const clearAttentionTimers = useCallback((): void => {
     clearWindowTimer(attentionReviewCommentTimeoutRef)
     clearWindowTimer(sourceAttentionTimeoutRef)
+    cancelFrame(attentionReviewCommentFrameRef)
+    cancelFrame(sourceAttentionFrameRef)
+    cancelFrame(centerReviewNoteFrameRef)
   }, [])
 
   const cancelNotePositionFrame = useCallback((): void => {
@@ -101,8 +107,10 @@ export function useRichMarkdownReviewRailController({
 
   const pulseRichMarkdownReviewNote = useCallback((commentId: string): void => {
     clearWindowTimer(attentionReviewCommentTimeoutRef)
+    cancelFrame(attentionReviewCommentFrameRef)
     setAttentionReviewCommentId(null)
-    window.requestAnimationFrame(() => {
+    attentionReviewCommentFrameRef.current = window.requestAnimationFrame(() => {
+      attentionReviewCommentFrameRef.current = null
       setAttentionReviewCommentId(commentId)
       attentionReviewCommentTimeoutRef.current = window.setTimeout(() => {
         attentionReviewCommentTimeoutRef.current = null
@@ -116,10 +124,12 @@ export function useRichMarkdownReviewRailController({
       setReviewRailOpen(true)
       setActiveReviewCommentId(commentId)
       pulseRichMarkdownReviewNote(commentId)
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() =>
+      cancelFrame(centerReviewNoteFrameRef)
+      centerReviewNoteFrameRef.current = window.requestAnimationFrame(() => {
+        centerReviewNoteFrameRef.current = window.requestAnimationFrame(() => {
+          centerReviewNoteFrameRef.current = null
           centerReviewNoteCard(scrollContainerRef.current, notePositionsRef.current, commentId)
-        )
+        })
       })
     },
     [pulseRichMarkdownReviewNote, scrollContainerRef]
@@ -132,23 +142,32 @@ export function useRichMarkdownReviewRailController({
         return
       }
       clearWindowTimer(sourceAttentionTimeoutRef)
+      cancelFrame(sourceAttentionFrameRef)
+      const sourceDocument = editor.state.doc
       editor.view.dispatch(
         editor.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, { activeRange: null })
       )
-      window.requestAnimationFrame(() => {
-        const latestEditor = editorRef.current
-        if (!latestEditor) {
+      sourceAttentionFrameRef.current = window.requestAnimationFrame(() => {
+        sourceAttentionFrameRef.current = null
+        if (
+          editorRef.current !== editor ||
+          editor.isDestroyed ||
+          editor.state.doc !== sourceDocument
+        ) {
           return
         }
-        latestEditor.view.dispatch(
-          latestEditor.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, {
+        editor.view.dispatch(
+          editor.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, {
             activeRange: range
           })
         )
         sourceAttentionTimeoutRef.current = window.setTimeout(() => {
           sourceAttentionTimeoutRef.current = null
-          editorRef.current?.view.dispatch(
-            editorRef.current.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, {
+          if (editorRef.current !== editor || editor.isDestroyed) {
+            return
+          }
+          editor.view.dispatch(
+            editor.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, {
               activeRange: null
             })
           )
@@ -191,6 +210,14 @@ export function useRichMarkdownReviewRailController({
   )
 
   useEffect(() => requestSyncNotePositions(), [content, markdownComments, requestSyncNotePositions])
+
+  useEffect(
+    () => () => {
+      clearAttentionTimers()
+      cancelNotePositionFrame()
+    },
+    [cancelNotePositionFrame, clearAttentionTimers]
+  )
 
   useEffect(() => {
     if (!reviewRailVisible) {
