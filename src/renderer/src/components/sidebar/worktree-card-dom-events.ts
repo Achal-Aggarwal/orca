@@ -26,3 +26,23 @@ export function isPlainPrimaryMousePress(event: {
     !event.altKey
   )
 }
+
+// Selectable text (e.g. port numbers) lets a press start a text selection; it keeps click activation.
+export function isSelectableTextTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && getComputedStyle(target).userSelect === 'text'
+}
+
+// The click that ends a gesture is dispatched right after pointerup, so clear after that task; cancel never clicks.
+export function afterPointerGestureEnds(callback: () => void): void {
+  const finish = (event: Event): void => {
+    window.removeEventListener('pointerup', finish, true)
+    window.removeEventListener('pointercancel', finish, true)
+    if (event.type === 'pointercancel') {
+      callback()
+    } else {
+      setTimeout(callback, 0)
+    }
+  }
+  window.addEventListener('pointerup', finish, true)
+  window.addEventListener('pointercancel', finish, true)
+}

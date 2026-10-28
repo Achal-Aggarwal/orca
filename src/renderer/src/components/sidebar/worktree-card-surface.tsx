@@ -34,6 +34,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     deleteLabel,
     handleClick,
     handlePointerDown,
+    handleMouseDown,
     handleDoubleClick,
     handleDragStart,
     handleDragEnd,
@@ -79,6 +80,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
       data-worktree-lineage-drop-target={isLineageDropTarget || undefined}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
+      onMouseDown={handleMouseDown}
       onDoubleClick={affiliateListMode ? undefined : handleDoubleClick}
       draggable={!affiliateListMode && nativeDragEnabled && !isDeleting && !titleRenaming}
       onDragStart={!affiliateListMode && nativeDragEnabled ? handleDragStart : undefined}

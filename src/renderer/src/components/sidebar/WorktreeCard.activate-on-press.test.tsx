@@ -14,11 +14,13 @@ const openModal = vi.fn()
 const updateWorktreeMeta = vi.fn()
 
 let worktreeCardProperties: WorktreeCardProperty[] = ['status']
+let isSleepingWorktree = false
 let root: Root | null = null
 let container: HTMLDivElement | null = null
 
 vi.mock('@/store', () => {
   const getState = () => ({
+    activeView: 'terminal',
     deleteStateByWorktreeId: {},
     fetchHostedReviewForBranch,
     fetchIssue,
@@ -32,6 +34,7 @@ vi.mock('@/store', () => {
     remoteBranchConflictByWorktreeId: {},
     settings: { experimentalNewWorktreeCardStyle: true },
     sshConnectionStates: new Map(),
+    sleepingAgentSessionsByPaneKey: {},
     sshTargetLabels: new Map(),
     updateWorktreeMeta,
     workspacePortScan: null,
@@ -76,7 +79,8 @@ vi.mock('./use-worktree-activity-status', () => ({
 }))
 
 vi.mock('./use-worktree-sleep-state', () => ({
-  useIsSleepingWorktree: () => false
+  useIsSleepingWorktree: () => false,
+  selectIsSleepingWorktree: () => isSleepingWorktree
 }))
 
 function makeRepo(): Repo {
@@ -116,6 +120,7 @@ describe('WorktreeCard press activation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     worktreeCardProperties = ['status']
+    isSleepingWorktree = false
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -167,6 +172,12 @@ describe('WorktreeCard press activation', () => {
     const surface = await renderCard({ activateOnPress: true })
     press(surface)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(1)
+    // The press's native mousedown must not pull focus from the new terminal to the list.
+    const mousedown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })
+    act(() => {
+      surface.dispatchEvent(mousedown)
+    })
+    expect(mousedown.defaultPrevented).toBe(true)
     click(surface, 1)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(1)
   })
@@ -178,6 +189,26 @@ describe('WorktreeCard press activation', () => {
     expect(activateWorktreeFromSidebar).not.toHaveBeenCalled()
     press(surface)
     click(surface, 0)
+    expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(2)
+  })
+
+  it('waits for the click before waking a sleeping workspace', async () => {
+    isSleepingWorktree = true
+    const surface = await renderCard({ activateOnPress: true })
+    press(surface)
+    expect(activateWorktreeFromSidebar).not.toHaveBeenCalled()
+    click(surface, 1)
+    expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not let a press whose click was swallowed skip a later click', async () => {
+    const surface = await renderCard({ activateOnPress: true })
+    press(surface)
+    act(() => {
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'mouse' }))
+    })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    click(surface, 1)
     expect(activateWorktreeFromSidebar).toHaveBeenCalledTimes(2)
   })
 

@@ -4,9 +4,12 @@ import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-diagnostics'
 import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
 import {
+  afterPointerGestureEnds,
   isEventTargetInsideCurrentTarget,
-  isPlainPrimaryMousePress
+  isPlainPrimaryMousePress,
+  isSelectableTextTarget
 } from './worktree-card-dom-events'
+import { canActivateWorktreeOnPress } from './worktree-press-activation-eligibility'
 import { isSidebarPointerDragBlocked } from './worktree-sidebar-pointer-drag-dom'
 import type { WorktreeCardProps } from './worktree-card-model'
 import type { useWorktreeCardFoundation } from './use-worktree-card-foundation'
@@ -132,7 +135,9 @@ export function useWorktreeCardActivationActions({
         isDeleting ||
         !isPlainPrimaryMousePress(event) ||
         !isEventTargetInsideCurrentTarget(event.currentTarget, event.target) ||
-        isSidebarPointerDragBlocked(event.target, event.currentTarget)
+        isSidebarPointerDragBlocked(event.target, event.currentTarget) ||
+        isSelectableTextTarget(event.target) ||
+        !canActivateWorktreeOnPress(worktree.id, isSshDisconnected)
       ) {
         return
       }
@@ -141,10 +146,21 @@ export function useWorktreeCardActivationActions({
         return
       }
       pressActivatedRef.current = true
+      // Drag suppression can swallow this gesture's click; the flag must not outlive it and skip a later click.
+      afterPointerGestureEnds(() => {
+        pressActivatedRef.current = false
+      })
       activate()
     },
-    [activateOnPress, isDeleting, onSelectionGesture, activate]
+    [activateOnPress, isDeleting, onSelectionGesture, activate, worktree.id, isSshDisconnected]
   )
+
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // The press already focused the new terminal; the native default would move focus to the list.
+    if (pressActivatedRef.current) {
+      event.preventDefault()
+    }
+  }, [])
 
   const handleRenameTitle = useCallback(
     // Store logging/refetch reverts failed optimistic renames; inline rename has no separate error surface.
@@ -201,6 +217,7 @@ export function useWorktreeCardActivationActions({
   return {
     handleClick,
     handlePointerDown,
+    handleMouseDown,
     handleRenameTitle,
     handleDoubleClick,
     handleToggleUnreadQuick
