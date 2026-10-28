@@ -1,7 +1,3 @@
-import {
-  selectCanonicalProjects,
-  selectCanonicalProjectHostSetups
-} from '@/store/project-host-setup-selector'
 import { useMemo } from 'react'
 import type { AppState } from '@/store/types'
 import { useAppStore } from '@/store'
@@ -99,11 +95,11 @@ export function useComposerTargetStore(options: ComposerStateInput, decisions: C
 
   const repos = useAppStore((s) => s.repos)
 
-  const projects = useAppStore((s) => selectCanonicalProjects(s))
+  const projects = useAppStore((s) => s.projects)
 
   const projectGroups = useAppStore((s) => s.projectGroups)
 
-  const projectHostSetups = useAppStore((s) => selectCanonicalProjectHostSetups(s))
+  const projectHostSetups = useAppStore((s) => s.projectHostSetups)
 
   const activeRepoId = useAppStore((s) => s.activeRepoId)
 
