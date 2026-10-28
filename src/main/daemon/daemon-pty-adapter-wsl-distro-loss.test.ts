@@ -100,7 +100,7 @@ describe('a WSL bridge pane exit', () => {
     expect(clear).toHaveBeenCalledWith(id, -1, expect.any(String), { closeHistory: false })
   })
 
-  it("closes a pane's own clean exit at once: no stop mark, settle wait or running-list read", async () => {
+  it("closes a pane's own clean exit at once, with no settle wait or running-list read", async () => {
     // A list that never answers: classifying the exit would hang it.
     running = () => new Promise<WslRunningDistrosRead>(() => {})
     const exits = collectExits()
@@ -112,7 +112,8 @@ describe('a WSL bridge pane exit', () => {
     expect(exits).toEqual([expect.objectContaining({ id, code: 0 })])
     expect(exits[0]).not.toHaveProperty('hostLost')
     expect(readRunning).not.toHaveBeenCalled()
-    expect(noteMayHaveStopped).not.toHaveBeenCalled()
+    // Still marked: background reads must settle in case the distro did stop (poweroff, --shutdown).
+    expect(noteMayHaveStopped).toHaveBeenCalledWith('Ubuntu')
   })
 
   it('marks a non-zero exit as a possible stop before classifying it', async () => {

@@ -223,11 +223,12 @@ export class DaemonPtyAdapter extends DaemonPtyDaemonRecovery implements IPtyPro
           }
           return
         }
-        // A terminate never exits 0 (awin: -1 per bridge pane; `exit`/`exit 0` gave 0): a clean exit is
-        // the user's own, so it closes at once, with no stop mark, settle wait or classification.
-        if (wslDistro && event.payload.code !== 0) {
+        // Every bridge exit marks a possible stop (unseen to the user; covers poweroff or --shutdown).
+        if (wslDistro) {
           this.wslBridgeBootIdentity.noteExit(wslDistro)
         }
+        // A terminate never exits 0 (awin: -1 per bridge pane; `exit`/`exit 0` gave 0): a clean exit is
+        // the user's own, so it closes at once, without the settle wait or classification.
         if (wslDistro && event.payload.code !== 0 && isProvenProcessExit(event.payload.code)) {
           const exitAt = performance.now()
           void this.finishWslBridgeExit(event.sessionId, event.payload, wslDistro, exitAt)
