@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type * as ChildProcess from 'node:child_process'
 
 const {
@@ -51,6 +51,23 @@ import { COMMAND_SPECS } from './specs'
 import { okFixture, queueFixtures } from './test-fixtures'
 import { pairRuntimeEnvironment, useWorktreeAwarenessEnvironment } from './index-test-harness'
 
+let lineage: RuntimeAgentLineageTestModule
+let catalog: RuntimeAgentLineageCatalogTestModule
+
+// The CLI's Node16 program needs a hook; each test still creates its own DB and runtime.
+beforeAll(async () => {
+  lineage = (
+    await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+      '../main/runtime/runtime-agent-lineage.test-fixture'
+    )
+  ).default
+  catalog = (
+    await vi.importActual<{ default: RuntimeAgentLineageCatalogTestModule }>(
+      '../main/runtime/runtime-agent-lineage-catalog.test-fixture'
+    )
+  ).default
+})
+
 const TERMINAL_ROW = {
   handle: 'term_1',
   ptyId: 'pty-1',
@@ -80,19 +97,10 @@ describe('omittedHostIds selector annotation', () => {
   it.each(['repo::/workspace', 'folder:lineage'])(
     'prints canonical production-built lineage through actual CLI and worktree RPC for %s',
     async (worktreeId) => {
-      const {
-        default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
-      } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
-        '../main/runtime/runtime-agent-lineage.test-fixture'
-      )
-      const {
-        default: { createLineageCatalogDispatcher }
-      } = await vi.importActual<{ default: RuntimeAgentLineageCatalogTestModule }>(
-        '../main/runtime/runtime-agent-lineage-catalog.test-fixture'
-      )
+      const { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD } = lineage
       const f = publicLineageFixture(worktreeId)
       try {
-        const dispatcher = createLineageCatalogDispatcher(f.build)
+        const dispatcher = catalog.createLineageCatalogDispatcher(f.build)
         const resultOf = (response: unknown) => JSON.parse(JSON.stringify(response)).result
         const request = (params = {}) =>
           dispatcher.dispatch({

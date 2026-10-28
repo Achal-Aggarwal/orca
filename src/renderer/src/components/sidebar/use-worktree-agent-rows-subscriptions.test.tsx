@@ -13,10 +13,18 @@ import {
   type AgentStatusEntry
 } from '../../../../shared/agent-status-types'
 import { useWorktreeAgentRows } from './useWorktreeAgentRows'
+import { verifyMirroredTerminalLineage } from './mirrored-terminal-lineage.test-fixture'
 import type { RuntimeAgentLineageTestModule } from '../../../../shared/runtime-agent-lineage-consumer.test-fixture'
 import { isStructuredTab } from '../../../../shared/structured-agent-session-tab'
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
+
+// Load the native graph during collection; fixture state stays per test.
+const {
+  default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+} = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+  '../../../../main/runtime/runtime-agent-lineage.test-fixture'
+)
 
 const LEAF = '11111111-1111-4111-8111-111111111111'
 const KEY_A = makePaneKey('tab-a', LEAF)
@@ -409,11 +417,6 @@ it.each([20, 200])(
 )
 
 it('joins production mirrored custom/collision rows locally and keeps canonical initial, graph, retained and consumer contexts', async () => {
-  const {
-    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
-  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
-    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
-  )
   const { makeUnifiedTab, makeWorktree, TEST_REPO } =
     await import('@/store/slices/store-test-helpers')
   const { buildMirroredAgentTabs } =
@@ -632,8 +635,6 @@ it('joins production mirrored custom/collision rows locally and keeps canonical 
 it.each(['default', 'reserved', 'collision'] as const)(
   'joins mirrored live/retained terminal contexts with positive provenance and a %s parent',
   async (kind) => {
-    const { verifyMirroredTerminalLineage } =
-      await import('./mirrored-terminal-lineage.test-fixture')
     await verifyMirroredTerminalLineage(kind, {
       patch,
       entry,
@@ -644,11 +645,6 @@ it.each(['default', 'reserved', 'collision'] as const)(
 )
 
 it('settles the production graph subscription/scheduler/publication/receiver loop with at most one feedback flight', async () => {
-  const {
-    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
-  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
-    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
-  )
   const { useRuntimeGraphSync } = await import('@/app-shell/use-runtime-graph-sync')
   const { setRuntimeGraphSyncEnabled, setRuntimeGraphStoreStateGetter } =
     await import('@/runtime/sync-runtime-graph')

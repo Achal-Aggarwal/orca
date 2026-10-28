@@ -9,6 +9,13 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { makeTab } from '@/store/slices/store-test-helpers'
 
+// Load the native graph during collection; fixture state stays per test.
+const {
+  default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
+} = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
+  '../../../../main/runtime/runtime-agent-lineage.test-fixture'
+)
+
 const LEAF = '11111111-1111-4111-8111-111111111111'
 
 export async function verifyMirroredTerminalLineage(
@@ -25,11 +32,6 @@ export async function verifyMirroredTerminalLineage(
     getRows: () => DashboardAgentRow[]
   }
 ): Promise<void> {
-  const {
-    default: { publicLineageFixture, canonicalChatRow, LINEAGE_PARENT, LINEAGE_CHILD }
-  } = await vi.importActual<{ default: RuntimeAgentLineageTestModule }>(
-    '../../../../main/runtime/runtime-agent-lineage.test-fixture'
-  )
   const { makeUnifiedTab, makeWorktree, TEST_REPO } =
     await import('@/store/slices/store-test-helpers')
   const { selectDashboardOrchestration } =
