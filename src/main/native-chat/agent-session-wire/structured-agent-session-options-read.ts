@@ -9,10 +9,10 @@ import { saveStructuredAgentSessionListing } from './structured-agent-session-st
 import { independentAgentModelCatalog } from '../agent-model-catalog/agent-model-catalog-discovery'
 import {
   structuredAgentSessionCapabilityView,
-  readStructuredAgentSessionOptionsAtRest,
   type StructuredAgentSessionOptionsReader,
   type StructuredAgentSessionRestingOptions as RestingOptions
 } from './structured-agent-session-option-models'
+import { readStructuredAgentSessionOptionsAtRest } from './structured-agent-session-resting-options'
 import { structuredAgentSessionLaunchPermission } from './structured-agent-session-launch-permission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { structuredAgentSessionNeverSent } from './structured-agent-session-never-sent'
