@@ -19049,6 +19049,15 @@
       "stepDownload": "Download",
       "stepUnpack": "Unpack",
       "stepCheck": "Check"
+    },
+    "editor": {
+      "codeBlock": {
+        "language": "Code block language"
+      },
+      "emojiPicker": {
+        "label": "Choose an emoji",
+        "search": "Search emoji"
+      }
     }
   },
   "dashboardPopout": {
