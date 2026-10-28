@@ -220,3 +220,77 @@ it('does not resurrect a removed draft or change a new scope when a source read 
   expect(readNativeChatComposerDraft('other-host:next').text).toBe('new typing')
   expect(readTerminalPasteSource(ID)).toBeUndefined()
 })
+
+it.each([1, 10])(
+  'recovers unchanged staged drafts on remount after %i failed storage reads without spinning',
+  async (failures) => {
+    const {
+      createMemoryNativeChatComposerDraftStorage,
+      setNativeChatComposerDraftStorageForTests
+    } = await import('./native-chat-composer-draft-storage')
+    const { hydrateNativeChatComposerDrafts, readNativeChatComposerDraft } =
+      await import('./native-chat-composer-draft-store')
+    const { nativeChatPastedTextAdmission } =
+      await import('./native-chat-composer-pasted-text-references')
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    const text = 'exact recovered source '.repeat(2000)
+    storage.drafts.set(SCOPE, {
+      text: nativeChatPastedTextToken(ID),
+      pastedTextSourceIds: [ID],
+      images: [],
+      savedAt: 1
+    })
+    storage.sources.set(ID, text)
+    setNativeChatComposerDraftStorageForTests(storage)
+    await hydrateNativeChatComposerDrafts()
+    const draft = readNativeChatComposerDraft(SCOPE)
+    const read = vi.spyOn(storage, 'readSource')
+    for (let i = 0; i < failures; i++) {
+      read.mockRejectedValueOnce(new Error('storage temporarily unavailable'))
+    }
+    function Probe() {
+      return <span>{useNativeChatPastedTextAdmission(SCOPE)}</span>
+    }
+    for (let i = 0; i < failures; i++) {
+      const view = render(<Probe />)
+      await act(async () => {})
+      await act(async () => {})
+      expect(read).toHaveBeenCalledTimes(i + 1)
+      expect(nativeChatPastedTextAdmission(SCOPE)).not.toBeNull()
+      expect(readNativeChatComposerDraft(SCOPE)).toBe(draft)
+      view.unmount()
+    }
+    render(<Probe />)
+    await act(async () => {})
+    expect(read).toHaveBeenCalledTimes(failures + 1)
+    expect(readNativeChatComposerDraft(SCOPE)).toBe(draft)
+    expect(resolveNativeChatPastedText(SCOPE, draft.text, true)).toBe(text)
+    expect(nativeChatPastedTextAdmission(SCOPE)).toBeNull()
+  }
+)
+
+it('keeps proven missing sources unavailable without retry notifications', async () => {
+  const { createMemoryNativeChatComposerDraftStorage, setNativeChatComposerDraftStorageForTests } =
+    await import('./native-chat-composer-draft-storage')
+  const { hydrateNativeChatComposerDrafts } = await import('./native-chat-composer-draft-store')
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(SCOPE, {
+    text: nativeChatPastedTextToken(ID),
+    pastedTextSourceIds: [ID],
+    images: [],
+    savedAt: 1
+  })
+  setNativeChatComposerDraftStorageForTests(storage)
+  await hydrateNativeChatComposerDrafts()
+  const read = vi.spyOn(storage, 'readSource')
+  function Probe() {
+    return <span>{useNativeChatPastedTextAdmission(SCOPE)}</span>
+  }
+  const view = render(<Probe />)
+  await act(async () => {})
+  expect(view.getByText('unsaved')).toBeTruthy()
+  view.unmount()
+  render(<Probe />)
+  await act(async () => {})
+  expect(read).toHaveBeenCalledOnce()
+})

@@ -55,10 +55,11 @@ export function loadNativeChatTerminalPasteSources(
               unavailableSources.set(draft, new Set([...(unavailableSources.get(draft) ?? []), id]))
             }
           } catch {
-            unavailableSources.set(draft, new Set([...(unavailableSources.get(draft) ?? []), id]))
+            // Unknown I/O parks until the next mount or scoped storage wake; it does not prove absence.
           } finally {
-            loadingSources.delete(key)
+            // Keep this attempt registered while notifying its own subscribers to avoid self-retry.
             notifyScope(scope)
+            loadingSources.delete(key)
           }
         })()
         loadingSources.set(key, loading)

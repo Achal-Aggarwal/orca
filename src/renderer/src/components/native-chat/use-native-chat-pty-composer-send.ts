@@ -1,3 +1,4 @@
+import { registerNativeChatPtySendPreparation } from './native-chat-pty-send-queue'
 import { sameNativeChatComposerDraftImages } from './native-chat-composer-draft-comparison'
 import { createUuidV4 } from '../../../../shared/uuid-v4'
 import {
@@ -67,7 +68,7 @@ export function useNativeChatPtyComposerSend(args: {
   clearImageAttachments: () => void
   setNotice: (notice: string | null) => void
 }): () => void {
-  const preparing = useRef(false)
+  const preparing = useRef<NativeChatSendHandle | null>(null)
   const latest = useRef(args)
   latest.current = args
   return useCallback(() => {
@@ -194,16 +195,22 @@ export function useNativeChatPtyComposerSend(args: {
       args.setNotice(nativeChatAttachmentOwnerChangedNotice())
       return
     }
-    preparing.current = true
     let cancelled = false
     const done = Promise.withResolvers<void>()
-    args.trackPendingSend({
+    const preparation: NativeChatSendHandle & { settled: Promise<void> } = {
       cancel: () => {
         cancelled = true
+        if (preparing.current === preparation) {
+          preparing.current = null
+        }
+        done.resolve()
       },
       settleAfterMs: 0,
       settled: done.promise
-    })
+    }
+    preparing.current = preparation
+    registerNativeChatPtySendPreparation(target.ptyId, preparation)
+    args.trackPendingSend(preparation)
     const request = {
       requestId: createUuidV4(),
       scopeKey: args.draftScopeKey,
@@ -234,6 +241,9 @@ export function useNativeChatPtyComposerSend(args: {
         dispatch(resolved)
       })
       .catch((error) => {
+        if (cancelled) {
+          return
+        }
         args.setNotice(
           nativeChatAttachFailedNotice(
             [nativeChatPastedTextLabel()],
@@ -242,7 +252,9 @@ export function useNativeChatPtyComposerSend(args: {
         )
       })
       .finally(() => {
-        preparing.current = false
+        if (preparing.current === preparation) {
+          preparing.current = null
+        }
         done.resolve()
       })
   }, [args])

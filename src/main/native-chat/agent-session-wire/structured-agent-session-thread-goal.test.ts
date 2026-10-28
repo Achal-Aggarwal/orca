@@ -11,6 +11,8 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalThreadGoal,
+  AgentJournalItemIdentity,
+  AgentJournalMessageItem,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -582,3 +584,129 @@ it('keeps inverse and SQL synchronized across failed COMMIT and failed post-COMM
   ).toHaveLength(1)
   spy.mockRestore()
 })
+
+async function appendDurableAttachmentInput(
+  journal: AgentSessionJournal,
+  kind: 'step' | 'batch',
+  identity: AgentJournalItemIdentity,
+  body: AgentJournalMessageItem,
+  settlementId: string
+): Promise<unknown> {
+  return kind === 'step'
+    ? journal.appendSteps([
+        { kind: 'item', resolve: () => ({ identity, body }), options: { fence: 1 } }
+      ])
+    : journal.appendLifecycleBatch({
+        settlementId,
+        fence: 1,
+        mutations: [{ kind: 'item', identity, body }]
+      })
+}
+
+it.each(['step', 'batch'] as const)(
+  'protects independent %s input from no prior claim, atomically through rollback and publication failure',
+  async (kind) => {
+    let failPublication = false
+    const journal = await openJournal(() => {
+      if (failPublication) {
+        throw new Error('publication failed')
+      }
+    })
+    const file = await storedGoalFile()
+    const database = openTestJournalHostDatabase(root ?? '')
+    const claims = () =>
+      database.db
+        .prepare('SELECT upload_id FROM agent_session_attachment_claims WHERE upload_id = ?')
+        .all(file.uploadId)
+    const identity: AgentJournalItemIdentity = {
+      provider: 'orca',
+      clientMessageId: `independent-${kind}`
+    }
+    expect(claims()).toHaveLength(0)
+    const transaction = database.transaction.bind(database)
+    const spy = vi.spyOn(database, 'transaction').mockImplementationOnce((run) =>
+      transaction((db) => {
+        run(db)
+        throw new Error('commit failed')
+      })
+    )
+    await expect(
+      appendDurableAttachmentInput(journal, kind, identity, file.body, 'rolled-back')
+    ).rejects.toThrow('commit failed')
+    expect(claims()).toHaveLength(0)
+    expect(journal.snapshot().items).toHaveLength(0)
+    failPublication = true
+    await expect(
+      appendDurableAttachmentInput(journal, kind, identity, file.body, 'accepted')
+    ).rejects.toThrow('publication failed')
+    failPublication = false
+    expect(claims()).toHaveLength(1)
+    await journal.close()
+    closeTestJournalHostDatabase(root ?? '')
+    const reopened = await openJournal()
+    expect(reopened.snapshot().items.map((item) => item.body)).toContainEqual(file.body)
+    expect(
+      markUnclaimedUploadForSweep(openTestJournalHostDatabase(root ?? '').db, file.uploadId, 1)
+    ).toBe(false)
+    spy.mockRestore()
+  }
+)
+
+it.each(['step', 'batch'] as const)(
+  'distinguishes provisional goal self-restatement from independent %s input at COMMIT',
+  async (kind) => {
+    let failPublication = false
+    const journal = await openJournal(() => {
+      if (failPublication) {
+        throw new Error('publication failed')
+      }
+    })
+    const database = openTestJournalHostDatabase(root ?? '')
+    for (const phase of ['self', 'rollback', 'accepted'] as const) {
+      const file = await storedGoalFile()
+      const identity: AgentJournalItemIdentity = {
+        provider: 'orca',
+        clientMessageId: `thread-goal:${phase}`
+      }
+      const body = { ...file.body, sentAs: 'goal' as const }
+      await journal.appendClaimingAttachments(identity, body, { fence: 1 })
+      const other: AgentJournalItemIdentity = {
+        provider: 'orca',
+        clientMessageId: `independent:${phase}`
+      }
+      const append = () =>
+        appendDurableAttachmentInput(
+          journal,
+          kind,
+          phase === 'self' ? identity : other,
+          phase === 'self'
+            ? { ...body, blocks: [...body.blocks, { type: 'text', text: 'restated' }] }
+            : file.body,
+          phase
+        )
+      if (phase === 'rollback') {
+        const transaction = database.transaction.bind(database)
+        const spy = vi.spyOn(database, 'transaction').mockImplementationOnce((run) =>
+          transaction((db) => {
+            run(db)
+            throw new Error('commit failed')
+          })
+        )
+        await expect(append()).rejects.toThrow('commit failed')
+        spy.mockRestore()
+      } else if (phase === 'accepted') {
+        failPublication = true
+        await expect(append()).rejects.toThrow('publication failed')
+        failPublication = false
+      } else {
+        await append()
+      }
+      await journal.withdrawGoalObjective(identity, { fence: 1 })
+      expect(
+        database.db
+          .prepare('SELECT upload_id FROM agent_session_attachment_claims WHERE upload_id = ?')
+          .all(file.uploadId)
+      ).toHaveLength(phase === 'accepted' ? 1 : 0)
+    }
+  }
+)
