@@ -27,7 +27,7 @@ import {
   traceShellStep
 } from './shell-lifecycle-log'
 import { shellPageFrame, type ShellPageFrame } from './shell-page-frame'
-import { subscribeAppForeground } from '../transport/socket-deadline-clock'
+import { useAppForegroundDispatch } from './use-app-foreground-dispatch'
 import {
   createMobileWebShellSession,
   reduceMobileWebShellSession
@@ -250,10 +250,7 @@ export function useMobileWebShellSession(args: {
     dispatch(epochRef.current, { type: 'layout-changed', wide })
   }, [dispatch, wide])
 
-  useEffect(
-    () => subscribeAppForeground(() => dispatch(epochRef.current, { type: 'app-foregrounded' })),
-    [dispatch]
-  )
+  useAppForegroundDispatch(dispatch, epochRef)
 
   const { statusPending, statusReadable, hostCapabilities, hostProtocolWindow } = gates
   const reachability = readMobileWebShellReachability(connState, client)
