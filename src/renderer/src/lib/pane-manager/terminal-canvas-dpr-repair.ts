@@ -1,6 +1,6 @@
 import type { ManagedPane } from './pane-manager-types'
 import { recordTerminalWebglDiagnostic } from '../../../../shared/terminal-webgl-diagnostics'
-import { forceRepaintThroughRenderPause } from './terminal-render-pause-release'
+import { forceFullViewportPresent } from './terminal-render-pause-release'
 import { isWebglCanvasBackingReleased } from './terminal-webgl-hidden-canvas-release'
 
 // Hidden-time DPR changes can evade WebGL’s device-pixel observer, leaving stale-scale canvas backing (e.g. 2160px for 1080 CSS pixels at DPR 1). Use xterm’s resize path to recompute device dimensions/backing at current DPR.
@@ -107,7 +107,9 @@ export function restoreReleasedPaneWebglCanvas(
       canvas.width = size?.width ?? 0
       canvas.height = size?.height ?? 0
     }
-    if (!forceRepaintThroughRenderPause(pane.terminal)) {
+    // Unlike an ordinary reveal, the released canvas holds no last coherent frame to keep, so a
+    // TUI mid DEC 2026 frame gets this one non-atomic paint instead of up to 1s of blank canvas.
+    if (!forceFullViewportPresent(pane.terminal)) {
       pane.terminal.refresh(0, pane.terminal.rows - 1)
     }
   } catch {
