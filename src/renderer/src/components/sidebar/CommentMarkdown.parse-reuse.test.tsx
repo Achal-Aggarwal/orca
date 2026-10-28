@@ -12,7 +12,10 @@ import {
   receiveNativeChatText
 } from '../../../../shared/native-chat/transcript/native-chat-text-reveal'
 
-const meter = vi.hoisted(() => ({ legacy: false, sources: [] as string[] }))
+const meter = vi.hoisted((): { legacy: boolean; sources: string[] } => ({
+  legacy: false,
+  sources: []
+}))
 vi.mock('remark-parse', async (original) => {
   const { default: plugin } = await original<{ default: typeof remarkParsePlugin }>()
   return {
