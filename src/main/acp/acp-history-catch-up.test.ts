@@ -3,10 +3,8 @@
 // the chat already holds.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  agentJournalSubmissionKey,
-  parseAgentJournalItemKey
-} from '../../shared/agent-session-journal-item-key'
+import { z } from 'zod'
+import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
@@ -17,7 +15,6 @@ import {
   SESSION,
   providerItemId
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
-import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
 import { OPENCODE_ACP_DIALECT } from './acp-dialects/opencode-dialect'
 import { agentJournalTurnBody, readAgentJournalTurn } from '../../shared/agent-session-turn-record'
@@ -26,56 +23,16 @@ import { isHistoricalProviderTimelineItem } from '../native-chat/agent-session-t
 import { StructuredAgentSessionCurrentWork } from '../native-chat/agent-session-wire/structured-agent-session-current-work'
 import { hasUnfinishedStructuredAgentSessionWork } from '../native-chat/agent-session-wire/structured-agent-session-unfinished-work'
 import { planStructuredAgentSessionDeadGeneration } from '../native-chat/agent-session-wire/structured-agent-session-dead-generation-settlement'
-import { catchUpAcpHistory } from './acp-history-catch-up'
-import {
-  AcpLoadHistory,
-  type AcpLoadHistoryFrame,
-  type AcpHistoryTurnIdentity
-} from './acp-history-replay'
+import { AcpLoadHistory, type AcpLoadHistoryFrame } from './acp-history-replay'
 import { asReattachHistory } from './acp-structured-session'
 import {
-  openAcpFixtureRig,
-  readAcpFixture,
-  type AcpFixtureFrame
+  readNamespacedAcpFixture as recording,
+  acpFixtureLoadReplay as loadReplay,
+  openAcpHistoryFixtureRig as setup,
+  appendAcpFixtureChatSend as chatSend
 } from './acp-timeline-fixture.test-support'
 
 afterEach(closeProviderTimelineRigs)
-
-async function recording(name: string): Promise<AcpFixtureFrame[]> {
-  // The rig's journal keys rows under its own provider session.
-  return JSON.parse(
-    JSON.stringify(await readAcpFixture(name)).replaceAll('"session-1"', JSON.stringify(NAMESPACE))
-  )
-}
-
-/** What the chat's lane kept while process `process` replayed its history on load. */
-function loadReplay(frames: AcpFixtureFrame[], process: string) {
-  const own = frames.filter((frame) => frame.process === process)
-  const load = own.findIndex((frame) => frame.message.method === 'session/load')
-  const answered = own.findIndex((frame, index) => index > load && frame.message.id !== undefined)
-  return own.slice(load + 1, answered).map((frame) => ({
-    method: frame.message.method!,
-    params: asReattachHistory(frame.message.params)
-  }))
-}
-
-async function setup(dialect: AcpDialect, identity: AcpHistoryTurnIdentity) {
-  const fixture = await openAcpFixtureRig(dialect)
-  const warn = vi.fn()
-  const catchUp = (frames: ReturnType<typeof loadReplay>) =>
-    catchUpAcpHistory({
-      frames,
-      identity,
-      sink: fixture.rig.eventSink,
-      sessionId: SESSION,
-      agent: AGENT,
-      providerSessionId: NAMESPACE,
-      dialect,
-      logger: { warn, error: vi.fn() },
-      assertCurrent: () => {}
-    })
-  return { fixture, catchUp, warn }
-}
 
 function userTexts(rows: AgentJournalRenderItem[]): string[] {
   return rows.flatMap((row) =>
@@ -85,23 +42,22 @@ function userTexts(rows: AgentJournalRenderItem[]): string[] {
   )
 }
 
-function dividers(rows: AgentJournalRenderItem[]): AgentJournalRenderItem[] {
-  return rows.filter(
-    (row) => row.body.kind === 'status' && row.body.presentation?.startsWith('continued-outside')
+function responseTexts(rows: AgentJournalRenderItem[], role: 'assistant' | 'reasoning'): string[] {
+  return rows.flatMap((row) =>
+    row.body.kind === 'message' && row.body.role === role
+      ? [row.body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')]
+      : []
   )
 }
 
-/** The chat's own send, as its row reads: the text a person typed. */
-async function chatSend(
-  fixture: Awaited<ReturnType<typeof openAcpFixtureRig>>,
-  clientMessageId: string,
-  text: string
-) {
-  const identity = parseAgentJournalItemKey(agentJournalSubmissionKey(clientMessageId))!
-  await fixture.rig.journal.appendItem(
-    identity,
-    { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
-    { fence: 1, turnScope: { kind: 'thread' } }
+const recordedUpdate = z.looseObject({
+  sessionId: z.literal(NAMESPACE),
+  update: z.looseObject({ sessionUpdate: z.string() })
+})
+
+function dividers(rows: AgentJournalRenderItem[]): AgentJournalRenderItem[] {
+  return rows.filter(
+    (row) => row.body.kind === 'status' && row.body.presentation?.startsWith('continued-outside')
   )
 }
 
@@ -129,13 +85,23 @@ describe('ACP history catch-up', () => {
   it('adds an OpenCode turn made outside the chat once, completing it on a later open', async () => {
     const { fixture, catchUp } = await setup(OPENCODE_ACP_DIALECT, 'user-message-id')
     const frames = await recording('opencode-v2-reopen')
-    const chat = frames.filter((frame) => frame.process === 'A')
-    const prompts = chat.filter((frame) => frame.message.method === 'session/prompt')
-    // The chat saw its first two turns; the third ran outside it.
-    await fixture.feed(chat.slice(0, chat.indexOf(prompts[2]!)))
-    const before = await fixture.rig.rows()
-    await fixture.restart()
     const replay = loadReplay(frames, 'B')
+    const thirdTurn = replay.findLastIndex(
+      (frame) =>
+        recordedUpdate.safeParse(frame.params).data?.update.sessionUpdate === 'user_message_chunk'
+    )
+    const reasoning = [
+      'The user wants me to run the shell tool with exactly `printf "TOOL-OK\\n"`.',
+      'The tool printed TOOL-OK.',
+      'The user wants me to run `printf "DENY-ME\\n"`. This is a harmless command. Let me run it.',
+      'The user wants me to run `sleep 40 && printf "LATE\\n"`. This is harmless but will take 40 seconds. The shell tool has a default timeout of 120000ms (120 seconds), so 40 seconds should be fine.'
+    ]
+    // All recorded output enters through catch-up, including the saved prefix.
+    await catchUp(replay.slice(0, thirdTurn))
+    const before = await fixture.rig.rows()
+    expect(responseTexts(before, 'assistant')).toEqual(['TOOL-OK'])
+    expect(responseTexts(before, 'reasoning')).toEqual(reasoning.slice(0, 3))
+    await fixture.restart()
     const outsideTool = replay.findLastIndex((frame) =>
       JSON.stringify(frame.params).includes('"tool_call"')
     )
@@ -146,6 +112,9 @@ describe('ACP history catch-up', () => {
     expect(partial.slice(0, before.length).map((row) => row.itemId)).toEqual(
       before.map((row) => row.itemId)
     )
+    expect(partial.slice(0, before.length).map((row) => row.sequence)).toEqual(
+      before.map((row) => row.sequence)
+    )
     const added = partial.slice(before.length)
     expect(added[0]?.body).toMatchObject({ kind: 'status', presentation: 'continued-outside' })
     expect(userTexts(added)).toEqual([expect.stringContaining('sleep 40')])
@@ -153,7 +122,13 @@ describe('ACP history catch-up', () => {
     await catchUp(replay)
     const complete = await fixture.rig.rows()
     expect(dividers(complete)).toHaveLength(1)
-    expect(userTexts(complete)).toEqual([expect.stringContaining('sleep 40')])
+    expect(userTexts(complete)).toEqual([
+      expect.stringContaining('printf "TOOL-OK'),
+      expect.stringContaining('printf "DENY-ME'),
+      expect.stringContaining('sleep 40')
+    ])
+    expect(responseTexts(complete, 'assistant')).toEqual(['TOOL-OK'])
+    expect(responseTexts(complete, 'reasoning')).toEqual(reasoning)
     expect(complete.filter((row) => row.body.kind === 'tool-call')).toHaveLength(3)
 
     await catchUp(replay)
@@ -219,6 +194,57 @@ describe('ACP history catch-up', () => {
       'completed',
       'completed'
     ])
+
+    // The outside recording above failed with 402; import successful recorded output too.
+    const captured = await recording('s1-full-notifications')
+    const prompt = captured.findIndex(
+      (frame) => frame.process === 'p1' && frame.message.method === 'session/prompt'
+    )
+    const request = z
+      .object({ prompt: z.tuple([z.object({ type: z.literal('text'), text: z.string() })]) })
+      .parse(captured[prompt]?.message.params)
+    const answered = captured.findIndex(
+      (frame, index) =>
+        index > prompt &&
+        frame.process === 'p1' &&
+        frame.direction === 'in' &&
+        frame.message.id === captured[prompt]?.message.id &&
+        frame.message.method === undefined
+    )
+    expect(answered).toBeGreaterThan(prompt)
+    const successful = [
+      replayUpdate('user_message_chunk', {
+        content: request.prompt[0],
+        _meta: { promptIndex: 2 }
+      }),
+      ...captured
+        .slice(prompt + 1, answered)
+        .flatMap((frame) =>
+          frame.process === 'p1' &&
+          frame.direction === 'in' &&
+          frame.message.id === undefined &&
+          frame.message.method &&
+          recordedUpdate.safeParse(frame.message.params).success
+            ? [{ method: frame.message.method, params: asReattachHistory(frame.message.params) }]
+            : []
+        )
+    ]
+    const replay = [...loadReplay(frames, 'C'), ...successful]
+    await catchUp(replay)
+    const complete = await fixture.rig.rows()
+    expect(complete.slice(0, rows.length)).toEqual(rows)
+    expect(userTexts(complete)).toEqual([
+      ...userTexts(rows),
+      'list the files in this folder and read README.md'
+    ])
+    expect(dividers(complete)).toHaveLength(2)
+    expect(responseTexts(complete.slice(rows.length), 'assistant')).toEqual([
+      "I'll list the folder contents and read `README.md`.",
+      'This folder has three files:\n\n- `math.js`\n- `notes.txt`\n- `README.md`\n\n`README.md` says:\n\n```markdown\n# Scratch project 1\n\nA tiny throwaway project used to record Grok ACP traffic.\n```'
+    ])
+    await fixture.restart()
+    await catchUp(replay)
+    expect(await fixture.rig.rows()).toEqual(complete)
   })
   it('refreshes same-key bodies after restart without inventing execution ownership or a new divider', async () => {
     const { fixture, catchUp } = await setup(OPENCODE_ACP_DIALECT, 'user-message-id')

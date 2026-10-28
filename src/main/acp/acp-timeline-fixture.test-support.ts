@@ -1,13 +1,21 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { expect } from 'vitest'
-import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import { expect, vi } from 'vitest'
+import {
+  agentJournalSubmissionKey,
+  parseAgentJournalItemKey
+} from '../../shared/agent-session-journal-item-key'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
 } from '../../shared/agent-session-question-answer'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
-import { openProviderTimelineRig } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import {
+  AGENT,
+  NAMESPACE,
+  SESSION,
+  openProviderTimelineRig
+} from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
 import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
 import { AcpTimelineTranslator } from './acp-timeline-translator'
@@ -15,6 +23,10 @@ import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-wor
 import type { AgentChildWorkView } from '../../shared/agent-status-child-work-view'
 import { acpSubagentRecords } from './acp-structured-child-work.test-support'
 import { PromptResponseSchema } from './generated/acp-protocol.generated'
+
+import { catchUpAcpHistory } from './acp-history-catch-up'
+import type { AcpHistoryTurnIdentity } from './acp-history-replay'
+import { asReattachHistory } from './acp-structured-session'
 
 const frameSchema = z.object({
   direction: z.enum(['in', 'out']),
@@ -191,4 +203,57 @@ export async function openAcpFixtureRig(dialect: AcpDialect = GROK_ACP_DIALECT) 
     },
     finishLoad: () => lane.finishLoad()
   }
+}
+
+export async function readNamespacedAcpFixture(name: string): Promise<AcpFixtureFrame[]> {
+  // The rig's journal keys rows under its own provider session.
+  return JSON.parse(
+    JSON.stringify(await readAcpFixture(name)).replaceAll('"session-1"', JSON.stringify(NAMESPACE))
+  )
+}
+
+/** What the chat's lane kept while process `process` replayed its history on load. */
+export function acpFixtureLoadReplay(frames: AcpFixtureFrame[], process: string) {
+  const own = frames.filter((frame) => frame.process === process)
+  const load = own.findIndex((frame) => frame.message.method === 'session/load')
+  const answered = own.findIndex((frame, index) => index > load && frame.message.id !== undefined)
+  return own.slice(load + 1, answered).map((frame) => ({
+    method: frame.message.method!,
+    params: asReattachHistory(frame.message.params)
+  }))
+}
+
+export async function openAcpHistoryFixtureRig(
+  dialect: AcpDialect,
+  identity: AcpHistoryTurnIdentity
+) {
+  const fixture = await openAcpFixtureRig(dialect)
+  const warn = vi.fn()
+  const catchUp = (frames: ReturnType<typeof acpFixtureLoadReplay>) =>
+    catchUpAcpHistory({
+      frames,
+      identity,
+      sink: fixture.rig.eventSink,
+      sessionId: SESSION,
+      agent: AGENT,
+      providerSessionId: NAMESPACE,
+      dialect,
+      logger: { warn, error: vi.fn() },
+      assertCurrent: () => {}
+    })
+  return { fixture, catchUp, warn }
+}
+
+/** The chat's own send, as its row reads: the text a person typed. */
+export async function appendAcpFixtureChatSend(
+  fixture: Awaited<ReturnType<typeof openAcpFixtureRig>>,
+  clientMessageId: string,
+  text: string
+) {
+  const identity = parseAgentJournalItemKey(agentJournalSubmissionKey(clientMessageId))!
+  await fixture.rig.journal.appendItem(
+    identity,
+    { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
+    { fence: 1, turnScope: { kind: 'thread' } }
+  )
 }

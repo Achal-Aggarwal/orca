@@ -87,10 +87,12 @@ export class ProviderTimelineTextStreams<
     this.coalescer = createAgentSessionDeltaCoalescer({
       ...(deps.coalesceMs === undefined ? {} : { windowMs: deps.coalesceMs }),
       ...(deps.schedule ? { schedule: deps.schedule } : {}),
-      source: (id) => {
-        const stream = this.byId.get(id)
-        return stream ? deps.sink.textSource?.(stream.row.identity) : undefined
-      },
+      source: deps.sink.prepareText
+        ? (id) => {
+            const stream = this.byId.get(id)
+            return stream ? deps.sink.textSource?.(stream.row.identity) : undefined
+          }
+        : undefined,
       // Every stream here is one this assembler holds open; the shared budget counts them.
       isProtected: () => true,
       emit: (id, text) => this.flushOnWindow(id, text),
