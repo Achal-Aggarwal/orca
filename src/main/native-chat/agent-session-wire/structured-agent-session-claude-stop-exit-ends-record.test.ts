@@ -660,7 +660,7 @@ it('releases a killed writer without an exit report and ignores its stale exit a
   vi.spyOn(connection, 'close').mockImplementation(async () => {
     connection.closed = true
     connection.exitVerdict = { root: 'live', tree: 'unverifiable', killDelivered: true }
-    return false
+    return true
   })
   await expect(stop()).resolves.toMatchObject({ ok: true })
   await laneDrained()
@@ -696,7 +696,7 @@ it.each([true, false])(
     }
     vi.spyOn(connection, 'close').mockImplementation(async () => {
       connection.closed = true
-      return false
+      return delivered
     })
     host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('journal unavailable'))
     await laneDrained()
@@ -728,7 +728,7 @@ it.each(['idle', 'tab-close', 'sleep'] as const)(
     vi.spyOn(connection, 'close').mockImplementation(async () => {
       connection.closed = true
       connection.exitVerdict = { root: 'live', tree: 'unverifiable', killDelivered: true }
-      return false
+      return true
     })
     const before = await host.journalSnapshot(SESSION)
     if (entry === 'idle') {
