@@ -8,6 +8,7 @@ import { buildMobileTerminalChatFork } from './terminal/launch/mobile-terminal-c
 import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
 import type { MobileTerminalCommand } from './terminal/launch/mobile-terminal-startup'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 
 let root: string
 let windowsBin: string
@@ -59,6 +60,12 @@ function makeRuntime(agentCmdOverrides: Record<string, string> = {}) {
         launchConfig?: SleepingAgentLaunchConfig
       }
     ) => { command: string } | null
+    getWorkspaceSessionForWorktree: (worktreeId: string) => unknown
+    isProviderSessionLiveInAnotherPane: () => Promise<boolean>
+    resolvePaneOwnedResumeStartup: (
+      worktreeId: string,
+      tab: { parentTabId: string; leafId: string }
+    ) => Promise<unknown>
   }
   internal.resolveTerminalWorkspaceLaunchScope = async () => workspace
   return { runtime, internal, workspace }
@@ -136,16 +143,81 @@ describe.skipIf(originalPlatform === 'win32')('WSL-host agent launch paths', () 
     })
 
     // Cold restore falls back to a plain shell instead of resuming through the Windows shim.
-    it('offers no resume for a Windows-only agent', () => {
+    // What a first pinned launch records; resuming it must not re-resolve or re-quote.
+    it('keeps a recorded absolute command as recorded', () => {
+      const native = fakeExecutable(nativeBin, 'claude')
       fakeExecutable(windowsBin, 'claude')
       const { internal, workspace } = makeRuntime()
-      expect(
+      const resume = internal.resolveMobileSessionResumeCommand(workspace, {
+        agent: 'claude',
+        providerSession: session,
+        launchConfig: { ...recorded, agentCommand: `'${native}'` }
+      })
+      expect(resume?.command.startsWith(`'${native}' `)).toBe(true)
+    })
+
+    it('throws the fix-it refusal for a Windows-only agent', () => {
+      fakeExecutable(windowsBin, 'claude')
+      const { internal, workspace } = makeRuntime()
+      expect(() =>
         internal.resolveMobileSessionResumeCommand(workspace, {
           agent: 'claude',
           providerSession: session,
           launchConfig: recorded
         })
-      ).toBeNull()
+      ).toThrow('Or set the claude Command setting')
+    })
+
+    it('restores a plain shell, not a Windows-backed resume, on cold restore', async () => {
+      fakeExecutable(windowsBin, 'claude')
+      const { internal } = makeRuntime()
+      const tabId = '11111111-1111-4111-8111-111111111111'
+      const leafId = '22222222-2222-4222-8222-222222222222'
+      const paneKey = `${tabId}:${leafId}`
+      const record = {
+        paneKey,
+        worktreeId: 'worktree-1',
+        agent: 'claude',
+        providerSession: session,
+        origin: 'live',
+        launchConfig: recorded
+      }
+      internal.getWorkspaceSessionForWorktree = () => ({
+        sleepingAgentSessionsByPaneKey: { [paneKey]: record }
+      })
+      internal.isProviderSessionLiveInAnotherPane = async () => false
+      await expect(
+        internal.resolvePaneOwnedResumeStartup('worktree-1', {
+          parentTabId: tabId,
+          leafId
+        })
+      ).resolves.toEqual({})
+      // The same restore resumes once the distro has its own copy.
+      const native = fakeExecutable(nativeBin, 'claude')
+      const resumed = await internal.resolvePaneOwnedResumeStartup('worktree-1', {
+        parentTabId: tabId,
+        leafId
+      })
+      expect(resumed).toMatchObject({ command: expect.stringMatching(`^'${native}' `) })
+    })
+
+    it('refuses an explicit resume with the fix-it message', async () => {
+      fakeExecutable(windowsBin, 'claude')
+      const { runtime, internal } = makeRuntime()
+      internal.getWorkspaceSessionForWorktree = () => undefined
+      internal.isProviderSessionLiveInAnotherPane = async () => false
+      await expect(
+        runtime.resumeAgentSessionInWorkspace('worktree-1', {
+          agent: 'claude',
+          providerSession: session,
+          captureHostId: LOCAL_EXECUTION_HOST_ID,
+          mutationId: 'resume-1'
+        })
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'windows_only_cli',
+        message: expect.stringContaining('Or set the claude Command setting')
+      })
     })
   })
 

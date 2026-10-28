@@ -17,8 +17,7 @@ import { resolveResumeLaunchRecipe } from '../../../../shared/tui-agent-launch-d
 import { resolveAgentStartupPlanInputs } from '../../../../shared/agent-startup-plan-inputs'
 import {
   resolveWslHostAgentLaunchInputs,
-  resolveWslHostAgentResumeInputs,
-  WslHostWindowsOnlyAgentError
+  resolveWslHostAgentResumeInputs
 } from '../../wsl-host-agent-terminal-launch'
 import {
   agentLaunchQuotingShell,
@@ -89,25 +88,17 @@ export abstract class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends
     }
     const launchRuntime = this.resolveAgentLaunchRuntime(workspace, record.agent)
     const { launchConfig } = record
-    let resumeInputs
-    try {
-      resumeInputs = resolveWslHostAgentResumeInputs({
-        agent: record.agent,
-        providerSession,
-        cmdOverrides: settings.agentCmdOverrides ?? {},
-        ...resolveResumeLaunchRecipe(launchConfig),
-        platform: launchRuntime.platform,
-        shell: agentLaunchQuotingShell(launchRuntime),
-        isRemote: Boolean(workspace.connectionId),
-        launchCwd: workspace.path
-      })
-    } catch (error) {
-      // Restore degrades to a plain shell rather than resuming through the Windows shim.
-      if (error instanceof WslHostWindowsOnlyAgentError) {
-        return null
-      }
-      throw error
-    }
+    // Throws WslHostWindowsOnlyAgentError; callers choose refusal or a plain-shell restore.
+    const resumeInputs = resolveWslHostAgentResumeInputs({
+      agent: record.agent,
+      providerSession,
+      cmdOverrides: settings.agentCmdOverrides ?? {},
+      ...resolveResumeLaunchRecipe(launchConfig),
+      platform: launchRuntime.platform,
+      shell: agentLaunchQuotingShell(launchRuntime),
+      isRemote: Boolean(workspace.connectionId),
+      launchCwd: workspace.path
+    })
     const startupPlan = buildAgentResumeStartupPlan(resumeInputs)
     if (!startupPlan) {
       return null
