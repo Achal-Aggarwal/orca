@@ -63,6 +63,7 @@ function productionNaming(home: string) {
   const settings = getDefaultSettings('/isolated')
   settings.defaultTuiAgent = 'codex'
   settings.sourceControlAi = normalizeSourceControlAiSettings({
+    ...normalizeSourceControlAiSettings(settings.sourceControlAi),
     actions: { conversationName: { agentId: 'codex' } }
   })
   const deps = structuredChatNamingDeps(

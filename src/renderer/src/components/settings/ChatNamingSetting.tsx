@@ -132,7 +132,7 @@ export function ChatNamingSetting({
     }
   }
 
-  const cliRecipe = value.agentArgs.trim()
+  const cliRecipe = value.agentArgs?.trim()
     ? resolveSourceControlAiForOperation({
         settings: {
           ...settings,
