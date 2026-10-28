@@ -299,7 +299,10 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
         reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
         now: () => Date.now()
       }),
-      ...structuredNativeWorkReaders(() => this.getOrchestrationDbIfAvailable?.() ?? null)
+      ...structuredNativeWorkReaders(
+        () => this.getOrchestrationDbIfAvailable?.() ?? null,
+        () => this.getExistingOrchestrationDb()
+      )
     })
   }
 

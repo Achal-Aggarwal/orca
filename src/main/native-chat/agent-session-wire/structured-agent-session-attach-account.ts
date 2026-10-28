@@ -9,10 +9,14 @@ export function structuredAgentSessionAttachAccount(
   lock: StructuredAgentSessionAttachLock
 ): NonNullable<AttachFlowInput['launchAccountRecipe']> {
   return async (record) => {
-    const session = context.sessions.get(record.sessionId)
-    const next = startedFor ? session?.journal.submission(startedFor) : undefined
-    return (
-      await lock.wait(structuredAgentSessionReceivingAccount(context.deps, record, session, next))
-    ).recipe
+    const { account } = await lock.commit(async () => {
+      const current = context.deps.store.requireWritableRecord(record.sessionId)
+      const session = context.sessions.get(record.sessionId)
+      const next = startedFor ? session?.journal.submission(startedFor) : undefined
+      return {
+        account: structuredAgentSessionReceivingAccount(context.deps, current, session, next)
+      }
+    })
+    return (await lock.wait(account)).recipe
   }
 }

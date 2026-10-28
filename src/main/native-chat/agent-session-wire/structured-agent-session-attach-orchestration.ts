@@ -1,3 +1,4 @@
+import { prepareStructuredAgentSessionAttach } from './structured-agent-session-attach-preparation'
 import { structuredAgentSessionAttachAccount } from './structured-agent-session-attach-account'
 import {
   publishAttachedChild,
@@ -9,7 +10,6 @@ import {
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import { refuse } from '../../../shared/agent-session-wire-refusals'
 import { randomUUID } from 'node:crypto'
-import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import type {
   AgentSessionAttachResult,
   AgentSessionMutationResult
@@ -22,7 +22,6 @@ import {
   pinnedAgentSessionLaunchArgs,
   pinnedAgentSessionLaunchEnv
 } from './structured-agent-session-launch-env'
-import { refuseAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
@@ -34,7 +33,6 @@ import {
 } from './structured-agent-session-startup-attempt-contract'
 import {
   addAgentSessionCreatePhaseAttributes,
-  withAgentSessionCreatePhase,
   withAgentSessionSpan,
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
@@ -163,35 +161,11 @@ async function runAttachUnderAbort(
 ): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const sessionId = params.envelope.sessionId
   const recordPhase = options.recordPhase
-  // Moving the fence requires rebaselining existing readers.
-  const fenceBefore = context.sessions.has(sessionId)
-    ? structuredAgentSessionConversationFence(context.deps.store, sessionId)
-    : null
-  const unreconciled = await withAgentSessionCreatePhase('reconcile_leases', recordPhase, () =>
-    lock.wait(context.reconcileLeases(sessionId))
-  )
-  if (unreconciled) {
-    return refuseAgentSessionMutation(unreconciled)
+  const prepared = await prepareStructuredAgentSessionAttach(context, params, options, lock)
+  if (!prepared.ok) {
+    return prepared
   }
-  await withAgentSessionCreatePhase('resolve_recovery', recordPhase, () =>
-    lock.wait(context.runtimeState.resolveRecovery(sessionId))
-  )
-  const probe = await withAgentSessionCreatePhase('probe_owner', recordPhase, () =>
-    lock.wait(context.runtimeState.probeOwner(sessionId))
-  )
-  // Capture prior death evidence before reservation clears it; stale-work settlement needs the verdict.
-  const priorRecord = context.deps.store.getRecord(sessionId)
-  const priorDeathEvidence = priorRecord?.lease.deathEvidence ?? null
-  const launchDirectory =
-    !priorRecord && isFloatingWorkspaceId(params.location.workspaceId)
-      ? (options.hostLaunchDirectory ??
-        (await lock.wait(
-          Promise.resolve(context.deps.resolveWorkspacePath?.(params.location.workspaceId))
-        )))
-      : undefined
-  if (!priorRecord && isFloatingWorkspaceId(params.location.workspaceId) && !launchDirectory) {
-    throw new Error('floating_agent_session_launch_directory_unavailable')
-  }
+  const { fenceBefore, priorRecord, priorDeathEvidence, probe, launchDirectory } = prepared
   // Attempt sinks become session-owned only on successful attach; failures close their buffered writes.
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
   const attempt: {

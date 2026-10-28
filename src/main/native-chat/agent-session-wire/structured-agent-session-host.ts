@@ -1,14 +1,13 @@
+import { createStructuredAgentSessionConversationReads } from './structured-agent-session-conversation-reads'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Serialize durable mutations per conversation; open at rest and start a child only when work needs it.
 
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
-import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
-import * as providerSupport from './structured-agent-session-provider-support'
-import * as reveal from './structured-agent-session-reveal'
+import type * as reveal from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { structuredAgentSessionEntryDelegates } from './structured-agent-session-create'
@@ -116,16 +115,7 @@ export class StructuredAgentSessionHost {
       stopOutgrownAgent: (id) => this.lifetime.stopAgent(id, { cause: 'evict', resting: true }),
       clientDelivery: this.clientDelivery
     })
-    this.restore = reveal.createStructuredAgentSessionHostRestore(deps, {
-      reconcileLeases: this.reconcileLeases,
-      reconcileRestartLeases: () => this.reconcileLeases(),
-      resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
-      serialize: (sessionId, task) => this.serialize(sessionId, task),
-      hasSession: this.hasSession,
-      // Restore checks hasSession before adoption, preserving live entries.
-      onReadable: this.conversationDelivery.adoptOpened,
-      onUnopened: (sessionId) => this.tabs.markUnopened(sessionId)
-    })
+    this.restore = this.reads.createRestore(this.reconcileLeases, this.runtimeState, this.tabs)
     this.eventRecovery = new StructuredAgentSessionEventRecovery({
       deps,
       store: deps.store,
@@ -167,9 +157,18 @@ export class StructuredAgentSessionHost {
   hasSession = (sessionId: string): boolean => this.sessions.has(sessionId)
   loadedSessionIds = this.sessions.loadedSessionIds
   hasLoadedProviders = (): boolean => this.loadedSessionIds().length > 0
-  sessionAgent = (sessionId: string) => this.deps.store.getConversation(sessionId)?.provider ?? null
-  /** The account the chat's running agent launched under, when its adapter reports one. */
-  childAccountHome = (sessionId: string) => this.sessions.get(sessionId)?.child?.accountHome
+  private readonly reads = createStructuredAgentSessionConversationReads(() => ({
+    deps: this.deps,
+    sessions: this.sessions,
+    serialize: this.serialize,
+    restore: this.restore,
+    readCommands: this.clientDelivery.readCommandsSettled,
+    conversation: (id) => this.lifetime.conversation(id),
+    adoptOpened: this.conversationDelivery.adoptOpened
+  }))
+  sessionAgent = this.reads.sessionAgent
+  childAccountHome = this.reads.childAccountHome
+  prospectiveAccountHome = this.reads.prospectiveAccountHome
 
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
     this.eventRecovery.handle(event)
@@ -221,12 +220,9 @@ export class StructuredAgentSessionHost {
       markAsleep
     )
 
-  supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
-    providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
-
-  agentDefinitions = () => this.deps.agents.definitions()
-
-  knownAgentIds = (): readonly string[] => providerSupport.knownAgentIds(this.deps)
+  supportsCreate = this.reads.supportsCreate
+  agentDefinitions = this.reads.agentDefinitions
+  knownAgentIds = this.reads.knownAgentIds
 
   private readonly tabs = createTabs(this, this.sessions, this.clientDelivery.forgetStatus)
   listSessionTabs = this.tabs.listSessionTabs
@@ -236,16 +232,13 @@ export class StructuredAgentSessionHost {
   setSessionTabVisibility = this.tabs.setSessionTabVisibility
   notifySessionTabHidden = this.tabs.notifySessionTabHidden
   /** Includes unreadable chat records. */
-  holdsSessions = (): boolean => this.deps.store.holdsRecords()
-  onSessionsHeld = (listener: () => void): (() => void) => this.deps.store.onFirstRecord(listener)
+  holdsSessions = this.reads.holdsSessions
+  onSessionsHeld = this.reads.onSessionsHeld
 
-  reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
+  reconcileRestartLeases = this.reads.reconcileRestartLeases
+  restoreReadableSessions = this.reads.restoreReadableSessions
 
-  restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
-    this.restore.restoreReadableSessions(sessionIds)
-
-  revealSession = (sessionId: string): Promise<HostTypes.StructuredAgentSessionReveal> =>
-    reveal.revealStructuredAgentSession(this.deps, sessionId, this.lifetime.conversation)
+  revealSession = this.reads.revealSession
 
   private serialize = this.tasks.serialize.bind(this.tasks)
 
@@ -309,9 +302,7 @@ export class StructuredAgentSessionHost {
 
   conversationCommand = this.conversationCommands.run
   /** Undefined means unavailable; an empty array is an authoritative catalog. */
-  readCommands = async (sessionId: string) => ({
-    commands: await this.clientDelivery.readCommandsSettled(sessionId)
-  })
+  readCommands = this.reads.readCommands
 
   /** Read the store; idle-released chats have no session-map entry. */
   handoffStatus = (sessionId: string) => structuredAgentSessionOwnerStatus(this.deps, sessionId)
@@ -320,8 +311,7 @@ export class StructuredAgentSessionHost {
     this.backgroundTasks.history(...args)
 
   /** Full reduction: absence from a bounded page cannot prove a revised/tombstoned item is absent. */
-  journalSnapshot = async (sessionId: string) =>
-    (await this.lifetime.conversation(sessionId)).journal.snapshot()
+  journalSnapshot = this.reads.journalSnapshot
 
   currentWork = this.clientDelivery.readCurrentWork
   readCurrentRequests: StructuredAgentSessionBackgroundTaskChannel['currentRequests'] = (...args) =>

@@ -44,10 +44,15 @@ class OrchestrationDbCore {
     installRemovedWorkCapture(this.db, removedWorkCaptureWasIntact)
     backfillStructuredWorkerOrcaSessionIds(this.db)
     this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_dispatch_creator_account_work
-        ON dispatch_contexts(creator_orca_session_id, status);
+      DROP INDEX IF EXISTS idx_dispatch_creator_account_work;
+      CREATE INDEX IF NOT EXISTS idx_dispatch_creator_mailbox_work
+        ON dispatch_contexts(creator_dispatch_id, status);
+      CREATE INDEX IF NOT EXISTS idx_runs_current_coordinator_handle ON runs(coordinator_handle);
       CREATE INDEX IF NOT EXISTS idx_messages_native_account_work
         ON messages(run_id, to_handle, type)
+        WHERE read = 0 AND delivered_at IS NULL AND delivery_contract <> 'audit_only';
+      CREATE INDEX IF NOT EXISTS idx_messages_native_direct_work
+        ON messages(to_handle, type)
         WHERE read = 0 AND delivered_at IS NULL AND delivery_contract <> 'audit_only';
     `)
     reconcileSettledWorkerDispatches(this.db)

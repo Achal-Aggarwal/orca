@@ -1,3 +1,5 @@
+import type { AgentModelCatalogRunningAccountDeps } from '../native-chat/agent-model-catalog/agent-model-catalog-running-account'
+import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { agentSessionPinnedLaunchDirectory } from './agent-session-record-launch-directory'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { createAgentModelCatalogFilePersistence } from '../native-chat/agent-model-catalog/agent-model-catalog-persistence'
@@ -67,6 +69,7 @@ export async function modelCatalogHostDeps(input: {
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'getConversation' | 'listConversations'>
   agents: Pick<StructuredAgentRegistry, 'definition'>
   registrations: readonly CatalogRegistration[]
+  host: () => StructuredAgentSessionHost | null
   deps: StructuredAgentModelCatalogContext['deps']
   environment: StructuredAgentModelCatalogContext['environment']
 }): Promise<{ modelCatalog?: AgentModelCatalogService }> {
@@ -81,8 +84,7 @@ export async function modelCatalogHostDeps(input: {
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
     drivesRecord: (record) => agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
-    liveAccountHome: (sessionId) => getStructuredAgentSessionHost()?.childAccountHome(sessionId),
-    ...(deps.launchAccountHome ? { launchAccountHome: deps.launchAccountHome } : {}),
+    ...structuredAgentModelCatalogAccountReads(input.host),
     recordWorkspacePath: async (record) =>
       agentSessionPinnedLaunchDirectory(record) ??
       (await deps.resolveWorkspacePath(record.location.workspaceId).catch(() => null)),
@@ -96,6 +98,25 @@ export async function modelCatalogHostDeps(input: {
     })
   })
   return { modelCatalog }
+}
+
+/** Capture the constructing runtime's host lazily; global installation is a separate lifetime. */
+export function structuredAgentModelCatalogAccountReads(
+  readHost: () => Pick<
+    StructuredAgentSessionHost,
+    'childAccountHome' | 'prospectiveAccountHome'
+  > | null
+): AgentModelCatalogRunningAccountDeps {
+  return {
+    liveAccountHome: (id) => readHost()?.childAccountHome(id),
+    launchAccountHome: async (record) => {
+      const host = readHost()
+      if (!host) {
+        throw new Error('agent_session_host_unavailable')
+      }
+      return host.prospectiveAccountHome(record.sessionId)
+    }
+  }
 }
 
 /** The installed host lists what a changed account or agent setting made cold; with no host yet,

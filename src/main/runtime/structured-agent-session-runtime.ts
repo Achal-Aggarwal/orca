@@ -269,6 +269,7 @@ async function installOnJournal(
     ...(deps.parentAccountWork ? { parentAccountWork: deps.parentAccountWork } : {}),
     ...(deps.assertNoTerminalWriter ? { assertNoTerminalWriter: deps.assertNoTerminalWriter } : {}),
     ...(await modelCatalogHostDeps({
+      host: () => host,
       store,
       agents,
       registrations: STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,

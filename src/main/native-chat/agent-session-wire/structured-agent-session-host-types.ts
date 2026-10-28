@@ -1,3 +1,4 @@
+import type { AgentSessionRecordReader } from '../../runtime/orchestration/structured-session-lineage'
 import type { NativeResponseEvidence } from '../../runtime/orchestration/structured-parent-account-work'
 import type { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type {
@@ -191,7 +192,8 @@ export type StructuredAgentSessionHostDeps = {
   parentAccountWork?: (
     record: AgentSessionRecord,
     root: string,
-    response: NativeResponseEvidence
+    response: NativeResponseEvidence,
+    reader: AgentSessionRecordReader
   ) => boolean
   conversationNaming?: StructuredAgentSessionConversationNaming
 }

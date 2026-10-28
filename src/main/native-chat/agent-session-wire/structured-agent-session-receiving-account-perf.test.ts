@@ -1,3 +1,4 @@
+import { observeReceivingSql } from './structured-agent-session-receiving-sql.test-support'
 import {
   agentSessionRecordFixture,
   agentSessionLeaseFixture
@@ -86,50 +87,23 @@ it.each([10, 100])(
       for (let i = 0; i < n * 10; i += 1) {
         f.db.createTask({ spec: 'unrelated corpus', runId: f.run.id })
       }
-      const prepare = f.db.db.prepare.bind(f.db.db)
-      let statements = 0
-      let enumerated = 0
-      const plans: string[] = []
-      const spy = vi.spyOn(f.db.db, 'prepare').mockImplementation((sql) => {
-        statements += 1
-        const statement = prepare(sql)
-        const all = statement.all.bind(statement)
-        vi.spyOn(statement, 'all').mockImplementation((...args) => {
-          for (const row of prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args)) {
-            if (typeof row.detail === 'string') {
-              plans.push(row.detail)
-            }
-          }
-          const rows = all(...args)
-          enumerated += rows.length
-          return rows
-        })
-        const get = statement.get.bind(statement)
-        vi.spyOn(statement, 'get').mockImplementation((...args) => {
-          for (const row of prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args)) {
-            if (typeof row.detail === 'string') {
-              plans.push(row.detail)
-            }
-          }
-          return get(...args)
-        })
-        return statement
-      })
+      const observed = observeReceivingSql(f.db)
       const selected = await structuredAgentSessionReceivingAccount(f.deps, f.record, f.session)
       expect(selected.home).toEqual(SELECTED_B)
-      expect(statements).toBeLessThanOrEqual(8)
-      expect(enumerated).toBeLessThanOrEqual(n + 4)
-      expect(plans.length).toBeGreaterThan(0)
+      // Scoped reach + current mailbox discovery + canonical report routing are constant preparations.
+      expect(observed.measurements.prepares).toBeLessThanOrEqual(20)
+      expect(observed.measurements.allRows).toBeLessThanOrEqual(n + 4)
+      expect(observed.measurements.plans.length).toBeGreaterThan(0)
       expect(
-        plans.filter((detail) =>
+        observed.measurements.plans.filter((detail) =>
           /\bSCAN (?:run|child|task|parent|messages|dispatch_contexts|agent_session_records)\b/.test(
             detail
           )
         )
       ).toEqual([])
-      spy.mockRestore()
+      observed.stop()
       process.stdout.write(
-        `receiving-account native results=${n} unrelatedTasks=${n * 10} statements=${statements} enumerated=${enumerated} elapsedMs=${(performance.now() - began).toFixed(3)}\n`
+        `receiving-account native results=${n} unrelatedTasks=${n * 10} statements=${observed.measurements.prepares} enumerated=${observed.measurements.allRows} elapsedMs=${(performance.now() - began).toFixed(3)}\n`
       )
     } finally {
       await f.dispose()

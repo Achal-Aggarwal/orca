@@ -63,6 +63,7 @@ export function resolveLineageRunningSession(
       lineage
     }
   }
+  const seen = new Set(lineage)
   let current = sessionId
   for (;;) {
     let record: AgentSessionConversationView | null
@@ -86,13 +87,14 @@ export function resolveLineageRunningSession(
         ? { kind: 'here', ...running }
         : { kind: 'other-host', ...running }
     }
-    if (lineage.includes(next)) {
+    if (seen.has(next)) {
       return {
         kind: 'unverifiable',
         reason: `The /clear lineage of structured session ${sessionId} loops back on itself.`,
         lineage
       }
     }
+    seen.add(next)
     lineage.push(next)
     current = next
   }

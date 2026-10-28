@@ -5,11 +5,12 @@ import { structuredWorkerOwesWork } from './structured-worker-custody'
 
 /** Both are re-read; assigned process custody remains separate from receiving-account ownership. */
 export function structuredNativeWorkReaders(
-  read: () => OrchestrationDb | null
+  read: () => OrchestrationDb | null,
+  readReceiving: () => OrchestrationDb | null = read
 ): Pick<StructuredAgentSessionHostDeps, 'hasOpenDispatch' | 'parentAccountWork'> {
   return {
     hasOpenDispatch: (record) => structuredWorkerOwesWork(read(), record),
-    parentAccountWork: (record, root, response) =>
-      structuredParentAccountWork(read(), record, root, response)
+    parentAccountWork: (record, root, response, reader) =>
+      structuredParentAccountWork(readReceiving(), record, root, response, reader)
   }
 }
