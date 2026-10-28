@@ -127,7 +127,7 @@ it.skipIf(skip)(
         timeoutMs: 15_000
       })
       expect(skill.code, skill.stderr).toBe(0)
-      expect(skill.stdout).toContain('Worker obligations')
+      expect(skill.stdout).toContain('If you are a dispatched worker')
       const version = await runProcess({
         program: childEnv.ORCA_CLI_COMMAND!,
         args: ['--version'],
