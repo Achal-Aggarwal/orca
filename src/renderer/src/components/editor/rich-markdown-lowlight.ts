@@ -1,4 +1,4 @@
-import { getChangedRanges } from '@tiptap/core'
+import { getRichMarkdownChangedRanges } from './rich-markdown-changed-ranges'
 import { CodeBlock } from '@tiptap/extension-code-block'
 import CodeBlockLowlight, {
   type CodeBlockLowlightOptions
@@ -141,7 +141,7 @@ function updateDecorations(
     return decorationSet
   }
 
-  const changes = getChangedRanges(transaction)
+  const changes = getRichMarkdownChangedRanges(transaction)
   if (changes.length === 0) {
     // Why: attribute-only steps can change a code language without exposing a mapped range.
     return createDecorations(transaction.doc, name, lowlight, languages, defaultLanguage)

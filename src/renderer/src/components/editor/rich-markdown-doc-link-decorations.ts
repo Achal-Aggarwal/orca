@@ -1,4 +1,4 @@
-import { getChangedRanges } from '@tiptap/core'
+import { getRichMarkdownChangedRanges } from './rich-markdown-changed-ranges'
 import type { Node as DocumentNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -98,7 +98,7 @@ function changedTextblockRanges(transaction: Transaction): DocumentRange[] {
         typeof step.to !== 'number')
     )
   })
-  const changes = getChangedRanges(transaction)
+  const changes = getRichMarkdownChangedRanges(transaction)
   if (hasUnlocalizedStep || changes.length === 0) {
     // Unlocalized steps need a full rescan even when another step provides a range.
     return [{ from: 0, to: doc.content.size }]
