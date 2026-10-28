@@ -15,11 +15,13 @@ function makeEditor(crlf = false) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   let selection = new Selection(1, 1, 1, 1)
-  const editor: MonacoPasteEditor = {
+  const editor: MonacoPasteEditor &
+    Pick<monacoEditor.ICodeEditor, 'getSelection' | 'getSelections' | 'setSelection'> = {
     getModel: () => model,
     getContainerDomNode: () => container,
     hasTextFocus: () => true,
     getSelection: () => selection,
+    getSelections: () => [selection],
     setSelection: (range) => {
       selection =
         'selectionStartLineNumber' in range
@@ -37,9 +39,12 @@ function makeEditor(crlf = false) {
             )
     },
     executeEdits: (_source, edits, cursorState) => {
-      model.pushEditOperations([selection], edits, (inverse) =>
+      const result = model.pushEditOperations([selection], edits, (inverse) =>
         typeof cursorState === 'function' ? cursorState(inverse) : (cursorState ?? null)
       )
+      if (result?.[0]) {
+        selection = result[0]
+      }
       return true
     },
     pushUndoStop: () => {
