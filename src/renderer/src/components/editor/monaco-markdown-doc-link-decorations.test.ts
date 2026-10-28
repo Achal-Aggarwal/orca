@@ -1,4 +1,6 @@
+// @vitest-environment happy-dom
 import type { editor } from 'monaco-editor'
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createMarkdownDocLinkDecorationController,
@@ -82,91 +84,191 @@ describe('getMarkdownDocLinkDecorationRanges', () => {
   })
 })
 
+function mountController(value: string, paneCount = 1) {
+  const model = monaco.editor.createModel(value, 'markdown')
+  const getValue = vi.spyOn(model, 'getValue')
+  const getLineContent = vi.spyOn(model, 'getLineContent')
+  let language = 'markdown'
+  const panes = Array.from({ length: paneCount }, () => {
+    let decorationIds: string[] = []
+    const set = vi.fn((decorations: editor.IModelDeltaDecoration[]) => {
+      decorationIds = model.deltaDecorations(decorationIds, decorations)
+    })
+    const clear = vi.fn(() => {
+      decorationIds = model.deltaDecorations(decorationIds, [])
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller uses real model events and model-backed decoration ranges through this editor facade.
+    const editorInstance = {
+      getModel: () => model,
+      createDecorationsCollection: () => ({ set, clear }),
+      onDidChangeModelContent: (listener: (event: editor.IModelContentChangedEvent) => void) =>
+        model.onDidChangeContent(listener)
+    } as unknown as editor.IStandaloneCodeEditor
+    const controller = createMarkdownDocLinkDecorationController(editorInstance, () => language)
+    return {
+      controller,
+      set,
+      clear,
+      ranges: () => decorationIds.map((id) => model.getDecorationRange(id))
+    }
+  })
+  getValue.mockClear()
+  getLineContent.mockClear()
+  panes.forEach((pane) => pane.set.mockClear())
+  return {
+    model,
+    getValue,
+    getLineContent,
+    panes,
+    setLanguage: (value: string) => {
+      language = value
+    }
+  }
+}
+
+function settleDecorations() {
+  vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS)
+}
+
 describe('createMarkdownDocLinkDecorationController', () => {
   afterEach(() => {
     vi.useRealTimers()
+    for (const model of monaco.editor.getModels()) {
+      model.dispose()
+    }
   })
 
-  it('debounces full-model decoration rebuilds during rapid content changes', () => {
+  it.each([1_000, 10_000])(
+    'skips full scans for ordinary insertions among %i lines',
+    (lineCount) => {
+      vi.useFakeTimers()
+      for (const paneCount of [1, 10]) {
+        const fixture = mountController(`${'plain line\n'.repeat(lineCount)}[[Target]]`, paneCount)
+        const initialRanges = fixture.panes.map((pane) => pane.ranges())
+        for (let edit = 0; edit < 3; edit += 1) {
+          fixture.model.applyEdits([{ range: new monaco.Range(1, 1, 1, 1), text: 'x' }])
+          settleDecorations()
+        }
+        expect(fixture.getValue).not.toHaveBeenCalled()
+        expect(fixture.panes.every((pane) => pane.set.mock.calls.length === 0)).toBe(true)
+        expect(fixture.panes.map((pane) => pane.ranges())).toEqual(initialRanges)
+        fixture.panes.forEach((pane) => pane.controller.dispose())
+      }
+    }
+  )
+
+  it('handles several plain insertion ranges without rebuilding link decorations', () => {
     vi.useFakeTimers()
+    const { model, getValue, panes } = mountController('plain\nanother\n[[Target]]')
+    model.applyEdits([
+      { range: new monaco.Range(1, 1, 1, 1), text: 'first' },
+      { range: new monaco.Range(2, 1, 2, 1), text: 'second' }
+    ])
+    settleDecorations()
+    expect(getValue).not.toHaveBeenCalled()
+    expect(panes[0].ranges()).toEqual([new monaco.Range(3, 1, 3, 11)])
+    panes[0].controller.dispose()
+  })
 
-    let modelValue = '[[initial.md]]'
-    let contentListener = (): void => {}
+  it('does not reuse a scan from a different actual model with the same version', () => {
+    vi.useFakeTimers()
+    const first = monaco.editor.createModel('first\n[[Old]]')
+    const second = monaco.editor.createModel('second\n[[New]]')
+    let currentModel = first
+    const read = vi.spyOn(second, 'getValue')
     const set = vi.fn()
-    const clear = vi.fn()
-    const dispose = vi.fn()
-
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this facade forwards real model events and records the controller's decoration output across a model swap.
     const editorInstance = {
-      createDecorationsCollection: () => ({ set, clear }),
-      getModel: () => ({ getValue: () => modelValue }),
-      onDidChangeModelContent: (listener: () => void) => {
-        contentListener = listener
-        return { dispose }
+      getModel: () => currentModel,
+      createDecorationsCollection: () => ({ set, clear: vi.fn() }),
+      onDidChangeModelContent: (listener: (event: editor.IModelContentChangedEvent) => void) => {
+        const subscriptions = [
+          first.onDidChangeContent(listener),
+          second.onDidChangeContent(listener)
+        ]
+        return { dispose: () => subscriptions.forEach((subscription) => subscription.dispose()) }
       }
     } as unknown as editor.IStandaloneCodeEditor
-
     const controller = createMarkdownDocLinkDecorationController(editorInstance, () => 'markdown')
-    expect(set).toHaveBeenCalledTimes(1)
-
-    set.mockClear()
-    modelValue = '[[first.md]]'
-    contentListener?.()
-    vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS - 1)
-    modelValue = '[[second.md]]'
-    contentListener?.()
-    modelValue = '[[final.md]]'
-    contentListener?.()
-
-    expect(set).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS - 1)
-    expect(set).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(1)
-    expect(set).toHaveBeenCalledTimes(1)
-    expect(set.mock.calls[0]?.[0]).toEqual([
+    currentModel = second
+    second.applyEdits([{ range: new monaco.Range(1, 1, 1, 1), text: 'x' }])
+    settleDecorations()
+    expect(read).toHaveBeenCalledOnce()
+    expect(set).toHaveBeenLastCalledWith([
       {
-        range: {
-          startLineNumber: 1,
-          startColumn: 1,
-          endLineNumber: 1,
-          endColumn: 13
-        },
-        options: {
-          inlineClassName: 'monaco-markdown-doc-link',
-          stickiness: 1
-        }
+        range: new monaco.Range(2, 1, 2, 8),
+        options: { inlineClassName: 'monaco-markdown-doc-link', stickiness: 1 }
       }
     ])
-
     controller.dispose()
-    expect(dispose).toHaveBeenCalledTimes(1)
-    expect(clear).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the debounce fallback until a structural edit has been scanned', () => {
+    vi.useFakeTimers()
+    const { model, getValue, panes } = mountController('plain\n[[Target]]')
+    model.applyEdits([{ range: new monaco.Range(1, 1, 1, 1), text: '[' }])
+    vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS - 1)
+    model.applyEdits([{ range: new monaco.Range(2, 1, 2, 1), text: 'x' }])
+    vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS - 1)
+    expect(getValue).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(getValue).toHaveBeenCalledOnce()
+    expect(panes[0].set).toHaveBeenCalledOnce()
+    expect(panes[0].ranges()).toEqual([new monaco.Range(2, 2, 2, 12)])
+    panes[0].controller.dispose()
+  })
+
+  it.each([
+    { initial: '[[Target]]', range: new monaco.Range(1, 3, 1, 3), text: 'Other' },
+    { initial: 'plain\n[[Target]]', range: new monaco.Range(1, 1, 1, 1), text: '\n' },
+    { initial: 'plain\n[[Target]]', range: new monaco.Range(1, 1, 1, 2), text: '' },
+    { initial: 'plain\n[[Target]]', range: new monaco.Range(1, 1, 1, 1), text: '```' },
+    { initial: 'plain\n[[Target]]', range: new monaco.Range(1, 1, 1, 1), text: '~~~' },
+    { initial: '`plain`\n[[Target]]', range: new monaco.Range(1, 2, 1, 2), text: 'x' },
+    { initial: 'plain\n[[Target]]', range: new monaco.Range(1, 1, 1, 1), text: '[[New]]' }
+  ])('rescans structural and deletion changes: $initial → $text', ({ initial, range, text }) => {
+    vi.useFakeTimers()
+    const { model, getValue, panes } = mountController(initial)
+    model.applyEdits([{ range, text }])
+    settleDecorations()
+    expect(getValue).toHaveBeenCalledOnce()
+    expect(panes[0].ranges()).toEqual(getMarkdownDocLinkDecorationRanges(model.getValue()))
+    panes[0].controller.dispose()
+  })
+
+  it('refreshes after flush, language transitions, and Undo', async () => {
+    vi.useFakeTimers()
+    const { model, getValue, panes, setLanguage } = mountController('plain\n[[Target]]')
+    model.pushStackElement()
+    model.pushEditOperations([], [{ range: new monaco.Range(1, 1, 1, 1), text: 'x' }], () => null)
+    model.pushStackElement()
+    settleDecorations()
+    expect(getValue).not.toHaveBeenCalled()
+    await model.undo()
+    settleDecorations()
+    expect(getValue).toHaveBeenCalledOnce()
+    model.setValue('[[Replacement]]')
+    settleDecorations()
+    expect(panes[0].ranges()).toEqual([new monaco.Range(1, 1, 1, 16)])
+    setLanguage('plaintext')
+    panes[0].controller.refresh()
+    expect(panes[0].ranges()).toEqual([])
+    setLanguage('markdown')
+    panes[0].controller.refresh()
+    settleDecorations()
+    expect(panes[0].ranges()).toEqual([new monaco.Range(1, 1, 1, 16)])
+    panes[0].controller.dispose()
   })
 
   it('cancels pending decoration rebuilds on dispose', () => {
     vi.useFakeTimers()
-
-    let contentListener = (): void => {}
-    const set = vi.fn()
-    const clear = vi.fn()
-
-    const editorInstance = {
-      createDecorationsCollection: () => ({ set, clear }),
-      getModel: () => ({ getValue: () => '[[initial.md]]' }),
-      onDidChangeModelContent: (listener: () => void) => {
-        contentListener = listener
-        return { dispose: vi.fn() }
-      }
-    } as unknown as editor.IStandaloneCodeEditor
-
-    const controller = createMarkdownDocLinkDecorationController(editorInstance, () => 'markdown')
-    set.mockClear()
-
-    contentListener?.()
-    controller.dispose()
-    vi.advanceTimersByTime(MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS)
-
-    expect(set).not.toHaveBeenCalled()
-    expect(clear).toHaveBeenCalledTimes(1)
+    const { model, getValue, panes } = mountController('[[initial]]')
+    model.setValue('[[next]]')
+    getValue.mockClear()
+    panes[0].controller.dispose()
+    settleDecorations()
+    expect(getValue).not.toHaveBeenCalled()
+    expect(panes[0].set).not.toHaveBeenCalled()
+    expect(panes[0].clear).toHaveBeenCalledOnce()
   })
 })

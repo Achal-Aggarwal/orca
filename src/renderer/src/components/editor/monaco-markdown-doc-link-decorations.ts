@@ -103,6 +103,8 @@ export function createMarkdownDocLinkDecorationController(
 ): MarkdownDocLinkDecorationController {
   const collection = editorInstance.createDecorationsCollection()
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let scannedModel: editor.ITextModel | null = null
+  let scannedVersion = 0
 
   const cancelPendingRefresh = (): void => {
     if (refreshTimer === null) {
@@ -116,6 +118,8 @@ export function createMarkdownDocLinkDecorationController(
     cancelPendingRefresh()
     const model = editorInstance.getModel()
     if (!model || getLanguage() !== 'markdown') {
+      scannedModel = null
+      scannedVersion = 0
       collection.clear()
       return
     }
@@ -128,6 +132,8 @@ export function createMarkdownDocLinkDecorationController(
         }
       }))
     )
+    scannedModel = model
+    scannedVersion = model.getVersionId()
   }
 
   const refresh = (): void => {
@@ -140,7 +146,30 @@ export function createMarkdownDocLinkDecorationController(
     refreshTimer = setTimeout(refreshNow, MARKDOWN_DOC_LINK_DECORATION_REFRESH_DELAY_MS)
   }
 
-  const listener: IDisposable = editorInstance.onDidChangeModelContent(refresh)
+  const listener: IDisposable = editorInstance.onDidChangeModelContent((event) => {
+    const model = editorInstance.getModel()
+    if (
+      model &&
+      getLanguage() === 'markdown' &&
+      model === scannedModel &&
+      model.getVersionId() === event.versionId &&
+      scannedVersion === event.versionId - 1 &&
+      !event.isFlush &&
+      event.changes.length > 0 &&
+      event.changes.every(
+        (change) =>
+          change.rangeLength === 0 &&
+          change.range.startLineNumber === change.range.endLineNumber &&
+          !/[\r\n[\]`~]/.test(change.text) &&
+          !/[[\]`~]/.test(model.getLineContent(change.range.startLineNumber))
+      )
+    ) {
+      // Plain same-line insertions cannot change link or fence structure or move links on other lines.
+      scannedVersion = event.versionId
+      return
+    }
+    refresh()
+  })
   refreshNow()
 
   return {
