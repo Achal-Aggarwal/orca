@@ -91,10 +91,11 @@ function forgetPathAndDescendants<T>(entries: Map<string, T>, root: string): voi
   }
 }
 
-/** Invalidate this path and descendants after marker rewrites; in-flight probes still cache until the TTL. */
+/** Invalidate this path and descendants after marker rewrites. */
 export function invalidateWslLinkedWorktreeGitRouting(cwd: string): void {
   const normalizedCwd = normalize(cwd)
   forgetPathAndDescendants(routeByCwd, normalizedCwd)
+  forgetPathAndDescendants(pendingRoutes, normalizedCwd)
   forgetPathAndDescendants(transientFailuresByCwd, normalizedCwd)
 }
 
@@ -179,7 +180,8 @@ function waitForRouteUnlessAborted(
 function discoverRoute(
   cwd: string,
   fileSystem: WslLinkedWorktreeRoutingFileSystem,
-  now: () => number
+  now: () => number,
+  isCurrent: () => boolean
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const generation = routeProbeGeneration
@@ -190,7 +192,7 @@ function discoverRoute(
       }
       settled = true
       clearTimeout(timer)
-      if (generation !== routeProbeGeneration) {
+      if (generation !== routeProbeGeneration || !isCurrent()) {
         resolve(false)
         return
       }
@@ -244,7 +246,12 @@ export async function prepareWslLinkedWorktreeGitRouting(
   if (!canStartRouteProbe(normalizedCwd, now())) {
     return false
   }
-  const discovery = discoverRoute(normalizedCwd, fileSystem, now)
+  const discovery = discoverRoute(
+    normalizedCwd,
+    fileSystem,
+    now,
+    () => pendingRoutes.get(normalizedCwd) === route
+  )
   const route = discovery.finally(() => {
     if (pendingRoutes.get(normalizedCwd) === route) {
       pendingRoutes.delete(normalizedCwd)

@@ -84,25 +84,4 @@ describe('invalidateWslLinkedWorktreeGitRouting', () => {
     await expect(probe(sibling)).resolves.toBe(true)
     expect(fileSystem.stat).toHaveBeenCalledTimes(3)
   })
-
-  it('leaves a probe that is already in flight alone', async () => {
-    // In-flight probes must still cache their route before synchronous command resolution reads it.
-    let releaseMarker: ((marker: typeof fileMarker) => void) | undefined
-    const inFlight = new Promise<typeof fileMarker>((resolve) => {
-      releaseMarker = resolve
-    })
-    const fileSystem: WslLinkedWorktreeRoutingFileSystem = {
-      stat: vi.fn<WslLinkedWorktreeRoutingFileSystem['stat']>().mockReturnValueOnce(inFlight),
-      readFile: vi.fn(async () => hostGitdir)
-    }
-
-    const first = prepare(fileSystem)
-    invalidateWslLinkedWorktreeGitRouting(CWD)
-    const joined = prepare(fileSystem)
-    releaseMarker?.(fileMarker)
-
-    await expect(first).resolves.toBe(true)
-    await expect(joined).resolves.toBe(true)
-    expect(fileSystem.stat).toHaveBeenCalledTimes(1)
-  })
 })
