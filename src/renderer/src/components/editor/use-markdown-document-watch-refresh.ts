@@ -12,8 +12,36 @@ const DOCUMENT_WATCH_DEBOUNCE_MS = 125
 
 // Remounted panes must bypass scans older than the latest observed change because unmount cancels their predecessor’s follow-up.
 const latestMembershipChangeAt = new Map<string, number>()
+let membershipExpiryTimer: ReturnType<typeof setTimeout> | undefined
+
+function expireMembershipChanges(): void {
+  membershipExpiryTimer = undefined
+  const now = performance.now()
+  let nextExpiry = Infinity
+  for (const [key, changedAt] of latestMembershipChangeAt) {
+    const remaining = changedAt + MARKDOWN_DOCUMENT_LIST_JOIN_WINDOW_MS - now
+    if (remaining <= 0) {
+      latestMembershipChangeAt.delete(key)
+    } else {
+      nextExpiry = Math.min(nextExpiry, remaining)
+    }
+  }
+  if (nextExpiry !== Infinity) {
+    membershipExpiryTimer = setTimeout(expireMembershipChanges, nextExpiry)
+  }
+}
+
 const membershipChangeKey = (owner: string | null, rootPath: string): string =>
   `${owner ?? ''}::${normalizeRuntimePathForComparison(rootPath)}`
+
+function recordMembershipChange(owner: string | null, rootPath: string, changedAt: number): void {
+  latestMembershipChangeAt.set(membershipChangeKey(owner, rootPath), changedAt)
+  // A pre-change scan cannot be joined after the existing request-age limit.
+  membershipExpiryTimer ??= setTimeout(
+    expireMembershipChanges,
+    MARKDOWN_DOCUMENT_LIST_JOIN_WINDOW_MS
+  )
+}
 
 export function getLatestMarkdownMembershipChangeAt(
   runtimeEnvironmentId: string | null | undefined,
@@ -117,7 +145,7 @@ export function useMarkdownDocumentWatchRefresh({
         return
       }
       latestChangeAt = performance.now()
-      latestMembershipChangeAt.set(membershipChangeKey(owner, worktreePath), latestChangeAt)
+      recordMembershipChange(owner, worktreePath, latestChangeAt)
       if (activeScan !== null) {
         changedDuringScan = true
         return
@@ -132,4 +160,11 @@ export function useMarkdownDocumentWatchRefresh({
       window.removeEventListener(ORCA_WORKTREE_FILE_CHANGE_EVENT, handleChange)
     }
   }, [enabled, owner, worktreePath, refresh])
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    clearTimeout(membershipExpiryTimer)
+    latestMembershipChangeAt.clear()
+  })
 }
