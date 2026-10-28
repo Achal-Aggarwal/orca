@@ -13,7 +13,12 @@ import {
 } from './source-control-ai'
 import type { GlobalSettings } from './global-settings-types'
 import type { SourceControlActionRecipe } from './source-control-ai-actions'
+import type { RepoSourceControlAiOverrides } from './source-control-ai-types'
 import { sourceControlActionLaunchOptions } from './source-control-action-launch-preferences'
+
+type RepoActionOverride = NonNullable<
+  NonNullable<RepoSourceControlAiOverrides['actionOverrides']>['fixChecks']
+>
 
 function settings(): GlobalSettings {
   const base = getDefaultSettings('/tmp')
@@ -582,7 +587,7 @@ it('keeps scoped defaults, complete legacy ownership, independent bindings and l
       modelSelection: selection
     }
   }
-  const resolve = (row: object) =>
+  const resolve = (row: RepoActionOverride) =>
     resolveSourceControlActionRecipe({
       settings: base,
       repo: { sourceControlAi: { actionOverrides: { fixChecks: row } } },

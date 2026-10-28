@@ -382,7 +382,7 @@ it.each([
     await pickDialogAgent('Claude', terminal)
     if (terminal) {
       expect(
-        Reflect.get(screen.getByRole('textbox', { name: 'Extra CLI arguments' }), 'value')
+        screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' }).value
       ).toBe('--verbose')
     } else {
       expect(screen.queryByRole('textbox', { name: 'Extra CLI arguments' })).toBeNull()
@@ -537,7 +537,7 @@ it('retains newly eligible literal syntax, demotes obsolete syntax once and does
     ).toBe(false)
   )
   await pickDialogAgent('Claude', true)
-  expect(Reflect.get(screen.getByRole('textbox', { name: 'Extra CLI arguments' }), 'value')).toBe(
+  expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' }).value).toBe(
     '--verbose'
   )
   expect(screen.getByText(/Opus/).textContent).toContain('High')
@@ -554,11 +554,11 @@ it('retains newly eligible literal syntax, demotes obsolete syntax once and does
   expect(saved.argumentChoices).toEqual(global.argumentChoices)
   expect(saved.launchPreferences).toBeUndefined()
   await pickDialogAgent('Codex', true)
-  const text = screen.getByRole('textbox', { name: 'Extra CLI arguments' })
-  expect(Reflect.get(text, 'value')).toBe('--model opus  --effort high --verbose')
+  const text = screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' })
+  expect(text.value).toBe('--model opus  --effort high --verbose')
   await pickDialogAgent('Claude', true)
   expect(screen.queryByText(/Model from Settings/)).toBeNull()
-  expect(Reflect.get(screen.getByRole('textbox', { name: 'Extra CLI arguments' }), 'value')).toBe(
+  expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' }).value).toBe(
     '--model opus  --effort high --verbose'
   )
 })
@@ -597,7 +597,7 @@ it('keeps an owned empty-Args default barrier and submitted choices across faile
     target: { value: '--newer' }
   })
   await act(async () => done.reject(new Error('write failed')))
-  expect(Reflect.get(screen.getByRole('textbox', { name: 'Extra CLI arguments' }), 'value')).toBe(
+  expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' }).value).toBe(
     '--newer'
   )
   expect(save.mock.calls[0][2].agentArgs).toBe('')
@@ -607,7 +607,7 @@ it('keeps an owned empty-Args default barrier and submitted choices across faile
   f.view.unmount()
   const fresh = f.mount()
   await pickDialogAgent('Claude', true)
-  expect(Reflect.get(screen.getByRole('textbox', { name: 'Extra CLI arguments' }), 'value')).toBe(
+  expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Extra CLI arguments' }).value).toBe(
     ''
   )
   fresh.unmount()

@@ -1,4 +1,4 @@
-import { eraseRpcMethods } from '../../../main/runtime/rpc/core'
+import { eraseRpcMethods, type RpcContext } from '../../../main/runtime/rpc/core'
 import { TERMINAL_LIFECYCLE_METHODS } from '../../../main/runtime/rpc/methods/terminal/terminal-lifecycle-methods'
 import { expect, vi } from 'vitest'
 import { normalizeSourceControlAiActionDefaults } from '../../../shared/source-control-ai-actions'
@@ -15,6 +15,20 @@ import {
 vi.mock('../../../main/runtime/terminal/launch/mobile-terminal-renderer-create', () => ({
   OrcaRuntimeWithRunCreateMobileSessionTerminal: class {}
 }))
+
+abstract class PreparedMobileCommandHost extends OrcaRuntimeWithResolveMobileSessionTerminalCommand {
+  static get commandResolver() {
+    return this.prototype.resolveMobileSessionTerminalCommand
+  }
+}
+
+type PreparedTerminalCreateContext = Pick<RpcContext, 'pairedDeviceId' | 'clientKind'> & {
+  runtime: Pick<RpcContext['runtime'], 'createTerminal' | 'dedupeTerminalCreate'>
+}
+
+type PreparedTerminalCreateMethod = {
+  handler(params: unknown, context: PreparedTerminalCreateContext): unknown
+}
 
 export function independentActionEffortPlan(agent: 'claude' | 'codex') {
   const recipe = normalizeSourceControlAiActionDefaults({
@@ -63,14 +77,15 @@ export function independentActionEffortPlan(agent: 'claude' | 'codex') {
 }
 
 export async function consumeOldHostPreparedCommand(params: MobileTerminalCommandOptions) {
-  const consume = Reflect.get(
-    OrcaRuntimeWithResolveMobileSessionTerminalCommand.prototype,
-    'resolveMobileSessionTerminalCommand'
-  )
+  const consume = PreparedMobileCommandHost.commandResolver
   if (typeof consume !== 'function' || !params.command) {
     throw new Error('Expected a complete prepared command')
   }
-  return await consume.call({}, {}, params)
+  return await consume.call(
+    {},
+    { id: 'wt-1', path: '/repo', connectionId: null, repo: null, folderWorkspace: null },
+    params
+  )
 }
 
 // The prepared handler matches the pinned host when resumeOrigin is absent.
@@ -85,17 +100,18 @@ export async function consumePreparedBackgroundCommand(
     throw new Error('Missing terminal.create method')
   }
   const parsed = method.params.parse(params)
-  const dedupeTerminalCreate = vi.fn(async (_identity, worktree, _mutation, _reconcile, create) =>
+  const dedupeTerminalCreate = vi.fn<
+    PreparedTerminalCreateContext['runtime']['dedupeTerminalCreate']
+  >(async (_identity, worktree, _mutation, _reconcile, create) =>
     create(worktree, 'reserved-handle')
   )
-  const result = await Reflect.apply(method.handler, undefined, [
-    parsed,
-    {
-      runtime: { createTerminal, dedupeTerminalCreate },
-      pairedDeviceId: 'paired-current',
-      clientKind: 'runtime'
-    }
-  ])
+  const handler: PreparedTerminalCreateMethod['handler'] = method.handler
+  const context: PreparedTerminalCreateContext = {
+    runtime: { createTerminal, dedupeTerminalCreate },
+    pairedDeviceId: 'paired-current',
+    clientKind: 'runtime'
+  }
+  const result = await handler(parsed, context)
   expect(dedupeTerminalCreate).toHaveBeenCalledExactlyOnceWith(
     'paired-current',
     'id:wt-1',
