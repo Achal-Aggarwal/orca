@@ -18,14 +18,36 @@ vi.mock('./native-account-host', () => ({
 beforeEach(() => {
   vi.mocked(existsSync).mockReset().mockReturnValue(true)
   vi.mocked(getAntigravityAccountService).mockClear()
-  vi.mocked(createEncryptedAntigravityAccountStore).mockReturnValue({
-    read: () => ({ accounts: [], selectedAccountId: 'selected' }),
-    write: vi.fn()
-  })
+  vi.mocked(createEncryptedAntigravityAccountStore)
+    .mockReset()
+    .mockReturnValue({
+      read: () => ({ accounts: [], selectedAccountId: 'selected' }),
+      write: vi.fn()
+    })
   prepareForLaunch.mockReset().mockResolvedValue(undefined)
 })
 
 describe('native account verification before agy launch', () => {
+  beforeEach(() => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  })
+
+  it('retains non-Windows delegation and propagates native mismatch refusal', async () => {
+    prepareForLaunch.mockRejectedValueOnce(new Error('native account changed'))
+    await expect(
+      prepareAntigravityAccountForLaunch({
+        command: 'agy',
+        env: { HOME: '/task/home' },
+        envIsComplete: true
+      })
+    ).rejects.toThrow('native account changed')
+    await prepareAntigravityAccountForLaunch({
+      command: 'agy',
+      env: { HOME: '/task/home' },
+      envIsComplete: true
+    })
+    expect(prepareForLaunch).toHaveBeenCalledTimes(2)
+  })
   it('preserves owning-host and distro boundaries without reading client credentials', async () => {
     await prepareAntigravityAccountForLaunch({
       launchAgent: 'antigravity',
@@ -82,49 +104,19 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('Windows native credential authority before launch', () => {
-  beforeEach(() => {
+describe('Windows launch ownership', () => {
+  it('returns before observing command, environment, vault or native account', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    vi.stubEnv('USERPROFILE', 'C:\\Users\\fixture')
-    vi.stubEnv('HOME', 'C:\\irrelevant')
-    for (const key of [
-      'SSH_TTY',
-      'SSH_CLIENT',
-      'SSH_CONNECTION',
-      'WSL_DISTRO_NAME',
-      'WSL_INTEROP'
-    ]) {
-      vi.stubEnv(key, '')
-    }
-  })
-  it('accepts case-insensitive equivalent USERPROFILE and removal of irrelevant HOME', async () => {
     await prepareAntigravityAccountForLaunch({
-      launchAgent: 'antigravity',
-      env: { userprofile: 'c:/USERS/fixture/.' },
-      envToDelete: ['home']
+      get command(): string {
+        throw new Error('command interpretation')
+      },
+      get env(): NodeJS.ProcessEnv {
+        throw new Error('environment interpretation')
+      }
     })
-    expect(prepareForLaunch).toHaveBeenCalledOnce()
-  })
-  it.each([
-    { env: { userprofile: 'C:/other' } },
-    { envToDelete: ['userprofile'] },
-    { env: { HOME: 'C:/Users/fixture' }, envIsComplete: true },
-    { command: 'agy --gemini_dir other' },
-    { command: 'agy --app_data_dir=other' }
-  ])('rejects a different actual Windows authority (%#)', async (overrides) => {
-    await expect(
-      prepareAntigravityAccountForLaunch({ launchAgent: 'antigravity', ...overrides })
-    ).rejects.toThrow(/credential authority|requires USERPROFILE/)
-    expect(prepareForLaunch).not.toHaveBeenCalled()
-  })
-  it('accepts explicit default root flags without rewriting the command', async () => {
-    await prepareAntigravityAccountForLaunch({
-      command: 'agy --gemini_dir=.gemini --app_data_dir antigravity-cli'
-    })
-    expect(prepareForLaunch).toHaveBeenCalledOnce()
-  })
-  it('does not interpret an interactive prompt value as a storage flag', async () => {
-    await prepareAntigravityAccountForLaunch({ command: 'agy --prompt-interactive "--gemini_dir"' })
-    expect(prepareForLaunch).toHaveBeenCalledOnce()
+    expect(existsSync).not.toHaveBeenCalled()
+    expect(createEncryptedAntigravityAccountStore).not.toHaveBeenCalled()
+    expect(getAntigravityAccountService).not.toHaveBeenCalled()
   })
 })
