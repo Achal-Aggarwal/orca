@@ -194,6 +194,7 @@ function rebalanceAddedColumn(
   }
   const cells: { width: number | null }[] = []
   let hasSpans = false
+  let hasRowspans = false
   row.forEach((cell, _offset, index) => {
     if (cell.attrs.colspan && cell.attrs.colspan !== 1) {
       hasSpans = true
@@ -205,6 +206,7 @@ function rebalanceAddedColumn(
   table.forEach((tableRow) => {
     tableRow.forEach((cell) => {
       hasSpans ||= Boolean(cell.attrs.colspan && cell.attrs.colspan !== 1)
+      hasRowspans ||= Boolean(cell.attrs.rowspan && cell.attrs.rowspan !== 1)
     })
   })
   const newColumns = cells.filter((cell) => cell.width === null)
@@ -218,12 +220,27 @@ function rebalanceAddedColumn(
     const width = cell.width === null ? newWidth : cell.width * existingScale
     return Math.max(1, Math.round(width))
   })
-  table.forEach((tableRow, rowOffset) => {
-    tableRow.forEach((cell, cellOffset, columnIndex) => {
+  const tableMap = hasRowspans ? TableMap.get(table) : null
+  table.forEach((tableRow, rowOffset, rowIndex) => {
+    let columnIndex = 0
+    tableRow.forEach((cell, cellOffset) => {
+      if (tableMap) {
+        const cellPosition = rowOffset + cellOffset + 1
+        while (
+          columnIndex < tableMap.width &&
+          tableMap.map[rowIndex * tableMap.width + columnIndex] !== cellPosition
+        ) {
+          columnIndex += 1
+        }
+        if (columnIndex === tableMap.width) {
+          return
+        }
+      }
       transaction.setNodeMarkup(tablePosition + 2 + rowOffset + cellOffset, undefined, {
         ...cell.attrs,
         colwidth: [widths[columnIndex]]
       })
+      columnIndex += 1
     })
   })
 }
