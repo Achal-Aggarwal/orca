@@ -14,7 +14,7 @@ import {
   type TokensList,
   marked
 } from 'marked'
-import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
+import { ORDERED_LIST_MARKER_PATTERN, TaskList } from '@tiptap/extension-list'
 
 // Same item start Tiptap's ordered list accepts, so every list it built can be re-read here.
 const TIPTAP_LIST_ITEM = new RegExp(`^(\\s*(?:${ORDERED_LIST_MARKER_PATTERN})[.)])(\\s+)`)
@@ -56,10 +56,53 @@ function isListToken(token: Tokens.Generic | undefined): token is Tokens.List {
   return token?.type === 'list' && Array.isArray(token.items)
 }
 
+function restoreFinalEmptyTask(token: Tokens.List, trailingSpace: string, lexer: Lexer): boolean {
+  const last = token.items.at(-1)
+  const child = last?.tokens.at(-1)
+  if (!last || !isListToken(child)) {
+    return false
+  }
+  const nested = child.items.at(-1)
+  if (child.ordered || !nested || !/^\[[ xX]\]$/.test(nested.text)) {
+    return restoreFinalEmptyTask(child, trailingSpace, lexer)
+  }
+  const tokenizer = TaskList.config.markdownTokenizer
+  if (!tokenizer || typeof tokenizer !== 'object') {
+    return false
+  }
+  const source = nested.raw + trailingSpace
+  const task = tokenizer.tokenize(source, [], {
+    inlineTokens: (text) => lexer.inlineTokens(text),
+    blockTokens: (text) => lexer.blockTokens(text)
+  })
+  if (task?.type !== 'taskList' || task.items?.length !== 1 || task.items[0].text !== '') {
+    return false
+  }
+  const repaired = { ...task, type: 'taskList', raw: source, tokens: [] }
+  if (child.items.length === 1) {
+    const previous = last.tokens.at(-2)
+    if (previous?.type === 'taskList' && Array.isArray(previous.items)) {
+      previous.items.push(...task.items)
+      previous.raw += `${previous.raw.endsWith('\n') ? '' : '\n'}${source}`
+      last.tokens.pop()
+    } else {
+      last.tokens.splice(-1, 1, repaired)
+    }
+  } else {
+    child.items.pop()
+    last.tokens.push(repaired)
+  }
+  return true
+}
+
 class BlockquoteListTokenizer extends Tokenizer {
   // Marked v18 lazy quotes call list directly then read raw, bypassing Tiptap’s no-break-space list tokenizer.
   list(source: string): Tokens.List | undefined {
     const token = super.list(source)
+    const trailingSpace = token ? /^[ \t]+/.exec(source.slice(token.raw.length))?.[0] : undefined
+    if (token && trailingSpace && restoreFinalEmptyTask(token, trailingSpace, this.lexer)) {
+      token.raw += trailingSpace
+    }
     if (token || !TIPTAP_LIST_ITEM.test(source)) {
       return token
     }
