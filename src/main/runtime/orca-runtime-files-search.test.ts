@@ -168,6 +168,72 @@ describe('RuntimeFileCommands', () => {
     )
   })
 
+  it.each(['ignored', 'synchronous-error', 'queued-error'] as const)(
+    'publishes capped results and detaches when termination is %s',
+    async (termination) => {
+      const { commands } = createRuntimeFileCommands()
+      const child = createRuntimeSearchChild()
+      const uncaughtErrors: unknown[] = []
+      if (termination !== 'ignored') {
+        child.kill.mockImplementation(() => {
+          const emitError = (): void => {
+            child.emit('error', Object.assign(new Error('kill EPERM'), { code: 'EPERM' }))
+          }
+          if (termination === 'queued-error') {
+            queueMicrotask(() => {
+              try {
+                emitError()
+              } catch (error) {
+                uncaughtErrors.push(error)
+              }
+            })
+          } else {
+            emitError()
+          }
+          return false
+        })
+      }
+      resolveAuthorizedPathMock.mockResolvedValue('/repo')
+      wslAwareSpawnMock.mockReturnValue(child)
+      const resultPromise = commands.searchRuntimeFiles('id:wt-1', {
+        query: 'needle',
+        maxResults: 2
+      })
+      let settled = false
+      void resultPromise.then(() => {
+        settled = true
+      })
+      await flushRuntimeSearchMicrotasks()
+      const record = JSON.stringify({
+        type: 'match',
+        data: {
+          path: { text: './example.txt' },
+          lines: { text: 'needle needle\n' },
+          line_number: 1,
+          submatches: [
+            { start: 0, end: 6 },
+            { start: 7, end: 13 }
+          ]
+        }
+      })
+      expect(() => child.stdout.emit('data', `${record}\n{"type":"match"`)).not.toThrow()
+      await flushRuntimeSearchMicrotasks()
+
+      expect(uncaughtErrors).toEqual([])
+      expect(settled).toBe(true)
+      await expect(resultPromise).resolves.toMatchObject({
+        totalMatches: 2,
+        truncated: true,
+        files: [{ matches: [{ column: 1 }, { column: 8 }] }]
+      })
+      expect(child.kill).toHaveBeenCalledOnce()
+      expect(child.stdout.listenerCount('data')).toBe(0)
+      expect(child.stderr.listenerCount('data')).toBe(0)
+      expect(child.listenerCount('close')).toBe(0)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
   it.each(['error-first', 'close-first'] as const)(
     'rejects with the bundled-ripgrep error when runtime rg native launch failure is %s',
     async (order) => {
