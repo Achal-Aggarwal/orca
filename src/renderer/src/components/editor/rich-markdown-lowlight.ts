@@ -142,8 +142,21 @@ function updateDecorations(
   }
 
   const changes = getChangedRanges(transaction)
-  if (changes.length === 0) {
-    // Why: attribute-only steps can change a code language without exposing a mapped range.
+  const hasUnlocalizedStep = transaction.steps.some((step) => {
+    let hasMappedRange = false
+    step.getMap().forEach(() => {
+      hasMappedRange = true
+    })
+    return (
+      !hasMappedRange &&
+      (!('from' in step) ||
+        typeof step.from !== 'number' ||
+        !('to' in step) ||
+        typeof step.to !== 'number')
+    )
+  })
+  if (changes.length === 0 || hasUnlocalizedStep) {
+    // Attribute-only steps can change a language alongside localized text steps.
     return createDecorations(transaction.doc, name, lowlight, languages, defaultLanguage)
   }
 
