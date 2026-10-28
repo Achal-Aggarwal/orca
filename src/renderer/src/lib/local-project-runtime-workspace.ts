@@ -1,9 +1,4 @@
 import type { ResolveProjectExecutionRuntimeArgs } from '../../../shared/project-execution-runtime'
-import {
-  getProjectHostSetupProjectionFromState,
-  type ProjectCatalogReadState
-} from '@/store/project-host-setup-selector'
-import { getProjectHostSetupLookup } from '../../../shared/project-host-setup-lookup'
 import type { AppState } from '@/store/types'
 import { getIndexedWorktreeById } from '@/store/worktree-repo-index'
 import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
@@ -19,27 +14,14 @@ import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 type RuntimeWorkspaceState = Pick<AppState, 'activeWorktreeId' | 'repos' | 'worktreesByRepo'> &
   Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>>
 
-export type LocalProjectRuntimeState = Pick<
-  AppState,
-  'activeRepoId' | 'activeWorktreeId' | 'repos' | 'settings' | 'worktreesByRepo'
-> &
-  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>> &
-  ProjectCatalogReadState
+export type LocalProjectRuntimeState = RuntimeWorkspaceState &
+  Pick<AppState, 'activeRepoId' | 'projects' | 'settings'>
 
 const EMPTY_WORKTREES_BY_REPO: AppState['worktreesByRepo'] = {}
 
 const EMPTY_FOLDERS: NonNullable<RuntimeWorkspaceState['folderWorkspaces']> = []
 const EMPTY_GROUPS: NonNullable<RuntimeWorkspaceState['projectGroups']> = []
-type RuntimeWorkspace = Pick<
-  Worktree,
-  | 'id'
-  | 'repoId'
-  | 'projectId'
-  | 'path'
-  | 'hostId'
-  | 'projectHostSetupId'
-  | 'runtimeOwnerEnvironmentId'
-> | null
+type RuntimeWorkspace = Pick<Worktree, 'id' | 'repoId' | 'projectId' | 'path' | 'hostId'> | null
 const folderIndexes = new WeakMap<
   typeof EMPTY_FOLDERS,
   Map<string, (typeof EMPTY_FOLDERS)[number]>
@@ -181,20 +163,13 @@ function resolveLocalFolderRuntimeWorkspace(
 }
 
 export function getLocalPreflightProjectId(
-  state: RuntimeWorkspaceState & Pick<AppState, 'activeRepoId'> & ProjectCatalogReadState,
+  state: LocalProjectRuntimeState,
   worktreeId?: string | null,
   readWorkspace = getLocalProjectRuntimeWorkspace
 ): string {
   const activeWorktree = readWorkspace(state, worktreeId)
   return (
-    (activeWorktree
-      ? getProjectHostSetupLookup(getProjectHostSetupProjectionFromState(state).setups).projectId(
-          activeWorktree
-        )
-      : undefined) ??
-    activeWorktree?.repoId ??
-    state.activeRepoId ??
-    'local-project'
+    activeWorktree?.projectId ?? activeWorktree?.repoId ?? state.activeRepoId ?? 'local-project'
   )
 }
 

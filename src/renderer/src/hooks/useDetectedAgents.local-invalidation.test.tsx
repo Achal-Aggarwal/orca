@@ -80,19 +80,21 @@ it.each(localTargets)('restarts an invalidated first probe for $worktreeId', asy
 })
 
 it('retargets a mounted first load when the project switches to WSL', async () => {
-  const worktree = makeWorktree({ id: 'wt1', repoId: TEST_REPO.id, path: 'C:\\project' })
-  const repos = [{ ...TEST_REPO, path: worktree.path }]
-  const catalog = projectHostSetupProjectionFromRepos(repos)
   const project: Project = {
-    ...catalog.projects[0],
+    id: TEST_REPO.id,
+    displayName: TEST_REPO.displayName,
+    badgeColor: TEST_REPO.badgeColor,
+    sourceRepoIds: [TEST_REPO.id],
+    createdAt: 0,
+    updatedAt: 0,
     localWindowsRuntimePreference: { kind: 'windows-host' }
   }
+  const worktree = makeWorktree({ id: 'wt1', repoId: TEST_REPO.id, path: 'C:\\project' })
   useAppStore.setState({
     activeRepoId: TEST_REPO.id,
     activeWorktreeId: worktree.id,
-    repos,
-    endpointProjects: [project],
-    endpointProjectHostSetups: [...catalog.setups],
+    repos: [{ ...TEST_REPO, path: worktree.path }],
+    projects: [project],
     worktreesByRepo: { [TEST_REPO.id]: [worktree] },
     settings: {
       ...getDefaultSettings('/home/test'),
@@ -233,7 +235,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     )
     useAppStore.setState({
       repos,
-      endpointProjects: projects(
+      projects: projects(
         catalog.projects.map((project) => ({
           ...project,
           localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
@@ -258,7 +260,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
         )
       ],
       projectGroups: [{ ...makeProjectGroup(), id: 'folder-group' }],
-      endpointProjectHostSetups: [...catalog.setups],
+      projectHostSetups: [...catalog.setups],
       worktreesByRepo: Object.fromEntries(worktrees.map((wt) => [wt.repoId, [wt]])),
       settings: getDefaultSettings('/tmp')
     })
@@ -362,7 +364,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     const folderIndexRows = folderRows
     await act(async () => {
       useAppStore.setState((s) => ({
-        endpointProjects: projects(s.endpointProjects.map((project) => ({ ...project })))
+        projects: projects(s.projects.map((project) => ({ ...project })))
       }))
     })
     expect(projectRows).toBeGreaterThan(1000)
@@ -376,8 +378,8 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     // A real selected runtime changes only its owner; the new catalog index is shared.
     await act(async () => {
       useAppStore.setState((s) => ({
-        endpointProjects: projects(
-          s.endpointProjects.map((project) =>
+        projects: projects(
+          s.projects.map((project) =>
             project.id === catalog.projects[999 - count].id
               ? { ...project, localWindowsRuntimePreference: { kind: 'wsl', distro: 'Debian' } }
               : project
@@ -386,9 +388,9 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
       }))
     })
     expect(resolution.mock.calls.length).toBeGreaterThan(0)
-    expect(
-      resolution.mock.calls.every(([input]) => input.projectId === catalog.projects[999 - count].id)
-    ).toBe(true)
+    expect(resolution.mock.calls.every(([input]) => input.projectId === worktrees[0].repoId)).toBe(
+      true
+    )
     expect(detectAgents).toHaveBeenLastCalledWith(
       expect.objectContaining({
         projectRuntime: expect.objectContaining({
@@ -402,7 +404,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     // Restore the original key without relying on the acquisition result.
     await act(async () => {
       useAppStore.setState({
-        endpointProjects: projects(
+        projects: projects(
           catalog.projects.map((project) => ({
             ...project,
             localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
@@ -438,7 +440,7 @@ it('bounds repeated inventory work at N/10N and renders only the observed contex
     // Same selector follows real folder path, owner and candidate-cardinality changes.
     await act(async () => {
       useAppStore.setState((s) => ({
-        endpointProjects: s.endpointProjects.map((project, index) =>
+        projects: s.projects.map((project, index) =>
           index === 0 ? { ...project, localWindowsRuntimePreference: undefined } : project
         ),
         folderWorkspaces: s.folderWorkspaces.map((entry) => ({

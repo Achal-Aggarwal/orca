@@ -1,3 +1,4 @@
+import { directWorkItemProjectFixture } from './launch-work-item-direct-project.test-fixture'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { PreflightRuntimeContext } from '../../../main/ipc/preflight-runtime-target'
 import { useAppStore } from '@/store'
@@ -10,7 +11,6 @@ import {
   detectAgentsOnHost,
   detectProjectLaunchContext
 } from '../../../main/preflight/workspace-agent-detection'
-import { directWorkItemCatalogFixture } from './launch-work-item-direct-catalog.test-fixture'
 import { directDiscoveryProbe } from './launch-work-item-direct-discovery.test-fixture'
 import {
   makeCreatedAgentWorktree,
@@ -79,7 +79,7 @@ it.each(['blank', 'claude'] as const)(
   async (choice) => {
     const worktree = makeCreatedAgentWorktree()
     seedEmptyActivatableWorktree(worktree)
-    const catalog = directWorkItemCatalogFixture()
+    const project = directWorkItemProjectFixture()
     const settings = {
       ...useAppStore.getState().settings!,
       defaultTuiAgent: choice,
@@ -87,15 +87,15 @@ it.each(['blank', 'claude'] as const)(
       localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' } as const
     }
     const createWorktree = vi.fn(async () => ({ worktree, setup: undefined }))
-    useAppStore.setState({ ...catalog, settings, createWorktree })
+    useAppStore.setState({ ...project, settings, createWorktree })
     const host = {
-      getRepos: () => catalog.repos,
-      getRepo: () => catalog.repos[0],
-      getProjects: () => catalog.endpointProjects,
+      getRepos: () => project.repos,
+      getRepo: () => project.repos[0],
+      getProjects: () => project.projects,
       getSettings: () => settings
     }
     vi.mocked(callRuntimeRpc).mockImplementationOnce(async () =>
-      detectProjectLaunchContext(host, catalog.repos[0])
+      detectProjectLaunchContext(host, project.repos[0])
     )
     Object.assign(window.api, {
       preflight: {

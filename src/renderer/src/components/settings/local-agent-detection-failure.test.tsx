@@ -332,11 +332,11 @@ it('scopes the real catalog and AgentStep subscriptions while preserving full ru
     activeWorktreeId: worktree.id,
     worktreesByRepo: { [repo.id]: [worktree] },
     settings,
-    endpointProjects: catalog.projects.map((project) => ({
+    projects: catalog.projects.map((project) => ({
       ...project,
       localWindowsRuntimePreference: { kind: 'windows-host' }
     })),
-    endpointProjectHostSetups: [...catalog.setups]
+    projectHostSetups: [...catalog.setups]
   })
   await useAppStore.getState().ensureDetectedAgents()
   const resolution = vi.spyOn(runtime, 'resolveProjectExecutionRuntime')
@@ -394,7 +394,7 @@ it('scopes the real catalog and AgentStep subscriptions while preserving full ru
   expect(before?.projectRuntime).toMatchObject({ runtime: { reason: 'project-override' } })
   await act(async () => {
     useAppStore.setState((s) => ({
-      endpointProjects: s.endpointProjects.map((project) => ({
+      projects: s.projects.map((project) => ({
         ...project,
         localWindowsRuntimePreference: { kind: 'inherit-global' }
       }))
@@ -403,7 +403,7 @@ it('scopes the real catalog and AgentStep subscriptions while preserving full ru
   expect(localAgentInventoryContextKey(selected.result.current)).toBe('host')
   expect(selected.result.current).not.toBe(before)
   expect(selected.result.current?.projectRuntime).toMatchObject({
-    runtime: { projectId: catalog.projects[0].id, reason: 'global-default' }
+    runtime: { projectId: repo.id, reason: 'global-default' }
   })
   await act(async () => {
     useAppStore.setState((s) => ({
