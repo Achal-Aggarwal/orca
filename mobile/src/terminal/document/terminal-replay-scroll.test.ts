@@ -20,7 +20,7 @@ function createReplayHarness() {
   vi.stubGlobal('cancelAnimationFrame', () => {})
   document.body.innerHTML = TERMINAL_DOCUMENT_MARKUP
   const terminals: Terminal[] = []
-  const writeCompletions: Array<() => void> = []
+  const writeCompletions: (() => void)[] = []
   let deferWrites = false
   const scope = createTerminalDocumentScope({
     hasEngine: () => true,
