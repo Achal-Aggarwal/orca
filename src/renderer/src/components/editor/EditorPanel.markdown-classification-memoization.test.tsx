@@ -192,6 +192,24 @@ describe('EditorPanel markdown classification memoization', () => {
     expect(probe.eligibility).toHaveBeenLastCalledWith(`${MARKDOWN_WITH_HTML}\nMore text.\n`)
   })
 
+  it('keeps large-document classification cached during unrelated pane rerenders', async () => {
+    const content = `---\npayload: ${'a'.repeat(256 * 1024)}\n---\n${MARKDOWN_WITH_HTML}`
+    contentState.fileContents = { [FILE_PATH]: { content, isBinary: false } }
+    await act(async () => root.render(<EditorPanel />))
+    await flushEffects()
+
+    expect(probe.eligibility).toHaveBeenCalledTimes(1)
+    const rendersAfterMount = probe.shellRender.mock.calls.length
+    for (let tick = 0; tick < 10; tick++) {
+      await act(async () => {
+        useAppStore.setState({ gitStatusByWorktree: { [WORKTREE_ID]: [] } })
+      })
+    }
+    expect(probe.shellRender.mock.calls.length).toBeGreaterThan(rendersAfterMount)
+    expect(probe.eligibility).toHaveBeenCalledTimes(1)
+    expect(probe.eligibility).toHaveBeenCalledWith(content)
+  })
+
   it('flips the dirty flag on edit and back on undo to the original', async () => {
     await act(async () => root.render(<EditorPanel />))
     await flushEffects()

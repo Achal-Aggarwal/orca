@@ -141,7 +141,8 @@ export function getEditorPanelRenderModel({
     const richModeEligibility = shouldClassifyRichMode
       ? getCachedMarkdownRichModeEligibility({
           content: inlineMarkdownContent,
-          sizeOverridden: markdownRichModeSizeOverridden
+          sizeOverridden: markdownRichModeSizeOverridden,
+          cacheOwner: inlineFileContent
         })
       : null
     const richModeUnsupportedMessage = richModeEligibility?.unsupportedMessage ?? null

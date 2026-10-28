@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { i18n } from '@/i18n/i18n'
+import * as classifier from './markdown-rich-mode'
 import { getMarkdownRichModeEligibility } from './markdown-rich-mode'
 import {
   getCachedMarkdownRichModeEligibility,
@@ -84,6 +85,41 @@ describe('getCachedMarkdownRichModeEligibility', () => {
           expected[index]
         )
       })
+    }
+  })
+
+  it('keeps large-document hits with the loaded owner and invalidates changes', () => {
+    const cacheOwner = {}
+    const content = `---\npayload: ${'a'.repeat(256 * 1024)}\n---\nSmall body.\n`
+    const classify = vi.spyOn(classifier, 'getMarkdownRichModeEligibilityDecision')
+    try {
+      const original = { content, sizeOverridden: false, cacheOwner }
+      for (let pass = 0; pass < 5; pass++) {
+        expect(getCachedMarkdownRichModeEligibility(original)).toEqual({
+          exceedsSizeLimit: false,
+          unsupportedMessage: null
+        })
+      }
+      expect(classify).toHaveBeenCalledTimes(1)
+
+      const edited = { ...original, content: `${content}[ref]: https://example.com\n` }
+      expect(getCachedMarkdownRichModeEligibility(edited).unsupportedMessage).toContain(
+        'reference-style links'
+      )
+      expect(classify).toHaveBeenCalledTimes(2)
+
+      expect(
+        getCachedMarkdownRichModeEligibility({ ...edited, sizeOverridden: true }).unsupportedMessage
+      ).toContain('reference-style links')
+      expect(classify).toHaveBeenCalledTimes(3)
+
+      expect(getCachedMarkdownRichModeEligibility({ ...original, cacheOwner: {} })).toEqual({
+        exceedsSizeLimit: false,
+        unsupportedMessage: null
+      })
+      expect(classify).toHaveBeenCalledTimes(4)
+    } finally {
+      classify.mockRestore()
     }
   })
 
