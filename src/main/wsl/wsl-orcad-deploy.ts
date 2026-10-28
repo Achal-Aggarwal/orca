@@ -37,11 +37,7 @@ import { joinRemotePath } from '../ssh/ssh-remote-platform'
 import { readLocalFullVersion } from '../managed-server/install/remote-versioned-install'
 import { createWslDistroHolder, type WslDistroHolder } from './wsl-distro-holder'
 import { wslDistroHolderKey } from './wsl-distro-holder-record'
-import {
-  isWslDistroNotFoundFailure,
-  WslDistroNotRegisteredError,
-  WslDistroVersion1Error
-} from './wsl-distro-unsupported'
+import { refuseMissingWslDistro, WslDistroVersion1Error } from './wsl-distro-unsupported'
 import { readWslDistroRegistryIdShared } from './wsl-distro-registry-id'
 import type { WslOrcadHostTarget } from './wsl-orcad-host-target'
 import { createWslOrcadHostTransport, type WslOrcadHostTransport } from './wsl-orcad-host-transport'
@@ -138,9 +134,7 @@ async function launchOverTransport(
   const { signal } = options
   let ownBuildVersion: string | null = null
   const conn = withOwnBuildLaunchEnv(transport, () => ownBuildVersion)
-  const kernel = await execCommand(conn, 'uname -r', { signal }).catch((error: unknown) => {
-    throw isWslDistroNotFoundFailure(error) ? new WslDistroNotRegisteredError(name) : error
-  })
+  const kernel = await execCommand(conn, 'uname -r', { signal }).catch(refuseMissingWslDistro(name))
   if (isWsl1KernelRelease(kernel)) {
     throw new WslDistroVersion1Error(name)
   }

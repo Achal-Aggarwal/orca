@@ -41,6 +41,13 @@ export function isWslDistroNotFoundFailure(error: unknown): boolean {
   return error instanceof Error && DISTRO_NOT_FOUND.test(error.message)
 }
 
+/** Rethrows wsl.exe's missing-distro failure as the refusal that says how to fix it. */
+export function refuseMissingWslDistro(distro: string): (error: unknown) => never {
+  return (error) => {
+    throw isWslDistroNotFoundFailure(error) ? new WslDistroNotRegisteredError(distro) : error
+  }
+}
+
 // NixOS's stub loader refuses generic Linux binaries with this sentence.
 const NIXOS_STUB_LOADER = /NixOS cannot run dynamically linked executables/
 
