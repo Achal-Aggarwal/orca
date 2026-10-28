@@ -1,5 +1,7 @@
 import { arch as osArch, platform as osPlatform, release as osRelease } from 'node:os'
-import { PostHog } from 'posthog-node'
+import type { PostHog } from 'posthog-node'
+import { currentMainEntryLayout, resolveMainEntryPath } from '../bundled-main-entry-path'
+import { POSTHOG_SDK_BUNDLE_FILENAME } from '../../shared/posthog-sdk-bundle'
 import { getAppEnvironment } from '../../shared/app-environment'
 import type { CommonProps, EventName } from '../../shared/telemetry-events'
 import type { ConsentState } from './consent'
@@ -70,7 +72,10 @@ export function shouldOptOutSdkAtInit(consent: ConsentState): boolean {
 }
 
 export function createPostHogClient(writeKey: string, consent: ConsentState): PostHog {
-  const client = new PostHog(writeKey, {
+  const sdk: { PostHog: typeof PostHog } = require(
+    resolveMainEntryPath(currentMainEntryLayout(__dirname), POSTHOG_SDK_BUNDLE_FILENAME)
+  )
+  const client = new sdk.PostHog(writeKey, {
     host: 'https://us.i.posthog.com',
     flushAt: 20,
     flushInterval: 10_000,

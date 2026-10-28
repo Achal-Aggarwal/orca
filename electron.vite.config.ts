@@ -10,6 +10,7 @@ import { createBrowserExtensionWorkerShimPlugin } from './config/build-plugins/b
 import { createMainLocaleSubsetPlugin } from './config/build-plugins/main-locale-subset'
 import { createPdfjsViewerAssetsPlugin } from './config/build-plugins/pdfjs-viewer-assets'
 import { createProcessHostDevRebuildPlugin } from './config/build-plugins/process-host-dev-rebuild'
+import { createPostHogSdkBundlePlugin } from './config/build-plugins/posthog-sdk-bundle'
 import { createViteCacheRetentionPlugin } from './config/build-plugins/vite-cache-retention'
 import { MAIN_BUILD_ENTRY_POINTS } from './config/build-plugins/main-build-entry-points'
 import { createPlainNodeEntryGuardPlugin } from './config/build-plugins/plain-node-entry-guard'
@@ -232,6 +233,7 @@ export const electronViteConfig: UserConfig = {
           createProcessHostDevRebuildPlugin(),
           createDarkBuildMarkerPlugin(),
           createBrowserExtensionWorkerShimPlugin(),
+          createPostHogSdkBundlePlugin(),
           createMainLocaleSubsetPlugin()
         ]
       }
