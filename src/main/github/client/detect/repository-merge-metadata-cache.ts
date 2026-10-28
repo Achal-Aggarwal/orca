@@ -17,10 +17,28 @@ export const repositoryMergeMetadataCache = new Map<
   { value: GitHubRepositoryMergeMetadata; expiresAt: number }
 >()
 
-export const repositoryMergeMetadataReads: CoalescedProbes<GitHubRepositoryMergeMetadata> =
-  new Map()
+const repositoryMergeMetadataReads: CoalescedProbes<GitHubRepositoryMergeMetadata> = new Map()
 
-export const repositoryMergeMetadataWriters = new Map<string, object>()
+let signaledReads = new WeakMap<AbortSignal, CoalescedProbes<GitHubRepositoryMergeMetadata>>()
+
+export function repositoryMergeMetadataReadProbes(
+  signal?: AbortSignal
+): CoalescedProbes<GitHubRepositoryMergeMetadata> {
+  if (!signal) {
+    return repositoryMergeMetadataReads
+  }
+  let probes = signaledReads.get(signal)
+  if (!probes) {
+    probes = new Map()
+    signaledReads.set(signal, probes)
+  }
+  return probes
+}
+
+export const repositoryMergeMetadataWriters = new Map<
+  string,
+  { activeReads: number; nextRead: number; publishedRead: number }
+>()
 
 export function pruneRepositoryMergeMetadataCache(now = Date.now()): void {
   for (const [cacheKey, cached] of repositoryMergeMetadataCache) {
@@ -56,6 +74,7 @@ export function cacheRepositoryMergeMetadata(
 export function _resetMergeQueueCacheForTests(): void {
   repositoryMergeMetadataCache.clear()
   repositoryMergeMetadataReads.clear()
+  signaledReads = new WeakMap()
   repositoryMergeMetadataWriters.clear()
 }
 

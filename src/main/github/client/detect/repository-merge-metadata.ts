@@ -1,4 +1,6 @@
+import { posix, win32 } from 'node:path'
 import { normalizeGitHubPRMergeMethodSettings } from '../../../../shared/github/pull-request-merge-methods'
+import { mergeCommandEnvironment } from '../../../../shared/command-environment'
 import { ghExecFileAsync } from '../../gh-utils'
 import { githubHostExecOptions, type GitHubApiRepository } from '../../github-api-repository'
 import { githubRepoIdentityKey } from '../../../../shared/github/repository-identity-key'
@@ -11,7 +13,7 @@ import {
   MERGE_QUEUE_CACHE_TTL_MS,
   MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS,
   repositoryMergeMetadataCache,
-  repositoryMergeMetadataReads,
+  repositoryMergeMetadataReadProbes,
   repositoryMergeMetadataWriters,
   pruneRepositoryMergeMetadataCache,
   cacheRepositoryMergeMetadata,
@@ -24,12 +26,24 @@ export async function detectRepositoryMergeMetadata(
   executionScope: string | undefined = 'default'
 ): Promise<GitHubRepositoryMergeMetadata> {
   const options = { ...ghOptions, ...githubHostExecOptions(ownerRepo) }
-  const { cwd, ...cacheOptions } = options
+  const { cwd, signal: _signal, ...cacheOptions } = options
+  const wslDistro = options.wslDistro ?? (cwd ? parseWslUncPath(cwd)?.distro : undefined)
+  const configPaths = wslDistro || process.platform !== 'win32' ? posix : win32
+  const environment = options.env ?? process.env
+  const configDir =
+    configPaths === win32
+      ? mergeCommandEnvironment(environment, {}, 'win32')?.GH_CONFIG_DIR
+      : environment.GH_CONFIG_DIR
+  const configNeedsCwd =
+    configDir &&
+    (!configPaths.isAbsolute(configDir) ||
+      (configPaths === win32 && configPaths.parse(configDir).root.length === 1))
   const cacheKey = JSON.stringify([
     executionScope,
     githubReadExecutionScope({
       ...cacheOptions,
-      wslDistro: options.wslDistro ?? (cwd ? parseWslUncPath(cwd)?.distro : undefined)
+      wslDistro,
+      ...(configNeedsCwd ? { cwd } : {})
     }),
     githubRepoIdentityKey(ownerRepo),
     branchName ?? null
@@ -39,37 +53,52 @@ export async function detectRepositoryMergeMetadata(
   if (cached) {
     return cached.value
   }
-  // Completed settings span worktrees; cold probes retain cwd-sensitive execution.
+  // Cold probes keep cwd even when completed settings can span worktrees.
   const readKey = JSON.stringify([cacheKey, githubReadExecutionScope(options)])
-  return runCoalescedProbe(repositoryMergeMetadataReads, readKey, async (ownsKey) => {
-    const writer = {}
-    repositoryMergeMetadataWriters.set(cacheKey, writer)
-    const ownsCache = (): boolean => repositoryMergeMetadataWriters.get(cacheKey) === writer
-    try {
-      return await readRepositoryMergeMetadata(
-        ownerRepo,
-        branchName,
-        options,
-        cacheKey,
-        () => ownsKey() && ownsCache()
-      )
-    } finally {
-      if (ownsCache()) {
-        repositoryMergeMetadataWriters.delete(cacheKey)
+  return runCoalescedProbe(
+    repositoryMergeMetadataReadProbes(options.signal),
+    readKey,
+    async (ownsKey) => {
+      const writer = repositoryMergeMetadataWriters.get(cacheKey) ?? {
+        activeReads: 0,
+        nextRead: 0,
+        publishedRead: 0
+      }
+      repositoryMergeMetadataWriters.set(cacheKey, writer)
+      const readId = ++writer.nextRead
+      writer.activeReads++
+      try {
+        return await readRepositoryMergeMetadata(ownerRepo, branchName, options, (value, ttlMs) => {
+          if (
+            ownsKey() &&
+            !options.signal?.aborted &&
+            repositoryMergeMetadataWriters.get(cacheKey) === writer &&
+            readId >= writer.publishedRead
+          ) {
+            writer.publishedRead = readId
+            cacheRepositoryMergeMetadata(cacheKey, value, ttlMs)
+          }
+        })
+      } finally {
+        writer.activeReads--
+        if (writer.activeReads === 0 && repositoryMergeMetadataWriters.get(cacheKey) === writer) {
+          repositoryMergeMetadataWriters.delete(cacheKey)
+        }
       }
     }
-  })
+  )
 }
 
 async function readRepositoryMergeMetadata(
   ownerRepo: GitHubApiRepository,
   branchName: string | undefined,
   ghOptions: GhExecOptions,
-  cacheKey: string,
-  ownsKey: () => boolean
+  publish: (value: GitHubRepositoryMergeMetadata, ttlMs: number) => void
 ): Promise<GitHubRepositoryMergeMetadata> {
-  const guard = repositoryRateLimitGuard(ownerRepo, 'graphql', ghOptions)
-  if (guard.blocked) {
+  if (
+    ghOptions.signal?.aborted ||
+    repositoryRateLimitGuard(ownerRepo, 'graphql', ghOptions).blocked
+  ) {
     return { mergeQueueRequired: null, autoMergeAllowed: null }
   }
   const query = branchName
@@ -147,13 +176,7 @@ async function readRepositoryMergeMetadata(
       ...(mergeMethodSettings ? { mergeMethodSettings } : {})
     }
     // Missing repository data remains unknown and retries on the short TTL.
-    if (ownsKey()) {
-      cacheRepositoryMergeMetadata(
-        cacheKey,
-        value,
-        repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS
-      )
-    }
+    publish(value, repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
     return value
   } catch {
     // Cool down failed probes without treating unknown merge-queue state as false.
@@ -161,9 +184,7 @@ async function readRepositoryMergeMetadata(
       mergeQueueRequired: null,
       autoMergeAllowed: null
     }
-    if (ownsKey()) {
-      cacheRepositoryMergeMetadata(cacheKey, value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
-    }
+    publish(value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
     return value
   }
 }

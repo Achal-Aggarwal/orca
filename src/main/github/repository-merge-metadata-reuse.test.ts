@@ -26,7 +26,10 @@ beforeEach(() => {
   _resetMergeQueueCacheForTests()
   guard.mockReturnValue({ blocked: false })
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllEnvs()
+})
 
 describe('repository merge metadata reuse', () => {
   it('starts immediately and joins overlapping PR probes for the same base branch', async () => {
@@ -93,6 +96,182 @@ describe('repository merge metadata reuse', () => {
     ).resolves.toMatchObject({ autoMergeAllowed: true })
 
     expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([false, true])(
+    'isolates relative config directories (inherited: %s)',
+    async (inherited) => {
+      vi.stubEnv('GH_CONFIG_DIR', '.gh')
+      const env = inherited ? undefined : { GH_CONFIG_DIR: '.gh' }
+      exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
+
+      await detectRepositoryMergeMetadata(repository, 'main', { ...options, env }, 'local:host')
+      await expect(
+        detectRepositoryMergeMetadata(
+          repository,
+          'main',
+          { cwd: '/another-worktree', env },
+          'local:host'
+        )
+      ).resolves.toMatchObject({ autoMergeAllowed: false })
+      expect(exec).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it.each([undefined, 'Ubuntu'])('shares an absolute config directory in %s', async (wslDistro) => {
+    const configDir = !wslDistro && process.platform === 'win32' ? 'C:\\gh' : '/home/gh'
+    const env = { GH_CONFIG_DIR: configDir }
+    exec.mockResolvedValueOnce(response(true))
+
+    await detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, env, wslDistro },
+      'local:host'
+    )
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { cwd: '/another-worktree', env, wslDistro },
+        'local:host'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: true })
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Windows-looking relative config paths isolated inside WSL', async () => {
+    const env = { GH_CONFIG_DIR: 'C:\\gh' }
+    exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
+
+    await detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, env, wslDistro: 'Ubuntu' },
+      'local:Ubuntu'
+    )
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { cwd: '/another-worktree', env, wslDistro: 'Ubuntu' },
+        'local:Ubuntu'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not couple independent abort signals or cache an aborted result', async () => {
+    const canceled = Promise.withResolvers<{ stdout: string }>()
+    const surviving = Promise.withResolvers<{ stdout: string }>()
+    const firstController = new AbortController()
+    const secondController = new AbortController()
+    exec.mockReturnValueOnce(canceled.promise).mockReturnValueOnce(surviving.promise)
+    const first = detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, signal: firstController.signal },
+      'local:host'
+    )
+    const second = detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, signal: secondController.signal },
+      'local:host'
+    )
+    expect(exec).toHaveBeenCalledTimes(2)
+    firstController.abort()
+    canceled.reject(firstController.signal.reason)
+    await expect(first).resolves.toMatchObject({ autoMergeAllowed: null })
+    surviving.resolve(response(false))
+    await expect(second).resolves.toMatchObject({ autoMergeAllowed: false })
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries immediately with a new signal after the only probe aborts', async () => {
+    const canceled = Promise.withResolvers<{ stdout: string }>()
+    const controller = new AbortController()
+    exec.mockReturnValueOnce(canceled.promise).mockResolvedValueOnce(response(true))
+    const first = detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, signal: controller.signal },
+      'local:host'
+    )
+    controller.abort()
+    canceled.reject(controller.signal.reason)
+    await first
+
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { ...options, signal: new AbortController().signal },
+        'local:host'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: true })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('still coalesces a shared signal and reuses its successful completed result', async () => {
+    const pending = Promise.withResolvers<{ stdout: string }>()
+    const signal = new AbortController().signal
+    exec.mockReturnValueOnce(pending.promise)
+    const reads = Array.from({ length: 10 }, () =>
+      detectRepositoryMergeMetadata(repository, 'main', { ...options, signal }, 'local:host')
+    )
+    expect(exec).toHaveBeenCalledTimes(1)
+    pending.resolve(response(true))
+    await Promise.all(reads)
+
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: true })
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains a surviving cache writer when a newer independent probe aborts', async () => {
+    const older = Promise.withResolvers<{ stdout: string }>()
+    const canceled = Promise.withResolvers<{ stdout: string }>()
+    const controller = new AbortController()
+    exec.mockReturnValueOnce(older.promise).mockReturnValueOnce(canceled.promise)
+    const first = detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    const second = detectRepositoryMergeMetadata(
+      repository,
+      'main',
+      { ...options, signal: controller.signal },
+      'local:host'
+    )
+    controller.abort()
+    canceled.reject(controller.signal.reason)
+    await second
+    older.resolve(response(false))
+    await first
+
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not spend quota for an already aborted probe', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    exec.mockResolvedValue(response(true))
+
+    await expect(
+      detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { ...options, signal: controller.signal },
+        'local:host'
+      )
+    ).resolves.toMatchObject({ autoMergeAllowed: null })
+    expect(exec).not.toHaveBeenCalled()
+    expect(spend).not.toHaveBeenCalled()
   })
 
   it('keeps inferred WSL distro credentials separate from native and other distros', async () => {
