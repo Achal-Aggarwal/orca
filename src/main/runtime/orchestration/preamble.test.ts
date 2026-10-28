@@ -393,7 +393,10 @@ describe('canonical task input and its display slice', () => {
         [
           {
             type: 'text',
-            text: raw.replace('multi-agent IDE', 'multi-agent IDE with edited instructions')
+            text: raw.replace(
+              'You are a dispatched worker.',
+              'You are a dispatched worker with edited instructions.'
+            )
           }
         ],
         from
@@ -402,6 +405,7 @@ describe('canonical task input and its display slice', () => {
     for (const text of [
       'unrecognized',
       raw.replace('You are working inside Orca', 'changed'),
+      raw.replace('multi-agent IDE', 'multi-agent IDE with edited instructions'),
       `${ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX}\n${'x'.repeat(24_576)}\n=== TASK ===\nlate`
     ]) {
       expect(agentMessageDisplayText([{ type: 'text', text }], from)).toBeUndefined()

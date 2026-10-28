@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { NativeChatQueuedMessageEditor } from './NativeChatQueuedMessageEditor'
+import { NativeChatQueuedMessageCard } from './NativeChatQueuedMessageCard'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
 import {
@@ -35,6 +36,7 @@ import type { NativeChatComposerHandle } from './native-chat-composer-types'
 import { routeNativeChatRootKeyToInput } from './native-chat-root-key-routing'
 import * as OsFileDropOwner from '@/hooks/use-os-file-drop-owner'
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
+import { ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX } from '../../../../shared/orca-dispatch-status-prompt'
 
 const externalAttachments = ExternalAttachments.useNativeChatExternalAttachments
 let chips: Parameters<typeof externalAttachments>[0]['pendingChips']
@@ -279,25 +281,50 @@ const write = writeSpy as StructuredAgentSessionWrite
 function EditedCard({
   imagesCapable,
   acceptsImages = true,
-  runtimeEnvironmentId = null
+  runtimeEnvironmentId = null,
+  queuedMessage
 }: {
   imagesCapable: boolean
   acceptsImages?: boolean
   runtimeEnvironmentId?: string | null
+  queuedMessage?: AgentSessionQueuedMessage
 }): React.JSX.Element | null {
-  const messages = [card]
+  const messages = [queuedMessage ?? card]
+  const cards = projectQueuedMessageCards(messages, [], {})
   const { editor, begin } = useStructuredAgentSessionQueuedEdit({
     transport: { target: { kind: 'local' }, sessionId: 's', capable: true, imagesCapable, write },
     messages,
-    cards: projectQueuedMessageCards(messages, [], {}),
+    cards,
     submissions: [],
     composerScopeKey: 'draft',
     promptOpen: false
   })
-  useEffect(() => void begin('card'), [begin])
+  useEffect(() => {
+    if (!queuedMessage) {
+      void begin('card')
+    }
+  }, [begin, queuedMessage])
   const attachTo = {
     terminalTabId: 'tab',
     transport: { sessionId: 's', worktreeId: 'wt', runtimeEnvironmentId, acceptsImages }
+  }
+  if (queuedMessage) {
+    return (
+      <TooltipProvider>
+        <ul>
+          <NativeChatQueuedMessageCard
+            card={cards[0]!}
+            chatWorktreeId={null}
+            showsSteerShortcut={false}
+            onSteer={() => {}}
+            onDelete={() => {}}
+            onEdit={() => void begin(queuedMessage.messageId)}
+            editor={editor ?? undefined}
+            editAttachTo={attachTo}
+          />
+        </ul>
+      </TooltipProvider>
+    )
   }
   return editor ? (
     <TooltipProvider>
@@ -313,6 +340,62 @@ function EditedCard({
 function savedParams(): unknown {
   return writeSpy.mock.calls.at(-1)?.[2]
 }
+
+it('shows only the queued task but edits, saves and reopens its full raw preamble', async () => {
+  writeSpy.mockClear()
+  const prefix = `${ORCA_DISPATCH_STATUS_PREAMBLE_PREFIX} You are a dispatched worker.\n=== TASK ===\n`
+  const task = 'Inspect the queued task'
+  const changedTask = 'Inspect the edited task'
+  const message: AgentSessionQueuedMessage = {
+    messageId: 'card',
+    position: 1,
+    state: 'waiting',
+    body: {
+      kind: 'message',
+      role: 'user',
+      blocks: [{ type: 'text', text: prefix + task }],
+      from: {
+        kind: 'agent',
+        senders: [],
+        orchestration: { message: 'task', runId: 'r', taskId: 't', dispatchId: 'd' }
+      }
+    }
+  }
+  expect(projectQueuedMessageCards([message], [], {})[0]).toMatchObject({
+    text: prefix + task,
+    displayText: task
+  })
+  const { rerender } = render(<EditedCard imagesCapable={false} queuedMessage={message} />)
+  expect(screen.getByTitle(task).textContent).toBe(task)
+  expect(screen.queryByText(/You are working inside Orca/)).toBeNull()
+
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit message' }))
+  const field = await screen.findByRole('textbox', { name: 'Edit message' })
+  await waitFor(() => expect(field).toHaveProperty('readOnly', false))
+  expect(field).toHaveProperty('value', prefix + task)
+  fireEvent.change(field, { target: { value: prefix + changedTask } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(writeSpy).toHaveBeenCalledOnce())
+  expect(savedParams()).toMatchObject({ messageId: 'card', text: prefix + changedTask })
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+
+  const savedMessage: AgentSessionQueuedMessage = {
+    ...message,
+    body: { ...message.body, blocks: [{ type: 'text', text: prefix + changedTask }] }
+  }
+  rerender(<EditedCard imagesCapable={false} queuedMessage={savedMessage} />)
+  expect(screen.getByTitle(changedTask).textContent).toBe(changedTask)
+  expect(screen.queryByText(/You are working inside Orca/)).toBeNull()
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit message' }))
+  const reopened = await screen.findByRole('textbox', { name: 'Edit message' })
+  await waitFor(() => expect(reopened).toHaveProperty('readOnly', false))
+  expect(reopened).toHaveProperty('value', prefix + changedTask)
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }))
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+  expect(writeSpy).toHaveBeenCalledOnce()
+})
 
 function PastePane({
   composer,

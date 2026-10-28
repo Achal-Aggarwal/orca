@@ -77,8 +77,9 @@ describe("another agent's message in the transcript", () => {
         { address: 'term_b', name: 'Codex' }
       ])
     )
+    expect(screen.getByText('Message from')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Codex' })).toHaveLength(2)
-    expect(container.textContent).toContain('Message fromCodex,Codex')
+    expect(container.textContent).toContain('Codex,Codex')
   })
 
   it('names each sender, an unnamed one as an agent, and counts the rest', () => {
