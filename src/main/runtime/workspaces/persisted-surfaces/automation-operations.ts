@@ -1,3 +1,7 @@
+import { buildCrewSnapshot } from '../../orchestration/crew/crew-read-model'
+import { getPublishedHostDescriptor } from '../../host-descriptor'
+import { conversationRecordReader } from '../../orchestration/structured-session-lineage'
+import { peekOpenedAgentSessionRecordStore } from '../../agent-session-record-store-slot'
 import type { AutomationsChangedPayload } from '../../../../shared/runtime-client-events'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { OrcaRuntimeWithPtyForegroundProcessReads } from '../../client/runtime-client-state'
@@ -153,6 +157,7 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
     if (!this._orchestrationDb) {
       this._orchestrationDb = new OrchestrationDb(this.orchestrationDbPath())
       this.bindMailHandBack(this._orchestrationDb)
+      this.bindCrewChanges(this._orchestrationDb)
       this.ensureOrchestrationFederationRelay()
       this.scheduleRestoredMessageRepoints()
     }
@@ -175,8 +180,33 @@ export abstract class OrcaRuntimeWithAutomationOperations extends OrcaRuntimeWit
     this.mailPointerRepointScheduler.clear()
     this._orchestrationDb = db
     this.bindMailHandBack(db)
+    this.bindCrewChanges(db)
     this.ensureOrchestrationFederationRelay()
     this.scheduleRestoredMessageRepoints()
+  }
+
+  private unwatchCrewDb: (() => void) | undefined
+
+  private bindCrewChanges(db: OrchestrationDb): void {
+    this.unwatchCrewDb?.()
+    this.unwatchCrewDb = db.crewChanges.subscribe(this.crewChanges.notify)
+    this.crewChanges.notify()
+  }
+
+  getOrchestrationCrewSnapshot(party: string) {
+    const store = peekOpenedAgentSessionRecordStore()
+    return buildCrewSnapshot(party, {
+      db: this._orchestrationDb,
+      retainedDbExists: existsSync(this.orchestrationDbPath()),
+      hostKey: getPublishedHostDescriptor(this.runtimeId)?.installationId ?? this.runtimeId,
+      records: store ? conversationRecordReader(store) : null,
+      liveHandle: (handle) => this.getTerminalWorktreeIdForHandle(handle) !== null,
+      handleForPane: (pane) => this.getTerminalHandleForPaneKey(pane),
+      paneForHandle: (handle) => this.getPaneKeyForTerminalHandle(handle),
+      name: (identity, taskName) =>
+        this.orchestrationSenderNames.nameOf(identity, undefined, taskName),
+      statuses: this.getOrchestrationFleetAgentStatusSnapshot()
+    })
   }
 
   private bindMailHandBack(db: OrchestrationDb): void {

@@ -1,3 +1,4 @@
+import { sessionCrewChanges } from './orchestration/crew/crew-changes'
 import type { AgentSessionStoreState } from './agent-session-store-state'
 import type { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 
@@ -41,6 +42,7 @@ export abstract class AgentSessionRecordPublication {
         .map(([id]) => id)
       return applied
     }, options)
+    sessionCrewChanges.notify()
     for (const sessionId of proven) {
       this.deathEvidenceListeners.forEach((listener) => listener(sessionId))
     }

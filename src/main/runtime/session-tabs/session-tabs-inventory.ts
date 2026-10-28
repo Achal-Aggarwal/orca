@@ -1,3 +1,4 @@
+import { visibleGraphChangedWorktrees } from '../session-graph/visible-graph-changed-worktrees'
 import type { RuntimeSessionTabsInventoryPublication as SessionTabsInventoryPublicationMethods } from './session-tabs-inventory-publication'
 import type { OrcaRuntimeWithScheduleMobileSessionTabsChanged as ScheduleMobileSessionTabsChangedMethods } from './session-tabs-change-publication'
 import type { OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree as ResolveBrowserNetworkExecutionHostForWorktreeMethods } from '../terminal/launch/terminal-workspace-scope'
@@ -145,33 +146,14 @@ export abstract class OrcaRuntimeWithCollectMobileVisibleGraphChangedWorktrees e
     previousTabs: Map<string, RuntimeSyncedTab>,
     previousLeaves: Map<string, RuntimeLeafRecord>
   ): Set<string> {
-    const changed = new Set<string>()
-    for (const [tabId, tab] of this.tabs) {
-      const prev = previousTabs.get(tabId)
-      if (!prev || prev.title !== tab.title) {
-        changed.add(tab.worktreeId)
-      }
-    }
-    for (const [tabId, tab] of previousTabs) {
-      if (!this.tabs.has(tabId)) {
-        changed.add(tab.worktreeId)
-      }
-    }
-    for (const [leafKey, leaf] of this.leaves) {
-      const prev = previousLeaves.get(leafKey)
-      if (
-        !prev ||
-        prev.ptyId !== leaf.ptyId ||
-        prev.connected !== leaf.connected ||
-        prev.paneTitle !== leaf.paneTitle
-      ) {
-        changed.add(leaf.worktreeId)
-      }
-    }
-    for (const [leafKey, leaf] of previousLeaves) {
-      if (!this.leaves.has(leafKey)) {
-        changed.add(leaf.worktreeId)
-      }
+    const changed = visibleGraphChangedWorktrees(
+      previousTabs,
+      previousLeaves,
+      this.tabs,
+      this.leaves
+    )
+    if (changed.size > 0) {
+      this.crewChanges.notify()
     }
     return changed
   }

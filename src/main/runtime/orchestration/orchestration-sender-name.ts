@@ -1,3 +1,4 @@
+import { crewDisplayName } from './crew/crew-rules'
 import type { AgentMessageSender } from '../../../shared/agent-session/agent-session-message-source'
 import { defaultAgentChatLabel } from '../../../shared/agent-session/agent-session-chat-label'
 import {
@@ -38,7 +39,8 @@ type Party = AgentMessageSender['party']
 export function orchestrationSenderName(
   party: Party,
   sources: SenderNamingSources,
-  reportedDispatchId?: string
+  reportedDispatchId?: string,
+  taskName?: string | null
 ): string | null {
   const federated = party.address.startsWith('dispatch:')
   const terminal =
@@ -53,12 +55,14 @@ export function orchestrationSenderName(
         terminal.providerSessionId
       )
     : null
-  return (
-    chat?.ownName ||
-    terminalName ||
-    dispatchTaskName(party, federated, terminal, sources.db, reportedDispatchId) ||
-    chat?.fallback ||
-    (terminal?.agent ? formatAgentTypeLabel(terminal.agent) : null)
+  return crewDisplayName(
+    chat?.ownName,
+    terminalName,
+    taskName !== undefined
+      ? taskName
+      : dispatchTaskName(party, federated, terminal, sources.db, reportedDispatchId),
+    chat?.fallback,
+    terminal?.agent ? formatAgentTypeLabel(terminal.agent) : null
   )
 }
 

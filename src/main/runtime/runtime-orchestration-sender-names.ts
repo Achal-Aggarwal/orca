@@ -75,7 +75,11 @@ export class RuntimeOrchestrationSenderNames {
     )
   }
 
-  nameOf(party: AgentMessageSender['party'], reportedDispatchId?: string): string | null {
+  nameOf(
+    party: AgentMessageSender['party'],
+    reportedDispatchId?: string,
+    taskName?: string | null
+  ): string | null {
     return orchestrationSenderName(
       party,
       {
@@ -90,7 +94,8 @@ export class RuntimeOrchestrationSenderNames {
         terminal: (handle) => this.terminalNaming(handle),
         generatedTitlesEnabled: this.deps.getGeneratedTitlesEnabled()
       },
-      reportedDispatchId
+      reportedDispatchId,
+      taskName
     )
   }
 
