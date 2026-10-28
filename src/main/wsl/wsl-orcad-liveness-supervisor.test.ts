@@ -25,7 +25,7 @@ function harness(options: { visible?: boolean } = {}) {
   let pid = 100
   let connection: WslOrcadConnection | null = null
   const statuses: WslOrcadConnectionStatus[] = []
-  const watches: { exit: (code: number | null) => void; closed: boolean }[] = []
+  const watches: { exit: (code: number | null) => void; idle: () => void; closed: boolean }[] = []
   const state: {
     visible: boolean
     running: WslRunningDistrosRead
