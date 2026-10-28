@@ -214,13 +214,44 @@ export function rewindHistoryIndexPastView(
   return findPrevLiveWorktreeHistoryIndex(state) ?? state.worktreeNavHistoryIndex
 }
 
-export function canGoBackWorktreeHistory(state: AppState): boolean {
-  return findPrevLiveWorktreeHistoryIndex(state) !== null
+function createHistoryAvailabilitySelector(findIndex: (state: AppState) => number | null) {
+  let previous:
+    | {
+        history: AppState['worktreeNavHistory']
+        index: number
+        worktrees: AppState['worktreesByRepo']
+        folders: AppState['folderWorkspaces']
+      }
+    | undefined
+  let available = false
+  return (state: AppState): boolean => {
+    const worktreesByRepo = selectWorktreesByRepo(state)
+    const folderWorkspaces = selectFolderWorkspaces(state)
+    if (
+      !previous ||
+      previous.history !== state.worktreeNavHistory ||
+      previous.index !== state.worktreeNavHistoryIndex ||
+      previous.worktrees !== worktreesByRepo ||
+      previous.folders !== folderWorkspaces
+    ) {
+      available = findIndex(state) !== null
+      previous = {
+        history: state.worktreeNavHistory,
+        index: state.worktreeNavHistoryIndex,
+        worktrees: worktreesByRepo,
+        folders: folderWorkspaces
+      }
+    }
+    return available
+  }
 }
 
-export function canGoForwardWorktreeHistory(state: AppState): boolean {
-  return findNextLiveWorktreeHistoryIndex(state) !== null
-}
+export const canGoBackWorktreeHistory = createHistoryAvailabilitySelector(
+  findPrevLiveWorktreeHistoryIndex
+)
+export const canGoForwardWorktreeHistory = createHistoryAvailabilitySelector(
+  findNextLiveWorktreeHistoryIndex
+)
 
 export const createWorktreeNavHistorySlice: StateCreator<
   AppState,
