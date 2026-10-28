@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { z } from 'zod'
@@ -36,6 +35,7 @@ import {
   skillSharePrepareIpcSchema,
   skillSharePublishIpcSchema
 } from './skill-share-publishing-ipc-schemas'
+import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 
 function registerSharingHandlers(
   runtime: OrcaRuntimeService,
@@ -148,7 +148,7 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
     sendSkillInstallProgress(event, { operationId: input.operationId, phase: 'authorizing' })
     if (
       input.environmentId &&
-      !(await supportsSkillRuntimeInstall(app.getPath('userData'), input.environmentId))
+      !(await supportsSkillRuntimeInstall(getRuntimeEnvironmentRegistryRoot(), input.environmentId))
     ) {
       return { status: 'unsupported' as const, message: SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE }
     }
@@ -170,7 +170,10 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
     if (
       input.environmentId &&
       !input.environmentId.startsWith('ssh:') &&
-      !(await supportsSkillRuntimeBundleInstall(app.getPath('userData'), input.environmentId))
+      !(await supportsSkillRuntimeBundleInstall(
+        getRuntimeEnvironmentRegistryRoot(),
+        input.environmentId
+      ))
     ) {
       return { status: 'unsupported' as const, message: SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE }
     }
@@ -195,7 +198,7 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
     sendSkillInstallProgress(event, { operationId: input.operationId, phase: 'authorizing' })
     if (
       input.environmentId &&
-      !(await supportsSkillRuntimeInstall(app.getPath('userData'), input.environmentId))
+      !(await supportsSkillRuntimeInstall(getRuntimeEnvironmentRegistryRoot(), input.environmentId))
     ) {
       return { status: 'unsupported' as const, message: SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE }
     }
@@ -218,7 +221,10 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
     if (
       input.environmentId &&
       !input.environmentId.startsWith('ssh:') &&
-      !(await supportsSkillRuntimeBundleInstall(app.getPath('userData'), input.environmentId))
+      !(await supportsSkillRuntimeBundleInstall(
+        getRuntimeEnvironmentRegistryRoot(),
+        input.environmentId
+      ))
     ) {
       return { status: 'unsupported' as const, message: SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE }
     }
@@ -250,7 +256,12 @@ function registerCloudInstallHandlers(runtime: OrcaRuntimeService): void {
       return { cancelled: runtime.cancelSharedSkillInstall(input.operationId) }
     }
     const transferCancelled = remoteInstallCancellation.cancel(input.operationId)
-    if (!(await supportsSkillRuntimeCancellation(app.getPath('userData'), input.environmentId))) {
+    if (
+      !(await supportsSkillRuntimeCancellation(
+        getRuntimeEnvironmentRegistryRoot(),
+        input.environmentId
+      ))
+    ) {
       return { cancelled: transferCancelled }
     }
     const response = await callRuntimeEnvironment(

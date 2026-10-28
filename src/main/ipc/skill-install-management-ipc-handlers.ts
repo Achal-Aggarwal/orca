@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 import { app } from 'electron'
 import { z } from 'zod'
 import { SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE } from '../../shared/skill-install-capability'
@@ -22,6 +21,7 @@ import {
 import { listWslDistrosAsync } from '../wsl'
 import { callRuntimeEnvironment } from './runtime-environments/runtime-environment-transport-routing'
 import { handleMainWindowSkillIpc } from './skill-ipc-main-window'
+import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
 
 const environmentIdSchema = z.string().min(1).max(128)
 const skillNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
@@ -155,8 +155,14 @@ export function registerSkillInstallManagementIpcHandlers(runtime: OrcaRuntimeSe
       .parse(value)
     if (
       parsed.environmentId &&
-      (!(await supportsSkillRuntimeManagement(app.getPath('userData'), parsed.environmentId)) ||
-        !(await supportsSkillRuntimeBundleInstall(app.getPath('userData'), parsed.environmentId)))
+      (!(await supportsSkillRuntimeManagement(
+        getRuntimeEnvironmentRegistryRoot(),
+        parsed.environmentId
+      )) ||
+        !(await supportsSkillRuntimeBundleInstall(
+          getRuntimeEnvironmentRegistryRoot(),
+          parsed.environmentId
+        )))
     ) {
       return { status: 'unsupported' as const, message: SKILL_INSTALL_UPDATE_REQUIRED_MESSAGE }
     }
