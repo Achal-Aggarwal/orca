@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
+import { waitFor } from '@testing-library/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
@@ -85,7 +86,8 @@ it('opens setup with a clicked chevron without launching, then dispatches its se
   expect(launch).toHaveBeenCalledTimes(1)
   expect(launch.mock.calls[0]).toMatchObject([
     { agent: 'codex', kind: 'cli' },
-    { agent: 'codex', surface: 'terminal', choices: {} }
+    { agent: 'codex', surface: 'terminal', choices: {} },
+    entry
   ])
 })
 it('launches the alternate search result once and closes the owning menu', () => {
@@ -141,4 +143,42 @@ it('lets the chevron return keyboard focus to its row without opening or launchi
   expect(document.activeElement?.getAttribute('role')).toBe('menuitem')
   expect(document.body.textContent).not.toContain('Arguments')
   expect(launch).not.toHaveBeenCalled()
+})
+
+it('launches the searched default once from Enter', () => {
+  const input = document.querySelector('input')!
+  act(() => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+      input,
+      'astra low'
+    )
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  act(() =>
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    )
+  )
+  expect(launch).toHaveBeenCalledOnce()
+  expect(launch.mock.calls[0][1]).toMatchObject({
+    surface: 'chat',
+    choices: { model: 'astra', options: { effort: 'low' } }
+  })
+})
+
+it('closes Configure with Escape without dispatch and returns focus to its trigger', async () => {
+  const configure = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Configure Codex"]'
+  )!
+  act(() => configure.click())
+  const search = document.querySelector<HTMLInputElement>('input[aria-label="Search models"]')!
+  act(() => {
+    search.focus()
+    search.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    )
+  })
+  expect(launch).not.toHaveBeenCalled()
+  expect(document.querySelector('input[aria-label="Search models"]')).toBeNull()
+  await waitFor(() => expect(document.activeElement).toBe(configure))
 })

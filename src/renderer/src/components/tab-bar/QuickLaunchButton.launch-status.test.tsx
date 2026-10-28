@@ -408,7 +408,7 @@ it('forwards configured choices through the existing dispatcher and launch-only 
   expect(launchMock.mock.calls[0][0]).toMatchObject({
     requestedSurface: 'terminal',
     selectedExecutionHostId: 'runtime:server',
-    agentArgs: '--add-dir docs',
+    agentArgs: expect.stringContaining('--add-dir docs'),
     sessionOptions: { model: 'astra', effort: 'low', permissionMode: 'ask' }
   })
   hook.result.current(

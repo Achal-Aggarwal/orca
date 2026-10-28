@@ -27,6 +27,7 @@ import {
   clearHostAgentMenuSettingsForTests,
   readAgentLaunchPreferencesForWorktree
 } from '../settings/use-host-agent-launch-preferences'
+import { useAgentLaunchPickerInventory } from '../agent/use-agent-launch-picker-inventory'
 import { useNewTabAgentMenuRows } from './use-new-tab-agent-menu-rows'
 
 const rpc = vi.hoisted(() => ({ call: vi.fn(), supports: vi.fn() }))
@@ -441,3 +442,55 @@ it.each(['pairing', 'runtime'] as const)(
     }
   }
 )
+
+it('keeps real observation/inventory consumers asleep for unrelated settings and another host, and updates a used default', async () => {
+  let renders = 0
+  const hook = renderHook(() => {
+    const menu = useNewTabAgentMenuRows('wt', true, { kind: 'runtime', environmentId: 'alpha' })
+    const entries = useAgentLaunchPickerInventory('wt', menu, true)
+    renders++
+    return { menu, entries }
+  })
+  await act(async () => {})
+  const settled = renders
+  await act(async () => {
+    useAppStore.setState((state) => ({ settings: { ...state.settings!, terminalFontSize: 19 } }))
+  })
+  expect(renders).toBe(settled)
+  await act(async () => {
+    useAppStore.setState((state) => ({
+      runtimeStatusByEnvironmentId: new Map(state.runtimeStatusByEnvironmentId).set(
+        'beta',
+        status('another-host-update')
+      )
+    }))
+  })
+  expect(renders).toBe(settled)
+  await act(async () => {
+    useAppStore.setState((state) => ({
+      settings: {
+        ...state.settings!,
+        nativeChatPermissionMode:
+          state.settings?.nativeChatPermissionMode === 'ask' ? 'full-access' : 'ask'
+      }
+    }))
+  })
+  expect(renders).toBeGreaterThan(settled)
+  expect(hook.result.current.menu.state).toBe('settled')
+  useAppStore.setState({
+    folderWorkspaces: [makeFolderWorkspace({ id: 'local', executionHostId: 'local' })]
+  })
+  const local = renderHook(() => {
+    const menu = useNewTabAgentMenuRows('folder:local', true, { kind: 'local' })
+    return useAgentLaunchPickerInventory('folder:local', menu, true)
+  })
+  await act(async () => {})
+  await act(async () => {
+    useAppStore.setState((state) => ({
+      settings: { ...state.settings!, agentPermissionDefault: 'ask' }
+    }))
+  })
+  expect(
+    local.result.current.find((entry) => entry.agent === 'claude')?.terminal.permissionMode
+  ).toBe('ask')
+})

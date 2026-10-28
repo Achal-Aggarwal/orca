@@ -7,6 +7,7 @@ export {
 } from './agent-launch-picker-catalog'
 import { projectAgentLaunchProfile } from './agent-launch-profile'
 import { structuredLaunchSeedOptions } from './native-chat-session-option-defaults'
+import { isAgentChatPermissionChoice } from './agent-chat-permission-mode'
 import type { GlobalSettings } from './global-settings-types'
 import type { AgentChoicePatch, AgentDedicatedChoices } from './agent-launch-choices'
 import { reconcileAgentChoiceArgs } from './agent-choice-reconciliation'
@@ -57,8 +58,13 @@ export function agentPickerEffectiveChoices(
   return resolveAgentChoiceLayers({
     agent: entry.agent,
     defaults: draft.surface === 'chat' ? entry.structured : entry.terminal,
-    explicit: draft.choices,
-    userArgs: draft.arguments === undefined ? entry.arguments : draft.arguments,
+    explicit: agentPickerLaunchChoices(draft).choices,
+    userArgs:
+      draft.surface === 'chat'
+        ? undefined
+        : draft.arguments === undefined
+          ? entry.arguments
+          : draft.arguments,
     argumentOwner: draft.arguments === undefined ? 'defaults' : 'launch'
   })
 }
@@ -67,29 +73,48 @@ export function editAgentPickerDraft(
   draft: AgentPickerDraft,
   patch: AgentChoicePatch
 ): AgentPickerDraft {
+  const keys = new Set([
+    ...(patch.model !== undefined ? ['model'] : []),
+    ...Object.keys(patch.options ?? {})
+  ])
   const result = reconcileAgentChoiceArgs({
     agent: draft.agent,
-    userArgs: draft.arguments ?? '',
+    userArgs: '',
     choices: draft.choices,
     mode: 'choice-edit',
-    keys: new Set([
-      ...(patch.model !== undefined ? ['model'] : []),
-      ...Object.keys(patch.options ?? {}),
-      ...(patch.permissionMode ? ['permissionMode'] : [])
-    ]),
+    keys,
     patch
   })
+  // Terminal text can clear its own flags without making its other lifted values shared choices.
+  const argumentsEdit =
+    draft.arguments === undefined
+      ? undefined
+      : reconcileAgentChoiceArgs({
+          agent: draft.agent,
+          userArgs: draft.arguments ?? '',
+          choices: agentPickerLaunchChoices({ ...draft, surface: 'terminal' }).choices,
+          mode: 'choice-edit',
+          keys,
+          patch
+        })
   return {
     ...draft,
     choices: result.choices,
-    ...(draft.arguments === undefined ? {} : { arguments: result.userArgs || null })
+    ...(argumentsEdit ? { arguments: argumentsEdit.userArgs || null } : {})
   }
 }
 
 export function editAgentPickerArguments(draft: AgentPickerDraft, text: string): AgentPickerDraft {
+  return { ...draft, arguments: text || null }
+}
+
+function agentPickerLaunchChoices(draft: AgentPickerDraft) {
+  if (draft.surface !== 'terminal' || draft.arguments === undefined) {
+    return { choices: draft.choices, userArgs: draft.arguments }
+  }
   const result = reconcileAgentChoiceArgs({
     agent: draft.agent,
-    userArgs: text,
+    userArgs: draft.arguments ?? '',
     choices: draft.choices,
     mode: 'arguments-edit',
     keys: new Set([
@@ -99,7 +124,29 @@ export function editAgentPickerArguments(draft: AgentPickerDraft, text: string):
       ...agentPickerOptions(draft.agent, draft.choices.model, 'terminal').map((option) => option.id)
     ])
   })
-  return { ...draft, arguments: result.userArgs || null, choices: result.choices }
+  return result
+}
+
+export function agentPickerLaunchInputs(draft: AgentPickerDraft, entry?: AgentPickerEntry) {
+  const { choices, userArgs } = agentPickerLaunchChoices(draft)
+  // The existing dispatcher treats an Arguments override as the complete terminal profile.
+  return {
+    sessionOptions: agentPickerSessionOptions(choices),
+    ...(draft.surface === 'terminal' && userArgs !== undefined
+      ? {
+          agentArgs: projectAgentLaunchProfile(draft.agent, undefined, {
+            target: 'terminal',
+            userArgs: userArgs ?? '',
+            choices: {
+              ...(entry?.terminal.permissionMode
+                ? { permissionMode: entry.terminal.permissionMode }
+                : {}),
+              ...choices
+            }
+          }).args
+        }
+      : {})
+  }
 }
 
 export function agentPickerButtonOrder(entry: AgentPickerEntry): AgentPickerSurface[] {
@@ -116,7 +163,11 @@ const tokens = (value: string): string[] =>
     .split(/[\s_\-/·]+/)
     .filter(Boolean)
 const score = (word: string, values: readonly string[]): number =>
-  values.includes(word) ? 2 : values.some((value) => value.startsWith(word)) ? 1 : 0
+  values.includes(word)
+    ? 2
+    : word.length >= 2 && values.some((value) => value.startsWith(word))
+      ? 1
+      : 0
 
 export function searchAgentPickerSetups(
   entries: readonly AgentPickerEntry[],
@@ -129,7 +180,7 @@ export function searchAgentPickerSetups(
   }
   const matches: { setup: AgentPickerSetup; score: number }[] = []
   for (const entry of entries) {
-    if (!entry.surfaces.length) {
+    if (!entry.surfaces.length || entry.catalog.origin === 'unknown') {
       continue
     }
     const agentWords = tokens([entry.agent, entry.label, ...(entry.aliases ?? [])].join(' '))
@@ -141,6 +192,9 @@ export function searchAgentPickerSetups(
         continue
       }
       const modelWords = tokens([model.id, model.label].join(' '))
+      if (!words.some((word) => !score(word, agentWords) && score(word, modelWords))) {
+        continue
+      }
       const effortQuery = model.efforts.filter((effort) =>
         words.some(
           (word) =>
@@ -229,17 +283,13 @@ export function agentPickerChoiceSeeds(
   settings: AgentPickerDefaultSettings | null | undefined
 ): Pick<AgentPickerEntry, 'terminal' | 'structured' | 'arguments'> {
   const profile = projectAgentLaunchProfile(agent, settings, { target: 'structured' })
-  const {
-    model,
-    permissionMode: _permission,
-    ...options
-  } = structuredLaunchSeedOptions(settings, agent) ?? {}
+  const { model, permissionMode, ...options } = structuredLaunchSeedOptions(settings, agent) ?? {}
   return {
     terminal: profile.choices,
     structured: {
       ...(model ? { model } : {}),
       options,
-      ...(profile.choices.permissionMode ? { permissionMode: profile.choices.permissionMode } : {})
+      ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
     },
     arguments: profile.args
   }

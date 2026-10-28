@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { readHostAgentLaunchSettings } from '../settings/agent-launch-settings-transport'
 import type { NewTabAgentMenuModel } from '../tab-bar/use-new-tab-agent-menu-rows'
 import { useAppStore } from '@/store'
@@ -29,9 +29,8 @@ export function useAgentLaunchPickerInventory(
 ): AgentPickerEntry[] {
   const selectedRef = useRef(selected)
   selectedRef.current = selected
-  const desktopSettings = useAppStore((state) => state.settings)
   const context = model.state === 'settled' ? model.pickerContext : undefined
-  const settings = context?.settings ?? desktopSettings
+  const settings = context ? context.settings : useAppStore.getState().settings
   const route = buildAgentLaunchRouteInput(useAppStore.getState(), {
     agent: 'claude',
     workspace: context?.workspace ?? {
@@ -42,19 +41,25 @@ export function useAgentLaunchPickerInventory(
   const target = structuredAgentSessionTargetForHost(
     context?.executionHostId ?? route.executionHostId
   )
-  const key = JSON.stringify([
-    context?.key,
-    worktreeId,
-    target,
-    model.state === 'settled' ? model.rows : [],
-    settings && {
-      agentDefaultArgs: settings.agentDefaultArgs,
-      agentPermissionDefault: settings.agentPermissionDefault,
-      agentPermissionOverrides: settings.agentPermissionOverrides,
-      nativeChatSessionOptions: settings.nativeChatSessionOptions,
-      nativeChatPermissionMode: settings.nativeChatPermissionMode
-    }
-  ])
+  const executionHostId = context?.executionHostId ?? route.executionHostId
+  const key = useMemo(
+    () =>
+      JSON.stringify([
+        context?.key,
+        worktreeId,
+        executionHostId,
+        model.state === 'settled' ? model.rows : [],
+        model.state === 'settled' ? model.detection.detectedIds : [],
+        settings && {
+          agentDefaultArgs: settings.agentDefaultArgs,
+          agentPermissionDefault: settings.agentPermissionDefault,
+          agentPermissionOverrides: settings.agentPermissionOverrides,
+          nativeChatSessionOptions: settings.nativeChatSessionOptions,
+          nativeChatPermissionMode: settings.nativeChatPermissionMode
+        }
+      ]),
+    [context, worktreeId, executionHostId, model, settings]
+  )
   const [snapshot, setSnapshot] = useState<{ key: string; entries: AgentPickerEntry[] } | null>(
     null
   )
@@ -67,17 +72,20 @@ export function useAgentLaunchPickerInventory(
           formatAgentTypeLabel
         )
       : []
-  const fallback =
-    target?.kind === 'environment'
-      ? build({}).map((entry) => ({
-          ...entry,
-          terminal: {},
-          structured: {},
-          arguments: undefined,
-          defaultsPending: true
-        }))
-      : build(settings)
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- The key includes all host, workspace, account and default inputs; fresh object identities must not restart the open batch.
+  /* oxlint-disable react-hooks/exhaustive-deps -- The semantic key covers the rows, detection, target and defaults; object identities must not restart a batch. */
+  const fallback = useMemo(
+    () =>
+      target?.kind === 'environment'
+        ? build({}).map((entry) => ({
+            ...entry,
+            terminal: {},
+            structured: {},
+            arguments: undefined,
+            defaultsPending: true
+          }))
+        : build(settings),
+    [key]
+  )
   useEffect(() => {
     if (!open || !target || !worktreeId || model.state !== 'settled') {
       return
@@ -130,57 +138,59 @@ export function useAgentLaunchPickerInventory(
       if (controller.signal.aborted) {
         return
       }
-      if (target.kind === 'environment') {
-        entries = entries.map((entry) =>
-          entry.surfaces.includes('chat') ? { ...entry, defaultsPending: true } : entry
-        )
-      }
+      entries = entries.map((entry) => ({ ...entry, defaultsPending: false }))
       publish(entries)
       const params = { worktree: `id:${worktreeId}` }
-      const next = agentPickerHydrationQueue(entries, () => selectedRef.current)
-      const hydrate = async () => {
+      const catalogs = agentPickerHydrationQueue(entries, () => selectedRef.current)
+      const supports = agentPickerHydrationQueue(entries, () => selectedRef.current)
+      const hydrate = async (kind: 'catalog' | 'support') => {
         while (!controller.signal.aborted) {
-          const index = next()
+          const index = (kind === 'catalog' ? catalogs : supports)()
           if (index === undefined) {
             break
           }
           const entry = entries[index]
-          const [catalog, support] = await Promise.all([
-            callStructuredAgentSession<AgentSessionModelCatalogResult>(
+          if (kind === 'catalog') {
+            const catalog = await callStructuredAgentSession<AgentSessionModelCatalogResult>(
               target,
               'agentSession.modelCatalog',
               { ...params, agent: entry.agent, waitForListing: true }
-            ).catch(() => null),
-            target.kind === 'environment' && entry.surfaces.includes('chat')
-              ? callStructuredAgentSession<{ seedOptions?: Record<string, string> }>(
-                  target,
-                  'agentSession.createSupport',
-                  { ...params, agent: entry.agent }
-                ).catch(() => null)
-              : null
-          ])
-          const { model, permissionMode, ...options } =
-            parseStructuredLaunchSeedOptions(support?.seedOptions) ?? {}
-          entries[index] = {
-            ...entry,
-            ...(catalog ? { catalog } : {}),
-            ...(support
-              ? {
-                  defaultsPending: false,
-                  structured: {
-                    ...(model ? { model } : {}),
-                    options,
-                    ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
-                  }
+            ).catch(() => null)
+            if (catalog) {
+              entries[index] = { ...entries[index], catalog }
+              publish(entries)
+            }
+          } else if (target.kind === 'environment' && entry.surfaces.includes('chat')) {
+            const support = await callStructuredAgentSession<{
+              seedOptions?: Record<string, string>
+            }>(target, 'agentSession.createSupport', { ...params, agent: entry.agent }).catch(
+              () => null
+            )
+            const { model, permissionMode, ...options } =
+              parseStructuredLaunchSeedOptions(support?.seedOptions) ?? {}
+            if (support?.seedOptions) {
+              entries[index] = {
+                ...entries[index],
+                structured: {
+                  ...(model ? { model } : {}),
+                  options,
+                  ...(isAgentChatPermissionChoice(permissionMode) ? { permissionMode } : {})
                 }
-              : {})
+              }
+              publish(entries)
+            }
           }
-          publish(entries)
         }
       }
-      await Promise.all([hydrate(), hydrate()])
+      await Promise.all([
+        hydrate('catalog'),
+        hydrate('catalog'),
+        hydrate('support'),
+        hydrate('support')
+      ])
     })().catch(() => publish(fallback))
     return () => controller.abort()
   }, [key, open])
+  /* oxlint-enable react-hooks/exhaustive-deps */
   return snapshot?.key === key ? snapshot.entries : fallback
 }

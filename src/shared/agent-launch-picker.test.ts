@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
 import {
+  agentPickerLaunchInputs,
+  agentPickerChoiceSeeds,
   agentPickerDraft,
   agentPickerHydrationQueue,
   agentPickerEntryOptions,
@@ -100,8 +102,9 @@ describe('shared agent launch picker', () => {
       agentPickerDraft(entry, 'terminal'),
       '--model astra --add-dir docs'
     )
-    expect(draft.choices.model).toBe('astra')
-    expect(draft.arguments).toBe('--add-dir docs')
+    expect(draft.choices.model).toBeUndefined()
+    expect(agentPickerLaunchInputs(draft, entry).sessionOptions.model).toBe('astra')
+    expect(draft.arguments).toBe('--model astra --add-dir docs')
     expect(editAgentPickerArguments(draft, '').arguments).toBeNull()
     expect(agentPickerDraft(entry).arguments).toBeUndefined()
   })
@@ -185,4 +188,118 @@ it('retains a model named by a captured Claude init and honors its disabled fast
     agentPickerEntryOptions(captured, model, 'chat').some((option) => option.id === 'fastMode')
   ).toBe(false)
   expect(editAgentPickerDraft(agentPickerDraft(captured), { model }).choices.model).toBe(model)
+})
+
+it.each(['chat', 'terminal'] as const)(
+  'keeps CLI edits separate from shared intent with %s as the default',
+  (surface) => {
+    const own = { ...entry, agent: 'claude' as const, defaultSurface: surface }
+    const shared = editAgentPickerDraft(agentPickerDraft(own), {
+      model: 'my-private-alias',
+      permissionMode: 'ask'
+    })
+    const edited = editAgentPickerArguments(
+      shared,
+      '--model haiku --dangerously-skip-permissions --add-dir docs'
+    )
+    expect(agentPickerLaunchInputs({ ...edited, surface: 'chat' }, own)).toEqual({
+      sessionOptions: { model: 'my-private-alias', permissionMode: 'ask' }
+    })
+    expect(agentPickerLaunchInputs({ ...edited, surface: 'terminal' }, own).agentArgs).toContain(
+      '--model haiku'
+    )
+    expect(agentPickerLaunchInputs({ ...edited, surface: 'terminal' }, own).agentArgs).toContain(
+      '--dangerously-skip-permissions'
+    )
+    const reset = { ...edited, arguments: undefined }
+    expect(agentPickerLaunchInputs({ ...reset, surface: 'chat' }, own).sessionOptions.model).toBe(
+      'my-private-alias'
+    )
+    expect(agentPickerLaunchInputs({ ...reset, surface: 'terminal' }, own)).not.toHaveProperty(
+      'agentArgs'
+    )
+  }
+)
+
+it('uses actual Chat permission seeds without transferring remembered Chat model into terminal Arguments', () => {
+  expect(
+    agentPickerChoiceSeeds('codex', { agentPermissionDefault: 'accept-edits' }).structured
+      .permissionMode
+  ).toBe('ask')
+  expect(
+    agentPickerChoiceSeeds('claude', { nativeChatPermissionMode: 'full-access' }).structured
+      .permissionMode
+  ).toBe('full-access')
+  const edited = editAgentPickerArguments(agentPickerDraft(entry, 'terminal'), '')
+  expect(agentPickerLaunchInputs(edited, entry)).toEqual({
+    sessionOptions: {},
+    agentArgs: '-a on-request -s read-only -c approvals_reviewer=user'
+  })
+})
+
+it('only suggests host-advertised model words and preserves the mixed omnibox short-prefix boundary', () => {
+  expect(
+    searchAgentPickerSetups([{ ...entry, catalog: { origin: 'unknown' } }], 'gpt low')
+  ).toEqual([])
+  for (const query of ['a', 'low', 'high', 'codex low']) {
+    expect(searchAgentPickerSetups([entry], query)).toEqual([])
+  }
+  expect(searchAgentPickerSetups([entry], 'as low')).toHaveLength(1)
+})
+
+it('bounds real setup search work at N and 10N for no, broad and effort matches', () => {
+  const measure = (count: number, query: string) => {
+    let visits = 0
+    const models = Array.from({ length: count }, (_, index) => ({
+      ...(entry.catalog.origin !== 'unknown'
+        ? entry.catalog.models[0]
+        : { isDefault: false, efforts: [] }),
+      get id() {
+        visits++
+        return `astra-${index}`
+      },
+      get label() {
+        visits++
+        return `Astra ${index}`
+      }
+    }))
+    const result = searchAgentPickerSetups(
+      [{ ...entry, catalog: { origin: 'probe', fetchedAt: 1, models } }],
+      query
+    )
+    return { visits, length: result.length }
+  }
+  for (const query of ['absent', 'astra', 'astra low', 'low']) {
+    const small = measure(30, query),
+      large = measure(300, query)
+    expect(large.visits).toBeLessThanOrEqual(10 * small.visits)
+    expect(large.visits).toBeGreaterThan(0)
+    expect(large.length).toBeLessThanOrEqual(8)
+  }
+})
+
+it('clears an Arguments-owned model/effort through deliberate controls without copying other CLI choices into Chat', () => {
+  const own = { ...entry, agent: 'claude' as const }
+  const original = editAgentPickerDraft(agentPickerDraft(own), {
+    model: 'sonnet',
+    permissionMode: 'ask'
+  })
+  const edited = editAgentPickerArguments(
+    original,
+    '--model opus --effort low --dangerously-skip-permissions --add-dir docs'
+  )
+  const cleared = editAgentPickerDraft(edited, { model: null, options: { effort: null } })
+  expect(cleared.arguments).toBe('--dangerously-skip-permissions --add-dir docs')
+  expect(cleared.choices).toEqual({ permissionMode: 'ask' })
+  expect(agentPickerLaunchInputs({ ...cleared, surface: 'chat' }, own)).toEqual({
+    sessionOptions: { permissionMode: 'ask' }
+  })
+  const next = editAgentPickerDraft(edited, { model: 'sonnet' })
+  expect(agentPickerLaunchInputs({ ...next, surface: 'chat' }, own).sessionOptions).toEqual({
+    model: 'sonnet',
+    permissionMode: 'ask'
+  })
+  expect(agentPickerLaunchInputs({ ...next, surface: 'terminal' }, own).agentArgs).toContain(
+    '--dangerously-skip-permissions'
+  )
 })

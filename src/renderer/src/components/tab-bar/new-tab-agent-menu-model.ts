@@ -2,6 +2,7 @@ import type { buildNewTabAgentMenuRows } from '@/lib/new-tab-agent-menu-rows'
 import type { UseDetectedAgentsResult } from '@/hooks/useDetectedAgents'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { ProspectiveWorkspace } from '@/lib/agent-launch-route-input'
+import type { AgentPickerDefaultSettings } from '../../../../shared/agent-launch-picker'
 
 export type NewTabAgentMenuModel =
   | { state: 'loading'; placeholderCount: number }
@@ -16,7 +17,7 @@ export type NewTabAgentMenuModel =
         executionHostId: string
         pairingRevision?: number
         runtimeId?: string | null
-        settings: GlobalSettings | null
+        settings: AgentPickerDefaultSettings | null
         key: string
       }
     }

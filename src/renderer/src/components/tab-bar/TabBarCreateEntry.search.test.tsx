@@ -498,3 +498,50 @@ it('uses the common setup search for Enter and dispatches its alternate button o
   expect(launched).toHaveBeenCalledOnce()
   expect(launched.mock.calls[0][0].setup.surface).toBe('terminal')
 })
+
+it.each(['g', 'low', 'high'])(
+  'keeps the file as the selected Enter action for %s with setup search mounted',
+  (query) => {
+    fileListMock.current = { files: [`${query}.ts`], loading: false, loadError: null }
+    const launched = vi.fn(),
+      opened = vi.fn().mockResolvedValue(undefined)
+    renderEntry({
+      onOpenEntry: opened,
+      onLaunchAgentOption: launched,
+      agentPickerEntries: [
+        {
+          agent: 'codex',
+          label: 'Codex',
+          rows: [{ agent: 'codex', kind: 'chat' }],
+          surfaces: ['chat', 'terminal'],
+          defaultSurface: 'chat',
+          terminal: {},
+          structured: {},
+          catalog: {
+            origin: 'probe',
+            fetchedAt: 1,
+            models: [
+              {
+                id: 'gpt-6-astra',
+                label: 'GPT 6 Astra',
+                isDefault: true,
+                efforts: [
+                  { value: 'low', label: 'Low' },
+                  { value: 'high', label: 'High' }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    })
+    setQuery(query)
+    expect(container.querySelector('[aria-selected="true"]')?.textContent).toContain(
+      query === 'g' ? 'Search Google' : `${query}.ts`
+    )
+    expect(rowTexts().some((text) => text.includes(`${query}.ts`))).toBe(true)
+    submit()
+    expect(launched).not.toHaveBeenCalled()
+    expect(opened).toHaveBeenCalledOnce()
+  }
+)

@@ -103,7 +103,21 @@ export function useAgentMenuObservation(
     readLocalRuntimeCapabilityObservation,
     readLocalRuntimeCapabilityObservation
   )
-  const desktopSettings = useAppStore((state) => state.settings)
+  useAppStore(
+    useShallow((state) => [
+      state.settings?.defaultTuiAgent,
+      state.settings?.disabledTuiAgents,
+      state.settings?.experimentalNativeChat,
+      state.settings?.nativeChatProviders,
+      state.settings?.agentDefaultArgs,
+      state.settings?.agentPermissionDefault,
+      state.settings?.agentPermissionOverrides,
+      state.settings?.nativeChatSessionOptions,
+      state.settings?.nativeChatPermissionMode
+    ])
+  )
+  // The observation owns these settings; picker consumers reuse its snapshot.
+  const desktopSettings = useAppStore.getState().settings
   const workspace =
     typeof target === 'string'
       ? { kind: workspaceKindForWorktreeId(target), worktreeId: target }

@@ -1,6 +1,6 @@
 import { AgentLaunchPickerMenu } from '@/components/agent/AgentLaunchPickerMenu'
 import {
-  agentPickerSessionOptions,
+  agentPickerLaunchInputs,
   type AgentPickerEntry,
   type AgentPickerDraft
 } from '../../../../shared/agent-launch-picker'
@@ -75,7 +75,7 @@ export function useTabAgentMenuLaunch({
   onFocusChat?: (tabId: string) => void
 }) {
   const runLaunch = useCallback(
-    (row: NewTabAgentMenuRow, draft?: AgentPickerDraft) => {
+    (row: NewTabAgentMenuRow, draft?: AgentPickerDraft, pickerEntry?: AgentPickerEntry) => {
       if (disabled || row.kind === 'chat-unavailable') {
         return
       }
@@ -92,14 +92,7 @@ export function useTabAgentMenuLaunch({
             }
           : {}),
         agent,
-        ...(draft
-          ? {
-              sessionOptions: agentPickerSessionOptions(draft.choices),
-              ...(draft.surface === 'terminal' && draft.arguments !== undefined
-                ? { agentArgs: draft.arguments }
-                : {})
-            }
-          : {}),
+        ...(draft ? agentPickerLaunchInputs(draft, pickerEntry) : {}),
         worktreeId,
         groupId,
         ...(prompt !== undefined ? { prompt } : {}),

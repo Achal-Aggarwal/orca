@@ -47,7 +47,7 @@ export function pickerLaunchRow(
   }
 }
 
-type Launch = (row: NewTabAgentMenuRow, draft?: AgentPickerDraft) => void
+type Launch = (row: NewTabAgentMenuRow, draft?: AgentPickerDraft, entry?: AgentPickerEntry) => void
 
 export function AgentLaunchPickerMenu({
   model,
@@ -236,7 +236,11 @@ function AgentPickerMenuRow({
                   ? row.kind === 'chat'
                   : row.kind === 'terminal' || row.kind === 'cli'
               ) ?? pickerLaunchRow(entry, surface))
-          runLaunch(row, draft)
+          if (draft) {
+            runLaunch(row, draft, entry)
+          } else {
+            runLaunch(row, draft)
+          }
         }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowRight') {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import * as picker from '../../../../shared/agent-launch-picker'
 import { projectAgentLaunchSettings } from '../../../../shared/agent-launch-settings'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import type { NewTabAgentMenuModel } from '../tab-bar/new-tab-agent-menu-model'
@@ -173,4 +174,110 @@ it('bounds open-time catalog hydration to two agents and discards responses from
   expect(hook.result.current).toHaveLength(1)
   expect(hook.result.current[0].catalog).toEqual(catalog)
   expect(hook.result.current[0].rows[0].executionHostId).toBe('runtime:beta')
+})
+
+it.each(['slow', 'failed'] as const)(
+  'publishes known terminal defaults independently of %s optional catalog/support reads',
+  async (kind) => {
+    const listing = Promise.withResolvers<AgentSessionModelCatalogResult>()
+    mocks.session.mockImplementation((_target, method) =>
+      method === 'agentSession.modelCatalog'
+        ? listing.promise
+        : kind === 'failed'
+          ? Promise.reject(new Error('unavailable'))
+          : Promise.resolve({ seedOptions: { model: 'host-model', permissionMode: 'ask' } })
+    )
+    const hook = renderHook(() => useAgentLaunchPickerInventory('wt', model(), true))
+    await act(async () => {})
+    expect(hook.result.current[0]).toMatchObject({
+      defaultsPending: false,
+      arguments: '--host-only',
+      terminal: { permissionMode: 'ask' },
+      catalog: { origin: 'unknown' }
+    })
+    if (kind === 'slow') {
+      expect(hook.result.current[0].structured.model).toBe('host-model')
+    }
+    await act(async () => listing.resolve(catalog))
+    expect(hook.result.current[0].defaultsPending).toBe(false)
+  }
+)
+
+it('retains legacy remembered values when createSupport does not supply optional seeds', async () => {
+  mocks.settings.mockResolvedValue(null)
+  mocks.rpc.mockResolvedValue({
+    settings: {
+      agentDefaultArgs: { codex: '--host-only' },
+      nativeChatSessionOptions: {
+        codex: { model: 'host-private', valuesByModel: { 'host-private': { effort: 'low' } } }
+      },
+      nativeChatPermissionMode: 'full-access'
+    }
+  })
+  mocks.session.mockImplementation(async (_target, method) =>
+    method === 'agentSession.modelCatalog' ? catalog : { supported: true }
+  )
+  const hook = renderHook(() => useAgentLaunchPickerInventory('wt', model(), true))
+  await act(async () => {})
+  expect(hook.result.current[0]).toMatchObject({
+    defaultsPending: false,
+    structured: { model: 'host-private', options: { effort: 'low' }, permissionMode: 'full-access' }
+  })
+})
+
+it('acquires each host agent once per open batch at N and 10N, independently of catalog size and selection', async () => {
+  const { TUI_AGENT_CONFIG } = await import('../../../../shared/tui-agent-config')
+  const agents = Object.keys(TUI_AGENT_CONFIG).filter(
+    (agent): agent is keyof typeof TUI_AGENT_CONFIG => Object.hasOwn(TUI_AGENT_CONFIG, agent)
+  )
+  const seeds = vi.spyOn(picker, 'agentPickerChoiceSeeds')
+  for (const count of [3, 30]) {
+    seeds.mockClear()
+    mocks.settings.mockClear()
+    mocks.session.mockClear()
+    const menu = model()
+    if (menu.state !== 'settled') {
+      throw new Error('settled fixture')
+    }
+    menu.rows = agents
+      .slice(0, count)
+      .map((agent) => ({ agent, kind: 'chat', executionHostId: 'runtime:alpha' }))
+    menu.detection.detectedIds = agents.slice(0, count)
+    const hook = renderHook(
+      ({ open, selected }) => useAgentLaunchPickerInventory('wt', menu, open, selected),
+      { initialProps: { open: true, selected: agents[0] } }
+    )
+    await act(async () => {})
+    expect(mocks.settings).toHaveBeenCalledTimes(1)
+    expect(
+      mocks.session.mock.calls.filter((call) => call[1] === 'agentSession.modelCatalog')
+    ).toHaveLength(count)
+    expect(
+      mocks.session.mock.calls.filter((call) => call[1] === 'agentSession.createSupport')
+    ).toHaveLength(count)
+    hook.rerender({ open: true, selected: agents[1] })
+    expect(mocks.session).toHaveBeenCalledTimes(2 * count)
+    expect(seeds).toHaveBeenCalledTimes(2 * count)
+    hook.rerender({ open: false, selected: agents[1] })
+    hook.rerender({ open: true, selected: agents[1] })
+    await act(async () => {})
+    expect(mocks.session).toHaveBeenCalledTimes(4 * count)
+    hook.unmount()
+  }
+  seeds.mockRestore()
+})
+
+it('updates terminal availability when detection changes while the Chat rows stay the same', async () => {
+  const menu = model()
+  if (menu.state !== 'settled') {
+    throw new Error('settled fixture')
+  }
+  const hook = renderHook(({ value }) => useAgentLaunchPickerInventory('wt', value, true), {
+    initialProps: { value: { ...menu, detection: { ...menu.detection, detectedIds: [] } } }
+  })
+  await act(async () => {})
+  expect(hook.result.current[0].surfaces).toEqual(['chat'])
+  hook.rerender({ value: menu })
+  await act(async () => {})
+  expect(hook.result.current[0].surfaces).toEqual(['chat', 'terminal'])
 })
