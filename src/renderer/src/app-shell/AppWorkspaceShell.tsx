@@ -1,4 +1,4 @@
-import { Suspense, useRef } from 'react'
+import { memo, Suspense, useCallback, useRef } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { translate } from '@/i18n/i18n'
 import Sidebar from '../components/Sidebar'
@@ -11,6 +11,9 @@ import { TitlebarLeftControls } from './TitlebarLeftControls'
 import { RightSidebarToggle, TitlebarMainStrip } from './TitlebarMainStrip'
 import type { AppChromeLayout } from './use-app-chrome-layout'
 import type { FloatingWorkspacePanelState } from './use-floating-workspace-panel'
+
+// Skips the shell render each workspace switch causes; its props only change on toggle.
+const MemoFloatingTerminalToggleButton = memo(FloatingTerminalToggleButton)
 
 const Landing = lazy(() => import('../components/Landing'))
 const WorktreeCreationPanel = lazy(
@@ -98,6 +101,11 @@ export function AppWorkspaceShell(props: {
   const scrollOffsetRef = useRef(0)
   const scrollAnchorRef = useRef<VirtualizedScrollAnchor>(null)
   const sidebarScrollRefs = { scrollOffsetRef, scrollAnchorRef }
+  const { setOpenWithFocus } = floatingWorkspace
+  const toggleFloatingWorkspace = useCallback(
+    () => setOpenWithFocus((open) => !open),
+    [setOpenWithFocus]
+  )
 
   return (
     // Avoid active-worktree reset keys that remount whole surfaces during wake.
@@ -214,9 +222,9 @@ export function AppWorkspaceShell(props: {
                   </Suspense>
                 </div>
                 {floatingWorkspace.showToggleButton ? (
-                  <FloatingTerminalToggleButton
+                  <MemoFloatingTerminalToggleButton
                     open={floatingWorkspace.open}
-                    onToggle={() => floatingWorkspace.setOpenWithFocus((open) => !open)}
+                    onToggle={toggleFloatingWorkspace}
                   />
                 ) : null}
               </div>
