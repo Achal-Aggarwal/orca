@@ -112,7 +112,7 @@ export const ORCHESTRATION_WORKER_TERMINAL_HANDLERS: Record<string, CommandHandl
         dispatchStatus: string
         agentTerminalHandle: string | null
         terminalState: string | null
-        resource: { autoReleaseAt?: string | null } | null
+        resource: unknown
         projection?: {
           provider: { id: string; model: string | null } | null
           host: { id: string }
@@ -121,6 +121,7 @@ export const ORCHESTRATION_WORKER_TERMINAL_HANDLERS: Record<string, CommandHandl
           liveness: { verdict: string }
           nextAction: { argv: string[] }
           attention?: { categories: string[] }
+          autoReleaseAt?: string
         }
       }[]
       counts: Record<string, number>
@@ -167,8 +168,8 @@ export const ORCHESTRATION_WORKER_TERMINAL_HANDLERS: Record<string, CommandHandl
                 const next = projection
                   ? ` next=${projection.nextAction.argv.join(' ') || 'none'}`
                   : ''
-                const autoRelease = worker.resource?.autoReleaseAt
-                  ? ` auto-release=${worker.resource.autoReleaseAt}`
+                const autoRelease = projection?.autoReleaseAt
+                  ? ` auto-release=${projection.autoReleaseAt}`
                   : ''
                 return `${worker.dispatchId} task=${worker.taskId} [${worker.workerState}${details} terminal=${worker.terminalState ?? 'none'}${autoRelease}${next}`
               })

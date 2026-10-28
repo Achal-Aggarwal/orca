@@ -8,6 +8,9 @@
  */
 export type TerminalInputKind = 'driving' | 'orchestration' | 'launch' | 'query-reply'
 
+/** The CLI speaks for agents, so its writes are never a person typing. */
+export const ORCA_CLI_TERMINAL_CLIENT_ID = 'orca-cli'
+
 export function isDrivingInputKind(inputKind: TerminalInputKind): boolean {
   return inputKind === 'driving' || inputKind === 'orchestration'
 }

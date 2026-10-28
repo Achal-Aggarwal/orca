@@ -6,6 +6,7 @@ import type { RuntimeStatus } from '../../../../../../shared/runtime-types'
 import { z } from 'zod'
 import { getOrchestrationPeerCapabilityCache } from '../../../../orchestration/orchestration-peer-capability-cache'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
+import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { FederatedDispatchRow } from '../../../../orchestration/types'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import {
@@ -165,7 +166,7 @@ export async function releaseFederatedWorker(
   }
   try {
     // Converge the home projection idempotently without repeating a host-confirmed terminal close.
-    applyConfirmedFederatedReleaseHomeProjection(args.runtime, args.dispatchId)
+    applyConfirmedFederatedReleaseHomeProjection(args.runtime.getOrchestrationDb(), args.dispatchId)
     return receipt
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
@@ -195,11 +196,11 @@ function confirmedReleaseProjectionRecovery(dispatchId: string): string {
   return `Inspect with: orca orchestration worker-show --dispatch ${dispatchId} --json — then retry worker-release with a fresh request ID (omit --retry-request to let the CLI generate one). Reusing the prior request ID only replays the confirmed remote receipt without reapplying the home projection. Never substitute a broad terminal close.`
 }
 
-function applyConfirmedFederatedReleaseHomeProjection(
-  runtime: OrcaRuntimeService,
+/** Also applied when host observation reports a release the host made on its own. */
+export function applyConfirmedFederatedReleaseHomeProjection(
+  db: OrchestrationDb,
   dispatchId: string
 ): void {
-  const db = runtime.getOrchestrationDb()
   db.db.exec('SAVEPOINT federated_release_home_projection')
   try {
     const worker = db.getWorkerDispatch(dispatchId)

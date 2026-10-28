@@ -9,7 +9,8 @@ import {
   summarizeWorkerOutputArchive
 } from '../../../../orchestration/worker-output-archive'
 import type { WorkerTerminalReleaseRuntime } from '../../../../orchestration/worker-terminal-release-runtime'
-import { readArchivedWorkerOutput } from '../worker/worker-archive-read'
+import { readRemoteAttachmentArchive } from './remote-attachment-archive-read'
+import { WorkerTerminalReleaseSingleFlight } from '../worker/worker-terminal-release-single-flight'
 import { archiveSummary } from '../worker/worker-terminal-resource-presentation'
 import {
   releaseUnknownRecovery,
@@ -22,42 +23,29 @@ import {
   TRANSIENT_WORKER_RELEASE_RECOVERY
 } from '../worker/worker-release-close-error'
 
-export async function readRemoteAttachmentArchive(args: {
-  runtime: WorkerTerminalReleaseRuntime
-  attachment: RemoteDispatchAttachmentRow
-  source?: 'auto' | 'transcript' | 'terminal'
-  cursor?: string | number
-  limit?: number
-  liveness?: 'live' | 'unverifiable' | 'exited'
-}) {
-  const archive = args.runtime
-    .getOrchestrationDb()
-    .getWorkerTerminalArchive(args.attachment.dispatch_id)
-  if (!archive || !args.attachment.terminal_handle) {
-    return null
-  }
-  return readArchivedWorkerOutput({
-    db: args.runtime.getOrchestrationDb(),
-    dispatchId: args.attachment.dispatch_id,
-    workerState: args.attachment.state,
-    resource: {
-      id: `remote-attachment:${args.attachment.dispatch_id}`,
-      terminal_handle: args.attachment.terminal_handle,
-      release_state: args.attachment.stage === 'released' ? 'released' : 'releasing'
-    },
-    source: args.source,
-    cursor: args.cursor,
-    limit: args.limit,
-    liveness: args.liveness
-  })
-}
-
-export async function releaseRemoteAttachment(args: {
+type RemoteAttachmentReleaseArgs = {
   runtime: WorkerTerminalReleaseRuntime
   attachment: RemoteDispatchAttachmentRow
   observation: Awaited<ReturnType<typeof inspectRemoteAttachment>>
   mode?: 'interactive' | 'recovery'
-}): Promise<WorkerReleaseReceipt & { output?: unknown }> {
+}
+
+const remoteReleases = new WorkerTerminalReleaseSingleFlight<
+  WorkerReleaseReceipt & { output?: unknown }
+>()
+
+// The host timer and a home worker-release can race; both must join one close.
+export function releaseRemoteAttachment(
+  args: RemoteAttachmentReleaseArgs
+): Promise<WorkerReleaseReceipt & { output?: unknown }> {
+  return remoteReleases.run(args.runtime, args.attachment.dispatch_id, args.mode, () =>
+    releaseRemoteAttachmentOnce(args)
+  )
+}
+
+async function releaseRemoteAttachmentOnce(
+  args: RemoteAttachmentReleaseArgs
+): Promise<WorkerReleaseReceipt & { output?: unknown }> {
   const { runtime, attachment, observation } = args
   const db = runtime.getOrchestrationDb()
   let storedArchive

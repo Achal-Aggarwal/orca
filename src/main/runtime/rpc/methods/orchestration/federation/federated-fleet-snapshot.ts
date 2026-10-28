@@ -12,6 +12,7 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { resolvePinnedFederatedServer } from '../worker/worker-observation'
+import { applyConfirmedFederatedReleaseHomeProjection } from './federated-worker-release'
 
 const FLEET_HOST_CONCURRENCY = 4
 const FLEET_HOST_TIMEOUT_MS = 3_000
@@ -21,6 +22,9 @@ export type FederatedFleetObservation = {
   status: 'live' | 'unverifiable' | 'exited'
   exactWorker: boolean
   reason?: string
+  /** Hosts that release settled workers on their own report it; older hosts omit both. */
+  released?: boolean
+  autoReleaseAt?: string
 }
 
 export type FederatedFleetHostError = {
@@ -98,7 +102,10 @@ export async function readFederatedFleetSnapshots(args: {
       const projectedDispatches = projectFleetRuntimeEpochs(
         args.db,
         observationFences,
-        snapshot.runtimeEpoch
+        snapshot.runtimeEpoch,
+        new Set(
+          snapshot.items.filter((item) => item.observation.released).map((item) => item.dispatchId)
+        )
       )
       const expected = new Set(dispatchIds)
       return {
@@ -164,13 +171,17 @@ function projectFleetRuntimeEpochs(
     string,
     NonNullable<ReturnType<OrchestrationDb['captureFederatedDispatchObservationFence']>>
   >,
-  runtimeEpoch: string
+  runtimeEpoch: string,
+  releasedDispatchIds: ReadonlySet<string> = new Set()
 ): Set<string> {
   const projectedDispatches = new Set<string>()
   for (const [dispatchId, fence] of fences) {
     if (
       db.projectFederatedDispatchObservation(fence, () => {
         db.updateFederatedDispatchRuntimeEpoch(dispatchId, runtimeEpoch)
+        if (releasedDispatchIds.has(dispatchId)) {
+          applyConfirmedFederatedReleaseHomeProjection(db, dispatchId)
+        }
       })
     ) {
       projectedDispatches.add(dispatchId)
@@ -223,6 +234,10 @@ export function applyFederatedFleetObservations(
     worker.evidence.liveStatus = observation.status === 'live' ? 'fresh' : 'unavailable'
     worker.evidence.lastObservedAt = observation.status === 'unverifiable' ? null : observedAt
     refreshFleetWorkerVerdict(worker, durable)
+    if (observation.autoReleaseAt) {
+      worker.autoReleaseAt = observation.autoReleaseAt
+      worker.nextAction = { kind: 'none', argv: [] }
+    }
   }
 }
 

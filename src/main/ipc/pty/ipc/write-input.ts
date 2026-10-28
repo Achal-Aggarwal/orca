@@ -207,6 +207,10 @@ export function createPtyWriteInput(deps: {
     interactiveOutputCharsByPty.set(args.id, 0)
     runtime?.terminalRunFacts?.recordInput(args.id, args.inputKind, args.data)
     runtime?.noteRemoteDesktopHostInput(args.id, args.inputKind, args.data)
+    // Main-window driving bytes are a person typing or sending from the UI.
+    if (args.inputKind === 'driving') {
+      runtime?.recordWorkerTerminalUserInput({ ptyId: args.id }, args.data)
+    }
   }
 
   const writeAndObserveInput = (

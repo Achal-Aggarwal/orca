@@ -17,6 +17,7 @@ import {
   scanWorkerTerminalStates
 } from './worker-terminal-inventory-counts'
 import {
+  hasUserClaimableWorkerTerminal,
   markWorkerTerminalUserOwned,
   retainWorkerTerminalForUser
 } from './worker-terminal-user-takeover'
@@ -25,6 +26,7 @@ export {
   countWorkerTerminalInventory,
   getWorkerAttentionFacts,
   getWorkerAttentionFactsForDispatches,
+  hasUserClaimableWorkerTerminal,
   markWorkerTerminalUserOwned,
   retainWorkerTerminalForUser
 }
@@ -276,6 +278,7 @@ export function getWorkerTerminalOrderingKey(
 }
 
 export type WorkerTerminalListingMethods = {
+  hasUserClaimableWorkerTerminal: typeof hasUserClaimableWorkerTerminal
   markWorkerTerminalUserOwned: typeof markWorkerTerminalUserOwned
   retainWorkerTerminalForUser: typeof retainWorkerTerminalForUser
   listWorkerTerminalReleaseBacklog: typeof listWorkerTerminalReleaseBacklog
@@ -289,6 +292,7 @@ export type WorkerTerminalListingMethods = {
 
 export function attachWorkerTerminalListing(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
+    hasUserClaimableWorkerTerminal,
     markWorkerTerminalUserOwned,
     retainWorkerTerminalForUser,
     listWorkerTerminalReleaseBacklog,

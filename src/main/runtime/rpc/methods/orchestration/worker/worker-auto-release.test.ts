@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reconcileRequestedWorkerTerminalReleases } from '../../../../orchestration/worker-terminal-release-reconciliation'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { getWorkerTerminalAutoReleaseScheduler } from '../../../../orchestration/worker-terminal-auto-release-scheduler'
 import { createOrchestrationWorkerReleaseHarness } from './worker-release.test-support'
+import { sendTerminalStreamInput } from '../../terminal/terminal-input-delivery'
 
 const GRACE_MS = 2 * 60_000
 
@@ -129,6 +134,49 @@ describe('orchestration worker automatic release', () => {
     expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
   })
 
+  it.each(['before the deadline', 'while the automatic release captures output'] as const)(
+    'lets typing win %s when the renderer never reports takeover',
+    async (moment) => {
+      setupWithFakeClock()
+      const { dispatchId } = await h.startSettledWorker()
+      const pendingRead = h.deferred<Awaited<ReturnType<OrcaRuntimeService['readTerminal']>>>()
+      if (moment !== 'before the deadline') {
+        vi.mocked(h.runtime.readTerminal).mockReturnValue(pendingRead.promise)
+        await vi.advanceTimersByTimeAsync(GRACE_MS)
+        await vi.waitFor(() => expect(h.runtime.readTerminal).toHaveBeenCalledTimes(1))
+      }
+      const ownershipAtWrite: string[] = []
+      vi.spyOn(h.runtime, 'sendTerminal').mockImplementation(async (handle) => {
+        ownershipAtWrite.push(h.db.getWorkerTerminalResourceByOwner(dispatchId)!.ownership_state)
+        return { handle, accepted: true, bytesWritten: 5 }
+      })
+
+      await expect(
+        sendTerminalStreamInput(h.runtime, {
+          terminal: 'term_worker',
+          text: 'typed',
+          client: { id: 'desktop-viewer', type: 'desktop' },
+          isMobile: false
+        })
+      ).resolves.toBe('delivered')
+      pendingRead.resolve({
+        handle: 'term_worker',
+        status: 'running',
+        tail: ['typed during capture'],
+        truncated: false,
+        nextCursor: '1'
+      })
+      await vi.advanceTimersByTimeAsync(2 * GRACE_MS)
+
+      expect(ownershipAtWrite).toEqual(['user_owned'])
+      expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
+      expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)).toMatchObject({
+        ownership_state: 'user_owned',
+        auto_release_at: null
+      })
+    }
+  )
+
   it('does not arm a worker retained before it reported', async () => {
     setupWithFakeClock()
     const { taskId, dispatchId } = await h.startWorker()
@@ -174,19 +222,72 @@ describe('orchestration worker automatic release', () => {
     expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)?.auto_release_at).toBeNull()
   })
 
-  it('releases a deadline that passed while the runtime was down exactly once', async () => {
-    setupWithFakeClock()
-    const { dispatchId } = await h.startSettledWorker()
-    const scheduler = getWorkerTerminalAutoReleaseScheduler(h.runtime)
-    scheduler.clear()
-    await vi.advanceTimersByTimeAsync(2 * GRACE_MS)
-    expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
+  describe('across a restart', () => {
+    let userDataDir: string
 
-    await Promise.all([scheduler.releaseDue(), scheduler.releaseDue()])
-    await scheduler.releaseDue()
+    beforeEach(() => {
+      userDataDir = mkdtempSync(join(tmpdir(), 'orca-auto-release-restart-'))
+    })
+    afterEach(() => rmSync(userDataDir, { recursive: true, force: true }))
 
-    expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe('released')
-    expect(h.runtime.closeTerminal).toHaveBeenCalledTimes(1)
+    function setupFileBacked(): void {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      vi.setSystemTime(new Date('2026-10-27T12:00:00Z'))
+      h.setup({ userDataDir })
+    }
+
+    async function expectReadableArchive(dispatchId: string): Promise<void> {
+      await expect(
+        h.call('orchestration.workerRead', { dispatch: dispatchId })
+      ).resolves.toMatchObject({
+        terminal: { tail: ['worker output line 1', 'worker output line 2'] }
+      })
+    }
+
+    it('releases a deadline missed while the app was closed once, when the database reopens', async () => {
+      setupFileBacked()
+      const { dispatchId } = await h.startSettledWorker()
+
+      h.restart()
+      expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
+      vi.setSystemTime(Date.now() + 2 * GRACE_MS)
+      h.restart()
+      await vi.advanceTimersByTimeAsync(0)
+
+      await vi.waitFor(() =>
+        expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe('released')
+      )
+      expect(h.runtime.closeTerminal).toHaveBeenCalledTimes(1)
+      await expectReadableArchive(dispatchId)
+
+      h.restart()
+      await vi.advanceTimersByTimeAsync(2 * GRACE_MS)
+      expect(h.runtime.closeTerminal).not.toHaveBeenCalled()
+    })
+
+    it.each(['requested', 'releasing'] as const)(
+      'finishes an automatic release interrupted while %s after a restart',
+      async (interruptedAt) => {
+        setupFileBacked()
+        const { dispatchId } = await h.startSettledWorker()
+        // Hold the step after which a crash leaves the row in this state.
+        const held =
+          interruptedAt === 'requested'
+            ? vi.mocked(h.runtime.readTerminal).mockReturnValue(new Promise(() => {}))
+            : vi.mocked(h.runtime.closeTerminal).mockReturnValue(new Promise(() => {}))
+        await vi.advanceTimersByTimeAsync(GRACE_MS)
+        await vi.waitFor(() => expect(held).toHaveBeenCalled())
+        expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe(interruptedAt)
+
+        h.restart()
+        await reconcileRequestedWorkerTerminalReleases(h.runtime)
+        await reconcileRequestedWorkerTerminalReleases(h.runtime)
+
+        expect(h.db.getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe('released')
+        expect(h.runtime.closeTerminal).toHaveBeenCalledTimes(1)
+        await expectReadableArchive(dispatchId)
+      }
+    )
   })
 
   it('never arms a chat worker, whose draft has no activity signal', () => {

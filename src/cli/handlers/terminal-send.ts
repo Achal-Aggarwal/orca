@@ -1,4 +1,5 @@
 import type { RuntimeTerminalSend } from '../../shared/runtime-types'
+import { ORCA_CLI_TERMINAL_CLIENT_ID } from '../../shared/terminal-input-kind'
 import { TERMINAL_PROMPT_DELIVERY_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import type { CommandHandler } from '../dispatch'
 import { formatTerminalSend, printResult, terminalSendWarnings } from '../format'
@@ -65,7 +66,7 @@ export const terminalSendHandler: CommandHandler = async ({ flags, client, cwd, 
           ...(waitSubmitMs ? { waitSubmitMs } : {})
         }
       : {}),
-    client: { id: 'orca-cli', type: 'desktop' }
+    client: { id: ORCA_CLI_TERMINAL_CLIENT_ID, type: 'desktop' }
   }
   const options = promptDeliverySupported
     ? {

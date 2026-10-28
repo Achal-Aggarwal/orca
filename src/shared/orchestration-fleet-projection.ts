@@ -114,6 +114,8 @@ export type OrchestrationFleetWorker = {
     lastObservedAt: number | null
   }
   resource: FleetResourceProjection
+  /** When Orca releases this settled worker's terminal on its own, from the host that owns it. */
+  autoReleaseAt?: string
   nextAction: FleetNextAction
   attention: OrchestrationFleetAttention
 }

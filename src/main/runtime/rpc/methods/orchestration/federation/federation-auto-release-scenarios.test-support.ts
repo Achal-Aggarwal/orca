@@ -63,6 +63,20 @@ export function registerFederatedAutoReleaseScenarios(harness: AutoReleaseScenar
     await getWorkerTerminalAutoReleaseScheduler(harness.workerRuntime()).releaseDue()
   }
 
+  async function listFromHome(dispatchId: string) {
+    const listed = await harness.dispatchHome({
+      id: 'rpc_remote_list',
+      authToken: 'coordinator-token',
+      method: 'orchestration.workerList',
+      params: { includeRemote: true }
+    })
+    if (!listed.ok) {
+      throw new Error('worker-list failed')
+    }
+    const { workers } = listed.result as { workers: { dispatchId: string; projection: unknown }[] }
+    return workers.find((worker) => worker.dispatchId === dispatchId)?.projection
+  }
+
   function retainFromHome(dispatchId: string) {
     return harness.dispatchHome({
       id: 'rpc_remote_retain',
@@ -88,12 +102,73 @@ export function registerFederatedAutoReleaseScenarios(harness: AutoReleaseScenar
       })
     ).resolves.toMatchObject({ result: { autoReleaseAt: '2026-10-27T12:02:00Z' } })
 
+    await expect(listFromHome(dispatchId)).resolves.toMatchObject({
+      autoReleaseAt: '2026-10-27T12:02:00Z',
+      nextAction: { kind: 'none' }
+    })
+
     await releaseDueOnHost()
 
     expect(harness.workerRuntime().closeTerminal).toHaveBeenCalledWith('term_windows_worker')
     expect(harness.workerDb().getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe(
       'released'
     )
+    // The host released on its own; host observation converges the home without a worker-release.
+    expect(harness.homeDb().getWorkerDispatch(dispatchId)?.stage).not.toBe('released')
+    await listFromHome(dispatchId)
+    expect(harness.homeDb().getWorkerDispatch(dispatchId)).toMatchObject({
+      stage: 'released',
+      agent_terminal_handle: null
+    })
+    expect(harness.homeDb().getFederatedDispatch(dispatchId)?.remote_terminal_handle).toBeNull()
+  })
+
+  it('converges the home through worker-show after a host-side release', async () => {
+    const dispatchId = await settleRemotely()
+    await releaseDueOnHost()
+
+    await harness.dispatchHome({
+      id: 'rpc_remote_show_after_release',
+      authToken: 'coordinator-token',
+      method: 'orchestration.workerShow',
+      params: { dispatch: dispatchId }
+    })
+
+    expect(harness.homeDb().getWorkerDispatch(dispatchId)).toMatchObject({
+      stage: 'released',
+      agent_terminal_handle: null
+    })
+  })
+
+  it('joins a home worker-release to the host timer release instead of closing twice', async () => {
+    const dispatchId = await settleRemotely()
+    let finishClose!: () => void
+    vi.mocked(harness.workerRuntime().closeTerminal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishClose = () => resolve({ ptyKilled: true } as never)
+        })
+    )
+    vi.setSystemTime(Date.now() + GRACE_MS)
+    const timer = getWorkerTerminalAutoReleaseScheduler(harness.workerRuntime()).releaseDue()
+    await vi.waitFor(() => expect(harness.workerRuntime().closeTerminal).toHaveBeenCalledTimes(1))
+
+    const explicit = harness.dispatchHome({
+      id: 'rpc_remote_release_during_timer',
+      authToken: 'coordinator-token',
+      orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
+      orchestrationRequestId: 'remote_release_during_timer',
+      method: 'orchestration.workerRelease',
+      params: { dispatch: dispatchId }
+    })
+    await vi.waitFor(() =>
+      expect(harness.remoteCalls()).toContain('orchestration.federationRelease')
+    )
+    finishClose()
+
+    await expect(explicit).resolves.toMatchObject({ ok: true, result: { state: 'released' } })
+    await timer
+    expect(harness.workerRuntime().closeTerminal).toHaveBeenCalledTimes(1)
   })
 
   it('forwards worker-retain to the host so its deadline never fires', async () => {

@@ -17,6 +17,7 @@ import { resolveStructuredWorkerForDispatch } from '../../orchestration-structur
 import { stopStructuredWorkerForRelease } from './structured-worker-release-stop'
 import { isStructuredWorkerHandle } from '../../../../../../shared/structured-worker-handle'
 import { captureWorkerReleaseArchive } from './worker-release-archive-capture'
+import { WorkerTerminalReleaseSingleFlight } from './worker-terminal-release-single-flight'
 
 export type WorkerReleaseReceipt = {
   dispatchId: string
@@ -36,48 +37,20 @@ type WorkerTerminalReleaseArgs = {
   mode?: 'interactive' | 'recovery'
 }
 
-type ActiveWorkerTerminalRelease = {
-  promise: Promise<WorkerReleaseReceipt>
-  recoveryRequested: boolean
-}
-
-const activeReleaseByRuntime = new WeakMap<
-  WorkerTerminalReleaseRuntime,
-  Map<string, ActiveWorkerTerminalRelease>
->()
+const localReleases = new WorkerTerminalReleaseSingleFlight<WorkerReleaseReceipt>()
 
 // Shared RPC/recovery completion: prove exact identity, archive output, close only its terminal, then settle.
 export function completeWorkerTerminalRelease(
   args: WorkerTerminalReleaseArgs
 ): Promise<WorkerReleaseReceipt> {
-  let activeByResource = activeReleaseByRuntime.get(args.runtime)
-  if (!activeByResource) {
-    activeByResource = new Map()
-    activeReleaseByRuntime.set(args.runtime, activeByResource)
-  }
-  const active = activeByResource.get(args.resource.id)
-  if (active) {
-    active.recoveryRequested ||= args.mode === 'recovery'
-    return active.promise
-  }
-  const activeRelease = {
-    recoveryRequested: args.mode === 'recovery'
-  } as ActiveWorkerTerminalRelease
-  const release = completeWorkerTerminalReleaseOnce(args)
-    .then((receipt) => {
-      if (activeRelease.recoveryRequested) {
+  return localReleases.run(args.runtime, args.resource.id, args.mode, (active) =>
+    completeWorkerTerminalReleaseOnce(args).then((receipt) => {
+      if (active.recoveryRequested) {
         args.db.recordWorkerTerminalRecoveryAttempt(args.resource.id)
       }
       return receipt
     })
-    .finally(() => {
-      if (activeByResource?.get(args.resource.id) === activeRelease) {
-        activeByResource.delete(args.resource.id)
-      }
-    })
-  activeRelease.promise = release
-  activeByResource.set(args.resource.id, activeRelease)
-  return release
+  )
 }
 
 async function completeWorkerTerminalReleaseOnce(

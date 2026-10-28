@@ -12,6 +12,7 @@ import {
   resolvePinnedFederatedServer
 } from '../worker/worker-observation'
 import { applyFederatedFleetObservations } from './federated-fleet-snapshot'
+import { applyConfirmedFederatedReleaseHomeProjection } from './federated-worker-release'
 
 /** Query host evidence: push-fed fleet snapshots cover only local panes and would fabricate unverifiable for federated workers. */
 export function projectFederatedFleetWorker(args: {
@@ -143,6 +144,9 @@ function reconcileFederatedAttachment(args: {
       effects: attachment.effects,
       residualResources: attachment.residualResources
     })
+  }
+  if (attachment.stage === 'released') {
+    applyConfirmedFederatedReleaseHomeProjection(db, dispatchId)
   }
   if (attachment.state === 'ready' && attachment.worktree_id && attachment.terminal_handle) {
     db.updateFederatedDispatchResources({
