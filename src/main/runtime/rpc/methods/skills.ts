@@ -44,6 +44,7 @@ import {
   SkillsGetInstallProgressParams
 } from '../../../../shared/rpc-contract/skills-params'
 import { unavailableWhileWslDistroStopped } from '../../../skills/skill-discovery-stopped-wsl-roots'
+import { runAsWslUserAct, wslDistroForPath } from '../../../wsl/wsl-unc-access-gate'
 
 // Use the same target resolution for discovery and delete-plan roots, including WSL.
 export function resolveDiscoveryTarget(
@@ -102,7 +103,7 @@ export const SKILL_METHODS = [
           providerRootOverrides: await runtime.resolveSkillDiscoveryProviderRoots(resolvedTarget),
           refresh: params.refresh === true
         })
-      })
+      }, params.sourceKinds)
   }),
   defineMethod({
     name: 'skills.previewDelete',
@@ -158,10 +159,15 @@ export const SKILL_METHODS = [
           'Publishing skills from a forwarded WSL session is not supported yet. Run the command from Orca on the machine that stores the skills.'
         )
       }
-      const discovered = await discoverSkillsOnTarget(resolvedTarget, runtime.listRepos(), {
-        providerRootOverrides: await runtime.resolveSkillDiscoveryProviderRoots(resolvedTarget),
-        refresh: true
-      })
+      // Sharing named skills is a user act: it may start the workspace's distro.
+      const discovered = await runAsWslUserAct(
+        resolvedTarget.cwd ? wslDistroForPath(resolvedTarget.cwd) : null,
+        async () =>
+          discoverSkillsOnTarget(resolvedTarget, runtime.listRepos(), {
+            providerRootOverrides: await runtime.resolveSkillDiscoveryProviderRoots(resolvedTarget),
+            refresh: true
+          })
+      )
       return runtime.publishDiscoveredSkillsFromAgent(params, discovered.skills, signal)
     }
   }),

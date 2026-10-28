@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as WslUncAccessGateModule from '../wsl/wsl-unc-access-gate'
 
 const {
+  registerSkillCloudIpcHandlersMock,
   handleMock,
   discoverSkillsMock,
   discoverSkillObservationInWslMock,
@@ -10,6 +11,7 @@ const {
   parseWslPathMock,
   assertWslUncPathRunningMock
 } = vi.hoisted(() => ({
+  registerSkillCloudIpcHandlersMock: vi.fn(),
   assertWslUncPathRunningMock: vi.fn(),
   handleMock: vi.fn(),
   discoverSkillsMock: vi.fn(),
@@ -47,7 +49,7 @@ vi.mock('../wsl/wsl-unc-access-gate', async (importOriginal) => ({
 }))
 
 vi.mock('./skill-cloud-ipc-handlers', () => ({
-  registerSkillCloudIpcHandlers: vi.fn()
+  registerSkillCloudIpcHandlers: registerSkillCloudIpcHandlersMock
 }))
 
 vi.mock('../wsl', () => ({
@@ -201,10 +203,32 @@ describe('registerSkillsHandlers', () => {
       expect(assertWslUncPathRunningMock).toHaveBeenCalledWith('', 'Ubuntu')
       expect(getWslHomeMock).not.toHaveBeenCalled()
       expect(discoverSkillObservationInWslMock).not.toHaveBeenCalled()
-      // No sources at all, so nothing reads as missing and the next scan retries.
-      expect(result).toMatchObject({ skills: [], sources: [] })
+      // Unknown, not absent: every source is unavailable, so no surface offers Install.
+      expect(result).toMatchObject({
+        skills: [],
+        sources: expect.arrayContaining([expect.objectContaining({ skippedReason: 'unavailable' })])
+      })
+      expect(result).not.toMatchObject({
+        sources: expect.arrayContaining([
+          expect.not.objectContaining({ skippedReason: 'unavailable' })
+        ])
+      })
     }
   )
+
+  it('lets an explicit Share discover skills in a stopped distro, as the user act it is', async () => {
+    assertWslUncPathRunningMock.mockRejectedValue(new WslDistroStoppedError('Ubuntu'))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: registration reads only getRepos and the runtime's provider roots, as the bundled-skill tests do.
+    registerSkillsHandlers(store as never, bundledRuntime() as never)
+    const shareDiscover = registerSkillCloudIpcHandlersMock.mock.lastCall?.[1]
+    expect(shareDiscover).toBeTypeOf('function')
+
+    await shareDiscover({ runtime: 'wsl', wslDistro: 'Ubuntu' })
+
+    expect(assertWslUncPathRunningMock).not.toHaveBeenCalled()
+    expect(getWslHomeMock).toHaveBeenCalledWith('Ubuntu')
+    expect(discoverSkillObservationInWslMock).toHaveBeenCalled()
+  })
 
   it('never asks the WSL gate for a host target', async () => {
     const handler = getDiscoverHandler()

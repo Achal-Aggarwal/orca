@@ -4,11 +4,24 @@ import { unavailableWhileWslDistroStopped } from './skill-discovery-stopped-wsl-
 
 describe('unavailableWhileWslDistroStopped', () => {
   it.each([new WslDistroStoppedError('Ubuntu'), new WslDistroUnverifiableError('Ubuntu')])(
-    'answers no skills and no sources for %s',
+    'answers no skills and an unavailable source per requested kind for %s',
     async (refusal) => {
-      await expect(
-        unavailableWhileWslDistroStopped(() => Promise.reject(refusal))
-      ).resolves.toMatchObject({ skills: [], sources: [] })
+      const result = await unavailableWhileWslDistroStopped(
+        () => Promise.reject(refusal),
+        ['home', 'repo']
+      )
+      expect(result.skills).toEqual([])
+      expect(result.sources.map((source) => [source.sourceKind, source.skippedReason])).toEqual([
+        ['home', 'unavailable'],
+        ['repo', 'unavailable']
+      ])
+      const all = await unavailableWhileWslDistroStopped(() => Promise.reject(refusal))
+      expect(all.sources.map((source) => source.sourceKind)).toEqual([
+        'home',
+        'repo',
+        'bundled',
+        'plugin'
+      ])
     }
   )
 

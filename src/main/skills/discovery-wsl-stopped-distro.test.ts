@@ -90,7 +90,13 @@ describe('skill discovery for a stopped WSL distro (E9)', () => {
       const result = await discover()
 
       expect(mocks.touched.filter((path) => path.startsWith(mocks.wslRepoRoot))).toEqual([])
-      expect(result.sources.some((source) => source.path.startsWith(mocks.wslRepoRoot))).toBe(false)
+      // Reported unavailable, never read and never 'missing', so no surface shows them as absent.
+      const wslSources = result.sources.filter((source) =>
+        source.path.startsWith(mocks.wslRepoRoot)
+      )
+      expect(wslSources.length).toBeGreaterThan(0)
+      expect(wslSources.every((source) => source.skippedReason === 'unavailable')).toBe(true)
+      expect(wslSources.every((source) => !source.exists)).toBe(true)
       expect(result.skills.map((skill) => skill.name)).toEqual(['Skill in host'])
       // One gate check per distro, not per folder.
       expect(mocks.blockedWslDistroForPath).toHaveBeenCalledTimes(1)
@@ -106,6 +112,24 @@ describe('skill discovery for a stopped WSL distro (E9)', () => {
     })
     expect(mocks.blockedWslDistroForPath).not.toHaveBeenCalled()
     expect(result.skills.map((skill) => skill.name)).toEqual(['Skill in host'])
+  })
+
+  it('reports a stopped workspace’s plugin folder unavailable instead of listing it', async () => {
+    const result = await discoverSkills({
+      homeDir: join(root, 'home'),
+      repos: [],
+      cwd: mocks.wslRepoRoot,
+      sourceKinds: ['plugin']
+    })
+    expect(mocks.touched.filter((path) => path.startsWith(mocks.wslRepoRoot))).toEqual([])
+    // The workspace's own plugin folder is unavailable; host plugin roots answer as usual.
+    expect(result.sources).toContainEqual(
+      expect.objectContaining({
+        sourceKind: 'plugin',
+        path: mocks.wslRepoRoot,
+        skippedReason: 'unavailable'
+      })
+    )
   })
 
   it('scans a running distro’s repo folders, so the next scan after a wake picks them up', async () => {
