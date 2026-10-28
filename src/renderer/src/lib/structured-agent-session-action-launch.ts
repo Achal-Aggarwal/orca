@@ -22,11 +22,7 @@ import {
 } from '@/lib/structured-agent-session-launch-admission'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
-import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
-import {
-  clearStructuredAgentLaunchDraft,
-  structuredLaunchDraftHasUserContent
-} from './structured-agent-session-launch-draft'
+import { readStructuredLaunchDraft } from './structured-agent-session-launch-draft'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 
 export function openDeclinedTerminal(
@@ -88,8 +84,8 @@ export async function openTerminalForDeclinedChat(
   if (!source() || launchState?.cancelled || args.hooks.signal?.aborted) {
     return settlement
   }
-  const scopeKey = structuredAgentSessionDraftScopeKey(tab.entityId)
-  const typed = structuredLaunchDraftHasUserContent(scopeKey, launchState?.draftReceipt)
+  const draftOwner = { worktreeId, sessionId: tab.entityId, executionHostId }
+  const typed = readStructuredLaunchDraft(launchState, draftOwner).hasUserContent
   const attempt = launchState?.callers
   const terminal = await openDeclinedTerminal(args, worktreeId, target, false)
   const completed = terminal.completion
@@ -102,17 +98,17 @@ export async function openTerminalForDeclinedChat(
     return settlement
   }
   const state = useAppStore.getState()
-  const current = source()
-  const replacement = (state.unifiedTabsByWorktree[worktreeId] ?? []).find(
+  let current = source()
+  let replacement = (state.unifiedTabsByWorktree[worktreeId] ?? []).find(
     (candidate) => candidate.id === completed.tabId
   )
-  const ownsFailure =
+  const ownsFailure = () =>
     launchState &&
     getStructuredLaunchStateBySessionId(tab.entityId) === launchState &&
     launchState.callers === attempt &&
     attempt?.outcome === 'failed' &&
     !launchState.cancelled
-  if (current && ownsFailure) {
+  if (current && launchState && ownsFailure()) {
     launchState.failure = {
       ...(launchState.failure?.code === 'structured_agent_session_unsupported'
         ? launchState.failure
@@ -136,10 +132,11 @@ export async function openTerminalForDeclinedChat(
   if (!replacement) {
     return settlement
   }
-  if (!current || args.hooks.signal?.aborted || (launchState && !ownsFailure)) {
+  if (!current || args.hooks.signal?.aborted || !ownsFailure()) {
     notifyHostDeclined(args.plan.agent)
     return settlement
   }
+  const replacementEntityId = replacement.entityId
   // Switch point: main places and pins the tab in one step; a pin sent alone would re-sort it.
   if (ORCA_LAYOUT_OWNER_IS_MAIN) {
     await placeReplacementThroughMain(worktreeId, replacement, current)
@@ -147,12 +144,22 @@ export async function openTerminalForDeclinedChat(
     placeReplacementAfterSource(worktreeId, replacement, current)
   }
   const placed = useAppStore.getState()
-  const group = (placed.groupsByWorktree[worktreeId] ?? []).find((g) => g.id === current.groupId)
+  current = source()
+  replacement = (placed.unifiedTabsByWorktree[worktreeId] ?? []).find(
+    (candidate) => candidate.id === completed.tabId && candidate.entityId === replacementEntityId
+  )
+  const draft = readStructuredLaunchDraft(launchState, draftOwner)
+  const group = (placed.groupsByWorktree[worktreeId] ?? []).find((g) => g.id === current?.groupId)
   if (
+    !current ||
+    !replacement ||
+    !ownsFailure() ||
+    args.hooks.signal?.aborted ||
     !group ||
+    !group.tabOrder.includes(current.id) ||
     group.tabOrder.indexOf(replacement.id) !== group.tabOrder.indexOf(current.id) + 1 ||
     typed ||
-    structuredLaunchDraftHasUserContent(scopeKey, launchState?.draftReceipt)
+    draft.hasUserContent
   ) {
     notifyHostDeclined(args.plan.agent, false)
     return settlement
@@ -179,7 +186,7 @@ export async function openTerminalForDeclinedChat(
   if (showsFirst) {
     showReplacement()
   }
-  clearStructuredAgentLaunchDraft(launchState?.draftReceipt)
+  draft.clear()
   placed.closeUnifiedTab(tab.id, { recordInteraction: false })
   if (foreground && !showsFirst) {
     showReplacement()

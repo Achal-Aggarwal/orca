@@ -8,7 +8,10 @@ import { promptTextContent } from '@/components/native-chat/native-chat-prompt-d
 import { nativeChatPendingAttachmentSnapshot } from '@/components/native-chat/native-chat-pending-attachment-cache'
 import type { NativeChatComposerDraft } from '@/components/native-chat/native-chat-composer-draft-storage'
 import type { StructuredAgentLaunchOptions } from './structured-agent-session-launch-callers'
-import type { StructuredLaunchState } from './agent-session/launch/structured-agent-session-launch-registry'
+import {
+  getStructuredLaunchStateBySessionId,
+  type StructuredLaunchState
+} from './agent-session/launch/structured-agent-session-launch-registry'
 
 export type StructuredLaunchDraftReceipt = Pick<NativeChatComposerDraft, 'text' | 'document'> & {
   scopeKey: string
@@ -45,22 +48,34 @@ function holdsInitializedDraft(receipt: StructuredLaunchDraftReceipt): boolean {
   )
 }
 
-/** Only this renderer's launch receipt authorizes removing its unchanged initializer. */
-export function clearStructuredAgentLaunchDraft(receipt?: StructuredLaunchDraftReceipt): void {
-  if (receipt && holdsInitializedDraft(receipt)) {
-    updateNativeChatComposerDraft(receipt.scopeKey, { text: '', document: undefined }, 'immediate')
-  }
-}
-
-export function structuredLaunchDraftHasUserContent(
-  scopeKey: string,
-  receipt?: StructuredLaunchDraftReceipt
-): boolean {
+/** Capture current provisional authority; cancellation consumes it synchronously before yielding. */
+export function readStructuredLaunchDraft(
+  state: StructuredLaunchState | undefined,
+  owner: Pick<StructuredLaunchState['intent'], 'worktreeId' | 'sessionId' | 'executionHostId'>
+) {
+  const scopeKey = structuredAgentSessionDraftScopeKey(owner.sessionId)
+  const receipt =
+    state &&
+    getStructuredLaunchStateBySessionId(owner.sessionId) === state &&
+    state.intent.worktreeId === owner.worktreeId &&
+    state.intent.executionHostId === owner.executionHostId &&
+    !state.cancelled &&
+    !state.hostListed &&
+    state.callers.outcome !== 'published' &&
+    state.draftReceipt?.scopeKey === scopeKey
+      ? state.draftReceipt
+      : undefined
   const draft = readNativeChatComposerDraft(scopeKey)
   const unpresented = receipt && !receipt.presented && holdsInitializedDraft(receipt)
-  return (
-    (!unpresented && draft.text.trim() !== '') ||
-    draft.images.length > 0 ||
-    nativeChatPendingAttachmentSnapshot(scopeKey).length > 0
-  )
+  return {
+    hasUserContent:
+      (!unpresented && draft.text.trim() !== '') ||
+      draft.images.length > 0 ||
+      nativeChatPendingAttachmentSnapshot(scopeKey).length > 0,
+    clear: () => {
+      if (receipt && holdsInitializedDraft(receipt)) {
+        updateNativeChatComposerDraft(scopeKey, { text: '', document: undefined }, 'immediate')
+      }
+    }
+  }
 }
