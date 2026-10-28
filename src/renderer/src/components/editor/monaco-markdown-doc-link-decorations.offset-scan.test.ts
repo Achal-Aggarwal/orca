@@ -1,5 +1,5 @@
 import type { IRange } from 'monaco-editor'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getMarkdownDocLinkTarget } from './markdown-doc-links'
 import { createMarkdownFenceTracker } from './markdown-fence-scanner'
 import { getMarkdownDocLinkDecorationRanges } from './monaco-markdown-doc-link-decorations'
@@ -157,6 +157,41 @@ describe('getMarkdownDocLinkDecorationRanges offset scan', () => {
 
     // Exhausted delimiter cursors must stay exhausted so link-free inputs do not rescan each line’s tail.
     expect(indexOfCalls).toBeLessThanOrEqual(8)
+  })
+
+  it.each(
+    [2_000, 20_000].flatMap((lines) =>
+      [
+        { name: 'no opening delimiter', prefix: '', marker: ']]' },
+        { name: 'no closing delimiter', prefix: '', marker: '[[' },
+        { name: 'only an earlier closing delimiter', prefix: ']] before\n', marker: '[[' }
+      ].map((scenario) => ({ lines, ...scenario }))
+    )
+  )('does not walk $lines Markdown lines with $name', ({ lines, prefix, marker }) => {
+    const content =
+      prefix +
+      Array.from({ length: lines }, (_, index) =>
+        index % 4 === 0 ? '```' : `Line ${index} ordinary prose with ${marker}.`
+      ).join('\n')
+    const charCodeAt = String.prototype.charCodeAt
+    let characterReads = 0
+    const spy = vi.spyOn(String.prototype, 'charCodeAt').mockImplementation(function (
+      this: string,
+      position: number
+    ): number {
+      if (this === content) {
+        characterReads += 1
+      }
+      return charCodeAt.call(this, position)
+    })
+    let ranges: IRange[]
+    try {
+      ranges = getMarkdownDocLinkDecorationRanges(content)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(ranges).toEqual([])
+    expect(characterReads).toBe(0)
   })
 
   it('visits inline-code span offsets linearly across a generated link index', () => {
