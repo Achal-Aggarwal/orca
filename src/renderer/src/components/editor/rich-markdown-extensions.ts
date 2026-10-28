@@ -1,5 +1,5 @@
 import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
-import type { AnyExtension } from '@tiptap/core'
+import { getRenderedAttributes, mergeAttributes, type AnyExtension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { RichMarkdownTrailingParagraph } from './rich-markdown-trailing-paragraph'
 import Link from '@tiptap/extension-link'
@@ -108,7 +108,7 @@ export function createRichMarkdownExtensions({
         }
       },
       addNodeView() {
-        return ({ node, HTMLAttributes }) => {
+        return ({ node, HTMLAttributes, editor }) => {
           // A wrapper prevents native image-byte dragging from conflicting with ProseMirror’s schema-node relocation.
           const dom = document.createElement('span')
           // Keep the image wrapper inline so it cannot break surrounding text onto separate lines.
@@ -118,18 +118,36 @@ export function createRichMarkdownExtensions({
 
           const img = document.createElement('img')
           img.draggable = false
-          for (const [key, value] of Object.entries(HTMLAttributes)) {
-            if (key !== 'src' && value != null && value !== false) {
-              img.setAttribute(key, String(value))
+          let renderedAttributeNames = new Set<string>()
+          const syncImageAttributes = (attributes: Record<string, unknown>): void => {
+            const nextNames = new Set<string>()
+            for (const [key, value] of Object.entries(attributes)) {
+              if (key === 'src' || key === 'draggable' || value == null || value === false) {
+                continue
+              }
+              nextNames.add(key)
+              const renderedValue = String(value)
+              if (img.getAttribute(key) !== renderedValue) {
+                img.setAttribute(key, renderedValue)
+              }
             }
+            for (const key of renderedAttributeNames) {
+              if (!nextNames.has(key)) {
+                img.removeAttribute(key)
+              }
+            }
+            renderedAttributeNames = nextNames
           }
+          syncImageAttributes(mergeAttributes(this.options.HTMLAttributes, HTMLAttributes))
           dom.appendChild(img)
 
           let currentSrc = node.attrs.src as string | undefined
           let currentContextVersion = getImageContextVersion(this.storage)
           let releaseImageLease: (() => void) | undefined
+          let imageLoadController: AbortController | undefined
 
           const loadImage = (src: string | undefined): void => {
+            imageLoadController?.abort()
             releaseImageLease?.()
             releaseImageLease = undefined
             const fp = this.storage.filePath as string
@@ -144,19 +162,30 @@ export function createRichMarkdownExtensions({
                 runtimeContext,
                 access
               )
-              void loadLocalImageSrc(src, fp, undefined, runtimeContext, access).then(
-                (resolved) => {
-                  if (currentSrc !== src || currentContextVersion !== contextVersionAtLoad) {
-                    return
-                  }
-                  if (resolved) {
-                    img.src = resolved
-                    return
-                  }
-                  // Local paths require main’s file checks; failed loads must not fall back to Chromium reading raw paths.
-                  img.removeAttribute('src')
+              const controller = new AbortController()
+              imageLoadController = controller
+              void loadLocalImageSrc(
+                src,
+                fp,
+                undefined,
+                runtimeContext,
+                access,
+                controller.signal
+              ).then((resolved) => {
+                if (
+                  controller.signal.aborted ||
+                  currentSrc !== src ||
+                  currentContextVersion !== contextVersionAtLoad
+                ) {
+                  return
                 }
-              )
+                if (resolved) {
+                  img.src = resolved
+                  return
+                }
+                // Local paths require main’s file checks; failed loads must not fall back to Chromium reading raw paths.
+                img.removeAttribute('src')
+              })
             } else if (src) {
               img.src = resolveRichMarkdownImageUrl(this.storage, src)
             } else {
@@ -185,6 +214,12 @@ export function createRichMarkdownExtensions({
               if (updatedNode.type.name !== 'image') {
                 return false
               }
+              syncImageAttributes(
+                mergeAttributes(
+                  this.options.HTMLAttributes,
+                  getRenderedAttributes(updatedNode, editor.extensionManager.attributes)
+                )
+              )
               const newSrc = updatedNode.attrs.src as string | undefined
               const nextContextVersion = getImageContextVersion(this.storage)
               if (newSrc !== currentSrc || nextContextVersion !== currentContextVersion) {
@@ -195,6 +230,7 @@ export function createRichMarkdownExtensions({
               return true
             },
             destroy: () => {
+              imageLoadController?.abort()
               releaseImageLease?.()
               if (reloadListeners instanceof Set) {
                 reloadListeners.delete(reloadForContextChange)

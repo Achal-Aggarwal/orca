@@ -6,7 +6,6 @@ import type { LocalFileAccess } from '../../../../shared/local-file-access'
 import {
   blobUrlCache,
   cacheLocalImageBlob,
-  cleanupLocalImageCacheKeyVersion,
   getLocalImageCacheGeneration,
   getLocalImageCacheKeyVersion,
   inFlightBlobUrlLoads,
@@ -18,6 +17,11 @@ import {
   unpinLocalImageCache
 } from './local-image-src-cache'
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
+import {
+  createLocalImageRead,
+  ownLocalImageRead,
+  resetLocalImageReadAdmissionForTests
+} from './local-image-read-admission'
 
 export function getLocalImageCacheKey(
   absolutePath: string,
@@ -99,10 +103,10 @@ export function useLocalImageSrc(
     rawSrc && runtimeContext !== null && isExternalUrl(rawSrc) ? rawSrc : undefined
   // Key leases by semantic identity; equal rebuilt context objects must not revoke a still-displayed image URL.
   const cacheKey = getLocalImageSrcCacheKey(rawSrc, filePath, connectionId, runtimeContext, access)
-  const readImage = useEffectEvent((): Promise<string | null> => {
+  const readImage = useEffectEvent((signal: AbortSignal): Promise<string | null> => {
     const absolutePath = rawSrc ? resolveImageAbsolutePath(rawSrc, filePath) : null
     return absolutePath
-      ? loadLocalImageAbsolutePath(absolutePath, connectionId, runtimeContext, access)
+      ? loadLocalImageAbsolutePath(absolutePath, connectionId, runtimeContext, access, signal)
       : Promise.resolve(null)
   })
 
@@ -133,23 +137,23 @@ export function useLocalImageSrc(
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
     const effectGeneration = generation
-    readImage()
+    readImage(controller.signal)
       .then((url) => {
-        if (cancelled) {
+        if (controller.signal.aborted) {
           return
         }
         setDisplaySrc(getLocalImageCacheGeneration() === effectGeneration && url ? url : undefined)
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setDisplaySrc(undefined)
         }
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [cacheKey, externalSrc, generation, retryKey])
 
@@ -164,8 +168,12 @@ export async function loadLocalImageSrc(
   runtimeContext?:
     | (Omit<RuntimeFileOperationArgs, 'connectionId'> & { connectionId?: string | null })
     | null,
-  access?: LocalFileAccess
+  access?: LocalFileAccess,
+  signal?: AbortSignal
 ): Promise<string | null> {
+  if (signal?.aborted) {
+    return null
+  }
   if (isExternalUrl(rawSrc)) {
     return rawSrc
   }
@@ -184,7 +192,7 @@ export async function loadLocalImageSrc(
     return cached
   }
 
-  return loadLocalImageAbsolutePath(absolutePath, connectionId, runtimeContext, access)
+  return loadLocalImageAbsolutePath(absolutePath, connectionId, runtimeContext, access, signal)
 }
 
 export function loadLocalImageAbsolutePath(
@@ -193,9 +201,10 @@ export function loadLocalImageAbsolutePath(
   runtimeContext?:
     | (Omit<RuntimeFileOperationArgs, 'connectionId'> & { connectionId?: string | null })
     | null,
-  access?: LocalFileAccess
+  access?: LocalFileAccess,
+  signal?: AbortSignal
 ): Promise<string | null> {
-  if (runtimeContext === null) {
+  if (runtimeContext === null || signal?.aborted) {
     return Promise.resolve(null)
   }
   const cacheKey = getLocalImageCacheKey(absolutePath, connectionId, runtimeContext, access)
@@ -206,39 +215,41 @@ export function loadLocalImageAbsolutePath(
 
   const inFlight = inFlightBlobUrlLoads.get(cacheKey)
   if (inFlight) {
-    return inFlight
+    return ownLocalImageRead(cacheKey, inFlight, signal)
   }
 
   const readGeneration = getLocalImageCacheGeneration()
   const readLeaseVersion = getLocalImageCacheKeyVersion(cacheKey)
-  const loadPromise = readLocalImagePreview(absolutePath, connectionId, runtimeContext, access)
-    .then((result) => {
-      if (
-        !result.isBinary ||
-        !result.content ||
-        getLocalImageCacheGeneration() !== readGeneration
-      ) {
-        return null
-      }
-      const { url, byteLength } = base64ToBlobUrl(result.content, result.mimeType ?? 'image/png')
-      if (getLocalImageCacheGeneration() !== readGeneration) {
-        URL.revokeObjectURL(url)
-        return null
-      }
-      return cacheLocalImageBlob(cacheKey, url, byteLength, readLeaseVersion) ? url : null
-    })
-    .catch(() => null)
-    .finally(() => {
-      if (inFlightBlobUrlLoads.get(cacheKey) === loadPromise) {
-        inFlightBlobUrlLoads.delete(cacheKey)
-      }
-      cleanupLocalImageCacheKeyVersion(cacheKey)
-    })
-  inFlightBlobUrlLoads.set(cacheKey, loadPromise)
-  return loadPromise
+  const readOwnerKey = [
+    runtimeContext ? (runtimeTargetEnvironmentId(runtimeContext.target) ?? 'client') : 'client',
+    runtimeContext?.connectionId ?? connectionId ?? 'local',
+    runtimeContext?.expectedExecutionHostId ?? 'local',
+    runtimeContext?.expectedSshTargetId ?? '',
+    runtimeContext?.expectedSshConnectionGeneration?.toString() ?? '',
+    runtimeContext?.expectedExternalSshTargetId ?? ''
+  ].join('\0')
+  const loadPromise = createLocalImageRead(cacheKey, readOwnerKey, async (readSignal) => {
+    const result = await readLocalImagePreview(absolutePath, connectionId, runtimeContext, access)
+    if (
+      readSignal.aborted ||
+      !result.isBinary ||
+      !result.content ||
+      getLocalImageCacheGeneration() !== readGeneration
+    ) {
+      return null
+    }
+    const { url, byteLength } = base64ToBlobUrl(result.content, result.mimeType ?? 'image/png')
+    if (getLocalImageCacheGeneration() !== readGeneration) {
+      URL.revokeObjectURL(url)
+      return null
+    }
+    return cacheLocalImageBlob(cacheKey, url, byteLength, readLeaseVersion) ? url : null
+  })
+  return ownLocalImageRead(cacheKey, loadPromise, signal)
 }
 
 export function resetLocalImageSrcStateForTests(): void {
+  resetLocalImageReadAdmissionForTests()
   resetLocalImageCacheState()
 }
 
