@@ -152,6 +152,16 @@ describe('session restored banner pane state', () => {
     expect(paneText(freshPane)).toBe(SESSION_RESUME_UNAVAILABLE_BANNER_TEXT)
   })
 
+  it('names OpenCode when its missing conversation was launched fresh', async () => {
+    const pane = createPane(1)
+
+    await renderPortals([pane], new Map([[pane.id, 'opencode-missing-fresh']]))
+
+    expect(paneText(pane)).toBe(
+      'The earlier OpenCode conversation no longer exists. OpenCode was launched fresh.'
+    )
+  })
+
   it('upgrades a restored pane to resume-unavailable and keeps identity otherwise', () => {
     // Fresh-session failure reasons replace restored claims; stable identity prevents unnecessary rerender.
     const restored = new Map<number, 'restored'>([[1, 'restored']])

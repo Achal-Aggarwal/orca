@@ -196,6 +196,7 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
       }
     }
     let dispatched = false
+    let agentResumeRefused: RuntimeTerminalCreate['agentResumeRefused']
     try {
       const created = await this.createRuntimeOwnedMobileSessionTerminal(
         worktreeId,
@@ -229,6 +230,7 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
           ...(resumeClaim
             ? {
                 onPtyCreated: (ptyId: string, result: RuntimeTerminalCreate) => {
+                  agentResumeRefused = result.agentResumeRefused
                   const decision = result.savedResumeDecision
                   if (
                     !result.isReattach &&
@@ -256,7 +258,7 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
         }
       )
       // A running resumed agent's record must not remain asleep.
-      if (created.tab.ptyId && resumedRecord && !created.agentResumeRefused) {
+      if (created.tab.ptyId && resumedRecord && !agentResumeRefused) {
         const hostId = this.getWorkspaceSessionHostIdForWorktree(worktreeId)
         void markResumedRecordLive(
           (edit) => this.commitWorkspaceSessionEdit(hostId, edit),

@@ -92,7 +92,7 @@ it('keeps the setup gate and removes the selector from both sequence payload and
   const sequence = createSequencedSetupAgentCommands({
     runnerScriptPath: '/tmp/sta-11913-setup.sh',
     startupCommand: request.command!,
-    platform: 'darwin',
+    platform: 'posix',
     nonce: 'test'
   })
   request.env = { ...request.env, ...sequence.startupEnv }

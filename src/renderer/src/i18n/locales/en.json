@@ -3682,6 +3682,9 @@
           }
         },
         "pane": {
+          "SessionRestoredBanner": {
+            "opencodeMissingFresh": "The earlier OpenCode conversation no longer exists. OpenCode was launched fresh."
+          },
           "CloseTerminalDialog": {
             "automatic_resume_warning": "This terminal will not resume automatically. Cancel and put the workspace to sleep to resume it later.",
             "ebd2fa844d": "Close",
