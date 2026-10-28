@@ -151,6 +151,8 @@ function replaceReferenceLinks(
   const isInsideFence = createMarkdownFenceRangeCursor(getMarkdownFenceRanges(markdown))
   const findClosingTextBracket = createClosingBracketCursor(markdown)
   const findClosingLabelBracket = createClosingBracketCursor(markdown)
+  let cachedLabelStart = -1
+  let cachedLabelDefinition: ReferenceLinkDefinition | undefined
 
   while (index < markdown.length) {
     if (isInsideFence(index) || markdown[index] !== '[' || isEscaped(markdown, index)) {
@@ -177,9 +179,19 @@ function replaceReferenceLinks(
     if (afterText === '[') {
       const closingLabelIndex = findClosingLabelBracket(closingTextIndex + 2)
       if (closingLabelIndex !== -1) {
-        const rawLabel = markdown.slice(closingTextIndex + 2, closingLabelIndex)
-        const label = normalizeReferenceLabel(rawLabel || text)
-        const definition = definitions.get(label)
+        const labelStart = closingTextIndex + 2
+        let definition: ReferenceLinkDefinition | undefined
+        if (labelStart === closingLabelIndex) {
+          definition = definitions.get(normalizeReferenceLabel(text))
+        } else {
+          if (cachedLabelStart !== labelStart) {
+            cachedLabelStart = labelStart
+            cachedLabelDefinition = definitions.get(
+              normalizeReferenceLabel(markdown.slice(labelStart, closingLabelIndex))
+            )
+          }
+          definition = cachedLabelDefinition
+        }
         if (definition) {
           result += formatInlineReferenceLink(text, definition)
           index = closingLabelIndex + 1

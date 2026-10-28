@@ -112,3 +112,14 @@ it('reuses the escape status of a shared closing bracket', () => {
   )
   expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
 })
+
+it('reuses a missing full-reference label shared by unfinished text', () => {
+  const prefix = `${'['.repeat(100_000)}][${'missing'.repeat(100_000)}]`
+  const source = `[valid]\n${prefix}\n\n[valid]: https://example.com\n`
+  const normalized = runInNewContext(
+    'normalize(source)',
+    { normalize: normalizeMarkdownReferenceLinks, source },
+    { timeout: 1500 }
+  )
+  expect(normalized).toBe(`[valid](https://example.com)\n${prefix}\n\n`)
+})
