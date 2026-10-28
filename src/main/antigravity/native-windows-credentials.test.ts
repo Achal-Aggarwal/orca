@@ -73,7 +73,9 @@ describe('Windows native Antigravity credentials', () => {
       expect(fileWrites).not.toHaveBeenCalled()
       expect(h.store.write).not.toHaveBeenCalled()
       expect(readFileSync(path, 'utf8')).toBe(credential('a'))
-      expect(fake.readGenericCredential('gemini:antigravity')?.toString()).toBe(raw)
+      expect(
+        new TextDecoder().decode(fake.readGenericCredential('gemini:antigravity') ?? undefined)
+      ).toBe(raw)
       expect(h.getVault().selectedAccountId).toBeNull()
     }
   )

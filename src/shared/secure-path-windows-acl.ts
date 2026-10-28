@@ -96,7 +96,7 @@ export function readPrivateWindowsFile(path: string, maxBytes: number): Buffer |
   if (findPrivateDaclViolation(file.dacl, security.userSid)) {
     throw new Error('The Windows credential file permits access by another user.')
   }
-  return file.data
+  return Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength)
 }
 
 function verifyAfterApply(

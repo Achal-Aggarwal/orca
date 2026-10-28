@@ -19,6 +19,28 @@ afterEach(() => {
   }
 })
 describe('Windows private credential-file contract', () => {
+  it('returns a Buffer over only the validated byte view without copying its allocation', () => {
+    const fake = createFakeWindowsSecurity()
+    const backing = new TextEncoder().encode('prefixfixture-onlysuffix')
+    const data = backing.subarray(6, 18)
+    const read = vi.spyOn(fake, 'readFileWithDacl').mockReturnValue({
+      data,
+      dacl: {
+        protected: false,
+        aces: [{ type: 0, flags: 0x10, mask: 0x1f01ff, sid: FAKE_USER_SID }]
+      }
+    })
+    setWindowsSecurityForTests(fake)
+    const result = readPrivateWindowsFile('owned-fixture', 100)
+    expect(Buffer.isBuffer(result)).toBe(true)
+    expect(result?.toString('utf8')).toBe('fixture-only')
+    expect(result?.buffer).toBe(data.buffer)
+    expect(result?.byteOffset).toBe(data.byteOffset)
+    expect(result?.byteLength).toBe(data.byteLength)
+    data[0] = 70
+    expect(result?.toString('utf8')).toBe('Fixture-only')
+    expect(read).toHaveBeenCalledExactlyOnceWith('owned-fixture', 100)
+  })
   it('reads once and traverses at most twice the ACE population at N and 10N', () => {
     const fake = createFakeWindowsSecurity()
     setWindowsSecurityForTests(fake)

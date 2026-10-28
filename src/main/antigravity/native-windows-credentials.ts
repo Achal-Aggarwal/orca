@@ -35,7 +35,7 @@ class NativeCredentialReadFailure extends Error {
 export async function readAntigravityWindowsCredentialContents(
   target = nativeTarget
 ): Promise<string | null> {
-  let bytes: Buffer | null
+  let bytes: Uint8Array | null
   try {
     bytes = security().readGenericCredential(target)
   } catch (error) {

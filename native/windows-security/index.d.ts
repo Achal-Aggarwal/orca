@@ -1,5 +1,3 @@
-import type { Buffer } from 'node:buffer'
-
 /** Every call throws an Error whose message names the Win32 call and its error code. */
 
 export type GrantAccessOptions = {
@@ -46,9 +44,9 @@ export declare function createFileWithDacl(
 export declare function readFileWithDacl(
   path: string,
   maxBytes: number
-): { data: Buffer; dacl: WindowsDacl | null } | null
+): { data: Uint8Array; dacl: WindowsDacl | null } | null
 /** Missing returns null; native read failures carry syscall='CredReadW' and numeric win32Code. */
-export declare function readGenericCredential(target: string): Buffer | null
+export declare function readGenericCredential(target: string): Uint8Array | null
 export declare function writeGenericCredential(target: string, user: string, data: Uint8Array): void
 
 /**

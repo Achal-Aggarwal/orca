@@ -72,7 +72,7 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
       true
     )
     const read = addon.readFileWithDacl(path, 100)
-    expect(read?.data.toString()).toBe('fixture-only')
+    expect(new TextDecoder().decode(read?.data)).toBe('fixture-only')
     expect(read?.dacl?.protected).toBe(true)
     expect(() => addon.readFileWithDacl(path, 2)).toThrow('ReadFileWithDacl')
     expect(addon.readFileWithDacl(join(root, 'absent-token'), 100)).toBeNull()
@@ -102,12 +102,16 @@ describeOnWindows('native windows-security addon against a real filesystem', () 
       addon.writeGenericCredential(target, 'antigravity', backing.subarray(6, 6 + bytes.length))
       expect(addon.readGenericCredential(target)).toEqual(bytes)
       addon.writeGenericCredential(target, 'antigravity', Buffer.from('replacement-fixture'))
-      expect(addon.readGenericCredential(target)?.toString()).toBe('replacement-fixture')
+      expect(new TextDecoder().decode(addon.readGenericCredential(target) ?? undefined)).toBe(
+        'replacement-fixture'
+      )
       metadata('verify')
       expect(() =>
         addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2561))
       ).toThrow()
-      expect(addon.readGenericCredential(target)?.toString()).toBe('replacement-fixture')
+      expect(new TextDecoder().decode(addon.readGenericCredential(target) ?? undefined)).toBe(
+        'replacement-fixture'
+      )
       addon.writeGenericCredential(target, 'antigravity', Buffer.alloc(2560, 65))
       expect(addon.readGenericCredential(target)).toEqual(Buffer.alloc(2560, 65))
     } finally {
