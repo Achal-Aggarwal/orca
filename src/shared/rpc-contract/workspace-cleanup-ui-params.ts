@@ -1,14 +1,14 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcString, RpcOptionalNonemptyString, RpcFiniteNumber } from './rpc-value-schemas'
 import { z } from 'zod'
 import { normalizeWorkspaceCleanupBrowseState } from '../workspace-cleanup-browse-state'
 import type { WorkspaceCleanupBrowseState } from '../workspace-cleanup-browse-state'
 
 export const WorkspaceCleanupDismissal = z.object({
   worktreeId: RpcString,
-  dismissedAt: RpcNumber.finite(),
+  dismissedAt: RpcFiniteNumber,
   fingerprint: RpcString,
-  classifierVersion: RpcNumber.finite(),
-  executionHostId: RpcString.min(1).optional()
+  classifierVersion: RpcFiniteNumber,
+  executionHostId: RpcOptionalNonemptyString
 })
 
 /** Normalize filters field by field: strict/enumerated input would reject all ui.set state when newer clients add filters. */

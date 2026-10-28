@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcNumber, RpcString, RpcNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { TerminalPaneLayoutNodeSchema } from './session-tabs-schemas-params'
 import { TerminalOrphanGroupLayout } from './terminal-orphan-params'
@@ -13,8 +13,8 @@ const SplitRatioIntents = z
       split: z
         .object({
           direction: z.enum(['horizontal', 'vertical']),
-          first: RpcString.min(1),
-          second: RpcString.min(1)
+          first: RpcNonemptyString,
+          second: RpcNonemptyString
         })
         .optional()
     })
@@ -25,8 +25,8 @@ const SplitRatioIntents = z
 export const SetPaneRatiosCommand = z
   .object({
     type: z.literal('setPaneRatios'),
-    workspace: RpcString.min(1),
-    tabId: RpcString.min(1),
+    workspace: RpcNonemptyString,
+    tabId: RpcNonemptyString,
     root: TerminalPaneLayoutNodeSchema.optional(),
     ratios: SplitRatioIntents.optional()
   })
@@ -36,7 +36,7 @@ export const SetPaneRatiosCommand = z
 export const SetGroupRatiosCommand = z
   .object({
     type: z.literal('setGroupRatios'),
-    workspace: RpcString.min(1),
+    workspace: RpcNonemptyString,
     groupLayout: TerminalOrphanGroupLayout.optional(),
     ratios: SplitRatioIntents.optional()
   })

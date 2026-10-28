@@ -4,7 +4,10 @@ import {
   RpcOptionalBoolean,
   RpcOptionalString,
   RpcString,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalPositiveInteger,
+  RpcNonnegativeInteger
 } from './rpc-value-schemas'
 import { PATH_EXISTENCE_BATCH_MAX } from '../path-existence-batch'
 import { z } from 'zod'
@@ -39,8 +42,8 @@ export const ResolveTerminalPath = WorktreeSelector.extend({
   crossWorkspace: RpcUnknown.transform((v) => v === true).optional(),
   nativeChatContext: z
     .object({
-      tabId: RpcString.min(1),
-      sessionId: RpcString.min(1)
+      tabId: RpcNonemptyString,
+      sessionId: RpcNonemptyString
     })
     .optional()
 })
@@ -63,7 +66,7 @@ export const FileOpenDiff = FileOpenTarget.extend({
 })
 
 export const DocPreviewFileRead = FileOpen.extend({
-  entryRelativePath: RpcString.min(1),
+  entryRelativePath: RpcNonemptyString,
   implicitRootRelativePath: RpcNullableString,
   authorizedRootRelativePaths: z.array(RpcString)
 })
@@ -78,7 +81,7 @@ export const ServerDirectoryBrowse = z.object({
 })
 
 export const FileReadChunk = FileOpen.extend({
-  offset: RpcNumber.int().nonnegative(),
+  offset: RpcNonnegativeInteger,
   length: RpcNumber.int()
     .positive()
     .max(512 * 1024)
@@ -93,7 +96,7 @@ export const FileSearch = WorktreeSelector.extend({
   useRegex: RpcOptionalBoolean,
   includePattern: RpcOptionalString,
   excludePattern: RpcOptionalString,
-  maxResults: RpcNumber.int().positive().optional()
+  maxResults: RpcOptionalPositiveInteger
 })
 
 // Optional maxResults aligns remote callers with desktop caps; older hosts strip it and retain their defaults.
@@ -105,7 +108,7 @@ export const FileListAll = WorktreeSelector.extend({
   includeIgnored: RpcOptionalBoolean,
   followSymlinks: RpcOptionalBoolean,
   excludePaths: z.array(RpcString).optional(),
-  maxResults: RpcNumber.int().positive().optional()
+  maxResults: RpcOptionalPositiveInteger
 })
 
 export const FileUnwatch = z.object({

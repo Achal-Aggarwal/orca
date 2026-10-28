@@ -1,25 +1,30 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import {
+  RpcString,
+  RpcNonemptyString,
+  RpcOptionalNonemptyString,
+  RpcOptionalNonnegativeInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { isTerminalLeafId } from '../stable-pane-id'
 import { isValidHostTerminalTabId } from '../terminal-tab-id'
 import type { TuiAgent } from '../tui-agent'
 import { isTuiAgent } from '../tui-agent-config'
 
-const workspace = RpcString.min(1)
+const workspace = RpcNonemptyString
 
 /** An open into a new group, named by the command's groupId, beside this one (NewGroupSplit). */
 export const NewGroupSplit = z
   .object({
-    besideGroupId: RpcString.min(1),
-    besideLastGroupId: RpcString.min(1).optional(),
+    besideGroupId: RpcNonemptyString,
+    besideLastGroupId: RpcOptionalNonemptyString,
     direction: z.enum(['left', 'right', 'up', 'down'])
   })
   .optional()
 
 const TerminalCreation = z.object({
-  defaultTitle: RpcString.min(1).optional(),
-  shellOverride: RpcString.min(1).optional(),
-  startupCwd: RpcString.min(1).optional(),
+  defaultTitle: RpcOptionalNonemptyString,
+  shellOverride: RpcOptionalNonemptyString,
+  startupCwd: RpcOptionalNonemptyString,
   forceHostRuntime: z.literal(true).optional(),
   launchAgent: z
     .custom<TuiAgent>((value) => typeof value === 'string' && isTuiAgent(value))
@@ -32,9 +37,9 @@ export const CreateTerminalTabCommand = z.object({
   workspace,
   tabId: RpcString.refine(isValidHostTerminalTabId),
   leafId: RpcString.refine(isTerminalLeafId),
-  groupId: RpcString.min(1).optional(),
+  groupId: RpcOptionalNonemptyString,
   viewMode: z.enum(['terminal', 'chat']).optional(),
-  createdAt: RpcNumber.int().nonnegative().optional(),
+  createdAt: RpcOptionalNonnegativeInteger,
   quickCommandLabel: RpcString.trim().min(1).optional(),
   creation: TerminalCreation.optional(),
   /** Only into a workspace with no tab in main's copy; otherwise nothing is created. */
@@ -51,7 +56,7 @@ export const ApplyDefaultTabsCommand = z.object({
       tabId: RpcString.refine(isValidHostTerminalTabId),
       leafId: RpcString.refine(isTerminalLeafId),
       title: RpcString.trim().min(1).optional(),
-      color: RpcString.min(1).optional(),
+      color: RpcOptionalNonemptyString,
       creation: TerminalCreation.optional()
     })
   )

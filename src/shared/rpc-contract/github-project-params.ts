@@ -1,4 +1,9 @@
-import { RpcNullableString, RpcNumber, RpcString } from './rpc-value-schemas'
+import {
+  RpcNullableString,
+  RpcString,
+  RpcPositiveInteger,
+  RpcOptionalPositiveInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { SlugRepo } from './github-repo-target-params'
 import { OptionalString, requiredString } from './rpc-param-primitives'
@@ -15,15 +20,15 @@ export const ProjectViewTable = z.object({
   // Preserve Enterprise host through Zod parsing so gh requests target the correct host.
   host: OptionalString,
   ownerType: ProjectOwnerType,
-  projectNumber: RpcNumber.int().positive(),
+  projectNumber: RpcPositiveInteger,
   viewId: OptionalString,
-  viewNumber: RpcNumber.int().positive().optional(),
+  viewNumber: RpcOptionalPositiveInteger,
   viewName: OptionalString,
   queryOverride: OptionalString
 })
 
 export const ProjectWorkItemDetailsBySlug = SlugRepo.extend({
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   type: z.enum(['issue', 'pr'])
 })
 
@@ -36,7 +41,7 @@ export const ProjectViews = z.object({
   owner: requiredString('Missing owner'),
   host: OptionalString,
   ownerType: ProjectOwnerType,
-  projectNumber: RpcNumber.int().positive()
+  projectNumber: RpcPositiveInteger
 })
 
 export const ProjectItemField = z.object({
@@ -58,7 +63,7 @@ export const SlugIssueUpdate = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   updates: IssueUpdate
 })
 
@@ -66,7 +71,7 @@ export const SlugPullRequestUpdate = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   updates: z.object({
     state: z.enum(['open', 'closed']).optional(),
     title: OptionalString,
@@ -78,7 +83,7 @@ export const SlugIssueTypeUpdate = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   issueTypeId: RpcNullableString
 })
 
@@ -86,7 +91,7 @@ export const SlugIssueComment = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   body: requiredString('Comment body required')
 })
 
@@ -94,7 +99,7 @@ export const SlugIssueCommentEdit = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  commentId: RpcNumber.int().positive(),
+  commentId: RpcPositiveInteger,
   body: requiredString('Comment body required')
 })
 
@@ -102,7 +107,7 @@ export const SlugIssueCommentDelete = z.object({
   owner: requiredString('Missing owner'),
   repo: requiredString('Missing repo'),
   host: OptionalString,
-  commentId: RpcNumber.int().positive()
+  commentId: RpcPositiveInteger
 })
 
 export const GithubProjectListAccessibleParams = z.object({ host: OptionalString })

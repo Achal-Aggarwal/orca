@@ -1,4 +1,10 @@
-import { RpcNumber, RpcOptionalBoolean, RpcOptionalString, RpcString } from './rpc-value-schemas'
+import {
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcOptionalString,
+  RpcString,
+  RpcOptionalPositiveInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const WorktreeParam = z.object({ worktree: RpcOptionalString }).partial()
@@ -118,7 +124,7 @@ export const AxParams = z.object({
 })
 
 export const LogcatParams = z.object({
-  lines: RpcNumber.int().positive().optional(),
+  lines: RpcOptionalPositiveInteger,
   filters: z.array(RpcString).optional(),
   device: RpcOptionalString,
   emulator: RpcOptionalString,

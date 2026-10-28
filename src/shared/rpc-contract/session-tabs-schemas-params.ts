@@ -4,7 +4,10 @@ import {
   RpcOptionalBoolean,
   RpcOptionalString,
   RpcString,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalNonemptyString,
+  RpcOptionalNonnegativeInteger
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import { RUNTIME_NAVIGATION_TARGETS } from '../runtime-navigation'
@@ -23,7 +26,7 @@ export const WorktreeTabSelector = z.object({
 })
 
 export const SessionTabsUnsubscribe = WorktreeTabSelector.extend({
-  subscriptionId: RpcString.min(1).optional()
+  subscriptionId: RpcOptionalNonemptyString
 })
 
 export const ActivateTab = WorktreeTabSelector.extend({
@@ -151,16 +154,13 @@ export const SetTabProps = WorktreeTabSelector.extend({
 })
 
 export const CreateTerminalTab = WorktreeTabSelector.extend({
-  sourceChatFork: z
-    .object({ sessionId: RpcString.min(1) })
-    .strict()
-    .optional(),
+  sourceChatFork: z.object({ sessionId: RpcNonemptyString }).strict().optional(),
   afterTabId: RpcOptionalString,
   targetGroupId: RpcOptionalString,
   command: RpcOptionalString,
   // Why: the shell the terminal IS; a shell sent as `command` runs nested in the host default.
   shell: WindowsShellOverrideParam.optional(),
-  cwd: RpcString.min(1).optional(),
+  cwd: RpcOptionalNonemptyString,
   env: z.record(RpcString, RpcString).optional(),
   envToDelete: z.array(RpcString.min(1).max(256)).max(32).optional(),
   startupCommandDelivery: z.enum(['fast', 'shell-ready']).optional(),
@@ -261,14 +261,14 @@ export const MoveTab = z.discriminatedUnion('kind', [
     .object({
       ...MoveTabBase,
       kind: z.literal('reorder'),
-      tabOrder: z.array(RpcString.min(1)).min(1, 'Missing tab order')
+      tabOrder: z.array(RpcNonemptyString).min(1, 'Missing tab order')
     })
     .strict(),
   z
     .object({
       ...MoveTabBase,
       kind: z.literal('move-to-group'),
-      index: RpcNumber.int().nonnegative().optional()
+      index: RpcOptionalNonnegativeInteger
     })
     .strict(),
   z

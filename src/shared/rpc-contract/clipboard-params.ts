@@ -1,4 +1,10 @@
-import { RpcNumber, RpcString, RpcUnknown } from './rpc-value-schemas'
+import {
+  RpcNumber,
+  RpcString,
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcNonnegativeInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   CLIPBOARD_IMAGE_MAX_BASE64_CHARS,
@@ -51,8 +57,8 @@ export const StartImageUpload = z.object({
 })
 
 export const AppendImageUploadChunk = z.object({
-  uploadId: RpcString.min(1),
-  offset: RpcNumber.int().nonnegative(),
+  uploadId: RpcNonemptyString,
+  offset: RpcNonnegativeInteger,
   contentBase64: clipboardImageBase64Payload(
     CLIPBOARD_IMAGE_UPLOAD_CHUNK_BASE64_CHARS,
     'Clipboard image chunk is too large'
@@ -60,9 +66,9 @@ export const AppendImageUploadChunk = z.object({
 })
 
 export const CommitImageUpload = z.object({
-  uploadId: RpcString.min(1)
+  uploadId: RpcNonemptyString
 })
 
 export const AbortImageUpload = z.object({
-  uploadId: RpcString.min(1)
+  uploadId: RpcNonemptyString
 })

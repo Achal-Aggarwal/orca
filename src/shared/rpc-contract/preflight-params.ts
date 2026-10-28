@@ -1,4 +1,9 @@
-import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import {
+  RpcOptionalBoolean,
+  RpcString,
+  RpcNonemptyString,
+  RpcOptionalNonemptyString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { RepoSelector } from './github-repo-target-params'
 import type { TuiAgent } from '../tui-agent'
@@ -10,17 +15,17 @@ export const PreflightCheck = z.object({
 })
 
 export const PreflightDetectRemoteAgents = z.object({
-  connectionId: RpcString.min(1)
+  connectionId: RpcNonemptyString
 })
 
 export const PreflightDetectRemoteWindowsTerminalCapabilities = z.object({
-  connectionId: RpcString.min(1)
+  connectionId: RpcNonemptyString
 })
 
 /** Why optional: a client that predates it sends nothing and keeps the host-default probe. */
 export const PreflightAgentDetection = z.object({
-  worktreeId: RpcString.min(1).optional(),
-  repoId: RpcString.min(1).optional()
+  worktreeId: RpcOptionalNonemptyString,
+  repoId: RpcOptionalNonemptyString
 })
 
 export const PreflightProjectAgentDetection = PreflightAgentDetection.extend({

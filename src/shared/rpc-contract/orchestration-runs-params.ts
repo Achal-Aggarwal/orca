@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcNumber, RpcOptionalNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalBoolean, OptionalString, requiredString } from './rpc-param-primitives'
 import { ORCHESTRATION_RUN_PAGE_LIMIT } from '../orchestration-run-pagination'
@@ -18,7 +18,7 @@ export const RunCurrentParams = z.object({ from: requiredString('Missing coordin
 
 export const RunListParams = z.object({
   limit: RpcNumber.int().min(1).max(ORCHESTRATION_RUN_PAGE_LIMIT).optional(),
-  cursor: RpcString.min(1).optional()
+  cursor: RpcOptionalNonemptyString
 })
 
 export const RunShowParams = z.object({
@@ -26,5 +26,5 @@ export const RunShowParams = z.object({
   from: OptionalString,
   // Lists removed work 200 entries per page; older hosts strip both and return no removedWork.
   removed: OptionalBoolean,
-  cursor: RpcString.min(1).optional()
+  cursor: RpcOptionalNonemptyString
 })

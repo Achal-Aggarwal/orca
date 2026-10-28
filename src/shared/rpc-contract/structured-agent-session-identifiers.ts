@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcString, RpcNonnegativeInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isAgentSessionId } from '../agent-session-record'
 import { AGENT_SESSION_ID_MAX_LENGTH } from '../agent-session-wire'
@@ -18,7 +18,7 @@ export const Identifier = (message: string, maxLength = MAX_ID_LENGTH) =>
 export const JournalCursor = z
   .object({
     epoch: Identifier('Invalid journal epoch'),
-    sequence: RpcNumber.int().nonnegative()
+    sequence: RpcNonnegativeInteger
   })
   .strict()
 

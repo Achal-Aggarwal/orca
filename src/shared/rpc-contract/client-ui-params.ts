@@ -5,7 +5,11 @@ import {
   RpcOptionalBoolean,
   RpcOptionalString,
   RpcString,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalPositiveInteger,
+  RpcOptionalFiniteNumber,
+  RpcFiniteNumber
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import { isFeatureTipId } from '../feature-tips'
@@ -94,7 +98,7 @@ export const WorkspaceStatusDefinition = z.object({
 export const FeatureInteractionRecord = z
   .object({
     firstInteractedAt: RpcNumber.finite().nonnegative(),
-    interactionCount: RpcNumber.int().positive().optional()
+    interactionCount: RpcOptionalPositiveInteger
   })
   .strict()
 
@@ -134,14 +138,14 @@ export const UiUpdateFields = z
     lastActiveWorktreeId: NullableString.optional(),
     // Why: sync hydration ignores this persisted startup view, so paired windows stay put.
     activeView: TopLevelViewSchema.optional(),
-    sidebarWidth: RpcNumber.finite().optional(),
+    sidebarWidth: RpcOptionalFiniteNumber,
     sidebarOpen: RpcOptionalBoolean,
     rightSidebarOpen: RpcOptionalBoolean,
     rightSidebarTab: RightSidebarTabParam.optional(),
     rightSidebarExplorerView: z.enum(['files', 'search']).optional(),
-    rightSidebarWidth: RpcNumber.finite().optional(),
-    markdownTocPanelWidth: RpcNumber.finite().optional(),
-    combinedDiffFileTreeWidth: RpcNumber.finite().optional(),
+    rightSidebarWidth: RpcOptionalFiniteNumber,
+    markdownTocPanelWidth: RpcOptionalFiniteNumber,
+    combinedDiffFileTreeWidth: RpcOptionalFiniteNumber,
     groupBy: z.enum(['none', 'workspace-status', 'repo', 'pr-status']).optional(),
     showWorkspaceLineage: RpcOptionalBoolean,
     sortBy: z.enum(['name', 'smart', 'recent', 'repo', 'manual']).optional(),
@@ -166,7 +170,7 @@ export const UiUpdateFields = z
     automationHostFilter: z
       .union([
         z.object({ kind: z.literal('all') }).strict(),
-        z.object({ kind: z.literal('host'), hostKey: RpcString.min(1) }).strict()
+        z.object({ kind: z.literal('host'), hostKey: RpcNonemptyString }).strict()
       ])
       .optional(),
     manualRepoOrder: z
@@ -177,14 +181,14 @@ export const UiUpdateFields = z
     explorerDisplayRootByWorktree: z.record(RpcString, RpcString).optional(),
     showDotfilesByWorktree: z.record(RpcString, RpcBoolean).optional(),
     collapsedGroups: StringArray.optional(),
-    uiZoomLevel: RpcNumber.finite().optional(),
-    editorFontZoomLevel: RpcNumber.finite().optional(),
+    uiZoomLevel: RpcOptionalFiniteNumber,
+    editorFontZoomLevel: RpcOptionalFiniteNumber,
     worktreeCardProperties: WorktreeCardProperties.optional(),
     _worktreeCardModeDefaulted: RpcOptionalBoolean,
     agentActivityDisplayMode: AgentActivityDisplayMode.optional(),
     workspaceStatuses: z.array(WorkspaceStatusDefinition).optional(),
-    workspaceBoardOpacity: RpcNumber.finite().optional(),
-    workspaceBoardColumnWidth: RpcNumber.finite().optional(),
+    workspaceBoardOpacity: RpcOptionalFiniteNumber,
+    workspaceBoardColumnWidth: RpcOptionalFiniteNumber,
     syncTaskStatusFromWorkspaceBoard: RpcOptionalBoolean,
     _workspaceStatusesDefaultOrderMigrated: RpcOptionalBoolean,
     _workspaceStatusesReorderedDefaultRepaired: RpcOptionalBoolean,
@@ -211,29 +215,29 @@ export const UiUpdateFields = z
     notificationPermissionRequested: RpcOptionalBoolean,
     updateReassuranceSeen: RpcOptionalBoolean,
     osc52ClipboardDefaultOnNoticePending: RpcOptionalBoolean,
-    acknowledgedAgentsByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
-    activityClearedAtByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
-    manuallyUnreadTurnsByPaneKey: z.record(RpcString, RpcNumber.finite()).optional(),
+    acknowledgedAgentsByPaneKey: z.record(RpcString, RpcFiniteNumber).optional(),
+    activityClearedAtByPaneKey: z.record(RpcString, RpcFiniteNumber).optional(),
+    manuallyUnreadTurnsByPaneKey: z.record(RpcString, RpcFiniteNumber).optional(),
     browserDefaultUrl: NullableString.optional(),
     browserDefaultSearchEngine: z
       .enum(['google', 'duckduckgo', 'bing', 'kagi'])
       .nullable()
       .optional(),
-    browserDefaultZoomLevel: RpcNumber.finite().optional(),
+    browserDefaultZoomLevel: RpcOptionalFiniteNumber,
     browserKagiSessionLink: NullableString.optional(),
     browserDevToolsDock: z
       .object({
         side: z.enum(['bottom', 'right']),
-        bottomFraction: RpcNumber.finite(),
-        rightFraction: RpcNumber.finite()
+        bottomFraction: RpcFiniteNumber,
+        rightFraction: RpcFiniteNumber
       })
       .optional(),
     windowBounds: z
       .object({
-        x: RpcNumber.finite(),
-        y: RpcNumber.finite(),
-        width: RpcNumber.finite(),
-        height: RpcNumber.finite()
+        x: RpcFiniteNumber,
+        y: RpcFiniteNumber,
+        width: RpcFiniteNumber,
+        height: RpcFiniteNumber
       })
       .nullable()
       .optional(),
@@ -261,11 +265,11 @@ export const UiUpdateFields = z
     petVisible: RpcOptionalBoolean,
     petId: RpcOptionalString,
     customPets: UnknownRecordArray.optional(),
-    petSize: RpcNumber.finite().optional(),
+    petSize: RpcOptionalFiniteNumber,
     sidekickVisible: RpcOptionalBoolean,
     sidekickId: RpcOptionalString,
     customSidekicks: UnknownRecordArray.optional(),
-    sidekickSize: RpcNumber.finite().optional(),
+    sidekickSize: RpcOptionalFiniteNumber,
     taskResumeState: TaskResumeState.optional(),
     workspaceCleanup: WorkspaceCleanup.optional(),
     featureTipsSeenIds: FeatureTipIds.optional(),

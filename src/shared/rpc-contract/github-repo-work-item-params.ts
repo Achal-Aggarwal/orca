@@ -1,4 +1,8 @@
-import { RpcNumber, RpcOptionalBoolean } from './rpc-value-schemas'
+import {
+  RpcOptionalBoolean,
+  RpcPositiveInteger,
+  RpcOptionalPositiveInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { RepoSelector } from './github-repo-target-params'
 import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-param-primitives'
@@ -6,7 +10,7 @@ import { OptionalFiniteNumber, OptionalString, requiredString } from './rpc-para
 export const WorkItemsList = RepoSelector.extend({
   limit: OptionalFiniteNumber,
   query: OptionalString,
-  page: RpcNumber.int().positive().optional(),
+  page: RpcOptionalPositiveInteger,
   noCache: RpcOptionalBoolean
 })
 
@@ -15,7 +19,7 @@ export const IssuesList = RepoSelector.extend({
 })
 
 export const WorkItem = RepoSelector.extend({
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   type: z.enum(['issue', 'pr']).optional()
 })
 
@@ -24,7 +28,7 @@ export const WorkItemByOwnerRepo = RepoSelector.extend({
   ownerRepo: requiredString('Missing repo'),
   // Preserve Enterprise host through parsing for host-qualified gh requests.
   host: OptionalString,
-  number: RpcNumber.int().positive(),
+  number: RpcPositiveInteger,
   type: z.enum(['issue', 'pr'])
 })
 

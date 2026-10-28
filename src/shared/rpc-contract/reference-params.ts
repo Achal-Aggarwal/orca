@@ -1,4 +1,4 @@
-import { RpcNumber, RpcOptionalBoolean } from './rpc-value-schemas'
+import { RpcOptionalBoolean, RpcOptionalPositiveInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString, OptionalString } from './rpc-param-primitives'
 
@@ -14,7 +14,7 @@ export const ReferenceFind = z
     cwd: OptionalString,
     repo: OptionalString,
     includeArchived: RpcOptionalBoolean,
-    limit: RpcNumber.int().positive().optional()
+    limit: RpcOptionalPositiveInteger
   })
   .refine((params) => !(params.worktree && params.repo), {
     message: '--repo and --worktree cannot be combined'

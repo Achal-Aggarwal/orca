@@ -1,4 +1,10 @@
-import { RpcNumber, RpcString, RpcUnknown } from './rpc-value-schemas'
+import {
+  RpcNumber,
+  RpcString,
+  RpcUnknown,
+  RpcOptionalNonemptyString,
+  RpcOptionalNonnegativeInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import type { AgentType } from '../native-chat-types'
 
@@ -17,9 +23,9 @@ export const NativeChatSession = z.object({
     .transform((value) => Math.min(value, MOBILE_NATIVE_CHAT_MAX_WINDOW))
     .optional(),
   // Use the same cleanup token for registration/unsubscribe; absent retains legacy agent:sessionId keys.
-  subscriptionId: RpcString.min(1).optional(),
+  subscriptionId: RpcOptionalNonemptyString,
   // Hook transcript paths locate files when provider session IDs no longer name them; optional for old clients.
-  transcriptPath: RpcString.min(1).optional(),
+  transcriptPath: RpcOptionalNonemptyString,
   // Gate pending snapshots: legacy clients mistake them for settled empty history and overwrite retention/unblock drafts.
   capabilities: z
     .object({
@@ -27,11 +33,11 @@ export const NativeChatSession = z.object({
       transcriptSourceOrder: z.literal(1).optional()
     })
     .optional(),
-  beforeOffset: RpcNumber.int().nonnegative().optional()
+  beforeOffset: RpcOptionalNonnegativeInteger
 })
 
 export const NativeChatUnsubscribe = z.object({
-  subscriptionId: RpcString.min(1).optional()
+  subscriptionId: RpcOptionalNonemptyString
 })
 
 export const MOBILE_NATIVE_CHAT_MAX_WINDOW = 2000

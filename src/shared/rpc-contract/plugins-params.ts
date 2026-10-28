@@ -1,4 +1,10 @@
-import { RpcBoolean, RpcOptionalUnknown, RpcString, RpcUnknown } from './rpc-value-schemas'
+import {
+  RpcBoolean,
+  RpcOptionalUnknown,
+  RpcString,
+  RpcUnknown,
+  RpcNonemptyString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { isQualifiedPluginKey } from '../plugins/plugin-manifest'
 
@@ -8,13 +14,13 @@ export const PluginSetEnabledParams = z.object({
 })
 
 export const PluginReadPanelEntryParams = z.object({
-  pluginKey: RpcString.min(1),
-  panelId: RpcString.min(1)
+  pluginKey: RpcNonemptyString,
+  panelId: RpcNonemptyString
 })
 
 export const PluginInvokeCommandParams = z.object({
-  pluginKey: RpcString.min(1),
-  commandId: RpcString.min(1),
+  pluginKey: RpcNonemptyString,
+  commandId: RpcNonemptyString,
   args: RpcOptionalUnknown
 })
 

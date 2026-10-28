@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcString, RpcPositiveInteger } from './rpc-value-schemas'
 import { MAX_PROMPT_BYTES } from './structured-agent-session-message-params'
 import { Identifier } from './structured-agent-session-identifiers'
 import { z } from 'zod'
@@ -36,7 +36,7 @@ export const RespondToQuestionParams = z
   .object({
     envelope: MutationEnvelope,
     itemId: Identifier('Invalid item id'),
-    expectedRevision: RpcNumber.int().positive(),
+    expectedRevision: RpcPositiveInteger,
     /** An answer packed into one id, from clients that predate `answers`. */
     optionId: Identifier('Invalid option id', MAX_RESPONSE_OPTION_ID_LENGTH).optional(),
     answers: z.array(QuestionAnswer).min(1).max(MAX_QUESTION_ANSWER_QUESTIONS).optional()

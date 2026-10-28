@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcNumber, RpcString, RpcNonnegativeInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   AGENT_SESSION_ATTACHMENT_CHUNK_BASE64_CHARS,
@@ -22,7 +22,7 @@ export const AttachmentUploadStartParams = z
 export const AttachmentUploadAppendParams = z
   .object({
     uploadId: UploadId,
-    offset: RpcNumber.int().nonnegative(),
+    offset: RpcNonnegativeInteger,
     contentBase64: RpcString.max(
       AGENT_SESSION_ATTACHMENT_CHUNK_BASE64_CHARS,
       'Attachment chunk is too large'

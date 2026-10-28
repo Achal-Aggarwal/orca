@@ -1,4 +1,10 @@
-import { RpcNumber, RpcOptionalBoolean, RpcString, RpcUnknown } from './rpc-value-schemas'
+import {
+  RpcOptionalBoolean,
+  RpcString,
+  RpcUnknown,
+  RpcOptionalNonemptyString,
+  RpcOptionalNonnegativeInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { FileOpen, WorktreeSelector } from './files-target-params'
 
@@ -14,9 +20,9 @@ export function isValidRuntimeFileBase64(value: unknown): value is string {
 }
 
 export const FileMutationOpen = FileOpen.extend({
-  expectedExecutionHostId: RpcString.min(1).optional(),
-  expectedSshTargetId: RpcString.min(1).optional(),
-  expectedSshConnectionGeneration: RpcNumber.int().nonnegative().optional()
+  expectedExecutionHostId: RpcOptionalNonemptyString,
+  expectedSshTargetId: RpcOptionalNonemptyString,
+  expectedSshConnectionGeneration: RpcOptionalNonnegativeInteger
 })
 
 // Reject missing/non-string content instead of coercing to empty and truncating the file; explicit empty remains valid.
@@ -49,9 +55,9 @@ export const FileWriteBase64Chunk = FileWriteBase64.extend({
 })
 
 export const FileRename = WorktreeSelector.extend({
-  expectedExecutionHostId: RpcString.min(1).optional(),
-  expectedSshTargetId: RpcString.min(1).optional(),
-  expectedSshConnectionGeneration: RpcNumber.int().nonnegative().optional(),
+  expectedExecutionHostId: RpcOptionalNonemptyString,
+  expectedSshTargetId: RpcOptionalNonemptyString,
+  expectedSshConnectionGeneration: RpcOptionalNonnegativeInteger,
   oldRelativePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
     RpcString.min(1, 'Missing source path')
   ),
@@ -61,9 +67,9 @@ export const FileRename = WorktreeSelector.extend({
 })
 
 export const FileCopy = WorktreeSelector.extend({
-  expectedExecutionHostId: RpcString.min(1).optional(),
-  expectedSshTargetId: RpcString.min(1).optional(),
-  expectedSshConnectionGeneration: RpcNumber.int().nonnegative().optional(),
+  expectedExecutionHostId: RpcOptionalNonemptyString,
+  expectedSshTargetId: RpcOptionalNonemptyString,
+  expectedSshConnectionGeneration: RpcOptionalNonnegativeInteger,
   sourceRelativePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
     RpcString.min(1, 'Missing source path')
   ),
@@ -73,9 +79,9 @@ export const FileCopy = WorktreeSelector.extend({
 })
 
 export const FileCommitUpload = WorktreeSelector.extend({
-  expectedExecutionHostId: RpcString.min(1).optional(),
-  expectedSshTargetId: RpcString.min(1).optional(),
-  expectedSshConnectionGeneration: RpcNumber.int().nonnegative().optional(),
+  expectedExecutionHostId: RpcOptionalNonemptyString,
+  expectedSshTargetId: RpcOptionalNonemptyString,
+  expectedSshConnectionGeneration: RpcOptionalNonnegativeInteger,
   tempRelativePath: RpcUnknown.transform((v) => (typeof v === 'string' ? v : '')).pipe(
     RpcString.min(1, 'Missing temporary path')
   ),

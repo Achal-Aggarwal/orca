@@ -1,4 +1,11 @@
-import { RpcBoolean, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import {
+  RpcBoolean,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcString,
+  RpcNonemptyString,
+  RpcPositiveInteger
+} from './rpc-value-schemas'
 import {
   SendBody,
   MAX_OPTION_LABEL,
@@ -163,7 +170,7 @@ export const CancelParams = z
     prompt: z
       .object({
         itemId: Identifier('Invalid item id'),
-        expectedRevision: RpcNumber.int().positive()
+        expectedRevision: RpcPositiveInteger
       })
       .strict()
       .optional()
@@ -197,7 +204,7 @@ export const RespondParams = z
     envelope: MutationEnvelope,
     itemId: Identifier('Invalid item id'),
     /** Compare-and-set: the revision the client had on screen. */
-    expectedRevision: RpcNumber.int().positive(),
+    expectedRevision: RpcPositiveInteger,
     optionId: Identifier('Invalid option id', MAX_RESPONSE_OPTION_ID_LENGTH)
   })
   .strict()
@@ -250,10 +257,10 @@ export const SwitchToTerminalParams = OptionsParams.extend({
     .strict()
     .optional()
 }).strict()
-export const ItemParams = OptionsParams.extend({ itemId: RpcString.min(1) }).strict()
+export const ItemParams = OptionsParams.extend({ itemId: RpcNonemptyString }).strict()
 // Why optional: only a host advertising the workspace-sleep-mark capability is sent `markAsleep`.
 export const SleepWorkspaceParams = z
-  .object({ workspaceId: RpcString.min(1), markAsleep: z.literal(true).optional() })
+  .object({ workspaceId: RpcNonemptyString, markAsleep: z.literal(true).optional() })
   .strict()
 export const AcknowledgeAttentionParams = OptionsParams.extend({ observedCursor: JournalCursor })
 

@@ -1,9 +1,10 @@
 import {
-  RpcNumber,
   RpcOptionalBoolean,
   RpcOptionalNullableString,
   RpcOptionalString,
-  RpcString
+  RpcString,
+  RpcOptionalNonnegativeInteger,
+  RpcOptionalNullablePositiveInteger
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
@@ -17,12 +18,12 @@ export const HostedReviewForBranch = z.object({
   currentHeadOid: RpcOptionalNullableString,
   // Only the caller's selected worktree; the host caps how many earn the fast tier.
   active: RpcOptionalBoolean,
-  linkedGitHubPR: RpcNumber.int().positive().nullable().optional(),
-  fallbackGitHubPR: RpcNumber.int().positive().nullable().optional(),
-  linkedGitLabMR: RpcNumber.int().positive().nullable().optional(),
-  linkedBitbucketPR: RpcNumber.int().positive().nullable().optional(),
-  linkedAzureDevOpsPR: RpcNumber.int().positive().nullable().optional(),
-  linkedGiteaPR: RpcNumber.int().positive().nullable().optional()
+  linkedGitHubPR: RpcOptionalNullablePositiveInteger,
+  fallbackGitHubPR: RpcOptionalNullablePositiveInteger,
+  linkedGitLabMR: RpcOptionalNullablePositiveInteger,
+  linkedBitbucketPR: RpcOptionalNullablePositiveInteger,
+  linkedAzureDevOpsPR: RpcOptionalNullablePositiveInteger,
+  linkedGiteaPR: RpcOptionalNullablePositiveInteger
 })
 
 export const HostedReviewCreationEligibility = z.object({
@@ -32,14 +33,14 @@ export const HostedReviewCreationEligibility = z.object({
   base: RpcOptionalNullableString,
   hasUncommittedChanges: RpcOptionalBoolean,
   hasUpstream: RpcOptionalBoolean,
-  ahead: RpcNumber.int().nonnegative().optional(),
-  behind: RpcNumber.int().nonnegative().optional(),
-  linkedGitHubPR: RpcNumber.int().positive().nullable().optional(),
-  fallbackGitHubPR: RpcNumber.int().positive().nullable().optional(),
-  linkedGitLabMR: RpcNumber.int().positive().nullable().optional(),
-  linkedBitbucketPR: RpcNumber.int().positive().nullable().optional(),
-  linkedAzureDevOpsPR: RpcNumber.int().positive().nullable().optional(),
-  linkedGiteaPR: RpcNumber.int().positive().nullable().optional()
+  ahead: RpcOptionalNonnegativeInteger,
+  behind: RpcOptionalNonnegativeInteger,
+  linkedGitHubPR: RpcOptionalNullablePositiveInteger,
+  fallbackGitHubPR: RpcOptionalNullablePositiveInteger,
+  linkedGitLabMR: RpcOptionalNullablePositiveInteger,
+  linkedBitbucketPR: RpcOptionalNullablePositiveInteger,
+  linkedAzureDevOpsPR: RpcOptionalNullablePositiveInteger,
+  linkedGiteaPR: RpcOptionalNullablePositiveInteger
 })
 
 export const HostedReviewCreate = z.object({

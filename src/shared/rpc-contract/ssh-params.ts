@@ -1,4 +1,4 @@
-import { RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import { RpcNumber, RpcOptionalBoolean, RpcString, RpcNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   MAX_SSH_RELAY_GRACE_PERIOD_SECONDS,
@@ -8,7 +8,7 @@ import {
 import { OptionalString, requiredString } from './rpc-param-primitives'
 
 export const SshTarget = z.object({
-  targetId: RpcString.min(1)
+  targetId: RpcNonemptyString
 })
 
 // Why `automatic`: a client's background connect must not lift the host's cancelled sign-in.

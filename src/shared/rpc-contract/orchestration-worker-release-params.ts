@@ -1,11 +1,11 @@
-import { RpcString } from './rpc-value-schemas'
+import { RpcOptionalNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 
 export const OrchestrationWorkerTerminalUserInputParams = z
   .object({
-    paneKey: RpcString.min(1).optional(),
-    sessionId: RpcString.min(1).optional(),
-    terminal: RpcString.min(1).optional()
+    paneKey: RpcOptionalNonemptyString,
+    sessionId: RpcOptionalNonemptyString,
+    terminal: RpcOptionalNonemptyString
   })
   .refine(
     (value) => Boolean(value.paneKey ?? value.sessionId ?? value.terminal),

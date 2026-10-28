@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { compile, z } from 'zod'
 import { GitDiff, GitStatusParams } from './git-params'
+import { Issue, IssueComment } from './github-issue-params'
+import { ProjectViewTable } from './github-project-params'
 import { RpcBoolean, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
 
 describe('RPC value schemas', () => {
@@ -8,6 +10,16 @@ describe('RPC value schemas', () => {
     expect(GitDiff.shape.staged).toBe(RpcBoolean)
     expect(GitStatusParams.shape.includeIgnored).toBe(RpcOptionalBoolean)
     expect(GitStatusParams.shape.reuseLineStats).toBe(RpcOptionalBoolean)
+  })
+
+  it('shares complete positive integer constraints across request declarations', () => {
+    expect(Issue.shape.number).toBe(IssueComment.shape.number)
+    expect(Issue.shape.number).toBe(ProjectViewTable.shape.projectNumber)
+    expect(ProjectViewTable.shape.viewNumber.unwrap()).toBe(Issue.shape.number)
+    expect(Issue.shape.number.safeParse(0).success).toBe(false)
+    expect(Issue.shape.number.safeParse(1.5).success).toBe(false)
+    expect(Issue.shape.number.parse(1)).toBe(1)
+    expect(ProjectViewTable.shape.viewNumber.parse(undefined)).toBeUndefined()
   })
 
   it('keeps field constraints and optionality separate from shared values', () => {

@@ -1,4 +1,9 @@
-import { RpcNumber, RpcOptionalString } from './rpc-value-schemas'
+import {
+  RpcNumber,
+  RpcOptionalString,
+  RpcOptionalNonnegativeInteger,
+  RpcOptionalPositiveInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   OptionalBoolean,
@@ -13,9 +18,9 @@ import {
   computerUsePressKeyValidationMessage
 } from '../computer-use-key-spec'
 
-export const OptionalNonNegativeInt = RpcNumber.int().nonnegative().optional()
+export const OptionalNonNegativeInt = RpcOptionalNonnegativeInteger
 
-export const OptionalPositiveInt = RpcNumber.int().positive().optional()
+export const OptionalPositiveInt = RpcOptionalPositiveInteger
 
 export const ComputerTarget = z.object({
   app: requiredString('Missing app'),

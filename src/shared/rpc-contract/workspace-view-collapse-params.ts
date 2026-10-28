@@ -1,4 +1,4 @@
-import { RpcBoolean, RpcNumber, RpcString } from './rpc-value-schemas'
+import { RpcBoolean, RpcString, RpcNonnegativeInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 
 /** Retry with the same opId; seq grows per writer. Mint a new writer when resetting its counter,
@@ -8,7 +8,7 @@ export const SetCollapsedParams = z.object({
   collapsed: RpcBoolean,
   opId: z.object({
     writer: RpcString.min(1).max(128),
-    seq: RpcNumber.int().nonnegative()
+    seq: RpcNonnegativeInteger
   })
 })
 

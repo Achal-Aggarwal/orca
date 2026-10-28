@@ -1,4 +1,4 @@
-import { RpcString } from './rpc-value-schemas'
+import { RpcString, RpcNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   ARTIFACT_MAX_CONTENT_BYTES,
@@ -39,4 +39,4 @@ export const WriteRequest = z
     message: 'Artifact request exceeds the supported size.'
   })
 
-export const ArtifactsDeleteParams = z.object({ id: RpcString.min(1), ...CloudOptions })
+export const ArtifactsDeleteParams = z.object({ id: RpcNonemptyString, ...CloudOptions })

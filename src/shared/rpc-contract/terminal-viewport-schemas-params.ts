@@ -1,4 +1,10 @@
-import { RpcNullableNumber, RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import {
+  RpcNullableNumber,
+  RpcNumber,
+  RpcOptionalBoolean,
+  RpcPositiveInteger,
+  RpcOptionalNonemptyString
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import {
   TERMINAL_VIEWPORT_MAX_COLS,
@@ -23,8 +29,8 @@ export const TerminalSetDisplayMode = TerminalHandle.extend({
   // Why: carries the measured viewport so an 'auto' toggle on a viewport-less record can phone-fit instead of no-op'ing.
   viewport: z
     .object({
-      cols: RpcNumber.int().positive(),
-      rows: RpcNumber.int().positive()
+      cols: RpcPositiveInteger,
+      rows: RpcPositiveInteger
     })
     .optional()
 })
@@ -38,7 +44,7 @@ export const TerminalUnsubscribe = z.object({
     })
     .optional(),
   // Address the exact subscribe frame so stale unsubscribe cannot end a replacement stream.
-  requestId: RpcString.min(1).optional()
+  requestId: RpcOptionalNonemptyString
 })
 
 // Update in place: resubscribe flashed lock banners and stranded phone dimensions (docs/mobile-presence-lock.md).

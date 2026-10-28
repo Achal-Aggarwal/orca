@@ -4,7 +4,9 @@ import {
   RpcOptionalBoolean,
   RpcOptionalNullableString,
   RpcString,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalNullablePositiveInteger
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import { normalizeExecutionHostId } from '../execution-host'
@@ -65,7 +67,7 @@ export const WorktreeDetectedListParams = z.object({
 })
 
 export const WorktreeTeardownMissingTerminalsParams = WorktreeDetectedListParams.extend({
-  worktreeIds: z.array(RpcString.min(1)).max(10_000),
+  worktreeIds: z.array(RpcNonemptyString).max(10_000),
   connectionId: RpcOptionalNullableString
 })
 
@@ -126,7 +128,7 @@ export const WorktreeSet = WorktreeSelector.extend({
   comment: OptionalPlainString,
   linkedIssue: TriStateLinkedIssue,
   linkedPR: TriStateLinkedIssue,
-  suppressedGitHubPR: RpcNumber.int().positive().nullable().optional(),
+  suppressedGitHubPR: RpcOptionalNullablePositiveInteger,
   linkedLinearIssue: z.union([RpcString, RpcNull]).optional(),
   linkedLinearIssueWorkspaceId: z.union([RpcString, RpcNull]).optional(),
   linkedLinearIssueOrganizationUrlKey: z.union([RpcString, RpcNull]).optional(),

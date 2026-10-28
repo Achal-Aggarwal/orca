@@ -1,4 +1,4 @@
-import { RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import { RpcOptionalBoolean, RpcNonemptyString } from './rpc-value-schemas'
 import { z } from 'zod'
 import { RUNTIME_NAVIGATION_TARGETS } from '../runtime-navigation'
 import { BrowserPageCreationPlacement } from '../browser-client-host-placement'
@@ -20,5 +20,5 @@ export const BrowserTabCreateParams = z.object({
 
 export const BrowserOpenUrlParams = z.object({
   url: z.url(),
-  worktree: RpcString.min(1)
+  worktree: RpcNonemptyString
 })

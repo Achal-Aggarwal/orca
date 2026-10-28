@@ -1,4 +1,4 @@
-import { RpcNumber } from './rpc-value-schemas'
+import { RpcNumber, RpcOptionalPositiveInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 import { requiredString } from './rpc-param-primitives'
 import { TerminalViewport } from './terminal-unary-params'
@@ -38,7 +38,7 @@ export const TerminalSubscribe = TerminalHandle.extend({
     .optional(),
   /** Budget the JSON frame, not raw text: ESC expands sixfold and can push a 512 KiB snapshot past a 640 KiB bridge cap.
    * Optional for legacy raw-byte trimming; never infer from client.type because mobile socket clients have no frame cap. */
-  snapshotByteBudget: RpcNumber.int().positive().optional()
+  snapshotByteBudget: RpcOptionalPositiveInteger
 })
 
 export const TerminalMultiplex = z.object({})

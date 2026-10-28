@@ -1,4 +1,9 @@
-import { RpcNumber, RpcOptionalBoolean, RpcString } from './rpc-value-schemas'
+import {
+  RpcOptionalBoolean,
+  RpcString,
+  RpcPositiveInteger,
+  RpcNonnegativeInteger
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { OptionalFiniteNumber, requiredString } from './rpc-param-primitives'
 
@@ -11,11 +16,11 @@ export const FederationPullParams = z.object({
 
 export const FederationAckParams = z.object({
   dispatchId: requiredString('Missing Dispatch ID'),
-  throughSequence: RpcNumber.int().nonnegative(),
+  throughSequence: RpcNonnegativeInteger,
   settlements: z
     .array(
       z.object({
-        sequence: RpcNumber.int().positive(),
+        sequence: RpcPositiveInteger,
         lifecycle: z.discriminatedUnion('action', [
           z.object({
             action: z.enum(['completed', 'failed']),
@@ -39,7 +44,7 @@ export const FederationImportParams = z.object({
     z.object({
       dispatch_id: requiredString('Missing item Dispatch ID'),
       direction: z.literal('to_worker'),
-      sequence: RpcNumber.int().positive(),
+      sequence: RpcPositiveInteger,
       message_id: requiredString('Missing relay message ID'),
       kind: requiredString('Missing relay kind'),
       payload: requiredString('Missing relay payload')

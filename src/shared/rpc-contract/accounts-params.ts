@@ -4,7 +4,9 @@ import {
   RpcNullishString,
   RpcNumber,
   RpcString,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalNonemptyString
 } from './rpc-value-schemas'
 import { z } from 'zod'
 
@@ -12,7 +14,7 @@ export const ManagedDataAccountProviderParams = z.object({
   provider: z.enum(['opencode', 'devin'])
 })
 export const AddDataAccountParams = ManagedDataAccountProviderParams.extend({
-  sourceDataHome: RpcString.min(1),
+  sourceDataHome: RpcNonemptyString,
   label: RpcString.trim().min(1).max(120)
 })
 export const SelectDataAccountParams = ManagedDataAccountProviderParams.extend({
@@ -105,11 +107,11 @@ const ClaudeSignInTarget = {
 }
 
 export const BeginClaudeSignInParams = z
-  .object({ accountId: RpcString.min(1).optional(), ...ClaudeSignInTarget })
+  .object({ accountId: RpcOptionalNonemptyString, ...ClaudeSignInTarget })
   .strict()
 
 export const FinishClaudeSignInParams = z
-  .object({ accountId: RpcString.min(1), ...ClaudeSignInTarget })
+  .object({ accountId: RpcNonemptyString, ...ClaudeSignInTarget })
   .strict()
 
 export const HostAccountSignInStartParams = z.object({ provider: z.enum(['claude', 'codex']) })

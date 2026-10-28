@@ -8,7 +8,9 @@ import {
   RpcOptionalUnknown,
   RpcString,
   RpcUndefined,
-  RpcUnknown
+  RpcUnknown,
+  RpcNonnegativeInteger,
+  RpcFiniteNumber
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import { TERMINAL_KITTY_FILE_MAX_BYTES } from '../terminal-kitty-file'
@@ -35,7 +37,7 @@ const TerminalSurfaceCloseIdentity = z.object({
   tabId: requiredString('Missing tab id'),
   leafId: requiredString('Missing leaf id'),
   createdAt: RpcNumber.finite().nullable(),
-  generation: RpcNumber.int().nonnegative(),
+  generation: RpcNonnegativeInteger,
   hasLeaf: RpcBoolean,
   ptyId: RpcNullableString,
   incarnationId: RpcNullableString
@@ -175,7 +177,7 @@ export const TerminalSend = TerminalHandle.extend({
   resolvedLaunchDraft: z
     .object({
       text: RpcString,
-      createdAt: RpcNumber.finite()
+      createdAt: RpcFiniteNumber
     })
     .optional(),
   requireAgentStatus: z.enum(['sendable']).optional(),

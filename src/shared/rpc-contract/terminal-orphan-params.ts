@@ -1,4 +1,4 @@
-import { RpcNumber, RpcString, RpcUnknown } from './rpc-value-schemas'
+import { RpcString, RpcUnknown, RpcNonnegativeInteger } from './rpc-value-schemas'
 import { z } from 'zod'
 import type { TabGroupLayoutNode } from '../tab-types'
 import { OptionalString, requiredString } from './rpc-param-primitives'
@@ -86,7 +86,7 @@ export const TerminalOrphanIncarnationId = z.custom<PtyIncarnationId>(
 
 export const TerminalAdoptOrphans = z.object({
   worktree: requiredString('Missing worktree selector').pipe(RpcString.max(32_768)),
-  expectedTopologyRevision: RpcNumber.int().nonnegative(),
+  expectedTopologyRevision: RpcNonnegativeInteger,
   claims: z
     .array(
       z.object({

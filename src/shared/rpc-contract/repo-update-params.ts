@@ -1,4 +1,11 @@
-import { RpcNumber, RpcOptionalUnknown, RpcString, RpcUnknown } from './rpc-value-schemas'
+import {
+  RpcNumber,
+  RpcOptionalUnknown,
+  RpcString,
+  RpcUnknown,
+  RpcNonemptyString,
+  RpcOptionalFiniteNumber
+} from './rpc-value-schemas'
 import { z } from 'zod'
 import { normalizeRepoSourceControlAiOverrides } from '../source-control-ai'
 import { normalizeRepoBadgeColor } from '../repo-badge-color'
@@ -25,8 +32,8 @@ export const RepoBadgeColor = RpcOptionalUnknown.transform((value) =>
 
 export const RepoUpstream = z
   .object({
-    owner: RpcString.min(1),
-    repo: RpcString.min(1)
+    owner: RpcNonemptyString,
+    repo: RpcNonemptyString
   })
   .nullable()
   .optional()
@@ -61,7 +68,7 @@ export function createRepoUpdateSchema<T extends Readonly<Record<string, z.ZodTy
       }),
       forkSyncMode: z.enum(['ask', 'safe-auto', 'off']).optional(),
       externalWorktreeVisibility: z.enum(['hide', 'show']).nullable().optional(),
-      externalWorktreeVisibilityPromptDismissedAt: RpcNumber.finite().optional(),
+      externalWorktreeVisibilityPromptDismissedAt: RpcOptionalFiniteNumber,
       externalWorktreeInboxBaselinePaths: z.array(RpcString).optional(),
       importedExternalWorktreePaths: z.array(RpcString).optional(),
       agentWorktreeVisibility: z.enum(['hide', 'show']).nullable().optional(),

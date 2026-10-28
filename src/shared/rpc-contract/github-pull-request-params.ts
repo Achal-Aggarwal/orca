@@ -1,9 +1,11 @@
 import {
   RpcBoolean,
-  RpcNumber,
   RpcOptionalBoolean,
   RpcOptionalNullableString,
-  RpcOptionalUnknown
+  RpcOptionalUnknown,
+  RpcPositiveInteger,
+  RpcOptionalNullablePositiveInteger,
+  RpcOptionalPositiveInteger
 } from './rpc-value-schemas'
 import { z } from 'zod'
 import type { GitHubPRRefreshReason } from '../github/pull-request-refresh-types'
@@ -25,14 +27,14 @@ export const OptionalPRRefreshReason = RpcOptionalUnknown.transform(
 export const PrForBranch = RepoSelector.extend({
   branch: requiredString('Missing branch'),
   reason: OptionalPRRefreshReason,
-  linkedPRNumber: RpcNumber.int().positive().nullable().optional(),
-  fallbackPRNumber: RpcNumber.int().positive().nullable().optional(),
+  linkedPRNumber: RpcOptionalNullablePositiveInteger,
+  fallbackPRNumber: RpcOptionalNullablePositiveInteger,
   acceptMergedFallbackPR: RpcOptionalBoolean,
   currentHeadOid: RpcOptionalNullableString
 })
 
 export const PullRequest = RepoSelector.extend({
-  prNumber: RpcNumber.int().positive(),
+  prNumber: RpcPositiveInteger,
   noCache: RpcOptionalBoolean,
   prRepo: SlugRepo.nullable().optional()
 })
@@ -49,8 +51,8 @@ export const PullRequestChecks = PullRequest.extend({
 })
 
 export const PullRequestCheckDetails = RepoSelector.extend({
-  checkRunId: RpcNumber.int().positive().optional(),
-  workflowRunId: RpcNumber.int().positive().optional(),
+  checkRunId: RpcOptionalPositiveInteger,
+  workflowRunId: RpcOptionalPositiveInteger,
   checkName: OptionalString,
   url: OptionalString.nullable().optional(),
   prRepo: SlugRepo.nullable().optional()
@@ -62,7 +64,7 @@ export const RerunPullRequestChecks = PullRequest.extend({
 })
 
 export const PullRequestFileContents = RepoSelector.extend({
-  prNumber: RpcNumber.int().positive(),
+  prNumber: RpcPositiveInteger,
   prRepo: SlugRepo.nullable().optional(),
   path: requiredString('Missing file path'),
   oldPath: OptionalString,
