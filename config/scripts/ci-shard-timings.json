@@ -9947,7 +9947,6 @@
       "src/renderer/src/components/terminal-pane/terminal-pane-recovery.test.ts": 676,
       "src/renderer/src/components/terminal-pane/terminal-pane-set-title-event.test.ts": 1546,
       "src/renderer/src/components/terminal-pane/terminal-pane-spawn-placement.test.ts": 473,
-      "src/renderer/src/components/terminal-pane/terminal-pane-split-completion.test.ts": 29,
       "src/renderer/src/components/terminal-pane/terminal-pane-split-in-main.test.ts": 367,
       "src/renderer/src/components/terminal-pane/terminal-pane-split-request-routing.test.ts": 1631,
       "src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts": 1817,
