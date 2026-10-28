@@ -4,7 +4,7 @@ import {
   type TerminalPaneViewport
 } from './mobile-terminal-pane-layout'
 import type { PendingSessionSelection } from './pending-session-selection'
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useLayoutEffect } from 'react'
 import type { TerminalFrame } from '../terminal/terminal-webview-messages'
 import { Alert, type Keyboard, type TextInput } from 'react-native'
 import { useFocusEffect } from 'expo-router'
@@ -73,8 +73,10 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     splitTerminalHandles,
     terminals.map((terminal) => terminal.handle)
   )
-  const visibleTerminalHandlesRef = useRef<readonly string[]>([])
-  visibleTerminalHandlesRef.current = visibleTerminalHandles
+  const visibleTerminalHandlesRef = useRef<readonly string[]>(visibleTerminalHandles)
+  useLayoutEffect(() => {
+    visibleTerminalHandlesRef.current = visibleTerminalHandles
+  })
   const terminalRefs = useRef<Map<string, TerminalWebViewHandle>>(new Map())
   const liveInputRef = useRef<TextInput>(null)
   const commandInputRef = useRef<TextInput>(null)

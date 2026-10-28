@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, useWindowDimensions } from 'react-native'
+import { useWindowDimensions, type View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { ReservedRect } from '../../modules/orca-reserved-regions/src'
 import { useReservedRegions } from './reserved-regions'

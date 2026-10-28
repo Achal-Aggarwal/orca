@@ -1,4 +1,4 @@
-import { createElement, useRef, useState } from 'react'
+import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import { act, create } from 'react-test-renderer'
 import { expect, it, vi } from 'vitest'
 import { mountFixture } from '../test-support/rpc-recording/recorder-fixture-shape'
@@ -242,9 +242,11 @@ it('keeps C paired with A after replacing B and focusing A by its first terminal
       terminals.map((t) => t.handle)
     )
     const activeRef = useRef(active)
-    activeRef.current = active
     const visibleRef = useRef(visible)
-    visibleRef.current = visible
+    useLayoutEffect(() => {
+      activeRef.current = active
+      visibleRef.current = visible
+    })
     const scope = mountFixture<Parameters<typeof useMobileSessionTabSwitching>[0]>({
       activeHandle: active,
       activeHandleRef: activeRef,

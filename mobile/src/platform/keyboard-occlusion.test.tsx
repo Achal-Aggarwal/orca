@@ -63,9 +63,10 @@ vi.mock('react-native', () => ({
 }))
 
 import type { SoftKeyboardState } from './keyboard-occlusion'
-let keyboardModule: typeof import('./keyboard-occlusion')
+import type * as KeyboardOcclusion from './keyboard-occlusion'
+let keyboardModule: typeof KeyboardOcclusion
 const currentSoftKeyboardHeight = () => keyboardModule.currentSoftKeyboardHeight()
-const subscribeSoftKeyboard: typeof import('./keyboard-occlusion').subscribeSoftKeyboard = (
+const subscribeSoftKeyboard: typeof KeyboardOcclusion.subscribeSoftKeyboard = (
   ...args
 ) => keyboardModule.subscribeSoftKeyboard(...args)
 const useKeyboardOcclusion = () => keyboardModule.useKeyboardOcclusion()

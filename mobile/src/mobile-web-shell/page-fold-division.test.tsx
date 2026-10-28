@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type * as ReservedRegions from '../layout/reserved-regions'
+import type * as SideRail from '../layout/side-rail'
 
 const harness = await vi.hoisted(async () => await import('./mobile-web-shell-screen-test-harness'))
 const dependencies = vi.hoisted(() => harness.createScreenDependencies())
@@ -8,11 +10,11 @@ const geometry = vi.hoisted(() => ({
   regions: { divisions: [], occlusions: [{ x: 470, y: 0, width: 199, height: 84 }] }
 }))
 vi.mock('../layout/reserved-regions', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../layout/reserved-regions')>()),
+  ...(await importOriginal<typeof ReservedRegions>()),
   useReservedRegions: () => geometry.regions
 }))
 vi.mock('../layout/side-rail', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../layout/side-rail')>()),
+  ...(await importOriginal<typeof SideRail>()),
   useSideRailStrip: () => null,
   useSideRailDirectionPadAvailable: () => true
 }))

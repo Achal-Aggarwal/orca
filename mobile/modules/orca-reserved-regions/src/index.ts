@@ -1,4 +1,4 @@
-import { NativeModule, requireOptionalNativeModule } from 'expo-modules-core'
+import { requireOptionalNativeModule, type NativeModule } from 'expo-modules-core'
 
 /** A rect in window points, the root view's coordinates. */
 export type ReservedRect = { x: number; y: number; width: number; height: number }
