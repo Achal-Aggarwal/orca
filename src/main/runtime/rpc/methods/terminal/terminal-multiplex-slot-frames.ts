@@ -21,6 +21,7 @@ import { updateViewportForClient } from './terminal-viewport-update'
 import { notePausedOutputDropped } from './terminal-multiplex-paused-output-drop'
 import {
   answerUndeliveredYieldedQueries,
+  discardPendingMultiplexOutput,
   replaySnapshotCoveredStatelessQueries
 } from './terminal-multiplex-yielded-queries'
 import {
@@ -177,9 +178,7 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
       let displayMode = runtime.getMobileDisplayMode(stream.ptyId)
       if (stream.pendingOutputOverflowed) {
         // Overflow tail is newer than the initial snapshot; request a current image rather than return null.
-        stream.pendingOutput.splice(0)
-        stream.pendingOutputBytes = 0
-        stream.pendingOutputOverflowed = false
+        discardPendingMultiplexOutput(stream)
         serialized = await serializeBudgetedRequestedSnapshot(runtime, stream.ptyId, scrollbackRows)
         if (!isMultiplexStreamAttached(state, stream)) {
           return
@@ -236,6 +235,9 @@ export function installMultiplexSlotFrames(state: TerminalMultiplexConnection): 
       if (streams.get(stream.streamId) === stream) {
         const shouldFlushPendingOutput = !stream.pendingOutputOverflowed
         stream.buffering = false
+        if (!shouldFlushPendingOutput) {
+          discardPendingMultiplexOutput(stream)
+        }
         const pendingOutput = stream.pendingOutput.splice(0)
         if (shouldFlushPendingOutput) {
           if (typeof requestId !== 'number') {

@@ -19,6 +19,7 @@ export type TerminalOutputFrameChunk = {
   seq?: number
   opcode?: TerminalStreamOpcode
   replayedQuery?: { seq: number; data: string }
+  replayedEscapeTail?: true
 }
 
 /** `span` only for subscribers that decode OutputSpan (the multiplex); `text` is the opcode-1 encoding every client reads. */

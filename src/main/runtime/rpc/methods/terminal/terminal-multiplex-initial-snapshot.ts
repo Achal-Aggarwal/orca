@@ -11,7 +11,10 @@ import {
   type TerminalMultiplexConnection
 } from './terminal-multiplex-connection'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
-import { replaySnapshotCoveredStatelessQueries } from './terminal-multiplex-yielded-queries'
+import {
+  discardPendingMultiplexOutput,
+  replaySnapshotCoveredStatelessQueries
+} from './terminal-multiplex-yielded-queries'
 
 export type MultiplexPublishedInitialState = {
   isMobile: boolean
@@ -37,9 +40,7 @@ export async function publishMultiplexInitialSnapshot(
   }
   let initialOutputOverflowed = forcedInitialSnapshotTruncated
   if (stream.pendingOutputOverflowed) {
-    stream.pendingOutput.splice(0)
-    stream.pendingOutputBytes = 0
-    stream.pendingOutputOverflowed = false
+    discardPendingMultiplexOutput(stream)
     read = await runtime.readTerminal(request.terminal)
     serialized = await serializeBudgetedMobileSnapshot(runtime, ptyId)
     if (!isMultiplexStreamAttached(state, stream)) {
@@ -47,9 +48,7 @@ export async function publishMultiplexInitialSnapshot(
     }
     if (stream.pendingOutputOverflowed) {
       initialOutputOverflowed = true
-      stream.pendingOutput.splice(0)
-      stream.pendingOutputBytes = 0
-      stream.pendingOutputOverflowed = false
+      discardPendingMultiplexOutput(stream)
     }
   }
   const size = runtime.getTerminalSize(ptyId)
@@ -121,14 +120,14 @@ export async function publishMultiplexInitialSnapshot(
   stream.lastResizeCols = serialized?.cols ?? size?.cols
   stream.buffering = false
   const pendingOutput = stream.pendingOutput.splice(0)
+  replaySnapshotCoveredStatelessQueries(
+    state,
+    stream,
+    pendingOutput,
+    snapshotOutputSeq,
+    serialized?.pendingEscapeTailAnsi
+  )
   if (!initialOutputOverflowed) {
-    replaySnapshotCoveredStatelessQueries(
-      state,
-      stream,
-      pendingOutput,
-      snapshotOutputSeq,
-      serialized?.pendingEscapeTailAnsi
-    )
     for (const chunk of pendingOutput) {
       const uncovered = getOutputAfterSnapshotSeq(chunk, snapshotOutputSeq)
       if (uncovered) {

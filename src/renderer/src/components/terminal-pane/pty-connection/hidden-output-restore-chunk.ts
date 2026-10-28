@@ -8,6 +8,7 @@ import {
   EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE,
   scanTerminalReplyQuerySequences
 } from '../../../../../shared/terminal-reply-query-scan'
+import { isPrimaryDeviceAttributesQuerySequence } from '../../../../../shared/terminal-reply-query-extraction'
 import { flushTerminalOutput } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { writeXtermParseBarrier } from '@/lib/pane-manager/xterm-parse-barrier'
 
@@ -57,7 +58,7 @@ export function bindHiddenOutputRestoreChunk(session: ConnectPanePtySession): vo
     coveredQueryScan = mapsToSeq ? scan.state : EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
     let primaryQueryCount = 0
     for (const query of scan.queries) {
-      if (query.data === '\x1b[c' || query.data === '\x1b[0c') {
+      if (isPrimaryDeviceAttributesQuerySequence(query.data)) {
         primaryQueryCount += 1
       }
     }

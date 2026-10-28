@@ -6,6 +6,7 @@ import {
 import type { RuntimeTerminalDataMeta } from '../../../orca-runtime'
 import type { TerminalMultiplexConnection } from './terminal-multiplex-connection'
 import type { TerminalMultiplexStream, TerminalOutputChunk } from './terminal-stream-types'
+import type { TerminalOutputFrameChunk } from '../../terminal-output-frame-chunks'
 import { encodeTerminalStreamText } from '../../../../../shared/terminal-stream-protocol'
 import { getOutputAfterSnapshotSeq } from './terminal-stream-replay'
 
@@ -13,7 +14,10 @@ import { getOutputAfterSnapshotSeq } from './terminal-stream-replay'
 const YIELDED_QUERY_MAX_AGE_MS = 5_000
 const YIELDED_QUERY_MAX_ENTRIES = 16
 
-export type YieldedTerminalQuery = { seq: number; data: string; at: number }
+/** `discarded`: main dropped the carrying output unsent, so the next covering snapshot owes the replay. */
+export type YieldedTerminalQuery = { seq: number; data: string; at: number; discarded?: true }
+
+type ReplayedTerminalQuery = { seq: number; data: string }
 
 /** Record stateless queries main yielded solely to this stream at ingestion, so a later discard can hand them back. */
 export function recordYieldedTerminalQueries(
@@ -58,6 +62,80 @@ export function settleDeliveredYieldedQueries(
   }
 }
 
+export function settleReplayedYieldedQuery(
+  stream: TerminalMultiplexStream,
+  replayedQuery: ReplayedTerminalQuery
+): void {
+  const index = findYieldedQuery(stream, replayedQuery)
+  if (index !== -1) {
+    stream.yieldedQueries.splice(index, 1)
+  }
+}
+
+function findYieldedQuery(stream: TerminalMultiplexStream, target: ReplayedTerminalQuery): number {
+  return stream.yieldedQueries.findIndex(
+    (query) => query.seq === target.seq && query.data === target.data
+  )
+}
+
+function markYieldedQueriesDiscarded(
+  stream: TerminalMultiplexStream,
+  throughSeq = Number.POSITIVE_INFINITY
+): void {
+  for (const query of stream.yieldedQueries) {
+    if (query.seq <= throughSeq) {
+      query.discarded = true
+    }
+  }
+}
+
+/** Drop snapshot-buffered output unsent; its owed queries replay after the next covering snapshot. */
+export function discardPendingMultiplexOutput(stream: TerminalMultiplexStream): void {
+  markYieldedQueriesDiscarded(stream)
+  stream.pendingOutput.splice(0)
+  stream.pendingOutputBytes = 0
+  stream.pendingOutputOverflowed = false
+}
+
+/** ACK-queued frames dropped unsent (overflow trim, recovery cutoff) can no longer settle their queries. */
+export function markYieldedQueriesDiscardedInFrames(
+  stream: TerminalMultiplexStream,
+  frames: readonly TerminalOutputFrameChunk[]
+): void {
+  let throughSeq: number | undefined
+  for (const frame of frames) {
+    if (typeof frame.seq === 'number') {
+      throughSeq = Math.max(throughSeq ?? frame.seq, frame.seq)
+    }
+    const replayedIndex = frame.replayedQuery ? findYieldedQuery(stream, frame.replayedQuery) : -1
+    if (replayedIndex !== -1) {
+      stream.yieldedQueries[replayedIndex]!.discarded = true
+    }
+  }
+  if (typeof throughSeq === 'number') {
+    markYieldedQueriesDiscarded(stream, throughSeq)
+  }
+}
+
+function isSnapshotQueryReplayFrame(frame: TerminalOutputFrameChunk): boolean {
+  return frame.replayedQuery !== undefined || frame.replayedEscapeTail === true
+}
+
+/** Replays still queued for an older snapshot would re-enter its stale escape tail; the newer snapshot re-replays them. */
+function purgeQueuedSnapshotQueryReplays(stream: TerminalMultiplexStream): void {
+  const purged = stream.ackPendingOutput.filter(isSnapshotQueryReplayFrame)
+  if (purged.length === 0) {
+    return
+  }
+  stream.ackPendingOutput = stream.ackPendingOutput.filter(
+    (frame) => !isSnapshotQueryReplayFrame(frame)
+  )
+  for (const frame of purged) {
+    stream.ackPendingOutputBytes -= frame.bytes.byteLength
+  }
+  markYieldedQueriesDiscardedInFrames(stream, purged)
+}
+
 /** Snapshots preserve cells, not queries; replay covered stateless queries through the viewer's ordered parser. */
 export function replaySnapshotCoveredStatelessQueries(
   connection: TerminalMultiplexConnection,
@@ -66,12 +144,25 @@ export function replaySnapshotCoveredStatelessQueries(
   snapshotSeq: number | undefined,
   pendingEscapeTailAnsi?: string
 ): void {
-  if (typeof snapshotSeq !== 'number' || stream.yieldedQueries.length === 0) {
+  if (typeof snapshotSeq !== 'number') {
     return
   }
-  const remainingQueries = [...stream.yieldedQueries]
+  purgeQueuedSnapshotQueryReplays(stream)
+  if (stream.yieldedQueries.length === 0) {
+    return
+  }
+  const isDiscardedCovered = (query: YieldedTerminalQuery): boolean =>
+    query.discarded === true && query.seq <= snapshotSeq
+  const cutoff = Date.now() - YIELDED_QUERY_MAX_AGE_MS
+  // Late replies to long-dropped queries would land at a prompt as junk.
+  stream.yieldedQueries = stream.yieldedQueries.filter(
+    (query) => !isDiscardedCovered(query) || query.at >= cutoff
+  )
+  const replays: ReplayedTerminalQuery[] = stream.yieldedQueries
+    .filter(isDiscardedCovered)
+    .map(({ seq, data }) => ({ seq, data }))
+  const remainingQueries = stream.yieldedQueries.filter((query) => !isDiscardedCovered(query))
   let scanState = EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
-  let replayed = false
   for (const chunk of chunks) {
     const uncovered = getOutputAfterSnapshotSeq(chunk, snapshotSeq)
     const seq = chunk.meta?.seq
@@ -96,23 +187,43 @@ export function replaySnapshotCoveredStatelessQueries(
       )
       if (isStatelessRendererReplyCsiQuery(query.data) && owedIndex !== -1) {
         remainingQueries.splice(owedIndex, 1)
-        const data = !replayed && pendingEscapeTailAnsi ? `\x18${query.data}` : query.data
-        replayed = true
-        // Seq-less output survives the viewer's snapshot cutoff; retain host-only settlement until actually sent.
-        connection.queueOrSendOutput(stream, {
-          bytes: encodeTerminalStreamText(data),
-          displayLength: data.length,
-          replayedQuery: { seq: querySeq, data: query.data }
-        })
+        replays.push({ seq: querySeq, data: query.data })
       }
     }
   }
-  if (replayed && pendingEscapeTailAnsi) {
+  if (replays.length === 0) {
+    return
+  }
+  // Seq-less output survives the viewer's snapshot cutoff; retain host-only settlement until actually sent.
+  const frames: TerminalOutputFrameChunk[] = replays.map((query, index) => {
+    const data = index === 0 && pendingEscapeTailAnsi ? `\x18${query.data}` : query.data
+    return {
+      bytes: encodeTerminalStreamText(data),
+      displayLength: data.length,
+      replayedQuery: query
+    }
+  })
+  if (pendingEscapeTailAnsi) {
     // Cancel only the snapshot's partial parser command around queries, then restore it for the untouched live suffix.
-    connection.queueOrSendOutput(stream, {
+    frames.push({
       bytes: encodeTerminalStreamText(pendingEscapeTailAnsi),
-      displayLength: pendingEscapeTailAnsi.length
+      displayLength: pendingEscapeTailAnsi.length,
+      replayedEscapeTail: true
     })
+  }
+  if (
+    stream.outputPaused ||
+    (stream.ackPendingOutput.length === 0 && !stream.ackPendingOutputOverflowed)
+  ) {
+    for (const frame of frames) {
+      connection.queueOrSendOutput(stream, frame)
+    }
+    return
+  }
+  // Snapshots bypass the ACK queue; replays must lead it to follow the snapshot, not output queued before it.
+  stream.ackPendingOutput.unshift(...frames)
+  for (const frame of frames) {
+    stream.ackPendingOutputBytes += frame.bytes.byteLength
   }
 }
 

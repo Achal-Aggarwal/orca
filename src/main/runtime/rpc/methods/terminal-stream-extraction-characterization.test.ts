@@ -118,6 +118,8 @@ describe('terminal stream extraction characterization', () => {
       pendingOutput: [{ data: 'lost-live', bytes: 9 }],
       pendingOutputBytes: 9,
       pendingOutputOverflowed: true,
+      yieldedQueries: [],
+      ackPendingOutput: [],
       outputBatcher: { push: vi.fn(), flush: vi.fn() }
     } as unknown as TerminalMultiplexStream
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this fixture supplies the runtime reads made by initial snapshot publication.
