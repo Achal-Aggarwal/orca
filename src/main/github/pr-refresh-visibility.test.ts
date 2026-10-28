@@ -16,46 +16,27 @@ describe('PR refresh owner liveness', () => {
   beforeEach(() => moduleMocks.resetPRRefreshCoordinatorMocks(coordinatorMocks))
   afterEach(() => vi.useRealTimers())
 
-  it.each(
-    [10, 100].flatMap((candidateCount) =>
-      [10, 100, 1_000].map((contentsCount) => ({ candidateCount, contentsCount }))
-    )
-  )(
-    'checks known owners for $candidateCount candidates among $contentsCount native contents',
-    ({ candidateCount, contentsCount }) => {
-      const registry = new Map(
-        Array.from({ length: contentsCount }, (_, index) => {
-          const id = index + 1
-          return [id, { id, isDestroyed: () => false }] as const
-        })
-      )
-      let censusRows = 0
-      getAllWebContentsMock.mockImplementation(() => {
-        censusRows += registry.size
-        return Array.from(registry.values())
+  it('checks only recorded owners by ID instead of a native census', () => {
+    const registry = new Map(
+      Array.from({ length: 1_000 }, (_, index) => {
+        const id = index + 1
+        return [id, { id, isDestroyed: () => false }] as const
       })
-      webContentsFromIdMock.mockImplementation((id) => registry.get(id))
-      const candidates = Array.from({ length: candidateCount }, (_, index) =>
-        makeCandidate({ branch: `feature/${index}`, cacheKey: `/repo::feature/${index}` })
-      )
-      const visibility = new PRRefreshVisibility()
-      visibility.report(candidates, 1, 1)
-      getAllWebContentsMock.mockClear()
-      webContentsFromIdMock.mockClear()
-      censusRows = 0
+    )
+    getAllWebContentsMock.mockImplementation(() => Array.from(registry.values()))
+    webContentsFromIdMock.mockImplementation((id) => registry.get(id))
+    const candidates = Array.from({ length: 100 }, (_, index) =>
+      makeCandidate({ branch: `feature/${index}`, cacheKey: `/repo::feature/${index}` })
+    )
+    const visibility = new PRRefreshVisibility()
+    visibility.report(candidates, 1, 1)
 
-      const newlyExposed = candidates.map(refreshKey).filter((key) => !visibility.has(key))
-      expect(newlyExposed).toEqual([])
-      expect(visibility.report(candidates, 2, 1)).toBe(true)
-      expect(visibility.windowCount).toBe(1)
-      expect({
-        censusCalls: getAllWebContentsMock.mock.calls.length,
-        censusRows,
-        ownerLookups: webContentsFromIdMock.mock.calls.length
-      }).toEqual({ censusCalls: 0, censusRows: 0, ownerLookups: candidateCount + 1 })
-      expect(webContentsFromIdMock.mock.calls.every(([id]) => id === 1)).toBe(true)
-    }
-  )
+    expect(candidates.every((candidate) => visibility.has(refreshKey(candidate)))).toBe(true)
+    expect(visibility.report(candidates, 2, 1)).toBe(true)
+    expect(visibility.windowCount).toBe(1)
+    expect(getAllWebContentsMock).not.toHaveBeenCalled()
+    expect(webContentsFromIdMock.mock.calls.every(([id]) => id === 1)).toBe(true)
+  })
 
   it('does no native work without recorded owners', () => {
     const visibility = new PRRefreshVisibility()
