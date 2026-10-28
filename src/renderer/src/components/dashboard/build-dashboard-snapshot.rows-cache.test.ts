@@ -1,5 +1,11 @@
+import { dashboardCardDisplayState } from '../../../../shared/dashboard-snapshot'
+import { admitDashboardSnapshot } from '../../../../main/ipc/dashboard-payload-validation'
+import { buildDashboardBucketCounts } from './build-dashboard-bucket-counts'
 import { describe, expect, it } from 'vitest'
-import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+import {
+  AGENT_STATUS_STALE_AFTER_MS,
+  type AgentStatusEntry
+} from '../../../../shared/agent-status-types'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { Worktree } from '../../../../shared/worktree/types'
@@ -51,7 +57,12 @@ function tab(id: string, worktreeId: string): TerminalTab {
   }
 }
 
-function entry(paneKey: string, tabId: string, worktreeId: string): AgentStatusEntry {
+function entry(
+  paneKey: string,
+  tabId: string,
+  worktreeId: string,
+  overrides: Partial<AgentStatusEntry> = {}
+): AgentStatusEntry {
   return {
     paneKey,
     state: 'done',
@@ -61,11 +72,12 @@ function entry(paneKey: string, tabId: string, worktreeId: string): AgentStatusE
     stateHistory: [],
     agentType: 'claude',
     tabId,
-    worktreeId
+    worktreeId,
+    ...overrides
   }
 }
 
-function baseState(): DashboardSnapshotState {
+function baseState(overrides: Partial<DashboardSnapshotState> = {}): DashboardSnapshotState {
   return {
     chatNames: new Map(),
     repos: [{ id: 'r1', path: '/r1', displayName: 'Repo One', badgeColor: '#000', addedAt: 1 }],
@@ -95,11 +107,81 @@ function baseState(): DashboardSnapshotState {
     ptyIdsByTabId: { tab1: ['pty-tab1'], tab2: ['pty-tab2'] },
     runtimePaneTitlesByTabId: { tab1: { 0: 'shell' }, tab2: { 0: 'shell' } },
     acknowledgedAgentsByPaneKey: {},
-    settings: null
+    settings: null,
+    ...overrides
   }
 }
 
 describe('buildDashboardSnapshot rows cache', () => {
+  it.each([
+    ['cancellation', 'interrupted'],
+    ['failure', 'failed'],
+    ['unconfirmed', 'unconfirmed'],
+    ['success', 'idle']
+  ] as const)(
+    'preserves %s through snapshot admission without changing columns',
+    (outcome, mark) => {
+      const state = baseState({
+        agentStatusByPaneKey: {
+          [PANE_1]: entry(PANE_1, 'tab1', 'w1', {
+            state: 'done',
+            mainAgent: { state: 'done', outcome, stateStartedAt: NOW - 5000 }
+          })
+        },
+        acknowledgedAgentsByPaneKey: { [PANE_1]: NOW }
+      })
+      const snapshot = buildDashboardSnapshot(state, NOW)
+      const admitted = admitDashboardSnapshot(snapshot)
+      expect(admitted?.droppedCardCount).toBe(0)
+      const card = admitted!.snapshot.cards[0]
+      expect(dashboardCardDisplayState(card)).toBe(mark)
+      expect(card.bucket).toBe('idle')
+      expect(buildDashboardBucketCounts(state, NOW).idle).toBe(1)
+      for (const acknowledgedAgentsByPaneKey of [{}, { [PANE_1]: NOW }]) {
+        const aged = buildDashboardSnapshot(
+          { ...state, acknowledgedAgentsByPaneKey },
+          NOW + AGENT_STATUS_STALE_AFTER_MS + 1000
+        )
+        expect(dashboardCardDisplayState(aged.cards[0])).toBe(
+          outcome === 'success' ? (aged.cards[0].unseen ? 'done' : 'idle') : mark
+        )
+      }
+    }
+  )
+
+  it('keeps failure separate from live children and pending questions', () => {
+    for (const state of ['working', 'waiting'] as const) {
+      const snapshot = buildDashboardSnapshot(
+        baseState({
+          agentStatusByPaneKey: {
+            [PANE_1]: entry(PANE_1, 'tab1', 'w1', {
+              state,
+              interactivePrompt: 'Approve deploy?',
+              mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: NOW - 1000 }
+            })
+          }
+        }),
+        NOW
+      )
+      expect(dashboardCardDisplayState(snapshot.cards[0])).toBe('failed')
+      expect(snapshot.cards[0].bucket).toBe(state === 'working' ? 'working' : 'attention')
+      expect(snapshot.cards[0].askSummary).toBe(state === 'waiting' ? 'Approve deploy?' : undefined)
+      const aged = buildDashboardSnapshot(
+        baseState({
+          agentStatusByPaneKey: {
+            [PANE_1]: entry(PANE_1, 'tab1', 'w1', {
+              state,
+              mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: NOW - 1000 }
+            })
+          }
+        }),
+        NOW + AGENT_STATUS_STALE_AFTER_MS + 1000
+      )
+      expect(aged.cards[0].dotState).toBe('idle')
+      expect(dashboardCardDisplayState(aged.cards[0])).toBe('failed')
+    }
+  })
+
   it('matches the uncached snapshot exactly across unrelated and targeted writes', () => {
     const cache = createWorktreeAgentRowsCache()
     const first = baseState()
