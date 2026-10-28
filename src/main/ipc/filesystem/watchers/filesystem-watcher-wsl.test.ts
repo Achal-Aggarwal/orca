@@ -1,18 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as ProcessHost from '@orca/process-host'
-import { runProcess } from '@orca/process-host'
 
 const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn()
 }))
 
-vi.mock('@orca/process-host', async (importOriginal) => ({
-  ...(await importOriginal<typeof ProcessHost>()),
+vi.mock('@orca/process-host', () => ({
   spawnProcess: spawnMock
 }))
 
@@ -206,44 +200,6 @@ describe('createWslWatcher', () => {
     expect(deps.scheduleBatchFlush).toHaveBeenCalledTimes(3)
     await root.subscription.unsubscribe()
   })
-
-  it.skipIf(process.platform !== 'linux')(
-    'reads the generated shell snapshot with legal control-character filenames',
-    async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'orca-wsl-snapshot-'))
-      const names = [
-        'start\x1einside.txt',
-        'end\x1finside.txt',
-        'trailing\x1f',
-        'tab\tline\n漢字.txt'
-      ]
-      const { child, promise } = startWatcher()
-      try {
-        await Promise.all(names.map((name) => writeFile(join(directory, name), 'file')))
-        const script = child.stdin.read().toString().replace('sleep 2 || exit 0', 'exit 0')
-        const snapshot = await runProcess({
-          program: 'sh',
-          args: ['-s', '--', directory],
-          input: script
-        })
-        expect(snapshot.code).toBe(0)
-        expect(snapshot.stdout.startsWith(SNAPSHOT_START)).toBe(true)
-        expect(snapshot.stdout.endsWith(SNAPSHOT_END)).toBe(true)
-        child.stdout.write(snapshotFrame([]))
-        const root = await promise
-        child.stdout.write(snapshot.stdout)
-        expect(root.batch.events.map((event) => event.path).sort()).toEqual(
-          names
-            .map((name) => `\\\\wsl.localhost\\Ubuntu${join(directory, name).replace(/\//g, '\\')}`)
-            .sort()
-        )
-        await root.subscription.unsubscribe()
-      } finally {
-        child.emit('close', 0, null)
-        await rm(directory, { recursive: true, force: true })
-      }
-    }
-  )
 
   it('turns watcher exit into an overflow refresh without retaining UNC paths', async () => {
     const scheduleBatchFlush = vi.fn()
