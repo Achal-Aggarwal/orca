@@ -3,7 +3,13 @@ import { protocol, type WebContents } from 'electron'
 import type { Store } from '../persistence'
 import type { LocalFileAccess } from '../../shared/local-file-access'
 import { MEDIA_PREVIEW_SCHEME } from '../../shared/media-file-extensions'
-import { filePreviewForPath, streamsPreviewByRange } from '../../shared/file-preview-kind'
+import {
+  filePreviewForPath,
+  isDocumentPreview,
+  streamsPreviewByRange,
+  type FilePreview
+} from '../../shared/file-preview-kind'
+import { assertPreviewableRasterHeader } from './preview-raster-header-check'
 import type { RemoteFilePreviewAddress } from '../../shared/remote-file-preview-address'
 import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
 import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
@@ -13,6 +19,7 @@ import {
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
+  readRemotePreviewPrefix,
   statRemotePreviewFile,
   type RemotePreviewFileSnapshot
 } from './remote-file-preview-reader'
@@ -30,7 +37,15 @@ type PreviewGrant = {
   // Why: a seek or prefetch burst opens several ranges at once; one stat answers all of them.
   stat?: { at: number; snapshot: Promise<RemotePreviewFileSnapshot> }
 }
-type PreviewUrl = { content: string; isBinary: true; mimeType: string; mediaUrl: string }
+type PreviewUrl = {
+  content: string
+  isBinary: true
+  mimeType: string
+  mediaUrl: string
+  // Images and PDFs: the editor's selector for its document viewers, as base64 previews set it.
+  isImage?: true
+  size?: number
+}
 
 const REMOTE_STAT_REUSE_MS = 1_000
 const grants = new Map<string, PreviewGrant>()
@@ -38,7 +53,14 @@ const senders = new Map<number, Map<string, string>>()
 
 export const MEDIA_PREVIEW_CUSTOM_SCHEME: Electron.CustomScheme = {
   scheme: MEDIA_PREVIEW_SCHEME,
-  privileges: { standard: true, secure: true, stream: true }
+  // fetch + CORS let pdf.js read a PDF by range, like a <video> already does.
+  privileges: {
+    standard: true,
+    secure: true,
+    stream: true,
+    supportFetchAPI: true,
+    corsEnabled: true
+  }
 }
 
 type PreviewSender = Pick<WebContents, 'id' | 'on' | 'removeListener'>
@@ -47,9 +69,11 @@ function mintPreviewUrl(
   sender: PreviewSender,
   target: PreviewTarget,
   store: Store,
-  mimeType: string,
-  snapshot?: RemotePreviewFileSnapshot
+  preview: FilePreview,
+  snapshot?: RemotePreviewFileSnapshot,
+  size?: number
 ): PreviewUrl {
+  const { mimeType } = preview
   let owned = senders.get(sender.id)
   if (!owned) {
     owned = new Map()
@@ -80,11 +104,14 @@ function mintPreviewUrl(
     // A reload re-mints the same token; its fresh stat must replace a cached older size.
     grant.stat = { at: Date.now(), snapshot: Promise.resolve(snapshot) }
   }
+  const byteSize = snapshot?.size ?? size
   return {
     content: '',
     isBinary: true,
     mimeType,
-    mediaUrl: `${MEDIA_PREVIEW_SCHEME}://file/${token}?revision=${randomUUID()}`
+    mediaUrl: `${MEDIA_PREVIEW_SCHEME}://file/${token}?revision=${randomUUID()}`,
+    ...(isDocumentPreview(preview) ? { isImage: true as const } : {}),
+    ...(byteSize !== undefined ? { size: byteSize } : {})
   }
 }
 
@@ -100,17 +127,38 @@ function revokeGrant(token: string): void {
   }
 }
 
-/** A local audio/video file as an `orca-media://` URL its viewer streams by range. */
-export function readMediaPreview(
+/**
+ * A local file as an `orca-media://` URL its viewer reads by range: audio and video always,
+ * images and PDFs only for a viewer that asks (`documents`); other callers keep base64.
+ */
+export async function readLocalFilePreview(
   event: { sender: PreviewSender },
   target: LocalPreviewTarget,
-  store: Store
-): PreviewUrl | null {
+  store: Store,
+  options: { documents: boolean }
+): Promise<PreviewUrl | null> {
   const preview = filePreviewForPath(target.filePath)
-  if (!preview || !streamsPreviewByRange(preview)) {
+  if (!preview) {
     return null
   }
-  return mintPreviewUrl(event.sender, target, store, preview.mimeType)
+  if (streamsPreviewByRange(preview)) {
+    return mintPreviewUrl(event.sender, target, store, preview)
+  }
+  if (!options.documents || target.connectionId) {
+    return null
+  }
+  const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
+  const { handle, stats } = await openLocalRegularFile(filePath)
+  try {
+    await assertPreviewableRasterHeader(preview, async (bytes) => {
+      const buffer = Buffer.alloc(Math.min(bytes, stats.size))
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+      return buffer.subarray(0, bytesRead)
+    })
+  } finally {
+    await handle.close()
+  }
+  return mintPreviewUrl(event.sender, target, store, preview, undefined, stats.size)
 }
 
 /** A paired runtime's file as an `orca-media://` URL, streamed by range over files.stat/readChunk. */
@@ -120,7 +168,7 @@ export async function grantRemoteFilePreview(
   store: Store
 ): Promise<PreviewUrl | null> {
   const preview = filePreviewForPath(address.relativePath)
-  if (!preview || !streamsPreviewByRange(preview)) {
+  if (!preview) {
     return null
   }
   // Why: proving the file and range reads here makes a missing file or an old host fail in the tab, not as a silent player error.
@@ -138,12 +186,15 @@ export async function grantRemoteFilePreview(
     if (snapshot.size > 0) {
       await assertRemoteChunkReadsSupported(pinned, lifetime.signal)
     }
+    await assertPreviewableRasterHeader(preview, (bytes) =>
+      readRemotePreviewPrefix(pinned, Math.min(bytes, snapshot.size), lifetime.signal)
+    )
     // A renderer gone mid-mint would leave a grant no teardown ever drops.
     lifetime.signal.throwIfAborted()
   } finally {
     lifetime.dispose()
   }
-  return mintPreviewUrl(event.sender, { remote: pinned }, store, preview.mimeType, snapshot)
+  return mintPreviewUrl(event.sender, { remote: pinned }, store, preview, snapshot)
 }
 
 /** Removing a paired runtime ends every preview it backs. */

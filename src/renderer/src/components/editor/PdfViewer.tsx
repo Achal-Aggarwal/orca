@@ -33,7 +33,10 @@ const SCALE_STEP = 1.25
 const SCALE_BOUNDS = { min: MIN_SCALE, max: MAX_SCALE, step: SCALE_STEP }
 
 type PdfViewerProps = {
+  /** Base64 bytes, for git blobs, diffs and the web client. */
   content: string
+  /** An orca-media URL pdf.js reads by range; wins over `content`. */
+  src?: string
   filePath: string
   // Persist zoom only with owner-qualified identity; diff/conflict callers must not use a path-only key.
   preferenceKey?: string | null
@@ -52,6 +55,7 @@ export default function PdfViewer(props: PdfViewerProps): JSX.Element {
 
 function PdfDocumentViewer({
   content,
+  src,
   filePath,
   preferenceKey = null,
   scrollCacheKey = null
@@ -133,9 +137,9 @@ function PdfDocumentViewer({
   }, [filePath, preferenceKey, recordScalePreference, scrollCacheKey])
 
   useEffect(() => {
-    loaderRef.current?.load(cleanedContent)
+    loaderRef.current?.load(src ? { url: src } : { base64: cleanedContent })
     // Identical bytes still require reload when ownership changes.
-  }, [cleanedContent, filePath, preferenceKey, scrollCacheKey])
+  }, [cleanedContent, filePath, preferenceKey, scrollCacheKey, src])
 
   const closeFindBar = useCallback(() => {
     const eventBus = eventBusRef.current

@@ -23,22 +23,33 @@ vi.mock('./remote-file-preview-reader', async (importOriginal) => ({
   ...(await importOriginal<typeof RemoteFilePreviewReader>()),
   statRemotePreviewFile: vi.fn(),
   readRemotePreviewChunk: vi.fn(),
+  readRemotePreviewPrefix: vi.fn(),
   assertRemoteChunkReadsSupported: vi.fn()
 }))
 
 import {
   grantRemoteFilePreview,
   handleMediaPreviewRequest,
-  readMediaPreview,
+  readLocalFilePreview,
   revokeRemoteFilePreviewGrants
 } from './media-preview-protocol'
 import {
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
+  readRemotePreviewPrefix,
   statRemotePreviewFile
 } from './remote-file-preview-reader'
 import type * as RemoteFilePreviewReader from './remote-file-preview-reader'
+
+function png(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(33)
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+  new DataView(bytes.buffer).setUint32(16, width)
+  new DataView(bytes.buffer).setUint32(20, height)
+  bytes.set([8, 6, 0, 0, 0], 24)
+  return bytes
+}
 
 describe('media preview protocol', () => {
   let directory: string
@@ -70,7 +81,7 @@ describe('media preview protocol', () => {
       const filePath = join(directory, `clip.${extension}`)
       await writeFile(filePath, Uint8Array.from([0, 1, 2, 3, 4, 5]))
       const target = { filePath, access: { kind: 'user-file' } as const }
-      const result = readMediaPreview(event, target, store)
+      const result = await readLocalFilePreview(event, target, store, { documents: false })
       expect(result).toMatchObject({ content: '', isBinary: true })
       expect(result?.mediaUrl).not.toContain(filePath)
       if (!result) {
@@ -88,7 +99,7 @@ describe('media preview protocol', () => {
   it('rechecks authorization for every seek and revokes URLs with the renderer', async () => {
     const filePath = join(directory, 'clip.mp4')
     await writeFile(filePath, 'video')
-    const result = readMediaPreview(event, { filePath }, store)
+    const result = await readLocalFilePreview(event, { filePath }, store, { documents: false })
     if (!result) {
       throw new Error('Missing preview')
     }
@@ -100,7 +111,12 @@ describe('media preview protocol', () => {
   })
 
   it('rejects directories, forged URLs and non-media paths', async () => {
-    const result = readMediaPreview(event, { filePath: join(directory, 'folder.mp4') }, store)
+    const result = await readLocalFilePreview(
+      event,
+      { filePath: join(directory, 'folder.mp4') },
+      store,
+      { documents: false }
+    )
     if (!result) {
       throw new Error('Missing preview')
     }
@@ -109,14 +125,41 @@ describe('media preview protocol', () => {
     expect((await handleMediaPreviewRequest(new Request('orca-media://file/unknown'))).status).toBe(
       404
     )
-    expect(readMediaPreview(event, { filePath: join(directory, 'secret.txt') }, store)).toBeNull()
+    expect(
+      await readLocalFilePreview(event, { filePath: join(directory, 'secret.txt') }, store, {
+        documents: false
+      })
+    ).toBeNull()
+  })
+
+  it('mints an image or PDF URL only for a viewer that asks, with its size', async () => {
+    const filePath = join(directory, 'shot.png')
+    await writeFile(filePath, png(4, 3))
+    await expect(
+      readLocalFilePreview(event, { filePath }, store, { documents: false })
+    ).resolves.toBeNull()
+    const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
+    expect(result).toMatchObject({ isImage: true, mimeType: 'image/png', size: 33 })
+    const response = await handleMediaPreviewRequest(new Request(result?.mediaUrl ?? ''))
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Expose-Headers')).toContain('Content-Range')
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(png(4, 3))
+  })
+
+  it('refuses an image whose header proves it too large to decode safely', async () => {
+    const filePath = join(directory, 'bomb.png')
+    await writeFile(filePath, png(100_000, 100_000))
+    await expect(
+      readLocalFilePreview(event, { filePath }, store, { documents: true })
+    ).rejects.toThrow('Image dimensions exceed the preview safety limit')
   })
 
   it('does not try a local read for an SSH host', async () => {
-    const result = readMediaPreview(
+    const result = await readLocalFilePreview(
       event,
       { filePath: '/remote/clip.mp4', connectionId: 'ssh-owner' },
-      store
+      store,
+      { documents: false }
     )
     if (!result) {
       throw new Error('Missing preview')
@@ -171,6 +214,27 @@ describe('media preview protocol', () => {
       const pinned = { ...unpinned, expectedEnvironmentPairingRevision: 9 }
       expect(statRemotePreviewFile).toHaveBeenCalledWith(pinned, expect.any(AbortSignal))
       expect(readRemotePreviewChunk).toHaveBeenCalledWith(pinned, 2, 3, expect.any(AbortSignal))
+    })
+
+    it('streams a remote image or PDF to its viewer, refusing a proven-oversized image', async () => {
+      vi.mocked(readRemotePreviewPrefix).mockResolvedValue(png(4, 3))
+      await expect(
+        grantRemoteFilePreview(event, addr('docs/shot.png'), store)
+      ).resolves.toMatchObject({
+        isImage: true,
+        mimeType: 'image/png',
+        size: 6
+      })
+      await expect(
+        grantRemoteFilePreview(event, addr('docs/spec.pdf'), store)
+      ).resolves.toMatchObject({
+        isImage: true,
+        mimeType: 'application/pdf'
+      })
+      vi.mocked(readRemotePreviewPrefix).mockResolvedValue(png(100_000, 100_000))
+      await expect(grantRemoteFilePreview(event, addr('docs/bomb.png'), store)).rejects.toThrow(
+        'Image dimensions exceed the preview safety limit'
+      )
     })
 
     it('fails the mint, not the player, when the host cannot serve chunk reads', async () => {

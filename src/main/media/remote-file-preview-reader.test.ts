@@ -12,6 +12,7 @@ import {
   REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE,
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
+  readRemotePreviewPrefix,
   readRemotePreviewChunk,
   statRemotePreviewFile
 } from './remote-file-preview-reader'
@@ -122,5 +123,21 @@ describe('remote file preview reader', () => {
     await expect(
       assertRemoteChunkReadsSupported({ ...address, environmentId: 'env-old' }, signal)
     ).rejects.toThrow(REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE)
+  })
+
+  it('reads a prefix in host-sized chunks and stops at EOF', async () => {
+    callRuntimeEnvironment
+      .mockResolvedValueOnce(
+        ok({
+          contentBase64: Buffer.alloc(262_144, 1).toString('base64'),
+          bytesRead: 262_144,
+          eof: false
+        })
+      )
+      .mockResolvedValueOnce(ok({ contentBase64: 'AQID', bytesRead: 3, eof: true }))
+      .mockResolvedValueOnce(ok({ contentBase64: '', bytesRead: 0, eof: true }))
+    const prefix = await readRemotePreviewPrefix(address, 300_000, signal)
+    expect(prefix.byteLength).toBe(262_147)
+    expect(callRuntimeEnvironment.mock.calls[0]?.[3]).toMatchObject({ offset: 0, length: 262_144 })
   })
 })

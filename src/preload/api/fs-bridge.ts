@@ -56,18 +56,26 @@ export const fsApi = {
     includeLocalLogMetadata?: boolean
     access?: LocalFileAccess
     wakeWslDistro?: boolean
+    rangePreview?: boolean
   }): Promise<{
     content: string
     isBinary: boolean
     isImage?: boolean
     mediaUrl?: string
+    size?: number
     mimeType?: string
     fileIdentity?: string
   }> => ipcRenderer.invoke('fs:readFile', args),
   grantRuntimeFilePreview: (
     args: RemoteFilePreviewAddress
-  ): Promise<{ content: string; isBinary: true; mimeType: string; mediaUrl: string } | null> =>
-    ipcRenderer.invoke('fs:grantRuntimeFilePreview', args),
+  ): Promise<{
+    content: string
+    isBinary: true
+    mimeType: string
+    mediaUrl: string
+    isImage?: true
+    size?: number
+  } | null> => ipcRenderer.invoke('fs:grantRuntimeFilePreview', args),
   readLocalLogTail: (args: LocalLogTailReadArgs): Promise<LocalLogTailReadResult> =>
     ipcRenderer.invoke('fs:readLocalLogTail', args),
   startLocalLogTail: (args: LocalLogTailWatchArgs): Promise<void> =>
