@@ -1,3 +1,6 @@
+import * as receiving from './structured-agent-session-receiving-account'
+import { observeReceivingSql } from './structured-agent-session-receiving-sql.test-support'
+import type { AgentModelCatalogProbe } from '../agent-model-catalog/agent-model-catalog-discovery'
 import { rm } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
@@ -23,7 +26,10 @@ import {
   PARENT
 } from './structured-agent-session-receiving-callers.test-support'
 
-function catalog(f: Awaited<ReturnType<typeof createReceivingCallerFixture>>) {
+function catalog(
+  f: Awaited<ReturnType<typeof createReceivingCallerFixture>>,
+  countSavedScope = false
+) {
   const store = new AgentModelCatalogStore()
   for (const [home, id] of [
     [HOME_A, 'claude-sonnet-5'],
@@ -46,6 +52,12 @@ function catalog(f: Awaited<ReturnType<typeof createReceivingCallerFixture>>) {
   const probe = vi.fn(async () => {
     throw new Error('saved inventory must not probe')
   })
+  const resolve = vi.fn(
+    async (..._args: Parameters<NonNullable<AgentModelCatalogProbe['resolve']>>) => ({
+      identity: undefined,
+      run: probe
+    })
+  )
   const service = createAgentModelCatalogService({
     store,
     getConversation: (id) => f.rig.store.getConversation(id) ?? undefined,
@@ -54,7 +66,7 @@ function catalog(f: Awaited<ReturnType<typeof createReceivingCallerFixture>>) {
     drivesRecord: () => true,
     resolveAccountHome: async () => HOME_B,
     ...structuredAgentModelCatalogAccountReads(() => f.rig.host),
-    probes: { claude: probe },
+    probes: { claude: countSavedScope ? Object.assign(probe, { resolve }) : probe },
     agentReadsProjectModelConfig: () => false
   })
   f.rig.host.deps.modelCatalog = service
@@ -62,6 +74,7 @@ function catalog(f: Awaited<ReturnType<typeof createReceivingCallerFixture>>) {
   return {
     service,
     probe,
+    resolve,
     read,
     ids: async () => {
       const result = await read()
@@ -221,3 +234,118 @@ describe('catalog consumes the constructed host receiving account', () => {
     }
   }, 10_000)
 })
+
+// Real cold adoption, N serialized mutations and bounded cleanup share the existing catalog budget.
+it.each([10, 100])(
+  'counts owned saved catalog work over %i mutations and one parallel read',
+  async (n) => {
+    const f = await createReceivingCallerFixture()
+    let service: ReturnType<typeof createAgentModelCatalogService> | undefined
+    try {
+      await f.found()
+      const { started } = await f.coldNative()
+      f.selectB()
+      const c = catalog(f, true)
+      service = c.service
+      f.rig.adapter.acquire.mockClear()
+      const entries = vi.spyOn(receiving, 'structuredAgentSessionReceivingAccount')
+      const external = vi.spyOn(f.rig.host, 'prospectiveAccountHome')
+      const all = vi.spyOn(f.rig.store, 'listRecords').mockImplementation(() => {
+        throw new Error('global history scan')
+      })
+      const pick = async () => {
+        const key = 'permissionMode'
+        const value = 'own'
+        expect(
+          await settled(
+            f.rig.host.setOption(REST_TEST_CALLER, {
+              key,
+              value,
+              envelope: {
+                sessionId: PARENT,
+                clientOperationId: hostTestOperationId(),
+                expectedRuntimeFence: f.rig.store.requireWritableRecord(PARENT).lease.runtimeFence,
+                payloadFingerprint: computeAgentSessionPayloadFingerprint({
+                  method: 'agentSession.setOption',
+                  sessionId: PARENT,
+                  fields: { key, value }
+                })
+              }
+            }),
+            'owned catalog counted mutation'
+          )
+        ).toMatchObject({
+          ok: true,
+          value: { key, value, options: { permissionMode: 'own' } }
+        })
+        expect(f.rig.store.requireWritableRecord(PARENT).permissionMode).toBe('own')
+        return c.service.peek(PARENT, true)?.models.map((model) => model.id)
+      }
+      const measure = async (count: number, work: () => Promise<void>) => {
+        entries.mockClear()
+        external.mockClear()
+        c.resolve.mockClear()
+        const observed = observeReceivingSql(f.runtime.getOrchestrationDb())
+        try {
+          await work()
+          expect(entries).toHaveBeenCalledTimes(count)
+          expect(c.resolve).toHaveBeenCalledTimes(count)
+          expect(
+            c.resolve.mock.calls.every(
+              ([, cwd, lookup]) => cwd === f.rig.root && lookup === 'saved'
+            )
+          ).toBe(true)
+          expect(observed.measurements.prepares).toBeLessThanOrEqual(20 * count)
+          expect(observed.measurements.allRows).toBeLessThanOrEqual(8 * count)
+          expect(observed.measurements.plans.length).toBeGreaterThan(0)
+          expect(
+            observed.measurements.plans.filter((detail) =>
+              /\bSCAN (?:run|child|task|parent|messages|dispatch_contexts|agent_session_records)\b/.test(
+                detail
+              )
+            )
+          ).toEqual([])
+          expect(c.probe).not.toHaveBeenCalled()
+          expect(f.rig.adapter.acquire).not.toHaveBeenCalled()
+          expect(f.rig.adapter.dispatch).not.toHaveBeenCalled()
+          expect(f.rig.adapter.readOptions).not.toHaveBeenCalled()
+          expect(all).not.toHaveBeenCalled()
+          process.stdout.write(
+            `owned-catalog operations=${count} receiving=${entries.mock.calls.length} savedResolutions=${c.resolve.mock.calls.length} sql=${observed.measurements.prepares} rows=${observed.measurements.allRows}\n`
+          )
+        } finally {
+          observed.stop()
+        }
+      }
+      await measure(n, async () => {
+        for (let i = 0; i < n; i += 1) {
+          expect(await pick()).toEqual(['claude-sonnet-5'])
+        }
+      })
+      expect(external).not.toHaveBeenCalled()
+      expect(c.resolve.mock.calls.every(([home]) => home.path === HOME_A.path)).toBe(true)
+      const before = c.service.peek(PARENT, true)
+      f.runtime
+        .getOrchestrationDb()
+        .failWorkerStart(started.dispatch.id, 'agent_readiness', 'never constructed a worker')
+      await measure(2, async () => {
+        const [picked, listed] = await settled(
+          Promise.all([pick(), c.ids()]),
+          'parallel owned/external catalog consumers'
+        )
+        expect(picked).toEqual(['claude-opus-5-5[1m]'])
+        expect(listed).toEqual(['claude-opus-5-5[1m]'])
+      })
+      expect(external).toHaveBeenCalledTimes(1)
+      expect(c.service.peek(PARENT, true)).not.toBe(before)
+      expect(c.resolve.mock.calls.every(([home]) => home.path === HOME_B.path)).toBe(true)
+    } finally {
+      service?.stop()
+      await f.dispose(
+        () => disposeCatalogMutationHost(f.rig),
+        () => rm(f.rig.root, { recursive: true, force: true })
+      )
+    }
+  },
+  10_000
+)
