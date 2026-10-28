@@ -25,6 +25,9 @@ vi.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: () => Promise.resolve(),
   deactivateKeepAwake: () => Promise.resolve()
 }))
+vi.mock('../platform/clipboard', () => ({
+  useClipboardWriter: () => ({ writeText: async () => {} })
+}))
 vi.mock('expo-router', () => ({ useFocusEffect: () => {} }))
 vi.mock('../platform/haptics', () => ({
   triggerError: () => {
@@ -171,12 +174,12 @@ describe('a mic tap the desktop refuses because dictation is not set up', () => 
 })
 
 describe('a mic tap the desktop refuses for a reason setup cannot fix', () => {
-  it('still toasts the host message with the error haptic', async () => {
+  it('toasts the host refusal in plain words with the error haptic', async () => {
     const rpc = createFakeRpcClient()
     const mounted = mount(rpc)
     await tapAndRefuseStart(mounted, rpc, 'dictation_already_active')
     expect(mounted.setupSheetOpens).toEqual([])
-    expect(seen.toasts).toEqual(['dictation_already_active'])
+    expect(seen.toasts).toEqual(['Dictation is already in use on the computer or another phone.'])
     expect(seen.errorHaptics).toBe(1)
   })
 })
