@@ -34,6 +34,47 @@ afterEach(() => {
 })
 
 describe('repository merge metadata reuse', () => {
+  it('isolates cwd when no home or config directory is available', async () => {
+    const env = { PATH: '/fixture/bin' }
+    exec.mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false))
+    await detectRepositoryMergeMetadata(repository, 'main', { cwd: '/a', env }, 'local:host')
+    await expect(
+      detectRepositoryMergeMetadata(repository, 'main', { cwd: '/b', env }, 'local:host')
+    ).resolves.toMatchObject({ autoMergeAllowed: false })
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([true, false])(
+    'retains a successful concurrent read when a newer read fails (failure first: %s)',
+    async (failureFirst) => {
+      const older = Promise.withResolvers<{ stdout: string }>()
+      const newer = Promise.withResolvers<{ stdout: string }>()
+      exec.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+      const first = detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+      const second = detectRepositoryMergeMetadata(
+        repository,
+        'main',
+        { cwd: '/another-worktree' },
+        'local:host'
+      )
+      if (failureFirst) {
+        newer.reject(new Error('ECONNRESET'))
+        await second
+        older.resolve(response(true))
+        await first
+      } else {
+        older.resolve(response(true))
+        await first
+        newer.reject(new Error('ECONNRESET'))
+        await second
+      }
+      await expect(
+        detectRepositoryMergeMetadata(repository, 'main', options, 'local:host')
+      ).resolves.toMatchObject({ autoMergeAllowed: true })
+      expect(exec).toHaveBeenCalledTimes(2)
+    }
+  )
+
   it('starts immediately and joins overlapping PR probes for the same base branch', async () => {
     const pending = Promise.withResolvers<{ stdout: string }>()
     exec.mockReturnValueOnce(pending.promise)

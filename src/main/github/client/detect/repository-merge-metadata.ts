@@ -39,9 +39,9 @@ export async function detectRepositoryMergeMetadata(
       ? configEnvironment?.APPDATA || configEnvironment?.USERPROFILE
       : configEnvironment?.HOME)
   const configNeedsCwd =
-    configDir &&
-    (!configPaths.isAbsolute(configDir) ||
-      (configPaths === win32 && configPaths.parse(configDir).root.length === 1))
+    !configDir ||
+    !configPaths.isAbsolute(configDir) ||
+    (configPaths === win32 && configPaths.parse(configDir).root.length === 1)
   const cacheKey = JSON.stringify([
     executionScope,
     githubReadExecutionScope({
@@ -72,17 +72,27 @@ export async function detectRepositoryMergeMetadata(
       const readId = ++writer.nextRead
       writer.activeReads++
       try {
-        return await readRepositoryMergeMetadata(ownerRepo, branchName, options, (value, ttlMs) => {
-          if (
-            ownsKey() &&
-            !options.signal?.aborted &&
-            repositoryMergeMetadataWriters.get(cacheKey) === writer &&
-            readId >= writer.publishedRead
-          ) {
-            writer.publishedRead = readId
-            cacheRepositoryMergeMetadata(cacheKey, value, ttlMs)
+        return await readRepositoryMergeMetadata(
+          ownerRepo,
+          branchName,
+          options,
+          (value, ttlMs, authoritative) => {
+            if (
+              ownsKey() &&
+              !options.signal?.aborted &&
+              repositoryMergeMetadataWriters.get(cacheKey) === writer &&
+              readId >= writer.publishedRead
+            ) {
+              if (!authoritative && repositoryMergeMetadataCache.has(cacheKey)) {
+                return
+              }
+              if (authoritative) {
+                writer.publishedRead = readId
+              }
+              cacheRepositoryMergeMetadata(cacheKey, value, ttlMs)
+            }
           }
-        })
+        )
       } finally {
         writer.activeReads--
         if (writer.activeReads === 0 && repositoryMergeMetadataWriters.get(cacheKey) === writer) {
@@ -97,7 +107,7 @@ async function readRepositoryMergeMetadata(
   ownerRepo: GitHubApiRepository,
   branchName: string | undefined,
   ghOptions: GhExecOptions,
-  publish: (value: GitHubRepositoryMergeMetadata, ttlMs: number) => void
+  publish: (value: GitHubRepositoryMergeMetadata, ttlMs: number, authoritative: boolean) => void
 ): Promise<GitHubRepositoryMergeMetadata> {
   if (
     ghOptions.signal?.aborted ||
@@ -180,7 +190,11 @@ async function readRepositoryMergeMetadata(
       ...(mergeMethodSettings ? { mergeMethodSettings } : {})
     }
     // Missing repository data remains unknown and retries on the short TTL.
-    publish(value, repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
+    publish(
+      value,
+      repository ? MERGE_QUEUE_CACHE_TTL_MS : MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS,
+      Boolean(repository)
+    )
     return value
   } catch {
     // Cool down failed probes without treating unknown merge-queue state as false.
@@ -188,7 +202,7 @@ async function readRepositoryMergeMetadata(
       mergeQueueRequired: null,
       autoMergeAllowed: null
     }
-    publish(value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS)
+    publish(value, MERGE_QUEUE_UNKNOWN_CACHE_TTL_MS, false)
     return value
   }
 }
