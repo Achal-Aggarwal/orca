@@ -3,6 +3,7 @@ import type { OrchestrationDb } from './db'
 import { dispatchReportMailbox } from './dispatch-report-mailbox'
 import type { DispatchContextRow, RemoteDispatchAttachmentRow } from './types'
 import { escalateWorkerFailure } from './worker-failure-escalation'
+import { replaceDispatchCapabilities } from './worker-terminal-redaction'
 
 // One screenful: enough to show the agent's last words or error banner without flooding the inbox.
 const LAST_OUTPUT_MAX_CHARS = 2_000
@@ -44,7 +45,8 @@ function describeStop(stop: WorkerTurnStop, task: string, dispatchId: string): s
     stop.reason === 'needs-input'
       ? `Worker ${stop.from} is stopped at a prompt that needs a person (approval or a question) while running task ${task}.`
       : `Worker ${stop.from} ended its turn ${stop.reason === 'errored' ? 'on an error ' : ''}without sending worker_done for task ${task}.`
-  const output = stop.lastOutput?.trim()
+  // Agent prose can echo its injected capability; mail must never carry it.
+  const output = stop.lastOutput && replaceDispatchCapabilities(stop.lastOutput).value.trim()
   return [
     what,
     `The Dispatch is still open. Answer it with \`orca orchestration send --to dispatch:${dispatchId}\`, retry it, or stop the worker.`,

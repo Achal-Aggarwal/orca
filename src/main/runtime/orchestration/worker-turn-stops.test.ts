@@ -103,13 +103,17 @@ describe('terminal worker turn stops', () => {
     expect(ctx.notify).toHaveBeenCalledWith(message.to_handle, 'escalation')
 
     // The coordinator's reply starts a new turn; its stop is reported again.
-    current.row = hookRow({ stateStartedAt: 300, lastAssistantMessage: 'Read the files.' })
+    current.row = hookRow({
+      stateStartedAt: 300,
+      lastAssistantMessage: 'Read the files. --dispatch-capability dcap_secretsecretsecretsecret00'
+    })
     stops.observe(moved('working', 'done'))
     await settle()
     expect(ctx.mail().map((m) => m.subject)).toContain('Worker stopped without reporting')
     // A clean finish quotes the agent's own words, not the screen.
     expect(ctx.mail()[1].body).toContain('Read the files.')
     expect(ctx.mail()[1].body).not.toContain('Selected model')
+    expect(ctx.mail()[1].body).not.toContain('dcap_secretsecretsecretsecret00')
     expect(ctx.mail()).toHaveLength(2)
   })
 
