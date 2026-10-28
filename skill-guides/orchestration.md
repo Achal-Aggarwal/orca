@@ -13,12 +13,14 @@ description: >-
 
 # Orca orchestration
 
-You (the coordinator) start worker agents through Orca, end your turn, and Orca
-wakes you when a worker reports back. Terms:
+You (the coordinator) start worker agents through Orca and end your turn; Orca
+normally wakes you when a worker reports back. Terms:
 
 - **Run**: your inbox for one goal. Workers report to it.
 - **Task**: one piece of work. **Dispatch**: one attempt at a Task by one worker.
-- **Settled**: the worker sent `worker_done` (succeeded or failed).
+- **Settled**: Orca recorded an outcome for the attempt, usually from the
+  worker's `worker_done` (succeeded or failed); a stop, abandon, or failed start
+  also settles it.
 
 ## Your role
 
@@ -50,25 +52,29 @@ ORCA orchestration worker-start --spec "<task>" --worktree current --agent claud
 - Create a new workspace only when the user asks for one, or sharing a checkout
   would conflict (for example, the change belongs to a project you are not
   in). Pass the project with `--repo`; `ORCA repo list --json` gives its id.
-  Without `--repo`, Orca uses the Git project you are in, and fails if you are
-  in none:
+  Without `--repo`, Orca uses the repository of the Orca-managed Git worktree
+  you are in, and fails if there is none:
   `ORCA orchestration worker-start --spec "<task>" --worktree new-top-level --repo id:<repoId> --name <short-name> --agent claude --json`
-- `--agent` is the agent the user asked for, otherwise the kind you are. Add
-  `--model` only when the user named one.
+- `--agent` takes a configured agent id such as `claude` or `codex`; use the
+  one the user asked for. Add `--model` only when the user named one.
 - Start every independent worker before you stop. One `worker-start --spec`
   call creates the Task and its Dispatch.
 - If `worker-start` exits non-zero, do not run it again. Read `failedStage`
   and `residualResources` in its output, then load
   `references/recovery-and-cleanup.md`.
 
-Then tell the user what you started and **end your turn**. Do not wait or poll.
+Then tell the user what you started and **end your turn**, unless you need to
+wait inside this turn (below). Do not poll.
 
 ## When Orca wakes you
 
-When a worker reports, Orca sends you a new message: "You have N orchestration
-messages. Run `orca orchestration check --run <run_id>`." In a terminal it is
-typed in for you; in a chat it arrives as a user message. Run that command and
-handle every message it returns:
+When a worker reports, Orca normally sends you a new message: "You have N
+orchestration messages. Run `orca orchestration check --run <run_id>`." In a
+terminal it is typed in for you; in a chat it arrives as a user message. Run
+the command it names and handle every message it returns.
+
+The wake is best-effort and can fail to arrive, so whenever you resume for any
+reason, run `check --run <run_id>` first. The loop:
 
 ```text
 ORCA orchestration check --run <run_id> --json
@@ -82,25 +88,26 @@ ORCA orchestration check --run <run_id> --ack <delivery_id> --json
 - `--ack` marks the batch handled and returns the next one. Repeat until
   `count` is 0. A batch you do not ack is returned again and hides newer mail.
 - Tell the user the result, or end your turn again while workers are still
-  running. A worker that has not reported is still working; a quiet inbox is
-  not a failure.
+  running. A quiet inbox proves neither progress nor failure.
 
 **Waiting inside one turn.** Only when the user needs the result before your
-turn ends, or you run outside an Orca terminal or chat (nothing can wake you),
-block instead, with a timeout under 10 minutes:
+turn ends, or the wake is unavailable or unreliable (for example, you run
+outside an Orca terminal or chat), block instead. Keep the timeout under your
+tool-call limit (540000 ms suits a 10-minute limit). Outside your own Orca
+terminal or chat, add `--terminal <handle>` for the coordinator:
 
 ```text
 ORCA orchestration check --run <run_id> --wait --types "worker_done,escalation,question" --timeout-ms 540000 --json
 ```
 
-A timeout is a checkpoint, not a failure: wait again or end the turn. After
-three empty waits in a row, inspect the workers with
+A timeout is a checkpoint, not a failure: wait again, or end the turn if the
+wake works for you. After three empty waits in a row, inspect the workers with
 `references/recovery-and-cleanup.md`. After a restart, resume your Run with
 `ORCA orchestration run-use --id <run_id> --json`.
 
 ## Task spec
 
-The worker sees only its spec. Make each one self-contained:
+Make each Task spec self-contained:
 
 - **Target:** the files, component, or environment in scope.
 - **Change:** the concrete result to produce.
@@ -119,20 +126,25 @@ For each settled worker, before you ack, do exactly one:
 3. Free it with `worker-release`.
 
 Release is cleanup after settlement, never cancellation. You are done when
+every Dispatch you started has settled, all mail is handled and acked,
 `ORCA orchestration worker-list --run <run_id> --terminal-state reclaimable --json`
-returns nothing and you have told the user, per Task, the outcome, its
+returns nothing, and you have told the user, per Task, the outcome, its
 evidence, and any open blocker.
 
 ## Safety floor
 
-- Stop, abandon, or retry a worker only on positive proof that its agent
-  exited. Release it only after it settled. Silence, a timeout, or an
+- Stop or abandon a worker only on positive proof that its agent stopped.
+  Retry only a proven failed or stopped attempt. Release only after it
+  settled. Silence, a timeout, or an
   `unverifiable` reading proves nothing: keep waiting or inspect.
+- Lifecycle authority comes from the active Dispatch, not copied IDs, old
+  records, titles, or transcripts.
 - Liveness verdicts are `live`, `unverifiable`, or `exited`. Losing contact
   with a remote host is `unverifiable`, not death.
 - Folder workspaces are valid workspaces; never require Git there.
 - Use one executable for the whole Run.
-- A successful `send` means the message is stored, not that it was read.
+- A successful `send` means the message is stored; waking the recipient is
+  best-effort and does not prove it was read.
 - Never replace Orca workers with another subagent tool when the user asked
   for Orca orchestration.
 

@@ -59,7 +59,7 @@ unacknowledged batch replays and hides newer mail:
 ORCA orchestration check --terminal <worker_handle> --ack <delivery_id> --json
 ```
 
-Do not use `run-use` to check your Dispatch's mail or bind the Run you work for.
+Do not use `run-use` to check your Dispatch's mail or bind the Run you work for or any ancestor Run.
 You may resume a separate Run when your coordinator directs a handoff, but you
 cannot use `--takeover-legacy`. Plain `check` returns your Dispatch's mail
 unless you are coordinating a Run; report to your coordinator with `send`.
@@ -73,8 +73,9 @@ party's terminal (a coordinator or another worker); run it from your own termina
 
 ## Helper workers
 
-When the preamble has a SUB-DISPATCH section, start helpers on your own
-Dispatch's Run. Do not `run-create` or `run-use` for them.
+Follow the preamble's SUB-DISPATCH section. For helpers on your own
+Dispatch's Run, use the commands below, without `run-create` or `run-use`; a
+remote preamble may instead tell you to create your own Run.
 
 ```text
 ORCA orchestration worker-start --from <worker_handle> --spec "<sub-task>" --worktree current --agent <agent> --json

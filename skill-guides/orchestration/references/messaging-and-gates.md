@@ -26,8 +26,12 @@ that batch over unfiltered.
 `--peek` and `--all` are read-only inspection, not progress through the
 coordinator inbox.
 
-Inside an Orca terminal or chat, new Run mail wakes the coordinator with a
-pointer to `check --run <run_id>`, so it may end its turn between batches. A
+Inside an Orca terminal or chat, new Run mail normally wakes the coordinator
+with a pointer to `check --run <run_id>`, so it may end its turn between
+batches. The wake is best-effort: a Claude coordinator can stay marked working
+while an agent-teams teammate is running, or is believed to be, and then gets
+no wake. Use an explicit `check` or a bounded wait when the wake is
+unavailable. A
 caller that waits instead treats an empty wait or timeout as a checkpoint and
 keeps each wait under its tool-call limit. Heartbeat or visible activity means
 alive, not done.

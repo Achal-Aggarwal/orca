@@ -16,8 +16,11 @@ in parallel need separate workspaces. A retry also needs `--retry-of` (see
 ```text
 ORCA orchestration task-create --spec "<dependent work>" --deps <json_array> --json
 ORCA orchestration task-list --ready --brief --json
-ORCA orchestration worker-start --task <task_id> --worktree <current|selector|new-top-level> --agent codex --json
+ORCA orchestration worker-start --task <task_id> --worktree current --agent codex --json
 ```
+
+For a new worktree, use the placement recipe in the main guide, including
+`--name`.
 
 `--brief` collapses whitespace and caps echoed specs at 160 characters;
 `spec_truncated` identifies shortened rows. Omit it when full specs are needed or
