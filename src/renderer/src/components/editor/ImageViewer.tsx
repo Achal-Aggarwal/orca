@@ -261,6 +261,7 @@ export default function ImageViewer({
       <PdfViewer
         content={cleanedContent}
         src={src}
+        byteSize={byteSize}
         filePath={filePath}
         preferenceKey={preferenceKey}
         scrollCacheKey={scrollCacheKey}

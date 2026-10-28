@@ -37,6 +37,8 @@ type PdfViewerProps = {
   content: string
   /** An orca-media URL pdf.js reads by range; wins over `content`. */
   src?: string
+  /** The file's size, which pdf.js needs to read `src` by range. */
+  byteSize?: number
   filePath: string
   // Persist zoom only with owner-qualified identity; diff/conflict callers must not use a path-only key.
   preferenceKey?: string | null
@@ -56,6 +58,7 @@ export default function PdfViewer(props: PdfViewerProps): JSX.Element {
 function PdfDocumentViewer({
   content,
   src,
+  byteSize,
   filePath,
   preferenceKey = null,
   scrollCacheKey = null
@@ -137,9 +140,9 @@ function PdfDocumentViewer({
   }, [filePath, preferenceKey, recordScalePreference, scrollCacheKey])
 
   useEffect(() => {
-    loaderRef.current?.load(src ? { url: src } : { base64: cleanedContent })
+    loaderRef.current?.load(src ? { url: src, length: byteSize } : { base64: cleanedContent })
     // Identical bytes still require reload when ownership changes.
-  }, [cleanedContent, filePath, preferenceKey, scrollCacheKey, src])
+  }, [byteSize, cleanedContent, filePath, preferenceKey, scrollCacheKey, src])
 
   const closeFindBar = useCallback(() => {
     const eventBus = eventBusRef.current

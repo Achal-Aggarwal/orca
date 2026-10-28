@@ -1,10 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import { buildPdfJsDocumentOptions } from './pdf-js-document-options'
+import { createOrcaMediaRangeTransport } from './pdf-orca-media-range-transport'
 
 type PdfLoadingTask = ReturnType<typeof pdfjsLib.getDocument>
 
-/** Bytes as base64, or a URL pdf.js reads by range. */
-export type PdfDocumentSource = { base64: string } | { url: string }
+/** Bytes as base64, or an orca-media URL (with its size) pdf.js reads by range. */
+export type PdfDocumentSource = { base64: string } | { url: string; length?: number }
 
 export type PdfDocumentLoader = {
   load: (source: PdfDocumentSource) => void
@@ -56,7 +57,12 @@ export function createPdfDocumentLoader({
         }
       }
       onError(null)
-      const documentSource = 'url' in source ? { url: source.url } : decodePdfBase64(source.base64)
+      const documentSource =
+        'url' in source
+          ? source.length
+            ? { range: createOrcaMediaRangeTransport(source.url, source.length, fail) }
+            : { url: source.url }
+          : decodePdfBase64(source.base64)
       if (typeof documentSource === 'string') {
         onError(documentSource)
         return

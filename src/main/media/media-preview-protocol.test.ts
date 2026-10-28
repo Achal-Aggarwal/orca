@@ -34,6 +34,7 @@ import {
   revokeRemoteFilePreviewGrants
 } from './media-preview-protocol'
 import {
+  REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE,
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
@@ -154,6 +155,14 @@ describe('media preview protocol', () => {
     ).rejects.toThrow('Image dimensions exceed the preview safety limit')
   })
 
+  it('checks the image it serves, not just the one it minted', async () => {
+    const filePath = join(directory, 'swapped.png')
+    await writeFile(filePath, png(4, 3))
+    const result = await readLocalFilePreview(event, { filePath }, store, { documents: true })
+    await writeFile(filePath, png(100_000, 100_000))
+    expect((await handleMediaPreviewRequest(new Request(result?.mediaUrl ?? ''))).status).toBe(404)
+  })
+
   it('does not try a local read for an SSH host', async () => {
     const result = await readLocalFilePreview(
       event,
@@ -235,6 +244,18 @@ describe('media preview protocol', () => {
       await expect(grantRemoteFilePreview(event, addr('docs/bomb.png'), store)).rejects.toThrow(
         'Image dimensions exceed the preview safety limit'
       )
+    })
+
+    it("leaves an older host's images and PDFs on files.readPreview, and refuses a swapped image", async () => {
+      vi.mocked(assertRemoteChunkReadsSupported).mockRejectedValueOnce(
+        new Error(REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE)
+      )
+      await expect(grantRemoteFilePreview(event, addr('docs/spec.pdf'), store)).resolves.toBeNull()
+
+      vi.mocked(readRemotePreviewPrefix).mockResolvedValueOnce(png(4, 3))
+      const minted = await grantRemoteFilePreview(event, addr('docs/shot.png'), store)
+      vi.mocked(readRemotePreviewPrefix).mockResolvedValueOnce(png(100_000, 100_000))
+      expect((await range(minted?.mediaUrl ?? '')).status).not.toBe(206)
     })
 
     it('fails the mint, not the player, when the host cannot serve chunk reads', async () => {

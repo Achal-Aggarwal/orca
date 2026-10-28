@@ -1,3 +1,4 @@
+import type { FileHandle } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { protocol, type WebContents } from 'electron'
 import type { Store } from '../persistence'
@@ -16,6 +17,7 @@ import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
 import { abortWhenRendererGone } from '../ipc/renderer-lifetime-abort'
 import { createMediaRangeResponse } from './media-range-response'
 import {
+  REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE,
   RemotePreviewPairingChangedError,
   assertRemoteChunkReadsSupported,
   readRemotePreviewChunk,
@@ -31,6 +33,7 @@ type PreviewTarget = LocalPreviewTarget | RemotePreviewTarget
 type PreviewGrant = {
   target: PreviewTarget
   store: Store
+  preview: FilePreview
   mimeType: string
   senderId: number
   key: string
@@ -97,7 +100,7 @@ function mintPreviewUrl(
   if (!token || !grants.has(token)) {
     token = randomUUID()
     owned.set(key, token)
-    grants.set(token, { target, store, mimeType, senderId: sender.id, key })
+    grants.set(token, { target, store, preview, mimeType, senderId: sender.id, key })
   }
   const grant = grants.get(token)
   if (grant && snapshot) {
@@ -150,11 +153,7 @@ export async function readLocalFilePreview(
   const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
   const { handle, stats } = await openLocalRegularFile(filePath)
   try {
-    await assertPreviewableRasterHeader(preview, async (bytes) => {
-      const buffer = Buffer.alloc(Math.min(bytes, stats.size))
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
-      return buffer.subarray(0, bytesRead)
-    })
+    await assertPreviewableRasterHeader(preview, localPrefixReader(handle, stats.size))
   } finally {
     await handle.close()
   }
@@ -186,6 +185,19 @@ export async function grantRemoteFilePreview(
     if (snapshot.size > 0) {
       await assertRemoteChunkReadsSupported(pinned, lifetime.signal)
     }
+  } catch (error) {
+    lifetime.dispose()
+    // An older host still previews images and PDFs whole through files.readPreview.
+    if (
+      isDocumentPreview(preview) &&
+      error instanceof Error &&
+      error.message === REMOTE_PREVIEW_UPDATE_REQUIRED_MESSAGE
+    ) {
+      return null
+    }
+    throw error
+  }
+  try {
     await assertPreviewableRasterHeader(preview, (bytes) =>
       readRemotePreviewPrefix(pinned, Math.min(bytes, snapshot.size), lifetime.signal)
     )
@@ -239,6 +251,10 @@ async function handleRemotePreviewRequest(
   try {
     // Re-stat (at most once a second) like a local file re-opens per request, so a growing recording keeps playing.
     const { size } = await remoteSnapshot(grant, remote)
+    // The file can change after mint; check the bytes this response serves.
+    await assertPreviewableRasterHeader(grant.preview, (bytes) =>
+      readRemotePreviewPrefix(remote, Math.min(bytes, size), controller.signal)
+    )
     return await createMediaRangeResponse(request, grant.mimeType, {
       size,
       read: (offset, length) => readRemotePreviewChunk(remote, offset, length, controller.signal),
@@ -279,6 +295,13 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
     }
     const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
     const { handle, stats } = await openLocalRegularFile(filePath)
+    try {
+      // The file can change after mint; check the handle this response serves.
+      await assertPreviewableRasterHeader(grant.preview, localPrefixReader(handle, stats.size))
+    } catch (error) {
+      await handle.close()
+      throw error
+    }
     return await createMediaRangeResponse(request, mimeType, {
       size: stats.size,
       read: async (offset, length) => {
@@ -290,6 +313,14 @@ export async function handleMediaPreviewRequest(request: Request): Promise<Respo
     })
   } catch {
     return new Response(null, { status: 404 })
+  }
+}
+
+function localPrefixReader(handle: FileHandle, size: number) {
+  return async (bytes: number): Promise<Uint8Array> => {
+    const buffer = Buffer.alloc(Math.min(bytes, size))
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    return buffer.subarray(0, bytesRead)
   }
 }
 

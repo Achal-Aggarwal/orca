@@ -1,5 +1,7 @@
+import type { PDFDataRangeTransport } from 'pdfjs-dist'
+
 export function buildPdfJsDocumentOptions(
-  source: { data: Uint8Array } | { url: string },
+  source: { data: Uint8Array } | { range: PDFDataRangeTransport } | { url: string },
   baseUrl: string
 ) {
   return {
