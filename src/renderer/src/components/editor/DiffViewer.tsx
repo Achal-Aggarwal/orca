@@ -30,6 +30,7 @@ import { useDiffEditorRegistration } from './diff-navigation-context'
 import { preserveDiffViewStateAcrossModelSwaps } from './diff-model-swap-view-state'
 import { monacoFindOptions } from './monaco-find-options'
 import { useDocumentDarkTheme } from '@/hooks/use-document-dark-theme'
+import { installMonacoLargePasteContentLifecycle } from './monaco-large-paste-content-lifecycle'
 
 export default function DiffViewer({
   modelKey,
@@ -257,11 +258,18 @@ export default function DiffViewer({
         const cleanupOriginalFindShortcut = installMonacoEditorFindShortcut(originalEditor)
         const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modifiedEditor)
 
+        const pasteLifecycle = installMonacoLargePasteContentLifecycle(modifiedEditor, () => {
+          const publish = onContentChangeRef.current
+          return publish ? (content) => publish(content) : undefined
+        })
         const modelContentSub = modifiedEditor.onDidChangeModelContent(() => {
-          onContentChangeRef.current?.(modifiedEditor.getValue())
+          if (!pasteLifecycle.deferContentEvent()) {
+            onContentChangeRef.current?.(modifiedEditor.getValue())
+          }
         })
         modifiedEditor.onDidDispose(() => {
           // Shortcut bridges and model subscriptions belong to this diff instance.
+          pasteLifecycle.dispose()
           cleanupSaveShortcut()
           cleanupOriginalFindShortcut()
           cleanupModifiedFindShortcut()

@@ -20,6 +20,7 @@ import type { DiffSectionItemProps } from './diff-section-item-props'
 import { useDiffSectionModelLifecycle } from './use-diff-section-model-lifecycle'
 import { hasLayoutBox } from '@/hooks/virtualized-hidden-row-measurement'
 import { DiffSectionSaveConflictBar } from './DiffSectionSaveConflictBar'
+import { installMonacoLargePasteContentLifecycle } from './monaco-large-paste-content-lifecycle'
 
 export function DiffSectionItem({
   section,
@@ -237,12 +238,11 @@ export function DiffSectionItem({
     )
     const cleanupOriginalFindShortcut = installMonacoEditorFindShortcut(original)
     const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modified)
-    const modelContentSub = modified.onDidChangeModelContent(() => {
-      const current = modified.getValue()
+    const publishContent = (current: string): void => {
       setSections((prev) => {
         let changed = false
-        const next = prev.map((s, i) => {
-          if (i !== index) {
+        const next = prev.map((s) => {
+          if (s.key !== section.key || s.contentGeneration !== section.contentGeneration) {
             return s
           }
 
@@ -268,9 +268,16 @@ export function DiffSectionItem({
         })
         return changed ? next : prev
       })
+    }
+    const pasteLifecycle = installMonacoLargePasteContentLifecycle(modified, () => publishContent)
+    const modelContentSub = modified.onDidChangeModelContent(() => {
+      if (!pasteLifecycle.deferContentEvent()) {
+        publishContent(modified.getValue())
+      }
     })
     modified.onDidDispose(() => {
       // Dispose shortcut bridges and model subscriptions with their owning diff instance.
+      pasteLifecycle.dispose()
       cleanupSaveShortcut()
       cleanupOriginalFindShortcut()
       cleanupModifiedFindShortcut()
