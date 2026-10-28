@@ -3,15 +3,13 @@ import type { MutableRefObject } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { AppState } from '@/store'
 import { richMarkdownAnnotationHighlightPluginKey } from './rich-markdown-annotation-highlight'
-import { updateRichMarkdownAnnotationHighlightsAfterSubmit } from './rich-markdown-annotation-submit-highlights'
 import {
-  clampRichMarkdownAnnotationTarget,
   getRichMarkdownAnnotationTarget,
   hasRichMarkdownCommentForRange,
   type RichMarkdownAnnotationTarget
 } from './rich-markdown-review-annotations'
 import { shouldExpandRichMarkdownReviewRail } from './rich-markdown-review-note-layout'
-import { flushPendingProseMirrorSelection } from './rich-markdown-selection-flush'
+import { useRichMarkdownReviewAnnotationActions } from './useRichMarkdownReviewAnnotationActions'
 import { useRichMarkdownReviewData } from './useRichMarkdownReviewData'
 import { useRichMarkdownReviewCopyFeedback } from './useRichMarkdownReviewCopyFeedback'
 import { useRichMarkdownReviewRailController } from './useRichMarkdownReviewRailController'
@@ -158,103 +156,23 @@ export function useRichMarkdownReviewController({
     [rootRef]
   )
 
-  const submitAnnotation = useCallback(
-    async (body: string): Promise<void> => {
-      if (!annotationPopover || sourceRelativePath === null) {
-        return
-      }
-      const result = await addDiffComment({
-        worktreeId,
-        filePath: sourceRelativePath,
-        source: 'markdown',
-        startLine:
-          annotationPopover.startLine === undefined
-            ? undefined
-            : annotationPopover.startLine + markdownSourceLineOffset,
-        lineNumber: annotationPopover.lineNumber + markdownSourceLineOffset,
-        selectedText: annotationPopover.selectedText,
-        body,
-        side: 'modified'
-      })
-      if (!result) {
-        console.error('Failed to add markdown comment — draft preserved')
-        return
-      }
-      updateRichMarkdownAnnotationHighlightsAfterSubmit({
-        annotationPopover,
-        comments: [...markdownComments, result],
-        editor: editorRef.current,
-        markdownSourceLineOffset
-      })
-      setAnnotationPopover(null)
-      clearAnnotationHighlight()
-      window.getSelection()?.removeAllRanges()
-    },
-    [
-      addDiffComment,
-      annotationPopover,
-      clearAnnotationHighlight,
-      editorRef,
-      markdownComments,
-      markdownSourceLineOffset,
-      sourceRelativePath,
-      worktreeId
-    ]
-  )
-
-  // Report opened/retained composers so keyboard callers consume only handled chords.
-  const openAnnotationPopover = useCallback(
-    (requireLiveSelection = false): boolean => {
-      if (!canAnnotateRichMarkdown) {
-        return false
-      }
-      // Consume repeated open requests without remounting a composer and losing its draft.
-      if (annotationPopoverRef.current) {
-        return true
-      }
-      const editor = editorRef.current
-      const root = rootRef.current
-      // Flush native mouse selection before choosing the target; a chord can precede ProseMirror’s selection sync.
-      if (editor) {
-        flushPendingProseMirrorSelection(editor)
-      }
-      // Keyboard actions need live targets; mouse buttons may use the target their render exposed.
-      const liveTarget = editor && root ? getRichMarkdownAnnotationTarget(editor, root) : null
-      const baseTarget = liveTarget ?? (requireLiveSelection ? null : annotationTarget)
-      if (!baseTarget) {
-        return false
-      }
-      const target = editor ? clampRichMarkdownAnnotationTarget(editor, baseTarget) : baseTarget
-      if (
-        !target ||
-        hasRichMarkdownCommentForRange(markdownComments, target, markdownSourceLineOffset)
-      ) {
-        setAnnotationTarget(null)
-        return false
-      }
-      editor?.view.dispatch(
-        editor.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, {
-          activeRange: { from: target.from, to: target.to }
-        })
-      )
-      // Claim the draft before setState so same-tick chords/repeats cannot remount it and discard typing.
-      annotationPopoverRef.current = target
-      // Why: opening a draft should reserve the notes rail immediately; saved notes stay visible.
-      setReviewRailOpen(true)
-      setAnnotationPopover(target)
-      setAnnotationTarget(null)
-      return true
-    },
-    [
-      annotationTarget,
-      canAnnotateRichMarkdown,
-      editorRef,
-      markdownComments,
-      markdownSourceLineOffset,
-      rootRef,
-      setReviewRailOpen
-    ]
-  )
+  const { openAnnotationPopover, submitAnnotation } = useRichMarkdownReviewAnnotationActions({
+    addDiffComment,
+    annotationPopover,
+    annotationPopoverRef,
+    annotationTarget,
+    canAnnotateRichMarkdown,
+    clearAnnotationHighlight,
+    editorRef,
+    markdownComments,
+    markdownSourceLineOffset,
+    rootRef,
+    setAnnotationPopover,
+    setAnnotationTarget,
+    setReviewRailOpen,
+    sourceRelativePath,
+    worktreeId
+  })
 
   useEffect(() => {
     if (canAnnotateRichMarkdown) {

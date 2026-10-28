@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Editor } from '@tiptap/react'
 import {
@@ -6,12 +6,9 @@ import {
   type RichMarkdownAnnotationHighlightRange
 } from './rich-markdown-annotation-highlight'
 import { getRichMarkdownRangeBounds } from './rich-markdown-range-bounds'
-import {
-  clearRichMarkdownNotePositions,
-  getRichMarkdownAnnotationHighlightRangesForComment
-} from './rich-markdown-review-annotations'
+import { getRichMarkdownAnnotationHighlightRangesForComment } from './rich-markdown-review-annotations'
 import type { RichMarkdownReviewNotePosition } from './rich-markdown-review-note-layout'
-import { measureRichMarkdownReviewNotePositions } from './rich-markdown-review-note-positioning'
+import { useRichMarkdownReviewNotePositions } from './useRichMarkdownReviewNotePositions'
 import type { DiffComment } from '../../../../shared/diff-comment-types'
 import { motionSafeScrollBehavior } from '@/hooks/usePrefersReducedMotion'
 
@@ -55,49 +52,17 @@ export function useRichMarkdownReviewRailController({
     cancelFrame(notePositionsFrameRef)
   }, [])
 
-  const syncNotePositions = useCallback((): void => {
-    const editor = editorRef.current
-    const container = scrollContainerRef.current
-    if (
-      !reviewRailVisible ||
-      !canAnnotateRichMarkdown ||
-      !editor ||
-      !container ||
-      markdownComments.length === 0
-    ) {
-      clearRichMarkdownNotePositions(setNotePositions)
-      return
-    }
-    setNotePositions(
-      measureRichMarkdownReviewNotePositions({
-        editor,
-        container,
-        markdownComments,
-        markdownSourceLineOffset
-      })
-    )
-  }, [
+  const syncNotePositions = useRichMarkdownReviewNotePositions({
     canAnnotateRichMarkdown,
+    content,
     editorRef,
     markdownComments,
     markdownSourceLineOffset,
+    notePositionsFrameRef,
     reviewRailVisible,
-    scrollContainerRef
-  ])
-
-  const requestSyncNotePositions = useCallback((): void => {
-    if (!reviewRailVisible) {
-      clearRichMarkdownNotePositions(setNotePositions)
-      return
-    }
-    if (notePositionsFrameRef.current !== null) {
-      return
-    }
-    notePositionsFrameRef.current = window.requestAnimationFrame(() => {
-      notePositionsFrameRef.current = null
-      syncNotePositions()
-    })
-  }, [reviewRailVisible, syncNotePositions])
+    scrollContainerRef,
+    setNotePositions
+  })
 
   const pulseRichMarkdownReviewNote = useCallback((commentId: string): void => {
     clearWindowTimer(attentionReviewCommentTimeoutRef)
@@ -189,27 +154,6 @@ export function useRichMarkdownReviewRailController({
     },
     [editorRef, markdownSourceLineOffsetRef, pulseRichMarkdownSourceRange, scrollContainerRef]
   )
-
-  useEffect(() => requestSyncNotePositions(), [content, markdownComments, requestSyncNotePositions])
-
-  useEffect(() => {
-    if (!reviewRailVisible) {
-      clearRichMarkdownNotePositions(setNotePositions)
-      return
-    }
-    const container = scrollContainerRef.current
-    if (!container) {
-      return
-    }
-    const update = (): void => requestSyncNotePositions()
-    container.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
-    requestSyncNotePositions()
-    return () => {
-      container.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
-    }
-  }, [requestSyncNotePositions, reviewRailVisible, scrollContainerRef])
 
   return {
     activeReviewCommentId,
